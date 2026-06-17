@@ -455,6 +455,15 @@ mod imp {
         fn terminal_cwd_respected() {
             super::super::functional_tests::run_cwd_respected();
         }
+
+        // #2: a surface deve se redesenhar continuamente (display link), sem
+        // input nem sync manual. RED até o CADisplayLink existir.
+        #[cfg(ghostty_linked)]
+        #[test]
+        #[ignore]
+        fn terminal_renders_continuously() {
+            super::super::functional_tests::run_render_loop_draws();
+        }
     }
 }
 
@@ -576,6 +585,52 @@ mod functional_tests {
         assert!(
             screen.contains("/tmp") || screen.contains("/private/tmp"),
             "cwd inicial não respeitado (esperava /tmp):\n{screen}"
+        );
+        unsafe { alethe_ghostty_surface_free(surface) };
+    }
+
+    /// Roda SÓ o run loop por `dur`, sem chamar app_tick/draw manualmente.
+    /// Assim isolamos o render espontâneo (display link) do render por input.
+    fn pump_runloop_only(dur: Duration) {
+        use objc2::msg_send;
+        use objc2::runtime::AnyClass;
+        let deadline = Instant::now() + dur;
+        unsafe {
+            let rl_cls = AnyClass::get(c"NSRunLoop").unwrap();
+            let rl: *mut objc2::runtime::AnyObject = msg_send![rl_cls, currentRunLoop];
+            let date_cls = AnyClass::get(c"NSDate").unwrap();
+            while Instant::now() < deadline {
+                let until: *mut objc2::runtime::AnyObject =
+                    msg_send![date_cls, dateWithTimeIntervalSinceNow: 0.02_f64];
+                let mode = objc2_foundation::NSString::from_str("kCFRunLoopDefaultMode");
+                let _: bool = msg_send![rl, runMode: &*mode, beforeDate: until];
+            }
+        }
+    }
+
+    /// #2: prova que a surface se redesenha sozinha (display link), sem input
+    /// nem tick/draw manual. Conta os draws antes/depois de ~1s só de run loop.
+    pub fn run_render_loop_draws() {
+        assert!(unsafe { alethe_ghostty_ensure_app() }, "ensure_app falhou");
+        let view = make_nsview();
+        let surface =
+            unsafe { alethe_ghostty_surface_new(view, std::ptr::null(), std::ptr::null(), 2.0) };
+        assert!(!surface.is_null(), "surface_new NULL (Metal headless?)");
+        unsafe {
+            alethe_ghostty_surface_set_content_scale(surface, 2.0, 2.0);
+            alethe_ghostty_surface_set_size(surface, 1600, 960);
+        }
+        // Deixa estabilizar (com tick), depois mede SÓ o run loop.
+        pump(Duration::from_secs(1));
+        let before = unsafe { alethe_ghostty_draw_count() };
+        pump_runloop_only(Duration::from_millis(1000));
+        let after = unsafe { alethe_ghostty_draw_count() };
+        let frames = after - before;
+        // Um display link a ~60fps faz dezenas de draws em 1s. Sem render
+        // contínuo (estado atual), frames == 0 -> RED.
+        assert!(
+            frames >= 20,
+            "render contínuo ausente: {frames} draws em 1s só de run loop (esperado >= 20)"
         );
         unsafe { alethe_ghostty_surface_free(surface) };
     }

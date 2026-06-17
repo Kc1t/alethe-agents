@@ -33,6 +33,9 @@ Cobre:
 - `terminal_runs_echo_cd_ls` — digita `echo`/`cd`/`ls` e confere a saída no grid.
 - `terminal_cwd_respected` — cria a surface com `cwd=/tmp` e confirma que `pwd`
   reporta `/tmp` sem `cd` (prova o repasse de cwd — #5).
+- `terminal_renders_continuously` — conta os draws ao longo de 1s rodando só o
+  run loop (sem input/sync) e exige ≥20 frames: prova o render contínuo do
+  display link/timer (#2). Sem ele, daria 0 (era o estado anterior).
 
 Requer `vendor/GhosttyKit.xcframework` (rode `./src-tauri/vendor/fetch-ghostty.sh`
 uma vez). É `#[ignore]` por padrão porque toca AppKit/Metal e exige a main

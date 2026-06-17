@@ -72,6 +72,10 @@ size_t alethe_ghostty_surface_read_screen(alethe_surface_t surface,
                                           char *out,
                                           size_t cap);
 
+// Nº acumulado de draws emitidos (instrumentação p/ o teste de render
+// contínuo, #2). Cresce com o display link e com draws explícitos.
+unsigned long long alethe_ghostty_draw_count(void);
+
 #ifdef __cplusplus
 }
 #endif

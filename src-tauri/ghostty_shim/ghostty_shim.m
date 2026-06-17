@@ -20,11 +20,26 @@ static ghostty_surface_t g_surfaces[ALETHE_MAX_SURFACES];
 static AletheGhosttyView *g_views[ALETHE_MAX_SURFACES];
 static int g_surface_count = 0;
 
+// Contador de draws emitidos — instrumentação para o teste de render contínuo
+// (#2). Cada chamada a draw incrementa; o teste verifica que cresce sozinho.
+static unsigned long long g_draw_count = 0;
+
+static void alethe_draw_surface(ghostty_surface_t s) {
+    if (!s) return;
+    ghostty_surface_draw(s);
+    g_draw_count++;
+}
+
+static void alethe_display_link_start(void);
+static void alethe_display_link_stop(void);
+
 static void alethe_register_surface(ghostty_surface_t s, AletheGhosttyView *v) {
     if (g_surface_count < ALETHE_MAX_SURFACES) {
         g_surfaces[g_surface_count] = s;
         g_views[g_surface_count] = v;
         g_surface_count++;
+        // Primeira surface viva → liga o render contínuo.
+        if (g_surface_count == 1) alethe_display_link_start();
     }
 }
 static void alethe_unregister_surface(ghostty_surface_t s) {
@@ -34,14 +49,57 @@ static void alethe_unregister_surface(ghostty_surface_t s) {
             g_views[i] = g_views[g_surface_count - 1];
             g_views[g_surface_count - 1] = nil;
             g_surface_count--;
+            // Nenhuma surface viva → desliga (não gasta GPU à toa).
+            if (g_surface_count == 0) alethe_display_link_stop();
             return;
         }
     }
 }
 static void alethe_draw_all(void) {
     for (int i = 0; i < g_surface_count; i++) {
-        if (g_surfaces[i]) ghostty_surface_draw(g_surfaces[i]);
+        if (g_surfaces[i]) alethe_draw_surface(g_surfaces[i]);
     }
+}
+
+// ---- Render contínuo (#2) -------------------------------------------------
+// Render loop dirigido por um NSTimer a ~60Hz agendado na main run loop em
+// NSRunLoopCommonModes. Roda na main thread (onde draw é seguro) e dispara
+// tanto no app quanto sob `NSRunLoop runMode:` (testes headless) — ao contrário
+// do CVDisplayLink, cujo callback vem de outra thread e não é drenado por
+// runMode. A cada tick desenha todas as surfaces vivas.
+//
+// Objeto-alvo do NSTimer (precisa de um target ObjC com seletor).
+@interface AletheRenderTicker : NSObject
+- (void)tick:(NSTimer *)t;
+@end
+@implementation AletheRenderTicker
+- (void)tick:(NSTimer *)t {
+    (void)t;
+    if (g_surface_count > 0) alethe_draw_all();
+}
+@end
+
+static NSTimer *g_render_timer = NULL;
+static AletheRenderTicker *g_render_ticker = NULL;
+
+static void alethe_display_link_start(void) {
+    if (g_render_timer != NULL) return;
+    if (g_render_ticker == NULL) g_render_ticker = [[AletheRenderTicker alloc] init];
+    g_render_timer = [NSTimer timerWithTimeInterval:(1.0 / 60.0)
+                                             target:g_render_ticker
+                                           selector:@selector(tick:)
+                                           userInfo:nil
+                                            repeats:YES];
+    // Adiciona ao run loop da thread atual (no app: a main thread, via
+    // run_on_main_thread no spawn; em teste: a thread do teste). CommonModes
+    // para continuar disparando durante drags/resize.
+    [[NSRunLoop currentRunLoop] addTimer:g_render_timer forMode:NSRunLoopCommonModes];
+}
+
+static void alethe_display_link_stop(void) {
+    if (g_render_timer == NULL) return;
+    [g_render_timer invalidate];
+    g_render_timer = NULL;
 }
 
 // ---- Callbacks de runtime -------------------------------------------------
@@ -328,7 +386,11 @@ void alethe_ghostty_surface_set_focus(alethe_surface_t surface, bool focused) {
 
 void alethe_ghostty_surface_draw(alethe_surface_t surface) {
     if (surface == NULL) return;
-    ghostty_surface_draw((ghostty_surface_t)surface);
+    alethe_draw_surface((ghostty_surface_t)surface);
+}
+
+unsigned long long alethe_ghostty_draw_count(void) {
+    return g_draw_count;
 }
 
 void alethe_ghostty_surface_free(alethe_surface_t surface) {

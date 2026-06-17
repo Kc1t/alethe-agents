@@ -47,4 +47,5 @@ extern "C" {
         out: *mut c_char,
         cap: usize,
     ) -> usize;
+    pub fn alethe_ghostty_draw_count() -> u64;
 }
