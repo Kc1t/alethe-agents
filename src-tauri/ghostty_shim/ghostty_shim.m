@@ -141,12 +141,26 @@ static ghostty_input_mods_e alethe_mods(NSEventModifierFlags f) {
     memset(&key, 0, sizeof(key));
     key.action = event.isARepeat ? GHOSTTY_ACTION_REPEAT : GHOSTTY_ACTION_PRESS;
     key.mods = alethe_mods(event.modifierFlags);
-    key.consumed_mods = GHOSTTY_MODS_NONE;
     key.keycode = event.keyCode;
     key.composing = false;
 
+    // unshifted_codepoint: o codepoint da tecla SEM modificadores. É isto que
+    // permite ao Ghostty identificar a tecla física (ex.: Ctrl+C -> precisa
+    // saber que a tecla é 'c' pra gerar 0x03). Sem isso, Ctrl+C/atalhos não
+    // funcionam. Usamos charactersIgnoringModifiers (ignora shift/ctrl/alt).
+    NSString *bare = event.charactersIgnoringModifiers;
+    if (bare.length > 0) {
+        key.unshifted_codepoint = [bare characterAtIndex:0];
+    }
+
+    // consumed_mods: todos os modificadores menos Ctrl/Cmd (que ficam livres
+    // pro sistema de keybinding do Ghostty casar atalhos como Ctrl+C).
+    NSEventModifierFlags consumed =
+        event.modifierFlags & ~(NSEventModifierFlagControl | NSEventModifierFlagCommand);
+    key.consumed_mods = alethe_mods(consumed);
+
     // Texto digitável: manda como text só quando não há Ctrl/Cmd (senão são
-    // bindings/atalhos que o Ghostty interpreta pelo keycode).
+    // bindings/atalhos que o Ghostty interpreta pelo keycode + unshifted).
     const char *utf8 = NULL;
     NSString *chars = event.characters;
     bool ctrlOrCmd = (event.modifierFlags &
@@ -165,6 +179,8 @@ static ghostty_input_mods_e alethe_mods(NSEventModifierFlags f) {
     key.action = GHOSTTY_ACTION_RELEASE;
     key.mods = alethe_mods(event.modifierFlags);
     key.keycode = event.keyCode;
+    NSString *bare = event.charactersIgnoringModifiers;
+    if (bare.length > 0) key.unshifted_codepoint = [bare characterAtIndex:0];
     ghostty_surface_key(self.surface, key);
 }
 
