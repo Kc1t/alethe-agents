@@ -38,6 +38,11 @@ Cobre:
 - `terminal_renders_continuously` — conta os draws ao longo de 1s rodando só o
   run loop (sem input/sync) e exige ≥20 frames: prova o render contínuo do
   display link/timer (#2). Sem ele, daria 0 (era o estado anterior).
+- `terminal_ime_dead_key_accents` — dirige o MESMO caminho NSTextInputClient que
+  o teclado usa (setMarkedText "´" + insertText "á", mais ç/ã) e confirma que
+  "IME_áçã_END" renderiza no grid (#3). **Ressalva:** prova o nosso caminho de
+  composição; que o macOS o invoque num dead-key físico ainda precisa de
+  validação manual no app (osascript não foca a NSView nativa de forma confiável).
 
 Requer `vendor/GhosttyKit.xcframework` (rode `./src-tauri/vendor/fetch-ghostty.sh`
 uma vez). É `#[ignore]` por padrão porque toca AppKit/Metal e exige a main
