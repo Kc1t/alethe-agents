@@ -43,6 +43,7 @@ import {
   getTerminalScrollbackRows,
   getWheelScrollLines,
   normalizePastedText,
+  shouldScrollHostScrollback,
 } from './terminalInput'
 import styles from './XTermView.module.css'
 
@@ -604,6 +605,12 @@ export function XTermView({
     }
 
     const onWheel = (event: WheelEvent) => {
+      // TUIs (claude/codex) entram no buffer `alternate` e ligam mouse tracking.
+      // Lá não há scrollback do host, então scrollLines() é no-op: se a gente
+      // interceptasse o wheel (preventDefault), o evento sumia e nem o host nem
+      // a app rolavam. Deixamos seguir pro xterm, que repassa o wheel pra app.
+      // Shift força o scrollback do host (convenção iTerm2 / Windows Terminal).
+      if (!shouldScrollHostScrollback(terminal.buffer.active.type, event.shiftKey)) return
       const lines = getWheelScrollLines(event, getTerminalLineHeight())
       if (lines === 0) return
       event.preventDefault()

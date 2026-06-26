@@ -12,6 +12,25 @@ export function getTerminalScrollbackRows(): number {
   return TERMINAL_SCROLLBACK_ROWS
 }
 
+/**
+ * Decide se o wheel deve rolar o scrollback do host (xterm) ou ser repassado
+ * pra app que está rodando no PTY.
+ *
+ * Shell puro fica no buffer `normal` → rolamos o scrollback local. TUIs como o
+ * `claude`/`codex` trocam pro buffer `alternate`, que NÃO tem scrollback, então
+ * `terminal.scrollLines()` é no-op; ali deixamos o evento seguir pro xterm, que
+ * repassa o wheel pra app (mouse tracking / alternate-scroll) e ela rola sozinha.
+ * `Shift+wheel` força o scrollback do host mesmo assim — convenção de iTerm2 /
+ * Windows Terminal.
+ */
+export function shouldScrollHostScrollback(
+  bufferType: 'normal' | 'alternate',
+  shiftKey: boolean,
+): boolean {
+  if (shiftKey) return true
+  return bufferType !== 'alternate'
+}
+
 export function normalizePastedText(text: string): string {
   return text.replace(/\r\n?/g, '\n').replace(/\n/g, '\r')
 }
