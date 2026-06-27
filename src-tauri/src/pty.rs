@@ -50,6 +50,8 @@ pub struct PtySession {
     pub writer: Arc<Mutex<Box<dyn Write + Send>>>,
     pub child: Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>,
     pub scrollback: Arc<Mutex<ScrollbackBuffer>>,
+    pub command: Option<String>,
+    pub cwd: Option<String>,
 }
 
 pub type PtySessions = Arc<Mutex<HashMap<String, PtySession>>>;
@@ -62,6 +64,18 @@ pub struct SpawnPtyResponse {
 #[derive(Clone, Serialize)]
 struct PtyExitPayload {
     code: Option<i32>,
+}
+
+#[derive(Serialize)]
+pub struct PtyProcessSnapshot {
+    pub id: String,
+    pub pid: Option<u32>,
+    pub command: Option<String>,
+    pub cwd: Option<String>,
+    pub process_name: Option<String>,
+    pub cmdline: Option<String>,
+    pub memory_mb: f64,
+    pub alive: bool,
 }
 
 #[tauri::command]
@@ -151,13 +165,13 @@ pub fn spawn_pty(
             s[..limit].to_string()
         })
         .unwrap_or_else(|| "<none>".to_string());
-    let cwd_warning = if let Some(cwd) = cwd.filter(|cwd| !cwd.is_empty()) {
-        if PathBuf::from(&cwd).is_dir() {
-            command.cwd(cwd);
+    let cwd_warning = if let Some(cwd_value) = cwd.as_deref().filter(|cwd| !cwd.is_empty()) {
+        if PathBuf::from(cwd_value).is_dir() {
+            command.cwd(cwd_value);
             None
         } else {
             Some(format!(
-                "\r\nWarning: cwd not found, using default directory: {cwd}\r\n"
+                "\r\nWarning: cwd not found, using default directory: {cwd_value}\r\n"
             ))
         }
     } else {
@@ -169,6 +183,7 @@ pub fn spawn_pty(
         .map_err(|error| error.to_string())?;
     let shell_spawn_ms = spawn_started.elapsed().as_millis();
     let child = Arc::new(Mutex::new(child));
+    let child_pid = child.lock().ok().and_then(|child| child.process_id());
     let mut reader = pair
         .master
         .try_clone_reader()
@@ -185,6 +200,7 @@ pub fn spawn_pty(
     let scrollback_id = id.clone();
     let thread_scrollback = Arc::clone(&scrollback);
     let thread_child = Arc::clone(&child);
+    let thread_sessions = Arc::clone(sessions.inner());
     let initial_warning = cwd_warning.clone();
 
     thread::spawn(move || {
@@ -277,6 +293,19 @@ pub fn spawn_pty(
             .and_then(|mut child| child.wait().ok())
             .map(|status| status.exit_code() as i32);
         let _ = event_app.emit(&exit_event_name, PtyExitPayload { code });
+
+        if let Some(pid) = child_pid {
+            if let Ok(mut sessions) = thread_sessions.lock() {
+                let should_remove = sessions
+                    .get(&scrollback_id)
+                    .and_then(|session| session.child.lock().ok()?.process_id())
+                    .map(|current_pid| current_pid == pid)
+                    .unwrap_or(false);
+                if should_remove {
+                    sessions.remove(&scrollback_id);
+                }
+            }
+        }
     });
 
     let _ = append_spawn_log(
@@ -294,6 +323,8 @@ pub fn spawn_pty(
         writer,
         child,
         scrollback,
+        command: requested_command,
+        cwd,
     };
 
     sessions_guard.insert(id.clone(), session);
@@ -372,18 +403,17 @@ pub fn attach_pty(
         let sessions = sessions
             .lock()
             .map_err(|_| "PTY sessions lock poisoned".to_string())?;
-        let session = sessions
-            .get(&id)
-            .ok_or_else(|| format!("PTY not found: {id}"))?;
-        let mut buffer = session
-            .scrollback
-            .lock()
-            .map_err(|_| "PTY scrollback lock poisoned".to_string())?;
-        if !buffer.data.is_empty() {
+        if let Some(session) = sessions.get(&id) {
+            let mut buffer = session
+                .scrollback
+                .lock()
+                .map_err(|_| "PTY scrollback lock poisoned".to_string())?;
+            if !buffer.data.is_empty() {
             // make_contiguous + slice evita a cópia extra do iter().skip().collect().
             let slice = buffer.data.make_contiguous();
             let start = slice.len().saturating_sub(max_bytes);
-            return Ok(String::from_utf8_lossy(&slice[start..]).into_owned());
+                return Ok(String::from_utf8_lossy(&slice[start..]).into_owned());
+            }
         }
     }
 
@@ -482,6 +512,64 @@ pub fn get_pty_cwd(sessions: State<'_, PtySessions>, id: String) -> Option<Strin
     );
     let cwd = sys.process(pid)?.cwd()?.to_string_lossy().to_string();
     Some(cwd)
+}
+
+#[tauri::command]
+pub fn list_pty_processes(sessions: State<'_, PtySessions>) -> Vec<PtyProcessSnapshot> {
+    use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+
+    let raw = {
+        let Ok(sessions) = sessions.lock() else {
+            return Vec::new();
+        };
+        sessions
+            .iter()
+            .map(|(id, session)| {
+                let pid = session.child.lock().ok().and_then(|child| child.process_id());
+                (id.clone(), pid, session.command.clone(), session.cwd.clone())
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let pids = raw
+        .iter()
+        .filter_map(|(_, pid, _, _)| pid.map(Pid::from_u32))
+        .collect::<Vec<_>>();
+    let mut sys = System::new();
+    if !pids.is_empty() {
+        sys.refresh_processes_specifics(
+            ProcessesToUpdate::Some(&pids),
+            ProcessRefreshKind::everything(),
+        );
+    }
+
+    raw.into_iter()
+        .map(|(id, pid, command, cwd)| {
+            let process = pid.and_then(|pid| sys.process(Pid::from_u32(pid)));
+            let memory_mb = process
+                .map(|process| process.memory() as f64 / 1024.0 / 1024.0)
+                .unwrap_or(0.0);
+            let process_name = process.map(|process| process.name().to_string_lossy().to_string());
+            let cmdline = process.map(|process| {
+                process
+                    .cmd()
+                    .iter()
+                    .map(|part| part.to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            });
+            PtyProcessSnapshot {
+                id,
+                pid,
+                command,
+                cwd,
+                process_name,
+                cmdline,
+                memory_mb,
+                alive: process.is_some(),
+            }
+        })
+        .collect()
 }
 
 pub fn load_scrollback(app: &AppHandle, id: &str) -> Result<VecDeque<u8>, String> {

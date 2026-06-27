@@ -100,6 +100,21 @@ export async function getPtyCwd(id: string): Promise<string | null> {
   return invoke<string | null>('get_pty_cwd', { id })
 }
 
+export type PtyProcessSnapshot = {
+  id: string
+  pid: number | null
+  command: string | null
+  cwd: string | null
+  process_name: string | null
+  cmdline: string | null
+  memory_mb: number
+  alive: boolean
+}
+
+export async function listPtyProcesses(): Promise<PtyProcessSnapshot[]> {
+  return invoke<PtyProcessSnapshot[]>('list_pty_processes')
+}
+
 export type DirectoryEntry = {
   name: string
   path: string

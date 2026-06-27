@@ -2176,12 +2176,32 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
       }),
 
     closeOtherContainers: (keepProjectId) =>
-      update((state) => ({
-        workspace: {
-          ...state.workspace,
-          containers: state.workspace.containers.filter((c) => c.projectId === keepProjectId),
-        },
-      })),
+      update((state) => {
+        const closingContainers = state.workspace.containers.filter((c) => c.projectId !== keepProjectId)
+        const closingByProject = new Map(closingContainers.map((c) => [c.projectId, new Set(c.paneIds)]))
+        const closingTerminals = state.projects.flatMap((project) => {
+          const paneIds = closingByProject.get(project.id)
+          if (!paneIds) return []
+          return project.terminals.filter((terminal) => paneIds.has(terminal.id))
+        })
+        cleanupPtys(collectTerminalPtyIds(closingTerminals))
+        return {
+          projects: state.projects.map((project) => {
+            const paneIds = closingByProject.get(project.id)
+            if (!paneIds) return project
+            return {
+              ...project,
+              terminals: project.terminals.map((terminal) =>
+                paneIds.has(terminal.id) ? clearTerminalPtyIds(terminal) : terminal,
+              ),
+            }
+          }),
+          workspace: {
+            ...state.workspace,
+            containers: state.workspace.containers.filter((c) => c.projectId === keepProjectId),
+          },
+        }
+      }),
 
     reorderContainers: (fromIndex, toIndex) =>
       update((state) => {

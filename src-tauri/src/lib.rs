@@ -82,6 +82,7 @@ pub fn run() {
             pty::resize_pty,
             pty::kill_pty,
             pty::get_pty_cwd,
+            pty::list_pty_processes,
             projects::load_projects,
             projects::save_projects,
             profiles::list_profiles,

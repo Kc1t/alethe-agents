@@ -52,9 +52,9 @@ pub fn command_builder_for_terminal(
                     .collect::<String>();
                 let mut builder = CommandBuilder::new(&shell);
                 builder.arg("-NoLogo");
-                builder.arg("-NoExit");
+                builder.arg("-NoProfile");
                 builder.arg("-Command");
-                builder.arg(format!("& '{escaped}'{extras_pwsh}"));
+                builder.arg(format!("& '{escaped}'{extras_pwsh}; exit $LASTEXITCODE"));
                 builder
             }
             #[cfg(not(windows))]
