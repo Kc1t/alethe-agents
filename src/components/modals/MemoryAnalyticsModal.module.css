@@ -47,11 +47,11 @@
 }
 
 .hot {
-  color: #ef4444 !important;
+  color: var(--status-offline);
 }
 
 .cool {
-  color: #22c55e !important;
+  color: var(--status-working);
 }
 
 .panel {
