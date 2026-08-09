@@ -45,19 +45,39 @@
   line-height: 1.45;
 }
 .createCard {
-  display: flex;
-  gap: 16px;
-  justify-content: space-between;
-  align-items: end;
-  padding: 14px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(300px, 44%);
+  gap: 14px;
+  align-items: center;
+  padding: 16px 18px;
+  background: var(--panel);
+}
+.createIcon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+  border-radius: var(--radius-md);
+  color: var(--accent);
+  background: var(--accent-faint);
+}
+.createCopy {
+  min-width: 0;
 }
 .createRow {
   display: flex;
   gap: 8px;
-  min-width: min(390px, 52%);
+  min-width: 0;
 }
 .createRow input {
   min-width: 0;
+  flex: 1;
+}
+.createRow button {
+  flex: 0 0 auto;
+  min-width: 112px;
+  white-space: nowrap;
 }
 .listSection {
   display: flex;
@@ -224,6 +244,12 @@
   .profileCard {
     align-items: stretch;
     flex-direction: column;
+  }
+  .createCard {
+    display: flex;
+  }
+  .createIcon {
+    display: none;
   }
   .createRow {
     min-width: 0;

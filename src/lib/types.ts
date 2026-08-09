@@ -72,6 +72,9 @@ export type Theme =
   | 'dark-lemon'
   | 'orca'
 
+/** Native desktop icon variants. The UI theme and app icon theme are independent. */
+export type AppIconTheme = Theme | 'alethe-blue-gradient' | 'alethe-pink-gradient'
+
 /** Módulos opcionais que podem ser ativados no onboarding ou nas Preferências. */
 export type FeatureId = 'todos' | 'git' | 'browser' | 'graphify' | 'aiMemory'
 
@@ -189,6 +192,8 @@ export type OrphanWorktree = {
 export type Project = {
   id: string
   name: string
+  /** Determines which workspace opens when the project is selected. */
+  mode?: 'standard' | 'agentSandbox'
   color?: string
   /** URL de imagem pequena pra representar o projeto na sidebar/topbar/container. */
   iconUrl?: string
@@ -324,6 +329,8 @@ export type Preferences = {
   /** Idioma da UI. Default 'en'. */
   language: Locale
   uiTheme: Theme
+  /** Native desktop icon theme. Defaults to Dark independently from the UI theme. */
+  appIconTheme: AppIconTheme
   /** Zoom global da WebView. 1 = 100%. */
   uiZoom: number
   /** Opacidade da janela nativa. 1 = totalmente opaca. */
@@ -374,6 +381,10 @@ export type Preferences = {
   topbarShowSync: boolean
   topbarShowProfile: boolean
   topbarShowMemory: boolean
+  /** Maximum number of authenticated LAN remote devices. Default 1. */
+  remoteMaxDevices: number
+  /** Remote session lifetime in seconds. Default 1 hour. */
+  remoteSessionExpirySecs: number
   /** Módulos opcionais habilitados para este perfil. */
   enabledFeatures: Record<FeatureId, boolean>
   /** Folder configured as the base location for the global Todo list. */
@@ -461,6 +472,7 @@ export type ProjectsFile = {
 export const DEFAULT_PREFERENCES: Preferences = {
   language: 'en',
   uiTheme: 'dark',
+  appIconTheme: 'dark',
   uiZoom: 1,
   windowOpacity: 1,
   terminalTheme: null,
@@ -494,6 +506,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   topbarShowSync: true,
   topbarShowProfile: true,
   topbarShowMemory: true,
+  remoteMaxDevices: 1,
+  remoteSessionExpirySecs: 3600,
   enabledFeatures: { todos: true, git: true, browser: true, graphify: true, aiMemory: false },
   todoStoragePath: '',
   leftSidebarVisible: true,

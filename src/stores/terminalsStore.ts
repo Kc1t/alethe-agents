@@ -49,6 +49,7 @@ export type PtyRuntime = {
 type TerminalsState = {
   byPtyId: Record<string, PtyRuntime>
 
+  reset: () => void
   registerPty: (ptyId: string) => void
   /** Sinaliza que um restart foi iniciado — o próximo exit event será ignorado. */
   beginRestart: (ptyId: string) => void
@@ -81,6 +82,8 @@ function emptyRuntime(ptyId: string): PtyRuntime {
 
 export const useTerminalsStore = create<TerminalsState>((set) => ({
   byPtyId: {},
+
+  reset: () => set({ byPtyId: {} }),
 
   registerPty: (ptyId) =>
     set((state) => {

@@ -1,5 +1,6 @@
 import {
   Download,
+  Network,
   FileArchive,
   FileText,
   FolderOpen,
@@ -18,6 +19,7 @@ import { useOnClickOutside } from '../../hooks/useOnClickOutside'
 import { useOnEscape } from '../../hooks/useOnEscape'
 
 import { useT } from '../../lib/i18n'
+import { AGENT_SANDBOX_ENABLED } from '../../lib/featureFlags'
 import { pickFile, saveFile } from '../../lib/dialog'
 import {
   exportBackup,
@@ -27,6 +29,7 @@ import {
   openLogsFolder,
   openSpawnLog,
   resetAppData,
+  wipeAllAppData,
 } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -36,6 +39,7 @@ export function MainMenu() {
   const t = useT()
   const open = useUiStore((s) => s.showMainMenu)
   const closeMainMenu = useUiStore((s) => s.closeMainMenu)
+  const setActiveView = useUiStore((s) => s.setActiveView)
   const openModal = useUiStore((s) => s.openModal_)
   const flat = useProjectsStore((s) => s.preferences.workspaceFlat)
   const setFlat = useProjectsStore((s) => s.setWorkspaceFlat)
@@ -63,6 +67,18 @@ export function MainMenu() {
     window.location.reload()
   }
 
+  const factoryReset = async () => {
+    if (!window.confirm(t('menu.confirmFactoryReset'))) return
+    await wipeAllAppData()
+    try {
+      localStorage.clear()
+      sessionStorage.clear()
+    } catch {
+      // WebView storage may be unavailable; the backend wipe already ran.
+    }
+    window.location.reload()
+  }
+
   return (
     <div ref={ref} className={styles.menu} role="menu">
       <button
@@ -75,27 +91,63 @@ export function MainMenu() {
       >
         <Settings size={14} /> <span>{t('menu.preferences')}</span>
       </button>
+      {AGENT_SANDBOX_ENABLED ? (
+        <button
+          type="button"
+          className={styles.item}
+          onClick={() => {
+            setActiveView('agentSandbox')
+            closeMainMenu()
+          }}
+        >
+          <Network size={14} /> <span>{t('menu.agentSandbox')}</span>
+        </button>
+      ) : null}
       <button
         type="button"
         className={styles.item}
         onClick={() => {
-          openModal('welcome')
+          openModal('remoteControl')
           closeMainMenu()
         }}
       >
-        <Sparkles size={14} /> <span>{t('menu.welcome')}</span>
+        <Network size={14} /> <span>{t('menu.remoteControl')}</span>
       </button>
-      <button
-        type="button"
-        className={styles.item}
-        onClick={() => {
-          openModal('themePicker')
-          closeMainMenu()
-        }}
-      >
-        <Sun size={14} />
-        <span>{t('menu.pickTheme')}</span>
-      </button>
+      {import.meta.env.DEV ? (
+        <>
+          <button
+            type="button"
+            className={styles.item}
+            onClick={() => {
+              openModal('welcome')
+              closeMainMenu()
+            }}
+          >
+            <Sparkles size={14} /> <span>{t('menu.welcome')}</span>
+          </button>
+          <button
+            type="button"
+            className={styles.item}
+            onClick={() => {
+              openModal('themePicker')
+              closeMainMenu()
+            }}
+          >
+            <Sun size={14} />
+            <span>{t('menu.pickTheme')}</span>
+          </button>
+          <button
+            type="button"
+            className={styles.item}
+            onClick={() => {
+              useProjectsStore.getState().setOnboardingDone(false)
+              closeMainMenu()
+            }}
+          >
+            <RefreshCw size={14} /> <span>{t('menu.redoOnboarding')}</span>
+          </button>
+        </>
+      ) : null}
       <button type="button" className={styles.item} onClick={() => setFlat(!flat)}>
         <Layers size={14} />
         <span>{flat ? t('menu.groupByProject') : t('menu.flatMode')}</span>
@@ -164,20 +216,17 @@ export function MainMenu() {
       <div className={styles.separator} />
       <button
         type="button"
-        className={styles.item}
-        onClick={() => {
-          useProjectsStore.getState().setOnboardingDone(false)
-          closeMainMenu()
-        }}
-      >
-        <RefreshCw size={14} /> <span>{t('menu.redoOnboarding')}</span>
-      </button>
-      <button
-        type="button"
         className={`${styles.item} ${styles.danger}`}
         onClick={() => void reset()}
       >
         <Trash2 size={14} /> <span>{t('menu.resetAppData')}</span>
+      </button>
+      <button
+        type="button"
+        className={`${styles.item} ${styles.danger}`}
+        onClick={() => void factoryReset()}
+      >
+        <Trash2 size={14} /> <span>{t('menu.factoryReset')}</span>
       </button>
     </div>
   )

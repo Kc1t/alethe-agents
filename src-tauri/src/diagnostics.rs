@@ -490,6 +490,33 @@ pub fn reset_app_data(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Full factory reset: wipes every profile, the profiles registry and logs
+/// under the app's local data root, so the next launch behaves like a fresh
+/// install. Best-effort — files currently held open by the running app are
+/// skipped; the caller should relaunch so nothing keeps them locked.
+#[tauri::command]
+pub fn wipe_all_app_data(app: AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    let root = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|error| error.to_string())?;
+    if !root.exists() {
+        return Ok(());
+    }
+    if let Ok(entries) = fs::read_dir(&root) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let _ = if path.is_dir() {
+                fs::remove_dir_all(&path)
+            } else {
+                fs::remove_file(&path)
+            };
+        }
+    }
+    Ok(())
+}
+
 /// Abre a pasta de logs (raiz `app_local_data_dir()/logs`, compartilhada por
 /// todos os perfis) no explorer/Finder.
 #[tauri::command]

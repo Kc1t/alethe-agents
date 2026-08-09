@@ -54,55 +54,45 @@ fn export_backup_from_dir(dir: PathBuf, target_path: String) -> Result<(), Strin
     let mut zip = ZipWriter::new(file);
     let opts = FileOptions::default().compression_method(CompressionMethod::Deflated);
 
-    // projects.json (se existir)
-    let projects = dir.join("projects.json");
-    if projects.is_file() {
-        zip.start_file("projects.json", opts)
-            .map_err(|e| e.to_string())?;
-        let bytes = fs::read(&projects).map_err(|e| e.to_string())?;
-        zip.write_all(&bytes).map_err(|e| e.to_string())?;
-    }
-
-    // Activity metrics belong to the profile and are included in the backup.
-    let activity_stats = dir.join("activity-stats.json");
-    if activity_stats.is_file() {
-        zip.start_file("activity-stats.json", opts)
-            .map_err(|e| e.to_string())?;
-        let bytes = fs::read(&activity_stats).map_err(|e| e.to_string())?;
-        zip.write_all(&bytes).map_err(|e| e.to_string())?;
-    }
-
-    // Tokens do not leave this local profile unless the user explicitly exports it.
-    let spotify_tokens = dir.join("spotify_tokens.json");
-    if spotify_tokens.is_file() {
-        zip.start_file("spotify_tokens.json", opts)
-            .map_err(|e| e.to_string())?;
-        let bytes = fs::read(&spotify_tokens).map_err(|e| e.to_string())?;
-        zip.write_all(&bytes).map_err(|e| e.to_string())?;
-    }
-
-    // scrollback/*.bin
-    let scrollback = dir.join("scrollback");
-    if scrollback.is_dir() {
-        for entry in fs::read_dir(&scrollback).map_err(|e| e.to_string())? {
-            let entry = entry.map_err(|e| e.to_string())?;
-            let path = entry.path();
-            if !path.is_file() {
-                continue;
-            }
-            let name = path
-                .file_name()
-                .ok_or_else(|| "scrollback entry sem nome".to_string())?
-                .to_string_lossy()
-                .to_string();
-            zip.start_file(format!("scrollback/{name}"), opts)
-                .map_err(|e| e.to_string())?;
-            let bytes = fs::read(&path).map_err(|e| e.to_string())?;
-            zip.write_all(&bytes).map_err(|e| e.to_string())?;
-        }
-    }
+    // Archive the whole profile so nothing the user owns (Todos, history,
+    // preferences, tokens, scrollback, and any future file) is left behind.
+    // Only debug logs and temporary atomic-save artifacts are skipped.
+    add_dir_to_zip(&mut zip, &source_root, &source_root, opts)?;
 
     zip.finish().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn is_excluded_from_backup(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|ext| ext.to_str()),
+        Some("tmp") | Some("log")
+    )
+}
+
+fn add_dir_to_zip<W: Write + io::Seek>(
+    zip: &mut ZipWriter<W>,
+    root: &Path,
+    dir: &Path,
+    opts: FileOptions,
+) -> Result<(), String> {
+    for entry in fs::read_dir(dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        let file_type = entry.file_type().map_err(|e| e.to_string())?;
+        if file_type.is_dir() {
+            add_dir_to_zip(zip, root, &path, opts)?;
+            continue;
+        }
+        if !file_type.is_file() || is_excluded_from_backup(&path) {
+            continue;
+        }
+        let rel = path.strip_prefix(root).map_err(|e| e.to_string())?;
+        let name = rel.to_string_lossy().replace('\\', "/");
+        zip.start_file(name, opts).map_err(|e| e.to_string())?;
+        let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+        zip.write_all(&bytes).map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 

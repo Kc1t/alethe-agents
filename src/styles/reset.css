@@ -64,7 +64,8 @@ select {
   -moz-appearance: none;
   font: inherit;
   color: inherit;
-  min-height: 34px;
+  min-height: 32px;
+  height: 32px;
   padding: 0 34px 0 10px;
   color: var(--fg);
   background-color: var(--bg-sunken);

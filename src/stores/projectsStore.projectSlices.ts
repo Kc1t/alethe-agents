@@ -365,10 +365,20 @@ type ProjectsSlice = Pick<
 
 export function createProjectsSlice({ set, get, update, updateProject }: SliceCtx): ProjectsSlice {
   return {
-    createProject: ({ name, color, iconUrl, groupId = null, defaultCwd, githubUrl, firstBootPending }) => {
+    createProject: ({
+      name,
+      mode = 'standard',
+      color,
+      iconUrl,
+      groupId = null,
+      defaultCwd,
+      githubUrl,
+      firstBootPending,
+    }) => {
       const project: Project = {
         id: nanoid(),
         name,
+        mode,
         color,
         iconUrl,
         groupId,

@@ -424,7 +424,7 @@ export const TerminalPane = memo(function TerminalPane({
                 />
               ) : (
                 <XTermView
-                  key={activeTab.id}
+                  key={`${activeTab.id}:${resumeNonce}`}
                   projectId={projectId}
                   ptyId={activeTab.ptyId ?? activeTab.id}
                   sessionKey={activeTab.id}

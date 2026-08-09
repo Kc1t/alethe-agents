@@ -46,7 +46,7 @@ export function WorkspaceView() {
   const setWorkspaceGridLayout = useProjectsStore((s) => s.setWorkspaceGridLayout)
   const setGroupGridLayout = useProjectsStore((s) => s.setGroupGridLayout)
   const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
-  const activeProject = useProjectsStore(selectActiveProject)
+  const activeProject = useProjectsStore((state) => selectActiveProject(state) ?? state.projects[0] ?? null)
   const recentProjectIds = useProjectsStore((s) => s.workspace.recentProjectIds)
   const openProjectWorkspace = useProjectsStore((s) => s.openProjectWorkspace)
   const openModal = useUiStore((s) => s.openModal_)
@@ -578,6 +578,12 @@ function NoWorkspace({
   const [quickAgent, setQuickAgent] = useState<AgentType>('claude')
 
   useEffect(() => {
+    if (!project) return
+    const projectFolder = project.defaultCwd || project.terminals[0]?.cwd || ''
+    if (projectFolder) setFolder(projectFolder)
+  }, [project])
+
+  useEffect(() => {
     if (!quickAgents.includes(quickAgent)) setQuickAgent(quickAgents[0] ?? 'shell')
   }, [quickAgent, quickAgents])
 
@@ -591,14 +597,24 @@ function NoWorkspace({
     if (!cwd) return
     const normalized = cwd.replace(/[\\/]+$/, '')
     const name = normalized.split(/[\\/]/).filter(Boolean).pop() || normalized
-    const project = createProject({ name, defaultCwd: cwd })
-    if (graphifyEnabled) setGraphifyEnabled(project.id, true)
-    const terminal = createTerminal(project.id, {
+    const existingProjectFolder = project?.defaultCwd || project?.terminals[0]?.cwd
+    if (project && existingProjectFolder?.replace(/[\\/]+$/, '').toLowerCase() === normalized.toLowerCase()) {
+      const terminal = createTerminal(project.id, {
+        name: quickAgent[0].toUpperCase() + quickAgent.slice(1),
+        cwd,
+        firstTab: { type: quickAgent, cwd, runtimeProfile: 'lean' },
+      })
+      openTerminalWorkspace(project.id, terminal.id)
+      return
+    }
+    const createdProject = createProject({ name, defaultCwd: cwd })
+    if (graphifyEnabled) setGraphifyEnabled(createdProject.id, true)
+    const terminal = createTerminal(createdProject.id, {
       name: quickAgent[0].toUpperCase() + quickAgent.slice(1),
       cwd,
       firstTab: { type: quickAgent, cwd, runtimeProfile: 'lean' },
     })
-    openTerminalWorkspace(project.id, terminal.id)
+    openTerminalWorkspace(createdProject.id, terminal.id)
   }
   if (!project) {
     return (

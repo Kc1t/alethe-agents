@@ -1,0 +1,10 @@
+{
+  "name": "Alethe Remote",
+  "short_name": "Alethe",
+  "description": "Alethe LAN remote workspace",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0e1014",
+  "theme_color": "#0e1014",
+  "icons": []
+}

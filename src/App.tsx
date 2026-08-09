@@ -1,11 +1,14 @@
 import { getCurrentWebview } from '@tauri-apps/api/webview'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Bell, X } from 'lucide-react'
 import { lazy, Suspense, type CSSProperties, useEffect, useRef } from 'react'
 import { Group as PanelGroup, Panel, Separator, usePanelRef } from 'react-resizable-panels'
 
 import { ghosttyKillAll, setWindowOpacity } from './lib/tauri'
+import { getThemeIcon } from './lib/themeIcons'
 
 import { AgentIcon } from './components/icons/AgentIcons'
+import { AgentSandbox } from './components/AgentSandbox'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { FocusOverlay } from './components/FocusOverlay'
 import { LinkViewerOverlay } from './components/LinkViewerOverlay'
@@ -35,6 +38,7 @@ import { TodoSettingsModal } from './components/modals/TodoSettingsModal'
 import { TopbarSettingsModal } from './components/modals/TopbarSettingsModal'
 import { UpdateModal } from './components/modals/UpdateModal'
 import { WhatsNewModal } from './components/modals/WhatsNewModal'
+import { RemoteControlModal } from './components/modals/RemoteControlModal'
 import { WelcomeModal } from './components/modals/WelcomeModal'
 import { useKeybindings } from './hooks/useKeybindings'
 import { useDiscordPresence } from './hooks/useDiscordPresence'
@@ -48,6 +52,9 @@ import { getLastCrashReport } from './lib/tauri'
 import { checkForUpdate } from './lib/updater'
 import { useProjectsStore } from './stores/projectsStore'
 import { type InAppToast, useUiStore } from './stores/uiStore'
+import { AsciiEffect } from './components/ui/ascii-effect'
+import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
+import homeBackground from './assets/home-bg-right.png'
 import styles from './App.module.css'
 
 const AgentCanvasPOC = lazy(() =>
@@ -71,16 +78,26 @@ function LoadingScreen() {
   const t = useT()
   return (
     <div className={styles.loadingScreen} role="status" aria-label={t('loading.initializing')}>
+      <div className={styles.loadingBackdrop} aria-hidden="true">
+        <AsciiEffect
+          imageSrc={homeBackground}
+          alt=""
+          variant="flow"
+          fontSize={8}
+          brightnessBoost={2.25}
+          contrast={1.15}
+          threshold={0.02}
+          flowSpeed={0.16}
+          flowStrength={9}
+          mouseRadius={260}
+          mouseStrength={16}
+          scale={1}
+          fit="cover"
+          colors={['var(--fg-muted)', 'var(--fg)']}
+          backgroundColor="transparent"
+        />
+      </div>
       <div className={styles.loadingInner}>
-        <div className={styles.loadingOrb} aria-hidden="true">
-          <div className={styles.loadingOrbHalo} />
-          <div className={styles.loadingOrbCore}>
-            <span className={styles.loadingOrbPrompt}>›_</span>
-          </div>
-          <span className={styles.loadingOrbRing} />
-          <span className={styles.loadingOrbRing} />
-          <span className={styles.loadingOrbRing} />
-        </div>
         <div className={styles.loadingWordmark}>Alethe</div>
         <div className={styles.loadingConsole}>
           <span className={styles.loadingPrompt} aria-hidden="true">
@@ -155,6 +172,7 @@ export default function App() {
   const hydrate = useProjectsStore((s) => s.hydrate)
   const hydrated = useProjectsStore((s) => s.hydrated)
   const uiTheme = useProjectsStore((s) => s.preferences.uiTheme)
+  const appIconTheme = useProjectsStore((s) => s.preferences.appIconTheme)
   const uiZoom = useProjectsStore((s) => s.preferences.uiZoom)
   const windowOpacity = useProjectsStore((s) => s.preferences.windowOpacity)
   const language = useProjectsStore((s) => s.preferences.language)
@@ -197,6 +215,13 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = uiTheme
   }, [uiTheme])
+
+  useEffect(() => {
+    if (!hydrated) return
+    void getCurrentWindow().setIcon(getThemeIcon(appIconTheme)).catch(() => {
+      // Browser/test environments do not expose the native window icon API.
+    })
+  }, [appIconTheme, hydrated])
 
   useEffect(() => {
     document.documentElement.lang = language === 'pt-BR' ? 'pt-BR' : 'en'
@@ -383,6 +408,8 @@ export default function App() {
                 <Suspense fallback={<LoadingScreen />}>
                   {activeView === 'home' ? (
                     <HomeView />
+                  ) : activeView === 'agentSandbox' && AGENT_SANDBOX_ENABLED ? (
+                    <AgentSandbox />
                   ) : activeView === 'agentCanvas' ? (
                     <AgentCanvasPOC />
                   ) : (
@@ -467,6 +494,7 @@ export default function App() {
         <AiUsageModal />
         <UpdateModal />
         <WhatsNewModal />
+        <RemoteControlModal />
       </ErrorBoundary>
       <InAppNotifications />
       {activeView === 'agentCanvas' ? <TokenHud /> : null}

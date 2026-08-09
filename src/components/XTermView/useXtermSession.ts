@@ -17,6 +17,7 @@ import { usePtyPanelVisible } from '../../lib/ptyVisibility'
 import {
   claimDiscoveredSession,
   claimMostRecentSession,
+  isSessionClaimed,
   registerSessionClaim,
 } from '../../lib/sessionDiscovery'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
@@ -252,6 +253,7 @@ export function useXtermSession(params: {
     let writeFrame: number | null = null
     let pendingWrites: string[] = []
     let pendingWriteLength = 0
+    let resumeErrorBuffer = ''
     let lastCols = 0
     let lastRows = 0
     let forceNextResize = false
@@ -757,11 +759,15 @@ export function useXtermSession(params: {
     // usado pelo backend quando o painel está invisível). O backend decide
     // qual dos dois emitir por lote, nunca os dois — não há risco de um
     // chunk ser processado em duplicidade.
-    const registerPtyStreamListeners = async (id: string): Promise<boolean> => {
+    const registerPtyStreamListeners = async (
+      id: string,
+      onDataChunk?: (chunk: string) => void,
+    ): Promise<boolean> => {
       const dataUnlisten = await listenPtyData(id, (chunk) => {
         useTerminalsStore.getState().recordIo(id)
         queueTerminalWrite(chunk)
         completionMonitor?.handleOutput(chunk)
+        onDataChunk?.(chunk)
       })
       if (disposed) {
         dataUnlisten()
@@ -922,6 +928,18 @@ export function useXtermSession(params: {
         if (forceFreshRef.current) {
           console.warn(`[pty-launch] ${command} reabrindo SEM resume (fallback de early-exit)`)
           resumeId = undefined
+        }
+        if (resumeId && cwd && command && isSessionClaimed(command, cwd, resumeId, sessionPersistenceKey)) {
+          console.warn(`[pty-launch] ${command} session ${resumeId} is already claimed; starting a fresh writer`)
+          resumeId = undefined
+          removeSession(sessionPersistenceKey)
+          onSessionIdRef.current?.(undefined)
+        }
+        // Reserve the resume ID before creating the PTY. Without this early
+        // claim, two panes can pass the check above at the same time and both
+        // launch `codex resume`, which makes Codex reject one writer.
+        if (resumeId && cwd && command) {
+          registerSessionClaim(command, cwd, resumeId, sessionPersistenceKey)
         }
         // Valida a conversa antes de passar o argumento de resume. IDs persistidos
         // podem ficar órfãos após limpeza de histórico ou sincronização entre PCs;
@@ -1250,18 +1268,48 @@ export function useXtermSession(params: {
           }
         }
 
+        let resumeConflictHandled = false
+        const handleResumeConflict = () => {
+          resumeConflictHandled = true
+          earlyExitRetriedRef.current = true
+          forceFreshRef.current = true
+          removeSession(sessionPersistenceKey)
+          onSessionIdRef.current?.(undefined)
+          terminal.write('\r\n\x1b[33m[alethe] Codex session is busy — opening a fresh session…\x1b[0m\r\n')
+          void killPty(response.id).catch(() => {})
+          setRetryKey((value) => value + 1)
+        }
+
         // Painel fora de tela no boot — mesma lógica de attachExistingPty:
         // pula o replay agora, `doResync` traz tudo quando ficar visível.
         if (isPanelVisibleRef.current) {
           const replay = await attachPty(response.id)
           if (disposed) return
+          if (
+            replay &&
+            command === 'codex' &&
+            usedResumeRef.current &&
+            /already has an active writer|thread\/resume failed/i.test(replay)
+          ) {
+            handleResumeConflict()
+            return
+          }
           if (replay) queueTerminalWrite(replay)
         }
 
         // Race fix: se o componente desmontar entre o await e a atribuição,
         // a cleanup function já rodou com unlistenData/unlistenExit ainda
         // undefined — chamamos manualmente pra evitar listener órfão.
-        if (!(await registerPtyStreamListeners(response.id))) return
+        const handled = await registerPtyStreamListeners(response.id, (chunk) => {
+          if (command !== 'codex' || !usedResumeRef.current || resumeConflictHandled) return
+          // PTY events can split the bootstrap error between chunks, so keep
+          // a bounded rolling buffer instead of matching each chunk alone.
+          resumeErrorBuffer = `${resumeErrorBuffer}${chunk}`.slice(-8192)
+          if (/already has an active writer|thread\/resume failed/i.test(resumeErrorBuffer)) {
+            handleResumeConflict()
+          }
+        })
+        if (!handled) return
 
         const exitUnlisten = await listenPtyExit(response.id, (payload) => {
           // unlistenExit só roda na cleanup do effect, depois de dispose() — um exit
@@ -1304,6 +1352,7 @@ export function useXtermSession(params: {
             completionMonitor?.dispose()
             completionMonitor = null
             removeSession(sessionPersistenceKey)
+            onSessionIdRef.current?.(undefined)
             terminal.write(
               '\r\n\x1b[33m[alethe] sessão anterior indisponível — reabrindo sessão nova…\x1b[0m\r\n',
             )
@@ -1338,17 +1387,24 @@ export function useXtermSession(params: {
         if (prompt) {
           const sendInitialInput = async () => {
             const earliestSendAt = Date.now() + 1_500
-            const deadline = Date.now() + 15_000
+            const timedSendAt = Date.now() + 4_000
+            const deadline = Date.now() + 10_000
             while (!disposed && Date.now() < deadline) {
               await new Promise((resolve) => window.setTimeout(resolve, 250))
               const runtime = useTerminalsStore.getState().byPtyId[response.id]
               const quietFor = runtime ? Date.now() - runtime.lastIoAt : 0
-              if (Date.now() >= earliestSendAt && runtime?.alive && quietFor >= 700) break
+              if (
+                Date.now() >= earliestSendAt &&
+                runtime?.alive &&
+                (quietFor >= 700 || Date.now() >= timedSendAt)
+              ) break
             }
             if (disposed) return
             try {
               await writePtyChunked(response.id, prompt, true)
+              await new Promise((resolve) => window.setTimeout(resolve, 150))
               await writePty(response.id, '\r')
+              window.setTimeout(() => void writePty(response.id, '\r').catch(() => {}), 1_200)
               onInitialInputSentRef.current?.()
             } catch (error) {
               console.warn('[pty-launch] não foi possível enviar o prompt inicial:', error)

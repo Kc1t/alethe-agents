@@ -32,6 +32,18 @@ export function registerSessionClaim(
   trackOwner(ptyId, key, sessionId)
 }
 
+export function isSessionClaimed(
+  agent: string,
+  cwd: string,
+  sessionId: string,
+  ownerId?: string,
+): boolean {
+  const key = claimKey(agent, cwd)
+  if (!claimedIds.get(key)?.has(sessionId)) return false
+  if (!ownerId) return true
+  return claimOwners.get(ownerId)?.some((claim) => claim.key === key && claim.sessionId === sessionId) !== true
+}
+
 /**
  * Reserva atomicamente um ID novo para um único pane. Se mais de uma sessão
  * aparecer entre snapshots, a associação pane -> conversa ficou ambígua e é

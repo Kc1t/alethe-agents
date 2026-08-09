@@ -35,9 +35,10 @@ type ModalKind =
   | 'topbarSettings'
   | 'updateAvailable'
   | 'whatsNew'
+  | 'remoteControl'
   | null
 
-export type ActiveView = 'home' | 'workspace' | 'agentCanvas'
+export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox'
 export type RightSidebarMode = 'todo' | 'markdown' | 'git'
 
 export type MemorySample = MemoryStats & {

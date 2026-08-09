@@ -21,6 +21,7 @@ import { useSchedulerStore } from '../../../stores/schedulerStore'
 import controls from '../controls.module.css'
 import styles from '../PreferencesModal.module.css'
 import { SettingsSection } from './primitives'
+import { Dropdown } from '../../ui/Dropdown'
 
 export function MultiagentPage() {
   const projects = useProjectsStore((state) => state.projects)
@@ -185,19 +186,13 @@ export function MultiagentPage() {
         description="Manage execution waves (Task DAG) per project."
       >
         <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-          <select
+          <Dropdown
             className={controls.input}
-            style={{ width: '60%', height: 32, fontSize: 12 }}
             value={selectedProjectId}
-            onChange={(e) => setSelectedProjectId(e.target.value)}
-          >
-            <option value="">-- Select a project --</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+            onChange={setSelectedProjectId}
+            ariaLabel="Select a project"
+            options={[{ value: '', label: '-- Select a project --' }, ...projects.map((p) => ({ value: p.id, label: p.name }))]}
+          />
 
           {selectedProjectId && repoPath && (
             <button

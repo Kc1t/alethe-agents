@@ -6,7 +6,8 @@
   border-bottom: 1px solid var(--border);
   user-select: none;
   flex-shrink: 0;
-  padding-left: 4px;
+  padding: 0 6px;
+  box-sizing: border-box;
 }
 
 .bar[data-style='three-areas'] {
@@ -15,13 +16,13 @@
       38px,
       var(--topbar-right-width)
     );
-  padding-left: 0;
+  padding: 0;
 }
 
 .barStart {
   display: inline-flex;
   align-items: center;
-  gap: 1px;
+  gap: 4px;
   flex: 0 0 auto;
   padding-right: 8px;
   border-right: 1px solid var(--border);
@@ -92,7 +93,7 @@
 .barEnd {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   height: 100%;
   flex-shrink: 0;
 }
@@ -100,11 +101,11 @@
 .groupTabs {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   flex: 100 1 0;
   height: 100%;
-  margin-left: 12px;
+  margin-left: 8px;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -292,12 +293,12 @@
 .statusGroup {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   height: 24px;
 }
 
 .statusGroup {
-  padding-left: 7px;
+  padding-left: 8px;
   border-left: 1px solid var(--border);
 }
 
@@ -317,20 +318,22 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  margin-right: 6px;
+  margin-right: 0;
 }
+
 
 .usagePill {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   font-size: 11px;
   font-family: var(--font-mono);
   color: var(--pill-color, var(--fg-muted));
   background: var(--bg-sunken);
+  min-height: 22px;
   padding: 2px 8px;
-  border-radius: 9px;
-  margin-right: 6px;
+  border-radius: 8px;
+  margin-right: 0;
   font-weight: 600;
   white-space: pre-line;
   border: 0;
@@ -437,22 +440,27 @@
 }
 
 .editWidgets {
-  width: 24px;
+  width: 0;
   height: 24px;
   display: grid;
   place-items: center;
-  margin-right: 4px;
+  margin-right: 0;
   border-radius: var(--radius-sm);
   color: var(--fg-muted);
   opacity: 0;
+  overflow: hidden;
   cursor: pointer;
   transition:
+    width 120ms ease,
+    margin-right 120ms ease,
     opacity 120ms ease,
     background 120ms ease,
     color 120ms ease;
 }
 .widgets:hover .editWidgets,
 .editWidgets:focus-visible {
+  width: 24px;
+  margin-right: 2px;
   opacity: 1;
 }
 .editWidgets:hover {
@@ -469,9 +477,10 @@
   font-family: var(--font-mono);
   color: var(--fg-muted);
   background: var(--bg-sunken);
+  min-height: 22px;
   padding: 2px 8px;
-  border-radius: 9px;
-  margin-right: 6px;
+  border-radius: 8px;
+  margin-right: 0;
   cursor: pointer;
   border: 1px solid transparent;
   flex-shrink: 0;
@@ -492,9 +501,10 @@
   font-family: var(--font-mono);
   color: var(--fg-muted);
   background: var(--bg-sunken);
+  min-height: 22px;
   padding: 2px 8px;
-  border-radius: 9px;
-  margin-right: 6px;
+  border-radius: 8px;
+  margin-right: 0;
   cursor: pointer;
   border: 1px solid transparent;
   transition: border-color 0.15s ease;
@@ -533,11 +543,11 @@
   display: inline-grid;
   place-items: center;
   width: 26px;
-  height: 20px;
+  height: 22px;
   color: var(--fg-muted);
   background: var(--bg-sunken);
-  border-radius: 9px;
-  margin-right: 6px;
+  border-radius: 8px;
+  margin-right: 0;
   cursor: pointer;
   border: 1px solid transparent;
   flex-shrink: 0;
@@ -575,7 +585,7 @@
 .bar[data-style='three-areas'] .barStart {
   width: 100%;
   box-sizing: border-box;
-  padding-left: 8px;
+  padding: 0 8px;
   border-right: 1px solid var(--border);
 }
 
@@ -599,7 +609,7 @@
   grid-column: 3;
   min-width: 0;
   justify-content: flex-end;
-  padding: 0 6px 0 10px;
+  padding: 0 8px;
   border-left: 1px solid var(--border);
   overflow: hidden;
 }
@@ -612,7 +622,7 @@
 
 .bar[data-style='three-areas'] .utilityGroup,
 .bar[data-style='three-areas'] .statusGroup {
-  gap: 6px;
+  gap: 4px;
 }
 
 .bar[data-style='three-areas'] .statusGroup {
@@ -632,6 +642,8 @@
 }
 
 .bar[data-style='three-areas'] .editWidgets {
+  width: 24px;
+  margin-right: 0;
   opacity: 1;
 }
 

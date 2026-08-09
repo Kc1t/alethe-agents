@@ -285,8 +285,8 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
       {isMacOS() ? (
         <SettingsSection
           id="native-terminal-macos"
-          title="Terminal nativo (Ghostty)"
-          description="Use the embedded Ghostty engine (GPU rendering) instead of the internal terminal. Experimental. Reopen terminals after changing this."
+          title={t('prefs.nativeTerminalMacos')}
+          description={t('prefs.nativeTerminalMacosDesc')}
         >
           <label
             style={{
@@ -305,7 +305,7 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
               checked={preferences.nativeTerminalMacos ?? false}
               onChange={(e) => setPreferences({ nativeTerminalMacos: e.target.checked })}
             />
-            <span style={{ flex: 1, fontSize: 13 }}>Habilitar terminal nativo (macOS)</span>
+            <span style={{ flex: 1, fontSize: 13 }}>{t('prefs.nativeTerminalMacosEnable')}</span>
           </label>
         </SettingsSection>
       ) : null}

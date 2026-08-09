@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Info,
   Palette,
+  ShieldCheck,
   Plug,
   Search,
   TerminalSquare,
@@ -28,6 +29,7 @@ import { IntegrationsPage } from './preferences/IntegrationsPage'
 import { MultiagentPage } from './preferences/MultiagentPage'
 import { OrganizationPage } from './preferences/OrganizationPage'
 import { TerminalPage } from './preferences/TerminalPage'
+import { RemoteControlPage } from './preferences/RemoteControlPage'
 import { Avatar } from './preferences/primitives'
 import styles from './PreferencesModal.module.css'
 
@@ -40,6 +42,7 @@ type CategoryId =
   | 'multiagent'
   | 'organization'
   | 'about'
+  | 'remoteControl'
 
 type Category = {
   id: CategoryId
@@ -89,6 +92,12 @@ export function PreferencesModal() {
         label: t('prefs.categoryAppearance'),
         description: t('prefs.categoryAppearanceDesc'),
         Icon: Palette,
+      },
+      {
+        id: 'remoteControl',
+        label: t('prefs.categoryRemoteControl'),
+        description: t('prefs.categoryRemoteControlDesc'),
+        Icon: ShieldCheck,
       },
       {
         id: 'features',
@@ -153,6 +162,13 @@ export function PreferencesModal() {
         label: t('prefs.uiTheme'),
         description: t('prefs.uiThemeDesc'),
         keywords: 'theme tema colors cores light dark claro escuro',
+      },
+      {
+        category: 'remoteControl',
+        target: 'remote-status',
+        label: t('remote.settingsStatusTitle'),
+        description: t('remote.settingsStatusDesc'),
+        keywords: 'remote control lan security qr device mobile celular segurança pareamento',
       },
       {
         category: 'organization',
@@ -277,6 +293,11 @@ export function PreferencesModal() {
     ],
     [t],
   )
+
+  useEffect(() => {
+    if (!open || modalContext?.category !== 'remoteControl') return
+    setCategory('remoteControl')
+  }, [open, modalContext])
 
   const results = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase(preferences.language)
@@ -472,6 +493,7 @@ export function PreferencesModal() {
                 {category === 'multiagent' ? <MultiagentPage /> : null}
                 {category === 'organization' ? <OrganizationPage /> : null}
                 {category === 'about' ? <AboutPage /> : null}
+                {category === 'remoteControl' ? <RemoteControlPage /> : null}
                 </ErrorBoundary>
               </div>
             </div>

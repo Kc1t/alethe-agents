@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import aletheLogo from '../../assets/alethe-logo.png'
 import { FEATURES } from '../../lib/features'
 import { LOCALES, useT } from '../../lib/i18n'
-import { getProfileInitial } from '../../lib/profile'
+import { DEFAULT_PROFILE_IMAGE_URL, getProfileInitial } from '../../lib/profile'
 import { findCliLauncher } from '../../lib/tauri'
 import { THEME_OPTIONS, themeDescription, themeLabel } from '../../lib/themes'
 import { agentCliCommand, type AgentType } from '../../lib/types'
@@ -16,6 +16,26 @@ import { ImageInput } from './ImageInput'
 import styles from './OnboardingModal.module.css'
 
 const STEP_COUNT = 4
+
+const CLI_DETECTION_TIMEOUT_MS = 4000
+
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    let settled = false
+    const timer = window.setTimeout(() => {
+      if (settled) return
+      settled = true
+      resolve(fallback)
+    }, ms)
+    const done = (value: T) => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timer)
+      resolve(value)
+    }
+    promise.then(done).catch(() => done(fallback))
+  })
+}
 
 type CodingAgent = Exclude<AgentType, 'shell'>
 
@@ -61,6 +81,7 @@ export function OnboardingModal() {
   const trimmedName = name.trim()
   const trimmedPhotoUrl = photoUrl.trim()
   const initial = getProfileInitial(trimmedName)
+  const previewAvatarUrl = trimmedPhotoUrl || DEFAULT_PROFILE_IMAGE_URL
   const isLast = step === STEP_COUNT - 1
 
   useEffect(() => {
@@ -76,19 +97,14 @@ export function OnboardingModal() {
     if (preferences.onboardingDone || agentDetectionStartedRef.current) return
     agentDetectionStartedRef.current = true
 
-    const AGENT_DETECTION_TIMEOUT_MS = 6000
-
     const detectAgents = async () => {
       const detected = await Promise.all(
         AGENTS.map(async (agent) => {
           const command = agentCliCommand(agent.id)
           if (!command) return [agent.id, false] as const
           try {
-            const timeout = new Promise<null>((resolve) =>
-              setTimeout(() => resolve(null), AGENT_DETECTION_TIMEOUT_MS),
-            )
-            const result = await Promise.race([findCliLauncher(command), timeout])
-            return [agent.id, Boolean(result)] as const
+            const found = await withTimeout(findCliLauncher(command), CLI_DETECTION_TIMEOUT_MS, null)
+            return [agent.id, Boolean(found)] as const
           } catch {
             return [agent.id, false] as const
           }
@@ -202,10 +218,10 @@ export function OnboardingModal() {
                         <div className={styles.previewCard}>
                           <div className={styles.avatarShell}>
                             <div className={styles.avatarFrame}>
-                              {trimmedPhotoUrl && !imgFailed ? (
+                              {!imgFailed ? (
                                 <img
                                   className={styles.avatarImg}
-                                  src={trimmedPhotoUrl}
+                                  src={previewAvatarUrl}
                                   alt=""
                                   draggable={false}
                                   onError={() => setImgFailed(true)}

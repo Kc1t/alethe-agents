@@ -14,6 +14,10 @@ export async function resetAppData(): Promise<void> {
   await invoke('reset_app_data')
 }
 
+export async function wipeAllAppData(): Promise<void> {
+  await invoke('wipe_all_app_data')
+}
+
 export type MemoryPressureLevel = 'Ok' | 'Low' | 'Medium' | 'High' | 'Critical'
 
 export type ResourceMetrics = {

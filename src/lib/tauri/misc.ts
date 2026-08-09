@@ -3,6 +3,48 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import type { WorktreeMode } from './git'
 
+export type RemoteControlInfo = {
+  enabled: boolean
+  connected_devices: number
+  max_devices: number
+  session_expiry_secs: number
+  devices: Array<{
+    id: number
+    name: string
+    address: string
+    connected_at: number
+    expires_at: number
+  }>
+  pairing_url: string | null
+  qr_svg: string | null
+  http_url: string | null
+  ws_url: string | null
+}
+
+export async function remoteControlInfo(): Promise<RemoteControlInfo> {
+  return invoke<RemoteControlInfo>('remote_control_info')
+}
+
+export async function remoteControlRevoke(): Promise<RemoteControlInfo> {
+  return invoke<RemoteControlInfo>('remote_control_revoke')
+}
+
+export async function setRemoteControlEnabled(enabled: boolean): Promise<RemoteControlInfo> {
+  return invoke<RemoteControlInfo>('remote_control_set_enabled', { enabled })
+}
+
+export async function setRemoteControlMaxDevices(maxDevices: number): Promise<RemoteControlInfo> {
+  return invoke<RemoteControlInfo>('remote_control_set_max_devices', { maxDevices })
+}
+
+export async function setRemoteControlSessionExpiry(sessionExpirySecs: number): Promise<RemoteControlInfo> {
+  return invoke<RemoteControlInfo>('remote_control_set_session_expiry', { sessionExpirySecs })
+}
+
+export async function revokeRemoteControlDevice(deviceId: number): Promise<RemoteControlInfo> {
+  return invoke<RemoteControlInfo>('remote_control_revoke_device', { deviceId })
+}
+
 export async function loadProjectsFile(): Promise<string | null> {
   return invoke<string | null>('load_projects')
 }

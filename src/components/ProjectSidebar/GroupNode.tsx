@@ -52,6 +52,7 @@ export function GroupNode({
   const t = useT()
   const dropZone = useDroppable({ id: `group:${group.id}` })
   const draggable = useDraggable({ id: `grp:${group.id}` })
+  const isDragging = draggable.isDragging
   const setRefs = (node: HTMLDivElement | null) => {
     dropZone.setNodeRef(node)
     draggable.setNodeRef(node)
@@ -71,7 +72,7 @@ export function GroupNode({
         ref={setRefs}
         {...draggable.attributes}
         {...draggable.listeners}
-        className={`${styles.groupCollapsed} ${isOver ? styles.groupDropTarget : ''}`}
+        className={`${styles.groupCollapsed} ${isOver ? styles.groupDropTarget : ''} ${isDragging ? styles.dragSource : ''}`}
         onClick={() => {
           onToggle()
           onOpenAll()
@@ -102,7 +103,7 @@ export function GroupNode({
   return (
     <div
       ref={setRefs}
-      className={`${styles.groupBox} ${isOver ? styles.groupDropTarget : ''} ${group.suspended ? styles.groupSuspended : ''}`}
+      className={`${styles.groupBox} ${isOver ? styles.groupDropTarget : ''} ${isDragging ? styles.dragSource : ''} ${group.suspended ? styles.groupSuspended : ''}`}
       onContextMenu={(e) => {
         e.preventDefault()
         onMenu(e)

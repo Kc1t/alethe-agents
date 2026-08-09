@@ -172,17 +172,31 @@ pub fn start_listener(app: AppHandle) {
                             .and_then(|v| v.as_str())
                             .unwrap_or("")
                             .to_string();
-                        if !matches!(agent.as_str(), "claude" | "codex" | "opencode") {
+                        if !matches!(agent.as_str(), "shell" | "claude" | "codex" | "opencode") {
                             let _ = request.respond(tiny_http::Response::from_string(
                                 "agent invalido (use claude|codex|opencode)",
                             ).with_status_code(400));
                             continue;
                         }
-                        eprintln!("[agent_events] /spawn agent={agent}");
-                        let _ = app.emit("agent-spawn", &payload);
-                        let _ = request.respond(tiny_http::Response::from_string(format!(
-                            "spawn de {agent} enfileirado no Alethe"
-                        )));
+                        let job_id = payload
+                            .get("job_id")
+                            .and_then(|value| value.as_str())
+                            .map(ToOwned::to_owned)
+                            .unwrap_or_else(|| format!("sandbox-job-{}", nanoid::nanoid!(10)));
+                        let mut event_payload = payload;
+                        if let Some(object) = event_payload.as_object_mut() {
+                            object.insert("job_id".to_string(), serde_json::Value::String(job_id.clone()));
+                        }
+                        eprintln!("[agent_events] /spawn agent={agent} job_id={job_id}");
+                        let _ = app.emit("agent-spawn", &event_payload);
+                        let response = serde_json::json!({
+                            "accepted": true,
+                            "job_id": job_id,
+                            "agent": agent,
+                            "status": "queued"
+                        });
+                        let _ = request.respond(tiny_http::Response::from_string(response.to_string())
+                            .with_header(tiny_http::Header::from_bytes("Content-Type", "application/json").unwrap()));
                     }
                     Err(e) => {
                         let _ = request.respond(tiny_http::Response::from_string(format!(

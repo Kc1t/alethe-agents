@@ -25,6 +25,7 @@ import {
   type ProfileSummary,
 } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
+import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { Avatar } from '../ui/Avatar'
 import { Modal } from './Modal'
@@ -47,10 +48,12 @@ export function ProfilesModal() {
   const open = useUiStore((s) => s.openModal === 'profiles')
   const closeModal = useUiStore((s) => s.closeModal)
   const profiles = useProjectsStore((s) => s.profiles)
+  const hydrate = useProjectsStore((s) => s.hydrate)
   const activeProfileId = useProjectsStore((s) => s.activeProfileId)
   const projects = useProjectsStore((s) => s.projects)
   const preferences = useProjectsStore((s) => s.preferences)
   const language = useProjectsStore((s) => s.preferences.language)
+  const resetTerminalRuntime = useTerminalsStore((s) => s.reset)
 
   const [summaries, setSummaries] = useState<ProfileSummary[]>([])
   const [newName, setNewName] = useState('')
@@ -125,10 +128,20 @@ export function ProfilesModal() {
 
   const parkCurrentProfile = async () => {
     const ids = [...new Set(currentPtyIds)]
-    await Promise.all(ids.map((id) => suspendPty(id)))
+    await Promise.allSettled(ids.map((id) => suspendPty(id)))
   }
 
   const reload = () => window.location.reload()
+
+  const applyProfileSwitch = async () => {
+    // Clear runtime-only PTY records before replacing the persisted document.
+    // Suspended PTYs remain available in the backend and are reattached when
+    // the profile is selected again.
+    resetTerminalRuntime()
+    await hydrate()
+    setNotice(null)
+    closeModal()
+  }
 
   const create = async () => {
     const trimmed = newName.trim()
@@ -167,7 +180,7 @@ export function ProfilesModal() {
     try {
       await parkCurrentProfile()
       await setActiveProfile(profile.id)
-      reload()
+      await applyProfileSwitch()
     } catch (err) {
       setBusy(null)
       setError(t('profiles.switchError', { error: String(err) }))
@@ -260,7 +273,10 @@ export function ProfilesModal() {
         ) : null}
 
         <section className={styles.createCard}>
-          <div>
+          <div className={styles.createIcon} aria-hidden="true">
+            <Plus size={17} />
+          </div>
+          <div className={styles.createCopy}>
             <h3>{t('profiles.createTitle')}</h3>
             <p>{t('profiles.createDescription')}</p>
           </div>

@@ -325,7 +325,10 @@
 }
 
 .emptyFolderAction:disabled {
-  opacity: 0.45;
+  color: var(--fg-muted);
+  background: var(--panel-hover);
+  border-color: var(--border);
+  opacity: 1;
   cursor: not-allowed;
 }
 

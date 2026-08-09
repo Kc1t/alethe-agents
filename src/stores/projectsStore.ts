@@ -91,6 +91,7 @@ export type ProjectsState = ProjectsFile & {
   // projects
   createProject: (args: {
     name: string
+    mode?: Project['mode']
     color?: string
     iconUrl?: string
     groupId?: string | null
@@ -641,6 +642,13 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
     isCleaningOrphans: false,
 
     hydrate: async () => {
+      // A profile switch replaces the in-memory document. Never let a delayed
+      // save from the previous profile write into the newly selected namespace.
+      if (saveTimer) {
+        clearTimeout(saveTimer)
+        saveTimer = null
+      }
+      pendingSave = false
       let profileState: ProfilesState = {
         active_profile_id: 'default',
         profiles: [],

@@ -8,6 +8,31 @@ export async function agentHooksEndpoint(): Promise<string> {
   return invoke('agent_hooks_endpoint')
 }
 
+export async function agentHooksToken(): Promise<string> {
+  return invoke<string>('agent_hooks_token')
+}
+
+export type CodexAppServerEvent = Record<string, unknown>
+
+export async function codexAppServerStart(id: string, cwd: string): Promise<void> {
+  await invoke('codex_app_server_start', { id, cwd })
+}
+
+export async function codexAppServerSend(id: string, request: CodexAppServerEvent): Promise<void> {
+  await invoke('codex_app_server_send', { id, request })
+}
+
+export async function codexAppServerStop(id: string): Promise<void> {
+  await invoke('codex_app_server_stop', { id })
+}
+
+export function listenCodexAppServer(
+  id: string,
+  handler: (event: CodexAppServerEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<CodexAppServerEvent>(`agent-sandbox-app-server://event/${id}`, (event) => handler(event.payload))
+}
+
 /** Caminho do settings.json de hooks gerado pro Claude Code (agent_events.rs). */
 export async function agentHooksSettingsPath(): Promise<string> {
   return invoke<string>('agent_hooks_settings_path')

@@ -6,7 +6,6 @@ import {
   FolderOpen,
   GripVertical,
   Maximize2,
-  MessageSquare,
   Minimize2,
   Pencil,
   RefreshCw,
@@ -73,8 +72,6 @@ export const MarkdownPane = memo(function MarkdownPane({
   const clearPaneSelection = useUiStore((s) => s.clearPaneSelection)
   const groupPanes = useProjectsStore((s) => s.groupPanes)
   const pushToast = useUiStore((s) => s.pushToast)
-  const openMarkdownSidebar = useUiStore((s) => s.openMarkdownSidebar)
-  const setPreferences = useProjectsStore((s) => s.setPreferences)
 
   const draggable = useDraggable({ id: `pane:${terminal.id}`, disabled: isFocusMode || preview })
   const droppable = useDroppable({ id: `pane:${terminal.id}`, disabled: isFocusMode || preview })
@@ -266,20 +263,6 @@ export const MarkdownPane = memo(function MarkdownPane({
                 aria-label={copied ? t('ui.markdown.copied') : t('ui.markdown.copySource')}
               >
                 <ClipboardCopy size={12} />
-              </button>
-              <button
-                type="button"
-                className={styles.action}
-                onClick={() => {
-                  if (!filePath) return
-                  openMarkdownSidebar(filePath, terminal.name)
-                  setPreferences({ rightSidebarVisible: true })
-                }}
-                disabled={!filePath}
-                title={t('ui.markdown.comments')}
-                aria-label={t('ui.markdown.comments')}
-              >
-                <MessageSquare size={12} />
               </button>
               {editing ? (
                 <>

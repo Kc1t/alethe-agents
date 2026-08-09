@@ -4,15 +4,13 @@ import {
   FileText,
   GitBranch,
   ListTodo,
-  MessageSquare,
   PanelRightClose,
   RefreshCw,
-  Trash2,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
-import type { MarkdownComment, Project, SubTab, Terminal } from '../../lib/types'
+import type { Project, SubTab, Terminal } from '../../lib/types'
 import { readTextFile, writeClipboardText } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -141,8 +139,6 @@ function MarkdownSidebarViewer() {
   const activeProjectId = useProjectsStore((state) => state.activeProjectId)
   const projects = useProjectsStore((state) => state.projects)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
-  const addMarkdownComment = useProjectsStore((state) => state.addMarkdownComment)
-  const removeMarkdownComment = useProjectsStore((state) => state.removeMarkdownComment)
   const dark = useProjectsStore(
     (state) => state.preferences.uiTheme !== 'light' && state.preferences.uiTheme !== 'min-light',
   )
@@ -150,9 +146,6 @@ function MarkdownSidebarViewer() {
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [selectedPath, setSelectedPath] = useState(markdown?.path ?? '')
-  const [commentsOpen, setCommentsOpen] = useState(false)
-  const [selection, setSelection] = useState<{ quote: string; start: number; end: number; x: number; y: number } | null>(null)
-  const [commentDraft, setCommentDraft] = useState('')
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const markdownRef = useRef<HTMLDivElement | null>(null)
 
@@ -208,60 +201,6 @@ function MarkdownSidebarViewer() {
     }
   }
 
-  const comments = useMemo(
-    () =>
-      (projects.find((project) => project.id === activeProjectId)?.markdownComments ?? [])
-        .filter((comment) => comment.path === selected?.path)
-        .sort((a, b) => a.start - b.start),
-    [activeProjectId, projects, selected?.path],
-  )
-
-  const captureSelection = () => {
-    if (!content || !markdownRef.current) return
-    const current = window.getSelection()
-    const quote = current?.toString().replace(/\s+/g, ' ').trim() ?? ''
-    if (!current || !quote || !current.rangeCount || !markdownRef.current.contains(current.anchorNode)) return
-    const start = content.indexOf(quote)
-    if (start < 0) return
-    const rect = current.getRangeAt(0).getBoundingClientRect()
-    setSelection({ quote, start, end: start + quote.length, x: rect.left, y: rect.bottom + 8 })
-    setCommentDraft('')
-  }
-
-  const saveComment = () => {
-    if (!selection || !commentDraft.trim() || !activeProjectId || !selected?.path) return
-    addMarkdownComment(activeProjectId, {
-      path: selected.path,
-      quote: selection.quote,
-      note: commentDraft.trim(),
-      start: selection.start,
-      end: selection.end,
-    })
-    setSelection(null)
-    setCommentDraft('')
-    setCommentsOpen(true)
-    window.getSelection()?.removeAllRanges()
-  }
-
-  const scrollToComment = (comment: MarkdownComment) => {
-    const root = markdownRef.current
-    if (!root) return
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
-    let node: Node | null = walker.nextNode()
-    while (node) {
-      const index = node.textContent?.indexOf(comment.quote) ?? -1
-      if (index >= 0) {
-        const range = document.createRange()
-        range.setStart(node, index)
-        range.setEnd(node, index + comment.quote.length)
-        range.getBoundingClientRect()
-        range.startContainer.parentElement?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        break
-      }
-      node = walker.nextNode()
-    }
-  }
-
   if (!markdown) {
     return (
       <section className={styles.emptyMarkdown}>
@@ -280,17 +219,6 @@ function MarkdownSidebarViewer() {
           <span title={selected?.title ?? markdown.title}>{selected?.title ?? markdown.title}</span>
         </div>
         <div className={styles.headerActions}>
-          <button
-            type="button"
-            className={styles.headerAction}
-            onClick={() => setCommentsOpen((open) => !open)}
-            title={t('rightSidebar.commentsToggle')}
-            aria-label={t('rightSidebar.commentsToggle')}
-            aria-pressed={commentsOpen}
-          >
-            <MessageSquare size={15} />
-            {comments.length > 0 ? <span className={styles.commentCount}>{comments.length}</span> : null}
-          </button>
           <button
             type="button"
             className={styles.headerAction}
@@ -362,7 +290,6 @@ function MarkdownSidebarViewer() {
           onScroll={(event) => {
             if (selected?.path) markdownScrollPositions.set(selected.path, event.currentTarget.scrollTop)
           }}
-          onMouseUp={captureSelection}
         >
         {error ? (
           <div className={styles.empty}>
@@ -380,56 +307,7 @@ function MarkdownSidebarViewer() {
           </div>
         )}
         </div>
-        {commentsOpen ? (
-          <aside className={styles.commentsPanel} aria-label={t('rightSidebar.commentsTitle')}>
-            <div className={styles.commentsHeader}>
-              <span>{t('rightSidebar.commentsTitle')}</span>
-              <span>{comments.length}</span>
-            </div>
-            {comments.length === 0 ? (
-              <p className={styles.commentsEmpty}>{t('rightSidebar.commentsEmpty')}</p>
-            ) : (
-              <div className={styles.commentsList}>
-                {comments.map((comment) => (
-                  <article key={comment.id} className={styles.commentCard}>
-                    <button type="button" className={styles.commentQuote} onClick={() => scrollToComment(comment)}>
-                      “{comment.quote}”
-                    </button>
-                    <p>{comment.note}</p>
-                    <div className={styles.commentMeta}>
-                      <time>{new Date(comment.createdAt).toLocaleString()}</time>
-                      <button
-                        type="button"
-                        onClick={() => activeProjectId && removeMarkdownComment(activeProjectId, comment.id)}
-                        title={t('rightSidebar.commentDelete')}
-                        aria-label={t('rightSidebar.commentDelete')}
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
-          </aside>
-        ) : null}
       </div>
-      {selection ? (
-        <div className={styles.commentPopover} style={{ left: selection.x, top: selection.y }}>
-          <div className={styles.commentPopoverQuote}>“{selection.quote}”</div>
-          <textarea
-            value={commentDraft}
-            onChange={(event) => setCommentDraft(event.target.value)}
-            placeholder={t('rightSidebar.commentPlaceholder')}
-            autoFocus
-            rows={3}
-          />
-          <div className={styles.commentPopoverActions}>
-            <button type="button" onClick={() => setSelection(null)}>{t('common.cancel')}</button>
-            <button type="button" disabled={!commentDraft.trim()} onClick={saveComment}>{t('rightSidebar.commentSave')}</button>
-          </div>
-        </div>
-      ) : null}
     </section>
   )
 }

@@ -20,6 +20,7 @@ import { ImageInput } from './ImageInput'
 import { Modal } from './Modal'
 import controls from './controls.module.css'
 import styles from './EditProjectModal.module.css'
+import { Dropdown } from '../ui/Dropdown'
 
 export function EditProjectModal() {
   const t = useT()
@@ -616,33 +617,23 @@ export function EditProjectModal() {
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
             <div className={controls.field} style={{ flex: 1 }}>
               <label className={controls.label}>{t('merge.sourceLabel')}</label>
-              <select
+              <Dropdown
                 className={controls.input}
                 value={mergeSource}
-                onChange={(e) => setMergeSource(e.target.value)}
-                style={{ cursor: 'pointer' }}
-              >
-                {branches.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
+                onChange={setMergeSource}
+                ariaLabel={t('merge.sourceLabel')}
+                options={branches.map((b) => ({ value: b, label: b }))}
+              />
             </div>
             <div className={controls.field} style={{ flex: 1 }}>
               <label className={controls.label}>{t('merge.targetLabel')}</label>
-              <select
+              <Dropdown
                 className={controls.input}
                 value={mergeTarget}
-                onChange={(e) => setMergeTarget(e.target.value)}
-                style={{ cursor: 'pointer' }}
-              >
-                {branches.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
+                onChange={setMergeTarget}
+                ariaLabel={t('merge.targetLabel')}
+                options={branches.map((b) => ({ value: b, label: b }))}
+              />
             </div>
           </div>
 

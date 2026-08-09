@@ -77,6 +77,27 @@ It is built for developers who use Claude Code, Codex, OpenCode, and local termi
 
 Built with Tauri, Rust, React, TypeScript, Vite, `portable-pty`, and `xterm.js`.
 
+## Product Philosophy
+
+Alethe is intentionally not a maximalist desktop suite. Its purpose is to provide a calm,
+reliable workspace for coding agents, terminals, and project context — then let each user decide
+which additional capabilities belong in that workspace.
+
+The product follows a principle similar to Obsidian: a focused core, a durable local foundation,
+and optional capabilities that can be brought in when they are useful. Alethe should grow with the
+user's workflow rather than forcing every workflow to carry the same interface, controls, and
+background services.
+
+For that reason, new capabilities should be introduced behind explicit feature flags or opt-in
+settings whenever they are not essential to the core workspace. Optional features must be possible
+to discover, enable, disable, and maintain without making the default environment feel crowded or
+unfinished. A clean installation should remain a first-class experience as the product evolves.
+
+This is a deliberate response to a common failure mode in developer tools: accumulating every
+possible feature until the product becomes harder to understand, harder to configure, and noisier
+to operate than the problem it was meant to solve. Alethe values coherence over volume, and user
+choice over forced completeness.
+
 ## What It Gives You
 
 - Keep coding agents, shells, and project context in one durable workspace.
@@ -300,11 +321,11 @@ Thanks to everyone helping shape Alethe.
   <a href="https://github.com/HayatoG"><img src="https://github.com/HayatoG.png?size=100" width="80" height="80" alt="HayatoG" title="HayatoG" /></a>
   <a href="https://github.com/MiguelSilvaPorto"><img src="https://github.com/MiguelSilvaPorto.png?size=100" width="80" height="80" alt="MiguelSilvaPorto" title="MiguelSilvaPorto" /></a>
   <a href="https://github.com/Jbnado"><img src="https://github.com/Jbnado.png?size=100" width="80" height="80" alt="Jbnado" title="Jbnado" /></a>
+  <a href="https://github.com/slegarraga"><img src="https://github.com/slegarraga.png?size=100" width="80" height="80" alt="slegarraga" title="slegarraga" /></a>
   <a href="https://github.com/diegoliveiraa"><img src="https://github.com/diegoliveiraa.png?size=100" width="80" height="80" alt="diegoliveiraa" title="diegoliveiraa" /></a>
   <a href="https://github.com/rlevidev"><img src="https://github.com/rlevidev.png?size=100" width="80" height="80" alt="rlevidev" title="rlevidev" /></a>
   <a href="https://github.com/aryansk"><img src="https://github.com/aryansk.png?size=100" width="80" height="80" alt="aryansk" title="aryansk" /></a>
   <a href="https://github.com/opedrooz"><img src="https://github.com/opedrooz.png?size=100" width="80" height="80" alt="opedrooz" title="opedrooz" /></a>
-  <a href="https://github.com/slegarraga"><img src="https://github.com/slegarraga.png?size=100" width="80" height="80" alt="slegarraga" title="slegarraga" /></a>
   <a href="https://github.com/ThiagoSales17"><img src="https://github.com/ThiagoSales17.png?size=100" width="80" height="80" alt="ThiagoSales17" title="ThiagoSales17" /></a>
   <a href="https://github.com/eudehh"><img src="https://github.com/eudehh.png?size=100" width="80" height="80" alt="eudehh" title="eudehh" /></a>
   <a href="https://github.com/hgshreyas"><img src="https://github.com/hgshreyas.png?size=100" width="80" height="80" alt="hgshreyas" title="hgshreyas" /></a>

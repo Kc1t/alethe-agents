@@ -2,9 +2,11 @@ import { Check, Minus, Plus, RotateCcw } from 'lucide-react'
 
 import { useT } from '../../../lib/i18n'
 import { THEME_OPTIONS, themeDescription, themeLabel } from '../../../lib/themes'
+import type { AppIconTheme } from '../../../lib/types'
 import { UI_ZOOM_LIMITS, useProjectsStore } from '../../../stores/projectsStore'
 import styles from '../PreferencesModal.module.css'
 import { SettingsSection } from './primitives'
+import { Dropdown } from '../../ui/Dropdown'
 
 export function AppearancePage() {
   const t = useT()
@@ -47,26 +49,39 @@ export function AppearancePage() {
       </SettingsSection>
 
       <SettingsSection
+        id="app-icon-theme"
+        title="App icon theme"
+        description="Choose the native desktop icon independently from the interface theme."
+      >
+        <Dropdown
+          className={styles.select}
+          value={preferences.appIconTheme}
+          onChange={(value) => setPreferences({ appIconTheme: value as AppIconTheme })}
+          ariaLabel="App icon theme"
+          options={[
+            ...THEME_OPTIONS.map((theme) => ({ value: theme.id, label: themeLabel(t, theme.id) })),
+            { value: 'alethe-blue-gradient', label: 'Alethe Blue Gradient' },
+            { value: 'alethe-pink-gradient', label: 'Alethe Pink Gradient' },
+          ]}
+        />
+      </SettingsSection>
+
+      <SettingsSection
         id="terminal-theme"
         title={t('prefs.terminalTheme')}
         description={t('prefs.terminalThemeDesc')}
       >
-        <select
+        <Dropdown
           className={styles.select}
           value={preferences.terminalTheme ?? ''}
-          onChange={(event) =>
+          onChange={(value) =>
             setTerminalTheme(
-              event.target.value ? (event.target.value as typeof preferences.uiTheme) : null,
+              value ? (value as typeof preferences.uiTheme) : null,
             )
           }
-        >
-          <option value="">{t('common.followUi')}</option>
-          {THEME_OPTIONS.map((theme) => (
-            <option key={theme.id} value={theme.id}>
-              {themeLabel(t, theme.id)}
-            </option>
-          ))}
-        </select>
+          ariaLabel={t('prefs.terminalTheme')}
+          options={[{ value: '', label: t('common.followUi') }, ...THEME_OPTIONS.map((theme) => ({ value: theme.id, label: themeLabel(t, theme.id) }))]}
+        />
       </SettingsSection>
 
       <SettingsSection id="ui-zoom" title={t('prefs.uiZoom')} description={t('prefs.uiZoomDesc')}>
@@ -104,16 +119,17 @@ export function AppearancePage() {
         title={t('prefs.topbarStyle')}
         description={t('prefs.topbarStyleDesc')}
       >
-        <select
+        <Dropdown
           value={preferences.topbarStyle}
-          onChange={(event) =>
-            setPreferences({ topbarStyle: event.target.value as 'classic' | 'three-areas' })
+          onChange={(value) =>
+            setPreferences({ topbarStyle: value as 'classic' | 'three-areas' })
           }
-          aria-label={t('prefs.topbarStyle')}
-        >
-          <option value="classic">{t('prefs.topbarStyleClassic')}</option>
-          <option value="three-areas">{t('prefs.topbarStyleThreeAreas')}</option>
-        </select>
+          ariaLabel={t('prefs.topbarStyle')}
+          options={[
+            { value: 'classic', label: t('prefs.topbarStyleClassic') },
+            { value: 'three-areas', label: t('prefs.topbarStyleThreeAreas') },
+          ]}
+        />
       </SettingsSection>
 
       <SettingsSection
@@ -121,16 +137,17 @@ export function AppearancePage() {
         title={t('prefs.gitControlPlacement')}
         description={t('prefs.gitControlPlacementDesc')}
       >
-        <select
+        <Dropdown
           value={preferences.gitControlPlacement}
-          onChange={(event) =>
-            setPreferences({ gitControlPlacement: event.target.value as 'left' | 'right' })
+          onChange={(value) =>
+            setPreferences({ gitControlPlacement: value as 'left' | 'right' })
           }
-          aria-label={t('prefs.gitControlPlacement')}
-        >
-          <option value="left">{t('prefs.gitControlPlacementLeft')}</option>
-          <option value="right">{t('prefs.gitControlPlacementRight')}</option>
-        </select>
+          ariaLabel={t('prefs.gitControlPlacement')}
+          options={[
+            { value: 'left', label: t('prefs.gitControlPlacementLeft') },
+            { value: 'right', label: t('prefs.gitControlPlacementRight') },
+          ]}
+        />
       </SettingsSection>
 
       <SettingsSection

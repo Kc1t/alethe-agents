@@ -45,6 +45,101 @@ Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
 - **Ligar o monitoramento de planejamento (GSD) num projeto sem nenhum ciclo de planejamento ainda rodado falhava em silêncio**, sem avisar nada — a pasta `.planning/` esperada ainda não existia. Agora a pasta é criada normalmente ao ligar o monitoramento.
 - **Botão "Abrir pasta como projeto" (tela inicial, sem nenhum projeto aberto) ficava sem cor de texto visível**, dependendo do tema. Corrigida a variável de cor usada.
 
+## [1.5.0] — 2026-08-09
+
+- Fixed onboarding hanging forever on "Detecting installed CLIs…": CLI detection is now time-boxed per agent, so a slow or unreachable PATH entry can no longer freeze the flow.
+- Fixed creating a new account/profile getting stuck on a long, broken loading state — the fresh profile now reaches its onboarding cleanly, and parking the previous profile's terminals no longer blocks the switch.
+- The default profile picture now uses the current dark app icon.
+- Archived the Agent Sandbox project mode behind a build flag: its entry points (New Project mode picker and the main menu shortcut) are hidden, so no new sandbox projects can be created.
+- Reworked the startup loading screen to share the Home view's background and ASCII art treatment for a consistent look.
+- Added an "Erase all data (fresh install)" menu action that wipes every profile, account, project, scrollback, setting and log so the app restarts like a brand-new install — intended to be used after exporting a backup.
+- Account/profile export now archives the entire profile — Todos, history, activity metrics, preferences, tokens, scrollback, and any other stored data — instead of a fixed short list, so nothing the user owns is lost when exporting or migrating a profile.
+- Fixed switching accounts hanging with "Could not safely switch accounts: PTY reader flush barrier timed out" by closing each parked terminal's pseudoconsole before waiting for its final scrollback flush.
+- Fixed profile switching without restarting the app and refreshed terminal chats correctly when resuming parked sessions.
+- Refined the Accounts modal layout with clearer hierarchy, spacing, and profile creation controls.
+- Replaced the Todo project selector with a viewport-safe dropdown that keeps long project paths contained during use and recording.
+- Added an independent native desktop icon theme preference, defaulting to Dark and supporting all Alethe themes plus the Blue/Pink Gradient variants.
+- Prevented concurrent terminals from resuming the same Codex conversation, avoiding the active-writer crash during session restore.
+- Made the Codex active-writer recovery robust to bootstrap errors split across multiple PTY output chunks.
+- Set the generated desktop and installer icons to the Dark Alethe icon by default.
+- Updated the root README branding to use the Dark Alethe app icon.
+- Standardized all project dropdowns on the Todo List's portal-based behavior, with viewport-safe positioning, truncation, keyboard escape handling, and consistent styling.
+
+### Added
+
+- Agent Sandbox workers now expose stable job and thread identifiers, preserve working state until a Codex turn completes, and return structured spawn acknowledgements for reliable orchestration.
+- Agent Sandbox now draws parent-to-worker relationships independently from chat traffic, so the hierarchy remains visible before the first message is exchanged.
+
+- **LAN remote control:** open an authenticated mobile web view from the Alethe menu, browse existing agent chats across groups, watch terminal output live, and send one message at a time without changing the workspace.
+- **LAN remote control controls:** the feature can now be turned off, immediately disconnects paired devices, shows the active connection count, and supports regenerating the pairing token from a clearer status modal.
+- Agent Sandbox Codex workers now use a persistent app-server conversation: streamed replies appear in the terminal pane and follow-up messages continue the same thread instead of starting a disconnected one-shot process.
+- Codex app-server panes now identify their transport and become the selected message destination when clicked, reducing accidental follow-up messages sent to the Planner.
+- Agent Sandbox sessions now survive workspace tab changes, preserving live terminals, worker status, groups, and app-server threads until the session is explicitly stopped or its project changes.
+- Sandbox planners now avoid executing a worker's delegated follow-up themselves when a worker is already available, keeping responsibility in the selected worker terminal.
+- Agent Sandbox now relays completed Codex app-server replies back into the parent Claude Planner terminal, preserving a real bilateral delegation loop.
+- Agent Sandbox Codex protocol workers now render their streamed output in a clean terminal surface instead of injecting protocol chunks into a PowerShell shell.
+- Agent Sandbox orchestration workers now start in YOLO mode by default: Claude uses `--dangerously-skip-permissions` and Codex uses unrestricted, non-interactive approvals.
+- **Project sidebar drag state:** drop targets now appear only while DnD-kit has an active drag, preventing stale “move into this group” and “ungrouped” prompts after a drag ends.
+- **Top bar spacing:** controls, tabs, status pills, and window actions now follow a consistent spacing, height, and radius system in both top bar layouts.
+- **Top bar customization control:** the edit button no longer reserves empty space when hidden, while remaining available on hover and keyboard focus.
+- **Loading screen:** startup now uses the same Home ASCII treatment and background artwork, with a quieter console-style status panel.
+- **LAN remote security hardening:** remote WebSocket clients now authenticate before counting toward a four-device limit, listeners bind to the selected LAN address, remote messages strip control characters, and responses include restrictive security headers.
+- **Remote Control settings:** the modal now persists a configurable authenticated-device limit, defaults it to one device, and shows connected devices against the active limit.
+- **Consistent form controls:** dropdowns now use a compact 32px system-wide standard instead of inconsistent oversized modal and sidebar variants.
+- **Remote Control settings page:** security policy, session lifetime, LAN status, and individual device revocation now live in a dedicated Preferences category; the QR modal is focused on quick access.
+- **Remote device sessions:** connected devices now have names, connection metadata, a one-hour default expiry, and individual revocation support.
+- **Remote address privacy:** the UI keeps the active LAN address behind a generic placeholder until a device completes QR pairing; the QR payload remains functional.
+- Agent Sandbox projects can be created with a name and project folder, persist in the project sidebar, and open directly in the real multi-agent terminal workspace.
+- Project folder control now keeps the icon, path and browse action aligned in one consistent field.
+- Dev builds now use a separate Tauri identifier, while project terminals can be mirrored into the Agent Sandbox and grouped with Shift selection.
+- Agent Sandbox now starts only the planner; worker terminals are created on demand and remain visible for long-running tasks such as development servers.
+- Sandbox spawn bridge can now create a regular shell terminal, making long-running development servers visible without wrapping them in an agent.
+- Planner spawn instructions now use compact payloads so longer delegation prompts do not exceed the Windows terminal command parser limit.
+- Spawned agent tasks now use the terminal's readiness-aware initial input flow, preventing the first delegated prompt from being lost during CLI startup.
+- Sandbox planner and Claude workers now default to the lower-cost Haiku model, and delegated tasks are sent after the spawned PTY has finished booting.
+- Agent Sandbox restores the selected Sandbox project on app startup instead of showing an empty state when the active project has not loaded yet.
+- Agent Sandbox now automatically starts the selected project after reload and keeps its regular project terminals synchronized after the planner boots.
+- Switching between Sandbox projects now moves the live session to the newly selected project's working directory instead of keeping the previous project's agents.
+- Sandbox runs now invalidate in-flight spawns when stopped or switched, preventing orphan PTYs from surviving a project change.
+- Sandbox startup failures no longer permanently disable the project; the automatic start guard is released so the session can be retried.
+- Sandbox spawn requests now compare Windows working directories case-insensitively, so a path with different casing or trailing separators is not discarded.
+- Spawned Codex panes now show a working state while their delegated task is being submitted, with a safe Enter retry for TUI startup timing.
+- Delegated sandbox prompts now use the same delayed bracketed-paste and separate-submit flow as regular terminal prompts, so Codex and Claude actually start the received task after boot.
+- Initial prompts now have a timed fallback while a CLI is still producing bootstrap or MCP output, with a separate Enter retry so a busy Codex TUI cannot leave the task stuck at its first prompt.
+- Codex and Claude workers with delegated tasks now start from their supported prompt arguments (`codex exec` and Claude print mode), keeping the real terminal visible without depending on fragile TUI keystroke injection.
+- Automated Codex workers now skip the repository trust check for the explicitly selected Sandbox directory, and Sandbox spawn/PTY failures emit structured diagnostic logs without exposing the task text.
+- Automated workers now switch from Working to Done or Error based on their streamed completion/error output, even when the surrounding shell PTY remains open.
+- Sandbox prompts are cleared after successful submission, preventing HMR or pane remounts from executing the same delegated task twice.
+- Sandbox task delivery now waits for PTY output to settle, with a deadline fallback, and preserves each terminal's own working directory.
+- Codex resume now refuses session IDs already claimed by another live Alethe pane, avoiding active-writer bootstrap conflicts after reloads.
+- Codex active-writer errors are now detected from PTY output and automatically recover by opening a fresh session instead of leaving the chat stuck.
+
+### Alterado
+
+- **Ferramentas de desenvolvimento no menu hambúrguer:** Welcome, Theme Picker e Redo Onboarding agora aparecem somente em sessões de desenvolvimento.
+
+### Alterado
+
+- **Avatar padrão de novos usuários:** o perfil agora usa a nova ilustração roxa padrão quando nenhuma imagem personalizada é definida, inclusive na prévia do onboarding.
+- **Todo List com mais feedback visual:** tarefas agora têm animações de entrada, hover, arraste e destaque claro do destino durante a reorganização.
+
+### Alterado
+
+- **Comentários no visualizador Markdown desativados temporariamente:** removidos o popover de notas, o painel de comentários e o atalho relacionado enquanto o recurso é corrigido.
+- **Workspace vazio e arraste da sidebar:** o caminho padrão do projeto é preenchido automaticamente, o botão desabilitado mantém contraste legível e projetos arrastados agora acompanham o cursor com uma prévia visual.
+- **Sidebar com mais feedback visual:** abertura, troca de conteúdo, hover e arraste agora têm transições suaves, além de destaque mais claro para o destino do drop.
+
+- **Agent Sandbox experimental:** canvas temporário com agentes de demonstração apoiados por PTYs reais, cartões arrastáveis e conexões animadas para troca de mensagens estruturadas.
+- **Agent Sandbox em tela cheia:** canvas, controles e preview de terminal agora usam uma composição compacta e flutuante, alinhada ao design system.
+- **Terminais reais no Agent Sandbox:** cada agente agora é renderizado diretamente como um terminal Alethe dentro do canvas, usando a mesma área de conteúdo dos terminais normais.
+- **Layout do Agent Sandbox:** corrigida a largura colapsada que quebrava o título, escondia os agentes e cortava os controles no painel central.
+- **Panes do Agent Sandbox:** blocos agora usam o mesmo header, dimensões, fundo e área xterm dos terminais reais do workspace, sem card ou preview artificial.
+- **Resize e providers no Agent Sandbox:** panes podem ser redimensionados pelo canto e a demo abre Lead/QA com Claude Code, Backend com OpenCode e Frontend como shell real.
+- **Focus no Agent Sandbox:** novo modo organiza os terminais em uma grade preenchida dentro da área central, com transição animada e retorno ao layout anterior.
+- **POC real de comunicação entre agentes:** removida a sequência mockada; o Sandbox agora abre dois Claude Code independentes e envia mensagens reais para o PTY do agente destinatário.
+- **Relay do Agent Sandbox:** mensagens agora identificam o agente remetente pelo nome completo do pane, como `Lead Claude`, em vez do ID interno.
+- **Planner-to-worker real:** o Sandbox agora inicia Claude Code com Sonnet como planner e Codex como worker, aceita spawns reais pelo evento local `/spawn` e adiciona o novo terminal à sessão.
+
 ## [1.4.1] — 2026-08-07
 
 ### Corrigido

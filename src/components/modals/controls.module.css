@@ -20,7 +20,9 @@
   background: var(--bg-sunken);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 8px 10px;
+  min-height: 32px;
+  height: 32px;
+  padding: 0 10px;
   font-size: 14px;
   color: var(--fg);
   outline: none;
@@ -30,6 +32,7 @@
   border-color: var(--accent);
 }
 select.input {
+  height: 32px;
   padding-right: 28px;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
@@ -40,10 +43,31 @@ select.input {
 
 .cwdRow {
   display: flex;
+  align-items: center;
   gap: 6px;
 }
-.cwdRow .input {
+
+.cwdInputWrap {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--fg-muted);
+  background: var(--bg-sunken);
+}
+
+.cwdInputWrap:focus-within {
+  border-color: var(--accent);
+}
+
+.cwdInputWrap .input {
+  min-width: 0;
+  border: 0;
+  background: transparent;
   font-family: var(--font-mono);
   font-size: 12px;
 }
@@ -60,6 +84,71 @@ select.input {
 .hint {
   font-size: 10px;
   color: var(--fg-muted);
+}
+
+.modeChoices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.modeChoice {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--fg-muted);
+  background: var(--bg-sunken);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms, background-color 120ms, color 120ms;
+}
+
+.modeChoice:hover {
+  border-color: var(--border-strong);
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.modeChoiceActive {
+  border-color: var(--accent);
+  color: var(--fg);
+  background: color-mix(in srgb, var(--accent-soft) 60%, var(--bg-sunken));
+}
+
+.modeChoiceBody {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.modeChoiceBody strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.modeChoiceBody small {
+  color: var(--fg-muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.modeChoiceIndicator {
+  width: 10px;
+  height: 10px;
+  margin-top: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  flex: none;
+}
+
+.modeChoiceActive .modeChoiceIndicator {
+  border: 3px solid var(--accent);
 }
 
 .btn {

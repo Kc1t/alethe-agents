@@ -13,7 +13,8 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { type GsdSyncSession, useGsdSyncSessions } from '../../hooks/useGsdSyncSessions'
 import { useT } from '../../lib/i18n'
@@ -134,6 +135,7 @@ export function TodoSidebar() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTitle, setEditTitle] = useState('')
   const [draggedId, setDraggedId] = useState<string | null>(null)
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null)
 
   const active = todos.filter((todo) => !todo.completed)
   const completed = todos.filter((todo) => todo.completed)
@@ -180,27 +182,37 @@ export function TodoSidebar() {
                   styles.todoRow,
                   todo.completed ? styles.todoRowCompleted : '',
                   draggedId === todo.id ? styles.todoRowDragging : '',
+                  dropTargetId === todo.id && draggedId !== todo.id ? styles.todoRowDropTarget : '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
                 draggable={!editing}
                 onDragStart={(event) => {
                   setDraggedId(todo.id)
+                  setDropTargetId(null)
                   event.dataTransfer.effectAllowed = 'move'
                   event.dataTransfer.setData('text/plain', todo.id)
                 }}
-                onDragEnd={() => setDraggedId(null)}
+                onDragEnd={() => {
+                  setDraggedId(null)
+                  setDropTargetId(null)
+                }}
                 onDragOver={(event) => {
                   if (!draggedId) return
                   const dragged = todos.find((item) => item.id === draggedId)
                   if (dragged?.completed !== todo.completed) return
                   event.preventDefault()
                   event.dataTransfer.dropEffect = 'move'
+                  setDropTargetId(todo.id)
+                }}
+                onDragLeave={() => {
+                  if (dropTargetId === todo.id) setDropTargetId(null)
                 }}
                 onDrop={(event) => {
                   event.preventDefault()
                   if (draggedId) reorderTodo(draggedId, todo.id)
                   setDraggedId(null)
+                  setDropTargetId(null)
                 }}
               >
                 <button
@@ -261,24 +273,14 @@ export function TodoSidebar() {
                         ))}
                       </span>
                     ) : null}
-                    <span className={styles.projectLink}>
-                      <FolderKanban size={11} aria-hidden="true" />
-                      <select
-                        value={todo.projectId ?? ''}
-                        onChange={(event) => setTodoProject(todo.id, event.target.value || null)}
-                        onClick={(event) => event.stopPropagation()}
-                        onMouseDown={(event) => event.stopPropagation()}
-                        title={t('todo.linkProject')}
-                        aria-label={t('todo.linkProject')}
-                      >
-                        <option value="">{t('todo.noProject')}</option>
-                        {projects.map((project) => (
-                          <option key={project.id} value={project.id}>
-                            {project.name}
-                          </option>
-                        ))}
-                      </select>
-                    </span>
+                    <ProjectPicker
+                      value={todo.projectId ?? ''}
+                      projects={projects}
+                      noProjectLabel={t('todo.noProject')}
+                      ariaLabel={t('todo.linkProject')}
+                      compact
+                      onChange={(projectId) => setTodoProject(todo.id, projectId || null)}
+                    />
                   </div>
                 )}
 
@@ -408,21 +410,13 @@ export function TodoSidebar() {
             aria-label={t('todo.tagsPlaceholder')}
           />
         </div>
-        <label className={styles.projectInputWrap}>
-          <FolderKanban size={13} aria-hidden="true" />
-          <select
-            value={projectDraft}
-            onChange={(event) => setProjectDraft(event.target.value)}
-            aria-label={t('todo.linkProject')}
-          >
-            <option value="">{t('todo.noProject')}</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <ProjectPicker
+          value={projectDraft}
+          projects={projects}
+          noProjectLabel={t('todo.noProject')}
+          ariaLabel={t('todo.linkProject')}
+          onChange={setProjectDraft}
+        />
         <button
           type="submit"
           className={styles.addButton}
@@ -452,6 +446,132 @@ export function TodoSidebar() {
         )}
       </div>
     </aside>
+  )
+}
+
+function ProjectPicker({
+  value,
+  projects,
+  noProjectLabel,
+  ariaLabel,
+  compact = false,
+  onChange,
+}: {
+  value: string
+  projects: Array<{ id: string; name: string }>
+  noProjectLabel: string
+  ariaLabel: string
+  compact?: boolean
+  onChange: (value: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0, width: 240 })
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const selectedLabel = projects.find((project) => project.id === value)?.name ?? noProjectLabel
+
+  useEffect(() => {
+    if (!open) return
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (!triggerRef.current?.contains(target) && !menuRef.current?.contains(target)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('click', closeOnOutsideClick)
+    return () => document.removeEventListener('click', closeOnOutsideClick)
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const updatePosition = () => {
+      const rect = triggerRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const width = Math.min(300, Math.max(220, rect.width), window.innerWidth - 16)
+      const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))
+      const estimatedHeight = Math.min(240, (projects.length + 1) * 32 + 8)
+      const roomBelow = window.innerHeight - rect.bottom - 8
+      const top = roomBelow >= Math.min(estimatedHeight, 180)
+        ? rect.bottom + 5
+        : Math.max(8, rect.top - estimatedHeight - 5)
+      setMenuPosition({ left, top, width })
+    }
+    updatePosition()
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [open, projects.length])
+
+  const choose = (nextValue: string) => {
+    onChange(nextValue)
+    setOpen(false)
+  }
+
+  return (
+    <div className={compact ? styles.projectLink : styles.projectInputWrap}>
+      <FolderKanban size={compact ? 11 : 13} aria-hidden="true" />
+      <button
+        ref={triggerRef}
+        type="button"
+        className={styles.projectPickerButton}
+        aria-label={ariaLabel}
+        aria-expanded={open}
+        title={selectedLabel}
+        onClick={(event) => {
+          event.stopPropagation()
+          setOpen((current) => !current)
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <span>{selectedLabel}</span>
+      </button>
+      {open
+        ? createPortal(
+            <div
+              ref={menuRef}
+              className={styles.projectMenu}
+              role="listbox"
+              aria-label={ariaLabel}
+              style={menuPosition}
+              onPointerDown={(event) => event.stopPropagation()}
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                role="option"
+                aria-selected={!value}
+                className={`${styles.projectOption} ${!value ? styles.projectOptionSelected : ''}`}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  choose('')
+                }}
+              >
+                {noProjectLabel}
+              </button>
+              {projects.map((project) => (
+            <button
+              key={project.id}
+              type="button"
+              role="option"
+              aria-selected={project.id === value}
+              className={`${styles.projectOption} ${project.id === value ? styles.projectOptionSelected : ''}`}
+              title={project.name}
+              onClick={(event) => {
+                event.stopPropagation()
+                choose(project.id)
+              }}
+            >
+              {project.name}
+            </button>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
   )
 }
 

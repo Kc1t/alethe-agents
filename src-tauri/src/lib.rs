@@ -11,6 +11,7 @@ mod cli_launch;
 mod cli_resolver;
 mod cli_shim;
 mod codex_sessions;
+mod codex_app_server;
 mod codex_usage;
 mod crash_watch;
 mod diagnostics;
@@ -56,6 +57,7 @@ mod project_detector;
 mod contract_check;
 mod health_probe;
 mod provider_common;
+mod remote;
 
 use crate::pty::{PtySession, PtySessions};
 use std::collections::HashMap;
@@ -127,13 +129,16 @@ pub fn run() {
     // forçado (onde RunEvent::Exit não roda), o Job Object mata a árvore de PTYs.
     pty::install_kill_on_close_guard();
     let sessions: PtySessions = Arc::new(Mutex::new(HashMap::<String, PtySession>::new()));
+    let codex_app_server_state = codex_app_server::CodexAppServerState::default();
     let sessions_for_exit = Arc::clone(&sessions);
-    let sessions_for_resources = Arc::clone(&sessions);
+            let sessions_for_resources = Arc::clone(&sessions);
     let resource_supervisor = Arc::new(resources::ResourceSupervisor::default());
     let resource_supervisor_for_setup = Arc::clone(&resource_supervisor);
 
     let mut builder = tauri::Builder::default()
-        .manage(sessions)
+        .manage(sessions.clone())
+        .manage(codex_app_server_state)
+        .manage(remote::hub())
         .manage(resource_supervisor)
         .manage(ghostty_bridge::GhosttySurfaces::default())
         .manage(filesystem::FileWatchers::default())
@@ -213,6 +218,7 @@ pub fn run() {
             // Limpa scrollback órfão antes de qualquer spawn (sem corrida).
             pty::cleanup_orphan_scrollback(app.handle());
             agent_events::start_listener(app.handle().clone());
+            remote::start(app.handle().clone(), Arc::clone(&sessions));
             // Best-effort: escreve/atualiza o plugin global do OpenCode que
             // reporta working/idle real de volta pro Alethe (ver opencode_bridge.rs).
             opencode_bridge::ensure_installed();
@@ -233,6 +239,9 @@ pub fn run() {
             agent_events::agent_hooks_settings_path,
             agent_events::agent_hooks_endpoint,
             agent_events::agent_hooks_token,
+            codex_app_server::codex_app_server_start,
+            codex_app_server::codex_app_server_send,
+            codex_app_server::codex_app_server_stop,
             activity_stats::record_activity_samples,
             activity_stats::get_activity_summary,
             activity_stats::clear_activity_stats,
@@ -252,6 +261,12 @@ pub fn run() {
             pty::attach_pty,
             pty::restart_pty,
             pty::write_pty,
+            remote::remote_control_info,
+            remote::remote_control_revoke,
+            remote::remote_control_revoke_device,
+            remote::remote_control_set_max_devices,
+            remote::remote_control_set_session_expiry,
+            remote::remote_control_set_enabled,
             pty::resize_pty,
             pty::kill_pty,
             pty::suspend_pty,
@@ -313,6 +328,7 @@ pub fn run() {
             diagnostics::write_clipboard_text,
             diagnostics::read_clipboard_payload,
             diagnostics::reset_app_data,
+            diagnostics::wipe_all_app_data,
             diagnostics::open_logs_folder,
             diagnostics::export_logs,
             logging::record_frontend_error,
