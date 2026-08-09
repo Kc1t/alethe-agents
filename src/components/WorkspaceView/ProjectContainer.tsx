@@ -184,7 +184,7 @@ export const ProjectContainer = memo(function ProjectContainer({
   if (container.collapsed) {
     return (
       <div
-        className={`${styles.collapsed} rainbow-container-border`}
+        className={`${styles.collapsed} ${isRainbow ? 'rainbow-container-border' : ''}`}
         style={{ ['--container-accent' as string]: isRainbow ? undefined : accent }}
         onClick={() => setCollapsed(project.id, false)}
         title={`${group ? group.name + ' · ' : ''}${t('ws.containerExpandHint', { name: project.name })}`}
@@ -204,7 +204,7 @@ export const ProjectContainer = memo(function ProjectContainer({
     <div
       ref={setRefs}
       data-pane-box="1"
-      className={`${styles.box} rainbow-container-border ${draggable.isDragging ? styles.boxDragging : ''} ${
+      className={`${styles.box} ${isRainbow ? 'rainbow-container-border' : ''} ${draggable.isDragging ? styles.boxDragging : ''} ${
         isDropTarget ? styles.boxDropTarget : ''
       }`}
       style={{ ['--container-accent' as string]: isRainbow ? undefined : accent }}

@@ -131,7 +131,7 @@ pub fn run() {
     let sessions: PtySessions = Arc::new(Mutex::new(HashMap::<String, PtySession>::new()));
     let codex_app_server_state = codex_app_server::CodexAppServerState::default();
     let sessions_for_exit = Arc::clone(&sessions);
-            let sessions_for_resources = Arc::clone(&sessions);
+    let sessions_for_resources = Arc::clone(&sessions);
     let resource_supervisor = Arc::new(resources::ResourceSupervisor::default());
     let resource_supervisor_for_setup = Arc::clone(&resource_supervisor);
 
@@ -157,11 +157,31 @@ pub fn run() {
     // foca a janela existente em vez de abrir outra — e, quando veio de
     // `alethe <path>` no terminal, entrega o diretório pedido pra ela (ver
     // cli_launch.rs) antes de morrer.
+    // A guarda de instância única é por `identifier` do app (D-Bus/named pipe),
+    // não por data dir — uma instância de E2E (mesmo identifier, data dir
+    // isolado por env var) seria detectada como "segunda instância" de um
+    // `tauri dev` interativo já aberto e sairia na hora (code=0) sem nunca
+    // subir. Sob `ALETHE_E2E=1` a instância de teste já é isolada por conta
+    // própria, então esse guard não é necessário nem desejável.
     #[cfg(desktop)]
-    {
+    if std::env::var_os("ALETHE_E2E").is_none() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             cli_launch::handle_second_instance(app, argv, cwd);
         }));
+    }
+
+    // Automação WebDriver (harness de E2E) — nunca compilada em release
+    // (`debug_assertions`) e, mesmo em debug, só ativa com `ALETHE_E2E=1` no
+    // ambiente. Sem a variável, uma sessão normal de `tauri dev` do dia a dia
+    // não expõe superfície de automação nenhuma.
+    #[cfg(debug_assertions)]
+    if std::env::var_os("ALETHE_E2E").is_some() {
+        // `-webdriver` sobe o servidor WebDriver embarcado em si; o outro dá
+        // acesso à API `browser.tauri.execute()` e mocking de invoke a partir
+        // dos specs. As duas peças são independentes no ecossistema wdio-tauri.
+        builder = builder
+            .plugin(tauri_plugin_wdio_webdriver::init())
+            .plugin(tauri_plugin_wdio::init());
     }
 
     builder

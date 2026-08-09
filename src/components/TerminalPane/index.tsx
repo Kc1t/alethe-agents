@@ -12,21 +12,19 @@ import {
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useGridResize } from '../../hooks/useGridResize'
-import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
+import { restartAgentPty } from '../../lib/agentPtyRestart'
 import { useT } from '../../lib/i18n'
-import { buildAgentLaunch } from '../../lib/sessionLaunch'
-import { getActiveSessions, saveSession, savedConversationIdFor } from '../../lib/sessionResume'
+import { getActiveSessions, savedConversationIdFor } from '../../lib/sessionResume'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
 import {
-  agentCliCommand,
   type Terminal as TerminalEntry,
   type SubTab,
   type Theme,
   type AgentType,
 } from '../../lib/types'
-import { getPtyCwd, openInVscode, restartPty, snapshotCodexSessions } from '../../lib/tauri'
+import { getPtyCwd, openInVscode, snapshotCodexSessions } from '../../lib/tauri'
 import { AgentIcon, VSCodeIcon } from '../icons/AgentIcons'
 import { SubTabsLane } from '../SubTabsLane'
 import { XTermView } from '../XTermView'
@@ -105,6 +103,7 @@ export const TerminalPane = memo(function TerminalPane({
   const setSubTabPtyId = useProjectsStore((s) => s.setSubTabPtyId)
   const setSubTabSessionId = useProjectsStore((s) => s.setSubTabSessionId)
   const setSubTabInitialInput = useProjectsStore((s) => s.setSubTabInitialInput)
+  const setSubTabSkipSessionClaim = useProjectsStore((s) => s.setSubTabSkipSessionClaim)
   const setSubTabCompletionUnread = useProjectsStore((s) => s.setSubTabCompletionUnread)
   const deleteTerminalWithWorktreeCleanup = useProjectsStore((s) => s.deleteTerminalWithWorktreeCleanup)
   const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
@@ -196,40 +195,20 @@ export const TerminalPane = memo(function TerminalPane({
     if (!resumeSessionId && activeTab.type === 'codex' && restartCwd) {
       resumeSessionId = (await snapshotCodexSessions(restartCwd).catch(() => []))[0]?.id
     }
-    const preparedRuntime = preparePtyRuntimeLaunch(
-      activeTab.type,
-      activeTab.runtimeProfile,
-      activeTab.extraArgs ?? [],
-    )
-    const launch = buildAgentLaunch(activeTab.type, preparedRuntime.args, resumeSessionId)
-    if (launch.sessionId && launch.sessionId !== activeTab.sessionId) {
-      setSubTabSessionId(projectId, terminal.id, activeTab.id, launch.sessionId)
-    }
-    // Marca início do restart pra ignorar o exit event do PTY antigo (chega async).
-    useTerminalsStore.getState().beginRestart(ptyId)
     try {
-      await restartPty({
-        id: ptyId,
-        cols: 80,
-        rows: 24,
-        command: agentCliCommand(activeTab.type),
-        cwd: restartCwd || undefined,
-        extraArgs: launch.args,
-        env: preparedRuntime.env,
+      // XTermView usa a identidade estável da sub-tab (`activeTab.id`) como
+      // chave de persistência; manter a mesma chave garante que remounts
+      // posteriores (reload do app) consumam a sessão salva aqui.
+      await restartAgentPty({
+        ptyId,
+        sessionPersistenceKey: activeTab.id,
+        agent: activeTab.type,
+        cwd: restartCwd,
+        runtimeProfile: activeTab.runtimeProfile,
+        extraArgs: activeTab.extraArgs ?? [],
+        resumeId: resumeSessionId,
+        onSessionId: (id) => setSubTabSessionId(projectId, terminal.id, activeTab.id, id),
       })
-      if (launch.sessionId) {
-        // XTermView usa a identidade estável da sub-tab como chave; manter a
-        // mesma chave garante que remounts posteriores consumam este resume.
-        saveSession(activeTab.id, {
-          sessionId: ptyId,
-          claudeSessionId: activeTab.type === 'claude' ? launch.sessionId : undefined,
-          codexSessionId: activeTab.type === 'codex' ? launch.sessionId : undefined,
-          antigravitySessionId: activeTab.type === 'antigravity' ? launch.sessionId : undefined,
-          cwd: restartCwd,
-          agent: activeTab.type,
-          timestamp: Date.now(),
-        })
-      }
       window.dispatchEvent(new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId } }))
       requestPaneFocus(terminal.id)
       window.setTimeout(() => requestPaneFocus(terminal.id), 160)
@@ -434,6 +413,10 @@ export const TerminalPane = memo(function TerminalPane({
                   initialInput={activeTab.initialInput}
                   runtimeProfile={activeTab.runtimeProfile}
                   sessionId={activeTab.sessionId}
+                  skipSessionClaim={activeTab.skipSessionClaim}
+                  onSessionClaimSkipped={() =>
+                    setSubTabSkipSessionClaim(projectId, terminal.id, activeTab.id, false)
+                  }
                   graphifyRepo={graphifyRepo}
                   gsdWatcherEnabled={gsdWatcherEnabled}
                   trustSessionId={terminal.gsdSyncViewer}

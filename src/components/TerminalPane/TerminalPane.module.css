@@ -20,13 +20,35 @@
 /* Foco do pane (Alethe focus mode): anel sólido em camadas (mesmo padrão do
    .dropTarget abaixo), sem bg/lift extras. Acende sempre que o xterm de
    dentro recebe foco. Suprimido quando .paneFocus (overlay) — lá não
-   queremos anel azul. */
+   queremos anel azul.
+   Só `inset` — sem o `0 0 0 3px` externo que tinha antes: esse spread saía
+   3px pra FORA da própria borda do pane, invadindo a faixa decorativa de
+   quem estiver logo ao lado/por baixo (ex.: o anel arco-íris do container).
+   Inset nunca sai dos limites do próprio pane, então não tem como vazar pra
+   decoração de fora. Esse anel é o ÚNICO indicador de foco pra containers
+   de cor normal (sem isso, um pane sozinho na grade não teria feedback
+   visual nenhum de foco) — por isso continua ligado por padrão; só é
+   suprimido dentro de container arco-íris (ver regra logo abaixo), onde o
+   anel do próprio container já cumpre esse papel. */
 .pane:focus-within:not(.paneFocus) {
   border-color: var(--focus-ring, #38bdf8);
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--focus-ring) 70%, transparent),
-    0 0 0 3px color-mix(in srgb, var(--focus-ring) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--focus-ring) 70%, transparent);
   z-index: 2;
+}
+
+/* Container com o tema "arco-íris" (`.rainbow-container-border`, global,
+   aplicado no `.box` do ProjectContainer): a borda azul de foco do pane
+   (acima) fica colada bem em cima da faixa de 2px do anel animado do
+   container — mesmo com `inset`/z-index corretos ela pode cair fora da faixa
+   exata que o anel pinta, ou (com 2+ panes lado a lado) aparecer no divisor
+   entre eles — aparecendo como uma linha azul reta cortando o anel circular.
+   Decisão confirmada com o dono: dentro de um container arco-íris, o anel do
+   PRÓPRIO CONTAINER é o único indicador de foco, sempre — sem exceção pra
+   quantidade de panes. Reseta a borda/box-shadow do pane pra nunca competir
+   com ele, tenha ele irmãos ou não. */
+:global(.rainbow-container-border) .pane:focus-within:not(.paneFocus) {
+  border-color: var(--border);
+  box-shadow: none;
 }
 
 /* Pane em focus mode: o próprio painel vira fixed; o overlay é só backdrop. */

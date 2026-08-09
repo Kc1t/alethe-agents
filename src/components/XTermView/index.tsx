@@ -54,11 +54,21 @@ export type XTermViewProps = {
   /** Sessão-filha do GSD Sync: visão de subagente, só leitura — nunca deve
    * aceitar digitação/colar/atalhos que escrevem na PTY. */
   readOnly?: boolean
+  /**
+   * `true` só na primeira montagem de uma tab recém-criada — impede o
+   * fallback de "reivindicar a conversa OpenCode mais recente ainda não
+   * pega nesse cwd" (pensado pra recuperação após reiniciar o app) de
+   * herdar sem querer uma sessão de outro projeto/uso anterior da mesma
+   * pasta. Consumido via `onSessionClaimSkipped` no primeiro spawn — a
+   * partir daí a tab já existe de verdade e o fallback normal passa a valer.
+   */
+  skipSessionClaim?: boolean
   runtimeProfile?: AgentRuntimeProfile
   terminalTheme?: Theme
   onSpawned?: (id: string) => void
   onSessionId?: (id: string | undefined) => void
   onInitialInputSent?: () => void
+  onSessionClaimSkipped?: () => void
   onExit?: (code: number | null) => void
   onAgentComplete?: () => void
 }
@@ -82,6 +92,7 @@ export function XTermView({
   gsdWatcherEnabled,
   trustSessionId,
   readOnly,
+  skipSessionClaim,
   // Terminais antigos sem perfil persistido entram no modo lean para não
   // iniciar Claude com concorrência/MCP ilimitados por acidente. `full` segue
   // disponível quando o usuário escolhe explicitamente no modal.
@@ -90,6 +101,7 @@ export function XTermView({
   onSpawned,
   onSessionId,
   onInitialInputSent,
+  onSessionClaimSkipped,
   onExit,
   onAgentComplete,
 }: XTermViewProps) {
@@ -109,12 +121,14 @@ export function XTermView({
   const onSpawnedRef = useRef(onSpawned)
   const onSessionIdRef = useRef(onSessionId)
   const onInitialInputSentRef = useRef(onInitialInputSent)
+  const onSessionClaimSkippedRef = useRef(onSessionClaimSkipped)
   const onExitRef = useRef(onExit)
   const onAgentCompleteRef = useRef(onAgentComplete)
   useEffect(() => {
     onSpawnedRef.current = onSpawned
     onSessionIdRef.current = onSessionId
     onInitialInputSentRef.current = onInitialInputSent
+    onSessionClaimSkippedRef.current = onSessionClaimSkipped
     onExitRef.current = onExit
     onAgentCompleteRef.current = onAgentComplete
   })
@@ -305,6 +319,7 @@ export function XTermView({
     gsdWatcherEnabled,
     trustSessionId,
     readOnly,
+    skipSessionClaim,
     runtimeProfile,
     terminalTheme,
     cliPathOverride,
@@ -322,6 +337,7 @@ export function XTermView({
     onSpawnedRef,
     onSessionIdRef,
     onInitialInputSentRef,
+    onSessionClaimSkippedRef,
     onExitRef,
     onAgentCompleteRef,
     setBootPhase,

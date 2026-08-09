@@ -128,6 +128,7 @@ type SubTabsSlice = Pick<
   | 'setSubTabCompletionUnread'
   | 'setSubTabSessionId'
   | 'setSubTabInitialInput'
+  | 'setSubTabSkipSessionClaim'
 >
 
 export function createSubTabsSlice({ updateTerminal, updateSubTab }: SliceCtx): SubTabsSlice {
@@ -143,6 +144,7 @@ export function createSubTabsSlice({ updateTerminal, updateSubTab }: SliceCtx): 
         ptyId: null,
         extraArgs: args.extraArgs,
         runtimeProfile: args.runtimeProfile,
+        skipSessionClaim: true,
       }
       updateTerminal(projectId, terminalId, (t) => ({
         ...t,
@@ -209,6 +211,9 @@ export function createSubTabsSlice({ updateTerminal, updateSubTab }: SliceCtx): 
 
     setSubTabInitialInput: (projectId, terminalId, tabId, initialInput) =>
       updateSubTab(projectId, terminalId, tabId, (s) => ({ ...s, initialInput })),
+
+    setSubTabSkipSessionClaim: (projectId, terminalId, tabId, skipSessionClaim) =>
+      updateSubTab(projectId, terminalId, tabId, (s) => ({ ...s, skipSessionClaim })),
   }
 }
 

@@ -119,6 +119,15 @@
   background: transparent;
   position: relative;
   transition: background 0.12s ease;
+  /* O <Separator> do react-resizable-panels nasce com tabIndex: 0 (foco por
+     teclado pra redimensionar) — sem isso, o WebKitGTK desenha o contorno
+     azul sólido nativo de foco em cima dele ao ganhar foco (ex.: clique
+     perto pra arrastar), aparecendo como uma linha azul cortando o
+     container bem no meio, na posição do divisor entre panes. O próprio
+     separador já tem feedback de interação (::before/::after, hover e
+     data-resize-handle-active), então dá pra tirar o outline nativo sem
+     perder acessibilidade visual. */
+  outline: none;
 }
 .sepH {
   /* Hitbox amplo; a linha continua fina no centro via ::before. */
@@ -204,6 +213,20 @@
 
 .emptyProjectCard {
   width: min(520px, 100%);
+  /* Sem `grid-template-columns`, a única coluna implícita usa sizing `auto`
+     (min-content) por padrão — que pra um texto `white-space: nowrap` é a
+     largura TOTAL sem quebra, não a largura truncada visível. `overflow:
+     hidden` no `.emptyFolderButton` (mais abaixo, em volta do span do
+     caminho da pasta) deveria, por spec, isolar essa contribuição de
+     min-content das ancestrais — mas no WebKitGTK (confirmado ao vivo,
+     comparando frames antes/depois de selecionar uma pasta com caminho
+     longo) essa contenção não segura: a borda do card fica no lugar, só o
+     CONTEÚDO interno (centralizado via `justify-items: center`) desliza pra
+     direita, como se a coluna implícita tivesse ficado mais larga que a
+     caixa visível. `min-width: 0` força essa coluna a respeitar o `width`
+     explícito acima em vez de crescer com o conteúdo — mesmo padrão
+     defensivo já usado em `.emptyFolderButton` pro mesmo motivo. */
+  min-width: 0;
   display: grid;
   gap: 12px;
   justify-items: center;
@@ -276,6 +299,7 @@
 .emptyFolderRow {
   display: flex;
   width: min(430px, 100%);
+  min-width: 0;
   gap: 8px;
 }
 

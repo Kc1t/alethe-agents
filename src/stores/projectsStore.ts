@@ -310,6 +310,12 @@ export type ProjectsState = ProjectsFile & {
     tabId: string,
     initialInput: string | undefined,
   ) => void
+  setSubTabSkipSessionClaim: (
+    projectId: string,
+    terminalId: string,
+    tabId: string,
+    skipSessionClaim: boolean,
+  ) => void
 
   // preferences / cli
   setLanguage: (language: Locale) => void
