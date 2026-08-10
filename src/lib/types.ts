@@ -132,6 +132,18 @@ export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
 export type PaneKind =
   'terminal' | 'markdown' | 'file' | 'image' | 'video' | 'web' | 'graphify' | 'diff'
 
+export type BrowserPaneConfig = {
+  /** Whether scripts may run in the private webview. Defaults to true. */
+  javascriptEnabled?: boolean
+  /** Page zoom applied to the private webview. Defaults to 1. */
+  zoom?: number
+}
+
+export type BrowserPaneOptions = BrowserPaneConfig & {
+  url: string
+  name?: string
+}
+
 export type Terminal = {
   id: string
   name: string
@@ -148,6 +160,8 @@ export type Terminal = {
   filePath?: string
   /** URL http(s) normalizada quando kind === 'web'. */
   url?: string
+  /** Runtime settings for a private native browser pane. */
+  browserConfig?: BrowserPaneConfig
   /** RFC-003 — id da worktree onde este pane vive (habilita o botão "Integrar"). */
   worktreeAgentId?: string
   /** Argumento específico para diff viewer, true se staged. */
@@ -597,11 +611,6 @@ export const PROVIDER_MODELS: Record<AgentType, { id: string; label: string }[]>
     { id: 'mimo-pro', label: 'Mimo Pro' },
     { id: 'mimo-flash', label: 'Mimo Flash' },
   ],
-  freebuff: [
-    { id: 'freebuff-auto', label: 'Freebuff Auto' },
-  ],
-  shell: [
-    { id: 'default', label: 'Shell Padrão' },
-  ],
+  freebuff: [{ id: 'freebuff-auto', label: 'Freebuff Auto' }],
+  shell: [{ id: 'default', label: 'Shell Padrão' }],
 }
-

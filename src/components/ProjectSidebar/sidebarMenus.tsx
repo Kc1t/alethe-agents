@@ -1,7 +1,8 @@
 import {
-  FileText,
   Archive,
+  FileText,
   FolderOpen,
+  Globe2,
   Layout,
   MoveRight,
   PanelTopOpen,
@@ -14,8 +15,8 @@ import {
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { useT } from '../../lib/i18n'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
-import { agentCliCommand, type Group, type Project, type Terminal } from '../../lib/types'
 import { getPtyCwd, openInFileExplorer, openInVscode, restartPty } from '../../lib/tauri'
+import { agentCliCommand, type Group, type Project, type Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -59,6 +60,7 @@ type MenuActions = Pick<
 export type SidebarMenuDeps = {
   t: ReturnType<typeof useT>
   graphifyEnabled: boolean
+  browserEnabled: boolean
   groups: Group[]
   openPaneSets: Record<string, Set<string>>
   actions: MenuActions
@@ -80,6 +82,7 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
   const {
     t,
     graphifyEnabled,
+    browserEnabled,
     groups,
     openPaneSets,
     actions,
@@ -132,6 +135,16 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
       icon: <Plus size={14} />,
       onClick: () => openModal('newTerminal', { projectId: project.id }),
     },
+    ...(browserEnabled
+      ? [
+          {
+            kind: 'item' as const,
+            label: t('menu.addBrowser'),
+            icon: <Globe2 size={14} />,
+            onClick: () => openModal('addBrowser', { projectId: project.id }),
+          },
+        ]
+      : []),
     {
       kind: 'item',
       label: t('ui.sidebar.designLayout'),

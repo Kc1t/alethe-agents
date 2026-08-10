@@ -1,7 +1,16 @@
 import '@xterm/xterm/css/xterm.css'
 
 import type { Terminal } from '@xterm/xterm'
-import { AppWindow, Copy, ExternalLink, FolderOpen, LayoutGrid, Maximize2, PanelRight, X } from 'lucide-react'
+import {
+  AppWindow,
+  Copy,
+  ExternalLink,
+  FolderOpen,
+  LayoutGrid,
+  Maximize2,
+  PanelRight,
+  X,
+} from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { pickFile } from '../../lib/dialog'
@@ -162,6 +171,7 @@ export function XTermView({
 
     setLinkActions({
       text: link.text,
+      target: link.target,
       kind: link.kind,
       fileKind: link.fileKind,
       x,
@@ -445,7 +455,7 @@ export function XTermView({
                 className={styles.linkMenuItem}
                 role="menuitem"
                 onClick={() => {
-                  openLinkInAppViewer(linkActions.text)
+                  openLinkInAppViewer(linkActions.target)
                   hideLinkActions()
                 }}
               >
@@ -474,10 +484,9 @@ export function XTermView({
                   className={styles.linkMenuItem}
                   role="menuitem"
                   onClick={() => {
-                    useUiStore.getState().openMarkdownSidebar(
-                      linkActions.text,
-                      linkActions.text.split(/[\\/]/).pop(),
-                    )
+                    useUiStore
+                      .getState()
+                      .openMarkdownSidebar(linkActions.text, linkActions.text.split(/[\\/]/).pop())
                     useProjectsStore.getState().setPreferences({ rightSidebarVisible: true })
                     hideLinkActions()
                   }}
@@ -492,7 +501,7 @@ export function XTermView({
               className={styles.linkMenuItem}
               role="menuitem"
               onClick={() => {
-                void openLinkInBrowser(linkActions.text)
+                void openLinkInBrowser(linkActions.target)
                 hideLinkActions()
               }}
             >

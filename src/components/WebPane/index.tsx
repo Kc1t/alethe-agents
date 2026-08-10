@@ -1,13 +1,22 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { ExternalLink, GripVertical, Maximize2, Minimize2, RefreshCw, Trash2 } from 'lucide-react'
+import {
+  ExternalLink,
+  GripVertical,
+  Maximize2,
+  Minimize2,
+  RefreshCw,
+  ShieldCheck,
+  Trash2,
+} from 'lucide-react'
 import { memo, useRef, useState } from 'react'
 
-import { Favicon } from '../Favicon'
 import { useT } from '../../lib/i18n'
 import { openInBrowser } from '../../lib/tauri'
 import type { Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { Favicon } from '../Favicon'
+import { PrivateBrowserSurface } from './PrivateBrowserSurface'
 import styles from './WebPane.module.css'
 
 type WebPaneProps = {
@@ -27,7 +36,18 @@ export const WebPane = memo(function WebPane({
   const url = terminal.url ?? ''
   const [reloadKey, setReloadKey] = useState(0)
   const focusedTerminalId = useUiStore((state) => state.focusedTerminalId)
+  const activeView = useUiStore((state) => state.activeView)
+  const openModal = useUiStore((state) => state.openModal)
+  const showMainMenu = useUiStore((state) => state.showMainMenu)
+  const linkViewerUrl = useUiStore((state) => state.linkViewerUrl)
   const isFocusMode = inFocusOverlay || focusedTerminalId === terminal.id
+  const browserVisible =
+    !preview &&
+    activeView === 'workspace' &&
+    !openModal &&
+    !showMainMenu &&
+    !linkViewerUrl &&
+    (!focusedTerminalId || focusedTerminalId === terminal.id)
   const setFocusedTerminal = useUiStore((state) => state.setFocusedTerminal)
   const setActiveTerminal = useUiStore((state) => state.setActiveTerminal)
   const deleteTerminal = useProjectsStore((state) => state.deleteTerminal)
@@ -76,6 +96,10 @@ export const WebPane = memo(function WebPane({
           </span>
           <span className={styles.url} title={url}>
             {url}
+          </span>
+          <span className={styles.privateBadge} title={t('browser.privateTitle')}>
+            <ShieldCheck size={10} />
+            {t('browser.privateBadge')}
           </span>
         </div>
         {!preview ? (
@@ -134,20 +158,20 @@ export const WebPane = memo(function WebPane({
       </header>
       <div className={styles.body}>
         {url ? (
-          <iframe
-            key={`${url}:${reloadKey}`}
-            src={url}
-            className={styles.frame}
+          <PrivateBrowserSurface
+            paneId={terminal.id}
+            url={url}
             title={terminal.name}
-            loading="lazy"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-            referrerPolicy="no-referrer"
+            reloadKey={reloadKey}
+            javascriptEnabled={terminal.browserConfig?.javascriptEnabled ?? true}
+            zoom={terminal.browserConfig?.zoom ?? 1}
+            visible={browserVisible}
           />
         ) : (
           <div className={styles.empty}>{t('webPane.invalidUrl')}</div>
         )}
       </div>
-      <div className={styles.hint}>{t('linkViewer.embedHint')}</div>
+      <div className={styles.hint}>{t('webPane.privateHint')}</div>
     </div>
   )
 })

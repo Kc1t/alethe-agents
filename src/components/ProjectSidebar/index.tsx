@@ -1,12 +1,14 @@
 import {
+  type CollisionDetection,
   DndContext,
+  type DragEndEvent,
+  type DragMoveEvent,
   DragOverlay,
   PointerSensor,
-  useDndContext,
+  pointerWithin,
   useDroppable,
   useSensor,
   useSensors,
-  type DragEndEvent,
 } from '@dnd-kit/core'
 import {
   Folder,
@@ -25,24 +27,80 @@ import { useShallow } from 'zustand/react/shallow'
 
 import { useT } from '../../lib/i18n'
 import { formatShortcut } from '../../lib/platform'
+import {
+  sidebarDragKind,
+  type SidebarDropIndicator,
+  sidebarInsertionIndex,
+} from '../../lib/sidebarDrag'
 import { type Group, type Project } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState/EmptyState'
+import { SidebarNowPlaying } from '../SidebarNowPlaying'
+import { UserProfile } from '../UserProfile'
+import { ContextMenu, type MenuItem } from './ContextMenu'
 import { FileExplorer } from './FileExplorer'
 import { GitControl } from './GitControl'
 import { GroupNode } from './GroupNode'
 import { LayoutFooter, WorkspaceLayoutFooter } from './LayoutFooter'
 import { ProjectNode } from './ProjectNode'
+import styles from './ProjectSidebar.module.css'
 import { createSidebarMenus } from './sidebarMenus'
-import { SidebarNowPlaying } from '../SidebarNowPlaying'
-import { UserProfile } from '../UserProfile'
-import { ContextMenu, type MenuItem } from './ContextMenu'
 import { SidebarMergePanel } from './SidebarMergePanel'
 import { SidebarUpdate } from './SidebarUpdate'
-import styles from './ProjectSidebar.module.css'
 
 type ContextMenuState = { x: number; y: number; items: MenuItem[] } | null
+
+const sidebarCollisionDetection: CollisionDetection = (args) => {
+  const kind = sidebarDragKind(String(args.active.id))
+  const candidates = pointerWithin(args).filter(({ id }) => {
+    const target = String(id)
+    if (target === String(args.active.id)) return false
+    if (kind === 'terminal') return target.startsWith('proj:')
+    if (kind === 'project') return target.startsWith('proj:') || target.startsWith('group:')
+    if (kind === 'group') {
+      const sourceId = String(args.active.id).slice('grp:'.length)
+      return (
+        target !== `group:${sourceId}` && (target.startsWith('grp:') || target.startsWith('group:'))
+      )
+    }
+    return false
+  })
+
+  const rank = (id: string) => {
+    if (kind === 'project') return id.startsWith('proj:') ? 0 : 1
+    if (kind === 'group') return id.startsWith('grp:') ? 0 : 1
+    return 0
+  }
+
+  return candidates.sort((a, b) => {
+    const rankDifference = rank(String(a.id)) - rank(String(b.id))
+    if (rankDifference !== 0) return rankDifference
+    const aRect = args.droppableRects.get(a.id)
+    const bRect = args.droppableRects.get(b.id)
+    const aArea = aRect ? aRect.width * aRect.height : Number.POSITIVE_INFINITY
+    const bArea = bRect ? bRect.width * bRect.height : Number.POSITIVE_INFINITY
+    return aArea - bArea
+  })
+}
+
+function dropIndicatorForEvent(event: DragMoveEvent | DragEndEvent): SidebarDropIndicator | null {
+  if (!event.over) return null
+  const id = String(event.over.id)
+  if (id.startsWith('group:') || sidebarDragKind(String(event.active.id)) === 'terminal') {
+    return { id, edge: 'inside' }
+  }
+
+  const activatorEvent = event.activatorEvent
+  const pointerY =
+    'clientY' in activatorEvent && typeof activatorEvent.clientY === 'number'
+      ? activatorEvent.clientY + event.delta.y
+      : event.active.rect.current.translated
+        ? event.active.rect.current.translated.top + event.active.rect.current.translated.height / 2
+        : event.over.rect.top + event.over.rect.height / 2
+  const edge = pointerY < event.over.rect.top + event.over.rect.height / 2 ? 'before' : 'after'
+  return { id, edge }
+}
 
 export function ProjectSidebar() {
   const t = useT()
@@ -107,6 +165,7 @@ export function ProjectSidebar() {
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const [menu, setMenu] = useState<ContextMenuState>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [dropIndicator, setDropIndicator] = useState<SidebarDropIndicator | null>(null)
   const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects'>('projects')
   const keepHome = activeView === 'home'
 
@@ -158,10 +217,23 @@ export function ProjectSidebar() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
-  const onDragEnd = (event: DragEndEvent) => {
+  const clearDragState = () => {
     setDraggingId(null)
+    setDropIndicator(null)
+  }
+
+  const updateDropIndicator = (event: DragMoveEvent) => {
+    const next = dropIndicatorForEvent(event)
+    setDropIndicator((current) =>
+      current?.id === next?.id && current?.edge === next?.edge ? current : next,
+    )
+  }
+
+  const onDragEnd = (event: DragEndEvent) => {
+    const indicator = dropIndicatorForEvent(event)
+    clearDragState()
     const { active, over } = event
-    if (!over) return
+    if (!over || !indicator) return
     const dragged = String(active.id)
     const target = String(over.id)
     if (dragged === target) return
@@ -184,30 +256,36 @@ export function ProjectSidebar() {
       if (!from || !to) return
 
       if (from.groupId === to.groupId) {
-        // mesmo pai → reorder
+        const edge = indicator.edge === 'inside' ? 'before' : indicator.edge
         if (from.groupId === null) {
           const ord = useProjectsStore.getState().ungroupedOrder
           const fi = ord.indexOf(fromId)
           const ti = ord.indexOf(toId)
-          if (fi !== -1 && ti !== -1) actions.reorderUngrouped(fromId, fi, ti)
+          if (fi !== -1 && ti !== -1) {
+            actions.reorderUngrouped(fromId, fi, sidebarInsertionIndex(fi, ti, edge, true))
+          }
         } else {
           const grp = useProjectsStore.getState().groups.find((g) => g.id === from.groupId)
           if (!grp) return
           const fi = grp.projectIds.indexOf(fromId)
           const ti = grp.projectIds.indexOf(toId)
-          if (fi !== -1 && ti !== -1) actions.reorderProjectInGroup(fromId, fi, ti)
+          if (fi !== -1 && ti !== -1) {
+            actions.reorderProjectInGroup(fromId, fi, sidebarInsertionIndex(fi, ti, edge, true))
+          }
         }
       } else {
-        // pais diferentes → move pra o pai do alvo na posição do alvo
         const targetParent = to.groupId
-        let atIdx: number | undefined
-        if (targetParent === null) {
-          atIdx = useProjectsStore.getState().ungroupedOrder.indexOf(toId)
-        } else {
-          const grp = useProjectsStore.getState().groups.find((g) => g.id === targetParent)
-          atIdx = grp?.projectIds.indexOf(toId)
-        }
-        actions.moveProjectToGroup(fromId, targetParent, atIdx === -1 ? undefined : atIdx)
+        const targetIndex =
+          targetParent === null
+            ? useProjectsStore.getState().ungroupedOrder.indexOf(toId)
+            : (useProjectsStore
+                .getState()
+                .groups.find((group) => group.id === targetParent)
+                ?.projectIds.indexOf(toId) ?? -1)
+        const edge = indicator.edge === 'inside' ? 'before' : indicator.edge
+        const atIndex =
+          targetIndex === -1 ? undefined : sidebarInsertionIndex(0, targetIndex, edge, false)
+        actions.moveProjectToGroup(fromId, targetParent, atIndex)
       }
       return
     }
@@ -220,14 +298,21 @@ export function ProjectSidebar() {
       return
     }
 
-    // grp:<id>  →  grp:<id>  = REORDENA grupos (mesmo nível raiz)
+    // grp:<id> → grp:<id> reorders groups among the target's siblings.
     if (dragged.startsWith('grp:') && target.startsWith('grp:')) {
       const fromId = dragged.slice('grp:'.length)
       const toId = target.slice('grp:'.length)
       const all = useProjectsStore.getState().groups
-      const fi = all.findIndex((g) => g.id === fromId)
-      const ti = all.findIndex((g) => g.id === toId)
-      if (fi !== -1 && ti !== -1) actions.reorderGroups(fi, ti)
+      const from = all.find((group) => group.id === fromId)
+      const to = all.find((group) => group.id === toId)
+      if (!from || !to) return
+      const siblings = all.filter((group) => group.parentGroupId === to.parentGroupId)
+      const targetIndex = siblings.findIndex((group) => group.id === toId)
+      const sourceIndex = siblings.findIndex((group) => group.id === fromId)
+      const sameParent = from.parentGroupId === to.parentGroupId
+      const edge = indicator.edge === 'inside' ? 'before' : indicator.edge
+      const atIndex = sidebarInsertionIndex(sourceIndex, targetIndex, edge, sameParent)
+      actions.moveGroupToParent(fromId, to.parentGroupId, atIndex)
       return
     }
 
@@ -249,10 +334,12 @@ export function ProjectSidebar() {
           ? 'Terminal'
           : null
     : null
+  const draggingKind = sidebarDragKind(draggingId)
 
   const { projectMenu, groupMenu, terminalMenu } = createSidebarMenus({
     t,
     graphifyEnabled: preferences.enabledFeatures.graphify,
+    browserEnabled: preferences.enabledFeatures.browser,
     groups: groups.filter((group) => !group.archived),
     openPaneSets,
     actions: { ...actions, setPreferences },
@@ -321,6 +408,7 @@ export function ProjectSidebar() {
         const allDisabled = visible.length > 0 && visible.every((term) => term.disabled)
         actions.setProjectDisabled(p.id, !allDisabled)
       }}
+      dropEdge={dropIndicator?.id === `proj:${p.id}` ? dropIndicator.edge : null}
     />
   )
 
@@ -367,7 +455,9 @@ export function ProjectSidebar() {
         onToggle={() => actions.toggleGroupCollapsed(g.id)}
         onOpenAll={() => onGroupOpenAll(g)}
         onOpenOnly={() => onGroupOpenAll(g, 'only')}
-        showDropHint={Boolean(draggingId)}
+        dragKind={draggingKind}
+        reorderEdge={dropIndicator?.id === `grp:${g.id}` ? dropIndicator.edge : null}
+        dropInside={dropIndicator?.id === `group:${g.id}`}
       />
     )
   }
@@ -540,10 +630,16 @@ export function ProjectSidebar() {
       {sidebarTab === 'projects' ? (
         <DndContext
           sensors={sensors}
-          onDragCancel={() => setDraggingId(null)}
+          collisionDetection={sidebarCollisionDetection}
+          onDragStart={({ active }) => {
+            setDraggingId(String(active.id))
+            setDropIndicator(null)
+          }}
+          onDragMove={updateDropIndicator}
+          onDragOver={updateDropIndicator}
+          onDragCancel={clearDragState}
           onDragEnd={onDragEnd}
         >
-          <DragStateSync onActiveIdChange={setDraggingId} />
           <div className={styles.list}>
             {projects.length === 0 && groups.length === 0 ? (
               <div className={styles.emptyWrap}>
@@ -565,7 +661,8 @@ export function ProjectSidebar() {
                 <UngroupedSection
                   projects={ungroupedProjects}
                   renderProject={renderProject}
-                  showDropZone={Boolean(draggingId)}
+                  showDropZone={draggingKind === 'project' || draggingKind === 'group'}
+                  isDropTarget={dropIndicator?.id === 'group:ungrouped'}
                 />
               </>
             )}
@@ -624,38 +721,28 @@ export function ProjectSidebar() {
     </aside>
   )
 }
-function DragStateSync({ onActiveIdChange }: { onActiveIdChange: (id: string | null) => void }) {
-  const { active } = useDndContext()
-  const activeId = active ? String(active.id) : null
-
-  useEffect(() => {
-    onActiveIdChange(activeId)
-  }, [activeId, onActiveIdChange])
-
-  return null
-}
 
 function UngroupedSection({
   projects,
   renderProject,
   showDropZone = false,
+  isDropTarget = false,
 }: {
   projects: Project[]
   renderProject: (p: Project) => React.ReactNode
   showDropZone?: boolean
+  isDropTarget?: boolean
 }) {
   const t = useT()
-  const { setNodeRef, isOver } = useDroppable({ id: 'group:ungrouped' })
+  const { setNodeRef } = useDroppable({ id: 'group:ungrouped', disabled: !showDropZone })
   if (projects.length === 0 && !showDropZone) return null
   return (
     <div
       ref={setNodeRef}
-      className={`${styles.ungroupedSection} ${isOver ? styles.groupDropTarget : ''} ${showDropZone ? styles.dropAreaActive : ''}`}
+      className={`${styles.ungroupedSection} ${isDropTarget ? styles.dropInside : ''}`}
     >
-      {showDropZone ? (
-        <div className={styles.dropAreaLabel}>
-          {isOver ? t('ui.sidebar.dropHere') : t('ui.sidebar.ungroupedDropArea')}
-        </div>
+      {projects.length === 0 ? (
+        <div className={styles.ungroupedEmptyDrop}>{t('ui.sidebar.ungroupedDropArea')}</div>
       ) : null}
       <div className={styles.ungroupedBody}>{projects.map((p) => renderProject(p))}</div>
     </div>

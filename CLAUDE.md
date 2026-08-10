@@ -132,8 +132,12 @@ Sub-tab, PTY) está resumido no `CONTRIBUTING.md`.
 
 ## Language and comment rules
 
-- Write all new source comments, JSDoc, documentation, changelog entries, and user-facing strings in English.
-- Locale files are the only exception: translated UI text belongs in the matching locale file.
+- English is the default language for all versioned repository content, including source comments,
+  JSDoc, documentation, changelog entries, user-facing strings, commit messages, and pull requests.
+- Use another language only when the target file explicitly requires it. Locale files are the standard
+  exception: translated UI text belongs in the matching locale file.
+- When editing existing mixed-language content, translate the touched content to English when practical
+  instead of extending the language inconsistency.
 - Keep comments concise. Add them only when they explain non-obvious behavior, constraints, or decisions.
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.

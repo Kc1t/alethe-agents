@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+
+import { basename } from '../lib/paths'
 import type {
   AntigravityUsage,
   ClaudeUsage,
@@ -8,7 +10,6 @@ import type {
 } from '../lib/tauri'
 import type { AgentType } from '../lib/types'
 import type { UpdateInfo } from '../lib/updater'
-import { basename } from '../lib/paths'
 
 /** Ephemeral UI state. Persisted state belongs in `projectsStore`. */
 
@@ -19,6 +20,7 @@ type ModalKind =
   | 'editProject'
   | 'newTerminal'
   | 'addContent'
+  | 'addBrowser'
   | 'newSubTab'
   | 'preferences'
   | 'findJump'

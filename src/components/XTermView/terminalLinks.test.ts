@@ -18,6 +18,28 @@ describe('terminal links', () => {
     ])
   })
 
+  it('detects mixed-case protocols and bare deployment domains', () => {
+    const links = detectTerminalLinks(
+      'Deploy em verzel-elite-dev-painel.vercel.app (Https://verzel-elite-dev-painel.vercel.app).',
+    )
+
+    expect(links).toEqual([
+      expect.objectContaining({
+        text: 'verzel-elite-dev-painel.vercel.app',
+        target: 'https://verzel-elite-dev-painel.vercel.app',
+        kind: 'url',
+      }),
+      expect.objectContaining({
+        text: 'Https://verzel-elite-dev-painel.vercel.app',
+        target: 'https://verzel-elite-dev-painel.vercel.app',
+        kind: 'url',
+      }),
+    ])
+    expect(detectTerminalLinks('localhost:5173/dashboard')[0]).toEqual(
+      expect.objectContaining({ target: 'http://localhost:5173/dashboard', kind: 'url' }),
+    )
+  })
+
   it('reconstructs viewport-wrapped lines and creates a multiline range', () => {
     const values = [
       { value: 'go https:/', isWrapped: false },
@@ -68,5 +90,6 @@ describe('terminal links', () => {
     expect(detectTerminalLinks('/ Zambia / India')).toEqual([])
     expect(detectTerminalLinks('IP residencial/mobile + UA')).toEqual([])
     expect(detectTerminalLinks('foo/bar')).toEqual([])
+    expect(detectTerminalLinks('src/file.ts package.json user@example.com')).toEqual([])
   })
 })

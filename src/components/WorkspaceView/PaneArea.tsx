@@ -1,16 +1,17 @@
-import { Group, Panel, Separator } from 'react-resizable-panels'
 import { Ungroup } from 'lucide-react'
+import { Panel, Separator } from 'react-resizable-panels'
 
-import { useProjectsStore } from '../../stores/projectsStore'
-import { useT } from '../../lib/i18n'
 import { cellStyle, gridContainerStyle, reconcileGridLayout } from '../../lib/gridLayout'
+import { useT } from '../../lib/i18n'
 import type { GridLayout, LayoutMode, Terminal } from '../../lib/types'
-import { MarkdownPane } from '../MarkdownPane'
-import { TerminalPane } from '../TerminalPane'
-import { WebPane } from '../WebPane'
+import { useProjectsStore } from '../../stores/projectsStore'
 import { DiffPane } from '../DiffPane'
 import { GraphifyView } from '../GraphifyView'
+import { MarkdownPane } from '../MarkdownPane'
+import { TerminalPane } from '../TerminalPane'
 import { VideoPane } from '../VideoPane'
+import { WebPane } from '../WebPane'
+import { PersistentPanelGroup as Group } from './PersistentPanelGroup'
 import styles from './WorkspaceView.module.css'
 
 const EMPTY_PANE_GROUPS: { id: string; paneIds: string[] }[] = []
@@ -171,8 +172,14 @@ type LayoutProps = {
 
 function AutoLayout({ projectId, idPrefix, terminals }: LayoutProps) {
   if (terminals.length === 2) {
+    const panelIds = terminals.map((terminal) => `${idPrefix}-p-${terminal.id}`)
     return (
-      <Group orientation="horizontal" className={styles.fullSize}>
+      <Group
+        orientation="horizontal"
+        className={styles.fullSize}
+        persistenceId={`pane-${idPrefix}-auto-columns`}
+        panelIds={panelIds}
+      >
         <Panel id={`${idPrefix}-p-${terminals[0].id}`} minSize="15%">
           <Pane projectId={projectId} terminal={terminals[0]} />
         </Panel>
@@ -184,8 +191,14 @@ function AutoLayout({ projectId, idPrefix, terminals }: LayoutProps) {
     )
   }
   const rows = chunkInto(terminals, 2)
+  const rowPanelIds = rows.map((_, rowIndex) => `${idPrefix}-row-${rowIndex}`)
   return (
-    <Group orientation="vertical" className={styles.fullSize}>
+    <Group
+      orientation="vertical"
+      className={styles.fullSize}
+      persistenceId={`pane-${idPrefix}-auto-rows`}
+      panelIds={rowPanelIds}
+    >
       {rows.map((row, ri) => (
         <RowFragment
           key={ri}
@@ -219,7 +232,12 @@ function RowFragment({
         {terminals.length === 1 ? (
           <Pane projectId={projectId} terminal={terminals[0]} />
         ) : (
-          <Group orientation="horizontal" className={styles.fullSize}>
+          <Group
+            orientation="horizontal"
+            className={styles.fullSize}
+            persistenceId={`pane-${idPrefix}-columns`}
+            panelIds={terminals.map((terminal) => `${idPrefix}-p-${terminal.id}`)}
+          >
             {terminals.map((t, i) => (
               <FragmentCol
                 key={t.id}
@@ -281,14 +299,26 @@ function FragmentRow({
 
 function SpotlightLayout({ projectId, idPrefix, terminals }: LayoutProps) {
   const [main, ...rest] = terminals
+  const mainPanelId = `${idPrefix}-spot-main-${main.id}`
+  const stackPanelId = `${idPrefix}-spot-stack`
   return (
-    <Group orientation="horizontal" className={styles.fullSize}>
-      <Panel id={`${idPrefix}-spot-main-${main.id}`} defaultSize="65%" minSize="25%">
+    <Group
+      orientation="horizontal"
+      className={styles.fullSize}
+      persistenceId={`pane-${idPrefix}-spotlight`}
+      panelIds={[mainPanelId, stackPanelId]}
+    >
+      <Panel id={mainPanelId} defaultSize="65%" minSize="25%">
         <Pane projectId={projectId} terminal={main} />
       </Panel>
       <Separator className={styles.sepH} />
-      <Panel id={`${idPrefix}-spot-stack`} defaultSize="35%" minSize="15%">
-        <Group orientation="vertical" className={styles.fullSize}>
+      <Panel id={stackPanelId} defaultSize="35%" minSize="15%">
+        <Group
+          orientation="vertical"
+          className={styles.fullSize}
+          persistenceId={`pane-${idPrefix}-spotlight-stack`}
+          panelIds={rest.map((terminal) => `${idPrefix}-p-${terminal.id}`)}
+        >
           {rest.map((t, i) => (
             <FragmentRow
               key={t.id}
@@ -306,10 +336,22 @@ function SpotlightLayout({ projectId, idPrefix, terminals }: LayoutProps) {
 
 function SidebarLayout({ projectId, idPrefix, terminals }: LayoutProps) {
   const [main, ...rest] = terminals
+  const listPanelId = `${idPrefix}-side-list`
+  const mainPanelId = `${idPrefix}-side-main-${main.id}`
   return (
-    <Group orientation="horizontal" className={styles.fullSize}>
-      <Panel id={`${idPrefix}-side-list`} defaultSize="22%" minSize="15%">
-        <Group orientation="vertical" className={styles.fullSize}>
+    <Group
+      orientation="horizontal"
+      className={styles.fullSize}
+      persistenceId={`pane-${idPrefix}-sidebar`}
+      panelIds={[listPanelId, mainPanelId]}
+    >
+      <Panel id={listPanelId} defaultSize="22%" minSize="15%">
+        <Group
+          orientation="vertical"
+          className={styles.fullSize}
+          persistenceId={`pane-${idPrefix}-sidebar-list`}
+          panelIds={rest.map((terminal) => `${idPrefix}-p-${terminal.id}`)}
+        >
           {rest.map((t, i) => (
             <FragmentRow
               key={t.id}
@@ -322,7 +364,7 @@ function SidebarLayout({ projectId, idPrefix, terminals }: LayoutProps) {
         </Group>
       </Panel>
       <Separator className={styles.sepH} />
-      <Panel id={`${idPrefix}-side-main-${main.id}`} defaultSize="78%" minSize="40%">
+      <Panel id={mainPanelId} defaultSize="78%" minSize="40%">
         <Pane projectId={projectId} terminal={main} />
       </Panel>
     </Group>

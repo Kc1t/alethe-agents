@@ -5,6 +5,7 @@ export type FileLinkKind = 'markdown' | 'image' | 'video' | 'text'
 
 export type DetectedTerminalLink = {
   text: string
+  target: string
   index: number
   displayLength: number
   kind: 'url' | 'path'
@@ -27,7 +28,11 @@ export type LogicalTerminalLine = {
   startLine: number
 }
 
-const LINK_START_PATTERN = /https?:\/\/|(?:[A-Za-z]:\\|\\\\)|(?<![\w])(?:~\/|\/)(?=[A-Za-z0-9_.~])/g
+const LINK_START_PATTERN =
+  /https?:\/\/|(?<![@\w.-])(?:localhost(?::\d{1,5})?|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:app|ai|biz|br|ca|cloud|co|com|de|dev|edu|fr|gg|gov|info|io|jp|live|me|net|online|org|page|sh|site|tech|tools|tv|uk|xyz))(?::\d{1,5})?(?:\/[^\s<>"'`|]*)?|(?:[A-Za-z]:\\|\\\\)|(?<![\w])(?:~\/|\/)(?=[A-Za-z0-9_.~])/gi
+const URL_PROTOCOL_PATTERN = /^https?:\/\//i
+const BARE_URL_PATTERN =
+  /^(?:localhost(?::\d{1,5})?|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:app|ai|biz|br|ca|cloud|co|com|de|dev|edu|fr|gg|gov|info|io|jp|live|me|net|online|org|page|sh|site|tech|tools|tv|uk|xyz))(?::\d{1,5})?(?:\/[^\s<>"'`|]*)?/i
 /** Sufixo `:linha` ou `:linha:coluna` que agents anexam a paths (ex.: `foo.ts:42:10`). */
 const LINE_COL_SUFFIX = /:\d+(?::\d+)?$/
 const MARKDOWN_EXT_PATTERN = /\.(md|markdown|mdx)$/i
@@ -69,6 +74,13 @@ function isLikelyAbsolutePath(text: string): boolean {
   return withoutRoot.includes('/') || FILE_EXT_PATTERN.test(clean)
 }
 
+function normalizeUrlTarget(text: string): string {
+  if (URL_PROTOCOL_PATTERN.test(text)) {
+    return text.replace(URL_PROTOCOL_PATTERN, (protocol) => protocol.toLowerCase())
+  }
+  return `${/^localhost(?::|\/|$)/i.test(text) ? 'http' : 'https'}://${text}`
+}
+
 function findLinkEnd(line: string, start: number, isUrl: boolean): number {
   const opener = line[start - 1]
   const closer = opener === '(' ? ')' : opener === '[' ? ']' : undefined
@@ -108,7 +120,7 @@ export function detectTerminalLinks(line: string): DetectedTerminalLink[] {
     const index = match.index ?? 0
     if (links.some((link) => index < link.index + link.displayLength)) continue
 
-    const isUrl = match[0].startsWith('http://') || match[0].startsWith('https://')
+    const isUrl = URL_PROTOCOL_PATTERN.test(match[0]) || BARE_URL_PATTERN.test(match[0])
     const raw = line.slice(index, findLinkEnd(line, index, isUrl))
     const displayText = raw.replace(LINK_TRAILING_PUNCTUATION, '')
     if (!displayText) continue
@@ -118,6 +130,7 @@ export function detectTerminalLinks(line: string): DetectedTerminalLink[] {
     if (kind === 'path' && !isLikelyAbsolutePath(text)) continue
     links.push({
       text,
+      target: kind === 'url' ? normalizeUrlTarget(text) : text,
       index,
       displayLength: displayText.length,
       kind,

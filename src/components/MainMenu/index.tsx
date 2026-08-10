@@ -1,10 +1,11 @@
 import {
   Download,
-  Network,
   FileArchive,
   FileText,
   FolderOpen,
+  Globe2,
   Layers,
+  Network,
   RefreshCw,
   ScrollText,
   Settings,
@@ -17,10 +18,9 @@ import { useRef } from 'react'
 
 import { useOnClickOutside } from '../../hooks/useOnClickOutside'
 import { useOnEscape } from '../../hooks/useOnEscape'
-
-import { useT } from '../../lib/i18n'
-import { AGENT_SANDBOX_ENABLED } from '../../lib/featureFlags'
 import { pickFile, saveFile } from '../../lib/dialog'
+import { AGENT_SANDBOX_ENABLED } from '../../lib/featureFlags'
+import { useT } from '../../lib/i18n'
 import {
   exportBackup,
   exportLogs,
@@ -42,6 +42,8 @@ export function MainMenu() {
   const setActiveView = useUiStore((s) => s.setActiveView)
   const openModal = useUiStore((s) => s.openModal_)
   const flat = useProjectsStore((s) => s.preferences.workspaceFlat)
+  const browserEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.browser)
+  const activeProjectId = useProjectsStore((s) => s.activeProjectId)
   const setFlat = useProjectsStore((s) => s.setWorkspaceFlat)
 
   const ref = useRef<HTMLDivElement>(null)
@@ -91,6 +93,18 @@ export function MainMenu() {
       >
         <Settings size={14} /> <span>{t('menu.preferences')}</span>
       </button>
+      {browserEnabled && activeProjectId ? (
+        <button
+          type="button"
+          className={styles.item}
+          onClick={() => {
+            openModal('addBrowser', { projectId: activeProjectId })
+            closeMainMenu()
+          }}
+        >
+          <Globe2 size={14} /> <span>{t('menu.addBrowser')}</span>
+        </button>
+      ) : null}
       {AGENT_SANDBOX_ENABLED ? (
         <button
           type="button"

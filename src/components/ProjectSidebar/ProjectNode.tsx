@@ -1,15 +1,16 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { FolderOpen, MoreHorizontal, Network, Pause, Plus } from 'lucide-react'
+import { FolderOpen, MoreHorizontal, Network, Pause, TerminalSquare } from 'lucide-react'
 
 import { useT } from '../../lib/i18n'
+import { type SidebarDropEdge } from '../../lib/sidebarDrag'
 import { type Project, type Terminal } from '../../lib/types'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { DotmCircular2 } from '../ui/dotm-circular-2'
+import styles from './ProjectSidebar.module.css'
 import { Monogram } from './sidebarPrimitives'
 import { TerminalNode } from './TerminalNode'
 import { useProjectBranch } from './useProjectBranch'
-import styles from './ProjectSidebar.module.css'
 
 /** cwd representativo do projeto = primeiro terminal com cwd (aba ativa preferida). */
 function projectRepresentativeCwd(project: Project): string | undefined {
@@ -34,6 +35,7 @@ export type ProjectNodeProps = {
   onAddTerminal: () => void
   onQuickOpen: () => void
   onToggleDisabled: () => void
+  dropEdge: SidebarDropEdge | null
 }
 
 export function ProjectNode({
@@ -49,15 +51,24 @@ export function ProjectNode({
   onAddTerminal,
   onQuickOpen,
   onToggleDisabled,
+  dropEdge,
 }: ProjectNodeProps) {
   const t = useT()
-  const { setNodeRef: dropRef, isOver } = useDroppable({ id: `proj:${project.id}` })
+  const { setNodeRef: dropRef } = useDroppable({ id: `proj:${project.id}` })
   const draggable = useDraggable({ id: `proj:${project.id}` })
   const isDragging = draggable.isDragging
-  const setRefs = (node: HTMLDivElement | null) => {
+  const setInactiveRefs = (node: HTMLDivElement | null) => {
     dropRef(node)
     draggable.setNodeRef(node)
   }
+  const dropClass =
+    dropEdge === 'before'
+      ? styles.dropBefore
+      : dropEdge === 'after'
+        ? styles.dropAfter
+        : dropEdge === 'inside'
+          ? styles.dropInside
+          : ''
 
   // Terminal "viewer" da gaveta GSD Sync: só leitura (sem como digitar nele),
   // não faz sentido misturado com os terminais normais/interativos aqui —
@@ -87,8 +98,8 @@ export function ProjectNode({
   if (isActive) {
     return (
       <div
-        ref={setRefs}
-        className={`${styles.activeCard} ${isOver ? styles.projectDropTarget : ''} ${isDragging ? styles.dragSource : ''} ${
+        ref={draggable.setNodeRef}
+        className={`${styles.activeCard} ${isDragging ? styles.dragSource : ''} ${
           allDisabled ? styles.projectDisabled : ''
         }`}
         onContextMenu={(e) => {
@@ -96,12 +107,18 @@ export function ProjectNode({
           e.stopPropagation()
           onProjectMenu(e)
         }}
-        {...draggable.attributes}
-        {...draggable.listeners}
       >
-        <div className={styles.activeCardHeader} onClick={onToggleCollapsed}>
+        <div
+          ref={dropRef}
+          className={`${styles.activeCardHeader} ${dropClass}`}
+          onClick={onToggleCollapsed}
+          {...draggable.attributes}
+          {...draggable.listeners}
+        >
           <Monogram name={project.name} iconUrl={project.iconUrl} color={project.color} size={20} />
-          {project.mode === 'agentSandbox' ? <Network size={13} className={styles.agentProjectIcon} /> : null}
+          {project.mode === 'agentSandbox' ? (
+            <Network size={13} className={styles.agentProjectIcon} />
+          ) : null}
           <span className={styles.activeCardTitle} title={project.name}>
             {project.name}
           </span>
@@ -116,17 +133,6 @@ export function ProjectNode({
             title={t('ui.workspace.openIndividually')}
           >
             <FolderOpen size={12} />
-          </button>
-          <button
-            type="button"
-            className={styles.iconBtn}
-            onClick={(e) => {
-              e.stopPropagation()
-              onAddTerminal()
-            }}
-            title={t('ui.sidebar.newTerminal')}
-          >
-            <Plus size={12} />
           </button>
           <button
             type="button"
@@ -158,15 +164,27 @@ export function ProjectNode({
             ))}
           </div>
         ) : null}
+
+        <button
+          type="button"
+          className={styles.activeCardAddTerminal}
+          onClick={(event) => {
+            event.stopPropagation()
+            onAddTerminal()
+          }}
+        >
+          <TerminalSquare size={13} />
+          <span>{t('ui.sidebar.newTerminal')}</span>
+        </button>
       </div>
     )
   }
 
   return (
     <div
-      ref={setRefs}
+      ref={setInactiveRefs}
       className={`${styles.inactiveProjectNode} ${isDragging ? styles.dragSource : ''} ${allDisabled ? styles.projectDisabled : ''} ${
-        isOver ? styles.projectDropTarget : ''
+        dropClass
       }`}
       onClick={onActivate}
       onContextMenu={(e) => {
@@ -205,7 +223,9 @@ export function ProjectNode({
         <span className={styles.projectName} title={project.name}>
           {project.name}
         </span>
-        {project.mode === 'agentSandbox' ? <span className={styles.agentProjectLabel}>Agent Sandbox</span> : null}
+        {project.mode === 'agentSandbox' ? (
+          <span className={styles.agentProjectLabel}>Agent Sandbox</span>
+        ) : null}
         {branch ? (
           <span className={styles.inactiveBranch} title={branch}>
             {branch}

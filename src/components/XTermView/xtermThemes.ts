@@ -4,6 +4,7 @@ import type { FileLinkKind } from './terminalLinks'
 /** Estado do menu de ações de link, ancorado no ponto do clique. */
 export type LinkActionState = {
   text: string
+  target: string
   kind: 'url' | 'path'
   fileKind?: FileLinkKind
   x: number

@@ -1,0 +1,95 @@
+.privateNotice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 12px;
+  color: var(--status-online);
+  background: color-mix(in srgb, var(--status-online) 8%, var(--bg-sunken));
+  border: 1px solid color-mix(in srgb, var(--status-online) 32%, var(--border));
+  border-radius: var(--radius-md);
+}
+
+.privateNotice svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.privateNotice div {
+  display: grid;
+  gap: 3px;
+}
+
+.privateNotice strong {
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.privateNotice span {
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.settingsGrid {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.65fr) minmax(220px, 1.35fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.toggleCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+  margin-bottom: 14px;
+  padding: 10px;
+  color: var(--fg);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.toggleCard input {
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+
+.toggleCard span {
+  display: grid;
+  gap: 3px;
+}
+
+.toggleCard strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.toggleCard small {
+  color: var(--fg-muted);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.destination {
+  margin: 0;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+
+.error {
+  margin: 0;
+  color: var(--status-offline);
+  font-size: 11px;
+}
+
+@media (max-width: 560px) {
+  .settingsGrid {
+    grid-template-columns: 1fr;
+  }
+}

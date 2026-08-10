@@ -2,9 +2,10 @@ import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { ChevronDown, ChevronRight, Pause, Plus } from 'lucide-react'
 
 import { useT } from '../../lib/i18n'
+import { type SidebarDragKind, type SidebarDropEdge } from '../../lib/sidebarDrag'
 import { type Group, type Project } from '../../lib/types'
-import { GroupBadge } from './sidebarPrimitives'
 import styles from './ProjectSidebar.module.css'
+import { GroupBadge } from './sidebarPrimitives'
 
 /** Coleta IDs de todos os grupos descendantes de `rootId` (recursivo). */
 export function collectDescendants(rootId: string, allGroups: Group[]): Set<string> {
@@ -33,7 +34,9 @@ export type GroupNodeProps = {
   onToggle: () => void
   onOpenAll: () => void
   onOpenOnly: () => void
-  showDropHint?: boolean
+  dragKind: SidebarDragKind | null
+  reorderEdge: SidebarDropEdge | null
+  dropInside: boolean
 }
 
 export function GroupNode({
@@ -47,17 +50,27 @@ export function GroupNode({
   onToggle,
   onOpenAll,
   onOpenOnly,
-  showDropHint = false,
+  dragKind,
+  reorderEdge,
+  dropInside,
 }: GroupNodeProps) {
   const t = useT()
-  const dropZone = useDroppable({ id: `group:${group.id}` })
+  const headerDropZone = useDroppable({
+    id: dragKind === 'group' ? `grp:${group.id}` : `group:${group.id}`,
+    disabled: dragKind !== 'group' && dragKind !== 'project',
+  })
+  const bodyDropZone = useDroppable({
+    id: dragKind === 'group' ? `group:${group.id}` : `group-body:${group.id}`,
+    disabled: dragKind !== 'group',
+  })
   const draggable = useDraggable({ id: `grp:${group.id}` })
   const isDragging = draggable.isDragging
-  const setRefs = (node: HTMLDivElement | null) => {
-    dropZone.setNodeRef(node)
+  const setCollapsedRefs = (node: HTMLDivElement | null) => {
+    headerDropZone.setNodeRef(node)
     draggable.setNodeRef(node)
   }
-  const isOver = dropZone.isOver
+  const reorderClass =
+    reorderEdge === 'before' ? styles.dropBefore : reorderEdge === 'after' ? styles.dropAfter : ''
 
   // Click no nome do grupo (ou bullet) → onOpenAll. Não dispara em chevron/+.
   const onTagClick = (e: React.MouseEvent) => {
@@ -69,10 +82,10 @@ export function GroupNode({
   if (group.collapsed) {
     return (
       <div
-        ref={setRefs}
+        ref={setCollapsedRefs}
         {...draggable.attributes}
         {...draggable.listeners}
-        className={`${styles.groupCollapsed} ${isOver ? styles.groupDropTarget : ''} ${isDragging ? styles.dragSource : ''}`}
+        className={`${styles.groupCollapsed} ${reorderClass} ${dropInside ? styles.dropInside : ''} ${isDragging ? styles.dragSource : ''}`}
         onClick={() => {
           onToggle()
           onOpenAll()
@@ -102,8 +115,8 @@ export function GroupNode({
 
   return (
     <div
-      ref={setRefs}
-      className={`${styles.groupBox} ${isOver ? styles.groupDropTarget : ''} ${isDragging ? styles.dragSource : ''} ${group.suspended ? styles.groupSuspended : ''}`}
+      ref={draggable.setNodeRef}
+      className={`${styles.groupBox} ${isDragging ? styles.dragSource : ''} ${group.suspended ? styles.groupSuspended : ''}`}
       onContextMenu={(e) => {
         e.preventDefault()
         onMenu(e)
@@ -111,7 +124,8 @@ export function GroupNode({
       style={{ ['--group-color' as string]: group.color }}
     >
       <div
-        className={styles.groupTag}
+        ref={headerDropZone.setNodeRef}
+        className={`${styles.groupTag} ${reorderClass} ${dragKind === 'project' && dropInside ? styles.dropInside : ''}`}
         onClick={onTagClick}
         onDoubleClick={(e) => {
           e.stopPropagation()
@@ -152,12 +166,10 @@ export function GroupNode({
           <Plus size={11} />
         </button>
       </div>
-      <div className={styles.groupBody}>
-        {showDropHint ? (
-          <div className={styles.groupDropHint}>
-            {isOver ? t('ui.sidebar.dropIntoGroup') : t('ui.sidebar.moveIntoGroup')}
-          </div>
-        ) : null}
+      <div
+        ref={bodyDropZone.setNodeRef}
+        className={`${styles.groupBody} ${dragKind === 'group' && dropInside ? styles.dropInside : ''}`}
+      >
         {childGroups.map((cg) => renderChildGroup(cg))}
         {projects.length === 0 && childGroups.length === 0 ? (
           <div className={styles.groupEmpty}>{t('ui.sidebar.groupEmpty')}</div>

@@ -1,17 +1,25 @@
-import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { FolderOpen, FolderPlus, TerminalSquare } from 'lucide-react'
-import { Group as PanelGroup, Panel, Separator } from 'react-resizable-panels'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Panel, Separator } from 'react-resizable-panels'
 
+import { pickDirectory } from '../../lib/dialog'
+import { cellStyle, gridContainerStyle, reconcileGridLayout } from '../../lib/gridLayout'
+import { useT } from '../../lib/i18n'
+import type {
+  AgentType,
+  GridLayout,
+  Group,
+  Project,
+  Terminal,
+  WorkspaceContainer,
+} from '../../lib/types'
 import { selectActiveProject, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { pickDirectory } from '../../lib/dialog'
-import { useT } from '../../lib/i18n'
-import { cellStyle, gridContainerStyle, reconcileGridLayout } from '../../lib/gridLayout'
-import type { AgentType, GridLayout, Group, Project, Terminal, WorkspaceContainer } from '../../lib/types'
-import { AgentIcon } from '../icons/AgentIcons'
 import { EmptyState } from '../EmptyState/EmptyState'
+import { AgentIcon } from '../icons/AgentIcons'
 import { PaneArea } from './PaneArea'
+import { PersistentPanelGroup as PanelGroup } from './PersistentPanelGroup'
 import { ProjectContainer } from './ProjectContainer'
 import styles from './WorkspaceView.module.css'
 
@@ -46,7 +54,9 @@ export function WorkspaceView() {
   const setWorkspaceGridLayout = useProjectsStore((s) => s.setWorkspaceGridLayout)
   const setGroupGridLayout = useProjectsStore((s) => s.setGroupGridLayout)
   const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
-  const activeProject = useProjectsStore((state) => selectActiveProject(state) ?? state.projects[0] ?? null)
+  const activeProject = useProjectsStore(
+    (state) => selectActiveProject(state) ?? state.projects[0] ?? null,
+  )
   const recentProjectIds = useProjectsStore((s) => s.workspace.recentProjectIds)
   const openProjectWorkspace = useProjectsStore((s) => s.openProjectWorkspace)
   const openModal = useUiStore((s) => s.openModal_)
@@ -374,7 +384,12 @@ function ContainerAutoGrid({
 
   if (containers.length === 2) {
     return (
-      <PanelGroup orientation="horizontal" className={styles.fullSize}>
+      <PanelGroup
+        orientation="horizontal"
+        className={styles.fullSize}
+        persistenceId="workspace-container-columns"
+        panelIds={containers.map((container) => `outer-${container.projectId}`)}
+      >
         {containers.map((c, i) => {
           const project = projectsById.get(c.projectId)
           if (!project) return null
@@ -405,8 +420,14 @@ function ContainerAutoGrid({
   for (let i = 0; i < containers.length; i += 2) {
     rows.push(containers.slice(i, i + 2))
   }
+  const rowPanelIds = rows.map((_, rowIndex) => `outer-row-${rowIndex}`)
   return (
-    <PanelGroup orientation="vertical" className={styles.fullSize}>
+    <PanelGroup
+      orientation="vertical"
+      className={styles.fullSize}
+      persistenceId="workspace-container-rows"
+      panelIds={rowPanelIds}
+    >
       {rows.map((row, ri) => {
         const isLastRow = ri === rows.length - 1
         const rowId = `outer-row-${ri}`
@@ -444,7 +465,12 @@ function FragmentRowOuter({
         {row.length === 1 ? (
           <SingleContainer container={row[0]} projectsById={projectsById} groupsById={groupsById} />
         ) : (
-          <PanelGroup orientation="horizontal" className={styles.fullSize}>
+          <PanelGroup
+            orientation="horizontal"
+            className={styles.fullSize}
+            persistenceId={`workspace-container-row-${rowId}`}
+            panelIds={row.map((container) => `outer-${container.projectId}`)}
+          >
             {row.map((c, i) => {
               const project = projectsById.get(c.projectId)
               if (!project) return null
@@ -598,7 +624,10 @@ function NoWorkspace({
     const normalized = cwd.replace(/[\\/]+$/, '')
     const name = normalized.split(/[\\/]/).filter(Boolean).pop() || normalized
     const existingProjectFolder = project?.defaultCwd || project?.terminals[0]?.cwd
-    if (project && existingProjectFolder?.replace(/[\\/]+$/, '').toLowerCase() === normalized.toLowerCase()) {
+    if (
+      project &&
+      existingProjectFolder?.replace(/[\\/]+$/, '').toLowerCase() === normalized.toLowerCase()
+    ) {
       const terminal = createTerminal(project.id, {
         name: quickAgent[0].toUpperCase() + quickAgent.slice(1),
         cwd,
@@ -621,7 +650,9 @@ function NoWorkspace({
       <div className={styles.emptyShell}>
         <div className={styles.emptyProjectCard}>
           <div className={styles.emptyProjectIntro}>
-            <div className={styles.emptyProjectIcon}><FolderPlus size={22} /></div>
+            <div className={styles.emptyProjectIcon}>
+              <FolderPlus size={22} />
+            </div>
             <strong>{t('ws.emptyProjectTitle')}</strong>
             <span>{t('ws.emptyProjectDesc')}</span>
           </div>

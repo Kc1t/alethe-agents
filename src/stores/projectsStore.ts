@@ -1,10 +1,20 @@
-import { create } from 'zustand'
 import { nanoid } from 'nanoid'
+import { create } from 'zustand'
 
+import { setStorageNamespace } from '../lib/storageNamespace'
 import {
-  EMPTY_PROJECTS_FILE,
+  listProfiles,
+  loadProjectsFile,
+  type ProfileMeta,
+  type ProfilesState,
+  saveProjectsFile,
+} from '../lib/tauri'
+import { getProjectDefaultCwd, getProjectRepoRoot } from '../lib/terminalFactory'
+import {
   type AgentRuntimeProfile,
   type AgentType,
+  type BrowserPaneOptions,
+  EMPTY_PROJECTS_FILE,
   type GridLayout,
   type Group,
   type LayoutMode,
@@ -18,28 +28,19 @@ import {
   type Theme,
   type TodoItem,
   type WorkspaceContainer,
-  type WorkspaceTab,
   type WorkspaceRecentTab,
+  type WorkspaceTab,
   type WorkspaceViewSnapshot,
 } from '../lib/types'
 import {
-  MAX_WORKSPACE_TABS,
   captureWorkspaceSnapshot,
   cloneWorkspaceSnapshot,
   compositionLabel,
+  MAX_WORKSPACE_TABS,
   pushWorkspaceHistory,
   replaceCurrentHistorySnapshot,
   sanitizeWorkspaceSnapshot,
 } from '../lib/workspaceNavigation'
-import {
-  listProfiles,
-  loadProjectsFile,
-  saveProjectsFile,
-  type ProfileMeta,
-  type ProfilesState,
-} from '../lib/tauri'
-import { setStorageNamespace } from '../lib/storageNamespace'
-import { getProjectDefaultCwd, getProjectRepoRoot } from '../lib/terminalFactory'
 import { migrate } from './projectsStore.migrations'
 import { createGroupsSlice, createProjectsSlice } from './projectsStore.projectSlices'
 import {
@@ -70,7 +71,7 @@ export type ProjectsState = ProjectsFile & {
 
   // groups
   createGroup: (name: string, color?: string, parentGroupId?: string | null) => Group
-  moveGroupToParent: (groupId: string, parentGroupId: string | null) => void
+  moveGroupToParent: (groupId: string, parentGroupId: string | null, atIndex?: number) => void
   renameGroup: (id: string, name: string) => void
   setGroupColor: (id: string, color: string) => void
   setGroupIconUrl: (id: string, iconUrl: string | undefined) => void
@@ -104,7 +105,10 @@ export type ProjectsState = ProjectsFile & {
   unarchiveProject: (id: string) => void
   setProjectColor: (id: string, color: string | undefined) => void
   setProjectIconUrl: (id: string, iconUrl: string | undefined) => void
-  addMarkdownComment: (projectId: string, comment: Omit<import('../lib/types').MarkdownComment, 'id' | 'createdAt'>) => void
+  addMarkdownComment: (
+    projectId: string,
+    comment: Omit<import('../lib/types').MarkdownComment, 'id' | 'createdAt'>,
+  ) => void
   removeMarkdownComment: (projectId: string, commentId: string) => void
   setWorktreeMode: (id: string, mode: 'gitWorktree' | 'localCopy') => void
   setValidationCommands: (id: string, commands: string[]) => void
@@ -225,7 +229,7 @@ export type ProjectsState = ProjectsFile & {
     args: { filePath: string; repoRoot: string; staged: boolean; name?: string },
   ) => Terminal
   /** Cria um pane web persistente e adiciona ao grid do projeto. */
-  createWebPane: (projectId: string, args: { url: string; name?: string }) => Terminal
+  createWebPane: (projectId: string, args: BrowserPaneOptions) => Terminal
   createGraphifyPane: (projectId: string, cwd: string) => Terminal
   renameTerminal: (projectId: string, terminalId: string, name: string) => void
   /** Backfill: liga `Terminal.gsdSyncViewer` num terminal já existente (criado

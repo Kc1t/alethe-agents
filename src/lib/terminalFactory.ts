@@ -6,11 +6,12 @@
 
 import { nanoid } from 'nanoid'
 
-import { basename } from './paths'
 import { MAX_RECENT_PROJECT_TABS } from '../stores/projectsStore.constants'
+import { basename } from './paths'
 import type {
   AgentRuntimeProfile,
   AgentType,
+  BrowserPaneOptions,
   LayoutMode,
   Project,
   SubTab,
@@ -145,7 +146,7 @@ export function makeDiffPane(args: {
   }
 }
 
-export function makeWebPane(args: { url: string; name?: string }): Terminal {
+export function makeWebPane(args: BrowserPaneOptions): Terminal {
   const url = args.url.trim()
   let host = url
   try {
@@ -164,6 +165,10 @@ export function makeWebPane(args: { url: string; name?: string }): Terminal {
     tabs: [],
     kind: 'web',
     url,
+    browserConfig: {
+      javascriptEnabled: args.javascriptEnabled ?? true,
+      zoom: args.zoom ?? 1,
+    },
   }
 }
 

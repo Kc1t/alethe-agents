@@ -5,16 +5,20 @@ import { nanoid } from 'nanoid'
 import { preparePtyRuntimeLaunch } from '../lib/agentRuntimeAdapter'
 import { getLocale, translate } from '../lib/i18n'
 import { buildAgentLaunch } from '../lib/sessionLaunch'
-import { clearTerminalPtyIds, collectTerminalPtyIds, getProjectRepoRoot } from '../lib/terminalFactory'
+import {
+  clearTerminalPtyIds,
+  collectTerminalPtyIds,
+  getProjectRepoRoot,
+} from '../lib/terminalFactory'
 import { cleanupPtys } from '../lib/terminalLifecycle'
-import { agentCliCommand, GROUP_COLORS } from '../lib/types'
 import type { Group, Project } from '../lib/types'
+import { agentCliCommand, GROUP_COLORS } from '../lib/types'
 import { sanitizeWorkspaceSnapshot } from '../lib/workspaceNavigation'
+import type { ProjectsState } from './projectsStore'
+import { collectGroupProjectIds } from './projectsStore.migrations'
+import type { SliceCtx } from './projectsStore.slices'
 import { useTerminalsStore } from './terminalsStore'
 import { useUiStore } from './uiStore'
-import { collectGroupProjectIds } from './projectsStore.migrations'
-import type { ProjectsState } from './projectsStore'
-import type { SliceCtx } from './projectsStore.slices'
 
 function t(key: Parameters<typeof translate>[1], params?: Record<string, string | number>) {
   return translate(getLocale(), key, params)
@@ -59,20 +63,38 @@ export function createGroupsSlice({ update }: SliceCtx): GroupsSlice {
       return group
     },
 
-    moveGroupToParent: (groupId, parentGroupId) =>
+    moveGroupToParent: (groupId, parentGroupId, atIndex) =>
       update((state) => {
         if (groupId === parentGroupId) return
+        const source = state.groups.find((group) => group.id === groupId)
+        if (!source) return
+        if (source.parentGroupId === parentGroupId && atIndex === undefined) return
+
         // Prevent cycles: a group cannot become its descendant's child.
         if (parentGroupId !== null) {
           let cur: string | null = parentGroupId
           while (cur !== null) {
-            if (cur === groupId) return // ciclo detectado
+            if (cur === groupId) return
             const next: Group | undefined = state.groups.find((g) => g.id === cur)
             cur = next?.parentGroupId ?? null
           }
         }
+
+        const remaining = state.groups.filter((group) => group.id !== groupId)
+        const siblings = remaining.filter((group) => group.parentGroupId === parentGroupId)
+        const siblingIndex = Math.max(0, Math.min(atIndex ?? siblings.length, siblings.length))
+        const nextSibling = siblings[siblingIndex]
+        const previousSibling = siblings[siblingIndex - 1]
+        const globalIndex = nextSibling
+          ? remaining.findIndex((group) => group.id === nextSibling.id)
+          : previousSibling
+            ? remaining.findIndex((group) => group.id === previousSibling.id) + 1
+            : remaining.length
+
+        const nextGroups = [...remaining]
+        nextGroups.splice(globalIndex, 0, { ...source, parentGroupId })
         return {
-          groups: state.groups.map((g) => (g.id === groupId ? { ...g, parentGroupId } : g)),
+          groups: nextGroups,
         }
       }),
 
@@ -168,7 +190,7 @@ export function createGroupsSlice({ update }: SliceCtx): GroupsSlice {
         const group = state.groups.find((g) => g.id === id)
         if (!group) return
         if (mode === 'cascade') {
-        // Collect all descendants with a breadth-first traversal.
+          // Collect all descendants with a breadth-first traversal.
           const groupQueue = [id]
           const groupsToRemove = new Set<string>()
           while (groupQueue.length > 0) {
@@ -365,7 +387,16 @@ type ProjectsSlice = Pick<
 
 export function createProjectsSlice({ set, get, update, updateProject }: SliceCtx): ProjectsSlice {
   return {
-    createProject: ({ name, mode = 'standard', color, iconUrl, groupId = null, defaultCwd, githubUrl, firstBootPending }) => {
+    createProject: ({
+      name,
+      mode = 'standard',
+      color,
+      iconUrl,
+      groupId = null,
+      defaultCwd,
+      githubUrl,
+      firstBootPending,
+    }) => {
       const project: Project = {
         id: nanoid(),
         name,
@@ -456,7 +487,8 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
     // chamada só pelo botão dedicado no EditProjectModal.
     setAutoWorktree: (id, autoWorktree) => updateProject(id, (p) => ({ ...p, autoWorktree })),
 
-    setMergePostAction: (id, mergePostAction) => updateProject(id, (p) => ({ ...p, mergePostAction })),
+    setMergePostAction: (id, mergePostAction) =>
+      updateProject(id, (p) => ({ ...p, mergePostAction })),
 
     migrateProjectTerminalsToWorktrees: async (projectId, gsdWatcherEnabledOverride) => {
       if (migratingWorktreeProjectIds.has(projectId)) return // já em andamento — ignora clique duplicado
@@ -473,9 +505,8 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
 
       migratingWorktreeProjectIds.add(projectId)
       try {
-        const { worktreeProvision, restartPty, gitStatus, gsdOpenCodePluginWrite } = await import(
-          '../lib/tauri'
-        )
+        const { worktreeProvision, restartPty, gitStatus, gsdOpenCodePluginWrite } =
+          await import('../lib/tauri')
 
         // git worktree add faz checkout do HEAD — qualquer mudança não commitada
         // no repo compartilhado não é copiada pra worktree nova. Preferimos
@@ -516,7 +547,11 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
               /[^A-Za-z0-9_-]/g,
               'x',
             )
-            const info = await worktreeProvision(repo, agentId, project.worktreeMode ?? 'gitWorktree')
+            const info = await worktreeProvision(
+              repo,
+              agentId,
+              project.worktreeMode ?? 'gitWorktree',
+            )
 
             // Terminal migrado com watcher GSD ligado e rodando OpenCode nunca
             // recebe o plugin sozinho — ele só é instalado no caminho normal de
@@ -549,7 +584,11 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
             // — o primeiro mount já nasce no lugar certo.
             for (const tab of terminal.tabs) {
               if (!tab.ptyId) continue
-              const runtime = preparePtyRuntimeLaunch(tab.type, tab.runtimeProfile, tab.extraArgs ?? [])
+              const runtime = preparePtyRuntimeLaunch(
+                tab.type,
+                tab.runtimeProfile,
+                tab.extraArgs ?? [],
+              )
               const launch = buildAgentLaunch(tab.type, runtime.args)
               useTerminalsStore.getState().beginRestart(tab.ptyId)
               try {
@@ -563,7 +602,9 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
                   env: runtime.env,
                 })
                 window.dispatchEvent(
-                  new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: tab.ptyId } }),
+                  new CustomEvent('alethe:terminal-resize-request', {
+                    detail: { ptyId: tab.ptyId },
+                  }),
                 )
               } catch (restartErr) {
                 console.warn(
