@@ -91,6 +91,7 @@ export function makeDefaultTerminal(args: {
         extraArgs: args.firstTab.extraArgs,
         initialInput: args.firstTab.initialInput,
         runtimeProfile: args.firstTab.runtimeProfile,
+        skipSessionClaim: true,
       },
     ],
   }

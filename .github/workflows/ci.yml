@@ -89,3 +89,47 @@ jobs:
       - name: cargo test
         working-directory: src-tauri
         run: cargo test
+
+  # Windows primeiro por ser a plataforma prioritária do app (ver CONTRIBUTING.md);
+  # roda a instância buildada em profile de teste isolado (nunca `tauri dev`
+  # interativo) via @wdio/tauri-service, provider embedded (msedgedriver
+  # auto-gerenciado no Windows, sem setup extra).
+  e2e:
+    name: E2E (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build debug app (no bundle)
+        run: npm run test:e2e:build
+
+      - name: Run E2E suite
+        run: npm run test:e2e
+
+      - name: Upload screenshots + reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: |
+            e2e/__screenshots__/
+            e2e/__reports__/
+          retention-days: 14

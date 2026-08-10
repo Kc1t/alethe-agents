@@ -18,8 +18,11 @@
     "test:rust": "cd src-tauri && cargo test --lib",
     "test:ghostty": "cd src-tauri && cargo test --lib -- --ignored --test-threads=1 terminal_runs",
     "test": "vitest run",
+    "test:e2e:build": "npm run build && cross-env CARGO_TARGET_DIR=src-tauri/target-e2e tauri build --debug --no-bundle",
+    "test:e2e": "wdio run e2e/wdio.conf.ts",
     "release": "node scripts/release.mjs",
-    "release:publish": "node scripts/release-publish.mjs"
+    "release:publish": "node scripts/release-publish.mjs",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
@@ -51,9 +54,16 @@
     "@tauri-apps/cli": "^2.0.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
+    "@wdio/cli": "^9.30.1",
+    "@wdio/local-runner": "^9.30.1",
+    "@wdio/mocha-framework": "^9.30.1",
+    "@wdio/spec-reporter": "^9.30.1",
+    "@wdio/tauri-service": "^1.3.0",
+    "cross-env": "^10.1.0",
     "eslint": "^10.8.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react-hooks": "^7.1.1",
@@ -61,12 +71,16 @@
     "eslint-plugin-simple-import-sort": "^14.0.0",
     "globals": "^17.8.0",
     "jsdom": "^25.0.1",
+    "patch-package": "^8.0.1",
+    "pixelmatch": "^7.2.0",
+    "pngjs": "^7.0.0",
     "prettier": "^3.9.6",
     "terser": "^5.48.0",
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.65.0",
     "vite": "^6.4.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "webdriverio": "^9.30.1"
   },
   "allowScripts": {
     "esbuild@0.25.12": true

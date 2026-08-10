@@ -121,8 +121,7 @@ pub fn write_clipboard_text(text: String) -> Result<(), String> {
 
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = text;
-        Err("clipboard backend indisponivel nesta plataforma".to_string())
+        unix_clipboard::write_text(&text)
     }
 }
 
@@ -135,7 +134,7 @@ pub fn read_clipboard_text() -> Result<String, String> {
 
     #[cfg(not(target_os = "windows"))]
     {
-        Err("clipboard backend indisponivel nesta plataforma".to_string())
+        unix_clipboard::read_text()
     }
 }
 
@@ -159,7 +158,7 @@ pub fn read_clipboard_payload() -> Result<ClipboardPayload, String> {
 
     #[cfg(not(target_os = "windows"))]
     {
-        Err("clipboard backend indisponivel nesta plataforma".to_string())
+        unix_clipboard::read_payload()
     }
 }
 
@@ -406,6 +405,55 @@ mod windows_clipboard {
 
         if unsafe { IsClipboardFormatAvailable(CF_DIB_U32) } != 0 {
             return read_dib_as_png().map(|path| ClipboardPayload::Image { path });
+        }
+
+        Ok(ClipboardPayload::Empty)
+    }
+}
+
+/// Backend de clipboard pra Linux/macOS via `arboard` (usa o próprio
+/// backend X11/Wayland do sistema, sem depender do GTK). Cobre texto e
+/// imagem — paths de arquivo (equivalente ao CF_HDROP do Windows) não têm
+/// API estável no arboard, então esse payload cai pra `Empty` fora do
+/// Windows em vez de tentar advinhar um formato.
+#[cfg(not(target_os = "windows"))]
+mod unix_clipboard {
+    use super::ClipboardPayload;
+
+    fn open() -> Result<arboard::Clipboard, String> {
+        arboard::Clipboard::new().map_err(|e| e.to_string())
+    }
+
+    pub fn write_text(text: &str) -> Result<(), String> {
+        open()?.set_text(text).map_err(|e| e.to_string())
+    }
+
+    pub fn read_text() -> Result<String, String> {
+        open()?.get_text().map_err(|e| e.to_string())
+    }
+
+    fn image_to_temp_png(image: arboard::ImageData) -> Result<String, String> {
+        let width = image.width as u32;
+        let height = image.height as u32;
+        let buffer = image::RgbaImage::from_raw(width, height, image.bytes.into_owned())
+            .ok_or_else(|| "dados de imagem do clipboard invalidos".to_string())?;
+        let path =
+            std::env::temp_dir().join(format!("alethe-clipboard-img-{}.png", nanoid::nanoid!(8)));
+        buffer.save_with_format(&path, image::ImageFormat::Png).map_err(|e| e.to_string())?;
+        Ok(path.to_string_lossy().into_owned())
+    }
+
+    pub fn read_payload() -> Result<ClipboardPayload, String> {
+        let mut clipboard = open()?;
+
+        if let Ok(text) = clipboard.get_text() {
+            if !text.is_empty() {
+                return Ok(ClipboardPayload::Text { text });
+            }
+        }
+
+        if let Ok(image) = clipboard.get_image() {
+            return image_to_temp_png(image).map(|path| ClipboardPayload::Image { path });
         }
 
         Ok(ClipboardPayload::Empty)

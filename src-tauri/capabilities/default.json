@@ -20,6 +20,7 @@
     "dialog:allow-confirm",
     "notification:default",
     "updater:default",
-    "process:allow-restart"
+    "process:allow-restart",
+    "wdio:default"
   ]
 }

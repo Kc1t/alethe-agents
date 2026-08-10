@@ -107,6 +107,15 @@ export type SubTab = {
   initialInput?: string
   /** Perfil de custo do runtime. Ausente preserva o comportamento completo legado. */
   runtimeProfile?: AgentRuntimeProfile
+  /**
+   * `true` só na criação da tab, consumido (limpo) no primeiro spawn.
+   * Impede o fallback de "reivindicar a conversa OpenCode mais recente
+   * ainda não pega nesse cwd" (pensado pra recuperar depois de reiniciar o
+   * app, quando o localStorage se perde) de herdar sem querer uma sessão
+   * antiga de OUTRO projeto/uso anterior da mesma pasta, num terminal
+   * genuinamente novo que nunca rodou antes.
+   */
+  skipSessionClaim?: boolean
 }
 
 export type AgentRuntimeProfile = 'full' | 'lean' | 'diagnostic'

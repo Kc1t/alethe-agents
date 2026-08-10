@@ -41,7 +41,7 @@ function stripFlagWithValue(args: string[], flag: string): string[] {
 }
 
 /** Filtro pra escolher a sessão "certa" excluindo a que está rodando agora. */
-type SessionExclude = {
+export type SessionExclude = {
   /** ID da conversa atualmente aberta no pane — não queremos resumir ela. */
   id?: string
   /** Timestamp do spawn atual: preferimos sessões anteriores a ele. */
@@ -53,7 +53,7 @@ type SessionExclude = {
  * Se o resume falhou, a CLI já criou uma sessão nova/vazia (a mais recente no
  * disco) — então excluímos o id atual e priorizamos as anteriores ao spawn.
  */
-function pickSessionId(
+export function pickSessionId(
   sessions: ReadonlyArray<{ id: string; modified_at_ms: number }>,
   exclude: SessionExclude,
 ): string | null {
@@ -96,7 +96,11 @@ async function latestSessionId(
 }
 
 /** Monta os args de resume seguindo o mesmo padrão do spawn do XTermView. */
-function buildResumeArgs(agent: AgentType, baseArgs: string[], sessionId: string | null): string[] {
+export function buildResumeArgs(
+  agent: AgentType,
+  baseArgs: string[],
+  sessionId: string | null,
+): string[] {
   if (agent === 'claude') {
     // Tira qualquer --resume <id> / --continue antigos e reinjeta o novo.
     const clean = stripFlagWithValue(baseArgs, '--resume').filter((a) => a !== '--continue')

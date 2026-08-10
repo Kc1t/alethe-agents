@@ -10,11 +10,11 @@ import { useEffect, useRef } from 'react'
 import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
+import { watchAndPersistDiscoveredSession } from '../../lib/agentSessionDiscovery'
 import { getLocale, translate } from '../../lib/i18n'
 import { isWindows } from '../../lib/platform'
 import { usePtyPanelVisible } from '../../lib/ptyVisibility'
 import {
-  claimDiscoveredSession,
   claimMostRecentSession,
   isSessionClaimed,
   registerSessionClaim,
@@ -26,7 +26,6 @@ import {
   savedConversationIdFor,
   saveSession,
 } from '../../lib/sessionResume'
-import { waitForSessionHint } from '../../lib/sessionWatch'
 import { acquireSpawnSlot, releaseSpawnSlot } from '../../lib/spawnQueue'
 import {
   aiMemoryCodexConfigWrite,
@@ -126,6 +125,53 @@ function isBrowserInputPending(): boolean {
 // mas o binário ai-memory não foi encontrado — não bloqueia o spawn do agente.
 let aiMemoryMissingWarned = false
 
+// Patch defensivo de UMA VEZ por app (não por terminal) num bug real do
+// próprio xterm.js: `RenderService` interno dispara `onDimensionsChange`
+// sempre que troca de renderer (ex.: `CanvasAddon.activate()`), e o
+// `Viewport` reage chamando `syncScrollArea()` — que lê
+// `this._renderer.value.dimensions` sem checar se `_renderer.value` já foi
+// atribuído. Se esse evento disparar durante a própria troca (antes do
+// renderer novo ser atribuído), `syncScrollArea()` lança
+// `TypeError: undefined is not an object (evaluating
+// 'this._renderer.value.dimensions')` — de dentro de um listener interno do
+// xterm.js, fora de qualquer call-stack nosso, então nenhum try/catch em
+// código nosso (fit, focus, etc.) consegue interceptar. Confirmado ao vivo,
+// reproduzindo consistentemente mesmo depois de duas tentativas de mitigar
+// por fora (fit/refresh adiado, remedição forçada no resize) — o problema
+// realmente está nesse método interno, não em quando/como chamamos a API
+// pública. `terminal._core` é privado (sem tipagem oficial), mas é o mesmo
+// acesso que os próprios addons oficiais (`@xterm/addon-canvas`) usam
+// internamente — aceitável aqui como workaround pontual de um bug de
+// terceiros, não como padrão geral de acesso à API do xterm.js.
+let viewportSyncGuardPatched = false
+function patchXtermViewportSyncGuard(terminal: Terminal): void {
+  if (viewportSyncGuardPatched) return
+  try {
+    const viewport = (terminal as unknown as { _core?: { viewport?: object } })._core?.viewport
+    if (!viewport) return
+    const proto = Object.getPrototypeOf(viewport) as {
+      syncScrollArea?: (...args: unknown[]) => void
+    }
+    const original = proto.syncScrollArea
+    if (typeof original !== 'function') return
+    proto.syncScrollArea = function (this: unknown, ...args: unknown[]) {
+      try {
+        return original.apply(this, args)
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.error('[Alethe][xterm] syncScrollArea falhou (renderer ainda não anexado) — ignorado', error)
+        }
+        return undefined
+      }
+    }
+    viewportSyncGuardPatched = true
+  } catch {
+    /* acesso a internals falhou (versão do xterm.js mudou a forma?) — segue
+       sem o patch, o bug volta a se manifestar mas nada quebra por causa
+       da tentativa. */
+  }
+}
+
 type BootPhase = 'preparing' | 'queued' | 'spawning' | 'attaching' | 'ready'
 
 /**
@@ -167,6 +213,14 @@ export function useXtermSession(params: {
    * e dava pra digitar/corromper o subagente sem querer.
    */
   readOnly?: boolean
+  /**
+   * `true` só na primeira montagem de uma tab recém-criada — impede o
+   * fallback de "reivindicar a conversa OpenCode mais recente ainda não
+   * pega nesse cwd" (mais abaixo) de herdar sem querer uma sessão de
+   * outro projeto/uso anterior da mesma pasta. Consumido via
+   * `onSessionClaimSkippedRef` no primeiro spawn.
+   */
+  skipSessionClaim?: boolean
   runtimeProfile: AgentRuntimeProfile
   terminalTheme: Theme
   cliPathOverride: string | null
@@ -184,6 +238,7 @@ export function useXtermSession(params: {
   onSpawnedRef: MutableRefObject<((id: string) => void) | undefined>
   onSessionIdRef: MutableRefObject<((id: string | undefined) => void) | undefined>
   onInitialInputSentRef: MutableRefObject<(() => void) | undefined>
+  onSessionClaimSkippedRef: MutableRefObject<(() => void) | undefined>
   onExitRef: MutableRefObject<((code: number | null) => void) | undefined>
   onAgentCompleteRef: MutableRefObject<(() => void) | undefined>
   setBootPhase: Dispatch<SetStateAction<BootPhase>>
@@ -207,6 +262,7 @@ export function useXtermSession(params: {
     gsdWatcherEnabled,
     trustSessionId,
     readOnly,
+    skipSessionClaim,
     runtimeProfile,
     terminalTheme,
     cliPathOverride,
@@ -224,6 +280,7 @@ export function useXtermSession(params: {
     onSpawnedRef,
     onSessionIdRef,
     onInitialInputSentRef,
+    onSessionClaimSkippedRef,
     onExitRef,
     onAgentCompleteRef,
     setBootPhase,
@@ -251,6 +308,11 @@ export function useXtermSession(params: {
   // scrollback (attachPty + reset) — chamado pelo efeito de visibilidade
   // abaixo quando o painel volta a ficar visível.
   const resyncTerminalRef = useRef<(() => Promise<void>) | null>(null)
+  // Conta quantos auto-restarts por crash do Bun já foram tentados NESTE
+  // painel — precisa ser um ref (sobrevive a remounts do efeito via
+  // `retryKey`, ao contrário de uma variável local dele) pra não entrar em
+  // loop se o processo continuar crashando repetidamente.
+  const bunCrashAutoRestartCountRef = useRef(0)
 
   useEffect(() => {
     const container = containerRef.current
@@ -271,6 +333,9 @@ export function useXtermSession(params: {
     let unlistenExit: (() => void) | null = null
     let unlistenDragDrop: (() => void) | null = null
     let resizeTimer: number | null = null
+    let settleTimer: number | null = null
+    let settleCols = 0
+    let settleRows = 0
     let writeFrame: number | null = null
     let pendingWrites: string[] = []
     let pendingWriteLength = 0
@@ -279,6 +344,27 @@ export function useXtermSession(params: {
     // de `data` que chegarem nessa janela pra reaplicá-los depois do replay,
     // em vez de perdê-los no clear da fila.
     let resyncCaptureRef: string[] | null = null
+    // Detecta o texto do próprio crash-reporter do runtime Bun no stream de
+    // saída ("oh no: Bun has crashed. This indicates a bug in Bun, not your
+    // code."/"panic(main thread): Segmentation fault..."). Confirmado ao
+    // vivo nesta sessão como um bug real do Bun (não do Alethe/OpenCode) —
+    // sem causa raiz corrigível do nosso lado (ver docs/CHANGELOG.md), então
+    // a única resposta útil é reconhecer o padrão e recuperar sozinho: o
+    // usuário não devia precisar entender um dump de crash técnico só pra
+    // saber que precisa clicar em "Reiniciar".
+    const BUN_CRASH_SIGNATURE = /Bun has crashed|panic\(main thread\)/i
+    let bunCrashBuffer = ''
+    // Confirmado ao vivo por vídeo (frame a frame): um painel ainda na tela
+    // inicial (sem ter produzido nenhuma resposta/conteúdo de verdade ainda)
+    // é muito mais frágil a resize — texto compactado/sobreposto e mais
+    // propenso a crashar — do que um painel que já tem conteúdo renderizado
+    // na tela. Consistente com o renderer nativo do opentui só terminar de
+    // inicializar seus buffers depois do primeiro paint real. Contagem
+    // aproximada de bytes de saída já recebidos (dos dois canais, `data` e
+    // `activity`) usada só pra decidir a folga de cooldown abaixo — não
+    // precisa ser exata.
+    let outputByteCount = 0
+    let bunCrashDetected = false
     let lastCols = 0
     let lastRows = 0
     let forceNextResize = false
@@ -312,10 +398,26 @@ export function useXtermSession(params: {
       // (como o ConPTY faz), o que corrompe o repaint de TUIs densas que
       // não se redesenham por conta própria (ex: OpenCode).
       ...(isWindows() ? { windowsPty: { backend: 'conpty' as const, buildNumber: 22000 } } : {}),
-      fontFamily: 'Cascadia Mono, Consolas, "Courier New", monospace',
+      // Nerd Font embutida no app (ver @font-face em theme.css) como
+      // primeira opção — cobertura de glyph completa (incluindo símbolos
+      // estilo Powerline que TUIs modernas como o `opentui` do OpenCode
+      // usam), garantida em todo SO, sem depender de fallback do sistema
+      // que pode trocar de fonte por caractere e quebrar o grid de largura
+      // fixa do renderer Canvas (causa raiz confirmada do bug de
+      // letras/símbolos sobrepondo no Linux). Cascadia Mono/Consolas
+      // seguem como fallback pra quem já tem no sistema, por via das
+      // dúvidas; `monospace` genérico é o último recurso de verdade.
+      fontFamily: '"Caskaydia Cove Nerd Font Mono", "Cascadia Mono", Consolas, "Courier New", monospace',
       fontSize: 14,
       theme: getXtermTheme(terminalTheme),
     })
+    // Dispara o carregamento da fonte embutida o quanto antes (é local,
+    // deve resolver quase instantâneo) — aguardada mais abaixo, antes da
+    // primeira medição real de célula, pra nunca deixar o xterm.js medir em
+    // cima do fallback do sistema por uma corrida de carregamento.
+    const terminalFontReady = document.fonts
+      .load('400 14px "Caskaydia Cove Nerd Font Mono"')
+      .catch(() => {})
     const fitAddon = new FitAddon()
     const searchAddon = new SearchAddon()
     terminal.loadAddon(fitAddon)
@@ -328,6 +430,7 @@ export function useXtermSession(params: {
     terminal.loadAddon(new Unicode11Addon())
     terminal.unicode.activeVersion = '11'
     terminal.open(container)
+    patchXtermViewportSyncGuard(terminal)
     terminalRef.current = terminal
     const clampHorizontalScroll = () => {
       container.scrollLeft = 0
@@ -370,7 +473,77 @@ export function useXtermSession(params: {
       /* addon indisponivel — o xterm cai sozinho no renderer DOM */
     }
 
-    terminal.focus()
+    // `CanvasAddon.activate()` adia a própria montagem via `onWillOpen` se
+    // `terminal.element` ainda não estiver pronto (ver addon-canvas), e o
+    // getter `dimensions` do `RenderService` interno do xterm.js não tem
+    // NENHUMA proteção contra o renderer ainda não estar anexado nesse
+    // meio-tempo (`this._renderer.value.dimensions`, sem checar
+    // `_renderer.value`) — qualquer coisa que dispare `syncScrollArea`
+    // (scroll, foco, resize) nessa janela lança
+    // `TypeError: undefined is not an object (evaluating
+    // 'this._renderer.value.dimensions')`, capturado só pelo error handler
+    // global (main.tsx) — silencioso, mas deixa o cálculo de cols/rows
+    // daquele pane pra trás, sem nada que refaça sozinho depois (por isso
+    // resize manual não corrige: o próximo fit roda sobre o mesmo estado já
+    // corrompido). Mesmo padrão de proteção já usado no fallback de perda de
+    // contexto do WebGL logo acima — um fit/refresh extra, adiado por um
+    // frame (dá tempo do addon assentar de verdade), garante que pelo menos
+    // uma medição válida aconteça mesmo que a primeira tenha sido perdida.
+    window.requestAnimationFrame(() => {
+      void (async () => {
+        if (disposed) return
+        // Espera a fonte embutida terminar de carregar (deve ser quase
+        // instantâneo, é um arquivo local) antes da primeira medição real —
+        // sem isso, essa medição podia rodar em cima do fallback do sistema
+        // por uma corrida de carregamento, com métricas de célula erradas
+        // que nenhum resize/fit posterior corrige sozinho (só relê cache).
+        await terminalFontReady
+        if (disposed) return
+        if (import.meta.env.DEV) {
+          console.debug(
+            `[Alethe][xterm] fonte do terminal pronta — carregada? ${document.fonts.check('14px "Caskaydia Cove Nerd Font Mono"')}`,
+          )
+        }
+        try {
+          const rect = container.getBoundingClientRect()
+          if (rect.width < 50 || rect.height < 30) return
+          // `fitAddon.fit()` sozinho só LÊ o cache interno de dimensões de
+          // célula do xterm.js — não força remedição (mesmo motivo do truque
+          // em `onZoomChanged` mais abaixo). Se a primeiríssima medição saiu
+          // errada (renderer recém-anexado, fonte ainda não pronta), todo
+          // `fit()` seguinte — incluindo o `initialFitTimer` de 150ms e o
+          // ResizeObserver — recalcula em cima do MESMO cache errado pra
+          // sempre, nunca remede de verdade. Reatribuir `fontFamily` (não só
+          // `fontSize`) é o que realmente importa aqui: confirmado ao vivo
+          // que `document.fonts.load()` da fonte embutida FUNCIONA e
+          // resolve — mas o cache de métricas de célula do xterm.js só é
+          // invalidado quando a opção que ele está de olho muda de valor
+          // (reatribuir o MESMO fontFamily ainda conta como mudança pro
+          // xterm.js, dispara remedição). Sem isso, mesmo com a fonte já
+          // disponível em `document.fonts`, a medição de célula continuava
+          // presa na já feita com o fallback do sistema antes da fonte
+          // carregar — exatamente o sintoma visto ao vivo (fonte carrega,
+          // mas nada muda visualmente).
+          terminal.options.fontFamily = terminal.options.fontFamily
+          fitAddon.fit()
+          terminal.refresh(0, Math.max(0, terminal.rows - 1))
+        } catch {
+          /* renderer ainda não pronto neste frame — o initialFitTimer (150ms)
+             e o ResizeObserver cobrem tentativas seguintes. */
+        }
+      })()
+    })
+
+    // Isolado em try/catch: se `focus()` disparar internamente o mesmo
+    // `syncScrollArea` sem proteção descrito acima, uma exceção sem catch
+    // aqui abortaria o resto desta função — cancelando o registro dos
+    // listeners de resize/zoom e do ResizeObserver logo abaixo, o que por si
+    // só já explicaria um terminal que nunca mais se redimensiona direito.
+    try {
+      terminal.focus()
+    } catch (error) {
+      if (import.meta.env.DEV) console.error('[Alethe][xterm] focus inicial falhou', error)
+    }
 
     const flushPendingWrite = () => {
       writeFrame = null
@@ -628,6 +801,22 @@ export function useXtermSession(params: {
       const rect = container.getBoundingClientRect()
       if (rect.width < 50 || rect.height < 30) return
       try {
+        // Remedição forçada (reatribuir `fontSize`) a cada resize foi
+        // testada e revertida: força xterm.js a redespachar internamente o
+        // mesmo evento `onDimensionsChange` que causa o crash de
+        // `syncScrollArea` (ver `patchXtermViewportSyncGuard` acima) — em
+        // arrastos contínuos e rápidos, repetir isso a cada tick do resize
+        // aumentava a frequência dessa troca de renderer/remedição, e
+        // coincidiu com um segfault real do runtime Bun do processo
+        // OpenCode (crash reportado pelo próprio Bun como bug interno
+        // dele, não do Alethe/OpenCode) — bate com hardening insuficiente
+        // do lado do Bun/opentui pra rajadas de resize, não algo que o
+        // Alethe deva provocar com mais frequência do que o necessário. A
+        // remedição forçada continua só na montagem inicial (mais acima),
+        // que é onde a causa raiz documentada de fato mora; aqui é só um
+        // `fit()` normal — mais barato, e o patch do Viewport já neutraliza
+        // com segurança qualquer `syncScrollArea` que falhe de qualquer
+        // jeito.
         fitAddon.fit()
       } catch (error) {
         if (import.meta.env.DEV) console.error('[Alethe][xterm] fit failed', error)
@@ -643,13 +832,120 @@ export function useXtermSession(params: {
       clampHorizontalScroll()
       const force = forceNextResize
       forceNextResize = false
-      if (!force && terminal.cols === lastCols && terminal.rows === lastRows) return
-      lastCols = terminal.cols
-      lastRows = terminal.rows
-      if (import.meta.env.DEV) {
-        console.debug(`[pty-debug] ${id}: fit() -> resizePty ${terminal.cols}x${terminal.rows}`)
+      if (!force && terminal.cols === lastCols && terminal.rows === lastRows) {
+        // Voltou pro último valor já confirmado — qualquer settle-check
+        // pendente de um valor intermediário fica obsoleto.
+        if (settleTimer !== null) {
+          window.clearTimeout(settleTimer)
+          settleTimer = null
+        }
+        return
       }
-      void resizePty(id, terminal.cols, terminal.rows)
+      // Não manda `resizePty` direto aqui. `fitAddon.fit()`/`refresh()` acima
+      // já redesenharam o terminal localmente (sem lag visual pro usuário) —
+      // mas o valor de cols/rows calculado durante um arrasto contínuo do
+      // divisor pode ser só "de passagem" (visto ao vivo oscilando entre
+      // valores bem diferentes pro MESMO painel, ex. 46→79→44→79→73, com o
+      // painel vizinho variando de forma complementar). Mandar cada valor de
+      // passagem pro backend (SIGWINCH real pro processo do OpenCode/Bun) é
+      // o que gera o texto sobreposto/compactado — o OpenCode tenta redesenhar
+      // pra um tamanho que já mudou de novo antes do redraw terminar. Só
+      // confirma (`resizePty`) quando o MESMO valor aparecer em duas leituras
+      // seguidas (~130ms de intervalo) — se estiver assentado, uma leitura já
+      // repete o valor; se ainda estiver em movimento, o settle-check adia de
+      // novo sozinho até realmente parar.
+      scheduleSettleCheck(terminal.cols, terminal.rows)
+    }
+    // Confirmado ao vivo: reajuste grande do painel não crasha o processo do
+    // OpenCode, mas reajustes PEQUENOS e seguidos (cada um já "assentado"
+    // isoladamente pelo settle-check acima) continuam derrubando o Bun com
+    // um segfault nativo — indício de que o processo ainda está absorvendo
+    // o SIGWINCH anterior quando chega outro logo em seguida. Esse cooldown
+    // é uma segunda camada, por CIMA do settle-check: mesmo um valor já
+    // assentado só é de fato mandado (`resizePty`, que dispara o SIGWINCH
+    // real) se já tiver passado um intervalo mínimo desde o último envio.
+    const RESIZE_COMMIT_COOLDOWN_MS = 350
+    // Cooldown estendido enquanto o painel ainda não produziu saída de
+    // verdade (ver `outputByteCount` acima) — janela mais frágil a resize.
+    const FRESH_TERMINAL_COOLDOWN_MS = 900
+    const FRESH_TERMINAL_OUTPUT_THRESHOLD = 4000
+    let lastCommitAt = 0
+    const commitResize = (cols: number, rows: number) => {
+      lastCols = cols
+      lastRows = rows
+      lastCommitAt = performance.now()
+      const id = ptyIdRef.current
+      if (!id) return
+      if (import.meta.env.DEV) {
+        console.debug(`[pty-debug] ${id}: settled -> resizePty ${cols}x${rows}`)
+      }
+      // Bug confirmado a montante no opentui (anomalyco/opencode#3697,
+      // "Missing main view text when resizing", Linux) — o redraw dele após
+      // um resize não limpa/reposiciona corretamente o que já tinha
+      // desenhado, e cada reajuste soma sujeira visual em cima da anterior
+      // em vez de substituir (visto ao vivo: conteúdo "subindo" cada vez
+      // mais a cada reajuste). Não é algo corrigível no código do opentui
+      // por aqui — mas limpar o buffer LOCAL do xterm.js antes de cada
+      // commit garante que o redraw que vem a seguir (via SIGWINCH + o nudge
+      // de Ctrl+L em resize_pty) pinta num canvas limpo do nosso lado, em
+      // vez de acumular por cima do que já estava errado.
+      try {
+        terminal.clear()
+      } catch {
+        /* clear pode falhar durante teardown — sem impacto real, ignora */
+      }
+      // PTY pode já ter morrido (crash, restart em andamento) entre a leitura
+      // e este ponto — sem o catch, isso vira uma promise rejeitada sem
+      // tratamento ("PTY not found"), poluindo o console e o handler global
+      // de erro sem ganho nenhum (o próximo settle bem-sucedido já corrige o
+      // resize assim que o pty novo existir).
+      void resizePty(id, cols, rows).catch(() => {})
+    }
+    const checkSettled = () => {
+      settleTimer = null
+      if (disposed) return
+      try {
+        fitAddon.fit()
+      } catch {
+        return
+      }
+      if (terminal.cols !== settleCols || terminal.rows !== settleRows) {
+        // Ainda mudando — adia de novo em cima do valor mais recente, sem
+        // nunca mandar nada pro backend enquanto não assentar.
+        scheduleSettleCheck(terminal.cols, terminal.rows)
+        return
+      }
+      if (dragActive) {
+        // Assentou momentaneamente, mas o divisor ainda está sendo
+        // arrastado — não commita ainda. O listener de
+        // `data-resize-handle-active` (abaixo) dispara uma checagem final
+        // assim que o usuário soltar.
+        return
+      }
+      // Painel ainda sem conteúdo real na tela (só a splash/prompt inicial)
+      // — confirmado por vídeo como o estado mais frágil a resize pro
+      // opentui (ver comentário em `outputByteCount` acima). Usa um cooldown
+      // maior só nessa janela inicial; depois que já produziu saída de
+      // verdade, volta pro cooldown normal.
+      const cooldownMs =
+        command === 'opencode' && outputByteCount < FRESH_TERMINAL_OUTPUT_THRESHOLD
+          ? FRESH_TERMINAL_COOLDOWN_MS
+          : RESIZE_COMMIT_COOLDOWN_MS
+      const elapsedSinceCommit = performance.now() - lastCommitAt
+      if (elapsedSinceCommit < cooldownMs) {
+        // Assentou, mas ainda dentro do cooldown do último envio real —
+        // espera o restante e reconfirma (o valor pode ter mudado de novo
+        // nesse meio-tempo, daí o re-`fit()` no início desta função).
+        settleTimer = window.setTimeout(checkSettled, cooldownMs - elapsedSinceCommit)
+        return
+      }
+      commitResize(terminal.cols, terminal.rows)
+    }
+    const scheduleSettleCheck = (cols: number, rows: number) => {
+      settleCols = cols
+      settleRows = rows
+      if (settleTimer !== null) window.clearTimeout(settleTimer)
+      settleTimer = window.setTimeout(checkSettled, 130)
     }
     const scheduleResize = (force = false) => {
       // Guard de unmount: neutraliza os setTimeout(120/320ms) de onResizeRequest
@@ -657,7 +953,12 @@ export function useXtermSession(params: {
       if (disposed) return
       forceNextResize ||= force
       if (resizeTimer !== null) window.clearTimeout(resizeTimer)
-      resizeTimer = window.setTimeout(runResize, 80)
+      // 80ms -> 150ms: reduz a frequência de sinais de resize (SIGWINCH)
+      // mandados pro processo do agente durante um arrasto contínuo do
+      // divisor — mitigação defensiva pro segfault do runtime Bun (ver
+      // comentário grande em `runResize`), não uma correção do bug em si
+      // (que é externo, no Bun/opentui).
+      resizeTimer = window.setTimeout(runResize, 150)
     }
     const scheduleObservedResize = () => scheduleResize()
     const onResizeRequest = (event: Event) => {
@@ -669,6 +970,45 @@ export function useXtermSession(params: {
     }
     const ro = new ResizeObserver(scheduleObservedResize)
     ro.observe(container)
+
+    // `react-resizable-panels` marca `data-resize-handle-active` no
+    // `[data-panel-group]` ancestral enquanto o divisor está sendo
+    // arrastado (já usado em WorkspaceView.module.css pro anel de foco).
+    // Reusa esse mesmo sinal aqui: durante o arrasto, `checkSettled` (acima)
+    // segue rodando localmente (fit()/refresh() continuam redesenhando o
+    // xterm.js sem lag visual), mas o commit real (`resizePty`, que dispara
+    // o SIGWINCH pro processo do agente) fica suspenso — só dispara quando
+    // o usuário efetivamente solta o divisor. O settle-check + cooldown
+    // sozinhos (Extremo 1) reduziram a frequência mas não eliminaram os
+    // envios intermediários durante um arrasto contínuo; isso ataca o
+    // mesmo sintoma (texto sobreposto/compactado) de um jeito determinístico
+    // — atrelado ao evento real de soltar o mouse, não a uma heurística de
+    // tempo parado.
+    let dragActive = false
+    const panelGroupEl = container.closest('[data-panel-group]')
+    let dragObserver: MutationObserver | null = null
+    if (panelGroupEl) {
+      dragActive = panelGroupEl.hasAttribute('data-resize-handle-active')
+      dragObserver = new MutationObserver(() => {
+        const wasDragging = dragActive
+        dragActive = panelGroupEl.hasAttribute('data-resize-handle-active')
+        if (wasDragging && !dragActive) {
+          // Divisor acabou de ser solto — dispara uma checagem final pro
+          // tamanho de verdade (o settle-check natural já teria descartado
+          // qualquer commit enquanto `dragActive` estava true).
+          try {
+            fitAddon.fit()
+          } catch {
+            return
+          }
+          scheduleSettleCheck(terminal.cols, terminal.rows)
+        }
+      })
+      dragObserver.observe(panelGroupEl, {
+        attributes: true,
+        attributeFilter: ['data-resize-handle-active'],
+      })
+    }
     const onZoomChanged = () => {
       // `fitAddon.fit()` (dentro de runResize) só LÊ o cache interno de
       // dimensões de célula do xterm.js — não força remedição. O xterm.js
@@ -733,6 +1073,15 @@ export function useXtermSession(params: {
     // `inspectChunk` roda nos DOIS canais: um pane em segundo plano só recebe
     // `activity`, e a detecção de conflito de resume do Codex não pode
     // depender de o pane estar visível.
+    const watchForBunCrash = (chunk: string) => {
+      if (command !== 'opencode') return
+      outputByteCount += chunk.length
+      if (bunCrashDetected) return
+      // Chunks de PTY podem partir o texto do crash-reporter no meio —
+      // mesmo padrão de buffer circular limitado do `resumeErrorBuffer`.
+      bunCrashBuffer = `${bunCrashBuffer}${chunk}`.slice(-4096)
+      if (BUN_CRASH_SIGNATURE.test(bunCrashBuffer)) bunCrashDetected = true
+    }
     const registerPtyStreamListeners = async (
       id: string,
       inspectChunk?: (chunk: string) => void,
@@ -743,6 +1092,7 @@ export function useXtermSession(params: {
         queueTerminalWrite(chunk)
         completionMonitor?.handleOutput(chunk)
         inspectChunk?.(chunk)
+        watchForBunCrash(chunk)
       })
       if (disposed) {
         dataUnlisten()
@@ -754,12 +1104,31 @@ export function useXtermSession(params: {
         useTerminalsStore.getState().recordIo(id)
         completionMonitor?.handleOutput(chunk)
         inspectChunk?.(chunk)
+        watchForBunCrash(chunk)
       })
       if (disposed) {
         activityUnlisten()
         return false
       }
       unlistenActivity = activityUnlisten
+      return true
+    }
+    // Só um auto-restart por crash detectado nesta sessão de mount, com um
+    // teto total pro painel (`bunCrashAutoRestartCountRef`) — se o processo
+    // continuar crashando repetidamente mesmo depois de reiniciar, para de
+    // insistir sozinho e deixa o estado "saiu" normal assumir (usuário reinicia
+    // manualmente), em vez de entrar num loop de restart infinito.
+    const BUN_CRASH_AUTO_RESTART_MAX = 2
+    const tryAutoRestartOnBunCrash = (): boolean => {
+      if (!bunCrashDetected) return false
+      if (bunCrashAutoRestartCountRef.current >= BUN_CRASH_AUTO_RESTART_MAX) return false
+      bunCrashAutoRestartCountRef.current += 1
+      bunCrashDetected = false
+      bunCrashBuffer = ''
+      terminal.write(
+        '\r\n\x1b[33m[alethe] o agente travou por um bug conhecido do runtime Bun (não do seu projeto ou do Alethe) — reiniciando a sessão…\x1b[0m\r\n',
+      )
+      setRetryKey((value) => value + 1)
       return true
     }
 
@@ -808,6 +1177,12 @@ export function useXtermSession(params: {
         }
         if (payload.reason === 'suspended') {
           useTerminalsStore.getState().markSuspended(existingId)
+          completionMonitor?.dispose()
+          completionMonitor = null
+          return
+        }
+        if (tryAutoRestartOnBunCrash()) {
+          useTerminalsStore.getState().markExited(existingId)
           completionMonitor?.dispose()
           completionMonitor = null
           return
@@ -967,8 +1342,12 @@ export function useXtermSession(params: {
         // fechado). `!forceFreshRef.current` é essencial: no fallback de
         // early-exit (abaixo) o resumeId acabou de ser zerado de propósito
         // porque a sessão órfã matou o agente no nascimento — reivindicar de
-        // novo aqui recriaria o mesmo loop.
-        if (command === 'opencode' && !resumeId && cwd && !forceFreshRef.current) {
+        // novo aqui recriaria o mesmo loop. `!skipSessionClaim`: numa tab
+        // RECÉM-CRIADA (nunca spawnada antes) esse fallback não deve rodar —
+        // sem essa checagem, um projeto novo apontando pra uma pasta com
+        // histórico OpenCode de outro projeto/uso anterior herdava a
+        // conversa antiga sem o usuário pedir (bug real, reportado ao vivo).
+        if (command === 'opencode' && !resumeId && cwd && !forceFreshRef.current && !skipSessionClaim) {
           try {
             const sessions = await snapshotOpenCodeSessions(cwd)
             // A sessão-filha do GSD Sync (ver alethe-gsd-state.ts) é criada
@@ -1176,74 +1555,16 @@ export function useXtermSession(params: {
             cwd &&
             discoveredSessionsBeforePromise
           ) {
-            const detectCreatedSession = async () => {
-              const before = new Set((await discoveredSessionsBeforePromise).map((s) => s.id))
-              // Sem prazo fixo amarrado ao SPAWN: o que decide quando o arquivo de
-              // sessão do CLI existe é quando o usuário manda a primeira mensagem e
-              // o agente termina de responder — não quando o processo nasceu. Um
-              // modelo lento (ou um usuário que demora pra digitar) facilmente
-              // passa dos ~30s que essa janela costumava ter, e a sessão nunca era
-              // reivindicada/persistida (perdia resume ao reabrir o pane). Primeiras
-              // tentativas rápidas (3s) pra não atrasar o caso comum; depois de ~30s
-              // sem achar, passa a checar mais espaçado (15s) enquanto o pane
-              // continuar aberto — só para quando acha ou o componente desmonta.
-              let attempt = 0
-              while (!disposed) {
-                const delayMs = attempt < 10 ? 3000 : 15000
-                if (command === 'codex') {
-                  await Promise.race([
-                    new Promise((resolve) => setTimeout(resolve, delayMs)),
-                    waitForSessionHint('codex'),
-                  ])
-                } else {
-                  await new Promise((resolve) => setTimeout(resolve, delayMs))
-                }
-                if (disposed) return
-                const sessions =
-                  command === 'codex'
-                    ? await snapshotCodexSessions(cwd).catch(() => [])
-                    : command === 'antigravity'
-                      ? await snapshotAntigravitySessions(cwd).catch(() => [])
-                      : await snapshotOpenCodeSessions(cwd).catch(() => [])
-                // Mesma exclusão do bloco de resume acima: a sessão-filha do
-                // GSD Sync aparece em `opencode session list` como sessão de
-                // verdade (sem parentID, de propósito) — sem excluir, ela
-                // podia ser confundida com a sessão real recém-criada deste
-                // terminal se surgisse na mesma janela de detecção.
-                // Exclusão depende só do sentinel existir em disco, não do
-                // toggle atual de `gsdWatcherEnabled` — ver comentário
-                // equivalente no bloco de resume acima.
-                let filteredSessions = sessions
-                if (command === 'opencode') {
-                  const gsdChildId = await readGsdChildSession(cwd).catch(() => null)
-                  if (gsdChildId) filteredSessions = sessions.filter((s) => s.id !== gsdChildId)
-                }
-                const reserved = reservedSessionIdsFor(command, sessionPersistenceKey)
-                const newSession = claimDiscoveredSession(
-                  command,
-                  cwd,
-                  before,
-                  filteredSessions,
-                  response.id,
-                  reserved,
-                )
-                if (newSession) {
-                  saveSession(sessionPersistenceKey, {
-                    sessionId: response.id,
-                    codexSessionId: command === 'codex' ? newSession.id : undefined,
-                    antigravitySessionId: command === 'antigravity' ? newSession.id : undefined,
-                    opencodeSessionId: command === 'opencode' ? newSession.id : undefined,
-                    cwd: cwd ?? '',
-                    agent: command,
-                    timestamp: Date.now(),
-                  })
-                  onSessionIdRef.current?.(newSession.id)
-                  return
-                }
-                attempt += 1
-              }
-            }
-            void detectCreatedSession()
+            void watchAndPersistDiscoveredSession({
+              agent: command,
+              cwd,
+              sessionPersistenceKey,
+              spawnedPtyId: response.id,
+              discoveredSessionsBeforePromise,
+              isCancelled: () => disposed,
+              onSessionId: (id) => onSessionIdRef.current?.(id),
+              reservedIds: reservedSessionIdsFor(command, sessionPersistenceKey),
+            })
           }
         }
 
@@ -1283,7 +1604,7 @@ export function useXtermSession(params: {
         // Race fix: se o componente desmontar entre o await e a atribuição,
         // a cleanup function já rodou com unlistenData/unlistenExit ainda
         // undefined — chamamos manualmente pra evitar listener órfão.
-        const inspectResumeConflict = (chunk: string) => {
+        const handled = await registerPtyStreamListeners(response.id, (chunk) => {
           if (command !== 'codex' || !usedResumeRef.current || resumeConflictHandled) return
           // PTY events can split the bootstrap error between chunks, so keep
           // a bounded rolling buffer instead of matching each chunk alone.
@@ -1291,8 +1612,8 @@ export function useXtermSession(params: {
           if (/already has an active writer|thread\/resume failed/i.test(resumeErrorBuffer)) {
             handleResumeConflict()
           }
-        }
-        if (!(await registerPtyStreamListeners(response.id, inspectResumeConflict))) return
+        })
+        if (!handled) return
 
         const exitUnlisten = await listenPtyExit(response.id, (payload) => {
           // unlistenExit só roda na cleanup do effect, depois de dispose() — um exit
@@ -1308,6 +1629,12 @@ export function useXtermSession(params: {
           }
           if (payload.reason === 'suspended') {
             useTerminalsStore.getState().markSuspended(response.id)
+            completionMonitor?.dispose()
+            completionMonitor = null
+            return
+          }
+          if (tryAutoRestartOnBunCrash()) {
+            useTerminalsStore.getState().markExited(response.id)
             completionMonitor?.dispose()
             completionMonitor = null
             return
@@ -1365,6 +1692,12 @@ export function useXtermSession(params: {
           return
         }
         unlistenExit = exitUnlisten
+
+        // Consome a flag de "tab recém-criada" agora que o primeiro spawn de
+        // verdade aconteceu — a partir daqui essa tab já existe de verdade,
+        // e um restart/reload futuro deve voltar a poder reivindicar sessão
+        // normalmente (recuperação após reiniciar o app).
+        if (skipSessionClaim) onSessionClaimSkippedRef.current?.()
 
         const prompt = initialInput?.trim()
         if (prompt) {
@@ -1425,7 +1758,9 @@ export function useXtermSession(params: {
       window.removeEventListener('alethe:zoom-changed', onZoomChanged)
       window.removeEventListener('alethe:terminal-resize-request', onResizeRequest)
       ro.disconnect()
+      dragObserver?.disconnect()
       if (resizeTimer !== null) window.clearTimeout(resizeTimer)
+      if (settleTimer !== null) window.clearTimeout(settleTimer)
       if (writeFrame !== null) window.cancelAnimationFrame(writeFrame)
       pendingWrites = []
       pendingWriteLength = 0

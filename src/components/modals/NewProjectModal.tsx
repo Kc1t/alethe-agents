@@ -25,8 +25,8 @@ export function NewProjectModal() {
   const createProject = useProjectsStore((s) => s.createProject)
   const setActiveProject = useProjectsStore((s) => s.setActiveProject)
   const openModal = useUiStore((s) => s.openModal_)
-  const pushToast = useUiStore((s) => s.pushToast)
   const setActiveView = useUiStore((s) => s.setActiveView)
+  const pushToast = useUiStore((s) => s.pushToast)
   const groups = useProjectsStore((s) => s.groups)
 
   const [name, setName] = useState('')
@@ -108,12 +108,6 @@ export function NewProjectModal() {
     reset()
     setActiveProject(project.id)
 
-    if (mode === 'agentSandbox') {
-      setActiveView('agentSandbox')
-      closeModal()
-      return
-    }
-
     if (trimmedGithub) {
       closeModal()
       pushToast({
@@ -141,7 +135,12 @@ export function NewProjectModal() {
       return
     }
 
-    openModal('newTerminal', { projectId: project.id })
+    if (mode === 'agentSandbox') {
+      setActiveView('agentSandbox')
+      closeModal()
+    } else {
+      openModal('newTerminal', { projectId: project.id })
+    }
   }
 
   return (
@@ -163,7 +162,7 @@ export function NewProjectModal() {
             disabled={!name.trim() || (mode === 'agentSandbox' && !defaultCwd.trim())}
             onClick={() => void submit()}
           >
-            {mode === 'agentSandbox' ? t('crud.createAgentSandboxProject') : t('crud.create')}
+            {mode === 'agentSandbox' ? t('crud.createAgentSandboxProject') : t('crud.createProjectAndOpenTerminal')}
           </button>
         </>
       }
@@ -272,19 +271,21 @@ export function NewProjectModal() {
         ) : null}
       </div>
 
-      <div className={controls.field}>
-        <label className={controls.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <GitBranch size={12} />
-          <span>{t('crud.githubUrlLabel')}</span>
-        </label>
-        <input
-          className={controls.input}
-          value={githubUrl}
-          onChange={(e) => setGithubUrl(e.target.value)}
-          placeholder="https://github.com/usuario/repositorio"
-        />
-        <span className={controls.hint}>{t('crud.githubUrlHint')}</span>
-      </div>
+      {mode === 'agentSandbox' ? null : (
+        <div className={controls.field}>
+          <label className={controls.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <GitBranch size={12} />
+            <span>{t('crud.githubUrlLabel')}</span>
+          </label>
+          <input
+            className={controls.input}
+            value={githubUrl}
+            onChange={(e) => setGithubUrl(e.target.value)}
+            placeholder="https://github.com/usuario/repositorio"
+          />
+          <span className={controls.hint}>{t('crud.githubUrlHint')}</span>
+        </div>
+      )}
 
       <div className={controls.field}>
         <label className={controls.label}>{t('crud.colorLabel')}</label>

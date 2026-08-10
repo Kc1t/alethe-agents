@@ -161,7 +161,14 @@ pub struct PtySession {
     // precisa poder clonar o handle e soltar o lock global de sessions antes
     // de chamar master.resize (ConPTY pode travar) sem prender kill/write/
     // attach de todos os outros PTYs atrás dele.
-    pub master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
+    // `Option` (em vez de só `Box<...>`) porque `suspend_session` precisa
+    // conseguir fechar o pseudoconsole de verdade (`.take()`, dropando o
+    // Box) ANTES de esperar o reader terminar — no ConPTY do Windows, matar
+    // o processo filho não fecha o pipe de saída sozinho; só dropar o master
+    // faz isso, e a sessão continua existindo no mapa (com master já `None`)
+    // até o fim da suspensão, então write_pty/resize_pty continuam achando
+    // a sessão (e falhando com erro real) em vez de "PTY not found".
+    pub master: Arc<Mutex<Option<Box<dyn MasterPty + Send>>>>,
     // writer fica em Arc<Mutex> pra write_pty poder soltar o lock global de
     // sessions antes de escrever. Sem isso, escritas longas de um PTY bloqueiam
     // qualquer outra operacao (resize, attach, kill) em todos os outros PTYs.
@@ -328,7 +335,11 @@ pub async fn spawn_pty(
     // usado em todo outro comando pesado deste codebase (ver `claude_sessions`,
     // `activity_stats`, `agent_cost`).
     let sessions: PtySessions = Arc::clone(sessions.inner());
-    let remote_hub = Arc::clone(remote.inner());
+    // Mesmo motivo do `sessions` acima: `State<'_, ...>` tem lifetime preso
+    // ao runtime do Tauri, não `'static` — precisa virar um Arc dono antes
+    // de entrar no `move ||` do spawn_blocking, senão o borrow "escapa" da
+    // função (erro de lifetime do compilador).
+    let remote_hub_outer = Arc::clone(remote.inner());
     tokio::task::spawn_blocking(move || {
         let extras: Vec<String> = extra_args.unwrap_or_default();
         let spawn_started = Instant::now();
@@ -478,7 +489,7 @@ pub async fn spawn_pty(
         let thread_read_active = Arc::clone(&read_active);
         let visible = Arc::new(AtomicBool::new(true));
         let thread_visible = Arc::clone(&visible);
-        let remote_pty_id = id.clone();
+        let remote_hub = remote_hub_outer;
 
         // Reader síncrono na thread-pool bloqueante do Tokio manda chunks por um
         // canal MPSC; o batcher async coalesce por até 16ms (60 FPS) ou 64 KB antes
@@ -543,7 +554,7 @@ pub async fn spawn_pty(
             // independente do painel local, então publica sempre — o gate de
             // visibilidade abaixo vale só pro xterm desta janela.
             remote_hub.publish(
-                serde_json::json!({ "type": "pty_output", "ptyId": &remote_pty_id, "text": text }),
+                serde_json::json!({ "type": "pty_output", "ptyId": &scrollback_id, "text": text }),
             );
             if thread_visible.load(Ordering::Relaxed) {
                 if !activity_pending.is_empty() {
@@ -781,7 +792,7 @@ pub async fn spawn_pty(
 
         let session = PtySession {
             pty_id: id.clone(),
-            master: Arc::new(Mutex::new(pair.master)),
+            master: Arc::new(Mutex::new(Some(pair.master))),
             writer,
             child,
             scrollback,
@@ -1004,6 +1015,9 @@ pub async fn resize_pty(
             let master = master
                 .lock()
                 .map_err(|_| "PTY master lock poisoned".to_string())?;
+            let master = master
+                .as_ref()
+                .ok_or_else(|| format!("PTY master ja fechado (sessao suspensa): {id}"))?;
             master
                 .resize(PtySize {
                     rows: rows.max(1),
@@ -1126,37 +1140,62 @@ pub async fn kill_pty(
 /// Encerra o processo e espera o reader persistir sua última cauda. Assim um
 /// novo spawn com o mesmo id nunca disputa com writes do reader antigo.
 pub fn suspend_session(app: &AppHandle, sessions: &PtySessions, id: &str) -> Result<bool, String> {
-    let session = {
-        let mut sessions = sessions
+    // Antes: a sessão era removida do mapa JÁ NO INÍCIO, antes do kill/espera
+    // de flush (que pode levar até 5s). Nessa janela, `write_pty`/`resize_pty`
+    // (chamados pelo frontend, que ainda não sabe que a suspensão começou)
+    // recebiam "PTY not found" em vez de um erro real de escrita — e o
+    // restart automático do frontend (mesmo id) podia disparar um spawn novo
+    // achando a vaga livre antes do flush do reader terminar de verdade,
+    // apesar do comentário original já dizer que isso deveria esperar. Agora:
+    // só remove do mapa no fim, depois do flush confirmado e do evento
+    // emitido — `write_pty`/`resize_pty` continuam achando a sessão (e
+    // falhando com um erro real de pipe fechado, se for o caso) até o
+    // frontend já ter sido avisado.
+    let (pty_id, child, master, reader_done, teardown, read_active) = {
+        let sessions = sessions
             .lock()
             .map_err(|_| "PTY sessions lock poisoned".to_string())?;
-        sessions.remove(id)
-    };
-    let Some(session) = session else {
-        return Ok(false);
+        let Some(session) = sessions.get(id) else {
+            return Ok(false);
+        };
+        (
+            session.pty_id.clone(),
+            Arc::clone(&session.child),
+            Arc::clone(&session.master),
+            Arc::clone(&session.reader_done),
+            Arc::clone(&session.teardown),
+            Arc::clone(&session.read_active),
+        )
     };
 
-    session.teardown.store(TEARDOWN_SUSPENDED, Ordering::SeqCst);
-    let _ = process_tree::kill_pty_tree(&session.pty_id);
-    if let Ok(mut child) = session.child.lock() {
+    teardown.store(TEARDOWN_SUSPENDED, Ordering::SeqCst);
+    let _ = process_tree::kill_pty_tree(&pty_id);
+    if let Ok(mut child) = child.lock() {
         if let Some(pid) = child.process_id() {
             kill_process_tree(pid);
         }
         let _ = child.kill();
     }
+    // Se o reader estava pausado (painel invisível sob pressão de memória —
+    // ver `read_active` em `PtySession`), ele nunca ia notar o processo
+    // morrer sozinho e travaria pra sempre esperando a barreira mais abaixo.
+    // Acorda ele antes de esperar.
     {
-        let (lock, cvar) = &*session.read_active;
+        let (lock, cvar) = &*read_active;
         if let Ok(mut active) = lock.lock() {
             *active = true;
             cvar.notify_all();
         }
     }
-    // Close the pseudoconsole BEFORE waiting on the barrier. On Windows ConPTY,
-    // killing the child does not close the output pipe — the blocking reader
-    // stays in read() until the master (HPCON) is dropped. Holding the session
-    // across the wait would deadlock the reader against its own flush barrier.
-    let reader_done = Arc::clone(&session.reader_done);
-    drop(session);
+    // Fecha o pseudoconsole ANTES de esperar a barreira. No ConPTY do
+    // Windows, matar o processo filho não fecha o pipe de saída sozinho — o
+    // reader bloqueado em read() só é liberado quando o master (HPCON) é
+    // dropado de verdade. `.take()` faz exatamente isso sem precisar tirar a
+    // sessão inteira do mapa (ela continua lá, com master `None`, até o fim
+    // — ver comentário grande acima sobre por que isso importa).
+    if let Ok(mut master) = master.lock() {
+        master.take();
+    }
 
     let (done_lock, done_ready) = &*reader_done;
     let done = done_lock

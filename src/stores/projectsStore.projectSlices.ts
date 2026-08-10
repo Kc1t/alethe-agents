@@ -2,15 +2,15 @@
 
 import { nanoid } from 'nanoid'
 
-import { preparePtyRuntimeLaunch } from '../lib/agentRuntimeAdapter'
+import { restartAgentPty } from '../lib/agentPtyRestart'
 import { getLocale, translate } from '../lib/i18n'
-import { buildAgentLaunch } from '../lib/sessionLaunch'
+import { getActiveSessions, savedConversationIdFor } from '../lib/sessionResume'
 import { clearTerminalPtyIds, collectTerminalPtyIds, getProjectRepoRoot } from '../lib/terminalFactory'
 import { cleanupPtys } from '../lib/terminalLifecycle'
-import { agentCliCommand, GROUP_COLORS } from '../lib/types'
+import { killPty, listenPtyData } from '../lib/tauri'
+import { GROUP_COLORS, type AgentType } from '../lib/types'
 import type { Group, Project } from '../lib/types'
 import { sanitizeWorkspaceSnapshot } from '../lib/workspaceNavigation'
-import { useTerminalsStore } from './terminalsStore'
 import { useUiStore } from './uiStore'
 import { collectGroupProjectIds } from './projectsStore.migrations'
 import type { ProjectsState } from './projectsStore'
@@ -23,6 +23,68 @@ function t(key: Parameters<typeof translate>[1], params?: Record<string, string 
 /** Guarda de reentrância pra migrateProjectTerminalsToWorktrees — coordenação
  *  efêmera entre chamadas, não faz sentido persistir no estado do Zustand. */
 const migratingWorktreeProjectIds = new Set<string>()
+
+/**
+ * Providers cujo `--resume`/`--session <id>` foi CONFIRMADO (testado de
+ * verdade, não suposto) funcionar vindo de um cwd diferente de onde a
+ * sessão nasceu — relevante só pra migração pra worktree, onde o cwd
+ * necessariamente muda. Storage de sessão de todo provider já é global por
+ * usuário (não por pasta — Claude em `~/.claude/`, Codex em `~/.codex/`,
+ * OpenCode em `~/.local/share/opencode/opencode.db`), então em teoria os
+ * dados sempre existem; a dúvida real é só se o CLI aceita retomar por ID
+ * cru vindo de outro diretório.
+ *
+ * `opencode` testado nesta sessão: `opencode --session <id>` a partir de um
+ * cwd diferente do original TRAVA indefinidamente (sem erro, sem saída —
+ * matado manualmente após 150s) — não é um "resume falhou", é um hang.
+ * `false` de propósito até haver confirmação equivalente. Codex/Claude
+ * ainda não testados (CLI indisponível na máquina de dev) — tratados com a
+ * mesma cautela até serem verificados.
+ */
+const CROSS_CWD_RESUME_OK: Partial<Record<AgentType, boolean>> = {
+  opencode: false,
+}
+
+/** Migração tentando um resume cross-cwd pode travar (hang, não erro —
+ *  confirmado com OpenCode) em vez de falhar rápido. Corre entre "chegou
+ *  algum byte de saída" e um teto de tempo; sem nenhuma saída no prazo,
+ *  mata o processo travado e tenta de novo como sessão nova, sem propagar
+ *  a falha pro restante do loop de migração. */
+const RESUME_HANG_GUARD_MS = 8_000
+
+async function restartAgentPtyWithHangGuard(
+  opts: Parameters<typeof restartAgentPty>[0],
+): Promise<ReturnType<typeof restartAgentPty>> {
+  if (!opts.resumeId) return restartAgentPty(opts)
+
+  const result = await restartAgentPty(opts)
+  const gotOutput = await new Promise<boolean>((resolve) => {
+    let settled = false
+    const timer = window.setTimeout(() => {
+      if (settled) return
+      settled = true
+      resolve(false)
+    }, RESUME_HANG_GUARD_MS)
+    void listenPtyData(result.id, () => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timer)
+      resolve(true)
+    }).catch(() => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timer)
+      resolve(false)
+    })
+  })
+  if (gotOutput) return result
+
+  console.warn(
+    `[projectsStore] resume cross-cwd de ${opts.agent} sem nenhuma saída em ${RESUME_HANG_GUARD_MS}ms (provável hang) — matando e reabrindo como sessão nova`,
+  )
+  await killPty(result.id).catch(() => {})
+  return restartAgentPty({ ...opts, resumeId: undefined })
+}
 
 type GroupsSlice = Pick<
   ProjectsState,
@@ -366,7 +428,16 @@ type ProjectsSlice = Pick<
 
 export function createProjectsSlice({ set, get, update, updateProject }: SliceCtx): ProjectsSlice {
   return {
-    createProject: ({ name, mode = 'standard', color, iconUrl, groupId = null, defaultCwd, githubUrl, firstBootPending }) => {
+    createProject: ({
+      name,
+      mode = 'standard',
+      color,
+      iconUrl,
+      groupId = null,
+      defaultCwd,
+      githubUrl,
+      firstBootPending,
+    }) => {
       const project: Project = {
         id: nanoid(),
         name,
@@ -504,9 +575,7 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
 
       migratingWorktreeProjectIds.add(projectId)
       try {
-        const { worktreeProvision, restartPty, gitStatus, gsdOpenCodePluginWrite } = await import(
-          '../lib/tauri'
-        )
+        const { worktreeProvision, gitStatus, gsdOpenCodePluginWrite } = await import('../lib/tauri')
 
         // git worktree add faz checkout do HEAD — qualquer mudança não commitada
         // no repo compartilhado não é copiada pra worktree nova. Preferimos
@@ -567,41 +636,68 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
               })
             }
 
+            // Atualiza cwd/worktreeAgentId/sessionId (limpo — a nova sessão
+            // ainda não tem ID conhecido) ANTES de reiniciar as abas. Ordem
+            // importa: `onSessionId` abaixo escreve o ID novo (síncrono pro
+            // Claude, assíncrono pros outros 3 via
+            // `watchAndPersistDiscoveredSession`) sempre DEPOIS desta
+            // limpeza, nunca antes — sem essa ordem garantida, uma escrita
+            // síncrona correria o risco de ser sobrescrita de volta por um
+            // "clear" tardio.
+            updateProject(projectId, (p) => ({
+              ...p,
+              terminals: p.terminals.map((t) => {
+                if (t.id !== terminal.id) return t
+                return {
+                  ...t,
+                  cwd: info.path,
+                  worktreeAgentId: agentId,
+                  tabs: t.tabs.map((tab) => ({ ...tab, cwd: info.path, sessionId: undefined })),
+                }
+              }),
+            }))
+
             // O pane de cada aba já está montado (`key={tab.id}`, estável) e o
             // efeito de mount do XTermView só reage a `sessionPersistenceKey`/
             // `retryKey` — mudar `cwd` no store sozinho não faz o painel notar
             // nada, ele continua mostrando a sessão antiga na pasta antiga (bug
             // real, visto direto: toast dizia "concluído" mas o terminal nunca
             // saía do lugar). Reinicia CADA aba com PTY vivo NO MESMO ptyId
-            // (mesmo mecanismo do botão "Reiniciar" do menu de contexto) — o
-            // painel já escuta esse canal, então não precisa remontar. Abas
-            // sem PTY (nunca abertas) só precisam do cwd atualizado — o
-            // primeiro mount já nasce no lugar certo.
-            //
-            // `previousSessionId`: tenta de propósito retomar a conversa
-            // antiga passando o ID como resume pro CLI, em vez de simplesmente
-            // descartá-lo (bug anterior). O OpenCode associa sessão a
-            // diretório onde nasceu (`opencode_sessions.rs`) — não há garantia
-            // de que resumir um ID cuja sessão nasceu na pasta ANTIGA rodando
-            // já na pasta NOVA (worktree) carregue o histórico de verdade;
-            // precisa validação ao vivo. Se não funcionar, o CLI ignora/começa
-            // do zero mesmo com a flag de resume — comportamento não pior que
-            // o anterior, só que agora tentando de propósito.
+            // (mesmo mecanismo do botão "Reiniciar" do menu de contexto, via
+            // `restartAgentPty`) — o painel já escuta esse canal, então não
+            // precisa remontar. O storage de sessão de cada provider é global
+            // por usuário, não por pasta — a conversa antiga PODE existir de
+            // verdade na worktree nova; tenta reaproveitar só pros providers
+            // com resume cross-cwd confirmado (`CROSS_CWD_RESUME_OK`, vazio
+            // hoje — nenhum testado como seguro ainda), com guarda contra
+            // hang (`restartAgentPtyWithHangGuard`). Abas sem PTY (nunca
+            // abertas) só precisam do cwd atualizado — o primeiro mount já
+            // nasce no lugar certo.
             for (const tab of terminal.tabs) {
               if (!tab.ptyId) continue
-              const previousSessionId = tab.sessionId
-              const runtime = preparePtyRuntimeLaunch(tab.type, tab.runtimeProfile, tab.extraArgs ?? [])
-              const launch = buildAgentLaunch(tab.type, runtime.args, previousSessionId)
-              useTerminalsStore.getState().beginRestart(tab.ptyId)
+              const activeSessions = getActiveSessions()
+              const savedSession = activeSessions[tab.id] ?? activeSessions[tab.ptyId] ?? null
+              const preservedResumeId =
+                tab.sessionId ?? savedConversationIdFor(savedSession, tab.type, terminal.cwd)
+              const effectiveResumeId = CROSS_CWD_RESUME_OK[tab.type] ? preservedResumeId : undefined
               try {
-                await restartPty({
-                  id: tab.ptyId,
-                  cols: 80,
-                  rows: 24,
-                  command: agentCliCommand(tab.type),
+                await restartAgentPtyWithHangGuard({
+                  ptyId: tab.ptyId,
+                  sessionPersistenceKey: tab.id,
+                  agent: tab.type,
                   cwd: info.path,
-                  extraArgs: launch.args,
-                  env: runtime.env,
+                  runtimeProfile: tab.runtimeProfile,
+                  extraArgs: tab.extraArgs ?? [],
+                  resumeId: effectiveResumeId,
+                  onSessionId: (id) =>
+                    updateProject(projectId, (p) => ({
+                      ...p,
+                      terminals: p.terminals.map((t) =>
+                        t.id !== terminal.id
+                          ? t
+                          : { ...t, tabs: t.tabs.map((tb) => (tb.id === tab.id ? { ...tb, sessionId: id } : tb)) },
+                      ),
+                    })),
                 })
                 window.dispatchEvent(
                   new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: tab.ptyId } }),
@@ -614,26 +710,6 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
               }
             }
 
-            updateProject(projectId, (p) => ({
-              ...p,
-              terminals: p.terminals.map((t) => {
-                if (t.id !== terminal.id) return t
-                return {
-                  ...t,
-                  cwd: info.path,
-                  worktreeAgentId: agentId,
-                  // Mantém o sessionId (em vez de zerar) — o restart acima já
-                  // tentou o resume com esse ID na pasta nova; preservar aqui
-                  // faz reaberturas futuras dessa aba continuarem tentando a
-                  // mesma sessão, em vez de perder de vez a tentativa depois
-                  // do primeiro restart.
-                  tabs: t.tabs.map((tab) => ({
-                    ...tab,
-                    cwd: info.path,
-                  })),
-                }
-              }),
-            }))
             succeeded.push(terminal.name)
           } catch (err) {
             failed.push({ name: terminal.name, error: String(err) })

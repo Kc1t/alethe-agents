@@ -145,6 +145,30 @@ regardless. The suites were merged back into one in August 2026; when adding a t
 (no DOM), just colocate it like everything else — Vitest handles logic-only tests fine without extra
 setup.
 
+### E2E tests
+
+Vitest covers unit-level logic; it can't catch bugs that only exist with the **real compiled app
+running** — a process restart losing the right session, a panel resize corrupting a terminal's
+redraw, a theme token missing in one of the 12 palettes. For that class of bug there's a second,
+deliberately separate suite in `e2e/`, run via **WebdriverIO** + `@wdio/tauri-service`
+(`npm run test:e2e:build` once, then `npm run test:e2e`). This is not a second unit-test runner —
+it drives the actual built binary through the real WebDriver/DevTools protocol (same one a browser
+tab exposes), so it can click, type into a real terminal pane, screenshot, and read console
+errors, none of which Vitest can do.
+
+It never touches your interactive `tauri dev` session: `e2e/support/launch.ts` redirects the OS
+app-data variables (`HOME`/`XDG_DATA_HOME` on Linux/macOS, `APPDATA` on Windows) to a throwaway
+temp directory before spawning the binary, so it never reads or writes your real
+`%APPDATA%/Alethe/`. The WebDriver automation surface itself
+(`tauri-plugin-wdio`, wired in `src-tauri/src/lib.rs`) only compiles into debug builds and, even
+then, only activates when `ALETHE_E2E=1` is set — a normal `npm run app` session never exposes it.
+
+Screenshots land in `e2e/__screenshots__/`, and every scenario writes a step-by-step report
+(`e2e/support/report.ts`) to `e2e/__reports__/<date>/report.md`. CI runs this suite on
+`windows-latest` only (the app's priority platform); running locally on Linux needs
+`webkit2gtk-driver` installed (`apt install webkit2gtk-driver`) for the driver, though the
+`embedded` provider (the default, and what this repo uses) manages most of that automatically.
+
 ## How the project is laid out
 
 ```text
