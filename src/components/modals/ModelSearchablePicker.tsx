@@ -103,7 +103,7 @@ export function ModelSearchablePicker({
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
           <Sparkles size={14} color="var(--accent)" style={{ flexShrink: 0 }} />
           <span className={styles.triggerText}>
-            {loading
+            {loading && cleanOptions.length === 0
               ? 'Carregando modelos do CLI...'
               : selected
               ? `${selected.label}`

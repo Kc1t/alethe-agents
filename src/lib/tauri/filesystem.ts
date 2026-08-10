@@ -23,6 +23,14 @@ export async function ensureTodoTemplate(directory: string): Promise<string> {
   return invoke<string>('ensure_todo_template', { directory })
 }
 
+export async function writeProjectMarker(projectDir: string, content: string): Promise<void> {
+  await invoke('write_project_marker', { projectDir, content })
+}
+
+export async function readProjectMarker(projectDir: string): Promise<string | null> {
+  return invoke<string | null>('read_project_marker', { projectDir })
+}
+
 export async function watchFile(path: string): Promise<void> {
   await invoke('watch_file', { path })
 }

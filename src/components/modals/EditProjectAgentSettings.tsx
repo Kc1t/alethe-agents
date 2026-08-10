@@ -126,10 +126,13 @@ export function EditProjectAgentSettings({
     let active = true
     const targetProvider = conflictProvider
     const fallback = PROVIDER_MODELS[targetProvider] ?? []
-    const cached = globalModelsCache[targetProvider] || fallback
-    setDiscoveredModels(cached)
+    const cached = globalModelsCache[targetProvider]
+    setDiscoveredModels(cached || fallback)
 
-    setLoadingModels(true)
+    // Com cache já preenchido, isso é só uma revalidação silenciosa em segundo
+    // plano — não precisa piscar "Carregando..." de novo (ModelSearchablePicker
+    // só mostra esse texto quando ainda não há opções pra exibir).
+    if (!cached) setLoadingModels(true)
     discoverProviderModels(targetProvider)
       .then((list) => {
         if (!active) return

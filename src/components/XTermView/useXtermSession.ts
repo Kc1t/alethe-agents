@@ -82,6 +82,28 @@ import {
 import { TERMINAL_WRITE_FRAME_BUDGET, writePtyChunked } from './terminalWrite'
 import { getXtermTheme, type LinkActionState } from './xtermThemes'
 
+/**
+ * SessionIds já pertencentes a outras abas (de qualquer projeto) pro mesmo
+ * tipo de agente — nunca podem virar candidato de claim aqui, mesmo que
+ * `claimedIds` (em memória, reseta a cada restart do app) ainda não saiba
+ * deles nesta execução. Lido direto de `useProjectsStore.getState()`, que já
+ * reflete o `projects.json` carregado do disco desde o boot, antes de
+ * qualquer terminal montar/spawnar — não depende de ordem de montagem.
+ */
+function reservedSessionIdsFor(agent: AgentType, selfKey: string | undefined): Set<string> {
+  const reserved = new Set<string>()
+  for (const project of useProjectsStore.getState().projects) {
+    for (const terminal of project.terminals) {
+      for (const tab of terminal.tabs) {
+        if (tab.type !== agent || !tab.sessionId) continue
+        if (selfKey && tab.ptyId === selfKey) continue
+        reserved.add(tab.sessionId)
+      }
+    }
+  }
+  return reserved
+}
+
 // Early exits trigger a single fresh-session retry.
 const EARLY_EXIT_MS = 4000
 // Troca rápida de abas não deve disparar um resync completo (attachPty +
@@ -972,7 +994,8 @@ export function useXtermSession(params: {
             // existir em disco, não do estado atual do toggle.
             const gsdChildId = await readGsdChildSession(cwd).catch(() => null)
             const candidates = gsdChildId ? sessions.filter((s) => s.id !== gsdChildId) : sessions
-            const claimed = claimMostRecentSession('opencode', cwd, candidates)
+            const reserved = reservedSessionIdsFor('opencode', sessionPersistenceKey)
+            const claimed = claimMostRecentSession('opencode', cwd, candidates, undefined, reserved)
             if (claimed) resumeId = claimed.id
           } catch {
             /* sem sessão prévia — segue pro nível 3 (CLI cria uma nova) */
@@ -1195,12 +1218,14 @@ export function useXtermSession(params: {
                   const gsdChildId = await readGsdChildSession(cwd).catch(() => null)
                   if (gsdChildId) filteredSessions = sessions.filter((s) => s.id !== gsdChildId)
                 }
+                const reserved = reservedSessionIdsFor(command, sessionPersistenceKey)
                 const newSession = claimDiscoveredSession(
                   command,
                   cwd,
                   before,
                   filteredSessions,
                   response.id,
+                  reserved,
                 )
                 if (newSession) {
                   saveSession(sessionPersistenceKey, {

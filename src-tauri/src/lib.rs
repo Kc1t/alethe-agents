@@ -253,6 +253,8 @@ pub fn run() {
             filesystem::list_directory,
             filesystem::read_text_file,
             filesystem::write_text_file,
+            filesystem::write_project_marker,
+            filesystem::read_project_marker,
             filesystem::ensure_todo_template,
             filesystem::watch_file,
             filesystem::unwatch_file,

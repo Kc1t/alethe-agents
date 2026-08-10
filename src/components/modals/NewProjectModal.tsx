@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react'
 import { useUiStore } from '../../stores/uiStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { AGENT_SANDBOX_ENABLED } from '../../lib/featureFlags'
-import { GROUP_COLORS } from '../../lib/types'
+import { GROUP_COLORS, type Project } from '../../lib/types'
 import { useT } from '../../lib/i18n'
 import { pickDirectory } from '../../lib/dialog'
-import { cloneGithubRepo } from '../../lib/tauri'
+import { cloneGithubRepo, readProjectMarker } from '../../lib/tauri'
 import { ColorPalettePopover } from './ColorPalettePopover'
 import { ImageInput } from './ImageInput'
 import { Modal } from './Modal'
@@ -37,6 +37,7 @@ export function NewProjectModal() {
   const [mode, setMode] = useState<'standard' | 'agentSandbox'>('standard')
   const [groupId, setGroupId] = useState<string | null>(context?.groupId ?? null)
   const [isColorPopoverOpen, setIsColorPopoverOpen] = useState(false)
+  const [detectedConfig, setDetectedConfig] = useState<Project | null>(null)
 
   // Herda a pasta já escolhida na tela "Nenhum projeto aberto" quando o
   // usuário troca pro formulário completo em vez de perder a seleção e
@@ -54,11 +55,36 @@ export function NewProjectModal() {
     setMode('standard')
     setGroupId(context?.groupId ?? null)
     setIsColorPopoverOpen(false)
+    setDetectedConfig(null)
+  }
+
+  const checkForDetectedConfig = async (directory: string) => {
+    setDetectedConfig(null)
+    try {
+      const raw = await readProjectMarker(directory)
+      if (!raw) return
+      const parsed = JSON.parse(raw) as Partial<Project>
+      if (parsed && typeof parsed.name === 'string' && Array.isArray(parsed.terminals)) {
+        setDetectedConfig(parsed as Project)
+      }
+    } catch {
+      /* marcador ausente/corrompido — segue o fluxo normal de criação */
+    }
   }
 
   const browse = async () => {
     const directory = await pickDirectory({ defaultPath: defaultCwd || undefined })
-    if (directory) setDefaultCwd(directory)
+    if (!directory) return
+    setDefaultCwd(directory)
+    void checkForDetectedConfig(directory)
+  }
+
+  const restoreDetected = () => {
+    if (!detectedConfig) return
+    const project = useProjectsStore.getState().importProjectFromFile(detectedConfig, groupId)
+    setActiveProject(project.id)
+    closeModal()
+    reset()
   }
 
   const submit = async () => {
@@ -223,6 +249,27 @@ export function NewProjectModal() {
           </button>
         </div>
         <span className={controls.hint}>{t('crud.projectPathHint')}</span>
+        {detectedConfig ? (
+          <div
+            style={{
+              marginTop: 8,
+              padding: '8px 10px',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--accent)',
+              background: 'var(--accent-faint)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              fontSize: 11,
+            }}
+          >
+            <span>{t('crud.detectedConfigFound', { name: detectedConfig.name })}</span>
+            <button type="button" className={controls.btn} onClick={restoreDetected}>
+              {t('crud.detectedConfigRestore')}
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className={controls.field}>

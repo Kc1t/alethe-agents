@@ -338,6 +338,7 @@ export function createGroupsSlice({ update }: SliceCtx): GroupsSlice {
 type ProjectsSlice = Pick<
   ProjectsState,
   | 'createProject'
+  | 'importProjectFromFile'
   | 'renameProject'
   | 'archiveProject'
   | 'unarchiveProject'
@@ -396,6 +397,36 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
           ungroupedOrder,
           activeProjectId: state.activeProjectId ?? project.id,
         }
+      })
+      return project
+    },
+
+    importProjectFromFile: (data, groupId = null) => {
+      const project: Project = {
+        ...data,
+        id: nanoid(),
+        groupId,
+        archived: false,
+        createdAt: Date.now(),
+        // Nunca existe processo vivo pra reaproveitar num projeto recém-
+        // importado — zera ptyId de toda tab, mas preserva sessionId (tenta
+        // resumir de propósito no próximo spawn, mesma lógica do item de
+        // migração de worktree).
+        terminals: (data.terminals ?? []).map((terminal) => ({
+          ...terminal,
+          tabs: terminal.tabs.map((tab) => ({ ...tab, ptyId: null })),
+        })),
+      }
+      update((state) => {
+        const groups =
+          groupId === null
+            ? state.groups
+            : state.groups.map((g) =>
+                g.id === groupId ? { ...g, projectIds: [...g.projectIds, project.id] } : g,
+              )
+        const ungroupedOrder =
+          groupId === null ? [...state.ungroupedOrder, project.id] : state.ungroupedOrder
+        return { projects: [...state.projects, project], groups, ungroupedOrder }
       })
       return project
     },
@@ -543,14 +574,24 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
             // real, visto direto: toast dizia "concluído" mas o terminal nunca
             // saía do lugar). Reinicia CADA aba com PTY vivo NO MESMO ptyId
             // (mesmo mecanismo do botão "Reiniciar" do menu de contexto) — o
-            // painel já escuta esse canal, então não precisa remontar. Sessão
-            // nova (sem resumeId): a conversa antiga não existe na worktree
-            // nova. Abas sem PTY (nunca abertas) só precisam do cwd atualizado
-            // — o primeiro mount já nasce no lugar certo.
+            // painel já escuta esse canal, então não precisa remontar. Abas
+            // sem PTY (nunca abertas) só precisam do cwd atualizado — o
+            // primeiro mount já nasce no lugar certo.
+            //
+            // `previousSessionId`: tenta de propósito retomar a conversa
+            // antiga passando o ID como resume pro CLI, em vez de simplesmente
+            // descartá-lo (bug anterior). O OpenCode associa sessão a
+            // diretório onde nasceu (`opencode_sessions.rs`) — não há garantia
+            // de que resumir um ID cuja sessão nasceu na pasta ANTIGA rodando
+            // já na pasta NOVA (worktree) carregue o histórico de verdade;
+            // precisa validação ao vivo. Se não funcionar, o CLI ignora/começa
+            // do zero mesmo com a flag de resume — comportamento não pior que
+            // o anterior, só que agora tentando de propósito.
             for (const tab of terminal.tabs) {
               if (!tab.ptyId) continue
+              const previousSessionId = tab.sessionId
               const runtime = preparePtyRuntimeLaunch(tab.type, tab.runtimeProfile, tab.extraArgs ?? [])
-              const launch = buildAgentLaunch(tab.type, runtime.args)
+              const launch = buildAgentLaunch(tab.type, runtime.args, previousSessionId)
               useTerminalsStore.getState().beginRestart(tab.ptyId)
               try {
                 await restartPty({
@@ -581,10 +622,14 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
                   ...t,
                   cwd: info.path,
                   worktreeAgentId: agentId,
+                  // Mantém o sessionId (em vez de zerar) — o restart acima já
+                  // tentou o resume com esse ID na pasta nova; preservar aqui
+                  // faz reaberturas futuras dessa aba continuarem tentando a
+                  // mesma sessão, em vez de perder de vez a tentativa depois
+                  // do primeiro restart.
                   tabs: t.tabs.map((tab) => ({
                     ...tab,
                     cwd: info.path,
-                    sessionId: undefined,
                   })),
                 }
               }),

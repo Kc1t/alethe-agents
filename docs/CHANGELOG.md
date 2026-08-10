@@ -14,6 +14,13 @@ Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
 
 - Added a live Remote Control device counter to the topbar, with direct access to the connection panel.
 - **A borda arco-íris agora é o indicador de foco de qualquer container da workspace, não só um efeito de cor de projeto.** Antes, só containers com a cor "arco-íris" escolhida no projeto mostravam o anel animado, sempre visível independente de foco. Agora qualquer container mostra a borda arco-íris enquanto estiver em foco (um terminal dele com o cursor/digitação ativa); sem foco, volta à borda normal por cor de projeto.
+- **Editar Projeto virou uma central de configurações com navegação vertical** (mesmo estilo da Central de Preferências), no lugar das abas horizontais antigas — Foco/Agentes/Worktrees/Merge agora são categorias numa barra lateral. O item de menu que abre esse modal foi renomeado de "Editar (nome e cor)…" pra "Configurações…", já que agora cobre bem mais que nome e cor.
+- **A seção "GSD Sync" (barra Tarefas) ganhou aba própria**, separada do Todo — antes ficava misturada no topo da lista de tarefas.
+
+### Adicionado
+
+- **Exportar/Importar configuração de projeto**: novos itens no menu do projeto (⋯) pra salvar a configuração completa (agentes, cor, worktree, GSD, terminais) num arquivo `.json` e trazer de volta como um projeto novo — útil pra backup pontual de um projeto só ou pra levar a configuração pra outra máquina.
+- **Espelho automático `.alethe/project.json`**: o Alethe agora mantém, dentro da própria pasta de cada projeto, uma cópia sempre atualizada da configuração dele. Ao criar um projeto novo apontando pra uma pasta que já tem esse arquivo (reaberta depois de removida do app, ou copiada de outra máquina), o formulário detecta e oferece restaurar a configuração em vez de começar do zero.
 
 ### Corrigido
 
@@ -52,6 +59,14 @@ Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
 - **Migração de terminal pra worktree isolada não instalava o monitoramento de planejamento (GSD), mesmo com a opção ligada.** Dois problemas: o monitoramento não era reinstalado na pasta nova durante a migração, e o botão de migrar podia usar uma versão desatualizada da configuração se a opção tivesse acabado de ser marcada na tela sem clicar em "Salvar" antes. Os dois corrigidos.
 - **Ligar o monitoramento de planejamento (GSD) num projeto sem nenhum ciclo de planejamento ainda rodado falhava em silêncio**, sem avisar nada — a pasta `.planning/` esperada ainda não existia. Agora a pasta é criada normalmente ao ligar o monitoramento.
 - **Botão "Abrir pasta como projeto" (tela inicial, sem nenhum projeto aberto) ficava sem cor de texto visível**, dependendo do tema. Corrigida a variável de cor usada.
+- **Seletor de modelo do OpenCode travava em "Carregando modelos do CLI..." mesmo já tendo modelos em cache.** A busca de modelos via CLI não tinha nenhum cache no backend — toda reabertura do modal reexecutava o subprocesso `opencode models` (lento, cold-start de Node/Bun) do zero, e a UI mostrava "carregando" mesmo quando já havia opções cacheadas pra exibir na hora. Agora a busca fica em cache por alguns minutos, o OpenCode ganhou uma lista de modelos de fallback (como os outros agentes já tinham), e o indicador de carregamento só aparece quando não há nenhuma opção ainda pra mostrar.
+- **Um terminal novo podia "roubar" a conversa de outro terminal já existente** apontando pra mesma pasta (mesmo projeto, outro projeto, ou depois de reiniciar o app) — a checagem de sessões já reivindicadas só vivia em memória durante a execução do app, sem consultar o que já estava salvo em disco. Agora a checagem também exclui qualquer sessão já associada a outro terminal salvo, então nunca reivindica uma conversa que já pertence a outra aba.
+- **Migrar um terminal pra worktree isolada descartava o ID da sessão de conversa antiga sem tentar preservá-la**, reiniciando sempre do zero. Agora o ID antigo é passado como tentativa de retomar a conversa na pasta nova, em vez de simplesmente ser jogado fora.
+- **Processos órfãos (ex.: subprocessos de MCP que o OpenCode cria sozinho) podiam sobreviver a um fechar/reiniciar terminal, mesmo com o Alethe continuando aberto.** A varredura de limpeza de árvore de processos tirava um retrato único dos processos antes de matá-los — qualquer processo criado bem nessa janela (entre o retrato e o fim da matança) escapava e ficava órfão, solto no Gerenciador de Tarefas. Agora há uma segunda varredura logo em seguida, específica pra pegar esses retardatários.
+
+### Investigado (ainda em aberto)
+
+- **Fechar o Alethe à força (Task Manager "Finalizar tarefa", crash, queda de energia) pode deixar terminais/agentes vivos**, mesmo com a rede de segurança do Job Object (`KILL_ON_JOB_CLOSE`) ativa — reproduzido ao vivo de forma consistente. Causa raiz ainda não confirmada com certeza (hipótese sob investigação: o PowerShell 7 da Microsoft Store, shell padrão do Alethe, pode estar sendo isolado num Job Object próprio pelo Windows por ser um app empacotado MSIX — precisa de teste comparativo direto contra um `powershell.exe` não-MSIX antes de confirmar). **O fechar normal do app (clicando em "Fechar o Alethe" na confirmação) não é afetado** — testado 3 vezes ao vivo, mata a árvore inteira de processos corretamente todas as vezes, já que usa `kill_pty_tree` (PID real) em vez de depender do Job Object.
 
 ## [1.5.0] — 2026-08-09
 

@@ -6,17 +6,20 @@ import {
   ListTodo,
   PanelRightClose,
   RefreshCw,
+  Sparkles,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { type GsdSyncSession, useGsdSyncSessions } from '../../hooks/useGsdSyncSessions'
 import { useT } from '../../lib/i18n'
 import type { Project, SubTab, Terminal } from '../../lib/types'
-import { readTextFile, writeClipboardText } from '../../lib/tauri'
-import { useProjectsStore } from '../../stores/projectsStore'
+import { readPlanningStatus, readTextFile, writeClipboardText, type PlanningStatus } from '../../lib/tauri'
+import { selectActiveProject, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { MarkdownRenderer } from '../MarkdownPane/MarkdownRenderer'
 import { EmptyState } from '../EmptyState/EmptyState'
 import { GitControl } from '../ProjectSidebar/GitControl'
+import { DotmCircular2 } from '../ui/dotm-circular-2'
 import { TodoSidebar } from '../TodoSidebar'
 import styles from './RightSidebar.module.css'
 
@@ -28,6 +31,7 @@ export function RightSidebar() {
   const setMode = useUiStore((state) => state.showTodoSidebar)
   const openMarkdown = useUiStore((state) => state.showMarkdownSidebar)
   const showGit = useUiStore((state) => state.showGitSidebar)
+  const showGsdSyncSidebar = useUiStore((state) => state.showGsdSyncSidebar)
   const preferences = useProjectsStore((state) => state.preferences)
   const activeProjectId = useProjectsStore((state) => state.activeProjectId)
   const projects = useProjectsStore((state) => state.projects)
@@ -65,6 +69,17 @@ export function RightSidebar() {
           <FileText size={14} />
           <span>{t('rightSidebar.markdownTab')}</span>
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'gsdSync'}
+          className={`${styles.sidebarTab} ${mode === 'gsdSync' ? styles.sidebarTabActive : ''}`}
+          onClick={showGsdSyncSidebar}
+          title={t('rightSidebar.gsdSyncTab')}
+        >
+          <Sparkles size={14} />
+          <span>{t('rightSidebar.gsdSyncTab')}</span>
+        </button>
         {preferences.enabledFeatures.git && preferences.gitControlPlacement === 'right' ? (
           <button
             type="button"
@@ -82,6 +97,7 @@ export function RightSidebar() {
       <div className={styles.tabContent}>
         {mode === 'markdown' ? <MarkdownSidebarViewer /> : null}
         {mode === 'todo' ? <TodoSidebar /> : null}
+        {mode === 'gsdSync' ? <GsdSyncSidebarContent /> : null}
         {mode === 'git' ? (
           <GitSidebarContent
             activeProject={activeProject}
@@ -91,6 +107,104 @@ export function RightSidebar() {
         ) : null}
       </div>
     </aside>
+  )
+}
+
+function GsdSyncSidebarContent() {
+  const t = useT()
+  const activeProject = useProjectsStore(selectActiveProject)
+  const setFullscreenPane = useProjectsStore((state) => state.setFullscreenPane)
+  const sessions = useGsdSyncSessions()
+  const projectSessions = activeProject
+    ? sessions.filter((session) => session.projectId === activeProject.id)
+    : []
+
+  if (!activeProject || projectSessions.length === 0) {
+    return (
+      <div className={styles.empty}>
+        <Sparkles size={20} />
+        <strong>{t('rightSidebar.gsdSyncEmptyTitle')}</strong>
+        <span>{t('rightSidebar.gsdSyncEmptyDesc')}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className={styles.gsdPanel}>
+      <div className={styles.gsdList}>
+        {projectSessions.map((session) => {
+          const terminal = activeProject.terminals.find((term) => term.id === session.terminalId)
+          if (!terminal) return null
+          return (
+            <GsdSyncRow
+              key={session.id}
+              terminal={terminal}
+              session={session}
+              onOpen={() => setFullscreenPane(session.terminalId)}
+            />
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function GsdSyncRow({
+  terminal,
+  session,
+  onOpen,
+}: {
+  terminal: Terminal
+  session: GsdSyncSession
+  onOpen: () => void
+}) {
+  const t = useT()
+  const [status, setStatus] = useState<PlanningStatus | null>(null)
+
+  useEffect(() => {
+    if (!terminal.cwd) return
+    let cancelled = false
+    readPlanningStatus(terminal.cwd)
+      .then((result) => {
+        if (!cancelled) setStatus(result)
+      })
+      .catch(() => {
+        if (!cancelled) setStatus(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [terminal.cwd, session.busy])
+
+  const statusLabel = session.hasError
+    ? t('todo.gsdError')
+    : session.busy
+      ? t('todo.gsdBusy')
+      : t('todo.gsdIdle')
+  const progressLabel =
+    status?.roadmapTotalCount != null && status.roadmapPendingCount != null
+      ? t('todo.gsdProgress', {
+          done: status.roadmapTotalCount - status.roadmapPendingCount,
+          total: status.roadmapTotalCount,
+        })
+      : null
+
+  return (
+    <button type="button" className={styles.gsdRow} onClick={onOpen} title={terminal.name}>
+      <span className={styles.gsdRowState}>
+        {session.hasError ? (
+          <span className={styles.gsdErrorDot} />
+        ) : session.busy ? (
+          <DotmCircular2 size={13} dotSize={2} cellPadding={1} speed={1.2} bloom ariaLabel={statusLabel} />
+        ) : (
+          <span className={styles.gsdIdleDot} />
+        )}
+      </span>
+      <span className={styles.gsdRowBody}>
+        <span className={styles.gsdRowName}>{terminal.name}</span>
+        <span className={styles.gsdRowMeta}>{progressLabel ?? statusLabel}</span>
+      </span>
+    </button>
   )
 }
 

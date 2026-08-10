@@ -283,6 +283,34 @@ pub fn kill_pty_tree(pty_id: &str) -> Result<Vec<u32>, String> {
         kill_pid(pid);
     }
 
+    // Segunda varredura: fecha a corrida entre o instantâneo acima (com até
+    // 2s de cache) e o loop de kill que acabou de rodar. Um processo que o
+    // agente spawnou DEPOIS do instantâneo (ex.: subprocesso de MCP do
+    // OpenCode) nunca apareceu em `all` — e quando seu pai (já em `all`) morre
+    // no loop acima, ele vira órfão de PPID inválido, some da árvore mas
+    // continua rodando (sintoma real: processos soltos no Gerenciador de
+    // Tarefas fora da árvore do Alethe). Reconsulta a árvore fresca (ignora o
+    // cache de 2s de propósito) e mata qualquer descendente novo de um PID
+    // que já matamos.
+    let mut sys = System::new();
+    let fresh_map = build_parent_map(&mut sys);
+    let already_killed: std::collections::HashSet<u32> = all.iter().copied().collect();
+    let mut stragglers = Vec::new();
+    for &killed_pid in &all {
+        for straggler in collect_descendants(killed_pid, &fresh_map) {
+            if !already_killed.contains(&straggler) && !stragglers.contains(&straggler) {
+                stragglers.push(straggler);
+            }
+        }
+    }
+    if !stragglers.is_empty() {
+        stragglers.reverse();
+        for &pid in &stragglers {
+            kill_pid(pid);
+        }
+        all.extend(stragglers);
+    }
+
     if let Ok(mut guard) = roots().lock() {
         guard.remove(pty_id);
     }

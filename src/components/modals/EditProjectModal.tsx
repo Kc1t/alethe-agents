@@ -1,4 +1,4 @@
-import { Palette } from 'lucide-react'
+import { Bot, GitBranch, GitMerge, Palette } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { GROUP_COLORS, type AgentType } from '../../lib/types'
@@ -254,7 +254,7 @@ export function EditProjectModal() {
       open={open}
       onClose={closeModal}
       title={t('crud.editProjectTitle')}
-      width={620}
+      width={760}
       footer={
         <>
           <button type="button" className={controls.btn} onClick={closeModal}>
@@ -271,25 +271,28 @@ export function EditProjectModal() {
         </>
       }
     >
-      <nav className={styles.tabs} aria-label={t('crud.editProjectSections')}>
+      <div className={styles.layout}>
+      <nav className={styles.nav} aria-label={t('crud.editProjectSections')}>
         {([
-          ['focus', t('crud.editProjectFocus')],
-          ['agents', t('crud.editProjectAgents')],
-          ['worktrees', t('crud.editProjectWorktrees')],
-          ['merge', t('crud.editProjectMerge')],
-        ] as const).map(([id, label]) => (
+          ['focus', t('crud.editProjectFocus'), Palette],
+          ['agents', t('crud.editProjectAgents'), Bot],
+          ['worktrees', t('crud.editProjectWorktrees'), GitBranch],
+          ['merge', t('crud.editProjectMerge'), GitMerge],
+        ] as const).map(([id, label, Icon]) => (
           <button
             key={id}
             type="button"
-            className={`${styles.tab} ${activeTab === id ? styles.tabActive : ''}`}
+            className={`${styles.navItem} ${activeTab === id ? styles.navItemActive : ''}`}
             onClick={() => setActiveTab(id)}
-            aria-selected={activeTab === id}
+            aria-current={activeTab === id ? 'page' : undefined}
           >
-            {label}
+            <Icon size={15} />
+            <span>{label}</span>
           </button>
         ))}
       </nav>
-      {activeTab === 'focus' ? <div className={styles.panel}>
+      <div className={styles.panel}>
+      {activeTab === 'focus' ? <div>
       <div className={controls.field}>
         <label className={controls.label}>{t('crud.nameLabel')}</label>
         <input
@@ -427,7 +430,7 @@ export function EditProjectModal() {
       </div>
       </div> : null}
 
-      {activeTab === 'agents' ? <div className={styles.panel}><EditProjectAgentSettings
+      {activeTab === 'agents' ? <div><EditProjectAgentSettings
         projectId={project.id}
         cwd={project.terminals[0]?.cwd ?? project.defaultCwd ?? ''}
         worktreeMode={worktreeMode}
@@ -446,7 +449,7 @@ export function EditProjectModal() {
         onGsdWatcherEnabledChange={setGsdWatcherEnabledState}
       /></div> : null}
 
-      {activeTab === 'worktrees' ? <div className={styles.panel}>
+      {activeTab === 'worktrees' ? <div>
       {/* --- RFC-003 Worktrees Ativos --- */}
       <hr style={{ margin: '20px 0 16px', border: 'none', borderTop: '1px solid var(--border)' }} />
       <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>
@@ -604,7 +607,7 @@ export function EditProjectModal() {
       {/* --- RFC-006/007/008 — Ciclo de merge seguro --- */}
       </div> : null}
 
-      {activeTab === 'merge' ? <div className={styles.panel}>
+      {activeTab === 'merge' ? <div>
       <hr style={{ margin: '20px 0 16px', border: 'none', borderTop: '1px solid var(--border)' }} />
       <h3 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12 }}>{t('merge.sectionTitle')}</h3>
 
@@ -824,6 +827,8 @@ export function EditProjectModal() {
         </>
       )}
       </div> : null}
+      </div>
+      </div>
 
       <ColorPalettePopover
         open={isColorPopoverOpen}

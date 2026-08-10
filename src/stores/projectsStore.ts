@@ -35,6 +35,7 @@ import {
   listProfiles,
   loadProjectsFile,
   saveProjectsFile,
+  writeProjectMarker,
   type ProfileMeta,
   type ProfilesState,
 } from '../lib/tauri'
@@ -99,6 +100,13 @@ export type ProjectsState = ProjectsFile & {
     githubUrl?: string
     firstBootPending?: boolean
   }) => Project
+  /** Cria um projeto novo a partir de um `Project` exportado (arquivo JSON
+   *  escolhido pelo usuário) ou detectado em `.alethe/project.json` — gera um
+   *  `id` novo (nunca reaproveita o original, pra não colidir com um projeto
+   *  já existente) e zera `ptyId` de toda tab (não existe processo vivo pra
+   *  reaproveitar), mas preserva `sessionId` — mesma lógica de "tenta resumir
+   *  de propósito" do item de migração de worktree. */
+  importProjectFromFile: (data: Project, groupId?: string | null) => Project
   renameProject: (id: string, name: string) => void
   archiveProject: (id: string) => void
   unarchiveProject: (id: string) => void
@@ -325,6 +333,32 @@ export type ProjectsState = ProjectsFile & {
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let pendingSave = false
 
+// Espelho automático de cada projeto em `<repo>/.alethe/project.json` — feito
+// de propósito num chokepoint só (`updateProject`, chamado por praticamente
+// toda mutação de projeto/terminal/tab) em vez de espalhar chamadas manuais.
+// Debounce por projectId (não um só global) pra não perder a escrita de um
+// projeto enquanto outro está sendo editado rapidamente.
+const MARKER_DEBOUNCE_MS = 1500
+const markerTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+function scheduleProjectMarkerWrite(projectId: string, getState: () => ProjectsState) {
+  const existing = markerTimers.get(projectId)
+  if (existing) clearTimeout(existing)
+  markerTimers.set(
+    projectId,
+    setTimeout(() => {
+      markerTimers.delete(projectId)
+      const project = getState().projects.find((p) => p.id === projectId)
+      if (!project) return
+      const repoRoot = getProjectRepoRoot(project)
+      if (!repoRoot) return
+      void writeProjectMarker(repoRoot, JSON.stringify(project, null, 2)).catch((error) => {
+        console.error(`[projectsStore] falha escrevendo .alethe/project.json de ${project.name}:`, error)
+      })
+    }, MARKER_DEBOUNCE_MS),
+  )
+}
+
 // Sequência monotônica enviada a cada gravação (ver SAVE_MUTEX/LAST_WRITE_SEQUENCE
 // em src-tauri/src/projects.rs) — garante last-write-wins mesmo se duas chamadas de
 // save_projects chegarem fora de ordem no backend (reload concorrente, IPC atrasado).
@@ -452,10 +486,12 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
     }
   }
 
-  const updateProject = (projectId: string, fn: (p: Project) => Project) =>
+  const updateProject = (projectId: string, fn: (p: Project) => Project) => {
     update((state) => ({
       projects: state.projects.map((p) => (p.id === projectId ? fn(p) : p)),
     }))
+    scheduleProjectMarkerWrite(projectId, get)
+  }
 
   const updateTerminal = (projectId: string, terminalId: string, fn: (t: Terminal) => Terminal) =>
     updateProject(projectId, (p) => ({
