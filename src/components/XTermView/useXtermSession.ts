@@ -143,18 +143,26 @@ let aiMemoryMissingWarned = false
 // acesso que os próprios addons oficiais (`@xterm/addon-canvas`) usam
 // internamente — aceitável aqui como workaround pontual de um bug de
 // terceiros, não como padrão geral de acesso à API do xterm.js.
-let viewportSyncGuardPatched = false
+// Marcador na própria função (não numa flag de módulo) — o HMR do Vite
+// reexecuta o topo deste módulo a cada edit salvo durante o dev, o que
+// reatribuiria uma flag `let` pra `false` de novo mesmo com o Viewport.prototype
+// (objeto do pacote xterm.js, não deste módulo) já embrulhado por uma rodada
+// anterior. Sem esse marcador sobrevivendo ao HMR, cada edit salvo durante uma
+// sessão de dev longa empilhava mais uma camada de try/catch por cima da
+// anterior — confirmado ao vivo (stack de `proto.syncScrollArea` crescendo a
+// cada re-render, um nível por HMR), inofensivo em si (cada camada só repassa
+// pro original), mas custo de CPU crescente sem limite pro resto da sessão.
+const VIEWPORT_SYNC_GUARD_MARK = '__aletheViewportSyncGuarded'
 function patchXtermViewportSyncGuard(terminal: Terminal): void {
-  if (viewportSyncGuardPatched) return
   try {
     const viewport = (terminal as unknown as { _core?: { viewport?: object } })._core?.viewport
     if (!viewport) return
     const proto = Object.getPrototypeOf(viewport) as {
-      syncScrollArea?: (...args: unknown[]) => void
+      syncScrollArea?: ((...args: unknown[]) => void) & { [VIEWPORT_SYNC_GUARD_MARK]?: boolean }
     }
     const original = proto.syncScrollArea
-    if (typeof original !== 'function') return
-    proto.syncScrollArea = function (this: unknown, ...args: unknown[]) {
+    if (typeof original !== 'function' || original[VIEWPORT_SYNC_GUARD_MARK]) return
+    const guarded = function (this: unknown, ...args: unknown[]) {
       try {
         return original.apply(this, args)
       } catch (error) {
@@ -164,7 +172,8 @@ function patchXtermViewportSyncGuard(terminal: Terminal): void {
         return undefined
       }
     }
-    viewportSyncGuardPatched = true
+    guarded[VIEWPORT_SYNC_GUARD_MARK] = true
+    proto.syncScrollArea = guarded
   } catch {
     /* acesso a internals falhou (versão do xterm.js mudou a forma?) — segue
        sem o patch, o bug volta a se manifestar mas nada quebra por causa

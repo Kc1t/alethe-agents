@@ -243,7 +243,7 @@ export type Project = {
   /** Indica se a workspace precisa disparar a injeção inicial de contexto pós-clone. */
   firstBootPending?: boolean
   /** Comportamento do terminal após aceitar o merge (relocalizar em nova branch ou fechar). */
-  mergePostAction?: 'relocateToNewBranch' | 'closeTerminal'
+  mergePostAction?: 'relocateToNewBranch' | 'relocateKeepSession' | 'closeTerminal'
   /** Worktrees com limpeza inacabada (deleção física ou `prune` falhados). */
   orphanWorktrees?: OrphanWorktree[]
 }

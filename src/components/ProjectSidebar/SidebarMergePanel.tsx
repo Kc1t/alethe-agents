@@ -12,13 +12,18 @@ import {
   gitDiffSummary,
   readGsdProcedure,
   killPtyTree,
+  worktreePendingChanges,
+  worktreeCommitWorktree,
+  readTextFile,
   type DiffSummaryEntry,
   type GsdProcedureStep,
   type ValidationResult,
+  type WorktreePendingChange,
 } from '../../lib/tauri'
 import { useT } from '../../lib/i18n'
 import { useGsdSyncSessionsWatcher } from '../../hooks/useGsdSyncSessions'
 import { BranchTestingModal, type TestingItem } from '../modals/BranchTestingModal'
+import { ConfirmWorktreeCommitModal } from '../modals/ConfirmWorktreeCommitModal'
 import styles from './SidebarMergePanel.module.css'
 
 /** Prompt inicial do Revisor de Branch — agente-facing (aparece no terminal
@@ -103,6 +108,12 @@ export function SidebarMergePanel() {
   const abortMerge = useMergeStore((s) => s.abort)
 
   const [testModalTarget, setTestModalTarget] = useState<PendingMergeCard | null>(null)
+  const [commitConfirmTarget, setCommitConfirmTarget] = useState<{
+    item: PendingMergeCard
+    repo: string
+    pending: WorktreePendingChange[]
+    defaultMessage: string
+  } | null>(null)
   const [testBriefing, setTestBriefing] = useState<{
     id: string
     /** null = ainda carregando o diff real. */
@@ -264,7 +275,29 @@ export function SidebarMergePanel() {
       pushToast({ title: t('merge.noRepoTitle'), body: t('merge.noRepoBody') })
       return
     }
+    // git merge só move commits — se essa worktree tem trabalho nunca
+    // commitado, para e pede confirmação (com a mensagem do commit) antes de
+    // seguir, em vez de commitar silenciosamente ou integrar um no-op (bug
+    // real, confirmado ao vivo: "merge concluído" sem mover nada).
+    const pending = await worktreePendingChanges(repo, item.worktreeAgentId).catch(() => [])
+    if (pending.length > 0) {
+      const defaultMessage = await readTextFile(`${item.worktreePath}/.planning/goal.md`).catch(() => '')
+      setCommitConfirmTarget({ item, repo, pending, defaultMessage: defaultMessage.trim() })
+      return
+    }
     await integrateWorktree(proj, repo, item.worktreeAgentId, item.terminalId)
+  }
+
+  const handleConfirmCommitAndIntegrate = async (message: string) => {
+    const target = commitConfirmTarget
+    if (!target) return
+    setCommitConfirmTarget(null)
+    const proj = projects.find((p) => p.id === target.item.projectId)
+    if (!proj) return
+    await worktreeCommitWorktree(target.repo, target.item.worktreeAgentId, message).catch((err) => {
+      pushToast({ title: t('merge.blockedTitle', { stage: 'commit' }), body: String(err).slice(0, 300) })
+    })
+    await integrateWorktree(proj, target.repo, target.item.worktreeAgentId, target.item.terminalId)
   }
 
   const handleRejectMerge = async (item: PendingMergeCard) => {
@@ -696,6 +729,17 @@ export function SidebarMergePanel() {
           }
           onStartTesting={() => handleStartTesting(testModalTarget)}
           onSendFeedback={(summary) => void handleSendTestFeedback(testModalTarget, summary)}
+        />
+      ) : null}
+
+      {commitConfirmTarget ? (
+        <ConfirmWorktreeCommitModal
+          open={Boolean(commitConfirmTarget)}
+          onClose={() => setCommitConfirmTarget(null)}
+          branchName={commitConfirmTarget.item.branchName}
+          pending={commitConfirmTarget.pending}
+          defaultMessage={commitConfirmTarget.defaultMessage}
+          onConfirm={(message) => void handleConfirmCommitAndIntegrate(message)}
         />
       ) : null}
     </>

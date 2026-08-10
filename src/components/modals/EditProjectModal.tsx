@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { GROUP_COLORS, type AgentType } from '../../lib/types'
 import { useT } from '../../lib/i18n'
-import { useProjectsStore } from '../../stores/projectsStore'
+import { getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { useMergeStore } from '../../stores/mergeStore'
 import {
@@ -61,7 +61,9 @@ export function EditProjectModal() {
   const [conflictModel, setConflictModelState] = useState('')
   const [graphifyEnabled, setGraphifyEnabledState] = useState(false)
   const [autoWorktree, setAutoWorktreeState] = useState(false)
-  const [mergePostAction, setMergePostActionState] = useState<'relocateToNewBranch' | 'closeTerminal'>('relocateToNewBranch')
+  const [mergePostAction, setMergePostActionState] = useState<
+    'relocateToNewBranch' | 'relocateKeepSession' | 'closeTerminal'
+  >('relocateToNewBranch')
   const [branches, setBranches] = useState<string[]>([])
   const [newAgentName, setNewAgentName] = useState('')
   const [creatingAgent, setCreatingAgent] = useState(false)
@@ -641,8 +643,8 @@ export function EditProjectModal() {
           </div>
 
           <div className={controls.field} style={{ marginTop: 8 }}>
-            <label className={controls.label}>Ação pós-Merge do Agente</label>
-            <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
+            <label className={controls.label}>{t('merge.postActionLabel')}</label>
+            <div style={{ display: 'flex', gap: 16, marginTop: 4, flexWrap: 'wrap' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
                 <input
                   type="radio"
@@ -651,7 +653,17 @@ export function EditProjectModal() {
                   checked={mergePostAction === 'relocateToNewBranch'}
                   onChange={() => setMergePostActionState('relocateToNewBranch')}
                 />
-                Criar nova branch e manter chat ativo
+                {t('merge.postActionRelocateChat')}
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                <input
+                  type="radio"
+                  name="mergePostAction"
+                  value="relocateKeepSession"
+                  checked={mergePostAction === 'relocateKeepSession'}
+                  onChange={() => setMergePostActionState('relocateKeepSession')}
+                />
+                {t('merge.postActionRelocateSession')}
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
                 <input
@@ -661,8 +673,11 @@ export function EditProjectModal() {
                   checked={mergePostAction === 'closeTerminal'}
                   onChange={() => setMergePostActionState('closeTerminal')}
                 />
-                Encerrar terminal do agente
+                {t('merge.postActionClose')}
               </label>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 6 }}>
+              {t('merge.postActionHint')}
             </div>
           </div>
 
@@ -677,7 +692,7 @@ export function EditProjectModal() {
                 merge.phase === 'analyzing'
               }
               onClick={() => {
-                const repoPath = project.terminals[0]?.cwd
+                const repoPath = getProjectRepoRoot(project)
                 if (repoPath) void merge.analyze(project, repoPath, mergeSource, mergeTarget)
               }}
             >
@@ -697,7 +712,7 @@ export function EditProjectModal() {
                 merge.phase === 'rebase_attempt'
               }
               onClick={() => {
-                const repoPath = project.terminals[0]?.cwd
+                const repoPath = getProjectRepoRoot(project)
                 if (repoPath) void merge.start(project, repoPath, mergeSource, mergeTarget)
               }}
             >

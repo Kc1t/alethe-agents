@@ -123,7 +123,23 @@ export type ProjectsState = ProjectsFile & {
   setReviewAgentModel: (id: string, model: string) => void
   setGraphifyEnabled: (id: string, enabled: boolean) => void
   setAutoWorktree: (id: string, enabled: boolean) => void
-  setMergePostAction: (id: string, action: 'relocateToNewBranch' | 'closeTerminal') => void
+  setMergePostAction: (
+    id: string,
+    action: 'relocateToNewBranch' | 'relocateKeepSession' | 'closeTerminal',
+  ) => void
+  /** Relocaliza o terminal do agente de merge (`agentTerminalId` do mergeStore) pra
+   *  uma worktree/branch nova em vez de matá-lo — usado pelo pós-merge quando
+   *  `mergePostAction` é `relocateToNewBranch`/`relocateKeepSession` (ver
+   *  `mergeStore.finalize`). Mesmo mecanismo de `migrateProjectTerminalsToWorktrees`
+   *  (`worktreeProvision` + `restartAgentPtyWithHangGuard`), só que pra UM terminal já
+   *  identificado. `keepSession: true` tenta resumir a conversa atual na worktree nova
+   *  (sujeito ao mesmo `CROSS_CWD_RESUME_OK`/hang-guard da migração); `false` força
+   *  sessão nova de propósito. */
+  relocateMergeAgentTerminal: (
+    projectId: string,
+    terminalId: string,
+    opts: { keepSession: boolean },
+  ) => Promise<{ ok: boolean; error?: string }>
   /** Migra terminais existentes (sem `worktreeAgentId`) do projeto pra worktrees
    *  isoladas — ação explícita via botão dedicado, nunca automática (ver
    *  `setAutoWorktree`). Suspende os PTYs antigos em vez de matar. */

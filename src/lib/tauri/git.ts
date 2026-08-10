@@ -118,6 +118,39 @@ export async function worktreeFetchBranch(repo: string, agentId: string): Promis
   await invoke('worktree_fetch_branch', { repo, agentId })
 }
 
+/** `git merge` só move commits — commita automaticamente o que estiver pendente
+ *  (staged/unstaged/untracked) nessa worktree antes de integrar, pra um agente
+ *  que esqueceu de commitar não virar "merge concluído" sem mover nada.
+ *  Devolve `true` se um commit novo foi criado; `false` numa worktree já limpa. */
+export async function worktreeCommitPending(repo: string, agentId: string): Promise<boolean> {
+  return invoke<boolean>('worktree_commit_pending', { repo, agentId })
+}
+
+export type WorktreePendingChange = {
+  path: string
+  status: string
+}
+
+/** Lista o que está pendente (staged/unstaged/untracked) numa worktree de
+ *  agente sem mexer em nada — usado pelo pop-up de confirmação antes de
+ *  integrar, pra o usuário revisar e escrever a mensagem do commit. */
+export async function worktreePendingChanges(
+  repo: string,
+  agentId: string,
+): Promise<WorktreePendingChange[]> {
+  return invoke<WorktreePendingChange[]>('worktree_pending_changes', { repo, agentId })
+}
+
+/** Como `worktreeCommitPending`, mas com a mensagem escolhida pelo usuário no
+ *  pop-up de confirmação em vez do texto genérico. */
+export async function worktreeCommitWorktree(
+  repo: string,
+  agentId: string,
+  message: string,
+): Promise<boolean> {
+  return invoke<boolean>('worktree_commit_worktree', { repo, agentId, message })
+}
+
 /** Trava administrativamente um worktree (`git worktree lock`) — ver `adminLockReason` em `OrphanWorktree`. */
 export async function worktreeLock(repo: string, agentId: string, reason?: string): Promise<void> {
   await invoke('worktree_lock', { repo, agentId, reason })

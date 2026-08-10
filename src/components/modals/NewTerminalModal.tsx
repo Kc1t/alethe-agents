@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { useUiStore } from '../../stores/uiStore'
 import { basename } from '../../lib/paths'
-import { getProjectDefaultCwd, useProjectsStore } from '../../stores/projectsStore'
+import { getProjectDefaultCwd, getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
 import { pickDirectory } from '../../lib/dialog'
 import { AGENT_TYPE_LABELS, ALL_AGENT_TYPES, UNRESTRICTED_FLAG, type AgentRuntimeProfile, type AgentType } from '../../lib/types'
 import { AgentIcon } from '../icons/AgentIcons'
@@ -53,11 +53,24 @@ export function NewTerminalModal() {
     visibleAgents[0]?.type ??
     'shell'
   const selectedAgent = AGENTS.find((agent) => agent.type === type) ?? AGENTS[0]
-  const inheritedCwd = useMemo(() => getProjectDefaultCwd(project, projects), [project, projects])
+  // getProjectRepoRoot primeiro: getProjectDefaultCwd sozinho pega o cwd do
+  // terminal mais recentemente usado, mesmo que seja uma worktree isolada de
+  // agente — sugerindo `.alethe/worktrees/<id>` como pasta padrão pra um
+  // terminal novo (bug real, visto ao vivo). Mesma ordem de fallback já usada
+  // em createAgentTerminal (projectsStore.terminalSlices.ts).
+  const inheritedCwd = useMemo(
+    () => getProjectRepoRoot(project) || getProjectDefaultCwd(project, projects),
+    [project, projects],
+  )
   const recentFolders = useMemo(() => {
     const folders = new Map<string, { path: string; lastUsedAt: number }>()
     for (const candidate of projects) {
+      // Mesmo filtro de "pura" de getProjectRepoRoot: pasta de worktree
+      // isolada de agente não é um bom atalho pra recomeçar um terminal novo
+      // (bug real, visto ao vivo — a worktree mais recente dominava a lista e
+      // escondia as pastas principais de projeto).
       for (const terminal of candidate.terminals) {
+        if (terminal.worktreeAgentId || terminal.gsdSyncViewer) continue
         const paths = [terminal.cwd, ...terminal.tabs.map((tab) => tab.cwd)]
         for (const path of paths) {
           const trimmed = path?.trim()

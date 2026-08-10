@@ -418,6 +418,7 @@ type ProjectsSlice = Pick<
   | 'setGraphifyEnabled'
   | 'setAutoWorktree'
   | 'setMergePostAction'
+  | 'relocateMergeAgentTerminal'
   | 'migrateProjectTerminalsToWorktrees'
   | 'addOrphanWorktree'
   | 'removeOrphanWorktree'
@@ -559,6 +560,81 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
     setAutoWorktree: (id, autoWorktree) => updateProject(id, (p) => ({ ...p, autoWorktree })),
 
     setMergePostAction: (id, mergePostAction) => updateProject(id, (p) => ({ ...p, mergePostAction })),
+
+    relocateMergeAgentTerminal: async (projectId, terminalId, opts) => {
+      const project = get().projects.find((p) => p.id === projectId)
+      const terminal = project?.terminals.find((t) => t.id === terminalId)
+      if (!project || !terminal) return { ok: false, error: 'terminal_not_found' }
+
+      const repo = getProjectRepoRoot(project)
+      if (!repo) return { ok: false, error: 'no_repo' }
+
+      try {
+        const { worktreeProvision } = await import('../lib/tauri')
+        const agentId = `merge-${nanoid(6)}`
+        const info = await worktreeProvision(repo, agentId, project.worktreeMode ?? 'gitWorktree')
+
+        // Mesma ordem de migrateProjectTerminalsToWorktrees: cwd/worktreeAgentId
+        // primeiro, sessionId limpo, restart depois — ver comentário lá.
+        updateProject(projectId, (p) => ({
+          ...p,
+          terminals: p.terminals.map((t) => {
+            if (t.id !== terminalId) return t
+            return {
+              ...t,
+              cwd: info.path,
+              worktreeAgentId: agentId,
+              tabs: t.tabs.map((tab) => ({ ...tab, cwd: info.path, sessionId: undefined })),
+            }
+          }),
+        }))
+
+        for (const tab of terminal.tabs) {
+          if (!tab.ptyId) continue
+          const activeSessions = getActiveSessions()
+          const savedSession = activeSessions[tab.id] ?? activeSessions[tab.ptyId] ?? null
+          const preservedResumeId =
+            tab.sessionId ?? savedConversationIdFor(savedSession, tab.type, terminal.cwd)
+          const effectiveResumeId =
+            opts.keepSession && CROSS_CWD_RESUME_OK[tab.type] ? preservedResumeId : undefined
+          try {
+            await restartAgentPtyWithHangGuard({
+              ptyId: tab.ptyId,
+              sessionPersistenceKey: tab.id,
+              agent: tab.type,
+              cwd: info.path,
+              runtimeProfile: tab.runtimeProfile,
+              extraArgs: tab.extraArgs ?? [],
+              resumeId: effectiveResumeId,
+              onSessionId: (id) =>
+                updateProject(projectId, (p) => ({
+                  ...p,
+                  terminals: p.terminals.map((t) =>
+                    t.id !== terminalId
+                      ? t
+                      : {
+                          ...t,
+                          tabs: t.tabs.map((tb) => (tb.id === tab.id ? { ...tb, sessionId: id } : tb)),
+                        },
+                  ),
+                })),
+            })
+            window.dispatchEvent(
+              new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: tab.ptyId } }),
+            )
+          } catch (restartErr) {
+            console.warn(
+              '[projectsStore] falha reiniciando terminal de merge na worktree nova:',
+              restartErr,
+            )
+          }
+        }
+
+        return { ok: true }
+      } catch (err) {
+        return { ok: false, error: String(err) }
+      }
+    },
 
     migrateProjectTerminalsToWorktrees: async (projectId, gsdWatcherEnabledOverride) => {
       if (migratingWorktreeProjectIds.has(projectId)) return // já em andamento — ignora clique duplicado

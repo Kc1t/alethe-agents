@@ -1609,6 +1609,18 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.providerLabel': 'Agente de resolução de conflitos',
   'merge.modelLabel': 'Modelo do agente ({provider})',
   'merge.needBranches': 'Este repo precisa de ao menos dois branches locais para merge.',
+  'merge.postActionLabel': 'Ação pós-merge do agente',
+  'merge.postActionRelocateChat': 'Criar nova branch e manter chat ativo',
+  'merge.postActionRelocateSession': 'Criar nova branch e manter sessão',
+  'merge.postActionClose': 'Encerrar terminal do agente',
+  'merge.postActionHint':
+    '"Manter chat" reabre o painel na branch nova com uma conversa zerada. "Manter sessão" tenta retomar a MESMA conversa lá — não garantido para todo agente/CLI, cai numa conversa nova se o resume não for suportado ou travar.',
+  'merge.commitConfirmTitle': 'Commitar trabalho pendente — {branch}',
+  'merge.commitConfirmDescription':
+    'Esta worktree tem mudanças que nunca foram commitadas. O merge só move commits — revise o que vai ser commitado e escreva uma descrição antes de integrar.',
+  'merge.commitConfirmMessageLabel': 'Mensagem do commit',
+  'merge.commitConfirmMessagePlaceholder': 'O que o agente implementou nesta worktree?',
+  'merge.commitConfirmAction': 'Commitar e integrar',
   'merge.sourceLabel': 'Branch de origem',
   'merge.targetLabel': 'Branch de destino',
   'merge.analyze': 'Analisar',

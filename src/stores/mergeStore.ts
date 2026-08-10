@@ -9,6 +9,7 @@ import {
   mergeForceCleanup,
   gitStatus,
   worktreeFetchBranch,
+  worktreeCommitPending,
   worktreeRemove,
   killPtyTree,
   watchFile,
@@ -350,14 +351,32 @@ export const useMergeStore = create<MergeState>((set, get) => ({
 
       if (outcome.merged) {
         stopResolvingWatch()
-        if (projectId && agentTerminalId) {
+        const mergedProject = projectId
+          ? useProjectsStore.getState().projects.find((p) => p.id === projectId)
+          : undefined
+        const postAction = mergedProject?.mergePostAction ?? 'closeTerminal'
+        let relocated = false
+
+        if (projectId && agentTerminalId && postAction !== 'closeTerminal') {
+          const result = await useProjectsStore
+            .getState()
+            .relocateMergeAgentTerminal(projectId, agentTerminalId, {
+              keepSession: postAction === 'relocateKeepSession',
+            })
+          relocated = result.ok
+          if (!result.ok) {
+            console.warn('[mergeStore] relocação pós-merge falhou, encerrando terminal:', result.error)
+          }
+        }
+
+        if (!relocated && projectId && agentTerminalId) {
           useProjectsStore.getState().deleteTerminal(projectId, agentTerminalId)
         }
         set({
           phase: 'merged',
           outcome,
           env: null,
-          agentTerminalId: null,
+          agentTerminalId: relocated ? agentTerminalId : null,
           isFinalizing: false,
           retryCount: 0,
           adminLockReason: null,
@@ -465,6 +484,12 @@ export const useMergeStore = create<MergeState>((set, get) => ({
       return
     }
     try {
+      // git merge só move commits — se o agente escreveu arquivo e nunca
+      // commitou, a branch dele não tem nada de novo em relação ao alvo e a
+      // integração inteira vira um no-op silencioso (reporta "concluído" sem
+      // mover nada — bug real, confirmado ao vivo). Commita automaticamente
+      // o que estiver pendente antes de seguir; no-op numa worktree já limpa.
+      await worktreeCommitPending(repo, worktreeAgentId)
       // LocalCopy: o branch vive no clone — traz pro repo principal primeiro.
       // (No modo gitWorktree é no-op no backend.)
       await worktreeFetchBranch(repo, worktreeAgentId)

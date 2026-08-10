@@ -1599,6 +1599,18 @@ export const en = {
   'merge.providerLabel': 'Conflict resolution agent',
   'merge.modelLabel': 'Agent model ({provider})',
   'merge.needBranches': 'This repo needs at least two local branches to merge.',
+  'merge.postActionLabel': 'Agent post-merge action',
+  'merge.postActionRelocateChat': 'Create new branch and keep chat active',
+  'merge.postActionRelocateSession': 'Create new branch and keep session',
+  'merge.postActionClose': 'Close agent terminal',
+  'merge.postActionHint':
+    '"Keep chat" reopens the panel in the new branch with a fresh conversation. "Keep session" tries to resume the SAME conversation there — not guaranteed for every agent/CLI, falls back to a fresh conversation if resume isn’t supported or hangs.',
+  'merge.commitConfirmTitle': 'Commit pending work — {branch}',
+  'merge.commitConfirmDescription':
+    'This worktree has changes that were never committed. Merge only moves commits — review what will be committed and write a description before integrating.',
+  'merge.commitConfirmMessageLabel': 'Commit message',
+  'merge.commitConfirmMessagePlaceholder': 'What did the agent implement in this worktree?',
+  'merge.commitConfirmAction': 'Commit and integrate',
   'merge.sourceLabel': 'Source branch',
   'merge.targetLabel': 'Target branch',
   'merge.analyze': 'Analyze',

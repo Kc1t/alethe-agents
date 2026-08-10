@@ -36,6 +36,7 @@ type ModalKind =
   | 'updateAvailable'
   | 'whatsNew'
   | 'remoteControl'
+  | 'confirmWorktreeCommit'
   | null
 
 export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox'

@@ -326,6 +326,136 @@ pub(crate) fn worktree_fetch_branch_inner(repo: String, agent_id: String) -> Res
     }
 }
 
+/// `git merge` só move COMMITS — um agente que escreveu arquivos na worktree
+/// sem nunca rodar `git commit` faz a branch dele não ter nenhum commit novo
+/// em relação ao alvo, e a integração inteira (Central de Merges) vira um
+/// no-op silencioso: reporta `merged: true`, mas nada muda no repo principal
+/// (confirmado ao vivo — README.md ficava `Untracked` na worktree pra sempre,
+/// `git log --all` mostrava só o commit inicial em toda branch). Chamado
+/// antes de `merge_prepare`/`merge_analyze` no fluxo de "Integrar": commita
+/// automaticamente o que estiver pendente (staged, unstaged ou untracked) —
+/// combina com a intenção do botão ("pegar o trabalho desta worktree"), sem
+/// exigir que o usuário ou o agente lembrem de commitar manualmente. No-op
+/// numa worktree já limpa.
+#[tauri::command]
+pub async fn worktree_commit_pending(repo: String, agent_id: String) -> Result<bool, String> {
+    tokio::task::spawn_blocking(move || worktree_commit_pending_inner(repo, agent_id))
+        .await
+        .map_err(|error| format!("worktree_commit_pending: falha na task bloqueante: {error}"))?
+}
+
+pub(crate) fn worktree_commit_pending_inner(repo: String, agent_id: String) -> Result<bool, String> {
+    let env = resolve_worktree_env(&repo, &agent_id)?;
+    commit_all_pending(&env, "Trabalho do agente (commit automático antes da integração)")
+}
+
+/// Resolve e valida o diretório de uma worktree de agente a partir do id —
+/// compartilhado pelas três operações de commit pendente (auto/listar/commitar
+/// com mensagem escolhida pelo usuário).
+fn resolve_worktree_env(repo: &str, agent_id: &str) -> Result<PathBuf, String> {
+    // main_repository_root (não repository_root): mesma razão de
+    // worktree_provision_inner — `repo` pode já ser uma worktree isolada se o
+    // projeto não tiver nenhum terminal "puro" sobrando como referência.
+    let root = main_repository_root(repo)?;
+    let id = sanitize_id(agent_id)?;
+    let env = worktrees_base(&root).join(&id);
+    if detect_mode(&env).is_none() {
+        return Err("worktree_not_found".to_string());
+    }
+    Ok(env)
+}
+
+/// Espelha `isRealWork()` de `assets/opencode-plugins/alethe-gsd-state.ts` —
+/// infraestrutura do próprio Alethe (plugin GSD em `.opencode/`, estado do
+/// GSD Sync em `.planning/`, o `opencode.json` que o Alethe escreve a cada
+/// spawn) nunca é trabalho real do agente nesta worktree. Sem esse filtro, o
+/// commit automático (e a lista mostrada no pop-up de confirmação) incluía
+/// esses arquivos de configuração junto com o trabalho de verdade — confirmado
+/// ao vivo, eles acabavam mergeados pro repo principal.
+fn is_real_work(path: &str) -> bool {
+    !path.is_empty() && !path.starts_with(".planning/") && !path.starts_with(".opencode/") && path != "opencode.json"
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingChange {
+    pub path: String,
+    pub status: String,
+}
+
+fn parse_porcelain(output: &str) -> Vec<PendingChange> {
+    output
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| PendingChange {
+            status: line.get(0..2).unwrap_or("").trim().to_string(),
+            path: line.get(3..).unwrap_or("").trim().to_string(),
+        })
+        .filter(|change| is_real_work(&change.path))
+        .collect()
+}
+
+fn commit_all_pending(env: &Path, message: &str) -> Result<bool, String> {
+    let status = checked_output(env, &["status", "--porcelain"])?;
+    let changes = parse_porcelain(&String::from_utf8_lossy(&status.stdout));
+    if changes.is_empty() {
+        return Ok(false);
+    }
+    let message = if message.trim().is_empty() {
+        "Trabalho do agente (commit automático antes da integração)"
+    } else {
+        message
+    };
+    // Nunca `add -A`: stagia só os paths reais (filtrados acima), pra nunca
+    // arrastar infraestrutura do Alethe (.opencode/, .planning/, opencode.json)
+    // pro commit mesmo que estejam pendentes/untracked na worktree.
+    let mut add_args: Vec<&str> = vec!["add", "--"];
+    add_args.extend(changes.iter().map(|change| change.path.as_str()));
+    checked_output(env, &add_args)?;
+    checked_output(env, &["commit", "-m", message])?;
+    Ok(true)
+}
+
+/// Lista o que está pendente (staged/unstaged/untracked) numa worktree de
+/// agente sem mexer em nada — usado pelo pop-up de confirmação antes de
+/// integrar (o usuário revisa e escreve a mensagem do commit antes de
+/// `worktree_commit_worktree` rodar de fato).
+#[tauri::command]
+pub async fn worktree_pending_changes(repo: String, agent_id: String) -> Result<Vec<PendingChange>, String> {
+    tokio::task::spawn_blocking(move || worktree_pending_changes_inner(repo, agent_id))
+        .await
+        .map_err(|error| format!("worktree_pending_changes: falha na task bloqueante: {error}"))?
+}
+
+pub(crate) fn worktree_pending_changes_inner(repo: String, agent_id: String) -> Result<Vec<PendingChange>, String> {
+    let env = resolve_worktree_env(&repo, &agent_id)?;
+    let status = checked_output(&env, &["status", "--porcelain"])?;
+    Ok(parse_porcelain(&String::from_utf8_lossy(&status.stdout)))
+}
+
+/// Como `worktree_commit_pending`, mas com mensagem escolhida pelo usuário no
+/// pop-up de confirmação em vez do texto genérico — mesmo no-op numa worktree
+/// já limpa.
+#[tauri::command]
+pub async fn worktree_commit_worktree(
+    repo: String,
+    agent_id: String,
+    message: String,
+) -> Result<bool, String> {
+    tokio::task::spawn_blocking(move || worktree_commit_worktree_inner(repo, agent_id, message))
+        .await
+        .map_err(|error| format!("worktree_commit_worktree: falha na task bloqueante: {error}"))?
+}
+
+pub(crate) fn worktree_commit_worktree_inner(
+    repo: String,
+    agent_id: String,
+    message: String,
+) -> Result<bool, String> {
+    let env = resolve_worktree_env(&repo, &agent_id)?;
+    commit_all_pending(&env, &message)
+}
+
 #[tauri::command]
 pub async fn worktree_cleanup(repo: String) -> Result<(), String> {
     tokio::task::spawn_blocking(move || worktree_cleanup_inner(repo))
@@ -412,6 +542,130 @@ mod tests {
 
         worktree_remove(root_str.clone(), "fetchme".into(), true).unwrap();
         worktree_remove(root_str, "wtnoop".into(), true).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn commit_pending_commits_untracked_and_modified_work() {
+        use super::worktree_commit_pending_inner as worktree_commit_pending;
+
+        let root = temp_repo();
+        let root_str = root.to_string_lossy().into_owned();
+        let wt = worktree_provision(root_str.clone(), "op1".into(), WorktreeMode::GitWorktree).unwrap();
+        let env = Path::new(&wt.path);
+        checked_output(env, &["config", "user.name", "Alethe Test"]).unwrap();
+        checked_output(env, &["config", "user.email", "alethe@example.invalid"]).unwrap();
+
+        // Nada pendente ainda — no-op, sem commit novo.
+        assert!(!worktree_commit_pending(root_str.clone(), "op1".into()).unwrap());
+        let before = git_command(env, &["rev-parse", "HEAD"]).unwrap();
+
+        // Agente "esqueceu" de commitar: arquivo novo untracked.
+        fs::write(env.join("README.md"), "trabalho do agente\n").unwrap();
+        assert!(worktree_commit_pending(root_str.clone(), "op1".into()).unwrap());
+
+        let after = git_command(env, &["rev-parse", "HEAD"]).unwrap();
+        assert_ne!(before.stdout, after.stdout, "devia existir um commit novo");
+        let status = checked_output(env, &["status", "--porcelain"]).unwrap();
+        assert!(String::from_utf8_lossy(&status.stdout).trim().is_empty(), "worktree devia estar limpa após o commit");
+
+        // Repetir sem mudança nenhuma: no-op de novo.
+        assert!(!worktree_commit_pending(root_str.clone(), "op1".into()).unwrap());
+
+        assert!(worktree_commit_pending(root_str.clone(), "nope".into()).is_err());
+
+        worktree_remove(root_str, "op1".into(), true).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn pending_changes_lists_without_mutating_and_commit_worktree_uses_chosen_message() {
+        use super::worktree_commit_worktree_inner as worktree_commit_worktree;
+        use super::worktree_pending_changes_inner as worktree_pending_changes;
+
+        let root = temp_repo();
+        let root_str = root.to_string_lossy().into_owned();
+        let wt = worktree_provision(root_str.clone(), "op2".into(), WorktreeMode::GitWorktree).unwrap();
+        let env = Path::new(&wt.path);
+        checked_output(env, &["config", "user.name", "Alethe Test"]).unwrap();
+        checked_output(env, &["config", "user.email", "alethe@example.invalid"]).unwrap();
+
+        assert!(worktree_pending_changes(root_str.clone(), "op2".into()).unwrap().is_empty());
+
+        fs::write(env.join("README.md"), "trabalho do agente\n").unwrap();
+        let pending = worktree_pending_changes(root_str.clone(), "op2".into()).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].path, "README.md");
+        assert_eq!(pending[0].status, "??");
+        // Listar não deve mexer em nada — ainda untracked, nenhum commit novo.
+        let status_after_list = checked_output(env, &["status", "--porcelain"]).unwrap();
+        assert!(!String::from_utf8_lossy(&status_after_list.stdout).trim().is_empty());
+
+        assert!(worktree_commit_worktree(root_str.clone(), "op2".into(), "resumo real do trabalho".into()).unwrap());
+        let log = git_command(env, &["log", "-1", "--format=%s"]).unwrap();
+        assert_eq!(String::from_utf8_lossy(&log.stdout).trim(), "resumo real do trabalho");
+        assert!(worktree_pending_changes(root_str.clone(), "op2".into()).unwrap().is_empty());
+
+        // Mensagem em branco cai pro texto genérico em vez de falhar o commit.
+        fs::write(env.join("README.md"), "mais uma mudança\n").unwrap();
+        assert!(worktree_commit_worktree(root_str.clone(), "op2".into(), "   ".into()).unwrap());
+        let log2 = git_command(env, &["log", "-1", "--format=%s"]).unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&log2.stdout).trim(),
+            "Trabalho do agente (commit automático antes da integração)"
+        );
+
+        worktree_remove(root_str, "op2".into(), true).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn infra_files_never_show_up_pending_and_never_get_committed() {
+        use super::worktree_commit_worktree_inner as worktree_commit_worktree;
+        use super::worktree_pending_changes_inner as worktree_pending_changes;
+
+        let root = temp_repo();
+        let root_str = root.to_string_lossy().into_owned();
+        let wt = worktree_provision(root_str.clone(), "op3".into(), WorktreeMode::GitWorktree).unwrap();
+        let env = Path::new(&wt.path);
+        checked_output(env, &["config", "user.name", "Alethe Test"]).unwrap();
+        checked_output(env, &["config", "user.email", "alethe@example.invalid"]).unwrap();
+
+        // Só infraestrutura do Alethe pendente (plugin GSD + config do OpenCode
+        // escritos automaticamente no spawn) — nenhum trabalho real do agente.
+        fs::create_dir_all(env.join(".opencode").join("plugins")).unwrap();
+        fs::write(env.join(".opencode").join("plugins").join("alethe-gsd-state.ts"), "// alethe-managed: v1\n").unwrap();
+        fs::create_dir_all(env.join(".planning")).unwrap();
+        fs::write(env.join(".planning").join("goal.md"), "objetivo\n").unwrap();
+        fs::write(env.join("opencode.json"), "{}\n").unwrap();
+
+        assert!(
+            worktree_pending_changes(root_str.clone(), "op3".into()).unwrap().is_empty(),
+            "arquivos de infraestrutura do Alethe não devem aparecer como pendentes"
+        );
+        assert!(
+            !worktree_commit_worktree(root_str.clone(), "op3".into(), "só infra".into()).unwrap(),
+            "sem trabalho real, não deveria criar commit nenhum"
+        );
+
+        // Mistura infra + trabalho real: só o real entra na lista e no commit.
+        fs::write(env.join("README.md"), "trabalho de verdade\n").unwrap();
+        let pending = worktree_pending_changes(root_str.clone(), "op3".into()).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].path, "README.md");
+
+        assert!(worktree_commit_worktree(root_str.clone(), "op3".into(), "resumo".into()).unwrap());
+        let committed = checked_output(env, &["show", "--stat", "--format=", "HEAD"]).unwrap();
+        let committed_files = String::from_utf8_lossy(&committed.stdout);
+        assert!(committed_files.contains("README.md"));
+        assert!(!committed_files.contains("opencode.json"));
+        assert!(!committed_files.contains(".planning"));
+        assert!(!committed_files.contains(".opencode"));
+        // Infra continua untracked (nunca commitada), sem quebrar mais nada.
+        let final_status = checked_output(env, &["status", "--porcelain"]).unwrap();
+        assert!(String::from_utf8_lossy(&final_status.stdout).contains("opencode.json"));
+
+        worktree_remove(root_str, "op3".into(), true).unwrap();
         fs::remove_dir_all(root).unwrap();
     }
 
