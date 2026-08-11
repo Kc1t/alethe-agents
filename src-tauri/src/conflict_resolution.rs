@@ -252,6 +252,120 @@ pub async fn merge_finalize(
         .map_err(|error| format!("merge_finalize: falha na task bloqueante: {error}"))?
 }
 
+/// Checa marcadores/unmerged, estagia (`add -A`) e roda a Validation Pipeline
+/// — SEM commitar nem integrar. Compartilhado por `merge_validate` (pára
+/// aqui, gate manual) e `merge_finalize` (continua pro commit só depois que
+/// isto retorna `Ok(None)`).
+///
+/// `Ok(Some(outcome))` = bloqueado (marcadores, unmerged ou validação falhou)
+/// — `outcome.merged` sempre `false`. `Ok(None)` = validado e staged, pronto
+/// pra commitar.
+fn validate_and_stage(
+    env: &Path,
+    meta: &MergeMeta,
+    validation_commands: Vec<String>,
+) -> Result<Option<MergeOutcome>, String> {
+    // Conflitos ainda não resolvidos (não-staged) contam como pendência.
+    let pending = unmerged_files(env)?;
+    let markers = leftover_markers(env, &meta.conflict_paths);
+    if !markers.is_empty() {
+        return Ok(Some(MergeOutcome {
+            merged: false,
+            stage: "conflict_markers".to_string(),
+            output: format!("Marcadores de conflito restantes em: {}", markers.join(", ")),
+            ..Default::default()
+        }));
+    }
+
+    // Remove o prompt ANTES do `add -A` — não pode entrar no commit. Removê-lo
+    // DEPOIS de estagiado não adianta nada: `git add -A` já capturou o
+    // conteúdo dele no índice, e apagar do disco em seguida não desfaz esse
+    // stage sozinho (precisaria de outro `add -A`/`rm` pra refletir a
+    // remoção) — confirmado ao vivo: `ALETHE_CONFLICT.md` vazou pro commit
+    // final por causa exatamente dessa ordem errada, numa versão anterior
+    // deste mesmo código nesta sessão. Também não pode remover mais cedo que
+    // isso, incondicionalmente (como era antes de existir esse gate) —
+    // apagava o arquivo no primeiro poll periódico (a cada 7s, ver
+    // `beginResolvingWatch` no frontend) mesmo com o agente ainda
+    // digitando/confirmando o prompt inicial.
+    let _ = std::fs::remove_file(env.join(PROMPT_FILE));
+
+    checked_output(env, &["add", "-A"])?;
+    if !pending.is_empty() {
+        // add -A acabou de stagear; se ainda assim restar unmerged, algo está errado.
+        let still = unmerged_files(env)?;
+        if !still.is_empty() {
+            return Ok(Some(MergeOutcome {
+                merged: false,
+                stage: "unmerged".to_string(),
+                output: format!("Arquivos não resolvidos: {}", still.join(", ")),
+                ..Default::default()
+            }));
+        }
+    }
+
+    // RFC-008 — Validation Pipeline no ambiente de merge, antes de integrar.
+    let validation =
+        crate::validation::run_validation(env.to_string_lossy().into_owned(), validation_commands)?;
+    if !validation.success {
+        emit(
+            "MergeValidationFailed",
+            meta,
+            serde_json::json!({ "stage": validation.stage }),
+        );
+        return Ok(Some(MergeOutcome {
+            merged: false,
+            stage: format!("validation:{}", validation.stage),
+            output: validation.output,
+            ..Default::default()
+        }));
+    }
+    emit("MergeValidated", meta, serde_json::json!({}));
+    Ok(None)
+}
+
+/// Só valida (marcadores + Validation Pipeline), sem commitar nem integrar —
+/// gate manual: o usuário confirma que a resolução está boa ANTES de
+/// `merge_finalize` tocar em `git commit`/`git merge`. Pedido explícito do
+/// usuário: o gatilho automático de 3 camadas (ver `beginResolvingWatch` no
+/// frontend) integrava sozinho assim que o agente sinalizava "terminei", sem
+/// nenhum humano confirmar se a resolução fazia sentido — confirmado ao vivo
+/// como imprudente (agente juntou conteúdo incompatível num arquivo só, sem
+/// perguntar, e foi commitado/integrado automaticamente).
+#[tauri::command]
+pub async fn merge_validate(
+    repo: String,
+    env_id: String,
+    validation_commands: Vec<String>,
+) -> Result<MergeOutcome, String> {
+    tokio::task::spawn_blocking(move || merge_validate_inner(repo, env_id, validation_commands))
+        .await
+        .map_err(|error| format!("merge_validate: falha na task bloqueante: {error}"))?
+}
+
+pub(crate) fn merge_validate_inner(
+    repo: String,
+    env_id: String,
+    validation_commands: Vec<String>,
+) -> Result<MergeOutcome, String> {
+    let root = repository_root(&repo)?;
+    validate_env_id(&env_id)?;
+    let env = env_dir(&root, &env_id);
+    if !env.is_dir() {
+        return Err("merge_env_not_found".to_string());
+    }
+    let meta = read_meta(&root, &env_id)?;
+    match validate_and_stage(&env, &meta, validation_commands)? {
+        Some(outcome) => Ok(outcome),
+        None => Ok(MergeOutcome {
+            merged: false,
+            stage: "validated".to_string(),
+            output: "Validação passou — pronto para integrar.".to_string(),
+            ..Default::default()
+        }),
+    }
+}
+
 pub(crate) fn merge_finalize_inner(
     repo: String,
     env_id: String,
@@ -265,53 +379,12 @@ pub(crate) fn merge_finalize_inner(
     }
     let meta = read_meta(&root, &env_id)?;
 
-    // Prompt não pode entrar no commit de merge.
-    let _ = std::fs::remove_file(env.join(PROMPT_FILE));
-
-    // Conflitos ainda não resolvidos (não-staged) contam como pendência.
-    let pending = unmerged_files(&env)?;
-    let markers = leftover_markers(&env, &meta.conflict_paths);
-    if !markers.is_empty() {
-        return Ok(MergeOutcome {
-            merged: false,
-            stage: "conflict_markers".to_string(),
-            output: format!("Marcadores de conflito restantes em: {}", markers.join(", ")),
-            ..Default::default()
-        });
+    // Revalida na hora do commit (idempotente e barato o bastante) — cobre o
+    // caso do usuário ter clicado em "Integrar" sem passar por "Validar"
+    // antes, ou de algo ter mudado no ambiente entre os dois cliques.
+    if let Some(outcome) = validate_and_stage(&env, &meta, validation_commands)? {
+        return Ok(outcome);
     }
-    checked_output(&env, &["add", "-A"])?;
-    if !pending.is_empty() {
-        // add -A acabou de stagear; se ainda assim restar unmerged, algo está errado.
-        let still = unmerged_files(&env)?;
-        if !still.is_empty() {
-            return Ok(MergeOutcome {
-                merged: false,
-                stage: "unmerged".to_string(),
-                output: format!("Arquivos não resolvidos: {}", still.join(", ")),
-                ..Default::default()
-            });
-        }
-    }
-
-    // RFC-008 — Validation Pipeline no ambiente de merge, antes de integrar.
-    let validation = crate::validation::run_validation(
-        env.to_string_lossy().into_owned(),
-        validation_commands,
-    )?;
-    if !validation.success {
-        emit(
-            "MergeValidationFailed",
-            &meta,
-            serde_json::json!({ "stage": validation.stage }),
-        );
-        return Ok(MergeOutcome {
-            merged: false,
-            stage: format!("validation:{}", validation.stage),
-            output: validation.output,
-            ..Default::default()
-        });
-    }
-    emit("MergeValidated", &meta, serde_json::json!({}));
 
     // Camada 3 do Escudo — Verificador de Contrato de API (heurístico, best-effort).
     // Nunca falha o merge: erro na checagem só vira lista vazia de avisos.
@@ -656,6 +729,12 @@ mod tests {
         // other.rs veio da branch B junto no merge.
         let other = fs::read_to_string(root.join("other.rs")).unwrap();
         assert!(other.contains("from_b"));
+        // ALETHE_CONFLICT.md (o prompt efêmero) nunca pode vazar pro commit
+        // final — regressão real: `git add -A` estagiava o arquivo ANTES dele
+        // ser removido do disco, então apagar depois não desfazia o stage e
+        // ele entrava no commit mesmo assim (corrigido: remoção agora vem
+        // antes do `add -A`).
+        assert!(!root.join("ALETHE_CONFLICT.md").exists());
         // Branch temporário removido.
         let branches = checked_output(&root, &["branch", "--list", "alethe/merge-*"]).unwrap();
         assert!(String::from_utf8_lossy(&branches.stdout).trim().is_empty());

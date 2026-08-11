@@ -6,8 +6,8 @@
 
 import { nanoid } from 'nanoid'
 
-import { basename } from './paths'
 import { MAX_RECENT_PROJECT_TABS } from '../stores/projectsStore.constants'
+import { basename } from './paths'
 import type {
   AgentRuntimeProfile,
   AgentType,
@@ -67,6 +67,7 @@ export function makeDefaultTerminal(args: {
   }
   worktreeAgentId?: string
   gsdSyncViewer?: boolean
+  ephemeralConflictAgent?: boolean
 }): Terminal {
   const tabId = nanoid()
   const now = Date.now()
@@ -80,6 +81,7 @@ export function makeDefaultTerminal(args: {
     lastUsedAt: now,
     worktreeAgentId: args.worktreeAgentId,
     gsdSyncViewer: args.gsdSyncViewer,
+    ephemeralConflictAgent: args.ephemeralConflictAgent,
     tabs: [
       {
         id: tabId,

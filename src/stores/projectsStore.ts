@@ -1,10 +1,20 @@
-import { create } from 'zustand'
 import { nanoid } from 'nanoid'
+import { create } from 'zustand'
 
+import { setStorageNamespace } from '../lib/storageNamespace'
 import {
-  EMPTY_PROJECTS_FILE,
+  listProfiles,
+  loadProjectsFile,
+  type ProfileMeta,
+  type ProfilesState,
+  saveProjectsFile,
+  writeProjectMarker,
+} from '../lib/tauri'
+import { getProjectDefaultCwd, getProjectRepoRoot } from '../lib/terminalFactory'
+import {
   type AgentRuntimeProfile,
   type AgentType,
+  EMPTY_PROJECTS_FILE,
   type GridLayout,
   type Group,
   type LayoutMode,
@@ -18,29 +28,19 @@ import {
   type Theme,
   type TodoItem,
   type WorkspaceContainer,
-  type WorkspaceTab,
   type WorkspaceRecentTab,
+  type WorkspaceTab,
   type WorkspaceViewSnapshot,
 } from '../lib/types'
 import {
-  MAX_WORKSPACE_TABS,
   captureWorkspaceSnapshot,
   cloneWorkspaceSnapshot,
   compositionLabel,
+  MAX_WORKSPACE_TABS,
   pushWorkspaceHistory,
   replaceCurrentHistorySnapshot,
   sanitizeWorkspaceSnapshot,
 } from '../lib/workspaceNavigation'
-import {
-  listProfiles,
-  loadProjectsFile,
-  saveProjectsFile,
-  writeProjectMarker,
-  type ProfileMeta,
-  type ProfilesState,
-} from '../lib/tauri'
-import { setStorageNamespace } from '../lib/storageNamespace'
-import { getProjectDefaultCwd, getProjectRepoRoot } from '../lib/terminalFactory'
 import { migrate } from './projectsStore.migrations'
 import { createGroupsSlice, createProjectsSlice } from './projectsStore.projectSlices'
 import {
@@ -222,6 +222,7 @@ export type ProjectsState = ProjectsFile & {
       }
       worktreeAgentId?: string
       gsdSyncViewer?: boolean
+      ephemeralConflictAgent?: boolean
     },
   ) => Terminal
   /**

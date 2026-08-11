@@ -1,27 +1,27 @@
-import { GitMerge, Check, X, Play, ShieldCheck, MessageSquare, RefreshCw } from 'lucide-react'
+import { Check, GitMerge, MessageSquare, Play, RefreshCw, ShieldCheck, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { useProjectsStore, getProjectRepoRoot } from '../../stores/projectsStore'
-import { useMergeStore, MERGE_BUSY_PHASES, type MergePhase } from '../../stores/mergeStore'
-import { useUiStore } from '../../stores/uiStore'
-import {
-  worktreeRemove,
-  runValidation,
-  gitStatus,
-  writePty,
-  gitDiffSummary,
-  readGsdProcedure,
-  killPtyTree,
-  worktreePendingChanges,
-  worktreeCommitWorktree,
-  readTextFile,
-  type DiffSummaryEntry,
-  type GsdProcedureStep,
-  type ValidationResult,
-  type WorktreePendingChange,
-} from '../../lib/tauri'
-import { useT } from '../../lib/i18n'
 import { useGsdSyncSessionsWatcher } from '../../hooks/useGsdSyncSessions'
+import { useT } from '../../lib/i18n'
+import {
+  type DiffSummaryEntry,
+  gitDiffSummary,
+  gitStatus,
+  type GsdProcedureStep,
+  killPtyTree,
+  readGsdProcedure,
+  readTextFile,
+  runValidation,
+  type ValidationResult,
+  worktreeCommitWorktree,
+  type WorktreePendingChange,
+  worktreePendingChanges,
+  worktreeRemove,
+  writePty,
+} from '../../lib/tauri'
+import { MERGE_BUSY_PHASES, type MergePhase, useMergeStore } from '../../stores/mergeStore'
+import { getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
+import { useUiStore } from '../../stores/uiStore'
 import { BranchTestingModal, type TestingItem } from '../modals/BranchTestingModal'
 import { ConfirmWorktreeCommitModal } from '../modals/ConfirmWorktreeCommitModal'
 import styles from './SidebarMergePanel.module.css'
@@ -77,6 +77,8 @@ function statusInfo(phase: MergePhase, isActive: boolean) {
       return { key: 'merge.statusPreparing' as const, tone: 'waiting' as const }
     case 'resolving':
       return { key: 'merge.statusResolving' as const, tone: 'waiting' as const }
+    case 'awaiting_review':
+      return { key: 'merge.statusAwaitingReview' as const, tone: 'waiting' as const }
     case 'finalizing_commit':
       return { key: 'merge.statusFinalizing' as const, tone: 'waiting' as const }
     case 'branch_diverged':
@@ -104,7 +106,10 @@ export function SidebarMergePanel() {
   const mergeWorktreeAgentId = useMergeStore((s) => s.worktreeAgentId)
   const mergeError = useMergeStore((s) => s.error)
   const mergeOutcome = useMergeStore((s) => s.outcome)
+  const mergeIsFinalizing = useMergeStore((s) => s.isFinalizing)
   const integrateWorktree = useMergeStore((s) => s.integrateWorktree)
+  const validateResolution = useMergeStore((s) => s.validate)
+  const finalizeResolution = useMergeStore((s) => s.finalize)
   const abortMerge = useMergeStore((s) => s.abort)
 
   const [testModalTarget, setTestModalTarget] = useState<PendingMergeCard | null>(null)
@@ -624,6 +629,41 @@ export function SidebarMergePanel() {
                     ) : null}
                     {mergePhase === 'resolving' ? (
                       <p className={styles.statusDetail}>{t('merge.resolvingHint')}</p>
+                    ) : null}
+                    {mergePhase === 'awaiting_review' ? (
+                      <>
+                        <p className={styles.statusDetail}>{t('merge.awaitingReviewHint')}</p>
+                        {mergeOutcome && mergeOutcome.stage !== 'validated' ? (
+                          <p className={styles.statusDetail}>{mergeOutcome.output.slice(0, 240)}</p>
+                        ) : null}
+                        <div className={styles.actionsGrid}>
+                          <button
+                            type="button"
+                            className={`${styles.actionBtn} ${styles.btnValidate}`}
+                            disabled={mergeIsFinalizing}
+                            onClick={() => void validateResolution()}
+                          >
+                            <ShieldCheck size={12} />
+                            <span className={styles.actionBtnLabel}>
+                              {mergeIsFinalizing ? t('merge.validating') : t('merge.validate')}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`${styles.actionBtn} ${styles.btnAccept}`}
+                            disabled={mergeIsFinalizing || mergeOutcome?.stage !== 'validated'}
+                            onClick={() => void finalizeResolution()}
+                            title={
+                              mergeOutcome?.stage !== 'validated'
+                                ? t('merge.validateBeforeIntegrateHint')
+                                : undefined
+                            }
+                          >
+                            <Check size={12} />
+                            <span className={styles.actionBtnLabel}>{t('merge.integrate')}</span>
+                          </button>
+                        </div>
+                      </>
                     ) : null}
                     {mergePhase !== 'merged' ? (
                       <button

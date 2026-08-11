@@ -163,7 +163,18 @@ export async function worktreeUnlock(repo: string, agentId: string): Promise<voi
 // --- RFC-006/007/008 — Ciclo de merge seguro ---
 
 export type ConflictClass =
-  'rust' | 'typeScript' | 'ui' | 'cargo' | 'package' | 'asset' | 'config' | 'gsd' | 'unknown'
+  | 'rust'
+  | 'typeScript'
+  | 'ui'
+  | 'cargo'
+  | 'package'
+  | 'json'
+  | 'config'
+  | 'asset'
+  | 'planning'
+  | 'sentinel'
+  | 'graph'
+  | 'other'
 
 export type ConflictFile = {
   path: string
@@ -212,6 +223,17 @@ export async function mergePrepare(
   projectId?: string,
 ): Promise<ConflictEnv> {
   return invoke<ConflictEnv>('merge_prepare', { repo, source, target, projectId })
+}
+
+/** Só roda a Validation Pipeline (marcadores + testes/build), sem commitar
+ *  nem integrar — gate manual antes de `mergeFinalize` tocar em git de
+ *  verdade. */
+export async function mergeValidate(
+  repo: string,
+  envId: string,
+  validationCommands: string[],
+): Promise<MergeOutcome> {
+  return invoke<MergeOutcome>('merge_validate', { repo, envId, validationCommands })
 }
 
 export async function mergeFinalize(

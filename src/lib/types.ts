@@ -171,6 +171,17 @@ export type Terminal = {
    * misturada com terminais interativos normais.
    */
   gsdSyncViewer?: boolean
+  /**
+   * Marca este terminal como o agente EFÊMERO de resolução de conflito
+   * (`mergeStore.ts` — "nasce, resolve, morre"). Nunca deve ser tratado como
+   * um worktree de agente rastreável: exclui do watcher/plugin GSD Sync
+   * (`useGsdSyncSessionsWatcher`/`gsdOpenCodePluginWrite`) — confirmado ao
+   * vivo que, sem essa exclusão, o plugin GSD era instalado nesse terminal
+   * descartável igual a qualquer worktree normal, criando uma sessão-filha
+   * de verdade que ficava órfã (apontando pra uma pasta já apagada) assim
+   * que o agente efêmero era encerrado ao final do merge.
+   */
+  ephemeralConflictAgent?: boolean
 }
 
 /** Bloco visual persistente que reúne panes independentes dentro de um projeto. */

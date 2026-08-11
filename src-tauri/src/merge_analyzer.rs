@@ -32,6 +32,9 @@ pub enum ConflictClass {
     Config,
     Asset,
     Planning,
+    /// Sentinel de estado efêmero de máquina (ex.: `.gsd-child-session`) — um
+    /// valor opaco (ID de sessão, flag de ocupado), não prosa mesclável.
+    Sentinel,
     Graph,
     Other,
 }
@@ -61,6 +64,17 @@ pub fn classify_path(path: &str) -> ConflictClass {
     let lower = normalized.to_lowercase();
     let file_name = lower.rsplit('/').next().unwrap_or(&lower).to_string();
 
+    // Sentinels de estado efêmero de máquina do GSD Sync (ID de sessão, flag
+    // de ocupado, mensagem de erro) — checado ANTES do fallback genérico de
+    // `.planning/`: são valores opacos de uma linha só, sem "intenção" de
+    // duas branches pra preservar. Confirmado ao vivo: tratar como
+    // `Planning` ("preserve o histórico das duas branches") levava o agente
+    // a colar os dois valores com marcador de conflito de verdade dentro do
+    // arquivo — que depois era lido cru como se fosse um ID de sessão válido
+    // (`--session <<<<<<< HEAD\nses_...\n=======\n...`), quebrando o spawn.
+    if file_name == ".gsd-child-session" || file_name == ".gsd-child-busy" || file_name == ".gsd-child-error" {
+        return ConflictClass::Sentinel;
+    }
     if lower.starts_with(".planning/") || lower.contains("/.planning/") {
         return ConflictClass::Planning;
     }
@@ -118,6 +132,9 @@ pub fn class_strategy(class: ConflictClass) -> &'static str {
         }
         ConflictClass::Planning => {
             "Planejamento (.planning/): preserve o histórico das duas branches; nunca descarte tarefas de nenhum lado."
+        }
+        ConflictClass::Sentinel => {
+            "Estado efêmero de máquina do GSD Sync (ID de sessão, flag de ocupado/erro) — NÃO é conteúdo pra mesclar, é um valor opaco de uma linha só. NUNCA cole os dois valores nem deixe qualquer marcador de conflito (<<<<<<<, =======, >>>>>>>) no arquivo. Resolva apagando o arquivo por completo (ele é recriado sozinho no próximo ciclo do GSD Sync) — nunca escolha um valor 'no meio termo'."
         }
         ConflictClass::Graph => {
             "Grafo (graphify-out/): não resolva na mão — o grafo é gerado; escolha qualquer lado e regenere com o Graphify depois."

@@ -412,6 +412,7 @@ pub fn run() {
             scheduler::cancel_task,
             merge_analyzer::merge_analyze,
             conflict_resolution::merge_prepare,
+            conflict_resolution::merge_validate,
             conflict_resolution::merge_finalize,
             conflict_resolution::merge_abort,
             conflict_resolution::merge_preflight_abort,

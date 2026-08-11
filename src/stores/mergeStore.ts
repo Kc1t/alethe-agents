@@ -1,52 +1,70 @@
 import { create } from 'zustand'
+
+import { getLocale, type Locale, translate } from '../lib/i18n'
 import {
-  mergeAnalyze,
-  mergePrepare,
-  mergeFinalize,
-  mergeAbort,
-  mergePreflightAbort,
-  mergeRebaseOntoTarget,
-  mergeForceCleanup,
+  type ConflictEnv,
   gitStatus,
-  worktreeFetchBranch,
-  worktreeCommitPending,
-  worktreeRemove,
   killPtyTree,
-  watchFile,
-  unwatchFile,
   listenFileChanged,
   listenPtyExit,
+  mergeAbort,
   type MergeAnalysis,
-  type ConflictEnv,
+  mergeAnalyze,
+  mergeFinalize,
+  mergeForceCleanup,
   type MergeOutcome,
+  mergePreflightAbort,
+  mergePrepare,
+  mergeRebaseOntoTarget,
+  mergeValidate,
+  readTextFile,
+  unwatchFile,
+  watchFile,
+  worktreeCommitPending,
+  worktreeFetchBranch,
+  worktreeRemove,
 } from '../lib/tauri'
+import type { Project } from '../lib/types'
 import { useProjectsStore } from './projectsStore'
 import { useUiStore } from './uiStore'
-import { translate, getLocale } from '../lib/i18n'
-import type { AgentType, Project } from '../lib/types'
 
 /**
  * RFC-006/007/008 — orquestração do ciclo de merge seguro no front.
  *
  * `analyze → prepare → [conflito? spawna agente efêmero num terminal VISÍVEL do
- * projeto] → finalize (validação + ff) → teardown do terminal`.
+ * projeto] → agente sinaliza "terminei" (awaiting_review) → clique manual em
+ * "Validar" → clique manual em "Integrar" (commit + ff) → teardown do terminal`.
  *
  * O agente efêmero é a única exceção autônoma do blueprint, mas continua
  * humano-visível: ele roda num Terminal normal do projeto (o usuário vê e pode
  * intervir). O provider vem de `project.conflictAgentProvider` (RFC-009).
  *
- * A finalização é auto-disparada por 3 camadas em cascata, nenhuma delas
- * confiável sozinha (ver `beginResolvingWatch`): marcador de arquivo
+ * A detecção de "terminei" é disparada por 3 camadas em cascata, nenhuma
+ * delas confiável sozinha (ver `beginResolvingWatch`): marcador de arquivo
  * (`ALETHE_RESOLVED`), saída do processo do agente (`pty://exit`), e um poll
- * barato de fallback. Nenhuma camada decide corretude — quem decide é sempre
- * o `merge_finalize` do backend (varre marcadores + roda validação),
- * idêntico não importa o provider/qualidade do modelo.
+ * barato de fallback (só relê o marcador, nunca chama o backend). Nenhuma
+ * camada valida, commita ou integra nada sozinha — elas só páram em
+ * `awaiting_review` e esperam confirmação humana. Pedido explícito do
+ * usuário: o gatilho antigo chamava `merge_finalize` (valida+commita+integra
+ * tudo junto) sozinho assim que qualquer camada disparava, sem nenhum humano
+ * confirmar se a resolução do agente fazia sentido — confirmado ao vivo como
+ * imprudente. Quem decide corretude continua sendo sempre o backend
+ * (`merge_validate`/`merge_finalize`, que varrem marcadores + rodam
+ * validação), idêntico não importa o provider/qualidade do modelo — só que
+ * agora só rodam quando o usuário clica.
  */
 export type MergePhase =
   | 'idle'
   | 'analyzing'
   | 'preparing'
   | 'resolving'
+  /** Agente sinalizou "terminei" (marcador ALETHE_RESOLVED, pty saiu, ou o
+   *  poll de fallback achou o marcador) — mas NADA foi checado/validado/
+   *  commitado ainda. Pedido explícito do usuário: o gatilho automático de
+   *  3 camadas integrava sozinho sem nenhum humano confirmar se a resolução
+   *  fazia sentido (confirmado ao vivo como imprudente). A partir daqui só
+   *  clique manual em "Validar" e depois "Integrar" avança o merge. */
+  | 'awaiting_review'
   | 'finalizing_commit'
   | 'branch_diverged'
   | 'rebase_attempt'
@@ -62,6 +80,7 @@ export const MERGE_BUSY_PHASES: MergePhase[] = [
   'analyzing',
   'preparing',
   'resolving',
+  'awaiting_review',
   'finalizing_commit',
   'branch_diverged',
   'rebase_attempt',
@@ -95,8 +114,10 @@ type MergeState = {
     target: string,
     worktreeAgentId?: string,
   ) => Promise<void>
-  /** `silentRetry`: usado pelo poll de fallback — não reabre terminal nem mostra toast em falha (o agente pode só ainda estar trabalhando). */
-  finalize: (opts?: { silentRetry?: boolean }) => Promise<void>
+  /** Só roda a Validation Pipeline (marcadores + testes/build) — não commita nem integra. Gate manual antes de `finalize`. */
+  validate: () => Promise<void>
+  /** Commita e integra de verdade — sempre disparado por clique manual (Integrar), nunca automaticamente. */
+  finalize: () => Promise<void>
   /** Reexecuta o abort preventivo no ambiente efêmero e chama finalize do topo. Lock administrativo não incrementa retryCount nem vira TerminalError. */
   retry: () => Promise<void>
   abort: () => Promise<void>
@@ -114,38 +135,102 @@ type MergeState = {
   reset: () => void
 }
 
-/** Prompt inicial do agente efêmero — escopo travado, aponta pro arquivo de contexto. */
-function conflictPrompt(): string {
+/** Regras/passo a passo compartilhados pelos dois prompts (inicial e retry) —
+ *  agente-facing, por isso fora do i18n de UI (mensagens próprias, não vêm de
+ *  `messages/*.ts`), mas seguem o IDIOMA ATUAL do app (`getLocale()`) — pedido
+ *  explícito do usuário: o Alethe já tem duas línguas (en/pt-BR), então o
+ *  agente de conflito devia falar a mesma língua que o usuário está usando no
+ *  app, com instrução explícita nesse sentido (a língua da UI não garante que
+ *  o modelo vá responder nela sozinho). Reescrito pra ser um resolvedor de
+ *  verdade, não só "leia e resolva": lê CADA arquivo inteiro (não só os
+ *  marcadores) pra entender intenção real de cada lado, e — pedido explícito
+ *  do usuário — pergunta ANTES de decidir sozinho quando a escolha entre os
+ *  dois lados for realmente ambígua, em vez de sempre resolver tudo
+ *  automaticamente. Também instrui a criar o marcador `ALETHE_RESOLVED` ao
+ *  terminar: sem isso, a detecção de conclusão nunca usava a camada mais
+ *  rápida (watchFile), só o poll de 7s ou o processo morrer — o agente nunca
+ *  sabia que devia criar esse arquivo. */
+function conflictRules(locale: Locale): string {
+  if (locale === 'en') {
+    return (
+      '## HIGH PRIORITY — never skip, no matter what\n' +
+      '- Respond in English. This instruction is in English because the app is currently set to English.\n' +
+      '- NEVER implement features or fix bugs unrelated to the listed conflicts. Scope is only what is in ALETHE_CONFLICT.md.\n' +
+      '- NEVER commit.\n' +
+      '- NEVER decide a genuinely ambiguous conflict alone (both sides changed the same thing in incompatible ways, with no obvious way to combine them) — STOP and ask the user here in the terminal how they want to proceed, explaining the conflict and the options.\n' +
+      '- ALWAYS resolve ALL listed files, none left out.\n\n' +
+      '## MEDIUM PRIORITY — how to resolve each file (resolution quality)\n' +
+      '1. Read the WHOLE file (not just the conflict markers) to understand the real context on each side.\n' +
+      '2. Understand the INTENT of each branch — what each one was actually trying to achieve, not just the literal text.\n' +
+      '3. If the two changes are compatible, combine them preserving both intents (not ambiguous — resolve directly, no need to ask).\n' +
+      '4. After resolving, confirm no conflict markers (<<<<<<<, =======, >>>>>>>) remain in the file.\n\n' +
+      '## WHEN DONE — high priority\n' +
+      '- Create an empty file named ALETHE_RESOLVED in this directory (this is the signal Alethe uses to know you finished).\n' +
+      '- Announce that you are done.'
+    )
+  }
   return (
-    'Leia o arquivo ALETHE_CONFLICT.md neste diretório e resolva SOMENTE os conflitos ' +
-    'de merge listados nele, preservando a intenção das duas branches. Não implemente ' +
-    'funcionalidades, não commite — apenas salve os arquivos resolvidos e avise quando terminar.'
+    '## PRIORIDADE ALTA — nunca ignore, não importa o quê\n' +
+    '- Responda em português (pt-BR). Esta instrução está em português porque o app está com o idioma em português no momento.\n' +
+    '- NUNCA implemente funcionalidades ou corrija bugs não relacionados aos conflitos listados. Escopo é só o que está em ALETHE_CONFLICT.md.\n' +
+    '- NUNCA commite.\n' +
+    '- NUNCA decida sozinho um conflito realmente ambíguo (os dois lados mudaram a mesma coisa de forma incompatível, sem um jeito óbvio de combinar) — PARE e pergunte ao usuário aqui no terminal como ele quer prosseguir, explicando o conflito e as opções.\n' +
+    '- SEMPRE resolva TODOS os arquivos listados, nenhum a menos.\n\n' +
+    '## PRIORIDADE MÉDIA — como resolver cada arquivo (qualidade da resolução)\n' +
+    '1. Leia o arquivo INTEIRO (não só os marcadores de conflito) pra entender o contexto real de cada lado.\n' +
+    '2. Entenda a INTENÇÃO de cada branch — o que cada uma estava tentando alcançar, não só o texto literal.\n' +
+    '3. Se as duas mudanças forem compatíveis, combine preservando a intenção das duas (não é ambíguo — resolva direto, sem perguntar).\n' +
+    '4. Depois de resolver, confirme que não sobrou nenhum marcador de conflito (<<<<<<<, =======, >>>>>>>) no arquivo.\n\n' +
+    '## AO TERMINAR — prioridade alta\n' +
+    '- Crie um arquivo vazio chamado ALETHE_RESOLVED neste diretório (é o sinal que o Alethe usa pra saber que você acabou).\n' +
+    '- Avise que terminou.'
+  )
+}
+
+/** Prompt inicial do agente efêmero — escopo travado, aponta pro arquivo de contexto. */
+function conflictPrompt(locale: Locale): string {
+  if (locale === 'en') {
+    return (
+      'Read the ALETHE_CONFLICT.md file in this directory — it lists every file in conflict.\n\n' +
+      conflictRules(locale)
+    )
+  }
+  return (
+    'Leia o arquivo ALETHE_CONFLICT.md neste diretório — ele lista todos os arquivos em conflito.\n\n' +
+    conflictRules(locale)
   )
 }
 
 /** Prompt de retry — o agente novo não tem memória da tentativa anterior, então o motivo da falha precisa ir no prompt. */
-function retryPrompt(failureContext: string): string {
+function retryPrompt(failureContext: string, locale: Locale): string {
+  if (locale === 'en') {
+    return (
+      'The previous attempt to resolve this conflict failed. Read the ALETHE_CONFLICT.md file ' +
+      'in this directory again and fix the issue below.\n\n' +
+      conflictRules(locale) +
+      '\n\nReason the previous attempt failed:\n' +
+      failureContext.slice(0, 2000)
+    )
+  }
   return (
     'A tentativa anterior de resolver este conflito falhou. Leia o arquivo ALETHE_CONFLICT.md ' +
-    'neste diretório de novo e corrija o problema abaixo, preservando a intenção das duas ' +
-    'branches. Não implemente funcionalidades, não commite — apenas salve os arquivos e avise ' +
-    'quando terminar.\n\nMotivo da falha anterior:\n' +
+    'neste diretório de novo e corrija o problema abaixo.\n\n' +
+    conflictRules(locale) +
+    '\n\nMotivo da falha anterior:\n' +
     failureContext.slice(0, 2000)
   )
 }
 
-/** Args iniciais por provider para abrir o CLI já com a tarefa e o modelo correto. */
-function providerArgs(provider: AgentType, prompt: string, model?: string): string[] {
-  const modelFlags = model ? ['--model', model] : []
-  switch (provider) {
-    case 'codex':
-      return [...modelFlags, prompt]
-    case 'opencode':
-      return [...modelFlags, prompt]
-    case 'claude':
-    default:
-      return [...modelFlags, prompt]
-  }
+/** Flags iniciais pra abrir o CLI já com o modelo correto — nunca o prompt
+ *  aqui (vai via `initialInput`, digitado no terminal depois do boot). O
+ *  OpenCode trata um argumento posicional solto como PASTA a abrir, não como
+ *  prompt inicial — passar o texto do conflito por `extraArgs` fazia ele
+ *  tentar `cd` pro próprio texto do prompt concatenado ao cwd real
+ *  (`Failed to change directory to <cwd>\<prompt inteiro>`, confirmado ao
+ *  vivo). `initialInput` é o mesmo mecanismo já usado pelo prompt rápido da
+ *  Home pra qualquer provider, incluindo OpenCode — funciona pros quatro. */
+function providerArgs(model?: string): string[] {
+  return model ? ['--model', model] : []
 }
 
 function toast(title: string, body: string) {
@@ -183,24 +268,30 @@ function reopenAgentTerminal(
     firstTab: {
       type: provider,
       cwd: env.path,
-      extraArgs: providerArgs(provider, retryPrompt(failureContext), model),
+      extraArgs: providerArgs(model),
+      initialInput: retryPrompt(failureContext, getLocale()),
     },
+    ephemeralConflictAgent: true,
   })
   set({ agentTerminalId: terminal.id })
   beginResolvingWatch(env, terminal.id)
 }
 
-// --- Gatilho automático de finalize (3 camadas em cascata) ---
+// --- Gatilho automático de "aguardando revisão" (3 camadas em cascata) ---
 //
-// Nenhuma camada é a fonte de verdade de correção — isso continua sendo o
-// merge_finalize determinístico do backend. Estas camadas só decidem QUANDO
-// vale a pena checar de novo, sem depender do agente cooperar com nenhuma
-// convenção do Alethe:
+// NENHUMA camada valida, commita ou integra nada sozinha — elas só detectam
+// que o agente sinalizou "terminei" e páram, esperando confirmação manual
+// (botões Validar/Integrar na UI, fase `awaiting_review`). Pedido explícito
+// do usuário: o gatilho antigo chamava merge_finalize (valida+commita+
+// integra tudo junto) sozinho assim que qualquer camada disparava, sem
+// nenhum humano confirmar se a resolução do agente fazia sentido —
+// confirmado ao vivo como imprudente (agente juntou conteúdo incompatível
+// num arquivo só, sem perguntar, e foi commitado/integrado automaticamente).
 //   1. watchFile no marcador ALETHE_RESOLVED (mais rápido, se o agente criar).
-//   2. pty://exit do terminal do agente (processo morreu sem criar marcador).
-//   3. poll barato periódico (funciona mesmo sem nenhuma cooperação do agente
-//      — o merge_finalize já faz sua própria checagem barata de marcadores
-//      antes de rodar validação, então o poll só aciona o mesmo caminho real).
+//   2. pty://exit do terminal do agente (processo morreu — terminou ou
+//      crashou; "Validar" mostra qual dos dois foi, não decidimos aqui).
+//   3. poll barato periódico (fallback caso o watchFile do SO perca o evento
+//      de criação do marcador — só relê o arquivo, nunca chama o backend).
 
 const POLL_INTERVAL_MS = 7000
 
@@ -221,7 +312,10 @@ function beginResolvingWatch(env: ConflictEnv, agentTerminalId: string) {
 
   const signal = () => {
     if (stopped) return
-    void useMergeStore.getState().finalize()
+    activeWatch?.stop()
+    if (useMergeStore.getState().phase === 'resolving') {
+      useMergeStore.setState({ phase: 'awaiting_review' })
+    }
   }
 
   void (async () => {
@@ -239,7 +333,11 @@ function beginResolvingWatch(env: ConflictEnv, agentTerminalId: string) {
       console.warn('[mergeStore] listenPtyExit falhou:', err)
     }
     pollTimer = setInterval(() => {
-      void useMergeStore.getState().finalize({ silentRetry: true })
+      readTextFile(markerPath)
+        .then(() => signal())
+        .catch(() => {
+          /* marcador ainda não existe — nada a fazer, só o próximo tick */
+        })
     }, POLL_INTERVAL_MS)
 
     // Corrida: se já saímos de resolving enquanto o setup assíncrono rodava,
@@ -320,8 +418,10 @@ export const useMergeStore = create<MergeState>((set, get) => ({
         firstTab: {
           type: provider,
           cwd: env.path,
-          extraArgs: providerArgs(provider, conflictPrompt(), model),
+          extraArgs: providerArgs(model),
+          initialInput: conflictPrompt(getLocale()),
         },
+        ephemeralConflictAgent: true,
       })
       set({ phase: 'resolving', agentTerminalId: terminal.id })
       beginResolvingWatch(env, terminal.id)
@@ -331,18 +431,52 @@ export const useMergeStore = create<MergeState>((set, get) => ({
     }
   },
 
-  finalize: async (opts) => {
-    const silentRetry = opts?.silentRetry ?? false
+  validate: async () => {
+    const { repo, env, projectId, isFinalizing } = get()
+    if (!repo || !env || isFinalizing) return
+    set({ isFinalizing: true, outcome: null, error: null })
+    try {
+      const project = useProjectsStore.getState().projects.find((p) => p.id === projectId)
+      const commands = project?.validationCommands ?? []
+      const outcome = await mergeValidate(repo, env.id, commands)
+      set({ outcome, isFinalizing: false })
+      if (outcome.stage === 'validated') {
+        toast(t('merge.validationPassedTitle'), t('merge.validationPassedBody'))
+      } else {
+        toast(t('merge.blockedTitle', { stage: outcome.stage }), outcome.output.slice(0, 300))
+      }
+    } catch (err) {
+      set({ isFinalizing: false })
+      toast(t('merge.blockedTitle', { stage: 'validate' }), String(err).slice(0, 300))
+    }
+  },
+
+  finalize: async () => {
     const { repo, env, projectId, agentTerminalId, isFinalizing } = get()
     if (!repo || !env || isFinalizing) return
 
-    if (!silentRetry) stopResolvingWatch()
-    set({
-      isFinalizing: true,
-      outcome: null,
-      error: null,
-      phase: silentRetry ? get().phase : 'finalizing_commit',
-    })
+    stopResolvingWatch()
+    set({ isFinalizing: true, outcome: null, error: null, phase: 'finalizing_commit' })
+
+    // Mata o processo do agente ANTES de chamar o backend: se o merge for
+    // bem-sucedido, `merge_finalize` (Rust) faz `git worktree remove --force`
+    // na hora, na MESMA chamada — sem isso, a pasta que ainda é o cwd do
+    // processo do agente é apagada com ele potencialmente vivo ali dentro
+    // (mesma causa-raiz já corrigida em Rejeitar/integrateWorktree: no
+    // Windows, apagar pasta com processo vivo como cwd falha/corrompe
+    // estado — confirmado ao vivo: terminal "reiniciado sem sessão" depois
+    // do merge). `killPtyTree` espera de verdade a árvore morrer, diferente
+    // do `killPty` fire-and-forget que `deleteTerminal` dispara sozinho.
+    if (projectId && agentTerminalId) {
+      const terminal = useProjectsStore
+        .getState()
+        .projects.find((p) => p.id === projectId)
+        ?.terminals.find((term) => term.id === agentTerminalId)
+      const ptyIds = (terminal?.tabs ?? [])
+        .map((tab) => tab.ptyId)
+        .filter((id): id is string => Boolean(id))
+      await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(() => [])))
+    }
 
     try {
       const project = useProjectsStore.getState().projects.find((p) => p.id === projectId)
@@ -351,35 +485,21 @@ export const useMergeStore = create<MergeState>((set, get) => ({
 
       if (outcome.merged) {
         stopResolvingWatch()
-        const mergedProject = projectId
-          ? useProjectsStore.getState().projects.find((p) => p.id === projectId)
-          : undefined
-        const postAction = mergedProject?.mergePostAction ?? 'closeTerminal'
-        let relocated = false
-
-        if (projectId && agentTerminalId && postAction !== 'closeTerminal') {
-          const result = await useProjectsStore
-            .getState()
-            .relocateMergeAgentTerminal(projectId, agentTerminalId, {
-              keepSession: postAction === 'relocateKeepSession',
-            })
-          relocated = result.ok
-          if (!result.ok) {
-            console.warn(
-              '[mergeStore] relocação pós-merge falhou, encerrando terminal:',
-              result.error,
-            )
-          }
-        }
-
-        if (!relocated && projectId && agentTerminalId) {
+        // O agente efêmero é DESCARTÁVEL por design ("nasce, resolve,
+        // morre") — nunca reloca pra branch nova nem tenta manter sessão
+        // (isso é `mergePostAction`, uma opção do agente de trabalho REAL
+        // aplicada em `integrateWorktree`/`paneTerminalId`, não aqui).
+        // Aplicar relocate neste terminal descartável já causou um card
+        // fantasma na Central de Merges (ganhava um worktreeAgentId de
+        // verdade sem ser um worktree de agente de verdade).
+        if (projectId && agentTerminalId) {
           useProjectsStore.getState().deleteTerminal(projectId, agentTerminalId)
         }
         set({
           phase: 'merged',
           outcome,
           env: null,
-          agentTerminalId: relocated ? agentTerminalId : null,
+          agentTerminalId: null,
           isFinalizing: false,
           retryCount: 0,
           adminLockReason: null,
@@ -425,12 +545,6 @@ export const useMergeStore = create<MergeState>((set, get) => ({
 
       const verificationFailedStages = new Set(['conflict_markers', 'unmerged'])
       if (verificationFailedStages.has(outcome.stage) || outcome.stage.startsWith('validation:')) {
-        if (silentRetry) {
-          // Agente ainda trabalhando — não é uma falha real, só o poll
-          // batendo cedo. Não reabre terminal, não mostra toast.
-          set({ isFinalizing: false })
-          return
-        }
         set({ phase: 'resolving', outcome, isFinalizing: false })
         reopenAgentTerminal(set, get, outcome.output)
         toast(t('merge.blockedTitle', { stage: outcome.stage }), outcome.output.slice(0, 300))
@@ -439,16 +553,12 @@ export const useMergeStore = create<MergeState>((set, get) => ({
 
       // target_not_checked_out, integration (não-divergência) e qualquer
       // outro stage não mapeado: erro duro recuperável via Retry Manual.
-      // Estanca o watch de fallback: sem isso, no caminho silentRetry o poll de
-      // 7s segue re-disparando finalize indefinidamente sobre o estado failed.
       stopResolvingWatch()
       set({ phase: 'failed', outcome, isFinalizing: false })
-      if (!silentRetry)
-        toast(t('merge.blockedTitle', { stage: outcome.stage }), outcome.output.slice(0, 300))
+      toast(t('merge.blockedTitle', { stage: outcome.stage }), outcome.output.slice(0, 300))
     } catch (err) {
       const message = String(err)
       const adminLockReason = adminLockReasonFrom(message)
-      // Idem: estanca o poll de fallback ao cair em failed no caminho silencioso.
       stopResolvingWatch()
       set({
         phase: 'failed',
@@ -456,7 +566,7 @@ export const useMergeStore = create<MergeState>((set, get) => ({
         isFinalizing: false,
         adminLockReason,
       })
-      if (!silentRetry) toast(t('merge.blockedTitle', { stage: 'finalize' }), message.slice(0, 300))
+      toast(t('merge.blockedTitle', { stage: 'finalize' }), message.slice(0, 300))
     }
   },
 
@@ -507,11 +617,22 @@ export const useMergeStore = create<MergeState>((set, get) => ({
         // a worktree — mesma causa-raiz do bug de "Rejeitar" já corrigido
         // (no Windows, apagar uma pasta que ainda é o cwd de um processo vivo
         // falha). Aguarda de verdade a árvore de processos morrer.
-        const terminal = useProjectsStore
+        const projectAtCleanup = useProjectsStore
           .getState()
           .projects.find((p) => p.id === project.id)
-          ?.terminals.find((term) => term.id === paneTerminalId)
-        const ptyIds = (terminal?.tabs ?? [])
+        const terminal = projectAtCleanup?.terminals.find((term) => term.id === paneTerminalId)
+        // O terminal "viewer" da sessão-filha GSD Sync (se existir) é uma
+        // entidade SEPARADA, casada só por `cwd` — matar só o pane principal
+        // aqui e deixar `deleteTerminal` (mais abaixo) matar o viewer por
+        // último não basta: `worktreeRemove`, logo em seguida, já apaga a
+        // pasta do disco enquanto o processo do viewer ainda pode estar vivo
+        // nela (confirmado ao vivo: "ENOENT: no such file or directory,
+        // lstat <worktree>" num terminal GSD Sync órfão). Mata os dois juntos
+        // agora, antes de qualquer remoção de disco.
+        const gsdViewer = projectAtCleanup?.terminals.find(
+          (term) => term.gsdSyncViewer && term.cwd === terminal?.cwd,
+        )
+        const ptyIds = [...(terminal?.tabs ?? []), ...(gsdViewer?.tabs ?? [])]
           .map((tab) => tab.ptyId)
           .filter((id): id is string => Boolean(id))
         await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(() => [])))
@@ -543,7 +664,15 @@ export const useMergeStore = create<MergeState>((set, get) => ({
 
   abort: async () => {
     const { repo, env, projectId, agentTerminalId, phase, isFinalizing } = get()
-    if (isFinalizing) return // já tem uma limpeza/finalize em andamento — ignora duplo clique
+    if (isFinalizing) {
+      // Validar/Integrar (clique manual) já está em progresso — se o clique
+      // em "Abortar" cair bem no meio dessa chamada, a guarda de
+      // reentrância ignorava o clique sem nenhum aviso, parecendo que o
+      // botão simplesmente não fazia nada (confirmado ao vivo: funcionava
+      // só no segundo clique, sem explicação nenhuma).
+      toast(t('merge.abortBusyTitle'), t('merge.abortBusy'))
+      return
+    }
 
     if (phase === 'terminal_error') {
       set({ isFinalizing: true })

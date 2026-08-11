@@ -1661,6 +1661,9 @@ export const ptBR: Record<MessageKey, string> = {
     'Faz merge do trabalho deste agente no branch principal e remove o ambiente',
   'merge.busyTitle': 'Integração em andamento',
   'merge.busy': 'Outra integração está rodando — tente novamente em instantes.',
+  'merge.abortBusyTitle': 'Verificação em andamento',
+  'merge.abortBusy':
+    'Uma checagem automática deste merge está rodando agora — tente abortar de novo em um instante.',
 
   /* ---- pool / hibernação ---- */
   'ui.terminal.suspended': 'Suspenso',
@@ -1696,6 +1699,9 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.analysisConflicts': '{count} arquivo(s) em conflito:',
   'merge.resolvingHint':
     'O agente de conflito está rodando num terminal do projeto. Quando ele terminar, clique em "Finalizar merge".',
+  'merge.awaitingReviewHint':
+    'O agente disse que terminou. Nada foi validado nem integrado automaticamente — revise as alterações dele e depois clique em "Validar" e "Integrar".',
+  'merge.validateBeforeIntegrateHint': 'Rode "Validar" primeiro.',
   'merge.conflictTitle': 'Conflito de merge',
   'merge.conflictBody':
     '{count} arquivo(s) em conflito. Um agente efêmero foi spawnado para resolver.',
@@ -1720,6 +1726,7 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.statusReady': 'Aguardando ação',
   'merge.statusPreparing': 'Analisando…',
   'merge.statusResolving': 'Resolvendo conflito',
+  'merge.statusAwaitingReview': 'Aguardando sua revisão',
   'merge.statusFinalizing': 'Finalizando…',
   'merge.statusRebasing': 'Rebase…',
   'merge.statusMerged': 'Integrado',

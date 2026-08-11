@@ -78,6 +78,11 @@ export function useGsdSyncSessionsWatcher(
     for (const proj of projects) {
       if (!proj.gsdWatcherEnabled) continue
       for (const term of proj.terminals) {
+        // Agente efêmero de resolução de conflito nunca é rastreável aqui
+        // (defesa em profundidade — o plugin GSD já nem é instalado nele,
+        // ver TerminalPane, mas um ambiente antigo/já em disco antes dessa
+        // exclusão existir não pode virar um "viewer" órfão de novo).
+        if (term.ephemeralConflictAgent) continue
         if (!term.gsdSyncViewer && term.cwd && term.tabs.some((tab) => tab.type === 'opencode')) {
           result.push({ id: `${proj.id}-${term.id}`, projectId: proj.id, worktreePath: term.cwd })
         }

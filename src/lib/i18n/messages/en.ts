@@ -1646,6 +1646,9 @@ export const en = {
     'Merge this agent’s work into the main branch and remove the environment',
   'merge.busyTitle': 'Integration in progress',
   'merge.busy': 'Another integration is running — try again in a moment.',
+  'merge.abortBusyTitle': 'Check in progress',
+  'merge.abortBusy':
+    'An automatic check for this merge is running right now — try aborting again in a moment.',
 
   /* ---- pool / hibernation ---- */
   'ui.terminal.suspended': 'Suspended',
@@ -1681,6 +1684,9 @@ export const en = {
   'merge.analysisConflicts': '{count} file(s) in conflict:',
   'merge.resolvingHint':
     'Conflict agent is running in a project terminal. When it finishes, click "Finalize merge".',
+  'merge.awaitingReviewHint':
+    'The agent says it is done. Nothing was validated or merged automatically — review its changes, then click "Validate" and "Integrate".',
+  'merge.validateBeforeIntegrateHint': 'Run "Validate" first.',
   'merge.conflictTitle': 'Merge conflict',
   'merge.conflictBody':
     '{count} file(s) in conflict. An ephemeral agent was spawned to resolve them.',
@@ -1705,6 +1711,7 @@ export const en = {
   'merge.statusReady': 'Awaiting action',
   'merge.statusPreparing': 'Analyzing…',
   'merge.statusResolving': 'Resolving conflict',
+  'merge.statusAwaitingReview': 'Awaiting your review',
   'merge.statusFinalizing': 'Finalizing…',
   'merge.statusRebasing': 'Rebasing…',
   'merge.statusMerged': 'Merged',

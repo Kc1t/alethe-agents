@@ -13,24 +13,24 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useGridResize } from '../../hooks/useGridResize'
 import { restartAgentPty } from '../../lib/agentPtyRestart'
+import { buildGhosttyCommand } from '../../lib/ghosttyCommand'
 import { useT } from '../../lib/i18n'
+import { shouldUseNativeBackend } from '../../lib/platform'
 import { getActiveSessions, savedConversationIdFor } from '../../lib/sessionResume'
+import { getPtyCwd, openInVscode, snapshotCodexSessions } from '../../lib/tauri'
+import {
+  type AgentType,
+  type SubTab,
+  type Terminal as TerminalEntry,
+  type Theme,
+} from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
-import {
-  type Terminal as TerminalEntry,
-  type SubTab,
-  type Theme,
-  type AgentType,
-} from '../../lib/types'
-import { getPtyCwd, openInVscode, snapshotCodexSessions } from '../../lib/tauri'
+import { GhosttySurface } from '../GhosttySurface'
 import { AgentIcon, VSCodeIcon } from '../icons/AgentIcons'
 import { SubTabsLane } from '../SubTabsLane'
 import { XTermView } from '../XTermView'
-import { GhosttySurface } from '../GhosttySurface'
-import { shouldUseNativeBackend } from '../../lib/platform'
-import { buildGhosttyCommand } from '../../lib/ghosttyCommand'
 import styles from './TerminalPane.module.css'
 
 export type TerminalPaneProps = {
@@ -135,7 +135,13 @@ export const TerminalPane = memo(function TerminalPane({
   // Gate de Conclusão de Planejamento GSD: projeto com o monitoramento
   // ligado ganha o plugin OpenCode que mantém .planning/ sincronizado
   // sozinho (ver XTermView, gatilho condicionado a command === 'opencode').
+  // NUNCA pro agente efêmero de resolução de conflito (`mergeStore.ts` —
+  // "nasce, resolve, morre") — confirmado ao vivo: sem essa exclusão, o
+  // plugin era instalado nele igual a qualquer worktree normal, criando uma
+  // sessão-filha de verdade que ficava órfã assim que o agente descartável
+  // era encerrado ao final do merge.
   const gsdWatcherEnabled = useProjectsStore((s) => {
+    if (terminal.ephemeralConflictAgent) return false
     const p = s.projects.find((p) => p.id === projectId)
     return Boolean(p?.gsdWatcherEnabled)
   })

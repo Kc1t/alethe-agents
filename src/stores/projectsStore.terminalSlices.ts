@@ -21,9 +21,9 @@ import {
 import { cleanupPtys } from '../lib/terminalLifecycle'
 import type { Terminal } from '../lib/types'
 import { sanitizeWorkspaceSnapshot } from '../lib/workspaceNavigation'
-import { useUiStore } from './uiStore'
 import type { ProjectsState } from './projectsStore'
 import type { SliceCtx } from './projectsStore.slices'
+import { useUiStore } from './uiStore'
 
 function t(key: Parameters<typeof translate>[1], params?: Record<string, string | number>) {
   return translate(getLocale(), key, params)
@@ -314,17 +314,21 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
       update((state) => {
         const project = state.projects.find((p) => p.id === projectId)
         const terminal = project?.terminals.find((t) => t.id === terminalId)
-        // Deletar o terminal de um agente isolado (worktreeAgentId) é sempre o
-        // teardown da worktree inteira — arrasta junto o terminal "viewer" GSD
-        // Sync da mesma worktree (casado por `cwd`, já que o viewer não tem
+        // Deletar QUALQUER terminal com cwd arrasta junto o terminal "viewer"
+        // GSD Sync da mesma pasta (casado por `cwd`, já que o viewer não tem
         // `worktreeAgentId` próprio). Sem isso, o PTY do viewer (se já foi
         // aberto ao menos uma vez pela gaveta) vaza pra sempre: assim que o
-        // agente morre, o viewer some da lista vigiada e nunca mais aparece em
-        // lugar nenhum da interface pra ser fechado manualmente. Centralizado
-        // aqui (em vez de em cada chamador) pra cobrir TODOS os caminhos de
-        // teardown — merge integrado, abort, rejeição — de uma vez só.
+        // terminal pai morre, o viewer some da lista vigiada e nunca mais
+        // aparece em lugar nenhum da interface pra ser fechado manualmente.
+        // Centralizado aqui (em vez de em cada chamador) pra cobrir TODOS os
+        // caminhos de teardown — merge integrado, abort, rejeição — de uma vez
+        // só. Antes só disparava com `worktreeAgentId` setado, o que excluía
+        // justamente o agente EFÊMERO de resolução de conflito (nunca tem
+        // esse campo) — confirmado ao vivo: o terminal efêmero morria e o
+        // viewer da sessão-filha dele ficava órfão pra sempre, apontando pra
+        // uma pasta já apagada ("Invalid session ID").
         const idsToRemove = new Set([terminalId])
-        if (terminal?.worktreeAgentId && terminal.cwd) {
+        if (terminal?.cwd) {
           for (const sibling of project?.terminals ?? []) {
             if (sibling.gsdSyncViewer && sibling.cwd === terminal.cwd) idsToRemove.add(sibling.id)
           }

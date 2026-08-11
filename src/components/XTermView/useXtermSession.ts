@@ -387,6 +387,14 @@ export function useXtermSession(params: {
     let queuedInput = ''
     let inputFlushScheduled = false
     let inputWriteChain = Promise.resolve()
+    // true enquanto `sendInitialInput` está digitando/confirmando/mandando
+    // Enter pro prompt inicial (ver `start()` mais abaixo). Confirmado ao
+    // vivo: uma falha de escrita QUALQUER durante essa janela disparava a
+    // recuperação automática de `flushInput` (mais abaixo), que reinicia o
+    // PTY — e reiniciar bem no meio da entrega do prompt inicial mata o
+    // processo recém-nascido e perde a sessão que ele tinha acabado de
+    // começar, sem chance de resume (ainda não tinha sessionId nenhum).
+    let initialInputInFlight = false
 
     const resourcePolicy = useProjectsStore.getState().preferences.resourcePolicy
     const terminal = new Terminal({
@@ -794,6 +802,16 @@ export function useXtermSession(params: {
         .catch((error) => {
           console.warn(`[pty-input] falha ao escrever em ${id}; solicitando recuperaÃ§Ã£o`, error)
           if (disposed || writeRecoveryPending) return
+          if (initialInputInFlight) {
+            // Reiniciar agora mataria o processo bem no meio da entrega do
+            // prompt inicial, perdendo a sessão sem chance de resume — deixa
+            // `sendInitialInput` lidar com a falha (loga e desiste) em vez
+            // de disparar essa recuperação destrutiva.
+            console.warn(
+              `[pty-input] recuperação automática SUPRIMIDA em ${id}: entrega do prompt inicial ainda em andamento`,
+            )
+            return
+          }
           writeRecoveryPending = true
           window.dispatchEvent(
             new CustomEvent('alethe:terminal-restart-request', { detail: { ptyId: id } }),
@@ -1292,6 +1310,19 @@ export function useXtermSession(params: {
             : null
         const savedConversationId = savedConversationIdFor(savedSession, command, cwd)
         let resumeId = sessionId ?? savedConversationId
+        // Confirmado ao vivo: um sentinel de sessão do GSD Sync
+        // (`.gsd-child-session`) resolvido mal num merge de conflito podia
+        // ficar com marcadores de conflito de verdade dentro do valor
+        // (`<<<<<<< HEAD\nses_...\n=======\n...`), e esse texto cru virava
+        // literalmente o argumento `--session` do spawn. Nunca confia num
+        // resumeId com quebra de linha ou marcador de conflito — trata como
+        // "sem sessão prévia" (sessão nova) em vez de propagar lixo pro CLI.
+        if (resumeId && (/[\r\n]/.test(resumeId) || /^(<{7}|={7}|>{7})/m.test(resumeId))) {
+          console.warn(
+            `[pty-launch] ${command} resumeId com formato inválido (marcador de conflito?) descartado: ${JSON.stringify(resumeId.slice(0, 120))}`,
+          )
+          resumeId = undefined
+        }
         // Fallback: se a tentativa anterior morreu no nascimento usando resume,
         // reabre ignorando o id órfão para nascer uma sessão limpa.
         if (forceFreshRef.current) {
@@ -1733,32 +1764,212 @@ export function useXtermSession(params: {
         const prompt = initialInput?.trim()
         if (prompt) {
           const sendInitialInput = async () => {
-            const earliestSendAt = Date.now() + 1_500
-            const timedSendAt = Date.now() + 4_000
-            const deadline = Date.now() + 10_000
+            console.info(
+              `[pty-launch] ${command ?? 'shell'} aguardando pra enviar o prompt inicial id=${response.id}`,
+            )
+            // "Saída quieta por 700ms" é o sinal ERRADO pro OpenCode —
+            // confirmado ao vivo, repetidas vezes: ele fica quieto assim que a
+            // tela de boas-vindas termina de desenhar, bem antes de terminar
+            // de conectar nos servidores MCP (o rodapé mostra "4 MCP" —
+            // provavelmente é essa conexão, não a UI, que demora de verdade).
+            // Uma espera mínima fixa também não resolveu (confirmado ao vivo:
+            // mandou rápido e a tela continuou vazia). Pro OpenCode a
+            // "prontidão" agora é verificada de outro jeito, lendo a TELA
+            // renderizada de verdade (ver bloco isOpencode mais abaixo) em vez
+            // de adivinhar por tempo — só uma espera curta aqui pra não digitar
+            // em cima do primeiro paint. Pros outros providers mantém o
+            // critério antigo, que nunca deu esse problema.
+            const isOpencode = command === 'opencode'
+            const earliestSendAt = Date.now() + (isOpencode ? 4_000 : 1_500)
+            const timedSendAt = Date.now() + (isOpencode ? 4_000 : 4_000)
+            // Deadline bem maior que o mínimo, como rede de segurança: com um
+            // painel pesado (outro terminal TUI) aberto ao lado, a thread
+            // principal da WebView pode ficar congestionada o bastante pra
+            // atrasar até os próprios setTimeout deste loop — testado ao vivo,
+            // só um teto bem maior (2min) garante tempo de calendário
+            // suficiente mesmo com os ticks atrasados.
+            const deadline = Date.now() + 120_000
+            let readyToSend = false
             while (!disposed && Date.now() < deadline) {
               await new Promise((resolve) => window.setTimeout(resolve, 250))
               const runtime = useTerminalsStore.getState().byPtyId[response.id]
               const quietFor = runtime ? Date.now() - runtime.lastIoAt : 0
-              if (
-                Date.now() >= earliestSendAt &&
-                runtime?.alive &&
-                (quietFor >= 700 || Date.now() >= timedSendAt)
-              )
+              // OpenCode: só a espera mínima fixa importa (earliestSendAt já
+              // cobre isso). Outros providers: mantém o critério antigo de
+              // "saída quieta", que nunca deu esse problema.
+              const settled = isOpencode || quietFor >= 700 || Date.now() >= timedSendAt
+              if (Date.now() >= earliestSendAt && runtime?.alive && settled) {
+                readyToSend = true
                 break
+              }
             }
-            if (disposed) return
+            if (disposed) {
+              console.info(
+                `[pty-launch] ${command ?? 'shell'} pane desmontado antes de enviar o prompt inicial id=${response.id}`,
+              )
+              return
+            }
+            if (!readyToSend) {
+              console.warn(
+                `[pty-launch] ${command ?? 'shell'} deadline vencido sem enviar o prompt inicial id=${response.id}`,
+              )
+              return
+            }
+
             try {
-              await writePtyChunked(response.id, prompt, true)
-              await new Promise((resolve) => window.setTimeout(resolve, 150))
-              await writePty(response.id, '\r')
-              window.setTimeout(() => void writePty(response.id, '\r').catch(() => {}), 1_200)
+              if (ptyIdRef.current !== response.id) {
+                console.warn(
+                  `[pty-launch] ${command ?? 'shell'} ptyId DIVERGENTE na hora de enviar! response.id=${response.id} ptyIdRef.current=${ptyIdRef.current} — escrevendo no id errado explicaria "enviado sem erro, nunca aparece"`,
+                )
+              }
+              // Foca o painel bem antes de escrever: se o app já ligou
+              // "focus reporting" (DECSET 1004) depois do focus() automático
+              // do mount, ele nunca mais recebia o sinal de foco de novo —
+              // só clique/pointerdown real disparavam isso. Algumas TUIs só
+              // aceitam entrada de teclado depois de um focus-in confirmado.
+              // Barato e inofensivo mesmo se não for isso.
+              try {
+                terminal.focus()
+              } catch {
+                /* painel pode já estar desmontando — ignora */
+              }
+              if (isOpencode) {
+                // Em vez de adivinhar "prontidão" por tempo ou vasculhar o
+                // stream cru de bytes (o \x1b intercalado com o texto
+                // quebrava qualquer match de string), lê a TELA já
+                // renderizada pelo próprio xterm.js — o mesmo buffer que ele
+                // usa pra desenhar, já com todos os códigos ANSI aplicados e
+                // resolvidos em texto puro.
+                const readVisibleScreenText = (rows = 200): string => {
+                  const buffer = terminal.buffer.active
+                  const start = Math.max(0, buffer.length - rows)
+                  const lines: string[] = []
+                  for (let y = start; y < buffer.length; y++) {
+                    const line = buffer.getLine(y)
+                    if (line) lines.push(line.translateToString(true))
+                  }
+                  return lines.join('\n')
+                }
+                // Remove TUDO que não for letra/dígito — não só espaço.
+                // Confirmado ao vivo: a caixa de entrada do OpenCode tem uma
+                // borda decorativa (barra vertical) no início de cada linha
+                // desenhada; como não é espaço em branco, sobrava no meio
+                // do texto lido sempre que o prompt quebrava linha,
+                // quebrando qualquer comparação exata. Normalizando os dois
+                // lados (tela e prompt) do mesmo jeito, borda/pontuação/
+                // quebra de linha somem e só sobra o "esqueleto" de letras.
+                const normalizeForMatch = (text: string) =>
+                  text.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase()
+                // Usa o FINAL do prompt como impressão digital, não o
+                // começo: o prompt é longo o bastante pra ocupar a caixa de
+                // entrada inteira sozinho, e o começo pode já não estar mais
+                // visível (quebra de linha própria do OpenCode, ou scroll
+                // interno da caixa) na hora em que a digitação termina — o
+                // final é sempre onde o cursor acabou de escrever.
+                const promptFingerprint = normalizeForMatch(prompt).slice(-30)
+                // A tela de boas-vindas só mostra esse placeholder quando a
+                // caixa de entrada está vazia — usa isso pra saber se é
+                // SEGURO redigitar (nada a duplicar) ou não.
+                const PLACEHOLDER_FINGERPRINT = normalizeForMatch('Ask anything')
+                const boxLooksEmpty = () =>
+                  normalizeForMatch(readVisibleScreenText()).includes(PLACEHOLDER_FINGERPRINT)
+                // Confirmado ao vivo: digitar na mão (tecla por tecla) nesse
+                // MESMO terminal funciona normal, mas mandar o prompt inteiro
+                // numa escrita só nunca aparecia na tela — simula digitação
+                // de verdade, em pedaços pequenos com um respiro entre cada.
+                const TYPE_CHUNK_SIZE = 6
+                const TYPE_CHUNK_DELAY_MS = 30
+                const typePrompt = async () => {
+                  for (let index = 0; index < prompt.length; index += TYPE_CHUNK_SIZE) {
+                    await writePty(response.id, prompt.slice(index, index + TYPE_CHUNK_SIZE))
+                    await new Promise((resolve) => window.setTimeout(resolve, TYPE_CHUNK_DELAY_MS))
+                  }
+                }
+                // Cada rodada só redigita se a caixa ainda parecer vazia —
+                // testado ao vivo, Ctrl+U não limpa o editor multi-linha do
+                // OpenCode, então redigitar em cima de texto que já chegou
+                // (só não confirmado ainda) empilha cópias duplicadas na
+                // caixa (spam visível). Mas se o OpenCode simplesmente
+                // ignorou a digitação inteira (ainda não pronto pra
+                // receber input — visto ao vivo, caixa continua vazia até o
+                // prazo vencer), essa rodada seguinte tenta digitar de novo.
+                let confirmedOnScreen = false
+                let firstRound = true
+                for (
+                  let round = 0;
+                  !disposed && !confirmedOnScreen && Date.now() < deadline;
+                  round++
+                ) {
+                  if (firstRound || boxLooksEmpty()) {
+                    firstRound = false
+                    await typePrompt()
+                  }
+                  const roundDeadline = Math.min(deadline, Date.now() + 8_000)
+                  while (!disposed && Date.now() < roundDeadline) {
+                    if (normalizeForMatch(readVisibleScreenText()).includes(promptFingerprint)) {
+                      confirmedOnScreen = true
+                      break
+                    }
+                    await new Promise((resolve) => window.setTimeout(resolve, 700))
+                  }
+                }
+                if (!confirmedOnScreen) {
+                  console.warn(
+                    `[pty-launch] opencode não confirmou o texto digitado na tela antes do prazo id=${response.id}`,
+                  )
+                  return
+                }
+                // Confirmado ao vivo: o texto chega perfeito na caixa, mas
+                // um único Enter às vezes não dispara o envio sozinho.
+                // "A caixa esvaziou" não serve de critério de parada aqui —
+                // o rodapé "esc interrupt" já aparece só com texto parado
+                // na caixa, sem estar processando nada, então não dá pra
+                // confiar nele pra saber se o agente já começou a
+                // responder. Critério mais seguro: comparar a tela INTEIRA
+                // antes/depois — só reenvia Enter se a tela ficar
+                // EXATAMENTE igual (nada aconteceu, o Enter não registrou).
+                // Assim que a tela mudar de qualquer jeito — enviou, ou o
+                // agente já começou a escrever a resposta — para na hora e
+                // nunca mais reenvia.
+                await new Promise((resolve) => window.setTimeout(resolve, 150))
+                const MAX_ENTER_ATTEMPTS = 4
+                let previousScreen = readVisibleScreenText()
+                for (
+                  let attempt = 0;
+                  attempt < MAX_ENTER_ATTEMPTS && !disposed && Date.now() < deadline;
+                  attempt++
+                ) {
+                  await writePty(response.id, '\r')
+                  await new Promise((resolve) => window.setTimeout(resolve, 1_500))
+                  const currentScreen = readVisibleScreenText()
+                  if (currentScreen !== previousScreen) break
+                  previousScreen = currentScreen
+                }
+              } else {
+                // Bracketed paste (marcadores 200~/201~) só faz sentido se o
+                // processo já ligou o modo (DECSET 2004) — mandar `true`
+                // fixo aqui, ignorando o estado real do terminal, fazia
+                // CLIs que ainda não ligaram esse modo receberem os
+                // marcadores como ruído em vez de tratar como colagem.
+                // Mesmo critério já usado pela colagem normal (pasteText,
+                // mais acima neste arquivo).
+                await writePtyChunked(response.id, prompt, terminal.modes.bracketedPasteMode)
+                await new Promise((resolve) => window.setTimeout(resolve, 150))
+                await writePty(response.id, '\r')
+                window.setTimeout(() => void writePty(response.id, '\r').catch(() => {}), 1_200)
+              }
+              console.info(
+                `[pty-launch] ${command ?? 'shell'} prompt inicial enviado id=${response.id}`,
+              )
               onInitialInputSentRef.current?.()
             } catch (error) {
               console.warn('[pty-launch] não foi possível enviar o prompt inicial:', error)
             }
           }
-          void sendInitialInput()
+          initialInputInFlight = true
+          void sendInitialInput().finally(() => {
+            initialInputInFlight = false
+          })
         }
 
         scheduleResize()
