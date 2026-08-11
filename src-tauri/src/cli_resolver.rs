@@ -657,58 +657,66 @@ pub async fn discover_provider_models(provider: String) -> Result<Vec<ModelOptio
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
-    fn test_is_valid_model_id() {
-        assert!(is_valid_model_id("claude-sonnet-4-5"));
-        assert!(is_valid_model_id("gpt-5"));
-        assert!(is_valid_model_id("o3-mini"));
-        assert!(is_valid_model_id("model-error-free"));
+    fn accepts_model_ids_and_rejects_cli_prose() {
+        for id in ["claude-sonnet-4-5", "gpt-5", "o3-mini", "model-error-free"] {
+            assert!(is_valid_model_id(id), "expected valid model id: {id}");
+        }
 
-        assert!(!is_valid_model_id(""));
-        assert!(!is_valid_model_id("ab"));
-        assert!(!is_valid_model_id("--help"));
-        assert!(!is_valid_model_id("# comment"));
-        assert!(!is_valid_model_id("gpt 5"));
-        assert!(!is_valid_model_id("Usage: ..."));
-        assert!(!is_valid_model_id("ERROR: ..."));
-        assert!(!is_valid_model_id("could not find"));
-        assert!(!is_valid_model_id("failed to run"));
-        assert!(!is_valid_model_id("let x = 1"));
-        assert!(!is_valid_model_id("flags:"));
-        assert!(!is_valid_model_id("Available models:"));
+        for id in [
+            "",
+            "ab",
+            "--help",
+            "# comment",
+            "gpt 5",
+            "usage: claude [options]",
+            "Usage: claude [options]",
+            "could not find model",
+            "ERROR: invalid model",
+            "failed to list models",
+            "let me explain",
+            "flags: --json",
+            "available models:",
+        ] {
+            assert!(!is_valid_model_id(id), "expected invalid model id: {id}");
+        }
     }
 
     #[test]
-    fn test_dedupe_paths() {
-        let paths = vec![
-            PathBuf::from("C:\\Bin"),
+    fn dedupe_paths_drops_empty_values_and_keeps_first_spelling() {
+        let paths = dedupe_paths(vec![
+            PathBuf::from("  "),
+            PathBuf::from(r"C:\Bin"),
+            PathBuf::from(r"c:\bin"),
+            PathBuf::from(r"D:\Tools"),
             PathBuf::from(""),
-            PathBuf::from(" "),
-            PathBuf::from("d:\\tools"),
-            PathBuf::from("c:\\bin"),
-        ];
-        let result = dedupe_paths(paths);
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0], PathBuf::from("C:\\Bin"));
-        assert_eq!(result[1], PathBuf::from("d:\\tools"));
+        ]);
+
+        assert_eq!(paths, vec![PathBuf::from(r"C:\Bin"), PathBuf::from(r"D:\Tools")]);
     }
 
-    #[test]
     #[cfg(windows)]
-    fn test_expand_windows_env_vars() {
-        std::env::set_var("TEST_VAR", "expanded");
-        assert_eq!(expand_windows_env_vars("foo %TEST_VAR% bar"), "foo expanded bar");
-        assert_eq!(expand_windows_env_vars("foo %NOPE% bar"), "foo %NOPE% bar");
+    #[test]
+    fn expands_windows_environment_variables_case_insensitively() {
+        std::env::set_var("alethe_test_path", r"C:\Tools");
+
+        assert_eq!(
+            expand_windows_env_vars(r"%ALETHE_TEST_PATH%\bin;%alethe_test_path%"),
+            r"C:\Tools\bin;C:\Tools"
+        );
+        assert_eq!(expand_windows_env_vars(r"%NOPE%"), r"%NOPE%");
+
+        std::env::remove_var("alethe_test_path");
     }
 
-    #[test]
     #[cfg(windows)]
-    fn test_split_windows_path_expanded() {
-        std::env::set_var("TEST_VAR", "expanded");
-        let result = split_windows_path_expanded("a;;%TEST_VAR%;;");
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0], PathBuf::from("a"));
-        assert_eq!(result[1], PathBuf::from("expanded"));
+    #[test]
+    fn splits_expanded_windows_paths_and_drops_empty_segments() {
+        assert_eq!(
+            split_windows_path_expanded(r"a;; b ;"),
+            vec![PathBuf::from("a"), PathBuf::from("b")]
+        );
     }
 }

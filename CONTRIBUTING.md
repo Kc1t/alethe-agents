@@ -40,7 +40,7 @@ Roughly ordered from "you can do this today" to "talk to us first":
 3. **Validate a platform.** Alethe is Windows-first and still under-tested on Linux and macOS.
    Running it on your machine and reporting exactly what broke is genuinely useful.
 4. **Improve docs, screenshots, or setup notes.** If something confused you during setup, you're
-   the best-positioned person in the world to fix it.
+   the best-positioned person in the world to fix it. See the [theme guide](docs/THEMES.md) for adding or documenting themes.
 5. **Pick a [`help wanted`](https://github.com/Kc1t/alethe-agents/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22) issue.**
    Bigger, less hand-held, still well-defined.
 6. **Propose a feature.** Open an issue describing the *workflow* it would improve before writing
