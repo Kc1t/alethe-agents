@@ -72,6 +72,11 @@ objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
 # Backend do Keychain (onde o Claude Code guarda o token OAuth no macOS).
 keyring = { version = "3", default-features = false, features = ["apple-native"] }
+# Backend de clipboard (texto + imagem) do macOS — mod macos_clipboard em
+# diagnostics.rs. Linux/BSD usa um backend diferente (wl-paste/wl-copy/xclip
+# via linha de comando, cobre paths de arquivo que o arboard não suporta);
+# Windows tem a implementação Win32 nativa (mod windows_clipboard).
+arboard = { version = "3", default-features = false, features = ["image-data"] }
 
 # Dependências só-Windows (registro + Win32). Em Linux/macOS o `winreg` nem
 # compila, então ficam atrás de `cfg(windows)`; o código que as usa já é gated.
@@ -96,15 +101,6 @@ windows-sys = { version = "0.61", features = [
 # sistema pra criptografia da sessão D-Bus.
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
-
-# Backend de clipboard (texto + imagem) fora do Windows — lá a implementação
-# Win32 nativa (mod windows_clipboard em diagnostics.rs) continua exclusiva
-# porque cobre CF_HDROP (paths de arquivo), que o arboard não suporta.
-# `wayland-data-control` cobre compositores Wayland puros sem XWayland; nos
-# demais (com XWayland, o caso comum), o backend X11 padrão do arboard já
-# funciona sozinho.
-[target.'cfg(not(target_os = "windows"))'.dependencies]
-arboard = { version = "3", default-features = false, features = ["image-data", "wayland-data-control"] }
 
 # Em dev, unwind permite que um panic de comando vire Err em vez de derrubar o
 # app inteiro durante uma sessão de HMR. Release segue abort (binário menor).

@@ -119,9 +119,14 @@ pub fn write_clipboard_text(text: String) -> Result<(), String> {
         windows_clipboard::write_text(&text)
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         unix_clipboard::write_text(&text)
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        macos_clipboard::write_text(&text)
     }
 }
 
@@ -132,14 +137,20 @@ pub fn read_clipboard_text() -> Result<String, String> {
         windows_clipboard::read_text()
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         unix_clipboard::read_text()
     }
+
+    #[cfg(target_os = "macos")]
+    {
+        macos_clipboard::read_text()
+    }
 }
 
-/// Payload unificado do clipboard: texto, paths de arquivo (CF_HDROP) ou uma
-/// imagem crua (CF_DIB / formato "PNG" registrado) já salva num PNG temporario.
+/// Payload unificado do clipboard: texto, paths de arquivo (CF_HDROP no Windows,
+/// text/uri-list no Linux) ou uma imagem crua (CF_DIB/PNG registrado no Windows,
+/// image/png no Linux) já salva num PNG temporário.
 #[derive(serde::Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ClipboardPayload {
@@ -156,9 +167,14 @@ pub fn read_clipboard_payload() -> Result<ClipboardPayload, String> {
         windows_clipboard::read_payload()
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(all(unix, not(target_os = "macos")))]
     {
         unix_clipboard::read_payload()
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        macos_clipboard::read_payload()
     }
 }
 
@@ -411,13 +427,201 @@ mod windows_clipboard {
     }
 }
 
-/// Backend de clipboard pra Linux/macOS via `arboard` (usa o próprio
-/// backend X11/Wayland do sistema, sem depender do GTK). Cobre texto e
-/// imagem — paths de arquivo (equivalente ao CF_HDROP do Windows) não têm
-/// API estável no arboard, então esse payload cai pra `Empty` fora do
-/// Windows em vez de tentar advinhar um formato.
-#[cfg(not(target_os = "windows"))]
+/// Backend de clipboard pra Linux/BSD via ferramentas de linha de comando
+/// (`wl-paste`/`wl-copy` no Wayland, `xclip` no X11) — sem essas ferramentas
+/// instaladas, os comandos de clipboard retornam erro em vez de panicar.
+#[cfg(all(unix, not(target_os = "macos")))]
 mod unix_clipboard {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    use super::ClipboardPayload;
+
+    fn wayland() -> bool {
+        std::env::var_os("WAYLAND_DISPLAY").is_some()
+    }
+
+    fn paste_tool() -> Result<&'static str, String> {
+        let (tool, package) = if wayland() { ("wl-paste", "wl-clipboard") } else { ("xclip", "xclip") };
+        which::which(tool)
+            .map(|_| tool)
+            .map_err(|_| format!("{tool} não encontrado no PATH (pacote `{package}`)"))
+    }
+
+    fn copy_tool() -> Result<&'static str, String> {
+        let (tool, package) = if wayland() { ("wl-copy", "wl-clipboard") } else { ("xclip", "xclip") };
+        which::which(tool)
+            .map(|_| tool)
+            .map_err(|_| format!("{tool} não encontrado no PATH (pacote `{package}`)"))
+    }
+
+    /// Lista os mimetypes disponíveis no clipboard (equivalente a
+    /// IsClipboardFormatAvailable, mas descobrindo tudo de uma vez).
+    fn list_types() -> Vec<String> {
+        let Ok(tool) = paste_tool() else { return Vec::new() };
+        let output = if tool == "wl-paste" {
+            Command::new("wl-paste").arg("--list-types").output()
+        } else {
+            Command::new("xclip").args(["-selection", "clipboard", "-t", "TARGETS", "-o"]).output()
+        };
+        output
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    fn read_type(mime: &str) -> Result<Vec<u8>, String> {
+        let tool = paste_tool()?;
+        let output = if tool == "wl-paste" {
+            Command::new("wl-paste").args(["--type", mime, "--no-newline"]).output()
+        } else {
+            Command::new("xclip").args(["-selection", "clipboard", "-t", mime, "-o"]).output()
+        }
+        .map_err(|e| e.to_string())?;
+        if !output.status.success() {
+            return Err(format!("falha ao ler clipboard ({mime})"));
+        }
+        Ok(output.stdout)
+    }
+
+    /// `text/uri-list` é o mimetype padrão que gerenciadores de arquivo
+    /// (Nautilus, Dolphin, Thunar, ...) usam ao copiar arquivos: uma lista de
+    /// URIs `file://` separadas por linha, com comentários opcionais em `#`.
+    /// GNOME/Nautilus às vezes só expõe `x-special/gnome-copied-files`
+    /// (mesmo formato, com uma linha extra "copy"/"cut" no início).
+    fn parse_uri_list(raw: &str) -> Vec<String> {
+        raw.lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .filter_map(|line| line.strip_prefix("file://"))
+            .map(|encoded| {
+                urlencoding::decode(encoded)
+                    .map(|decoded| decoded.into_owned())
+                    .unwrap_or_else(|_| encoded.to_string())
+            })
+            .collect()
+    }
+
+    fn save_png_to_temp(bytes: &[u8]) -> Result<String, String> {
+        let path =
+            std::env::temp_dir().join(format!("alethe-clipboard-img-{}.png", nanoid::nanoid!(8)));
+        std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+        Ok(path.to_string_lossy().into_owned())
+    }
+
+    pub fn read_payload() -> Result<ClipboardPayload, String> {
+        let types = list_types();
+        if types.is_empty() {
+            return Ok(ClipboardPayload::Empty);
+        }
+
+        // Mesma ordem de prioridade do backend Windows: arquivos > imagem > texto.
+        let uri_mime = ["text/uri-list", "x-special/gnome-copied-files"]
+            .into_iter()
+            .find(|mime| types.iter().any(|t| t == mime));
+        if let Some(mime) = uri_mime {
+            let raw = String::from_utf8_lossy(&read_type(mime)?).into_owned();
+            let paths = parse_uri_list(&raw);
+            if !paths.is_empty() {
+                return Ok(ClipboardPayload::Paths { paths });
+            }
+        }
+
+        // image/png cobre a esmagadora maioria dos casos reais (screenshots,
+        // "copiar imagem" no navegador). Formatos crus como image/bmp ou
+        // image/jpeg não são reencodados aqui de propósito, pra não exigir
+        // features extras da crate `image` só pra esse caminho.
+        if types.iter().any(|t| t == "image/png") {
+            let bytes = read_type("image/png")?;
+            if !bytes.is_empty() {
+                return save_png_to_temp(&bytes).map(|path| ClipboardPayload::Image { path });
+            }
+        }
+
+        if types.iter().any(|t| t.starts_with("text/plain")) {
+            let text = String::from_utf8_lossy(&read_type("text/plain")?).into_owned();
+            if !text.is_empty() {
+                return Ok(ClipboardPayload::Text { text });
+            }
+        }
+
+        Ok(ClipboardPayload::Empty)
+    }
+
+    pub fn read_text() -> Result<String, String> {
+        if !list_types().iter().any(|t| t.starts_with("text/plain")) {
+            return Ok(String::new());
+        }
+        read_type("text/plain").map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+    }
+
+    pub fn write_text(text: &str) -> Result<(), String> {
+        let tool = copy_tool()?;
+        let mut command = if tool == "wl-copy" {
+            Command::new("wl-copy")
+        } else {
+            let mut cmd = Command::new("xclip");
+            cmd.args(["-selection", "clipboard"]);
+            cmd
+        };
+
+        let mut child = command.stdin(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
+        child
+            .stdin
+            .take()
+            .ok_or_else(|| "stdin do clipboard indisponível".to_string())?
+            .write_all(text.as_bytes())
+            .map_err(|e| e.to_string())?;
+
+        let status = child.wait().map_err(|e| e.to_string())?;
+        if !status.success() {
+            return Err(format!("{tool} retornou erro"));
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn parse_uri_list_decodes_percent_encoded_paths() {
+            let raw = "file:///home/user/My%20Screenshot.png\nfile:///tmp/plain.png\n";
+            assert_eq!(
+                parse_uri_list(raw),
+                vec!["/home/user/My Screenshot.png".to_string(), "/tmp/plain.png".to_string()]
+            );
+        }
+
+        #[test]
+        fn parse_uri_list_skips_comments_and_non_file_lines() {
+            let raw = "# copy\nfile:///a/b.txt\nhttp://example.com/not-a-file\n";
+            assert_eq!(parse_uri_list(raw), vec!["/a/b.txt".to_string()]);
+        }
+
+        #[test]
+        fn parse_uri_list_handles_empty_input() {
+            assert!(parse_uri_list("").is_empty());
+        }
+    }
+}
+
+/// Backend de clipboard pra macOS via `arboard` (evita depender de ferramentas
+/// de linha de comando externas, ao contrário do `unix_clipboard` de
+/// Linux/BSD acima). Cobre texto e imagem — paths de arquivo (equivalente ao
+/// CF_HDROP do Windows / text/uri-list do Linux) não têm API estável no
+/// arboard, então esse payload cai pra `Empty` em vez de tentar adivinhar um
+/// formato.
+#[cfg(target_os = "macos")]
+mod macos_clipboard {
     use super::ClipboardPayload;
 
     fn open() -> Result<arboard::Clipboard, String> {

@@ -17,7 +17,7 @@ import { readPlanningStatus, readTextFile, writeClipboardText, type PlanningStat
 import { selectActiveProject, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { MarkdownRenderer } from '../MarkdownPane/MarkdownRenderer'
-import { EmptyState } from '../EmptyState/EmptyState'
+import { EmptyState } from '../EmptyState'
 import { GitControl } from '../ProjectSidebar/GitControl'
 import { DotmCircular2 } from '../ui/dotm-circular-2'
 import { TodoSidebar } from '../TodoSidebar'

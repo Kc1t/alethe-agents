@@ -28,7 +28,7 @@ import { UNRESTRICTED_FLAG, type AgentType, type Project } from '../../lib/types
 import { AgentIcon } from '../icons/AgentIcons'
 import { AsciiEffect } from '../ui/ascii-effect'
 import { Avatar } from '../ui/Avatar'
-import { EmptyState } from '../EmptyState/EmptyState'
+import { EmptyState } from '../EmptyState'
 import homeBackground from '../../assets/home-bg-right.png'
 import { computeStreak } from './ActivityGraph'
 import { NowPlayingWidget } from './NowPlayingWidget'

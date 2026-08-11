@@ -721,3 +721,70 @@ pub async fn discover_provider_models(provider: String) -> Result<Vec<ModelOptio
     }
     Ok(result)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn accepts_model_ids_and_rejects_cli_prose() {
+        for id in ["claude-sonnet-4-5", "gpt-5", "o3-mini", "model-error-free"] {
+            assert!(is_valid_model_id(id), "expected valid model id: {id}");
+        }
+
+        for id in [
+            "",
+            "ab",
+            "--help",
+            "# comment",
+            "gpt 5",
+            "usage: claude [options]",
+            "Usage: claude [options]",
+            "could not find model",
+            "ERROR: invalid model",
+            "failed to list models",
+            "let me explain",
+            "flags: --json",
+            "available models:",
+        ] {
+            assert!(!is_valid_model_id(id), "expected invalid model id: {id}");
+        }
+    }
+
+    #[test]
+    fn dedupe_paths_drops_empty_values_and_keeps_first_spelling() {
+        let paths = dedupe_paths(vec![
+            PathBuf::from("  "),
+            PathBuf::from(r"C:\Bin"),
+            PathBuf::from(r"c:\bin"),
+            PathBuf::from(r"D:\Tools"),
+            PathBuf::from(""),
+        ]);
+
+        assert_eq!(paths, vec![PathBuf::from(r"C:\Bin"), PathBuf::from(r"D:\Tools")]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn expands_windows_environment_variables_case_insensitively() {
+        std::env::set_var("alethe_test_path", r"C:\Tools");
+
+        assert_eq!(
+            expand_windows_env_vars(r"%ALETHE_TEST_PATH%\bin;%alethe_test_path%"),
+            r"C:\Tools\bin;C:\Tools"
+        );
+        assert_eq!(expand_windows_env_vars(r"%NOPE%"), r"%NOPE%");
+
+        std::env::remove_var("alethe_test_path");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn splits_expanded_windows_paths_and_drops_empty_segments() {
+        assert_eq!(
+            split_windows_path_expanded(r"a;; b ;"),
+            vec![PathBuf::from("a"), PathBuf::from("b")]
+        );
+    }
+}

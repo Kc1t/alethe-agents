@@ -28,7 +28,7 @@ import { formatShortcut } from '../../lib/platform'
 import { type Group, type Project } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { EmptyState } from '../EmptyState/EmptyState'
+import { EmptyState } from '../EmptyState'
 import { FileExplorer } from './FileExplorer'
 import { GitControl } from './GitControl'
 import { GroupNode } from './GroupNode'
@@ -445,10 +445,10 @@ export function ProjectSidebar() {
           type="button"
           className={styles.quickNavItem}
           onClick={() => openModal('findJump')}
-          title="Search"
+          title={t('ui.sidebar.search')}
         >
           <Search size={15} className={styles.quickNavIcon} />
-          <span>Search</span>
+          <span>{t('ui.sidebar.search')}</span>
         </button>
       </div>
 
