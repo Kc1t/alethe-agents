@@ -18,7 +18,7 @@
     "test:rust": "cd src-tauri && cargo test --lib",
     "test:ghostty": "cd src-tauri && cargo test --lib -- --ignored --test-threads=1 terminal_runs",
     "test": "vitest run",
-    "test:e2e:build": "npm run build && cross-env CARGO_TARGET_DIR=src-tauri/target-e2e tauri build --debug --no-bundle",
+    "test:e2e:build": "npm run build && cross-env CARGO_TARGET_DIR=target-e2e tauri build --debug --no-bundle",
     "test:e2e": "wdio run e2e/wdio.conf.ts",
     "release": "node scripts/release.mjs",
     "release:publish": "node scripts/release-publish.mjs",

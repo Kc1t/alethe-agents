@@ -24,6 +24,12 @@ src-tauri/target/
 src-tauri/target-e2e/
 src-tauri/gen/
 
+# Artefatos gerados a cada rodada do suite E2E (screenshots/relatórios de
+# falha) — mesmos paths que o step "Upload screenshots + reports on failure"
+# do CI usa, nunca conteúdo versionado.
+e2e/__reports__/
+e2e/__screenshots__/
+
 # libghostty pré-buildado — não versionado (binário ~39MB). Reconstruído por
 # src-tauri/vendor/fetch-ghostty.sh (URL + checksum pinados).
 src-tauri/vendor/GhosttyKit.xcframework/
