@@ -29,12 +29,18 @@ export const config: Options.Testrunner = {
   ],
 
   onPrepare: (_config, capabilities) => {
-    const { applicationPath, cleanup } = prepareIsolatedLaunch()
+    const { applicationPath, env, cleanup } = prepareIsolatedLaunch()
     cleanupIsolatedLaunch = cleanup
     const list = capabilities as WebdriverIO.Capabilities[]
     for (const capability of list) {
       const options = (capability as Record<string, { application?: string }>)['tauri:options']
       if (options) options.application = applicationPath
+      // Env de isolamento via opção documentada da lib (chega intacta no
+      // spawn final) — nunca via wrapper .cmd/.sh, que quebra o spawn direto
+      // do @wdio/tauri-service no Windows (ver comentário em launch.ts).
+      ;(capability as Record<string, { env?: Record<string, string> }>)[
+        'wdio:tauriServiceOptions'
+      ] = { env }
     }
   },
 

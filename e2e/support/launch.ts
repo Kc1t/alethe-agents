@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -14,40 +14,36 @@ function realBinaryPath(): string {
 }
 
 /**
- * Gera um wrapper (não o binário direto) que seta `ALETHE_E2E=1` + redireciona
- * o data dir do SO (HOME/XDG_DATA_HOME no Linux/macOS, APPDATA no Windows)
- * pra uma pasta temporária isolada, antes de executar o binário real. O
- * data dir do Alethe vem de `app.path().app_local_data_dir()` (Tauri), que por
- * sua vez segue o padrão do SO — redirecionar essas variáveis é o jeito mais
- * simples de garantir zero contato com `%APPDATA%/Alethe` de verdade, sem
- * precisar de nenhum código novo no lado Rust.
+ * Isola o data dir do SO (HOME/XDG_DATA_HOME no Linux/macOS, APPDATA no
+ * Windows) numa pasta temporária, pra garantir zero contato com
+ * `%APPDATA%/Alethe` de verdade — sem precisar de nenhum código novo no lado
+ * Rust (o data dir do Alethe vem de `app.path().app_local_data_dir()`, que
+ * segue o padrão do SO).
  *
- * `@wdio/tauri-service` não expõe um campo `env` em `tauri:options`, só
- * `application`/`args` — por isso o wrapper, e não variáveis passadas direto
- * na capability.
+ * O binário real é apontado direto em `application` (nunca um wrapper
+ * `.cmd`/`.sh`): `@wdio/tauri-service` spawna com `child_process.spawn(path,
+ * args, {...})` sem `shell: true` (confirmado lendo o pacote) — no Windows,
+ * spawnar um `.cmd` sem shell falha com `EINVAL` (não é um executável nativo
+ * pro `CreateProcess`), então um wrapper batch quebrava o E2E de propósito.
+ * As variáveis de ambiente de isolamento vão via
+ * `wdio:tauriServiceOptions.env` (opção documentada da própria lib, que
+ * chega intacta no spawn final — `mergeOptions` faz um spread simples, sem
+ * whitelist), não via wrapper.
  */
-export function prepareIsolatedLaunch(): { applicationPath: string; cleanup: () => void } {
-  const binary = realBinaryPath()
+export function prepareIsolatedLaunch(): {
+  applicationPath: string
+  env: Record<string, string>
+  cleanup: () => void
+} {
   const dataDir = mkdtempSync(join(tmpdir(), 'alethe-e2e-'))
-
-  const wrapperPath =
-    process.platform === 'win32' ? join(dataDir, 'launch.cmd') : join(dataDir, 'launch.sh')
-
-  if (process.platform === 'win32') {
-    writeFileSync(
-      wrapperPath,
-      `@echo off\r\nset ALETHE_E2E=1\r\nset APPDATA=${dataDir}\r\n"${binary}" %*\r\n`,
-    )
-  } else {
-    writeFileSync(
-      wrapperPath,
-      `#!/usr/bin/env bash\nset -e\nexport ALETHE_E2E=1\nexport HOME="${dataDir}"\nexport XDG_DATA_HOME="${dataDir}/.local/share"\nexec "${binary}" "$@"\n`,
-    )
-    chmodSync(wrapperPath, 0o755)
-  }
+  const env: Record<string, string> =
+    process.platform === 'win32'
+      ? { ALETHE_E2E: '1', APPDATA: dataDir }
+      : { ALETHE_E2E: '1', HOME: dataDir, XDG_DATA_HOME: join(dataDir, '.local', 'share') }
 
   return {
-    applicationPath: wrapperPath,
+    applicationPath: realBinaryPath(),
+    env,
     cleanup: () => {
       // Só apaga a pasta temporária. Matar o processo é responsabilidade do
       // @wdio/tauri-service (dono do ciclo de vida do app que ele mesmo
