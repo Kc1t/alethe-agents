@@ -57,7 +57,7 @@
       <img src="./docs/screenshots/alethe-windows.png" alt="Alethe running on Windows" width="100%">
     </td>
     <td align="center">
-      <img src="./docs/screenshots/alethe-linux.png" alt="Alethe runnig on Linux" width="100%">
+      <img src="./docs/screenshots/alethe-linux.png" alt="Alethe running on Linux" width="100%">
     </td>
   </tr>
   <tr>
