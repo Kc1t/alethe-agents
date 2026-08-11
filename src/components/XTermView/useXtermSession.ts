@@ -533,6 +533,11 @@ export function useXtermSession(params: {
           // presa na já feita com o fallback do sistema antes da fonte
           // carregar — exatamente o sintoma visto ao vivo (fonte carrega,
           // mas nada muda visualmente).
+          // Reatribuir o MESMO valor é proposital (ver comentário acima) —
+          // o setter do xterm.js invalida o cache de métricas de célula ao
+          // detectar uma mudança na option observada, então isso não é um
+          // no-op de verdade.
+          // eslint-disable-next-line no-self-assign
           terminal.options.fontFamily = terminal.options.fontFamily
           fitAddon.fit()
           terminal.refresh(0, Math.max(0, terminal.rows - 1))
