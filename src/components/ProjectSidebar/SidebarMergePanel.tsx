@@ -125,7 +125,9 @@ export function SidebarMergePanel() {
     procedure: GsdProcedureStep[] | null
   } | null>(null)
   const [validatingId, setValidatingId] = useState<string | null>(null)
-  const [reviewSessions, setReviewSessions] = useState<Record<string, { terminalId: string; tabId: string }>>({})
+  const [reviewSessions, setReviewSessions] = useState<
+    Record<string, { terminalId: string; tabId: string }>
+  >({})
   const [reviewInputId, setReviewInputId] = useState<string | null>(null)
   const [reviewFeedback, setReviewFeedback] = useState('')
   const [gateStatus, setGateStatus] = useState<Record<string, GateResult>>({})
@@ -191,11 +193,16 @@ export function SidebarMergePanel() {
       } catch {
         // sem repo resolvível / gitStatus falhou — segue com o fallback 'main'
       }
-      const diff = await gitDiffSummary(repo, item.branchName, target, item.worktreePath).catch(() => [])
+      const diff = await gitDiffSummary(repo, item.branchName, target, item.worktreePath).catch(
+        () => [],
+      )
       if (diff.length === 0) {
         setGateStatus((prev) => ({
           ...prev,
-          [item.id]: { stage: 'failed', detail: t('merge.gateFailedDiffEmpty', { branch: item.branchName, target }) },
+          [item.id]: {
+            stage: 'failed',
+            detail: t('merge.gateFailedDiffEmpty', { branch: item.branchName, target }),
+          },
         }))
         return
       }
@@ -213,13 +220,19 @@ export function SidebarMergePanel() {
             ? { stage: 'ready' }
             : {
                 stage: 'failed',
-                detail: t('merge.gateFailedValidation', { stage: result.stage, output: result.output.slice(0, 240) }),
+                detail: t('merge.gateFailedValidation', {
+                  stage: result.stage,
+                  output: result.output.slice(0, 240),
+                }),
               },
         }))
       } catch (err) {
         setGateStatus((prev) => ({
           ...prev,
-          [item.id]: { stage: 'failed', detail: t('merge.gateFailedValidation', { stage: 'run', output: String(err) }) },
+          [item.id]: {
+            stage: 'failed',
+            detail: t('merge.gateFailedValidation', { stage: 'run', output: String(err) }),
+          },
         }))
       }
     } finally {
@@ -281,7 +294,9 @@ export function SidebarMergePanel() {
     // real, confirmado ao vivo: "merge concluído" sem mover nada).
     const pending = await worktreePendingChanges(repo, item.worktreeAgentId).catch(() => [])
     if (pending.length > 0) {
-      const defaultMessage = await readTextFile(`${item.worktreePath}/.planning/goal.md`).catch(() => '')
+      const defaultMessage = await readTextFile(`${item.worktreePath}/.planning/goal.md`).catch(
+        () => '',
+      )
       setCommitConfirmTarget({ item, repo, pending, defaultMessage: defaultMessage.trim() })
       return
     }
@@ -295,7 +310,10 @@ export function SidebarMergePanel() {
     const proj = projects.find((p) => p.id === target.item.projectId)
     if (!proj) return
     await worktreeCommitWorktree(target.repo, target.item.worktreeAgentId, message).catch((err) => {
-      pushToast({ title: t('merge.blockedTitle', { stage: 'commit' }), body: String(err).slice(0, 300) })
+      pushToast({
+        title: t('merge.blockedTitle', { stage: 'commit' }),
+        body: String(err).slice(0, 300),
+      })
     })
     await integrateWorktree(proj, target.repo, target.item.worktreeAgentId, target.item.terminalId)
   }
@@ -346,14 +364,20 @@ export function SidebarMergePanel() {
     const proj = projects.find((p) => p.id === item.projectId)
     const commands = proj?.validationCommands ?? []
     if (commands.length === 0) {
-      pushToast({ title: t('merge.noValidationCommandsTitle'), body: t('merge.noValidationCommandsBody') })
+      pushToast({
+        title: t('merge.noValidationCommandsTitle'),
+        body: t('merge.noValidationCommandsBody'),
+      })
       return
     }
     setValidatingId(item.id)
     try {
       const result = await runValidation(item.worktreePath, commands)
       if (result.success) {
-        pushToast({ title: t('merge.validationPassedTitle'), body: t('merge.validationPassedBody') })
+        pushToast({
+          title: t('merge.validationPassedTitle'),
+          body: t('merge.validationPassedBody'),
+        })
       } else {
         pushToast({
           title: t('merge.validationFailedTitle'),
@@ -426,7 +450,10 @@ export function SidebarMergePanel() {
       await writePty(tab.ptyId, `${feedback}\r`)
       setReviewFeedback('')
       setReviewInputId(null)
-      pushToast({ title: t('merge.reviewFeedbackSentTitle'), body: t('merge.reviewFeedbackSentBody') })
+      pushToast({
+        title: t('merge.reviewFeedbackSentTitle'),
+        body: t('merge.reviewFeedbackSentBody'),
+      })
     } catch (err) {
       pushToast({ title: t('merge.reviewNotReadyTitle'), body: String(err) })
     }
@@ -480,7 +507,11 @@ export function SidebarMergePanel() {
 
     if (commands.length > 0) {
       runValidation(item.worktreePath, commands)
-        .then((result) => setTestBriefing((prev) => (prev?.id === item.id ? { ...prev, validation: result } : prev)))
+        .then((result) =>
+          setTestBriefing((prev) =>
+            prev?.id === item.id ? { ...prev, validation: result } : prev,
+          ),
+        )
         .catch((err) =>
           setTestBriefing((prev) =>
             prev?.id === item.id
@@ -498,7 +529,9 @@ export function SidebarMergePanel() {
       .then((procedure) =>
         setTestBriefing((prev) => (prev?.id === item.id ? { ...prev, procedure } : prev)),
       )
-      .catch(() => setTestBriefing((prev) => (prev?.id === item.id ? { ...prev, procedure: [] } : prev)))
+      .catch(() =>
+        setTestBriefing((prev) => (prev?.id === item.id ? { ...prev, procedure: [] } : prev)),
+      )
   }
 
   /** Envia o checklist de confirmação humana (passou/falhou + notas) direto
@@ -536,7 +569,9 @@ export function SidebarMergePanel() {
         {pendingMerges.length === 0 ? (
           <div className={styles.emptyState}>{t('merge.panelEmpty')}</div>
         ) : visiblePendingMerges.length === 0 ? (
-          <div className={styles.emptyState}>{t('merge.panelGatedHint', { count: pendingMerges.length })}</div>
+          <div className={styles.emptyState}>
+            {t('merge.panelGatedHint', { count: pendingMerges.length })}
+          </div>
         ) : (
           visiblePendingMerges.map((item) => {
             const isCardActive = activeCard?.id === item.id
@@ -708,13 +743,16 @@ export function SidebarMergePanel() {
           }
           testingItems={
             testBriefing?.procedure && testBriefing.procedure.length > 0
-              ? testBriefing.procedure.map(
-                  (step, i): TestingItem => ({ id: `step-${i}`, text: step.description, category: step.category }),
-                )
+              ? testBriefing.procedure.map((step, i): TestingItem => ({
+                  id: `step-${i}`,
+                  text: step.description,
+                  category: step.category,
+                }))
               : (testBriefing?.validation === 'loading'
-                  ? (projects.find((p) => p.id === testModalTarget.projectId)?.validationCommands ?? []).map(
-                      (cmd) => t('merge.testBriefingRunning', { cmd }),
-                    )
+                  ? (
+                      projects.find((p) => p.id === testModalTarget.projectId)
+                        ?.validationCommands ?? []
+                    ).map((cmd) => t('merge.testBriefingRunning', { cmd }))
                   : testBriefing?.validation && testBriefing.validation !== 'idle'
                     ? testBriefing.validation.success
                       ? [t('merge.testBriefingValidationPassed')]

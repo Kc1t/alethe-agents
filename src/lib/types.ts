@@ -606,11 +606,6 @@ export const PROVIDER_MODELS: Record<AgentType, { id: string; label: string }[]>
     { id: 'mimo-pro', label: 'Mimo Pro' },
     { id: 'mimo-flash', label: 'Mimo Flash' },
   ],
-  freebuff: [
-    { id: 'freebuff-auto', label: 'Freebuff Auto' },
-  ],
-  shell: [
-    { id: 'default', label: 'Shell Padrão' },
-  ],
+  freebuff: [{ id: 'freebuff-auto', label: 'Freebuff Auto' }],
+  shell: [{ id: 'default', label: 'Shell Padrão' }],
 }
-

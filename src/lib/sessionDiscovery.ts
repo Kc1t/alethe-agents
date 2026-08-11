@@ -41,7 +41,11 @@ export function isSessionClaimed(
   const key = claimKey(agent, cwd)
   if (!claimedIds.get(key)?.has(sessionId)) return false
   if (!ownerId) return true
-  return claimOwners.get(ownerId)?.some((claim) => claim.key === key && claim.sessionId === sessionId) !== true
+  return (
+    claimOwners
+      .get(ownerId)
+      ?.some((claim) => claim.key === key && claim.sessionId === sessionId) !== true
+  )
 }
 
 function excludeReserved<T extends SessionSnapshot>(

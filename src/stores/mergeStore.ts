@@ -365,7 +365,10 @@ export const useMergeStore = create<MergeState>((set, get) => ({
             })
           relocated = result.ok
           if (!result.ok) {
-            console.warn('[mergeStore] relocação pós-merge falhou, encerrando terminal:', result.error)
+            console.warn(
+              '[mergeStore] relocação pós-merge falhou, encerrando terminal:',
+              result.error,
+            )
           }
         }
 
@@ -387,7 +390,9 @@ export const useMergeStore = create<MergeState>((set, get) => ({
         if (outcome.contractWarnings.length > 0) {
           toast(
             t('merge.contractWarningsTitle', { count: outcome.contractWarnings.length }),
-            outcome.contractWarnings.map((w) => `${w.call.pathPattern} (${w.call.file}:${w.call.line})`).join('\n'),
+            outcome.contractWarnings
+              .map((w) => `${w.call.pathPattern} (${w.call.file}:${w.call.line})`)
+              .join('\n'),
           )
         }
         return

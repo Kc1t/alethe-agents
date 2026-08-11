@@ -351,7 +351,10 @@
   height: 24px;
   opacity: 0;
   cursor: grab;
-  transition: color 140ms ease, opacity 140ms ease, transform 140ms ease;
+  transition:
+    color 140ms ease,
+    opacity 140ms ease,
+    transform 140ms ease;
 }
 
 .todoRow:hover .dragHandle,
@@ -490,7 +493,6 @@
 .deleteAction:hover {
   color: var(--status-offline);
 }
-
 
 .sectionEmpty {
   margin: 0;

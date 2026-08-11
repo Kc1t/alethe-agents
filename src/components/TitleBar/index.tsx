@@ -125,9 +125,7 @@ export function TitleBar() {
   const antigravityReady =
     antigravityUsage?.status === 'ready' && antigravityUsage.buckets.length > 0
   const remoteConnectedLabel = t(
-    remoteConnectedDevices === 1
-      ? 'remote.topbarDeviceConnected'
-      : 'remote.topbarDevicesConnected',
+    remoteConnectedDevices === 1 ? 'remote.topbarDeviceConnected' : 'remote.topbarDevicesConnected',
     { count: remoteConnectedDevices },
   )
 
@@ -513,16 +511,18 @@ export function TitleBar() {
       <div className={styles.barEnd}>
         <div className={styles.widgets}>
           <div className={styles.utilityGroup}>
-            {!threeAreas ? <button
-              type="button"
-              className={`${styles.iconBtn} ${updateInfo ? styles.whatsNewPending : ''}`}
-              onClick={() => openModal('whatsNew')}
-              title={t('whatsNew.button')}
-              aria-label={t('whatsNew.button')}
-            >
-              <Newspaper size={13} />
-              {updateInfo ? <span className={styles.whatsNewDot} /> : null}
-            </button> : null}
+            {!threeAreas ? (
+              <button
+                type="button"
+                className={`${styles.iconBtn} ${updateInfo ? styles.whatsNewPending : ''}`}
+                onClick={() => openModal('whatsNew')}
+                title={t('whatsNew.button')}
+                aria-label={t('whatsNew.button')}
+              >
+                <Newspaper size={13} />
+                {updateInfo ? <span className={styles.whatsNewDot} /> : null}
+              </button>
+            ) : null}
             {!threeAreas && preferences.topbarShowSync ? (
               <button
                 type="button"

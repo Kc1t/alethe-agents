@@ -85,20 +85,22 @@ export function AddContentModal() {
     >
       <p className={styles.description}>{t('addContent.description')}</p>
       <div className={styles.options}>
-        {browserEnabled ? <button
-          type="button"
-          className={`${styles.option} ${kind === 'readme' ? styles.optionActive : ''}`}
-          onClick={() => void chooseReadme()}
-          disabled={!projectId}
-        >
-          <span className={styles.optionIcon}>
-            <FileText size={20} />
-          </span>
-          <span>
-            <strong>{t('addContent.readme')}</strong>
-            <small>{t('addContent.readmeDescription')}</small>
-          </span>
-        </button> : null}
+        {browserEnabled ? (
+          <button
+            type="button"
+            className={`${styles.option} ${kind === 'readme' ? styles.optionActive : ''}`}
+            onClick={() => void chooseReadme()}
+            disabled={!projectId}
+          >
+            <span className={styles.optionIcon}>
+              <FileText size={20} />
+            </span>
+            <span>
+              <strong>{t('addContent.readme')}</strong>
+              <small>{t('addContent.readmeDescription')}</small>
+            </span>
+          </button>
+        ) : null}
         <button
           type="button"
           className={`${styles.option} ${kind === 'web' ? styles.optionActive : ''}`}

@@ -36,12 +36,14 @@ export function RemoteControlPage() {
   const refresh = useCallback(async () => {
     try {
       const current = await remoteControlInfo()
-      const syncedMax = current.max_devices === preferences.remoteMaxDevices
-        ? current
-        : await setRemoteControlMaxDevices(preferences.remoteMaxDevices)
-      const synced = syncedMax.session_expiry_secs === preferences.remoteSessionExpirySecs
-        ? syncedMax
-        : await setRemoteControlSessionExpiry(preferences.remoteSessionExpirySecs)
+      const syncedMax =
+        current.max_devices === preferences.remoteMaxDevices
+          ? current
+          : await setRemoteControlMaxDevices(preferences.remoteMaxDevices)
+      const synced =
+        syncedMax.session_expiry_secs === preferences.remoteSessionExpirySecs
+          ? syncedMax
+          : await setRemoteControlSessionExpiry(preferences.remoteSessionExpirySecs)
       setInfo(synced)
       setError(null)
     } catch (value) {
@@ -79,10 +81,18 @@ export function RemoteControlPage() {
         description={t('remote.settingsStatusDesc')}
       >
         <div className={styles.statusCard} data-enabled={enabled}>
-          <span className={styles.statusIcon}>{enabled ? <Wifi size={18} /> : <WifiOff size={18} />}</span>
+          <span className={styles.statusIcon}>
+            {enabled ? <Wifi size={18} /> : <WifiOff size={18} />}
+          </span>
           <div>
             <strong>{enabled ? t('remote.statusOn') : t('remote.statusOff')}</strong>
-            <p>{enabled ? (info?.connected_devices ? info.http_url : t('remote.hiddenAddressPlaceholder')) : t('remote.disabledDescription')}</p>
+            <p>
+              {enabled
+                ? info?.connected_devices
+                  ? info.http_url
+                  : t('remote.hiddenAddressPlaceholder')
+                : t('remote.disabledDescription')}
+            </p>
           </div>
           <button
             type="button"
@@ -112,7 +122,10 @@ export function RemoteControlPage() {
               }}
               disabled={busy}
               ariaLabel={t('remote.maxDevices')}
-              options={[1, 2, 3, 4].map((value) => ({ value: String(value), label: String(value) }))}
+              options={[1, 2, 3, 4].map((value) => ({
+                value: String(value),
+                label: String(value),
+              }))}
             />
           </label>
           <label className={styles.setting}>
@@ -126,11 +139,17 @@ export function RemoteControlPage() {
               }}
               disabled={busy}
               ariaLabel={t('remote.sessionExpiry')}
-              options={SESSION_OPTIONS.map((value) => ({ value: String(value), label: sessionLabel(t, value) }))}
+              options={SESSION_OPTIONS.map((value) => ({
+                value: String(value),
+                label: sessionLabel(t, value),
+              }))}
             />
           </label>
         </div>
-        <div className={styles.securityNote}><ShieldCheck size={15} /><span>{t('remote.settingsSecurityNote')}</span></div>
+        <div className={styles.securityNote}>
+          <ShieldCheck size={15} />
+          <span>{t('remote.settingsSecurityNote')}</span>
+        </div>
       </SettingsSection>
 
       <SettingsSection
@@ -139,21 +158,39 @@ export function RemoteControlPage() {
         description={t('remote.settingsDevicesDesc')}
       >
         <div className={styles.deviceList}>
-          {info?.devices.length ? info.devices.map((device) => (
-            <div className={styles.device} key={device.id}>
-              <span className={styles.deviceIcon}><Smartphone size={16} /></span>
-              <div className={styles.deviceCopy}>
-                <strong>{device.name}</strong>
-                <span>{device.address} · {new Date(device.connected_at * 1000).toLocaleTimeString()}</span>
+          {info?.devices.length ? (
+            info.devices.map((device) => (
+              <div className={styles.device} key={device.id}>
+                <span className={styles.deviceIcon}>
+                  <Smartphone size={16} />
+                </span>
+                <div className={styles.deviceCopy}>
+                  <strong>{device.name}</strong>
+                  <span>
+                    {device.address} · {new Date(device.connected_at * 1000).toLocaleTimeString()}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`${controls.btn} ${controls.btnDanger}`}
+                  onClick={() => void update(() => revokeRemoteControlDevice(device.id))}
+                  disabled={busy}
+                >
+                  {t('remote.revokeDevice')}
+                </button>
               </div>
-              <button type="button" className={`${controls.btn} ${controls.btnDanger}`} onClick={() => void update(() => revokeRemoteControlDevice(device.id))} disabled={busy}>
-                {t('remote.revokeDevice')}
-              </button>
-            </div>
-          )) : <p className={styles.empty}>{t('remote.noDevices')}</p>}
+            ))
+          ) : (
+            <p className={styles.empty}>{t('remote.noDevices')}</p>
+          )}
         </div>
         {info?.devices.length ? (
-          <button type="button" className={`${controls.btn} ${controls.btnDanger}`} onClick={() => void update(remoteControlRevoke)} disabled={busy}>
+          <button
+            type="button"
+            className={`${controls.btn} ${controls.btnDanger}`}
+            onClick={() => void update(remoteControlRevoke)}
+            disabled={busy}
+          >
             {t('remote.revokeAll')}
           </button>
         ) : null}

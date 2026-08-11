@@ -162,7 +162,9 @@ export function NewProjectModal() {
             disabled={!name.trim() || (mode === 'agentSandbox' && !defaultCwd.trim())}
             onClick={() => void submit()}
           >
-            {mode === 'agentSandbox' ? t('crud.createAgentSandboxProject') : t('crud.createProjectAndOpenTerminal')}
+            {mode === 'agentSandbox'
+              ? t('crud.createAgentSandboxProject')
+              : t('crud.createProjectAndOpenTerminal')}
           </button>
         </>
       }
@@ -181,7 +183,11 @@ export function NewProjectModal() {
       {AGENT_SANDBOX_ENABLED ? (
         <div className={controls.field}>
           <label className={controls.label}>{t('crud.projectModeLabel')}</label>
-          <div className={controls.modeChoices} role="radiogroup" aria-label={t('crud.projectModeLabel')}>
+          <div
+            className={controls.modeChoices}
+            role="radiogroup"
+            aria-label={t('crud.projectModeLabel')}
+          >
             <button
               type="button"
               role="radio"
@@ -211,9 +217,7 @@ export function NewProjectModal() {
               <span className={controls.modeChoiceIndicator} aria-hidden="true" />
             </button>
           </div>
-          <span className={controls.hint}>
-            {t('crud.projectModeSelectionHint')}
-          </span>
+          <span className={controls.hint}>{t('crud.projectModeSelectionHint')}</span>
         </div>
       ) : null}
 
@@ -225,7 +229,10 @@ export function NewProjectModal() {
             value={groupId ?? ''}
             onChange={(value) => setGroupId(value || null)}
             ariaLabel={t('crud.groupLabel')}
-            options={[{ value: '', label: t('crud.noGroup') }, ...groups.map((g) => ({ value: g.id, label: g.name }))]}
+            options={[
+              { value: '', label: t('crud.noGroup') },
+              ...groups.map((g) => ({ value: g.id, label: g.name })),
+            ]}
           />
         </div>
       ) : null}
@@ -273,7 +280,10 @@ export function NewProjectModal() {
 
       {mode === 'agentSandbox' ? null : (
         <div className={controls.field}>
-          <label className={controls.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <label
+            className={controls.label}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
             <GitBranch size={12} />
             <span>{t('crud.githubUrlLabel')}</span>
           </label>

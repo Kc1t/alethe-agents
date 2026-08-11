@@ -101,7 +101,9 @@ export function ProjectNode({
       >
         <div className={styles.activeCardHeader} onClick={onToggleCollapsed}>
           <Monogram name={project.name} iconUrl={project.iconUrl} color={project.color} size={20} />
-          {project.mode === 'agentSandbox' ? <Network size={13} className={styles.agentProjectIcon} /> : null}
+          {project.mode === 'agentSandbox' ? (
+            <Network size={13} className={styles.agentProjectIcon} />
+          ) : null}
           <span className={styles.activeCardTitle} title={project.name}>
             {project.name}
           </span>
@@ -205,7 +207,9 @@ export function ProjectNode({
         <span className={styles.projectName} title={project.name}>
           {project.name}
         </span>
-        {project.mode === 'agentSandbox' ? <span className={styles.agentProjectLabel}>Agent Sandbox</span> : null}
+        {project.mode === 'agentSandbox' ? (
+          <span className={styles.agentProjectLabel}>Agent Sandbox</span>
+        ) : null}
         {branch ? (
           <span className={styles.inactiveBranch} title={branch}>
             {branch}

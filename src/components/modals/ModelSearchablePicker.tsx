@@ -42,7 +42,7 @@ export function ModelSearchablePicker({
 
   // Seleção atual (preserva o valor ativo mesmo que ele não esteja em cleanOptions ainda)
   const selected = value
-    ? cleanOptions.find((opt) => opt.id === value) ?? { id: value, label: value }
+    ? (cleanOptions.find((opt) => opt.id === value) ?? { id: value, label: value })
     : cleanOptions[0]
 
   // Filtro de modelos por busca
@@ -106,8 +106,8 @@ export function ModelSearchablePicker({
             {loading && cleanOptions.length === 0
               ? 'Carregando modelos do CLI...'
               : selected
-              ? `${selected.label}`
-              : `Selecione um modelo (${providerName})`}
+                ? `${selected.label}`
+                : `Selecione um modelo (${providerName})`}
           </span>
         </span>
         <ChevronDown size={14} style={{ flexShrink: 0, opacity: 0.7 }} />

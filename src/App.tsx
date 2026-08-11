@@ -218,9 +218,11 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return
-    void getCurrentWindow().setIcon(getThemeIcon(appIconTheme)).catch(() => {
-      // Browser/test environments do not expose the native window icon API.
-    })
+    void getCurrentWindow()
+      .setIcon(getThemeIcon(appIconTheme))
+      .catch(() => {
+        // Browser/test environments do not expose the native window icon API.
+      })
   }, [appIconTheme, hydrated])
 
   useEffect(() => {

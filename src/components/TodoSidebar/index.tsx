@@ -397,9 +397,10 @@ function ProjectPicker({
       const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))
       const estimatedHeight = Math.min(240, (projects.length + 1) * 32 + 8)
       const roomBelow = window.innerHeight - rect.bottom - 8
-      const top = roomBelow >= Math.min(estimatedHeight, 180)
-        ? rect.bottom + 5
-        : Math.max(8, rect.top - estimatedHeight - 5)
+      const top =
+        roomBelow >= Math.min(estimatedHeight, 180)
+          ? rect.bottom + 5
+          : Math.max(8, rect.top - estimatedHeight - 5)
       setMenuPosition({ left, top, width })
     }
     updatePosition()
@@ -458,20 +459,20 @@ function ProjectPicker({
                 {noProjectLabel}
               </button>
               {projects.map((project) => (
-            <button
-              key={project.id}
-              type="button"
-              role="option"
-              aria-selected={project.id === value}
-              className={`${styles.projectOption} ${project.id === value ? styles.projectOptionSelected : ''}`}
-              title={project.name}
-              onClick={(event) => {
-                event.stopPropagation()
-                choose(project.id)
-              }}
-            >
-              {project.name}
-            </button>
+                <button
+                  key={project.id}
+                  type="button"
+                  role="option"
+                  aria-selected={project.id === value}
+                  className={`${styles.projectOption} ${project.id === value ? styles.projectOptionSelected : ''}`}
+                  title={project.name}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    choose(project.id)
+                  }}
+                >
+                  {project.name}
+                </button>
               ))}
             </div>,
             document.body,

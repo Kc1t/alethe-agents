@@ -185,24 +185,31 @@ export const en = {
   'remote.topbarDeviceConnected': '{count} device connected',
   'remote.topbarDevicesConnected': '{count} devices connected',
   'remote.maxDevices': 'Device limit',
-  'remote.maxDevicesHint': 'New devices are refused after this limit. Turning remote control off or regenerating the token disconnects all devices.',
+  'remote.maxDevicesHint':
+    'New devices are refused after this limit. Turning remote control off or regenerating the token disconnects all devices.',
   'remote.deviceSingular': 'phone connected',
   'remote.devicePlural': 'phones connected',
   'remote.urlLabel': 'Pairing address',
   'remote.qrAlt': 'Remote control pairing QR code',
   'remote.scanHint': 'Scan with a phone on the same Wi-Fi network.',
   'remote.disabledCard': 'The LAN listener and all remote connections are closed.',
-  'remote.hint': 'The phone can view existing chats and send one message at a time. It cannot change your workspace.',
-  'remote.securityNote': 'Turning it off disconnects every paired device. Regenerating the token also invalidates existing access.',
+  'remote.hint':
+    'The phone can view existing chats and send one message at a time. It cannot change your workspace.',
+  'remote.securityNote':
+    'Turning it off disconnects every paired device. Regenerating the token also invalidates existing access.',
   'remote.revoke': 'Regenerate pairing token',
   'remote.openSettings': 'Open Remote Control settings',
-  'remote.hiddenAddressPlaceholder': 'http://192.168.x.x:9340 · Pair a device to reveal the active address',
+  'remote.hiddenAddressPlaceholder':
+    'http://192.168.x.x:9340 · Pair a device to reveal the active address',
   'remote.settingsStatusTitle': 'Remote service',
-  'remote.settingsStatusDesc': 'Control whether Alethe accepts remote connections on the local network.',
+  'remote.settingsStatusDesc':
+    'Control whether Alethe accepts remote connections on the local network.',
   'remote.settingsSecurityTitle': 'Security policy',
   'remote.settingsSecurityDesc': 'Set conservative limits for authenticated remote sessions.',
-  'remote.settingsSecurityNote': 'Authentication, input sanitization, and restrictive response headers are always enabled.',
-  'remote.settingsDevicesDesc': 'Review active sessions and revoke a device without disconnecting the others.',
+  'remote.settingsSecurityNote':
+    'Authentication, input sanitization, and restrictive response headers are always enabled.',
+  'remote.settingsDevicesDesc':
+    'Review active sessions and revoke a device without disconnecting the others.',
   'remote.settingsWaiting': 'Waiting for the LAN listener…',
   'remote.sessionExpiry': 'Session lifetime',
   'remote.session900': '15 minutes',
@@ -219,12 +226,14 @@ export const en = {
   'prefs.categoryOrganization': 'Organization',
   'prefs.categoryOrganizationDesc': 'Manage archived groups without losing their projects.',
   'prefs.archivedGroupsTitle': 'Archived groups',
-  'prefs.archivedGroupsDesc': 'Restore a group to the sidebar or remove it while keeping its projects.',
+  'prefs.archivedGroupsDesc':
+    'Restore a group to the sidebar or remove it while keeping its projects.',
   'prefs.archivedGroupsEmpty': 'No archived groups.',
   'prefs.archivedGroupProjects': '{count} projects preserved',
   'prefs.restoreGroup': 'Restore',
   'prefs.deleteArchivedGroup': 'Remove group',
-  'prefs.deleteArchivedGroupConfirm': 'Remove the archived group "{name}" and move its projects to Ungrouped?',
+  'prefs.deleteArchivedGroupConfirm':
+    'Remove the archived group "{name}" and move its projects to Ungrouped?',
   'prefs.archivedProjectsTitle': 'Archived projects',
   'prefs.archivedProjectsDesc': 'Restore projects to the sidebar when you need them again.',
   'prefs.archivedProjectsEmpty': 'No archived projects.',
@@ -301,7 +310,8 @@ export const en = {
   'prefs.gitControlShow': 'Show',
   'prefs.gitControlHide': 'Hide',
   'prefs.gitControlPlacement': 'Git Control location',
-  'prefs.gitControlPlacementDesc': 'Choose whether Source Control appears in the left or right sidebar.',
+  'prefs.gitControlPlacementDesc':
+    'Choose whether Source Control appears in the left or right sidebar.',
   'prefs.gitControlPlacementLeft': 'Left sidebar',
   'prefs.gitControlPlacementRight': 'Right sidebar',
   'prefs.features': 'Features',
@@ -398,8 +408,10 @@ export const en = {
   'prefs.spawnConcurrencyIncrease': 'More parallel spawns',
   'prefs.spawnConcurrencyReset': 'Reset to default',
   'prefs.gsdSyncModelsTitle': 'GSD Sync model fallback chain',
-  'prefs.gsdSyncModelsDesc': 'Backup models for the GSD Sync child session, tried in order if the mirrored model fails.',
-  'prefs.gsdSyncModelsHint': 'The GSD Sync session always tries the same model the main conversation just used, first and automatically. This list is only a safety net for the rare case that model also fails (e.g. rate limit) — each one is tried in order until one works.',
+  'prefs.gsdSyncModelsDesc':
+    'Backup models for the GSD Sync child session, tried in order if the mirrored model fails.',
+  'prefs.gsdSyncModelsHint':
+    'The GSD Sync session always tries the same model the main conversation just used, first and automatically. This list is only a safety net for the rare case that model also fails (e.g. rate limit) — each one is tried in order until one works.',
   'prefs.gsdSyncModelsEmpty': 'No fallback configured — only the mirrored model is tried.',
   'prefs.gsdSyncModelsRemove': 'Remove',
   'prefs.gsdSyncModelsAdd': 'Add model',
@@ -408,7 +420,8 @@ export const en = {
   'prefs.categoryMultiagent': 'Multi-Agent & Telemetry',
   'prefs.categoryMultiagentDesc': 'Real-time metrics, event traces, and structured logs.',
   'prefs.multiagentSchedulerTitle': 'Scheduler & task queue',
-  'prefs.multiagentSchedulerDesc': 'Manages execution waves from the real `.planning/task.md` backlog per project.',
+  'prefs.multiagentSchedulerDesc':
+    'Manages execution waves from the real `.planning/task.md` backlog per project.',
   'prefs.multiagentSelectProjectOption': '-- Select a project --',
   'prefs.multiagentRunTick': 'Run tick (force queue)',
   'prefs.multiagentLoadingQueue': 'Loading project queue...',
@@ -430,7 +443,8 @@ export const en = {
   'prefs.multiagentTraceProject': 'Project: {id}',
   'prefs.multiagentTraceCorrId': 'CorrId: {id}',
   'prefs.multiagentAuditTitle': 'GSD audit & autocommit',
-  'prefs.multiagentAuditDesc': 'Monitors changes in `.planning/` and configures automatic audit commits.',
+  'prefs.multiagentAuditDesc':
+    'Monitors changes in `.planning/` and configures automatic audit commits.',
   'prefs.multiagentAutocommitLabel': 'Enable audit autocommit (opt-in)',
   'prefs.multiagentLoadingAudit': 'Loading audit logs...',
   'prefs.multiagentNoAuditLogs': 'No changes recorded in `.planning/` through Git.',
@@ -540,32 +554,56 @@ export const en = {
   'whatsNew.close': 'Got it',
   'whatsNew.update': 'View update',
   'whatsNew.releaseHeading': 'v{version} — {date}',
-  'whatsNew.v150.note1': 'Full-profile backup export now archives the entire profile (todos, history, preferences, tokens, scrollback) instead of a fixed short list.',
-  'whatsNew.v150.note2': 'New “Erase all data (fresh install)” menu action wipes every profile, account, project, scrollback, setting and log.',
-  'whatsNew.v150.note3': 'Reworked startup loading screen to share Home’s background and ASCII-art treatment.',
-  'whatsNew.v150.note4': 'Fixed account switching hanging on “PTY reader flush barrier timed out” by closing parked terminals’ pseudoconsoles before the final flush wait.',
-  'whatsNew.v150.note5': 'Fixed creating a new account getting stuck on a broken loading state, and time-boxed CLI detection so onboarding can’t freeze on “Detecting installed CLIs…”.',
-  'whatsNew.v150.note6': 'LAN remote control: authenticated mobile web view to browse chats, watch terminal output live and send one message at a time.',
-  'whatsNew.v141.note1': 'Fixed the release notes shown here and on GitHub — they were pulling from a stray, outdated copy of the changelog.',
-  'whatsNew.v140.note1': 'Graphify is now optional: turn the code graph panel on or off from Preferences without touching the agents’ MCP config.',
-  'whatsNew.v140.note2': 'The `alethe` terminal command opens the current folder as a project — or focuses the app if it is already open.',
-  'whatsNew.v140.note3': 'File Explorer: double-click any file to open it as a pane in the workspace.',
-  'whatsNew.v140.note4': 'Git Control: double-click a file under Changes or Staged to open its diff as a pane.',
-  'whatsNew.v140.note5': 'New "About & Updates" screen in Preferences, with visible progress and errors while updating.',
+  'whatsNew.v150.note1':
+    'Full-profile backup export now archives the entire profile (todos, history, preferences, tokens, scrollback) instead of a fixed short list.',
+  'whatsNew.v150.note2':
+    'New “Erase all data (fresh install)” menu action wipes every profile, account, project, scrollback, setting and log.',
+  'whatsNew.v150.note3':
+    'Reworked startup loading screen to share Home’s background and ASCII-art treatment.',
+  'whatsNew.v150.note4':
+    'Fixed account switching hanging on “PTY reader flush barrier timed out” by closing parked terminals’ pseudoconsoles before the final flush wait.',
+  'whatsNew.v150.note5':
+    'Fixed creating a new account getting stuck on a broken loading state, and time-boxed CLI detection so onboarding can’t freeze on “Detecting installed CLIs…”.',
+  'whatsNew.v150.note6':
+    'LAN remote control: authenticated mobile web view to browse chats, watch terminal output live and send one message at a time.',
+  'whatsNew.v141.note1':
+    'Fixed the release notes shown here and on GitHub — they were pulling from a stray, outdated copy of the changelog.',
+  'whatsNew.v140.note1':
+    'Graphify is now optional: turn the code graph panel on or off from Preferences without touching the agents’ MCP config.',
+  'whatsNew.v140.note2':
+    'The `alethe` terminal command opens the current folder as a project — or focuses the app if it is already open.',
+  'whatsNew.v140.note3':
+    'File Explorer: double-click any file to open it as a pane in the workspace.',
+  'whatsNew.v140.note4':
+    'Git Control: double-click a file under Changes or Staged to open its diff as a pane.',
+  'whatsNew.v140.note5':
+    'New "About & Updates" screen in Preferences, with visible progress and errors while updating.',
   'whatsNew.v140.note6': 'The installed version is now always visible in the sidebar footer.',
-  'whatsNew.v140.note7': 'Security: the AgentCanvas internal HTTP listener now requires a secret token, and its request body is capped at 1 MB.',
-  'whatsNew.v140.note8': 'Pasting an image into the terminal (screenshot, copied image, or file) works again across Claude Code, Codex and OpenCode.',
-  'whatsNew.v140.note9': '"Resume last session" now goes through the same spawn queue and memory budget as opening a terminal normally, and asks for confirmation before restarting several agents at once.',
-  'whatsNew.v140.note10': 'Antigravity: CLI detection, session ordering, login status and the usage card are all fixed on Linux, macOS and Windows.',
-  'whatsNew.v140.note11': 'OpenCode now always resumes the correct conversation when reopening the app.',
-  'whatsNew.v140.note12': 'Terminals: fixed misaligned text with emoji/symbols, plus two render loops (pane mounting and sidebar resizing).',
-  'whatsNew.v140.note13': 'Terminal theme moved next to the UI theme, under Preferences > Appearance.',
-  'whatsNew.v130.note1': 'Graphify multi-provider: a per-project code graph, delivered as an MCP server to Claude, Codex and OpenCode.',
-  'whatsNew.v130.note2': 'Antigravity (`agy`) support: CLI detection, spawn/resume, and its own usage widget.',
+  'whatsNew.v140.note7':
+    'Security: the AgentCanvas internal HTTP listener now requires a secret token, and its request body is capped at 1 MB.',
+  'whatsNew.v140.note8':
+    'Pasting an image into the terminal (screenshot, copied image, or file) works again across Claude Code, Codex and OpenCode.',
+  'whatsNew.v140.note9':
+    '"Resume last session" now goes through the same spawn queue and memory budget as opening a terminal normally, and asks for confirmation before restarting several agents at once.',
+  'whatsNew.v140.note10':
+    'Antigravity: CLI detection, session ordering, login status and the usage card are all fixed on Linux, macOS and Windows.',
+  'whatsNew.v140.note11':
+    'OpenCode now always resumes the correct conversation when reopening the app.',
+  'whatsNew.v140.note12':
+    'Terminals: fixed misaligned text with emoji/symbols, plus two render loops (pane mounting and sidebar resizing).',
+  'whatsNew.v140.note13':
+    'Terminal theme moved next to the UI theme, under Preferences > Appearance.',
+  'whatsNew.v130.note1':
+    'Graphify multi-provider: a per-project code graph, delivered as an MCP server to Claude, Codex and OpenCode.',
+  'whatsNew.v130.note2':
+    'Antigravity (`agy`) support: CLI detection, spawn/resume, and its own usage widget.',
   'whatsNew.v130.note3': 'Native Ghostty terminal on macOS (opt-in, GPU rendering).',
-  'whatsNew.v130.note4': 'Home rebuilt: interactive ASCII background, a mini-terminal quick launcher, and a Spotify player docked discreetly.',
-  'whatsNew.v130.note5': 'Loading screen redone with an animated ASCII mark and a dot-matrix progress trail.',
-  'whatsNew.v130.note6': 'Projects sidebar reorganized: pinned active project card, colored monograms, and a live activity indicator.',
+  'whatsNew.v130.note4':
+    'Home rebuilt: interactive ASCII background, a mini-terminal quick launcher, and a Spotify player docked discreetly.',
+  'whatsNew.v130.note5':
+    'Loading screen redone with an animated ASCII mark and a dot-matrix progress trail.',
+  'whatsNew.v130.note6':
+    'Projects sidebar reorganized: pinned active project card, colored monograms, and a live activity indicator.',
   'whatsNew.v130.note7': 'YOLO mode became a one-click control in the Add AI modal.',
   'whatsNew.v130.note8': 'Experimental window opacity control, to see the desktop through Alethe.',
   'rightSidebar.backToTodo': 'Back to Todo',
@@ -575,9 +613,11 @@ export const en = {
   'rightSidebar.markdownTab': 'Markdown',
   'rightSidebar.gsdSyncTab': 'GSD Sync',
   'rightSidebar.gsdSyncEmptyTitle': 'No active GSD Sync session',
-  'rightSidebar.gsdSyncEmptyDesc': 'Turn on GSD monitoring for a project to see its child sessions here.',
+  'rightSidebar.gsdSyncEmptyDesc':
+    'Turn on GSD monitoring for a project to see its child sessions here.',
   'rightSidebar.markdownEmptyTitle': 'No Markdown selected',
-  'rightSidebar.markdownEmptyDesc': 'Open a Markdown file from the project sidebar to preview it here.',
+  'rightSidebar.markdownEmptyDesc':
+    'Open a Markdown file from the project sidebar to preview it here.',
   'rightSidebar.commentsToggle': 'Show comments',
   'rightSidebar.commentsTitle': 'App comments',
   'rightSidebar.commentsEmpty': 'Select a passage in the Markdown to add a comment.',
@@ -749,7 +789,8 @@ export const en = {
   'crud.projectModeStandard': 'Standard project',
   'crud.projectModeSandbox': 'Agent Sandbox project',
   'crud.projectModeStandardHint': 'Opens the normal terminal workspace.',
-  'crud.projectModeSandboxHint': 'Opens a real multi-agent terminal workspace. A project folder is required.',
+  'crud.projectModeSandboxHint':
+    'Opens a real multi-agent terminal workspace. A project folder is required.',
   'crud.projectModeSelectionHint': 'Choose how this project should open from the sidebar.',
   'crud.projectPathLabel': 'Project folder',
   'crud.projectPathPlaceholder': 'Choose the project folder',
@@ -780,7 +821,8 @@ export const en = {
   'crud.editProjectWorktrees': 'Worktrees',
   'crud.editProjectMerge': 'Merge',
   'crud.editProjectAgentSettings': 'Agent settings',
-  'crud.editProjectAgentSettingsDesc': 'Configure how this project creates and validates agent worktrees.',
+  'crud.editProjectAgentSettingsDesc':
+    'Configure how this project creates and validates agent worktrees.',
   'crud.editProjectWorktreeMode': 'Default worktree mode',
   'crud.editProjectGitWorktree': 'Git worktree (fast)',
   'crud.editProjectLocalCopy': 'Local copy (slower)',
@@ -1304,24 +1346,30 @@ export const en = {
   'crud.customColor': 'Custom color:',
   'crud.pickColor': 'Eyedropper',
   'crud.githubUrlLabel': 'GitHub Repository (Optional)',
-  'crud.githubUrlHint': 'Paste repository URL to clone and initialize with AI context automatically.',
+  'crud.githubUrlHint':
+    'Paste repository URL to clone and initialize with AI context automatically.',
   'palette.neutral': 'Neutral / Dark Tones',
   'palette.vibrant': 'Vibrant Tones',
   'palette.pastel': 'Pastel Tones',
   'palette.neon': 'Neon',
   'term.autoIsolationFailedTitle': 'Isolation failed for this agent',
-  'term.autoIsolationFailedBody': 'Could not provision a worktree, opened a regular terminal instead. Error: {error}',
+  'term.autoIsolationFailedBody':
+    'Could not provision a worktree, opened a regular terminal instead. Error: {error}',
   'mod.orphansReapedAtBoot': 'Cleaned up {count} leftover orphaned process(es) this time.',
   'mod.jobGuardActive': 'Orphan process protection: active (Windows Job Object).',
-  'mod.jobGuardInactive': 'Orphan process protection: unavailable on this platform/session. A crash may leave processes running; the next boot still tries to clean up automatically.',
+  'mod.jobGuardInactive':
+    'Orphan process protection: unavailable on this platform/session. A crash may leave processes running; the next boot still tries to clean up automatically.',
   'ui.terminal.restartFailed': 'Failed to restart terminal',
   'git.initOffer.title': 'Not a Git repository yet',
-  'git.initOffer.body': 'Agent isolation, worktrees and merges all need this folder to be a Git repository. Initialize one now?',
+  'git.initOffer.body':
+    'Agent isolation, worktrees and merges all need this folder to be a Git repository. Initialize one now?',
   'git.initOffer.button': 'Initialize Git repository',
   'git.initOffer.busy': 'Initializing…',
-  'git.initOffer.confirm': 'Run "git init" in this folder and create an initial commit with everything currently in it? This only adds a .git folder — nothing existing gets deleted.',
+  'git.initOffer.confirm':
+    'Run "git init" in this folder and create an initial commit with everything currently in it? This only adds a .git folder — nothing existing gets deleted.',
   'git.initOffer.successTitle': 'Git repository initialized',
-  'git.initOffer.successBody': 'Isolation, worktrees and merges are now available for this project.',
+  'git.initOffer.successBody':
+    'Isolation, worktrees and merges are now available for this project.',
   'git.initOffer.failedTitle': 'Could not initialize Git',
   'git.initOffer.failedBody': 'Error: {error}',
   'ws.exitPaneFullscreen': 'Exit fullscreen',
@@ -1407,7 +1455,8 @@ export const en = {
   /* ---- crash watch ---- */
   'crash.uncleanTitle': 'Alethe closed unexpectedly',
   'crash.uncleanBody': 'Last reading before it died: {total} MB · {procs} processes · {time}',
-  'crash.uncleanBodyWithOrphans': 'Last reading before it died: {total} MB · {procs} processes · {time}. Cleaned up {orphans} leftover orphaned process(es).',
+  'crash.uncleanBodyWithOrphans':
+    'Last reading before it died: {total} MB · {procs} processes · {time}. Cleaned up {orphans} leftover orphaned process(es).',
 
   /* ---- app update ---- */
   'update.chipLabel': 'Update available',
@@ -1501,13 +1550,15 @@ export const en = {
   'menu.logsFilter': 'Alethe logs',
   'sandbox.eyebrow': 'Experimental orchestration',
   'sandbox.title': 'Agent Sandbox',
-  'sandbox.subtitle': 'A real planner-to-worker POC: Claude Code plans, Codex implements, and Alethe relays the handoff.',
+  'sandbox.subtitle':
+    'A real planner-to-worker POC: Claude Code plans, Codex implements, and Alethe relays the handoff.',
   'sandbox.close': 'Back to workspace',
   'sandbox.start': 'Restart sandbox',
   'sandbox.startDemo': 'Run demo session',
   'sandbox.restart': 'Restart sandbox',
   'sandbox.emptyTitle': 'Start a sandbox session',
-  'sandbox.emptyBody': 'The POC opens one Haiku planner. Ask it to create a worker terminal when you need one.',
+  'sandbox.emptyBody':
+    'The POC opens one Haiku planner. Ask it to create a worker terminal when you need one.',
   'sandbox.noProject': 'Open a project first to provide a working directory.',
   'sandbox.starting': 'starting terminal…',
   'sandbox.agents': 'agents',
@@ -1659,22 +1710,26 @@ export const en = {
   'merge.statusMerged': 'Merged',
   'merge.statusBlocked': 'Blocked',
   'merge.statusGateFailed': 'Failed automatic check',
-  'merge.gateFailedDiffEmpty': 'Planning marked as complete, but there are no code changes between {branch} and {target}.',
+  'merge.gateFailedDiffEmpty':
+    'Planning marked as complete, but there are no code changes between {branch} and {target}.',
   'merge.gateFailedValidation': 'Planning complete, but validation failed at "{stage}": {output}',
   'merge.gateRecheck': 'Recheck',
   'merge.noRepoTitle': 'Repository not found',
   'merge.noRepoBody': 'Could not locate this project’s repository root.',
   'merge.reject': 'Reject',
   'merge.rejectTooltip': 'Removes the worktree without merging (the branch is preserved)',
-  'merge.rejectConfirm': 'Remove the worktree for "{branch}"? The branch is preserved — no merge is performed.',
+  'merge.rejectConfirm':
+    'Remove the worktree for "{branch}"? The branch is preserved — no merge is performed.',
   'merge.rejectedTitle': 'Worktree removed',
-  'merge.rejectedBody': 'The worktree for "{branch}" was removed. The branch still exists (git branch -D to delete it for good).',
+  'merge.rejectedBody':
+    'The worktree for "{branch}" was removed. The branch still exists (git branch -D to delete it for good).',
   'merge.rejectFailedTitle': 'Failed to remove worktree',
   'merge.validate': 'Validate',
   'merge.validating': 'Validating…',
   'merge.validateTooltip': 'Runs the project’s validation commands in this worktree',
   'merge.noValidationCommandsTitle': 'No validation commands',
-  'merge.noValidationCommandsBody': 'Configure validation commands in the project’s Multi-Agent & MCP tab.',
+  'merge.noValidationCommandsBody':
+    'Configure validation commands in the project’s Multi-Agent & MCP tab.',
   'merge.validationPassedTitle': 'Validation passed',
   'merge.validationPassedBody': 'All validation commands ran successfully in this worktree.',
   'merge.validationFailedTitle': 'Validation failed',
@@ -1702,18 +1757,20 @@ export const en = {
   'merge.testItemFail': 'Failed',
   'merge.testItemNotePlaceholder': 'What went wrong? (optional, sent to the agent)',
   'merge.testSendFeedback': 'Send feedback to agent',
-  'merge.testSendFeedbackTooltip': 'Sends what passed/failed straight to the agent\'s terminal',
+  'merge.testSendFeedbackTooltip': "Sends what passed/failed straight to the agent's terminal",
   'merge.testFeedbackSentTitle': 'Feedback sent',
   'merge.testFeedbackSentBody': 'The test checklist result was sent to the agent.',
   'merge.review': 'Review',
-  'merge.reviewTooltip': 'Opens (or reopens the feedback box for) a dedicated reviewer agent in this worktree',
+  'merge.reviewTooltip':
+    'Opens (or reopens the feedback box for) a dedicated reviewer agent in this worktree',
   'merge.reviewStartedTitle': 'Reviewer started',
   'merge.reviewStartedBody': 'A reviewer agent was opened in a terminal for this worktree.',
   'merge.reviewFeedbackPlaceholder': 'What does the agent need to fix, check, or explain?',
   'merge.reviewFeedbackCancel': 'Cancel',
   'merge.reviewFeedbackSend': 'Send to reviewer',
   'merge.reviewNotReadyTitle': 'Reviewer isn’t ready yet',
-  'merge.reviewNotReadyBody': 'The reviewer’s terminal is still starting up — try again in a moment.',
+  'merge.reviewNotReadyBody':
+    'The reviewer’s terminal is still starting up — try again in a moment.',
   'merge.reviewFeedbackSentTitle': 'Feedback sent',
   'merge.reviewFeedbackSentBody': 'Your message was sent to the reviewer agent in its terminal.',
 } as const

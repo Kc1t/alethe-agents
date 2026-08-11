@@ -1,7 +1,16 @@
 import '@xterm/xterm/css/xterm.css'
 
 import type { Terminal } from '@xterm/xterm'
-import { AppWindow, Copy, ExternalLink, FolderOpen, LayoutGrid, Maximize2, PanelRight, X } from 'lucide-react'
+import {
+  AppWindow,
+  Copy,
+  ExternalLink,
+  FolderOpen,
+  LayoutGrid,
+  Maximize2,
+  PanelRight,
+  X,
+} from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { pickFile } from '../../lib/dialog'
@@ -490,10 +499,9 @@ export function XTermView({
                   className={styles.linkMenuItem}
                   role="menuitem"
                   onClick={() => {
-                    useUiStore.getState().openMarkdownSidebar(
-                      linkActions.text,
-                      linkActions.text.split(/[\\/]/).pop(),
-                    )
+                    useUiStore
+                      .getState()
+                      .openMarkdownSidebar(linkActions.text, linkActions.text.split(/[\\/]/).pop())
                     useProjectsStore.getState().setPreferences({ rightSidebarVisible: true })
                     hideLinkActions()
                   }}

@@ -75,12 +75,13 @@ export function AppearancePage() {
           className={styles.select}
           value={preferences.terminalTheme ?? ''}
           onChange={(value) =>
-            setTerminalTheme(
-              value ? (value as typeof preferences.uiTheme) : null,
-            )
+            setTerminalTheme(value ? (value as typeof preferences.uiTheme) : null)
           }
           ariaLabel={t('prefs.terminalTheme')}
-          options={[{ value: '', label: t('common.followUi') }, ...THEME_OPTIONS.map((theme) => ({ value: theme.id, label: themeLabel(t, theme.id) }))]}
+          options={[
+            { value: '', label: t('common.followUi') },
+            ...THEME_OPTIONS.map((theme) => ({ value: theme.id, label: themeLabel(t, theme.id) })),
+          ]}
         />
       </SettingsSection>
 
@@ -121,9 +122,7 @@ export function AppearancePage() {
       >
         <Dropdown
           value={preferences.topbarStyle}
-          onChange={(value) =>
-            setPreferences({ topbarStyle: value as 'classic' | 'three-areas' })
-          }
+          onChange={(value) => setPreferences({ topbarStyle: value as 'classic' | 'three-areas' })}
           ariaLabel={t('prefs.topbarStyle')}
           options={[
             { value: 'classic', label: t('prefs.topbarStyleClassic') },
@@ -139,9 +138,7 @@ export function AppearancePage() {
       >
         <Dropdown
           value={preferences.gitControlPlacement}
-          onChange={(value) =>
-            setPreferences({ gitControlPlacement: value as 'left' | 'right' })
-          }
+          onChange={(value) => setPreferences({ gitControlPlacement: value as 'left' | 'right' })}
           ariaLabel={t('prefs.gitControlPlacement')}
           options={[
             { value: 'left', label: t('prefs.gitControlPlacementLeft') },

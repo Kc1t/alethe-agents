@@ -59,13 +59,18 @@ describe('buildResumeArgs', () => {
   })
 
   it('codex: prefixes a plain arg list with the resume subcommand', () => {
-    expect(buildResumeArgs('codex', ['--search'], 'new-id')).toEqual(['resume', 'new-id', '--search'])
+    expect(buildResumeArgs('codex', ['--search'], 'new-id')).toEqual([
+      'resume',
+      'new-id',
+      '--search',
+    ])
   })
 
   it('antigravity: resumes via --conversation and strips old continue flags', () => {
-    expect(
-      buildResumeArgs('antigravity', ['--conversation', 'stale', '-c'], 'new-id'),
-    ).toEqual(['--conversation', 'new-id'])
+    expect(buildResumeArgs('antigravity', ['--conversation', 'stale', '-c'], 'new-id')).toEqual([
+      '--conversation',
+      'new-id',
+    ])
     expect(buildResumeArgs('antigravity', [], null)).toEqual(['--continue'])
   })
 
@@ -73,6 +78,10 @@ describe('buildResumeArgs', () => {
     expect(
       buildResumeArgs('opencode', ['--session', 'stale', '--continue', '--model', 'x'], 'new-id'),
     ).toEqual(['--session', 'new-id', '--model', 'x'])
-    expect(buildResumeArgs('opencode', ['--model', 'x'], null)).toEqual(['--continue', '--model', 'x'])
+    expect(buildResumeArgs('opencode', ['--model', 'x'], null)).toEqual([
+      '--continue',
+      '--model',
+      'x',
+    ])
   })
 })

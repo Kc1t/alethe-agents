@@ -31,7 +31,10 @@ export function recordStep(entry: Omit<StepEntry, 'at'>): void {
   appendFileSync(jsonPath, jsonLine)
 
   if (!existsSync(mdPath)) {
-    writeFileSync(mdPath, '# Relatório E2E\n\n| Status | Cenário | Passo | Detalhe | Screenshot |\n|---|---|---|---|---|\n')
+    writeFileSync(
+      mdPath,
+      '# Relatório E2E\n\n| Status | Cenário | Passo | Detalhe | Screenshot |\n|---|---|---|---|---|\n',
+    )
   }
   const icon = full.status === 'pass' ? '✅' : '❌'
   const screenshotCell = full.screenshotPath ? `[img](${full.screenshotPath})` : ''

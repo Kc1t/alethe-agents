@@ -112,7 +112,10 @@ export type ProjectsState = ProjectsFile & {
   unarchiveProject: (id: string) => void
   setProjectColor: (id: string, color: string | undefined) => void
   setProjectIconUrl: (id: string, iconUrl: string | undefined) => void
-  addMarkdownComment: (projectId: string, comment: Omit<import('../lib/types').MarkdownComment, 'id' | 'createdAt'>) => void
+  addMarkdownComment: (
+    projectId: string,
+    comment: Omit<import('../lib/types').MarkdownComment, 'id' | 'createdAt'>,
+  ) => void
   removeMarkdownComment: (projectId: string, commentId: string) => void
   setWorktreeMode: (id: string, mode: 'gitWorktree' | 'localCopy') => void
   setValidationCommands: (id: string, commands: string[]) => void
@@ -375,7 +378,10 @@ function scheduleProjectMarkerWrite(projectId: string, getState: () => ProjectsS
       const repoRoot = getProjectRepoRoot(project)
       if (!repoRoot) return
       void writeProjectMarker(repoRoot, JSON.stringify(project, null, 2)).catch((error) => {
-        console.error(`[projectsStore] falha escrevendo .alethe/project.json de ${project.name}:`, error)
+        console.error(
+          `[projectsStore] falha escrevendo .alethe/project.json de ${project.name}:`,
+          error,
+        )
       })
     }, MARKER_DEBOUNCE_MS),
   )

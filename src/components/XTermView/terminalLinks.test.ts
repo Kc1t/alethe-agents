@@ -58,9 +58,9 @@ describe('terminal links', () => {
         'Jogado em X:\\example\\Vaults\\Notes\\40-Content\\youtube\\projection-video.md com as duas projeções',
       )[0].text,
     ).toBe('X:\\example\\Vaults\\Notes\\40-Content\\youtube\\projection-video.md')
-    expect(
-      detectTerminalLinks('X:\\example\\Videos\\sample-video.mp4 e escuta')[0].text,
-    ).toBe('X:\\example\\Videos\\sample-video.mp4')
+    expect(detectTerminalLinks('X:\\example\\Videos\\sample-video.mp4 e escuta')[0].text).toBe(
+      'X:\\example\\Videos\\sample-video.mp4',
+    )
     expect(detectTerminalLinks('https://example.com/x')[0].fileKind).toBeUndefined()
   })
 

@@ -165,7 +165,8 @@ export function useGsdSyncSessionsWatcher(
             // existir — sem isso a Sidebar de Projetos não sabe redirecionar
             // o clique dele pro fullscreen (trata como terminal comum).
             const termRecord = proj.terminals.find((term) => term.id === terminalId)
-            if (termRecord && !termRecord.gsdSyncViewer) markGsdSyncViewer(item.projectId, terminalId)
+            if (termRecord && !termRecord.gsdSyncViewer)
+              markGsdSyncViewer(item.projectId, terminalId)
           }
 
           // Limpeza de órfãos: terminais "GSD Sync" antigos que nunca tiveram
@@ -178,7 +179,11 @@ export function useGsdSyncSessionsWatcher(
           const container = containers.find((c) => c.projectId === item.projectId)
           if (container) {
             for (const term of proj.terminals) {
-              if (term.id !== terminalId && term.name === gsdPaneName && container.paneIds.includes(term.id)) {
+              if (
+                term.id !== terminalId &&
+                term.name === gsdPaneName &&
+                container.paneIds.includes(term.id)
+              ) {
                 closePane(item.projectId, term.id)
               }
             }
@@ -186,7 +191,8 @@ export function useGsdSyncSessionsWatcher(
 
           const busy = await readGsdChildBusy(item.worktreePath).catch(() => false)
           const childError = await readGsdChildError(item.worktreePath).catch(() => null)
-          if (childError) onChildErrorRef.current?.({ projectId: item.projectId, terminalId }, childError)
+          if (childError)
+            onChildErrorRef.current?.({ projectId: item.projectId, terminalId }, childError)
 
           resolvedIds.add(item.id)
           next.push({

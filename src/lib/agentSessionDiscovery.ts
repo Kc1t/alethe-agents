@@ -70,7 +70,10 @@ export async function watchAndPersistDiscoveredSession(
   while (!isCancelled()) {
     const delayMs = attempt < 10 ? 3000 : 15000
     if (agent === 'codex') {
-      await Promise.race([new Promise((resolve) => setTimeout(resolve, delayMs)), waitForSessionHint('codex')])
+      await Promise.race([
+        new Promise((resolve) => setTimeout(resolve, delayMs)),
+        waitForSessionHint('codex'),
+      ])
     } else {
       await new Promise((resolve) => setTimeout(resolve, delayMs))
     }
@@ -86,7 +89,14 @@ export async function watchAndPersistDiscoveredSession(
       const gsdChildId = await readGsdChildSession(cwd).catch(() => null)
       if (gsdChildId) filteredSessions = sessions.filter((s) => s.id !== gsdChildId)
     }
-    const newSession = claimDiscoveredSession(agent, cwd, before, filteredSessions, spawnedPtyId, reservedIds)
+    const newSession = claimDiscoveredSession(
+      agent,
+      cwd,
+      before,
+      filteredSessions,
+      spawnedPtyId,
+      reservedIds,
+    )
     if (newSession) {
       saveSession(sessionPersistenceKey, {
         sessionId: spawnedPtyId,

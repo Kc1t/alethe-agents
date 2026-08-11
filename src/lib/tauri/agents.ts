@@ -30,7 +30,9 @@ export function listenCodexAppServer(
   id: string,
   handler: (event: CodexAppServerEvent) => void,
 ): Promise<UnlistenFn> {
-  return listen<CodexAppServerEvent>(`agent-sandbox-app-server://event/${id}`, (event) => handler(event.payload))
+  return listen<CodexAppServerEvent>(`agent-sandbox-app-server://event/${id}`, (event) =>
+    handler(event.payload),
+  )
 }
 
 /** Caminho do settings.json de hooks gerado pro Claude Code (agent_events.rs). */

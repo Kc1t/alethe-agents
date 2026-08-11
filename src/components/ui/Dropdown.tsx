@@ -1,5 +1,12 @@
 import { ChevronDown } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react'
 import { createPortal } from 'react-dom'
 import styles from './Dropdown.module.css'
 
@@ -65,7 +72,8 @@ export function Dropdown({
     if (!open) return
     const closeOnOutsideClick = (event: MouseEvent) => {
       const target = event.target as Node
-      if (!triggerRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false)
+      if (!triggerRef.current?.contains(target) && !menuRef.current?.contains(target))
+        setOpen(false)
     }
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -126,7 +134,12 @@ export function Dropdown({
               className={styles.menu}
               role="listbox"
               aria-label={ariaLabel}
-              style={{ left: position.left, top: position.top, width: position.width, maxHeight: position.maxHeight }}
+              style={{
+                left: position.left,
+                top: position.top,
+                width: position.width,
+                maxHeight: position.maxHeight,
+              }}
               onPointerDown={(event) => event.stopPropagation()}
               onMouseDown={(event) => event.stopPropagation()}
             >

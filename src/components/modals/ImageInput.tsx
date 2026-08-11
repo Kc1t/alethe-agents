@@ -71,7 +71,7 @@ export function ImageInput({
             alignItems: 'center',
             justifyContent: 'center',
             border: '1px solid var(--border-strong)',
-            background: isRainbow ? undefined : (previewColor || 'var(--panel)'),
+            background: isRainbow ? undefined : previewColor || 'var(--panel)',
             boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
             color: '#fff',
             fontWeight: 700,

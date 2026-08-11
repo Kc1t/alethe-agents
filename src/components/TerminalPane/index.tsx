@@ -105,7 +105,9 @@ export const TerminalPane = memo(function TerminalPane({
   const setSubTabInitialInput = useProjectsStore((s) => s.setSubTabInitialInput)
   const setSubTabSkipSessionClaim = useProjectsStore((s) => s.setSubTabSkipSessionClaim)
   const setSubTabCompletionUnread = useProjectsStore((s) => s.setSubTabCompletionUnread)
-  const deleteTerminalWithWorktreeCleanup = useProjectsStore((s) => s.deleteTerminalWithWorktreeCleanup)
+  const deleteTerminalWithWorktreeCleanup = useProjectsStore(
+    (s) => s.deleteTerminalWithWorktreeCleanup,
+  )
   const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
   const openModal = useUiStore((s) => s.openModal_)
   const setFocusedTerminal = useUiStore((s) => s.setFocusedTerminal)
@@ -274,7 +276,9 @@ export const TerminalPane = memo(function TerminalPane({
         <div
           className={styles.headLeft}
           onDoubleClick={() => setFocusedTerminal(isFocusMode ? null : terminal.id)}
-          title={isFocusMode ? t('ui.terminal.exitFocusModeEsc') : t('ui.terminal.focusModeFullscreen')}
+          title={
+            isFocusMode ? t('ui.terminal.exitFocusModeEsc') : t('ui.terminal.focusModeFullscreen')
+          }
         >
           {canDragPane ? (
             <button

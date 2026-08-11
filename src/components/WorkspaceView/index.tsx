@@ -8,7 +8,14 @@ import { useUiStore } from '../../stores/uiStore'
 import { pickDirectory } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import { cellStyle, gridContainerStyle, reconcileGridLayout } from '../../lib/gridLayout'
-import type { AgentType, GridLayout, Group, Project, Terminal, WorkspaceContainer } from '../../lib/types'
+import type {
+  AgentType,
+  GridLayout,
+  Group,
+  Project,
+  Terminal,
+  WorkspaceContainer,
+} from '../../lib/types'
 import { AgentIcon } from '../icons/AgentIcons'
 import { EmptyState } from '../EmptyState'
 import { PaneArea } from './PaneArea'
@@ -46,7 +53,9 @@ export function WorkspaceView() {
   const setWorkspaceGridLayout = useProjectsStore((s) => s.setWorkspaceGridLayout)
   const setGroupGridLayout = useProjectsStore((s) => s.setGroupGridLayout)
   const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
-  const activeProject = useProjectsStore((state) => selectActiveProject(state) ?? state.projects[0] ?? null)
+  const activeProject = useProjectsStore(
+    (state) => selectActiveProject(state) ?? state.projects[0] ?? null,
+  )
   const recentProjectIds = useProjectsStore((s) => s.workspace.recentProjectIds)
   const openProjectWorkspace = useProjectsStore((s) => s.openProjectWorkspace)
   const openModal = useUiStore((s) => s.openModal_)
@@ -598,7 +607,10 @@ function NoWorkspace({
     const normalized = cwd.replace(/[\\/]+$/, '')
     const name = normalized.split(/[\\/]/).filter(Boolean).pop() || normalized
     const existingProjectFolder = project?.defaultCwd || project?.terminals[0]?.cwd
-    if (project && existingProjectFolder?.replace(/[\\/]+$/, '').toLowerCase() === normalized.toLowerCase()) {
+    if (
+      project &&
+      existingProjectFolder?.replace(/[\\/]+$/, '').toLowerCase() === normalized.toLowerCase()
+    ) {
       const terminal = createTerminal(project.id, {
         name: quickAgent[0].toUpperCase() + quickAgent.slice(1),
         cwd,
@@ -621,7 +633,9 @@ function NoWorkspace({
       <div className={styles.emptyShell}>
         <div className={styles.emptyProjectCard}>
           <div className={styles.emptyProjectIntro}>
-            <div className={styles.emptyProjectIcon}><FolderPlus size={22} /></div>
+            <div className={styles.emptyProjectIcon}>
+              <FolderPlus size={22} />
+            </div>
             <strong>{t('ws.emptyProjectTitle')}</strong>
             <span>{t('ws.emptyProjectDesc')}</span>
           </div>

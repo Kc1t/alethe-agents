@@ -146,7 +146,8 @@ export const MarkdownPane = memo(function MarkdownPane({
   useEffect(() => {
     if (!filePath || content === null) return
     const frame = window.requestAnimationFrame(() => {
-      if (scrollRef.current) scrollRef.current.scrollTop = markdownPaneScrollPositions.get(filePath) ?? 0
+      if (scrollRef.current)
+        scrollRef.current.scrollTop = markdownPaneScrollPositions.get(filePath) ?? 0
     })
     return () => window.cancelAnimationFrame(frame)
   }, [content, filePath])
@@ -370,7 +371,9 @@ export const MarkdownPane = memo(function MarkdownPane({
           <div
             ref={scrollRef}
             className={styles.scroll}
-            onScroll={(event) => markdownPaneScrollPositions.set(filePath, event.currentTarget.scrollTop)}
+            onScroll={(event) =>
+              markdownPaneScrollPositions.set(filePath, event.currentTarget.scrollTop)
+            }
           >
             <pre className={styles.textView}>{content}</pre>
           </div>
@@ -378,7 +381,9 @@ export const MarkdownPane = memo(function MarkdownPane({
           <div
             ref={scrollRef}
             className={styles.scroll}
-            onScroll={(event) => markdownPaneScrollPositions.set(filePath, event.currentTarget.scrollTop)}
+            onScroll={(event) =>
+              markdownPaneScrollPositions.set(filePath, event.currentTarget.scrollTop)
+            }
           >
             <MarkdownRenderer content={content} dark={dark} />
           </div>

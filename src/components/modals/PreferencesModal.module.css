@@ -405,9 +405,19 @@
   flex-direction: column;
   gap: 4px;
 }
-.optionCopy strong { font-size: 12px; }
-.optionCopy span { color: var(--fg-muted); font-size: 10px; }
-.rowActions { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.optionCopy strong {
+  font-size: 12px;
+}
+.optionCopy span {
+  color: var(--fg-muted);
+  font-size: 10px;
+}
+.rowActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
 .iconActionDanger {
   width: 30px;
   height: 30px;
@@ -417,7 +427,10 @@
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
 }
-.iconActionDanger:hover { background: var(--status-offline-soft); border-color: var(--status-offline); }
+.iconActionDanger:hover {
+  background: var(--status-offline-soft);
+  border-color: var(--status-offline);
+}
 
 .themeGrid {
   display: grid;

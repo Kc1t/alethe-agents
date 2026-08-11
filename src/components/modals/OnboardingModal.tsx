@@ -103,7 +103,11 @@ export function OnboardingModal() {
           const command = agentCliCommand(agent.id)
           if (!command) return [agent.id, false] as const
           try {
-            const found = await withTimeout(findCliLauncher(command), CLI_DETECTION_TIMEOUT_MS, null)
+            const found = await withTimeout(
+              findCliLauncher(command),
+              CLI_DETECTION_TIMEOUT_MS,
+              null,
+            )
             return [agent.id, Boolean(found)] as const
           } catch {
             return [agent.id, false] as const

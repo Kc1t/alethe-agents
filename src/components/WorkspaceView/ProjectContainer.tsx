@@ -192,7 +192,10 @@ export const ProjectContainer = memo(function ProjectContainer({
         {project.iconUrl ? (
           <img src={project.iconUrl} alt="" className={styles.projectIcon} />
         ) : (
-          <span className={`${styles.bullet} ${isRainbow ? 'swatch-rgb-rainbow' : ''}`} style={isRainbow ? undefined : { background: accent }} />
+          <span
+            className={`${styles.bullet} ${isRainbow ? 'swatch-rgb-rainbow' : ''}`}
+            style={isRainbow ? undefined : { background: accent }}
+          />
         )}
         <span className={styles.collapsedName}>{project.name}</span>
         <span className={styles.collapsedCount}>{container.paneIds.length}</span>

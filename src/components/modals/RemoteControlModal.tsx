@@ -130,19 +130,39 @@ export function RemoteControlModal() {
           <section className={styles.details}>
             <div className={styles.metric}>
               <span className={styles.metricLabel}>{t('remote.connectedDevices')}</span>
-              <strong>{info.connected_devices}/{info.max_devices}</strong>
+              <strong>
+                {info.connected_devices}/{info.max_devices}
+              </strong>
               <span className={styles.metricHint}>
-                {info.connected_devices === 1 ? t('remote.deviceSingular') : t('remote.devicePlural')}
+                {info.connected_devices === 1
+                  ? t('remote.deviceSingular')
+                  : t('remote.devicePlural')}
               </span>
             </div>
-            <button type="button" className={controls.btn} onClick={() => { closeModal(); openModal('preferences', { category: 'remoteControl' }) }}>
+            <button
+              type="button"
+              className={controls.btn}
+              onClick={() => {
+                closeModal()
+                openModal('preferences', { category: 'remoteControl' })
+              }}
+            >
               {t('remote.openSettings')}
             </button>
             <div className={styles.urlBlock}>
               <span className={styles.metricLabel}>{t('remote.urlLabel')}</span>
-              <code>{info.connected_devices > 0 ? info.pairing_url : t('remote.hiddenAddressPlaceholder')}</code>
+              <code>
+                {info.connected_devices > 0
+                  ? info.pairing_url
+                  : t('remote.hiddenAddressPlaceholder')}
+              </code>
             </div>
-            <button type="button" className={controls.btn} onClick={() => void revoke()} disabled={busy}>
+            <button
+              type="button"
+              className={controls.btn}
+              onClick={() => void revoke()}
+              disabled={busy}
+            >
               {t('remote.revoke')}
             </button>
           </section>

@@ -117,7 +117,9 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
         // (args.cwd) é a própria pasta escolhida no modal — só relevante
         // quando o projeto não tem terminal nenhum pra referenciar ainda.
         const repo =
-          getProjectRepoRoot(project) || getProjectDefaultCwd(project, state.projects) || args.cwd.trim()
+          getProjectRepoRoot(project) ||
+          getProjectDefaultCwd(project, state.projects) ||
+          args.cwd.trim()
         if (repo) {
           const agentId = `${args.firstTab.type.slice(0, 2)}-${nanoid(6)}`.replace(
             /[^A-Za-z0-9_-]/g,
@@ -304,7 +306,9 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
       updateTerminal(projectId, terminalId, (t) => ({ ...t, name })),
 
     markGsdSyncViewer: (projectId, terminalId) =>
-      updateTerminal(projectId, terminalId, (t) => (t.gsdSyncViewer ? t : { ...t, gsdSyncViewer: true })),
+      updateTerminal(projectId, terminalId, (t) =>
+        t.gsdSyncViewer ? t : { ...t, gsdSyncViewer: true },
+      ),
 
     deleteTerminal: (projectId, terminalId) =>
       update((state) => {
@@ -426,7 +430,10 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
                   mode: 'gitWorktree',
                 })
               }
-              console.warn('[projectsStore] falha removendo worktree ao deletar terminal:', secondErr)
+              console.warn(
+                '[projectsStore] falha removendo worktree ao deletar terminal:',
+                secondErr,
+              )
             }
           }
         }
@@ -823,20 +830,32 @@ export function createContainersSlice({ get, update, updateContainer }: SliceCtx
 
     setFullscreenContainer: (projectId) =>
       update((state) => ({
-        preferences: { ...state.preferences, fullscreenContainerId: projectId, isolatedPaneId: null },
+        preferences: {
+          ...state.preferences,
+          fullscreenContainerId: projectId,
+          isolatedPaneId: null,
+        },
       })),
 
     setFullscreenPane: (terminalId) =>
       update((state) => {
         if (!terminalId) {
           return {
-            preferences: { ...state.preferences, fullscreenContainerId: null, isolatedPaneId: null },
+            preferences: {
+              ...state.preferences,
+              fullscreenContainerId: null,
+              isolatedPaneId: null,
+            },
           }
         }
         const owner = state.projects.find((p) => p.terminals.some((term) => term.id === terminalId))
         if (!owner) return
         return {
-          preferences: { ...state.preferences, fullscreenContainerId: owner.id, isolatedPaneId: terminalId },
+          preferences: {
+            ...state.preferences,
+            fullscreenContainerId: owner.id,
+            isolatedPaneId: terminalId,
+          },
         }
       }),
 

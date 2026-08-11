@@ -22,7 +22,11 @@ import { useT, type TFunction } from '../../lib/i18n'
 import { formatShortcut } from '../../lib/platform'
 import { getFirstName, getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { openInBrowser } from '../../lib/tauri'
-import { getProjectDefaultCwd, getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
+import {
+  getProjectDefaultCwd,
+  getProjectRepoRoot,
+  useProjectsStore,
+} from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { UNRESTRICTED_FLAG, type AgentType, type Project } from '../../lib/types'
 import { AgentIcon } from '../icons/AgentIcons'
@@ -188,7 +192,10 @@ export function HomeView() {
     event.preventDefault()
     const prompt = quickPromptRef.current?.value.trim() ?? ''
     if (!quickTarget || !prompt) return
-    const cwd = quickCwd.trim() || getProjectRepoRoot(quickTarget) || getProjectDefaultCwd(quickTarget, projects)
+    const cwd =
+      quickCwd.trim() ||
+      getProjectRepoRoot(quickTarget) ||
+      getProjectDefaultCwd(quickTarget, projects)
     const flag = quickUnrestricted ? UNRESTRICTED_FLAG[quickAgent] : null
     const label = QUICK_AGENTS.find((agent) => agent.type === quickAgent)?.label ?? quickAgent
     const terminal = await createAgentTerminal(quickTarget.id, {

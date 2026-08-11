@@ -3,9 +3,19 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { useUiStore } from '../../stores/uiStore'
 import { basename } from '../../lib/paths'
-import { getProjectDefaultCwd, getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
+import {
+  getProjectDefaultCwd,
+  getProjectRepoRoot,
+  useProjectsStore,
+} from '../../stores/projectsStore'
 import { pickDirectory } from '../../lib/dialog'
-import { AGENT_TYPE_LABELS, ALL_AGENT_TYPES, UNRESTRICTED_FLAG, type AgentRuntimeProfile, type AgentType } from '../../lib/types'
+import {
+  AGENT_TYPE_LABELS,
+  ALL_AGENT_TYPES,
+  UNRESTRICTED_FLAG,
+  type AgentRuntimeProfile,
+  type AgentType,
+} from '../../lib/types'
 import { AgentIcon } from '../icons/AgentIcons'
 import { useT } from '../../lib/i18n'
 import { Modal } from './Modal'

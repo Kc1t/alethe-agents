@@ -33,7 +33,12 @@ import { agentCliCommand, type AgentRuntimeProfile, type AgentType } from './typ
 import { useTerminalsStore } from '../stores/terminalsStore'
 
 const ASYNC_RESUMABLE_AGENTS: ReadonlySet<AgentType> = new Set(['codex', 'antigravity', 'opencode'])
-const RESUMABLE_AGENTS: ReadonlySet<AgentType> = new Set(['claude', 'codex', 'opencode', 'antigravity'])
+const RESUMABLE_AGENTS: ReadonlySet<AgentType> = new Set([
+  'claude',
+  'codex',
+  'opencode',
+  'antigravity',
+])
 
 function isAsyncResumable(agent: AgentType): agent is AsyncResumableAgent {
   return ASYNC_RESUMABLE_AGENTS.has(agent)
@@ -66,8 +71,17 @@ export type RestartAgentPtyResult = {
 }
 
 export async function restartAgentPty(opts: RestartAgentPtyOpts): Promise<RestartAgentPtyResult> {
-  const { ptyId, sessionPersistenceKey, agent, cwd, runtimeProfile, extraArgs, resumeId, onSessionId, reservedIds } =
-    opts
+  const {
+    ptyId,
+    sessionPersistenceKey,
+    agent,
+    cwd,
+    runtimeProfile,
+    extraArgs,
+    resumeId,
+    onSessionId,
+    reservedIds,
+  } = opts
 
   const preparedRuntime = preparePtyRuntimeLaunch(agent, runtimeProfile, extraArgs ?? [])
   const launch = buildAgentLaunch(agent, preparedRuntime.args, resumeId)

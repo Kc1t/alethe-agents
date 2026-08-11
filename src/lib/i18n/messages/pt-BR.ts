@@ -171,8 +171,10 @@ export const ptBR: Record<MessageKey, string> = {
   'remote.title': 'Controle remoto',
   'remote.enabled': 'Controle remoto disponível',
   'remote.disabled': 'Controle remoto desligado',
-  'remote.description': 'Escaneie este QR code com um celular na mesma rede para abrir o Alethe Remote.',
-  'remote.disabledDescription': 'Nenhum celular pode se conectar enquanto esse recurso estiver desligado.',
+  'remote.description':
+    'Escaneie este QR code com um celular na mesma rede para abrir o Alethe Remote.',
+  'remote.disabledDescription':
+    'Nenhum celular pode se conectar enquanto esse recurso estiver desligado.',
   'remote.statusOn': 'Ligado',
   'remote.statusOff': 'Desligado',
   'remote.enable': 'Ligar controle remoto',
@@ -181,24 +183,30 @@ export const ptBR: Record<MessageKey, string> = {
   'remote.topbarDeviceConnected': '{count} dispositivo conectado',
   'remote.topbarDevicesConnected': '{count} dispositivos conectados',
   'remote.maxDevices': 'Limite de dispositivos',
-  'remote.maxDevicesHint': 'Novos dispositivos são recusados ao atingir este limite. Desligar o remoto ou gerar outro token desconecta todos.',
+  'remote.maxDevicesHint':
+    'Novos dispositivos são recusados ao atingir este limite. Desligar o remoto ou gerar outro token desconecta todos.',
   'remote.deviceSingular': 'celular conectado',
   'remote.devicePlural': 'celulares conectados',
   'remote.urlLabel': 'Endereço de pareamento',
   'remote.qrAlt': 'QR code de pareamento do controle remoto',
   'remote.scanHint': 'Escaneie com um celular na mesma rede Wi-Fi.',
   'remote.disabledCard': 'O listener LAN e todas as conexões remotas estão fechados.',
-  'remote.hint': 'O celular pode ver chats existentes e enviar uma mensagem por vez. Ele não pode alterar sua workspace.',
-  'remote.securityNote': 'Desligar desconecta todos os dispositivos pareados. Gerar um novo token também invalida o acesso existente.',
+  'remote.hint':
+    'O celular pode ver chats existentes e enviar uma mensagem por vez. Ele não pode alterar sua workspace.',
+  'remote.securityNote':
+    'Desligar desconecta todos os dispositivos pareados. Gerar um novo token também invalida o acesso existente.',
   'remote.revoke': 'Gerar novo token de pareamento',
   'remote.openSettings': 'Abrir configurações do controle remoto',
-  'remote.hiddenAddressPlaceholder': 'http://192.168.x.x:9340 · Pareie um dispositivo para revelar o endereço ativo',
+  'remote.hiddenAddressPlaceholder':
+    'http://192.168.x.x:9340 · Pareie um dispositivo para revelar o endereço ativo',
   'remote.settingsStatusTitle': 'Serviço remoto',
   'remote.settingsStatusDesc': 'Controle se o Alethe aceita conexões remotas na rede local.',
   'remote.settingsSecurityTitle': 'Política de segurança',
   'remote.settingsSecurityDesc': 'Defina limites conservadores para sessões remotas autenticadas.',
-  'remote.settingsSecurityNote': 'Autenticação, sanitização de entrada e headers restritivos permanecem sempre ativos.',
-  'remote.settingsDevicesDesc': 'Veja sessões ativas e revogue um dispositivo sem desconectar os demais.',
+  'remote.settingsSecurityNote':
+    'Autenticação, sanitização de entrada e headers restritivos permanecem sempre ativos.',
+  'remote.settingsDevicesDesc':
+    'Veja sessões ativas e revogue um dispositivo sem desconectar os demais.',
   'remote.settingsWaiting': 'Aguardando o listener LAN…',
   'remote.sessionExpiry': 'Duração da sessão',
   'remote.session900': '15 minutos',
@@ -220,7 +228,8 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.archivedGroupProjects': '{count} projetos preservados',
   'prefs.restoreGroup': 'Restaurar',
   'prefs.deleteArchivedGroup': 'Remover grupo',
-  'prefs.deleteArchivedGroupConfirm': 'Remover o grupo arquivado "{name}" e mover os projetos para Solto?',
+  'prefs.deleteArchivedGroupConfirm':
+    'Remover o grupo arquivado "{name}" e mover os projetos para Solto?',
   'prefs.archivedProjectsTitle': 'Projetos arquivados',
   'prefs.archivedProjectsDesc': 'Restaure projetos para a sidebar quando precisar deles novamente.',
   'prefs.archivedProjectsEmpty': 'Nenhum projeto arquivado.',
@@ -229,7 +238,8 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.categoryAppearance': 'Aparência',
   'prefs.categoryAppearanceDesc': 'Personalize as cores e a escala da interface.',
   'prefs.categoryRemoteControl': 'Controle remoto',
-  'prefs.categoryRemoteControlDesc': 'Gerencie acesso LAN, políticas de segurança e dispositivos conectados.',
+  'prefs.categoryRemoteControlDesc':
+    'Gerencie acesso LAN, políticas de segurança e dispositivos conectados.',
   'prefs.categoryShortcuts': 'Atalhos',
   'prefs.categoryShortcutsDesc':
     'Mapeie ações globais para as combinações de teclado que preferir.',
@@ -300,7 +310,8 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.gitControlShow': 'Mostrar',
   'prefs.gitControlHide': 'Ocultar',
   'prefs.gitControlPlacement': 'Local do Controle Git',
-  'prefs.gitControlPlacementDesc': 'Escolha se o Source Control aparece na sidebar esquerda ou direita.',
+  'prefs.gitControlPlacementDesc':
+    'Escolha se o Source Control aparece na sidebar esquerda ou direita.',
   'prefs.gitControlPlacementLeft': 'Sidebar esquerda',
   'prefs.gitControlPlacementRight': 'Sidebar direita',
   'prefs.features': 'Recursos',
@@ -398,8 +409,10 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.spawnConcurrencyIncrease': 'Mais spawns em paralelo',
   'prefs.spawnConcurrencyReset': 'Voltar ao padrão',
   'prefs.gsdSyncModelsTitle': 'Cadeia de fallback de modelos do GSD Sync',
-  'prefs.gsdSyncModelsDesc': 'Modelos reserva pra sessão-filha do GSD Sync, tentados em ordem se o modelo espelhado falhar.',
-  'prefs.gsdSyncModelsHint': 'A sessão do GSD Sync sempre tenta primeiro, automaticamente, o mesmo modelo que a conversa principal acabou de usar. Esta lista é só a rede de segurança pro caso raro desse modelo também falhar (ex.: limite de uso) — cada um é tentado em ordem até funcionar.',
+  'prefs.gsdSyncModelsDesc':
+    'Modelos reserva pra sessão-filha do GSD Sync, tentados em ordem se o modelo espelhado falhar.',
+  'prefs.gsdSyncModelsHint':
+    'A sessão do GSD Sync sempre tenta primeiro, automaticamente, o mesmo modelo que a conversa principal acabou de usar. Esta lista é só a rede de segurança pro caso raro desse modelo também falhar (ex.: limite de uso) — cada um é tentado em ordem até funcionar.',
   'prefs.gsdSyncModelsEmpty': 'Nenhum fallback configurado — só o modelo espelhado é tentado.',
   'prefs.gsdSyncModelsRemove': 'Remover',
   'prefs.gsdSyncModelsAdd': 'Adicionar modelo',
@@ -408,7 +421,8 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.categoryMultiagent': 'Multiagente e Telemetria',
   'prefs.categoryMultiagentDesc': 'Métricas em tempo real, rastros de eventos e logs estruturados.',
   'prefs.multiagentSchedulerTitle': 'Agendador e fila de tarefas',
-  'prefs.multiagentSchedulerDesc': 'Gerencia ondas de execução a partir do backlog real de `.planning/task.md` por projeto.',
+  'prefs.multiagentSchedulerDesc':
+    'Gerencia ondas de execução a partir do backlog real de `.planning/task.md` por projeto.',
   'prefs.multiagentSelectProjectOption': '-- Selecione um projeto --',
   'prefs.multiagentRunTick': 'Rodar tick (forçar fila)',
   'prefs.multiagentLoadingQueue': 'Carregando fila do projeto...',
@@ -416,7 +430,8 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.multiagentDependsOn': 'Depende de:',
   'prefs.multiagentAssignedTo': 'Alocado para: Agente {agentId}',
   'prefs.multiagentCancel': 'Cancelar',
-  'prefs.multiagentSelectProjectHint': 'Selecione um projeto pra inspecionar e orquestrar suas tarefas.',
+  'prefs.multiagentSelectProjectHint':
+    'Selecione um projeto pra inspecionar e orquestrar suas tarefas.',
   'prefs.multiagentMetricsTitle': 'Métricas de execução',
   'prefs.multiagentMetricsDesc': 'Contadores globais acumulados do barramento de eventos interno.',
   'prefs.multiagentLoadingMetrics': 'Carregando métricas...',
@@ -424,19 +439,22 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.multiagentNoMetrics': 'Nenhuma métrica acumulada.',
   'prefs.multiagentLastValue': 'Última: {value}',
   'prefs.multiagentTracesTitle': 'Histórico recente de eventos',
-  'prefs.multiagentTracesDesc': 'Acompanhamento em tempo real dos logs estruturados do barramento de eventos.',
+  'prefs.multiagentTracesDesc':
+    'Acompanhamento em tempo real dos logs estruturados do barramento de eventos.',
   'prefs.multiagentLoadingTraces': 'Carregando rastros...',
   'prefs.multiagentNoTraces': 'Nenhum evento recente registrado.',
   'prefs.multiagentTraceProject': 'Projeto: {id}',
   'prefs.multiagentTraceCorrId': 'CorrId: {id}',
   'prefs.multiagentAuditTitle': 'Auditoria e auto-commit do GSD',
-  'prefs.multiagentAuditDesc': 'Acompanha mudanças em `.planning/` e configura commits automáticos de auditoria.',
+  'prefs.multiagentAuditDesc':
+    'Acompanha mudanças em `.planning/` e configura commits automáticos de auditoria.',
   'prefs.multiagentAutocommitLabel': 'Ativar auto-commit de auditoria (opt-in)',
   'prefs.multiagentLoadingAudit': 'Carregando logs de auditoria...',
   'prefs.multiagentNoAuditLogs': 'Nenhuma mudança registrada em `.planning/` via Git.',
   'prefs.multiagentAuditAuthor': 'Autor: {author}',
   'prefs.multiagentAuditAgent': '· Agente: {agentId}',
-  'prefs.multiagentSelectProjectAuditHint': 'Selecione um projeto acima pra ver o histórico de auditoria do GSD.',
+  'prefs.multiagentSelectProjectAuditHint':
+    'Selecione um projeto acima pra ver o histórico de auditoria do GSD.',
 
   'prefs.agentsTitle': 'Agentes habilitados',
   'prefs.agentsDesc': 'Escolha quais agentes podem ser usados ao criar terminais e sub-tabs.',
@@ -543,34 +561,58 @@ export const ptBR: Record<MessageKey, string> = {
   'whatsNew.close': 'Entendi',
   'whatsNew.update': 'Ver atualização',
   'whatsNew.releaseHeading': 'v{version} — {date}',
-  'whatsNew.v150.note1': 'O export de backup de perfil agora arquiva o perfil inteiro (todos, histórico, preferências, tokens, scrollback) em vez de uma lista curta fixa.',
-  'whatsNew.v150.note2': 'Nova ação de menu “Erase all data (fresh install)” apaga todos os perfis, contas, projetos, scrollback, configurações e logs.',
-  'whatsNew.v150.note3': 'Tela de carregamento inicial reformulada para compartilhar o fundo e o ASCII art da Home.',
-  'whatsNew.v150.note4': 'Corrigido o travamento ao trocar de conta em “PTY reader flush barrier timed out”, fechando os pseudoconsoles dos terminais estacionados antes da espera final.',
-  'whatsNew.v150.note5': 'Corrigida a criação de conta presa em loading quebrado, e detecção de CLI com timeout para o onboarding não congelar em “Detecting installed CLIs…”.',
-  'whatsNew.v150.note6': 'Controle remoto via LAN: visão web móvel autenticada para ver chats, acompanhar o terminal ao vivo e enviar uma mensagem por vez.',
-  'whatsNew.v141.note1': 'Corrigidas as notas de versão mostradas aqui e no GitHub — elas vinham de uma cópia solta e desatualizada do changelog.',
-  'whatsNew.v140.note1': 'Graphify agora é opcional: ligue ou desligue o painel de grafo em Preferências sem mexer na config MCP dos agentes.',
-  'whatsNew.v140.note2': 'O comando `alethe` no terminal abre a pasta atual como projeto — ou foca o app, se já estiver aberto.',
-  'whatsNew.v140.note3': 'File Explorer: duplo-clique em qualquer arquivo para abri-lo como pane no workspace.',
-  'whatsNew.v140.note4': 'Git Control: duplo-clique num arquivo em Changes ou Staged abre o diff como pane.',
-  'whatsNew.v140.note5': 'Nova tela "Sobre & Atualizações" nas Preferências, com progresso e erros visíveis ao atualizar.',
+  'whatsNew.v150.note1':
+    'O export de backup de perfil agora arquiva o perfil inteiro (todos, histórico, preferências, tokens, scrollback) em vez de uma lista curta fixa.',
+  'whatsNew.v150.note2':
+    'Nova ação de menu “Erase all data (fresh install)” apaga todos os perfis, contas, projetos, scrollback, configurações e logs.',
+  'whatsNew.v150.note3':
+    'Tela de carregamento inicial reformulada para compartilhar o fundo e o ASCII art da Home.',
+  'whatsNew.v150.note4':
+    'Corrigido o travamento ao trocar de conta em “PTY reader flush barrier timed out”, fechando os pseudoconsoles dos terminais estacionados antes da espera final.',
+  'whatsNew.v150.note5':
+    'Corrigida a criação de conta presa em loading quebrado, e detecção de CLI com timeout para o onboarding não congelar em “Detecting installed CLIs…”.',
+  'whatsNew.v150.note6':
+    'Controle remoto via LAN: visão web móvel autenticada para ver chats, acompanhar o terminal ao vivo e enviar uma mensagem por vez.',
+  'whatsNew.v141.note1':
+    'Corrigidas as notas de versão mostradas aqui e no GitHub — elas vinham de uma cópia solta e desatualizada do changelog.',
+  'whatsNew.v140.note1':
+    'Graphify agora é opcional: ligue ou desligue o painel de grafo em Preferências sem mexer na config MCP dos agentes.',
+  'whatsNew.v140.note2':
+    'O comando `alethe` no terminal abre a pasta atual como projeto — ou foca o app, se já estiver aberto.',
+  'whatsNew.v140.note3':
+    'File Explorer: duplo-clique em qualquer arquivo para abri-lo como pane no workspace.',
+  'whatsNew.v140.note4':
+    'Git Control: duplo-clique num arquivo em Changes ou Staged abre o diff como pane.',
+  'whatsNew.v140.note5':
+    'Nova tela "Sobre & Atualizações" nas Preferências, com progresso e erros visíveis ao atualizar.',
   'whatsNew.v140.note6': 'A versão instalada agora aparece sempre no rodapé da sidebar.',
-  'whatsNew.v140.note7': 'Segurança: o listener HTTP interno do AgentCanvas agora exige token secreto, e o corpo da requisição é limitado a 1 MB.',
-  'whatsNew.v140.note8': 'Colar imagem no terminal (screenshot, imagem copiada ou arquivo) voltou a funcionar em Claude Code, Codex e OpenCode.',
-  'whatsNew.v140.note9': '"Retomar última sessão" agora passa pela mesma fila e orçamento de memória de um terminal normal, e pede confirmação antes de reiniciar vários agentes de uma vez.',
-  'whatsNew.v140.note10': 'Antigravity: detecção do CLI, ordenação de sessões, status de login e o card de uso corrigidos no Linux, macOS e Windows.',
+  'whatsNew.v140.note7':
+    'Segurança: o listener HTTP interno do AgentCanvas agora exige token secreto, e o corpo da requisição é limitado a 1 MB.',
+  'whatsNew.v140.note8':
+    'Colar imagem no terminal (screenshot, imagem copiada ou arquivo) voltou a funcionar em Claude Code, Codex e OpenCode.',
+  'whatsNew.v140.note9':
+    '"Retomar última sessão" agora passa pela mesma fila e orçamento de memória de um terminal normal, e pede confirmação antes de reiniciar vários agentes de uma vez.',
+  'whatsNew.v140.note10':
+    'Antigravity: detecção do CLI, ordenação de sessões, status de login e o card de uso corrigidos no Linux, macOS e Windows.',
   'whatsNew.v140.note11': 'OpenCode agora sempre retoma a conversa certa ao reabrir o app.',
-  'whatsNew.v140.note12': 'Terminais: corrigido texto desalinhado com emojis/símbolos, e dois loops de re-render (montagem de panes e resize de sidebar).',
-  'whatsNew.v140.note13': 'O tema do terminal foi para perto do tema da interface, em Preferências > Appearance.',
-  'whatsNew.v130.note1': 'Graphify multi-provider: grafo de código por projeto, entregue como servidor MCP para Claude, Codex e OpenCode.',
-  'whatsNew.v130.note2': 'Suporte ao Antigravity (`agy`): detecção do CLI, spawn/resume e widget de uso próprio.',
+  'whatsNew.v140.note12':
+    'Terminais: corrigido texto desalinhado com emojis/símbolos, e dois loops de re-render (montagem de panes e resize de sidebar).',
+  'whatsNew.v140.note13':
+    'O tema do terminal foi para perto do tema da interface, em Preferências > Appearance.',
+  'whatsNew.v130.note1':
+    'Graphify multi-provider: grafo de código por projeto, entregue como servidor MCP para Claude, Codex e OpenCode.',
+  'whatsNew.v130.note2':
+    'Suporte ao Antigravity (`agy`): detecção do CLI, spawn/resume e widget de uso próprio.',
   'whatsNew.v130.note3': 'Terminal nativo Ghostty no macOS (opt-in, renderização por GPU).',
-  'whatsNew.v130.note4': 'Home reconstruída: fundo ASCII interativo, lançador rápido em mini-terminal e player do Spotify em dock discreto.',
-  'whatsNew.v130.note5': 'Tela de carregamento refeita, com marca animada em ASCII e trilha de progresso dot-matrix.',
-  'whatsNew.v130.note6': 'Sidebar de projetos reorganizada: card fixo do projeto ativo, monogramas coloridos e indicador de atividade ao vivo.',
+  'whatsNew.v130.note4':
+    'Home reconstruída: fundo ASCII interativo, lançador rápido em mini-terminal e player do Spotify em dock discreto.',
+  'whatsNew.v130.note5':
+    'Tela de carregamento refeita, com marca animada em ASCII e trilha de progresso dot-matrix.',
+  'whatsNew.v130.note6':
+    'Sidebar de projetos reorganizada: card fixo do projeto ativo, monogramas coloridos e indicador de atividade ao vivo.',
   'whatsNew.v130.note7': 'O modo YOLO virou um controle de um clique no modal de adicionar IA.',
-  'whatsNew.v130.note8': 'Controle experimental de opacidade da janela, para enxergar o desktop através do Alethe.',
+  'whatsNew.v130.note8':
+    'Controle experimental de opacidade da janela, para enxergar o desktop através do Alethe.',
   'rightSidebar.backToTodo': 'Voltar para Todo',
   'rightSidebar.markdownError': 'Não foi possível carregar o Markdown',
   'rightSidebar.navigation': 'Navegação da sidebar direita',
@@ -578,9 +620,11 @@ export const ptBR: Record<MessageKey, string> = {
   'rightSidebar.markdownTab': 'Markdown',
   'rightSidebar.gsdSyncTab': 'GSD Sync',
   'rightSidebar.gsdSyncEmptyTitle': 'Nenhuma sessão GSD Sync ativa',
-  'rightSidebar.gsdSyncEmptyDesc': 'Ligue o monitoramento GSD de um projeto pra ver as sessões-filha aqui.',
+  'rightSidebar.gsdSyncEmptyDesc':
+    'Ligue o monitoramento GSD de um projeto pra ver as sessões-filha aqui.',
   'rightSidebar.markdownEmptyTitle': 'Nenhum Markdown selecionado',
-  'rightSidebar.markdownEmptyDesc': 'Abra um arquivo Markdown na sidebar de projetos para visualizá-lo aqui.',
+  'rightSidebar.markdownEmptyDesc':
+    'Abra um arquivo Markdown na sidebar de projetos para visualizá-lo aqui.',
   'rightSidebar.commentsToggle': 'Mostrar comentários',
   'rightSidebar.commentsTitle': 'Comentários da aplicação',
   'rightSidebar.commentsEmpty': 'Selecione um trecho do Markdown para adicionar um comentário.',
@@ -752,7 +796,8 @@ export const ptBR: Record<MessageKey, string> = {
   'crud.projectModeStandard': 'Projeto padrão',
   'crud.projectModeSandbox': 'Projeto Agent Sandbox',
   'crud.projectModeStandardHint': 'Abre o workspace normal de terminais.',
-  'crud.projectModeSandboxHint': 'Abre um workspace real de múltiplos agentes. A pasta do projeto é obrigatória.',
+  'crud.projectModeSandboxHint':
+    'Abre um workspace real de múltiplos agentes. A pasta do projeto é obrigatória.',
   'crud.projectModeSelectionHint': 'Escolha como este projeto deve abrir pela sidebar.',
   'crud.projectPathLabel': 'Pasta do projeto',
   'crud.projectPathPlaceholder': 'Escolha a pasta do projeto',
@@ -783,7 +828,8 @@ export const ptBR: Record<MessageKey, string> = {
   'crud.editProjectWorktrees': 'Worktrees',
   'crud.editProjectMerge': 'Merge',
   'crud.editProjectAgentSettings': 'Configurações dos agentes',
-  'crud.editProjectAgentSettingsDesc': 'Defina como este projeto cria e valida worktrees de agentes.',
+  'crud.editProjectAgentSettingsDesc':
+    'Defina como este projeto cria e valida worktrees de agentes.',
   'crud.editProjectWorktreeMode': 'Modo padrão de worktree',
   'crud.editProjectGitWorktree': 'Git worktree (rápido)',
   'crud.editProjectLocalCopy': 'Cópia local (mais lenta)',
@@ -1312,24 +1358,30 @@ export const ptBR: Record<MessageKey, string> = {
   'crud.customColor': 'Cor personalizada:',
   'crud.pickColor': 'Conta-gotas',
   'crud.githubUrlLabel': 'REPOSITÓRIO GITHUB (OPCIONAL)',
-  'crud.githubUrlHint': 'Cole a URL do repositório para clonar e inicializar com contexto de IA automaticamente.',
+  'crud.githubUrlHint':
+    'Cole a URL do repositório para clonar e inicializar com contexto de IA automaticamente.',
   'palette.neutral': 'Tons Neutros / Escuros',
   'palette.vibrant': 'Vibrantes',
   'palette.pastel': 'Pastéis',
   'palette.neon': 'Neon',
   'term.autoIsolationFailedTitle': 'Isolamento falhou para este agente',
-  'term.autoIsolationFailedBody': 'Não foi possível provisionar a worktree, abriu um terminal normal. Erro: {error}',
+  'term.autoIsolationFailedBody':
+    'Não foi possível provisionar a worktree, abriu um terminal normal. Erro: {error}',
   'mod.orphansReapedAtBoot': 'Limpamos {count} processo(s) órfão(s) que ficaram rodando dessa vez.',
   'mod.jobGuardActive': 'Proteção contra processos órfãos: ativa (Windows Job Object).',
-  'mod.jobGuardInactive': 'Proteção contra processos órfãos: indisponível nesta plataforma/sessão. Um crash pode deixar processos rodando; o próximo boot ainda tenta limpar automaticamente.',
+  'mod.jobGuardInactive':
+    'Proteção contra processos órfãos: indisponível nesta plataforma/sessão. Um crash pode deixar processos rodando; o próximo boot ainda tenta limpar automaticamente.',
   'ui.terminal.restartFailed': 'Falha ao reiniciar o terminal',
   'git.initOffer.title': 'Ainda não é um repositório Git',
-  'git.initOffer.body': 'Isolamento de agentes, worktrees e merges precisam que esta pasta seja um repositório Git. Inicializar agora?',
+  'git.initOffer.body':
+    'Isolamento de agentes, worktrees e merges precisam que esta pasta seja um repositório Git. Inicializar agora?',
   'git.initOffer.button': 'Inicializar repositório Git',
   'git.initOffer.busy': 'Inicializando…',
-  'git.initOffer.confirm': 'Rodar "git init" nesta pasta e criar um commit inicial com tudo que já está nela? Isso só adiciona uma pasta .git — nada do que já existe é apagado.',
+  'git.initOffer.confirm':
+    'Rodar "git init" nesta pasta e criar um commit inicial com tudo que já está nela? Isso só adiciona uma pasta .git — nada do que já existe é apagado.',
   'git.initOffer.successTitle': 'Repositório Git inicializado',
-  'git.initOffer.successBody': 'Isolamento, worktrees e merges já estão disponíveis para este projeto.',
+  'git.initOffer.successBody':
+    'Isolamento, worktrees e merges já estão disponíveis para este projeto.',
   'git.initOffer.failedTitle': 'Não foi possível inicializar o Git',
   'git.initOffer.failedBody': 'Erro: {error}',
   'ws.exitPaneFullscreen': 'Sair do fullscreen',
@@ -1414,7 +1466,8 @@ export const ptBR: Record<MessageKey, string> = {
   /* ---- crash watch ---- */
   'crash.uncleanTitle': 'O Alethe fechou sozinho',
   'crash.uncleanBody': 'Última leitura antes de cair: {total} MB · {procs} processos · {time}',
-  'crash.uncleanBodyWithOrphans': 'Última leitura antes de cair: {total} MB · {procs} processos · {time}. Limpamos {orphans} processo(s) órfão(s) que ficaram rodando.',
+  'crash.uncleanBodyWithOrphans':
+    'Última leitura antes de cair: {total} MB · {procs} processos · {time}. Limpamos {orphans} processo(s) órfão(s) que ficaram rodando.',
 
   /* ---- app update ---- */
   'update.chipLabel': 'Atualização disponível',
@@ -1509,13 +1562,15 @@ export const ptBR: Record<MessageKey, string> = {
   'menu.logsFilter': 'Alethe logs',
   'sandbox.eyebrow': 'Orquestração experimental',
   'sandbox.title': 'Sandbox de Agents',
-  'sandbox.subtitle': 'Um POC real planner-to-worker: Claude Code planeja, Codex implementa e o Alethe faz o relay.',
+  'sandbox.subtitle':
+    'Um POC real planner-to-worker: Claude Code planeja, Codex implementa e o Alethe faz o relay.',
   'sandbox.close': 'Voltar ao workspace',
   'sandbox.start': 'Reiniciar sandbox',
   'sandbox.startDemo': 'Rodar sessão demo',
   'sandbox.restart': 'Reiniciar sandbox',
   'sandbox.emptyTitle': 'Iniciar uma sessão sandbox',
-  'sandbox.emptyBody': 'O POC abre apenas um planner Haiku. Peça para ele criar um terminal worker quando precisar.',
+  'sandbox.emptyBody':
+    'O POC abre apenas um planner Haiku. Peça para ele criar um terminal worker quando precisar.',
   'sandbox.noProject': 'Abra um projeto primeiro para fornecer o diretório de trabalho.',
   'sandbox.starting': 'iniciando terminal…',
   'sandbox.agents': 'agents',
@@ -1571,7 +1626,8 @@ export const ptBR: Record<MessageKey, string> = {
   'multiAgent.newEnvPlaceholder': 'nome do ambiente (ex: feature-x)',
   'multiAgent.createEnv': 'Criar ambiente de agente',
   'multiAgent.creatingEnv': 'Criando…',
-  'multiAgent.autoWorktree': 'Isolamento automático de agentes (todo agente novo ganha worktree própria)',
+  'multiAgent.autoWorktree':
+    'Isolamento automático de agentes (todo agente novo ganha worktree própria)',
   'multiAgent.migrateExisting': 'Migrar terminais existentes agora',
   'multiAgent.migrateExistingBusy': 'Migrando…',
   'multiAgent.migrateExistingHint':
@@ -1669,24 +1725,30 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.statusMerged': 'Integrado',
   'merge.statusBlocked': 'Bloqueado',
   'merge.statusGateFailed': 'Falhou verificação automática',
-  'merge.gateFailedDiffEmpty': 'Planejamento marcado como completo, mas não há alterações de código entre {branch} e {target}.',
-  'merge.gateFailedValidation': 'Planejamento completo, mas a validação falhou em "{stage}": {output}',
+  'merge.gateFailedDiffEmpty':
+    'Planejamento marcado como completo, mas não há alterações de código entre {branch} e {target}.',
+  'merge.gateFailedValidation':
+    'Planejamento completo, mas a validação falhou em "{stage}": {output}',
   'merge.gateRecheck': 'Reavaliar',
   'merge.noRepoTitle': 'Repositório não encontrado',
   'merge.noRepoBody': 'Não foi possível localizar a raiz do repositório deste projeto.',
   'merge.reject': 'Rejeitar',
   'merge.rejectTooltip': 'Remove a worktree sem fazer merge (a branch é preservada)',
-  'merge.rejectConfirm': 'Remover a worktree de "{branch}"? A branch é preservada — nenhum merge é feito.',
+  'merge.rejectConfirm':
+    'Remover a worktree de "{branch}"? A branch é preservada — nenhum merge é feito.',
   'merge.rejectedTitle': 'Worktree removida',
-  'merge.rejectedBody': 'A worktree de "{branch}" foi removida. A branch continua existindo (git branch -D pra apagar de vez).',
+  'merge.rejectedBody':
+    'A worktree de "{branch}" foi removida. A branch continua existindo (git branch -D pra apagar de vez).',
   'merge.rejectFailedTitle': 'Falha ao remover worktree',
   'merge.validate': 'Validar',
   'merge.validating': 'Validando…',
   'merge.validateTooltip': 'Roda os comandos de validação do projeto nesta worktree',
   'merge.noValidationCommandsTitle': 'Sem comandos de validação',
-  'merge.noValidationCommandsBody': 'Configure comandos de validação na aba Multi-Agentes & MCP do projeto.',
+  'merge.noValidationCommandsBody':
+    'Configure comandos de validação na aba Multi-Agentes & MCP do projeto.',
   'merge.validationPassedTitle': 'Validação passou',
-  'merge.validationPassedBody': 'Todos os comandos de validação rodaram com sucesso nesta worktree.',
+  'merge.validationPassedBody':
+    'Todos os comandos de validação rodaram com sucesso nesta worktree.',
   'merge.validationFailedTitle': 'Validação falhou',
   'merge.test': 'Testar',
   'merge.testTooltip': 'Abre um terminal na pasta da worktree pra testar manualmente',
@@ -1716,14 +1778,16 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.testFeedbackSentTitle': 'Feedback enviado',
   'merge.testFeedbackSentBody': 'O resultado do checklist de teste foi enviado ao agente.',
   'merge.review': 'Revisar',
-  'merge.reviewTooltip': 'Abre (ou reabre a caixa de feedback de) um agente revisor dedicado nesta worktree',
+  'merge.reviewTooltip':
+    'Abre (ou reabre a caixa de feedback de) um agente revisor dedicado nesta worktree',
   'merge.reviewStartedTitle': 'Revisor iniciado',
   'merge.reviewStartedBody': 'Um agente revisor foi aberto num terminal desta worktree.',
   'merge.reviewFeedbackPlaceholder': 'O que o agente precisa corrigir, checar ou explicar?',
   'merge.reviewFeedbackCancel': 'Cancelar',
   'merge.reviewFeedbackSend': 'Enviar ao revisor',
   'merge.reviewNotReadyTitle': 'Revisor ainda não está pronto',
-  'merge.reviewNotReadyBody': 'O terminal do revisor ainda está iniciando — tente de novo em instantes.',
+  'merge.reviewNotReadyBody':
+    'O terminal do revisor ainda está iniciando — tente de novo em instantes.',
   'merge.reviewFeedbackSentTitle': 'Feedback enviado',
   'merge.reviewFeedbackSentBody': 'Sua mensagem foi enviada ao agente revisor no terminal dele.',
 }

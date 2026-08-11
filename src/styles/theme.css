@@ -908,7 +908,9 @@
     #ff0055
   );
   animation: rainbowRotate 6s linear infinite;
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   pointer-events: none;
@@ -921,4 +923,3 @@
      azul cortando o anel só onde havia foco. */
   z-index: 5;
 }
-

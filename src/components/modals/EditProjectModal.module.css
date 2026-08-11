@@ -24,8 +24,15 @@
   text-align: left;
   cursor: pointer;
 }
-.navItem:hover { color: var(--fg); background: var(--panel-hover); }
-.navItemActive { color: var(--fg); background: var(--panel); box-shadow: 0 0 0 1px var(--border-strong) inset; }
+.navItem:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+.navItemActive {
+  color: var(--fg);
+  background: var(--panel);
+  box-shadow: 0 0 0 1px var(--border-strong) inset;
+}
 .panel {
   flex: 1;
   min-width: 0;
@@ -94,7 +101,9 @@
   cursor: pointer;
 }
 @media (max-width: 520px) {
-  .layout { flex-direction: column; }
+  .layout {
+    flex-direction: column;
+  }
   .nav {
     flex: 0 0 auto;
     flex-direction: row;

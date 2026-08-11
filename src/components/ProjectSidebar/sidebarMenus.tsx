@@ -140,7 +140,9 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
           })
           if (!target) return
           await writeTextFile(target, JSON.stringify(project, null, 2))
-          useUiStore.getState().pushToast({ title: t('ui.sidebar.exportProjectConfigDone'), body: '' })
+          useUiStore
+            .getState()
+            .pushToast({ title: t('ui.sidebar.exportProjectConfigDone'), body: '' })
         })(),
     },
     {
@@ -161,7 +163,9 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
               throw new Error('invalid_project_config')
             }
             useProjectsStore.getState().importProjectFromFile(data as Project, project.groupId)
-            useUiStore.getState().pushToast({ title: t('ui.sidebar.importProjectConfigDone'), body: '' })
+            useUiStore
+              .getState()
+              .pushToast({ title: t('ui.sidebar.importProjectConfigDone'), body: '' })
           } catch (error) {
             console.error('[sidebarMenus] falha importando configuração de projeto:', error)
             useUiStore.getState().pushToast({

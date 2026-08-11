@@ -13,7 +13,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { type GsdSyncSession, useGsdSyncSessions } from '../../hooks/useGsdSyncSessions'
 import { useT } from '../../lib/i18n'
 import type { Project, SubTab, Terminal } from '../../lib/types'
-import { readPlanningStatus, readTextFile, writeClipboardText, type PlanningStatus } from '../../lib/tauri'
+import {
+  readPlanningStatus,
+  readTextFile,
+  writeClipboardText,
+  type PlanningStatus,
+} from '../../lib/tauri'
 import { selectActiveProject, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { MarkdownRenderer } from '../MarkdownPane/MarkdownRenderer'
@@ -41,8 +46,9 @@ export function RightSidebar() {
         .filter((terminal) => !terminal.kind)
         .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))[0]
     : null
-  const sidebarSubTab = sidebarTerminal?.tabs.find((tab) => tab.id === sidebarTerminal.activeTabId)
-    ?? sidebarTerminal?.tabs[0]
+  const sidebarSubTab =
+    sidebarTerminal?.tabs.find((tab) => tab.id === sidebarTerminal.activeTabId) ??
+    sidebarTerminal?.tabs[0]
 
   return (
     <aside className={styles.sidebar} aria-label={t('rightSidebar.navigation')}>
@@ -195,7 +201,14 @@ function GsdSyncRow({
         {session.hasError ? (
           <span className={styles.gsdErrorDot} />
         ) : session.busy ? (
-          <DotmCircular2 size={13} dotSize={2} cellPadding={1} speed={1.2} bloom ariaLabel={statusLabel} />
+          <DotmCircular2
+            size={13}
+            dotSize={2}
+            cellPadding={1}
+            speed={1.2}
+            bloom
+            ariaLabel={statusLabel}
+          />
         ) : (
           <span className={styles.gsdIdleDot} />
         )}
@@ -294,7 +307,8 @@ function MarkdownSidebarViewer() {
   useEffect(() => {
     if (!selected?.path || content === null) return
     const frame = window.requestAnimationFrame(() => {
-      if (scrollRef.current) scrollRef.current.scrollTop = markdownScrollPositions.get(selected.path) ?? 0
+      if (scrollRef.current)
+        scrollRef.current.scrollTop = markdownScrollPositions.get(selected.path) ?? 0
     })
     return () => window.cancelAnimationFrame(frame)
   }, [content, selected?.path])
@@ -402,24 +416,25 @@ function MarkdownSidebarViewer() {
           ref={scrollRef}
           className={styles.content}
           onScroll={(event) => {
-            if (selected?.path) markdownScrollPositions.set(selected.path, event.currentTarget.scrollTop)
+            if (selected?.path)
+              markdownScrollPositions.set(selected.path, event.currentTarget.scrollTop)
           }}
         >
-        {error ? (
-          <div className={styles.empty}>
-            <FileText size={20} />
-            <strong>{t('rightSidebar.markdownError')}</strong>
-            <span>{error}</span>
-          </div>
-        ) : content === null ? (
-          <div className={styles.empty}>
-            <span>{t('ui.markdown.loading')}</span>
-          </div>
-        ) : (
-          <div ref={markdownRef} className={styles.commentableMarkdown}>
-            <MarkdownRenderer content={content} dark={dark} />
-          </div>
-        )}
+          {error ? (
+            <div className={styles.empty}>
+              <FileText size={20} />
+              <strong>{t('rightSidebar.markdownError')}</strong>
+              <span>{error}</span>
+            </div>
+          ) : content === null ? (
+            <div className={styles.empty}>
+              <span>{t('ui.markdown.loading')}</span>
+            </div>
+          ) : (
+            <div ref={markdownRef} className={styles.commentableMarkdown}>
+              <MarkdownRenderer content={content} dark={dark} />
+            </div>
+          )}
         </div>
       </div>
     </section>

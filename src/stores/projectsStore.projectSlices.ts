@@ -5,7 +5,11 @@ import { nanoid } from 'nanoid'
 import { restartAgentPty } from '../lib/agentPtyRestart'
 import { getLocale, translate } from '../lib/i18n'
 import { getActiveSessions, savedConversationIdFor } from '../lib/sessionResume'
-import { clearTerminalPtyIds, collectTerminalPtyIds, getProjectRepoRoot } from '../lib/terminalFactory'
+import {
+  clearTerminalPtyIds,
+  collectTerminalPtyIds,
+  getProjectRepoRoot,
+} from '../lib/terminalFactory'
 import { cleanupPtys } from '../lib/terminalLifecycle'
 import { killPty, listenPtyData } from '../lib/tauri'
 import { GROUP_COLORS, type AgentType } from '../lib/types'
@@ -230,7 +234,7 @@ export function createGroupsSlice({ update }: SliceCtx): GroupsSlice {
         const group = state.groups.find((g) => g.id === id)
         if (!group) return
         if (mode === 'cascade') {
-        // Collect all descendants with a breadth-first traversal.
+          // Collect all descendants with a breadth-first traversal.
           const groupQueue = [id]
           const groupsToRemove = new Set<string>()
           while (groupQueue.length > 0) {
@@ -559,7 +563,8 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
     // chamada só pelo botão dedicado no EditProjectModal.
     setAutoWorktree: (id, autoWorktree) => updateProject(id, (p) => ({ ...p, autoWorktree })),
 
-    setMergePostAction: (id, mergePostAction) => updateProject(id, (p) => ({ ...p, mergePostAction })),
+    setMergePostAction: (id, mergePostAction) =>
+      updateProject(id, (p) => ({ ...p, mergePostAction })),
 
     relocateMergeAgentTerminal: async (projectId, terminalId, opts) => {
       const project = get().projects.find((p) => p.id === projectId)
@@ -614,7 +619,9 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
                       ? t
                       : {
                           ...t,
-                          tabs: t.tabs.map((tb) => (tb.id === tab.id ? { ...tb, sessionId: id } : tb)),
+                          tabs: t.tabs.map((tb) =>
+                            tb.id === tab.id ? { ...tb, sessionId: id } : tb,
+                          ),
                         },
                   ),
                 })),
@@ -651,7 +658,8 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
 
       migratingWorktreeProjectIds.add(projectId)
       try {
-        const { worktreeProvision, gitStatus, gsdOpenCodePluginWrite } = await import('../lib/tauri')
+        const { worktreeProvision, gitStatus, gsdOpenCodePluginWrite } =
+          await import('../lib/tauri')
 
         // git worktree add faz checkout do HEAD — qualquer mudança não commitada
         // no repo compartilhado não é copiada pra worktree nova. Preferimos
@@ -692,7 +700,11 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
               /[^A-Za-z0-9_-]/g,
               'x',
             )
-            const info = await worktreeProvision(repo, agentId, project.worktreeMode ?? 'gitWorktree')
+            const info = await worktreeProvision(
+              repo,
+              agentId,
+              project.worktreeMode ?? 'gitWorktree',
+            )
 
             // Terminal migrado com watcher GSD ligado e rodando OpenCode nunca
             // recebe o plugin sozinho — ele só é instalado no caminho normal de
@@ -755,7 +767,9 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
               const savedSession = activeSessions[tab.id] ?? activeSessions[tab.ptyId] ?? null
               const preservedResumeId =
                 tab.sessionId ?? savedConversationIdFor(savedSession, tab.type, terminal.cwd)
-              const effectiveResumeId = CROSS_CWD_RESUME_OK[tab.type] ? preservedResumeId : undefined
+              const effectiveResumeId = CROSS_CWD_RESUME_OK[tab.type]
+                ? preservedResumeId
+                : undefined
               try {
                 await restartAgentPtyWithHangGuard({
                   ptyId: tab.ptyId,
@@ -771,12 +785,19 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
                       terminals: p.terminals.map((t) =>
                         t.id !== terminal.id
                           ? t
-                          : { ...t, tabs: t.tabs.map((tb) => (tb.id === tab.id ? { ...tb, sessionId: id } : tb)) },
+                          : {
+                              ...t,
+                              tabs: t.tabs.map((tb) =>
+                                tb.id === tab.id ? { ...tb, sessionId: id } : tb,
+                              ),
+                            },
                       ),
                     })),
                 })
                 window.dispatchEvent(
-                  new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: tab.ptyId } }),
+                  new CustomEvent('alethe:terminal-resize-request', {
+                    detail: { ptyId: tab.ptyId },
+                  }),
                 )
               } catch (restartErr) {
                 console.warn(

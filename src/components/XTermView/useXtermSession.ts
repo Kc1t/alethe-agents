@@ -167,7 +167,10 @@ function patchXtermViewportSyncGuard(terminal: Terminal): void {
         return original.apply(this, args)
       } catch (error) {
         if (import.meta.env.DEV) {
-          console.error('[Alethe][xterm] syncScrollArea falhou (renderer ainda não anexado) — ignorado', error)
+          console.error(
+            '[Alethe][xterm] syncScrollArea falhou (renderer ainda não anexado) — ignorado',
+            error,
+          )
         }
         return undefined
       }
@@ -416,7 +419,8 @@ export function useXtermSession(params: {
       // letras/símbolos sobrepondo no Linux). Cascadia Mono/Consolas
       // seguem como fallback pra quem já tem no sistema, por via das
       // dúvidas; `monospace` genérico é o último recurso de verdade.
-      fontFamily: '"Caskaydia Cove Nerd Font Mono", "Cascadia Mono", Consolas, "Courier New", monospace',
+      fontFamily:
+        '"Caskaydia Cove Nerd Font Mono", "Cascadia Mono", Consolas, "Courier New", monospace',
       fontSize: 14,
       theme: getXtermTheme(terminalTheme),
     })
@@ -1294,8 +1298,15 @@ export function useXtermSession(params: {
           console.warn(`[pty-launch] ${command} reabrindo SEM resume (fallback de early-exit)`)
           resumeId = undefined
         }
-        if (resumeId && cwd && command && isSessionClaimed(command, cwd, resumeId, sessionPersistenceKey)) {
-          console.warn(`[pty-launch] ${command} session ${resumeId} is already claimed; starting a fresh writer`)
+        if (
+          resumeId &&
+          cwd &&
+          command &&
+          isSessionClaimed(command, cwd, resumeId, sessionPersistenceKey)
+        ) {
+          console.warn(
+            `[pty-launch] ${command} session ${resumeId} is already claimed; starting a fresh writer`,
+          )
           resumeId = undefined
           removeSession(sessionPersistenceKey)
           onSessionIdRef.current?.(undefined)
@@ -1361,7 +1372,13 @@ export function useXtermSession(params: {
         // sem essa checagem, um projeto novo apontando pra uma pasta com
         // histórico OpenCode de outro projeto/uso anterior herdava a
         // conversa antiga sem o usuário pedir (bug real, reportado ao vivo).
-        if (command === 'opencode' && !resumeId && cwd && !forceFreshRef.current && !skipSessionClaim) {
+        if (
+          command === 'opencode' &&
+          !resumeId &&
+          cwd &&
+          !forceFreshRef.current &&
+          !skipSessionClaim
+        ) {
           try {
             const sessions = await snapshotOpenCodeSessions(cwd)
             // A sessão-filha do GSD Sync (ver alethe-gsd-state.ts) é criada
@@ -1727,7 +1744,8 @@ export function useXtermSession(params: {
                 Date.now() >= earliestSendAt &&
                 runtime?.alive &&
                 (quietFor >= 700 || Date.now() >= timedSendAt)
-              ) break
+              )
+                break
             }
             if (disposed) return
             try {

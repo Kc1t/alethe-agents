@@ -47,9 +47,7 @@ export function computeVisibleFocusedPtyIds(): PtyVisibilitySets {
     for (const terminal of project.terminals) {
       const activeTab = terminal.tabs.find((tab) => tab.id === terminal.activeTabId)
       const inNormalGrid =
-        container &&
-        !container.collapsed &&
-        container.paneIds.includes(terminal.id)
+        container && !container.collapsed && container.paneIds.includes(terminal.id)
       const isIsolatedPane = terminal.id === isolatedPaneId
       if (activeTab?.ptyId && workspaceVisible && (inNormalGrid || isIsolatedPane)) {
         visible.add(activeTab.ptyId)

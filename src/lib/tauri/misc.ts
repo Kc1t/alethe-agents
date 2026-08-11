@@ -37,7 +37,9 @@ export async function setRemoteControlMaxDevices(maxDevices: number): Promise<Re
   return invoke<RemoteControlInfo>('remote_control_set_max_devices', { maxDevices })
 }
 
-export async function setRemoteControlSessionExpiry(sessionExpirySecs: number): Promise<RemoteControlInfo> {
+export async function setRemoteControlSessionExpiry(
+  sessionExpirySecs: number,
+): Promise<RemoteControlInfo> {
   return invoke<RemoteControlInfo>('remote_control_set_session_expiry', { sessionExpirySecs })
 }
 

@@ -11,7 +11,12 @@ import {
 import { useEffect, useState } from 'react'
 
 import { intlLocale, useT, type Locale, type TFunction } from '../../lib/i18n'
-import { getJobGuardStatus, getLastCrashReport, openLogsFolder, type CrashReport } from '../../lib/tauri'
+import {
+  getJobGuardStatus,
+  getLastCrashReport,
+  openLogsFolder,
+  type CrashReport,
+} from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import type { MemorySample } from '../../stores/uiStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -327,7 +332,10 @@ export function MemoryAnalyticsModal() {
                     total: Math.round(crash.session.total_mb),
                     ptys: Math.round(crash.session.ptys_mb),
                     procs: crash.session.process_count,
-                    time: formatTime(crash.session.last_heartbeat_ms || crash.session.started_at_ms, language),
+                    time: formatTime(
+                      crash.session.last_heartbeat_ms || crash.session.started_at_ms,
+                      language,
+                    ),
                   })}
                 </p>
                 {crash.orphans_reaped > 0 ? (
