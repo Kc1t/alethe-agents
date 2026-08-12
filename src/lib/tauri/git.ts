@@ -81,6 +81,24 @@ export async function gitDiffSummary(
   return invoke<DiffSummaryEntry[]>('git_diff_summary', { repoRoot, source, target, worktreePath })
 }
 
+/** Um commit do histórico, pro gráfico de commits do painel de Controle de
+ *  versão. O cálculo de raia/coluna (lane) é sempre feito no cliente — o
+ *  próprio `git log` não devolve coordenadas de gráfico prontas. */
+export type GitCommitEntry = {
+  hash: string
+  parents: string[]
+  authorName: string
+  authorEmail: string
+  /** Segundos desde epoch (mesmo formato do `git log`). */
+  timestamp: number
+  subject: string
+  refs: string[]
+}
+
+export async function gitLogGraph(repo: string, maxCount: number): Promise<GitCommitEntry[]> {
+  return invoke<GitCommitEntry[]>('git_log_graph', { repo, maxCount })
+}
+
 // --- RFC-003 — Worktrees ---
 
 export type WorktreeMode = 'gitWorktree' | 'localCopy'

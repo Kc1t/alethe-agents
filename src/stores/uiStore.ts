@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+
+import { basename } from '../lib/paths'
 import type {
   AntigravityUsage,
   ClaudeUsage,
@@ -8,7 +10,6 @@ import type {
 } from '../lib/tauri'
 import type { AgentType } from '../lib/types'
 import type { UpdateInfo } from '../lib/updater'
-import { basename } from '../lib/paths'
 
 /** Ephemeral UI state. Persisted state belongs in `projectsStore`. */
 
@@ -93,6 +94,9 @@ type UiState = {
   updateInfo: UpdateInfo | null
   /** URL aberta no visualizador in-app (overlay com iframe). null = fechado. */
   linkViewerUrl: string | null
+  /** Sessão-filha do GSD Sync aberta no feed de atividade somente-leitura
+   *  (overlay próprio, sem terminal PTY nenhum). null = fechado. */
+  gsdSyncActivityView: { worktreePath: string; sessionId: string; title: string } | null
 
   openModal_: (kind: Exclude<ModalKind, null>, context?: Record<string, unknown>) => void
   closeModal: () => void
@@ -131,6 +135,9 @@ type UiState = {
   setUpdateInfo: (info: UpdateInfo | null) => void
   openLinkViewer: (url: string) => void
   closeLinkViewer: () => void
+  setGsdSyncActivityView: (
+    view: { worktreePath: string; sessionId: string; title: string } | null,
+  ) => void
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -157,6 +164,7 @@ export const useUiStore = create<UiState>((set) => ({
   notifications: [],
   updateInfo: null,
   linkViewerUrl: null,
+  gsdSyncActivityView: null,
 
   openModal_: (kind, context) =>
     set({ openModal: kind, modalContext: context ?? null, showMainMenu: false }),
@@ -225,4 +233,5 @@ export const useUiStore = create<UiState>((set) => ({
   setUpdateInfo: (info) => set({ updateInfo: info }),
   openLinkViewer: (url) => set({ linkViewerUrl: url }),
   closeLinkViewer: () => set({ linkViewerUrl: null }),
+  setGsdSyncActivityView: (view) => set({ gsdSyncActivityView: view }),
 }))

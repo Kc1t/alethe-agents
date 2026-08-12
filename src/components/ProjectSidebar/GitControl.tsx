@@ -30,6 +30,7 @@ import {
 } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { GitGraph } from './GitGraph'
 import styles from './GitControl.module.css'
 
 type GitControlProps = {
@@ -368,6 +369,8 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
           </div>
         ) : null}
       </div>
+
+      <GitGraph repoRoot={status.repoRoot} />
     </div>
   )
 }

@@ -1,0 +1,89 @@
+.group {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 2px;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.groupHeader:hover {
+  color: var(--fg);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0 8px;
+}
+
+.loading,
+.empty,
+.error {
+  margin: 4px 2px;
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+
+.error {
+  color: var(--status-offline);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  overflow: hidden;
+}
+
+.svg {
+  flex-shrink: 0;
+}
+
+.info {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.subject {
+  font-size: 12px;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+
+.refs {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.refBadge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--fg-muted);
+  white-space: nowrap;
+}

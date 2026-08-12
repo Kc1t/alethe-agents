@@ -341,6 +341,7 @@ pub fn run() {
             git_control::git_pull,
             git_control::git_list_branches,
             git_control::git_diff_summary,
+            git_control::git_log_graph,
             diagnostics::open_data_folder,
             diagnostics::open_spawn_log,
             diagnostics::open_in_file_explorer,
@@ -440,6 +441,7 @@ pub fn run() {
             plugins::plugin_install,
             plugins::plugin_uninstall,
             opencode_sessions::snapshot_opencode_sessions,
+            opencode_sessions::opencode_export_session,
             ping,
         ])
         .build(tauri::generate_context!())

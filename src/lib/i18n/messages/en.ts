@@ -365,6 +365,13 @@ export const en = {
   'todo.gsdIdle': 'Idle',
   'todo.gsdError': 'Error',
   'todo.gsdProgress': '{done}/{total} tasks',
+
+  /* ---- GSD Sync activity feed (read-only "subagent" view) ---- */
+  'gsdActivity.loading': 'Loading activity…',
+  'gsdActivity.tokens': '{count} tokens',
+  'gsdActivity.roleUser': 'Instruction',
+  'gsdActivity.roleAssistant': 'Agent',
+  'gsdActivity.patchApplied': 'File change applied.',
   'prefs.limitResetNotify': 'Limit reset alerts',
   'prefs.limitResetNotifyDesc':
     'Notify when a Claude or Codex usage window resets, showing which one.',
@@ -1124,6 +1131,13 @@ export const en = {
   'git.empty.noFolderDesc': 'The selected terminal does not have a working directory yet.',
   'git.empty.noTerminal': 'No terminal selected',
   'git.empty.noTerminalDesc': 'Open a project terminal to inspect its Git repository.',
+  'git.graph.title': 'Commit graph',
+  'git.graph.loading': 'Loading history…',
+  'git.graph.empty': 'No commits yet.',
+  'git.graph.timeNow': 'just now',
+  'git.graph.timeMinutes': '{count}m ago',
+  'git.graph.timeHours': '{count}h ago',
+  'git.graph.timeDays': '{count}d ago',
   'git.error.notFound': 'Git was not found',
   'git.error.notRepository': 'This folder is not a Git repository',
   'git.error.directory': 'The active folder is unavailable',

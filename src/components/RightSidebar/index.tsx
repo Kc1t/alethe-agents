@@ -12,20 +12,21 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { type GsdSyncSession, useGsdSyncSessions } from '../../hooks/useGsdSyncSessions'
 import { useT } from '../../lib/i18n'
-import type { Project, SubTab, Terminal } from '../../lib/types'
+import { basename } from '../../lib/paths'
 import {
+  type PlanningStatus,
   readPlanningStatus,
   readTextFile,
   writeClipboardText,
-  type PlanningStatus,
 } from '../../lib/tauri'
+import type { Project, SubTab, Terminal } from '../../lib/types'
 import { selectActiveProject, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { MarkdownRenderer } from '../MarkdownPane/MarkdownRenderer'
 import { EmptyState } from '../EmptyState'
+import { MarkdownRenderer } from '../MarkdownPane/MarkdownRenderer'
 import { GitControl } from '../ProjectSidebar/GitControl'
-import { DotmCircular2 } from '../ui/dotm-circular-2'
 import { TodoSidebar } from '../TodoSidebar'
+import { DotmCircular2 } from '../ui/dotm-circular-2'
 import styles from './RightSidebar.module.css'
 
 const markdownScrollPositions = new Map<string, number>()
@@ -86,7 +87,7 @@ export function RightSidebar() {
           <Sparkles size={14} />
           <span>{t('rightSidebar.gsdSyncTab')}</span>
         </button>
-        {preferences.enabledFeatures.git && preferences.gitControlPlacement === 'right' ? (
+        {preferences.enabledFeatures.git ? (
           <button
             type="button"
             role="tab"
@@ -119,7 +120,7 @@ export function RightSidebar() {
 function GsdSyncSidebarContent() {
   const t = useT()
   const activeProject = useProjectsStore(selectActiveProject)
-  const setFullscreenPane = useProjectsStore((state) => state.setFullscreenPane)
+  const setGsdSyncActivityView = useUiStore((state) => state.setGsdSyncActivityView)
   const sessions = useGsdSyncSessions()
   const projectSessions = activeProject
     ? sessions.filter((session) => session.projectId === activeProject.id)
@@ -138,39 +139,34 @@ function GsdSyncSidebarContent() {
   return (
     <div className={styles.gsdPanel}>
       <div className={styles.gsdList}>
-        {projectSessions.map((session) => {
-          const terminal = activeProject.terminals.find((term) => term.id === session.terminalId)
-          if (!terminal) return null
-          return (
-            <GsdSyncRow
-              key={session.id}
-              terminal={terminal}
-              session={session}
-              onOpen={() => setFullscreenPane(session.terminalId)}
-            />
-          )
-        })}
+        {projectSessions.map((session) => (
+          <GsdSyncRow
+            key={session.id}
+            session={session}
+            onOpen={() => {
+              const title = basename(session.worktreePath) || session.worktreePath
+              setGsdSyncActivityView({
+                worktreePath: session.worktreePath,
+                sessionId: session.childId,
+                title,
+              })
+            }}
+          />
+        ))}
       </div>
     </div>
   )
 }
 
-function GsdSyncRow({
-  terminal,
-  session,
-  onOpen,
-}: {
-  terminal: Terminal
-  session: GsdSyncSession
-  onOpen: () => void
-}) {
+function GsdSyncRow({ session, onOpen }: { session: GsdSyncSession; onOpen: () => void }) {
   const t = useT()
   const [status, setStatus] = useState<PlanningStatus | null>(null)
+  const name = basename(session.worktreePath) || session.worktreePath
 
   useEffect(() => {
-    if (!terminal.cwd) return
+    if (!session.worktreePath) return
     let cancelled = false
-    readPlanningStatus(terminal.cwd)
+    readPlanningStatus(session.worktreePath)
       .then((result) => {
         if (!cancelled) setStatus(result)
       })
@@ -180,7 +176,7 @@ function GsdSyncRow({
     return () => {
       cancelled = true
     }
-  }, [terminal.cwd, session.busy])
+  }, [session.worktreePath, session.busy])
 
   const statusLabel = session.hasError
     ? t('todo.gsdError')
@@ -196,7 +192,7 @@ function GsdSyncRow({
       : null
 
   return (
-    <button type="button" className={styles.gsdRow} onClick={onOpen} title={terminal.name}>
+    <button type="button" className={styles.gsdRow} onClick={onOpen} title={name}>
       <span className={styles.gsdRowState}>
         {session.hasError ? (
           <span className={styles.gsdErrorDot} />
@@ -214,7 +210,7 @@ function GsdSyncRow({
         )}
       </span>
       <span className={styles.gsdRowBody}>
-        <span className={styles.gsdRowName}>{terminal.name}</span>
+        <span className={styles.gsdRowName}>{name}</span>
         <span className={styles.gsdRowMeta}>{progressLabel ?? statusLabel}</span>
       </span>
     </button>

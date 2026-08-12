@@ -96,3 +96,100 @@ export type OpenCodeSessionSnapshot = {
 export async function snapshotOpenCodeSessions(cwd: string): Promise<OpenCodeSessionSnapshot[]> {
   return invoke<OpenCodeSessionSnapshot[]>('snapshot_opencode_sessions', { cwd })
 }
+
+/** Histórico estruturado de uma sessão do OpenCode (`opencode export <id>`) —
+ *  usado pra renderizar a sessão-filha do GSD Sync como feed de atividade
+ *  somente-leitura, sem terminal PTY nenhum no caminho. O schema de `parts`
+ *  tem (e provavelmente vai ganhar mais) vários `type`s — os conhecidos hoje
+ *  têm tipo próprio pra renderização dedicada; qualquer outro cai no
+ *  fallback genérico sem quebrar. */
+export type OpenCodeExportPartBase = {
+  id: string
+  sessionID: string
+  messageID: string
+}
+
+export type OpenCodeExportTextPart = OpenCodeExportPartBase & { type: 'text'; text: string }
+
+export type OpenCodeExportReasoningPart = OpenCodeExportPartBase & {
+  type: 'reasoning'
+  text?: string
+}
+
+export type OpenCodeExportToolPart = OpenCodeExportPartBase & {
+  type: 'tool'
+  tool: string
+  callID: string
+  state: {
+    status: string
+    input?: Record<string, unknown>
+    output?: string
+    time?: { start?: number; end?: number }
+  }
+}
+
+export type OpenCodeExportPatchPart = OpenCodeExportPartBase & {
+  type: 'patch'
+  hash?: string
+  files?: Record<string, unknown>
+}
+
+export type OpenCodeExportStepPart = {
+  type: 'step-start' | 'step-finish'
+  reason?: string
+  tokens?: { input?: number; output?: number; total?: number }
+}
+
+/** `type`s conhecidos hoje têm variante própria acima (renderização
+ *  dedicada); qualquer outro `type` que a API venha a introduzir no futuro
+ *  não quebra o typecheck — cai fora da união e o renderizador (que checa
+ *  `part.type` em runtime, não confia só no tipo estático) simplesmente
+ *  ignora, sem crashar. Não incluímos um membro catch-all `{ type: string }`
+ *  aqui de propósito: com `type` amplo como `string` ele nunca é excluído
+ *  pelo narrowing do TypeScript nas outras variantes (todas ficam com esse
+ *  membro "grudado" na união depois de qualquer `if (part.type === ...)`). */
+export type OpenCodeExportPart =
+  | OpenCodeExportTextPart
+  | OpenCodeExportReasoningPart
+  | OpenCodeExportToolPart
+  | OpenCodeExportPatchPart
+  | OpenCodeExportStepPart
+
+export type OpenCodeExportMessage = {
+  info: {
+    role: 'user' | 'assistant'
+    time: { created: number; completed?: number }
+    agent?: string
+    model?: { providerID?: string; modelID?: string }
+    id: string
+    sessionID: string
+  }
+  parts: OpenCodeExportPart[]
+}
+
+export type OpenCodeExportSession = {
+  info: {
+    id: string
+    slug?: string
+    title?: string
+    agent?: string
+    model?: { id?: string; providerID?: string; variant?: string }
+    version?: string
+    tokens?: {
+      input: number
+      output: number
+      reasoning?: number
+      cache?: { read: number; write: number }
+    }
+    cost?: number
+    time: { created: number; updated: number }
+  }
+  messages: OpenCodeExportMessage[]
+}
+
+export async function opencodeExportSession(
+  cwd: string,
+  sessionId: string,
+): Promise<OpenCodeExportSession> {
+  return invoke<OpenCodeExportSession>('opencode_export_session', { cwd, sessionId })
+}

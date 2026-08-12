@@ -365,6 +365,13 @@ export const ptBR: Record<MessageKey, string> = {
   'todo.gsdIdle': 'Ociosa',
   'todo.gsdError': 'Erro',
   'todo.gsdProgress': '{done}/{total} tarefas',
+
+  /* ---- Feed de atividade do GSD Sync (visão "subagente" somente leitura) ---- */
+  'gsdActivity.loading': 'Carregando atividade…',
+  'gsdActivity.tokens': '{count} tokens',
+  'gsdActivity.roleUser': 'Instrução',
+  'gsdActivity.roleAssistant': 'Agente',
+  'gsdActivity.patchApplied': 'Alteração de arquivo aplicada.',
   'prefs.limitResetNotify': 'Avisos de reset de limite',
   'prefs.limitResetNotifyDesc':
     'Notifica quando uma janela de uso do Claude ou Codex reseta, mostrando qual.',
@@ -1137,6 +1144,13 @@ export const ptBR: Record<MessageKey, string> = {
   'git.empty.noFolderDesc': 'O terminal selecionado ainda não possui um diretório de trabalho.',
   'git.empty.noTerminal': 'Nenhum terminal selecionado',
   'git.empty.noTerminalDesc': 'Abra um terminal de projeto para inspecionar seu repositório Git.',
+  'git.graph.title': 'Gráfico de commits',
+  'git.graph.loading': 'Carregando histórico…',
+  'git.graph.empty': 'Nenhum commit ainda.',
+  'git.graph.timeNow': 'agora mesmo',
+  'git.graph.timeMinutes': 'há {count}min',
+  'git.graph.timeHours': 'há {count}h',
+  'git.graph.timeDays': 'há {count}d',
   'git.error.notFound': 'Git não foi encontrado',
   'git.error.notRepository': 'Esta pasta não é um repositório Git',
   'git.error.directory': 'A pasta ativa não está disponível',

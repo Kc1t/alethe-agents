@@ -809,6 +809,86 @@ pub async fn git_diff_summary(
     .map_err(|error| format!("git_diff_summary: falha na task bloqueante: {error}"))?
 }
 
+/// Um commit do histórico, pro gráfico de commits do painel de Controle de
+/// versão — o cálculo de raia/coluna (lane) é sempre client-side (o próprio
+/// `git log` não devolve coordenadas de gráfico prontas; VSCode/gitk fazem o
+/// mesmo cálculo no cliente a partir de hash→pais), então aqui só devolvemos
+/// os dados crus.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitEntry {
+    pub hash: String,
+    pub parents: Vec<String>,
+    pub author_name: String,
+    pub author_email: String,
+    /// Segundos desde epoch (`%at`, o mesmo formato de `git log`).
+    pub timestamp: i64,
+    pub subject: String,
+    /// Branches/tags apontando pra este commit (`%D`), vazio quando nenhuma.
+    pub refs: Vec<String>,
+}
+
+/// Separador de campo improvável de aparecer em nome/e-mail/assunto de
+/// commit — mesmo problema do `-z` do `git diff --name-status` acima, só que
+/// aqui `-z` trocaria também o separador ENTRE commits, e `%s` (assunto) já é
+/// garantidamente uma linha só pela própria convenção do git, então um
+/// separador de campo simples (não-NUL) com quebra de linha normal entre
+/// commits já resolve sem ambiguidade.
+const LOG_GRAPH_FIELD_SEP: char = '\u{1f}';
+
+fn git_log_graph_inner(repo: String, max_count: u32) -> Result<Vec<GitCommitEntry>, String> {
+    let root = repository_root(&repo)?;
+    let max_count_arg = format!("--max-count={max_count}");
+    let format_arg = format!(
+        "--format=%H{sep}%P{sep}%an{sep}%ae{sep}%at{sep}%s{sep}%D",
+        sep = LOG_GRAPH_FIELD_SEP
+    );
+    let output = checked_output(&root, &["log", "--all", &max_count_arg, &format_arg])?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    let entries = stdout
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(|line| {
+            let mut fields = line.split(LOG_GRAPH_FIELD_SEP);
+            let hash = fields.next()?.to_string();
+            let parents = fields
+                .next()?
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect();
+            let author_name = fields.next()?.to_string();
+            let author_email = fields.next()?.to_string();
+            let timestamp = fields.next()?.trim().parse().ok()?;
+            let subject = fields.next()?.to_string();
+            let refs_raw = fields.next().unwrap_or("").trim();
+            let refs = if refs_raw.is_empty() {
+                Vec::new()
+            } else {
+                refs_raw.split(", ").map(|s| s.trim().to_string()).collect()
+            };
+            Some(GitCommitEntry {
+                hash,
+                parents,
+                author_name,
+                author_email,
+                timestamp,
+                subject,
+                refs,
+            })
+        })
+        .collect();
+
+    Ok(entries)
+}
+
+#[tauri::command]
+pub async fn git_log_graph(repo: String, max_count: u32) -> Result<Vec<GitCommitEntry>, String> {
+    tokio::task::spawn_blocking(move || git_log_graph_inner(repo, max_count))
+        .await
+        .map_err(|error| format!("git_log_graph: falha na task bloqueante: {error}"))?
+}
+
 fn git_pull_inner(repo_root: String) -> Result<String, String> {
     let root = validated_root(&repo_root)?;
     // --ff-only evita merge commit/conflito surpresa: se a branch divergiu, erra
