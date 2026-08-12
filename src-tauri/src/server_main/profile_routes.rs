@@ -2,7 +2,7 @@
 // direto (toda função de lá recebe `tauri::AppHandle` pra resolver
 // `app_data_dir()`, e `alethe-server` não tem runtime do Tauri nenhum
 // rodando). Resolve o mesmo diretório manualmente, do mesmo jeito que o
-// Tauri resolveria no Windows (`%LOCALAPPDATA%\com.kc1t.alethe`), e lê/escreve
+// Tauri resolveria no Windows (`%LOCALAPPDATA%\<identifier>`), e lê/escreve
 // os MESMOS arquivos em disco — por isso fica sincronizado com o Desktop sem
 // precisar reimplementar toda a lógica de `AppHandle`.
 
@@ -16,11 +16,26 @@ use std::path::PathBuf;
 
 use crate::AppError;
 
+/// `npm run app` roda com `src-tauri/tauri.dev.json`, que troca o identifier
+/// pra `com.kc1t.alethe.dev` (não `com.kc1t.alethe`, o de produção) — sem
+/// essa mesma troca aqui, `alethe-server` e o Desktop em dev liam
+/// `%LOCALAPPDATA%` de pastas DIFERENTES, cada um enxergando um conjunto de
+/// perfis distinto (confirmado ao vivo: web via o perfil certo, Desktop dev
+/// achava que não tinha perfil nenhum e oferecia criar um novo). Variável de
+/// ambiente `ALETHE_APP_IDENTIFIER` permite apontar pra produção
+/// (`com.kc1t.alethe`) quando não for mais um `npm run app` de dev.
+const DEFAULT_APP_IDENTIFIER: &str = "com.kc1t.alethe.dev";
+
+fn app_identifier() -> String {
+    std::env::var("ALETHE_APP_IDENTIFIER").unwrap_or_else(|_| DEFAULT_APP_IDENTIFIER.to_string())
+}
+
 fn app_local_data_dir() -> PathBuf {
+    let identifier = app_identifier();
     if let Ok(v) = std::env::var("LOCALAPPDATA") {
-        PathBuf::from(v).join("com.kc1t.alethe")
+        PathBuf::from(v).join(&identifier)
     } else if let Ok(v) = std::env::var("APPDATA") {
-        PathBuf::from(v).join("com.kc1t.alethe")
+        PathBuf::from(v).join(&identifier)
     } else if let Ok(v) = std::env::var("USERPROFILE") {
         PathBuf::from(v).join(".alethe")
     } else {

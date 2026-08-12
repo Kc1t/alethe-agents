@@ -183,7 +183,10 @@ export function GitGraph({ repoRoot, onMutated }: { repoRoot: string; onMutated?
     )
   }, [commits, searchQuery])
 
-  const rows = useMemo(() => (filteredCommits ? assignLanes(filteredCommits) : []), [filteredCommits])
+  const rows = useMemo(
+    () => (filteredCommits ? assignLanes(filteredCommits) : []),
+    [filteredCommits],
+  )
 
   // Largura de raia GLOBAL pro grafo inteiro (não por linha) — cada linha
   // precisa começar o texto na MESMA posição X, senão a raia de passagem de
@@ -252,10 +255,7 @@ export function GitGraph({ repoRoot, onMutated }: { repoRoot: string; onMutated?
       label: t('git.graph.menu.cherryPick'),
       icon: <GitCommitVertical size={13} />,
       onClick: () => {
-        void runAction(
-          () => gitCherryPickCommit(repoRoot, hash),
-          'git.graph.menu.cherryPicked',
-        )
+        void runAction(() => gitCherryPickCommit(repoRoot, hash), 'git.graph.menu.cherryPicked')
       },
     },
     {
@@ -272,10 +272,7 @@ export function GitGraph({ repoRoot, onMutated }: { repoRoot: string; onMutated?
       label: t('git.graph.menu.resetSoft'),
       icon: <RotateCcw size={13} />,
       onClick: () => {
-        void runAction(
-          () => gitResetToCommit(repoRoot, hash, 'soft'),
-          'git.graph.menu.resetDone',
-        )
+        void runAction(() => gitResetToCommit(repoRoot, hash, 'soft'), 'git.graph.menu.resetDone')
       },
     },
     {
@@ -283,10 +280,7 @@ export function GitGraph({ repoRoot, onMutated }: { repoRoot: string; onMutated?
       label: t('git.graph.menu.resetMixed'),
       icon: <RotateCcw size={13} />,
       onClick: () => {
-        void runAction(
-          () => gitResetToCommit(repoRoot, hash, 'mixed'),
-          'git.graph.menu.resetDone',
-        )
+        void runAction(() => gitResetToCommit(repoRoot, hash, 'mixed'), 'git.graph.menu.resetDone')
       },
     },
     {
@@ -295,10 +289,7 @@ export function GitGraph({ repoRoot, onMutated }: { repoRoot: string; onMutated?
       icon: <RotateCcw size={13} />,
       onClick: () => {
         if (window.confirm(t('git.graph.menu.resetHardConfirm'))) {
-          void runAction(
-            () => gitResetToCommit(repoRoot, hash, 'hard'),
-            'git.graph.menu.resetDone',
-          )
+          void runAction(() => gitResetToCommit(repoRoot, hash, 'hard'), 'git.graph.menu.resetDone')
         }
       },
     },
@@ -306,7 +297,14 @@ export function GitGraph({ repoRoot, onMutated }: { repoRoot: string; onMutated?
 
   return (
     <section className={styles.group}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: '4px' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingRight: '4px',
+        }}
+      >
         <button
           type="button"
           className={styles.groupHeader}
@@ -315,7 +313,9 @@ export function GitGraph({ repoRoot, onMutated }: { repoRoot: string; onMutated?
           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           <GitCommitHorizontal size={13} />
           <strong>{t('git.graph.title')}</strong>
-          {commits ? <span style={{ opacity: 0.6, fontSize: '11px' }}>({filteredCommits.length})</span> : null}
+          {commits ? (
+            <span style={{ opacity: 0.6, fontSize: '11px' }}>({filteredCommits.length})</span>
+          ) : null}
         </button>
         {open ? (
           <button
@@ -324,7 +324,12 @@ export function GitGraph({ repoRoot, onMutated }: { repoRoot: string; onMutated?
             onClick={reload}
             title={t('git.graph.refresh')}
             aria-label={t('git.graph.refresh')}
-            style={{ background: 'transparent', border: 'none', color: 'var(--fg-muted)', cursor: 'pointer' }}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--fg-muted)',
+              cursor: 'pointer',
+            }}
           >
             <RotateCcw size={12} />
           </button>
@@ -334,7 +339,16 @@ export function GitGraph({ repoRoot, onMutated }: { repoRoot: string; onMutated?
       {open ? (
         <div className={styles.body}>
           <div style={{ padding: '0 4px 6px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: '4px', padding: '2px 6px' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                background: 'var(--panel)',
+                border: '1px solid var(--border)',
+                borderRadius: '4px',
+                padding: '2px 6px',
+              }}
+            >
               <Search size={11} style={{ color: 'var(--fg-faint)', marginRight: '4px' }} />
               <input
                 type="text"
@@ -525,7 +539,12 @@ function GraphRowView({
         onOpenMenu(e.clientX, e.clientY)
       }}
     >
-      <svg className={styles.svg} width={laneCount * LANE_WIDTH} height={ROW_HEIGHT} aria-hidden="true">
+      <svg
+        className={styles.svg}
+        width={laneCount * LANE_WIDTH}
+        height={ROW_HEIGHT}
+        aria-hidden="true"
+      >
         {elements}
         {/* Ponto/Nó principal do commit — raia principal ganha um raio maior,
             mesma lógica de hierarquia visual do traço mais grosso. */}

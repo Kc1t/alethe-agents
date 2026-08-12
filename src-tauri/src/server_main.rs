@@ -1,7 +1,9 @@
 // Servidor Web standalone do Alethe — expõe via HTTP/WebSocket (porta 1423)
 // o mesmo backend que o app desktop usa via Tauri IPC, compartilhando
-// `%LOCALAPPDATA%\com.kc1t.alethe` (perfis/projects.json) 100% sincronizado
-// com a versão Desktop.
+// `%LOCALAPPDATA%\<identifier>` (perfis/projects.json) 100% sincronizado com
+// a versão Desktop — o identifier padrão é `com.kc1t.alethe.dev`, o mesmo
+// que `npm run app` usa via `tauri.dev.json` (ver `ALETHE_APP_IDENTIFIER`
+// em `server_main/profile_routes.rs`).
 //
 // Reaproveita a lógica de negócio de verdade sempre que possível — a maioria
 // dos módulos em `lib.rs` foi tornada `pub` justamente pra isso. Módulos que
