@@ -569,6 +569,28 @@ export function useXtermSession(params: {
     }
     container.addEventListener('paste', onPaste)
 
+    const onContextMenu = (event: MouseEvent) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (readOnly) return
+
+      if (terminal.hasSelection()) {
+        const selection = terminal.getSelection()
+        if (selection) {
+          void writeClipboardText(selection).catch(() => navigator.clipboard?.writeText(selection))
+          terminal.clearSelection()
+        }
+      } else {
+        void resolveClipboardPaste()
+          .catch(() => navigator.clipboard?.readText() ?? '')
+          .then(pasteText)
+          .catch(() => {
+            terminal.focus()
+          })
+      }
+    }
+    container.addEventListener('contextmenu', onContextMenu)
+
     const flushInput = () => {
       inputFlushScheduled = false
       if (disposed || !queuedInput) return
@@ -1395,6 +1417,7 @@ export function useXtermSession(params: {
       container.removeEventListener('pointerdown', focusTerminal, true)
       container.removeEventListener('click', focusTerminal)
       container.removeEventListener('paste', onPaste)
+      container.removeEventListener('contextmenu', onContextMenu)
       window.removeEventListener('focus', restoreHoveredFocus)
       document.removeEventListener('visibilitychange', restoreHoveredFocus)
       window.removeEventListener('alethe:zoom-changed', onZoomChanged)

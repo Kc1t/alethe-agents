@@ -10,6 +10,10 @@ Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
 
 ## [Não lançado]
 
+### Adicionado
+
+- **Colar conteúdo do portapapeles via clique direito no terminal (`XTermView`).** Clicar com o botão direito sobre o painel do terminal sem texto selecionado cola o conteúdo do portapapeles (texto, imagens e arquivos). Caso haja texto selecionado no terminal, o clique direito copia a seleção para o portapapeles e limpa o destaque.
+
 ### Alterado
 
 - Added a live Remote Control device counter to the topbar, with direct access to the connection panel.
