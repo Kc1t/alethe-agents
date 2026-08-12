@@ -836,20 +836,47 @@ pub struct GitCommitEntry {
 /// commits já resolve sem ambiguidade.
 const LOG_GRAPH_FIELD_SEP: char = '\u{1f}';
 
+/// Reconhece `alethe/agent-<id>` e `alethe/merge-<id>` (com ou sem prefixo de
+/// decoração como `HEAD -> `/`tag: `/`origin/`) — as branches efêmeras que o
+/// próprio Alethe cria e apaga nos fluxos de worktree/merge, nunca branches
+/// de verdade do ponto de vista do usuário.
+fn is_ephemeral_ref(raw: &str) -> bool {
+    let name = raw
+        .strip_prefix("HEAD -> ")
+        .or_else(|| raw.strip_prefix("tag: "))
+        .unwrap_or(raw);
+    let name = name.strip_prefix("origin/").unwrap_or(name);
+    name.starts_with("alethe/agent-") || name.starts_with("alethe/merge-")
+}
+
 fn git_log_graph_inner(repo: String, max_count: u32) -> Result<Vec<GitCommitEntry>, String> {
     let root = repository_root(&repo)?;
-    let max_count_arg = format!("--max-count={max_count}");
     let format_arg = format!(
         "--format=%H{sep}%P{sep}%an{sep}%ae{sep}%at{sep}%s{sep}%D",
         sep = LOG_GRAPH_FIELD_SEP
     );
-    // Sem `--all`: só o histórico da branch atual (HEAD), igual ao Source
-    // Control Graph do VSCode. `--all` incluía toda ref do repo, inclusive
-    // branches efêmeras de worktree/merge do próprio Alethe
-    // (`alethe/agent-op-*`, `alethe/merge-*`) — cada uma abria sua própria
-    // raia isolada sem nenhuma linha conectando, poluindo o gráfico com
-    // pontos soltos sem relação visual com o histórico principal.
-    let output = checked_output(&root, &["log", &max_count_arg, &format_arg])?;
+    // `--branches --tags` (não `--all`): mostra as branches/tags reais do
+    // usuário no gráfico — sem isso, o log cai pra só o histórico de HEAD e
+    // qualquer outra branch simplesmente some da interface. Os `--exclude`
+    // tiram só as branches EFÊMERAS que o próprio Alethe cria e descarta
+    // pros fluxos de worktree/merge (`alethe/agent-<id>`, `alethe/merge-<id>`
+    // — ver worktrees.rs/conflict_resolution.rs), que não são branches de
+    // verdade do ponto de vista do usuário e só poluíam o grafo com raias
+    // isoladas sem nenhuma linha conectando.
+    let mut args = vec![
+        "log",
+        "--exclude=refs/heads/alethe/agent-*",
+        "--exclude=refs/heads/alethe/merge-*",
+        "--branches",
+        "--tags",
+        &format_arg,
+    ];
+    let max_count_str;
+    if max_count > 0 {
+        max_count_str = format!("--max-count={max_count}");
+        args.push(&max_count_str);
+    }
+    let output = checked_output(&root, &args)?;
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     let entries = stdout
@@ -868,10 +895,21 @@ fn git_log_graph_inner(repo: String, max_count: u32) -> Result<Vec<GitCommitEntr
             let timestamp = fields.next()?.trim().parse().ok()?;
             let subject = fields.next()?.to_string();
             let refs_raw = fields.next().unwrap_or("").trim();
+            // `--exclude` só afeta quais commits o `log` PERCORRE, não a
+            // decoração (`%D`) de um commit que ainda é alcançável por outra
+            // ref incluída — se uma branch efêmera do Alethe aponta pro
+            // MESMO commit que já está em `main` (comum depois de um merge
+            // --ff-only, onde nenhum commit novo é criado), o nome dela
+            // continua aparecendo como badge mesmo excluída da travessia.
+            // Filtra de novo aqui, na decoração em si.
             let refs = if refs_raw.is_empty() {
                 Vec::new()
             } else {
-                refs_raw.split(", ").map(|s| s.trim().to_string()).collect()
+                refs_raw
+                    .split(", ")
+                    .map(|s| s.trim().to_string())
+                    .filter(|r| !is_ephemeral_ref(r))
+                    .collect()
             };
             Some(GitCommitEntry {
                 hash,

@@ -2,9 +2,9 @@ import { useEffect } from 'react'
 
 import {
   MAX_RECENT_PROJECT_TABS,
-  UI_ZOOM_LIMITS,
   selectActiveContainer,
   selectActiveProject,
+  UI_ZOOM_LIMITS,
   useProjectsStore,
 } from '../stores/projectsStore'
 import { useUiStore } from '../stores/uiStore'
@@ -38,6 +38,12 @@ export function useKeybindings() {
         (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
 
       const ctrl = e.ctrlKey || e.metaKey
+      if (ctrl && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+        e.preventDefault()
+        useUiStore.getState().openModal_('audit')
+        return
+      }
+
       if (ctrl && !e.altKey && isZoomKey(e)) {
         e.preventDefault()
         const projects = useProjectsStore.getState()

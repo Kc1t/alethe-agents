@@ -1174,8 +1174,12 @@ export const ptBR: Record<MessageKey, string> = {
   'git.graph.menu.resetMixed': 'Resetar branch aqui (mixed)',
   'git.graph.menu.resetHard': 'Resetar branch aqui (hard)',
   'git.graph.menu.resetHardConfirm':
-    'Isso descarta todas as alterações não commitadas e move a branch pra este commit. Não dá pra desfazer. Continuar?',
+    'O reset hard descartará TODAS as alterações não salvas da workspace. Continuar?',
   'git.graph.menu.resetDone': 'Branch resetada',
+  // Este foi feito para adicionar as chaves de busca e atualização do Grafo de Git no i18n em português
+  'git.graph.searchPlaceholder': 'Filtrar commits por mensagem, hash, autor ou ref…',
+  'git.graph.noSearchResults': 'Nenhum commit atende ao filtro de busca.',
+  'git.graph.refresh': 'Atualizar gráfico',
   'git.incomingOutgoing.title': 'Alterações a receber / enviar',
   'git.incomingOutgoing.loading': 'Carregando…',
   'git.incomingOutgoing.empty': 'Nada pra sincronizar.',

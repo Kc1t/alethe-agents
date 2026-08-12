@@ -5,6 +5,7 @@ import {
   Maximize2,
   Menu,
   Minus,
+  Newspaper,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -12,7 +13,6 @@ import {
   Pencil,
   Pin,
   RefreshCw,
-  Newspaper,
   Smartphone,
   Users,
   Workflow,
@@ -20,18 +20,18 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { ContextMenu, type MenuItem } from '../ProjectSidebar/ContextMenu'
-import { AntigravityIcon, ClaudeIcon, CodexIcon } from '../icons/AgentIcons'
-
+import { requestAppClose } from '../../hooks/useCloseConfirmation'
+import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
+import { isTauriEnv } from '../../lib/api/transport'
 import { getCachedClaudeUsage } from '../../lib/claudeUsageCache'
 import { getCachedCodexUsage } from '../../lib/codexUsageCache'
-import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
-import { requestAppClose } from '../../hooks/useCloseConfirmation'
-import { observeClaudeReset, observeCodexReset } from '../../lib/limitResetWatch'
 import { useT } from '../../lib/i18n'
+import { observeClaudeReset, observeCodexReset } from '../../lib/limitResetWatch'
 import { killPty, remoteControlInfo } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { AntigravityIcon, ClaudeIcon, CodexIcon } from '../icons/AgentIcons'
+import { ContextMenu, type MenuItem } from '../ProjectSidebar/ContextMenu'
 import styles from './TitleBar.module.css'
 
 const CLAUDE_POLL_INTERVAL_MS = 5 * 60_000
@@ -263,8 +263,7 @@ export function TitleBar() {
     }
   }, [setAntigravityUsage])
 
-  const win = getCurrentWindow()
-
+  const win = isTauriEnv() ? getCurrentWindow() : null
   // Rastreia foco/visibilidade da janela pra pausar o polling em background.
   useEffect(() => {
     const update = (focused: boolean) => {
@@ -274,11 +273,13 @@ export function TitleBar() {
     const onVisibility = () => update(document.hasFocus())
     document.addEventListener('visibilitychange', onVisibility)
     let unlisten: (() => void) | undefined
-    void win
-      .onFocusChanged(({ payload }) => update(payload))
-      .then((fn) => {
-        unlisten = fn
-      })
+    if (win) {
+      void win
+        .onFocusChanged(({ payload }) => update(payload))
+        .then((fn) => {
+          unlisten = fn
+        })
+    }
     return () => {
       document.removeEventListener('visibilitychange', onVisibility)
       unlisten?.()
@@ -287,7 +288,9 @@ export function TitleBar() {
 
   useEffect(() => {
     document.title = APP_TITLE
-    void win.setTitle(APP_TITLE)
+    if (win) {
+      void win.setTitle(APP_TITLE)
+    }
   }, [win])
 
   return (
@@ -307,6 +310,20 @@ export function TitleBar() {
       }
     >
       <div className={styles.barStart}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', paddingRight: '8px' }}>
+          <span
+            style={{
+              fontSize: '10px',
+              fontWeight: 600,
+              padding: '2px 6px',
+              borderRadius: '4px',
+              background: isTauriEnv() ? 'var(--agent-shell)' : 'var(--agent-antigravity)',
+              color: 'var(--bg)',
+            }}
+          >
+            {isTauriEnv() ? t('ui.titlebar.modeDesktop') : t('ui.titlebar.modeWebServer')}
+          </span>
+        </div>
         <button
           type="button"
           className={styles.iconBtn}
@@ -752,7 +769,7 @@ export function TitleBar() {
         <button
           type="button"
           className={styles.windowBtn}
-          onClick={() => void win.minimize()}
+          onClick={() => void win?.minimize()}
           title={t('ui.titlebar.minimize')}
           aria-label={t('ui.titlebar.minimize')}
         >
@@ -761,7 +778,7 @@ export function TitleBar() {
         <button
           type="button"
           className={styles.windowBtn}
-          onClick={() => void win.toggleMaximize()}
+          onClick={() => void win?.toggleMaximize()}
           title={t('ui.titlebar.maximize')}
           aria-label={t('ui.titlebar.maximize')}
         >

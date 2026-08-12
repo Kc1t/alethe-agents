@@ -11,6 +11,7 @@ import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { watchAndPersistDiscoveredSession } from '../../lib/agentSessionDiscovery'
+import { isTauriEnv } from '../../lib/api/transport'
 import { getLocale, translate } from '../../lib/i18n'
 import { isWindows } from '../../lib/platform'
 import { usePtyPanelVisible } from '../../lib/ptyVisibility'
@@ -685,28 +686,38 @@ export function useXtermSession(params: {
       const el = document.elementFromPoint(pos.x / dpr, pos.y / dpr)
       return !!el && container.contains(el)
     }
-    void getCurrentWebview()
-      .onDragDropEvent((event) => {
-        const p = event.payload
-        if (p.type === 'enter' || p.type === 'over') {
-          setDropActive(isOverThisPane(p.position))
-        } else if (p.type === 'leave') {
-          setDropActive(false)
-        } else if (p.type === 'drop') {
-          setDropActive(false)
-          if (isOverThisPane(p.position) && p.paths.length > 0) {
-            pasteText(formatDroppedPaths(p.paths))
-            terminal.focus()
+    // `getCurrentWebview()` lança síncrono (não rejeita a promise) fora de um
+    // runtime Tauri de verdade — lê `window.__TAURI_INTERNALS__.metadata`,
+    // que não existe no navegador puro. O `.catch()` abaixo nunca chegava a
+    // rodar nesse caso (a exceção acontece ANTES do `.onDragDropEvent(...)`
+    // poder ser encadeado), travando o efeito inteiro e derrubando o
+    // `<XTermView>` via ErrorBoundary a cada remount — o modo web nem tenta
+    // esse recurso (arrastar arquivo do SO não é algo que a API de
+    // drag-and-drop do próprio browser cobre da mesma forma).
+    if (isTauriEnv()) {
+      void getCurrentWebview()
+        .onDragDropEvent((event) => {
+          const p = event.payload
+          if (p.type === 'enter' || p.type === 'over') {
+            setDropActive(isOverThisPane(p.position))
+          } else if (p.type === 'leave') {
+            setDropActive(false)
+          } else if (p.type === 'drop') {
+            setDropActive(false)
+            if (isOverThisPane(p.position) && p.paths.length > 0) {
+              pasteText(formatDroppedPaths(p.paths))
+              terminal.focus()
+            }
           }
-        }
-      })
-      .then((un) => {
-        if (disposed) un()
-        else unlistenDragDrop = un
-      })
-      .catch(() => {
-        /* onDragDropEvent exige runtime Tauri; em browser puro/testes falha. */
-      })
+        })
+        .then((un) => {
+          if (disposed) un()
+          else unlistenDragDrop = un
+        })
+        .catch(() => {
+          /* onDragDropEvent exige runtime Tauri; em browser puro/testes falha. */
+        })
+    }
 
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') return true

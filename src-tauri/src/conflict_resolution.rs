@@ -401,7 +401,37 @@ pub(crate) fn merge_finalize_inner(
         .map(|output| !output.status.success())
         .unwrap_or(true);
     if has_staged_changes {
-        checked_output(&env, &["commit", "-m", &message])?;
+        // `ALETHE_CONFLICT.md` fica em disco (não-rastreado) desde ANTES do
+        // agente começar a trabalhar (escrito em `merge_prepare`, acima) —
+        // se o agente terminar a resolução com o padrão comum de "stagear
+        // tudo e commitar", esse arquivo vaza pro commit DELE sem querer
+        // (ele nem sabe que existe esse arquivo). A remoção logo acima
+        // (`validate_and_stage`) então fica staged aqui como uma remoção
+        // real — e sem essa checagem, isso sozinho já bastava pra criar um
+        // SEGUNDO commit inteiro só pra tirar 1 arquivo de apoio, duplicando
+        // visualmente cada resolução no gráfico (commit real do agente +
+        // commit genérico "merge(alethe): ..." sem nenhuma informação nova).
+        // Quando a ÚNICA mudança staged é exatamente essa remoção e já
+        // existe um commit anterior nesta branch (o do agente), emenda nele
+        // em vez de criar um commit novo — fast-forward ainda funciona igual,
+        // já que só usamos o HEAD atual da branch efêmera pra integrar.
+        let staged_files = git_command(&env, &["diff", "--cached", "--name-only"])
+            .map(|output| {
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let only_prompt_file_removed = staged_files == [PROMPT_FILE.to_string()];
+        let has_prior_commit = git_command(&env, &["rev-parse", "--verify", "-q", "HEAD"])
+            .map(|output| output.status.success())
+            .unwrap_or(false);
+        if only_prompt_file_removed && has_prior_commit {
+            checked_output(&env, &["commit", "--amend", "--no-edit"])?;
+        } else {
+            checked_output(&env, &["commit", "-m", &message])?;
+        }
     }
 
     // Integração: o branch alvo precisa estar checked out no repo do usuário e o

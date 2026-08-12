@@ -70,7 +70,10 @@ export default tseslint.config(
   },
   {
     // Wrappers de IPC — os únicos autorizados a chamar invoke() diretamente.
-    files: ['src/lib/tauri/**', 'src/lib/spotify.ts'],
+    // `lib/api/**` é o par web de `lib/tauri/**` (mesma função, decide em
+    // runtime via isTauriEnv() se chama invoke() ou faz fetch pro
+    // alethe-server) — mesma regra de centralização, só outro local.
+    files: ['src/lib/tauri/**', 'src/lib/api/**', 'src/lib/spotify.ts'],
     rules: { 'no-restricted-imports': 'off' },
   },
   {

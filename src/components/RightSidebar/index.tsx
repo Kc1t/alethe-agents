@@ -227,18 +227,26 @@ function GitSidebarContent({
   sidebarSubTab: SubTab | undefined
 }) {
   const t = useT()
+  // Prefere o cwd do terminal/sub-tab vivo quando existir (mais preciso —
+  // cobre worktree/subpasta) — mas o Controle de Versão sempre deveria
+  // funcionar com o projeto SELECIONADO, não exigir um terminal aberto. Sem
+  // esse fallback, um projeto sem nenhum terminal aberto nunca mostrava git
+  // nenhum mesmo estando selecionado.
+  const cwd = sidebarSubTab?.cwd || sidebarTerminal?.cwd || activeProject?.defaultCwd
+  const ptyId = sidebarSubTab && sidebarTerminal ? sidebarSubTab.ptyId : null
+  const terminalName = sidebarTerminal?.name ?? activeProject?.name ?? ''
   return (
     <section className={styles.gitPanel}>
       <header className={styles.panelHeader}>
         <GitBranch size={15} />
         <span>{t('ui.sidebar.sourceControl')}</span>
       </header>
-      {activeProject && sidebarTerminal && sidebarSubTab ? (
+      {activeProject && cwd ? (
         <GitControl
           projectId={activeProject.id}
-          cwd={sidebarSubTab.cwd || sidebarTerminal.cwd}
-          ptyId={sidebarSubTab.ptyId}
-          terminalName={sidebarTerminal.name}
+          cwd={cwd}
+          ptyId={ptyId}
+          terminalName={terminalName}
         />
       ) : (
         <div className={styles.gitEmpty}>

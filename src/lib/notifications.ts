@@ -1,9 +1,9 @@
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import {
   isPermissionGranted,
   requestPermission,
   sendNotification,
 } from '@tauri-apps/plugin-notification'
-import { getCurrentWindow } from '@tauri-apps/api/window'
 
 import { useUiStore } from '../stores/uiStore'
 import type { AgentType } from './types'
@@ -15,17 +15,22 @@ let permissionPromise: Promise<boolean> | null = null
  * banner in-app; quando false (alt-tab, minimizado, atrás de outra janela)
  * disparamos a notificação do SO. Nunca os dois — evita aviso duplicado.
  */
+import { isTauriEnv } from './api/transport'
+
 async function appInForeground(): Promise<boolean> {
-  try {
-    const win = getCurrentWindow()
-    const [focused, minimized] = await Promise.all([win.isFocused(), win.isMinimized()])
-    return focused && !minimized
-  } catch {
+  if (!isTauriEnv()) {
     try {
       return document.hasFocus()
     } catch {
       return true
     }
+  }
+  try {
+    const win = getCurrentWindow()
+    const [focused, minimized] = await Promise.all([win.isFocused(), win.isMinimized()])
+    return focused && !minimized
+  } catch {
+    return document.hasFocus()
   }
 }
 

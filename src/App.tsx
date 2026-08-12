@@ -47,6 +47,7 @@ import { useDiscordPresence } from './hooks/useDiscordPresence'
 import { useKeybindings } from './hooks/useKeybindings'
 import { useResourceSupervisor } from './hooks/useResourceSupervisor'
 import { startActivityTracker } from './lib/activityTracker'
+import { isTauriEnv } from './lib/api/transport'
 import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
 import { intlLocale, translate, useT } from './lib/i18n'
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
@@ -217,7 +218,7 @@ export default function App() {
   }, [uiTheme])
 
   useEffect(() => {
-    if (!hydrated) return
+    if (!hydrated || !isTauriEnv()) return
     void getCurrentWindow()
       .setIcon(getThemeIcon(appIconTheme))
       .catch(() => {
@@ -236,14 +237,18 @@ export default function App() {
   useEffect(() => {
     if (!hydrated) return
     document.documentElement.dataset.zoom = String(uiZoom)
-    void getCurrentWebview()
-      .setZoom(uiZoom)
-      .catch(() => {
-        /* Browser tests may not expose the Tauri permission. */
-      })
-      .finally(() => {
-        window.dispatchEvent(new CustomEvent('alethe:zoom-changed', { detail: { zoom: uiZoom } }))
-      })
+    if (isTauriEnv()) {
+      void getCurrentWebview()
+        .setZoom(uiZoom)
+        .catch(() => {
+          /* Browser tests may not expose the Tauri permission. */
+        })
+        .finally(() => {
+          window.dispatchEvent(new CustomEvent('alethe:zoom-changed', { detail: { zoom: uiZoom } }))
+        })
+    } else {
+      window.dispatchEvent(new CustomEvent('alethe:zoom-changed', { detail: { zoom: uiZoom } }))
+    }
   }, [hydrated, uiZoom])
 
   useEffect(() => {
@@ -317,7 +322,7 @@ export default function App() {
   )
 
   useEffect(() => {
-    if (!hydrated) return
+    if (!hydrated || !isTauriEnv()) return
     let cancelled = false
     void checkForUpdate()
       .then((info) => {

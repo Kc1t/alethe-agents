@@ -61,7 +61,7 @@ fn plugins_root(app: &AppHandle) -> Result<PathBuf, String> {
 
 // --- Core testável (sem AppHandle) -----------------------------------------
 
-fn list_in(root: &Path) -> Result<Vec<PluginManifest>, String> {
+pub fn list_in(root: &Path) -> Result<Vec<PluginManifest>, String> {
     let mut result = Vec::new();
     if !root.is_dir() {
         return Ok(result);
@@ -81,7 +81,7 @@ fn list_in(root: &Path) -> Result<Vec<PluginManifest>, String> {
     Ok(result)
 }
 
-fn install_in(root: &Path, manifest: &PluginManifest) -> Result<(), String> {
+pub fn install_in(root: &Path, manifest: &PluginManifest) -> Result<(), String> {
     validate_id(&manifest.id)?;
     if manifest.name.trim().is_empty() {
         return Err("invalid_plugin_name".to_string());
@@ -93,7 +93,7 @@ fn install_in(root: &Path, manifest: &PluginManifest) -> Result<(), String> {
     Ok(())
 }
 
-fn uninstall_in(root: &Path, id: &str) -> Result<(), String> {
+pub fn uninstall_in(root: &Path, id: &str) -> Result<(), String> {
     validate_id(id)?;
     let dir = root.join(id);
     if !dir.join(MANIFEST_FILE).is_file() {

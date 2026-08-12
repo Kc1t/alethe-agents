@@ -1161,8 +1161,12 @@ export const en = {
   'git.graph.menu.resetMixed': 'Reset branch here (mixed)',
   'git.graph.menu.resetHard': 'Reset branch here (hard)',
   'git.graph.menu.resetHardConfirm':
-    'This discards all uncommitted changes and moves the branch to this commit. This cannot be undone. Continue?',
+    'Hard reset will discard ALL unstaged and staged changes in your workspace. Continue?',
   'git.graph.menu.resetDone': 'Branch reset',
+  // Este foi feito para adicionar as chaves de busca e atualização do Grafo de Git no i18n em inglês
+  'git.graph.searchPlaceholder': 'Filter commits by subject, hash, author, or ref…',
+  'git.graph.noSearchResults': 'No commits match your filter.',
+  'git.graph.refresh': 'Refresh graph',
   'git.incomingOutgoing.title': 'Incoming / Outgoing changes',
   'git.incomingOutgoing.loading': 'Loading…',
   'git.incomingOutgoing.empty': 'Nothing to sync.',

@@ -1,13 +1,14 @@
 import {
   Download,
-  Network,
   FileArchive,
   FileText,
   FolderOpen,
   Layers,
+  Network,
   RefreshCw,
   ScrollText,
   Settings,
+  ShieldAlert,
   Sparkles,
   Sun,
   Trash2,
@@ -17,10 +18,9 @@ import { useRef } from 'react'
 
 import { useOnClickOutside } from '../../hooks/useOnClickOutside'
 import { useOnEscape } from '../../hooks/useOnEscape'
-
-import { useT } from '../../lib/i18n'
-import { AGENT_SANDBOX_ENABLED } from '../../lib/featureFlags'
 import { pickFile, saveFile } from '../../lib/dialog'
+import { AGENT_SANDBOX_ENABLED } from '../../lib/featureFlags'
+import { useT } from '../../lib/i18n'
 import {
   exportBackup,
   exportLogs,
@@ -112,6 +112,16 @@ export function MainMenu() {
         }}
       >
         <Network size={14} /> <span>{t('menu.remoteControl')}</span>
+      </button>
+      <button
+        type="button"
+        className={styles.item}
+        onClick={() => {
+          openModal('audit')
+          closeMainMenu()
+        }}
+      >
+        <ShieldAlert size={14} /> <span>Central de Auditoria</span>
       </button>
       {import.meta.env.DEV ? (
         <>

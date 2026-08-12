@@ -268,9 +268,14 @@ export function SidebarMergePanel() {
   // Sync). A pane "GSD Sync" NUNCA é aberta sozinha na grade normal do
   // projeto aqui; abrir é uma ação explícita do usuário só pela gaveta.
   useGsdSyncSessionsWatcher((_session, childError) => {
+    // Defesa: no modo web, uma rota de backend ainda não implementada
+    // devolve um JSON genérico `{status, path}` em vez do texto de erro real
+    // — sem essa checagem, `childError` vira um objeto e `.slice` explode em
+    // loop a cada poll (5s), inundando o console mesmo sem nenhum erro real.
+    const message = typeof childError === 'string' ? childError : JSON.stringify(childError)
     pushToast({
       title: t('merge.gsdChildErrorTitle'),
-      body: t('merge.gsdChildErrorBody', { error: childError.slice(0, 300) }),
+      body: t('merge.gsdChildErrorBody', { error: message.slice(0, 300) }),
     })
   })
 

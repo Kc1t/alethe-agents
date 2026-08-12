@@ -1,12 +1,12 @@
 import {
   DndContext,
+  type DragEndEvent,
   DragOverlay,
   PointerSensor,
   useDndContext,
   useDroppable,
   useSensor,
   useSensors,
-  type DragEndEvent,
 } from '@dnd-kit/core'
 import {
   Folder,
@@ -29,18 +29,18 @@ import { type Group, type Project } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
+import { SidebarNowPlaying } from '../SidebarNowPlaying'
+import { UserProfile } from '../UserProfile'
+import { ContextMenu, type MenuItem } from './ContextMenu'
 import { FileExplorer } from './FileExplorer'
 import { GitControl } from './GitControl'
 import { GroupNode } from './GroupNode'
 import { LayoutFooter, WorkspaceLayoutFooter } from './LayoutFooter'
 import { ProjectNode } from './ProjectNode'
+import styles from './ProjectSidebar.module.css'
 import { createSidebarMenus } from './sidebarMenus'
-import { SidebarNowPlaying } from '../SidebarNowPlaying'
-import { UserProfile } from '../UserProfile'
-import { ContextMenu, type MenuItem } from './ContextMenu'
 import { SidebarMergePanel } from './SidebarMergePanel'
 import { SidebarUpdate } from './SidebarUpdate'
-import styles from './ProjectSidebar.module.css'
 
 type ContextMenuState = { x: number; y: number; items: MenuItem[] } | null
 
@@ -155,6 +155,13 @@ export function ProjectSidebar() {
   const sidebarSubTab =
     sidebarTerminal?.tabs.find((tab) => tab.id === sidebarTerminal.activeTabId) ??
     sidebarTerminal?.tabs[0]
+  // Controle de Versão: prefere o cwd do terminal/sub-tab vivo (mais preciso
+  // — cobre worktree/subpasta), mas cai pra pasta padrão do projeto quando
+  // não há terminal aberto — o painel sempre deveria funcionar com o projeto
+  // SELECIONADO, não exigir um terminal aberto pra existir.
+  const gitCwd = sidebarSubTab?.cwd || sidebarTerminal?.cwd || activeProject?.defaultCwd
+  const gitPtyId = sidebarSubTab && sidebarTerminal ? sidebarSubTab.ptyId : null
+  const gitTerminalName = sidebarTerminal?.name ?? activeProject?.name ?? ''
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -513,12 +520,12 @@ export function ProjectSidebar() {
           <div className={styles.explorerHeader}>
             <span className={styles.explorerLabel}>{t('ui.sidebar.sourceControl')}</span>
           </div>
-          {sidebarTerminal && sidebarSubTab && activeProject ? (
+          {activeProject && gitCwd ? (
             <GitControl
               projectId={activeProject.id}
-              cwd={sidebarSubTab.cwd || sidebarTerminal.cwd}
-              ptyId={sidebarSubTab.ptyId}
-              terminalName={sidebarTerminal.name}
+              cwd={gitCwd}
+              ptyId={gitPtyId}
+              terminalName={gitTerminalName}
             />
           ) : (
             <div className={styles.explorerEmpty}>

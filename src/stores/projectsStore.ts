@@ -3,6 +3,7 @@ import { create } from 'zustand'
 
 import { setStorageNamespace } from '../lib/storageNamespace'
 import {
+  isTauriEnv,
   listProfiles,
   loadProjectsFile,
   type ProfileMeta,
@@ -718,39 +719,61 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
         active_profile_id: 'default',
         profiles: [],
       }
-      try {
-        profileState = await listProfiles()
-        setStorageNamespace(profileState.active_profile_id)
-      } catch (err) {
-        console.error('Falha ao carregar profiles.json — usando default', err)
-        setStorageNamespace('default')
+      let loadedProfilesSuccess = false
+      const maxRetries = isTauriEnv() ? 1 : 60
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          profileState = await listProfiles()
+          setStorageNamespace(profileState.active_profile_id)
+          loadedProfilesSuccess = true
+          break
+        } catch (err) {
+          if (attempt < maxRetries) {
+            console.log(
+              `[Alethe] Aguardando servidor Web iniciar (tentativa ${attempt}/${maxRetries})...`,
+            )
+            await new Promise((r) => setTimeout(r, 1500))
+          } else {
+            console.error('Falha ao carregar profiles.json — usando default', err)
+            setStorageNamespace('default')
+          }
+        }
       }
 
-      try {
-        const raw = await loadProjectsFile()
-        if (!raw) {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const raw = await loadProjectsFile()
+          if (!raw) {
+            set({
+              hydrated: true,
+              activeProfileId: profileState.active_profile_id,
+              profiles: profileState.profiles,
+            })
+            return
+          }
+          const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw
+          const migrated = migrate(parsed)
           set({
+            ...migrated,
             hydrated: true,
             activeProfileId: profileState.active_profile_id,
             profiles: profileState.profiles,
           })
           return
+        } catch (err) {
+          if (attempt < maxRetries && !loadedProfilesSuccess) {
+            await new Promise((r) => setTimeout(r, 1500))
+          } else {
+            console.error('Falha ao carregar projects.json — usando estado salvo', err)
+            set({
+              hydrated: true,
+              activeProfileId: profileState.active_profile_id,
+              profiles: profileState.profiles,
+            })
+            return
+          }
         }
-        const parsed = JSON.parse(raw)
-        const migrated = migrate(parsed)
-        set({
-          ...migrated,
-          hydrated: true,
-          activeProfileId: profileState.active_profile_id,
-          profiles: profileState.profiles,
-        })
-      } catch (err) {
-        console.error('Falha ao carregar projects.json — usando estado vazio', err)
-        set({
-          hydrated: true,
-          activeProfileId: profileState.active_profile_id,
-          profiles: profileState.profiles,
-        })
       }
     },
 
