@@ -42,25 +42,54 @@ fn empty_usage(status: &str, cli_path: String) -> AntigravityUsage {
     }
 }
 
-/// O `agy` guarda o envelope OAuth no Credential Manager usando o target
-/// literal `gemini:antigravity` — precisa de `new_with_target` porque
-/// `Entry::new(service, user)` monta o target como `"{user}.{service}"` no
-/// backend Windows do crate `keyring`, que nunca bate com o que o `agy`
-/// (binário Go) escreveu lá. Também usamos `get_secret` (bytes crus) em vez
-/// de `get_password`: este último sempre assume blob UTF-16LE (convenção do
-/// próprio crate ao gravar), mas o `agy` grava JSON em UTF-8 puro. Apenas o
-/// access token é mantido em memória durante a requisição; nunca
-/// persistimos nem registramos o segredo.
-fn discover_access_token() -> Option<String> {
-    let entry = keyring::Entry::new_with_target("gemini:antigravity", "gemini", "antigravity").ok()?;
-    let secret = String::from_utf8(entry.get_secret().ok()?).ok()?;
-    let value: serde_json::Value = serde_json::from_str(&secret).ok()?;
+fn parse_token_from_secret(secret: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(secret).ok()?;
     value
         .get("token")
         .and_then(|token| token.get("access_token"))
         .and_then(|token| token.as_str())
         .filter(|token| !token.is_empty())
         .map(str::to_owned)
+}
+
+fn extract_token_from_entry(entry: &keyring::Entry) -> Option<String> {
+    if let Ok(secret_bytes) = entry.get_secret() {
+        if let Ok(secret) = String::from_utf8(secret_bytes) {
+            if let Some(token) = parse_token_from_secret(&secret) {
+                return Some(token);
+            }
+        }
+    }
+    if let Ok(secret) = entry.get_password() {
+        if let Some(token) = parse_token_from_secret(&secret) {
+            return Some(token);
+        }
+    }
+    None
+}
+
+/// O `agy` guarda o envelope OAuth no Credential Manager (Windows) usando o
+/// target literal `gemini:antigravity`, enquanto no Linux (Secret Service) e
+/// macOS (Keychain) grava com service `gemini` e username `antigravity` sem
+/// target explícito. Testamos ambas as formas para compatibilidade cross-platform.
+/// Apenas o access token é mantido em memória durante a requisição; nunca
+/// persistimos nem registramos o segredo.
+fn discover_access_token() -> Option<String> {
+    // 1. Target literal `gemini:antigravity` (necessário no Windows Credential Manager)
+    if let Ok(entry) = keyring::Entry::new_with_target("gemini:antigravity", "gemini", "antigravity") {
+        if let Some(token) = extract_token_from_entry(&entry) {
+            return Some(token);
+        }
+    }
+
+    // 2. Entrada padrão service + user (Linux Secret Service / macOS Keychain)
+    if let Ok(entry) = keyring::Entry::new("gemini", "antigravity") {
+        if let Some(token) = extract_token_from_entry(&entry) {
+            return Some(token);
+        }
+    }
+
+    None
 }
 
 fn refresh_credential_with_agy(launcher: &std::path::Path) -> bool {
@@ -294,5 +323,33 @@ mod tests {
         let usage = parse_usage(&body, "agy.exe".to_string()).unwrap();
         assert_eq!(usage.used_percent, 99.95);
         assert!(usage.rate_limited);
+    }
+
+    #[test]
+    fn parses_access_token_from_secret_json() {
+        let secret = r#"{"token":{"access_token":"ya29.sample-token-123","token_type":"Bearer"},"auth_method":"consumer"}"#;
+        assert_eq!(
+            parse_token_from_secret(secret),
+            Some("ya29.sample-token-123".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_secret_json() {
+        assert_eq!(parse_token_from_secret("not-json"), None);
+        assert_eq!(parse_token_from_secret(r#"{"token":{}}"#), None);
+        assert_eq!(
+            parse_token_from_secret(r#"{"token":{"access_token":""}}"#),
+            None
+        );
+    }
+
+    #[test]
+    fn live_token_discovery_returns_option() {
+        // Doesn't panic in headless/any environment; returns Some if credentials exist in keyring.
+        let token = discover_access_token();
+        if let Some(tok) = token {
+            assert!(!tok.is_empty());
+        }
     }
 }

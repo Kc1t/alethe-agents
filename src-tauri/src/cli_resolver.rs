@@ -155,7 +155,18 @@ pub async fn find_cli_launcher(agent: String) -> Option<String> {
 pub fn find_windows_cli_launcher(command: &str) -> Option<PathBuf> {
     #[cfg(not(windows))]
     {
-        return which::which(command).ok();
+        if let Ok(path) = which::which(command) {
+            return Some(path);
+        }
+        if let Some(home) = env::var_os("HOME").map(PathBuf::from) {
+            for dir in [home.join(".local").join("bin"), home.join(".cargo").join("bin")] {
+                let candidate = dir.join(command);
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
+            }
+        }
+        return None;
     }
 
     #[cfg(windows)]
@@ -786,5 +797,12 @@ mod tests {
             split_windows_path_expanded(r"a;; b ;"),
             vec![PathBuf::from("a"), PathBuf::from("b")]
         );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn resolves_cli_launcher_on_unix() {
+        assert!(find_windows_cli_launcher("sh").is_some());
+        assert!(find_windows_cli_launcher("non_existent_binary_xyz_123").is_none());
     }
 }
