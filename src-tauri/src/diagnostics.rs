@@ -126,8 +126,7 @@ pub fn write_clipboard_text(text: String) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        let _ = text;
-        Err("clipboard backend indisponivel nesta plataforma".to_string())
+        macos_clipboard::write_text(&text)
     }
 }
 
@@ -145,7 +144,7 @@ pub fn read_clipboard_text() -> Result<String, String> {
 
     #[cfg(target_os = "macos")]
     {
-        Err("clipboard backend indisponivel nesta plataforma".to_string())
+        macos_clipboard::read_text()
     }
 }
 
@@ -175,7 +174,7 @@ pub fn read_clipboard_payload() -> Result<ClipboardPayload, String> {
 
     #[cfg(target_os = "macos")]
     {
-        Err("clipboard backend indisponivel nesta plataforma".to_string())
+        macos_clipboard::read_payload()
     }
 }
 
@@ -773,4 +772,48 @@ pub fn export_logs(app: AppHandle, target_path: String) -> Result<(), String> {
     }
     zip.finish().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+mod macos_clipboard {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    use super::ClipboardPayload;
+
+    pub fn write_text(text: &str) -> Result<(), String> {
+        let mut child = Command::new("pbcopy")
+            .stdin(Stdio::piped())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+        }
+
+        let status = child.wait().map_err(|e| e.to_string())?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err("pbcopy falhou".to_string())
+        }
+    }
+
+    pub fn read_text() -> Result<String, String> {
+        let output = Command::new("pbpaste").output().map_err(|e| e.to_string())?;
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        } else {
+            Err("pbpaste falhou".to_string())
+        }
+    }
+
+    pub fn read_payload() -> Result<ClipboardPayload, String> {
+        let text = read_text()?;
+        if text.trim().is_empty() {
+            Ok(ClipboardPayload::Empty)
+        } else {
+            Ok(ClipboardPayload::Text { text })
+        }
+    }
 }
