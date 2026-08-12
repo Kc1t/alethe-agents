@@ -230,7 +230,18 @@ export function getProjectDefaultCwd(
   projects: Project[] = [],
 ): string {
   if (!project) return ''
-  if (project.defaultCwd?.trim()) return project.defaultCwd.trim()
+  const stored = project.defaultCwd?.trim()
+  if (stored) {
+    // Ao contrário de `getProjectRepoRoot`, este era confiado direto sem
+    // nenhum filtro — se o projeto ficar sem nenhum terminal "puro" pra
+    // referenciar (todos isolados, ou todos apagados), `defaultCwd` pode
+    // ter sido gravado com um caminho de worktree/ambiente efêmero de uma
+    // sessão anterior. Confirmado ao vivo: modal "Adicionar terminal"
+    // sugerindo `.alethe\worktrees\<id>` como pasta padrão. Deriva a raiz
+    // real quando o valor guardado bate com esse padrão, em vez de expor
+    // o caminho efêmero direto na UI.
+    return deriveRepoRootFromWorktreeCwd(stored) || stored
+  }
   const candidates = [project]
   if (project.groupId) {
     candidates.push(...projects.filter((p) => p.id !== project.id && p.groupId === project.groupId))
@@ -248,14 +259,19 @@ export function getProjectDefaultCwd(
   return ''
 }
 
-/** Casa o segmento `.alethe/worktrees/` (Windows ou POSIX) em qualquer ponto
- *  do caminho — inclusive worktrees aninhadas, onde o match mais à esquerda
- *  ainda aponta pro segmento mais externo (a raiz real). */
-const ALETHE_WORKTREES_SEGMENT = /[\\/]\.alethe[\\/]worktrees[\\/]/i
+/** Casa o segmento `.alethe/worktrees/` OU `.alethe/merge-envs/` (Windows ou
+ *  POSIX) em qualquer ponto do caminho — inclusive worktrees aninhadas, onde
+ *  o match mais à esquerda ainda aponta pro segmento mais externo (a raiz
+ *  real). `merge-envs` é o ambiente EFÊMERO do agente de resolução de
+ *  conflito (`conflict_resolution.rs`) — mesma classe de "caminho isolado
+ *  sem representar a pasta principal do projeto" das worktrees normais. */
+const ALETHE_WORKTREES_SEGMENT = /[\\/]\.alethe[\\/](?:worktrees|merge-envs)[\\/]/i
 
-/** Deriva a raiz do repo a partir do cwd de uma worktree isolada, sem git:
- *  o próprio Alethe sempre cria worktrees em `<raiz>/.alethe/worktrees/<id>`
- *  (ver `worktrees_base` em `worktrees.rs`) — cortar nesse ponto devolve a
+/** Deriva a raiz do repo a partir do cwd de uma worktree/ambiente efêmero
+ *  isolado, sem git: o próprio Alethe sempre cria worktrees em
+ *  `<raiz>/.alethe/worktrees/<id>` (ver `worktrees_base` em `worktrees.rs`)
+ *  e ambientes de merge em `<raiz>/.alethe/merge-envs/<id>` (ver
+ *  `merge_envs_dir` em `merge_analyzer.rs`) — cortar nesse ponto devolve a
  *  raiz original, mesmo que o cwd seja de uma worktree aninhada. */
 function deriveRepoRootFromWorktreeCwd(cwd: string): string {
   const match = cwd.match(ALETHE_WORKTREES_SEGMENT)
