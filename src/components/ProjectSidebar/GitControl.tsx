@@ -14,24 +14,25 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { readableError } from '../../lib/errors'
-import { useT, type MessageKey } from '../../lib/i18n'
+import { type MessageKey, useT } from '../../lib/i18n'
 import {
   getPtyCwd,
   gitCommit,
   gitDiscard,
+  type GitFileChange,
   gitInit,
   gitPull,
   gitPush,
+  type GitRepositoryStatus,
   gitStage,
   gitStatus,
   gitUnstage,
-  type GitFileChange,
-  type GitRepositoryStatus,
 } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { GitGraph } from './GitGraph'
 import styles from './GitControl.module.css'
+import { GitGraph } from './GitGraph'
+import { IncomingOutgoing } from './IncomingOutgoing'
 
 type GitControlProps = {
   projectId: string
@@ -370,7 +371,8 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
         ) : null}
       </div>
 
-      <GitGraph repoRoot={status.repoRoot} />
+      <IncomingOutgoing repoRoot={status.repoRoot} ahead={status.ahead} behind={status.behind} />
+      <GitGraph repoRoot={status.repoRoot} onMutated={() => void refresh(true)} />
     </div>
   )
 }

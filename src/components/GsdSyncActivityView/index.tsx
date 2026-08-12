@@ -153,17 +153,37 @@ function MessageBlock({
   t: ReturnType<typeof useT>
 }) {
   const isUser = message.info.role === 'user'
+  const parts = message.parts.map((part, index) => (
+    <PartBlock key={`${message.info.id}-${index}`} part={part} t={t} />
+  ))
+
+  // Mensagens de usuário (instrução enviada PRA o agente) e do assistente
+  // (o que o agente de fato disse/fez) precisam ser inconfundíveis à
+  // primeira vista — antes as duas renderizavam como o mesmo bloco de texto
+  // plano, só com um label pequeno diferenciando. Agora: instrução vira um
+  // bloco recolhido por padrão (é tipicamente um preâmbulo longo repetido a
+  // cada rodada) com trilho neutro; a resposta do agente fica sempre
+  // expandida, com trilho colorido — a "linha do tempo" fica só de agente.
+  if (isUser) {
+    return (
+      <details className={styles.instructionBlock}>
+        <summary className={styles.instructionSummary}>
+          <User size={13} />
+          <span>{t('gsdActivity.roleUser')}</span>
+          <span className={styles.instructionHint}>{t('gsdActivity.instructionHint')}</span>
+        </summary>
+        <div className={styles.messageParts}>{parts}</div>
+      </details>
+    )
+  }
+
   return (
-    <section className={styles.message}>
-      <div className={styles.messageRole}>
-        {isUser ? <User size={13} /> : <Bot size={13} />}
-        <span>{isUser ? t('gsdActivity.roleUser') : t('gsdActivity.roleAssistant')}</span>
+    <section className={styles.agentMessage}>
+      <div className={styles.messageRoleAgent}>
+        <Bot size={13} />
+        <span>{t('gsdActivity.roleAssistant')}</span>
       </div>
-      <div className={styles.messageParts}>
-        {message.parts.map((part, index) => (
-          <PartBlock key={`${message.info.id}-${index}`} part={part} t={t} />
-        ))}
-      </div>
+      <div className={styles.messageParts}>{parts}</div>
     </section>
   )
 }

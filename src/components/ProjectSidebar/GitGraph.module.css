@@ -38,12 +38,23 @@
   color: var(--status-offline);
 }
 
+/* height precisa bater com ROW_HEIGHT em GitGraph.tsx. */
 .row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 28px;
+  gap: 6px;
+  height: 22px;
   overflow: hidden;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.row:hover {
+  background: var(--panel-hover);
+}
+
+.rowExpanded {
+  background: var(--accent-soft);
 }
 
 .svg {
@@ -86,4 +97,47 @@
   border: 1px solid var(--accent-border);
   color: var(--fg-muted);
   white-space: nowrap;
+}
+
+.filesPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 4px 8px 24px;
+}
+
+.filesLoading,
+.filesError {
+  margin: 2px 0;
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+
+.filesError {
+  color: var(--status-offline);
+}
+
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.fileStatus {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--fg-faint);
+}
+
+.fileName {
+  color: var(--fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

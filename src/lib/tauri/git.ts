@@ -99,6 +99,51 @@ export async function gitLogGraph(repo: string, maxCount: number): Promise<GitCo
   return invoke<GitCommitEntry[]>('git_log_graph', { repo, maxCount })
 }
 
+/** Arquivos alterados por um commit específico — alimenta o clique num nó do gráfico. */
+export async function gitShowCommitFiles(repo: string, hash: string): Promise<GitFileChange[]> {
+  return invoke<GitFileChange[]>('git_show_commit_files', { repo, hash })
+}
+
+export async function gitCreateBranchFromCommit(
+  repo: string,
+  hash: string,
+  branchName: string,
+): Promise<void> {
+  await invoke('git_create_branch_from_commit', { repo, hash, branchName })
+}
+
+/** Devolve a saída (stdout) do `git cherry-pick` — usado só pra feedback, o commit já
+ *  aconteceu no repo quando a promise resolve. */
+export async function gitCherryPickCommit(repo: string, hash: string): Promise<string> {
+  return invoke<string>('git_cherry_pick_commit', { repo, hash })
+}
+
+export async function gitRevertCommit(repo: string, hash: string): Promise<string> {
+  return invoke<string>('git_revert_commit', { repo, hash })
+}
+
+export type GitResetMode = 'soft' | 'mixed' | 'hard'
+
+/** `--hard` descarta trabalho não commitado — sempre confirmar com o usuário antes de chamar. */
+export async function gitResetToCommit(
+  repo: string,
+  hash: string,
+  mode: GitResetMode,
+): Promise<void> {
+  await invoke('git_reset_to_commit', { repo, hash, mode })
+}
+
+export type IncomingOutgoing = {
+  incoming: GitFileChange[]
+  outgoing: GitFileChange[]
+  hasUpstream: boolean
+}
+
+/** Arquivos que mudariam com um `pull`/`push` — diff de `HEAD` contra `@{upstream}` nos dois sentidos. */
+export async function gitIncomingOutgoing(repo: string): Promise<IncomingOutgoing> {
+  return invoke<IncomingOutgoing>('git_incoming_outgoing', { repo })
+}
+
 // --- RFC-003 — Worktrees ---
 
 export type WorktreeMode = 'gitWorktree' | 'localCopy'

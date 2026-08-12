@@ -843,7 +843,13 @@ fn git_log_graph_inner(repo: String, max_count: u32) -> Result<Vec<GitCommitEntr
         "--format=%H{sep}%P{sep}%an{sep}%ae{sep}%at{sep}%s{sep}%D",
         sep = LOG_GRAPH_FIELD_SEP
     );
-    let output = checked_output(&root, &["log", "--all", &max_count_arg, &format_arg])?;
+    // Sem `--all`: só o histórico da branch atual (HEAD), igual ao Source
+    // Control Graph do VSCode. `--all` incluía toda ref do repo, inclusive
+    // branches efêmeras de worktree/merge do próprio Alethe
+    // (`alethe/agent-op-*`, `alethe/merge-*`) — cada uma abria sua própria
+    // raia isolada sem nenhuma linha conectando, poluindo o gráfico com
+    // pontos soltos sem relação visual com o histórico principal.
+    let output = checked_output(&root, &["log", &max_count_arg, &format_arg])?;
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     let entries = stdout
@@ -887,6 +893,229 @@ pub async fn git_log_graph(repo: String, max_count: u32) -> Result<Vec<GitCommit
     tokio::task::spawn_blocking(move || git_log_graph_inner(repo, max_count))
         .await
         .map_err(|error| format!("git_log_graph: falha na task bloqueante: {error}"))?
+}
+
+// --- Ações por commit do gráfico (menu de contexto) ---
+
+/// Só aceita hash hexadecimal — recusa qualquer coisa que pareça uma flag
+/// (`-...`) ou ref arbitrária, já que este valor sempre deveria vir de um
+/// `hash` que NÓS geramos via `git log` (git_log_graph), nunca digitado
+/// livremente pelo usuário. Defesa em profundidade contra injeção de
+/// argumento nos comandos abaixo (alguns são destrutivos: reset --hard).
+fn validate_commit_hash(hash: &str) -> Result<(), String> {
+    if hash.is_empty() || hash.len() > 40 || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("invalid_commit_hash".to_string());
+    }
+    Ok(())
+}
+
+/// Recusa nome de branch vazio, que pareça uma flag, ou com espaço/controle
+/// — mesma defesa em profundidade do hash acima.
+fn validate_branch_name(name: &str) -> Result<(), String> {
+    if name.is_empty()
+        || name.starts_with('-')
+        || name.chars().any(|c| c.is_whitespace() || c.is_control())
+    {
+        return Err("invalid_branch_name".to_string());
+    }
+    Ok(())
+}
+
+/// Parseia a saída de `--name-status -z` (git diff/diff-tree) em
+/// `GitFileChange` — mesmo formato usado por `git_status`/`git_diff_summary`,
+/// extraído aqui pra ser reaproveitado pelas 3 funções novas abaixo
+/// (arquivos de um commit, incoming, outgoing) sem duplicar o parsing.
+fn parse_name_status_z(raw: &[u8]) -> Vec<GitFileChange> {
+    let text = String::from_utf8_lossy(raw);
+    let fields: Vec<&str> = text.split('\0').filter(|s| !s.is_empty()).collect();
+    let mut entries = Vec::new();
+    let mut i = 0;
+    while i < fields.len() {
+        let status = fields[i].chars().next().unwrap_or('M').to_string();
+        i += 1;
+        if i >= fields.len() {
+            break;
+        }
+        let mut path = fields[i].to_string();
+        i += 1;
+        let mut original_path = None;
+        if status.starts_with('R') || status.starts_with('C') {
+            if i >= fields.len() {
+                break;
+            }
+            original_path = Some(path.clone());
+            path = fields[i].to_string();
+            i += 1;
+        }
+        entries.push(GitFileChange {
+            path,
+            original_path,
+            status,
+        });
+    }
+    entries
+}
+
+fn git_show_commit_files_inner(
+    repo_root: String,
+    hash: String,
+) -> Result<Vec<GitFileChange>, String> {
+    let root = repository_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    // `--root` cobre o commit raiz (sem pai), que `diff-tree` sozinho ignora.
+    let output = checked_output(
+        &root,
+        &[
+            "diff-tree",
+            "--no-commit-id",
+            "--name-status",
+            "-r",
+            "--root",
+            "-z",
+            &hash,
+        ],
+    )?;
+    Ok(parse_name_status_z(&output.stdout))
+}
+
+#[tauri::command]
+pub async fn git_show_commit_files(
+    repo: String,
+    hash: String,
+) -> Result<Vec<GitFileChange>, String> {
+    tokio::task::spawn_blocking(move || git_show_commit_files_inner(repo, hash))
+        .await
+        .map_err(|error| format!("git_show_commit_files: falha na task bloqueante: {error}"))?
+}
+
+fn git_create_branch_from_commit_inner(
+    repo_root: String,
+    hash: String,
+    branch_name: String,
+) -> Result<(), String> {
+    let root = validated_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    validate_branch_name(&branch_name)?;
+    checked_output(&root, &["branch", &branch_name, &hash])?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn git_create_branch_from_commit(
+    repo: String,
+    hash: String,
+    branch_name: String,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        git_create_branch_from_commit_inner(repo, hash, branch_name)
+    })
+    .await
+    .map_err(|error| format!("git_create_branch_from_commit: falha na task bloqueante: {error}"))?
+}
+
+fn git_cherry_pick_commit_inner(repo_root: String, hash: String) -> Result<String, String> {
+    let root = validated_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    let output = checked_output(&root, &["cherry-pick", &hash])?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[tauri::command]
+pub async fn git_cherry_pick_commit(repo: String, hash: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || git_cherry_pick_commit_inner(repo, hash))
+        .await
+        .map_err(|error| format!("git_cherry_pick_commit: falha na task bloqueante: {error}"))?
+}
+
+fn git_revert_commit_inner(repo_root: String, hash: String) -> Result<String, String> {
+    let root = validated_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    let output = checked_output(&root, &["revert", "--no-edit", &hash])?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[tauri::command]
+pub async fn git_revert_commit(repo: String, hash: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || git_revert_commit_inner(repo, hash))
+        .await
+        .map_err(|error| format!("git_revert_commit: falha na task bloqueante: {error}"))?
+}
+
+fn git_reset_to_commit_inner(repo_root: String, hash: String, mode: String) -> Result<(), String> {
+    let root = validated_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    let flag = match mode.as_str() {
+        "soft" => "--soft",
+        "mixed" => "--mixed",
+        "hard" => "--hard",
+        _ => return Err("invalid_reset_mode".to_string()),
+    };
+    checked_output(&root, &["reset", flag, &hash])?;
+    Ok(())
+}
+
+/// `mode`: "soft" (mantém staged), "mixed" (mantém no working tree, unstage)
+/// ou "hard" (descarta tudo — destrutivo, a UI confirma antes de chamar).
+#[tauri::command]
+pub async fn git_reset_to_commit(repo: String, hash: String, mode: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || git_reset_to_commit_inner(repo, hash, mode))
+        .await
+        .map_err(|error| format!("git_reset_to_commit: falha na task bloqueante: {error}"))?
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IncomingOutgoing {
+    /// Arquivos que mudam no working tree ao trazer `@{upstream}` (pull).
+    pub incoming: Vec<GitFileChange>,
+    /// Arquivos que mudam no remoto ao mandar HEAD pra lá (push).
+    pub outgoing: Vec<GitFileChange>,
+    /// `false` quando o branch atual não tem upstream configurado — nesse
+    /// caso `incoming`/`outgoing` vêm vazios (não é erro, é normal pra um
+    /// branch local que nunca foi publicado).
+    pub has_upstream: bool,
+}
+
+fn git_incoming_outgoing_inner(repo_root: String) -> Result<IncomingOutgoing, String> {
+    let root = repository_root(&repo_root)?;
+    let has_upstream = git_command(
+        &root,
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ],
+    )
+    .map(|output| output.status.success())
+    .unwrap_or(false);
+    if !has_upstream {
+        return Ok(IncomingOutgoing {
+            incoming: Vec::new(),
+            outgoing: Vec::new(),
+            has_upstream: false,
+        });
+    }
+    let incoming_output = checked_output(
+        &root,
+        &["diff", "--name-status", "-z", "HEAD", "@{upstream}"],
+    )?;
+    let outgoing_output = checked_output(
+        &root,
+        &["diff", "--name-status", "-z", "@{upstream}", "HEAD"],
+    )?;
+    Ok(IncomingOutgoing {
+        incoming: parse_name_status_z(&incoming_output.stdout),
+        outgoing: parse_name_status_z(&outgoing_output.stdout),
+        has_upstream: true,
+    })
+}
+
+#[tauri::command]
+pub async fn git_incoming_outgoing(repo: String) -> Result<IncomingOutgoing, String> {
+    tokio::task::spawn_blocking(move || git_incoming_outgoing_inner(repo))
+        .await
+        .map_err(|error| format!("git_incoming_outgoing: falha na task bloqueante: {error}"))?
 }
 
 fn git_pull_inner(repo_root: String) -> Result<String, String> {

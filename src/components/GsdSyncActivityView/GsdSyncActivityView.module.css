@@ -98,13 +98,43 @@
   font-size: 13px;
 }
 
-.message {
+/* Trilho colorido do agente — sempre expandido, é o conteúdo "principal" do
+ * feed. Usa --agent-opencode pois é sempre uma sessão do OpenCode sendo
+ * lida. */
+.agentMessage {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+  padding: 10px 12px 10px 14px;
+  border-left: 3px solid var(--agent-opencode);
+  border-radius: 4px;
+  background: var(--agent-opencode-soft);
 }
 
-.messageRole {
+.messageRoleAgent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--agent-opencode);
+}
+
+/* Bloco de instrução (o que FOI ENVIADO pro agente) — recolhido por padrão,
+ * trilho neutro tracejado, pra ficar claro à primeira vista que não é fala
+ * do agente. Abrir mostra o texto completo quando precisar conferir. */
+.instructionBlock {
+  border-left: 3px dashed var(--border);
+  padding: 6px 12px 6px 14px;
+  border-radius: 4px;
+}
+
+.instructionBlock[open] {
+  background: var(--panel);
+  padding-bottom: 10px;
+}
+
+.instructionSummary {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -113,6 +143,24 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--fg-faint);
+  cursor: pointer;
+  list-style: none;
+}
+
+.instructionSummary::-webkit-details-marker {
+  display: none;
+}
+
+.instructionHint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--fg-faint);
+  opacity: 0.75;
+}
+
+.instructionBlock .messageParts {
+  margin-top: 8px;
 }
 
 .messageParts {
