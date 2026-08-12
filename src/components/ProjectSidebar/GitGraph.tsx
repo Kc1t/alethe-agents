@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight, GitCommitHorizontal } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
-import { type GitCommitEntry,gitLogGraph } from '../../lib/tauri'
+import { type GitCommitEntry, gitLogGraph } from '../../lib/tauri'
 import styles from './GitGraph.module.css'
 
 const MAX_COMMITS = 60
