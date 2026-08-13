@@ -1,8 +1,9 @@
 import { ChevronDown, ChevronRight, File, Folder, FolderOpen, RefreshCw } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { useT } from '../../lib/i18n'
 import { basename } from '../../lib/paths'
-import { getPtyCwd, listDirectory, type DirectoryEntry } from '../../lib/tauri'
+import { type DirectoryEntry, getPtyCwd, listDirectory } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import styles from './FileExplorer.module.css'
@@ -17,6 +18,7 @@ type FileExplorerProps = {
 export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplorerProps) {
   const [reloadKey, setReloadKey] = useState(0)
   const [liveCwd, setLiveCwd] = useState(cwd)
+  const t = useT()
 
   useEffect(() => {
     setLiveCwd(cwd)
@@ -33,7 +35,7 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
   }, [cwd, ptyId])
 
   if (!liveCwd) {
-    return <div className={styles.message}>Este terminal nao possui uma pasta ativa.</div>
+    return <div className={styles.message}>{t('ui.fileExplorer.noActiveFolder')}</div>
   }
 
   return (
@@ -45,8 +47,8 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
           type="button"
           className={styles.iconButton}
           onClick={() => setReloadKey((value) => value + 1)}
-          title="Atualizar arquivos"
-          aria-label="Atualizar arquivos"
+          title={t('ui.fileExplorer.refresh')}
+          aria-label={t('ui.fileExplorer.refresh')}
         >
           <RefreshCw size={13} />
         </button>
@@ -86,6 +88,7 @@ function DirectoryNode({
   const createFilePane = useProjectsStore((s) => s.createFilePane)
   const openPane = useProjectsStore((s) => s.openPane)
   const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
+  const t = useT()
 
   const handleFileDoubleClick = (filePath: string) => {
     const pane = createFilePane(projectId, { filePath })
@@ -128,8 +131,8 @@ function DirectoryNode({
       </button>
       {open ? (
         <div>
-          {loading ? <div className={styles.message}>Carregando...</div> : null}
-          {error ? <div className={styles.message}>Nao foi possivel ler esta pasta.</div> : null}
+          {loading ? <div className={styles.message}>{t('ui.fileExplorer.loading')}</div> : null}
+          {error ? <div className={styles.message}>{t('ui.fileExplorer.readError')}</div> : null}
           {!loading && !error
             ? entries.map((entry) =>
                 entry.is_dir ? (
