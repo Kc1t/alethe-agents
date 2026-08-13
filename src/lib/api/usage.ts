@@ -103,9 +103,25 @@ export async function getClaudeUsage(): Promise<ClaudeUsage> {
   return webApiFetch<ClaudeUsage>('/api/usage/claude')
 }
 
+const EMPTY_CODEX_WINDOW: CodexUsageWindow = {
+  used_percent: 0,
+  window_minutes: 0,
+  resets_at_ms: 0,
+}
+
 export async function getCodexUsage(): Promise<CodexUsage> {
   if (isTauriEnv()) return invoke<CodexUsage>('get_codex_usage')
-  return webApiFetch<CodexUsage>('/api/usage/codex')
+  try {
+    return await webApiFetch<CodexUsage>('/api/usage/codex')
+  } catch {
+    return {
+      primary: EMPTY_CODEX_WINDOW,
+      secondary: EMPTY_CODEX_WINDOW,
+      plan: '',
+      rate_limited: false,
+      reset_credits: 0,
+    }
+  }
 }
 
 export async function getAntigravityUsage(): Promise<AntigravityUsage> {
@@ -129,8 +145,8 @@ export async function getClaudeActivity(days = 91): Promise<ActivityDay[]> {
 }
 
 export async function getMultiAgentActivity(days: number): Promise<ActivityDay[]> {
-  if (isTauriEnv()) return invoke<ActivityDay[]>('get_multi_agent_activity', { days })
-  return webApiFetch<ActivityDay[]>(`/api/usage/multi_agent_activity?days=${days}`)
+  if (isTauriEnv()) return invoke<ActivityDay[]>('get_multi_agent_activity', { days }).catch(() => [])
+  return webApiFetch<ActivityDay[]>(`/api/usage/multi_agent_activity?days=${days}`).catch(() => [])
 }
 
 export async function recordActivitySamples(samples: ActivitySample[]): Promise<void> {

@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::provider_common::now_ms;
 use crate::pty::{self, PtySessions};
+use crate::pty_sink::TauriSink;
 use crate::stats::MemoryStats;
 
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
@@ -283,7 +284,15 @@ impl ResourceSupervisor {
         }
 
         let app_pid = std::process::id();
-        let app_tree = descendants(app_pid, &children);
+        let mut app_tree = descendants(app_pid, &children);
+
+        for (_, root_pid, _, _) in &roots {
+            if let Some(pid) = root_pid {
+                let pty_tree = descendants(*pid, &children);
+                app_tree.extend(pty_tree);
+            }
+        }
+
         let mut app_bytes = 0_u64;
         let mut webview_bytes = 0_u64;
         let mut pty_bytes = 0_u64;
@@ -293,20 +302,48 @@ impl ResourceSupervisor {
                 continue;
             };
             let working = process.memory();
-            // Soma de working-set/RSS bruto conta páginas compartilhadas
-            // (libs, forks) uma vez POR PROCESSO — com dezenas de processos
-            // isso infla o total muito além da RAM física real. A memória
-            // privada (não-compartilhada) é a que soma corretamente entre
-            // processos.
             let private = process_private_commit_bytes(*pid, working);
             private_total += private;
             let name = process.name().to_string_lossy().to_ascii_lowercase();
             if *pid == app_pid || name.contains("alethe") {
                 app_bytes += private;
-            } else if name.contains("msedgewebview2") || name.contains("webkit") {
+            } else if name.contains("msedgewebview2")
+                || name.contains("webkit")
+                || name.contains("chrome")
+                || name.contains("chromium")
+                || name.contains("firefox")
+                || name.contains("brave")
+                || name.contains("edge")
+                || name.contains("opera")
+            {
                 webview_bytes += private;
             } else {
                 pty_bytes += private;
+            }
+        }
+
+        if webview_bytes == 0 {
+            for (pid, process) in system.processes() {
+                if process.thread_kind().is_some() {
+                    continue;
+                }
+                let name = process.name().to_string_lossy().to_ascii_lowercase();
+                if name.contains("chrome")
+                    || name.contains("chromium")
+                    || name.contains("firefox")
+                    || name.contains("brave")
+                    || name.contains("msedge")
+                    || name.contains("edge")
+                    || name.contains("webkit")
+                {
+                    let working = process.memory();
+                    let private = process_private_commit_bytes(pid.as_u32(), working);
+                    if private > 30 * 1024 * 1024 && private < 2000 * 1024 * 1024 {
+                        webview_bytes += private;
+                        app_tree.insert(pid.as_u32());
+                        break;
+                    }
+                }
             }
         }
 
@@ -469,7 +506,8 @@ fn run_cycle(
     let mut suspended_id = None;
     if automatic && pressure_active {
         if let Some(id) = candidates.first() {
-            if pty::suspend_session(app, sessions, id).unwrap_or(false) {
+            let log_path = crate::paths::spawn_log_path(app).ok();
+            if pty::suspend_session(&TauriSink(app.clone()), log_path.as_deref(), sessions, id).unwrap_or(false) {
                 suspended_id = Some(id.clone());
             }
         }
@@ -553,6 +591,21 @@ pub fn update_pty_runtime_meta(
     for meta in metas {
         state.metas.insert(meta.id.clone(), meta);
     }
+}
+
+pub fn get_runtime_snapshot_core(sessions: &PtySessions) -> RuntimeSnapshot {
+    static SUPERVISOR: std::sync::OnceLock<std::sync::Arc<ResourceSupervisor>> = std::sync::OnceLock::new();
+    let supervisor = SUPERVISOR.get_or_init(|| std::sync::Arc::new(ResourceSupervisor::default()));
+    if let Some(snapshot) = supervisor
+        .state
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .latest
+        .clone()
+    {
+        return snapshot;
+    }
+    supervisor.collect(sessions)
 }
 
 #[tauri::command]

@@ -13,14 +13,23 @@
 use alethe_lib::agent_events;
 use alethe_lib::agent_library;
 use alethe_lib::cli_resolver;
+use alethe_lib::codex_app_server::{
+    codex_app_server_send_core, codex_app_server_start_core, codex_app_server_stop_core,
+    CodexAppServerSink, CodexAppServerState,
+};
 use alethe_lib::economy_agents;
 use alethe_lib::plugins::{self, PluginKind, PluginManifest};
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::Path as AxumPath;
 use axum::extract::Query;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
+use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+use tokio::sync::broadcast;
 
 use crate::profile_routes::active_profile_dir;
 use crate::AppError;
@@ -46,6 +55,14 @@ pub fn router() -> Router {
         .route("/api/plugins/list", get(plugins_list))
         .route("/api/plugins/install", post(plugin_install))
         .route("/api/plugins/uninstall", post(plugin_uninstall))
+        .route("/api/codex_app_server/start", post(codex_start))
+        .route("/api/codex_app_server/send", post(codex_send))
+        .route("/api/codex_app_server/stop", post(codex_stop))
+        .route("/api/codex_app_server/ws/:id", get(codex_ws))
+        .route("/api/agents/codex_app_server/start", post(codex_start))
+        .route("/api/agents/codex_app_server/send", post(codex_send))
+        .route("/api/agents/codex_app_server/stop", post(codex_stop))
+        .route("/api/agents/codex_app_server/ws/:id", get(codex_ws))
 }
 
 async fn hooks_endpoint() -> impl IntoResponse {
@@ -147,5 +164,123 @@ fn respond<T: serde::Serialize>(result: Result<T, String>) -> axum::response::Re
     match result {
         Ok(v) => Json(v).into_response(),
         Err(e) => AppError::from(e).into_response(),
+    }
+}
+
+pub fn alethe_server_codex_app_server_state() -> &'static CodexAppServerState {
+    static STATE: OnceLock<CodexAppServerState> = OnceLock::new();
+    STATE.get_or_init(CodexAppServerState::default)
+}
+
+pub type CodexChannels = Arc<Mutex<HashMap<String, broadcast::Sender<Value>>>>;
+
+pub fn codex_broadcast_channels() -> &'static CodexChannels {
+    static CHANNELS: OnceLock<CodexChannels> = OnceLock::new();
+    CHANNELS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
+}
+
+fn get_or_create_codex_channel(id: &str) -> broadcast::Sender<Value> {
+    let mut channels = codex_broadcast_channels().lock().unwrap();
+    channels
+        .entry(id.to_string())
+        .or_insert_with(|| {
+            let (tx, _) = broadcast::channel(1024);
+            tx
+        })
+        .clone()
+}
+
+pub struct WebSocketCodexSink;
+
+impl CodexAppServerSink for WebSocketCodexSink {
+    fn emit_event(&self, id: &str, payload: Value) {
+        let sender = get_or_create_codex_channel(id);
+        let _ = sender.send(payload);
+    }
+}
+
+#[derive(Deserialize)]
+struct CodexStartBody {
+    id: String,
+    cwd: String,
+}
+
+async fn codex_start(Json(b): Json<CodexStartBody>) -> Result<(), AppError> {
+    codex_app_server_start_core(
+        Arc::new(WebSocketCodexSink),
+        alethe_server_codex_app_server_state(),
+        b.id,
+        b.cwd,
+    )?;
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct CodexSendBody {
+    id: String,
+    request: Value,
+}
+
+async fn codex_send(Json(b): Json<CodexSendBody>) -> Result<(), AppError> {
+    codex_app_server_send_core(
+        alethe_server_codex_app_server_state(),
+        b.id,
+        b.request,
+    )?;
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct CodexStopBody {
+    id: String,
+}
+
+async fn codex_stop(Json(b): Json<CodexStopBody>) -> Result<(), AppError> {
+    codex_app_server_stop_core(
+        alethe_server_codex_app_server_state(),
+        b.id,
+    )?;
+    Ok(())
+}
+
+async fn codex_ws(
+    AxumPath(id): AxumPath<String>,
+    ws: WebSocketUpgrade,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_codex_socket(id, socket))
+}
+
+async fn handle_codex_socket(id: String, mut socket: WebSocket) {
+    let sender = get_or_create_codex_channel(&id);
+    let mut rx = sender.subscribe();
+
+    loop {
+        tokio::select! {
+            msg = rx.recv() => {
+                match msg {
+                    Ok(event) => {
+                        if let Ok(json) = serde_json::to_string(&event) {
+                            if socket.send(Message::Text(json)).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            incoming = socket.recv() => {
+                let Some(Ok(msg)) = incoming else { break };
+                if let Message::Text(text) = msg {
+                    if let Ok(request) = serde_json::from_str::<Value>(&text) {
+                        let _ = codex_app_server_send_core(
+                            alethe_server_codex_app_server_state(),
+                            id.clone(),
+                            request,
+                        );
+                    }
+                }
+            }
+        }
     }
 }

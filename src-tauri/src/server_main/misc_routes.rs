@@ -60,6 +60,8 @@ pub fn router() -> Router {
         .route("/api/event_bus/publish", post(event_publish))
         .route("/api/telemetry/metrics", get(telemetry_metrics))
         .route("/api/telemetry/traces", get(telemetry_traces))
+        .route("/api/remote/set_enabled", post(remote_set_enabled))
+        .route("/api/remote_control/set_enabled", post(remote_set_enabled))
 }
 
 async fn planning_status(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
@@ -229,6 +231,20 @@ async fn telemetry_traces(Query(p): Query<HashMap<String, String>>) -> impl Into
     respond(telemetry::get_telemetry_traces(
         p.get("correlationId").cloned(),
     ))
+}
+
+#[derive(Deserialize)]
+struct RemoteSetEnabledBody {
+    enabled: bool,
+}
+async fn remote_set_enabled(Json(b): Json<RemoteSetEnabledBody>) -> Result<Json<alethe_lib::remote::RemoteInfo>, AppError> {
+    let projects_path = crate::profile_routes::active_profile_dir().join("projects.json");
+    let info = alethe_lib::remote::remote_control_set_enabled_core(
+        &projects_path,
+        crate::pty_routes::alethe_server_pty_sessions(),
+        b.enabled,
+    );
+    Ok(Json(info))
 }
 
 fn respond<T: serde::Serialize>(result: Result<T, String>) -> axum::response::Response {

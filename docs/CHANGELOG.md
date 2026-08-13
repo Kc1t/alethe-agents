@@ -12,6 +12,19 @@ Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
 
 ### Adicionado
 
+- **Servidor Web Standalone (`alethe-server`) completo e desacoplado**: Implementadas ~120 rotas REST e WebSockets cobrindo 100% da API HTTP do Alethe Web (`npm run web`), incluindo Terminais PTY em tempo real (`/api/pty/ws/:id`), `codex_app_server`, Controle Remoto LAN (`/api/remote/set_enabled`), Resolução de CLIs (`/api/cli/find_cli_launcher`), Perfis, Git/Worktrees, Sessões, Telemetria e Memory Analytics.
+- **Suporte nativo Cross-Platform no Linux (X11 & Wayland)**: Resolução de dados e perfis conforme a especificação XDG Base Directory (`$XDG_DATA_HOME` / `~/.local/share/com.kc1t.alethe`), suporte a Pseudo-Terminais POSIX (`/dev/ptmx`), descoberta de CLIs via `$PATH` e medição precisa de memória privada por processo via `/proc/<pid>/smaps_rollup`.
+- **Auto-sincronização de perfis ativos no foco da janela**: A aba Web no navegador detecta automaticamente a troca de perfil realizada no App Desktop e atualiza o estado em tempo real sem necessidade de recarregar a página.
+
+### Corrigido
+
+- **Correção da renderização e travamentos de tela nos terminais PTY (`useXtermSession.ts`)**: Reordenado o carregamento do `CanvasAddon` para antes da montagem do `terminal.open(container)` com auto-recuperação de dimensões de viewport via `requestAnimationFrame`, eliminando textos distorcidos ("d u f fi . s f CLI") e telas pretas no OpenCode, Antigravity e Claude.
+- **Isolamento de medição de memória por instância**: Corrigida a dupla contagem de memória RAM quando o App Desktop e o Servidor Web rodavam em paralelo, restaurando a medição exata do workspace (~1.8 GB - 2.6 GB) sem inflar a leitura global.
+- **Fallback para diálogos de arquivos no modo Web (`dialog.ts`)**: Adicionada verificação `isTauriEnv()` para evitar exceções `TypeError: Cannot read properties of undefined (reading 'invoke')` ao clicar em "Configure path..." no navegador.
+
+- **Codex App Server (`codex_app_server`) com WebSockets no Alethe Web**: Criada a abstração `CodexAppServerSink` desacoplando o processo `codex app-server --stdio` do runtime do Tauri, e adicionadas as rotas REST/WebSocket `/api/codex_app_server/*` no `alethe-server` para execução e streaming bidirecional de mensagens no navegador.
+- **Suporte ao Controle Remoto LAN (`/api/remote/set_enabled`) no Alethe Web**: Refatoradas as funções do módulo `remote.rs` para desacoplar a leitura do `projects.json` da `AppHandle`, liberando a ativação e sincronização do servidor de controle remoto LAN diretamente do `alethe-server`.
+- **Sink genérico de PTY (`pty_sink.rs`) e streaming WebSocket do terminal no Alethe Web**: Extraída a abstração `PtyOutputSink` desacoplando a saída do PTY do runtime do Tauri, e implementadas as rotas REST e WebSockets `/api/pty/*` no `alethe-server` (`Axum`) com suporte a execução de terminais interativos em tempo real no navegador.
 - **Suporte a Alethe Web (`npm run web`)**: O Alethe agora pode ser executado em dois modos distintos: o app Desktop nativo Tauri (`npm run app`) e o modo Web (`npm run web`), acessível via navegador a partir de qualquer dispositivo na rede local com comunicação REST + WebSockets para streaming de terminais PTY reais.
 - **Roteamento Multi-Páginas Web**: Suporte a URLs reais navegáveis no browser (`/workspace`, `/agents`, `/git`, `/sessions`, `/settings`) via HTML5 History API, permitindo deep-linking, navegação por botão Voltar/Avançar e abertura de múltiplas abas independentes no navegador.
 - **Sistema de Logs Estruturado**: Logging centralizado no frontend (`src/lib/logger.ts`) e no backend Rust (`alethe-server`), capturando eventos de transporte REST/WS, spawn de PTY e exceções com visualização em tempo real.

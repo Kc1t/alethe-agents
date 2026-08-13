@@ -9,6 +9,7 @@
 
 use alethe_lib::crash_watch;
 use alethe_lib::resource_manager;
+use alethe_lib::resources;
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
@@ -17,6 +18,7 @@ pub fn router() -> Router {
     Router::new()
         .route("/api/window/resource_metrics", get(resource_metrics))
         .route("/api/window/job_guard_status", get(job_guard_status))
+        .route("/api/window/runtime_snapshot", get(runtime_snapshot))
 }
 
 async fn resource_metrics() -> impl IntoResponse {
@@ -25,4 +27,8 @@ async fn resource_metrics() -> impl IntoResponse {
 
 async fn job_guard_status() -> impl IntoResponse {
     Json(crash_watch::get_job_guard_status())
+}
+
+async fn runtime_snapshot() -> impl IntoResponse {
+    Json(resources::get_runtime_snapshot_core(crate::pty_routes::alethe_server_pty_sessions()))
 }

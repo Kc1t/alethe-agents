@@ -27,7 +27,24 @@ use crate::AppError;
 const DEFAULT_APP_IDENTIFIER: &str = "com.kc1t.alethe.dev";
 
 fn app_identifier() -> String {
-    std::env::var("ALETHE_APP_IDENTIFIER").unwrap_or_else(|_| DEFAULT_APP_IDENTIFIER.to_string())
+    if let Ok(v) = std::env::var("ALETHE_APP_IDENTIFIER") {
+        return v;
+    }
+    if let Ok(v) = std::env::var("LOCALAPPDATA") {
+        if PathBuf::from(&v).join("com.kc1t.alethe").exists() {
+            return "com.kc1t.alethe".to_string();
+        }
+    }
+    if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+        if PathBuf::from(&xdg).join("com.kc1t.alethe").exists() {
+            return "com.kc1t.alethe".to_string();
+        }
+    } else if let Ok(home) = std::env::var("HOME") {
+        if PathBuf::from(&home).join(".local").join("share").join("com.kc1t.alethe").exists() {
+            return "com.kc1t.alethe".to_string();
+        }
+    }
+    DEFAULT_APP_IDENTIFIER.to_string()
 }
 
 fn app_local_data_dir() -> PathBuf {
@@ -36,6 +53,17 @@ fn app_local_data_dir() -> PathBuf {
         PathBuf::from(v).join(&identifier)
     } else if let Ok(v) = std::env::var("APPDATA") {
         PathBuf::from(v).join(&identifier)
+    } else if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+        PathBuf::from(xdg).join(&identifier)
+    } else if let Ok(home) = std::env::var("HOME") {
+        #[cfg(target_os = "macos")]
+        {
+            PathBuf::from(home).join("Library").join("Application Support").join(&identifier)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            PathBuf::from(home).join(".local").join("share").join(&identifier)
+        }
     } else if let Ok(v) = std::env::var("USERPROFILE") {
         PathBuf::from(v).join(".alethe")
     } else {

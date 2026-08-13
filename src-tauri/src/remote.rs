@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::net::{IpAddr, TcpListener, TcpStream, UdpSocket};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::thread;
@@ -182,7 +183,7 @@ pub fn hub() -> Arc<RemoteHub> {
     HUB.get_or_init(|| Arc::new(RemoteHub::new())).clone()
 }
 
-pub fn start(app: AppHandle, sessions: PtySessions) {
+pub fn start_core(projects_path: PathBuf, sessions: PtySessions) {
     let hub = hub();
     if hub.running.swap(true, Ordering::SeqCst) {
         return;
@@ -190,12 +191,18 @@ pub fn start(app: AppHandle, sessions: PtySessions) {
     let generation = hub.generation.fetch_add(1, Ordering::SeqCst) + 1;
     let http_hub = Arc::clone(&hub);
     let http_sessions = Arc::clone(&sessions);
-    let http_app = app.clone();
-    thread::spawn(move || run_http(http_app, http_hub, http_sessions, generation));
+    let http_projects_path = projects_path;
+    thread::spawn(move || run_http(http_projects_path, http_hub, http_sessions, generation));
 
     let ws_hub = Arc::clone(&hub);
     let ws_sessions = Arc::clone(&sessions);
     thread::spawn(move || run_websocket(ws_hub, ws_sessions, generation));
+}
+
+pub fn start(app: AppHandle, sessions: PtySessions) {
+    if let Ok(projects_path) = projects_file_path(&app) {
+        start_core(projects_path, sessions);
+    }
 }
 
 pub fn stop() {
@@ -244,21 +251,30 @@ pub fn remote_control_revoke_device(device_id: usize) -> RemoteInfo {
     remote.info()
 }
 
-#[tauri::command]
-pub fn remote_control_set_enabled(
-    app: AppHandle,
-    sessions: tauri::State<'_, PtySessions>,
+pub fn remote_control_set_enabled_core(
+    projects_path: &Path,
+    sessions: &PtySessions,
     enabled: bool,
 ) -> RemoteInfo {
     if enabled {
-        start(app, Arc::clone(sessions.inner()));
+        start_core(projects_path.to_path_buf(), sessions.clone());
     } else {
         stop();
     }
     hub().info()
 }
 
-fn run_http(app: AppHandle, hub: Arc<RemoteHub>, sessions: PtySessions, generation: u64) {
+#[tauri::command]
+pub fn remote_control_set_enabled(
+    app: AppHandle,
+    sessions: tauri::State<'_, PtySessions>,
+    enabled: bool,
+) -> Result<RemoteInfo, String> {
+    let projects_path = projects_file_path(&app)?;
+    Ok(remote_control_set_enabled_core(&projects_path, sessions.inner(), enabled))
+}
+
+fn run_http(projects_path: PathBuf, hub: Arc<RemoteHub>, sessions: PtySessions, generation: u64) {
     let Some(listener) = bind_listener(&hub.host, HTTP_START, HTTP_END) else {
         eprintln!("[remote] unable to bind LAN HTTP listener");
         hub.running.store(false, Ordering::SeqCst);
@@ -280,9 +296,9 @@ fn run_http(app: AppHandle, hub: Arc<RemoteHub>, sessions: PtySessions, generati
         let mut stream = stream;
         let hub = Arc::clone(&hub);
         let sessions = Arc::clone(&sessions);
-        let app = app.clone();
+        let projects_path = projects_path.clone();
         thread::spawn(move || {
-            if let Err(error) = handle_http(&mut stream, &app, &hub, &sessions) {
+            if let Err(error) = handle_http(&mut stream, &projects_path, &hub, &sessions) {
                 eprintln!("[remote] HTTP request failed: {error}");
             }
         });
@@ -390,7 +406,7 @@ fn handle_websocket(stream: TcpStream, hub: Arc<RemoteHub>, sessions: PtySession
 
 fn handle_http(
     stream: &mut TcpStream,
-    app: &AppHandle,
+    projects_path: &Path,
     hub: &RemoteHub,
     sessions: &PtySessions,
 ) -> Result<(), String> {
@@ -415,7 +431,7 @@ fn handle_http(
         return respond(stream, 200, "application/json", &serde_json::to_string(&hub.info()).map_err(|e| e.to_string())?);
     }
     if path.starts_with("/api/state") {
-        let state = workspace_snapshot(app)?;
+        let state = workspace_snapshot(projects_path)?;
         return respond(stream, 200, "application/json", &state.to_string());
     }
     if path.starts_with("/api/scrollback") {
@@ -448,9 +464,8 @@ struct RemoteMessage {
     text: String,
 }
 
-fn workspace_snapshot(app: &AppHandle) -> Result<Value, String> {
-    let path = projects_file_path(app)?;
-    let content = std::fs::read_to_string(path).unwrap_or_else(|_| "{}".to_string());
+fn workspace_snapshot(projects_path: &Path) -> Result<Value, String> {
+    let content = std::fs::read_to_string(projects_path).unwrap_or_else(|_| "{}".to_string());
     let parsed: Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
     let groups = parsed.get("groups").cloned().unwrap_or_else(|| json!([]));
     let projects = parsed.get("projects").cloned().unwrap_or_else(|| json!([]));

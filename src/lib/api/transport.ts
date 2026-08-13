@@ -41,7 +41,11 @@ export async function webApiFetch<T>(path: string, options?: RequestInit): Promi
     })
     if (!res.ok) {
       const errText = await res.text()
-      log('error', 'HTTP', `Falha ${res.status} em ${path}: ${errText}`)
+      if (res.status === 503) {
+        log('debug', 'HTTP', `Aguardando backend em ${path}: ${errText}`)
+      } else {
+        log('error', 'HTTP', `Falha ${res.status} em ${path}: ${errText}`)
+      }
       throw new Error(`HTTP ${res.status}: ${errText}`)
     }
     const contentType = res.headers.get('content-type')
@@ -52,7 +56,11 @@ export async function webApiFetch<T>(path: string, options?: RequestInit): Promi
     const text = await res.text()
     return text as unknown as T
   } catch (err) {
-    log('error', 'HTTP', `Erro na requisição ${path}`, err)
+    if (err instanceof Error && err.message.includes('503')) {
+      log('debug', 'HTTP', `Retentativa de conexão em ${path}...`)
+    } else {
+      log('error', 'HTTP', `Erro na requisição ${path}`, err)
+    }
     throw err
   }
 }

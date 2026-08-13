@@ -167,12 +167,13 @@ function patchXtermViewportSyncGuard(terminal: Terminal): void {
       try {
         return original.apply(this, args)
       } catch (error) {
-        if (import.meta.env.DEV) {
-          console.error(
-            '[Alethe][xterm] syncScrollArea falhou (renderer ainda não anexado) — ignorado',
-            error,
-          )
-        }
+        window.requestAnimationFrame(() => {
+          try {
+            original.apply(this, args)
+          } catch {
+            /* no-op se o renderer ainda estiver desanexado */
+          }
+        })
         return undefined
       }
     }
@@ -444,16 +445,18 @@ export function useXtermSession(params: {
     const searchAddon = new SearchAddon()
     terminal.loadAddon(fitAddon)
     terminal.loadAddon(searchAddon)
-    // Sem isso, o xterm.js usa as tabelas de largura Unicode 6 (default) pra
-    // decidir quantas colunas cada caractere ocupa — emojis e símbolos largos
-    // (usados no TUI do OpenCode, ex. status bar) ficam com largura diferente
-    // da que o próprio CLI assume, desalinhando toda linha que os contém de
-    // forma permanente (não é um problema de redraw — nenhuma tecla conserta).
     terminal.loadAddon(new Unicode11Addon())
     terminal.unicode.activeVersion = '11'
+    try {
+      terminal.loadAddon(new CanvasAddon())
+    } catch {
+      /* addon indisponivel — o xterm cai sozinho no renderer DOM */
+    }
+
     terminal.open(container)
     patchXtermViewportSyncGuard(terminal)
     terminalRef.current = terminal
+
     const clampHorizontalScroll = () => {
       container.scrollLeft = 0
       const xterm = container.querySelector<HTMLElement>('.xterm')
@@ -463,6 +466,7 @@ export function useXtermSession(params: {
       if (viewport) viewport.scrollLeft = 0
       if (screen) screen.style.maxWidth = '100%'
     }
+
     linkProviderDisposable = terminal.registerLinkProvider({
       provideLinks: (bufferLineNumber, callback) => {
         const logicalLine = getLogicalTerminalLine(terminal.buffer.active, bufferLineNumber)
@@ -479,21 +483,9 @@ export function useXtermSession(params: {
       },
     })
 
-    // Se a tela rola (stream do agente), o menu — ancorado no ponto do clique —
-    // apontaria pro vazio; fecha junto pra não virar fantasma.
     linkScrollDisposable = terminal.onScroll(() => {
       if (linkActionsRef.current) setLinkActions(null)
     })
-
-    // Canvas 2D e o renderer em uso: bem mais rapido que o DOM puro sob saida
-    // pesada e sem o risco do WebGL, cuja perda de contexto podia derrubar um
-    // syncScrollArea assincrono interno do xterm.js e crashar o pane. Se o
-    // addon falhar ao carregar, o xterm cai sozinho no renderer DOM.
-    try {
-      terminal.loadAddon(new CanvasAddon())
-    } catch {
-      /* addon indisponivel — o xterm cai sozinho no renderer DOM */
-    }
 
     // `CanvasAddon.activate()` adia a própria montagem via `onWillOpen` se
     // `terminal.element` ainda não estiver pronto (ver addon-canvas), e o

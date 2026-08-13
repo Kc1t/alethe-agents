@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -664,9 +665,8 @@ mod macos_clipboard {
     }
 }
 
-pub fn append_spawn_log(app: &AppHandle, message: &str) -> Result<(), String> {
+pub fn append_spawn_log_path(path: &Path, message: &str) -> Result<(), String> {
     use std::io::Write;
-    let path = spawn_log_path(app)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
@@ -676,6 +676,11 @@ pub fn append_spawn_log(app: &AppHandle, message: &str) -> Result<(), String> {
         .open(path)
         .map_err(|error| error.to_string())?;
     writeln!(file, "[{}] {message}", timestamp_ms()).map_err(|error| error.to_string())
+}
+
+pub fn append_spawn_log(app: &AppHandle, message: &str) -> Result<(), String> {
+    let path = spawn_log_path(app)?;
+    append_spawn_log_path(&path, message)
 }
 
 pub fn timestamp_ms() -> String {

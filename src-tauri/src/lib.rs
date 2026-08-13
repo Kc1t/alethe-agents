@@ -28,6 +28,7 @@ pub mod paths;
 pub mod profiles;
 pub mod projects;
 pub mod pty;
+pub mod pty_sink;
 pub mod resources;
 pub mod process_tree;
 pub mod resource_manager;

@@ -30,6 +30,15 @@ pub fn router() -> Router {
         .route("/api/cli/shim_status", get(shim_status))
         .route("/api/cli/shim_install", post(shim_install))
         .route("/api/cli/shim_uninstall", post(shim_uninstall))
+        .route("/api/cli/find_cli_launcher", get(find_cli_launcher_route))
+}
+
+async fn find_cli_launcher_route(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
+    let agent = match q(&p, "agent") {
+        Ok(v) => v,
+        Err(e) => return e.into_response(),
+    };
+    Json(alethe_lib::cli_resolver::find_cli_launcher(agent).await).into_response()
 }
 
 async fn list(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {

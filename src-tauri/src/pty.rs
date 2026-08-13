@@ -8,13 +8,14 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 
 use crate::cli_resolver::{command_builder_for_terminal, find_windows_cli_launcher};
-use crate::diagnostics::append_spawn_log;
+use crate::diagnostics::append_spawn_log_path;
 use crate::paths::{scrollback_dir, scrollback_path};
 use crate::process_tree;
 use crate::provider_common::now_ms;
+use crate::pty_sink::{PtyOutputSink, TauriSink};
 
 pub const SCROLLBACK_CAP_BYTES: usize = 4 * 1024 * 1024;
 pub const SCROLLBACK_FLUSH_INTERVAL_MS: u128 = 250;
@@ -285,6 +286,28 @@ pub struct PtySuspendedPayload {
     pub reason: &'static str,
 }
 
+#[derive(Clone, Default, serde::Deserialize)]
+pub struct SpawnPtyArgs {
+    pub cols: u16,
+    pub rows: u16,
+    pub id: Option<String>,
+    pub command: Option<String>,
+    pub cwd: Option<String>,
+    pub extra_args: Option<Vec<String>>,
+    pub launcher_override: Option<String>,
+    pub env: Option<std::collections::HashMap<String, String>>,
+}
+
+pub fn pty_exists_core(sessions: &PtySessions, id: &str) -> bool {
+    let Ok(sessions) = sessions.lock() else { return false; };
+    sessions.contains_key(id)
+}
+
+#[tauri::command]
+pub fn pty_exists(sessions: State<'_, PtySessions>, id: String) -> Result<bool, String> {
+    Ok(pty_exists_core(&sessions, &id))
+}
+
 #[derive(Serialize)]
 pub struct PtyProcessSnapshot {
     pub id: String,
@@ -296,68 +319,35 @@ pub struct PtyProcessSnapshot {
     pub memory_mb: f64,
     pub alive: bool,
 }
-
-#[tauri::command]
-pub fn pty_exists(sessions: State<'_, PtySessions>, id: String) -> Result<bool, String> {
-    let sessions = sessions
-        .lock()
-        .map_err(|_| "PTY sessions lock poisoned".to_string())?;
-    Ok(sessions.contains_key(&id))
-}
-
-#[tauri::command]
-pub async fn spawn_pty(
-    app: AppHandle,
-    sessions: State<'_, PtySessions>,
-    remote: State<'_, Arc<crate::remote::RemoteHub>>,
-    cols: u16,
-    rows: u16,
-    id: Option<String>,
-    command: Option<String>,
-    cwd: Option<String>,
-    extra_args: Option<Vec<String>>,
-    // launcher_override: path absoluto que supersede o auto-detect. Frontend
-    // passa quando o user configurou um path manual via cliPaths.
-    launcher_override: Option<String>,
-    // env extra só deste PTY (ex.: CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 no
-    // canvas) — nunca polui o ambiente global nem outros terminais.
-    env: Option<std::collections::HashMap<String, String>>,
+pub async fn spawn_pty_core(
+    sessions: PtySessions,
+    sink: Arc<dyn PtyOutputSink>,
+    remote: Arc<crate::remote::RemoteHub>,
+    spawn_log_path_buf: Option<PathBuf>,
+    sb_path_buf: PathBuf,
+    args: SpawnPtyArgs,
 ) -> Result<SpawnPtyResponse, String> {
-    // `openpty`/resolução do launcher/`spawn_command` são chamadas de SO de
-    // verdade (ConPTY, criação de processo) — podem demorar bem mais que o
-    // normal sob AV/antivírus escaneando o processo novo, ou travar de vez em
-    // quando (bug conhecido do ConPTY do Windows). Antes disso rodava direto
-    // na thread que o Tauri usa pra despachar o comando; se travasse, TODO
-    // OUTRO comando IPC (spawn de outro terminal, poll do GSD Sync, leitura de
-    // PTYs já abertos) ficava esperando atrás dele — o app inteiro parecia
-    // travado, não só o terminal novo. `spawn_blocking` isola isso na thread
-    // pool bloqueante dedicada do Tokio (até 512 threads), mesmo padrão já
-    // usado em todo outro comando pesado deste codebase (ver `claude_sessions`,
-    // `activity_stats`, `agent_cost`).
-    let sessions: PtySessions = Arc::clone(sessions.inner());
-    // Mesmo motivo do `sessions` acima: `State<'_, ...>` tem lifetime preso
-    // ao runtime do Tauri, não `'static` — precisa virar um Arc dono antes
-    // de entrar no `move ||` do spawn_blocking, senão o borrow "escapa" da
-    // função (erro de lifetime do compilador).
-    let remote_hub_outer = Arc::clone(remote.inner());
     tokio::task::spawn_blocking(move || {
+        let cols = args.cols;
+        let rows = args.rows;
+        let id = args.id.unwrap_or_else(|| nanoid::nanoid!());
+        let command = args.command;
+        let cwd = args.cwd;
+        let extra_args = args.extra_args;
+        let launcher_override = args.launcher_override;
+        let env = args.env;
+
         let extras: Vec<String> = extra_args.unwrap_or_default();
         let spawn_started = Instant::now();
-        let id = id.unwrap_or_else(|| nanoid::nanoid!());
         let requested_command = command.clone();
 
         let Some(_spawn_reservation) = reserve_spawn(&sessions, &id)? else {
             return Ok(SpawnPtyResponse { id });
         };
 
-        // Boot de verdade vai acontecer — solta o colchão pré-alocado e
-        // garante folga de RAM antes de criar o processo (ver comentário de
-        // `prepare_memory_for_boot`).
         prepare_memory_for_boot();
 
-        let scrollback = Arc::new(Mutex::new(ScrollbackBuffer::new(load_scrollback(
-            &app, &id,
-        )?)));
+        let scrollback = Arc::new(Mutex::new(ScrollbackBuffer::new(load_scrollback(&sb_path_buf)?)));
         let teardown = Arc::new(AtomicU8::new(TEARDOWN_NORMAL));
         let pty_system = native_pty_system();
         let pair = pty_system
@@ -370,9 +360,6 @@ pub async fn spawn_pty(
             .map_err(|error| error.to_string())?;
 
         let resolve_started = Instant::now();
-        // 1. Se frontend mandou override (user configurou via cliPaths), usa ele
-        //    direto — só validando que existe pra evitar PathBuf vazio fantasma.
-        // 2. Senão, auto-detect via find_windows_cli_launcher.
         let resolved_launcher = if let Some(override_path) = launcher_override
             .as_deref()
             .map(str::trim)
@@ -403,9 +390,9 @@ pub async fn spawn_pty(
                 command.env(key, value);
             }
         }
-        let resolve_ms = resolve_started.elapsed().as_millis();
-        let builder_ms = spawn_started.elapsed().as_millis();
-        let effective_path_preview = command
+        let _resolve_ms = resolve_started.elapsed().as_millis();
+        let _builder_ms = spawn_started.elapsed().as_millis();
+        let _effective_path_preview = command
             .get_env("Path")
             .or_else(|| command.get_env("PATH"))
             .map(|value| {
@@ -416,13 +403,6 @@ pub async fn spawn_pty(
             .unwrap_or_else(|| "<none>".to_string());
         let cwd_warning = if let Some(cwd_value) = cwd.as_deref().filter(|cwd| !cwd.is_empty()) {
             if PathBuf::from(cwd_value).is_dir() {
-                // Alguns caminhos chegam aqui com o prefixo verbatim `\\?\` do
-                // Windows (worktree canonicalizado, dado antigo persistido antes
-                // do fix em `worktrees::git_arg` etc.) — `cmd.exe` e vários CLIs
-                // baseados em Node recusam esse formato como diretório atual e
-                // silenciosamente caem pra `C:\Windows`. Strip aqui é a rede de
-                // segurança final: cobre qualquer cwd que chegue sujo, de
-                // qualquer origem, sem precisar caçar cada call site.
                 command.cwd(crate::worktrees::git_arg(Path::new(cwd_value)));
                 None
             } else {
@@ -437,7 +417,7 @@ pub async fn spawn_pty(
             .slave
             .spawn_command(command)
             .map_err(|error| error.to_string())?;
-        let shell_spawn_ms = spawn_started.elapsed().as_millis();
+        let _shell_spawn_ms = spawn_started.elapsed().as_millis();
         let child = Arc::new(Mutex::new(child));
         let child_pid = child.lock().ok().and_then(|child| child.process_id());
         if let Some(pid) = child_pid {
@@ -453,30 +433,12 @@ pub async fn spawn_pty(
                 .map_err(|error| error.to_string())?,
         ));
         let opencode_nudge_lock = Arc::new(AtomicU64::new(0));
-        // Nudge de boot (ver uso mais abaixo, no loop de batches): o Ctrl+L
-        // que já mandamos em `resize_pty` pro OpenCode não cobre o caso de
-        // um terminal recém-criado que nunca é redimensionado — o "kick"
-        // daquele fix é disparado pelo spawn da promise no frontend, não por
-        // sinal nenhum do processo filho, então quase sempre chega ANTES do
-        // OpenCode terminar de subir e trocar o TTY pro modo raw/alt-screen
-        // da TUI (aterrissa em stdin ainda em modo cooked/pré-boot). Sem
-        // nenhum retry, essa única tentativa mal-cronometrada é a única
-        // chance que o OpenCode tem — daí a tela ficar em branco/com blocos
-        // de glifo soltos mesmo num terminal novo, sem nenhum resize.
         let is_opencode = requested_command.as_deref() == Some("opencode");
         let boot_nudge_writer = Arc::clone(&writer);
         let boot_nudge_lock = Arc::clone(&opencode_nudge_lock);
-        // Handle dedicado pro log de diagnóstico (ver `pty_debug_enabled` /
-        // `ALETHE_PTY_DEBUG` — procedimento de diagnóstico da área principal
-        // do OpenCode em branco, docs/CHANGELOG.md), separado de `event_app`
-        // (canal de dados) só pra deixar claro o propósito em cada clone.
-        let debug_app = app.clone();
+        let debug_log_path = spawn_log_path_buf.clone();
         let debug_id = id.clone();
-        let event_name = format!("pty://data/{id}");
-        let activity_event_name = format!("pty://activity/{id}");
-        let exit_event_name = format!("pty://exit/{id}");
-        let event_app = app.clone();
-        let scrollback_app = app.clone();
+        let scrollback_path_thread = sb_path_buf.clone();
         let scrollback_id = id.clone();
         let thread_scrollback = Arc::clone(&scrollback);
         let thread_teardown = Arc::clone(&teardown);
@@ -489,312 +451,241 @@ pub async fn spawn_pty(
         let thread_read_active = Arc::clone(&read_active);
         let visible = Arc::new(AtomicBool::new(true));
         let thread_visible = Arc::clone(&visible);
-        let remote_hub = remote_hub_outer;
+        let remote_hub = remote;
+        let thread_sink = sink;
 
-        // Reader síncrono na thread-pool bloqueante do Tokio manda chunks por um
-        // canal MPSC; o batcher async coalesce por até 16ms (60 FPS) ou 64 KB antes
-        // de emitir. Resultado: 1 evento IPC + 1 push_scrollback por LOTE em vez de
-        // 1 por read — elimina micro-stutters com N terminais em saída pesada.
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Vec<u8>>(1024);
 
-        tauri::async_runtime::spawn(async move {
-        tokio::task::spawn_blocking(move || {
-            // 32 KiB: menos syscalls sob saída pesada (builds, cat de arquivo
-            // grande) sem custo de latência pra outputs pequenos.
-            let mut buffer = [0_u8; 32 * 1024];
+        tokio::spawn(async move {
+            tokio::task::spawn_blocking(move || {
+                let mut buffer = [0_u8; 32 * 1024];
+                loop {
+                    {
+                        let (lock, cvar) = &*thread_read_active;
+                        let mut active = lock.lock().unwrap();
+                        while !*active {
+                            active = cvar.wait(active).unwrap();
+                        }
+                    }
+
+                    match reader.read(&mut buffer) {
+                        Ok(0) => break,
+                        Ok(count) => {
+                            if tx.blocking_send(buffer[..count].to_vec()).is_err() {
+                                break;
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+            });
+
+            let mut carry: Vec<u8> = Vec::new();
+            let mut batch: Vec<u8> = Vec::new();
+            let mut last_activity_emit: Option<Instant> = None;
+            let mut activity_pending = String::new();
+            const ACTIVITY_PENDING_CAP: usize = 256 * 1024;
+
+            let mut emit_data_or_activity = |text: &str| {
+                remote_hub.publish(
+                    serde_json::json!({ "type": "pty_output", "ptyId": &scrollback_id, "text": text }),
+                );
+                if thread_visible.load(Ordering::Relaxed) {
+                    if !activity_pending.is_empty() {
+                        activity_pending.clear();
+                    }
+                    thread_sink.emit_data(&scrollback_id, text);
+                    return;
+                }
+                activity_pending.push_str(text);
+                if activity_pending.len() > ACTIVITY_PENDING_CAP {
+                    let drop_to = activity_pending.len() - ACTIVITY_PENDING_CAP;
+                    let boundary = align_to_char_boundary(activity_pending.as_bytes(), drop_to);
+                    activity_pending.drain(..boundary);
+                }
+                if activity_emit_due(last_activity_emit, PTY_ACTIVITY_EMIT_INTERVAL_MS) {
+                    thread_sink.emit_activity(&scrollback_id, activity_pending.as_str());
+                    activity_pending.clear();
+                    last_activity_emit = Some(Instant::now());
+                }
+            };
+
+            if let Some(warning) = initial_warning {
+                thread_sink.emit_data(&scrollback_id, &warning);
+                let _ = push_scrollback(
+                    &scrollback_path_thread,
+                    &thread_scrollback,
+                    warning.as_bytes(),
+                );
+            }
+
+            let mut sent_boot_nudge = false;
+
             loop {
-                // Checa se leitura está ativa. Se não, bloqueia no Condvar.
-                {
-                    let (lock, cvar) = &*thread_read_active;
-                    let mut active = lock.lock().unwrap();
-                    while !*active {
-                        active = cvar.wait(active).unwrap();
+                let Some(first) = rx.recv().await else { break };
+                batch.extend_from_slice(&first);
+
+                if is_opencode && !sent_boot_nudge {
+                    sent_boot_nudge = true;
+                    if pty_debug_enabled() {
+                        if let Some(ref path) = debug_log_path {
+                            let _ = append_spawn_log_path(
+                                path,
+                                &format!(
+                                    "[pty-debug] {debug_id}: primeiro batch real recebido ({} bytes)",
+                                    first.len()
+                                ),
+                            );
+                        }
+                    }
+                    let nudge_writer = Arc::clone(&boot_nudge_writer);
+                    let nudge_lock = Arc::clone(&boot_nudge_lock);
+                    let nudge_log_path = debug_log_path.clone();
+                    let nudge_debug_id = debug_id.clone();
+                    tokio::spawn(async move {
+                        tokio::time::sleep(Duration::from_millis(150)).await;
+                        let claimed = try_claim_opencode_nudge(&nudge_lock);
+                        if pty_debug_enabled() {
+                            if let Some(ref path) = nudge_log_path {
+                                let _ = append_spawn_log_path(
+                                    path,
+                                    &format!(
+                                        "[pty-debug] {nudge_debug_id}: nudge de boot {} (150ms após 1º batch)",
+                                        if claimed { "ENVIADO" } else { "pulado (perdeu a trava)" }
+                                    ),
+                                );
+                            }
+                        }
+                        if claimed {
+                            if let Ok(mut writer) = nudge_writer.lock() {
+                                let _ = writer.write_all(&[12]);
+                                let _ = writer.flush();
+                            }
+                        }
+                    });
+                }
+
+                let batch_started = Instant::now();
+                while batch.len() < 64 * 1024 {
+                    let remaining =
+                        Duration::from_millis(16).saturating_sub(batch_started.elapsed());
+                    if remaining.is_zero() {
+                        break;
+                    }
+                    match tokio::time::timeout(remaining, rx.recv()).await {
+                        Ok(Some(chunk)) => batch.extend_from_slice(&chunk),
+                        Ok(None) => break,
+                        Err(_) => break,
                     }
                 }
 
-                match reader.read(&mut buffer) {
-                    Ok(0) => break,
-                    Ok(count) => {
-                        if tx.blocking_send(buffer[..count].to_vec()).is_err() {
-                            break;
-                        }
+                let count = batch.len();
+                let _ = push_scrollback(&scrollback_path_thread, &thread_scrollback, &batch);
+
+                if carry.is_empty() {
+                    let valid = valid_utf8_prefix_len(&batch);
+                    if valid > 0 {
+                        let text = unsafe { std::str::from_utf8_unchecked(&batch[..valid]) };
+                        emit_data_or_activity(text);
                     }
-                    Err(_) => break,
+                    if valid < count {
+                        carry.extend_from_slice(&batch[valid..]);
+                    }
+                } else {
+                    carry.extend_from_slice(&batch);
+                    let valid = valid_utf8_prefix_len(&carry);
+                    if valid > 0 {
+                        let text = unsafe { std::str::from_utf8_unchecked(&carry[..valid]) };
+                        emit_data_or_activity(text);
+                        carry.drain(..valid);
+                    }
+                }
+
+                if carry.len() > 3 {
+                    let lossy = String::from_utf8_lossy(&carry).into_owned();
+                    emit_data_or_activity(lossy.as_str());
+                    carry.clear();
+                }
+
+                batch.clear();
+
+                tokio::time::sleep(Duration::from_millis(2)).await;
+            }
+
+            if !carry.is_empty() {
+                let lossy = String::from_utf8_lossy(&carry).into_owned();
+                thread_sink.emit_data(&scrollback_id, lossy.as_str());
+                remote_hub.publish(serde_json::json!({ "type": "pty_output", "ptyId": &scrollback_id, "text": lossy }));
+            }
+
+            let teardown_reason = thread_teardown.load(Ordering::SeqCst);
+            let persisted = if teardown_reason == TEARDOWN_KILLED
+                || teardown_reason == TEARDOWN_RESTARTED
+            {
+                if let Ok(mut buffer) = thread_scrollback.lock() {
+                    buffer.data = VecDeque::new();
+                    buffer.pending.clear();
+                    buffer.dirty = false;
+                }
+                true
+            } else {
+                let flushed = flush_scrollback(&scrollback_path_thread, &thread_scrollback)
+                    .and_then(|_| {
+                        if teardown_reason == TEARDOWN_SUSPENDED {
+                            wait_for_scrollback_writer()
+                        } else {
+                            Ok(())
+                        }
+                    })
+                    .is_ok();
+                if flushed {
+                    if let Ok(mut buffer) = thread_scrollback.lock() {
+                        buffer.data = VecDeque::new();
+                        buffer.dirty = false;
+                    }
+                }
+                flushed
+            };
+
+            let (done_lock, done_ready) = &*thread_reader_done;
+            if let Ok(mut done) = done_lock.lock() {
+                *done = Some(persisted);
+                done_ready.notify_all();
+            }
+
+            let code = thread_child
+                .lock()
+                .ok()
+                .and_then(|mut child| child.wait().ok())
+                .map(|status| status.exit_code() as i32);
+            let reason = match teardown_reason {
+                TEARDOWN_KILLED => "killed",
+                TEARDOWN_SUSPENDED => "suspended",
+                TEARDOWN_RESTARTED => "restarted",
+                _ => "exited",
+            };
+            thread_sink.emit_exit(&scrollback_id, &PtyExitPayload { code, reason });
+            remote_hub.publish(serde_json::json!({ "type": "pty_exit", "ptyId": &scrollback_id, "reason": reason }));
+
+            if let Some(pid) = child_pid {
+                if let Ok(mut sessions) = thread_sessions.lock() {
+                    let should_remove = sessions
+                        .get(&scrollback_id)
+                        .and_then(|session| session.child.lock().ok()?.process_id())
+                        .map(|current_pid| current_pid == pid)
+                        .unwrap_or(false);
+                    if should_remove {
+                        sessions.remove(&scrollback_id);
+                    }
                 }
             }
         });
 
-        // Cauda de um caractere UTF-8 multibyte partido entre dois lotes.
-        let mut carry: Vec<u8> = Vec::new();
-        let mut batch: Vec<u8> = Vec::new();
-        // `None` = ainda não emitiu nada no canal `activity` — deixa o
-        // primeiro lote invisível passar na hora, sem esperar o intervalo.
-        let mut last_activity_emit: Option<Instant> = None;
-        // Saída acumulada desde o último emit no canal `activity`, pra o
-        // throttle atrasar sem descartar. Teto de 256 KiB porque o consumidor
-        // só precisa de volume e de padrões recentes — não redesenha a tela
-        // (isso é o replay de scrollback no `doResync`).
-        let mut activity_pending = String::new();
-        const ACTIVITY_PENDING_CAP: usize = 256 * 1024;
-
-        // Painel visível: emite no canal `data` de sempre (render caro no
-        // frontend). Painel invisível: NÃO emite `data` (o frontend não está
-        // desenhando aquele xterm mesmo) — emite só `activity`, throttlado,
-        // pra manter recordIo/AgentCompletionMonitor vivos em background sem
-        // custo de render. `push_scrollback` (fora daqui) roda sempre, então
-        // nenhum byte é perdido — só o "desenhar na tela" é adiado.
-        //
-        // O throttle ACUMULA em `activity_pending` em vez de descartar: o
-        // consumidor do canal conta caracteres de saída (`outputChars` do
-        // `AgentCompletionMonitor`) e casa padrões de erro de bootstrap, então
-        // amostrar o stream faria um agente em segundo plano nunca sair de
-        // `armed` ou perder a detecção de conflito de resume do Codex.
-        let mut emit_data_or_activity = |text: &str| {
-            // Espelho do controle remoto: o dispositivo remoto é um viewer
-            // independente do painel local, então publica sempre — o gate de
-            // visibilidade abaixo vale só pro xterm desta janela.
-            remote_hub.publish(
-                serde_json::json!({ "type": "pty_output", "ptyId": &scrollback_id, "text": text }),
-            );
-            if thread_visible.load(Ordering::Relaxed) {
-                if !activity_pending.is_empty() {
-                    activity_pending.clear();
-                }
-                let _ = event_app.emit(&event_name, text);
-                return;
-            }
-            activity_pending.push_str(text);
-            if activity_pending.len() > ACTIVITY_PENDING_CAP {
-                let drop_to = activity_pending.len() - ACTIVITY_PENDING_CAP;
-                let boundary = align_to_char_boundary(activity_pending.as_bytes(), drop_to);
-                activity_pending.drain(..boundary);
-            }
-            if activity_emit_due(last_activity_emit, PTY_ACTIVITY_EMIT_INTERVAL_MS) {
-                let _ = event_app.emit(&activity_event_name, activity_pending.as_str());
-                activity_pending.clear();
-                last_activity_emit = Some(Instant::now());
-            }
-        };
-
-        if let Some(warning) = initial_warning {
-            let _ = event_app.emit(&event_name, &warning);
-            let _ = push_scrollback(
-                &scrollback_app,
-                &scrollback_id,
-                &thread_scrollback,
-                warning.as_bytes(),
-            );
-        }
-
-        let mut sent_boot_nudge = false;
-
-        loop {
-            // Bloqueia até o primeiro chunk — zero wakeups quando o terminal
-            // está ocioso. None = reader terminou (EOF/erro) e canal fechou.
-            let Some(first) = rx.recv().await else { break };
-            batch.extend_from_slice(&first);
-
-            // Primeiro lote real de saída do processo filho = prova de que
-            // ele está vivo e já produzindo output — sinal muito mais
-            // confiável de "hora certa" do que o momento em que o frontend
-            // terminou de esperar o spawn. Kick único, numa task separada
-            // pra não atrasar o desenho deste primeiro lote em si.
-            if is_opencode && !sent_boot_nudge {
-                sent_boot_nudge = true;
-                if pty_debug_enabled() {
-                    let _ = append_spawn_log(
-                        &debug_app,
-                        &format!(
-                            "[pty-debug] {debug_id}: primeiro batch real recebido ({} bytes)",
-                            first.len()
-                        ),
-                    );
-                }
-                let nudge_writer = Arc::clone(&boot_nudge_writer);
-                let nudge_lock = Arc::clone(&boot_nudge_lock);
-                let nudge_debug_app = debug_app.clone();
-                let nudge_debug_id = debug_id.clone();
-                tauri::async_runtime::spawn(async move {
-                    tokio::time::sleep(Duration::from_millis(150)).await;
-                    // Reclama o direito de nudge só na hora de escrever, não
-                    // no agendamento — um resize_pty pode ter disparado o
-                    // dele durante essa espera; se já ganhou, não manda o
-                    // nosso por cima (dois redesenhos concorrentes é o que
-                    // causava a corrupção em primeiro lugar).
-                    let claimed = try_claim_opencode_nudge(&nudge_lock);
-                    if pty_debug_enabled() {
-                        let _ = append_spawn_log(
-                            &nudge_debug_app,
-                            &format!(
-                                "[pty-debug] {nudge_debug_id}: nudge de boot {} (150ms após 1º batch)",
-                                if claimed { "ENVIADO" } else { "pulado (perdeu a trava)" }
-                            ),
-                        );
-                    }
-                    if claimed {
-                        if let Ok(mut writer) = nudge_writer.lock() {
-                            let _ = writer.write_all(&[12]);
-                            let _ = writer.flush();
-                        }
-                    }
-                });
-            }
-
-            // Coalesce o que chegar em até 16ms ou até encher 64 KB.
-            let batch_started = Instant::now();
-            while batch.len() < 64 * 1024 {
-                let remaining =
-                    Duration::from_millis(16).saturating_sub(batch_started.elapsed());
-                if remaining.is_zero() {
-                    break;
-                }
-                match tokio::time::timeout(remaining, rx.recv()).await {
-                    Ok(Some(chunk)) => batch.extend_from_slice(&chunk),
-                    // None = canal fechou; ainda emitimos o lote acumulado.
-                    Ok(None) => break,
-                    // Timeout de 16ms estourou.
-                    Err(_) => break,
-                }
-            }
-
-            let count = batch.len();
-            // Scrollback recebe os bytes crus do lote (sempre corretos — só o
-            // emit precisa de fronteira de caractere).
-            let _ = push_scrollback(&scrollback_app, &scrollback_id, &thread_scrollback, &batch);
-
-            // Emit PRIMEIRO o que é UTF-8 completo — user vê o echo na hora,
-            // sem disk I/O no caminho da tecla. Caractere partido no limite do
-            // lote fica em `carry` pro próximo ciclo.
-            if carry.is_empty() {
-                // Caminho rápido (caso comum): nada pendente, zero alloc.
-                let valid = valid_utf8_prefix_len(&batch);
-                if valid > 0 {
-                    // SAFETY: batch[..valid] é UTF-8 válido por construção.
-                    let text = unsafe { std::str::from_utf8_unchecked(&batch[..valid]) };
-                    emit_data_or_activity(text);
-                }
-                if valid < count {
-                    carry.extend_from_slice(&batch[valid..]);
-                }
-            } else {
-                carry.extend_from_slice(&batch);
-                let valid = valid_utf8_prefix_len(&carry);
-                if valid > 0 {
-                    // SAFETY: carry[..valid] é UTF-8 válido por construção.
-                    let text = unsafe { std::str::from_utf8_unchecked(&carry[..valid]) };
-                    emit_data_or_activity(text);
-                    carry.drain(..valid);
-                }
-            }
-
-            // `carry` só deve guardar a cauda de UM caractere (≤3 bytes).
-            // Se passar disso, são bytes inválidos que nunca completam:
-            // emite lossy (mostra �) e zera pra não vazar nem travar.
-            if carry.len() > 3 {
-                let lossy = String::from_utf8_lossy(&carry).into_owned();
-                emit_data_or_activity(lossy.as_str());
-                carry.clear();
-            }
-
-            batch.clear();
-
-            // Backpressure leve pra dar vazão à fila IPC do webview.
-            tokio::time::sleep(Duration::from_millis(2)).await;
-        }
-
-        // Flush de qualquer cauda restante no fim do stream.
-        if !carry.is_empty() {
-            let lossy = String::from_utf8_lossy(&carry).into_owned();
-            let _ = event_app.emit(&event_name, lossy.as_str());
-            remote_hub.publish(serde_json::json!({ "type": "pty_output", "ptyId": &scrollback_id, "text": lossy }));
-        }
-
-        // PTY morreu: garante o scrollback no disco e LIBERA o buffer em RAM (até
-        // 4 MiB). A sessão fica no HashMap; attach_pty recarrega do disco se preciso.
-        // Só libera se o flush deu certo, pra nunca perder dados não persistidos.
-        //
-        // EXCEÇÃO kill/restart (`killed`): NÃO reescreve o .bin. Em kill_pty o
-        // delete_scrollback já removeu o arquivo; em restart_pty um novo spawn
-        // reusou o mesmo id — em ambos, um Overwrite tardio deste reader morto
-        // ressuscitaria/corromperia o arquivo. Aqui só liberamos o buffer em RAM.
-        let teardown_reason = thread_teardown.load(Ordering::SeqCst);
-        let persisted = if teardown_reason == TEARDOWN_KILLED
-            || teardown_reason == TEARDOWN_RESTARTED
-        {
-            if let Ok(mut buffer) = thread_scrollback.lock() {
-                buffer.data = VecDeque::new();
-                buffer.pending.clear();
-                buffer.dirty = false;
-            }
-            true
-        } else {
-            let flushed = flush_scrollback(&scrollback_app, &scrollback_id, &thread_scrollback)
-                .and_then(|_| {
-                    if teardown_reason == TEARDOWN_SUSPENDED {
-                        wait_for_scrollback_writer()
-                    } else {
-                        Ok(())
-                    }
-                })
-                .is_ok();
-            if flushed {
-                if let Ok(mut buffer) = thread_scrollback.lock() {
-                    buffer.data = VecDeque::new();
-                    buffer.dirty = false;
-                }
-            }
-            flushed
-        };
-
-        let (done_lock, done_ready) = &*thread_reader_done;
-        if let Ok(mut done) = done_lock.lock() {
-            *done = Some(persisted);
-            done_ready.notify_all();
-        }
-
-        let code = thread_child
-            .lock()
-            .ok()
-            .and_then(|mut child| child.wait().ok())
-            .map(|status| status.exit_code() as i32);
-        let reason = match teardown_reason {
-            TEARDOWN_KILLED => "killed",
-            TEARDOWN_SUSPENDED => "suspended",
-            TEARDOWN_RESTARTED => "restarted",
-            _ => "exited",
-        };
-        let _ = event_app.emit(&exit_event_name, PtyExitPayload { code, reason });
-        remote_hub.publish(serde_json::json!({ "type": "pty_exit", "ptyId": &scrollback_id, "reason": reason }));
-
-        if let Some(pid) = child_pid {
-            if let Ok(mut sessions) = thread_sessions.lock() {
-                let should_remove = sessions
-                    .get(&scrollback_id)
-                    .and_then(|session| session.child.lock().ok()?.process_id())
-                    .map(|current_pid| current_pid == pid)
-                    .unwrap_or(false);
-                if should_remove {
-                    sessions.remove(&scrollback_id);
-                }
-            }
-        }
-    });
-
-        let _ = append_spawn_log(
-            &app,
-            &format!(
-                "spawn id={id} command={:?} launcher={:?} resolve_ms={resolve_ms} builder_ms={builder_ms} shell_spawn_ms={shell_spawn_ms} total_ms={} path_preview={effective_path_preview:?}",
-                requested_command,
-                resolved_launcher,
-                spawn_started.elapsed().as_millis()
-            ),
-        );
-
         let session = PtySession {
             pty_id: id.clone(),
+            child,
             master: Arc::new(Mutex::new(Some(pair.master))),
             writer,
-            child,
             scrollback,
             reader_done,
             teardown,
@@ -816,12 +707,44 @@ pub async fn spawn_pty(
     .map_err(|error| format!("spawn_pty: falha na task bloqueante: {error}"))?
 }
 
-/// Mata a árvore de processos inteira (o filho direto + todos os descendentes) a
-/// partir do PID. `portable_pty::Child::kill()` no Windows só mata o processo
-/// direto (o shell/ConPTY) — `node`/`claude`/`codex` e seus filhos (MCP, workers)
-/// ficam órfãos, vazando processos e RAM a cada close/restart. `taskkill /F /T`
-/// derruba a árvore toda. Deve ser chamado ANTES de `child.kill()` (com o pai
-/// ainda vivo, senão a travessia da árvore não encontra os netos reparentados).
+#[tauri::command]
+pub async fn spawn_pty(
+    app: AppHandle,
+    sessions: State<'_, PtySessions>,
+    remote: State<'_, Arc<crate::remote::RemoteHub>>,
+    cols: u16,
+    rows: u16,
+    id: Option<String>,
+    command: Option<String>,
+    cwd: Option<String>,
+    extra_args: Option<Vec<String>>,
+    launcher_override: Option<String>,
+    env: Option<std::collections::HashMap<String, String>>,
+) -> Result<SpawnPtyResponse, String> {
+    let pty_id = id.clone().unwrap_or_else(|| nanoid::nanoid!());
+    let sb_path = scrollback_path(&app, &pty_id)?;
+    let spawn_log_path = crate::paths::spawn_log_path(&app).ok();
+    let args = SpawnPtyArgs {
+        cols,
+        rows,
+        id: Some(pty_id),
+        command,
+        cwd,
+        extra_args,
+        launcher_override,
+        env,
+    };
+    spawn_pty_core(
+        Arc::clone(sessions.inner()),
+        Arc::new(TauriSink(app)),
+        Arc::clone(remote.inner()),
+        spawn_log_path,
+        sb_path,
+        args,
+    )
+    .await
+}
+
 #[cfg(windows)]
 pub(crate) fn kill_process_tree(pid: u32) {
     let mut command = std::process::Command::new("taskkill");
@@ -832,6 +755,42 @@ pub(crate) fn kill_process_tree(pid: u32) {
 
 #[cfg(not(windows))]
 pub(crate) fn kill_process_tree(_pid: u32) {}
+
+pub async fn restart_pty_core(
+    sessions: PtySessions,
+    sink: Arc<dyn PtyOutputSink>,
+    remote: Arc<crate::remote::RemoteHub>,
+    spawn_log_path_buf: Option<PathBuf>,
+    sb_path_buf: PathBuf,
+    args: SpawnPtyArgs,
+) -> Result<SpawnPtyResponse, String> {
+    let kill_sessions = sessions.clone();
+    let kill_sb_path = sb_path_buf.clone();
+    let kill_id = args.id.clone().unwrap_or_default();
+    tokio::task::spawn_blocking(move || {
+        let session = {
+            let mut sessions = kill_sessions
+                .lock()
+                .map_err(|_| "PTY sessions lock poisoned".to_string())?;
+            sessions.remove(&kill_id)
+        };
+        if let Some(session) = session {
+            session.teardown.store(TEARDOWN_RESTARTED, Ordering::SeqCst);
+            let _ = process_tree::kill_pty_tree(&kill_id);
+            if let Ok(mut child) = session.child.lock() {
+                if let Some(pid) = child.process_id() {
+                    kill_process_tree(pid);
+                }
+                let _ = child.kill();
+            }
+        }
+        delete_scrollback(&kill_sb_path)
+    })
+    .await
+    .map_err(|error| format!("restart_pty: falha na task bloqueante: {error}"))??;
+
+    spawn_pty_core(sessions, sink, remote, spawn_log_path_buf, sb_path_buf, args).await
+}
 
 #[tauri::command]
 pub async fn restart_pty(
@@ -845,97 +804,59 @@ pub async fn restart_pty(
     launcher_override: Option<String>,
     env: Option<HashMap<String, String>>,
 ) -> Result<SpawnPtyResponse, String> {
-    // A fase de matar o processo antigo (taskkill pela árvore inteira) +
-    // apagar o scrollback antigo rodava direto no corpo async, fora de
-    // qualquer spawn_blocking — só o boot do processo NOVO (via spawn_pty,
-    // abaixo) estava isolado. Isso travava a thread do runtime Tokio que
-    // estava processando este restart, com o mesmo efeito de travar outros
-    // comandos IPC atrás dela. Agora a fase de kill também roda em
-    // spawn_blocking, e solta o lock de `sessions` assim que remove a sessão
-    // do mapa (mesmo motivo de `kill_pty`).
-    let kill_sessions: PtySessions = Arc::clone(sessions.inner());
-    let kill_app = app.clone();
-    let kill_id = id.clone();
-    tokio::task::spawn_blocking(move || {
-        let session = {
-            let mut sessions = kill_sessions
-                .lock()
-                .map_err(|_| "PTY sessions lock poisoned".to_string())?;
-            sessions.remove(&kill_id)
-        };
-        if let Some(session) = session {
-            session.teardown.store(TEARDOWN_RESTARTED, Ordering::SeqCst);
-            // `kill_pty_tree` (process_tree.rs) derruba raiz + descendentes em
-            // qualquer plataforma (via sysinfo); precisa rodar ANTES de
-            // `kill_process_tree`/`child.kill()` matarem a raiz, senão a
-            // travessia da árvore não encontra os netos reparentados.
-            let _ = process_tree::kill_pty_tree(&kill_id);
-            if let Ok(mut child) = session.child.lock() {
-                if let Some(pid) = child.process_id() {
-                    kill_process_tree(pid);
-                }
-                let _ = child.kill();
-            }
-        }
-        delete_scrollback(&kill_app, &kill_id)
-    })
-    .await
-    .map_err(|error| format!("restart_pty: falha na task bloqueante: {error}"))??;
-
-    spawn_pty(
-        app,
-        sessions,
-        remote,
-        80,
-        24,
-        Some(id),
+    let sb_path = scrollback_path(&app, &id)?;
+    let spawn_log_path = crate::paths::spawn_log_path(&app).ok();
+    let args = SpawnPtyArgs {
+        cols: 80,
+        rows: 24,
+        id: Some(id),
         command,
         cwd,
         extra_args,
         launcher_override,
         env,
+    };
+    restart_pty_core(
+        Arc::clone(sessions.inner()),
+        Arc::new(TauriSink(app)),
+        Arc::clone(remote.inner()),
+        spawn_log_path,
+        sb_path,
+        args,
     )
     .await
 }
 
-#[tauri::command]
-pub async fn attach_pty(
-    app: AppHandle,
-    sessions: State<'_, PtySessions>,
-    id: String,
-    max_bytes: Option<usize>,
+pub async fn attach_pty_core(
+    sessions: &PtySessions,
+    sb_path: &Path,
+    id: &str,
+    max_bytes: usize,
 ) -> Result<String, String> {
-    // Fallback de disco (`load_scrollback`, abaixo) é I/O real — pode ficar
-    // lento sob um scrollback grande. Igual a `spawn_pty`, roda em
-    // `spawn_blocking` pra não travar o despacho de outros comandos
-    // (inclusive o attach de OUTROS terminais) atrás dele; ver comentário
-    // completo em `spawn_pty`.
-    let sessions: PtySessions = Arc::clone(sessions.inner());
+    let sessions: PtySessions = sessions.clone();
+    let sb_path_buf = sb_path.to_path_buf();
+    let pty_id = id.to_string();
     tokio::task::spawn_blocking(move || {
-        let max_bytes = max_bytes.unwrap_or(512 * 1024).max(16 * 1024);
+        let max_bytes = max_bytes.max(16 * 1024);
 
-        // Caminho comum: serve do buffer em memória.
         {
             let sessions = sessions
                 .lock()
                 .map_err(|_| "PTY sessions lock poisoned".to_string())?;
-            if let Some(session) = sessions.get(&id) {
+            if let Some(session) = sessions.get(&pty_id) {
                 let mut buffer = session
                     .scrollback
                     .lock()
                     .map_err(|_| "PTY scrollback lock poisoned".to_string())?;
                 if !buffer.data.is_empty() {
-                // make_contiguous + slice evita a cópia extra do iter().skip().collect().
-                let slice = buffer.data.make_contiguous();
-                let start = align_to_char_boundary(slice, slice.len().saturating_sub(max_bytes));
+                    let slice = buffer.data.make_contiguous();
+                    let start = align_to_char_boundary(slice, slice.len().saturating_sub(max_bytes));
                     return Ok(String::from_utf8_lossy(&slice[start..]).into_owned());
                 }
             }
         }
 
-        // Buffer vazio: PTY recém-criado (sem output) ou PTY morto cujo buffer foi
-        // liberado. Em ambos os casos o disco tem a verdade (vazio ou o scrollback final).
-        let disk = load_scrollback(&app, &id)?;
+        let disk = load_scrollback(&sb_path_buf)?;
         let bytes: Vec<u8> = disk.into_iter().collect();
         let start = align_to_char_boundary(&bytes, bytes.len().saturating_sub(max_bytes));
         Ok(String::from_utf8_lossy(&bytes[start..]).into_owned())
@@ -945,33 +866,35 @@ pub async fn attach_pty(
 }
 
 #[tauri::command]
-pub async fn write_pty(
+pub async fn attach_pty(
+    app: AppHandle,
     sessions: State<'_, PtySessions>,
     id: String,
-    data: String,
-) -> Result<(), String> {
-    // Pega o handle do writer e SOLTA o lock global de sessions antes de
-    // escrever. Escrita pode bloquear no PTY (buffer cheio); se segurassemos o
-    // lock, qualquer attach/resize/kill/spawn em outro PTY ficaria parado.
-    // `spawn_blocking` isola isso da thread de despacho do Tauri — sem isso,
-    // uma escrita presa (agente que parou de drenar stdin) travava todo
-    // comando IPC atrás dela, não só este terminal.
-    let sessions: PtySessions = Arc::clone(sessions.inner());
+    max_bytes: Option<usize>,
+) -> Result<String, String> {
+    let sb_path = scrollback_path(&app, &id)?;
+    attach_pty_core(&sessions, &sb_path, &id, max_bytes.unwrap_or(512 * 1024)).await
+}
+
+pub async fn write_pty_core(sessions: &PtySessions, id: &str, data: &str) -> Result<(), String> {
+    let sessions: PtySessions = sessions.clone();
+    let pty_id = id.to_string();
+    let payload = data.to_string();
     tokio::task::spawn_blocking(move || {
         let writer = {
             let sessions = sessions
                 .lock()
                 .map_err(|_| "PTY sessions lock poisoned".to_string())?;
             let session = sessions
-                .get(&id)
-                .ok_or_else(|| format!("PTY not found: {id}"))?;
+                .get(&pty_id)
+                .ok_or_else(|| format!("PTY not found: {pty_id}"))?;
             Arc::clone(&session.writer)
         };
         let mut writer = writer
             .lock()
             .map_err(|_| "PTY writer lock poisoned".to_string())?;
         writer
-            .write_all(data.as_bytes())
+            .write_all(payload.as_bytes())
             .map_err(|error| error.to_string())?;
         writer.flush().map_err(|error| error.to_string())
     })
@@ -980,29 +903,37 @@ pub async fn write_pty(
 }
 
 #[tauri::command]
-pub async fn resize_pty(
-    app: AppHandle,
+pub async fn write_pty(
     sessions: State<'_, PtySessions>,
     id: String,
+    data: String,
+) -> Result<(), String> {
+    write_pty_core(&sessions, &id, &data).await
+}
+
+pub async fn resize_pty_core(
+    sessions: &PtySessions,
+    log_path: Option<&Path>,
+    id: &str,
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
-    // Mesmo padrão de write_pty: clona os handles (master/writer) e SOLTA o
-    // lock global de sessions antes de chamar master.resize — ConPTY é
-    // conhecido por travar num resize ocasionalmente no Windows; sem soltar o
-    // lock antes, isso prendia kill/write/attach de TODOS os outros terminais.
-    let sessions: PtySessions = Arc::clone(sessions.inner());
+    let sessions: PtySessions = sessions.clone();
+    let pty_id = id.to_string();
+    let log_path_buf = log_path.map(|p| p.to_path_buf());
     tokio::task::spawn_blocking(move || {
         if pty_debug_enabled() {
-            let _ = append_spawn_log(&app, &format!("[pty-debug] {id}: resize_pty {cols}x{rows}"));
+            if let Some(ref path) = log_path_buf {
+                let _ = append_spawn_log_path(path, &format!("[pty-debug] {pty_id}: resize_pty {cols}x{rows}"));
+            }
         }
         let (master, writer, is_opencode, nudge_lock) = {
             let sessions = sessions
                 .lock()
                 .map_err(|_| "PTY sessions lock poisoned".to_string())?;
             let session = sessions
-                .get(&id)
-                .ok_or_else(|| format!("PTY not found: {id}"))?;
+                .get(&pty_id)
+                .ok_or_else(|| format!("PTY not found: {pty_id}"))?;
             (
                 Arc::clone(&session.master),
                 Arc::clone(&session.writer),
@@ -1017,7 +948,7 @@ pub async fn resize_pty(
                 .map_err(|_| "PTY master lock poisoned".to_string())?;
             let master = master
                 .as_ref()
-                .ok_or_else(|| format!("PTY master ja fechado (sessao suspensa): {id}"))?;
+                .ok_or_else(|| format!("PTY master ja fechado (sessao suspensa): {pty_id}"))?;
             master
                 .resize(PtySize {
                     rows: rows.max(1),
@@ -1028,43 +959,19 @@ pub async fn resize_pty(
                 .map_err(|error| error.to_string())?;
         }
 
-        // OpenCode no Windows/Linux/macOS nem sempre redesenha a TUI após
-        // resize — a tela fica truncada até a próxima tecla. Ctrl+L (Form
-        // Feed) força o redraw em todas as plataformas.
-        //
-        // `master.resize()` acima só ajusta o winsize do PTY e dispara
-        // SIGWINCH pro processo filho — não há garantia de ordem entre a
-        // entrega/tratamento desse sinal e o Ctrl+L chegando no stdin logo
-        // em seguida. O próprio framework de TUI do OpenCode já reage ao
-        // SIGWINCH com seu próprio redraw assíncrono; mandar o Ctrl+L sem
-        // nenhuma folga faz os dois redraws (um calculado pra geometria
-        // antiga, outro pra nova) correrem em paralelo e se sobrescreverem
-        // no meio — a tela sai com blocos de glifo corrompidos em vez de
-        // conteúdo real, sobretudo durante um arraste contínuo de divisor
-        // (vários resizes seguidos). Uma folga curta aqui não é uma garantia
-        // de sincronização de verdade (não há como saber quando o redraw do
-        // processo filho termina de fato), mas reduz bastante a janela da
-        // corrida — já estamos numa `spawn_blocking`, então dormir aqui não
-        // trava nenhum outro comando.
-        //
-        // `try_claim_opencode_nudge` coordena com o nudge de boot (primeiro
-        // output do processo, em `spawn_pty`) — os dois podem disparar quase
-        // juntos num terminal recém-criado que já é redimensionado logo
-        // depois do spawn; sem essa trava, os DOIS nudges mandavam Ctrl+L
-        // e o OpenCode fazia dois redesenhos concorrentes que se
-        // sobrepunham na tela (confirmado analisando os bytes crus do
-        // scrollback — texto de um redraw colidindo com blocos do outro).
         if is_opencode {
             std::thread::sleep(std::time::Duration::from_millis(50));
             let claimed = try_claim_opencode_nudge(&nudge_lock);
             if pty_debug_enabled() {
-                let _ = append_spawn_log(
-                    &app,
-                    &format!(
-                        "[pty-debug] {id}: nudge de resize {} (50ms após master.resize)",
-                        if claimed { "ENVIADO" } else { "pulado (perdeu a trava)" }
-                    ),
-                );
+                if let Some(ref path) = log_path_buf {
+                    let _ = append_spawn_log_path(
+                        path,
+                        &format!(
+                            "[pty-debug] {pty_id}: nudge de resize {} (50ms após master.resize)",
+                            if claimed { "ENVIADO" } else { "pulado (perdeu a trava)" }
+                        ),
+                    );
+                }
             }
             if claimed {
                 if let Ok(mut writer) = writer.lock() {
@@ -1080,9 +987,19 @@ pub async fn resize_pty(
     .map_err(|error| format!("resize_pty: falha na task bloqueante: {error}"))?
 }
 
+#[tauri::command]
+pub async fn resize_pty(
+    app: AppHandle,
+    sessions: State<'_, PtySessions>,
+    id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    let log_path = crate::paths::spawn_log_path(&app).ok();
+    resize_pty_core(&sessions, log_path.as_deref(), &id, cols, rows).await
+}
+
 fn terminate_session(session: PtySession) {
-    // Precisa rodar antes de `unregister_pty` (abaixo) — `kill_pty_tree` busca
-    // o PID raiz no mesmo registro que `unregister_pty` limpa.
     let _ = process_tree::kill_pty_tree(&session.pty_id);
     process_tree::unregister_pty(&session.pty_id);
     {
@@ -1100,28 +1017,20 @@ fn terminate_session(session: PtySession) {
     }
 }
 
-#[tauri::command]
-pub async fn kill_pty(
-    app: AppHandle,
-    sessions: State<'_, PtySessions>,
-    id: String,
+pub async fn kill_pty_core(
+    sessions: &PtySessions,
+    sb_path: &Path,
+    id: &str,
 ) -> Result<(), String> {
-    // `terminate_session` roda taskkill/wait pela árvore inteira — pode
-    // demorar (ou travar) de verdade. Antes, o MutexGuard de `sessions` ficava
-    // vivo durante essa chamada inteira (guard só cai no fim da função, não no
-    // fim do `if let`), prendendo TODO outro comando PTY (spawn/attach/write/
-    // resize/kill de qualquer outro terminal) atrás dele — e como o mutex não
-    // é reentrante, nem uma segunda tentativa de matar o MESMO terminal
-    // travado conseguia rodar. Agora: solta o lock assim que remove a sessão
-    // do mapa, e só then faz o trabalho bloqueante, dentro de spawn_blocking
-    // pra também não travar a thread de despacho do Tauri.
-    let sessions: PtySessions = Arc::clone(sessions.inner());
+    let sessions: PtySessions = sessions.clone();
+    let sb_path_buf = sb_path.to_path_buf();
+    let pty_id = id.to_string();
     tokio::task::spawn_blocking(move || {
         let session = {
             let mut sessions = sessions
                 .lock()
                 .map_err(|_| "PTY sessions lock poisoned".to_string())?;
-            sessions.remove(&id)
+            sessions.remove(&pty_id)
         };
 
         if let Some(session) = session {
@@ -1129,28 +1038,28 @@ pub async fn kill_pty(
             terminate_session(session);
         }
 
-        delete_scrollback(&app, &id)
+        delete_scrollback(&sb_path_buf)
     })
     .await
     .map_err(|error| format!("kill_pty: falha na task bloqueante: {error}"))?
 }
 
-/// Estaciona um runtime sem apagar scrollback nem identidade de sessão.
-///
-/// Encerra o processo e espera o reader persistir sua última cauda. Assim um
-/// novo spawn com o mesmo id nunca disputa com writes do reader antigo.
-pub fn suspend_session(app: &AppHandle, sessions: &PtySessions, id: &str) -> Result<bool, String> {
-    // Antes: a sessão era removida do mapa JÁ NO INÍCIO, antes do kill/espera
-    // de flush (que pode levar até 5s). Nessa janela, `write_pty`/`resize_pty`
-    // (chamados pelo frontend, que ainda não sabe que a suspensão começou)
-    // recebiam "PTY not found" em vez de um erro real de escrita — e o
-    // restart automático do frontend (mesmo id) podia disparar um spawn novo
-    // achando a vaga livre antes do flush do reader terminar de verdade,
-    // apesar do comentário original já dizer que isso deveria esperar. Agora:
-    // só remove do mapa no fim, depois do flush confirmado e do evento
-    // emitido — `write_pty`/`resize_pty` continuam achando a sessão (e
-    // falhando com um erro real de pipe fechado, se for o caso) até o
-    // frontend já ter sido avisado.
+#[tauri::command]
+pub async fn kill_pty(
+    app: AppHandle,
+    sessions: State<'_, PtySessions>,
+    id: String,
+) -> Result<(), String> {
+    let sb_path = scrollback_path(&app, &id)?;
+    kill_pty_core(&sessions, &sb_path, &id).await
+}
+
+pub fn suspend_session(
+    sink: &dyn PtyOutputSink,
+    log_path: Option<&Path>,
+    sessions: &PtySessions,
+    id: &str,
+) -> Result<bool, String> {
     let (pty_id, child, master, reader_done, teardown, read_active) = {
         let sessions = sessions
             .lock()
@@ -1176,10 +1085,6 @@ pub fn suspend_session(app: &AppHandle, sessions: &PtySessions, id: &str) -> Res
         }
         let _ = child.kill();
     }
-    // Se o reader estava pausado (painel invisível sob pressão de memória —
-    // ver `read_active` em `PtySession`), ele nunca ia notar o processo
-    // morrer sozinho e travaria pra sempre esperando a barreira mais abaixo.
-    // Acorda ele antes de esperar.
     {
         let (lock, cvar) = &*read_active;
         if let Ok(mut active) = lock.lock() {
@@ -1187,12 +1092,6 @@ pub fn suspend_session(app: &AppHandle, sessions: &PtySessions, id: &str) -> Res
             cvar.notify_all();
         }
     }
-    // Fecha o pseudoconsole ANTES de esperar a barreira. No ConPTY do
-    // Windows, matar o processo filho não fecha o pipe de saída sozinho — o
-    // reader bloqueado em read() só é liberado quando o master (HPCON) é
-    // dropado de verdade. `.take()` faz exatamente isso sem precisar tirar a
-    // sessão inteira do mapa (ela continua lá, com master `None`, até o fim
-    // — ver comentário grande acima sobre por que isso importa).
     if let Ok(mut master) = master.lock() {
         master.take();
     }
@@ -1210,18 +1109,30 @@ pub fn suspend_session(app: &AppHandle, sessions: &PtySessions, id: &str) -> Res
     if *done != Some(true) {
         return Err("PTY reader failed to persist scrollback".to_string());
     }
-    let _ = app.emit(
-        "resource://pty-suspended",
-        PtySuspendedPayload {
-            id: id.to_string(),
-            reason: "memory-pressure",
-        },
-    );
-    let _ = append_spawn_log(app, &format!("suspend id={id} reason=memory-pressure"));
+    sink.emit_suspended(&PtySuspendedPayload {
+        id: id.to_string(),
+        reason: "memory-pressure",
+    });
+    if let Some(path) = log_path {
+        let _ = append_spawn_log_path(path, &format!("suspend id={id} reason=memory-pressure"));
+    }
     if let Ok(mut sessions) = sessions.lock() {
         sessions.remove(id);
     }
     Ok(true)
+}
+
+pub async fn suspend_pty_core(
+    sessions: &PtySessions,
+    sink: Arc<dyn PtyOutputSink>,
+    log_path: Option<PathBuf>,
+    id: &str,
+) -> Result<bool, String> {
+    let sessions = sessions.clone();
+    let pty_id = id.to_string();
+    tokio::task::spawn_blocking(move || suspend_session(&*sink, log_path.as_deref(), &sessions, &pty_id))
+        .await
+        .map_err(|error| format!("suspend_pty: falha na task bloqueante: {error}"))?
 }
 
 #[tauri::command]
@@ -1230,26 +1141,17 @@ pub async fn suspend_pty(
     sessions: State<'_, PtySessions>,
     id: String,
 ) -> Result<bool, String> {
-    // `suspend_session` já solta o lock de `sessions` antes do kill (remove
-    // sob lock, guard cai no fim do bloco `{}`), mas ainda espera até 5s pelo
-    // flush do reader — bloqueante o bastante pra travar a thread de despacho
-    // do Tauri sem spawn_blocking.
-    let sessions: PtySessions = Arc::clone(sessions.inner());
-    tokio::task::spawn_blocking(move || suspend_session(&app, &sessions, &id))
-        .await
-        .map_err(|error| format!("suspend_pty: falha na task bloqueante: {error}"))?
+    let log_path = crate::paths::spawn_log_path(&app).ok();
+    suspend_pty_core(&sessions, Arc::new(TauriSink(app)), log_path, &id).await
 }
 
-#[tauri::command]
-pub async fn get_pty_cwd(
-    sessions: State<'_, PtySessions>,
-    id: String,
-) -> Result<Option<String>, String> {
-    let sessions: PtySessions = Arc::clone(sessions.inner());
+pub async fn get_pty_cwd_core(sessions: &PtySessions, id: &str) -> Result<Option<String>, String> {
+    let sessions: PtySessions = sessions.clone();
+    let pty_id = id.to_string();
     let result = tokio::task::spawn_blocking(move || {
         use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
         let sessions = sessions.lock().ok()?;
-        let session = sessions.get(&id)?;
+        let session = sessions.get(&pty_id)?;
         let pid_u32 = session.child.lock().ok()?.process_id()?;
         drop(sessions);
 
@@ -1268,15 +1170,18 @@ pub async fn get_pty_cwd(
 }
 
 #[tauri::command]
-pub fn set_pty_read_state(
+pub async fn get_pty_cwd(
     sessions: State<'_, PtySessions>,
     id: String,
-    active: bool,
-) -> Result<(), String> {
+) -> Result<Option<String>, String> {
+    get_pty_cwd_core(&sessions, &id).await
+}
+
+pub fn set_pty_read_state_core(sessions: &PtySessions, id: &str, active: bool) -> Result<(), String> {
     let sessions = sessions
         .lock()
         .map_err(|_| "PTY sessions lock poisoned".to_string())?;
-    if let Some(session) = sessions.get(&id) {
+    if let Some(session) = sessions.get(id) {
         let (lock, cvar) = &*session.read_active;
         if let Ok(mut read_active) = lock.lock() {
             *read_active = active;
@@ -1288,39 +1193,44 @@ pub fn set_pty_read_state(
     Ok(())
 }
 
-/// Não pausa a leitura do PTY (`read_active` faz isso e travaria o agente) —
-/// só decide se o coalescer manda o próximo lote pro canal `data` (render) ou
-/// `activity` (throttlado). Barato: um `AtomicBool::store`, sem tocar no
-/// hot path do reader/coalescer além do `load` já feito ali.
 #[tauri::command]
-pub fn set_pty_visible(
+pub fn set_pty_read_state(
     sessions: State<'_, PtySessions>,
     id: String,
-    visible: bool,
+    active: bool,
 ) -> Result<(), String> {
+    set_pty_read_state_core(&sessions, &id, active)
+}
+
+pub fn set_pty_visible_core(sessions: &PtySessions, id: &str, visible: bool) -> Result<(), String> {
     let sessions = sessions
         .lock()
         .map_err(|_| "PTY sessions lock poisoned".to_string())?;
-    if let Some(session) = sessions.get(&id) {
+    if let Some(session) = sessions.get(id) {
         session.visible.store(visible, Ordering::Relaxed);
     }
     Ok(())
 }
 
 #[tauri::command]
-pub async fn set_pty_priority(
-    _sessions: State<'_, PtySessions>,
-    _id: String,
-    _active: bool,
+pub fn set_pty_visible(
+    sessions: State<'_, PtySessions>,
+    id: String,
+    visible: bool,
 ) -> Result<(), String> {
-    let _sessions: PtySessions = Arc::clone(_sessions.inner());
+    set_pty_visible_core(&sessions, &id, visible)
+}
+
+pub async fn set_pty_priority_core(sessions: &PtySessions, id: &str, active: bool) -> Result<(), String> {
+    let sessions: PtySessions = sessions.clone();
+    let pty_id = id.to_string();
     tokio::task::spawn_blocking(move || {
         #[cfg(windows)]
         unsafe {
-            let sessions = _sessions
+            let sessions = sessions
                 .lock()
                 .map_err(|_| "PTY sessions lock poisoned".to_string())?;
-            if let Some(session) = sessions.get(&_id) {
+            if let Some(session) = sessions.get(&pty_id) {
                 if let Ok(child) = session.child.lock() {
                     if let Some(pid) = child.process_id() {
                         use windows_sys::Win32::Foundation::CloseHandle;
@@ -1331,7 +1241,7 @@ pub async fn set_pty_priority(
 
                         let handle = OpenProcess(PROCESS_SET_INFORMATION, 0, pid);
                         if !handle.is_null() {
-                            let priority = if _active {
+                            let priority = if active {
                                 NORMAL_PRIORITY_CLASS
                             } else {
                                 IDLE_PRIORITY_CLASS
@@ -1350,13 +1260,16 @@ pub async fn set_pty_priority(
 }
 
 #[tauri::command]
-pub async fn list_pty_processes(sessions: State<'_, PtySessions>) -> Result<Vec<PtyProcessSnapshot>, String> {
-    // `sysinfo::refresh_processes_specifics` varre processos do SO — pode ser
-    // lento sob carga. Igual aos outros comandos PTY, isolado em
-    // spawn_blocking pra não travar a thread de despacho do Tauri. Mantém o
-    // contrato antigo (nunca falha de verdade pro frontend) devolvendo lista
-    // vazia se a task bloqueante falhar por algum motivo.
-    let sessions: PtySessions = Arc::clone(sessions.inner());
+pub async fn set_pty_priority(
+    sessions: State<'_, PtySessions>,
+    id: String,
+    active: bool,
+) -> Result<(), String> {
+    set_pty_priority_core(&sessions, &id, active).await
+}
+
+pub async fn list_pty_processes_core(sessions: &PtySessions) -> Result<Vec<PtyProcessSnapshot>, String> {
+    let sessions: PtySessions = sessions.clone();
     let result: Vec<PtyProcessSnapshot> = tokio::task::spawn_blocking(move || {
         use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
@@ -1419,8 +1332,12 @@ pub async fn list_pty_processes(sessions: State<'_, PtySessions>) -> Result<Vec<
     Ok(result)
 }
 
-pub fn load_scrollback(app: &AppHandle, id: &str) -> Result<VecDeque<u8>, String> {
-    let path = scrollback_path(app, id)?;
+#[tauri::command]
+pub async fn list_pty_processes(sessions: State<'_, PtySessions>) -> Result<Vec<PtyProcessSnapshot>, String> {
+    list_pty_processes_core(&sessions).await
+}
+
+pub fn load_scrollback(path: &Path) -> Result<VecDeque<u8>, String> {
     if !path.exists() {
         return Ok(VecDeque::new());
     }
@@ -1511,8 +1428,7 @@ fn wait_for_scrollback_writer() -> Result<(), String> {
 }
 
 pub fn push_scrollback(
-    app: &AppHandle,
-    id: &str,
+    path: &Path,
     scrollback: &Arc<Mutex<ScrollbackBuffer>>,
     data: &[u8],
 ) -> Result<(), String> {
@@ -1549,15 +1465,14 @@ pub fn push_scrollback(
     // Disk write em thread separada — segurar o reader thread aqui causava
     // latência visível de digitação (10-50ms por flush no Windows) propagando
     // pra TODOS os terminais com qualquer atividade.
-    let path = scrollback_path(app, id)?;
+    let path_buf = path.to_path_buf();
     // Envia pro writer global em vez de spawnar uma thread por flush.
-    let _ = scrollback_writer().send(ScrollbackWrite::Append { path, bytes });
+    let _ = scrollback_writer().send(ScrollbackWrite::Append { path: path_buf, bytes });
     Ok(())
 }
 
 pub fn flush_scrollback(
-    app: &AppHandle,
-    id: &str,
+    path: &Path,
     scrollback: &Arc<Mutex<ScrollbackBuffer>>,
 ) -> Result<(), String> {
     let mut buffer = scrollback
@@ -1577,17 +1492,15 @@ pub fn flush_scrollback(
     // Via o writer global pra manter ordem FIFO com Appends ainda na fila —
     // senão um Append pendente poderia sobrescrever este Overwrite e duplicar
     // a cauda no disco.
-    let path = scrollback_path(app, id)?;
-    let _ = scrollback_writer().send(ScrollbackWrite::Overwrite { path, bytes });
+    let path_buf = path.to_path_buf();
+    let _ = scrollback_writer().send(ScrollbackWrite::Overwrite { path: path_buf, bytes });
     Ok(())
 }
 
-pub fn delete_scrollback(app: &AppHandle, id: &str) -> Result<(), String> {
-    let path = scrollback_path(app, id)?;
+pub fn delete_scrollback(path: &Path) -> Result<(), String> {
     if path.exists() {
         fs::remove_file(path).map_err(|error| error.to_string())?;
     }
-    let _ = scrollback_dir(app);
     Ok(())
 }
 
@@ -1596,22 +1509,11 @@ pub fn delete_scrollback(app: &AppHandle, id: &str) -> Result<(), String> {
 /// Conservador: só apaga se o id NÃO aparecer em nenhum lugar do texto do
 /// projects.json (ids são nanoids; colisão com texto não-relacionado é
 /// improvável). Se o projects.json não puder ser lido, não apaga nada.
-pub fn cleanup_orphan_scrollback(app: &AppHandle) {
-    let Ok(dir) = scrollback_dir(app) else {
-        return;
-    };
-    if !dir.is_dir() {
+pub fn cleanup_orphan_scrollback_dir(dir: &Path, projects_text: &str) {
+    if !dir.is_dir() || projects_text.is_empty() {
         return;
     }
-    let projects_text = match crate::paths::projects_file_path(app) {
-        Ok(path) => fs::read_to_string(&path).unwrap_or_default(),
-        Err(_) => return,
-    };
-    // Vazio = sem projects.json legível → melhor não arriscar apagar nada.
-    if projects_text.is_empty() {
-        return;
-    }
-    let Ok(entries) = fs::read_dir(&dir) else {
+    let Ok(entries) = fs::read_dir(dir) else {
         return;
     };
     for entry in entries.flatten() {
@@ -1626,6 +1528,17 @@ pub fn cleanup_orphan_scrollback(app: &AppHandle) {
             let _ = fs::remove_file(&path);
         }
     }
+}
+
+pub fn cleanup_orphan_scrollback(app: &AppHandle) {
+    let Ok(dir) = scrollback_dir(app) else {
+        return;
+    };
+    let projects_text = match crate::paths::projects_file_path(app) {
+        Ok(path) => fs::read_to_string(&path).unwrap_or_default(),
+        Err(_) => return,
+    };
+    cleanup_orphan_scrollback_dir(&dir, &projects_text);
 }
 
 pub fn kill_all_sessions(sessions: &PtySessions) {

@@ -766,33 +766,37 @@ export function TitleBar() {
             )}
           </button>
         ) : null}
-        <button
-          type="button"
-          className={styles.windowBtn}
-          onClick={() => void win?.minimize()}
-          title={t('ui.titlebar.minimize')}
-          aria-label={t('ui.titlebar.minimize')}
-        >
-          <Minus size={14} />
-        </button>
-        <button
-          type="button"
-          className={styles.windowBtn}
-          onClick={() => void win?.toggleMaximize()}
-          title={t('ui.titlebar.maximize')}
-          aria-label={t('ui.titlebar.maximize')}
-        >
-          <Maximize2 size={12} />
-        </button>
-        <button
-          type="button"
-          className={`${styles.windowBtn} ${styles.close}`}
-          onClick={() => void requestAppClose()}
-          title={t('ui.titlebar.close')}
-          aria-label={t('ui.titlebar.close')}
-        >
-          <X size={14} />
-        </button>
+        {isTauriEnv() ? (
+          <>
+            <button
+              type="button"
+              className={styles.windowBtn}
+              onClick={() => void win?.minimize()}
+              title={t('ui.titlebar.minimize')}
+              aria-label={t('ui.titlebar.minimize')}
+            >
+              <Minus size={14} />
+            </button>
+            <button
+              type="button"
+              className={styles.windowBtn}
+              onClick={() => void win?.toggleMaximize()}
+              title={t('ui.titlebar.maximize')}
+              aria-label={t('ui.titlebar.maximize')}
+            >
+              <Maximize2 size={12} />
+            </button>
+            <button
+              type="button"
+              className={`${styles.windowBtn} ${styles.close}`}
+              onClick={() => void requestAppClose()}
+              title={t('ui.titlebar.close')}
+              aria-label={t('ui.titlebar.close')}
+            >
+              <X size={14} />
+            </button>
+          </>
+        ) : null}
       </div>
       {tabMenu ? (
         <ContextMenu

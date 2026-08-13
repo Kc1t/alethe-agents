@@ -188,7 +188,9 @@ export async function clearDiscordPresence(): Promise<void> {
 
 export async function findCliLauncher(agent: string): Promise<string | null> {
   if (isTauriEnv()) return invoke<string | null>('find_cli_launcher', { agent })
-  return null
+  return webApiFetch<string | null>(
+    `/api/cli/find_cli_launcher?agent=${encodeURIComponent(agent)}`,
+  ).catch(() => null)
 }
 
 export async function exportBackup(targetPath: string): Promise<void> {

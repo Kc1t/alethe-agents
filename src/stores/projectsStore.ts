@@ -730,9 +730,11 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           break
         } catch (err) {
           if (attempt < maxRetries) {
-            console.log(
-              `[Alethe] Aguardando servidor Web iniciar (tentativa ${attempt}/${maxRetries})...`,
-            )
+            if (attempt === 1 || attempt % 10 === 0) {
+              console.log(
+                `[Alethe] Aguardando servidor Web iniciar (tentativa ${attempt}/${maxRetries})...`,
+              )
+            }
             await new Promise((r) => setTimeout(r, 1500))
           } else {
             console.error('Falha ao carregar profiles.json — usando default', err)

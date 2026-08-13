@@ -19,7 +19,6 @@
 //! concentrados em `mcp_server_spec`, ponto único a ajustar.
 
 use std::net::{TcpStream, ToSocketAddrs};
-use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 

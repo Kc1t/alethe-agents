@@ -38,6 +38,8 @@ mod profile_routes;
 mod session_routes;
 #[path = "server_main/window_routes.rs"]
 mod window_routes;
+#[path = "server_main/pty_routes.rs"]
+mod pty_routes;
 
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -107,6 +109,7 @@ fn build_router() -> Router {
         .merge(backup_routes::router())
         .merge(github_sync_routes::router())
         .merge(window_routes::router())
+        .merge(pty_routes::router())
         .fallback(not_implemented)
         .layer(CorsLayer::permissive())
 }

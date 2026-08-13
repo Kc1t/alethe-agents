@@ -51,7 +51,7 @@ import { isTauriEnv } from './lib/api/transport'
 import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
 import { intlLocale, translate, useT } from './lib/i18n'
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
-import { ghosttyKillAll, setWindowOpacity } from './lib/tauri'
+import { ghosttyKillAll, listProfiles, setWindowOpacity } from './lib/tauri'
 import { getLastCrashReport } from './lib/tauri'
 import { getThemeIcon } from './lib/themeIcons'
 import { checkForUpdate } from './lib/updater'
@@ -206,6 +206,26 @@ export default function App() {
   useEffect(() => {
     void hydrate()
   }, [hydrate])
+
+  // Auto-sincroniza o perfil ativo se ele foi alterado no Desktop ou Web
+  useEffect(() => {
+    if (!hydrated) return
+    const onFocus = async () => {
+      try {
+        const state = await listProfiles()
+        if (
+          state.active_profile_id &&
+          state.active_profile_id !== useProjectsStore.getState().activeProfileId
+        ) {
+          void hydrate()
+        }
+      } catch {
+        // Ignora erros efemeros de conexao
+      }
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [hydrated, hydrate])
 
   useEffect(() => {
     void ghosttyKillAll().catch(() => {
