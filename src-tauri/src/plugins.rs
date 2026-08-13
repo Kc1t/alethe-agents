@@ -116,7 +116,10 @@ fn emit(event_type: &str, manifest_id: &str, data: serde_json::Value) {
 // --- Comandos ----------------------------------------------------------------
 
 #[tauri::command]
-pub fn plugins_list(app: AppHandle, kind: Option<PluginKind>) -> Result<Vec<PluginManifest>, String> {
+pub fn plugins_list(
+    app: AppHandle,
+    kind: Option<PluginKind>,
+) -> Result<Vec<PluginManifest>, String> {
     let root = plugins_root(&app)?;
     let all = list_in(&root)?;
     Ok(match kind {
@@ -167,7 +170,11 @@ mod tests {
 
         assert!(list_in(&root).unwrap().is_empty());
 
-        install_in(&root, &manifest("val-default", PluginKind::ValidationPipeline)).unwrap();
+        install_in(
+            &root,
+            &manifest("val-default", PluginKind::ValidationPipeline),
+        )
+        .unwrap();
         install_in(&root, &manifest("merge-rust", PluginKind::Skill)).unwrap();
         // Reinstalar o mesmo id sobrescreve (upgrade), não duplica.
         install_in(&root, &manifest("merge-rust", PluginKind::Skill)).unwrap();
@@ -177,7 +184,10 @@ mod tests {
         assert_eq!(all[0].id, "merge-rust");
         assert_eq!(all[0].spec["commands"][0], "echo ok");
 
-        let skills: Vec<_> = all.into_iter().filter(|p| p.kind == PluginKind::Skill).collect();
+        let skills: Vec<_> = all
+            .into_iter()
+            .filter(|p| p.kind == PluginKind::Skill)
+            .collect();
         assert_eq!(skills.len(), 1);
 
         // Manifest corrompido é ignorado na listagem.

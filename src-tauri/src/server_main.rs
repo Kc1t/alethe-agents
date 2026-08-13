@@ -20,10 +20,14 @@
 // pra organização, sem depender dessa convenção.
 #[path = "server_main/agent_routes.rs"]
 mod agent_routes;
+#[path = "server_main/backup_routes.rs"]
+mod backup_routes;
 #[path = "server_main/fs_cli_routes.rs"]
 mod fs_cli_routes;
 #[path = "server_main/git_routes.rs"]
 mod git_routes;
+#[path = "server_main/github_sync_routes.rs"]
+mod github_sync_routes;
 #[path = "server_main/graphify_routes.rs"]
 mod graphify_routes;
 #[path = "server_main/misc_routes.rs"]
@@ -32,6 +36,8 @@ mod misc_routes;
 mod profile_routes;
 #[path = "server_main/session_routes.rs"]
 mod session_routes;
+#[path = "server_main/window_routes.rs"]
+mod window_routes;
 
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -98,6 +104,9 @@ fn build_router() -> Router {
         .merge(graphify_routes::router())
         .merge(misc_routes::router())
         .merge(fs_cli_routes::router())
+        .merge(backup_routes::router())
+        .merge(github_sync_routes::router())
+        .merge(window_routes::router())
         .fallback(not_implemented)
         .layer(CorsLayer::permissive())
 }

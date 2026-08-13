@@ -1,10 +1,10 @@
+use nanoid::nanoid;
+use notify::{Config, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use notify::{Config, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use nanoid::nanoid;
-use serde::Serialize;
 
 use crate::git_control::{checked_output, git_command};
 
@@ -18,6 +18,18 @@ pub fn start_gsd_watcher(
     project_id: String,
     repo_path: String,
 ) -> Result<(), String> {
+    start_gsd_watcher_core(&state, project_id, repo_path)
+}
+
+/// Núcleo sem `AppHandle`/`tauri::State` — reaproveitado pelo `alethe-server`
+/// (que mantém seu PRÓPRIO `PlanningWatchers` estático em vez do gerenciado
+/// pelo Tauri, ver `server_main/misc_routes.rs`). `_app` acima nunca foi
+/// usado dentro da função mesmo no Tauri — só o `State` importa de verdade.
+pub fn start_gsd_watcher_core(
+    watchers: &PlanningWatchers,
+    project_id: String,
+    repo_path: String,
+) -> Result<(), String> {
     let repo_root = crate::git_control::repository_root(&repo_path)?;
     let planning_dir = repo_root.join(".planning");
     if !planning_dir.is_dir() {
@@ -28,7 +40,7 @@ pub fn start_gsd_watcher(
         std::fs::create_dir_all(&planning_dir).map_err(|e| format!("mkdir_failed:{e}"))?;
     }
 
-    let mut map = state.0.lock().map_err(|e| e.to_string())?;
+    let mut map = watchers.0.lock().map_err(|e| e.to_string())?;
     let key = format!("{}:{}", project_id, planning_dir.to_string_lossy());
     if map.contains_key(&key) {
         return Ok(()); // Já observando
@@ -77,11 +89,19 @@ pub fn stop_gsd_watcher(
     project_id: String,
     repo_path: String,
 ) -> Result<(), String> {
+    stop_gsd_watcher_core(&state, project_id, repo_path)
+}
+
+pub fn stop_gsd_watcher_core(
+    watchers: &PlanningWatchers,
+    project_id: String,
+    repo_path: String,
+) -> Result<(), String> {
     let repo_root = crate::git_control::repository_root(&repo_path)?;
     let planning_dir = repo_root.join(".planning");
     let key = format!("{}:{}", project_id, planning_dir.to_string_lossy());
 
-    let mut map = state.0.lock().map_err(|e| e.to_string())?;
+    let mut map = watchers.0.lock().map_err(|e| e.to_string())?;
     if let Some(mut watcher) = map.remove(&key) {
         let _ = watcher.unwatch(&planning_dir);
     }
@@ -136,12 +156,18 @@ fn audit_record(
     checked_output(root, &["add", "--", PLANNING_DIR])?;
     let subject = format!(
         "gsd(alethe): {}",
-        reason.map(str::trim).filter(|r| !r.is_empty()).unwrap_or("planning update")
+        reason
+            .map(str::trim)
+            .filter(|r| !r.is_empty())
+            .unwrap_or("planning update")
     );
     let trailer = format!("Alethe-Agent: {}", agent_id.unwrap_or("unknown"));
     // Commit escopado: `commit -- .planning` garante que mudanças staged de
     // outros diretórios NÃO entram neste commit de auditoria.
-    checked_output(root, &["commit", "-m", &subject, "-m", &trailer, "--", PLANNING_DIR])?;
+    checked_output(
+        root,
+        &["commit", "-m", &subject, "-m", &trailer, "--", PLANNING_DIR],
+    )?;
 
     let hash = checked_output(root, &["rev-parse", "HEAD"])
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())?;
@@ -189,7 +215,17 @@ pub fn planning_audit_history(
         "%H{FIELD_SEP}%an{FIELD_SEP}%ct{FIELD_SEP}%s{FIELD_SEP}%(trailers:key=Alethe-Agent,valueonly,separator=,){RECORD_SEP}"
     );
     // Sem commits ainda (repo novo) o log falha — devolve histórico vazio.
-    let output = match git_command(&root, &["log", "-n", &count, &format!("--pretty=format:{format}"), "--", PLANNING_DIR]) {
+    let output = match git_command(
+        &root,
+        &[
+            "log",
+            "-n",
+            &count,
+            &format!("--pretty=format:{format}"),
+            "--",
+            PLANNING_DIR,
+        ],
+    ) {
         Ok(output) if output.status.success() => output,
         _ => return Ok(Vec::new()),
     };

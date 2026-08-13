@@ -102,8 +102,27 @@ fn active_profile_id(index: &Value) -> String {
         .to_string()
 }
 
-fn profile_dir(profile_id: &str) -> PathBuf {
+pub fn profile_dir(profile_id: &str) -> PathBuf {
     app_local_data_dir().join("profiles").join(profile_id)
+}
+
+/// Igual a `profile_dir`, mas recusa um `profile_id` que não existe no
+/// índice — mesma validação que `profiles::profile_data_dir_for_id` faz no
+/// desktop antes de devolver o caminho (evita criar pastas soltas pra ids
+/// inventados).
+pub fn profile_dir_validated(profile_id: &str) -> Result<PathBuf, String> {
+    let index = read_or_create_profiles_index();
+    let exists = index
+        .get("profiles")
+        .and_then(|v| v.as_array())
+        .is_some_and(|arr| {
+            arr.iter()
+                .any(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
+        });
+    if !exists {
+        return Err("profile not found".to_string());
+    }
+    Ok(profile_dir(profile_id))
 }
 
 fn projects_json_path(profile_id: &str) -> PathBuf {

@@ -1,15 +1,17 @@
-// GSD (leitura de sentinelas — os watchers em si ficam de fora, ver nota
-// abaixo), Planning (status/auditoria/autocommit), Scheduler (tarefas),
-// Validation Pipeline, Event Bus e Telemetria — todos livres de `AppHandle`.
+// GSD (watchers + leitura de sentinelas), Planning (status/auditoria/
+// autocommit), Scheduler (tarefas), Validation Pipeline, Event Bus e
+// Telemetria — todos livres de `AppHandle`.
 //
-// `start_gsd_watcher`/`stop_gsd_watcher` ficam de fora por enquanto: usam
-// `tauri::State<PlanningWatchers>` (registro de `notify::Watcher` por
-// projeto) — dá pra portar com um `State` próprio do Axum, mas é outra peça
-// de estado compartilhado como PTY, não uma chamada direta feita rota.
+// `start_gsd_watcher`/`stop_gsd_watcher` usavam `tauri::State<PlanningWatchers>`
+// (registro de `notify::Watcher` por projeto) — o `_app: AppHandle` do
+// comando original nunca era usado dentro da função mesmo no Tauri, então o
+// núcleo (`*_core`, ver `planning.rs`) já era livre de `AppHandle`. Só falta
+// um `PlanningWatchers` PRÓPRIO pro `alethe-server` (`OnceLock` estático em
+// vez do gerenciado pelo Tauri) — mesmo tipo, só uma instância paralela.
 
 use alethe_lib::event_bus::{self, EventBusPayload};
 use alethe_lib::opencode_gsd_plugin;
-use alethe_lib::planning;
+use alethe_lib::planning::{self, PlanningWatchers};
 use alethe_lib::planning_gate;
 use alethe_lib::scheduler;
 use alethe_lib::telemetry;
@@ -21,8 +23,14 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 use crate::AppError;
+
+fn planning_watchers() -> &'static PlanningWatchers {
+    static WATCHERS: OnceLock<PlanningWatchers> = OnceLock::new();
+    WATCHERS.get_or_init(PlanningWatchers::default)
+}
 
 fn q(params: &HashMap<String, String>, key: &str) -> Result<String, AppError> {
     params
@@ -34,6 +42,8 @@ fn q(params: &HashMap<String, String>, key: &str) -> Result<String, AppError> {
 pub fn router() -> Router {
     Router::new()
         .route("/api/planning/status", get(planning_status))
+        .route("/api/gsd/start_watcher", post(gsd_start_watcher))
+        .route("/api/gsd/stop_watcher", post(gsd_stop_watcher))
         .route("/api/gsd/opencode_plugin_write", post(gsd_plugin_write))
         .route("/api/gsd/child_session", get(gsd_child_session))
         .route("/api/gsd/child_busy", get(gsd_child_busy))
@@ -58,6 +68,28 @@ async fn planning_status(Query(p): Query<HashMap<String, String>>) -> impl IntoR
         Err(e) => return e.into_response(),
     };
     respond(planning_gate::read_planning_status(repo_path))
+}
+
+#[derive(Deserialize)]
+struct GsdWatcherBody {
+    #[serde(rename = "projectId")]
+    project_id: String,
+    #[serde(rename = "repoPath")]
+    repo_path: String,
+}
+async fn gsd_start_watcher(Json(b): Json<GsdWatcherBody>) -> impl IntoResponse {
+    respond(planning::start_gsd_watcher_core(
+        planning_watchers(),
+        b.project_id,
+        b.repo_path,
+    ))
+}
+async fn gsd_stop_watcher(Json(b): Json<GsdWatcherBody>) -> impl IntoResponse {
+    respond(planning::stop_gsd_watcher_core(
+        planning_watchers(),
+        b.project_id,
+        b.repo_path,
+    ))
 }
 
 #[derive(Deserialize)]
