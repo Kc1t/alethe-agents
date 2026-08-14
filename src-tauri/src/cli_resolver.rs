@@ -151,12 +151,21 @@ pub fn find_windows_cli_launcher(command: &str) -> Option<PathBuf> {
         if let Ok(path) = which::which(command) {
             return Some(path);
         }
+        let mut dirs = Vec::<PathBuf>::new();
         if let Some(home) = env::var_os("HOME").map(PathBuf::from) {
-            for dir in [home.join(".local").join("bin"), home.join(".cargo").join("bin")] {
-                let candidate = dir.join(command);
-                if candidate.is_file() {
-                    return Some(candidate);
-                }
+            dirs.push(home.join(".local").join("bin"));
+            dirs.push(home.join(".cargo").join("bin"));
+        }
+        // App .app lançado via Finder/DMG não roda como login shell: herda o
+        // PATH mínimo do Launch Services (sem .zshrc/.zprofile), então CLIs
+        // instaladas via `brew install` ficam invisíveis pro `which` acima
+        // mesmo estando no disco. Cobrir os prefixos padrão do Homebrew
+        // (Apple Silicon e Intel) como fallback fixo.
+        dirs.extend(homebrew_dirs());
+        for dir in dirs {
+            let candidate = dir.join(command);
+            if candidate.is_file() {
+                return Some(candidate);
             }
         }
         return None;
@@ -187,6 +196,19 @@ pub fn find_windows_cli_launcher(command: &str) -> Option<PathBuf> {
         }
         None
     }
+}
+
+/// Prefixos padrão do Homebrew no macOS (Apple Silicon usa `/opt/homebrew`,
+/// Intel usa `/usr/local`). Fallback fixo — não depende de login shell ter
+/// rodado `brew shellenv` na sessão do processo que lançou o app.
+#[cfg(not(windows))]
+fn homebrew_dirs() -> Vec<PathBuf> {
+    vec![
+        PathBuf::from("/opt/homebrew/bin"),
+        PathBuf::from("/opt/homebrew/sbin"),
+        PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/usr/local/sbin"),
+    ]
 }
 
 /// Procura o launcher do VS Code (code) em localizações comuns + PATH.
@@ -379,7 +401,16 @@ pub fn rebuilt_path() -> String {
 
 pub(crate) fn build_rebuilt_path() -> String {
     if !cfg!(windows) {
-        return env::var("PATH").unwrap_or_default();
+        let mut paths: Vec<PathBuf> = env::var_os("PATH")
+            .map(|value| env::split_paths(&value).collect())
+            .unwrap_or_default();
+        #[cfg(not(windows))]
+        paths.extend(homebrew_dirs());
+        return dedupe_paths(paths)
+            .into_iter()
+            .map(|path| path.to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join(":");
     }
 
     let mut paths = Vec::<PathBuf>::new();
