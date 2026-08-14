@@ -6,6 +6,10 @@ import { isMacOS } from '../../../lib/platform'
 import { countLiveResumablePanes, resetLastSession } from '../../../lib/resetLastSession'
 import type { AgentType } from '../../../lib/types'
 import { SPAWN_CONCURRENCY_LIMITS, useProjectsStore } from '../../../stores/projectsStore'
+import {
+  clampResourceMemoryBudget,
+  RESOURCE_MEMORY_BUDGET_LIMITS,
+} from '../../../stores/projectsStore.constants'
 import { useUiStore } from '../../../stores/uiStore'
 import { AgentIcon } from '../../icons/AgentIcons'
 import styles from '../PreferencesModal.module.css'
@@ -36,7 +40,7 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
       : 'manual'
   const setResourcePolicy = (patch: Partial<typeof resourcePolicy>) => {
     const next = { ...resourcePolicy, ...patch }
-    next.memoryBudgetMb = Math.min(8192, Math.max(768, Math.round(next.memoryBudgetMb)))
+    next.memoryBudgetMb = clampResourceMemoryBudget(next.memoryBudgetMb)
     next.warningThresholdMb = Math.min(
       next.memoryBudgetMb - 64,
       Math.max(512, Math.round(next.warningThresholdMb)),
@@ -121,9 +125,9 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
               <span>{t('prefs.resourceBudget')}</span>
               <input
                 type="number"
-                min={768}
-                max={8192}
-                step={128}
+                min={RESOURCE_MEMORY_BUDGET_LIMITS.min}
+                max={RESOURCE_MEMORY_BUDGET_LIMITS.max}
+                step={RESOURCE_MEMORY_BUDGET_LIMITS.step}
                 value={resourcePolicy.memoryBudgetMb}
                 onChange={(event) =>
                   setResourcePolicy({ memoryBudgetMb: Number(event.target.value) })

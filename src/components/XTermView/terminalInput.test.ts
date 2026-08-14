@@ -6,11 +6,20 @@ import {
   getWheelScrollLines,
   normalizePastedText,
   shouldScrollHostScrollback,
+  shouldUseNativeClipboardPaste,
 } from './terminalInput'
 
 describe('normalizePastedText', () => {
   it('converts clipboard newlines to PTY carriage returns', () => {
     expect(normalizePastedText('one\r\ntwo\nthree\r')).toBe('one\rtwo\rthree\r')
+  })
+})
+
+describe('shouldUseNativeClipboardPaste', () => {
+  it('lets OpenCode handle Ctrl+V so clipboard images attach without path injection', () => {
+    expect(shouldUseNativeClipboardPaste('opencode')).toBe(true)
+    expect(shouldUseNativeClipboardPaste('claude')).toBe(false)
+    expect(shouldUseNativeClipboardPaste('shell')).toBe(false)
   })
 })
 
@@ -29,13 +38,14 @@ describe('getWheelScrollLines', () => {
 
 describe('getTerminalScrollbackRows', () => {
   it('keeps enough rows for long agent chats', () => {
-    expect(getTerminalScrollbackRows()).toBeGreaterThanOrEqual(10_000)
+    expect(getTerminalScrollbackRows()).toBe(50_000)
   })
 
   it('scales live buffers to the configured memory budget', () => {
-    expect(getTerminalScrollbackRows({ agent: true, memoryBudgetMb: 1536 })).toBe(6_000)
-    expect(getTerminalScrollbackRows({ agent: false, memoryBudgetMb: 1536 })).toBe(3_000)
-    expect(getTerminalScrollbackRows({ agent: true, memoryBudgetMb: 4096 })).toBe(10_000)
+    expect(getTerminalScrollbackRows({ agent: true, memoryBudgetMb: 1536 })).toBe(12_000)
+    expect(getTerminalScrollbackRows({ agent: false, memoryBudgetMb: 1536 })).toBe(5_000)
+    expect(getTerminalScrollbackRows({ agent: true, memoryBudgetMb: 4096 })).toBe(25_000)
+    expect(getTerminalScrollbackRows({ agent: true, memoryBudgetMb: 32_768 })).toBe(50_000)
   })
 })
 

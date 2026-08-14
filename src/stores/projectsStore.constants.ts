@@ -21,6 +21,16 @@ export const UI_ZOOM_LIMITS = {
 
 export const SPAWN_CONCURRENCY_LIMITS = { min: 1, max: 8, step: 1 } as const
 
+export const RESOURCE_MEMORY_BUDGET_LIMITS = { min: 768, max: 32_768, step: 128 } as const
+
+export function clampResourceMemoryBudget(n: number): number {
+  if (!Number.isFinite(n)) return 1536
+  return Math.min(
+    RESOURCE_MEMORY_BUDGET_LIMITS.max,
+    Math.max(RESOURCE_MEMORY_BUDGET_LIMITS.min, Math.round(n)),
+  )
+}
+
 export function clampSpawnConcurrency(n: number): number {
   if (!Number.isFinite(n)) return 3
   return Math.min(

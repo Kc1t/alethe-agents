@@ -72,6 +72,7 @@ import {
   getWheelScrollLines,
   normalizePastedText,
   shouldScrollHostScrollback,
+  shouldUseNativeClipboardPaste,
 } from './terminalInput'
 import {
   type DetectedTerminalLink,
@@ -437,6 +438,21 @@ export function useXtermSession(params: {
       }
     }
 
+    let lastNativeClipboardPasteAt = 0
+    const pasteThroughAgentClipboard = () => {
+      if (!shouldUseNativeClipboardPaste(command)) return false
+      const now = Date.now()
+      if (now - lastNativeClipboardPasteAt < 100) return true
+      lastNativeClipboardPasteAt = now
+      const id = ptyIdRef.current
+      if (!id) return true
+      useTerminalsStore.getState().recordIo(id)
+      void writePty(id, '\x16').catch((err) => {
+        console.warn('[pty-paste] native agent paste failed:', err)
+      })
+      return true
+    }
+
     // Resolve o clipboard do SO pra uma string colável no PTY: texto vira
     // texto puro; arquivos do Explorer (CF_HDROP) e imagens cruas (CF_DIB /
     // formato "PNG" registrado, já salvas como PNG temporário pelo backend)
@@ -530,6 +546,7 @@ export function useXtermSession(params: {
 
       if (key === 'v' && !readOnly) {
         event.preventDefault()
+        if (pasteThroughAgentClipboard()) return false
         void resolveClipboardPaste()
           .catch(() => navigator.clipboard?.readText() ?? '')
           .then(pasteText)
@@ -557,9 +574,10 @@ export function useXtermSession(params: {
     document.addEventListener('visibilitychange', restoreHoveredFocus)
 
     const onPaste = (event: ClipboardEvent) => {
-      const raw = event.clipboardData?.getData('text/plain') ?? ''
       event.preventDefault()
       event.stopPropagation()
+      if (pasteThroughAgentClipboard()) return
+      const raw = event.clipboardData?.getData('text/plain') ?? ''
       void resolveClipboardPaste()
         .catch(() => raw)
         .then(pasteText)
@@ -581,6 +599,7 @@ export function useXtermSession(params: {
           terminal.clearSelection()
         }
       } else {
+        if (pasteThroughAgentClipboard()) return
         void resolveClipboardPaste()
           .catch(() => navigator.clipboard?.readText() ?? '')
           .then(pasteText)
