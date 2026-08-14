@@ -181,6 +181,7 @@ async fn handle_resize(
     let owner = ensure_profile_owner(&runtime, &body.id, &body.profile_id)?;
     resize_pty_core(
         alethe_server_pty_sessions(),
+        runtime.pty_sink(),
         None,
         &body.id,
         body.cols,
@@ -266,6 +267,21 @@ async fn handle_cwd(
     ensure_profile_owner(&runtime, &id, &query.profile_id)?;
     let cwd = get_pty_cwd_core(alethe_server_pty_sessions(), &id).await?;
     Ok(Json(cwd))
+}
+
+async fn handle_get_size(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    AxumPath(id): AxumPath<String>,
+    Query(query): Query<PtyProfileQuery>,
+) -> Result<Json<crate::pty::PtySizeResponse>, AppError> {
+    let owner = ensure_profile_owner(&runtime, &id, &query.profile_id)?;
+    let (cols, rows) = crate::pty::get_pty_size_core(
+        alethe_server_pty_sessions(),
+        &id,
+        &owner.profile_id,
+        &owner.scrollback_path,
+    )?;
+    Ok(Json(crate::pty::PtySizeResponse { cols, rows }))
 }
 
 async fn handle_processes(
@@ -469,6 +485,7 @@ async fn handle_socket(
                             IncomingWsMessage::Resize { cols, rows } => {
                                 let _ = resize_pty_core(
                                     alethe_server_pty_sessions(),
+                                    runtime.pty_sink(),
                                     None,
                                     &id,
                                     cols,
@@ -499,6 +516,7 @@ pub fn router() -> Router {
         .route("/api/window/suspend_pty", post(handle_suspend))
         .route("/api/pty/restart", post(handle_restart))
         .route("/api/pty/cwd/:id", get(handle_cwd))
+        .route("/api/pty/size/:id", get(handle_get_size))
         .route("/api/pty/processes", get(handle_processes))
         .route("/api/pty/read_state", post(handle_read_state))
         .route("/api/pty/visible", post(handle_visible))

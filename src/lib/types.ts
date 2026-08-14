@@ -414,6 +414,13 @@ export type Preferences = {
   rightSidebarVisible: boolean
   leftSidebarWidth: number
   rightSidebarWidth: number
+  /**
+   * Posição das barras divisórias entre painéis, por grupo de painéis
+   * (`groupId` → `panelId` → porcentagem 0..100). Guardado em proporção, não em
+   * pixels, pra fazer sentido em janelas de tamanhos diferentes — é o que
+   * permite o Desktop e o Web mostrarem o mesmo arranjo de painéis.
+   */
+  paneLayouts?: Record<string, Record<string, number>>
   /** Notifica quando uma janela de uso do Claude/Codex reseta, indicando qual. Default true. */
   notifyOnLimitReset: boolean
   /** Ditado por voz (speech-to-text) escreve no terminal ativo. Default false. */

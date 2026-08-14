@@ -26,8 +26,11 @@
     flex-basis 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.shellBody :global([data-panel-group]:active [data-panel]),
-.shellBody :global([data-panel-group][data-resize-handle-active] [data-panel]) {
+/* react-resizable-panels never emits `data-panel-group`/`data-resize-handle-active` — the group
+   root only has a static `data-group` marker and the separator's `data-separator` value becomes
+   "active" while dragging. Without this selector matching, panels kept animating their
+   flex-basis during drag instead of tracking the pointer 1:1. */
+.shellBody :global([data-group]:has([data-separator='active']) [data-panel]) {
   transition: none !important;
 }
 

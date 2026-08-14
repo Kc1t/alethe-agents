@@ -203,6 +203,16 @@ export const TerminalPane = memo(function TerminalPane({
     if (!resumeSessionId && activeTab.type === 'codex' && restartCwd) {
       resumeSessionId = (await snapshotCodexSessions(restartCwd).catch(() => []))[0]?.id
     }
+    const areaEl = paneRef.current?.querySelector<HTMLElement>(`.${styles.terminalArea}`)
+    let startCols: number | undefined
+    let startRows: number | undefined
+    if (areaEl) {
+      const rect = areaEl.getBoundingClientRect()
+      if (rect.width > 50 && rect.height > 30) {
+        startCols = Math.max(40, Math.floor((rect.width - 14) / 8.4))
+        startRows = Math.max(10, Math.floor((rect.height - 6) / 17))
+      }
+    }
     try {
       // XTermView usa a identidade estável da sub-tab (`activeTab.id`) como
       // chave de persistência; manter a mesma chave garante que remounts
@@ -215,8 +225,11 @@ export const TerminalPane = memo(function TerminalPane({
         runtimeProfile: activeTab.runtimeProfile,
         extraArgs: activeTab.extraArgs ?? [],
         resumeId: resumeSessionId,
+        cols: startCols,
+        rows: startRows,
         onSessionId: (id) => setSubTabSessionId(projectId, terminal.id, activeTab.id, id),
       })
+      setResumeNonce((value) => value + 1)
       window.dispatchEvent(new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId } }))
       requestPaneFocus(terminal.id)
       window.setTimeout(() => requestPaneFocus(terminal.id), 160)

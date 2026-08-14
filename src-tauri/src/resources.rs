@@ -12,6 +12,14 @@ use crate::stats::MemoryStats;
 
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 const META_STALE_MS: u64 = 30_000;
+// Real process churn (agents/PTYs spawning and exiting) can make effective
+// memory hover right at a level boundary, crossing it again on the very
+// next 5s sample even with the existing critical-exit hysteresis. Without a
+// minimum dwell before a *notification* is accepted, that produces a fresh
+// toast every single cycle. The dwell only gates the notification — the
+// protective spawn-block/suspend logic below always reacts to the raw,
+// instantaneous level, never delayed.
+const PRESSURE_NOTIFY_DWELL_MS: u64 = 30_000;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -139,7 +147,18 @@ struct ResourceState {
     metas: HashMap<String, PtyRuntimeMeta>,
     latest: Option<RuntimeSnapshot>,
     pressure_active: bool,
+    /// Raw/instant level from the previous cycle — feeds the existing
+    /// critical-exit hysteresis above (`was_critical`) and `pressure_active`.
+    /// Always up to date every cycle, never delayed.
     last_level: &'static str,
+    /// Debounced level actually exposed via `RuntimeSnapshot`/polling and
+    /// the `resource://pressure` push event — only promoted from
+    /// `pending_level` once it holds for `PRESSURE_NOTIFY_DWELL_MS`.
+    stable_level: &'static str,
+    /// Raw level currently being observed as a candidate to become the next
+    /// `stable_level`, and when it was first observed.
+    pending_level: &'static str,
+    pending_since_ms: u64,
 }
 
 pub struct ResourceSupervisor {
@@ -156,6 +175,9 @@ impl Default for ResourceSupervisor {
                 latest: None,
                 pressure_active: false,
                 last_level: "normal",
+                stable_level: "normal",
+                pending_level: "normal",
+                pending_since_ms: 0,
             }),
             system: Mutex::new(System::new()),
         }
@@ -481,13 +503,24 @@ fn eligible_candidates(
 fn run_cycle(app: &AppHandle, sessions: &PtySessions, supervisor: &ResourceSupervisor) {
     let mut snapshot = supervisor.collect(sessions);
     let now = snapshot.sampled_at_ms;
-    let (policy, metas, was_active, previous_level) = {
+    let (
+        policy,
+        metas,
+        was_active,
+        previous_level,
+        previous_stable_level,
+        mut pending_level,
+        mut pending_since_ms,
+    ) = {
         let state = supervisor.state.lock().unwrap_or_else(|p| p.into_inner());
         (
             state.policy.clone(),
             state.metas.clone(),
             state.pressure_active,
             state.last_level,
+            state.stable_level,
+            state.pending_level,
+            state.pending_since_ms,
         )
     };
     let automatic = policy.mode == "smart-lru";
@@ -525,8 +558,26 @@ fn run_cycle(app: &AppHandle, sessions: &PtySessions, supervisor: &ResourceSuper
     } else {
         "normal"
     };
+    // Debounce: only promote a raw level change to the exposed/notified
+    // "stable" level after it holds for PRESSURE_NOTIFY_DWELL_MS straight.
+    // This is what the poll path (`get_runtime_snapshot`) and the push
+    // event both read, so neither can flap on a boundary re-crossed every
+    // 5s sample — the protective `spawn_blocked` above stays instantaneous
+    // regardless, since it's computed from the raw `level`/`critical`.
+    if level != pending_level {
+        pending_level = level;
+        pending_since_ms = now;
+    }
+    let stable_level = if pending_level != previous_stable_level
+        && now.saturating_sub(pending_since_ms) >= PRESSURE_NOTIFY_DWELL_MS
+    {
+        pending_level
+    } else {
+        previous_stable_level
+    };
+
     snapshot.pressure = PressureState {
-        level,
+        level: stable_level,
         spawn_blocked,
         automatic,
         candidate_count: candidates.len(),
@@ -537,17 +588,20 @@ fn run_cycle(app: &AppHandle, sessions: &PtySessions, supervisor: &ResourceSuper
         let mut state = supervisor.state.lock().unwrap_or_else(|p| p.into_inner());
         state.pressure_active = pressure_active && level != "normal";
         state.last_level = level;
+        state.stable_level = stable_level;
+        state.pending_level = pending_level;
+        state.pending_since_ms = pending_since_ms;
         if let Some(id) = &suspended_id {
             state.metas.remove(id);
         }
         state.latest = Some(snapshot.clone());
     }
 
-    if previous_level != level || suspended_id.is_some() || spawn_blocked {
+    if previous_stable_level != stable_level || suspended_id.is_some() {
         let _ = app.emit(
             "resource://pressure",
             ResourcePressurePayload {
-                level,
+                level: stable_level,
                 total_mb: snapshot.effective_total_mb,
                 budget_mb: policy.memory_budget_mb,
                 spawn_blocked,

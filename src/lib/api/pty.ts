@@ -50,6 +50,8 @@ export type PtyExitPayload = {
 
 export type PtyResyncReason = 'initial' | 'reconnect' | 'gap' | 'missing'
 
+export type PtyResizedPayload = { cols: number; rows: number }
+
 type WebPtySocketState = {
   id: string
   profileId: string
@@ -67,6 +69,7 @@ const webDataListeners = new Map<string, Set<(chunk: string, cursor?: number) =>
 const webActivityListeners = new Map<string, Set<(chunk: string, cursor?: number) => void>>()
 const webExitListeners = new Map<string, Set<(payload: PtyExitPayload) => void>>()
 const webResyncListeners = new Map<string, Set<(reason: PtyResyncReason) => void>>()
+const webResizeListeners = new Map<string, Set<(size: PtyResizedPayload) => void>>()
 const ptyProfileOwners = new Map<string, string>()
 
 function resolvePtyProfileId(id: string | undefined, profileId?: string): string {
@@ -100,7 +103,8 @@ function hasWebListeners(id: string): boolean {
     listenerCount(webDataListeners, id) +
       listenerCount(webActivityListeners, id) +
       listenerCount(webExitListeners, id) +
-      listenerCount(webResyncListeners, id) >
+      listenerCount(webResyncListeners, id) +
+      listenerCount(webResizeListeners, id) >
     0
   )
 }
@@ -154,6 +158,14 @@ function dispatchWebSocketMessage(key: string, data: unknown): void {
       notifyWebResync(key, 'gap')
     } else if (msg.type === 'missing') {
       notifyWebResync(key, 'missing')
+    } else if (
+      msg.type === 'resized' &&
+      typeof msg.cols === 'number' &&
+      typeof msg.rows === 'number'
+    ) {
+      webResizeListeners
+        .get(key)
+        ?.forEach((listener) => listener({ cols: msg.cols, rows: msg.rows }))
     }
   } catch {
     webDataListeners.get(key)?.forEach((listener) => listener(data))
@@ -305,6 +317,19 @@ export async function ptyExists(id: string, profileId?: string): Promise<boolean
   }
   if (exists) rememberPtyOwner(id, owner)
   return exists
+}
+
+export async function getPtySize(
+  id: string,
+  profileId?: string,
+): Promise<{ cols: number; rows: number }> {
+  const owner = resolvePtyProfileId(id, profileId)
+  if (isTauriEnv() && !(await canUseSharedCoreTransport())) {
+    return invoke<{ cols: number; rows: number }>('get_pty_size', { id, profileId: owner })
+  }
+  return webApiFetch<{ cols: number; rows: number }>(
+    `/api/pty/size/${encodeURIComponent(id)}?${profileQuery(owner)}`,
+  )
 }
 
 export async function attachPty(
@@ -599,6 +624,19 @@ export async function listenPtyExit(
 }
 
 /** Requests a scrollback replay after stream setup, reconnect, or a broadcast gap. */
+export async function listenPtyResized(
+  id: string,
+  handler: (size: PtyResizedPayload) => void,
+  profileId?: string,
+): Promise<UnlistenFn> {
+  const owner = resolvePtyProfileId(id, profileId)
+  rememberPtyOwner(id, owner)
+  if (isTauriEnv() && !(await canUseSharedCoreTransport())) {
+    return listen<PtyResizedPayload>(`pty://resized/${id}`, (event) => handler(event.payload))
+  }
+  return addWebListener(id, owner, webResizeListeners, handler)
+}
+
 export async function listenPtyResync(
   id: string,
   handler: (reason: PtyResyncReason) => void,

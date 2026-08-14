@@ -271,7 +271,20 @@ export function TitleBar() {
     }
     update(document.hasFocus())
     const onVisibility = () => update(document.hasFocus())
+    // `visibilitychange` só dispara quando a ABA é escondida/mostrada, não
+    // quando a janela perde o foco do SO pra outra janela (ex. o usuário
+    // clica na janela do app desktop enquanto o navegador do Servidor Web
+    // continua visível) — sem isso, uma aba web que nunca teve foco do SO no
+    // instante do mount ficava com `activeRef.current` travado em `false`
+    // pra sempre, e todo o polling de uso (Claude/Codex/Antigravity) parava
+    // de disparar qualquer chamada de rede. `onFocusChanged` do Tauri cobre
+    // o desktop; `focus`/`blur` do `window` cobre qualquer navegador comum
+    // (e não atrapalha o desktop — a webview do Tauri também os emite).
+    const onFocus = () => update(true)
+    const onBlur = () => update(false)
     document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('blur', onBlur)
     let unlisten: (() => void) | undefined
     if (win) {
       void win
@@ -282,6 +295,8 @@ export function TitleBar() {
     }
     return () => {
       document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('blur', onBlur)
       unlisten?.()
     }
   }, [win])

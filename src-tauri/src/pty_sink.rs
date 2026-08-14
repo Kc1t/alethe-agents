@@ -1,4 +1,4 @@
-use crate::pty::{PtyExitPayload, PtySuspendedPayload};
+use crate::pty::{PtyExitPayload, PtyResizedPayload, PtySuspendedPayload};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -18,6 +18,11 @@ pub enum PtyWsMessage {
     Gap { dropped: u64 },
     #[serde(rename = "missing")]
     Missing,
+    // "resized" (not "resize") — deliberately distinct from the client→server
+    // `IncomingWsMessage::Resize` command on the same socket, so the two
+    // directions are never confused reading the wire format.
+    #[serde(rename = "resized")]
+    Resized { cols: u16, rows: u16 },
 }
 
 pub fn pty_broadcast_channels() -> &'static Mutex<HashMap<String, broadcast::Sender<PtyWsMessage>>>
@@ -48,6 +53,9 @@ pub trait PtyOutputSink: Send + Sync {
     fn emit_exit(&self, id: &str, payload: &PtyExitPayload);
     /// Canal ÚNICO `resource://pty-suspended` (ID no payload).
     fn emit_suspended(&self, payload: &PtySuspendedPayload);
+    /// Canal `pty://resized/{id}` — avisa clientes que NÃO iniciaram o
+    /// resize pra que redimensionem seu próprio xterm.js local.
+    fn emit_resized(&self, id: &str, cols: u16, rows: u16);
 }
 
 /// Implementação Desktop — wrapper fino sobre o `app.emit()` do Tauri.
@@ -71,6 +79,11 @@ impl PtyOutputSink for TauriSink {
 
     fn emit_suspended(&self, payload: &PtySuspendedPayload) {
         let _ = self.0.emit("resource://pty-suspended", payload);
+    }
+
+    fn emit_resized(&self, id: &str, cols: u16, rows: u16) {
+        let channel = format!("pty://resized/{id}");
+        let _ = self.0.emit(&channel, PtyResizedPayload { cols, rows });
     }
 }
 
@@ -112,6 +125,11 @@ impl PtyOutputSink for WebSocketSink {
         });
         // Suspension can also be followed by a spawn with the same PTY id.
     }
+
+    fn emit_resized(&self, id: &str, cols: u16, rows: u16) {
+        let sender = get_or_create_pty_ws_channel(id);
+        let _ = sender.send(PtyWsMessage::Resized { cols, rows });
+    }
 }
 
 /// Sink combinado que transmite simultaneamente para Tauri IPC e WebSockets.
@@ -136,6 +154,11 @@ impl PtyOutputSink for CombinedSink {
     fn emit_suspended(&self, payload: &PtySuspendedPayload) {
         self.0.emit_suspended(payload);
         self.1.emit_suspended(payload);
+    }
+
+    fn emit_resized(&self, id: &str, cols: u16, rows: u16) {
+        self.0.emit_resized(id, cols, rows);
+        self.1.emit_resized(id, cols, rows);
     }
 }
 

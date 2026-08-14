@@ -61,6 +61,11 @@ export type InAppToast = {
 const MAX_MEMORY_HISTORY = 720
 const MAX_TOASTS = 4
 const MAX_NOTIFICATIONS = 12
+// Defense in depth against any upstream source re-firing the same
+// notification in a tight loop — the backend debounces this for memory
+// pressure already, but a duplicate title+body within this window is never
+// worth showing twice.
+const DUPLICATE_TOAST_WINDOW_MS = 5_000
 
 type UiState = {
   openModal: ModalKind
@@ -218,11 +223,21 @@ export const useUiStore = create<UiState>((set) => ({
   setAgentCanvasBudget: (usd) => set({ agentCanvasBudgetUsd: usd }),
   pushToast: ({ title, body, agent, silent }) =>
     set((s) => {
+      const now = Date.now()
+      const last = s.notifications[0]
+      if (
+        last &&
+        last.title === title &&
+        last.body === body &&
+        now - last.createdAt < DUPLICATE_TOAST_WINDOW_MS
+      ) {
+        return s
+      }
       const entry: InAppToast = {
-        id: `${Date.now()}:${Math.random().toString(36).slice(2)}`,
+        id: `${now}:${Math.random().toString(36).slice(2)}`,
         title,
         body,
-        createdAt: Date.now(),
+        createdAt: now,
         agent,
       }
       const notifications = [entry, ...s.notifications].slice(0, MAX_NOTIFICATIONS)

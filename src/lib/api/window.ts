@@ -146,15 +146,13 @@ export async function getResourceMetrics(): Promise<ResourceMetrics> {
 
 export async function getMemoryStats(): Promise<MemoryStats> {
   if (isTauriEnv()) return invoke<MemoryStats>('get_memory_stats')
-  return {
-    total_mb: 0,
-    app_mb: 0,
-    webview_mb: 0,
-    ptys_mb: 0,
-    process_count: 0,
-    system_total_mb: 0,
-    system_available_mb: 0,
-  }
+  // Sem comando IPC equivalente no web — `runtime_snapshot` já traz o mesmo
+  // `MemoryStats` calculado no servidor (ver `getRuntimeSnapshot` abaixo).
+  // Rede de segurança: se algum chamador cair neste fallback, o número
+  // continua real em vez de um stub zerado (que derrubava a pill de RAM pra
+  // "crítico"/vermelho — ver `MemoryPillButton`).
+  const snapshot = await getRuntimeSnapshot()
+  return snapshot.memory
 }
 
 export async function getRuntimeSnapshot(): Promise<RuntimeSnapshot> {

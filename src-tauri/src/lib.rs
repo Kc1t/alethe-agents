@@ -323,6 +323,7 @@ pub fn run() {
             pty::kill_pty,
             pty::suspend_pty,
             pty::get_pty_cwd,
+            pty::get_pty_size,
             pty::set_pty_read_state,
             pty::set_pty_visible,
             pty::set_pty_priority,

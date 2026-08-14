@@ -1,13 +1,11 @@
-import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
+import { DndContext, type DragEndEvent,PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { FolderOpen, FolderPlus, TerminalSquare } from 'lucide-react'
-import { Group as PanelGroup, Panel, Separator } from 'react-resizable-panels'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Panel, Separator } from 'react-resizable-panels'
 
-import { selectActiveProject, useProjectsStore } from '../../stores/projectsStore'
-import { useUiStore } from '../../stores/uiStore'
 import { pickDirectory } from '../../lib/dialog'
-import { useT } from '../../lib/i18n'
 import { cellStyle, gridContainerStyle, reconcileGridLayout } from '../../lib/gridLayout'
+import { useT } from '../../lib/i18n'
 import type {
   AgentType,
   GridLayout,
@@ -16,10 +14,13 @@ import type {
   Terminal,
   WorkspaceContainer,
 } from '../../lib/types'
-import { AgentIcon } from '../icons/AgentIcons'
+import { selectActiveProject, useProjectsStore } from '../../stores/projectsStore'
+import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
+import { AgentIcon } from '../icons/AgentIcons'
 import { PaneArea } from './PaneArea'
 import { ProjectContainer } from './ProjectContainer'
+import { SyncedPanelGroup } from './SyncedPanelGroup'
 import styles from './WorkspaceView.module.css'
 
 function resolveGroup(project: Project, groupsById: Map<string, Group>): Group | null {
@@ -383,7 +384,7 @@ function ContainerAutoGrid({
 
   if (containers.length === 2) {
     return (
-      <PanelGroup orientation="horizontal" className={styles.fullSize}>
+      <SyncedPanelGroup id="ws-outer-pair" orientation="horizontal" className={styles.fullSize}>
         {containers.map((c, i) => {
           const project = projectsById.get(c.projectId)
           if (!project) return null
@@ -405,7 +406,7 @@ function ContainerAutoGrid({
             />
           )
         })}
-      </PanelGroup>
+      </SyncedPanelGroup>
     )
   }
 
@@ -415,7 +416,7 @@ function ContainerAutoGrid({
     rows.push(containers.slice(i, i + 2))
   }
   return (
-    <PanelGroup orientation="vertical" className={styles.fullSize}>
+    <SyncedPanelGroup id="ws-outer-rows" orientation="vertical" className={styles.fullSize}>
       {rows.map((row, ri) => {
         const isLastRow = ri === rows.length - 1
         const rowId = `outer-row-${ri}`
@@ -430,7 +431,7 @@ function ContainerAutoGrid({
           />
         )
       })}
-    </PanelGroup>
+    </SyncedPanelGroup>
   )
 }
 
@@ -453,7 +454,11 @@ function FragmentRowOuter({
         {row.length === 1 ? (
           <SingleContainer container={row[0]} projectsById={projectsById} groupsById={groupsById} />
         ) : (
-          <PanelGroup orientation="horizontal" className={styles.fullSize}>
+          <SyncedPanelGroup
+            id={`${rowId}-cols`}
+            orientation="horizontal"
+            className={styles.fullSize}
+          >
             {row.map((c, i) => {
               const project = projectsById.get(c.projectId)
               if (!project) return null
@@ -475,7 +480,7 @@ function FragmentRowOuter({
                 />
               )
             })}
-          </PanelGroup>
+          </SyncedPanelGroup>
         )}
       </Panel>
       {isLastRow ? null : <Separator className={styles.sepV} />}

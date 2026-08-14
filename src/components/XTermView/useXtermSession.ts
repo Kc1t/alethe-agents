@@ -37,6 +37,7 @@ import {
   attachPtySnapshot,
   chunksAfterPtySnapshot,
   findCliLauncher,
+  getPtySize,
   graphifyCodexConfigWrite,
   graphifyEnsureGraph,
   graphifyMcpConfigPath,
@@ -46,6 +47,7 @@ import {
   listenPtyActivity,
   listenPtyData,
   listenPtyExit,
+  listenPtyResized,
   listenPtyResync,
   ptyExists,
   type PtyResyncReason,
@@ -191,6 +193,13 @@ function patchXtermViewportSyncGuard(terminal: Terminal): void {
 }
 
 type BootPhase = 'preparing' | 'queued' | 'spawning' | 'attaching' | 'ready'
+
+/** Tamanho de fonte de quem é dono da grade — renderiza sempre nativo, sem escala. */
+const BASE_FONT_SIZE = 14
+// Limites da fonte escalada de um observador. No piso, um painel absurdamente
+// pequeno pode cortar conteúdo — o `overflow: hidden` do `.host` contém isso.
+const MIN_SCALED_FONT_SIZE = 6
+const MAX_SCALED_FONT_SIZE = 40
 
 /**
  * Sessão do terminal xterm + PTY. É o coração do XTermView: cria o terminal,
@@ -353,6 +362,7 @@ export function useXtermSession(params: {
     let unlistenActivity: (() => void) | null = null
     let unlistenExit: (() => void) | null = null
     let unlistenResync: (() => void) | null = null
+    let unlistenResize: (() => void) | null = null
     let unlistenDragDrop: (() => void) | null = null
     let resizeTimer: number | null = null
     let settleTimer: number | null = null
@@ -391,6 +401,20 @@ export function useXtermSession(params: {
     let lastCols = 0
     let lastRows = 0
     let forceNextResize = false
+    // true quando este mount se tornou "observador" da grade compartilhada —
+    // adota o `cols x rows` vigente e adapta o próprio `fontSize` pra caber
+    // (ver applyFontScale), em vez de reivindicar uma grade nova. Vale pra
+    // QUALQUER cliente que anexa a uma sessão existente, desktop ou web: a
+    // regra é "quem cria a sessão é dono da grade", sem privilegiar nenhum dos
+    // dois lados. Um observador volta a ser dono assim que o próprio container
+    // muda de tamanho de verdade (ver runResize/observerBaseRect).
+    let isGridObserver = false
+    let lastRemoteSyncAt = 0
+    // Retângulo do container no momento em que este mount virou observador.
+    // Serve pra separar um resize genuíno do usuário (que reivindica a grade)
+    // do ruído de boot — initialFitTimer, primeiro tick do ResizeObserver — e
+    // de um layout aplicado remotamente (que só deve reescalar a fonte).
+    let observerBaseRect: { width: number; height: number } | null = null
     let completionMonitor: AgentCompletionMonitor | null = null
     let linkProviderDisposable: { dispose: () => void } | null = null
     let linkScrollDisposable: { dispose: () => void } | null = null
@@ -440,7 +464,7 @@ export function useXtermSession(params: {
       // dúvidas; `monospace` genérico é o último recurso de verdade.
       fontFamily:
         '"Caskaydia Cove Nerd Font Mono", "Cascadia Mono", Consolas, "Courier New", monospace',
-      fontSize: 14,
+      fontSize: BASE_FONT_SIZE,
       theme: getXtermTheme(terminalTheme),
     })
     // Dispara o carregamento da fonte embutida o quanto antes (é local,
@@ -465,6 +489,110 @@ export function useXtermSession(params: {
     terminal.open(container)
     patchXtermViewportSyncGuard(terminal)
     terminalRef.current = terminal
+
+    type XtermScaleInternals = {
+      _renderService?: { dimensions?: { css?: { cell?: { width: number; height: number } } } }
+      viewport?: { scrollBarWidth?: number }
+    }
+    const readScaleInternals = (): { cellWidth: number; cellHeight: number; scrollBarWidth: number } | null => {
+      const core = (terminal as unknown as { _core?: XtermScaleInternals })._core
+      const cell = core?._renderService?.dimensions?.css?.cell
+      if (!cell || cell.width <= 0 || cell.height <= 0) return null
+      return {
+        cellWidth: cell.width,
+        cellHeight: cell.height,
+        scrollBarWidth: core?.viewport?.scrollBarWidth ?? 0,
+      }
+    }
+
+    /**
+     * Ajusta o `fontSize` deste cliente até que o container comporte
+     * naturalmente a grade compartilhada `targetCols x targetRows` — em vez de
+     * forçar a grade de outro cliente dentro de um espaço de tamanho diferente.
+     * É o equivalente a "mesma tela, resolução menor": mesmo layout, células
+     * proporcionalmente menores/maiores, texto renderizado de verdade (não um
+     * bitmap esticado por `transform: scale()`, que borra e não cresce).
+     *
+     * Nada aqui é fixo: `rect` é o espaço real medido agora, e a razão
+     * célula/fonte (`kw`/`kh`) é lida do render atual — então funciona em
+     * qualquer resolução, proporção ou nível de zoom/DPI (a conta é toda em px
+     * CSS, que já absorvem o devicePixelRatio).
+     */
+    const applyFontScale = (targetCols: number, targetRows: number) => {
+      if (targetCols <= 0 || targetRows <= 0) return
+      try {
+        const rect = container.getBoundingClientRect()
+        if (rect.width < 50 || rect.height < 30) return
+        // Mudar `fontSize`/`cols`/`rows` muda a altura em pixel de cada linha,
+        // e o scroll do `.xterm-viewport` é medido em pixel — sem recapturar
+        // isso depois, um terminal que estava acompanhando o final do output
+        // (o caso comum, um agente rodando) ficava "flutuando" alguns pixels
+        // acima ou abaixo do fim de verdade a cada reajuste, na direção
+        // oposta dependendo de qual lado cresceu/encolheu a fonte. Reancorar
+        // no final quando já estava lá evita esse deslocamento.
+        const buffer = terminal.buffer.active
+        const wasAtBottom = buffer.viewportY >= buffer.baseY
+        const computed = window.getComputedStyle(container)
+        const padX =
+          (parseFloat(computed.paddingLeft) || 0) + (parseFloat(computed.paddingRight) || 0)
+        const padY =
+          (parseFloat(computed.paddingTop) || 0) + (parseFloat(computed.paddingBottom) || 0)
+        // 8px de margem de segurança vertical para garantir que a última linha / status bar
+        // do OpenCode/TUI nunca seja cortada no rodapé.
+        const scrollBarWidth = 10
+        const availW = Math.max(10, rect.width - padX - scrollBarWidth)
+        const availH = Math.max(10, rect.height - padY - 8)
+
+        for (let pass = 0; pass < 3; pass += 1) {
+          const metrics = readScaleInternals()
+          const base = terminal.options.fontSize || BASE_FONT_SIZE
+          const kw = metrics && metrics.cellWidth > 0 ? metrics.cellWidth / base : 0.6
+          const kh = metrics && metrics.cellHeight > 0 ? metrics.cellHeight / base : 1.25
+          const byWidth = availW / (targetCols * kw)
+          const byHeight = availH / (targetRows * kh)
+          const target = Math.max(
+            MIN_SCALED_FONT_SIZE,
+            Math.min(MAX_SCALED_FONT_SIZE, Math.min(byWidth, byHeight)),
+          )
+          // Sempre arredonda para baixo em múltiplos de 0.5 para não estourar em altura
+          const next = Math.floor(target * 2) / 2
+          if (Math.abs(next - base) < 0.25 && pass > 0) break
+          terminal.options.fontSize = next
+        }
+
+        // Validação final estrita contra métricas reais da célula
+        for (let guard = 0; guard < 4; guard += 1) {
+          const metrics = readScaleInternals()
+          if (!metrics) break
+          const overflowsH = metrics.cellHeight * targetRows > availH
+          const overflowsW = metrics.cellWidth * targetCols > availW
+          if (
+            (overflowsH || overflowsW) &&
+            (terminal.options.fontSize ?? 14) > MIN_SCALED_FONT_SIZE
+          ) {
+            terminal.options.fontSize = Math.max(
+              MIN_SCALED_FONT_SIZE,
+              (terminal.options.fontSize ?? 14) - 0.5,
+            )
+          } else {
+            break
+          }
+        }
+
+        if (terminal.cols !== targetCols || terminal.rows !== targetRows) {
+          terminal.resize(targetCols, targetRows)
+        }
+        if (wasAtBottom) terminal.scrollToBottom()
+      } catch {
+        /* internals do xterm.js podem ter mudado de forma — sem escala, cai
+           no comportamento cru (grade correta, sem ajuste de encaixe). */
+      }
+    }
+
+    const restoreBaseFontSize = () => {
+      if (terminal.options.fontSize === BASE_FONT_SIZE) return
+      terminal.options.fontSize = BASE_FONT_SIZE
+    }
 
     const clampHorizontalScroll = () => {
       container.scrollLeft = 0
@@ -781,14 +909,31 @@ export function useXtermSession(params: {
       return true
     })
 
-    const focusTerminal = () => terminal.focus()
     const restoreHoveredFocus = () => {
       if (document.visibilityState === 'hidden' || !container.matches(':hover')) return
       terminal.focus()
     }
+    const focusTerminal = () => {
+      terminal.focus()
+      if (isGridObserver && performance.now() - lastRemoteSyncAt > 300) {
+        isGridObserver = false
+        observerBaseRect = null
+        restoreBaseFontSize()
+        scheduleResize(true)
+      }
+    }
+    const onWindowFocus = () => {
+      restoreHoveredFocus()
+      if (isGridObserver && performance.now() - lastRemoteSyncAt > 300) {
+        isGridObserver = false
+        observerBaseRect = null
+        restoreBaseFontSize()
+        scheduleResize(true)
+      }
+    }
     container.addEventListener('pointerdown', focusTerminal, true)
     container.addEventListener('click', focusTerminal)
-    window.addEventListener('focus', restoreHoveredFocus)
+    window.addEventListener('focus', onWindowFocus)
     document.addEventListener('visibilitychange', restoreHoveredFocus)
 
     const onPaste = (event: ClipboardEvent) => {
@@ -872,6 +1017,34 @@ export function useXtermSession(params: {
       // Só faz fit se o container tiver dimensões válidas (evita 0x0)
       const rect = container.getBoundingClientRect()
       if (rect.width < 50 || rect.height < 30) return
+      // Observador da grade compartilhada (ver attachExistingPty). Enquanto o
+      // container tiver o mesmo tamanho de quando anexou, isto é só ruído de
+      // boot ou um layout aplicado remotamente — reescala a fonte e sai, sem
+      // reivindicar a grade. Se o container mudou de verdade, foi o usuário
+      // redimensionando ESTE cliente: aí volta a ser dono (fonte nativa) e
+      // segue o fluxo normal de fit/settle/commit. É isso que mantém o
+      // comportamento simétrico entre desktop e web e evita que um cliente
+      // fique preso como observador pra sempre (ex. depois de um reload).
+      if (isGridObserver) {
+        const isRemoteSyncPeriod = performance.now() - lastRemoteSyncAt < 800
+        if (isRemoteSyncPeriod || !document.hasFocus()) {
+          observerBaseRect = { width: rect.width, height: rect.height }
+          applyFontScale(terminal.cols, terminal.rows)
+          return
+        }
+        const base = observerBaseRect
+        const moved =
+          !base ||
+          Math.abs(rect.width - base.width) > 6 ||
+          Math.abs(rect.height - base.height) > 6
+        if (!moved) {
+          applyFontScale(terminal.cols, terminal.rows)
+          return
+        }
+        isGridObserver = false
+        observerBaseRect = null
+        restoreBaseFontSize()
+      }
       try {
         // Remedição forçada (reatribuir `fontSize`) a cada resize foi
         // testada e revertida: força xterm.js a redespachar internamente o
@@ -936,10 +1109,10 @@ export function useXtermSession(params: {
     // é uma segunda camada, por CIMA do settle-check: mesmo um valor já
     // assentado só é de fato mandado (`resizePty`, que dispara o SIGWINCH
     // real) se já tiver passado um intervalo mínimo desde o último envio.
-    const RESIZE_COMMIT_COOLDOWN_MS = 350
+    const RESIZE_COMMIT_COOLDOWN_MS = 150
     // Cooldown estendido enquanto o painel ainda não produziu saída de
     // verdade (ver `outputByteCount` acima) — janela mais frágil a resize.
-    const FRESH_TERMINAL_COOLDOWN_MS = 900
+    const FRESH_TERMINAL_COOLDOWN_MS = 400
     const FRESH_TERMINAL_OUTPUT_THRESHOLD = 4000
     let lastCommitAt = 0
     const commitResize = (cols: number, rows: number) => {
@@ -948,30 +1121,51 @@ export function useXtermSession(params: {
       lastCommitAt = performance.now()
       const id = ptyIdRef.current
       if (!id) return
-      if (import.meta.env.DEV) {
-        console.debug(`[pty-debug] ${id}: settled -> resizePty ${cols}x${rows}`)
-      }
-      // Bug confirmado a montante no opentui (anomalyco/opencode#3697,
-      // "Missing main view text when resizing", Linux) — o redraw dele após
-      // um resize não limpa/reposiciona corretamente o que já tinha
-      // desenhado, e cada reajuste soma sujeira visual em cima da anterior
-      // em vez de substituir (visto ao vivo: conteúdo "subindo" cada vez
-      // mais a cada reajuste). Não é algo corrigível no código do opentui
-      // por aqui — mas limpar o buffer LOCAL do xterm.js antes de cada
-      // commit garante que o redraw que vem a seguir (via SIGWINCH + o nudge
-      // de Ctrl+L em resize_pty) pinta num canvas limpo do nosso lado, em
-      // vez de acumular por cima do que já estava errado.
-      try {
-        terminal.clear()
-      } catch {
-        /* clear pode falhar durante teardown — sem impacto real, ignora */
-      }
-      // PTY pode já ter morrido (crash, restart em andamento) entre a leitura
-      // e este ponto — sem o catch, isso vira uma promise rejeitada sem
-      // tratamento ("PTY not found"), poluindo o console e o handler global
-      // de erro sem ganho nenhum (o próximo settle bem-sucedido já corrige o
-      // resize assim que o pty novo existir).
       void resizePty(id, cols, rows, activeProfileId).catch(() => {})
+      // O dono acabou de medir o próprio container via fitAddon.fit(), então
+      // renderiza sempre na fonte nativa — sem escala de observador.
+      restoreBaseFontSize()
+    }
+    // Aplica um resize que outro cliente (Desktop ou Web) fez no MESMO PTY.
+    // Sem isso, este cliente nunca sabia que a grade mudou — os bytes que
+    // chegam pelo canal `data` já vêm redesenhados pro tamanho novo, mas o
+    // xterm.js local continuava pintando num grid com o tamanho antigo,
+    // corrompendo TUIs multi-painel (OpenCode/Antigravity).
+    const applyRemoteResize = (cols: number, rows: number) => {
+      if (disposed || cols <= 0 || rows <= 0) return
+      // Eco do próprio resize voltando (o cliente que iniciou também recebe
+      // o broadcast) — já está neste tamanho e na fonte nativa, no-op.
+      const isOurRecentCommit =
+        !isGridObserver &&
+        lastCols === cols &&
+        lastRows === rows &&
+        performance.now() - lastCommitAt < 1000
+      if (isOurRecentCommit) return
+
+      try {
+        lastRemoteSyncAt = performance.now()
+        isGridObserver = true
+        const rect = container.getBoundingClientRect()
+        observerBaseRect = { width: rect.width, height: rect.height }
+        applyFontScale(cols, rows)
+      } catch {
+        return
+      }
+      try {
+        terminal.refresh(0, Math.max(0, terminal.rows - 1))
+      } catch {
+        /* refresh pode falhar durante teardown/layout invisível */
+      }
+      clampHorizontalScroll()
+      // Trata o tamanho remoto como a nova baseline local, pra um fit()
+      // genuíno subsequente comparar contra ele, não contra o valor antigo
+      // pré-resize-remoto (ver o guard de `lastCols`/`lastRows` em
+      // `scheduleResize`, logo acima). Não chama `fitAddon.fit()` aqui de
+      // propósito — `fit()` mede o container LOCAL e sobrescreveria o
+      // tamanho remoto de volta pro tamanho natural deste cliente,
+      // anulando o propósito.
+      lastCols = cols
+      lastRows = rows
     }
     const checkSettled = () => {
       settleTimer = null
@@ -1017,7 +1211,7 @@ export function useXtermSession(params: {
       settleCols = cols
       settleRows = rows
       if (settleTimer !== null) window.clearTimeout(settleTimer)
-      settleTimer = window.setTimeout(checkSettled, 130)
+      settleTimer = window.setTimeout(checkSettled, 60)
     }
     const scheduleResize = (force = false) => {
       // Guard de unmount: neutraliza os setTimeout(120/320ms) de onResizeRequest
@@ -1025,17 +1219,17 @@ export function useXtermSession(params: {
       if (disposed) return
       forceNextResize ||= force
       if (resizeTimer !== null) window.clearTimeout(resizeTimer)
-      // 80ms -> 150ms: reduz a frequência de sinais de resize (SIGWINCH)
-      // mandados pro processo do agente durante um arrasto contínuo do
-      // divisor — mitigação defensiva pro segfault do runtime Bun (ver
-      // comentário grande em `runResize`), não uma correção do bug em si
-      // (que é externo, no Bun/opentui).
-      resizeTimer = window.setTimeout(runResize, 150)
+      resizeTimer = window.setTimeout(runResize, 50)
     }
     const scheduleObservedResize = () => scheduleResize()
     const onResizeRequest = (event: Event) => {
       const targetPtyId = (event as CustomEvent<{ ptyId?: string }>).detail?.ptyId
       if (targetPtyId && targetPtyId !== ptyIdRef.current) return
+      if (document.hasFocus()) {
+        isGridObserver = false
+        observerBaseRect = null
+        restoreBaseFontSize()
+      }
       scheduleResize(true)
       window.setTimeout(() => scheduleResize(true), 120)
       window.setTimeout(() => scheduleResize(true), 320)
@@ -1043,27 +1237,27 @@ export function useXtermSession(params: {
     const ro = new ResizeObserver(scheduleObservedResize)
     ro.observe(container)
 
-    // `react-resizable-panels` marca `data-resize-handle-active` no
-    // `[data-panel-group]` ancestral enquanto o divisor está sendo
-    // arrastado (já usado em WorkspaceView.module.css pro anel de foco).
-    // Reusa esse mesmo sinal aqui: durante o arrasto, `checkSettled` (acima)
-    // segue rodando localmente (fit()/refresh() continuam redesenhando o
-    // xterm.js sem lag visual), mas o commit real (`resizePty`, que dispara
-    // o SIGWINCH pro processo do agente) fica suspenso — só dispara quando
-    // o usuário efetivamente solta o divisor. O settle-check + cooldown
-    // sozinhos (Extremo 1) reduziram a frequência mas não eliminaram os
-    // envios intermediários durante um arrasto contínuo; isso ataca o
-    // mesmo sintoma (texto sobreposto/compactado) de um jeito determinístico
-    // — atrelado ao evento real de soltar o mouse, não a uma heurística de
-    // tempo parado.
+    // `react-resizable-panels` marca o divisor sendo arrastado com
+    // `data-separator="active"`; o grupo ancestral só tem o marcador
+    // estático `data-group` (ver App.module.css). Reusa esse sinal aqui:
+    // durante o arrasto, `checkSettled` (acima) segue rodando localmente
+    // (fit()/refresh() continuam redesenhando o xterm.js sem lag visual),
+    // mas o commit real (`resizePty`, que dispara o SIGWINCH pro processo do
+    // agente) fica suspenso — só dispara quando o usuário efetivamente solta
+    // o divisor. O settle-check + cooldown sozinhos (Extremo 1) reduziram a
+    // frequência mas não eliminaram os envios intermediários durante um
+    // arrasto contínuo; isso ataca o mesmo sintoma (texto
+    // sobreposto/compactado) de um jeito determinístico — atrelado ao
+    // evento real de soltar o mouse, não a uma heurística de tempo parado.
     let dragActive = false
-    const panelGroupEl = container.closest('[data-panel-group]')
+    const panelGroupEl = container.closest('[data-group]')
     let dragObserver: MutationObserver | null = null
+    const isDragActive = () => panelGroupEl?.querySelector('[data-separator="active"]') != null
     if (panelGroupEl) {
-      dragActive = panelGroupEl.hasAttribute('data-resize-handle-active')
+      dragActive = isDragActive()
       dragObserver = new MutationObserver(() => {
         const wasDragging = dragActive
-        dragActive = panelGroupEl.hasAttribute('data-resize-handle-active')
+        dragActive = isDragActive()
         if (wasDragging && !dragActive) {
           // Divisor acabou de ser solto — dispara uma checagem final pro
           // tamanho de verdade (o settle-check natural já teria descartado
@@ -1078,7 +1272,8 @@ export function useXtermSession(params: {
       })
       dragObserver.observe(panelGroupEl, {
         attributes: true,
-        attributeFilter: ['data-resize-handle-active'],
+        attributeFilter: ['data-separator'],
+        subtree: true,
       })
     }
     const onZoomChanged = () => {
@@ -1096,13 +1291,44 @@ export function useXtermSession(params: {
       terminal.options.fontSize = currentFontSize
       scheduleResize(true)
     }
+    // A barra divisória foi movida por OUTRO cliente e o layout acabou de ser
+    // aplicado aqui (ver SyncedPanelGroup). O painel muda de tamanho, mas isso
+    // não é o usuário redimensionando ESTE cliente — re-basear evita que um
+    // observador confunda a sincronização com um resize genuíno e saia
+    // reivindicando a grade compartilhada de volta.
+    const onPaneLayoutSynced = () => {
+      lastRemoteSyncAt = performance.now()
+      window.requestAnimationFrame(() => {
+        if (disposed) return
+        const rect = container.getBoundingClientRect()
+        if (rect.width < 50 || rect.height < 30) return
+        observerBaseRect = { width: rect.width, height: rect.height }
+        if (isGridObserver) {
+          applyFontScale(terminal.cols, terminal.rows)
+        }
+      })
+    }
     window.addEventListener('alethe:zoom-changed', onZoomChanged)
     window.addEventListener('alethe:terminal-resize-request', onResizeRequest)
+    window.addEventListener('alethe:pane-layout-synced', onPaneLayoutSynced)
 
     // Fit adicional com delay pra garantir que o layout estabilizou
     const initialFitTimer = window.setTimeout(() => {
-      scheduleResize()
+      if (document.hasFocus()) {
+        isGridObserver = false
+        observerBaseRect = null
+        restoreBaseFontSize()
+      }
+      scheduleResize(true)
     }, 150)
+    const secondFitTimer = window.setTimeout(() => {
+      if (document.hasFocus()) {
+        isGridObserver = false
+        observerBaseRect = null
+        restoreBaseFontSize()
+      }
+      scheduleResize(true)
+    }, 400)
 
     // Painel voltou a ficar visível depois de um período mudo (canal `data`
     // suprimido pelo backend) — refaz o replay do scrollback acumulado do
@@ -1234,6 +1460,17 @@ export function useXtermSession(params: {
         return false
       }
       unlistenResync = resyncUnlisten
+
+      const resizeUnlisten = await listenPtyResized(
+        id,
+        ({ cols, rows }) => applyRemoteResize(cols, rows),
+        activeProfileId,
+      )
+      if (disposed) {
+        resizeUnlisten()
+        return false
+      }
+      unlistenResize = resizeUnlisten
       return true
     }
     // Só um auto-restart por crash detectado nesta sessão de mount, com um
@@ -1258,6 +1495,16 @@ export function useXtermSession(params: {
     const attachExistingPty = async (existingId: string) => {
       setBootPhase('attaching')
       ptyIdRef.current = existingId
+      // Anexar a uma sessão já existente entra como observador da grade
+      // compartilhada — vale igual pra desktop e pra web, sem privilegiar
+      // nenhum dos dois ("quem cria a sessão é dono da grade"). Setado antes
+      // de qualquer `await` pra já valer no primeiro tick de
+      // ResizeObserver/initialFitTimer que dispare enquanto isto ainda está em
+      // andamento; volta a ser dono no primeiro resize genuíno do próprio
+      // container (ver runResize).
+      isGridObserver = true
+      const attachRect = container.getBoundingClientRect()
+      observerBaseRect = { width: attachRect.width, height: attachRect.height }
       useTerminalsStore.getState().registerPty(existingId)
       onSpawnedRef.current?.(existingId)
       // Sessão pode já existir de antes deste mount (reload do app, etc.) —
@@ -1297,7 +1544,8 @@ export function useXtermSession(params: {
             `[pty-launch] ${command ?? 'shell'} EXIT (attach) id=${existingId} code=${payload.code ?? '—'} reason=${payload.reason ?? '—'}`,
           )
           if (payload.reason === 'restarted') {
-            useTerminalsStore.getState().markExited(existingId)
+            useTerminalsStore.getState().beginRestart(existingId)
+            void doResync('reconnect')
             return
           }
           if (payload.reason === 'suspended') {
@@ -1326,7 +1574,32 @@ export function useXtermSession(params: {
       }
       unlistenExit = exitUnlisten
 
-      scheduleResize()
+      // Adota a grade vigente do PTY compartilhado, adaptando a fonte local a
+      // ela (applyRemoteResize → applyFontScale). Sem commit: anexar nunca
+      // reivindica a grade, só um resize genuíno deste cliente faz isso.
+      try {
+        const { cols, rows } = await getPtySize(existingId, activeProfileId)
+        if (!disposed && cols > 0 && rows > 0) {
+          const proposed = fitAddon.proposeDimensions()
+          if (
+            document.hasFocus() &&
+            proposed &&
+            proposed.cols > 0 &&
+            proposed.rows > 0 &&
+            (proposed.cols !== cols || proposed.rows !== rows)
+          ) {
+            isGridObserver = false
+            observerBaseRect = null
+            restoreBaseFontSize()
+            scheduleResize(true)
+          } else {
+            applyRemoteResize(cols, rows)
+          }
+        }
+      } catch {
+        /* consulta falhou (PTY novo pro backend, rede) — sem adoção de grade;
+           o primeiro resize genuíno reivindica normalmente. */
+      }
       if (!disposed) setBootPhase('ready')
     }
 
@@ -1334,6 +1607,12 @@ export function useXtermSession(params: {
       if (readOnly) return
       const id = ptyIdRef.current
       if (!id) return
+      if (isGridObserver) {
+        isGridObserver = false
+        observerBaseRect = null
+        restoreBaseFontSize()
+        scheduleResize(true)
+      }
       useTerminalsStore.getState().recordIo(id)
       recordPromptInput(data)
       completionMonitor?.handleInput(data)
@@ -1780,7 +2059,8 @@ export function useXtermSession(params: {
               `[pty-launch] ${command ?? 'shell'} EXIT id=${response.id} code=${payload.code ?? '—'} reason=${payload.reason ?? '—'}`,
             )
             if (payload.reason === 'restarted') {
-              useTerminalsStore.getState().markExited(response.id)
+              useTerminalsStore.getState().beginRestart(response.id)
+              void doResync('reconnect')
               return
             }
             if (payload.reason === 'suspended') {
@@ -2105,10 +2385,11 @@ export function useXtermSession(params: {
       container.removeEventListener('click', focusTerminal)
       container.removeEventListener('paste', onPaste)
       container.removeEventListener('contextmenu', onContextMenu)
-      window.removeEventListener('focus', restoreHoveredFocus)
+      window.removeEventListener('focus', onWindowFocus)
       document.removeEventListener('visibilitychange', restoreHoveredFocus)
       window.removeEventListener('alethe:zoom-changed', onZoomChanged)
       window.removeEventListener('alethe:terminal-resize-request', onResizeRequest)
+      window.removeEventListener('alethe:pane-layout-synced', onPaneLayoutSynced)
       ro.disconnect()
       dragObserver?.disconnect()
       if (resizeTimer !== null) window.clearTimeout(resizeTimer)
@@ -2118,10 +2399,12 @@ export function useXtermSession(params: {
       pendingWriteLength = 0
       queuedInput = ''
       window.clearTimeout(initialFitTimer)
+      window.clearTimeout(secondFitTimer)
       unlistenData?.()
       unlistenActivity?.()
       unlistenExit?.()
       unlistenResync?.()
+      unlistenResize?.()
       unlistenDragDrop?.()
       linkProviderDisposable?.dispose()
       linkScrollDisposable?.dispose()

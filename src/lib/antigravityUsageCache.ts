@@ -1,4 +1,4 @@
-import { getAntigravityUsage } from './tauri'
+import { getAntigravityUsage } from './api/usage'
 import { makeTtlCache } from './ttlCache'
 
 const TTL_MS = 60_000

@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -198,30 +198,75 @@ pub struct PtySession {
     /// (render caro) ou pro `activity` (throttlado, só recordIo/completion).
     pub visible: Arc<AtomicBool>,
     /// Timestamp (ms) do último nudge de redesenho (Ctrl+L) mandado pro
-    /// OpenCode, disparado tanto no boot (primeiro output real do processo)
-    /// quanto em `resize_pty`. Os dois gatilhos podem cair quase juntos —
-    /// sem coordenação, dois redesenhos concorrentes do OpenCode se
+    /// processo, disparado tanto no boot (primeiro output real do processo)
+    /// quanto em `resize_pty` — pra provedores cujo `RedrawNudgeConfig`
+    /// liga isso (ver `redraw_nudge_config`). Os dois gatilhos podem cair
+    /// quase juntos — sem coordenação, dois redesenhos concorrentes se
     /// sobrepunham na tela em vez de um substituir o outro (texto/blocos de
     /// um redraw colidindo com o outro), confirmado analisando os bytes
-    /// crus do scrollback. `try_claim_opencode_nudge` garante só um disparo
-    /// por janela curta, não importa qual dos dois gatilhos chegou primeiro.
-    pub opencode_nudge_lock: Arc<AtomicU64>,
+    /// crus do scrollback do OpenCode. `try_claim_redraw_nudge` garante só
+    /// um disparo por janela curta, não importa qual gatilho chegou primeiro.
+    pub redraw_nudge_lock: Arc<AtomicU64>,
+    /// Tamanho de grade (cols x rows) atualmente aplicado ao PTY compartilhado
+    /// — a fonte de verdade que um cliente recém-anexado consulta antes de
+    /// decidir se vai reivindicar controle de resize (ver `get_pty_size_core`).
+    pub cols: Arc<AtomicU16>,
+    pub rows: Arc<AtomicU16>,
 }
 
-const OPENCODE_NUDGE_COOLDOWN_MS: u64 = 400;
+const REDRAW_NUDGE_COOLDOWN_MS: u64 = 400;
 
 /// CAS simples: só concede o nudge se a última tentativa (de QUALQUER
-/// gatilho) foi há mais de `OPENCODE_NUDGE_COOLDOWN_MS`. `Ordering::SeqCst`
+/// gatilho) foi há mais de `REDRAW_NUDGE_COOLDOWN_MS`. `Ordering::SeqCst`
 /// por segurança — não é um caminho quente o suficiente pra valer a pena
 /// relaxar.
-fn try_claim_opencode_nudge(lock: &AtomicU64) -> bool {
+fn try_claim_redraw_nudge(lock: &AtomicU64) -> bool {
     let now = now_ms();
     let last = lock.load(Ordering::SeqCst);
-    if now.saturating_sub(last) < OPENCODE_NUDGE_COOLDOWN_MS {
+    if now.saturating_sub(last) < REDRAW_NUDGE_COOLDOWN_MS {
         return false;
     }
     lock.compare_exchange(last, now, Ordering::SeqCst, Ordering::SeqCst)
         .is_ok()
+}
+
+/// Nudge de redesenho (Ctrl+L forçado) por provedor. Alguns TUIs não
+/// repintam sozinhos em SIGWINCH/resize; nem todo CLI quer ou tolera
+/// receber um Ctrl+L injetado, então isto é opt-in por provedor — nunca
+/// ligado por padrão. Chave = string literal de `command`/
+/// `requested_command`, o mesmo valor que `agentCliCommand()` manda do
+/// frontend (`src/lib/types.ts`) — CUIDADO: pro Antigravity isso é `"agy"`,
+/// não `"antigravity"`.
+#[derive(Clone, Copy)]
+struct RedrawNudgeConfig {
+    /// Nudge ~150ms após o primeiro lote de saída real do processo (boot).
+    boot: bool,
+    /// Nudge ~50ms após `master.resize()` (resize).
+    resize: bool,
+}
+
+const NO_REDRAW_NUDGE: RedrawNudgeConfig = RedrawNudgeConfig {
+    boot: false,
+    resize: false,
+};
+
+/// Só o OpenCode tem evidência confirmada de precisar disto hoje (bug
+/// conhecido do opentui, anomalyco/opencode#3697). claude/codex/agy/mimo/
+/// freebuff ficam de fora até alguém confirmar o mesmo problema pra eles —
+/// adicionar suporte é só acrescentar uma entrada aqui.
+const REDRAW_NUDGE_CONFIG: &[(&str, RedrawNudgeConfig)] = &[(
+    "opencode",
+    RedrawNudgeConfig {
+        boot: true,
+        resize: true,
+    },
+)];
+
+fn redraw_nudge_config(command: Option<&str>) -> RedrawNudgeConfig {
+    command
+        .and_then(|c| REDRAW_NUDGE_CONFIG.iter().find(|(key, _)| *key == c))
+        .map(|(_, cfg)| *cfg)
+        .unwrap_or(NO_REDRAW_NUDGE)
 }
 
 pub type PtySessions = Arc<Mutex<HashMap<String, PtySession>>>;
@@ -307,6 +352,12 @@ pub struct PtyExitPayload {
 pub struct PtySuspendedPayload {
     pub id: String,
     pub reason: &'static str,
+}
+
+#[derive(Clone, Serialize)]
+pub struct PtyResizedPayload {
+    pub cols: u16,
+    pub rows: u16,
 }
 
 #[derive(Clone, Default, serde::Deserialize)]
@@ -437,6 +488,54 @@ pub fn pty_exists(
         return Ok(false);
     }
     Ok(pty_exists_core(&sessions, &id))
+}
+
+#[derive(Serialize)]
+pub struct PtySizeResponse {
+    pub cols: u16,
+    pub rows: u16,
+}
+
+/// Tamanho de grade atualmente aplicado ao PTY compartilhado — consultado por
+/// um cliente que está anexando a uma sessão já existente, pra adotar o
+/// tamanho vigente em vez de brigar por um novo (ver `applyRemoteResize` no
+/// frontend).
+pub fn get_pty_size_core(
+    sessions: &PtySessions,
+    id: &str,
+    expected_profile_id: &str,
+    expected_scrollback_path: &Path,
+) -> Result<(u16, u16), String> {
+    let sessions = sessions
+        .lock()
+        .map_err(|_| "PTY sessions lock poisoned".to_string())?;
+    let session = sessions
+        .get(id)
+        .ok_or_else(|| format!("PTY not found: {id}"))?;
+    if !pty_owner_matches(
+        &session.profile_id,
+        &session.scrollback_path,
+        expected_profile_id,
+        expected_scrollback_path,
+    ) {
+        return Err(format!("PTY belongs to a different profile: {id}"));
+    }
+    Ok((
+        session.cols.load(Ordering::Relaxed),
+        session.rows.load(Ordering::Relaxed),
+    ))
+}
+
+#[tauri::command]
+pub fn get_pty_size(
+    app: AppHandle,
+    sessions: State<'_, PtySessions>,
+    id: String,
+    profile_id: String,
+) -> Result<PtySizeResponse, String> {
+    let (profile_id, expected, _) = resolve_pty_profile_paths(&app, Some(&profile_id), &id)?;
+    let (cols, rows) = get_pty_size_core(&sessions, &id, &profile_id, &expected)?;
+    Ok(PtySizeResponse { cols, rows })
 }
 
 #[derive(Serialize)]
@@ -585,10 +684,10 @@ pub async fn spawn_pty_core(
                 .take_writer()
                 .map_err(|error| error.to_string())?,
         ));
-        let opencode_nudge_lock = Arc::new(AtomicU64::new(0));
-        let is_opencode = requested_command.as_deref() == Some("opencode");
+        let redraw_nudge_lock = Arc::new(AtomicU64::new(0));
+        let nudge_cfg = redraw_nudge_config(requested_command.as_deref());
         let boot_nudge_writer = Arc::clone(&writer);
-        let boot_nudge_lock = Arc::clone(&opencode_nudge_lock);
+        let boot_nudge_lock = Arc::clone(&redraw_nudge_lock);
         let debug_log_path = spawn_log_path_buf.clone();
         let debug_id = id.clone();
         let scrollback_path_thread = sb_path_buf.clone();
@@ -689,7 +788,7 @@ pub async fn spawn_pty_core(
                 let Some(first) = rx.recv().await else { break };
                 batch.extend_from_slice(&first);
 
-                if is_opencode && !sent_boot_nudge {
+                if nudge_cfg.boot && !sent_boot_nudge {
                     sent_boot_nudge = true;
                     if pty_debug_enabled() {
                         if let Some(ref path) = debug_log_path {
@@ -708,7 +807,7 @@ pub async fn spawn_pty_core(
                     let nudge_debug_id = debug_id.clone();
                     tokio::spawn(async move {
                         tokio::time::sleep(Duration::from_millis(150)).await;
-                        let claimed = try_claim_opencode_nudge(&nudge_lock);
+                        let claimed = try_claim_redraw_nudge(&nudge_lock);
                         if pty_debug_enabled() {
                             if let Some(ref path) = nudge_log_path {
                                 let _ = append_spawn_log_path(
@@ -864,7 +963,9 @@ pub async fn spawn_pty_core(
             cwd,
             read_active,
             visible,
-            opencode_nudge_lock,
+            redraw_nudge_lock,
+            cols: Arc::new(AtomicU16::new(cols.max(1))),
+            rows: Arc::new(AtomicU16::new(rows.max(1))),
         };
 
         sessions
@@ -1193,6 +1294,7 @@ pub async fn write_pty(
 
 pub async fn resize_pty_core(
     sessions: &PtySessions,
+    sink: Arc<dyn PtyOutputSink>,
     log_path: Option<&Path>,
     id: &str,
     cols: u16,
@@ -1215,7 +1317,7 @@ pub async fn resize_pty_core(
                 );
             }
         }
-        let (master, writer, is_opencode, nudge_lock) = {
+        let (master, writer, wants_resize_nudge, nudge_lock, cols_atomic, rows_atomic) = {
             let sessions = sessions
                 .lock()
                 .map_err(|_| "PTY sessions lock poisoned".to_string())?;
@@ -1235,8 +1337,10 @@ pub async fn resize_pty_core(
             (
                 Arc::clone(&session.master),
                 Arc::clone(&session.writer),
-                session.command.as_deref() == Some("opencode"),
-                Arc::clone(&session.opencode_nudge_lock),
+                redraw_nudge_config(session.command.as_deref()).resize,
+                Arc::clone(&session.redraw_nudge_lock),
+                Arc::clone(&session.cols),
+                Arc::clone(&session.rows),
             )
         };
 
@@ -1257,9 +1361,18 @@ pub async fn resize_pty_core(
                 .map_err(|error| error.to_string())?;
         }
 
-        if is_opencode {
+        cols_atomic.store(cols.max(1), Ordering::Relaxed);
+        rows_atomic.store(rows.max(1), Ordering::Relaxed);
+
+        // Tell every OTHER attached client (the one that requested this
+        // resize already knows its own new size) so it can resize its own
+        // xterm.js viewport to match — without this, a TUI redrawn for the
+        // new grid renders into a stale-sized buffer on the other side.
+        sink.emit_resized(&pty_id, cols.max(1), rows.max(1));
+
+        if wants_resize_nudge {
             std::thread::sleep(std::time::Duration::from_millis(50));
-            let claimed = try_claim_opencode_nudge(&nudge_lock);
+            let claimed = try_claim_redraw_nudge(&nudge_lock);
             if pty_debug_enabled() {
                 if let Some(ref path) = log_path_buf {
                     let _ =
@@ -1299,6 +1412,10 @@ pub async fn resize_pty(
     ensure_pty_owner(&sessions, &id, &profile_id, &expected)?;
     resize_pty_core(
         &sessions,
+        Arc::new(crate::pty_sink::CombinedSink(
+            crate::pty_sink::TauriSink(app),
+            crate::pty_sink::WebSocketSink,
+        )),
         Some(&log_path),
         &id,
         cols,

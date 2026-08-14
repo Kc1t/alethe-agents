@@ -60,6 +60,8 @@ export type RestartAgentPtyOpts = {
   extraArgs?: string[]
   /** ID de sessão pra retomar, se algum já foi resolvido pelo chamador (ex.: via `savedConversationIdFor`). */
   resumeId?: string
+  cols?: number
+  rows?: number
   onSessionId?: (id: string) => void
   /** Repassado pra `watchAndPersistDiscoveredSession` — ver `agentSessionDiscovery.ts`. */
   reservedIds?: ReadonlySet<string>
@@ -79,6 +81,8 @@ export async function restartAgentPty(opts: RestartAgentPtyOpts): Promise<Restar
     runtimeProfile,
     extraArgs,
     resumeId,
+    cols,
+    rows,
     onSessionId,
     reservedIds,
   } = opts
@@ -94,8 +98,8 @@ export async function restartAgentPty(opts: RestartAgentPtyOpts): Promise<Restar
   useTerminalsStore.getState().beginRestart(ptyId)
   const response = await restartPty({
     id: ptyId,
-    cols: 80,
-    rows: 24,
+    cols: cols ?? 80,
+    rows: rows ?? 24,
     command: agentCliCommand(agent),
     cwd: cwd || undefined,
     extraArgs: launch.args,
