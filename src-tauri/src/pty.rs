@@ -16,7 +16,8 @@ use crate::paths::{scrollback_dir, scrollback_path};
 use crate::process_tree;
 use crate::provider_common::now_ms;
 
-pub const SCROLLBACK_CAP_BYTES: usize = 4 * 1024 * 1024;
+pub const SCROLLBACK_CAP_BYTES: usize = 16 * 1024 * 1024;
+pub const SCROLLBACK_REPLAY_BYTES: usize = SCROLLBACK_CAP_BYTES;
 pub const SCROLLBACK_FLUSH_INTERVAL_MS: u128 = 250;
 /// Acima disso o `.bin` (append-only) é compactado pra cauda de
 /// `SCROLLBACK_CAP_BYTES`. 2× o cap = ~2× de write-amplification amortizada
@@ -901,7 +902,7 @@ pub async fn attach_pty(
     // completo em `spawn_pty`.
     let sessions: PtySessions = Arc::clone(sessions.inner());
     tokio::task::spawn_blocking(move || {
-        let max_bytes = max_bytes.unwrap_or(512 * 1024).max(16 * 1024);
+        let max_bytes = max_bytes.unwrap_or(SCROLLBACK_REPLAY_BYTES).max(16 * 1024);
 
         // Caminho comum: serve do buffer em memória.
         {
@@ -1691,7 +1692,8 @@ mod tests {
 
     #[test]
     fn scrollback_cap_keeps_long_agent_chats() {
-        assert!(SCROLLBACK_CAP_BYTES >= 4 * 1024 * 1024);
+        assert_eq!(SCROLLBACK_CAP_BYTES, 16 * 1024 * 1024);
+        assert_eq!(SCROLLBACK_REPLAY_BYTES, SCROLLBACK_CAP_BYTES);
     }
 
     #[test]

@@ -31,7 +31,12 @@ export async function ptyExists(id: string): Promise<boolean> {
   return invoke<boolean>('pty_exists', { id })
 }
 
-export async function attachPty(id: string, maxBytes = 512 * 1024): Promise<string> {
+export const PTY_SCROLLBACK_REPLAY_BYTES = 16 * 1024 * 1024
+
+export async function attachPty(
+  id: string,
+  maxBytes = PTY_SCROLLBACK_REPLAY_BYTES,
+): Promise<string> {
   return invoke<string>('attach_pty', { id, maxBytes })
 }
 

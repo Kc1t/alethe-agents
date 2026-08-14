@@ -27,6 +27,7 @@ import {
   sanitizeWorkspaceSnapshot,
 } from '../lib/workspaceNavigation'
 import {
+  clampResourceMemoryBudget,
   clampSpawnConcurrency,
   clampUiZoom,
   MAX_RECENT_PROJECT_TABS,
@@ -46,7 +47,7 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     ...(rawResourcePolicy ?? {}),
   }
   const automaticParkingOptIn = rawResourcePolicy?.automaticParkingOptIn === true
-  const memoryBudgetMb = Math.min(8192, Math.max(768, Math.round(resourcePolicy.memoryBudgetMb)))
+  const memoryBudgetMb = clampResourceMemoryBudget(resourcePolicy.memoryBudgetMb)
   const warningThresholdMb = Math.min(
     memoryBudgetMb - 64,
     Math.max(512, Math.round(resourcePolicy.warningThresholdMb)),

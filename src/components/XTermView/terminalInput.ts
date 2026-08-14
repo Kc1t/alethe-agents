@@ -10,11 +10,11 @@ export function getTerminalScrollbackRows(options?: {
   agent?: boolean
   memoryBudgetMb?: number
 }): number {
-  if (!options) return 10_000
+  if (!options) return 50_000
   const budget = options.memoryBudgetMb ?? 1536
-  if (budget <= 1536) return options.agent ? 6_000 : 3_000
-  if (budget <= 3072) return options.agent ? 8_000 : 5_000
-  return options.agent ? 10_000 : 6_000
+  if (budget <= 1536) return options.agent ? 12_000 : 5_000
+  if (budget <= 8192) return options.agent ? 25_000 : 10_000
+  return options.agent ? 50_000 : 20_000
 }
 
 /**
@@ -38,6 +38,10 @@ export function shouldScrollHostScrollback(
 
 export function normalizePastedText(text: string): string {
   return text.replace(/\r\n?/g, '\n').replace(/\n/g, '\r')
+}
+
+export function shouldUseNativeClipboardPaste(command: string | null | undefined): boolean {
+  return command === 'opencode'
 }
 
 /**
