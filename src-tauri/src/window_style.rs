@@ -55,10 +55,7 @@ fn round_macos_window(window: &tauri::WebviewWindow) -> Result<(), String> {
         // Janela transparente: sem isto, os cantos recortados do contentView
         // revelariam o fundo opaco da janela (um "L" escuro em cada canto).
         let _: () = objc2::msg_send![ns_window, setOpaque: false];
-        let clear: *mut AnyObject = objc2::msg_send![
-            objc2::class!(NSColor),
-            clearColor
-        ];
+        let clear: *mut AnyObject = objc2::msg_send![objc2::class!(NSColor), clearColor];
         let _: () = objc2::msg_send![ns_window, setBackgroundColor: clear];
 
         // Recorta o contentView com cornerRadius. O conteúdo (WebView) é

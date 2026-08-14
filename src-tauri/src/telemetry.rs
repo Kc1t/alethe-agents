@@ -122,7 +122,9 @@ pub fn get_telemetry_metrics() -> Result<HashMap<String, MetricData>, String> {
 }
 
 #[tauri::command]
-pub fn get_telemetry_traces(correlation_id: Option<String>) -> Result<Vec<EventBusPayload>, String> {
+pub fn get_telemetry_traces(
+    correlation_id: Option<String>,
+) -> Result<Vec<EventBusPayload>, String> {
     let traces = get_traces().lock().map_err(|e| e.to_string())?;
     if let Some(corr_id) = correlation_id {
         Ok(traces
@@ -171,9 +173,18 @@ mod tests {
         let metrics = get_telemetry_metrics().unwrap();
         assert_eq!(metrics.get("alethe_event_taskstarted").unwrap().count, 1);
         assert_eq!(metrics.get("alethe_event_taskfinished").unwrap().count, 1);
-        assert_eq!(metrics.get("alethe_metric_memory_mb").unwrap().last_value, 150.0);
-        assert_eq!(metrics.get("alethe_metric_duration_ms").unwrap().last_value, 1000.0);
-        assert_eq!(metrics.get("alethe_metric_cost_usd").unwrap().last_value, 0.05);
+        assert_eq!(
+            metrics.get("alethe_metric_memory_mb").unwrap().last_value,
+            150.0
+        );
+        assert_eq!(
+            metrics.get("alethe_metric_duration_ms").unwrap().last_value,
+            1000.0
+        );
+        assert_eq!(
+            metrics.get("alethe_metric_cost_usd").unwrap().last_value,
+            0.05
+        );
 
         // Verifica traces com correlation_id
         let traces_all = get_telemetry_traces(None).unwrap();

@@ -19,6 +19,7 @@ import { AiUsageModal } from './components/modals/AiUsageModal'
 import { EditGroupModal } from './components/modals/EditGroupModal'
 import { EditProjectModal } from './components/modals/EditProjectModal'
 import { FindJumpModal } from './components/modals/FindJumpModal'
+import { FsBrowserModal } from './components/modals/FsBrowserModal'
 import { NewGroupModal } from './components/modals/NewGroupModal'
 import { NewProjectModal } from './components/modals/NewProjectModal'
 import { NewSubTabModal } from './components/modals/NewSubTabModal'
@@ -51,11 +52,12 @@ import { isTauriEnv } from './lib/api/transport'
 import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
 import { intlLocale, translate, useT } from './lib/i18n'
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
-import { ghosttyKillAll, listProfiles, setWindowOpacity } from './lib/tauri'
+import { ghosttyKillAll, setWindowOpacity, subscribeCoreSyncEvents } from './lib/tauri'
 import { getLastCrashReport } from './lib/tauri'
 import { getThemeIcon } from './lib/themeIcons'
 import { checkForUpdate } from './lib/updater'
 import { useProjectsStore } from './stores/projectsStore'
+import { useTerminalsStore } from './stores/terminalsStore'
 import { type InAppToast, useUiStore } from './stores/uiStore'
 
 const AgentCanvasPOC = lazy(() =>
@@ -178,8 +180,10 @@ export default function App() {
   const windowOpacity = useProjectsStore((s) => s.preferences.windowOpacity)
   const language = useProjectsStore((s) => s.preferences.language)
   const spawnConcurrency = useProjectsStore((s) => s.preferences.spawnConcurrency)
+  const persistenceError = useProjectsStore((s) => s.persistenceError)
   const activeView = useUiStore((s) => s.activeView)
   const openModal = useUiStore((s) => s.openModal)
+  const pushToast = useUiStore((s) => s.pushToast)
   const leftSidebarVisible = useProjectsStore((s) => s.preferences.leftSidebarVisible)
   const rightSidebarVisible = useProjectsStore((s) => s.preferences.rightSidebarVisible)
   const leftSidebarWidth = useProjectsStore((s) => s.preferences.leftSidebarWidth)
@@ -196,6 +200,7 @@ export default function App() {
   const rightSidebarSaveTimerRef = useRef<number | null>(null)
   const leftPanelElementRef = useRef<HTMLDivElement>(null)
   const rightPanelElementRef = useRef<HTMLDivElement>(null)
+  const reportedPersistenceErrorRef = useRef<string | null>(null)
 
   useKeybindings()
   useDiscordPresence()
@@ -207,25 +212,96 @@ export default function App() {
     void hydrate()
   }, [hydrate])
 
-  // Auto-sincroniza o perfil ativo se ele foi alterado no Desktop ou Web
+  useEffect(() => {
+    const flushBeforeSuspension = () => {
+      void useProjectsStore
+        .getState()
+        .flushPersistence(true)
+        .catch(() => {
+          // The persistence status reports the failure if the page remains open.
+        })
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushBeforeSuspension()
+    }
+    window.addEventListener('beforeunload', flushBeforeSuspension)
+    window.addEventListener('pagehide', flushBeforeSuspension)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      window.removeEventListener('beforeunload', flushBeforeSuspension)
+      window.removeEventListener('pagehide', flushBeforeSuspension)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [])
+
+  // Keep the profile catalog and active document synchronized across clients.
   useEffect(() => {
     if (!hydrated) return
-    const onFocus = async () => {
-      try {
-        const state = await listProfiles()
-        if (
-          state.active_profile_id &&
-          state.active_profile_id !== useProjectsStore.getState().activeProfileId
-        ) {
-          void hydrate()
-        }
-      } catch {
-        // Ignora erros efemeros de conexao
-      }
-    }
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
+    let applyQueue: Promise<void> = Promise.resolve()
+
+    return subscribeCoreSyncEvents((event) => {
+      applyQueue = applyQueue
+        .then(async () => {
+          let current = useProjectsStore.getState()
+          if (current.persistenceError === 'core-mismatch') {
+            useProjectsStore.setState({ persistenceError: null })
+            if (current.persistenceDirty) await useProjectsStore.getState().flushPersistence()
+            current = useProjectsStore.getState()
+          }
+
+          if (JSON.stringify(current.profiles) !== JSON.stringify(event.profiles)) {
+            useProjectsStore.setState({ profiles: event.profiles })
+          }
+
+          const activeProfileChanged = event.activeProfileId !== current.activeProfileId
+          const documentChanged = event.activeProjectsRevision !== current.projectsRevision
+          if (activeProfileChanged) {
+            if (current.persistenceDirty) await current.flushPersistence()
+            useTerminalsStore.getState().reset()
+            await hydrate()
+          } else if ((documentChanged || current.persistenceError) && !current.persistenceDirty) {
+            await hydrate()
+          }
+        })
+        .catch((error) => {
+          // Never let this disappear silently: hydrate() preserves the last
+          // known-good document on failure (it no longer wipes the store to
+          // empty for a transient error), and the server's periodic
+          // reconciliation snapshot (~15s) retries this same apply
+          // automatically, since the local revision stays stale until it
+          // succeeds.
+          console.error('[Alethe] Failed to apply a core sync event', error)
+        })
+      return applyQueue
+    })
   }, [hydrated, hydrate])
+
+  useEffect(() => {
+    if (!persistenceError) {
+      reportedPersistenceErrorRef.current = null
+      return
+    }
+    if (reportedPersistenceErrorRef.current === persistenceError) return
+    reportedPersistenceErrorRef.current = persistenceError
+    pushToast({
+      title: translate(
+        language,
+        persistenceError === 'conflict'
+          ? 'persistence.conflictTitle'
+          : persistenceError === 'core-mismatch'
+            ? 'persistence.coreMismatchTitle'
+            : 'persistence.writeTitle',
+      ),
+      body: translate(
+        language,
+        persistenceError === 'conflict'
+          ? 'persistence.conflictBody'
+          : persistenceError === 'core-mismatch'
+            ? 'persistence.coreMismatchBody'
+            : 'persistence.writeBody',
+      ),
+    })
+  }, [language, persistenceError, pushToast])
 
   useEffect(() => {
     void ghosttyKillAll().catch(() => {
@@ -501,6 +577,7 @@ export default function App() {
         <NewSubTabModal />
         <PreferencesModal />
         <ProfilesModal />
+        <FsBrowserModal />
         <SyncModal />
         <FindJumpModal />
         <OnboardingModal />

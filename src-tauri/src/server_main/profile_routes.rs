@@ -1,179 +1,21 @@
-// Perfis e projects.json — não dá pra reaproveitar `profiles.rs`/`projects.rs`
-// direto (toda função de lá recebe `tauri::AppHandle` pra resolver
-// `app_data_dir()`, e `alethe-server` não tem runtime do Tauri nenhum
-// rodando). Resolve o mesmo diretório manualmente, do mesmo jeito que o
-// Tauri resolveria no Windows (`%LOCALAPPDATA%\<identifier>`), e lê/escreve
-// os MESMOS arquivos em disco — por isso fica sincronizado com o Desktop sem
-// precisar reimplementar toda a lógica de `AppHandle`.
-
-use axum::response::IntoResponse;
+use axum::extract::Extension;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
-use serde_json::{json, Value};
-use std::fs;
-use std::path::PathBuf;
+use serde_json::json;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use crate::AppError;
+use super::{AppError, ServerRuntime};
 
-/// `npm run app` roda com `src-tauri/tauri.dev.json`, que troca o identifier
-/// pra `com.kc1t.alethe.dev` (não `com.kc1t.alethe`, o de produção) — sem
-/// essa mesma troca aqui, `alethe-server` e o Desktop em dev liam
-/// `%LOCALAPPDATA%` de pastas DIFERENTES, cada um enxergando um conjunto de
-/// perfis distinto (confirmado ao vivo: web via o perfil certo, Desktop dev
-/// achava que não tinha perfil nenhum e oferecia criar um novo). Variável de
-/// ambiente `ALETHE_APP_IDENTIFIER` permite apontar pra produção
-/// (`com.kc1t.alethe`) quando não for mais um `npm run app` de dev.
-const DEFAULT_APP_IDENTIFIER: &str = "com.kc1t.alethe.dev";
-
-fn app_identifier() -> String {
-    if let Ok(v) = std::env::var("ALETHE_APP_IDENTIFIER") {
-        return v;
-    }
-    if let Ok(v) = std::env::var("LOCALAPPDATA") {
-        if PathBuf::from(&v).join("com.kc1t.alethe").exists() {
-            return "com.kc1t.alethe".to_string();
-        }
-    }
-    if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
-        if PathBuf::from(&xdg).join("com.kc1t.alethe").exists() {
-            return "com.kc1t.alethe".to_string();
-        }
-    } else if let Ok(home) = std::env::var("HOME") {
-        if PathBuf::from(&home).join(".local").join("share").join("com.kc1t.alethe").exists() {
-            return "com.kc1t.alethe".to_string();
-        }
-    }
-    DEFAULT_APP_IDENTIFIER.to_string()
+pub fn active_profile_dir_at(root: &Path) -> Result<PathBuf, String> {
+    crate::profiles::active_profile_dir_at(root)
 }
 
-fn app_local_data_dir() -> PathBuf {
-    let identifier = app_identifier();
-    if let Ok(v) = std::env::var("LOCALAPPDATA") {
-        PathBuf::from(v).join(&identifier)
-    } else if let Ok(v) = std::env::var("APPDATA") {
-        PathBuf::from(v).join(&identifier)
-    } else if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
-        PathBuf::from(xdg).join(&identifier)
-    } else if let Ok(home) = std::env::var("HOME") {
-        #[cfg(target_os = "macos")]
-        {
-            PathBuf::from(home).join("Library").join("Application Support").join(&identifier)
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            PathBuf::from(home).join(".local").join("share").join(&identifier)
-        }
-    } else if let Ok(v) = std::env::var("USERPROFILE") {
-        PathBuf::from(v).join(".alethe")
-    } else {
-        PathBuf::from("./alethe_data")
-    }
-}
-
-fn profiles_json_path() -> PathBuf {
-    app_local_data_dir().join("profiles.json")
-}
-
-fn default_profiles_index() -> Value {
-    json!({
-        "version": 1,
-        "active_profile_id": "default",
-        "profiles": [{
-            "id": "default",
-            "name": "Default",
-            "created_at_ms": now_ms(),
-            "last_used_at_ms": now_ms(),
-        }],
-    })
-}
-
-fn now_ms() -> u128 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0)
-}
-
-fn read_or_create_profiles_index() -> Value {
-    let path = profiles_json_path();
-    if let Ok(content) = fs::read_to_string(&path) {
-        if let Ok(v) = serde_json::from_str::<Value>(&content) {
-            return v;
-        }
-    }
-    let default_val = default_profiles_index();
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    let _ = fs::write(
-        &path,
-        serde_json::to_string_pretty(&default_val).unwrap_or_default(),
-    );
-    default_val
-}
-
-fn write_profiles_index(index: &Value) -> Result<(), String> {
-    let path = profiles_json_path();
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    let body = serde_json::to_string_pretty(index).map_err(|e| e.to_string())?;
-    fs::write(&path, body).map_err(|e| e.to_string())
-}
-
-fn active_profile_id(index: &Value) -> String {
-    index
-        .get("active_profile_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("default")
-        .to_string()
-}
-
-pub fn profile_dir(profile_id: &str) -> PathBuf {
-    app_local_data_dir().join("profiles").join(profile_id)
-}
-
-/// Igual a `profile_dir`, mas recusa um `profile_id` que não existe no
-/// índice — mesma validação que `profiles::profile_data_dir_for_id` faz no
-/// desktop antes de devolver o caminho (evita criar pastas soltas pra ids
-/// inventados).
-pub fn profile_dir_validated(profile_id: &str) -> Result<PathBuf, String> {
-    let index = read_or_create_profiles_index();
-    let exists = index
-        .get("profiles")
-        .and_then(|v| v.as_array())
-        .is_some_and(|arr| {
-            arr.iter()
-                .any(|p| p.get("id").and_then(|v| v.as_str()) == Some(profile_id))
-        });
-    if !exists {
-        return Err("profile not found".to_string());
-    }
-    Ok(profile_dir(profile_id))
-}
-
-fn projects_json_path(profile_id: &str) -> PathBuf {
-    profile_dir(profile_id).join("projects.json")
-}
-
-/// Diretório de dados do perfil ATIVO (`profiles/<id>/`) — mesmo caminho que
-/// `paths::profile_data_dir(app)` resolveria no desktop via `AppHandle`, só
-/// que sem precisar de `AppHandle` nenhum. Usado por outras rotas
-/// (`session_routes.rs`, Time Analytics) que guardam arquivo no mesmo lugar
-/// que `projects.json`.
-pub fn active_profile_dir() -> PathBuf {
-    let index = read_or_create_profiles_index();
-    profile_dir(&active_profile_id(&index))
-}
-
-/// Devolve só `{active_profile_id, profiles}` — o formato que `ProfilesState`
-/// (frontend) espera, sem o campo `version` interno.
-fn to_profiles_state(index: &Value) -> Value {
-    json!({
-        "active_profile_id": active_profile_id(index),
-        "profiles": index.get("profiles").cloned().unwrap_or(json!([])),
-    })
+pub fn profile_dir_validated_at(root: &Path, profile_id: &str) -> Result<PathBuf, String> {
+    crate::profiles::profile_data_dir_for_id_at(root, profile_id)
 }
 
 pub fn router() -> Router {
@@ -187,85 +29,78 @@ pub fn router() -> Router {
         .route("/api/profiles/delete", post(delete))
         .route("/api/projects", get(load_projects))
         .route("/api/projects/load", get(load_projects))
+        .route("/api/projects/bootstrap", get(load_projects_bootstrap))
         .route("/api/projects/save", post(save_projects))
+        .route(
+            "/api/projects/save_for_profile",
+            post(save_projects_for_profile),
+        )
 }
 
-async fn list() -> impl IntoResponse {
-    Json(to_profiles_state(&read_or_create_profiles_index()))
-}
-
-async fn active() -> impl IntoResponse {
-    let index = read_or_create_profiles_index();
-    let id = active_profile_id(&index);
-    let profiles = index
-        .get("profiles")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
-    let meta = profiles
-        .iter()
-        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(id.as_str()))
-        .cloned()
-        .unwrap_or_else(|| json!({ "id": id, "name": "Default", "created_at_ms": now_ms(), "last_used_at_ms": now_ms() }));
-    Json(meta)
-}
-
-/// Conta projetos/terminais lendo o `projects.json` de cada perfil — best
-/// effort via `serde_json::Value` (sem struct tipada): se o arquivo não
-/// existir ou tiver um shape inesperado, conta 0 em vez de falhar a rota
-/// inteira por causa de UM perfil corrompido/vazio.
-async fn summaries() -> impl IntoResponse {
-    let index = read_or_create_profiles_index();
-    let active_id = active_profile_id(&index);
-    let profiles = index
-        .get("profiles")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
-
-    let result: Vec<Value> = profiles
-        .iter()
-        .map(|p| {
-            let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("default").to_string();
-            let (project_count, terminal_count) = count_projects_and_terminals(&id);
-            json!({
-                "id": id,
-                "name": p.get("name").and_then(|v| v.as_str()).unwrap_or("Default"),
-                "profile_image_url": p.get("profile_image_url").and_then(|v| v.as_str()).unwrap_or(""),
-                "created_at_ms": p.get("created_at_ms").cloned().unwrap_or(json!(0)),
-                "last_used_at_ms": p.get("last_used_at_ms").cloned().unwrap_or(json!(0)),
-                "project_count": project_count,
-                "terminal_count": terminal_count,
-                "is_active": id == active_id,
-            })
-        })
-        .collect();
-    Json(result)
-}
-
-fn count_projects_and_terminals(profile_id: &str) -> (usize, usize) {
-    let path = projects_json_path(profile_id);
-    let Ok(content) = fs::read_to_string(&path) else {
-        return (0, 0);
+fn app_error(error: String) -> AppError {
+    let status = if error.starts_with(crate::projects::PROJECTS_REVISION_CONFLICT) {
+        StatusCode::CONFLICT
+    } else if error.contains("profile not found") {
+        StatusCode::NOT_FOUND
+    } else if error == "profile_name_exists"
+        || error.contains("last local profile")
+        || error.contains("projects content contains invalid JSON")
+    {
+        StatusCode::BAD_REQUEST
+    } else {
+        StatusCode::INTERNAL_SERVER_ERROR
     };
-    let Ok(root) = serde_json::from_str::<Value>(&content) else {
-        return (0, 0);
-    };
-    let projects = root
-        .get("projects")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
-    let project_count = projects.len();
-    let terminal_count = projects
-        .iter()
-        .filter_map(|p| {
-            p.get("terminals")
-                .and_then(|t| t.as_array())
-                .map(|t| t.len())
-        })
-        .sum();
-    (project_count, terminal_count)
+    AppError(status, error)
+}
+
+fn respond<T: serde::Serialize>(result: Result<T, String>) -> Response {
+    match result {
+        Ok(value) => Json(value).into_response(),
+        Err(error) => app_error(error).into_response(),
+    }
+}
+
+fn publish_sync(
+    runtime: &ServerRuntime,
+    reason: &'static str,
+    changed_profile_id: Option<String>,
+    changed_projects_revision: Option<String>,
+) {
+    if let Err(error) =
+        runtime.publish_sync_event(reason, changed_profile_id, changed_projects_revision)
+    {
+        eprintln!("[core-events] Failed to publish {reason}: {error}");
+    }
+}
+
+fn respond_profile_mutation(
+    runtime: &ServerRuntime,
+    result: Result<crate::profiles::ProfilesState, String>,
+    reason: &'static str,
+) -> Response {
+    match result {
+        Ok(state) => {
+            publish_sync(runtime, reason, None, None);
+            Json(state).into_response()
+        }
+        Err(error) => app_error(error).into_response(),
+    }
+}
+
+async fn list(Extension(runtime): Extension<Arc<ServerRuntime>>) -> Response {
+    respond(crate::profiles::list_profiles_state_at(runtime.data_root()))
+}
+
+async fn summaries(Extension(runtime): Extension<Arc<ServerRuntime>>) -> Response {
+    respond(crate::profiles::list_profile_summaries_state_at(
+        runtime.data_root(),
+    ))
+}
+
+async fn active(Extension(runtime): Extension<Arc<ServerRuntime>>) -> Response {
+    respond(crate::profiles::active_profile_state_at(
+        runtime.data_root(),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -273,36 +108,32 @@ struct SetActiveBody {
     #[serde(rename = "profileId")]
     profile_id: String,
 }
-async fn set_active(Json(b): Json<SetActiveBody>) -> impl IntoResponse {
-    let mut index = read_or_create_profiles_index();
-    index["active_profile_id"] = json!(b.profile_id);
-    match write_profiles_index(&index) {
-        Ok(()) => Json(to_profiles_state(&index)).into_response(),
-        Err(e) => AppError::from(e).into_response(),
-    }
+
+async fn set_active(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<SetActiveBody>,
+) -> Response {
+    respond_profile_mutation(
+        &runtime,
+        crate::profiles::set_active_profile_id_at(runtime.data_root(), &body.profile_id),
+        "active_profile_changed",
+    )
 }
 
 #[derive(Deserialize)]
 struct CreateBody {
     name: Option<String>,
 }
-async fn create(Json(b): Json<CreateBody>) -> impl IntoResponse {
-    let mut index = read_or_create_profiles_index();
-    let id = nanoid::nanoid!(10);
-    let entry = json!({
-        "id": id,
-        "name": b.name.unwrap_or_else(|| "New Profile".to_string()),
-        "created_at_ms": now_ms(),
-        "last_used_at_ms": now_ms(),
-    });
-    match index.get_mut("profiles").and_then(|v| v.as_array_mut()) {
-        Some(arr) => arr.push(entry),
-        None => index["profiles"] = json!([entry]),
-    }
-    match write_profiles_index(&index) {
-        Ok(()) => Json(to_profiles_state(&index)).into_response(),
-        Err(e) => AppError::from(e).into_response(),
-    }
+
+async fn create(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<CreateBody>,
+) -> Response {
+    respond_profile_mutation(
+        &runtime,
+        crate::profiles::create_profile_state_at(runtime.data_root(), body.name),
+        "profile_created",
+    )
 }
 
 #[derive(Deserialize)]
@@ -311,19 +142,16 @@ struct RenameBody {
     profile_id: String,
     name: String,
 }
-async fn rename(Json(b): Json<RenameBody>) -> impl IntoResponse {
-    let mut index = read_or_create_profiles_index();
-    if let Some(arr) = index.get_mut("profiles").and_then(|v| v.as_array_mut()) {
-        for entry in arr.iter_mut() {
-            if entry.get("id").and_then(|v| v.as_str()) == Some(b.profile_id.as_str()) {
-                entry["name"] = json!(b.name);
-            }
-        }
-    }
-    match write_profiles_index(&index) {
-        Ok(()) => Json(to_profiles_state(&index)).into_response(),
-        Err(e) => AppError::from(e).into_response(),
-    }
+
+async fn rename(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<RenameBody>,
+) -> Response {
+    respond_profile_mutation(
+        &runtime,
+        crate::profiles::rename_profile_state_at(runtime.data_root(), &body.profile_id, body.name),
+        "profile_renamed",
+    )
 }
 
 #[derive(Deserialize)]
@@ -331,59 +159,244 @@ struct DeleteBody {
     #[serde(rename = "profileId")]
     profile_id: String,
 }
-async fn delete(Json(b): Json<DeleteBody>) -> impl IntoResponse {
-    let mut index = read_or_create_profiles_index();
-    if let Some(arr) = index.get_mut("profiles").and_then(|v| v.as_array_mut()) {
-        arr.retain(|entry| entry.get("id").and_then(|v| v.as_str()) != Some(b.profile_id.as_str()));
-    }
-    // Se o perfil ativo foi apagado, cai pro primeiro que sobrou (ou "default").
-    if active_profile_id(&index) == b.profile_id {
-        let fallback = index
-            .get("profiles")
-            .and_then(|v| v.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|p| p.get("id"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("default")
-            .to_string();
-        index["active_profile_id"] = json!(fallback);
-    }
-    match write_profiles_index(&index) {
-        Ok(()) => Json(to_profiles_state(&index)).into_response(),
-        Err(e) => AppError::from(e).into_response(),
-    }
+
+async fn delete(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<DeleteBody>,
+) -> Response {
+    respond_profile_mutation(
+        &runtime,
+        crate::profiles::delete_profile_state_at(runtime.data_root(), &body.profile_id),
+        "profile_deleted",
+    )
 }
 
-async fn load_projects() -> impl IntoResponse {
-    let index = read_or_create_profiles_index();
-    let id = active_profile_id(&index);
-    let path = projects_json_path(&id);
-    match fs::read_to_string(&path) {
-        Ok(content) => match serde_json::from_str::<Value>(&content) {
-            Ok(v) => Json(v).into_response(),
-            Err(_) => {
-                Json(json!({ "groups": [], "projects": [], "preferences": {} })).into_response()
-            }
-        },
-        Err(_) => Json(json!({ "groups": [], "projects": [], "preferences": {} })).into_response(),
-    }
+async fn load_projects(Extension(runtime): Extension<Arc<ServerRuntime>>) -> Response {
+    respond(crate::projects::load_projects_at(runtime.data_root()))
+}
+
+async fn load_projects_bootstrap(Extension(runtime): Extension<Arc<ServerRuntime>>) -> Response {
+    respond(crate::projects::load_projects_bootstrap_at(
+        runtime.data_root(),
+    ))
 }
 
 #[derive(Deserialize)]
 struct SaveProjectsBody {
     content: String,
+    #[allow(dead_code)]
+    sequence: Option<u64>,
 }
-async fn save_projects(Json(b): Json<SaveProjectsBody>) -> impl IntoResponse {
-    let index = read_or_create_profiles_index();
-    let id = active_profile_id(&index);
-    let path = projects_json_path(&id);
-    if let Some(parent) = path.parent() {
-        if let Err(e) = fs::create_dir_all(parent) {
-            return AppError::from(e.to_string()).into_response();
+
+async fn save_projects(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<SaveProjectsBody>,
+) -> Response {
+    let bootstrap = match crate::projects::load_projects_bootstrap_at(runtime.data_root()) {
+        Ok(bootstrap) => bootstrap,
+        Err(error) => return app_error(error).into_response(),
+    };
+    match crate::projects::save_projects_for_profile_at(
+        runtime.data_root().to_path_buf(),
+        bootstrap.active_profile_id,
+        body.content,
+        bootstrap.revision,
+    )
+    .await
+    {
+        Ok(result) => {
+            publish_sync(
+                &runtime,
+                "projects_saved",
+                Some(result.profile_id),
+                Some(result.revision),
+            );
+            Json(json!({ "status": "saved" })).into_response()
+        }
+        Err(error) => app_error(error).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct SaveProjectsForProfileBody {
+    #[serde(rename = "profileId")]
+    profile_id: String,
+    content: String,
+    #[serde(rename = "expectedRevision")]
+    expected_revision: String,
+}
+
+async fn save_projects_for_profile(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<SaveProjectsForProfileBody>,
+) -> Response {
+    match crate::projects::save_projects_for_profile_at(
+        runtime.data_root().to_path_buf(),
+        body.profile_id,
+        body.content,
+        body.expected_revision,
+    )
+    .await
+    {
+        Ok(result) => {
+            publish_sync(
+                &runtime,
+                "projects_saved",
+                Some(result.profile_id.clone()),
+                Some(result.revision.clone()),
+            );
+            Json(result).into_response()
+        }
+        Err(error) => app_error(error).into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::to_bytes;
+    use std::fs;
+
+    struct TestRoot(PathBuf);
+
+    impl TestRoot {
+        fn new(label: &str) -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "alethe-profile-routes-{label}-{}-{}",
+                std::process::id(),
+                nanoid::nanoid!(8)
+            ));
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+
+        fn runtime(&self) -> Arc<ServerRuntime> {
+            Arc::new(ServerRuntime::new(
+                "test",
+                "com.kc1t.alethe.dev".to_string(),
+                self.0.clone(),
+                Arc::new(crate::pty_sink::WebSocketSink),
+            ))
         }
     }
-    match fs::write(&path, &b.content) {
-        Ok(()) => Json(json!({ "status": "saved" })).into_response(),
-        Err(e) => AppError::from(e.to_string()).into_response(),
+
+    impl Drop for TestRoot {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    async fn response_json(response: Response) -> serde_json::Value {
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[test]
+    fn runtime_identity_uses_the_canonical_root_fingerprint_without_leaking_its_path() {
+        let root = TestRoot::new("identity");
+        let runtime = root.runtime();
+        let payload = super::super::runtime_payload(&runtime);
+
+        assert_eq!(payload["appIdentifier"], "com.kc1t.alethe.dev");
+        assert_eq!(
+            payload["dataRootId"],
+            crate::profiles::data_root_fingerprint(&root.0)
+        );
+        let root_display = root.0.to_string_lossy();
+        assert!(!payload.to_string().contains(root_display.as_ref()));
+    }
+
+    #[tokio::test]
+    async fn profile_http_crud_returns_the_same_typed_core_state() {
+        let root = TestRoot::new("crud");
+        let response = create(
+            Extension(root.runtime()),
+            Json(CreateBody {
+                name: Some("Browser".to_string()),
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let http_state = response_json(response).await;
+        let core_state = crate::profiles::list_profiles_state_at(&root.0).unwrap();
+        assert_eq!(http_state, serde_json::to_value(core_state).unwrap());
+    }
+
+    #[tokio::test]
+    async fn project_http_save_reports_conflict_without_exposing_the_data_root() {
+        let root = TestRoot::new("cas");
+        crate::profiles::ensure_profiles_index_at(&root.0).unwrap();
+        let initial =
+            serde_json::json!({ "version": 6, "projects": [{ "id": "winner" }] }).to_string();
+        let first = save_projects_for_profile(
+            Extension(root.runtime()),
+            Json(SaveProjectsForProfileBody {
+                profile_id: "default".to_string(),
+                content: initial,
+                expected_revision: "missing".to_string(),
+            }),
+        )
+        .await;
+        assert_eq!(first.status(), StatusCode::OK);
+
+        let stale = save_projects_for_profile(
+            Extension(root.runtime()),
+            Json(SaveProjectsForProfileBody {
+                profile_id: "default".to_string(),
+                content: serde_json::json!({
+                    "version": 6,
+                    "projects": [{ "id": "rejected" }]
+                })
+                .to_string(),
+                expected_revision: "missing".to_string(),
+            }),
+        )
+        .await;
+        assert_eq!(stale.status(), StatusCode::CONFLICT);
+        let body = to_bytes(stale.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        let root_display = root.0.to_string_lossy();
+        assert!(body.starts_with(crate::projects::PROJECTS_REVISION_CONFLICT));
+        assert!(!body.contains(root_display.as_ref()));
+    }
+
+    #[tokio::test]
+    async fn incoming_invalid_json_is_bad_request_but_corrupt_storage_is_server_error() {
+        let invalid_payload_root = TestRoot::new("invalid-payload");
+        crate::profiles::ensure_profiles_index_at(&invalid_payload_root.0).unwrap();
+        let invalid_payload = save_projects_for_profile(
+            Extension(invalid_payload_root.runtime()),
+            Json(SaveProjectsForProfileBody {
+                profile_id: "default".to_string(),
+                content: "{not-json".to_string(),
+                expected_revision: "missing".to_string(),
+            }),
+        )
+        .await;
+        assert_eq!(invalid_payload.status(), StatusCode::BAD_REQUEST);
+
+        let corrupt_storage_root = TestRoot::new("corrupt-storage");
+        crate::profiles::ensure_profiles_index_at(&corrupt_storage_root.0).unwrap();
+        let projects_path = corrupt_storage_root
+            .0
+            .join("profiles")
+            .join("default")
+            .join("projects.json");
+        fs::write(&projects_path, "{corrupt-storage").unwrap();
+        let corrupt_storage = save_projects_for_profile(
+            Extension(corrupt_storage_root.runtime()),
+            Json(SaveProjectsForProfileBody {
+                profile_id: "default".to_string(),
+                content: serde_json::json!({ "version": 6, "projects": [] }).to_string(),
+                expected_revision: "missing".to_string(),
+            }),
+        )
+        .await;
+        assert_eq!(corrupt_storage.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(
+            fs::read_to_string(projects_path).unwrap(),
+            "{corrupt-storage"
+        );
     }
 }

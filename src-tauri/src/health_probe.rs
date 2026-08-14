@@ -104,7 +104,11 @@ pub async fn health_probe(
     }
 
     let url = {
-        let normalized = if path.starts_with('/') { path.clone() } else { format!("/{path}") };
+        let normalized = if path.starts_with('/') {
+            path.clone()
+        } else {
+            format!("/{path}")
+        };
         format!("http://127.0.0.1:{port}{normalized}")
     };
     let client = reqwest::Client::builder()

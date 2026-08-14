@@ -1,7 +1,7 @@
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::sync::OnceLock;
 use tokio::sync::broadcast;
-use serde::{Serialize, Deserialize};
-use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventBusPayload {

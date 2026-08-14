@@ -57,7 +57,9 @@ fn git_admin_dir(dir: &Path) -> Option<PathBuf> {
     }
     if dot_git.is_file() {
         let content = std::fs::read_to_string(&dot_git).ok()?;
-        let gitdir = content.lines().find_map(|line| line.trim().strip_prefix("gitdir:"))?;
+        let gitdir = content
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("gitdir:"))?;
         return Some(PathBuf::from(gitdir.trim()));
     }
     None
@@ -162,7 +164,10 @@ fn resolve_input_directory(path: &str) -> Result<PathBuf, String> {
 
     let expanded = if trimmed == "~" {
         dirs_next::home_dir().unwrap_or_else(|| PathBuf::from(trimmed))
-    } else if let Some(rest) = trimmed.strip_prefix("~/").or_else(|| trimmed.strip_prefix("~\\")) {
+    } else if let Some(rest) = trimmed
+        .strip_prefix("~/")
+        .or_else(|| trimmed.strip_prefix("~\\"))
+    {
         dirs_next::home_dir()
             .unwrap_or_else(|| PathBuf::from("~"))
             .join(rest.replace('/', "\\"))
@@ -177,16 +182,22 @@ fn resolve_input_directory(path: &str) -> Result<PathBuf, String> {
     }
 
     let mut candidates = Vec::new();
-    let looks_unix_root = trimmed.starts_with('/') && !trimmed.starts_with("//") && !trimmed.starts_with("/mnt/");
+    let looks_unix_root =
+        trimmed.starts_with('/') && !trimmed.starts_with("//") && !trimmed.starts_with("/mnt/");
     if looks_unix_root {
         let relative = trimmed.trim_start_matches('/').replace('/', "\\");
-        let username = dirs_next::home_dir()
-            .and_then(|home| home.file_name().map(|name| name.to_string_lossy().into_owned()));
+        let username = dirs_next::home_dir().and_then(|home| {
+            home.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        });
         for drive in drive_roots() {
             push_if_dir(&mut candidates, drive.join(&relative));
             if let Some(name) = username.as_deref() {
                 push_if_dir(&mut candidates, drive.join(name).join(&relative));
-                push_if_dir(&mut candidates, drive.join("Users").join(name).join(&relative));
+                push_if_dir(
+                    &mut candidates,
+                    drive.join("Users").join(name).join(&relative),
+                );
             }
         }
     }
@@ -239,7 +250,10 @@ pub(crate) fn repository_root(path: &str) -> Result<PathBuf, String> {
 /// vinculada; o pai desse diretório é a raiz principal real.
 pub(crate) fn main_repository_root(path: &str) -> Result<PathBuf, String> {
     let cwd = resolve_input_directory(path)?;
-    let output = git_command(&cwd, &["rev-parse", "--path-format=absolute", "--git-common-dir"])?;
+    let output = git_command(
+        &cwd,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )?;
     if !output.status.success() {
         return Err("not_a_git_repository".to_string());
     }
@@ -257,7 +271,8 @@ pub(crate) fn main_repository_root(path: &str) -> Result<PathBuf, String> {
 }
 
 fn validated_root(path: &str) -> Result<PathBuf, String> {
-    let requested = resolve_input_directory(path).map_err(|_| "not_a_git_repository".to_string())?;
+    let requested =
+        resolve_input_directory(path).map_err(|_| "not_a_git_repository".to_string())?;
     let actual = repository_root(path)?;
     if requested != actual {
         return Err("invalid_repository_root".to_string());
@@ -467,7 +482,12 @@ fn git_init_inner(path: String) -> Result<String, String> {
     checked_output(&dir, &["init", "-b", "main"])?;
     seed_gitignore_if_missing(&dir);
     checked_output(&dir, &["add", "-A"])?;
-    let identity = ["-c", "user.name=Alethe", "-c", "user.email=alethe@localhost"];
+    let identity = [
+        "-c",
+        "user.name=Alethe",
+        "-c",
+        "user.email=alethe@localhost",
+    ];
     let mut commit_args: Vec<&str> = identity.to_vec();
     commit_args.extend(["commit", "-m", "Commit inicial (Alethe)"]);
     // Pasta vazia (nada pra adicionar) faz o commit normal falhar por "nothing
@@ -581,7 +601,11 @@ fn git_discard_inner(repo_root: String, paths: Vec<String>, untracked: bool) -> 
 }
 
 #[tauri::command]
-pub async fn git_discard(repo_root: String, paths: Vec<String>, untracked: bool) -> Result<(), String> {
+pub async fn git_discard(
+    repo_root: String,
+    paths: Vec<String>,
+    untracked: bool,
+) -> Result<(), String> {
     tokio::task::spawn_blocking(move || git_discard_inner(repo_root, paths, untracked))
         .await
         .map_err(|error| format!("git_discard: falha na task bloqueante: {error}"))?
@@ -627,7 +651,9 @@ fn remote_command(root: &Path, args: &[&str]) -> Result<String, String> {
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
-            Ok(format!("{} {}", stdout.trim(), stderr.trim()).trim().to_string())
+            Ok(format!("{} {}", stdout.trim(), stderr.trim())
+                .trim()
+                .to_string())
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             Err(format!("git_command_failed:{stderr}"))
@@ -735,7 +761,10 @@ fn uncommitted_entries(worktree_path: &Path) -> Vec<DiffSummaryEntry> {
         } else {
             x
         };
-        entries.push(DiffSummaryEntry { path, status: status.to_string() });
+        entries.push(DiffSummaryEntry {
+            path,
+            status: status.to_string(),
+        });
     }
     entries
 }
@@ -1207,7 +1236,10 @@ mod tests {
 
     #[test]
     fn main_repository_root_resolves_same_root_from_a_linked_worktree() {
-        let suffix = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let root = std::env::temp_dir().join(format!("alethe-main-repo-root-{suffix}"));
         fs::create_dir_all(&root).unwrap();
         checked_output(&root, &["init", "-b", "main"]).unwrap();
@@ -1220,13 +1252,23 @@ mod tests {
         let worktree = root.join("wt");
         checked_output(
             &root,
-            &["worktree", "add", "-b", "agent-branch", worktree.to_str().unwrap(), "HEAD"],
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "agent-branch",
+                worktree.to_str().unwrap(),
+                "HEAD",
+            ],
         )
         .unwrap();
 
         let from_main = main_repository_root(&root.to_string_lossy()).unwrap();
         let from_worktree = main_repository_root(&worktree.to_string_lossy()).unwrap();
-        assert_eq!(from_main, from_worktree, "deve resolver a mesma raiz principal a partir de qualquer worktree");
+        assert_eq!(
+            from_main, from_worktree,
+            "deve resolver a mesma raiz principal a partir de qualquer worktree"
+        );
         // `repository_root` (--show-toplevel), em contraste, devolveria a
         // PRÓPRIA worktree quando chamado de dentro dela — diferente da main.
         let toplevel_from_worktree = repository_root(&worktree.to_string_lossy()).unwrap();
@@ -1299,7 +1341,9 @@ mod tests {
         // O worktree/clone que consome isso precisa de um HEAD com os arquivos
         // já commitados — não um repo vazio.
         let status = git_status(root_string).unwrap();
-        assert!(status.staged.is_empty() && status.changes.is_empty() && status.untracked.is_empty());
+        assert!(
+            status.staged.is_empty() && status.changes.is_empty() && status.untracked.is_empty()
+        );
         let log = checked_output(&root, &["log", "--oneline"]).unwrap();
         assert_eq!(String::from_utf8_lossy(&log.stdout).lines().count(), 1);
 
@@ -1311,7 +1355,11 @@ mod tests {
         let root = temp_dir("init-gitignore");
         fs::write(root.join("src.txt"), "real code\n").unwrap();
         fs::create_dir_all(root.join("node_modules").join("some-dep")).unwrap();
-        fs::write(root.join("node_modules").join("some-dep").join("index.js"), "// dep\n").unwrap();
+        fs::write(
+            root.join("node_modules").join("some-dep").join("index.js"),
+            "// dep\n",
+        )
+        .unwrap();
         let root_string = root.to_string_lossy().into_owned();
 
         git_init(root_string.clone()).unwrap();
@@ -1370,8 +1418,14 @@ mod tests {
         let find = |path: &str| entries.iter().find(|e| e.path == path);
         assert!(find("kept.txt").is_some_and(|e| e.status == "M"));
         assert!(find("new.txt").is_some_and(|e| e.status == "A"));
-        assert!(find("new-name.txt").is_some(), "rename deveria aparecer com o nome novo: {entries:?}");
-        assert!(find("old-name.txt").is_none(), "rename não deveria duplicar o nome antigo: {entries:?}");
+        assert!(
+            find("new-name.txt").is_some(),
+            "rename deveria aparecer com o nome novo: {entries:?}"
+        );
+        assert!(
+            find("old-name.txt").is_none(),
+            "rename não deveria duplicar o nome antigo: {entries:?}"
+        );
 
         fs::remove_dir_all(root).unwrap();
     }
@@ -1401,7 +1455,10 @@ mod tests {
             None,
         )
         .unwrap();
-        assert!(without_worktree.is_empty(), "sem worktree_path, diff de commits deve ficar vazio");
+        assert!(
+            without_worktree.is_empty(),
+            "sem worktree_path, diff de commits deve ficar vazio"
+        );
 
         fs::write(root.join("novo.txt"), "").unwrap();
         // Infraestrutura escrita automaticamente pelo próprio Alethe (plugin
@@ -1410,7 +1467,13 @@ mod tests {
         fs::create_dir_all(root.join(".planning")).unwrap();
         fs::write(root.join(".planning").join("goal.md"), "").unwrap();
         fs::create_dir_all(root.join(".opencode").join("plugins")).unwrap();
-        fs::write(root.join(".opencode").join("plugins").join("alethe-gsd-state.ts"), "").unwrap();
+        fs::write(
+            root.join(".opencode")
+                .join("plugins")
+                .join("alethe-gsd-state.ts"),
+            "",
+        )
+        .unwrap();
         fs::write(root.join("opencode.json"), "{}").unwrap();
 
         let with_worktree = git_diff_summary(
@@ -1479,7 +1542,10 @@ mod tests {
         // o arquivo sumir; o retry do with_lock_awareness é o que faz isso
         // eventualmente ter sucesso sem o chamador precisar saber disso.
         let result = checked_output(&root, &["status"]);
-        assert!(result.is_ok(), "esperava sucesso após o lock transitório sumir: {result:?}");
+        assert!(
+            result.is_ok(),
+            "esperava sucesso após o lock transitório sumir: {result:?}"
+        );
 
         fs::remove_dir_all(root).unwrap();
     }
@@ -1516,7 +1582,10 @@ mod tests {
         checked_output(&root, &["add", "file.txt"]).unwrap();
 
         let diff = git_diff(root_string.clone(), "file.txt".to_string(), true).unwrap();
-        assert!(diff.contains("+line2"), "staged diff must contain the added line");
+        assert!(
+            diff.contains("+line2"),
+            "staged diff must contain the added line"
+        );
 
         fs::remove_dir_all(root).unwrap();
     }

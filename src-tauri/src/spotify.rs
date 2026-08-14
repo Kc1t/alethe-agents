@@ -70,8 +70,7 @@ fn resolve_credentials(
         .to_string();
     if cid.is_empty() || secret.is_empty() {
         return Err(
-            "spotify credentials not configured — set Client ID/Secret in Preferences"
-                .to_string(),
+            "spotify credentials not configured — set Client ID/Secret in Preferences".to_string(),
         );
     }
     Ok(SpotifyCredentials {
@@ -135,7 +134,10 @@ struct TokenResponse {
     refresh_token: Option<String>,
 }
 
-async fn exchange_code(code: &str, credentials: &SpotifyCredentials) -> Result<TokenResponse, String> {
+async fn exchange_code(
+    code: &str,
+    credentials: &SpotifyCredentials,
+) -> Result<TokenResponse, String> {
     let basic = base64::engine::general_purpose::STANDARD.encode(format!(
         "{}:{}",
         credentials.client_id, credentials.client_secret

@@ -13,7 +13,12 @@ pub struct AntigravitySessionSnapshot {
 }
 
 pub(crate) fn antigravity_metadata_file() -> Option<PathBuf> {
-    provider_home_dir(&[".gemini", "antigravity-cli", "cache", "conversation_metadata.json"])
+    provider_home_dir(&[
+        ".gemini",
+        "antigravity-cli",
+        "cache",
+        "conversation_metadata.json",
+    ])
 }
 
 /// Resolve o timestamp de uma conversa: prioriza `summary.UpdatedAt` (UTC),
@@ -89,13 +94,19 @@ fn cwd_matches(norm: &str, target_cwd: &str) -> bool {
 /// cada spawn/validação de resumo de terminal (`XTermView`), então travar a
 /// thread de despacho do Tauri aqui trava outros comandos IPC concorrentes.
 #[tauri::command]
-pub async fn snapshot_antigravity_sessions(cwd: String) -> Result<Vec<AntigravitySessionSnapshot>, String> {
+pub async fn snapshot_antigravity_sessions(
+    cwd: String,
+) -> Result<Vec<AntigravitySessionSnapshot>, String> {
     tokio::task::spawn_blocking(move || snapshot_antigravity_sessions_inner(cwd))
         .await
-        .map_err(|error| format!("snapshot_antigravity_sessions: falha na task bloqueante: {error}"))?
+        .map_err(|error| {
+            format!("snapshot_antigravity_sessions: falha na task bloqueante: {error}")
+        })?
 }
 
-fn snapshot_antigravity_sessions_inner(cwd: String) -> Result<Vec<AntigravitySessionSnapshot>, String> {
+fn snapshot_antigravity_sessions_inner(
+    cwd: String,
+) -> Result<Vec<AntigravitySessionSnapshot>, String> {
     let Some(meta_path) = antigravity_metadata_file() else {
         return Ok(Vec::new());
     };

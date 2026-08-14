@@ -20,7 +20,9 @@ pub struct OpenCodeSessionSnapshot {
 /// canonicalizado nunca batia e a sessão nunca era encontrada (mesma raiz do
 /// bug já corrigido em `worktrees::git_arg`).
 fn normalize_path(path: &str) -> String {
-    let trimmed = path.trim().trim_end_matches(|c: char| c == '\\' || c == '/');
+    let trimmed = path
+        .trim()
+        .trim_end_matches(|c: char| c == '\\' || c == '/');
     let unprefixed = trimmed
         .strip_prefix(r"\\?\UNC\")
         .map(|rest| format!(r"\\{rest}"))
@@ -43,7 +45,9 @@ fn normalize_path(path: &str) -> String {
 /// (`XTermView`) — como `fn` síncrona isso travaria a thread de despacho de
 /// IPC do Tauri, mesma classe de bug já corrigida em `cli_resolver.rs`.
 #[tauri::command]
-pub async fn snapshot_opencode_sessions(cwd: String) -> Result<Vec<OpenCodeSessionSnapshot>, String> {
+pub async fn snapshot_opencode_sessions(
+    cwd: String,
+) -> Result<Vec<OpenCodeSessionSnapshot>, String> {
     tokio::task::spawn_blocking(move || snapshot_opencode_sessions_inner(cwd))
         .await
         .map_err(|error| format!("snapshot_opencode_sessions: falha na task bloqueante: {error}"))?
@@ -117,13 +121,19 @@ fn snapshot_opencode_sessions_inner(cwd: String) -> Result<Vec<OpenCodeSessionSn
 /// `async` + `spawn_blocking`: mesmo motivo de `snapshot_opencode_sessions`
 /// (subprocesso de verdade, não pode rodar na thread de despacho do Tauri).
 #[tauri::command]
-pub async fn opencode_export_session(cwd: String, session_id: String) -> Result<serde_json::Value, String> {
+pub async fn opencode_export_session(
+    cwd: String,
+    session_id: String,
+) -> Result<serde_json::Value, String> {
     tokio::task::spawn_blocking(move || opencode_export_session_inner(cwd, session_id))
         .await
         .map_err(|error| format!("opencode_export_session: falha na task bloqueante: {error}"))?
 }
 
-fn opencode_export_session_inner(cwd: String, session_id: String) -> Result<serde_json::Value, String> {
+fn opencode_export_session_inner(
+    cwd: String,
+    session_id: String,
+) -> Result<serde_json::Value, String> {
     if session_id.is_empty() {
         return Err("session_id vazio".to_string());
     }

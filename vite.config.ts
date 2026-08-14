@@ -1,4 +1,4 @@
-// Este foi feito para adicionar o proxy do Vite para /api apontando para http://127.0.0.1:1423 (alethe-server) permitindo roteamento transparente de requisições REST e WebSockets na Web.
+// Proxy REST and WebSocket traffic to the single local Alethe Core authority.
 
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -8,7 +8,10 @@ export default defineConfig({
   clearScreen: false,
   server: {
     port: 1422,
-    strictPort: false,
+    // The core's Origin/Host allowlist only accepts 1422/1424. Falling back
+    // to a different port would silently start a UI the core rejects on
+    // every request instead of failing loudly at boot.
+    strictPort: true,
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:1423',

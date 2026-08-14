@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
-import { isTauriEnv, webApiFetch } from './transport'
+import { canUseSharedCoreTransport, isTauriEnv, webApiFetch } from './transport'
 
 export type MemoryPressureLevel = 'Ok' | 'Low' | 'Medium' | 'High' | 'Critical'
 
@@ -138,7 +138,9 @@ export async function wipeAllAppData(): Promise<void> {
 }
 
 export async function getResourceMetrics(): Promise<ResourceMetrics> {
-  if (isTauriEnv()) return invoke<ResourceMetrics>('get_resource_metrics')
+  if (isTauriEnv() && !(await canUseSharedCoreTransport())) {
+    return invoke<ResourceMetrics>('get_resource_metrics')
+  }
   return webApiFetch<ResourceMetrics>('/api/window/resource_metrics')
 }
 
@@ -156,7 +158,9 @@ export async function getMemoryStats(): Promise<MemoryStats> {
 }
 
 export async function getRuntimeSnapshot(): Promise<RuntimeSnapshot> {
-  if (isTauriEnv()) return invoke<RuntimeSnapshot>('get_runtime_snapshot')
+  if (isTauriEnv() && !(await canUseSharedCoreTransport())) {
+    return invoke<RuntimeSnapshot>('get_runtime_snapshot')
+  }
   return webApiFetch<RuntimeSnapshot>('/api/window/runtime_snapshot')
 }
 
@@ -169,7 +173,9 @@ export async function updatePtyRuntimeMeta(metas: PtyRuntimeMeta[]): Promise<voi
 }
 
 export async function suspendPty(id: string): Promise<boolean> {
-  if (isTauriEnv()) return invoke<boolean>('suspend_pty', { id })
+  if (isTauriEnv() && !(await canUseSharedCoreTransport())) {
+    return invoke<boolean>('suspend_pty', { id })
+  }
   return webApiFetch<boolean>('/api/window/suspend_pty', {
     method: 'POST',
     body: JSON.stringify({ id }),

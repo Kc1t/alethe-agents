@@ -12,7 +12,7 @@ use tauri::{AppHandle, State};
 
 use crate::cli_resolver::{command_builder_for_terminal, find_windows_cli_launcher};
 use crate::diagnostics::append_spawn_log_path;
-use crate::paths::{scrollback_dir, scrollback_path};
+use crate::paths::scrollback_dir;
 use crate::process_tree;
 use crate::provider_common::now_ms;
 use crate::pty_sink::{PtyOutputSink, TauriSink};
@@ -92,6 +92,7 @@ fn prepare_memory_for_boot() {
 
 pub struct ScrollbackBuffer {
     pub data: VecDeque<u8>,
+    pub cursor: u64,
     pub last_flush: Instant,
     pub dirty: bool,
     /// Bytes novos ainda não escritos em disco. O flush faz APPEND só disto —
@@ -102,8 +103,10 @@ pub struct ScrollbackBuffer {
 
 impl ScrollbackBuffer {
     pub fn new(initial: VecDeque<u8>) -> Self {
+        let cursor = initial.len() as u64;
         Self {
             data: initial,
+            cursor,
             last_flush: Instant::now(),
             dirty: false,
             pending: Vec::new(),
@@ -158,6 +161,10 @@ fn activity_emit_due(last_activity_emit: Option<Instant>, interval_ms: u128) -> 
 
 pub struct PtySession {
     pub pty_id: String,
+    /// Stable profile ownership captured when the PTY is spawned.
+    pub profile_id: String,
+    /// Stable storage namespace captured when the PTY is spawned.
+    pub scrollback_path: PathBuf,
     // Arc<Mutex> pelo mesmo motivo do writer (comentário abaixo): resize_pty
     // precisa poder clonar o handle e soltar o lock global de sessions antes
     // de chamar master.resize (ConPTY pode travar) sem prender kill/write/
@@ -219,6 +226,11 @@ fn try_claim_opencode_nudge(lock: &AtomicU64) -> bool {
 
 pub type PtySessions = Arc<Mutex<HashMap<String, PtySession>>>;
 
+pub fn global_pty_sessions() -> &'static PtySessions {
+    static SESSIONS: OnceLock<PtySessions> = OnceLock::new();
+    SESSIONS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
+}
+
 #[cfg(windows)]
 static PTY_JOB_HANDLE: OnceLock<isize> = OnceLock::new();
 
@@ -245,6 +257,8 @@ impl Drop for SpawnReservation {
 fn reserve_spawn(
     sessions: &PtySessions,
     id: &str,
+    expected_profile_id: &str,
+    expected_scrollback_path: &Path,
 ) -> Result<Option<SpawnReservation>, String> {
     let (spawning, ready) =
         SPAWN_COORDINATOR.get_or_init(|| (Mutex::new(HashSet::new()), Condvar::new()));
@@ -253,12 +267,21 @@ fn reserve_spawn(
         .map_err(|_| "PTY spawn coordinator lock poisoned".to_string())?;
 
     loop {
-        let already_spawned = sessions
-            .lock()
-            .map_err(|_| "PTY sessions lock poisoned".to_string())?
-            .contains_key(id);
-        if already_spawned {
-            return Ok(None);
+        {
+            let sessions = sessions
+                .lock()
+                .map_err(|_| "PTY sessions lock poisoned".to_string())?;
+            if let Some(session) = sessions.get(id) {
+                if !pty_owner_matches(
+                    &session.profile_id,
+                    &session.scrollback_path,
+                    expected_profile_id,
+                    expected_scrollback_path,
+                ) {
+                    return Err(format!("PTY belongs to a different profile: {id}"));
+                }
+                return Ok(None);
+            }
         }
         if ids.insert(id.to_string()) {
             return Ok(Some(SpawnReservation { id: id.to_string() }));
@@ -287,6 +310,7 @@ pub struct PtySuspendedPayload {
 }
 
 #[derive(Clone, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SpawnPtyArgs {
     pub cols: u16,
     pub rows: u16,
@@ -296,15 +320,122 @@ pub struct SpawnPtyArgs {
     pub extra_args: Option<Vec<String>>,
     pub launcher_override: Option<String>,
     pub env: Option<std::collections::HashMap<String, String>>,
+    pub profile_id: String,
 }
 
 pub fn pty_exists_core(sessions: &PtySessions, id: &str) -> bool {
-    let Ok(sessions) = sessions.lock() else { return false; };
+    let Ok(sessions) = sessions.lock() else {
+        return false;
+    };
     sessions.contains_key(id)
 }
 
+fn pty_owner_matches(
+    session_profile_id: &str,
+    session_scrollback_path: &Path,
+    expected_profile_id: &str,
+    expected_scrollback_path: &Path,
+) -> bool {
+    session_profile_id == expected_profile_id && session_scrollback_path == expected_scrollback_path
+}
+
+pub fn ensure_pty_owner(
+    sessions: &PtySessions,
+    id: &str,
+    expected_profile_id: &str,
+    expected_scrollback_path: &Path,
+) -> Result<(), String> {
+    let sessions = sessions
+        .lock()
+        .map_err(|_| "PTY sessions lock poisoned".to_string())?;
+    if let Some(session) = sessions.get(id) {
+        if !pty_owner_matches(
+            &session.profile_id,
+            &session.scrollback_path,
+            expected_profile_id,
+            expected_scrollback_path,
+        ) {
+            return Err(format!("PTY belongs to a different profile: {id}"));
+        }
+    }
+    Ok(())
+}
+
+fn resolve_pty_profile_paths(
+    app: &AppHandle,
+    requested_profile_id: Option<&str>,
+    id: &str,
+) -> Result<(String, PathBuf, PathBuf), String> {
+    validate_pty_id(id)?;
+    let data_root = crate::profiles::resolve_tauri_data_root(app)?;
+    let index = crate::profiles::ensure_profiles_index_at(&data_root)?;
+    let profile_id = requested_profile_id
+        .unwrap_or(&index.active_profile_id)
+        .to_string();
+    let profile_dir =
+        crate::profiles::profile_dir_for_id_in_index(&data_root, &index, &profile_id)?;
+    Ok((
+        profile_id,
+        profile_dir.join("scrollback").join(format!("{id}.bin")),
+        profile_dir.join("spawn.log"),
+    ))
+}
+
+fn validate_pty_profile(app: &AppHandle, profile_id: &str) -> Result<(), String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(app)?;
+    let index = crate::profiles::ensure_profiles_index_at(&data_root)?;
+    crate::profiles::profile_dir_for_id_in_index(&data_root, &index, profile_id)?;
+    Ok(())
+}
+
+pub(crate) fn owned_pty_root_pid(
+    sessions: &PtySessions,
+    id: &str,
+    profile_id: &str,
+    scrollback_path: &Path,
+) -> Result<Option<u32>, String> {
+    let sessions = sessions
+        .lock()
+        .map_err(|_| "PTY sessions lock poisoned".to_string())?;
+    let session = sessions
+        .get(id)
+        .ok_or_else(|| format!("PTY not found: {id}"))?;
+    if !pty_owner_matches(
+        &session.profile_id,
+        &session.scrollback_path,
+        profile_id,
+        scrollback_path,
+    ) {
+        return Err(format!("PTY belongs to a different profile: {id}"));
+    }
+    session
+        .child
+        .lock()
+        .map_err(|_| "PTY child lock poisoned".to_string())
+        .map(|child| child.process_id())
+}
+
+pub(crate) fn owned_pty_root_pid_for_profile(
+    app: &AppHandle,
+    sessions: &PtySessions,
+    id: &str,
+    profile_id: &str,
+) -> Result<Option<u32>, String> {
+    let (profile_id, scrollback_path, _) = resolve_pty_profile_paths(app, Some(profile_id), id)?;
+    owned_pty_root_pid(sessions, id, &profile_id, &scrollback_path)
+}
+
 #[tauri::command]
-pub fn pty_exists(sessions: State<'_, PtySessions>, id: String) -> Result<bool, String> {
+pub fn pty_exists(
+    app: AppHandle,
+    sessions: State<'_, PtySessions>,
+    id: String,
+    profile_id: String,
+) -> Result<bool, String> {
+    let (profile_id, expected, _) = resolve_pty_profile_paths(&app, Some(&profile_id), &id)?;
+    if ensure_pty_owner(&sessions, &id, &profile_id, &expected).is_err() {
+        return Ok(false);
+    }
     Ok(pty_exists_core(&sessions, &id))
 }
 
@@ -319,6 +450,25 @@ pub struct PtyProcessSnapshot {
     pub memory_mb: f64,
     pub alive: bool,
 }
+
+#[derive(Serialize)]
+pub struct PtyScrollbackSnapshot {
+    pub content: String,
+    pub cursor: u64,
+}
+
+pub fn validate_pty_id(id: &str) -> Result<(), String> {
+    if id.is_empty()
+        || id.len() > 128
+        || !id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err("PTY ID must contain only ASCII letters, digits, '-' or '_'".to_string());
+    }
+    Ok(())
+}
+
 pub async fn spawn_pty_core(
     sessions: PtySessions,
     sink: Arc<dyn PtyOutputSink>,
@@ -336,12 +486,15 @@ pub async fn spawn_pty_core(
         let extra_args = args.extra_args;
         let launcher_override = args.launcher_override;
         let env = args.env;
+        let profile_id = args.profile_id;
 
         let extras: Vec<String> = extra_args.unwrap_or_default();
         let spawn_started = Instant::now();
         let requested_command = command.clone();
 
-        let Some(_spawn_reservation) = reserve_spawn(&sessions, &id)? else {
+        let Some(_spawn_reservation) =
+            reserve_spawn(&sessions, &id, &profile_id, &sb_path_buf)?
+        else {
             return Ok(SpawnPtyResponse { id });
         };
 
@@ -484,9 +637,14 @@ pub async fn spawn_pty_core(
             let mut batch: Vec<u8> = Vec::new();
             let mut last_activity_emit: Option<Instant> = None;
             let mut activity_pending = String::new();
+            let mut activity_pending_cursor = 0_u64;
+            let mut last_cursor = thread_scrollback
+                .lock()
+                .map(|buffer| buffer.cursor)
+                .unwrap_or_default();
             const ACTIVITY_PENDING_CAP: usize = 256 * 1024;
 
-            let mut emit_data_or_activity = |text: &str| {
+            let mut emit_data_or_activity = |text: &str, cursor: u64| {
                 remote_hub.publish(
                     serde_json::json!({ "type": "pty_output", "ptyId": &scrollback_id, "text": text }),
                 );
@@ -494,29 +652,35 @@ pub async fn spawn_pty_core(
                     if !activity_pending.is_empty() {
                         activity_pending.clear();
                     }
-                    thread_sink.emit_data(&scrollback_id, text);
+                    thread_sink.emit_data(&scrollback_id, text, cursor);
                     return;
                 }
                 activity_pending.push_str(text);
+                activity_pending_cursor = cursor;
                 if activity_pending.len() > ACTIVITY_PENDING_CAP {
                     let drop_to = activity_pending.len() - ACTIVITY_PENDING_CAP;
                     let boundary = align_to_char_boundary(activity_pending.as_bytes(), drop_to);
                     activity_pending.drain(..boundary);
                 }
                 if activity_emit_due(last_activity_emit, PTY_ACTIVITY_EMIT_INTERVAL_MS) {
-                    thread_sink.emit_activity(&scrollback_id, activity_pending.as_str());
+                    thread_sink.emit_activity(
+                        &scrollback_id,
+                        activity_pending.as_str(),
+                        activity_pending_cursor,
+                    );
                     activity_pending.clear();
                     last_activity_emit = Some(Instant::now());
                 }
             };
 
             if let Some(warning) = initial_warning {
-                thread_sink.emit_data(&scrollback_id, &warning);
-                let _ = push_scrollback(
+                last_cursor = push_scrollback(
                     &scrollback_path_thread,
                     &thread_scrollback,
                     warning.as_bytes(),
-                );
+                )
+                .unwrap_or(last_cursor);
+                thread_sink.emit_data(&scrollback_id, &warning, last_cursor);
             }
 
             let mut sent_boot_nudge = false;
@@ -580,13 +744,18 @@ pub async fn spawn_pty_core(
                 }
 
                 let count = batch.len();
-                let _ = push_scrollback(&scrollback_path_thread, &thread_scrollback, &batch);
+                last_cursor = push_scrollback(
+                    &scrollback_path_thread,
+                    &thread_scrollback,
+                    &batch,
+                )
+                .unwrap_or(last_cursor);
 
                 if carry.is_empty() {
                     let valid = valid_utf8_prefix_len(&batch);
                     if valid > 0 {
                         let text = unsafe { std::str::from_utf8_unchecked(&batch[..valid]) };
-                        emit_data_or_activity(text);
+                        emit_data_or_activity(text, last_cursor);
                     }
                     if valid < count {
                         carry.extend_from_slice(&batch[valid..]);
@@ -596,14 +765,14 @@ pub async fn spawn_pty_core(
                     let valid = valid_utf8_prefix_len(&carry);
                     if valid > 0 {
                         let text = unsafe { std::str::from_utf8_unchecked(&carry[..valid]) };
-                        emit_data_or_activity(text);
+                        emit_data_or_activity(text, last_cursor);
                         carry.drain(..valid);
                     }
                 }
 
                 if carry.len() > 3 {
                     let lossy = String::from_utf8_lossy(&carry).into_owned();
-                    emit_data_or_activity(lossy.as_str());
+                    emit_data_or_activity(lossy.as_str(), last_cursor);
                     carry.clear();
                 }
 
@@ -614,7 +783,7 @@ pub async fn spawn_pty_core(
 
             if !carry.is_empty() {
                 let lossy = String::from_utf8_lossy(&carry).into_owned();
-                thread_sink.emit_data(&scrollback_id, lossy.as_str());
+                thread_sink.emit_data(&scrollback_id, lossy.as_str(), last_cursor);
                 remote_hub.publish(serde_json::json!({ "type": "pty_output", "ptyId": &scrollback_id, "text": lossy }));
             }
 
@@ -683,6 +852,8 @@ pub async fn spawn_pty_core(
 
         let session = PtySession {
             pty_id: id.clone(),
+            profile_id,
+            scrollback_path: sb_path_buf,
             child,
             master: Arc::new(Mutex::new(Some(pair.master))),
             writer,
@@ -720,10 +891,11 @@ pub async fn spawn_pty(
     extra_args: Option<Vec<String>>,
     launcher_override: Option<String>,
     env: Option<std::collections::HashMap<String, String>>,
+    profile_id: String,
 ) -> Result<SpawnPtyResponse, String> {
     let pty_id = id.clone().unwrap_or_else(|| nanoid::nanoid!());
-    let sb_path = scrollback_path(&app, &pty_id)?;
-    let spawn_log_path = crate::paths::spawn_log_path(&app).ok();
+    let (profile_id, sb_path, spawn_log_path) =
+        resolve_pty_profile_paths(&app, Some(&profile_id), &pty_id)?;
     let args = SpawnPtyArgs {
         cols,
         rows,
@@ -733,12 +905,16 @@ pub async fn spawn_pty(
         extra_args,
         launcher_override,
         env,
+        profile_id,
     };
     spawn_pty_core(
         Arc::clone(sessions.inner()),
-        Arc::new(TauriSink(app)),
+        Arc::new(crate::pty_sink::CombinedSink(
+            crate::pty_sink::TauriSink(app),
+            crate::pty_sink::WebSocketSink,
+        )),
         Arc::clone(remote.inner()),
-        spawn_log_path,
+        Some(spawn_log_path),
         sb_path,
         args,
     )
@@ -753,7 +929,40 @@ pub(crate) fn kill_process_tree(pid: u32) {
     let _ = command.output();
 }
 
-#[cfg(not(windows))]
+#[cfg(unix)]
+pub(crate) fn kill_process_tree(pid: u32) {
+    extern "C" {
+        fn kill(pid: i32, signal: i32) -> i32;
+    }
+
+    fn send_signal(target: i32, signal: i32) -> bool {
+        // POSIX kill accepts a negative PID to address the whole process group.
+        unsafe { kill(target, signal) == 0 }
+    }
+
+    fn process_alive(pid: u32) -> bool {
+        send_signal(pid as i32, 0)
+    }
+
+    // portable-pty normally makes the child a process-group leader. Fall back
+    // to the root PID if the platform PTY implementation did not do so.
+    let group = -(pid as i32);
+    if !send_signal(group, 15) {
+        let _ = send_signal(pid as i32, 15);
+    }
+
+    let deadline = Instant::now() + Duration::from_millis(750);
+    while process_alive(pid) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    if process_alive(pid) {
+        if !send_signal(group, 9) {
+            let _ = send_signal(pid as i32, 9);
+        }
+    }
+}
+
+#[cfg(not(any(windows, unix)))]
 pub(crate) fn kill_process_tree(_pid: u32) {}
 
 pub async fn restart_pty_core(
@@ -767,29 +976,46 @@ pub async fn restart_pty_core(
     let kill_sessions = sessions.clone();
     let kill_sb_path = sb_path_buf.clone();
     let kill_id = args.id.clone().unwrap_or_default();
+    let kill_profile_id = args.profile_id.clone();
     tokio::task::spawn_blocking(move || {
         let session = {
             let mut sessions = kill_sessions
                 .lock()
                 .map_err(|_| "PTY sessions lock poisoned".to_string())?;
+            if let Some(session) = sessions.get(&kill_id) {
+                if !pty_owner_matches(
+                    &session.profile_id,
+                    &session.scrollback_path,
+                    &kill_profile_id,
+                    &kill_sb_path,
+                ) {
+                    return Err(format!("PTY belongs to a different profile: {kill_id}"));
+                }
+            }
             sessions.remove(&kill_id)
         };
+        let owned_scrollback = session
+            .as_ref()
+            .map(|session| session.scrollback_path.clone())
+            .unwrap_or(kill_sb_path);
         if let Some(session) = session {
             session.teardown.store(TEARDOWN_RESTARTED, Ordering::SeqCst);
-            let _ = process_tree::kill_pty_tree(&kill_id);
-            if let Ok(mut child) = session.child.lock() {
-                if let Some(pid) = child.process_id() {
-                    kill_process_tree(pid);
-                }
-                let _ = child.kill();
-            }
+            terminate_child_tree(&kill_id, &session.child);
         }
-        delete_scrollback(&kill_sb_path)
+        delete_scrollback(&owned_scrollback)
     })
     .await
     .map_err(|error| format!("restart_pty: falha na task bloqueante: {error}"))??;
 
-    spawn_pty_core(sessions, sink, remote, spawn_log_path_buf, sb_path_buf, args).await
+    spawn_pty_core(
+        sessions,
+        sink,
+        remote,
+        spawn_log_path_buf,
+        sb_path_buf,
+        args,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -803,9 +1029,10 @@ pub async fn restart_pty(
     extra_args: Option<Vec<String>>,
     launcher_override: Option<String>,
     env: Option<HashMap<String, String>>,
+    profile_id: String,
 ) -> Result<SpawnPtyResponse, String> {
-    let sb_path = scrollback_path(&app, &id)?;
-    let spawn_log_path = crate::paths::spawn_log_path(&app).ok();
+    let (profile_id, sb_path, spawn_log_path) =
+        resolve_pty_profile_paths(&app, Some(&profile_id), &id)?;
     let args = SpawnPtyArgs {
         cols: 80,
         rows: 24,
@@ -815,16 +1042,71 @@ pub async fn restart_pty(
         extra_args,
         launcher_override,
         env,
+        profile_id,
     };
     restart_pty_core(
         Arc::clone(sessions.inner()),
-        Arc::new(TauriSink(app)),
+        Arc::new(crate::pty_sink::CombinedSink(
+            crate::pty_sink::TauriSink(app),
+            crate::pty_sink::WebSocketSink,
+        )),
         Arc::clone(remote.inner()),
-        spawn_log_path,
+        Some(spawn_log_path),
         sb_path,
         args,
     )
     .await
+}
+
+pub async fn attach_pty_snapshot_core(
+    sessions: &PtySessions,
+    sb_path: &Path,
+    id: &str,
+    max_bytes: usize,
+) -> Result<PtyScrollbackSnapshot, String> {
+    let sessions: PtySessions = sessions.clone();
+    let sb_path_buf = sb_path.to_path_buf();
+    let pty_id = id.to_string();
+    tokio::task::spawn_blocking(move || {
+        let max_bytes = max_bytes.clamp(16 * 1024, SCROLLBACK_CAP_BYTES);
+
+        let session_path = {
+            let sessions = sessions
+                .lock()
+                .map_err(|_| "PTY sessions lock poisoned".to_string())?;
+            if let Some(session) = sessions.get(&pty_id) {
+                if session.scrollback_path != sb_path_buf {
+                    return Err(format!("PTY belongs to a different profile: {pty_id}"));
+                }
+                let mut buffer = session
+                    .scrollback
+                    .lock()
+                    .map_err(|_| "PTY scrollback lock poisoned".to_string())?;
+                if !buffer.data.is_empty() {
+                    let slice = buffer.data.make_contiguous();
+                    let start =
+                        align_to_char_boundary(slice, slice.len().saturating_sub(max_bytes));
+                    return Ok(PtyScrollbackSnapshot {
+                        content: String::from_utf8_lossy(&slice[start..]).into_owned(),
+                        cursor: buffer.cursor,
+                    });
+                }
+                Some(session.scrollback_path.clone())
+            } else {
+                None
+            }
+        };
+
+        let disk = load_scrollback(session_path.as_deref().unwrap_or(&sb_path_buf))?;
+        let bytes: Vec<u8> = disk.into_iter().collect();
+        let start = align_to_char_boundary(&bytes, bytes.len().saturating_sub(max_bytes));
+        Ok(PtyScrollbackSnapshot {
+            content: String::from_utf8_lossy(&bytes[start..]).into_owned(),
+            cursor: bytes.len() as u64,
+        })
+    })
+    .await
+    .map_err(|error| format!("attach_pty: falha na task bloqueante: {error}"))?
 }
 
 pub async fn attach_pty_core(
@@ -833,36 +1115,9 @@ pub async fn attach_pty_core(
     id: &str,
     max_bytes: usize,
 ) -> Result<String, String> {
-    let sessions: PtySessions = sessions.clone();
-    let sb_path_buf = sb_path.to_path_buf();
-    let pty_id = id.to_string();
-    tokio::task::spawn_blocking(move || {
-        let max_bytes = max_bytes.max(16 * 1024);
-
-        {
-            let sessions = sessions
-                .lock()
-                .map_err(|_| "PTY sessions lock poisoned".to_string())?;
-            if let Some(session) = sessions.get(&pty_id) {
-                let mut buffer = session
-                    .scrollback
-                    .lock()
-                    .map_err(|_| "PTY scrollback lock poisoned".to_string())?;
-                if !buffer.data.is_empty() {
-                    let slice = buffer.data.make_contiguous();
-                    let start = align_to_char_boundary(slice, slice.len().saturating_sub(max_bytes));
-                    return Ok(String::from_utf8_lossy(&slice[start..]).into_owned());
-                }
-            }
-        }
-
-        let disk = load_scrollback(&sb_path_buf)?;
-        let bytes: Vec<u8> = disk.into_iter().collect();
-        let start = align_to_char_boundary(&bytes, bytes.len().saturating_sub(max_bytes));
-        Ok(String::from_utf8_lossy(&bytes[start..]).into_owned())
-    })
-    .await
-    .map_err(|error| format!("attach_pty: falha na task bloqueante: {error}"))?
+    Ok(attach_pty_snapshot_core(sessions, sb_path, id, max_bytes)
+        .await?
+        .content)
 }
 
 #[tauri::command]
@@ -871,15 +1126,26 @@ pub async fn attach_pty(
     sessions: State<'_, PtySessions>,
     id: String,
     max_bytes: Option<usize>,
+    profile_id: String,
 ) -> Result<String, String> {
-    let sb_path = scrollback_path(&app, &id)?;
+    let (profile_id, sb_path, _) = resolve_pty_profile_paths(&app, Some(&profile_id), &id)?;
+    ensure_pty_owner(&sessions, &id, &profile_id, &sb_path)?;
     attach_pty_core(&sessions, &sb_path, &id, max_bytes.unwrap_or(512 * 1024)).await
 }
 
-pub async fn write_pty_core(sessions: &PtySessions, id: &str, data: &str) -> Result<(), String> {
+pub async fn write_pty_core(
+    sessions: &PtySessions,
+    id: &str,
+    data: &str,
+    expected_profile_id: Option<&str>,
+    expected_scrollback_path: Option<&Path>,
+) -> Result<(), String> {
     let sessions: PtySessions = sessions.clone();
     let pty_id = id.to_string();
     let payload = data.to_string();
+    let expected_owner = expected_profile_id
+        .zip(expected_scrollback_path)
+        .map(|(profile_id, path)| (profile_id.to_string(), path.to_path_buf()));
     tokio::task::spawn_blocking(move || {
         let writer = {
             let sessions = sessions
@@ -888,6 +1154,16 @@ pub async fn write_pty_core(sessions: &PtySessions, id: &str, data: &str) -> Res
             let session = sessions
                 .get(&pty_id)
                 .ok_or_else(|| format!("PTY not found: {pty_id}"))?;
+            if let Some((profile_id, scrollback_path)) = expected_owner.as_ref() {
+                if !pty_owner_matches(
+                    &session.profile_id,
+                    &session.scrollback_path,
+                    profile_id,
+                    scrollback_path,
+                ) {
+                    return Err(format!("PTY belongs to a different profile: {pty_id}"));
+                }
+            }
             Arc::clone(&session.writer)
         };
         let mut writer = writer
@@ -904,11 +1180,15 @@ pub async fn write_pty_core(sessions: &PtySessions, id: &str, data: &str) -> Res
 
 #[tauri::command]
 pub async fn write_pty(
+    app: AppHandle,
     sessions: State<'_, PtySessions>,
     id: String,
     data: String,
+    profile_id: String,
 ) -> Result<(), String> {
-    write_pty_core(&sessions, &id, &data).await
+    let (profile_id, expected, _) = resolve_pty_profile_paths(&app, Some(&profile_id), &id)?;
+    ensure_pty_owner(&sessions, &id, &profile_id, &expected)?;
+    write_pty_core(&sessions, &id, &data, Some(&profile_id), Some(&expected)).await
 }
 
 pub async fn resize_pty_core(
@@ -917,14 +1197,22 @@ pub async fn resize_pty_core(
     id: &str,
     cols: u16,
     rows: u16,
+    expected_profile_id: Option<&str>,
+    expected_scrollback_path: Option<&Path>,
 ) -> Result<(), String> {
     let sessions: PtySessions = sessions.clone();
     let pty_id = id.to_string();
+    let expected_owner = expected_profile_id
+        .zip(expected_scrollback_path)
+        .map(|(profile_id, path)| (profile_id.to_string(), path.to_path_buf()));
     let log_path_buf = log_path.map(|p| p.to_path_buf());
     tokio::task::spawn_blocking(move || {
         if pty_debug_enabled() {
             if let Some(ref path) = log_path_buf {
-                let _ = append_spawn_log_path(path, &format!("[pty-debug] {pty_id}: resize_pty {cols}x{rows}"));
+                let _ = append_spawn_log_path(
+                    path,
+                    &format!("[pty-debug] {pty_id}: resize_pty {cols}x{rows}"),
+                );
             }
         }
         let (master, writer, is_opencode, nudge_lock) = {
@@ -934,6 +1222,16 @@ pub async fn resize_pty_core(
             let session = sessions
                 .get(&pty_id)
                 .ok_or_else(|| format!("PTY not found: {pty_id}"))?;
+            if let Some((profile_id, scrollback_path)) = expected_owner.as_ref() {
+                if !pty_owner_matches(
+                    &session.profile_id,
+                    &session.scrollback_path,
+                    profile_id,
+                    scrollback_path,
+                ) {
+                    return Err(format!("PTY belongs to a different profile: {pty_id}"));
+                }
+            }
             (
                 Arc::clone(&session.master),
                 Arc::clone(&session.writer),
@@ -964,13 +1262,14 @@ pub async fn resize_pty_core(
             let claimed = try_claim_opencode_nudge(&nudge_lock);
             if pty_debug_enabled() {
                 if let Some(ref path) = log_path_buf {
-                    let _ = append_spawn_log_path(
-                        path,
-                        &format!(
+                    let _ =
+                        append_spawn_log_path(
+                            path,
+                            &format!(
                             "[pty-debug] {pty_id}: nudge de resize {} (50ms após master.resize)",
                             if claimed { "ENVIADO" } else { "pulado (perdeu a trava)" }
                         ),
-                    );
+                        );
                 }
             }
             if claimed {
@@ -994,13 +1293,38 @@ pub async fn resize_pty(
     id: String,
     cols: u16,
     rows: u16,
+    profile_id: String,
 ) -> Result<(), String> {
-    let log_path = crate::paths::spawn_log_path(&app).ok();
-    resize_pty_core(&sessions, log_path.as_deref(), &id, cols, rows).await
+    let (profile_id, expected, log_path) = resolve_pty_profile_paths(&app, Some(&profile_id), &id)?;
+    ensure_pty_owner(&sessions, &id, &profile_id, &expected)?;
+    resize_pty_core(
+        &sessions,
+        Some(&log_path),
+        &id,
+        cols,
+        rows,
+        Some(&profile_id),
+        Some(&expected),
+    )
+    .await
+}
+
+fn terminate_child_tree(
+    pty_id: &str,
+    child: &Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>,
+) {
+    let root_pid = child.lock().ok().and_then(|child| child.process_id());
+    if let Some(pid) = root_pid {
+        let _ = process_tree::kill_pty_tree_with_expected_root(pty_id, Some(pid));
+        kill_process_tree(pid);
+    }
+    if let Ok(mut child) = child.lock() {
+        let _ = child.kill();
+    }
 }
 
 fn terminate_session(session: PtySession) {
-    let _ = process_tree::kill_pty_tree(&session.pty_id);
+    terminate_child_tree(&session.pty_id, &session.child);
     process_tree::unregister_pty(&session.pty_id);
     {
         let (lock, cvar) = &*session.read_active;
@@ -1009,19 +1333,9 @@ fn terminate_session(session: PtySession) {
             cvar.notify_all();
         }
     }
-    if let Ok(mut child) = session.child.lock() {
-        if let Some(pid) = child.process_id() {
-            kill_process_tree(pid);
-        }
-        let _ = child.kill();
-    }
 }
 
-pub async fn kill_pty_core(
-    sessions: &PtySessions,
-    sb_path: &Path,
-    id: &str,
-) -> Result<(), String> {
+pub async fn kill_pty_core(sessions: &PtySessions, sb_path: &Path, id: &str) -> Result<(), String> {
     let sessions: PtySessions = sessions.clone();
     let sb_path_buf = sb_path.to_path_buf();
     let pty_id = id.to_string();
@@ -1030,15 +1344,24 @@ pub async fn kill_pty_core(
             let mut sessions = sessions
                 .lock()
                 .map_err(|_| "PTY sessions lock poisoned".to_string())?;
+            if let Some(session) = sessions.get(&pty_id) {
+                if session.scrollback_path != sb_path_buf {
+                    return Err(format!("PTY belongs to a different profile: {pty_id}"));
+                }
+            }
             sessions.remove(&pty_id)
         };
 
+        let owned_scrollback = session
+            .as_ref()
+            .map(|session| session.scrollback_path.clone())
+            .unwrap_or(sb_path_buf);
         if let Some(session) = session {
             session.teardown.store(TEARDOWN_KILLED, Ordering::SeqCst);
             terminate_session(session);
         }
 
-        delete_scrollback(&sb_path_buf)
+        delete_scrollback(&owned_scrollback)
     })
     .await
     .map_err(|error| format!("kill_pty: falha na task bloqueante: {error}"))?
@@ -1049,8 +1372,10 @@ pub async fn kill_pty(
     app: AppHandle,
     sessions: State<'_, PtySessions>,
     id: String,
+    profile_id: String,
 ) -> Result<(), String> {
-    let sb_path = scrollback_path(&app, &id)?;
+    let (profile_id, sb_path, _) = resolve_pty_profile_paths(&app, Some(&profile_id), &id)?;
+    ensure_pty_owner(&sessions, &id, &profile_id, &sb_path)?;
     kill_pty_core(&sessions, &sb_path, &id).await
 }
 
@@ -1078,13 +1403,7 @@ pub fn suspend_session(
     };
 
     teardown.store(TEARDOWN_SUSPENDED, Ordering::SeqCst);
-    let _ = process_tree::kill_pty_tree(&pty_id);
-    if let Ok(mut child) = child.lock() {
-        if let Some(pid) = child.process_id() {
-            kill_process_tree(pid);
-        }
-        let _ = child.kill();
-    }
+    terminate_child_tree(&pty_id, &child);
     {
         let (lock, cvar) = &*read_active;
         if let Ok(mut active) = lock.lock() {
@@ -1130,9 +1449,11 @@ pub async fn suspend_pty_core(
 ) -> Result<bool, String> {
     let sessions = sessions.clone();
     let pty_id = id.to_string();
-    tokio::task::spawn_blocking(move || suspend_session(&*sink, log_path.as_deref(), &sessions, &pty_id))
-        .await
-        .map_err(|error| format!("suspend_pty: falha na task bloqueante: {error}"))?
+    tokio::task::spawn_blocking(move || {
+        suspend_session(&*sink, log_path.as_deref(), &sessions, &pty_id)
+    })
+    .await
+    .map_err(|error| format!("suspend_pty: falha na task bloqueante: {error}"))?
 }
 
 #[tauri::command]
@@ -1140,9 +1461,11 @@ pub async fn suspend_pty(
     app: AppHandle,
     sessions: State<'_, PtySessions>,
     id: String,
+    profile_id: String,
 ) -> Result<bool, String> {
-    let log_path = crate::paths::spawn_log_path(&app).ok();
-    suspend_pty_core(&sessions, Arc::new(TauriSink(app)), log_path, &id).await
+    let (profile_id, expected, log_path) = resolve_pty_profile_paths(&app, Some(&profile_id), &id)?;
+    ensure_pty_owner(&sessions, &id, &profile_id, &expected)?;
+    suspend_pty_core(&sessions, Arc::new(TauriSink(app)), Some(log_path), &id).await
 }
 
 pub async fn get_pty_cwd_core(sessions: &PtySessions, id: &str) -> Result<Option<String>, String> {
@@ -1171,13 +1494,21 @@ pub async fn get_pty_cwd_core(sessions: &PtySessions, id: &str) -> Result<Option
 
 #[tauri::command]
 pub async fn get_pty_cwd(
+    app: AppHandle,
     sessions: State<'_, PtySessions>,
     id: String,
+    profile_id: String,
 ) -> Result<Option<String>, String> {
+    let (profile_id, expected, _) = resolve_pty_profile_paths(&app, Some(&profile_id), &id)?;
+    ensure_pty_owner(&sessions, &id, &profile_id, &expected)?;
     get_pty_cwd_core(&sessions, &id).await
 }
 
-pub fn set_pty_read_state_core(sessions: &PtySessions, id: &str, active: bool) -> Result<(), String> {
+pub fn set_pty_read_state_core(
+    sessions: &PtySessions,
+    id: &str,
+    active: bool,
+) -> Result<(), String> {
     let sessions = sessions
         .lock()
         .map_err(|_| "PTY sessions lock poisoned".to_string())?;
@@ -1195,10 +1526,14 @@ pub fn set_pty_read_state_core(sessions: &PtySessions, id: &str, active: bool) -
 
 #[tauri::command]
 pub fn set_pty_read_state(
+    app: AppHandle,
     sessions: State<'_, PtySessions>,
     id: String,
     active: bool,
+    profile_id: String,
 ) -> Result<(), String> {
+    let (profile_id, expected, _) = resolve_pty_profile_paths(&app, Some(&profile_id), &id)?;
+    ensure_pty_owner(&sessions, &id, &profile_id, &expected)?;
     set_pty_read_state_core(&sessions, &id, active)
 }
 
@@ -1214,14 +1549,22 @@ pub fn set_pty_visible_core(sessions: &PtySessions, id: &str, visible: bool) -> 
 
 #[tauri::command]
 pub fn set_pty_visible(
+    app: AppHandle,
     sessions: State<'_, PtySessions>,
     id: String,
     visible: bool,
+    profile_id: String,
 ) -> Result<(), String> {
+    let (profile_id, expected, _) = resolve_pty_profile_paths(&app, Some(&profile_id), &id)?;
+    ensure_pty_owner(&sessions, &id, &profile_id, &expected)?;
     set_pty_visible_core(&sessions, &id, visible)
 }
 
-pub async fn set_pty_priority_core(sessions: &PtySessions, id: &str, active: bool) -> Result<(), String> {
+pub async fn set_pty_priority_core(
+    sessions: &PtySessions,
+    id: &str,
+    active: bool,
+) -> Result<(), String> {
     let sessions: PtySessions = sessions.clone();
     let pty_id = id.to_string();
     tokio::task::spawn_blocking(move || {
@@ -1261,15 +1604,23 @@ pub async fn set_pty_priority_core(sessions: &PtySessions, id: &str, active: boo
 
 #[tauri::command]
 pub async fn set_pty_priority(
+    app: AppHandle,
     sessions: State<'_, PtySessions>,
     id: String,
     active: bool,
+    profile_id: String,
 ) -> Result<(), String> {
+    let (profile_id, expected, _) = resolve_pty_profile_paths(&app, Some(&profile_id), &id)?;
+    ensure_pty_owner(&sessions, &id, &profile_id, &expected)?;
     set_pty_priority_core(&sessions, &id, active).await
 }
 
-pub async fn list_pty_processes_core(sessions: &PtySessions) -> Result<Vec<PtyProcessSnapshot>, String> {
+pub async fn list_pty_processes_core(
+    sessions: &PtySessions,
+    profile_id: Option<&str>,
+) -> Result<Vec<PtyProcessSnapshot>, String> {
     let sessions: PtySessions = sessions.clone();
+    let profile_id = profile_id.map(str::to_string);
     let result: Vec<PtyProcessSnapshot> = tokio::task::spawn_blocking(move || {
         use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
@@ -1279,9 +1630,23 @@ pub async fn list_pty_processes_core(sessions: &PtySessions) -> Result<Vec<PtyPr
             };
             sessions
                 .iter()
+                .filter(|(_, session)| {
+                    profile_id
+                        .as_ref()
+                        .map_or(true, |expected| session.profile_id == *expected)
+                })
                 .map(|(id, session)| {
-                    let pid = session.child.lock().ok().and_then(|child| child.process_id());
-                    (id.clone(), pid, session.command.clone(), session.cwd.clone())
+                    let pid = session
+                        .child
+                        .lock()
+                        .ok()
+                        .and_then(|child| child.process_id());
+                    (
+                        id.clone(),
+                        pid,
+                        session.command.clone(),
+                        session.cwd.clone(),
+                    )
                 })
                 .collect::<Vec<_>>()
         };
@@ -1333,8 +1698,13 @@ pub async fn list_pty_processes_core(sessions: &PtySessions) -> Result<Vec<PtyPr
 }
 
 #[tauri::command]
-pub async fn list_pty_processes(sessions: State<'_, PtySessions>) -> Result<Vec<PtyProcessSnapshot>, String> {
-    list_pty_processes_core(&sessions).await
+pub async fn list_pty_processes(
+    app: AppHandle,
+    sessions: State<'_, PtySessions>,
+    profile_id: String,
+) -> Result<Vec<PtyProcessSnapshot>, String> {
+    validate_pty_profile(&app, &profile_id)?;
+    list_pty_processes_core(&sessions, Some(&profile_id)).await
 }
 
 pub fn load_scrollback(path: &Path) -> Result<VecDeque<u8>, String> {
@@ -1431,11 +1801,13 @@ pub fn push_scrollback(
     path: &Path,
     scrollback: &Arc<Mutex<ScrollbackBuffer>>,
     data: &[u8],
-) -> Result<(), String> {
+) -> Result<u64, String> {
     let mut buffer = scrollback
         .lock()
         .map_err(|_| "PTY scrollback lock poisoned".to_string())?;
     buffer.data.extend(data);
+    buffer.cursor = buffer.cursor.saturating_add(data.len() as u64);
+    let cursor = buffer.cursor;
     // Drena de uma vez em vez de pop_front em loop (uma operação vs N).
     if buffer.data.len() > SCROLLBACK_CAP_BYTES {
         let excess = buffer.data.len() - SCROLLBACK_CAP_BYTES;
@@ -1447,7 +1819,7 @@ pub fn push_scrollback(
     buffer.dirty = true;
 
     if buffer.last_flush.elapsed().as_millis() < SCROLLBACK_FLUSH_INTERVAL_MS {
-        return Ok(());
+        return Ok(cursor);
     }
 
     if buffer.data.capacity() > SCROLLBACK_CAP_BYTES * 2 {
@@ -1459,7 +1831,7 @@ pub fn push_scrollback(
     drop(buffer);
 
     if bytes.is_empty() {
-        return Ok(());
+        return Ok(cursor);
     }
 
     // Disk write em thread separada — segurar o reader thread aqui causava
@@ -1467,8 +1839,11 @@ pub fn push_scrollback(
     // pra TODOS os terminais com qualquer atividade.
     let path_buf = path.to_path_buf();
     // Envia pro writer global em vez de spawnar uma thread por flush.
-    let _ = scrollback_writer().send(ScrollbackWrite::Append { path: path_buf, bytes });
-    Ok(())
+    let _ = scrollback_writer().send(ScrollbackWrite::Append {
+        path: path_buf,
+        bytes,
+    });
+    Ok(cursor)
 }
 
 pub fn flush_scrollback(
@@ -1493,7 +1868,10 @@ pub fn flush_scrollback(
     // senão um Append pendente poderia sobrescrever este Overwrite e duplicar
     // a cauda no disco.
     let path_buf = path.to_path_buf();
-    let _ = scrollback_writer().send(ScrollbackWrite::Overwrite { path: path_buf, bytes });
+    let _ = scrollback_writer().send(ScrollbackWrite::Overwrite {
+        path: path_buf,
+        bytes,
+    });
     Ok(())
 }
 
@@ -1545,7 +1923,12 @@ pub fn kill_all_sessions(sessions: &PtySessions) {
     let drained = sessions
         .lock()
         .ok()
-        .map(|mut sessions| sessions.drain().map(|(_, session)| session).collect::<Vec<_>>())
+        .map(|mut sessions| {
+            sessions
+                .drain()
+                .map(|(_, session)| session)
+                .collect::<Vec<_>>()
+        })
         .unwrap_or_default();
 
     for session in drained {
@@ -1580,12 +1963,12 @@ pub fn job_guard_active() -> bool {
 #[cfg(windows)]
 pub fn install_kill_on_close_guard() {
     use std::mem::{size_of, zeroed};
+    use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::System::JobObjects::{
         AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
         SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
         JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     };
-    use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
     let active = unsafe {
@@ -1647,6 +2030,61 @@ mod tests {
     }
 
     #[test]
+    fn scrollback_cursor_advances_monotonically_with_output_bytes() {
+        let buffer = Arc::new(Mutex::new(ScrollbackBuffer::new(VecDeque::from(
+            b"old".to_vec(),
+        ))));
+        let path = std::env::temp_dir().join(format!(
+            "alethe-pty-cursor-{}-{}.bin",
+            std::process::id(),
+            nanoid::nanoid!(6)
+        ));
+
+        assert_eq!(push_scrollback(&path, &buffer, b"new").unwrap(), 6);
+        assert_eq!(push_scrollback(&path, &buffer, "é".as_bytes()).unwrap(), 8);
+        assert_eq!(buffer.lock().unwrap().cursor, 8);
+    }
+
+    #[test]
+    fn pty_ids_cannot_escape_the_scrollback_directory() {
+        assert!(validate_pty_id("agent-canvas_123").is_ok());
+        assert!(validate_pty_id("").is_err());
+        assert!(validate_pty_id("../outside").is_err());
+        assert!(validate_pty_id("folder\\outside").is_err());
+        assert!(validate_pty_id(&"x".repeat(129)).is_err());
+    }
+
+    #[test]
+    fn web_spawn_payload_uses_camel_case_and_keeps_profile_ownership() {
+        let args: SpawnPtyArgs = serde_json::from_value(serde_json::json!({
+            "cols": 120,
+            "rows": 40,
+            "id": "terminal-1",
+            "extraArgs": ["--resume", "session-1"],
+            "launcherOverride": "/opt/alethe/codex",
+            "profileId": "profile-a"
+        }))
+        .unwrap();
+
+        assert_eq!(args.extra_args.unwrap(), vec!["--resume", "session-1"]);
+        assert_eq!(args.launcher_override.as_deref(), Some("/opt/alethe/codex"));
+        assert_eq!(args.profile_id, "profile-a");
+    }
+
+    #[test]
+    fn pty_owner_requires_both_profile_and_scrollback_namespace() {
+        let path = Path::new("profiles/profile-a/scrollback/terminal-1.bin");
+        assert!(pty_owner_matches("profile-a", path, "profile-a", path));
+        assert!(!pty_owner_matches("profile-a", path, "profile-b", path));
+        assert!(!pty_owner_matches(
+            "profile-a",
+            path,
+            "profile-a",
+            Path::new("profiles/profile-a/scrollback/terminal-2.bin")
+        ));
+    }
+
+    #[test]
     fn valid_utf8_prefix_passes_complete_ascii_and_multibyte() {
         assert_eq!(valid_utf8_prefix_len(b"hello"), 5);
         // "café" — o "é" são 2 bytes (0xC3 0xA9), todos presentes.
@@ -1676,10 +2114,17 @@ mod tests {
     #[test]
     fn activity_emit_due_throttles_until_interval_elapses() {
         let just_emitted = Instant::now();
-        assert!(!activity_emit_due(Some(just_emitted), PTY_ACTIVITY_EMIT_INTERVAL_MS));
+        assert!(!activity_emit_due(
+            Some(just_emitted),
+            PTY_ACTIVITY_EMIT_INTERVAL_MS
+        ));
         // Instant "no passado" simulado por um intervalo já vencido.
-        let stale = Instant::now() - Duration::from_millis(PTY_ACTIVITY_EMIT_INTERVAL_MS as u64 + 1);
-        assert!(activity_emit_due(Some(stale), PTY_ACTIVITY_EMIT_INTERVAL_MS));
+        let stale =
+            Instant::now() - Duration::from_millis(PTY_ACTIVITY_EMIT_INTERVAL_MS as u64 + 1);
+        assert!(activity_emit_due(
+            Some(stale),
+            PTY_ACTIVITY_EMIT_INTERVAL_MS
+        ));
     }
 
     #[test]
@@ -1689,7 +2134,7 @@ mod tests {
         let first = &full[..2]; // "x" + 0xC3
         let valid = valid_utf8_prefix_len(first);
         assert_eq!(valid, 1); // só "x" emitido
-        // carry = [0xC3]; chega o resto do próximo read.
+                              // carry = [0xC3]; chega o resto do próximo read.
         let mut carry = first[valid..].to_vec();
         carry.extend_from_slice(&full[2..]); // + 0xA9
         assert_eq!(valid_utf8_prefix_len(&carry), carry.len()); // "é" completo

@@ -38,7 +38,10 @@ fn send_value(stdin: &Arc<Mutex<ChildStdin>>, value: &Value) -> Result<(), Strin
     stdin.flush().map_err(|error| error.to_string())
 }
 
-fn stop_process(sessions: &Mutex<HashMap<String, CodexAppServerProcess>>, id: &str) -> Result<(), String> {
+fn stop_process(
+    sessions: &Mutex<HashMap<String, CodexAppServerProcess>>,
+    id: &str,
+) -> Result<(), String> {
     let session = sessions
         .lock()
         .map_err(|_| "app-server state lock poisoned")?
@@ -147,10 +150,8 @@ pub fn codex_app_server_start_core(
         thread::spawn(move || {
             for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                 if !line.trim().is_empty() {
-                    stderr_sink.emit_event(
-                        &stderr_id,
-                        json!({ "type": "stderr", "message": line }),
-                    );
+                    stderr_sink
+                        .emit_event(&stderr_id, json!({ "type": "stderr", "message": line }));
                 }
             }
         });
@@ -207,10 +208,7 @@ pub fn codex_app_server_send(
     codex_app_server_send_core(&state, id, request)
 }
 
-pub fn codex_app_server_stop_core(
-    state: &CodexAppServerState,
-    id: String,
-) -> Result<(), String> {
+pub fn codex_app_server_stop_core(state: &CodexAppServerState, id: String) -> Result<(), String> {
     stop_process(&state.sessions, &id)
 }
 

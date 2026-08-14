@@ -1,15 +1,10 @@
-// window.ts — só as rotas SEM risco/dependência de PTY portadas por enquanto:
-// resource_metrics e job_guard_status são leitura pura, sem AppHandle.
-//
-// De propósito FORA: reset_app_data/wipe_all_app_data (destrutivas — e como
-// perfis agora são compartilhados entre Desktop e Web, uma chamada web
-// acidental apagaria dados do Desktop também; portar isso merece confirmação
-// explícita, não uma rota aberta) e runtime_snapshot/suspend_pty (dependem
-// de PtySessions, bloqueadas até PTY ser portado).
+// Keep destructive data-reset commands native-only. Resource metrics, the job
+// guard, and the runtime snapshot are safe read-only views of shared state.
+// PTY suspension lives in `pty_routes` beside the shared session registry.
 
-use alethe_lib::crash_watch;
-use alethe_lib::resource_manager;
-use alethe_lib::resources;
+use crate::crash_watch;
+use crate::resource_manager;
+use crate::resources;
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
@@ -30,5 +25,7 @@ async fn job_guard_status() -> impl IntoResponse {
 }
 
 async fn runtime_snapshot() -> impl IntoResponse {
-    Json(resources::get_runtime_snapshot_core(crate::pty_routes::alethe_server_pty_sessions()))
+    Json(resources::get_runtime_snapshot_core(
+        super::pty_routes::alethe_server_pty_sessions(),
+    ))
 }

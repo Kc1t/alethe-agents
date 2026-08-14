@@ -7,13 +7,13 @@
 // lógica sem duplicar nada, ao contrário de PTY/perfis (que dependem do
 // runtime do Tauri pra emitir evento/resolver diretório de dados).
 
-use alethe_lib::conflict_resolution;
-use alethe_lib::contract_check;
-use alethe_lib::git_control;
-use alethe_lib::health_probe;
-use alethe_lib::merge_analyzer;
-use alethe_lib::project_detector;
-use alethe_lib::worktrees::{self, WorktreeMode};
+use crate::conflict_resolution;
+use crate::contract_check;
+use crate::git_control;
+use crate::health_probe;
+use crate::merge_analyzer;
+use crate::project_detector;
+use crate::worktrees::{self, WorktreeMode};
 use axum::extract::Query;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
@@ -21,7 +21,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use crate::AppError;
+use super::AppError;
 
 fn q(params: &HashMap<String, String>, key: &str) -> Result<String, AppError> {
     params
@@ -179,7 +179,7 @@ struct CloneBody {
     target_dir: String,
 }
 async fn git_clone(Json(b): Json<CloneBody>) -> impl IntoResponse {
-    respond(alethe_lib::projects::clone_github_repo(b.url, b.target_dir).await)
+    respond(crate::projects::clone_github_repo(b.url, b.target_dir).await)
 }
 
 #[derive(Deserialize)]
@@ -453,9 +453,8 @@ async fn merge_force_cleanup(Json(b): Json<RepoEnvBody>) -> impl IntoResponse {
     respond(conflict_resolution::merge_force_cleanup(b.repo, b.env_id).await)
 }
 
-/// Converte `Result<T, String>` (convenção de erro de todo `#[tauri::command]`
-/// deste projeto) numa resposta HTTP — `Ok` vira `200 Json`, `Err` vira o
-/// código apropriado via `AppError` (ver `server_main.rs`).
+/// Convert the command-layer `Result<T, String>` into an HTTP response.
+/// Successful values become JSON and failures use the shared `AppError` mapping.
 fn respond<T: serde::Serialize>(result: Result<T, String>) -> axum::response::Response {
     match result {
         Ok(v) => Json(v).into_response(),

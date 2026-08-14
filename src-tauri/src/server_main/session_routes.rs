@@ -5,24 +5,25 @@
 // `app_data_dir()` — resolvido à mão, igual `profile_routes.rs`, já que
 // moram no MESMO diretório de perfil (`profiles/<id>/activity-stats.json`).
 
-use alethe_lib::activity_stats;
-use alethe_lib::agent_cost;
-use alethe_lib::antigravity_sessions;
-use alethe_lib::antigravity_usage;
-use alethe_lib::claude_sessions;
-use alethe_lib::claude_usage;
-use alethe_lib::codex_sessions;
-use alethe_lib::codex_usage;
-use alethe_lib::opencode_sessions;
-use axum::extract::Query;
+use crate::activity_stats;
+use crate::agent_cost;
+use crate::antigravity_sessions;
+use crate::antigravity_usage;
+use crate::claude_sessions;
+use crate::claude_usage;
+use crate::codex_sessions;
+use crate::codex_usage;
+use crate::opencode_sessions;
+use axum::extract::{Extension, Query};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::sync::Arc;
 
-use crate::profile_routes::active_profile_dir;
-use crate::AppError;
+use super::profile_routes::active_profile_dir_at;
+use super::{AppError, ServerRuntime};
 
 fn q(params: &HashMap<String, String>, key: &str) -> Result<String, AppError> {
     params
@@ -167,8 +168,14 @@ async fn multi_agent_activity(Query(p): Query<DaysQuery>) -> impl IntoResponse {
 struct SummaryBody {
     dates: Vec<String>,
 }
-async fn activity_summary(Json(b): Json<SummaryBody>) -> impl IntoResponse {
-    let path = active_profile_dir().join("activity-stats.json");
+async fn activity_summary(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(b): Json<SummaryBody>,
+) -> impl IntoResponse {
+    let path = match active_profile_dir_at(runtime.data_root()) {
+        Ok(root) => root.join("activity-stats.json"),
+        Err(error) => return AppError::from(error).into_response(),
+    };
     match tokio::task::spawn_blocking(move || {
         activity_stats::get_activity_summary_inner(path, b.dates)
     })
@@ -179,8 +186,11 @@ async fn activity_summary(Json(b): Json<SummaryBody>) -> impl IntoResponse {
     }
 }
 
-async fn clear_stats() -> impl IntoResponse {
-    let path = active_profile_dir().join("activity-stats.json");
+async fn clear_stats(Extension(runtime): Extension<Arc<ServerRuntime>>) -> impl IntoResponse {
+    let path = match active_profile_dir_at(runtime.data_root()) {
+        Ok(root) => root.join("activity-stats.json"),
+        Err(error) => return AppError::from(error).into_response(),
+    };
     if path.exists() {
         if let Err(e) = std::fs::remove_file(&path) {
             return AppError::from(e.to_string()).into_response();

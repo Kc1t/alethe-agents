@@ -17,7 +17,6 @@
 ///
 /// Módulo inteiro só compila no Windows (`#[cfg(windows)] mod windows_webview;`
 /// em lib.rs) — sem `#[cfg(not(windows))]` aqui dentro.
-
 use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

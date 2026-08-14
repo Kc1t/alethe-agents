@@ -3,14 +3,16 @@
 // (só os wrappers `#[tauri::command]` resolviam caminho via `AppHandle`);
 // aqui resolve os mesmos caminhos à mão via `profile_routes`.
 
-use alethe_lib::backup;
+use crate::backup;
+use axum::extract::Extension;
 use axum::response::IntoResponse;
 use axum::routing::post;
 use axum::{Json, Router};
 use serde::Deserialize;
+use std::sync::Arc;
 
-use crate::profile_routes::{active_profile_dir, profile_dir_validated};
-use crate::AppError;
+use super::profile_routes::{active_profile_dir_at, profile_dir_validated_at};
+use super::{AppError, ServerRuntime};
 
 pub fn router() -> Router {
     Router::new()
@@ -24,8 +26,14 @@ struct ExportBody {
     #[serde(rename = "targetPath")]
     target_path: String,
 }
-async fn export(Json(b): Json<ExportBody>) -> impl IntoResponse {
-    let dir = active_profile_dir();
+async fn export(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(b): Json<ExportBody>,
+) -> impl IntoResponse {
+    let dir = match active_profile_dir_at(runtime.data_root()) {
+        Ok(dir) => dir,
+        Err(error) => return AppError::from(error).into_response(),
+    };
     respond(
         tokio::task::spawn_blocking(move || backup::export_backup_from_dir(dir, b.target_path))
             .await
@@ -41,8 +49,11 @@ struct ExportProfileBody {
     #[serde(rename = "targetPath")]
     target_path: String,
 }
-async fn export_profile(Json(b): Json<ExportProfileBody>) -> impl IntoResponse {
-    let dir = match profile_dir_validated(&b.profile_id) {
+async fn export_profile(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(b): Json<ExportProfileBody>,
+) -> impl IntoResponse {
+    let dir = match profile_dir_validated_at(runtime.data_root(), &b.profile_id) {
         Ok(d) => d,
         Err(e) => return AppError::from(e).into_response(),
     };
@@ -59,8 +70,14 @@ struct ImportBody {
     #[serde(rename = "sourcePath")]
     source_path: String,
 }
-async fn import(Json(b): Json<ImportBody>) -> impl IntoResponse {
-    let dir = active_profile_dir();
+async fn import(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(b): Json<ImportBody>,
+) -> impl IntoResponse {
+    let dir = match active_profile_dir_at(runtime.data_root()) {
+        Ok(dir) => dir,
+        Err(error) => return AppError::from(error).into_response(),
+    };
     let activity_stats = dir.join("activity-stats.json");
     respond(
         tokio::task::spawn_blocking(move || {

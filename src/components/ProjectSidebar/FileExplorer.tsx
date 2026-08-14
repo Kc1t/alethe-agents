@@ -100,7 +100,7 @@ function DirectoryNode({
     setError(false)
     listDirectory(path)
       .then((result) => {
-        if (!cancelled) setEntries(result)
+        if (!cancelled) setEntries(result.entries || [])
       })
       .catch(() => {
         if (!cancelled) setError(true)

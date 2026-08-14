@@ -39,6 +39,7 @@ type ModalKind =
   | 'remoteControl'
   | 'confirmWorktreeCommit'
   | 'audit'
+  | 'fsBrowser'
   | null
 
 export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox'

@@ -2,6 +2,7 @@ pub mod activity_stats;
 pub mod agent_cost;
 pub mod agent_events;
 pub mod agent_library;
+pub mod ai_memory;
 pub mod antigravity_sessions;
 pub mod antigravity_usage;
 pub mod backup;
@@ -10,59 +11,58 @@ pub mod claude_usage;
 pub mod cli_launch;
 pub mod cli_resolver;
 pub mod cli_shim;
-pub mod codex_sessions;
 pub mod codex_app_server;
+pub mod codex_sessions;
 pub mod codex_usage;
+pub mod conflict_resolution;
+pub mod contract_check;
 pub mod crash_watch;
 pub mod diagnostics;
 pub mod discord_presence;
 pub mod economy_agents;
+pub mod event_bus;
 pub mod filesystem;
 pub mod ghostty_bridge;
 #[cfg(all(target_os = "macos", ghostty_linked))]
 pub mod ghostty_ffi;
 pub mod git_control;
 pub mod github_sync;
+pub mod graphify;
+pub mod health_probe;
 pub mod logging;
+pub mod merge_analyzer;
+pub mod opencode_bridge;
+pub mod opencode_gsd_plugin;
+pub mod opencode_sessions;
 pub mod paths;
+pub mod planning;
+pub mod planning_gate;
+pub mod plugins;
+pub mod process_tree;
 pub mod profiles;
+pub mod project_detector;
 pub mod projects;
+pub mod provider_common;
 pub mod pty;
 pub mod pty_sink;
-pub mod resources;
-pub mod process_tree;
+pub mod remote;
 pub mod resource_manager;
+pub mod resources;
+pub mod scheduler;
+pub mod server_main;
 pub mod session_watcher;
 pub mod spotify;
 pub mod stats;
+pub mod supervisor;
+pub mod telemetry;
+pub mod validation;
 pub mod window_style;
 #[cfg(windows)]
 pub mod windows_webview;
 pub mod worktrees;
-pub mod event_bus;
-pub mod telemetry;
-pub mod validation;
-pub mod planning;
-pub mod planning_gate;
-pub mod opencode_gsd_plugin;
-pub mod scheduler;
-pub mod supervisor;
-pub mod merge_analyzer;
-pub mod conflict_resolution;
-pub mod graphify;
-pub mod ai_memory;
-pub mod plugins;
-pub mod opencode_sessions;
-pub mod opencode_bridge;
-pub mod project_detector;
-pub mod contract_check;
-pub mod health_probe;
-pub mod provider_common;
-pub mod remote;
 
-use crate::pty::{PtySession, PtySessions};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use crate::pty::PtySessions;
+use std::sync::Arc;
 
 #[cfg(windows)]
 #[tauri::command]
@@ -129,7 +129,7 @@ pub fn run() {
     // Rede de segurança contra terminais órfãos: se o app morrer por crash/kill
     // forçado (onde RunEvent::Exit não roda), o Job Object mata a árvore de PTYs.
     pty::install_kill_on_close_guard();
-    let sessions: PtySessions = Arc::new(Mutex::new(HashMap::<String, PtySession>::new()));
+    let sessions: PtySessions = pty::global_pty_sessions().clone();
     let codex_app_server_state = codex_app_server::CodexAppServerState::default();
     let sessions_for_exit = Arc::clone(&sessions);
     let sessions_for_resources = Arc::clone(&sessions);
@@ -218,6 +218,35 @@ pub fn run() {
                 }
             }
             logging::set_logs_dir(app.handle());
+            let data_root = profiles::resolve_tauri_data_root(app.handle())
+                .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error))?;
+            let runtime = server_main::ServerRuntime::embedded(
+                app.config().identifier.clone(),
+                data_root,
+                app.handle().clone(),
+            );
+            tauri::async_runtime::spawn(async move {
+                let listener =
+                    match tokio::net::TcpListener::bind(server_main::SERVER_BIND_ADDRESS).await {
+                        Ok(listener) => listener,
+                        Err(error) => {
+                            eprintln!(
+                                "[Alethe Embedded Server] Failed to bind http://{}; another core may already own this data root: {error}",
+                                server_main::SERVER_BIND_ADDRESS
+                            );
+                            return;
+                        }
+                    };
+                println!(
+                    "[Alethe Embedded Server] Listening on http://{} (instance {}).",
+                    server_main::SERVER_BIND_ADDRESS,
+                    runtime.instance_id()
+                );
+                let router = server_main::build_router(runtime);
+                if let Err(error) = axum::serve(listener, router).await {
+                    eprintln!("[Alethe Embedded Server] Server stopped with an error: {error}");
+                }
+            });
             // Keep the terminal launcher available after installation.
             #[cfg(not(debug_assertions))]
             let _ = cli_shim::cli_shim_install();
@@ -308,10 +337,13 @@ pub fn run() {
             process_tree::get_pty_tree_info,
             process_tree::kill_pty_tree_cmd,
             projects::load_projects,
+            projects::load_projects_bootstrap,
             projects::save_projects,
+            projects::save_projects_for_profile,
             projects::clone_github_repo,
             cli_resolver::discover_provider_models,
             profiles::list_profiles,
+            profiles::get_core_storage_identity,
             profiles::list_profile_summaries,
             profiles::get_active_profile,
             profiles::set_active_profile,

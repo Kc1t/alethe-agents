@@ -159,7 +159,8 @@ impl ModelCost {
 /// Parser do JSONL do Claude: soma message.usage por linha assistant,
 /// agrupando por message.model.
 fn parse_claude_cost(path: &PathBuf) -> std::collections::HashMap<String, ModelCost> {
-    let mut by_model: std::collections::HashMap<String, ModelCost> = std::collections::HashMap::new();
+    let mut by_model: std::collections::HashMap<String, ModelCost> =
+        std::collections::HashMap::new();
     let Ok(file) = fs::File::open(path) else {
         return by_model;
     };
@@ -228,10 +229,8 @@ fn parse_codex_cost(path: &PathBuf) -> ModelCost {
             continue;
         };
         let payload = value.get("payload");
-        let is_token_count = payload
-            .and_then(|p| p.get("type"))
-            .and_then(|v| v.as_str())
-            == Some("token_count");
+        let is_token_count =
+            payload.and_then(|p| p.get("type")).and_then(|v| v.as_str()) == Some("token_count");
         if !is_token_count {
             continue;
         }
@@ -317,7 +316,8 @@ fn get_session_cost_inner(
 
             let conn = rusqlite::Connection::open_with_flags(
                 &db_path,
-                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+                    | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
             )
             .map_err(|e| format!("falha ao abrir banco do OpenCode: {e}"))?;
 
@@ -337,7 +337,10 @@ fn get_session_cost_inner(
                 .map_err(|e| format!("falha ao executar query: {e}"))?;
 
             let mut result_by_model = Vec::new();
-            if let Some(row) = rows.next().map_err(|e| format!("falha ao ler linha: {e}"))? {
+            if let Some(row) = rows
+                .next()
+                .map_err(|e| format!("falha ao ler linha: {e}"))?
+            {
                 let model_raw: String = row.get(0).unwrap_or_default();
                 let tokens_input: u64 = row.get(1).unwrap_or(0);
                 let tokens_output: u64 = row.get(2).unwrap_or(0);
@@ -346,14 +349,15 @@ fn get_session_cost_inner(
                 let cost: f64 = row.get(5).unwrap_or(0.0);
 
                 // A coluna `model` pode ser JSON ({"id": "..."}) ou string simples.
-                let model_name = if let Ok(v) = serde_json::from_str::<serde_json::Value>(&model_raw) {
-                    v.get("id")
-                        .and_then(|id| id.as_str())
-                        .unwrap_or(&model_raw)
-                        .to_string()
-                } else {
-                    model_raw
-                };
+                let model_name =
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&model_raw) {
+                        v.get("id")
+                            .and_then(|id| id.as_str())
+                            .unwrap_or(&model_raw)
+                            .to_string()
+                    } else {
+                        model_raw
+                    };
 
                 result_by_model.push(ModelCost {
                     model: model_name,
@@ -417,7 +421,10 @@ fn aggregate(agent: String, session_id: String, mut by_model: Vec<ModelCost>) ->
             any_cost = true;
             total.cost_usd = Some(total.cost_usd.unwrap_or(0.0) + c);
         }
-        let by_output = dominant.as_ref().map(|(o, _)| mc.output > *o).unwrap_or(true);
+        let by_output = dominant
+            .as_ref()
+            .map(|(o, _)| mc.output > *o)
+            .unwrap_or(true);
         if by_output {
             dominant = Some((mc.output, mc.model.clone()));
         }
@@ -514,9 +521,13 @@ fn get_opencode_usage_summary_inner(hours: u32) -> Result<OpenCodeUsageSummary, 
         .query(rusqlite::params![since_ms])
         .map_err(|e| format!("falha ao executar query: {e}"))?;
 
-    let mut by_model: std::collections::HashMap<String, ModelCost> = std::collections::HashMap::new();
+    let mut by_model: std::collections::HashMap<String, ModelCost> =
+        std::collections::HashMap::new();
     let mut session_count = 0u32;
-    while let Some(row) = rows.next().map_err(|e| format!("falha ao ler linha: {e}"))? {
+    while let Some(row) = rows
+        .next()
+        .map_err(|e| format!("falha ao ler linha: {e}"))?
+    {
         let model_raw: String = row.get(0).unwrap_or_default();
         let cost: f64 = row.get(1).unwrap_or(0.0);
         let tokens_input: u64 = row.get(2).unwrap_or(0);
@@ -537,11 +548,13 @@ fn get_opencode_usage_summary_inner(hours: u32) -> Result<OpenCodeUsageSummary, 
         }
 
         session_count += 1;
-        let entry = by_model.entry(model_name.clone()).or_insert_with(|| ModelCost {
-            model: model_name,
-            cost_usd: Some(0.0),
-            ..Default::default()
-        });
+        let entry = by_model
+            .entry(model_name.clone())
+            .or_insert_with(|| ModelCost {
+                model: model_name,
+                cost_usd: Some(0.0),
+                ..Default::default()
+            });
         entry.input += tokens_input;
         entry.output += tokens_output;
         entry.cache_read += tokens_cache_read;
@@ -550,7 +563,11 @@ fn get_opencode_usage_summary_inner(hours: u32) -> Result<OpenCodeUsageSummary, 
     }
 
     let mut by_model: Vec<ModelCost> = by_model.into_values().collect();
-    by_model.sort_by(|a, b| b.cost_usd.partial_cmp(&a.cost_usd).unwrap_or(std::cmp::Ordering::Equal));
+    by_model.sort_by(|a, b| {
+        b.cost_usd
+            .partial_cmp(&a.cost_usd)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let cost_usd = by_model.iter().filter_map(|m| m.cost_usd).sum();
     let input_tokens = by_model.iter().map(|m| m.input).sum();

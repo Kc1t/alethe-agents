@@ -136,12 +136,8 @@ fn hysteresis_reset(current: MemoryPressureLevel, available_mb: f64) -> MemoryPr
         MemoryPressureLevel::Critical if available_mb >= MEM_CRITICAL_RESET => {
             MemoryPressureLevel::High
         }
-        MemoryPressureLevel::High if available_mb >= MEM_HIGH_RESET => {
-            MemoryPressureLevel::Medium
-        }
-        MemoryPressureLevel::Medium if available_mb >= MEM_MEDIUM_RESET => {
-            MemoryPressureLevel::Low
-        }
+        MemoryPressureLevel::High if available_mb >= MEM_HIGH_RESET => MemoryPressureLevel::Medium,
+        MemoryPressureLevel::Medium if available_mb >= MEM_MEDIUM_RESET => MemoryPressureLevel::Low,
         MemoryPressureLevel::Low if available_mb >= MEM_OK_RESET => MemoryPressureLevel::Ok,
         _ => current,
     }
@@ -163,7 +159,8 @@ pub fn enqueue_task(task: ScheduledTask) {
     if let Ok(mut s) = state().lock() {
         // Cancela tarefa obsoleta com a mesma cancel_key
         if let Some(ref key) = task.cancel_key {
-            s.task_queue.retain(|t| t.cancel_key.as_deref() != Some(key));
+            s.task_queue
+                .retain(|t| t.cancel_key.as_deref() != Some(key));
         }
         s.task_queue.push_back(task);
     }
@@ -263,41 +260,29 @@ fn tick(app: &AppHandle) {
             }
             MemoryPressureLevel::Medium => {
                 enqueue_task(
-                    ScheduledTask::new(
-                        TaskPriority::High,
-                        "webview-low-memory",
-                        move || {
-                            #[cfg(windows)]
-                            if let Err(e) = crate::windows_webview::set_memory_mode(true) {
-                                eprintln!("[ResourceManager] WebView low-memory failed: {e}");
-                            }
-                            let _ = handle.emit("resource://webview-low-memory", "");
-                        },
-                    )
+                    ScheduledTask::new(TaskPriority::High, "webview-low-memory", move || {
+                        #[cfg(windows)]
+                        if let Err(e) = crate::windows_webview::set_memory_mode(true) {
+                            eprintln!("[ResourceManager] WebView low-memory failed: {e}");
+                        }
+                        let _ = handle.emit("resource://webview-low-memory", "");
+                    })
                     .with_cancel_key("webview-low-memory"),
                 );
             }
             MemoryPressureLevel::High => {
                 enqueue_task(
-                    ScheduledTask::new(
-                        TaskPriority::High,
-                        "reduce-pool-limit",
-                        move || {
-                            let _ = handle.emit("resource://reduce-pool", "");
-                        },
-                    )
+                    ScheduledTask::new(TaskPriority::High, "reduce-pool-limit", move || {
+                        let _ = handle.emit("resource://reduce-pool", "");
+                    })
                     .with_cancel_key("reduce-pool"),
                 );
             }
             MemoryPressureLevel::Critical => {
                 enqueue_task(
-                    ScheduledTask::new(
-                        TaskPriority::High,
-                        "drop-caches-gc",
-                        move || {
-                            let _ = handle.emit("resource::drop-caches", "");
-                        },
-                    )
+                    ScheduledTask::new(TaskPriority::High, "drop-caches-gc", move || {
+                        let _ = handle.emit("resource::drop-caches", "");
+                    })
                     .with_cancel_key("drop-caches"),
                 );
             }

@@ -436,7 +436,8 @@ fn get_multi_agent_activity_inner(days: usize) -> Result<Vec<ActivityDay>, Strin
         if db_path.is_file() {
             if let Ok(conn) = rusqlite::Connection::open_with_flags(
                 &db_path,
-                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
+                    | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
             ) {
                 if let Ok(mut stmt) =
                     conn.prepare("SELECT time_created FROM message WHERE time_created >= ?1")

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use sysinfo::{Pid, ProcessesToUpdate, System};
+use tauri::{AppHandle, State};
 
 /// Mapeia ptyId → PID raiz do PTY (pwsh.exe / bash).
 static PTY_ROOTS: OnceLock<Mutex<HashMap<String, u32>>> = OnceLock::new();
@@ -43,7 +44,9 @@ fn build_parent_map(sys: &mut System) -> HashMap<u32, Vec<u32>> {
 /// Retorna a árvore de processos (cached 2s).
 fn get_parent_map() -> HashMap<u32, Vec<u32>> {
     let cache = tree_cache();
-    let mut guard = cache.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut guard = cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if let Some((at, map)) = guard.as_ref() {
         if at.elapsed() < Duration::from_secs(2) {
             return map.clone();
@@ -126,7 +129,9 @@ fn roots_file_path() -> Option<PathBuf> {
 /// Job Object (`pty::install_kill_on_close_guard`) tenha falhado silenciosamente
 /// naquela sessão.
 fn persist_roots() {
-    let Some(path) = roots_file_path() else { return };
+    let Some(path) = roots_file_path() else {
+        return;
+    };
     let snapshot: Vec<PersistedRoot> = {
         let Ok(guard) = roots().lock() else { return };
         let mut sys = System::new();
@@ -145,7 +150,9 @@ fn persist_roots() {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let Ok(json) = serde_json::to_vec(&snapshot) else { return };
+    let Ok(json) = serde_json::to_vec(&snapshot) else {
+        return;
+    };
     let tmp = path.with_extension("json.tmp");
     if std::fs::write(&tmp, &json).is_ok() {
         let _ = std::fs::rename(&tmp, &path);
@@ -160,8 +167,12 @@ fn persist_roots() {
 /// Consome o arquivo (remove após ler) — a sessão atual escreve o seu
 /// próprio conforme registra PTYs. Retorna quantas árvores raiz foram mortas.
 pub fn sweep_orphans_from_previous_session() -> usize {
-    let Some(path) = roots_file_path() else { return 0 };
-    let Ok(bytes) = std::fs::read(&path) else { return 0 };
+    let Some(path) = roots_file_path() else {
+        return 0;
+    };
+    let Ok(bytes) = std::fs::read(&path) else {
+        return 0;
+    };
     let _ = std::fs::remove_file(&path);
     let Ok(persisted) = serde_json::from_slice::<Vec<PersistedRoot>>(&bytes) else {
         return 0;
@@ -192,11 +203,7 @@ pub fn sweep_orphans_from_previous_session() -> usize {
     killed_roots
 }
 
-pub fn get_pty_tree(pty_id: &str) -> Option<PtyTreeInfo> {
-    let root_pid = {
-        let guard = roots().lock().ok()?;
-        guard.get(pty_id).copied()
-    };
+pub(crate) fn get_pty_tree_for_root(pty_id: &str, root_pid: Option<u32>) -> PtyTreeInfo {
     let parent_map = get_parent_map();
     let (live_descendants, alive) = if let Some(root) = root_pid {
         let desc = collect_descendants(root, &parent_map);
@@ -207,12 +214,20 @@ pub fn get_pty_tree(pty_id: &str) -> Option<PtyTreeInfo> {
     } else {
         (Vec::new(), false)
     };
-    Some(PtyTreeInfo {
+    PtyTreeInfo {
         pty_id: pty_id.to_string(),
         root_pid,
         descendants: live_descendants,
         alive,
-    })
+    }
+}
+
+pub fn get_pty_tree(pty_id: &str) -> Option<PtyTreeInfo> {
+    let root_pid = {
+        let guard = roots().lock().ok()?;
+        guard.get(pty_id).copied()
+    };
+    Some(get_pty_tree_for_root(pty_id, root_pid))
 }
 
 /// Espera o comando terminar sem travar indefinidamente se ele mesmo travar —
@@ -266,12 +281,20 @@ fn kill_pid(pid: u32) {
 
 /// Mata a árvore inteira de um PTY (raiz + todos os descendentes).
 /// Ordem: folhas primeiro → raiz por último para evitar reparentamento.
-pub fn kill_pty_tree(pty_id: &str) -> Result<Vec<u32>, String> {
+pub(crate) fn kill_pty_tree_with_expected_root(
+    pty_id: &str,
+    expected_root: Option<u32>,
+) -> Result<Vec<u32>, String> {
     let root_pid = {
         let guard = roots().lock().map_err(|_| "PTY roots lock poisoned")?;
         guard.get(pty_id).copied()
     };
     let root = root_pid.ok_or_else(|| format!("No root PID registered for PTY: {pty_id}"))?;
+    if expected_root.map_or(false, |expected| expected != root) {
+        return Err(format!(
+            "PTY generation changed before tree operation: {pty_id}"
+        ));
+    }
 
     let parent_map = get_parent_map();
     let mut all = collect_descendants(root, &parent_map);
@@ -312,23 +335,53 @@ pub fn kill_pty_tree(pty_id: &str) -> Result<Vec<u32>, String> {
     }
 
     if let Ok(mut guard) = roots().lock() {
-        guard.remove(pty_id);
+        if guard.get(pty_id).copied() == Some(root) {
+            guard.remove(pty_id);
+        }
     }
 
     Ok(all)
 }
 
-#[tauri::command]
-pub fn get_pty_tree_info(pty_id: String) -> Option<PtyTreeInfo> {
-    get_pty_tree(&pty_id)
+pub fn kill_pty_tree(pty_id: &str) -> Result<Vec<u32>, String> {
+    kill_pty_tree_with_expected_root(pty_id, None)
+}
+
+pub(crate) async fn kill_pty_tree_for_root(
+    pty_id: String,
+    expected_root: u32,
+) -> Result<Vec<u32>, String> {
+    tokio::task::spawn_blocking(move || {
+        kill_pty_tree_with_expected_root(&pty_id, Some(expected_root))
+    })
+    .await
+    .map_err(|error| format!("kill_pty_tree: blocking task failed: {error}"))?
 }
 
 #[tauri::command]
-pub async fn kill_pty_tree_cmd(pty_id: String) -> Result<Vec<u32>, String> {
+pub fn get_pty_tree_info(
+    app: AppHandle,
+    sessions: State<'_, crate::pty::PtySessions>,
+    pty_id: String,
+    profile_id: String,
+) -> Result<Option<PtyTreeInfo>, String> {
+    let root_pid =
+        crate::pty::owned_pty_root_pid_for_profile(&app, &sessions, &pty_id, &profile_id)?;
+    Ok(Some(get_pty_tree_for_root(&pty_id, root_pid)))
+}
+
+#[tauri::command]
+pub async fn kill_pty_tree_cmd(
+    app: AppHandle,
+    sessions: State<'_, crate::pty::PtySessions>,
+    pty_id: String,
+    profile_id: String,
+) -> Result<Vec<u32>, String> {
+    let expected_root =
+        crate::pty::owned_pty_root_pid_for_profile(&app, &sessions, &pty_id, &profile_id)?
+            .ok_or_else(|| format!("No root PID registered for PTY: {pty_id}"))?;
     // `kill_pty_tree` roda `taskkill`/`kill` por descendente, sequencial e
     // bloqueante — na thread de despacho do Tauri isso travava TODO comando
     // IPC atrás dele (mesma classe de bug já corrigida em spawn_pty/attach_pty).
-    tokio::task::spawn_blocking(move || kill_pty_tree(&pty_id))
-        .await
-        .map_err(|error| format!("kill_pty_tree_cmd: falha na task bloqueante: {error}"))?
+    kill_pty_tree_for_root(pty_id, expected_root).await
 }

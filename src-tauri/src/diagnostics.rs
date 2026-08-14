@@ -1,5 +1,5 @@
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -36,7 +36,10 @@ pub fn open_in_file_explorer(path: String) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     let result = if target.is_file() {
-        Command::new("open").arg("-R").arg(target.as_os_str()).spawn()
+        Command::new("open")
+            .arg("-R")
+            .arg(target.as_os_str())
+            .spawn()
     } else {
         Command::new("open").arg(target.as_os_str()).spawn()
     };
@@ -45,7 +48,10 @@ pub fn open_in_file_explorer(path: String) -> Result<(), String> {
     #[cfg(all(unix, not(target_os = "macos")))]
     let result = {
         let dir = if target.is_file() {
-            target.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| target.clone())
+            target
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| target.clone())
         } else {
             target.clone()
         };
@@ -69,7 +75,10 @@ pub fn open_in_vscode(path: String) -> Result<(), String> {
 
     let result = if is_cmd {
         let mut command = Command::new("cmd");
-        command.arg("/C").arg(launcher.as_os_str()).arg(target.as_os_str());
+        command
+            .arg("/C")
+            .arg(launcher.as_os_str())
+            .arg(target.as_os_str());
         crate::git_control::hide_console(&mut command);
         command.spawn()
     } else {
@@ -186,8 +195,8 @@ mod windows_clipboard {
     use std::time::Duration;
     use windows_sys::Win32::Foundation::GlobalFree;
     use windows_sys::Win32::System::DataExchange::{
-        CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
-        RegisterClipboardFormatW, SetClipboardData,
+        CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable,
+        OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
     };
     use windows_sys::Win32::System::Memory::{
         GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
@@ -443,14 +452,22 @@ mod unix_clipboard {
     }
 
     fn paste_tool() -> Result<&'static str, String> {
-        let (tool, package) = if wayland() { ("wl-paste", "wl-clipboard") } else { ("xclip", "xclip") };
+        let (tool, package) = if wayland() {
+            ("wl-paste", "wl-clipboard")
+        } else {
+            ("xclip", "xclip")
+        };
         which::which(tool)
             .map(|_| tool)
             .map_err(|_| format!("{tool} não encontrado no PATH (pacote `{package}`)"))
     }
 
     fn copy_tool() -> Result<&'static str, String> {
-        let (tool, package) = if wayland() { ("wl-copy", "wl-clipboard") } else { ("xclip", "xclip") };
+        let (tool, package) = if wayland() {
+            ("wl-copy", "wl-clipboard")
+        } else {
+            ("xclip", "xclip")
+        };
         which::which(tool)
             .map(|_| tool)
             .map_err(|_| format!("{tool} não encontrado no PATH (pacote `{package}`)"))
@@ -459,11 +476,15 @@ mod unix_clipboard {
     /// Lista os mimetypes disponíveis no clipboard (equivalente a
     /// IsClipboardFormatAvailable, mas descobrindo tudo de uma vez).
     fn list_types() -> Vec<String> {
-        let Ok(tool) = paste_tool() else { return Vec::new() };
+        let Ok(tool) = paste_tool() else {
+            return Vec::new();
+        };
         let output = if tool == "wl-paste" {
             Command::new("wl-paste").arg("--list-types").output()
         } else {
-            Command::new("xclip").args(["-selection", "clipboard", "-t", "TARGETS", "-o"]).output()
+            Command::new("xclip")
+                .args(["-selection", "clipboard", "-t", "TARGETS", "-o"])
+                .output()
         };
         output
             .ok()
@@ -482,9 +503,13 @@ mod unix_clipboard {
     fn read_type(mime: &str) -> Result<Vec<u8>, String> {
         let tool = paste_tool()?;
         let output = if tool == "wl-paste" {
-            Command::new("wl-paste").args(["--type", mime, "--no-newline"]).output()
+            Command::new("wl-paste")
+                .args(["--type", mime, "--no-newline"])
+                .output()
         } else {
-            Command::new("xclip").args(["-selection", "clipboard", "-t", mime, "-o"]).output()
+            Command::new("xclip")
+                .args(["-selection", "clipboard", "-t", mime, "-o"])
+                .output()
         }
         .map_err(|e| e.to_string())?;
         if !output.status.success() {
@@ -574,7 +599,10 @@ mod unix_clipboard {
             cmd
         };
 
-        let mut child = command.stdin(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
+        let mut child = command
+            .stdin(Stdio::piped())
+            .spawn()
+            .map_err(|e| e.to_string())?;
         child
             .stdin
             .take()
@@ -598,7 +626,10 @@ mod unix_clipboard {
             let raw = "file:///home/user/My%20Screenshot.png\nfile:///tmp/plain.png\n";
             assert_eq!(
                 parse_uri_list(raw),
-                vec!["/home/user/My Screenshot.png".to_string(), "/tmp/plain.png".to_string()]
+                vec![
+                    "/home/user/My Screenshot.png".to_string(),
+                    "/tmp/plain.png".to_string()
+                ]
             );
         }
 
@@ -644,7 +675,9 @@ mod macos_clipboard {
             .ok_or_else(|| "dados de imagem do clipboard invalidos".to_string())?;
         let path =
             std::env::temp_dir().join(format!("alethe-clipboard-img-{}.png", nanoid::nanoid!(8)));
-        buffer.save_with_format(&path, image::ImageFormat::Png).map_err(|e| e.to_string())?;
+        buffer
+            .save_with_format(&path, image::ImageFormat::Png)
+            .map_err(|e| e.to_string())?;
         Ok(path.to_string_lossy().into_owned())
     }
 

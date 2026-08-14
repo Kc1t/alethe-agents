@@ -49,7 +49,10 @@ fn parse_window(value: Option<&serde_json::Value>) -> CodexUsageWindow {
     if obj.is_null() {
         return default;
     }
-    let used_percent = obj.get("usedPercent").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let used_percent = obj
+        .get("usedPercent")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
     let window_minutes = obj
         .get("windowDurationMins")
         .and_then(|v| v.as_u64())
@@ -80,9 +83,7 @@ fn fetch_usage() -> Result<CodexUsage, String> {
 
     crate::git_control::hide_console(&mut command);
 
-    let mut child = command
-        .spawn()
-        .map_err(|e| format!("spawn failed: {e}"))?;
+    let mut child = command.spawn().map_err(|e| format!("spawn failed: {e}"))?;
 
     let mut stdin = child.stdin.take().ok_or("no stdin")?;
     let stdout = child.stdout.take().ok_or("no stdout")?;

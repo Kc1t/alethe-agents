@@ -91,7 +91,9 @@ pub fn collect_memory_stats() -> MemoryStats {
 fn cached_memory_stats() -> MemoryStats {
     static CACHE: OnceLock<Mutex<Option<(Instant, MemoryStats)>>> = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(None));
-    let mut guard = cache.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut guard = cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if let Some((at, stats)) = guard.as_ref() {
         if at.elapsed() < Duration::from_secs(2) {
             return stats.clone();

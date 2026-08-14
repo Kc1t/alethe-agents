@@ -209,8 +209,8 @@ mod tests {
         let nested = base.join("alethe-cli-test-rel");
         std::fs::create_dir_all(&nested).expect("criar dir");
 
-        let resolved =
-            resolve_target_dir(&args(&["alethe", "alethe-cli-test-rel"]), &base).expect("resolvido");
+        let resolved = resolve_target_dir(&args(&["alethe", "alethe-cli-test-rel"]), &base)
+            .expect("resolvido");
         assert_eq!(resolved, nested);
 
         let _ = std::fs::remove_dir_all(&nested);
@@ -224,11 +224,9 @@ mod tests {
         let file = dir.join("README.md");
         std::fs::write(&file, b"x").expect("escrever arquivo");
 
-        let resolved = resolve_target_dir(
-            &args(&["alethe", &file.to_string_lossy()]),
-            Path::new("/"),
-        )
-        .expect("resolvido");
+        let resolved =
+            resolve_target_dir(&args(&["alethe", &file.to_string_lossy()]), Path::new("/"))
+                .expect("resolvido");
         assert_eq!(resolved, dir);
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -239,7 +237,10 @@ mod tests {
         let target = std::env::temp_dir().join("alethe-cli-test-inexistente-xyz");
         let _ = std::fs::remove_dir_all(&target);
         assert_eq!(
-            resolve_target_dir(&args(&["alethe", &target.to_string_lossy()]), Path::new("/")),
+            resolve_target_dir(
+                &args(&["alethe", &target.to_string_lossy()]),
+                Path::new("/")
+            ),
             None
         );
     }

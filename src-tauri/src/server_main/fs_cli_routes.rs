@@ -1,8 +1,8 @@
 // Filesystem (arquivos/pastas de projeto) + CLI shim — tudo função pura,
 // sem `AppHandle`.
 
-use alethe_lib::cli_shim;
-use alethe_lib::filesystem;
+use crate::cli_shim;
+use crate::filesystem;
 use axum::extract::Query;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
@@ -10,7 +10,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use crate::AppError;
+use super::AppError;
 
 fn q(params: &HashMap<String, String>, key: &str) -> Result<String, AppError> {
     params
@@ -31,6 +31,10 @@ pub fn router() -> Router {
         .route("/api/cli/shim_install", post(shim_install))
         .route("/api/cli/shim_uninstall", post(shim_uninstall))
         .route("/api/cli/find_cli_launcher", get(find_cli_launcher_route))
+        .route(
+            "/api/agents/find_cli_launcher",
+            get(find_cli_launcher_route),
+        )
 }
 
 async fn find_cli_launcher_route(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
@@ -38,7 +42,7 @@ async fn find_cli_launcher_route(Query(p): Query<HashMap<String, String>>) -> im
         Ok(v) => v,
         Err(e) => return e.into_response(),
     };
-    Json(alethe_lib::cli_resolver::find_cli_launcher(agent).await).into_response()
+    Json(crate::cli_resolver::find_cli_launcher(agent).await).into_response()
 }
 
 async fn list(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {

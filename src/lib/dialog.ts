@@ -1,10 +1,27 @@
 import { open, save, type DialogFilter } from '@tauri-apps/plugin-dialog'
 import { isTauriEnv } from './api/transport'
+import { useUiStore } from '../stores/uiStore'
+
+export type FsBrowserCallback = (path: string | null) => void
+
+let pendingFsResolver: FsBrowserCallback | null = null
+
+export function resolvePendingFsBrowser(path: string | null) {
+  if (pendingFsResolver) {
+    pendingFsResolver(path)
+    pendingFsResolver = null
+  }
+}
 
 export async function pickDirectory(opts?: { defaultPath?: string }): Promise<string | null> {
   if (!isTauriEnv()) {
-    const result = window.prompt('Digite o caminho do diretório:', opts?.defaultPath || '')
-    return result?.trim() || null
+    return new Promise<string | null>((resolve) => {
+      pendingFsResolver = resolve
+      useUiStore.getState().openModal_('fsBrowser', {
+        mode: 'folder',
+        defaultPath: opts?.defaultPath,
+      })
+    })
   }
   const result = await open({
     directory: true,
@@ -21,11 +38,14 @@ export async function pickFile(opts?: {
   defaultPath?: string
 }): Promise<string | null> {
   if (!isTauriEnv()) {
-    const result = window.prompt(
-      opts?.title || 'Digite o caminho do executável ou arquivo:',
-      opts?.defaultPath || '',
-    )
-    return result?.trim() || null
+    return new Promise<string | null>((resolve) => {
+      pendingFsResolver = resolve
+      useUiStore.getState().openModal_('fsBrowser', {
+        mode: 'file',
+        title: opts?.title,
+        defaultPath: opts?.defaultPath,
+      })
+    })
   }
   const result = await open({
     directory: false,
@@ -44,8 +64,14 @@ export async function saveFile(opts: {
   filters?: DialogFilter[]
 }): Promise<string | null> {
   if (!isTauriEnv()) {
-    const result = window.prompt(opts.title || 'Salvar como:', opts.defaultPath || '')
-    return result?.trim() || null
+    return new Promise<string | null>((resolve) => {
+      pendingFsResolver = resolve
+      useUiStore.getState().openModal_('fsBrowser', {
+        mode: 'file',
+        title: opts.title,
+        defaultPath: opts.defaultPath,
+      })
+    })
   }
   const result = await save({
     title: opts.title,

@@ -2,14 +2,16 @@
 // pra separar resolução de caminho (AppHandle) da lógica de verdade
 // (`*_core`, que recebe `&Path` direto), mesmo padrão de `backup.rs`.
 
-use alethe_lib::github_sync;
+use crate::github_sync;
+use axum::extract::Extension;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
+use std::sync::Arc;
 
-use crate::profile_routes::active_profile_dir;
-use crate::AppError;
+use super::profile_routes::active_profile_dir_at;
+use super::{AppError, ServerRuntime};
 
 pub fn router() -> Router {
     Router::new()
@@ -20,28 +22,49 @@ pub fn router() -> Router {
         .route("/api/github_sync/pull", post(pull))
 }
 
-async fn status() -> impl IntoResponse {
-    Json(github_sync::github_sync_status_core(&active_profile_dir()))
+async fn status(Extension(runtime): Extension<Arc<ServerRuntime>>) -> impl IntoResponse {
+    match active_profile_dir_at(runtime.data_root()) {
+        Ok(root) => Json(github_sync::github_sync_status_core(&root)).into_response(),
+        Err(error) => AppError::from(error).into_response(),
+    }
 }
 
 #[derive(Deserialize)]
 struct TokenBody {
     token: String,
 }
-async fn set_token(Json(b): Json<TokenBody>) -> impl IntoResponse {
-    respond(github_sync::github_sync_set_token_core(&active_profile_dir(), b.token).await)
+async fn set_token(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(b): Json<TokenBody>,
+) -> impl IntoResponse {
+    let root = match active_profile_dir_at(runtime.data_root()) {
+        Ok(root) => root,
+        Err(error) => return AppError::from(error).into_response(),
+    };
+    respond(github_sync::github_sync_set_token_core(&root, b.token).await)
 }
 
-async fn logout() -> impl IntoResponse {
-    respond(github_sync::github_sync_logout_core(&active_profile_dir()))
+async fn logout(Extension(runtime): Extension<Arc<ServerRuntime>>) -> impl IntoResponse {
+    match active_profile_dir_at(runtime.data_root()) {
+        Ok(root) => respond(github_sync::github_sync_logout_core(&root)),
+        Err(error) => AppError::from(error).into_response(),
+    }
 }
 
-async fn push() -> impl IntoResponse {
-    respond(github_sync::github_sync_push_core(&active_profile_dir()).await)
+async fn push(Extension(runtime): Extension<Arc<ServerRuntime>>) -> impl IntoResponse {
+    let root = match active_profile_dir_at(runtime.data_root()) {
+        Ok(root) => root,
+        Err(error) => return AppError::from(error).into_response(),
+    };
+    respond(github_sync::github_sync_push_core(&root).await)
 }
 
-async fn pull() -> impl IntoResponse {
-    respond(github_sync::github_sync_pull_core(&active_profile_dir()).await)
+async fn pull(Extension(runtime): Extension<Arc<ServerRuntime>>) -> impl IntoResponse {
+    let root = match active_profile_dir_at(runtime.data_root()) {
+        Ok(root) => root,
+        Err(error) => return AppError::from(error).into_response(),
+    };
+    respond(github_sync::github_sync_pull_core(&root).await)
 }
 
 fn respond<T: serde::Serialize>(result: Result<T, String>) -> axum::response::Response {

@@ -1,9 +1,9 @@
+use nanoid::nanoid;
+use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::sync::{Mutex, OnceLock};
-use serde::{Serialize, Deserialize};
-use nanoid::nanoid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -59,10 +59,12 @@ fn mode_for_project(project_id: &str) -> crate::worktrees::WorktreeMode {
 }
 
 pub fn get_scheduler() -> &'static Mutex<Scheduler> {
-    SCHEDULER.get_or_init(|| Mutex::new(Scheduler {
-        tasks: HashMap::new(),
-        leases: HashSet::new(),
-    }))
+    SCHEDULER.get_or_init(|| {
+        Mutex::new(Scheduler {
+            tasks: HashMap::new(),
+            leases: HashSet::new(),
+        })
+    })
 }
 
 /// Id estável e namespaced por projeto pra um item do checklist real
@@ -107,7 +109,11 @@ pub fn load_gsd_tasks(project_id: &str, repo_path: &str) -> Result<(), String> {
                 Some(p) => vec![p.clone()],
                 None => Vec::new(),
             },
-            status: if item.checked { TaskStatus::Completed } else { TaskStatus::Pending },
+            status: if item.checked {
+                TaskStatus::Completed
+            } else {
+                TaskStatus::Pending
+            },
             assigned_agent_id: None,
             lease_resource: None,
             worktree_path: None,
@@ -124,12 +130,18 @@ pub fn load_gsd_tasks(project_id: &str, repo_path: &str) -> Result<(), String> {
     scheduler.tasks.retain(|id, task| {
         task.project_id != project_id
             || fresh_ids.contains(id)
-            || matches!(task.status, TaskStatus::Running | TaskStatus::Completed | TaskStatus::Failed)
+            || matches!(
+                task.status,
+                TaskStatus::Running | TaskStatus::Completed | TaskStatus::Failed
+            )
     });
 
     for mut task in fresh_tasks {
         if let Some(existing) = scheduler.tasks.get(&task.id) {
-            if matches!(existing.status, TaskStatus::Running | TaskStatus::Completed | TaskStatus::Failed) {
+            if matches!(
+                existing.status,
+                TaskStatus::Running | TaskStatus::Completed | TaskStatus::Failed
+            ) {
                 task.status = existing.status.clone();
                 task.assigned_agent_id = existing.assigned_agent_id.clone();
                 task.lease_resource = existing.lease_resource.clone();
@@ -247,7 +259,10 @@ pub fn run_scheduler_tick(project_id: &str, repo_path: &str) -> Result<(), Strin
                         );
                     }
                     Err(e) => {
-                        eprintln!("[Scheduler] Falha ao provisionar worktree para {}: {}", task_id_clone, e);
+                        eprintln!(
+                            "[Scheduler] Falha ao provisionar worktree para {}: {}",
+                            task_id_clone, e
+                        );
                         let mut sched = get_scheduler().lock().unwrap();
                         let mut to_remove_lease = None;
                         if let Some(task) = sched.tasks.get_mut(&task_id_clone) {
@@ -279,7 +294,9 @@ pub fn run_scheduler_tick(project_id: &str, repo_path: &str) -> Result<(), Strin
     for task in scheduler.tasks.values() {
         if task.project_id == project_id && task.status == TaskStatus::Running {
             if let Some(worktree_path) = &task.worktree_path {
-                let status = crate::planning_gate::compute_planning_status(std::path::Path::new(worktree_path));
+                let status = crate::planning_gate::compute_planning_status(std::path::Path::new(
+                    worktree_path,
+                ));
                 if status.has_planning && status.reported_complete {
                     to_complete.push(task.id.clone());
                 }
@@ -310,7 +327,9 @@ pub fn run_scheduler_tick(project_id: &str, repo_path: &str) -> Result<(), Strin
 #[tauri::command]
 pub fn get_scheduler_tasks(project_id: String) -> Result<Vec<Task>, String> {
     let scheduler = get_scheduler().lock().unwrap();
-    let list: Vec<Task> = scheduler.tasks.values()
+    let list: Vec<Task> = scheduler
+        .tasks
+        .values()
         .filter(|t| t.project_id == project_id)
         .cloned()
         .collect();
@@ -377,12 +396,17 @@ pub fn start_scheduler_event_loop() {
             if event.event_type == "PlanningUpdated" {
                 if let Some(ref project_id) = event.task_id {
                     if let serde_json::Value::Object(map) = &event.data {
-                        if let Some(planning_dir) = map.get("planning_dir").and_then(|v| v.as_str()) {
-                            let repo_path = std::path::Path::new(planning_dir).parent()
+                        if let Some(planning_dir) = map.get("planning_dir").and_then(|v| v.as_str())
+                        {
+                            let repo_path = std::path::Path::new(planning_dir)
+                                .parent()
                                 .map(|p| p.to_string_lossy().to_string())
                                 .unwrap_or_default();
                             if !repo_path.is_empty() {
-                                eprintln!("[Scheduler] Autotick disparado por PlanningUpdated para {}", project_id);
+                                eprintln!(
+                                    "[Scheduler] Autotick disparado por PlanningUpdated para {}",
+                                    project_id
+                                );
                                 let _ = trigger_scheduler_tick(project_id.clone(), repo_path, None);
                             }
                         }
@@ -404,12 +428,19 @@ mod tests {
     }
 
     fn temp_git_repo(label: &str) -> std::path::PathBuf {
-        let suffix = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let root = std::env::temp_dir().join(format!("alethe-scheduler-{label}-{suffix}"));
         fs::create_dir_all(&root).unwrap();
         crate::git_control::checked_output(&root, &["init", "-b", "main"]).unwrap();
         crate::git_control::checked_output(&root, &["config", "user.name", "Alethe Test"]).unwrap();
-        crate::git_control::checked_output(&root, &["config", "user.email", "alethe@example.invalid"]).unwrap();
+        crate::git_control::checked_output(
+            &root,
+            &["config", "user.email", "alethe@example.invalid"],
+        )
+        .unwrap();
         fs::write(root.join("a.txt"), "a\n").unwrap();
         crate::git_control::checked_output(&root, &["add", "-A"]).unwrap();
         crate::git_control::checked_output(&root, &["commit", "-m", "base"]).unwrap();
@@ -422,7 +453,10 @@ mod tests {
         let a2 = derive_item_task_id("proj-a", "Fazer login");
         let b = derive_item_task_id("proj-b", "Fazer login");
         assert_eq!(a1, a2, "mesmo projeto + mesmo texto = mesmo id");
-        assert_ne!(a1, b, "projetos diferentes nunca colidem, mesmo com texto igual");
+        assert_ne!(
+            a1, b,
+            "projetos diferentes nunca colidem, mesmo com texto igual"
+        );
     }
 
     #[test]
@@ -487,7 +521,10 @@ mod tests {
         load_gsd_tasks(&project_id, root.to_string_lossy().as_ref()).unwrap();
 
         let scheduler = get_scheduler().lock().unwrap();
-        let a = scheduler.tasks.get(&item_a_id).expect("Running sobrevive mesmo com a linha removida");
+        let a = scheduler
+            .tasks
+            .get(&item_a_id)
+            .expect("Running sobrevive mesmo com a linha removida");
         assert_eq!(a.status, TaskStatus::Running);
         assert_eq!(a.worktree_path.as_deref(), Some("D:/fake/worktree"));
         assert!(
@@ -504,10 +541,17 @@ mod tests {
     #[test]
     fn run_scheduler_tick_completes_running_task_when_worktree_planning_is_done() {
         let project_id = unique_project_id("complete");
-        let suffix = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let worktree = std::env::temp_dir().join(format!("alethe-scheduler-wt-{suffix}"));
         fs::create_dir_all(worktree.join(".planning")).unwrap();
-        fs::write(worktree.join(".planning").join("status.md"), "Status: Completed\n").unwrap();
+        fs::write(
+            worktree.join(".planning").join("status.md"),
+            "Status: Completed\n",
+        )
+        .unwrap();
 
         let task_id = format!("{project_id}-manual-task");
         {

@@ -72,7 +72,10 @@ fn gsd_opencode_plugin_write_inner(repo: String, model_chain: Vec<String>) -> Re
 }
 
 #[tauri::command]
-pub async fn gsd_opencode_plugin_write(repo: String, model_chain: Vec<String>) -> Result<(), String> {
+pub async fn gsd_opencode_plugin_write(
+    repo: String,
+    model_chain: Vec<String>,
+) -> Result<(), String> {
     tokio::task::spawn_blocking(move || gsd_opencode_plugin_write_inner(repo, model_chain))
         .await
         .map_err(|error| format!("gsd_opencode_plugin_write: falha na task bloqueante: {error}"))?
@@ -91,8 +94,11 @@ fn write_gsd_config_sidecar(root: &std::path::Path, model_chain: &[String]) -> R
         std::fs::create_dir_all(parent).map_err(|e| format!("mkdir_failed:{e}"))?;
     }
     let body = serde_json::json!({ "modelChain": model_chain });
-    std::fs::write(&path, serde_json::to_string_pretty(&body).map_err(|e| e.to_string())?)
-        .map_err(|e| format!("write_failed:{e}"))
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&body).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| format!("write_failed:{e}"))
 }
 
 /// Mescla (sem sobrescrever outras chaves/plugins) a entrada do plugin no
@@ -133,18 +139,26 @@ fn write_opencode_plugin_entry(root: &std::path::Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::gsd_opencode_plugin_write_inner as gsd_opencode_plugin_write;
+    use super::*;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_repo(label: &str) -> std::path::PathBuf {
-        let suffix = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("alethe-opencode-gsd-plugin-{label}-{suffix}"));
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("alethe-opencode-gsd-plugin-{label}-{suffix}"));
         fs::create_dir_all(&root).unwrap();
         crate::git_control::checked_output(&root, &["init", "-b", "main"]).unwrap();
         crate::git_control::checked_output(&root, &["config", "user.name", "Alethe Test"]).unwrap();
-        crate::git_control::checked_output(&root, &["config", "user.email", "alethe@example.invalid"]).unwrap();
+        crate::git_control::checked_output(
+            &root,
+            &["config", "user.email", "alethe@example.invalid"],
+        )
+        .unwrap();
         fs::write(root.join("a.txt"), "a\n").unwrap();
         crate::git_control::checked_output(&root, &["add", "-A"]).unwrap();
         crate::git_control::checked_output(&root, &["commit", "-m", "base"]).unwrap();
@@ -192,7 +206,10 @@ mod tests {
         let raw = fs::read_to_string(root.join("opencode.json")).unwrap();
         let parsed: Value = serde_json::from_str(&raw).unwrap();
         let plugins = parsed["plugin"].as_array().unwrap();
-        let count = plugins.iter().filter(|v| v.as_str() == Some(PLUGIN_CONFIG_ENTRY)).count();
+        let count = plugins
+            .iter()
+            .filter(|v| v.as_str() == Some(PLUGIN_CONFIG_ENTRY))
+            .count();
         assert_eq!(count, 1);
         fs::remove_dir_all(root).unwrap();
     }
@@ -202,7 +219,11 @@ mod tests {
         let root = temp_repo("no-overwrite-edited");
         let plugin_dir = root.join(".opencode").join("plugins");
         fs::create_dir_all(&plugin_dir).unwrap();
-        fs::write(plugin_dir.join("alethe-gsd-state.ts"), "// custom user content, no marker\n").unwrap();
+        fs::write(
+            plugin_dir.join("alethe-gsd-state.ts"),
+            "// custom user content, no marker\n",
+        )
+        .unwrap();
 
         gsd_opencode_plugin_write(root.to_string_lossy().into_owned(), vec![]).unwrap();
 
@@ -216,7 +237,11 @@ mod tests {
         let root = temp_repo("no-overwrite-future");
         let plugin_dir = root.join(".opencode").join("plugins");
         fs::create_dir_all(&plugin_dir).unwrap();
-        fs::write(plugin_dir.join("alethe-gsd-state.ts"), "// alethe-managed: v99\ncustom future content\n").unwrap();
+        fs::write(
+            plugin_dir.join("alethe-gsd-state.ts"),
+            "// alethe-managed: v99\ncustom future content\n",
+        )
+        .unwrap();
 
         gsd_opencode_plugin_write(root.to_string_lossy().into_owned(), vec![]).unwrap();
 
@@ -230,7 +255,11 @@ mod tests {
         let root = temp_repo("auto-update");
         let plugin_dir = root.join(".opencode").join("plugins");
         fs::create_dir_all(&plugin_dir).unwrap();
-        fs::write(plugin_dir.join("alethe-gsd-state.ts"), "// alethe-managed: v1\nold body\n").unwrap();
+        fs::write(
+            plugin_dir.join("alethe-gsd-state.ts"),
+            "// alethe-managed: v1\nold body\n",
+        )
+        .unwrap();
 
         gsd_opencode_plugin_write(root.to_string_lossy().into_owned(), vec![]).unwrap();
 
@@ -256,7 +285,10 @@ mod tests {
         let root = temp_repo("model-chain-sidecar");
         gsd_opencode_plugin_write(
             root.to_string_lossy().into_owned(),
-            vec!["mimo-v2.5-free".to_string(), "laguna-s-2.1-free".to_string()],
+            vec![
+                "mimo-v2.5-free".to_string(),
+                "laguna-s-2.1-free".to_string(),
+            ],
         )
         .unwrap();
 

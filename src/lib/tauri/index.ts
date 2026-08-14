@@ -5,6 +5,7 @@
 export * from '../api/agents'
 export * from '../api/aiMemory'
 export * from '../api/cli'
+export * from '../api/coreEvents'
 export * from '../api/filesystem'
 export * from '../api/git'
 export * from '../api/graphify'

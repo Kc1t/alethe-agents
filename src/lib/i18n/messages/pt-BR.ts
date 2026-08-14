@@ -43,6 +43,9 @@ export const ptBR: Record<MessageKey, string> = {
   'onboarding.profileTitle': 'Perfil',
   'onboarding.profileSubtitle': 'Defina o idioma e dê um nome e um avatar, se quiser.',
   'onboarding.profilePreviewHint': 'É assim que seu perfil vai aparecer no app.',
+  'onboarding.profileSaveErrorTitle': 'A configuração do perfil não foi salva',
+  'onboarding.profileSaveErrorBody':
+    'O Alethe manteve a configuração aberta para você tentar novamente. Detalhes: {error}',
   'onboarding.name': 'Nome',
   'onboarding.namePlaceholder': 'Seu nome',
   'onboarding.nameHint': 'Curto e fácil de reconhecer.',
@@ -1845,4 +1848,28 @@ export const ptBR: Record<MessageKey, string> = {
     'O terminal do revisor ainda está iniciando — tente de novo em instantes.',
   'merge.reviewFeedbackSentTitle': 'Feedback enviado',
   'merge.reviewFeedbackSentBody': 'Sua mensagem foi enviada ao agente revisor no terminal dele.',
+
+  /* ---- fsBrowser ---- */
+  'fsBrowser.titleFolder': 'Selecionar Pasta',
+  'fsBrowser.titleFile': 'Selecionar Arquivo',
+  'fsBrowser.home': 'Início',
+  'fsBrowser.drives': 'Unidades',
+  'fsBrowser.up': 'Acima',
+  'fsBrowser.searchPlaceholder': 'Buscar pastas e arquivos...',
+  'fsBrowser.pathInputPlaceholder': 'Digite o caminho manualmente...',
+  'fsBrowser.selectCurrentFolder': 'Selecionar esta pasta',
+  'fsBrowser.selectFile': 'Selecionar arquivo',
+  'fsBrowser.empty': 'Esta pasta está vazia',
+  'fsBrowser.itemsCount': '{count} itens',
+
+  /* ---- persistence ---- */
+  'persistence.conflictTitle': 'Há dados mais recentes disponíveis',
+  'persistence.conflictBody':
+    'Suas alterações locais não sobrescreveram os dados mais recentes do perfil. Uma cópia de recuperação foi salva; recarregue o Alethe para usar a versão mais recente.',
+  'persistence.coreMismatchTitle': 'Outro núcleo do Alethe está em execução',
+  'persistence.coreMismatchBody':
+    'O servidor local pertence a outra pasta de dados do app. O Alethe bloqueou a sincronização para não misturar perfis. Feche o outro núcleo e reabra o Alethe.',
+  'persistence.writeTitle': 'As alterações ainda não foram salvas',
+  'persistence.writeBody':
+    'O Alethe não conseguiu acessar o armazenamento local. Mantenha o app aberto enquanto a conexão é recuperada.',
 }

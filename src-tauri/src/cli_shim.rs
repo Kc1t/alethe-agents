@@ -341,7 +341,9 @@ mod windows_path {
     }
 
     fn entries(path: &str) -> Vec<&str> {
-        path.split(';').filter(|entry| !entry.trim().is_empty()).collect()
+        path.split(';')
+            .filter(|entry| !entry.trim().is_empty())
+            .collect()
     }
 
     pub fn user_path_contains(dir: &Path) -> bool {
@@ -362,10 +364,11 @@ mod windows_path {
         let (current, vtype) = read_path(&key);
         let target = dir.to_string_lossy().to_string();
 
-        if entries(&current)
-            .iter()
-            .any(|entry| entry.trim_end_matches('\\').eq_ignore_ascii_case(target.trim_end_matches('\\')))
-        {
+        if entries(&current).iter().any(|entry| {
+            entry
+                .trim_end_matches('\\')
+                .eq_ignore_ascii_case(target.trim_end_matches('\\'))
+        }) {
             return Ok(());
         }
 
@@ -455,12 +458,18 @@ mod tests {
     fn stale_shim_is_detected() {
         let old = PathBuf::from("/opt/alethe-antigo/alethe");
         let script = render_shim(&old).expect("script");
-        assert!(!shim_targets_binary(&script, Path::new("/opt/alethe-novo/alethe")));
+        assert!(!shim_targets_binary(
+            &script,
+            Path::new("/opt/alethe-novo/alethe")
+        ));
     }
 
     #[test]
     fn shim_without_marker_counts_as_stale() {
-        assert!(!shim_targets_binary("#!/bin/sh\necho oi\n", Path::new("/opt/alethe/alethe")));
+        assert!(!shim_targets_binary(
+            "#!/bin/sh\necho oi\n",
+            Path::new("/opt/alethe/alethe")
+        ));
     }
 
     #[cfg(not(windows))]
@@ -481,7 +490,10 @@ mod tests {
         use std::io::Write;
         use std::process::Command;
 
-        for binary in ["/opt/alethe/alethe", "/Applications/Alethe.app/Contents/MacOS/Alethe"] {
+        for binary in [
+            "/opt/alethe/alethe",
+            "/Applications/Alethe.app/Contents/MacOS/Alethe",
+        ] {
             let script = render_shim(Path::new(binary)).expect("script");
             let file = std::env::temp_dir().join(format!(
                 "alethe-shim-syntax-{}.sh",
@@ -491,7 +503,11 @@ mod tests {
                 .and_then(|mut handle| handle.write_all(script.as_bytes()))
                 .expect("escrever shim");
 
-            let output = Command::new("sh").arg("-n").arg(&file).output().expect("rodar sh -n");
+            let output = Command::new("sh")
+                .arg("-n")
+                .arg(&file)
+                .output()
+                .expect("rodar sh -n");
             let _ = std::fs::remove_file(&file);
 
             assert!(

@@ -84,8 +84,9 @@ fn relative_display(root: &Path, file: &Path) -> String {
 /// comum, pra não perder match só por diferença de sintaxe entre frameworks.
 fn normalize_path_pattern(raw: &str) -> String {
     static PARAM_RE: OnceLock<Regex> = OnceLock::new();
-    let re = PARAM_RE
-        .get_or_init(|| Regex::new(r"(:[A-Za-z0-9_]+|\{[A-Za-z0-9_:]+\}|<[A-Za-z0-9_:]+>)").unwrap());
+    let re = PARAM_RE.get_or_init(|| {
+        Regex::new(r"(:[A-Za-z0-9_]+|\{[A-Za-z0-9_:]+\}|<[A-Za-z0-9_:]+>)").unwrap()
+    });
     let normalized = re.replace_all(raw, ":param");
     let trimmed = normalized.trim_end_matches('/');
     if trimmed.is_empty() {
@@ -136,7 +137,8 @@ fn frontend_patterns() -> &'static [CallPattern] {
                 path_group: 1,
             },
             CallPattern {
-                regex: Regex::new(r#"axios\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)"#).unwrap(),
+                regex: Regex::new(r#"axios\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)"#)
+                    .unwrap(),
                 method_group: Some(1),
                 path_group: 2,
             },
@@ -150,8 +152,10 @@ fn backend_patterns() -> &'static [(CallPattern, &'static str)] {
         vec![
             (
                 CallPattern {
-                    regex: Regex::new(r#"(?:app|router)\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)"#)
-                        .unwrap(),
+                    regex: Regex::new(
+                        r#"(?:app|router)\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)"#,
+                    )
+                    .unwrap(),
                     method_group: Some(1),
                     path_group: 2,
                 },
@@ -159,8 +163,10 @@ fn backend_patterns() -> &'static [(CallPattern, &'static str)] {
             ),
             (
                 CallPattern {
-                    regex: Regex::new(r#"@(?:app|router)\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)"#)
-                        .unwrap(),
+                    regex: Regex::new(
+                        r#"@(?:app|router)\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)"#,
+                    )
+                    .unwrap(),
                     method_group: Some(1),
                     path_group: 2,
                 },
@@ -188,7 +194,10 @@ fn extract_calls(files: &[PathBuf], root: &Path) -> Vec<ApiCallSite> {
         for (line_no, line) in content.lines().enumerate() {
             for pattern in frontend_patterns() {
                 if let Some(caps) = pattern.regex.captures(line) {
-                    let raw_path = caps.get(pattern.path_group).map(|m| m.as_str()).unwrap_or("");
+                    let raw_path = caps
+                        .get(pattern.path_group)
+                        .map(|m| m.as_str())
+                        .unwrap_or("");
                     if !raw_path.starts_with('/') {
                         continue; // ignora URLs absolutas externas (http://...) e relativas sem barra
                     }
@@ -219,7 +228,10 @@ fn extract_routes(files: &[PathBuf], root: &Path) -> Vec<ApiRouteSite> {
         for (line_no, line) in content.lines().enumerate() {
             for (pattern, framework) in backend_patterns() {
                 if let Some(caps) = pattern.regex.captures(line) {
-                    let raw_path = caps.get(pattern.path_group).map(|m| m.as_str()).unwrap_or("");
+                    let raw_path = caps
+                        .get(pattern.path_group)
+                        .map(|m| m.as_str())
+                        .unwrap_or("");
                     if !raw_path.starts_with('/') {
                         continue;
                     }
@@ -265,7 +277,11 @@ pub fn contract_check(env_path: String) -> Result<Vec<ContractWarning>, String> 
 
     let warnings = calls
         .into_iter()
-        .filter(|call| !routes.iter().any(|route| paths_related(&call.path_pattern, &route.path_pattern)))
+        .filter(|call| {
+            !routes
+                .iter()
+                .any(|route| paths_related(&call.path_pattern, &route.path_pattern))
+        })
         .map(|call| ContractWarning {
             reason: format!(
                 "Nenhuma rota de backend encontrada para \"{}\" (verifique se o endpoint existe)",
@@ -284,7 +300,8 @@ mod tests {
     use std::fs;
 
     fn temp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("alethe-contract-{name}-{}", nanoid::nanoid!(6)));
+        let dir =
+            std::env::temp_dir().join(format!("alethe-contract-{name}-{}", nanoid::nanoid!(6)));
         fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -322,7 +339,10 @@ mod tests {
         )
         .unwrap();
         let warnings = contract_check(root.to_string_lossy().into_owned()).unwrap();
-        assert!(warnings.is_empty(), "esperava zero avisos, veio: {warnings:?}");
+        assert!(
+            warnings.is_empty(),
+            "esperava zero avisos, veio: {warnings:?}"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

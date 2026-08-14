@@ -23,13 +23,7 @@ extern "C" {
         command: *const c_char,
         scale_factor: f64,
     ) -> AletheSurface;
-    pub fn alethe_ghostty_surface_set_frame(
-        surface: AletheSurface,
-        x: f64,
-        y: f64,
-        w: f64,
-        h: f64,
-    );
+    pub fn alethe_ghostty_surface_set_frame(surface: AletheSurface, x: f64, y: f64, w: f64, h: f64);
     pub fn alethe_ghostty_surface_set_hidden(surface: AletheSurface, hidden: bool);
     pub fn alethe_ghostty_surface_set_size(surface: AletheSurface, width_px: u32, height_px: u32);
     pub fn alethe_ghostty_surface_set_content_scale(surface: AletheSurface, x: f64, y: f64);

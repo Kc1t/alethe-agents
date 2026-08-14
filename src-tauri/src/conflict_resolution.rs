@@ -23,7 +23,9 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 use crate::git_control::{checked_output, git_command, repository_root};
-use crate::merge_analyzer::{class_strategy, classify_path, merge_envs_dir, unmerged_files, ConflictFile};
+use crate::merge_analyzer::{
+    class_strategy, classify_path, merge_envs_dir, unmerged_files, ConflictFile,
+};
 use crate::worktrees::git_arg;
 
 const PROMPT_FILE: &str = "ALETHE_CONFLICT.md";
@@ -120,7 +122,9 @@ fn build_prompt(meta: &MergeMeta, conflicts: &[ConflictFile]) -> String {
         ));
     }
     lines.push(String::new());
-    lines.push("Use `git diff` neste diretório para ver os marcadores (`<<<<<<<`/`>>>>>>>`).".to_string());
+    lines.push(
+        "Use `git diff` neste diretório para ver os marcadores (`<<<<<<<`/`>>>>>>>`).".to_string(),
+    );
     lines.join("\n")
 }
 
@@ -158,7 +162,10 @@ pub(crate) fn merge_prepare_inner(
     let env_arg = git_arg(&env);
     let branch = format!("alethe/merge-{id}");
 
-    checked_output(&root, &["worktree", "add", "-b", &branch, &env_arg, &target])?;
+    checked_output(
+        &root,
+        &["worktree", "add", "-b", &branch, &env_arg, &target],
+    )?;
     let merge = git_command(&env, &["merge", "--no-commit", "--no-ff", &source])?;
     let clean = merge.status.success();
     let conflicts: Vec<ConflictFile> = if clean {
@@ -272,7 +279,10 @@ fn validate_and_stage(
         return Ok(Some(MergeOutcome {
             merged: false,
             stage: "conflict_markers".to_string(),
-            output: format!("Marcadores de conflito restantes em: {}", markers.join(", ")),
+            output: format!(
+                "Marcadores de conflito restantes em: {}",
+                markers.join(", ")
+            ),
             ..Default::default()
         }));
     }
@@ -388,8 +398,9 @@ pub(crate) fn merge_finalize_inner(
 
     // Camada 3 do Escudo — Verificador de Contrato de API (heurístico, best-effort).
     // Nunca falha o merge: erro na checagem só vira lista vazia de avisos.
-    let contract_warnings = crate::contract_check::contract_check(env.to_string_lossy().into_owned())
-        .unwrap_or_default();
+    let contract_warnings =
+        crate::contract_check::contract_check(env.to_string_lossy().into_owned())
+            .unwrap_or_default();
 
     let message = format!("merge(alethe): {} -> {}", meta.source, meta.target);
     // Depois de um merge_rebase_onto_target bem-sucedido, a reconciliação já
@@ -457,7 +468,9 @@ pub(crate) fn merge_finalize_inner(
         // mensagem (variações de caixa) especificamente pra ff-only recusado
         // por divergência, não por corrupção ou I/O.
         let lower = error.to_lowercase();
-        let stage = if lower.contains("not possible to fast-forward") || lower.contains("non-fast-forward") {
+        let stage = if lower.contains("not possible to fast-forward")
+            || lower.contains("non-fast-forward")
+        {
             "branch_diverged"
         } else {
             "integration"
@@ -556,13 +569,19 @@ pub(crate) fn merge_preflight_abort_inner(repo: String, env_id: String) -> Resul
 ///   superfície de "resolver" de antes, front volta a `resolving`.
 /// - Falha dura (não-conflito) → aborta e devolve `stage: "rebase_failed"`.
 #[tauri::command]
-pub async fn merge_rebase_onto_target(repo: String, env_id: String) -> Result<MergeOutcome, String> {
+pub async fn merge_rebase_onto_target(
+    repo: String,
+    env_id: String,
+) -> Result<MergeOutcome, String> {
     tokio::task::spawn_blocking(move || merge_rebase_onto_target_inner(repo, env_id))
         .await
         .map_err(|error| format!("merge_rebase_onto_target: falha na task bloqueante: {error}"))?
 }
 
-pub(crate) fn merge_rebase_onto_target_inner(repo: String, env_id: String) -> Result<MergeOutcome, String> {
+pub(crate) fn merge_rebase_onto_target_inner(
+    repo: String,
+    env_id: String,
+) -> Result<MergeOutcome, String> {
     let root = repository_root(&repo)?;
     validate_env_id(&env_id)?;
     let env = env_dir(&root, &env_id);
@@ -604,7 +623,11 @@ pub(crate) fn merge_rebase_onto_target_inner(repo: String, env_id: String) -> Re
         if let Ok(body) = serde_json::to_string_pretty(&updated_meta) {
             let _ = std::fs::write(meta_path(&root, &env_id), body);
         }
-        let paths = conflicts.iter().map(|c| c.path.as_str()).collect::<Vec<_>>().join(", ");
+        let paths = conflicts
+            .iter()
+            .map(|c| c.path.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
         return Ok(MergeOutcome {
             merged: false,
             stage: "rebase_conflict".to_string(),
@@ -615,12 +638,18 @@ pub(crate) fn merge_rebase_onto_target_inner(repo: String, env_id: String) -> Re
 
     // Falha dura (não-conflito): aborta pra não deixar o ambiente efêmero num
     // merge pendurado, e propaga a mensagem real do git.
-    let stderr = String::from_utf8_lossy(&reconcile.stderr).trim().to_string();
+    let stderr = String::from_utf8_lossy(&reconcile.stderr)
+        .trim()
+        .to_string();
     let _ = git_command(&env, &["merge", "--abort"]);
     Ok(MergeOutcome {
         merged: false,
         stage: "rebase_failed".to_string(),
-        output: if stderr.is_empty() { "rebase_failed".to_string() } else { stderr },
+        output: if stderr.is_empty() {
+            "rebase_failed".to_string()
+        } else {
+            stderr
+        },
         ..Default::default()
     })
 }
@@ -638,13 +667,19 @@ pub struct ForceCleanupResult {
 /// de `git worktree prune` best-effort. O front decide `pruneOnly` vs
 /// `requiresRawDeletion` com base em `deleted`/`pruned`.
 #[tauri::command]
-pub async fn merge_force_cleanup(repo: String, env_id: String) -> Result<ForceCleanupResult, String> {
+pub async fn merge_force_cleanup(
+    repo: String,
+    env_id: String,
+) -> Result<ForceCleanupResult, String> {
     tokio::task::spawn_blocking(move || merge_force_cleanup_inner(repo, env_id))
         .await
         .map_err(|error| format!("merge_force_cleanup: falha na task bloqueante: {error}"))?
 }
 
-pub(crate) fn merge_force_cleanup_inner(repo: String, env_id: String) -> Result<ForceCleanupResult, String> {
+pub(crate) fn merge_force_cleanup_inner(
+    repo: String,
+    env_id: String,
+) -> Result<ForceCleanupResult, String> {
     let root = repository_root(&repo)?;
     validate_env_id(&env_id)?;
     let envs_base = merge_envs_dir(&root);
@@ -709,8 +744,8 @@ mod tests {
     use super::merge_abort_inner as merge_abort;
     use super::merge_finalize_inner as merge_finalize;
     use super::merge_force_cleanup_inner as merge_force_cleanup;
-    use super::merge_prepare_inner as merge_prepare;
     use super::merge_preflight_abort_inner as merge_preflight_abort;
+    use super::merge_prepare_inner as merge_prepare;
     use super::merge_rebase_onto_target_inner as merge_rebase_onto_target;
 
     #[test]
@@ -719,7 +754,8 @@ mod tests {
         // Alvo da integração: agent-a precisa estar checked out no repo.
         checked_output(&root, &["checkout", "agent-a"]).unwrap();
 
-        let env = merge_prepare(root_str.clone(), "agent-b".into(), "agent-a".into(), None).unwrap();
+        let env =
+            merge_prepare(root_str.clone(), "agent-b".into(), "agent-a".into(), None).unwrap();
         assert!(!env.clean);
         assert_eq!(env.conflicts.len(), 1);
         let env_path = PathBuf::from(&env.path);
@@ -745,14 +781,19 @@ mod tests {
         .unwrap();
 
         // Validação que falha → merge barrado, ambiente preservado.
-        let failed = merge_finalize(root_str.clone(), env.id.clone(), vec!["exit 1".into()]).unwrap();
+        let failed =
+            merge_finalize(root_str.clone(), env.id.clone(), vec!["exit 1".into()]).unwrap();
         assert!(!failed.merged);
         assert!(failed.stage.starts_with("validation:"));
         assert!(env_path.is_dir());
 
         // Validação que passa → commit + ff no agent-a + teardown.
         let ok = merge_finalize(root_str.clone(), env.id.clone(), vec!["echo ok".into()]).unwrap();
-        assert!(ok.merged, "esperava merge, veio: {} / {}", ok.stage, ok.output);
+        assert!(
+            ok.merged,
+            "esperava merge, veio: {} / {}",
+            ok.stage, ok.output
+        );
         assert!(!env_path.exists());
         let merged = fs::read_to_string(root.join("shared.ts")).unwrap();
         assert!(merged.contains("from-a+from-b"));
@@ -780,7 +821,11 @@ mod tests {
         assert!(env.clean);
         assert!(env.prompt_path.is_none());
         let ok = merge_finalize(root_str.clone(), env.id, vec!["echo ok".into()]).unwrap();
-        assert!(ok.merged, "esperava merge, veio: {} / {}", ok.stage, ok.output);
+        assert!(
+            ok.merged,
+            "esperava merge, veio: {} / {}",
+            ok.stage, ok.output
+        );
         let value = fs::read_to_string(root.join("shared.ts")).unwrap();
         assert!(value.contains("from-a"));
         fs::remove_dir_all(root).unwrap();
@@ -789,7 +834,8 @@ mod tests {
     #[test]
     fn preflight_abort_is_a_safe_noop_when_nothing_in_progress() {
         let (root, root_str) = conflicting_repo();
-        let env = merge_prepare(root_str.clone(), "agent-b".into(), "agent-a".into(), None).unwrap();
+        let env =
+            merge_prepare(root_str.clone(), "agent-b".into(), "agent-a".into(), None).unwrap();
         // Nada em progresso — não deve falhar mesmo sem merge/rebase pendente.
         merge_preflight_abort(root_str.clone(), env.id.clone()).unwrap();
         merge_abort(root_str, env.id).unwrap();
@@ -802,7 +848,8 @@ mod tests {
         checked_output(&root, &["checkout", "agent-a"]).unwrap();
 
         // Conflito normal entre agent-b e agent-a, como no ciclo completo.
-        let env = merge_prepare(root_str.clone(), "agent-b".into(), "agent-a".into(), None).unwrap();
+        let env =
+            merge_prepare(root_str.clone(), "agent-b".into(), "agent-a".into(), None).unwrap();
         assert!(!env.clean);
         let env_path = PathBuf::from(&env.path);
 
@@ -821,7 +868,8 @@ mod tests {
         checked_output(&root, &["commit", "-m", "commit concorrente"]).unwrap();
 
         // Finalize agora falha por divergência, não por marcador/validação.
-        let diverged = merge_finalize(root_str.clone(), env.id.clone(), vec!["echo ok".into()]).unwrap();
+        let diverged =
+            merge_finalize(root_str.clone(), env.id.clone(), vec!["echo ok".into()]).unwrap();
         assert!(!diverged.merged);
         assert_eq!(diverged.stage, "branch_diverged");
         assert!(env_path.is_dir(), "ambiente deve ser preservado pra retry");
@@ -835,7 +883,11 @@ mod tests {
 
         // Reintegra — agora o ff-only deve funcionar.
         let ok = merge_finalize(root_str.clone(), env.id.clone(), vec!["echo ok".into()]).unwrap();
-        assert!(ok.merged, "esperava merge, veio: {} / {}", ok.stage, ok.output);
+        assert!(
+            ok.merged,
+            "esperava merge, veio: {} / {}",
+            ok.stage, ok.output
+        );
 
         // Asserção crítica: o commit concorrente está presente no alvo final.
         assert!(root.join("concurrent.txt").is_file());
@@ -848,7 +900,8 @@ mod tests {
     #[test]
     fn force_cleanup_deletes_and_prunes_then_is_idempotent() {
         let (root, root_str) = conflicting_repo();
-        let env = merge_prepare(root_str.clone(), "agent-b".into(), "agent-a".into(), None).unwrap();
+        let env =
+            merge_prepare(root_str.clone(), "agent-b".into(), "agent-a".into(), None).unwrap();
         let env_path = PathBuf::from(&env.path);
         assert!(env_path.is_dir());
 
@@ -868,7 +921,8 @@ mod tests {
     #[test]
     fn abort_destroys_environment() {
         let (root, root_str) = conflicting_repo();
-        let env = merge_prepare(root_str.clone(), "agent-b".into(), "agent-a".into(), None).unwrap();
+        let env =
+            merge_prepare(root_str.clone(), "agent-b".into(), "agent-a".into(), None).unwrap();
         let env_path = PathBuf::from(&env.path);
         assert!(env_path.is_dir());
         merge_abort(root_str.clone(), env.id.clone()).unwrap();

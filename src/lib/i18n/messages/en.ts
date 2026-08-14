@@ -44,6 +44,9 @@ export const en = {
   'onboarding.profileSubtitle':
     'Set the language, then give the app a name and an avatar if you want one.',
   'onboarding.profilePreviewHint': 'This is how your profile will show up in the app.',
+  'onboarding.profileSaveErrorTitle': 'Profile setup was not saved',
+  'onboarding.profileSaveErrorBody':
+    'Alethe kept the setup open so you can try again. Details: {error}',
   'onboarding.name': 'Name',
   'onboarding.namePlaceholder': 'Your name',
   'onboarding.nameHint': 'Keep it short and recognizable.',
@@ -1828,6 +1831,30 @@ export const en = {
     'The reviewer’s terminal is still starting up — try again in a moment.',
   'merge.reviewFeedbackSentTitle': 'Feedback sent',
   'merge.reviewFeedbackSentBody': 'Your message was sent to the reviewer agent in its terminal.',
+
+  /* ---- fsBrowser ---- */
+  'fsBrowser.titleFolder': 'Select Folder',
+  'fsBrowser.titleFile': 'Select File',
+  'fsBrowser.home': 'Home',
+  'fsBrowser.drives': 'Drives',
+  'fsBrowser.up': 'Up',
+  'fsBrowser.searchPlaceholder': 'Search folders and files...',
+  'fsBrowser.pathInputPlaceholder': 'Enter path manually...',
+  'fsBrowser.selectCurrentFolder': 'Select this folder',
+  'fsBrowser.selectFile': 'Select file',
+  'fsBrowser.empty': 'This folder is empty',
+  'fsBrowser.itemsCount': '{count} items',
+
+  /* ---- persistence ---- */
+  'persistence.conflictTitle': 'Newer data is available',
+  'persistence.conflictBody':
+    'Your local changes did not overwrite the newer profile data. A recovery copy was saved; reload Alethe to use the latest version.',
+  'persistence.coreMismatchTitle': 'Another Alethe core is running',
+  'persistence.coreMismatchBody':
+    'The local server belongs to a different app data folder. Alethe blocked synchronization to prevent profiles from being mixed. Close the other core and reopen Alethe.',
+  'persistence.writeTitle': 'Changes are not saved yet',
+  'persistence.writeBody':
+    'Alethe could not reach local storage. Keep the app open while the connection recovers.',
 } as const
 
 export type MessageKey = keyof typeof en

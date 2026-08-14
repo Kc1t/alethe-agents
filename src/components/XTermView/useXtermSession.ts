@@ -34,6 +34,8 @@ import {
   aiMemoryMcpConfigPath,
   aiMemoryOpenCodeConfigWrite,
   attachPty,
+  attachPtySnapshot,
+  chunksAfterPtySnapshot,
   findCliLauncher,
   graphifyCodexConfigWrite,
   graphifyEnsureGraph,
@@ -44,7 +46,9 @@ import {
   listenPtyActivity,
   listenPtyData,
   listenPtyExit,
+  listenPtyResync,
   ptyExists,
+  type PtyResyncReason,
   readClipboardPayload,
   readGsdChildSession,
   resizePty,
@@ -166,12 +170,12 @@ function patchXtermViewportSyncGuard(terminal: Terminal): void {
     const guarded = function (this: unknown, ...args: unknown[]) {
       try {
         return original.apply(this, args)
-      } catch (error) {
+      } catch {
         window.requestAnimationFrame(() => {
           try {
             original.apply(this, args)
           } catch {
-            /* no-op se o renderer ainda estiver desanexado */
+            /* The renderer can still be detached during the next frame. */
           }
         })
         return undefined
@@ -311,6 +315,7 @@ export function useXtermSession(params: {
   // painel fora da aba/grupo ativo não recebe mais escrita full-rate no
   // xterm — o backend passa a mandar só o canal `activity` (throttlado).
   const isPanelVisible = usePtyPanelVisible(ptyId)
+  const activeProfileId = useProjectsStore((state) => state.activeProfileId)
   const isPanelVisibleRef = useRef(isPanelVisible)
   const wasPanelVisibleRef = useRef(isPanelVisible)
   // Primeira rodada do efeito de visibilidade (mount) não precisa chamar
@@ -321,7 +326,9 @@ export function useXtermSession(params: {
   // Preenchido dentro do efeito de mount com a função que refaz o replay do
   // scrollback (attachPty + reset) — chamado pelo efeito de visibilidade
   // abaixo quando o painel volta a ficar visível.
-  const resyncTerminalRef = useRef<(() => Promise<void>) | null>(null)
+  const resyncTerminalRef = useRef<((reason?: PtyResyncReason) => Promise<void>) | null>(null)
+  // Bounds automatic recovery when a replacement core no longer owns the PTY.
+  const missingPtyRecoveryRef = useRef<{ id: string; attemptedAt: number } | null>(null)
   // Conta quantos auto-restarts por crash do Bun já foram tentados NESTE
   // painel — precisa ser um ref (sobrevive a remounts do efeito via
   // `retryKey`, ao contrário de uma variável local dele) pra não entrar em
@@ -345,6 +352,7 @@ export function useXtermSession(params: {
     let unlistenData: (() => void) | null = null
     let unlistenActivity: (() => void) | null = null
     let unlistenExit: (() => void) | null = null
+    let unlistenResync: (() => void) | null = null
     let unlistenDragDrop: (() => void) | null = null
     let resizeTimer: number | null = null
     let settleTimer: number | null = null
@@ -357,7 +365,8 @@ export function useXtermSession(params: {
     // Não-nulo só durante o await do snapshot em `doResync`: coleta os chunks
     // de `data` que chegarem nessa janela pra reaplicá-los depois do replay,
     // em vez de perdê-los no clear da fila.
-    let resyncCaptureRef: string[] | null = null
+    let resyncCaptureRef: Array<{ chunk: string; cursor?: number }> | null = null
+    let resyncInFlight: Promise<void> | null = null
     // Detecta o texto do próprio crash-reporter do runtime Bun no stream de
     // saída ("oh no: Bun has crashed. This indicates a bug in Bun, not your
     // code."/"panic(main thread): Segmentation fault..."). Confirmado ao
@@ -643,9 +652,11 @@ export function useXtermSession(params: {
         const text = normalizePastedText(raw)
         useTerminalsStore.getState().recordIo(id)
         recordPromptInput(text)
-        void writePtyChunked(id, text, terminal.modes.bracketedPasteMode).catch((err) => {
-          console.warn('[pty-paste] falha ao escrever colagem no PTY (ignorado):', err)
-        })
+        void writePtyChunked(id, text, terminal.modes.bracketedPasteMode, activeProfileId).catch(
+          (err) => {
+            console.warn('[pty-paste] falha ao escrever colagem no PTY (ignorado):', err)
+          },
+        )
       } catch (err) {
         console.warn('[pty-paste] colagem ignorada (erro):', err)
       }
@@ -746,7 +757,7 @@ export function useXtermSession(params: {
         if (id && now - lastCtrlCRef.current < 1500) {
           lastCtrlCRef.current = 0
           terminal.write('\r\n\x1b[33m[force kill — PTY terminated]\x1b[0m\r\n')
-          void killPty(id)
+          void killPty(id, activeProfileId)
           return false
         }
         lastCtrlCRef.current = now
@@ -823,7 +834,7 @@ export function useXtermSession(params: {
       const chunk = queuedInput
       queuedInput = ''
       inputWriteChain = inputWriteChain
-        .then(() => writePty(id, chunk))
+        .then(() => writePty(id, chunk, activeProfileId))
         .catch((error) => {
           console.warn(`[pty-input] falha ao escrever em ${id}; solicitando recuperaÃ§Ã£o`, error)
           if (disposed || writeRecoveryPending) return
@@ -960,7 +971,7 @@ export function useXtermSession(params: {
       // tratamento ("PTY not found"), poluindo o console e o handler global
       // de erro sem ganho nenhum (o próximo settle bem-sucedido já corrige o
       // resize assim que o pty novo existir).
-      void resizePty(id, cols, rows).catch(() => {})
+      void resizePty(id, cols, rows, activeProfileId).catch(() => {})
     }
     const checkSettled = () => {
       settleTimer = null
@@ -1098,31 +1109,54 @@ export function useXtermSession(params: {
     // zero em vez de tentar reconciliar incrementalmente. `reset()` + replay
     // total elimina qualquer risco de duplicação: não importa quanto foi
     // perdido, o snapshot final devolvido por `attachPty` é a verdade.
-    const doResync = async () => {
-      const id = ptyIdRef.current
-      if (!id || disposed) return
-      try {
-        // Chunks que chegarem pelo canal `data` DURANTE o await não estão no
-        // snapshot (ele foi tirado antes deles) e não podem ser descartados
-        // junto com a fila — senão viram um buraco permanente no render.
-        const arrivedDuringFetch: string[] = []
-        resyncCaptureRef = arrivedDuringFetch
-        const replay = await attachPty(id)
-        resyncCaptureRef = null
-        if (disposed) return
-        terminal.reset()
-        pendingWrites = []
-        pendingWriteLength = 0
-        if (writeFrame !== null) {
-          window.cancelAnimationFrame(writeFrame)
-          writeFrame = null
+    const doResync = (reason: PtyResyncReason = 'initial'): Promise<void> => {
+      if (resyncInFlight) return resyncInFlight
+      resyncInFlight = (async () => {
+        const id = ptyIdRef.current
+        if (!id || disposed) return
+        try {
+          if (reason === 'reconnect' || reason === 'missing') {
+            const exists = await ptyExists(id, activeProfileId)
+            if (!exists) {
+              const now = Date.now()
+              const previous = missingPtyRecoveryRef.current
+              const recentlyAttempted = previous?.id === id && now - previous.attemptedAt < 10_000
+              useTerminalsStore.getState().markExited(id)
+              completionMonitor?.dispose()
+              completionMonitor = null
+              if (!recentlyAttempted && !disposed) {
+                missingPtyRecoveryRef.current = { id, attemptedAt: now }
+                setRetryKey((value) => value + 1)
+              }
+              return
+            }
+          }
+          // Chunks that arrive while the snapshot is loading must be replayed
+          // after the reset so reconnect recovery never creates a data gap.
+          const arrivedDuringFetch: Array<{ chunk: string; cursor?: number }> = []
+          resyncCaptureRef = arrivedDuringFetch
+          const snapshot = await attachPtySnapshot(id, 512 * 1024, activeProfileId)
+          resyncCaptureRef = null
+          if (disposed) return
+          terminal.reset()
+          pendingWrites = []
+          pendingWriteLength = 0
+          if (writeFrame !== null) {
+            window.cancelAnimationFrame(writeFrame)
+            writeFrame = null
+          }
+          if (snapshot.content) queueTerminalWrite(snapshot.content)
+          for (const chunk of chunksAfterPtySnapshot(snapshot.cursor, arrivedDuringFetch)) {
+            queueTerminalWrite(chunk)
+          }
+        } catch {
+          resyncCaptureRef = null
+          // A later reconnect or visibility transition retries the snapshot.
         }
-        if (replay) queueTerminalWrite(replay)
-        for (const chunk of arrivedDuringFetch) queueTerminalWrite(chunk)
-      } catch {
-        resyncCaptureRef = null
-        /* resync best-effort — o próximo lote do canal `data` corrige sozinho */
-      }
+      })().finally(() => {
+        resyncInFlight = null
+      })
+      return resyncInFlight
     }
     resyncTerminalRef.current = doResync
 
@@ -1147,31 +1181,59 @@ export function useXtermSession(params: {
       id: string,
       inspectChunk?: (chunk: string) => void,
     ): Promise<boolean> => {
-      const dataUnlisten = await listenPtyData(id, (chunk) => {
-        useTerminalsStore.getState().recordIo(id)
-        if (resyncCaptureRef) resyncCaptureRef.push(chunk)
-        queueTerminalWrite(chunk)
-        completionMonitor?.handleOutput(chunk)
-        inspectChunk?.(chunk)
-        watchForBunCrash(chunk)
-      })
+      const dataUnlisten = await listenPtyData(
+        id,
+        (chunk, cursor) => {
+          useTerminalsStore.getState().recordIo(id)
+          if (resyncCaptureRef) resyncCaptureRef.push({ chunk, cursor })
+          queueTerminalWrite(chunk)
+          completionMonitor?.handleOutput(chunk)
+          inspectChunk?.(chunk)
+          watchForBunCrash(chunk)
+        },
+        activeProfileId,
+      )
       if (disposed) {
         dataUnlisten()
         return false
       }
       unlistenData = dataUnlisten
 
-      const activityUnlisten = await listenPtyActivity(id, (chunk) => {
-        useTerminalsStore.getState().recordIo(id)
-        completionMonitor?.handleOutput(chunk)
-        inspectChunk?.(chunk)
-        watchForBunCrash(chunk)
-      })
+      const activityUnlisten = await listenPtyActivity(
+        id,
+        (chunk, cursor) => {
+          useTerminalsStore.getState().recordIo(id)
+          // Visibility is process-global in the PTY core. If another client hid
+          // the same terminal, this locally visible pane receives the coalesced
+          // activity channel and must still render it.
+          if (isPanelVisibleRef.current) {
+            if (resyncCaptureRef) resyncCaptureRef.push({ chunk, cursor })
+            queueTerminalWrite(chunk)
+          }
+          completionMonitor?.handleOutput(chunk)
+          inspectChunk?.(chunk)
+          watchForBunCrash(chunk)
+        },
+        activeProfileId,
+      )
       if (disposed) {
         activityUnlisten()
         return false
       }
       unlistenActivity = activityUnlisten
+
+      const resyncUnlisten = await listenPtyResync(
+        id,
+        (reason) => {
+          void doResync(reason)
+        },
+        activeProfileId,
+      )
+      if (disposed) {
+        resyncUnlisten()
+        return false
+      }
+      unlistenResync = resyncUnlisten
       return true
     }
     // Só um auto-restart por crash detectado nesta sessão de mount, com um
@@ -1200,7 +1262,7 @@ export function useXtermSession(params: {
       onSpawnedRef.current?.(existingId)
       // Sessão pode já existir de antes deste mount (reload do app, etc.) —
       // estabelece a visibilidade correta no backend desde já.
-      void setPtyVisible(existingId, isPanelVisibleRef.current).catch(() => {})
+      void setPtyVisible(existingId, isPanelVisibleRef.current, activeProfileId).catch(() => {})
 
       if (command === 'claude' || command === 'codex' || command === 'opencode') {
         completionMonitor = new AgentCompletionMonitor({
@@ -1221,39 +1283,43 @@ export function useXtermSession(params: {
       // gastar o burst de write mais pesado (TUIs como o OpenCode) enquanto
       // ninguém está olhando.
       if (isPanelVisibleRef.current) {
-        const replay = await attachPty(existingId)
+        const replay = await attachPty(existingId, 512 * 1024, activeProfileId)
         if (disposed) return
         if (replay) queueTerminalWrite(replay)
       }
 
       if (!(await registerPtyStreamListeners(existingId))) return
 
-      const exitUnlisten = await listenPtyExit(existingId, (payload) => {
-        console.info(
-          `[pty-launch] ${command ?? 'shell'} EXIT (attach) id=${existingId} code=${payload.code ?? '—'} reason=${payload.reason ?? '—'}`,
-        )
-        if (payload.reason === 'restarted') {
+      const exitUnlisten = await listenPtyExit(
+        existingId,
+        (payload) => {
+          console.info(
+            `[pty-launch] ${command ?? 'shell'} EXIT (attach) id=${existingId} code=${payload.code ?? '—'} reason=${payload.reason ?? '—'}`,
+          )
+          if (payload.reason === 'restarted') {
+            useTerminalsStore.getState().markExited(existingId)
+            return
+          }
+          if (payload.reason === 'suspended') {
+            useTerminalsStore.getState().markSuspended(existingId)
+            completionMonitor?.dispose()
+            completionMonitor = null
+            return
+          }
+          if (tryAutoRestartOnBunCrash()) {
+            useTerminalsStore.getState().markExited(existingId)
+            completionMonitor?.dispose()
+            completionMonitor = null
+            return
+          }
           useTerminalsStore.getState().markExited(existingId)
-          return
-        }
-        if (payload.reason === 'suspended') {
-          useTerminalsStore.getState().markSuspended(existingId)
           completionMonitor?.dispose()
           completionMonitor = null
-          return
-        }
-        if (tryAutoRestartOnBunCrash()) {
-          useTerminalsStore.getState().markExited(existingId)
-          completionMonitor?.dispose()
-          completionMonitor = null
-          return
-        }
-        useTerminalsStore.getState().markExited(existingId)
-        completionMonitor?.dispose()
-        completionMonitor = null
-        removeSession(sessionPersistenceKey)
-        onExitRef.current?.(payload.code)
-      })
+          removeSession(sessionPersistenceKey)
+          onExitRef.current?.(payload.code)
+        },
+        activeProfileId,
+      )
       if (disposed) {
         exitUnlisten()
         return
@@ -1297,7 +1363,7 @@ export function useXtermSession(params: {
           await attachExistingPty(ptyId)
           return
         }
-        const backendHasPty = await ptyExists(ptyId).catch(() => false)
+        const backendHasPty = await ptyExists(ptyId, activeProfileId).catch(() => false)
         if (backendHasPty) {
           await attachExistingPty(ptyId)
           return
@@ -1589,6 +1655,7 @@ export function useXtermSession(params: {
             extraArgs: spawnArgs,
             launcherOverride,
             env: preparedRuntime.env,
+            profileId: activeProfileId,
           })
         } finally {
           releaseSpawnSlot()
@@ -1604,7 +1671,7 @@ export function useXtermSession(params: {
         // Sessão acabou de nascer no backend agora — estabelece a
         // visibilidade correta desde o primeiro lote (ex.: pane aberto num
         // grupo/aba já invisível não deve gastar render à toa).
-        void setPtyVisible(response.id, isPanelVisibleRef.current).catch(() => {})
+        void setPtyVisible(response.id, isPanelVisibleRef.current, activeProfileId).catch(() => {})
         if (command && cwd && launch.sessionId) {
           registerSessionClaim(command, cwd, launch.sessionId, response.id)
         }
@@ -1665,7 +1732,7 @@ export function useXtermSession(params: {
           terminal.write(
             '\r\n\x1b[33m[alethe] Codex session is busy — opening a fresh session…\x1b[0m\r\n',
           )
-          void killPty(response.id).catch(() => {})
+          void killPty(response.id, activeProfileId).catch(() => {})
           setRetryKey((value) => value + 1)
         }
 
@@ -1674,7 +1741,7 @@ export function useXtermSession(params: {
         // conflito de resume do Codex continua coberto pelo `inspectChunk`
         // registrado logo abaixo, que roda nos dois canais de streaming.
         if (isPanelVisibleRef.current) {
-          const replay = await attachPty(response.id)
+          const replay = await attachPty(response.id, 512 * 1024, activeProfileId)
           if (disposed) return
           if (
             replay &&
@@ -1702,78 +1769,82 @@ export function useXtermSession(params: {
         })
         if (!handled) return
 
-        const exitUnlisten = await listenPtyExit(response.id, (payload) => {
-          // unlistenExit só roda na cleanup do effect, depois de dispose() — um exit
-          // que chega no meio dessa janela ainda dispara este callback contra um
-          // terminal já disposed (renderer removido), daí o guard antes de qualquer write.
-          if (disposed) return
-          console.info(
-            `[pty-launch] ${command ?? 'shell'} EXIT id=${response.id} code=${payload.code ?? '—'} reason=${payload.reason ?? '—'}`,
-          )
-          if (payload.reason === 'restarted') {
-            useTerminalsStore.getState().markExited(response.id)
-            return
-          }
-          if (payload.reason === 'suspended') {
-            useTerminalsStore.getState().markSuspended(response.id)
-            completionMonitor?.dispose()
-            completionMonitor = null
-            return
-          }
-          if (tryAutoRestartOnBunCrash()) {
-            useTerminalsStore.getState().markExited(response.id)
-            completionMonitor?.dispose()
-            completionMonitor = null
-            return
-          }
-          const isAgent =
-            command === 'claude' ||
-            command === 'codex' ||
-            command === 'opencode' ||
-            command === 'antigravity'
-          const elapsed = Date.now() - spawnedAtRef.current
-          // Fallback 1: agent morreu no nascimento COM resume → sessão órfã.
-          // Limpa e reabre uma vez com sessão nova, em vez de deixar o pane cinza.
-          if (
-            isAgent &&
-            elapsed < EARLY_EXIT_MS &&
-            usedResumeRef.current &&
-            !earlyExitRetriedRef.current
-          ) {
-            earlyExitRetriedRef.current = true
-            forceFreshRef.current = true
-            console.warn(
-              `[pty-launch] ${command} saiu em ${elapsed}ms com resume — reabrindo sessão nova (fallback)`,
+        const exitUnlisten = await listenPtyExit(
+          response.id,
+          (payload) => {
+            // unlistenExit só roda na cleanup do effect, depois de dispose() — um exit
+            // que chega no meio dessa janela ainda dispara este callback contra um
+            // terminal já disposed (renderer removido), daí o guard antes de qualquer write.
+            if (disposed) return
+            console.info(
+              `[pty-launch] ${command ?? 'shell'} EXIT id=${response.id} code=${payload.code ?? '—'} reason=${payload.reason ?? '—'}`,
             )
+            if (payload.reason === 'restarted') {
+              useTerminalsStore.getState().markExited(response.id)
+              return
+            }
+            if (payload.reason === 'suspended') {
+              useTerminalsStore.getState().markSuspended(response.id)
+              completionMonitor?.dispose()
+              completionMonitor = null
+              return
+            }
+            if (tryAutoRestartOnBunCrash()) {
+              useTerminalsStore.getState().markExited(response.id)
+              completionMonitor?.dispose()
+              completionMonitor = null
+              return
+            }
+            const isAgent =
+              command === 'claude' ||
+              command === 'codex' ||
+              command === 'opencode' ||
+              command === 'antigravity'
+            const elapsed = Date.now() - spawnedAtRef.current
+            // Fallback 1: agent morreu no nascimento COM resume → sessão órfã.
+            // Limpa e reabre uma vez com sessão nova, em vez de deixar o pane cinza.
+            if (
+              isAgent &&
+              elapsed < EARLY_EXIT_MS &&
+              usedResumeRef.current &&
+              !earlyExitRetriedRef.current
+            ) {
+              earlyExitRetriedRef.current = true
+              forceFreshRef.current = true
+              console.warn(
+                `[pty-launch] ${command} saiu em ${elapsed}ms com resume — reabrindo sessão nova (fallback)`,
+              )
+              useTerminalsStore.getState().markExited(response.id)
+              completionMonitor?.dispose()
+              completionMonitor = null
+              removeSession(sessionPersistenceKey)
+              onSessionIdRef.current?.(undefined)
+              terminal.write(
+                '\r\n\x1b[33m[alethe] sessão anterior indisponível — reabrindo sessão nova…\x1b[0m\r\n',
+              )
+              setRetryKey((v) => v + 1)
+              return
+            }
+            // Fallback 2: agent morreu no nascimento SEM resume (binário/instalação
+            // quebrada). Não relança em loop; deixa um aviso visível em vez de cinza.
+            if (isAgent && elapsed < EARLY_EXIT_MS) {
+              console.warn(
+                `[pty-launch] ${command} saiu em ${elapsed}ms (code ${payload.code ?? '—'}) — sem retry`,
+              )
+              terminal.write(
+                `\r\n\x1b[31m[alethe] ${command} encerrou imediatamente (code ${payload.code ?? '—'}).\x1b[0m\r\n` +
+                  '\x1b[90mVerifique a instalação do CLI ou configure o caminho nas preferências.\x1b[0m\r\n',
+              )
+            }
             useTerminalsStore.getState().markExited(response.id)
             completionMonitor?.dispose()
             completionMonitor = null
+            // Clean exit → não resume na próxima vez
             removeSession(sessionPersistenceKey)
-            onSessionIdRef.current?.(undefined)
-            terminal.write(
-              '\r\n\x1b[33m[alethe] sessão anterior indisponível — reabrindo sessão nova…\x1b[0m\r\n',
-            )
-            setRetryKey((v) => v + 1)
-            return
-          }
-          // Fallback 2: agent morreu no nascimento SEM resume (binário/instalação
-          // quebrada). Não relança em loop; deixa um aviso visível em vez de cinza.
-          if (isAgent && elapsed < EARLY_EXIT_MS) {
-            console.warn(
-              `[pty-launch] ${command} saiu em ${elapsed}ms (code ${payload.code ?? '—'}) — sem retry`,
-            )
-            terminal.write(
-              `\r\n\x1b[31m[alethe] ${command} encerrou imediatamente (code ${payload.code ?? '—'}).\x1b[0m\r\n` +
-                '\x1b[90mVerifique a instalação do CLI ou configure o caminho nas preferências.\x1b[0m\r\n',
-            )
-          }
-          useTerminalsStore.getState().markExited(response.id)
-          completionMonitor?.dispose()
-          completionMonitor = null
-          // Clean exit → não resume na próxima vez
-          removeSession(sessionPersistenceKey)
-          onExitRef.current?.(payload.code)
-        })
+            onExitRef.current?.(payload.code)
+          },
+          activeProfileId,
+        )
         if (disposed) {
           exitUnlisten()
           return
@@ -1906,7 +1977,11 @@ export function useXtermSession(params: {
                 const TYPE_CHUNK_DELAY_MS = 30
                 const typePrompt = async () => {
                   for (let index = 0; index < prompt.length; index += TYPE_CHUNK_SIZE) {
-                    await writePty(response.id, prompt.slice(index, index + TYPE_CHUNK_SIZE))
+                    await writePty(
+                      response.id,
+                      prompt.slice(index, index + TYPE_CHUNK_SIZE),
+                      activeProfileId,
+                    )
                     await new Promise((resolve) => window.setTimeout(resolve, TYPE_CHUNK_DELAY_MS))
                   }
                 }
@@ -1964,7 +2039,7 @@ export function useXtermSession(params: {
                   attempt < MAX_ENTER_ATTEMPTS && !disposed && Date.now() < deadline;
                   attempt++
                 ) {
-                  await writePty(response.id, '\r')
+                  await writePty(response.id, '\r', activeProfileId)
                   await new Promise((resolve) => window.setTimeout(resolve, 1_500))
                   const currentScreen = readVisibleScreenText()
                   if (currentScreen !== previousScreen) break
@@ -1978,10 +2053,18 @@ export function useXtermSession(params: {
                 // marcadores como ruído em vez de tratar como colagem.
                 // Mesmo critério já usado pela colagem normal (pasteText,
                 // mais acima neste arquivo).
-                await writePtyChunked(response.id, prompt, terminal.modes.bracketedPasteMode)
+                await writePtyChunked(
+                  response.id,
+                  prompt,
+                  terminal.modes.bracketedPasteMode,
+                  activeProfileId,
+                )
                 await new Promise((resolve) => window.setTimeout(resolve, 150))
-                await writePty(response.id, '\r')
-                window.setTimeout(() => void writePty(response.id, '\r').catch(() => {}), 1_200)
+                await writePty(response.id, '\r', activeProfileId)
+                window.setTimeout(
+                  () => void writePty(response.id, '\r', activeProfileId).catch(() => {}),
+                  1_200,
+                )
               }
               console.info(
                 `[pty-launch] ${command ?? 'shell'} prompt inicial enviado id=${response.id}`,
@@ -2038,6 +2121,7 @@ export function useXtermSession(params: {
       unlistenData?.()
       unlistenActivity?.()
       unlistenExit?.()
+      unlistenResync?.()
       unlistenDragDrop?.()
       linkProviderDisposable?.dispose()
       linkScrollDisposable?.dispose()
@@ -2053,7 +2137,7 @@ export function useXtermSession(params: {
     // ptyId temporário pelo ID real; isso também deixa a descoberta assíncrona
     // da conversa terminar e persistir o ID antes de um reload.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionPersistenceKey, retryKey])
+  }, [sessionPersistenceKey, retryKey, activeProfileId])
 
   // Propaga a visibilidade lógica do painel pro backend (gate do canal
   // `data`) e, só na transição invisível→visível, refaz o resync do
@@ -2072,7 +2156,7 @@ export function useXtermSession(params: {
     let cancelled = false
     let resyncTimer: number | null = null
 
-    void setPtyVisible(ptyId, isPanelVisible)
+    void setPtyVisible(ptyId, isPanelVisible, activeProfileId)
       .catch(() => {})
       .then(() => {
         if (cancelled || !isPanelVisible || wasVisible) return
@@ -2085,5 +2169,5 @@ export function useXtermSession(params: {
       cancelled = true
       if (resyncTimer !== null) window.clearTimeout(resyncTimer)
     }
-  }, [ptyId, isPanelVisible])
+  }, [ptyId, isPanelVisible, activeProfileId])
 }

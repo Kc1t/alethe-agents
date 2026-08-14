@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 
-import { isTauriEnv, webApiFetch } from './transport'
+import { canUseSharedCoreTransport, isTauriEnv, webApiFetch } from './transport'
 
 export type ProfileMeta = {
   id: string
@@ -26,22 +26,30 @@ export type ProfileSummary = {
 }
 
 export async function listProfiles(): Promise<ProfilesState> {
-  if (isTauriEnv()) return invoke<ProfilesState>('list_profiles')
+  if (isTauriEnv() && !(await canUseSharedCoreTransport())) {
+    return invoke<ProfilesState>('list_profiles')
+  }
   return webApiFetch<ProfilesState>('/api/profiles/list')
 }
 
 export async function listProfileSummaries(): Promise<ProfileSummary[]> {
-  if (isTauriEnv()) return invoke<ProfileSummary[]>('list_profile_summaries')
+  if (isTauriEnv() && !(await canUseSharedCoreTransport())) {
+    return invoke<ProfileSummary[]>('list_profile_summaries')
+  }
   return webApiFetch<ProfileSummary[]>('/api/profiles/summaries')
 }
 
 export async function getActiveProfile(): Promise<ProfileMeta> {
-  if (isTauriEnv()) return invoke<ProfileMeta>('get_active_profile')
+  if (isTauriEnv() && !(await canUseSharedCoreTransport())) {
+    return invoke<ProfileMeta>('get_active_profile')
+  }
   return webApiFetch<ProfileMeta>('/api/profiles/active')
 }
 
 export async function setActiveProfile(profileId: string): Promise<ProfilesState> {
-  if (isTauriEnv()) return invoke<ProfilesState>('set_active_profile', { profileId })
+  if (isTauriEnv() && !(await canUseSharedCoreTransport())) {
+    return invoke<ProfilesState>('set_active_profile', { profileId })
+  }
   return webApiFetch<ProfilesState>('/api/profiles/set_active', {
     method: 'POST',
     body: JSON.stringify({ profileId }),
@@ -49,7 +57,9 @@ export async function setActiveProfile(profileId: string): Promise<ProfilesState
 }
 
 export async function createProfile(name?: string): Promise<ProfilesState> {
-  if (isTauriEnv()) return invoke<ProfilesState>('create_profile', { name })
+  if (isTauriEnv() && !(await canUseSharedCoreTransport())) {
+    return invoke<ProfilesState>('create_profile', { name })
+  }
   return webApiFetch<ProfilesState>('/api/profiles/create', {
     method: 'POST',
     body: JSON.stringify({ name }),
@@ -57,7 +67,9 @@ export async function createProfile(name?: string): Promise<ProfilesState> {
 }
 
 export async function renameProfile(profileId: string, name: string): Promise<ProfilesState> {
-  if (isTauriEnv()) return invoke<ProfilesState>('rename_profile', { profileId, name })
+  if (isTauriEnv() && !(await canUseSharedCoreTransport())) {
+    return invoke<ProfilesState>('rename_profile', { profileId, name })
+  }
   return webApiFetch<ProfilesState>('/api/profiles/rename', {
     method: 'POST',
     body: JSON.stringify({ profileId, name }),
@@ -65,7 +77,9 @@ export async function renameProfile(profileId: string, name: string): Promise<Pr
 }
 
 export async function deleteProfile(profileId: string): Promise<ProfilesState> {
-  if (isTauriEnv()) return invoke<ProfilesState>('delete_profile', { profileId })
+  if (isTauriEnv() && !(await canUseSharedCoreTransport())) {
+    return invoke<ProfilesState>('delete_profile', { profileId })
+  }
   return webApiFetch<ProfilesState>('/api/profiles/delete', {
     method: 'POST',
     body: JSON.stringify({ profileId }),

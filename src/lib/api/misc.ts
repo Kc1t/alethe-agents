@@ -2,7 +2,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import type { WorktreeMode } from './git'
-import { isTauriEnv, webApiFetch } from './transport'
+import type { ProfileMeta } from './profiles'
+import { canUseSharedCoreTransport, isTauriEnv, webApiFetch } from './transport'
 
 export type RemoteControlInfo = {
   enabled: boolean
@@ -144,15 +145,58 @@ export async function revokeRemoteControlDevice(deviceId: number): Promise<Remot
 }
 
 export async function loadProjectsFile(): Promise<string | null> {
-  if (isTauriEnv()) return invoke<string | null>('load_projects')
+  if (isTauriEnv() && !(await canUseSharedCoreTransport())) {
+    return invoke<string | null>('load_projects')
+  }
   const res = await webApiFetch<unknown>('/api/projects/load')
   if (!res) return null
   if (typeof res === 'string') return res
   return JSON.stringify(res)
 }
 
+export type ProjectsBootstrap = {
+  active_profile_id: string
+  profiles: ProfileMeta[]
+  content: string | null
+  revision: string
+}
+
+export type SaveProjectsResult = {
+  profile_id: string
+  revision: string
+}
+
+export async function loadProjectsBootstrap(): Promise<ProjectsBootstrap> {
+  if (isTauriEnv() && !(await canUseSharedCoreTransport())) {
+    return invoke<ProjectsBootstrap>('load_projects_bootstrap')
+  }
+  return webApiFetch<ProjectsBootstrap>('/api/projects/bootstrap')
+}
+
+export async function saveProjectsForProfile(
+  profileId: string,
+  content: string,
+  expectedRevision: string,
+  keepalive = false,
+): Promise<SaveProjectsResult> {
+  if (isTauriEnv() && !(await canUseSharedCoreTransport())) {
+    return invoke<SaveProjectsResult>('save_projects_for_profile', {
+      profileId,
+      content,
+      expectedRevision,
+    })
+  }
+  return webApiFetch<SaveProjectsResult>('/api/projects/save_for_profile', {
+    method: 'POST',
+    keepalive,
+    body: JSON.stringify({ profileId, content, expectedRevision }),
+  })
+}
+
 export async function saveProjectsFile(content: string, sequence: number): Promise<void> {
-  if (isTauriEnv()) return invoke('save_projects', { content, sequence })
+  if (isTauriEnv() && !(await canUseSharedCoreTransport())) {
+    return invoke('save_projects', { content, sequence })
+  }
   await webApiFetch('/api/projects/save', {
     method: 'POST',
     body: JSON.stringify({ content, sequence }),

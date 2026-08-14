@@ -13,7 +13,7 @@
     "format:check": "prettier --check .",
     "tauri": "tauri",
     "app": "tauri dev --config src-tauri/tauri.dev.json",
-    "web": "concurrently \"npm run web:server\" \"vite --port 1424\"",
+    "web": "cross-env ALETHE_APP_IDENTIFIER=com.kc1t.alethe.dev VITE_ALETHE_APP_IDENTIFIER=com.kc1t.alethe.dev concurrently \"npm run web:server\" \"vite --port 1424\"",
     "web:server": "cargo run --manifest-path src-tauri/Cargo.toml --bin alethe-server",
     "build:web": "tsc && vite build",
     "smoke:ghostty": "bash scripts/smoke-ghostty.sh",

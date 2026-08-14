@@ -9,23 +9,23 @@
 // um `PlanningWatchers` PRÓPRIO pro `alethe-server` (`OnceLock` estático em
 // vez do gerenciado pelo Tauri) — mesmo tipo, só uma instância paralela.
 
-use alethe_lib::event_bus::{self, EventBusPayload};
-use alethe_lib::opencode_gsd_plugin;
-use alethe_lib::planning::{self, PlanningWatchers};
-use alethe_lib::planning_gate;
-use alethe_lib::scheduler;
-use alethe_lib::telemetry;
-use alethe_lib::validation;
-use alethe_lib::worktrees::WorktreeMode;
-use axum::extract::Query;
+use crate::event_bus::{self, EventBusPayload};
+use crate::opencode_gsd_plugin;
+use crate::planning::{self, PlanningWatchers};
+use crate::planning_gate;
+use crate::scheduler;
+use crate::telemetry;
+use crate::validation;
+use crate::worktrees::WorktreeMode;
+use axum::extract::{Extension, Query};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
-use crate::AppError;
+use super::{AppError, ServerRuntime};
 
 fn planning_watchers() -> &'static PlanningWatchers {
     static WATCHERS: OnceLock<PlanningWatchers> = OnceLock::new();
@@ -237,11 +237,15 @@ async fn telemetry_traces(Query(p): Query<HashMap<String, String>>) -> impl Into
 struct RemoteSetEnabledBody {
     enabled: bool,
 }
-async fn remote_set_enabled(Json(b): Json<RemoteSetEnabledBody>) -> Result<Json<alethe_lib::remote::RemoteInfo>, AppError> {
-    let projects_path = crate::profile_routes::active_profile_dir().join("projects.json");
-    let info = alethe_lib::remote::remote_control_set_enabled_core(
+async fn remote_set_enabled(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(b): Json<RemoteSetEnabledBody>,
+) -> Result<Json<crate::remote::RemoteInfo>, AppError> {
+    let projects_path =
+        super::profile_routes::active_profile_dir_at(runtime.data_root())?.join("projects.json");
+    let info = crate::remote::remote_control_set_enabled_core(
         &projects_path,
-        crate::pty_routes::alethe_server_pty_sessions(),
+        super::pty_routes::alethe_server_pty_sessions(),
         b.enabled,
     );
     Ok(Json(info))

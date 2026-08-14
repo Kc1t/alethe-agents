@@ -21,7 +21,12 @@ export function loadPromptHistory(ptyId: string): string[] {
   return history
 }
 
-export async function writePtyChunked(id: string, text: string, bracketed: boolean): Promise<void> {
+export async function writePtyChunked(
+  id: string,
+  text: string,
+  bracketed: boolean,
+  profileId: string,
+): Promise<void> {
   // Bracketed paste (DECSET 2004): quando a app liga, envolvemos a colagem
   // inteira nos marcadores 200~/201~ pra ela tratar como um bloco único. Sem
   // isso, cada \r interno vira Enter e TUIs como o Claude submetem só a
@@ -31,14 +36,14 @@ export async function writePtyChunked(id: string, text: string, bracketed: boole
   const close = bracketed ? '\x1b[201~' : ''
 
   if (text.length <= PASTE_CHUNK_SIZE) {
-    await writePty(id, `${open}${text}${close}`)
+    await writePty(id, `${open}${text}${close}`, profileId)
     return
   }
 
-  if (open) await writePty(id, open)
+  if (open) await writePty(id, open, profileId)
   for (let index = 0; index < text.length; index += PASTE_CHUNK_SIZE) {
-    await writePty(id, text.slice(index, index + PASTE_CHUNK_SIZE))
+    await writePty(id, text.slice(index, index + PASTE_CHUNK_SIZE), profileId)
     await new Promise((resolve) => window.setTimeout(resolve, PASTE_CHUNK_DELAY_MS))
   }
-  if (close) await writePty(id, close)
+  if (close) await writePty(id, close, profileId)
 }

@@ -1,115 +1,79 @@
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Path as AxumPath, Query};
+use axum::extract::{Extension, Path as AxumPath, Query};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use serde::Deserialize;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Arc;
 use tokio::sync::broadcast;
 
-use alethe_lib::pty::{
-    attach_pty_core, get_pty_cwd_core, kill_pty_core, list_pty_processes_core, pty_exists_core,
-    resize_pty_core, restart_pty_core, set_pty_priority_core, set_pty_read_state_core,
-    set_pty_visible_core, spawn_pty_core, PtyExitPayload, PtySessions, PtySuspendedPayload,
-    SpawnPtyArgs, SpawnPtyResponse,
+use crate::pty::{
+    attach_pty_core, attach_pty_snapshot_core, get_pty_cwd_core, kill_pty_core,
+    list_pty_processes_core, pty_exists_core, resize_pty_core, restart_pty_core,
+    set_pty_priority_core, set_pty_read_state_core, set_pty_visible_core, spawn_pty_core,
+    suspend_pty_core, PtySessions, SpawnPtyArgs, SpawnPtyResponse,
 };
-use alethe_lib::pty_sink::PtyOutputSink;
+use crate::pty_sink::{get_or_create_pty_ws_channel, PtyWsMessage};
 
-use super::profile_routes::active_profile_dir;
-use super::AppError;
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub enum PtyWsMessage {
-    #[serde(rename = "data")]
-    Data { chunk: String },
-    #[serde(rename = "exit")]
-    Exit {
-        code: Option<i32>,
-        reason: String,
-    },
-}
-
-pub type PtyChannels = Arc<Mutex<HashMap<String, broadcast::Sender<PtyWsMessage>>>>;
-
-pub fn pty_broadcast_channels() -> &'static PtyChannels {
-    static CHANNELS: OnceLock<PtyChannels> = OnceLock::new();
-    CHANNELS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
-}
+use super::{AppError, AuthenticatedLocalSession, ServerRuntime};
 
 pub fn alethe_server_pty_sessions() -> &'static PtySessions {
-    static SESSIONS: OnceLock<PtySessions> = OnceLock::new();
-    SESSIONS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
+    crate::pty::global_pty_sessions()
 }
 
-fn get_or_create_channel(id: &str) -> broadcast::Sender<PtyWsMessage> {
-    let mut channels = pty_broadcast_channels().lock().unwrap();
-    channels
-        .entry(id.to_string())
-        .or_insert_with(|| {
-            let (tx, _) = broadcast::channel(1024);
-            tx
-        })
-        .clone()
+#[derive(Clone)]
+struct ResolvedPtyOwner {
+    profile_id: String,
+    scrollback_path: PathBuf,
 }
 
-pub struct WebSocketSink;
-
-impl PtyOutputSink for WebSocketSink {
-    fn emit_data(&self, id: &str, text: &str) {
-        let sender = get_or_create_channel(id);
-        let _ = sender.send(PtyWsMessage::Data {
-            chunk: text.to_string(),
-        });
-    }
-
-    fn emit_activity(&self, id: &str, text: &str) {
-        let sender = get_or_create_channel(id);
-        let _ = sender.send(PtyWsMessage::Data {
-            chunk: text.to_string(),
-        });
-    }
-
-    fn emit_exit(&self, id: &str, payload: &PtyExitPayload) {
-        let sender = get_or_create_channel(id);
-        let _ = sender.send(PtyWsMessage::Exit {
-            code: payload.code,
-            reason: payload.reason.to_string(),
-        });
-        let mut channels = pty_broadcast_channels().lock().unwrap();
-        channels.remove(id);
-    }
-
-    fn emit_suspended(&self, payload: &PtySuspendedPayload) {
-        let sender = get_or_create_channel(&payload.id);
-        let _ = sender.send(PtyWsMessage::Exit {
-            code: None,
-            reason: payload.reason.to_string(),
-        });
-        let mut channels = pty_broadcast_channels().lock().unwrap();
-        channels.remove(&payload.id);
-    }
+fn resolve_pty_owner(
+    runtime: &ServerRuntime,
+    id: &str,
+    profile_id: &str,
+) -> Result<ResolvedPtyOwner, AppError> {
+    crate::pty::validate_pty_id(id)?;
+    let index = crate::profiles::ensure_profiles_index_at(runtime.data_root())?;
+    let profile_dir =
+        crate::profiles::profile_dir_for_id_in_index(runtime.data_root(), &index, profile_id)?;
+    Ok(ResolvedPtyOwner {
+        profile_id: profile_id.to_string(),
+        scrollback_path: profile_dir.join("scrollback").join(format!("{id}.bin")),
+    })
 }
 
-fn resolve_scrollback_path(id: &str) -> PathBuf {
-    let dir = active_profile_dir().join("scrollback");
-    dir.join(format!("{id}.bin"))
+fn ensure_profile_owner(
+    runtime: &ServerRuntime,
+    id: &str,
+    profile_id: &str,
+) -> Result<ResolvedPtyOwner, AppError> {
+    let owner = resolve_pty_owner(runtime, id, profile_id)?;
+    crate::pty::ensure_pty_owner(
+        alethe_server_pty_sessions(),
+        id,
+        &owner.profile_id,
+        &owner.scrollback_path,
+    )?;
+    Ok(owner)
 }
 
-async fn handle_spawn(Json(args): Json<SpawnPtyArgs>) -> Result<Json<SpawnPtyResponse>, AppError> {
+async fn handle_spawn(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(args): Json<SpawnPtyArgs>,
+) -> Result<Json<SpawnPtyResponse>, AppError> {
     let pty_id = args.id.clone().unwrap_or_else(|| nanoid::nanoid!());
-    let sb_path = resolve_scrollback_path(&pty_id);
+    let owner = resolve_pty_owner(&runtime, &pty_id, &args.profile_id)?;
     let mut full_args = args;
     full_args.id = Some(pty_id);
+    full_args.profile_id = owner.profile_id;
 
     let res = spawn_pty_core(
         alethe_server_pty_sessions().clone(),
-        Arc::new(WebSocketSink),
-        alethe_lib::remote::hub(),
+        runtime.pty_sink(),
+        crate::remote::hub(),
         None,
-        sb_path,
+        owner.scrollback_path,
         full_args,
     )
     .await?;
@@ -117,78 +81,176 @@ async fn handle_spawn(Json(args): Json<SpawnPtyArgs>) -> Result<Json<SpawnPtyRes
     Ok(Json(res))
 }
 
-async fn handle_exists(AxumPath(id): AxumPath<String>) -> Json<bool> {
+async fn handle_exists(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    AxumPath(id): AxumPath<String>,
+    Query(query): Query<PtyProfileQuery>,
+) -> Json<bool> {
+    if ensure_profile_owner(&runtime, &id, &query.profile_id).is_err() {
+        return Json(false);
+    }
     let exists = pty_exists_core(alethe_server_pty_sessions(), &id);
     Json(exists)
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PtyProfileQuery {
+    profile_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct AttachQuery {
-    #[serde(rename = "maxBytes")]
     max_bytes: Option<usize>,
+    profile_id: String,
 }
 
 async fn handle_attach(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
     AxumPath(id): AxumPath<String>,
     Query(query): Query<AttachQuery>,
 ) -> Result<String, AppError> {
-    let sb_path = resolve_scrollback_path(&id);
+    let owner = ensure_profile_owner(&runtime, &id, &query.profile_id)?;
     let max_bytes = query.max_bytes.unwrap_or(512 * 1024);
-    let data = attach_pty_core(alethe_server_pty_sessions(), &sb_path, &id, max_bytes).await?;
+    let data = attach_pty_core(
+        alethe_server_pty_sessions(),
+        &owner.scrollback_path,
+        &id,
+        max_bytes,
+    )
+    .await?;
     Ok(data)
 }
 
+async fn handle_snapshot(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    AxumPath(id): AxumPath<String>,
+    Query(query): Query<AttachQuery>,
+) -> Result<Json<crate::pty::PtyScrollbackSnapshot>, AppError> {
+    let owner = ensure_profile_owner(&runtime, &id, &query.profile_id)?;
+    let max_bytes = query.max_bytes.unwrap_or(512 * 1024);
+    Ok(Json(
+        attach_pty_snapshot_core(
+            alethe_server_pty_sessions(),
+            &owner.scrollback_path,
+            &id,
+            max_bytes,
+        )
+        .await?,
+    ))
+}
+
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct WriteBody {
     id: String,
     data: String,
+    profile_id: String,
 }
 
-async fn handle_write(Json(body): Json<WriteBody>) -> Result<(), AppError> {
-    alethe_lib::pty::write_pty_core(alethe_server_pty_sessions(), &body.id, &body.data).await?;
-    Ok(())
-}
-
-#[derive(Deserialize)]
-struct ResizeBody {
-    id: String,
-    cols: u16,
-    rows: u16,
-}
-
-async fn handle_resize(Json(body): Json<ResizeBody>) -> Result<(), AppError> {
-    resize_pty_core(
+async fn handle_write(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<WriteBody>,
+) -> Result<(), AppError> {
+    let owner = ensure_profile_owner(&runtime, &body.id, &body.profile_id)?;
+    crate::pty::write_pty_core(
         alethe_server_pty_sessions(),
-        None,
         &body.id,
-        body.cols,
-        body.rows,
+        &body.data,
+        Some(&owner.profile_id),
+        Some(&owner.scrollback_path),
     )
     .await?;
     Ok(())
 }
 
 #[derive(Deserialize)]
-struct KillBody {
+#[serde(rename_all = "camelCase")]
+struct ResizeBody {
     id: String,
+    cols: u16,
+    rows: u16,
+    profile_id: String,
 }
 
-async fn handle_kill(Json(body): Json<KillBody>) -> Result<(), AppError> {
-    let sb_path = resolve_scrollback_path(&body.id);
-    kill_pty_core(alethe_server_pty_sessions(), &sb_path, &body.id).await?;
+async fn handle_resize(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<ResizeBody>,
+) -> Result<(), AppError> {
+    let owner = ensure_profile_owner(&runtime, &body.id, &body.profile_id)?;
+    resize_pty_core(
+        alethe_server_pty_sessions(),
+        None,
+        &body.id,
+        body.cols,
+        body.rows,
+        Some(&owner.profile_id),
+        Some(&owner.scrollback_path),
+    )
+    .await?;
     Ok(())
 }
 
-async fn handle_restart(Json(args): Json<SpawnPtyArgs>) -> Result<Json<SpawnPtyResponse>, AppError> {
-    let pty_id = args.id.clone().ok_or_else(|| AppError::bad_request("ID do terminal obrigatorio no restart"))?;
-    let sb_path = resolve_scrollback_path(&pty_id);
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct KillBody {
+    id: String,
+    profile_id: String,
+}
+
+async fn handle_kill(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<KillBody>,
+) -> Result<(), AppError> {
+    let owner = ensure_profile_owner(&runtime, &body.id, &body.profile_id)?;
+    kill_pty_core(
+        alethe_server_pty_sessions(),
+        &owner.scrollback_path,
+        &body.id,
+    )
+    .await?;
+    Ok(())
+}
+
+async fn handle_suspend(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<KillBody>,
+) -> Result<Json<bool>, AppError> {
+    let owner = ensure_profile_owner(&runtime, &body.id, &body.profile_id)?;
+    let log_path = owner
+        .scrollback_path
+        .parent()
+        .and_then(std::path::Path::parent)
+        .map(|profile_dir| profile_dir.join("spawn.log"));
+    let suspended = suspend_pty_core(
+        alethe_server_pty_sessions(),
+        runtime.pty_sink(),
+        log_path,
+        &body.id,
+    )
+    .await?;
+    Ok(Json(suspended))
+}
+
+async fn handle_restart(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(args): Json<SpawnPtyArgs>,
+) -> Result<Json<SpawnPtyResponse>, AppError> {
+    let pty_id = args
+        .id
+        .clone()
+        .ok_or_else(|| AppError::bad_request("Terminal ID is required for restart"))?;
+    let owner = resolve_pty_owner(&runtime, &pty_id, &args.profile_id)?;
+    let mut args = args;
+    args.profile_id = owner.profile_id;
 
     let res = restart_pty_core(
         alethe_server_pty_sessions().clone(),
-        Arc::new(WebSocketSink),
-        alethe_lib::remote::hub(),
+        runtime.pty_sink(),
+        crate::remote::hub(),
         None,
-        sb_path,
+        owner.scrollback_path,
         args,
     )
     .await?;
@@ -196,58 +258,118 @@ async fn handle_restart(Json(args): Json<SpawnPtyArgs>) -> Result<Json<SpawnPtyR
     Ok(Json(res))
 }
 
-async fn handle_cwd(AxumPath(id): AxumPath<String>) -> Result<Json<Option<String>>, AppError> {
+async fn handle_cwd(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    AxumPath(id): AxumPath<String>,
+    Query(query): Query<PtyProfileQuery>,
+) -> Result<Json<Option<String>>, AppError> {
+    ensure_profile_owner(&runtime, &id, &query.profile_id)?;
     let cwd = get_pty_cwd_core(alethe_server_pty_sessions(), &id).await?;
     Ok(Json(cwd))
 }
 
-async fn handle_processes() -> Result<Json<Vec<alethe_lib::pty::PtyProcessSnapshot>>, AppError> {
-    let snapshots = list_pty_processes_core(alethe_server_pty_sessions()).await?;
+async fn handle_processes(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Query(query): Query<PtyProfileQuery>,
+) -> Result<Json<Vec<crate::pty::PtyProcessSnapshot>>, AppError> {
+    let _ = resolve_pty_owner(&runtime, "ownership-check", &query.profile_id)?;
+    let snapshots =
+        list_pty_processes_core(alethe_server_pty_sessions(), Some(&query.profile_id)).await?;
     Ok(Json(snapshots))
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct StateBody {
     id: String,
     active: bool,
+    profile_id: String,
 }
 
-async fn handle_read_state(Json(body): Json<StateBody>) -> Result<(), AppError> {
+async fn handle_read_state(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<StateBody>,
+) -> Result<(), AppError> {
+    ensure_profile_owner(&runtime, &body.id, &body.profile_id)?;
     set_pty_read_state_core(alethe_server_pty_sessions(), &body.id, body.active)?;
     Ok(())
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct VisibleBody {
     id: String,
     visible: bool,
+    profile_id: String,
 }
 
-async fn handle_visible(Json(body): Json<VisibleBody>) -> Result<(), AppError> {
+async fn handle_visible(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<VisibleBody>,
+) -> Result<(), AppError> {
+    ensure_profile_owner(&runtime, &body.id, &body.profile_id)?;
     set_pty_visible_core(alethe_server_pty_sessions(), &body.id, body.visible)?;
     Ok(())
 }
 
-async fn handle_priority(Json(body): Json<StateBody>) -> Result<(), AppError> {
+async fn handle_priority(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<StateBody>,
+) -> Result<(), AppError> {
+    ensure_profile_owner(&runtime, &body.id, &body.profile_id)?;
     set_pty_priority_core(alethe_server_pty_sessions(), &body.id, body.active).await?;
     Ok(())
 }
 
-async fn handle_tree(AxumPath(id): AxumPath<String>) -> Result<Json<Option<alethe_lib::process_tree::PtyTreeInfo>>, AppError> {
-    let info = alethe_lib::process_tree::get_pty_tree_info(id);
-    Ok(Json(info))
+async fn handle_tree(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    AxumPath(id): AxumPath<String>,
+    Query(query): Query<PtyProfileQuery>,
+) -> Result<Json<Option<crate::process_tree::PtyTreeInfo>>, AppError> {
+    let owner = ensure_profile_owner(&runtime, &id, &query.profile_id)?;
+    let root_pid = crate::pty::owned_pty_root_pid(
+        alethe_server_pty_sessions(),
+        &id,
+        &owner.profile_id,
+        &owner.scrollback_path,
+    )?;
+    Ok(Json(Some(crate::process_tree::get_pty_tree_for_root(
+        &id, root_pid,
+    ))))
 }
 
-async fn handle_tree_kill(AxumPath(id): AxumPath<String>) -> Result<Json<Vec<u32>>, AppError> {
-    let killed = alethe_lib::process_tree::kill_pty_tree_cmd(id).await?;
+async fn handle_tree_kill(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    AxumPath(id): AxumPath<String>,
+    Query(query): Query<PtyProfileQuery>,
+) -> Result<Json<Vec<u32>>, AppError> {
+    let owner = ensure_profile_owner(&runtime, &id, &query.profile_id)?;
+    let root_pid = crate::pty::owned_pty_root_pid(
+        alethe_server_pty_sessions(),
+        &id,
+        &owner.profile_id,
+        &owner.scrollback_path,
+    )?
+    .ok_or_else(|| AppError::bad_request(format!("No root PID registered for PTY: {id}")))?;
+    let killed = crate::process_tree::kill_pty_tree_for_root(id, root_pid).await?;
     Ok(Json(killed))
 }
 
 async fn handle_ws(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Extension(session): Extension<AuthenticatedLocalSession>,
     AxumPath(id): AxumPath<String>,
+    Query(query): Query<PtyProfileQuery>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(id, socket))
+    let owner = match ensure_profile_owner(&runtime, &id, &query.profile_id) {
+        Ok(owner) => owner,
+        Err(error) => return error.into_response(),
+    };
+    let session_token = session.token().to_string();
+    ws.protocols([format!("alethe-auth.{session_token}")])
+        .on_upgrade(move |socket| handle_socket(id, owner, runtime, session_token, socket))
+        .into_response()
 }
 
 #[derive(Deserialize)]
@@ -259,22 +381,61 @@ enum IncomingWsMessage {
     Resize { cols: u16, rows: u16 },
 }
 
-async fn handle_socket(id: String, mut socket: WebSocket) {
-    let sender = get_or_create_channel(&id);
+async fn send_ws_event(socket: &mut WebSocket, event: &PtyWsMessage) -> Result<(), ()> {
+    let json = serde_json::to_string(event).map_err(|_| ())?;
+    socket.send(Message::Text(json)).await.map_err(|_| ())
+}
+
+async fn handle_socket(
+    id: String,
+    owner: ResolvedPtyOwner,
+    runtime: Arc<ServerRuntime>,
+    session_token: String,
+    mut socket: WebSocket,
+) {
+    if !pty_exists_core(alethe_server_pty_sessions(), &id) {
+        let _ = send_ws_event(&mut socket, &PtyWsMessage::Missing).await;
+        return;
+    }
+    let sender = get_or_create_pty_ws_channel(&id);
     let mut rx = sender.subscribe();
+    let mut auth_check = tokio::time::interval(std::time::Duration::from_secs(15));
 
     loop {
         tokio::select! {
+            _ = auth_check.tick() => {
+                if !runtime.session_is_valid(&session_token) {
+                    break;
+                }
+            }
             msg = rx.recv() => {
                 match msg {
                     Ok(event) => {
-                        if let Ok(json) = serde_json::to_string(&event) {
-                            if socket.send(Message::Text(json)).await.is_err() {
-                                break;
-                            }
+                        // A stable channel can outlive one PTY generation. Stop
+                        // before a reused id from another profile can fan out.
+                        if pty_exists_core(alethe_server_pty_sessions(), &id)
+                            && crate::pty::ensure_pty_owner(
+                                alethe_server_pty_sessions(),
+                                &id,
+                                &owner.profile_id,
+                                &owner.scrollback_path,
+                            )
+                            .is_err()
+                        {
+                            break;
+                        }
+                        if send_ws_event(&mut socket, &event).await.is_err() {
+                            break;
                         }
                     }
-                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Lagged(dropped)) => {
+                        // A broadcast receiver cannot recover the missing bytes.
+                        // Tell the client to rebuild its view from scrollback.
+                        let gap = PtyWsMessage::Gap { dropped };
+                        if send_ws_event(&mut socket, &gap).await.is_err() {
+                            break;
+                        }
+                    },
                     Err(broadcast::error::RecvError::Closed) => break,
                 }
             }
@@ -282,12 +443,40 @@ async fn handle_socket(id: String, mut socket: WebSocket) {
                 let Some(Ok(msg)) = incoming else { break };
                 if let Message::Text(text) = msg {
                     if let Ok(cmd) = serde_json::from_str::<IncomingWsMessage>(&text) {
+                        if !pty_exists_core(alethe_server_pty_sessions(), &id)
+                            || crate::pty::ensure_pty_owner(
+                                alethe_server_pty_sessions(),
+                                &id,
+                                &owner.profile_id,
+                                &owner.scrollback_path,
+                            )
+                            .is_err()
+                        {
+                            let _ = send_ws_event(&mut socket, &PtyWsMessage::Missing).await;
+                            break;
+                        }
                         match cmd {
                             IncomingWsMessage::Input { data } => {
-                                let _ = alethe_lib::pty::write_pty_core(alethe_server_pty_sessions(), &id, &data).await;
+                                let _ = crate::pty::write_pty_core(
+                                    alethe_server_pty_sessions(),
+                                    &id,
+                                    &data,
+                                    Some(&owner.profile_id),
+                                    Some(&owner.scrollback_path),
+                                )
+                                .await;
                             }
                             IncomingWsMessage::Resize { cols, rows } => {
-                                let _ = resize_pty_core(alethe_server_pty_sessions(), None, &id, cols, rows).await;
+                                let _ = resize_pty_core(
+                                    alethe_server_pty_sessions(),
+                                    None,
+                                    &id,
+                                    cols,
+                                    rows,
+                                    Some(&owner.profile_id),
+                                    Some(&owner.scrollback_path),
+                                )
+                                .await;
                             }
                         }
                     }
@@ -302,9 +491,12 @@ pub fn router() -> Router {
         .route("/api/pty/spawn", post(handle_spawn))
         .route("/api/pty/exists/:id", get(handle_exists))
         .route("/api/pty/attach/:id", get(handle_attach))
+        .route("/api/pty/snapshot/:id", get(handle_snapshot))
         .route("/api/pty/write", post(handle_write))
         .route("/api/pty/resize", post(handle_resize))
         .route("/api/pty/kill", post(handle_kill))
+        .route("/api/pty/suspend", post(handle_suspend))
+        .route("/api/window/suspend_pty", post(handle_suspend))
         .route("/api/pty/restart", post(handle_restart))
         .route("/api/pty/cwd/:id", get(handle_cwd))
         .route("/api/pty/processes", get(handle_processes))

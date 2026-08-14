@@ -153,7 +153,11 @@ pub fn start_listener(app: AppHandle) {
             }
 
             let mut body = String::new();
-            if let Err(e) = request.as_reader().take(BODY_LIMIT).read_to_string(&mut body) {
+            if let Err(e) = request
+                .as_reader()
+                .take(BODY_LIMIT)
+                .read_to_string(&mut body)
+            {
                 eprintln!("[agent_events] erro lendo corpo: {e}");
                 let _ = request.respond(tiny_http::Response::empty(400));
                 continue;
@@ -173,9 +177,12 @@ pub fn start_listener(app: AppHandle) {
                             .unwrap_or("")
                             .to_string();
                         if !matches!(agent.as_str(), "shell" | "claude" | "codex" | "opencode") {
-                            let _ = request.respond(tiny_http::Response::from_string(
-                                "agent invalido (use claude|codex|opencode)",
-                            ).with_status_code(400));
+                            let _ = request.respond(
+                                tiny_http::Response::from_string(
+                                    "agent invalido (use claude|codex|opencode)",
+                                )
+                                .with_status_code(400),
+                            );
                             continue;
                         }
                         let job_id = payload
@@ -185,7 +192,10 @@ pub fn start_listener(app: AppHandle) {
                             .unwrap_or_else(|| format!("sandbox-job-{}", nanoid::nanoid!(10)));
                         let mut event_payload = payload;
                         if let Some(object) = event_payload.as_object_mut() {
-                            object.insert("job_id".to_string(), serde_json::Value::String(job_id.clone()));
+                            object.insert(
+                                "job_id".to_string(),
+                                serde_json::Value::String(job_id.clone()),
+                            );
                         }
                         eprintln!("[agent_events] /spawn agent={agent} job_id={job_id}");
                         let _ = app.emit("agent-spawn", &event_payload);
@@ -195,13 +205,18 @@ pub fn start_listener(app: AppHandle) {
                             "agent": agent,
                             "status": "queued"
                         });
-                        let _ = request.respond(tiny_http::Response::from_string(response.to_string())
-                            .with_header(tiny_http::Header::from_bytes("Content-Type", "application/json").unwrap()));
+                        let _ = request.respond(
+                            tiny_http::Response::from_string(response.to_string()).with_header(
+                                tiny_http::Header::from_bytes("Content-Type", "application/json")
+                                    .unwrap(),
+                            ),
+                        );
                     }
                     Err(e) => {
-                        let _ = request.respond(tiny_http::Response::from_string(format!(
-                            "/spawn espera JSON: {e}"
-                        )).with_status_code(400));
+                        let _ = request.respond(
+                            tiny_http::Response::from_string(format!("/spawn espera JSON: {e}"))
+                                .with_status_code(400),
+                        );
                     }
                 }
                 continue;

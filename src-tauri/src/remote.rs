@@ -96,8 +96,7 @@ impl RemoteHub {
     }
 
     fn is_active(&self, generation: u64) -> bool {
-        self.running.load(Ordering::SeqCst)
-            && self.generation.load(Ordering::SeqCst) == generation
+        self.running.load(Ordering::SeqCst) && self.generation.load(Ordering::SeqCst) == generation
     }
 
     fn pairing_url(&self) -> Option<String> {
@@ -115,13 +114,31 @@ impl RemoteHub {
                 .ok()
                 .map(|code| code.render::<svg::Color>().min_dimensions(220, 220).build())
         });
-        let devices: Vec<RemoteDeviceInfo> = self.clients.lock().map(|clients| clients.iter().map(|client| RemoteDeviceInfo {
-            id: client.id,
-            name: client.name.clone(),
-            address: client.address.clone(),
-            connected_at: client.connected_at.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
-            expires_at: client.connected_at.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() + self.session_expiry_secs.load(Ordering::Relaxed),
-        }).collect()).unwrap_or_default();
+        let devices: Vec<RemoteDeviceInfo> = self
+            .clients
+            .lock()
+            .map(|clients| {
+                clients
+                    .iter()
+                    .map(|client| RemoteDeviceInfo {
+                        id: client.id,
+                        name: client.name.clone(),
+                        address: client.address.clone(),
+                        connected_at: client
+                            .connected_at
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs(),
+                        expires_at: client
+                            .connected_at
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs()
+                            + self.session_expiry_secs.load(Ordering::Relaxed),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
         RemoteInfo {
             enabled: self.enabled(),
             connected_devices: devices.len(),
@@ -144,15 +161,28 @@ impl RemoteHub {
         clients.retain(|client| client.sender.send(message.clone()).is_ok());
     }
 
-    fn try_register_client(&self, sender: mpsc::Sender<String>, name: String, address: String) -> Option<usize> {
+    fn try_register_client(
+        &self,
+        sender: mpsc::Sender<String>,
+        name: String,
+        address: String,
+    ) -> Option<usize> {
         let mut clients = self.clients.lock().ok()?;
         if clients.len() >= self.max_devices.load(Ordering::Relaxed) {
             return None;
         }
         let id = self.next_client_id.fetch_add(1, Ordering::Relaxed);
         let now = SystemTime::now();
-        let expires_at = Instant::now() + Duration::from_secs(self.session_expiry_secs.load(Ordering::Relaxed));
-        clients.push(RemoteClient { id, sender, name, address, connected_at: now, expires_at });
+        let expires_at =
+            Instant::now() + Duration::from_secs(self.session_expiry_secs.load(Ordering::Relaxed));
+        clients.push(RemoteClient {
+            id,
+            sender,
+            name,
+            address,
+            connected_at: now,
+            expires_at,
+        });
         Some(id)
     }
 
@@ -175,7 +205,16 @@ impl RemoteHub {
     }
 
     fn client_expired(&self, id: usize) -> bool {
-        self.clients.lock().ok().and_then(|clients| clients.iter().find(|client| client.id == id).map(|client| client.expires_at <= Instant::now())).unwrap_or(true)
+        self.clients
+            .lock()
+            .ok()
+            .and_then(|clients| {
+                clients
+                    .iter()
+                    .find(|client| client.id == id)
+                    .map(|client| client.expires_at <= Instant::now())
+            })
+            .unwrap_or(true)
     }
 }
 
@@ -233,14 +272,19 @@ pub fn remote_control_revoke() -> RemoteInfo {
 #[tauri::command]
 pub fn remote_control_set_max_devices(max_devices: usize) -> RemoteInfo {
     let remote = hub();
-    remote.max_devices.store(max_devices.clamp(1, MAX_REMOTE_DEVICES), Ordering::Relaxed);
+    remote
+        .max_devices
+        .store(max_devices.clamp(1, MAX_REMOTE_DEVICES), Ordering::Relaxed);
     remote.info()
 }
 
 #[tauri::command]
 pub fn remote_control_set_session_expiry(session_expiry_secs: u64) -> RemoteInfo {
     let remote = hub();
-    remote.session_expiry_secs.store(session_expiry_secs.clamp(MIN_SESSION_EXPIRY_SECS, MAX_SESSION_EXPIRY_SECS), Ordering::Relaxed);
+    remote.session_expiry_secs.store(
+        session_expiry_secs.clamp(MIN_SESSION_EXPIRY_SECS, MAX_SESSION_EXPIRY_SECS),
+        Ordering::Relaxed,
+    );
     remote.info()
 }
 
@@ -271,7 +315,11 @@ pub fn remote_control_set_enabled(
     enabled: bool,
 ) -> Result<RemoteInfo, String> {
     let projects_path = projects_file_path(&app)?;
-    Ok(remote_control_set_enabled_core(&projects_path, sessions.inner(), enabled))
+    Ok(remote_control_set_enabled_core(
+        &projects_path,
+        sessions.inner(),
+        enabled,
+    ))
 }
 
 fn run_http(projects_path: PathBuf, hub: Arc<RemoteHub>, sessions: PtySessions, generation: u64) {
@@ -282,7 +330,10 @@ fn run_http(projects_path: PathBuf, hub: Arc<RemoteHub>, sessions: PtySessions, 
     };
     let port = listener.local_addr().map(|addr| addr.port()).unwrap_or(0);
     hub.http_port.store(port, Ordering::SeqCst);
-    eprintln!("[remote] LAN client available at http://{}:{}", hub.host, port);
+    eprintln!(
+        "[remote] LAN client available at http://{}:{}",
+        hub.host, port
+    );
     let _ = listener.set_nonblocking(true);
     while hub.is_active(generation) {
         let stream = match listener.accept() {
@@ -328,7 +379,10 @@ fn run_websocket(hub: Arc<RemoteHub>, sessions: PtySessions, generation: u64) {
         };
         let hub = Arc::clone(&hub);
         let sessions = Arc::clone(&sessions);
-        let address = stream.peer_addr().map(|address| address.to_string()).unwrap_or_else(|_| "Unknown device".into());
+        let address = stream
+            .peer_addr()
+            .map(|address| address.to_string())
+            .unwrap_or_else(|_| "Unknown device".into());
         thread::spawn(move || handle_websocket(stream, hub, sessions, generation, address));
     }
     if hub.generation.load(Ordering::SeqCst) == generation {
@@ -336,7 +390,13 @@ fn run_websocket(hub: Arc<RemoteHub>, sessions: PtySessions, generation: u64) {
     }
 }
 
-fn handle_websocket(stream: TcpStream, hub: Arc<RemoteHub>, sessions: PtySessions, generation: u64, address: String) {
+fn handle_websocket(
+    stream: TcpStream,
+    hub: Arc<RemoteHub>,
+    sessions: PtySessions,
+    generation: u64,
+    address: String,
+) {
     let mut socket = match accept(stream) {
         Ok(socket) => socket,
         Err(_) => return,
@@ -361,38 +421,71 @@ fn handle_websocket(stream: TcpStream, hub: Arc<RemoteHub>, sessions: PtySession
         }
         if let Some(id) = client_id {
             if hub.client_expired(id) {
-                let _ = socket.send(Message::Text(json!({ "type": "error", "message": "Remote session expired" }).to_string().into()));
+                let _ = socket.send(Message::Text(
+                    json!({ "type": "error", "message": "Remote session expired" })
+                        .to_string()
+                        .into(),
+                ));
                 break;
             }
         }
         match socket.read() {
             Ok(Message::Text(text)) => {
-                let Ok(command) = serde_json::from_str::<Value>(&text) else { continue };
-                let valid_token = hub.token.lock().ok().and_then(|token| {
-                    command.get("token").and_then(Value::as_str).map(|provided| tokens_equal(provided, &token))
-                }).unwrap_or(false);
+                let Ok(command) = serde_json::from_str::<Value>(&text) else {
+                    continue;
+                };
+                let valid_token = hub
+                    .token
+                    .lock()
+                    .ok()
+                    .and_then(|token| {
+                        command
+                            .get("token")
+                            .and_then(Value::as_str)
+                            .map(|provided| tokens_equal(provided, &token))
+                    })
+                    .unwrap_or(false);
                 if !valid_token {
-                    let _ = socket.send(Message::Text(json!({ "type": "error", "message": "Invalid pairing token" }).to_string().into()));
+                    let _ = socket.send(Message::Text(
+                        json!({ "type": "error", "message": "Invalid pairing token" })
+                            .to_string()
+                            .into(),
+                    ));
                     continue;
                 }
                 if client_id.is_none() {
-                    let name = command.get("deviceName").and_then(Value::as_str).unwrap_or("Remote device").chars().take(48).collect();
-                    let Some(id) = hub.try_register_client(tx.clone(), name, address.clone()) else {
-                        let _ = socket.send(Message::Text(json!({ "type": "error", "message": "Maximum remote devices reached" }).to_string().into()));
+                    let name = command
+                        .get("deviceName")
+                        .and_then(Value::as_str)
+                        .unwrap_or("Remote device")
+                        .chars()
+                        .take(48)
+                        .collect();
+                    let Some(id) = hub.try_register_client(tx.clone(), name, address.clone())
+                    else {
+                        let _ = socket.send(Message::Text(
+                            json!({ "type": "error", "message": "Maximum remote devices reached" })
+                                .to_string()
+                                .into(),
+                        ));
                         break;
                     };
                     client_id = Some(id);
-                    let _ = socket.send(Message::Text(json!({ "type": "authenticated" }).to_string().into()));
+                    let _ = socket.send(Message::Text(
+                        json!({ "type": "authenticated" }).to_string().into(),
+                    ));
                 }
                 if command.get("type").and_then(Value::as_str) == Some("subscribe") {
                     if let Some(id) = command.get("ptyId").and_then(Value::as_str) {
                         let scrollback = read_scrollback(&sessions, id, 512 * 1024);
-                        let payload = json!({ "type": "scrollback", "ptyId": id, "text": scrollback });
+                        let payload =
+                            json!({ "type": "scrollback", "ptyId": id, "text": scrollback });
                         let _ = socket.send(Message::Text(payload.to_string().into()));
                     }
                 }
             }
-            Err(tungstenite::Error::Io(error)) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(tungstenite::Error::Io(error))
+                if error.kind() == std::io::ErrorKind::WouldBlock => {}
             Err(tungstenite::Error::ConnectionClosed) => return,
             Err(_) => return,
             _ => {}
@@ -421,14 +514,31 @@ fn handle_http(
     let headers_end = request.find("\r\n\r\n").unwrap_or(request.len());
     let body = &request[headers_end.saturating_add(4)..];
     let token = query_value(path, "token");
-    let valid_token = hub.token.lock().ok().and_then(|expected| {
-        token.as_deref().map(|provided| tokens_equal(provided, &expected))
-    }).unwrap_or(false);
+    let valid_token = hub
+        .token
+        .lock()
+        .ok()
+        .and_then(|expected| {
+            token
+                .as_deref()
+                .map(|provided| tokens_equal(provided, &expected))
+        })
+        .unwrap_or(false);
     if path.starts_with("/api/") && !valid_token {
-        return respond(stream, 401, "application/json", r#"{"error":"Invalid pairing token"}"#);
+        return respond(
+            stream,
+            401,
+            "application/json",
+            r#"{"error":"Invalid pairing token"}"#,
+        );
     }
     if path.starts_with("/api/info") {
-        return respond(stream, 200, "application/json", &serde_json::to_string(&hub.info()).map_err(|e| e.to_string())?);
+        return respond(
+            stream,
+            200,
+            "application/json",
+            &serde_json::to_string(&hub.info()).map_err(|e| e.to_string())?,
+        );
     }
     if path.starts_with("/api/state") {
         let state = workspace_snapshot(projects_path)?;
@@ -437,22 +547,52 @@ fn handle_http(
     if path.starts_with("/api/scrollback") {
         let id = query_value(path, "id").ok_or_else(|| "Missing PTY id".to_string())?;
         let text = read_scrollback(sessions, &id, 512 * 1024);
-        return respond(stream, 200, "application/json", &json!({ "text": text }).to_string());
+        return respond(
+            stream,
+            200,
+            "application/json",
+            &json!({ "text": text }).to_string(),
+        );
     }
     if path.starts_with("/api/message") && method == "POST" {
         let payload: RemoteMessage = serde_json::from_str(body).map_err(|e| e.to_string())?;
         let text = sanitize_remote_message(&payload.text);
         if text.trim().is_empty() || text.len() > MAX_MESSAGE {
-            return respond(stream, 400, "application/json", r#"{"error":"Message is empty or too large"}"#);
+            return respond(
+                stream,
+                400,
+                "application/json",
+                r#"{"error":"Message is empty or too large"}"#,
+            );
         }
         write_remote(sessions, &payload.pty_id, &format!("{}\r", text.trim()))?;
         return respond(stream, 204, "text/plain", "");
     }
     match path.split('?').next().unwrap_or("/") {
-        "/" | "/index.html" => respond(stream, 200, "text/html; charset=utf-8", include_str!("../remote/index.html")),
-        "/app.js" => respond(stream, 200, "text/javascript; charset=utf-8", include_str!("../remote/app.js")),
-        "/app.css" => respond(stream, 200, "text/css; charset=utf-8", include_str!("../remote/app.css")),
-        "/manifest.webmanifest" => respond(stream, 200, "application/manifest+json", include_str!("../remote/manifest.webmanifest")),
+        "/" | "/index.html" => respond(
+            stream,
+            200,
+            "text/html; charset=utf-8",
+            include_str!("../remote/index.html"),
+        ),
+        "/app.js" => respond(
+            stream,
+            200,
+            "text/javascript; charset=utf-8",
+            include_str!("../remote/app.js"),
+        ),
+        "/app.css" => respond(
+            stream,
+            200,
+            "text/css; charset=utf-8",
+            include_str!("../remote/app.css"),
+        ),
+        "/manifest.webmanifest" => respond(
+            stream,
+            200,
+            "application/manifest+json",
+            include_str!("../remote/manifest.webmanifest"),
+        ),
         _ => respond(stream, 404, "text/plain", "Not found"),
     }
 }
@@ -472,7 +612,11 @@ fn workspace_snapshot(projects_path: &Path) -> Result<Value, String> {
     let mut remote_projects = Vec::new();
     if let Some(items) = projects.as_array() {
         for project in items {
-            let terminals = project.get("terminals").and_then(Value::as_array).cloned().unwrap_or_default();
+            let terminals = project
+                .get("terminals")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
             let chats = terminals.into_iter().flat_map(|terminal| {
                 let terminal_id = terminal.get("id").cloned().unwrap_or(Value::Null);
                 let terminal_name = terminal.get("name").cloned().unwrap_or(Value::String("Terminal".into()));
@@ -492,10 +636,8 @@ fn read_scrollback(sessions: &PtySessions, id: &str, max_bytes: usize) -> String
         if let Some(session) = sessions.get(id) {
             if let Ok(mut buffer) = session.scrollback.lock() {
                 let data = buffer.data.make_contiguous();
-                let start = crate::pty::align_to_char_boundary(
-                    data,
-                    data.len().saturating_sub(max_bytes),
-                );
+                let start =
+                    crate::pty::align_to_char_boundary(data, data.len().saturating_sub(max_bytes));
                 return String::from_utf8_lossy(&data[start..]).into_owned();
             }
         }
@@ -505,38 +647,77 @@ fn read_scrollback(sessions: &PtySessions, id: &str, max_bytes: usize) -> String
 
 fn write_remote(sessions: &PtySessions, id: &str, data: &str) -> Result<(), String> {
     let writer = {
-        let sessions = sessions.lock().map_err(|_| "PTY sessions lock poisoned".to_string())?;
-        let session = sessions.get(id).ok_or_else(|| "PTY not found".to_string())?;
+        let sessions = sessions
+            .lock()
+            .map_err(|_| "PTY sessions lock poisoned".to_string())?;
+        let session = sessions
+            .get(id)
+            .ok_or_else(|| "PTY not found".to_string())?;
         Arc::clone(&session.writer)
     };
-    let mut writer = writer.lock().map_err(|_| "PTY writer lock poisoned".to_string())?;
-    writer.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
+    let mut writer = writer
+        .lock()
+        .map_err(|_| "PTY writer lock poisoned".to_string())?;
+    writer
+        .write_all(data.as_bytes())
+        .map_err(|e| e.to_string())?;
     writer.flush().map_err(|e| e.to_string())
 }
 
-fn respond(stream: &mut TcpStream, status: u16, content_type: &str, body: &str) -> Result<(), String> {
-    if body.len() > MAX_BODY { return Err("Response too large".into()); }
-    let reason = match status { 200 => "OK", 204 => "No Content", 400 => "Bad Request", 401 => "Unauthorized", 404 => "Not Found", _ => "Error" };
+fn respond(
+    stream: &mut TcpStream,
+    status: u16,
+    content_type: &str,
+    body: &str,
+) -> Result<(), String> {
+    if body.len() > MAX_BODY {
+        return Err("Response too large".into());
+    }
+    let reason = match status {
+        200 => "OK",
+        204 => "No Content",
+        400 => "Bad Request",
+        401 => "Unauthorized",
+        404 => "Not Found",
+        _ => "Error",
+    };
     let response = format!("HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'self'; connect-src 'self' ws:; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'\r\n\r\n{body}", body.as_bytes().len());
-    stream.write_all(response.as_bytes()).map_err(|e| e.to_string())
+    stream
+        .write_all(response.as_bytes())
+        .map_err(|e| e.to_string())
 }
 
 fn bind_listener(host: &str, start: u16, end: u16) -> Option<TcpListener> {
-    let ip = host.trim_start_matches('[').trim_end_matches(']').parse::<IpAddr>().ok()?;
+    let ip = host
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .parse::<IpAddr>()
+        .ok()?;
     (start..=end).find_map(|port| TcpListener::bind((ip, port)).ok())
 }
 
 fn tokens_equal(provided: &str, expected: &str) -> bool {
     let mut difference = provided.len() ^ expected.len();
     for index in 0..provided.len().max(expected.len()) {
-        difference |= usize::from(provided.as_bytes().get(index).copied().unwrap_or_default()
-            ^ expected.as_bytes().get(index).copied().unwrap_or_default());
+        difference |= usize::from(
+            provided.as_bytes().get(index).copied().unwrap_or_default()
+                ^ expected.as_bytes().get(index).copied().unwrap_or_default(),
+        );
     }
     difference == 0
 }
 
 fn sanitize_remote_message(input: &str) -> String {
-    input.chars().map(|character| if character.is_control() { ' ' } else { character }).collect()
+    input
+        .chars()
+        .map(|character| {
+            if character.is_control() {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect()
 }
 
 fn query_value(path: &str, key: &str) -> Option<String> {
@@ -548,7 +729,13 @@ fn query_value(path: &str, key: &str) -> Option<String> {
 
 fn local_ip() -> String {
     UdpSocket::bind("0.0.0.0:0")
-        .and_then(|socket| { socket.connect("8.8.8.8:80")?; socket.local_addr() })
-        .map(|addr| match addr.ip() { IpAddr::V4(ip) => ip.to_string(), IpAddr::V6(ip) => format!("[{ip}]"), })
+        .and_then(|socket| {
+            socket.connect("8.8.8.8:80")?;
+            socket.local_addr()
+        })
+        .map(|addr| match addr.ip() {
+            IpAddr::V4(ip) => ip.to_string(),
+            IpAddr::V6(ip) => format!("[{ip}]"),
+        })
         .unwrap_or_else(|_| "127.0.0.1".into())
 }

@@ -32,10 +32,7 @@ fn unix_secs() -> u64 {
 
 /// `app_local_data_dir()/logs` — raiz, compartilhada por todos os perfis.
 pub fn logs_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let root = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|e| e.to_string())?;
+    let root = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
     Ok(root.join("logs"))
 }
 

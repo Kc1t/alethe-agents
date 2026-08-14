@@ -125,7 +125,10 @@ pub fn start(app: AppHandle) {
     let last_crash = if let Some(prev) = prev_crash {
         let orphans_reaped = crate::process_tree::sweep_orphans_from_previous_session();
         append_unclean_log(&dir, &prev, orphans_reaped);
-        Some(CrashReport { session: prev, orphans_reaped })
+        Some(CrashReport {
+            session: prev,
+            orphans_reaped,
+        })
     } else {
         None
     };

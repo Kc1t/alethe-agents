@@ -1,6 +1,6 @@
-use std::process::Command;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
-use serde::{Serialize, Deserialize};
+use std::process::Command;
 
 use crate::git_control::hide_console;
 
@@ -74,10 +74,7 @@ mod tests {
     fn test_validation_pipeline_success() {
         let dir = std::env::current_dir().unwrap();
         let cmd = "echo hello";
-        let res = run_validation(
-            dir.to_string_lossy().to_string(),
-            vec![cmd.to_string()],
-        ).unwrap();
+        let res = run_validation(dir.to_string_lossy().to_string(), vec![cmd.to_string()]).unwrap();
         assert!(res.success);
         assert_eq!(res.stage, "All");
     }
@@ -86,10 +83,7 @@ mod tests {
     fn test_validation_pipeline_failure() {
         let dir = std::env::current_dir().unwrap();
         let cmd = if cfg!(windows) { "exit 1" } else { "exit 1" };
-        let res = run_validation(
-            dir.to_string_lossy().to_string(),
-            vec![cmd.to_string()],
-        ).unwrap();
+        let res = run_validation(dir.to_string_lossy().to_string(), vec![cmd.to_string()]).unwrap();
         assert!(!res.success);
         assert_eq!(res.stage, cmd);
     }

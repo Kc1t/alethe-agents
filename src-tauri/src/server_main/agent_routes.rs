@@ -1,27 +1,18 @@
-// Agentes instalados/economy/hooks + Plugins — a maioria é função pura sem
-// `AppHandle`. Exceção: `plugins.rs` (lista/instala/desinstala plugin) usa
-// `AppHandle` só pra resolver `profile_data_dir()/plugins` — reaproveita o
-// "core testável" já existente (`list_in`/`install_in`/`uninstall_in`,
-// tornadas `pub` pra isso) com o mesmo `active_profile_dir()` usado em
-// `session_routes.rs`.
-//
-// `codex_app_server_*` fica de fora por enquanto — depende de estado
-// compartilhado (`State<...>`) + emissão de evento em tempo real
-// (`agent-sandbox-app-server://event/{id}`), mesma classe de problema
-// arquitetural que PTY (ver `TODO_WEB_PTY.md`).
+// Agent, plugin, and Codex App Server routes use core functions that do not
+// depend on `AppHandle`. Profile-scoped paths come from `ServerRuntime`, while
+// streaming state is shared by the process-local server registry.
 
-use alethe_lib::agent_events;
-use alethe_lib::agent_library;
-use alethe_lib::cli_resolver;
-use alethe_lib::codex_app_server::{
+use crate::agent_events;
+use crate::agent_library;
+use crate::cli_resolver;
+use crate::codex_app_server::{
     codex_app_server_send_core, codex_app_server_start_core, codex_app_server_stop_core,
     CodexAppServerSink, CodexAppServerState,
 };
-use alethe_lib::economy_agents;
-use alethe_lib::plugins::{self, PluginKind, PluginManifest};
+use crate::economy_agents;
+use crate::plugins::{self, PluginKind, PluginManifest};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::Path as AxumPath;
-use axum::extract::Query;
+use axum::extract::{Extension, Path as AxumPath, Query};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -29,10 +20,11 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 use tokio::sync::broadcast;
 
-use crate::profile_routes::active_profile_dir;
-use crate::AppError;
+use super::profile_routes::active_profile_dir_at;
+use super::{AppError, AuthenticatedLocalSession, ServerRuntime};
 
 fn q(params: &HashMap<String, String>, key: &str) -> Result<String, AppError> {
     params
@@ -131,11 +123,17 @@ async fn models(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
     respond(cli_resolver::discover_provider_models(provider).await)
 }
 
-async fn plugins_list(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
+async fn plugins_list(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Query(p): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
     let kind: Option<PluginKind> = p
         .get("kind")
         .and_then(|k| serde_json::from_value(serde_json::json!(k)).ok());
-    let root = active_profile_dir().join("plugins");
+    let root = match active_profile_dir_at(runtime.data_root()) {
+        Ok(root) => root.join("plugins"),
+        Err(error) => return AppError::from(error).into_response(),
+    };
     respond(plugins::list_in(&root).map(|all| match kind {
         Some(kind) => all.into_iter().filter(|m| m.kind == kind).collect(),
         None => all,
@@ -146,8 +144,14 @@ async fn plugins_list(Query(p): Query<HashMap<String, String>>) -> impl IntoResp
 struct PluginInstallBody {
     manifest: PluginManifest,
 }
-async fn plugin_install(Json(b): Json<PluginInstallBody>) -> impl IntoResponse {
-    let root = active_profile_dir().join("plugins");
+async fn plugin_install(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(b): Json<PluginInstallBody>,
+) -> impl IntoResponse {
+    let root = match active_profile_dir_at(runtime.data_root()) {
+        Ok(root) => root.join("plugins"),
+        Err(error) => return AppError::from(error).into_response(),
+    };
     respond(plugins::install_in(&root, &b.manifest))
 }
 
@@ -155,8 +159,14 @@ async fn plugin_install(Json(b): Json<PluginInstallBody>) -> impl IntoResponse {
 struct PluginUninstallBody {
     id: String,
 }
-async fn plugin_uninstall(Json(b): Json<PluginUninstallBody>) -> impl IntoResponse {
-    let root = active_profile_dir().join("plugins");
+async fn plugin_uninstall(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(b): Json<PluginUninstallBody>,
+) -> impl IntoResponse {
+    let root = match active_profile_dir_at(runtime.data_root()) {
+        Ok(root) => root.join("plugins"),
+        Err(error) => return AppError::from(error).into_response(),
+    };
     respond(plugins::uninstall_in(&root, &b.id))
 }
 
@@ -222,11 +232,7 @@ struct CodexSendBody {
 }
 
 async fn codex_send(Json(b): Json<CodexSendBody>) -> Result<(), AppError> {
-    codex_app_server_send_core(
-        alethe_server_codex_app_server_state(),
-        b.id,
-        b.request,
-    )?;
+    codex_app_server_send_core(alethe_server_codex_app_server_state(), b.id, b.request)?;
     Ok(())
 }
 
@@ -236,23 +242,34 @@ struct CodexStopBody {
 }
 
 async fn codex_stop(Json(b): Json<CodexStopBody>) -> Result<(), AppError> {
-    codex_app_server_stop_core(
-        alethe_server_codex_app_server_state(),
-        b.id,
-    )?;
+    codex_app_server_stop_core(alethe_server_codex_app_server_state(), b.id)?;
     Ok(())
 }
 
+fn authenticated_protocol(session: &AuthenticatedLocalSession) -> String {
+    format!("alethe-auth.{}", session.token())
+}
+
 async fn codex_ws(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Extension(session): Extension<AuthenticatedLocalSession>,
     AxumPath(id): AxumPath<String>,
     ws: WebSocketUpgrade,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_codex_socket(id, socket))
+    ws.protocols([authenticated_protocol(&session)])
+        .on_upgrade(move |socket| handle_codex_socket(id, socket, runtime, session))
 }
 
-async fn handle_codex_socket(id: String, mut socket: WebSocket) {
+async fn handle_codex_socket(
+    id: String,
+    mut socket: WebSocket,
+    runtime: Arc<ServerRuntime>,
+    session: AuthenticatedLocalSession,
+) {
     let sender = get_or_create_codex_channel(&id);
     let mut rx = sender.subscribe();
+    let mut revalidation = tokio::time::interval(Duration::from_secs(15));
+    revalidation.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     loop {
         tokio::select! {
@@ -281,6 +298,31 @@ async fn handle_codex_socket(id: String, mut socket: WebSocket) {
                     }
                 }
             }
+            _ = revalidation.tick() => {
+                if !runtime.session_is_valid(session.token()) {
+                    break;
+                }
+                if socket.send(Message::Ping(Vec::new())).await.is_err() {
+                    break;
+                }
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod websocket_auth_tests {
+    use super::*;
+
+    #[test]
+    fn authenticated_protocol_echoes_the_token_that_authenticated_the_upgrade() {
+        let session = AuthenticatedLocalSession {
+            token: "previous-token-in-grace".to_string(),
+        };
+
+        assert_eq!(
+            authenticated_protocol(&session),
+            "alethe-auth.previous-token-in-grace"
+        );
     }
 }

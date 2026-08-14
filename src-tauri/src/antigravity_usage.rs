@@ -76,7 +76,9 @@ fn extract_token_from_entry(entry: &keyring::Entry) -> Option<String> {
 /// persistimos nem registramos o segredo.
 fn discover_access_token() -> Option<String> {
     // 1. Target literal `gemini:antigravity` (necessário no Windows Credential Manager)
-    if let Ok(entry) = keyring::Entry::new_with_target("gemini:antigravity", "gemini", "antigravity") {
+    if let Ok(entry) =
+        keyring::Entry::new_with_target("gemini:antigravity", "gemini", "antigravity")
+    {
         if let Some(token) = extract_token_from_entry(&entry) {
             return Some(token);
         }
@@ -163,10 +165,7 @@ fn bucket_label(models: &BTreeSet<String>) -> String {
     }
 }
 
-fn parse_usage(
-    body: &serde_json::Value,
-    cli_path: String,
-) -> Result<AntigravityUsage, String> {
+fn parse_usage(body: &serde_json::Value, cli_path: String) -> Result<AntigravityUsage, String> {
     let models = body
         .get("models")
         .and_then(|models| models.as_object())
@@ -253,11 +252,10 @@ pub async fn get_antigravity_usage() -> Result<AntigravityUsage, String> {
         Ok(body) => body,
         Err(FetchError::Unauthorized) => {
             let refresh_launcher = launcher.clone();
-            let refreshed = tokio::task::spawn_blocking(move || {
-                refresh_credential_with_agy(&refresh_launcher)
-            })
-            .await
-            .unwrap_or(false);
+            let refreshed =
+                tokio::task::spawn_blocking(move || refresh_credential_with_agy(&refresh_launcher))
+                    .await
+                    .unwrap_or(false);
             if !refreshed {
                 return Ok(empty_usage("no_auth", cli_path));
             }
@@ -268,9 +266,7 @@ pub async fn get_antigravity_usage() -> Result<AntigravityUsage, String> {
             match fetch_models(&token).await {
                 Ok(body) => body,
                 Err(FetchError::Unauthorized) => return Ok(empty_usage("no_auth", cli_path)),
-                Err(FetchError::Unavailable) => {
-                    return Ok(empty_usage("unavailable", cli_path))
-                }
+                Err(FetchError::Unavailable) => return Ok(empty_usage("unavailable", cli_path)),
             }
         }
         Err(FetchError::Unavailable) => return Ok(empty_usage("unavailable", cli_path)),

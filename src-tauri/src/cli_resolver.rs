@@ -159,7 +159,10 @@ pub fn find_windows_cli_launcher(command: &str) -> Option<PathBuf> {
             return Some(path);
         }
         if let Some(home) = env::var_os("HOME").map(PathBuf::from) {
-            for dir in [home.join(".local").join("bin"), home.join(".cargo").join("bin")] {
+            for dir in [
+                home.join(".local").join("bin"),
+                home.join(".cargo").join("bin"),
+            ] {
                 let candidate = dir.join(command);
                 if candidate.is_file() {
                     return Some(candidate);
@@ -261,8 +264,20 @@ pub fn agent_search_dirs() -> Vec<PathBuf> {
         dirs.push(profile.join(".cargo").join("bin"));
         dirs.push(profile.join(".bun").join("bin"));
         dirs.push(profile.join("scoop").join("shims"));
-        dirs.push(profile.join("AppData").join("Local").join("agy").join("bin"));
-        dirs.push(profile.join("AppData").join("Local").join("antigravity").join("bin"));
+        dirs.push(
+            profile
+                .join("AppData")
+                .join("Local")
+                .join("agy")
+                .join("bin"),
+        );
+        dirs.push(
+            profile
+                .join("AppData")
+                .join("Local")
+                .join("antigravity")
+                .join("bin"),
+        );
     }
     if let Some(app_data) = env::var_os("APPDATA").map(PathBuf::from) {
         dirs.push(app_data.join("npm"));
@@ -556,14 +571,15 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
 
     match provider_lower.as_str() {
         "antigravity" | "agy" => {
-            if let Ok(output) = std::process::Command::new(&bin_path)
-                .arg("models")
-                .output()
-            {
+            if let Ok(output) = std::process::Command::new(&bin_path).arg("models").output() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 for line in stdout.lines() {
                     let trimmed = line.trim();
-                    let id = trimmed.split_whitespace().next().unwrap_or(trimmed).to_string();
+                    let id = trimmed
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or(trimmed)
+                        .to_string();
                     if is_valid_model_id(&id) {
                         models.push(ModelOption {
                             label: format!("{id} (Antigravity agy)"),
@@ -573,21 +589,34 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                 }
             }
             if models.is_empty() {
-                models.push(ModelOption { id: "gemini-2.5-pro".into(), label: "Gemini 2.5 Pro (Google DeepMind)".into() });
-                models.push(ModelOption { id: "gemini-2.5-flash".into(), label: "Gemini 2.5 Flash (Google DeepMind)".into() });
-                models.push(ModelOption { id: "claude-3.7-sonnet".into(), label: "Claude 3.7 Sonnet (Anthropic)".into() });
-                models.push(ModelOption { id: "deepseek-r1".into(), label: "DeepSeek R1 (Reasoning)".into() });
+                models.push(ModelOption {
+                    id: "gemini-2.5-pro".into(),
+                    label: "Gemini 2.5 Pro (Google DeepMind)".into(),
+                });
+                models.push(ModelOption {
+                    id: "gemini-2.5-flash".into(),
+                    label: "Gemini 2.5 Flash (Google DeepMind)".into(),
+                });
+                models.push(ModelOption {
+                    id: "claude-3.7-sonnet".into(),
+                    label: "Claude 3.7 Sonnet (Anthropic)".into(),
+                });
+                models.push(ModelOption {
+                    id: "deepseek-r1".into(),
+                    label: "DeepSeek R1 (Reasoning)".into(),
+                });
             }
         }
         "opencode" => {
-            if let Ok(output) = std::process::Command::new(&bin_path)
-                .arg("models")
-                .output()
-            {
+            if let Ok(output) = std::process::Command::new(&bin_path).arg("models").output() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 for line in stdout.lines() {
                     let trimmed = line.trim();
-                    let id = trimmed.split_whitespace().next().unwrap_or(trimmed).to_string();
+                    let id = trimmed
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or(trimmed)
+                        .to_string();
                     if is_valid_model_id(&id) {
                         models.push(ModelOption {
                             label: format!("{id} (OpenCode CLI)"),
@@ -597,20 +626,30 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                 }
             }
             if models.is_empty() {
-                models.push(ModelOption { id: "anthropic/claude-sonnet-4-5".into(), label: "Claude Sonnet 4.5 (Anthropic)".into() });
-                models.push(ModelOption { id: "opencode/grok-code".into(), label: "Grok Code (OpenCode Zen)".into() });
-                models.push(ModelOption { id: "github-copilot/gpt-5".into(), label: "GPT-5 (GitHub Copilot)".into() });
+                models.push(ModelOption {
+                    id: "anthropic/claude-sonnet-4-5".into(),
+                    label: "Claude Sonnet 4.5 (Anthropic)".into(),
+                });
+                models.push(ModelOption {
+                    id: "opencode/grok-code".into(),
+                    label: "Grok Code (OpenCode Zen)".into(),
+                });
+                models.push(ModelOption {
+                    id: "github-copilot/gpt-5".into(),
+                    label: "GPT-5 (GitHub Copilot)".into(),
+                });
             }
         }
         "claude" => {
-            if let Ok(output) = std::process::Command::new(&bin_path)
-                .arg("models")
-                .output()
-            {
+            if let Ok(output) = std::process::Command::new(&bin_path).arg("models").output() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 for line in stdout.lines() {
                     let trimmed = line.trim();
-                    let id = trimmed.split_whitespace().next().unwrap_or(trimmed).to_string();
+                    let id = trimmed
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or(trimmed)
+                        .to_string();
                     if is_valid_model_id(&id) {
                         models.push(ModelOption {
                             label: format!("{id} (Claude CLI)"),
@@ -620,21 +659,34 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                 }
             }
             if models.is_empty() {
-                models.push(ModelOption { id: "claude-3-7-sonnet".into(), label: "Claude 3.7 Sonnet (Anthropic)".into() });
-                models.push(ModelOption { id: "claude-3-5-sonnet".into(), label: "Claude 3.5 Sonnet (Anthropic)".into() });
-                models.push(ModelOption { id: "claude-3-5-haiku".into(), label: "Claude 3.5 Haiku (Anthropic)".into() });
-                models.push(ModelOption { id: "claude-3-opus".into(), label: "Claude 3 Opus (Anthropic)".into() });
+                models.push(ModelOption {
+                    id: "claude-3-7-sonnet".into(),
+                    label: "Claude 3.7 Sonnet (Anthropic)".into(),
+                });
+                models.push(ModelOption {
+                    id: "claude-3-5-sonnet".into(),
+                    label: "Claude 3.5 Sonnet (Anthropic)".into(),
+                });
+                models.push(ModelOption {
+                    id: "claude-3-5-haiku".into(),
+                    label: "Claude 3.5 Haiku (Anthropic)".into(),
+                });
+                models.push(ModelOption {
+                    id: "claude-3-opus".into(),
+                    label: "Claude 3 Opus (Anthropic)".into(),
+                });
             }
         }
         "codex" => {
-            if let Ok(output) = std::process::Command::new(&bin_path)
-                .arg("models")
-                .output()
-            {
+            if let Ok(output) = std::process::Command::new(&bin_path).arg("models").output() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 for line in stdout.lines() {
                     let trimmed = line.trim();
-                    let id = trimmed.split_whitespace().next().unwrap_or(trimmed).to_string();
+                    let id = trimmed
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or(trimmed)
+                        .to_string();
                     if is_valid_model_id(&id) {
                         models.push(ModelOption {
                             label: format!("{id} (Codex CLI)"),
@@ -644,21 +696,34 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                 }
             }
             if models.is_empty() {
-                models.push(ModelOption { id: "gpt-4o".into(), label: "GPT-4o (OpenAI)".into() });
-                models.push(ModelOption { id: "o3-mini".into(), label: "o3-mini (Raciocínio OpenAI)".into() });
-                models.push(ModelOption { id: "o1".into(), label: "o1 (OpenAI)".into() });
-                models.push(ModelOption { id: "gpt-4o-mini".into(), label: "GPT-4o mini (OpenAI)".into() });
+                models.push(ModelOption {
+                    id: "gpt-4o".into(),
+                    label: "GPT-4o (OpenAI)".into(),
+                });
+                models.push(ModelOption {
+                    id: "o3-mini".into(),
+                    label: "o3-mini (Raciocínio OpenAI)".into(),
+                });
+                models.push(ModelOption {
+                    id: "o1".into(),
+                    label: "o1 (OpenAI)".into(),
+                });
+                models.push(ModelOption {
+                    id: "gpt-4o-mini".into(),
+                    label: "GPT-4o mini (OpenAI)".into(),
+                });
             }
         }
         "mimo" => {
-            if let Ok(output) = std::process::Command::new(&bin_path)
-                .arg("models")
-                .output()
-            {
+            if let Ok(output) = std::process::Command::new(&bin_path).arg("models").output() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 for line in stdout.lines() {
                     let trimmed = line.trim();
-                    let id = trimmed.split_whitespace().next().unwrap_or(trimmed).to_string();
+                    let id = trimmed
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or(trimmed)
+                        .to_string();
                     if is_valid_model_id(&id) {
                         models.push(ModelOption {
                             label: format!("{id} (Mimo CLI)"),
@@ -668,19 +733,26 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                 }
             }
             if models.is_empty() {
-                models.push(ModelOption { id: "mimo-v1-pro".into(), label: "Mimo V1 Pro (Xiaomi AI)".into() });
-                models.push(ModelOption { id: "mimo-v1-flash".into(), label: "Mimo V1 Flash (Xiaomi AI)".into() });
+                models.push(ModelOption {
+                    id: "mimo-v1-pro".into(),
+                    label: "Mimo V1 Pro (Xiaomi AI)".into(),
+                });
+                models.push(ModelOption {
+                    id: "mimo-v1-flash".into(),
+                    label: "Mimo V1 Flash (Xiaomi AI)".into(),
+                });
             }
         }
         "freebuff" => {
-            if let Ok(output) = std::process::Command::new(&bin_path)
-                .arg("models")
-                .output()
-            {
+            if let Ok(output) = std::process::Command::new(&bin_path).arg("models").output() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 for line in stdout.lines() {
                     let trimmed = line.trim();
-                    let id = trimmed.split_whitespace().next().unwrap_or(trimmed).to_string();
+                    let id = trimmed
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or(trimmed)
+                        .to_string();
                     if is_valid_model_id(&id) {
                         models.push(ModelOption {
                             label: format!("{id} (Freebuff CLI)"),
@@ -690,8 +762,14 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                 }
             }
             if models.is_empty() {
-                models.push(ModelOption { id: "freebuff-auto".into(), label: "Freebuff Auto-Router".into() });
-                models.push(ModelOption { id: "freebuff-fast".into(), label: "Freebuff Fast".into() });
+                models.push(ModelOption {
+                    id: "freebuff-auto".into(),
+                    label: "Freebuff Auto-Router".into(),
+                });
+                models.push(ModelOption {
+                    id: "freebuff-fast".into(),
+                    label: "Freebuff Fast".into(),
+                });
             }
         }
         _ => {}
@@ -773,7 +851,10 @@ mod tests {
             PathBuf::from(""),
         ]);
 
-        assert_eq!(paths, vec![PathBuf::from(r"C:\Bin"), PathBuf::from(r"D:\Tools")]);
+        assert_eq!(
+            paths,
+            vec![PathBuf::from(r"C:\Bin"), PathBuf::from(r"D:\Tools")]
+        );
     }
 
     #[cfg(windows)]

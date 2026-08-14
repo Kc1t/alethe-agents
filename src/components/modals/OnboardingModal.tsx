@@ -6,7 +6,7 @@ import aletheLogo from '../../assets/alethe-logo.png'
 import { FEATURES } from '../../lib/features'
 import { LOCALES, useT } from '../../lib/i18n'
 import { DEFAULT_PROFILE_IMAGE_URL, getProfileInitial } from '../../lib/profile'
-import { findCliLauncher } from '../../lib/tauri'
+import { findCliLauncher, renameProfile } from '../../lib/tauri'
 import { THEME_OPTIONS, themeDescription, themeLabel } from '../../lib/themes'
 import { agentCliCommand, type AgentType } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -63,7 +63,11 @@ export function OnboardingModal() {
   const setLanguage = useProjectsStore((s) => s.setLanguage)
   const setAgentEnabled = useProjectsStore((s) => s.setAgentEnabled)
   const setUiTheme = useProjectsStore((s) => s.setUiTheme)
+  const activeProfileId = useProjectsStore((s) => s.activeProfileId)
+  const profiles = useProjectsStore((s) => s.profiles)
+  const flushPersistence = useProjectsStore((s) => s.flushPersistence)
   const openModal = useUiStore((s) => s.openModal_)
+  const pushToast = useUiStore((s) => s.pushToast)
 
   const [step, setStep] = useState(0)
   const [name, setName] = useState(preferences.displayName)
@@ -74,6 +78,7 @@ export function OnboardingModal() {
     {},
   )
   const [detectingAgents, setDetectingAgents] = useState(true)
+  const [finishing, setFinishing] = useState(false)
   const contentRef = useRef<HTMLDivElement | null>(null)
   const agentDetectionStartedRef = useRef(false)
 
@@ -138,17 +143,33 @@ export function OnboardingModal() {
 
   const canProceed = step === 0 ? trimmedName.length > 0 : true
 
-  const finish = () => {
+  const finish = async () => {
     if (!canProceed || trimmedName.length === 0) return
+    setFinishing(true)
+    try {
+      const activeProfile = profiles.find((profile) => profile.id === activeProfileId)
+      if (activeProfileId === 'default' && activeProfile?.name === 'Default') {
+        await renameProfile(activeProfileId, trimmedName)
+      }
+    } catch (error) {
+      setFinishing(false)
+      pushToast({
+        title: t('onboarding.profileSaveErrorTitle'),
+        body: t('onboarding.profileSaveErrorBody', { error: String(error) }),
+      })
+      return
+    }
     setPreferences({
       accountCreated: true,
       onboardingDone: true,
       displayName: trimmedName,
       profileImageUrl: trimmedPhotoUrl,
     })
-    // A primeira tela útil após o onboarding é a Home. O modal de criação de
-    // projeto continua abrindo por cima dela, evitando o flash da workspace
-    // vazia que antes aparecia entre as duas etapas.
+    await flushPersistence().catch(() => {
+      // The global persistence status retains and retries this local state.
+    })
+    // The first useful screen after onboarding is Home. Project creation
+    // opens over it without exposing an empty workspace in between.
     useUiStore.getState().setActiveView('home')
     window.setTimeout(() => {
       openModal('newProject')
@@ -157,7 +178,7 @@ export function OnboardingModal() {
 
   const next = () => {
     if (!canProceed) return
-    if (isLast) finish()
+    if (isLast) void finish()
     else setStep((value) => value + 1)
   }
 
@@ -516,7 +537,7 @@ export function OnboardingModal() {
                     type="button"
                     className={`${styles.button} ${styles.buttonPrimary}`}
                     onClick={next}
-                    disabled={!canProceed}
+                    disabled={!canProceed || finishing}
                   >
                     {isLast ? t('onboarding.finish') : t('common.next')}
                   </button>

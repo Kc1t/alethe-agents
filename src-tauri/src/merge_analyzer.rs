@@ -72,7 +72,10 @@ pub fn classify_path(path: &str) -> ConflictClass {
     // a colar os dois valores com marcador de conflito de verdade dentro do
     // arquivo — que depois era lido cru como se fosse um ID de sessão válido
     // (`--session <<<<<<< HEAD\nses_...\n=======\n...`), quebrando o spawn.
-    if file_name == ".gsd-child-session" || file_name == ".gsd-child-busy" || file_name == ".gsd-child-error" {
+    if file_name == ".gsd-child-session"
+        || file_name == ".gsd-child-busy"
+        || file_name == ".gsd-child-error"
+    {
         return ConflictClass::Sentinel;
     }
     if lower.starts_with(".planning/") || lower.contains("/.planning/") {
@@ -146,9 +149,17 @@ pub fn class_strategy(class: ConflictClass) -> &'static str {
 }
 
 fn ensure_branch(root: &Path, branch: &str) -> Result<(), String> {
-    let ok = git_command(root, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")])
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+    let ok = git_command(
+        root,
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("refs/heads/{branch}"),
+        ],
+    )
+    .map(|o| o.status.success())
+    .unwrap_or(false);
     if ok {
         Ok(())
     } else {
@@ -251,8 +262,14 @@ pub(crate) mod tests {
         assert_eq!(classify_path("tauri.conf.json"), ConflictClass::Json);
         assert_eq!(classify_path("config/settings.yml"), ConflictClass::Config);
         assert_eq!(classify_path("assets/logo.png"), ConflictClass::Asset);
-        assert_eq!(classify_path(".planning/roadmap.md"), ConflictClass::Planning);
-        assert_eq!(classify_path("graphify-out/graph.json"), ConflictClass::Graph);
+        assert_eq!(
+            classify_path(".planning/roadmap.md"),
+            ConflictClass::Planning
+        );
+        assert_eq!(
+            classify_path("graphify-out/graph.json"),
+            ConflictClass::Graph
+        );
         assert_eq!(classify_path("README.md"), ConflictClass::Other);
         // Separador Windows também classifica.
         assert_eq!(classify_path("src\\main.rs"), ConflictClass::Rust);

@@ -51,7 +51,9 @@ fn package_json_has_frontend_signal(root: &Path) -> bool {
         .get("scripts")
         .and_then(|s| s.as_object())
         .map(|scripts| {
-            scripts.contains_key("dev") || scripts.contains_key("build") || scripts.contains_key("start")
+            scripts.contains_key("dev")
+                || scripts.contains_key("build")
+                || scripts.contains_key("start")
         })
         .unwrap_or(false);
     const FRONTEND_DEPS: &[&str] = &["react", "vue", "svelte", "next", "vite", "@angular/core"];
@@ -164,11 +166,7 @@ mod tests {
         let root = temp_repo("desktop");
         fs::create_dir_all(root.join("src-tauri")).unwrap();
         fs::write(root.join("src-tauri").join("tauri.conf.json"), "{}").unwrap();
-        fs::write(
-            root.join("package.json"),
-            r#"{"scripts":{"dev":"vite"}}"#,
-        )
-        .unwrap();
+        fs::write(root.join("package.json"), r#"{"scripts":{"dev":"vite"}}"#).unwrap();
         let detection = detect_project_stack(root.to_string_lossy().into_owned()).unwrap();
         assert_eq!(detection.stack, ProjectStack::Desktop);
         assert!(detection.has_tauri);

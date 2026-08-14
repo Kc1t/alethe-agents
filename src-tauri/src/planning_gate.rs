@@ -17,8 +17,8 @@
 //! skill. Cada arquivo tem exatamente um escritor — sem risco de um
 //! sobrescrever o outro.
 
-use std::path::Path;
 use serde::Serialize;
+use std::path::Path;
 
 /// Um passo do "Briefing de Testes", registrado pela sessão-filha via tool
 /// dedicada (`gsd_record_step`, em `alethe-gsd-state.ts`) — nunca por parsing
@@ -88,12 +88,19 @@ pub(crate) struct RoadmapItem {
 pub(crate) fn parse_roadmap_items(content: &str) -> Vec<RoadmapItem> {
     let mut items = Vec::new();
     for line in content.lines() {
-        let trimmed = line.trim_start().trim_start_matches('-').trim_start_matches('*').trim();
+        let trimmed = line
+            .trim_start()
+            .trim_start_matches('-')
+            .trim_start_matches('*')
+            .trim();
         if let Some(rest) = trimmed.strip_prefix('[') {
             if let Some(mark) = rest.chars().next() {
                 if rest.as_bytes().get(1) == Some(&b']') {
                     let text = rest[2..].trim().to_string();
-                    items.push(RoadmapItem { checked: mark != ' ', text });
+                    items.push(RoadmapItem {
+                        checked: mark != ' ',
+                        text,
+                    });
                 }
             }
         }
@@ -138,7 +145,8 @@ pub(crate) fn compute_planning_status(worktree_root: &Path) -> PlanningStatus {
     let Some(status_content) = status_content.filter(|c| !c.trim().is_empty()) else {
         // Sem status.md: fallback pro task.md — 0 pendentes entre pelo menos
         // uma checkbox conta como completo pra quem não quer manter status.md.
-        let reported_complete = roadmap_total_count.unwrap_or(0) > 0 && roadmap_pending_count == Some(0);
+        let reported_complete =
+            roadmap_total_count.unwrap_or(0) > 0 && roadmap_pending_count == Some(0);
         return PlanningStatus {
             has_planning: true,
             reported_complete,
@@ -272,7 +280,11 @@ mod tests {
     fn status_md_complete_status_wins() {
         let root = temp_dir("status-complete");
         fs::create_dir_all(root.join(".planning")).unwrap();
-        fs::write(root.join(".planning").join("status.md"), "Status: Completed\nProgress: 100%\n").unwrap();
+        fs::write(
+            root.join(".planning").join("status.md"),
+            "Status: Completed\nProgress: 100%\n",
+        )
+        .unwrap();
         let status = compute_planning_status(&root);
         assert!(status.reported_complete);
         assert_eq!(status.progress, Some(100));
@@ -283,9 +295,16 @@ mod tests {
     fn status_md_status_overrides_conflicting_progress() {
         let root = temp_dir("status-conflict");
         fs::create_dir_all(root.join(".planning")).unwrap();
-        fs::write(root.join(".planning").join("status.md"), "Status: In Progress\nProgress: 100%\n").unwrap();
+        fs::write(
+            root.join(".planning").join("status.md"),
+            "Status: In Progress\nProgress: 100%\n",
+        )
+        .unwrap();
         let status = compute_planning_status(&root);
-        assert!(!status.reported_complete, "status desatualizado não pode vencer sobre progress esquecido em 100");
+        assert!(
+            !status.reported_complete,
+            "status desatualizado não pode vencer sobre progress esquecido em 100"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -293,7 +312,11 @@ mod tests {
     fn task_fallback_when_status_md_missing() {
         let root = temp_dir("task-fallback");
         fs::create_dir_all(root.join(".planning")).unwrap();
-        fs::write(root.join(".planning").join("task.md"), "- [x] task 1\n- [x] task 2\n").unwrap();
+        fs::write(
+            root.join(".planning").join("task.md"),
+            "- [x] task 1\n- [x] task 2\n",
+        )
+        .unwrap();
         let status = compute_planning_status(&root);
         assert!(status.reported_complete);
         assert_eq!(status.roadmap_pending_count, Some(0));
@@ -337,7 +360,11 @@ mod tests {
     fn notes_is_none_when_plan_md_missing_or_empty() {
         let root = temp_dir("plan-no-notes");
         fs::create_dir_all(root.join(".planning")).unwrap();
-        fs::write(root.join(".planning").join("status.md"), "Status: Completed\n").unwrap();
+        fs::write(
+            root.join(".planning").join("status.md"),
+            "Status: Completed\n",
+        )
+        .unwrap();
         let status = compute_planning_status(&root);
         assert!(status.notes.is_none());
         fs::remove_dir_all(root).unwrap();
@@ -348,7 +375,11 @@ mod tests {
         let root = temp_dir("worktree-resolve");
         crate::git_control::checked_output(&root, &["init", "-b", "main"]).unwrap();
         crate::git_control::checked_output(&root, &["config", "user.name", "Alethe Test"]).unwrap();
-        crate::git_control::checked_output(&root, &["config", "user.email", "alethe@example.invalid"]).unwrap();
+        crate::git_control::checked_output(
+            &root,
+            &["config", "user.email", "alethe@example.invalid"],
+        )
+        .unwrap();
         fs::write(root.join("a.txt"), "a\n").unwrap();
         crate::git_control::checked_output(&root, &["add", "-A"]).unwrap();
         crate::git_control::checked_output(&root, &["commit", "-m", "base"]).unwrap();
@@ -356,18 +387,30 @@ mod tests {
         let worktree = root.join("wt");
         crate::git_control::checked_output(
             &root,
-            &["worktree", "add", "-b", "agent-branch", worktree.to_str().unwrap(), "HEAD"],
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "agent-branch",
+                worktree.to_str().unwrap(),
+                "HEAD",
+            ],
         )
         .unwrap();
 
         // .planning/ completo só na worktree, não no repo principal.
         fs::create_dir_all(worktree.join(".planning")).unwrap();
-        fs::write(worktree.join(".planning").join("status.md"), "Status: Completed\n").unwrap();
+        fs::write(
+            worktree.join(".planning").join("status.md"),
+            "Status: Completed\n",
+        )
+        .unwrap();
 
         let main_status = read_planning_status(root.to_string_lossy().into_owned()).unwrap();
         assert!(!main_status.has_planning);
 
-        let worktree_status = read_planning_status(worktree.to_string_lossy().into_owned()).unwrap();
+        let worktree_status =
+            read_planning_status(worktree.to_string_lossy().into_owned()).unwrap();
         assert!(worktree_status.reported_complete);
 
         fs::remove_dir_all(&root).unwrap();
@@ -380,7 +423,11 @@ mod tests {
         let root = temp_dir(label);
         crate::git_control::checked_output(&root, &["init", "-b", "main"]).unwrap();
         crate::git_control::checked_output(&root, &["config", "user.name", "Alethe Test"]).unwrap();
-        crate::git_control::checked_output(&root, &["config", "user.email", "alethe@example.invalid"]).unwrap();
+        crate::git_control::checked_output(
+            &root,
+            &["config", "user.email", "alethe@example.invalid"],
+        )
+        .unwrap();
         fs::write(root.join("a.txt"), "a\n").unwrap();
         crate::git_control::checked_output(&root, &["add", "-A"]).unwrap();
         crate::git_control::checked_output(&root, &["commit", "-m", "base"]).unwrap();
@@ -391,7 +438,10 @@ mod tests {
     fn gsd_child_session_is_none_when_sentinel_missing() {
         let root = temp_git_repo("child-session-missing");
         fs::create_dir_all(root.join(".planning")).unwrap();
-        assert_eq!(read_gsd_child_session(root.to_string_lossy().into_owned()).unwrap(), None);
+        assert_eq!(
+            read_gsd_child_session(root.to_string_lossy().into_owned()).unwrap(),
+            None
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -399,7 +449,11 @@ mod tests {
     fn gsd_child_session_reads_trimmed_sentinel_content() {
         let root = temp_git_repo("child-session-present");
         fs::create_dir_all(root.join(".planning")).unwrap();
-        fs::write(root.join(".planning").join(".gsd-child-session"), "ses_abc123\n").unwrap();
+        fs::write(
+            root.join(".planning").join(".gsd-child-session"),
+            "ses_abc123\n",
+        )
+        .unwrap();
         assert_eq!(
             read_gsd_child_session(root.to_string_lossy().into_owned()).unwrap(),
             Some("ses_abc123".to_string())
@@ -421,7 +475,10 @@ mod tests {
     fn gsd_child_error_is_none_when_sentinel_missing() {
         let root = temp_git_repo("child-error-missing");
         fs::create_dir_all(root.join(".planning")).unwrap();
-        assert_eq!(read_gsd_child_error(root.to_string_lossy().into_owned()).unwrap(), None);
+        assert_eq!(
+            read_gsd_child_error(root.to_string_lossy().into_owned()).unwrap(),
+            None
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -429,13 +486,20 @@ mod tests {
     fn gsd_child_error_reads_and_consumes_sentinel() {
         let root = temp_git_repo("child-error-present");
         fs::create_dir_all(root.join(".planning")).unwrap();
-        fs::write(root.join(".planning").join(".gsd-child-error"), "todos os modelos falharam\n").unwrap();
+        fs::write(
+            root.join(".planning").join(".gsd-child-error"),
+            "todos os modelos falharam\n",
+        )
+        .unwrap();
         assert_eq!(
             read_gsd_child_error(root.to_string_lossy().into_owned()).unwrap(),
             Some("todos os modelos falharam".to_string())
         );
         // consumido — segunda leitura já não acha mais nada.
-        assert_eq!(read_gsd_child_error(root.to_string_lossy().into_owned()).unwrap(), None);
+        assert_eq!(
+            read_gsd_child_error(root.to_string_lossy().into_owned()).unwrap(),
+            None
+        );
         fs::remove_dir_all(root).unwrap();
     }
 }

@@ -56,11 +56,9 @@ mod imp {
 
     /// Garante que o auto-probe de debug rode só uma vez por processo.
     #[cfg(ghostty_linked)]
-    static PROBE_STARTED: std::sync::atomic::AtomicBool =
-        std::sync::atomic::AtomicBool::new(false);
+    static PROBE_STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     #[cfg(ghostty_linked)]
-    static WATCH_STARTED: std::sync::atomic::AtomicBool =
-        std::sync::atomic::AtomicBool::new(false);
+    static WATCH_STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
     /// Registro global de surfaces vivas: surfaceId -> NSView nativa.
     /// Protegido por Mutex; todo acesso à AppKit é feito na main thread (ver
@@ -188,7 +186,11 @@ mod imp {
                 }
             }
         }
-        let mut guard = ReservationGuard { state, id: id.clone(), active: true };
+        let mut guard = ReservationGuard {
+            state,
+            id: id.clone(),
+            active: true,
+        };
 
         let window = app
             .get_webview_window("main")
@@ -252,7 +254,12 @@ mod imp {
                                 v.and_then(|m| m.keys().next().cloned())
                             };
                             let result = live_id.and_then(|lid| {
-                                debug_send_read(&state, lid, "echo alethe_app_marker_99\r".to_string()).ok()
+                                debug_send_read(
+                                    &state,
+                                    lid,
+                                    "echo alethe_app_marker_99\r".to_string(),
+                                )
+                                .ok()
                             });
                             let _ = tx.send(result);
                         });
@@ -306,7 +313,10 @@ mod imp {
                 });
             }
 
-            SurfaceEntry { last_scale: scale, surface: s }
+            SurfaceEntry {
+                last_scale: scale,
+                surface: s,
+            }
         };
 
         // Modo STUB: NSView colorida gerida pelo Rust, só pra provar reparenting.
@@ -322,11 +332,17 @@ mod imp {
                     let _: () = objc2::msg_send![&*layer, setBackgroundColor: &*cg];
                 }
             }
-            SurfaceEntry { last_scale: 1.0, view: v }
+            SurfaceEntry {
+                last_scale: 1.0,
+                view: v,
+            }
         };
 
         {
-            let mut views = state.views.lock().map_err(|_| "lock poisoned".to_string())?;
+            let mut views = state
+                .views
+                .lock()
+                .map_err(|_| "lock poisoned".to_string())?;
             views.insert(id.clone(), entry);
         }
         // Surface está no mapa de views agora; libera a reserva (sem o guard
@@ -352,7 +368,10 @@ mod imp {
         let content = content_view(&window, mtm)?;
         let content_height = content.frame().size.height;
 
-        let mut views = state.views.lock().map_err(|_| "lock poisoned".to_string())?;
+        let mut views = state
+            .views
+            .lock()
+            .map_err(|_| "lock poisoned".to_string())?;
         let entry = views
             .get_mut(&id)
             .ok_or_else(|| format!("surface não encontrada: {id}"))?;
@@ -395,7 +414,10 @@ mod imp {
     ) -> Result<(), String> {
         let _mtm = MainThreadMarker::new()
             .ok_or_else(|| "ghostty_set_hidden precisa rodar na main thread".to_string())?;
-        let mut views = state.views.lock().map_err(|_| "lock poisoned".to_string())?;
+        let mut views = state
+            .views
+            .lock()
+            .map_err(|_| "lock poisoned".to_string())?;
         if let Some(entry) = views.get_mut(&id) {
             #[cfg(ghostty_linked)]
             {
@@ -424,7 +446,10 @@ mod imp {
             use crate::ghostty_ffi::*;
             unsafe { alethe_ghostty_kill_all() };
         }
-        let mut views = state.views.lock().map_err(|_| "lock poisoned".to_string())?;
+        let mut views = state
+            .views
+            .lock()
+            .map_err(|_| "lock poisoned".to_string())?;
         #[cfg(not(ghostty_linked))]
         {
             for (_, entry) in views.iter() {
@@ -449,11 +474,16 @@ mod imp {
     ) -> Result<String, String> {
         use crate::ghostty_ffi::*;
         use std::ffi::CString;
-        let _mtm = MainThreadMarker::new()
-            .ok_or_else(|| "precisa rodar na main thread".to_string())?;
+        let _mtm =
+            MainThreadMarker::new().ok_or_else(|| "precisa rodar na main thread".to_string())?;
         let surface = {
-            let views = state.views.lock().map_err(|_| "lock poisoned".to_string())?;
-            let e = views.get(&id).ok_or_else(|| format!("surface {id} não encontrada"))?;
+            let views = state
+                .views
+                .lock()
+                .map_err(|_| "lock poisoned".to_string())?;
+            let e = views
+                .get(&id)
+                .ok_or_else(|| format!("surface {id} não encontrada"))?;
             e.surface
         };
         if surface.is_null() {
@@ -489,7 +519,10 @@ mod imp {
     ) -> Result<(), String> {
         let _mtm = MainThreadMarker::new()
             .ok_or_else(|| "ghostty_set_focus precisa rodar na main thread".to_string())?;
-        let mut views = state.views.lock().map_err(|_| "lock poisoned".to_string())?;
+        let mut views = state
+            .views
+            .lock()
+            .map_err(|_| "lock poisoned".to_string())?;
         if let Some(entry) = views.get_mut(&id) {
             #[cfg(ghostty_linked)]
             {
@@ -511,7 +544,10 @@ mod imp {
     pub fn process_exited(state: &State<'_, GhosttyState>, id: String) -> Result<bool, String> {
         let _mtm = MainThreadMarker::new()
             .ok_or_else(|| "ghostty_process_exited precisa rodar na main thread".to_string())?;
-        let views = state.views.lock().map_err(|_| "lock poisoned".to_string())?;
+        let views = state
+            .views
+            .lock()
+            .map_err(|_| "lock poisoned".to_string())?;
         match views.get(&id) {
             #[cfg(ghostty_linked)]
             Some(entry) => {
@@ -532,7 +568,10 @@ mod imp {
     pub fn kill(state: &State<'_, GhosttyState>, id: String) -> Result<(), String> {
         let _mtm = MainThreadMarker::new()
             .ok_or_else(|| "ghostty_kill precisa rodar na main thread".to_string())?;
-        let mut views = state.views.lock().map_err(|_| "lock poisoned".to_string())?;
+        let mut views = state
+            .views
+            .lock()
+            .map_err(|_| "lock poisoned".to_string())?;
         if let Some(entry) = views.remove(&id) {
             #[cfg(ghostty_linked)]
             {
@@ -566,7 +605,12 @@ mod imp {
             // deve ir pro topo em AppKit => appkit_y = 1000 - 0 - 100 = 900.
             let f = web_rect_to_appkit_frame(
                 1000.0,
-                WebRect { x: 10.0, y: 0.0, width: 200.0, height: 100.0 },
+                WebRect {
+                    x: 10.0,
+                    y: 0.0,
+                    width: 200.0,
+                    height: 100.0,
+                },
             );
             assert_eq!(f.origin.x, 10.0);
             assert_eq!(f.origin.y, 900.0);
@@ -579,7 +623,12 @@ mod imp {
             // rect no rodapé (y=900, h=100) => appkit_y = 1000-900-100 = 0.
             let f = web_rect_to_appkit_frame(
                 1000.0,
-                WebRect { x: 0.0, y: 900.0, width: 50.0, height: 100.0 },
+                WebRect {
+                    x: 0.0,
+                    y: 900.0,
+                    width: 50.0,
+                    height: 100.0,
+                },
             );
             assert_eq!(f.origin.y, 0.0);
         }
@@ -589,7 +638,12 @@ mod imp {
             // largura/altura zero nunca viram 0 (Ghostty/AppKit não gostam).
             let f = web_rect_to_appkit_frame(
                 500.0,
-                WebRect { x: 0.0, y: 0.0, width: 0.0, height: 0.0 },
+                WebRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 0.0,
+                    height: 0.0,
+                },
             );
             assert!(f.size.width >= 1.0);
             assert!(f.size.height >= 1.0);
@@ -732,7 +786,9 @@ mod functional_tests {
         if p.is_null() {
             return String::new();
         }
-        unsafe { std::ffi::CStr::from_ptr(p) }.to_string_lossy().to_string()
+        unsafe { std::ffi::CStr::from_ptr(p) }
+            .to_string_lossy()
+            .to_string()
     }
     fn last_key_composing() -> bool {
         unsafe { alethe_ghostty_test_last_key_composing() }
@@ -755,8 +811,8 @@ mod functional_tests {
         assert!(!last_key_composing(), "letra normal não é composing");
 
         type_char(surface, "", 36); // Enter
-        // UCKeyTranslate traduz Enter -> "\r" (carriage return) — é o que faz o
-        // shell executar. O importante: NÃO pode ficar travado em composing.
+                                    // UCKeyTranslate traduz Enter -> "\r" (carriage return) — é o que faz o
+                                    // shell executar. O importante: NÃO pode ficar travado em composing.
         assert_eq!(last_key_text(), "\r", "Enter deve emitir CR");
         assert!(!last_key_composing(), "Enter NÃO pode ficar composing");
 
@@ -770,8 +826,11 @@ mod functional_tests {
             assert!(!last_key_composing(), "após compor, não é mais composing");
             let composed = last_key_text();
             assert!(
-                composed == "á" || composed == "à" || composed == "ã"
-                    || composed == "â" || composed == "ä",
+                composed == "á"
+                    || composed == "à"
+                    || composed == "ã"
+                    || composed == "â"
+                    || composed == "ä",
                 "dead-key + a deveria compor um 'a' acentuado, veio: {composed:?}"
             );
         } else {
@@ -805,8 +864,16 @@ mod functional_tests {
         // Digita "echo zztop" pelo keyDown real. Virtual keycodes (US layout).
         // e=14 c=8 h=4 o=31 space=49 z=6 t=17 p=35
         let keys: &[(&str, u16)] = &[
-            ("e", 14), ("c", 8), ("h", 4), ("o", 31), (" ", 49),
-            ("z", 6), ("z", 6), ("t", 17), ("o", 31), ("p", 35),
+            ("e", 14),
+            ("c", 8),
+            ("h", 4),
+            ("o", 31),
+            (" ", 49),
+            ("z", 6),
+            ("z", 6),
+            ("t", 17),
+            ("o", 31),
+            ("p", 35),
         ];
         for (ch, kc) in keys {
             type_char(surface, ch, *kc);
@@ -845,7 +912,10 @@ mod functional_tests {
         send(surface, "echo alethe_marker_42\r");
         pump(Duration::from_secs(2));
         let screen = read_screen(surface);
-        assert!(screen.contains("alethe_marker_42"), "echo falhou:\n{screen}");
+        assert!(
+            screen.contains("alethe_marker_42"),
+            "echo falhou:\n{screen}"
+        );
 
         send(surface, "cd /tmp && pwd\r");
         pump(Duration::from_secs(2));
@@ -872,9 +942,8 @@ mod functional_tests {
         assert!(unsafe { alethe_ghostty_ensure_app() }, "ensure_app falhou");
         let view = make_nsview();
         let cwd = CString::new("/tmp").unwrap();
-        let surface = unsafe {
-            alethe_ghostty_surface_new(view, cwd.as_ptr(), std::ptr::null(), 2.0)
-        };
+        let surface =
+            unsafe { alethe_ghostty_surface_new(view, cwd.as_ptr(), std::ptr::null(), 2.0) };
         assert!(!surface.is_null(), "surface_new NULL (Metal headless?)");
         unsafe {
             alethe_ghostty_surface_set_content_scale(surface, 2.0, 2.0);
@@ -931,9 +1000,8 @@ mod functional_tests {
         // Composição dead-key: "´" marcado, depois "á" inserido (como option+e,a).
         let marked = CString::new("\u{00b4}").unwrap(); // ´
         let final_ = CString::new("\u{00e1}").unwrap(); // á
-        let ok = unsafe {
-            alethe_ghostty_test_ime_compose(surface, marked.as_ptr(), final_.as_ptr())
-        };
+        let ok =
+            unsafe { alethe_ghostty_test_ime_compose(surface, marked.as_ptr(), final_.as_ptr()) };
         assert!(ok, "test_ime_compose não achou a view");
         // Mais acentos por insertText direto (ç, ã) e fecha o comando.
         let cedilha = CString::new("\u{00e7}\u{00e3}").unwrap(); // çã
@@ -1023,10 +1091,7 @@ mod imp {
     ) -> Result<(), String> {
         Err(UNSUPPORTED.into())
     }
-    pub fn process_exited(
-        _state: &State<'_, GhosttyState>,
-        _id: String,
-    ) -> Result<bool, String> {
+    pub fn process_exited(_state: &State<'_, GhosttyState>, _id: String) -> Result<bool, String> {
         Err(UNSUPPORTED.into())
     }
     pub fn kill(_state: &State<'_, GhosttyState>, _id: String) -> Result<(), String> {
@@ -1092,10 +1157,7 @@ pub fn ghostty_surface_exited(
 }
 
 #[tauri::command]
-pub fn ghostty_kill(
-    state: tauri::State<'_, GhosttyState>,
-    id: String,
-) -> Result<(), String> {
+pub fn ghostty_kill(state: tauri::State<'_, GhosttyState>, id: String) -> Result<(), String> {
     imp::kill(&state, id)
 }
 

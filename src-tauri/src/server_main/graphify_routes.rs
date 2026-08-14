@@ -1,8 +1,8 @@
 // Graphify (grafo de conhecimento do codebase) + AI Memory (MCP) — todas as
 // funções de `graphify.rs`/`ai_memory.rs` são livres de `AppHandle`.
 
-use alethe_lib::ai_memory;
-use alethe_lib::graphify;
+use crate::ai_memory;
+use crate::graphify;
 use axum::extract::Query;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
@@ -10,7 +10,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use crate::AppError;
+use super::AppError;
 
 fn q(params: &HashMap<String, String>, key: &str) -> Result<String, AppError> {
     params

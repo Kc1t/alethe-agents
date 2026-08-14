@@ -86,6 +86,10 @@ jobs:
         run: cargo clippy --all-targets
         continue-on-error: true
 
+      - name: Storage sync contract tests
+        working-directory: src-tauri
+        run: cargo test --test profile_sync_contract
+
       - name: cargo test
         working-directory: src-tauri
         run: cargo test

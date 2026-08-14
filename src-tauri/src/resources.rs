@@ -175,11 +175,7 @@ fn process_private_commit_bytes(pid: u32, fallback: u64) -> u64 {
         };
 
         unsafe {
-            let process = OpenProcess(
-                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ,
-                0,
-                pid,
-            );
+            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, 0, pid);
             if process.is_null() {
                 return fallback;
             }
@@ -187,7 +183,8 @@ fn process_private_commit_bytes(pid: u32, fallback: u64) -> u64 {
             counters.cb = size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32;
             let ok = K32GetProcessMemoryInfo(
                 process,
-                (&mut counters as *mut PROCESS_MEMORY_COUNTERS_EX).cast::<PROCESS_MEMORY_COUNTERS>(),
+                (&mut counters as *mut PROCESS_MEMORY_COUNTERS_EX)
+                    .cast::<PROCESS_MEMORY_COUNTERS>(),
                 counters.cb,
             );
             let _ = CloseHandle(process);
@@ -211,7 +208,12 @@ fn process_private_commit_bytes(pid: u32, fallback: u64) -> u64 {
                     .strip_prefix("Private_Clean:")
                     .or_else(|| line.strip_prefix("Private_Dirty:"));
                 if let Some(rest) = value {
-                    if let Some(kb) = rest.trim().split_whitespace().next().and_then(|v| v.parse::<u64>().ok()) {
+                    if let Some(kb) = rest
+                        .trim()
+                        .split_whitespace()
+                        .next()
+                        .and_then(|v| v.parse::<u64>().ok())
+                    {
                         private_kb += kb;
                         found = true;
                     }
@@ -250,7 +252,11 @@ impl ResourceSupervisor {
                     .map(|(id, session)| {
                         (
                             id.clone(),
-                            session.child.lock().ok().and_then(|child| child.process_id()),
+                            session
+                                .child
+                                .lock()
+                                .ok()
+                                .and_then(|child| child.process_id()),
                             session.command.clone(),
                             session.cwd.clone(),
                         )
@@ -384,10 +390,7 @@ impl ResourceSupervisor {
                         })
                     })
                     .collect::<Vec<_>>();
-                processes.sort_by(|a, b| {
-                    b.effective_memory()
-                        .total_cmp(&a.effective_memory())
-                });
+                processes.sort_by(|a, b| b.effective_memory().total_cmp(&a.effective_memory()));
                 PtyResourceStats {
                     id,
                     root_pid,
@@ -475,11 +478,7 @@ fn eligible_candidates(
     candidates.into_iter().map(|entry| entry.0).collect()
 }
 
-fn run_cycle(
-    app: &AppHandle,
-    sessions: &PtySessions,
-    supervisor: &ResourceSupervisor,
-) {
+fn run_cycle(app: &AppHandle, sessions: &PtySessions, supervisor: &ResourceSupervisor) {
     let mut snapshot = supervisor.collect(sessions);
     let now = snapshot.sampled_at_ms;
     let (policy, metas, was_active, previous_level) = {
@@ -500,14 +499,16 @@ fn run_cycle(
     let was_critical = previous_level == "critical";
     let critical = snapshot.effective_total_mb >= policy.memory_budget_mb
         || (was_critical && snapshot.effective_total_mb > policy.recovery_target_mb);
-    let pressure_active = critical
-        || (was_active && snapshot.effective_total_mb > policy.recovery_target_mb);
+    let pressure_active =
+        critical || (was_active && snapshot.effective_total_mb > policy.recovery_target_mb);
     let candidates = eligible_candidates(&snapshot, &metas, &policy, now);
     let mut suspended_id = None;
     if automatic && pressure_active {
         if let Some(id) = candidates.first() {
             let log_path = crate::paths::spawn_log_path(app).ok();
-            if pty::suspend_session(&TauriSink(app.clone()), log_path.as_deref(), sessions, id).unwrap_or(false) {
+            if pty::suspend_session(&TauriSink(app.clone()), log_path.as_deref(), sessions, id)
+                .unwrap_or(false)
+            {
                 suspended_id = Some(id.clone());
             }
         }
@@ -594,7 +595,8 @@ pub fn update_pty_runtime_meta(
 }
 
 pub fn get_runtime_snapshot_core(sessions: &PtySessions) -> RuntimeSnapshot {
-    static SUPERVISOR: std::sync::OnceLock<std::sync::Arc<ResourceSupervisor>> = std::sync::OnceLock::new();
+    static SUPERVISOR: std::sync::OnceLock<std::sync::Arc<ResourceSupervisor>> =
+        std::sync::OnceLock::new();
     let supervisor = SUPERVISOR.get_or_init(|| std::sync::Arc::new(ResourceSupervisor::default()));
     if let Some(snapshot) = supervisor
         .state
@@ -722,10 +724,7 @@ mod tests {
         shell.reported_at_ms = 2_000_000;
         let mut agent = meta("agent");
         agent.reported_at_ms = 2_000_000;
-        let metas = HashMap::from([
-            ("agent".to_string(), agent),
-            ("shell".to_string(), shell),
-        ]);
+        let metas = HashMap::from([("agent".to_string(), agent), ("shell".to_string(), shell)]);
         assert_eq!(
             eligible_candidates(&sample, &metas, &policy, 2_000_000),
             vec!["shell".to_string(), "agent".to_string()]

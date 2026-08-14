@@ -3,11 +3,24 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import { isTauriEnv, webApiFetch } from './transport'
 
-export type DirectoryEntry = { name: string; path: string; is_dir: boolean }
+export type DirectoryEntry = {
+  name: string
+  path: string
+  is_dir: boolean
+  size_bytes?: number | null
+}
 
-export async function listDirectory(path: string): Promise<DirectoryEntry[]> {
-  if (isTauriEnv()) return invoke<DirectoryEntry[]>('list_directory', { path })
-  return webApiFetch<DirectoryEntry[]>(`/api/fs/list?path=${encodeURIComponent(path)}`)
+export type DirectoryListing = {
+  current_path: string
+  parent_path: string | null
+  home_path: string
+  system_roots: string[]
+  entries: DirectoryEntry[]
+}
+
+export async function listDirectory(path: string): Promise<DirectoryListing> {
+  if (isTauriEnv()) return invoke<DirectoryListing>('list_directory', { path })
+  return webApiFetch<DirectoryListing>(`/api/fs/list?path=${encodeURIComponent(path)}`)
 }
 
 export async function readTextFile(path: string): Promise<string> {
