@@ -29,6 +29,11 @@ export const FEATURES: readonly FeatureDefinition[] = [
     titleKey: 'features.graphify.title',
     descriptionKey: 'features.graphify.description',
   },
+  {
+    id: 'mcp',
+    titleKey: 'features.mcp.title',
+    descriptionKey: 'features.mcp.description',
+  },
 ]
 
 type StoredFeaturePreferences = {
@@ -46,6 +51,7 @@ export function normalizeEnabledFeatures(
       git: raw.enabledFeatures.git ?? true,
       browser: raw.enabledFeatures.browser ?? true,
       graphify: raw.enabledFeatures.graphify ?? true,
+      mcp: raw.enabledFeatures.mcp ?? true,
                                                                                       
       aiMemory: raw.enabledFeatures.aiMemory ?? false,
     }
@@ -56,5 +62,6 @@ export function normalizeEnabledFeatures(
     browser: true,
     graphify: true,
     aiMemory: false,
+    mcp: true,
   }
 }

@@ -29,6 +29,9 @@ mod github_sync;
 mod graphify;
 mod health_probe;
 mod logging;
+mod mcp_agents;
+mod mcp_model;
+mod mcp_store;
 mod opencode_bridge;
 mod opencode_gsd_plugin;
 mod opencode_sessions;
@@ -393,6 +396,13 @@ pub fn run() {
             plugins::plugins_list,
             plugins::plugin_install,
             plugins::plugin_uninstall,
+            mcp_store::mcp_scan,
+            mcp_store::mcp_config_paths,
+            mcp_store::mcp_capabilities,
+            mcp_store::mcp_upsert,
+            mcp_store::mcp_remove,
+            mcp_store::mcp_set_enabled,
+            mcp_store::mcp_reveal_env,
             opencode_sessions::snapshot_opencode_sessions,
             ping,
         ])

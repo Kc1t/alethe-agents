@@ -39,10 +39,11 @@ type ModalKind =
   | 'whatsNew'
   | 'remoteControl'
   | 'recentChats'
+  | 'mcpManager'
   | null
 
 export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox'
-export type RightSidebarMode = 'todo' | 'markdown' | 'git'
+export type RightSidebarMode = 'todo' | 'markdown' | 'git' | 'mcp'
 
 export type MemorySample = MemoryStats & {
   ts: number
@@ -130,6 +131,7 @@ type UiState = {
   showMarkdownSidebar: () => void
   showTodoSidebar: () => void
   showGitSidebar: () => void
+  showMcpSidebar: () => void
   setAgentCanvasSession: (session: { folder: string; ptyId: string } | null) => void
   setAgentCanvasBudget: (usd: number | null) => void
   pushToast: (toast: {
@@ -232,6 +234,7 @@ export const useUiStore = create<UiState>((set) => ({
   showMarkdownSidebar: () => set({ rightSidebarMode: 'markdown' }),
   showTodoSidebar: () => set({ rightSidebarMode: 'todo', rightSidebarMarkdown: null }),
   showGitSidebar: () => set({ rightSidebarMode: 'git' }),
+  showMcpSidebar: () => set({ rightSidebarMode: 'mcp' }),
   setAgentCanvasSession: (session) => set({ agentCanvasSession: session }),
   setAgentCanvasBudget: (usd) => set({ agentCanvasBudgetUsd: usd }),
   pushToast: ({ title, body, agent, silent }) =>

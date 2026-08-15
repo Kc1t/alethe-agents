@@ -4,7 +4,9 @@ import {
   FileText,
   GitBranch,
   ListTodo,
+  Maximize2,
   PanelRightClose,
+  Plug,
   RefreshCw,
   Settings,
 } from 'lucide-react'
@@ -17,6 +19,7 @@ import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
 import { MarkdownRenderer } from '../MarkdownPane/MarkdownRenderer'
+import { McpPanel } from '../McpPanel'
 import { GitControl } from '../ProjectSidebar/GitControl'
 import { TodoSidebar } from '../TodoSidebar'
 import styles from './RightSidebar.module.css'
@@ -29,6 +32,7 @@ export function RightSidebar() {
   const setMode = useUiStore((state) => state.showTodoSidebar)
   const openMarkdown = useUiStore((state) => state.showMarkdownSidebar)
   const showGit = useUiStore((state) => state.showGitSidebar)
+  const showMcp = useUiStore((state) => state.showMcpSidebar)
   const openModal = useUiStore((state) => state.openModal_)
   const preferences = useProjectsStore((state) => state.preferences)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
@@ -81,6 +85,19 @@ export function RightSidebar() {
             <span>{t('ui.sidebar.git')}</span>
           </button>
         ) : null}
+        {preferences.enabledFeatures.mcp ? (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'mcp'}
+            className={`${styles.sidebarTab} ${mode === 'mcp' ? styles.sidebarTabActive : ''}`}
+            onClick={showMcp}
+            title={t('mcp.tab')}
+          >
+            <Plug size={14} />
+            <span>{t('mcp.tab')}</span>
+          </button>
+        ) : null}
         <span className={styles.toolbarSpacer} />
         {mode === 'todo' ? (
           <button
@@ -91,6 +108,17 @@ export function RightSidebar() {
             aria-label={t('todo.openSettings')}
           >
             <Settings size={14} />
+          </button>
+        ) : null}
+        {mode === 'mcp' ? (
+          <button
+            type="button"
+            className={styles.toolbarUtility}
+            onClick={() => openModal('mcpManager')}
+            title={t('mcp.expand')}
+            aria-label={t('mcp.expand')}
+          >
+            <Maximize2 size={14} />
           </button>
         ) : null}
         <span className={styles.toolbarDivider} />
@@ -107,6 +135,7 @@ export function RightSidebar() {
       <div className={styles.tabContent}>
         {mode === 'markdown' ? <MarkdownSidebarViewer /> : null}
         {mode === 'todo' ? <TodoSidebar /> : null}
+        {mode === 'mcp' ? <McpPanel /> : null}
         {mode === 'git' ? (
           <GitSidebarContent
             activeProject={activeProject}

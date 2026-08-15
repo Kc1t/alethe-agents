@@ -1,4 +1,4 @@
-import { BrainCircuit, GitBranch, Globe2, ListTodo, Network } from 'lucide-react'
+import { BrainCircuit, GitBranch, Globe2, ListTodo, Network, Plug } from 'lucide-react'
 
 import { FEATURES } from '../../../lib/features'
 import { useT } from '../../../lib/i18n'
@@ -12,6 +12,7 @@ const FEATURE_ICONS = {
   aiMemory: BrainCircuit,
   browser: Globe2,
   graphify: Network,
+  mcp: Plug,
 } as const
 
 export function FeaturesPage() {

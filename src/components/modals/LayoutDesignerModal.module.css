@@ -214,13 +214,11 @@
   border-radius: var(--radius-md);
   cursor: grab;
   user-select: none;
+  touch-action: none;
   position: relative;
   z-index: 2;
   overflow: hidden;
   transition:
-    grid-column 160ms cubic-bezier(0.16, 1, 0.3, 1),
-    grid-row 160ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 120ms ease,
     background-color 120ms ease,
     box-shadow 120ms ease;
 }
@@ -233,11 +231,19 @@
 }
 
 .boxDragging {
-  opacity: 0.55;
+  opacity: 0.4;
   cursor: grabbing;
-  box-shadow:
-    0 0 0 2px var(--accent),
-    0 12px 28px rgba(0, 0, 0, 0.3);
+}
+
+.boxDropTarget {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.boxOverlay {
+  cursor: grabbing;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  pointer-events: none;
 }
 
 .boxHeader {
@@ -278,50 +284,6 @@
   border-radius: 3px;
   margin-left: auto;
   flex-shrink: 0;
-}
-
-/* Handle de resize no canto inferior-direito do card */
-.resizeHandle {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 14px;
-  height: 14px;
-  cursor: nwse-resize;
-  border-right: 2px solid var(--fg-muted);
-  border-bottom: 2px solid var(--fg-muted);
-  opacity: 0.5;
-  z-index: 4;
-}
-.resizeHandle:hover {
-  opacity: 1;
-}
-
-                                                 
-.colResizer {
-  z-index: 3;
-  cursor: ew-resize;
-  margin-left: -3px;
-  width: 7px;
-  background: transparent;
-  align-self: stretch;
-  pointer-events: auto;
-}
-.colResizer:hover {
-  background: var(--accent-faint);
-}
-
-.rowResizer {
-  z-index: 3;
-  cursor: ns-resize;
-  margin-top: -3px;
-  height: 7px;
-  background: transparent;
-  justify-self: stretch;
-  pointer-events: auto;
-}
-.rowResizer:hover {
-  background: var(--accent-faint);
 }
 
 .footer {

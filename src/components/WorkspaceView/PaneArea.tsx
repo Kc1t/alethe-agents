@@ -1,12 +1,20 @@
+import { useDroppable } from '@dnd-kit/core'
 import { Ungroup } from 'lucide-react'
 import { Panel, Separator } from 'react-resizable-panels'
 
-import { cellStyle, gridContainerStyle, reconcileGridLayout } from '../../lib/gridLayout'
+import {
+  autoGridLayout,
+  cellStyle,
+  freeCells,
+  gridContainerStyle,
+  reconcileGridLayout,
+} from '../../lib/gridLayout'
 import { useT } from '../../lib/i18n'
 import type { GridLayout, LayoutMode, Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { DiffPane } from '../DiffPane'
 import { GraphifyView } from '../GraphifyView'
+import { GridCellHandles } from '../GridCellHandles'
 import { MarkdownPane } from '../MarkdownPane'
 import { TerminalPane } from '../TerminalPane'
 import { VideoPane } from '../VideoPane'
@@ -16,7 +24,6 @@ import styles from './WorkspaceView.module.css'
 
 const EMPTY_PANE_GROUPS: { id: string; paneIds: string[] }[] = []
 
-                                                                              
 function Pane({
   projectId,
   terminal,
@@ -94,7 +101,7 @@ function PaneGroupView({
 
 export type PaneAreaProps = {
   projectId: string
-                                                                                 
+
   idPrefix: string
   terminals: Terminal[]
   layoutMode: LayoutMode
@@ -133,34 +140,47 @@ function GridLayoutComponent({
   terminals: Terminal[]
 }) {
   const project = useProjectsStore((s) => s.projects.find((p) => p.id === projectId))
+  const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
   const layout: GridLayout | undefined = project?.gridLayout
   const ids = terminals.map((t) => t.id)
-  const reconciled = layout
-    ? reconcileGridLayout(layout, ids)
-    : { cols: 2, rows: Math.ceil(ids.length / 2), cells: {} as GridLayout['cells'] }
-                                                  
-  if (!layout) {
-    ids.forEach((id, i) => {
-      reconciled.cells[id] = {
-        col: (i % reconciled.cols) + 1,
-        row: Math.floor(i / reconciled.cols) + 1,
-        colSpan: 1,
-        rowSpan: 1,
-      }
-    })
-  }
+  const reconciled = layout ? reconcileGridLayout(layout, ids) : autoGridLayout(ids, 2)
   return (
     <div style={gridContainerStyle(reconciled)}>
+      {freeCells(reconciled, ids).map((slot) => (
+        <EmptyGridSlot
+          key={`slot-${slot.col}-${slot.row}`}
+          dropId={`cell:pane:${projectId}:${slot.col}:${slot.row}`}
+          col={slot.col}
+          row={slot.row}
+        />
+      ))}
       {terminals.map((t) => {
         const cell = reconciled.cells[t.id]
         if (!cell) return null
         return (
           <div key={t.id} className={styles.gridCell} style={cellStyle(cell)}>
             <Pane projectId={projectId} terminal={t} />
+            <GridCellHandles
+              cellId={t.id}
+              childIds={ids}
+              layout={reconciled}
+              onUpdate={(next) => setProjectGridLayout(projectId, next)}
+            />
           </div>
         )
       })}
     </div>
+  )
+}
+
+function EmptyGridSlot({ dropId, col, row }: { dropId: string; col: number; row: number }) {
+  const { setNodeRef, isOver } = useDroppable({ id: dropId })
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${styles.emptySlot} ${isOver ? styles.emptySlotOver : ''}`}
+      style={{ gridColumn: col, gridRow: row }}
+    />
   )
 }
 

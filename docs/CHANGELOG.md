@@ -21,6 +21,31 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- New **MCP** tab in the right sidebar: a single place to see every MCP server configured on the
+  machine, grouped by server name and showing which agents have it. It reads Claude Code
+  (`~/.claude.json`, `.mcp.json`), Codex (`~/.codex/config.toml`), OpenCode (`opencode.json`) and
+  Antigravity (`~/.gemini/config/mcp_config.json`), with a Global/Project switch — so a server
+  present in Claude but missing in Codex is visible at a glance. Environment values are masked and
+  only leave the backend one key at a time, on an explicit click. A config that cannot be parsed is
+  reported as read-only and is never written to. Servers can be added, edited, removed and
+  enabled/disabled; every write is preceded by a backup, validated by re-parsing the result and
+  checking that no other server changed, and committed atomically. The feature can be turned off in
+  Preferences → Features.
+- The right sidebar no longer depends on the Todos feature being enabled — it now appears whenever
+  Todos, MCP, or Git-on-the-right is active.
+- Grid layouts are now edited directly on the grid. Every pane and every project container carries
+  resize edges: dragging against a neighbour resizes the tracks as before, but dragging towards an
+  empty cell stretches the pane over it, cell by cell. Double-clicking an edge — or the expand button
+  that appears on a pane with empty space next to it — makes that pane swallow all the free space
+  around it, so a lone pane on the bottom row can finally take the whole row without opening a
+  dialog. Empty cells also became drop targets: dragging a pane or a container onto one moves it
+  there instead of swapping with a neighbour.
+- The sidebar's **Organization** block now shows a live mini-map of the current arrangement. Cells can
+  be dragged inside it to rearrange the grid and clicked to focus a pane, a Project/Workspace switch
+  picks which grid it edits, and one-click presets (side by side, stacked, 2×2, focus) apply a layout
+  without opening the layout designer — the quickest way to stack the terminals of a single project
+  while the other projects keep their own arrangement.
+- The project container header has a **+** button that creates a new terminal in that project.
 - Agents that are not installed can now be installed from inside Alethe. The onboarding agent step
   and the "not found" overlay of a terminal both offer an **Install** button that runs the official
   installer in a real shell and streams its output, then confirms the CLI is reachable before
@@ -60,6 +85,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Changed
 
+- The layout designer dialog now uses the same drag-and-drop engine as the rest of the app. Cards
+  follow the cursor without lag, only the cell under the pointer lights up, a plain click still just
+  selects, and cards are resized with the same edge handles as the real grid.
 - Switching workspace tabs no longer reloads them. Every tab in the tab bar — the same ones Ctrl+Tab
   cycles through — stays mounted in the background instead of being torn down, so its terminals keep
   their scrollback, their PTY attachment and their scroll position. Coming back to a tab no longer
@@ -96,6 +124,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - Switching conversation from inside the CLI with `/new` or `/resume` now sticks. Alethe pinned the
   session id given at launch and sent the old one back on the next restart, dragging the pane to the
   previous chat.
+- Ctrl+Tab did nothing after coming back to the app from another window. Returning left the webview
+  with no focused element, and WebView2 then kept the key for its own focus traversal instead of
+  handing it to the app. Focus is now parked on the app shell whenever nothing else holds it, so
+  every shortcut keeps working. Ctrl+Tab also focuses the first terminal of the tab it switches to,
+  instead of switching with the keyboard pointed at nothing.
 - Agent CLIs installed through Homebrew were invisible on macOS. An `.app` launched from Finder does
   not run as a login shell, so it inherits the minimal Launch Services PATH without `.zshrc` /
   `.zprofile`. Launcher discovery and the PATH rebuilt for terminals now include the default Homebrew

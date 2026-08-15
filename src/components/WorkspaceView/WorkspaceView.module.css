@@ -83,9 +83,26 @@
 }
 
 .gridCell {
+  position: relative;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
+}
+
+.emptySlot {
+  min-width: 0;
+  min-height: 0;
+  margin: 4px;
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-sm, 4px);
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+
+.emptySlotOver {
+  border-color: var(--border-accent);
+  background: var(--accent-soft);
 }
 
 .paneGroup {

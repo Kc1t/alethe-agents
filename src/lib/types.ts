@@ -88,7 +88,7 @@ export type AppIconTheme =
 export type VisualStyle = 'normal' | 'clean'
 
                                                                                   
-export type FeatureId = 'todos' | 'git' | 'browser' | 'graphify' | 'aiMemory'
+export type FeatureId = 'todos' | 'git' | 'browser' | 'graphify' | 'aiMemory' | 'mcp'
 
                                                                                        
 export type TodoItem = {
@@ -445,6 +445,10 @@ export type Preferences = {
   enabledFeatures: Record<FeatureId, boolean>
   /** Folder configured as the base location for the global Todo list. */
   todoStoragePath: string
+  /** Scope the MCP panel opens on. */
+  mcpDefaultScope: McpScope
+  /** True once the MCP setup prompt has been shown or dismissed. */
+  mcpOnboardingSeen: boolean
                                                
   leftSidebarVisible: boolean
   rightSidebarVisible: boolean
@@ -571,8 +575,17 @@ export const DEFAULT_PREFERENCES: Preferences = {
   remoteSessionExpirySecs: 3600,
   remoteReadOnly: true,
   remoteAllowShellInput: false,
-  enabledFeatures: { todos: true, git: true, browser: true, graphify: true, aiMemory: false },
+  enabledFeatures: {
+    todos: true,
+    git: true,
+    browser: true,
+    graphify: true,
+    aiMemory: false,
+    mcp: true,
+  },
   todoStoragePath: '',
+  mcpDefaultScope: 'global',
+  mcpOnboardingSeen: false,
   leftSidebarVisible: true,
   rightSidebarVisible: true,
   leftSidebarWidth: 286,
@@ -662,4 +675,64 @@ export const PROVIDER_MODELS: Record<AgentType, { id: string; label: string }[]>
   ],
   freebuff: [{ id: 'freebuff-auto', label: 'Freebuff Auto' }],
   shell: [{ id: 'default', label: 'Shell Padrão' }],
+}
+
+export type McpScope = 'global' | 'project'
+
+export type McpAgent = Extract<AgentType, 'claude' | 'codex' | 'opencode' | 'antigravity'>
+
+export const MCP_AGENTS: McpAgent[] = ['claude', 'codex', 'opencode', 'antigravity']
+
+/** Literal values never leave Rust: `preview` is masked, use mcpRevealEnv for the real one. */
+export type McpEnvEntry = {
+  literal: { preview: string; empty: boolean } | null
+  passthroughFrom: string | null
+}
+
+export type McpTransport =
+  | { kind: 'stdio'; command: string; args: string[]; cwd: string | null }
+  | { kind: 'http'; url: string; headers: Record<string, McpEnvEntry> }
+  | { kind: 'sse'; url: string; headers: Record<string, McpEnvEntry> }
+
+export type McpTimeouts = {
+  startupSecs: number | null
+  toolSecs: number | null
+}
+
+export type McpServer = {
+  name: string
+  transport: McpTransport
+  env: Record<string, McpEnvEntry>
+  enabled: boolean
+  timeouts: McpTimeouts
+  bearerTokenEnvVar: string | null
+}
+
+export type McpServerRecord = {
+  server: McpServer
+  agent: McpAgent
+  scope: McpScope
+  sourcePath: string
+  managedByImport: string | null
+}
+
+export type McpAgentSnapshot = {
+  agent: McpAgent
+  scope: McpScope
+  sourcePath: string | null
+  exists: boolean
+  writable: boolean
+  parseError: string | null
+  mtimeMs: number
+  servers: McpServerRecord[]
+}
+
+export type McpCapability = {
+  agent: McpAgent
+  projectScope: boolean
+  enabledFlag: boolean
+  envPassthrough: boolean
+  timeouts: boolean
+  headers: boolean
+  remote: boolean
 }

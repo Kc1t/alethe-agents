@@ -1,13 +1,25 @@
-import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
+import {
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
 import { FolderOpen, FolderPlus, TerminalSquare } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Panel, Separator } from 'react-resizable-panels'
 
 import { pickDirectory } from '../../lib/dialog'
 import { hasFileDragPayload, readFileDragPayload } from '../../lib/fileDrag'
-import { cellStyle, gridContainerStyle, reconcileGridLayout } from '../../lib/gridLayout'
+import {
+  cellStyle,
+  freeCells,
+  gridContainerStyle,
+  moveCellTo,
+  reconcileGridLayout,
+} from '../../lib/gridLayout'
 import { useT } from '../../lib/i18n'
-import { MAX_WORKSPACE_TABS } from '../../lib/workspaceNavigation'
 import type {
   AgentType,
   GridLayout,
@@ -16,9 +28,11 @@ import type {
   Terminal,
   WorkspaceContainer,
 } from '../../lib/types'
+import { MAX_WORKSPACE_TABS } from '../../lib/workspaceNavigation'
 import { selectActiveProject, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
+import { GridCellHandles } from '../GridCellHandles'
 import { AgentIcon } from '../icons/AgentIcons'
 import { PaneArea } from './PaneArea'
 import { PersistentPanelGroup as PanelGroup } from './PersistentPanelGroup'
@@ -209,10 +223,6 @@ export function WorkspaceView() {
     requestPaneFocus(focusedTerminalId)
   }, [focusedTerminalId, requestPaneFocus])
 
-                                                                          
-                                                                              
-                                                                            
-                                                             
   useEffect(() => {
     if (
       initialWorkspaceEnsured.current ||
@@ -242,10 +252,6 @@ export function WorkspaceView() {
     recentProjectIds,
   ])
 
-                                                                            
-                                                                          
-                                                                            
-                                                                         
   useEffect(() => {
     if (!fullscreenId) return
     const c = containers.find((x) => x.projectId === fullscreenId)
@@ -260,9 +266,46 @@ export function WorkspaceView() {
     const to = e.over ? String(e.over.id) : ''
     if (!from || !to || from === to) return
 
-                                                
-                                                                           
-                                                                   
+    // cell:*: an empty slot of a custom grid — the dragged child just moves there.
+    if (to.startsWith('cell:')) {
+      const [, kind, ...rest] = to.split(':')
+      const row = Number(rest.pop())
+      const col = Number(rest.pop())
+      if (!Number.isFinite(col) || !Number.isFinite(row)) return
+      const state = useProjectsStore.getState()
+
+      if (kind === 'pane' && from.startsWith('pane:')) {
+        const projectId = rest.join(':')
+        const paneId = from.slice('pane:'.length)
+        const project = state.projects.find((p) => p.id === projectId)
+        if (!project?.gridLayout) return
+        const cont = allContainers.find((c) => c.projectId === projectId)
+        if (!cont?.paneIds.includes(paneId)) return
+        setProjectGridLayout(
+          projectId,
+          moveCellTo(project.gridLayout, cont.paneIds, paneId, col, row),
+        )
+        return
+      }
+
+      if (kind === 'cont' && from.startsWith('cont:')) {
+        const projectId = from.slice('cont:'.length)
+        const ids = containers.map((c) => c.projectId)
+        const wsGrid = state.preferences.workspaceGridLayout
+        if (wsGrid) {
+          setWorkspaceGridLayout(moveCellTo(wsGrid, ids, projectId, col, row))
+          return
+        }
+        const groupId =
+          activeGroupTabId ?? state.projects.find((p) => p.id === projectId)?.groupId ?? null
+        const grp = groupId ? state.groups.find((g) => g.id === groupId) : null
+        if (grp?.gridLayout) {
+          setGroupGridLayout(grp.id, moveCellTo(grp.gridLayout, ids, projectId, col, row))
+        }
+      }
+      return
+    }
+
     if (from.startsWith('pane:') && to.startsWith('pane:')) {
       const fromId = from.slice('pane:'.length)
       const toId = to.slice('pane:'.length)
@@ -287,8 +330,7 @@ export function WorkspaceView() {
     }
 
     // cont: drag de container sobre outro.
-                                                                      
-                                      
+
     if (from.startsWith('cont:') && to.startsWith('cont:')) {
       const fromPid = from.slice('cont:'.length)
       const toPid = to.slice('cont:'.length)
@@ -308,7 +350,6 @@ export function WorkspaceView() {
         }
       }
 
-                                                                          
       if (activeGroupTabId) {
         const grp = state.groups.find((g) => g.id === activeGroupTabId)
         if (grp?.layoutMode === 'grid' && grp.gridLayout) {
@@ -324,7 +365,6 @@ export function WorkspaceView() {
         }
       }
 
-                                                                
       const groupIds = new Set(
         containers.map((c) => projectsById.get(c.projectId)?.groupId ?? null),
       )
@@ -394,7 +434,9 @@ export function WorkspaceView() {
           children
         )}
       </div>
-      {fileDropActive ? <div className={styles.fileDropOverlay}>{t('files.dropToGrid')}</div> : null}
+      {fileDropActive ? (
+        <div className={styles.fileDropOverlay}>{t('files.dropToGrid')}</div>
+      ) : null}
     </div>
   )
 
@@ -530,8 +572,7 @@ function ContainerAutoGrid({
   activeGroupTabId: string | null
 }) {
   const workspaceGridLayout = useProjectsStore((s) => s.preferences.workspaceGridLayout)
-                                                             
-                                        
+
   const activeGroup = activeGroupTabId ? groupsById.get(activeGroupTabId) : null
   if (workspaceGridLayout) {
     return (
@@ -540,6 +581,7 @@ function ContainerAutoGrid({
         projectsById={projectsById}
         groupsById={groupsById}
         layout={workspaceGridLayout}
+        scope={{ kind: 'workspace' }}
       />
     )
   }
@@ -551,10 +593,11 @@ function ContainerAutoGrid({
         projectsById={projectsById}
         groupsById={groupsById}
         layout={activeGroup.gridLayout}
+        scope={{ kind: 'group', id: activeGroup.id }}
       />
     )
   }
-                                                                                  
+
   const groupId = (() => {
     const ids = new Set(containers.map((c) => projectsById.get(c.projectId)?.groupId ?? null))
     if (ids.size === 1) {
@@ -571,6 +614,7 @@ function ContainerAutoGrid({
         projectsById={projectsById}
         groupsById={groupsById}
         layout={group.gridLayout}
+        scope={{ kind: 'group', id: group.id }}
       />
     )
   }
@@ -608,7 +652,6 @@ function ContainerAutoGrid({
     )
   }
 
-                                                                       
   const rows: WorkspaceContainer[][] = []
   for (let i = 0; i < containers.length; i += 2) {
     rows.push(containers.slice(i, i + 2))
@@ -693,21 +736,39 @@ function FragmentRowOuter({
   )
 }
 
+type OuterGridScope = { kind: 'workspace' } | { kind: 'group'; id: string }
+
 function GroupGridOuter({
   containers,
   projectsById,
   groupsById,
   layout,
+  scope,
 }: {
   containers: WorkspaceContainer[]
   projectsById: Map<string, Project>
   groupsById: Map<string, Group>
   layout: GridLayout
+  scope: OuterGridScope
 }) {
+  const setWorkspaceGridLayout = useProjectsStore((s) => s.setWorkspaceGridLayout)
+  const setGroupGridLayout = useProjectsStore((s) => s.setGroupGridLayout)
   const ids = containers.map((c) => c.projectId)
   const reconciled = reconcileGridLayout(layout, ids)
+  const onUpdate = (next: GridLayout) => {
+    if (scope.kind === 'workspace') setWorkspaceGridLayout(next)
+    else setGroupGridLayout(scope.id, next)
+  }
   return (
     <div style={gridContainerStyle(reconciled)}>
+      {freeCells(reconciled, ids).map((slot) => (
+        <EmptyOuterSlot
+          key={`slot-${slot.col}-${slot.row}`}
+          dropId={`cell:cont:${slot.col}:${slot.row}`}
+          col={slot.col}
+          row={slot.row}
+        />
+      ))}
       {containers.map((c) => {
         const cell = reconciled.cells[c.projectId]
         if (!cell) return null
@@ -717,10 +778,27 @@ function GroupGridOuter({
         return (
           <div key={c.projectId} className={styles.gridCell} style={cellStyle(cell)}>
             <ProjectContainer container={c} project={project} group={group} />
+            <GridCellHandles
+              cellId={c.projectId}
+              childIds={ids}
+              layout={reconciled}
+              onUpdate={onUpdate}
+            />
           </div>
         )
       })}
     </div>
+  )
+}
+
+function EmptyOuterSlot({ dropId, col, row }: { dropId: string; col: number; row: number }) {
+  const { setNodeRef, isOver } = useDroppable({ id: dropId })
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${styles.emptySlot} ${isOver ? styles.emptySlotOver : ''}`}
+      style={{ gridColumn: col, gridRow: row }}
+    />
   )
 }
 

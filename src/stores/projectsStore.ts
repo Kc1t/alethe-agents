@@ -767,6 +767,23 @@ export function selectActiveContainer(state: ProjectsState): WorkspaceContainer 
   return state.workspace.containers.find((c) => c.projectId === state.activeProjectId) ?? null
 }
 
+export function selectFirstWorkspaceTerminal(
+  state: ProjectsState,
+): { projectId: string; terminalId: string } | null {
+  for (const container of state.workspace.containers) {
+    if (container.collapsed) continue
+    const project = state.projects.find((item) => item.id === container.projectId)
+    if (!project) continue
+    for (const paneId of container.paneIds) {
+      const terminal = project.terminals.find((item) => item.id === paneId)
+      if (!terminal || terminal.disabled) continue
+      if (terminal.kind && terminal.kind !== 'terminal') continue
+      return { projectId: project.id, terminalId: terminal.id }
+    }
+  }
+  return null
+}
+
 export type RecentTerminalEntry = {
   projectId: string
   projectName: string

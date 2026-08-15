@@ -12,7 +12,6 @@ import {
 } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 
-import { useGridResize } from '../../hooks/useGridResize'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { buildGhosttyCommand } from '../../lib/ghosttyCommand'
 import { useT } from '../../lib/i18n'
@@ -111,7 +110,6 @@ export const TerminalPane = memo(function TerminalPane({
   const deleteTerminalWithWorktreeCleanup = useProjectsStore(
     (s) => s.deleteTerminalWithWorktreeCleanup,
   )
-  const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
   const openModal = useUiStore((s) => s.openModal_)
   const setFocusedTerminal = useUiStore((s) => s.setFocusedTerminal)
   const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
@@ -139,16 +137,6 @@ export const TerminalPane = memo(function TerminalPane({
     const p = s.projects.find((p) => p.id === projectId)
     return Boolean(p?.gsdWatcherEnabled)
   })
-
-  const projectGrid = useProjectsStore((s) => {
-    const p = s.projects.find((p) => p.id === projectId)
-    if (!p || p.layoutMode !== 'grid' || !p.gridLayout) return null
-    return p.gridLayout
-  })
-  const showGridResize = Boolean(projectGrid) && !isFocusMode && !terminal.disabled && !preview
-  const startGridResize = useGridResize(terminal.id, projectGrid, (layout) =>
-    setProjectGridLayout(projectId, layout),
-  )
 
   const activeTab: SubTab | undefined = useMemo(
     () => terminal.tabs.find((tab) => tab.id === terminal.activeTabId) ?? terminal.tabs[0],
@@ -547,14 +535,6 @@ export const TerminalPane = memo(function TerminalPane({
           )}
         </div>
       </div>
-
-      {showGridResize ? (
-        <div
-          className={styles.gridResize}
-          onPointerDown={startGridResize}
-          title={t('ui.terminal.dragToResizeSpan')}
-        />
-      ) : null}
     </div>
   )
 })

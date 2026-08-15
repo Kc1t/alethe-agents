@@ -1,10 +1,12 @@
 import { useEffect } from 'react'
 
+import { APP_SHELL_ID } from '../lib/appShell'
 import { getLocale, translate } from '../lib/i18n'
 import {
   MAX_RECENT_PROJECT_TABS,
   selectActiveContainer,
   selectActiveProject,
+  selectFirstWorkspaceTerminal,
   UI_ZOOM_LIMITS,
   useProjectsStore,
 } from '../stores/projectsStore'
@@ -244,12 +246,42 @@ export function useKeybindings() {
         const nextTab = topTabs[nextIndex]
         projects.activateWorkspaceTab(nextTab.id)
         ui.setActiveView('workspace')
+        const entry = selectFirstWorkspaceTerminal(useProjectsStore.getState())
+        if (entry) {
+          projects.focusWorkspaceTerminal(entry.projectId, entry.terminalId)
+          ui.setActiveTerminal(entry.projectId, entry.terminalId)
+          ui.requestPaneFocus(entry.terminalId)
+        }
         return
       }
     }
 
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
+  }, [])
+
+  // Coming back to the app can leave the webview with no focused element, and
+  // WebView2 then keeps Ctrl+Tab for its own focus traversal instead of handing
+  // the key to the page. Parking focus on the shell keeps the shortcuts alive
+  // without pulling it away from a terminal, an input, or a modal.
+  useEffect(() => {
+    const restoreShellFocus = () => {
+      if (document.visibilityState === 'hidden') return
+      const active = document.activeElement
+      if (active && active !== document.body) return
+      document.getElementById(APP_SHELL_ID)?.focus({ preventScroll: true })
+    }
+    const onWindowFocus = () => {
+      restoreShellFocus()
+      window.requestAnimationFrame(restoreShellFocus)
+    }
+    window.addEventListener('focus', onWindowFocus)
+    document.addEventListener('visibilitychange', onWindowFocus)
+    onWindowFocus()
+    return () => {
+      window.removeEventListener('focus', onWindowFocus)
+      document.removeEventListener('visibilitychange', onWindowFocus)
+    }
   }, [])
 }
 

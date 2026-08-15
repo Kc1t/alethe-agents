@@ -32,6 +32,7 @@ import { SyncModal } from './components/modals/SyncModal'
 import { ThemePickerModal } from './components/modals/ThemePickerModal'
 import { TodoSettingsModal } from './components/modals/TodoSettingsModal'
 import { TopbarSettingsModal } from './components/modals/TopbarSettingsModal'
+import { McpManagerModal } from './components/modals/McpManagerModal'
 import { RecentChatsModal } from './components/modals/RecentChatsModal'
 import { UpdateModal } from './components/modals/UpdateModal'
 import { WelcomeModal } from './components/modals/WelcomeModal'
@@ -49,6 +50,7 @@ import { useKeybindings } from './hooks/useKeybindings'
 import { useRemoteControlService } from './hooks/useRemoteControlService'
 import { useResourceSupervisor } from './hooks/useResourceSupervisor'
 import { startActivityTracker } from './lib/activityTracker'
+import { APP_SHELL_ID } from './lib/appShell'
 import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
 import { intlLocale, translate, useT } from './lib/i18n'
 import { visibilityFromPanelResize, widthFromPanelResize } from './lib/sidebarPanelState'
@@ -187,7 +189,12 @@ export default function App() {
   const rightSidebarVisible = useProjectsStore((s) => s.preferences.rightSidebarVisible)
   const leftSidebarWidth = useProjectsStore((s) => s.preferences.leftSidebarWidth)
   const rightSidebarWidth = useProjectsStore((s) => s.preferences.rightSidebarWidth)
-  const todoEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.todos)
+  const todosEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.todos)
+  const gitEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.git)
+  const mcpEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.mcp)
+  const gitControlPlacement = useProjectsStore((s) => s.preferences.gitControlPlacement)
+  const rightPanelEnabled =
+    todosEnabled || mcpEnabled || (gitEnabled && gitControlPlacement === 'right')
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   // Keep panel defaults stable while dragging. Updating defaultSize on every
   // resize event can make react-resizable-panels rebuild the layout mid-drag.
@@ -301,7 +308,7 @@ export default function App() {
     const element = rightPanelElementRef.current
     if (element) element.style.transition = 'flex-grow 180ms ease, flex-basis 180ms ease'
     const frame = window.requestAnimationFrame(() => {
-      if (todoEnabled && rightSidebarVisible) rightPanelRef.current?.expand()
+      if (rightPanelEnabled && rightSidebarVisible) rightPanelRef.current?.expand()
       else rightPanelRef.current?.collapse()
     })
     const timer = window.setTimeout(() => {
@@ -313,7 +320,7 @@ export default function App() {
       window.clearTimeout(timer)
       if (element) element.style.transition = ''
     }
-  }, [hydrated, rightPanelRef, rightSidebarVisible, todoEnabled])
+  }, [hydrated, rightPanelRef, rightSidebarVisible, rightPanelEnabled])
 
   useEffect(() => {
     if (!hydrated) return
@@ -389,7 +396,7 @@ export default function App() {
 
   return (
     <>
-      <div className={styles.appShell}>
+      <div className={styles.appShell} id={APP_SHELL_ID} tabIndex={-1}>
         <TitleBar />
         <PanelGroup
           orientation="horizontal"
@@ -482,7 +489,7 @@ export default function App() {
             </main>
           </Panel>
 
-          {todoEnabled ? (
+          {rightPanelEnabled ? (
             <>
               <Separator
                 className={`${styles.shellSeparator} ${rightSidebarVisible ? '' : styles.shellSeparatorHidden}`}
@@ -593,6 +600,7 @@ export default function App() {
         <UpdateModal />
         <WhatsNewModal />
         <RecentChatsModal />
+        <McpManagerModal />
         <RemoteControlModal />
       </ErrorBoundary>
       <InAppNotifications />

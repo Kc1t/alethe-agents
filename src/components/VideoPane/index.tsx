@@ -2,7 +2,6 @@ import { FolderOpen, GripVertical, Maximize2, Minimize2, Trash2 } from 'lucide-r
 import { memo, useRef } from 'react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 
-import { useGridResize } from '../../hooks/useGridResize'
 import { useT } from '../../lib/i18n'
 import { openInFileExplorer } from '../../lib/tauri'
 import { pathSegments } from '../../lib/paths'
@@ -33,10 +32,6 @@ export const VideoPane = memo(function VideoPane({
   const clearPaneSelection = useUiStore((state) => state.clearPaneSelection)
   const groupPanes = useProjectsStore((state) => state.groupPanes)
   const deleteTerminal = useProjectsStore((state) => state.deleteTerminal)
-  const projectGrid = useProjectsStore((state) => {
-    const project = state.projects.find((item) => item.id === projectId)
-    return project?.layoutMode === 'grid' && project.gridLayout ? project.gridLayout : null
-  })
   const paneRef = useRef<HTMLDivElement | null>(null)
   const draggable = useDraggable({ id: `pane:${terminal.id}`, disabled: isFocusMode || preview })
   const droppable = useDroppable({ id: `pane:${terminal.id}`, disabled: isFocusMode || preview })
@@ -45,9 +40,6 @@ export const VideoPane = memo(function VideoPane({
     draggable.setNodeRef(node)
     droppable.setNodeRef(node)
   }
-  const startGridResize = useGridResize(terminal.id, projectGrid, (layout) =>
-    useProjectsStore.getState().setProjectGridLayout(projectId, layout),
-  )
   const onDelete = () => {
     if (window.confirm(t('ui.markdown.confirmClose', { name: terminal.name }))) {
       deleteTerminal(projectId, terminal.id)
@@ -133,9 +125,6 @@ export const VideoPane = memo(function VideoPane({
       <div className={styles.body}>
         <VideoPreview path={filePath} />
       </div>
-      {projectGrid && !isFocusMode && !preview ? (
-        <div className={styles.gridResize} onPointerDown={startGridResize} />
-      ) : null}
     </div>
   )
 })
