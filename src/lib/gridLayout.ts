@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react'
 
 import type { GridCell, GridLayout } from './types'
 
-/** Gera um GridLayout default em N colunas baseado na lista de filhos. */
+                                                                          
 export function autoGridLayout(childIds: string[], cols = 2): GridLayout {
   const rows = Math.max(1, Math.ceil(childIds.length / cols))
   const cells: Record<string, GridCell> = {}
@@ -17,9 +17,9 @@ export function autoGridLayout(childIds: string[], cols = 2): GridLayout {
   return { cols, rows, cells }
 }
 
-/** Garante um layout válido: filhos sem célula recebem auto-fill no fim.
- *  Também corrige células fora do grid e colisões, movendo itens para o
- *  próximo slot livre. Se não houver espaço suficiente, expande linhas. */
+                                                                         
+                                                                        
+                                                                           
 export function reconcileGridLayout(layout: GridLayout, childIds: string[]): GridLayout {
   const cols = Math.max(1, Math.floor(layout.cols) || 1)
   let rows = Math.max(1, Math.floor(layout.rows) || 1)
@@ -104,7 +104,7 @@ function trackTemplate(count: number, sizes: number[] | undefined): string {
   return sizes.map((s) => `minmax(0, ${Math.max(0.1, s)}fr)`).join(' ')
 }
 
-/** CSS style pra uma célula. */
+                                
 export function cellStyle(cell: GridCell): CSSProperties {
   return {
     gridColumn: `${cell.col} / span ${cell.colSpan}`,

@@ -38,6 +38,7 @@ type ModalKind =
   | 'updateAvailable'
   | 'whatsNew'
   | 'remoteControl'
+  | 'recentChats'
   | null
 
 export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox'
@@ -71,26 +72,36 @@ type UiState = {
   claudeUsage: ClaudeUsage | null
   codexUsage: CodexUsage | null
   antigravityUsage: AntigravityUsage | null
-  /** ID do terminal em focus mode (overlay fullscreen blur). null = sem focus. */
+                                                                                  
   focusedTerminalId: string | null
+  /**
+   * Panes of workspace tabs that stay mounted while hidden. They keep streaming so switching
+   * back to their tab needs no resync — see WorkspaceView's keep-alive.
+   */
+  keptAlivePaneIds: string[]
+  /**
+   * Panes of every mounted workspace tab, streaming or not. They are one switch away from being
+   * looked at, so the resource supervisor must not suspend them for being idle.
+   */
+  mountedPaneIds: string[]
   /** Pulse that requests focus for a specific pane. */
   focusRequest: { terminalId: string; ts: number } | null
   activeTerminal: { projectId: string; terminalId: string } | null
   selectedPanes: { projectId: string; terminalId: string }[]
   /** View principal sendo exibida no main. */
   activeView: ActiveView
-  /** Conteúdo contextual da sidebar direita. */
+                                                
   rightSidebarMode: RightSidebarMode
   rightSidebarMarkdown: { path: string; title: string } | null
-  /** POC do agent canvas: pasta escolhida + id do PTY do claude embutido. */
+                                                                             
   agentCanvasSession: { folder: string; ptyId: string } | null
-  /** Teto de gasto (USD) da sessão do canvas. null = sem teto. */
+                                                                  
   agentCanvasBudgetUsd: number | null
   /** Ephemeral in-app notifications. */
   toasts: InAppToast[]
   /** Recent notification history used by Home. */
   notifications: InAppToast[]
-  /** Update disponível (checado em silêncio no boot). null = atualizado/sem info. */
+                                                                                     
   updateInfo: UpdateInfo | null
   /** URL aberta no visualizador in-app (overlay com iframe). null = fechado. */
   linkViewerUrl: string | null
@@ -99,6 +110,8 @@ type UiState = {
   closeModal: () => void
   closeMainMenu: () => void
   toggleMainMenu: () => void
+  setKeptAlivePanes: (ids: string[]) => void
+  setMountedPanes: (ids: string[]) => void
   setRamMb: (value: number | null) => void
   addMemorySample: (value: MemoryStats) => void
   setRuntimeSnapshot: (value: RuntimeSnapshot | null) => void
@@ -145,6 +158,8 @@ export const useUiStore = create<UiState>((set) => ({
   codexUsage: null,
   antigravityUsage: null,
   focusedTerminalId: null,
+  keptAlivePaneIds: [],
+  mountedPaneIds: [],
   focusRequest: null,
   activeTerminal: null,
   selectedPanes: [],
@@ -163,6 +178,20 @@ export const useUiStore = create<UiState>((set) => ({
   closeModal: () => set({ openModal: null, modalContext: null }),
   closeMainMenu: () => set({ showMainMenu: false }),
   toggleMainMenu: () => set((s) => ({ showMainMenu: !s.showMainMenu })),
+  setKeptAlivePanes: (ids) =>
+    set((state) => {
+      const unchanged =
+        state.keptAlivePaneIds.length === ids.length &&
+        state.keptAlivePaneIds.every((id, index) => id === ids[index])
+      return unchanged ? state : { keptAlivePaneIds: ids }
+    }),
+  setMountedPanes: (ids) =>
+    set((state) => {
+      const unchanged =
+        state.mountedPaneIds.length === ids.length &&
+        state.mountedPaneIds.every((id, index) => id === ids[index])
+      return unchanged ? state : { mountedPaneIds: ids }
+    }),
   setRamMb: (value) => set({ ramMb: value }),
   addMemorySample: (value) =>
     set((s) => ({

@@ -2,15 +2,12 @@ import { useNowPlaying } from '../../hooks/useNowPlaying'
 import { useT } from '../../lib/i18n'
 import styles from './SidebarNowPlaying.module.css'
 
-/**
- * Versão discreta do Now Playing — fica acima do UserProfile na sidebar.
- * Some quando: desconectado OU sem música. Sem botão de "conectar" aqui
- * (o user usa o botão maior na Home pra primeira conexão).
- */
+/** Compact Now Playing row displayed above the sidebar profile footer. */
 export function SidebarNowPlaying() {
   const t = useT()
-  const { connected, current } = useNowPlaying(true)
-  if (!connected || !current) return null
+  const { current } = useNowPlaying(true)
+
+  if (!current) return null
 
   return (
     <div

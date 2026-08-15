@@ -1,5 +1,4 @@
 import { getCurrentWebview } from '@tauri-apps/api/webview'
-import { CanvasAddon } from '@xterm/addon-canvas'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
@@ -21,7 +20,7 @@ import {
 } from '../../lib/sessionDiscovery'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import {
-  consumeSession,
+  peekSession,
   removeSession,
   savedConversationIdFor,
   saveSession,
@@ -34,6 +33,7 @@ import {
   aiMemoryMcpConfigPath,
   aiMemoryOpenCodeConfigWrite,
   attachPty,
+  clearPtyScrollback,
   findCliLauncher,
   graphifyCodexConfigWrite,
   graphifyEnsureGraph,
@@ -79,18 +79,14 @@ import {
   getLogicalTerminalLine,
   makeXtermLink,
 } from './terminalLinks'
-import { TERMINAL_WRITE_FRAME_BUDGET, writePtyChunked } from './terminalWrite'
+import { TERMINAL_WRITE_FRAME_BUDGET, writePtyChunked, writePtyWithTimeout } from './terminalWrite'
 import { getXtermTheme, type LinkActionState } from './xtermThemes'
 
 // Early exits trigger a single fresh-session retry.
 const EARLY_EXIT_MS = 4000
-// Troca rápida de abas não deve disparar um resync completo (attachPty +
-// terminal.reset()) a cada toggle transitório invisível→visível→invisível.
+
 const PANEL_RESYNC_DEBOUNCE_MS = 80
 
-/** Scheduling API (Chromium/WebView2 recente) — sem tipagem estável no
- * lib.dom.d.ts ainda. Ausente em runtimes mais antigos: retorna `false` e
- * `flushPendingWrite` segue no budget de bytes normal, sem regressão. */
 function isBrowserInputPending(): boolean {
   const scheduling = (
     navigator as Navigator & {
@@ -100,20 +96,10 @@ function isBrowserInputPending(): boolean {
   return scheduling?.isInputPending?.() ?? false
 }
 
-// Avisa uma única vez por sessão do app quando a feature "AI Memory" está ligada
-// mas o binário ai-memory não foi encontrado — não bloqueia o spawn do agente.
 let aiMemoryMissingWarned = false
 
 type BootPhase = 'preparing' | 'queued' | 'spawning' | 'attaching' | 'ready'
 
-/**
- * Sessão do terminal xterm + PTY. É o coração do XTermView: cria o terminal,
- * conecta o streaming de dados/exit, resize, buffer de escrita, links e
- * drag-drop. Extraído VERBATIM do XTermView (mesmo corpo, mesma ordem de
- * setup/teardown, mesmas deps `[sessionPersistenceKey, retryKey]`) para reduzir
- * o index.tsx sem reescrever a lógica sensível — os valores do componente
- * (refs, setters de estado e helpers) são passados como argumentos.
- */
 export function useXtermSession(params: {
   ptyId: string
   command?: AgentType | null
@@ -123,27 +109,11 @@ export function useXtermSession(params: {
   sessionId?: string
   env?: Record<string, string>
   graphifyRepo?: string | null
-  /** Gate de Conclusão de Planejamento GSD: projeto com o monitoramento
-   * ligado. Presente + `command === 'opencode'`: instala automaticamente o
-   * plugin que mantém `.planning/` sincronizado sozinho antes do spawn. */
+
   gsdWatcherEnabled?: boolean
-  /**
-   * Pula a validação de "sessão órfã" (checagem contra `opencode session
-   * list`) pro `sessionId` recebido — usado pelo terminal "viewer" da gaveta
-   * GSD Sync. Confirmado empiricamente: `opencode session list` nunca lista
-   * sessões-filha (têm `parent_id` setado pelo próprio servidor do OpenCode,
-   * mesmo sem o cliente pedir isso), então a validação normal sempre trata
-   * essa sessão como órfã, descarta o resume e apaga `sessionId` do tab —
-   * era a causa real do "resume abre em branco".
-   */
+
   trustSessionId?: boolean
-  /**
-   * Sessão-filha do GSD Sync: é a visão de subagente do próprio OpenCode,
-   * não um terminal independente — nunca deve aceitar entrada (digitar,
-   * colar, atalhos de force-kill/histórico), só leitura. Sem isso, a
-   * sessão-filha nascia indistinguível de um terminal principal de verdade,
-   * e dava pra digitar/corromper o subagente sem querer.
-   */
+
   readOnly?: boolean
   runtimeProfile: AgentRuntimeProfile
   terminalTheme: Theme
@@ -163,6 +133,7 @@ export function useXtermSession(params: {
   onSessionIdRef: MutableRefObject<((id: string | undefined) => void) | undefined>
   onInitialInputSentRef: MutableRefObject<(() => void) | undefined>
   onExitRef: MutableRefObject<((code: number | null) => void) | undefined>
+  onLaunchErrorRef: MutableRefObject<((error: unknown) => void) | undefined>
   onAgentCompleteRef: MutableRefObject<(() => void) | undefined>
   setBootPhase: Dispatch<SetStateAction<BootPhase>>
   setCommandNotFound: Dispatch<SetStateAction<string | null>>
@@ -170,7 +141,7 @@ export function useXtermSession(params: {
   setRetryKey: Dispatch<SetStateAction<number>>
   setDropActive: Dispatch<SetStateAction<boolean>>
   showLinkActionsMenu: (event: MouseEvent, link: DetectedTerminalLink) => void
-  recordPromptInput: (data: string) => void
+  recordPromptInput: (data: string) => boolean
   navigateHistory: (direction: 'up' | 'down') => void
 }) {
   const {
@@ -203,6 +174,7 @@ export function useXtermSession(params: {
     onSessionIdRef,
     onInitialInputSentRef,
     onExitRef,
+    onLaunchErrorRef,
     onAgentCompleteRef,
     setBootPhase,
     setCommandNotFound,
@@ -214,20 +186,14 @@ export function useXtermSession(params: {
     navigateHistory,
   } = params
 
-  // Gate de visibilidade (ver plano de otimização de terminais paralelos):
-  // painel fora da aba/grupo ativo não recebe mais escrita full-rate no
-  // xterm — o backend passa a mandar só o canal `activity` (throttlado).
   const isPanelVisible = usePtyPanelVisible(ptyId)
   const isPanelVisibleRef = useRef(isPanelVisible)
   const wasPanelVisibleRef = useRef(isPanelVisible)
-  // Primeira rodada do efeito de visibilidade (mount) não precisa chamar
-  // setPtyVisible — attachExistingPty/start() já fazem essa chamada assim
-  // que o id existe no backend. Evita um invoke concorrente extra bem no
-  // meio da janela sensível de spawn de cada terminal.
+
   const isFirstVisibilityRunRef = useRef(true)
-  // Preenchido dentro do efeito de mount com a função que refaz o replay do
-  // scrollback (attachPty + reset) — chamado pelo efeito de visibilidade
-  // abaixo quando o painel volta a ficar visível.
+  /** lastIoAt captured when the panel went hidden; null until it has been hidden once. */
+  const lastIoWhenHiddenRef = useRef<number | null>(null)
+
   const resyncTerminalRef = useRef<(() => Promise<void>) | null>(null)
 
   useEffect(() => {
@@ -252,10 +218,9 @@ export function useXtermSession(params: {
     let writeFrame: number | null = null
     let pendingWrites: string[] = []
     let pendingWriteLength = 0
+    let pendingWriteDrainResolvers: Array<() => void> = []
     let resumeErrorBuffer = ''
-    // Não-nulo só durante o await do snapshot em `doResync`: coleta os chunks
-    // de `data` que chegarem nessa janela pra reaplicá-los depois do replay,
-    // em vez de perdê-los no clear da fila.
+
     let resyncCaptureRef: string[] | null = null
     let lastCols = 0
     let lastRows = 0
@@ -271,11 +236,7 @@ export function useXtermSession(params: {
     const resourcePolicy = useProjectsStore.getState().preferences.resourcePolicy
     const terminal = new Terminal({
       cursorBlink: !readOnly,
-      // Bloqueia o pipeline interno de teclado→onData do xterm.js pra
-      // sessões-filha do GSD Sync — visão de subagente, nunca um terminal
-      // digitável. `onData` e os atalhos custom (Ctrl+V, histórico,
-      // force-kill) abaixo também são gateados por segurança extra, já que
-      // `disableStdin` sozinho não cobre `attachCustomKeyEventHandler`.
+
       disableStdin: Boolean(readOnly),
       convertEol: false,
       allowProposedApi: true,
@@ -283,12 +244,10 @@ export function useXtermSession(params: {
         agent: command != null && command !== 'shell',
         memoryBudgetMb: resourcePolicy.memoryBudgetMb,
       }),
-      // Só faz sentido com o backend ConPTY real do Windows. Aplicado sem
-      // checagem, muda a semântica interna de reflow/resize do buffer do
-      // xterm.js mesmo sobre um PTY Unix de verdade (Linux/macOS) — o
+
       // xterm.js passa a assumir que o backend redesenha a tela sozinho
       // (como o ConPTY faz), o que corrompe o repaint de TUIs densas que
-      // não se redesenham por conta própria (ex: OpenCode).
+
       ...(isWindows() ? { windowsPty: { backend: 'conpty' as const, buildNumber: 22000 } } : {}),
       fontFamily: 'Cascadia Mono, Consolas, "Courier New", monospace',
       fontSize: 14,
@@ -298,11 +257,7 @@ export function useXtermSession(params: {
     const searchAddon = new SearchAddon()
     terminal.loadAddon(fitAddon)
     terminal.loadAddon(searchAddon)
-    // Sem isso, o xterm.js usa as tabelas de largura Unicode 6 (default) pra
-    // decidir quantas colunas cada caractere ocupa — emojis e símbolos largos
-    // (usados no TUI do OpenCode, ex. status bar) ficam com largura diferente
-    // da que o próprio CLI assume, desalinhando toda linha que os contém de
-    // forma permanente (não é um problema de redraw — nenhuma tecla conserta).
+
     terminal.loadAddon(new Unicode11Addon())
     terminal.unicode.activeVersion = '11'
     terminal.open(container)
@@ -332,21 +287,9 @@ export function useXtermSession(params: {
       },
     })
 
-    // Se a tela rola (stream do agente), o menu — ancorado no ponto do clique —
-    // apontaria pro vazio; fecha junto pra não virar fantasma.
     linkScrollDisposable = terminal.onScroll(() => {
       if (linkActionsRef.current) setLinkActions(null)
     })
-
-    // Canvas 2D e o renderer em uso: bem mais rapido que o DOM puro sob saida
-    // pesada e sem o risco do WebGL, cuja perda de contexto podia derrubar um
-    // syncScrollArea assincrono interno do xterm.js e crashar o pane. Se o
-    // addon falhar ao carregar, o xterm cai sozinho no renderer DOM.
-    try {
-      terminal.loadAddon(new CanvasAddon())
-    } catch {
-      /* addon indisponivel — o xterm cai sozinho no renderer DOM */
-    }
 
     terminal.focus()
 
@@ -358,10 +301,6 @@ export function useXtermSession(params: {
       let budget = TERMINAL_WRITE_FRAME_BUDGET
       let output = ''
       while (budget > 0 && pendingWrites.length > 0) {
-        // Digitação/clique pendente — corta o lote aqui em vez de gastar o
-        // budget inteiro de bytes; o resto continua no próximo frame (rAF já
-        // agendado abaixo). Sem suporte à Scheduling API, isInputPending()
-        // devolve false e o comportamento é o de sempre (budget de bytes).
         if (output && isBrowserInputPending()) break
         const head = pendingWrites[0]
         const take = Math.min(budget, head.length)
@@ -374,13 +313,20 @@ export function useXtermSession(params: {
 
       if (output) {
         try {
-          terminal.write(output)
+          const isLastQueuedWrite = pendingWriteLength === 0
+          terminal.write(
+            output,
+            isLastQueuedWrite
+              ? () => {
+                  if (disposed || pendingWriteLength > 0 || writeFrame !== null) return
+                  const resolvers = pendingWriteDrainResolvers
+                  pendingWriteDrainResolvers = []
+                  resolvers.forEach((resolve) => resolve())
+                }
+              : undefined,
+          )
           clampHorizontalScroll()
-        } catch {
-          /* renderer quebrado (ex.: perda de contexto WebGL em andamento) —
-           * não deixa uma escrita falha travar o loop de flush pro resto da
-           * vida do pane; o próximo frame tenta de novo. */
-        }
+        } catch {}
       }
       if (pendingWriteLength > 0) {
         writeFrame = window.requestAnimationFrame(flushPendingWrite)
@@ -395,6 +341,32 @@ export function useXtermSession(params: {
       writeFrame = window.requestAnimationFrame(flushPendingWrite)
     }
 
+    const queueTerminalWriteAndWait = (chunk: string): Promise<void> => {
+      if (!chunk) return Promise.resolve()
+      return new Promise((resolve) => {
+        pendingWriteDrainResolvers.push(resolve)
+        queueTerminalWrite(chunk)
+      })
+    }
+
+    // Scrollback replays go straight to xterm instead of through the frame
+    // budget: a few MB of history split into 16 KB slices costs one rendered
+    // frame each, which is what made switching panes crawl from the top of the
+    // buffer down to the prompt.
+    const writeReplayAtOnce = (replay: string): Promise<void> =>
+      new Promise((resolve) => {
+        try {
+          terminal.write(replay, () => {
+            try {
+              terminal.scrollToBottom()
+            } catch {}
+            resolve()
+          })
+        } catch {
+          resolve()
+        }
+      })
+
     const getTerminalLineHeight = () => {
       const row = container.querySelector<HTMLElement>('.xterm-rows > div')
       return row?.getBoundingClientRect().height || terminal.options.fontSize || 18
@@ -402,10 +374,9 @@ export function useXtermSession(params: {
 
     const onWheel = (event: WheelEvent) => {
       // TUIs (claude/codex) entram no buffer `alternate` e ligam mouse tracking.
-      // Lá não há scrollback do host, então scrollLines() é no-op: se a gente
+
       // interceptasse o wheel (preventDefault), o evento sumia e nem o host nem
-      // a app rolavam. Deixamos seguir pro xterm, que repassa o wheel pra app.
-      // Shift força o scrollback do host (convenção iTerm2 / Windows Terminal).
+
       if (!shouldScrollHostScrollback(terminal.buffer.active.type, event.shiftKey)) return
       const lines = getWheelScrollLines(event, getTerminalLineHeight())
       if (lines === 0) return
@@ -413,15 +384,23 @@ export function useXtermSession(params: {
       event.stopPropagation()
       try {
         terminal.scrollLines(lines)
-      } catch {
-        /* renderer quebrado — não deixa o scroll travar o handler */
-      }
+      } catch {}
     }
     container.addEventListener('wheel', onWheel, { passive: false, capture: true })
 
+    const requestWriteRecovery = (id: string, source: 'input' | 'paste', error: unknown) => {
+      console.warn(`[pty-${source}] write failed for ${id}; requesting recovery`, error)
+      if (disposed || writeRecoveryPending || id !== ptyIdRef.current) return
+      writeRecoveryPending = true
+      window.dispatchEvent(
+        new CustomEvent('alethe:terminal-restart-request', { detail: { ptyId: id } }),
+      )
+      window.setTimeout(() => {
+        writeRecoveryPending = false
+      }, 5_000)
+    }
+
     const pasteText = (raw: string) => {
-      // Colar NUNCA pode quebrar o pane: qualquer erro (normalização, PTY morto,
-      // invoke falhando) é engolido e só logado. Sem terminal vivo, ignora.
       try {
         if (!raw) return
         const id = ptyIdRef.current
@@ -429,18 +408,16 @@ export function useXtermSession(params: {
         const text = normalizePastedText(raw)
         useTerminalsStore.getState().recordIo(id)
         recordPromptInput(text)
-        void writePtyChunked(id, text, terminal.modes.bracketedPasteMode).catch((err) => {
-          console.warn('[pty-paste] falha ao escrever colagem no PTY (ignorado):', err)
-        })
+        inputWriteChain = inputWriteChain
+          .then(() => writePtyChunked(id, text, terminal.modes.bracketedPasteMode))
+          .catch((error) => requestWriteRecovery(id, 'paste', error))
       } catch (err) {
-        console.warn('[pty-paste] colagem ignorada (erro):', err)
+        console.warn('[pty-paste] ignored invalid clipboard payload:', err)
       }
     }
 
-    // Resolve o clipboard do SO pra uma string colável no PTY: texto vira
     // texto puro; arquivos do Explorer (CF_HDROP) e imagens cruas (CF_DIB /
-    // formato "PNG" registrado, já salvas como PNG temporário pelo backend)
-    // reaproveitam formatDroppedPaths — o mesmo formato usado no drag-and-drop.
+
     const resolveClipboardPaste = async (): Promise<string> => {
       const payload = await readClipboardPayload()
       switch (payload.kind) {
@@ -455,10 +432,6 @@ export function useXtermSession(params: {
       }
     }
 
-    // Arrastar arquivo do SO pro terminal: o onDragDropEvent do Tauri é global,
-    // então todo pane recebe o evento — cada um filtra pelo hit-test da posição
-    // (física → CSS via devicePixelRatio) e só reage quando o cursor está sobre
-    // o seu próprio container. Reaproveita pasteText (bracketed-paste).
     const isOverThisPane = (pos: { x: number; y: number }) => {
       const dpr = window.devicePixelRatio || 1
       const el = document.elementFromPoint(pos.x / dpr, pos.y / dpr)
@@ -483,9 +456,7 @@ export function useXtermSession(params: {
         if (disposed) un()
         else unlistenDragDrop = un
       })
-      .catch(() => {
-        /* onDragDropEvent exige runtime Tauri; em browser puro/testes falha. */
-      })
+      .catch(() => {})
 
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== 'keydown') return true
@@ -507,7 +478,6 @@ export function useXtermSession(params: {
         return false
       }
 
-      // Ctrl+C: copia se tem seleção, senão envia SIGINT pro PTY
       if (key === 'c' && terminal.hasSelection()) {
         const selection = terminal.getSelection()
         if (selection) {
@@ -539,6 +509,9 @@ export function useXtermSession(params: {
         return false
       }
 
+      // Ctrl+B toggles the left sidebar; the shell must not also receive it.
+      if (key === 'b' && !event.shiftKey) return false
+
       if (!readOnly && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
         navigateHistory(event.key === 'ArrowUp' ? 'up' : 'down')
         return false
@@ -546,20 +519,46 @@ export function useXtermSession(params: {
       return true
     })
 
-    const focusTerminal = () => terminal.focus()
-    const restoreHoveredFocus = () => {
-      if (document.visibilityState === 'hidden' || !container.matches(':hover')) return
+    let shouldRestoreTerminalFocus = false
+    const focusTerminal = () => {
+      shouldRestoreTerminalFocus = true
+      terminal.focus()
+    }
+    const rememberTerminalFocus = () => {
+      shouldRestoreTerminalFocus = true
+    }
+    const rememberPointerFocusIntent = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Node) {
+        shouldRestoreTerminalFocus = container.contains(target)
+      }
+    }
+    const forgetTerminalFocus = (event: FocusEvent) => {
+      const nextTarget = event.relatedTarget
+      if (nextTarget instanceof Node && !container.contains(nextTarget)) {
+        shouldRestoreTerminalFocus = false
+      }
+    }
+    const restoreLastTerminalFocus = () => {
+      if (document.visibilityState === 'hidden' || !shouldRestoreTerminalFocus) return
       terminal.focus()
     }
     container.addEventListener('pointerdown', focusTerminal, true)
     container.addEventListener('click', focusTerminal)
-    window.addEventListener('focus', restoreHoveredFocus)
-    document.addEventListener('visibilitychange', restoreHoveredFocus)
+    container.addEventListener('focusin', rememberTerminalFocus)
+    container.addEventListener('focusout', forgetTerminalFocus)
+    document.addEventListener('pointerdown', rememberPointerFocusIntent, true)
+    window.addEventListener('focus', restoreLastTerminalFocus)
+    document.addEventListener('visibilitychange', restoreLastTerminalFocus)
 
     const onPaste = (event: ClipboardEvent) => {
       const raw = event.clipboardData?.getData('text/plain') ?? ''
       event.preventDefault()
       event.stopPropagation()
+      if (raw) {
+        pasteText(raw)
+        return
+      }
       void resolveClipboardPaste()
         .catch(() => raw)
         .then(pasteText)
@@ -577,21 +576,11 @@ export function useXtermSession(params: {
       const chunk = queuedInput
       queuedInput = ''
       inputWriteChain = inputWriteChain
-        .then(() => writePty(id, chunk))
-        .catch((error) => {
-          console.warn(`[pty-input] falha ao escrever em ${id}; solicitando recuperaÃ§Ã£o`, error)
-          if (disposed || writeRecoveryPending) return
-          writeRecoveryPending = true
-          window.dispatchEvent(
-            new CustomEvent('alethe:terminal-restart-request', { detail: { ptyId: id } }),
-          )
-          window.setTimeout(() => {
-            writeRecoveryPending = false
-          }, 5_000)
-        })
+        .then(() => writePtyWithTimeout(id, chunk))
+        .catch((error) => requestWriteRecovery(id, 'input', error))
     }
     const queueInput = (id: string, data: string) => {
-      if (id !== ptyIdRef.current || !data) return
+      if (id !== ptyIdRef.current || !data || writeRecoveryPending) return
       queuedInput += data
       if (inputFlushScheduled) return
       inputFlushScheduled = true
@@ -602,21 +591,25 @@ export function useXtermSession(params: {
       resizeTimer = null
       const id = ptyIdRef.current
       if (!id) return
-      // Só faz fit se o container tiver dimensões válidas (evita 0x0)
+
       const rect = container.getBoundingClientRect()
       if (rect.width < 50 || rect.height < 30) return
+      const activeBuffer = terminal.buffer.active
+      const distanceFromBottom = Math.max(0, activeBuffer.baseY - activeBuffer.viewportY)
       try {
         fitAddon.fit()
       } catch (error) {
         if (import.meta.env.DEV) console.error('[Alethe][xterm] fit failed', error)
-        // fit() pode falhar se o container não estiver visível
+
         return
       }
+      const resizedBuffer = terminal.buffer.active
+      if (distanceFromBottom === 0) terminal.scrollToBottom()
+      else terminal.scrollToLine(Math.max(0, resizedBuffer.baseY - distanceFromBottom))
       try {
         terminal.refresh(0, Math.max(0, terminal.rows - 1))
       } catch (error) {
         if (import.meta.env.DEV) console.error('[Alethe][xterm] refresh failed', error)
-        /* refresh pode falhar durante teardown/layout invisível */
       }
       clampHorizontalScroll()
       const force = forceNextResize
@@ -631,7 +624,7 @@ export function useXtermSession(params: {
     }
     const scheduleResize = (force = false) => {
       // Guard de unmount: neutraliza os setTimeout(120/320ms) de onResizeRequest
-      // e evita re-armar o resizeTimer que o cleanup já limpou.
+
       if (disposed) return
       forceNextResize ||= force
       if (resizeTimer !== null) window.clearTimeout(resizeTimer)
@@ -648,16 +641,6 @@ export function useXtermSession(params: {
     const ro = new ResizeObserver(scheduleObservedResize)
     ro.observe(container)
     const onZoomChanged = () => {
-      // `fitAddon.fit()` (dentro de runResize) só LÊ o cache interno de
-      // dimensões de célula do xterm.js — não força remedição. O xterm.js
-      // remede sozinho quando detecta mudança de devicePixelRatio via
-      // media query, mas o WebKitGTK nem sempre dispara essa mudança de
-      // forma confiável após `setZoom()` do webview. Sem remedir, o cache
-      // fica desatualizado e toda detecção de hover/link/clique dentro do
-      // terminal aponta pra célula errada (mouse "desalinhado") até o
-      // próximo resize real do container. Reatribuir `fontSize` pro mesmo
-      // valor é o truque conhecido pra forçar o xterm.js a limpar esse
-      // cache e remedir, sem mudar nada visualmente.
       const currentFontSize = terminal.options.fontSize
       terminal.options.fontSize = currentFontSize
       scheduleResize(true)
@@ -665,23 +648,16 @@ export function useXtermSession(params: {
     window.addEventListener('alethe:zoom-changed', onZoomChanged)
     window.addEventListener('alethe:terminal-resize-request', onResizeRequest)
 
-    // Fit adicional com delay pra garantir que o layout estabilizou
     const initialFitTimer = window.setTimeout(() => {
       scheduleResize()
     }, 150)
 
-    // Painel voltou a ficar visível depois de um período mudo (canal `data`
-    // suprimido pelo backend) — refaz o replay do scrollback acumulado do
     // zero em vez de tentar reconciliar incrementalmente. `reset()` + replay
-    // total elimina qualquer risco de duplicação: não importa quanto foi
-    // perdido, o snapshot final devolvido por `attachPty` é a verdade.
+
     const doResync = async () => {
       const id = ptyIdRef.current
       if (!id || disposed) return
       try {
-        // Chunks que chegarem pelo canal `data` DURANTE o await não estão no
-        // snapshot (ele foi tirado antes deles) e não podem ser descartados
-        // junto com a fila — senão viram um buraco permanente no render.
         const arrivedDuringFetch: string[] = []
         resyncCaptureRef = arrivedDuringFetch
         const replay = await attachPty(id)
@@ -694,23 +670,18 @@ export function useXtermSession(params: {
           window.cancelAnimationFrame(writeFrame)
           writeFrame = null
         }
-        if (replay) queueTerminalWrite(replay)
+        if (replay) void writeReplayAtOnce(replay)
         for (const chunk of arrivedDuringFetch) queueTerminalWrite(chunk)
       } catch {
         resyncCaptureRef = null
-        /* resync best-effort — o próximo lote do canal `data` corrige sozinho */
       }
     }
     resyncTerminalRef.current = doResync
 
     // Registra os dois listeners de streaming: `data` (canal caro — escreve
-    // no xterm) e `activity` (canal barato — só recordIo/completionMonitor,
-    // usado pelo backend quando o painel está invisível). O backend decide
-    // qual dos dois emitir por lote, nunca os dois — não há risco de um
+
     // chunk ser processado em duplicidade.
-    // `inspectChunk` roda nos DOIS canais: um pane em segundo plano só recebe
-    // `activity`, e a detecção de conflito de resume do Codex não pode
-    // depender de o pane estar visível.
+
     const registerPtyStreamListeners = async (
       id: string,
       inspectChunk?: (chunk: string) => void,
@@ -746,8 +717,7 @@ export function useXtermSession(params: {
       ptyIdRef.current = existingId
       useTerminalsStore.getState().registerPty(existingId)
       onSpawnedRef.current?.(existingId)
-      // Sessão pode já existir de antes deste mount (reload do app, etc.) —
-      // estabelece a visibilidade correta no backend desde já.
+
       void setPtyVisible(existingId, isPanelVisibleRef.current).catch(() => {})
 
       if (command === 'claude' || command === 'codex' || command === 'opencode') {
@@ -761,17 +731,13 @@ export function useXtermSession(params: {
         })
       }
 
-      // Painel fora de tela no boot (aba de grupo inativa, workspace
-      // restaurado com vários agentes de uma vez) — pula o fetch+write do
-      // replay agora. O backend já grava o scrollback de qualquer jeito;
-      // quando o painel virar visível, o efeito de visibilidade dispara
-      // `doResync` (attachPty + reset) e traz o conteúdo de uma vez só, sem
       // gastar o burst de write mais pesado (TUIs como o OpenCode) enquanto
-      // ninguém está olhando.
+
       if (isPanelVisibleRef.current) {
         const replay = await attachPty(existingId)
         if (disposed) return
-        if (replay) queueTerminalWrite(replay)
+        if (replay) await writeReplayAtOnce(replay)
+        if (disposed) return
       }
 
       if (!(await registerPtyStreamListeners(existingId))) return
@@ -811,13 +777,30 @@ export function useXtermSession(params: {
       const id = ptyIdRef.current
       if (!id) return
       useTerminalsStore.getState().recordIo(id)
-      recordPromptInput(data)
+      const startsNewSession = recordPromptInput(data)
       completionMonitor?.handleInput(data)
       const trackedPtyId = ptyIdRef.current
       if (trackedPtyId) recordAgentActivityInput(trackedPtyId, data)
       if (container.scrollWidth > container.clientWidth + 2) scheduleResize(true)
       clampHorizontalScroll()
       queueInput(id, data)
+      if (startsNewSession && command && command !== 'shell') {
+        if (writeFrame !== null) {
+          window.cancelAnimationFrame(writeFrame)
+          writeFrame = null
+        }
+        pendingWrites = []
+        pendingWriteLength = 0
+        terminal.clear()
+        terminal.scrollToBottom()
+        // queueInput schedules its flush first, so this runs only after /new
+        // reaches the agent and before its fresh-session output is persisted.
+        queueMicrotask(() => {
+          inputWriteChain = inputWriteChain
+            .then(() => clearPtyScrollback(id))
+            .catch((error) => console.warn('[pty-scrollback] failed to clear after /new:', error))
+        })
+      }
     })
 
     const RESUMABLE_AGENTS = ['claude', 'codex', 'opencode', 'antigravity']
@@ -828,9 +811,7 @@ export function useXtermSession(params: {
         try {
           const rect = container?.getBoundingClientRect()
           if (rect && rect.width >= 50 && rect.height >= 30) fitAddon.fit()
-        } catch {
-          /* sem layout ainda — o resize agendado cobre */
-        }
+        } catch {}
         setCommandNotFound(null)
         setBootPhase('preparing')
 
@@ -845,9 +826,6 @@ export function useXtermSession(params: {
           return
         }
 
-        // Pré-resolve CLI: se for agent, precisa achar override OU launcher
-        // auto-detectado antes de spawnar. Sem isso, o pwsh executa `& 'claude'`
-        // e mostra erro CommandNotFound dentro do terminal — UX feia.
         let launcherOverride: string | undefined
         if (command && command !== 'shell') {
           if (cliPathOverride) {
@@ -869,22 +847,27 @@ export function useXtermSession(params: {
           }
         }
 
-        // projects.json é a fonte principal. O marcador de crash no localStorage
-        // serve apenas de fallback para arquivos antigos que ainda não tinham ID.
         const savedSession =
           command && RESUMABLE_AGENTS.includes(command)
-            ? consumeSession(sessionPersistenceKey)
+            ? peekSession(sessionPersistenceKey)
             : null
         const savedConversationId = savedConversationIdFor(savedSession, command, cwd)
         let resumeId = sessionId ?? savedConversationId
         // Fallback: se a tentativa anterior morreu no nascimento usando resume,
-        // reabre ignorando o id órfão para nascer uma sessão limpa.
+
         if (forceFreshRef.current) {
           console.warn(`[pty-launch] ${command} reabrindo SEM resume (fallback de early-exit)`)
           resumeId = undefined
         }
-        if (resumeId && cwd && command && isSessionClaimed(command, cwd, resumeId, sessionPersistenceKey)) {
-          console.warn(`[pty-launch] ${command} session ${resumeId} is already claimed; starting a fresh writer`)
+        if (
+          resumeId &&
+          cwd &&
+          command &&
+          isSessionClaimed(command, cwd, resumeId, sessionPersistenceKey)
+        ) {
+          console.warn(
+            `[pty-launch] ${command} session ${resumeId} is already claimed; starting a fresh writer`,
+          )
           resumeId = undefined
           removeSession(sessionPersistenceKey)
           onSessionIdRef.current?.(undefined)
@@ -895,13 +878,9 @@ export function useXtermSession(params: {
         if (resumeId && cwd && command) {
           registerSessionClaim(command, cwd, resumeId, sessionPersistenceKey)
         }
-        // Valida a conversa antes de passar o argumento de resume. IDs persistidos
-        // podem ficar órfãos após limpeza de histórico ou sincronização entre PCs;
-        // nesse caso removemos o vínculo e iniciamos uma conversa limpa.
+
         // `trustSessionId` pula essa checagem — confirmado empiricamente que
-        // `opencode session list` nunca inclui sessões-filha (têm `parent_id`
-        // setado pelo próprio servidor do OpenCode), então pra elas essa
-        // validação sempre "descobre" uma sessão órfã que não é órfã de
+
         // verdade e descarta o resume, apagando `sessionId` do tab.
         if (
           !trustSessionId &&
@@ -922,77 +901,41 @@ export function useXtermSession(params: {
                     ? await snapshotAntigravitySessions(cwd)
                     : await snapshotOpenCodeSessions(cwd)
             const notListed = !existing.some((session) => session.id === resumeId)
-            // Pra `opencode`, "não aparece na listagem" é inconclusivo, não
-            // prova de órfã — `opencode session list` nunca inclui sessões
-            // com `parent_id` setado pelo próprio servidor, então uma sessão
-            // válida (não necessariamente uma sub-sessão explícita) pode
-            // sumir da listagem sem estar de fato órfã. Só descarta o resume
-            // pros outros CLIs, cuja listagem já se mostrou confiável.
+
             if (notListed && command !== 'opencode') {
               console.warn(`[pty-launch] ${command} ignorando sessão órfã ${resumeId}`)
               resumeId = undefined
               removeSession(sessionPersistenceKey)
               onSessionIdRef.current?.(undefined)
             }
-          } catch {
-            /* mantém o resume — não arrisca falso negativo */
-          }
+          } catch {}
           if (disposed) return
         }
-        // OpenCode não permite escolher o ID no nascimento (ao contrário do
-        // Claude) — sem um ID salvo válido, reivindicamos aqui a conversa mais
-        // recente ainda não pega por outro pane (ex.: reabrir o app depois de
-        // fechado). `!forceFreshRef.current` é essencial: no fallback de
-        // early-exit (abaixo) o resumeId acabou de ser zerado de propósito
-        // porque a sessão órfã matou o agente no nascimento — reivindicar de
-        // novo aqui recriaria o mesmo loop.
+
         if (command === 'opencode' && !resumeId && cwd && !forceFreshRef.current) {
           try {
             const sessions = await snapshotOpenCodeSessions(cwd)
-            // A sessão-filha do GSD Sync (ver alethe-gsd-state.ts) é criada
-            // DE PROPÓSITO sem `parentID` — sem isso ela não resumia com
-            // histórico visível na TUI — então, ao contrário de sub-sessões
-            // internas do próprio OpenCode, ELA APARECE em `opencode session
-            // list` como uma sessão de verdade, e fica "mais recente" que a
-            // conversa real a cada ciclo GSD. Sem excluir aqui, um terminal
-            // normal sem sessionId salvo podia reivindicar a sessão-filha
-            // (cheia de instruções internas do GSD) como se fosse a própria
+
             // — e como `useGsdSyncSessions` acha o terminal certo justamente
-            // procurando quem tem esse sessionId, ele então tratava o
-            // terminal normal como se fosse o viewer da sessão-filha,
+
             // escondendo/fechando a pane dele.
-            // Gateado só em `gsdWatcherEnabled` (o toggle atual da UI) e não
-            // na existência real do sentinel: se o plugin já escreveu
+
             // `.gsd-child-session` em algum momento (spawn anterior com o
-            // toggle ligado, worktree que herdou o arquivo do commit-base) e
-            // depois o toggle foi desligado, esse trecho passava a tratar a
-            // sessão-filha como candidata válida de novo — um terminal
-            // normal sem sessionId salvo podia reivindicá-la mesmo com o
-            // watcher desligado. A exclusão agora depende só do sentinel
-            // existir em disco, não do estado atual do toggle.
+
             const gsdChildId = await readGsdChildSession(cwd).catch(() => null)
             const candidates = gsdChildId ? sessions.filter((s) => s.id !== gsdChildId) : sessions
             const claimed = claimMostRecentSession('opencode', cwd, candidates)
             if (claimed) resumeId = claimed.id
-          } catch {
-            /* sem sessão prévia — segue pro nível 3 (CLI cria uma nova) */
-          }
+          } catch {}
           if (disposed) return
         }
         const preparedRuntime = command
           ? preparePtyRuntimeLaunch(command, runtimeProfile, extraArgs ?? [], env)
           : { args: extraArgs ?? [], env }
-        // RFC-004 — Graphify por projeto: garante o bootstrap do grafo e injeta o
-        // MCP nos 3 CLIs. Best-effort — falha do Graphify NUNCA bloqueia o spawn.
-        // Claude recebe `--mcp-config`; Codex/OpenCode recebem por merge no config
-        // do projeto (não têm flag), escrito antes do spawn.
-        // Servidores MCP gerenciados pelo Alethe. Claude aceita `--mcp-config`
-        // repetido, então acumulamos os paths numa lista (Graphify + ai-memory
-        // coexistem sem um sobrescrever o outro). Codex/OpenCode recebem por merge
-        // no config do projeto (não têm flag). Tudo best-effort — nunca bloqueia
+
         // o spawn.
         const mcpConfigPaths: string[] = []
-        // RFC-004 — Graphify por projeto (flag em `project.graphifyEnabled`).
+
         if (
           graphifyRepo &&
           (command === 'claude' || command === 'codex' || command === 'opencode')
@@ -1008,9 +951,7 @@ export function useXtermSession(params: {
           }
           if (disposed) return
         }
-        // ai-memory — feature GLOBAL (preference `enabledFeatures.aiMemory`), não
-        // por-projeto. O servidor roteia o projeto pela cwd do agente. Só injeta
-        // se o binário estiver instalado; senão avisa uma vez e segue sem memória.
+
         const aiMemoryEnabled = useProjectsStore.getState().preferences.enabledFeatures.aiMemory
         if (
           aiMemoryEnabled &&
@@ -1037,15 +978,9 @@ export function useXtermSession(params: {
           if (disposed) return
         }
 
-        // Gate de Conclusão de Planejamento GSD — instala o plugin OpenCode
-        // que mantém .planning/ sincronizado sozinho a partir do todowrite,
-        // sem depender do modelo lembrar. Independente do Graphify (usa
-        // `cwd`, não `graphifyRepo`); best-effort, nunca bloqueia o spawn.
         if (command === 'opencode' && cwd && gsdWatcherEnabled) {
           const modelChain = useProjectsStore.getState().preferences.gsdSyncModelChain ?? []
-          // Best-effort de propósito — nunca bloqueia o spawn — mas sem log
-          // uma falha aqui deixa `.planning/` nunca populado e o Gate de
-          // Merge preso em "checking" sem nenhuma pista da causa real.
+
           await gsdOpenCodePluginWrite(cwd, modelChain).catch((error) => {
             console.error(`[pty-launch] gsdOpenCodePluginWrite falhou pra ${cwd}:`, error)
           })
@@ -1064,22 +999,26 @@ export function useXtermSession(params: {
         if (launch.sessionId && launch.sessionId !== sessionId) {
           onSessionIdRef.current?.(launch.sessionId)
         }
-        if (command && cwd) registerSessionClaim(command, cwd, launch.sessionId)
+        if (command && cwd) {
+          registerSessionClaim(command, cwd, launch.sessionId, sessionPersistenceKey)
+        }
 
-        // Snapshot leve antes do spawn para identificar e persistir o ID novo
-        // de agentes que não permitem escolher o ID no nascimento.
+        // Claude gets its id up front through --session-id, but /new and /resume
+        // typed inside the CLI move it to another conversation. Baselining the
+        // directory here lets the watcher below adopt whatever it moves to.
         const discoveredSessionsBeforePromise =
-          cwd && !launch.sessionId
+          cwd && (!launch.sessionId || command === 'claude')
             ? command === 'codex'
               ? snapshotCodexSessions(cwd).catch(() => [])
               : command === 'antigravity'
                 ? snapshotAntigravitySessions(cwd).catch(() => [])
                 : command === 'opencode'
                   ? snapshotOpenCodeSessions(cwd).catch(() => [])
-                  : null
+                  : command === 'claude'
+                    ? snapshotClaudeSessions(cwd).catch(() => [])
+                    : null
             : null
 
-        // Serializa spawns globalmente — sem isso, abrir grupo com N×M terminais
         // dispara muitos spawn_pty em paralelo e trava o app.
         setBootPhase('queued')
         const acquiredSpawnSlot = await acquireSpawnSlot(spawnQueueAbort.signal)
@@ -1112,11 +1051,15 @@ export function useXtermSession(params: {
         ptyIdRef.current = response.id
         useTerminalsStore.getState().registerPty(response.id)
         onSpawnedRef.current?.(response.id)
-        // Sessão acabou de nascer no backend agora — estabelece a
+
         // visibilidade correta desde o primeiro lote (ex.: pane aberto num
-        // grupo/aba já invisível não deve gastar render à toa).
+
         void setPtyVisible(response.id, isPanelVisibleRef.current).catch(() => {})
         if (command && cwd && launch.sessionId) {
+          // Owned by the tab as well as the PTY: the PTY id changes on every
+          // respawn, and a claim only reachable through a dead PTY id would make
+          // the tab treat its own conversation as taken and start a fresh one.
+          registerSessionClaim(command, cwd, launch.sessionId, sessionPersistenceKey)
           registerSessionClaim(command, cwd, launch.sessionId, response.id)
         }
 
@@ -1131,7 +1074,6 @@ export function useXtermSession(params: {
           })
         }
 
-        // Marca sessão como ativa — se o app fechar abruptamente, o próximo
         // spawn vai consumir essa entrada e injetar o resume adequado da CLI.
         if (command && RESUMABLE_AGENTS.includes(command)) {
           saveSession(sessionPersistenceKey, {
@@ -1145,32 +1087,27 @@ export function useXtermSession(params: {
             timestamp: Date.now(),
           })
 
-          // Codex, Antigravity e OpenCode não permitem escolher o ID no
-          // nascimento — precisam do ID específico descoberto depois do spawn
-          // pra não misturar conversas de panes diferentes no próximo boot.
           if (
-            (command === 'codex' || command === 'antigravity' || command === 'opencode') &&
+            (command === 'codex' ||
+              command === 'antigravity' ||
+              command === 'opencode' ||
+              command === 'claude') &&
             cwd &&
             discoveredSessionsBeforePromise
           ) {
             const detectCreatedSession = async () => {
               const before = new Set((await discoveredSessionsBeforePromise).map((s) => s.id))
-              // Sem prazo fixo amarrado ao SPAWN: o que decide quando o arquivo de
-              // sessão do CLI existe é quando o usuário manda a primeira mensagem e
-              // o agente termina de responder — não quando o processo nasceu. Um
-              // modelo lento (ou um usuário que demora pra digitar) facilmente
-              // passa dos ~30s que essa janela costumava ter, e a sessão nunca era
+              if (launch.sessionId) before.add(launch.sessionId)
+
               // reivindicada/persistida (perdia resume ao reabrir o pane). Primeiras
-              // tentativas rápidas (3s) pra não atrasar o caso comum; depois de ~30s
-              // sem achar, passa a checar mais espaçado (15s) enquanto o pane
-              // continuar aberto — só para quando acha ou o componente desmonta.
+
               let attempt = 0
               while (!disposed) {
                 const delayMs = attempt < 10 ? 3000 : 15000
-                if (command === 'codex') {
+                if (command === 'codex' || command === 'claude') {
                   await Promise.race([
                     new Promise((resolve) => setTimeout(resolve, delayMs)),
-                    waitForSessionHint('codex'),
+                    waitForSessionHint(command),
                   ])
                 } else {
                   await new Promise((resolve) => setTimeout(resolve, delayMs))
@@ -1181,14 +1118,10 @@ export function useXtermSession(params: {
                     ? await snapshotCodexSessions(cwd).catch(() => [])
                     : command === 'antigravity'
                       ? await snapshotAntigravitySessions(cwd).catch(() => [])
-                      : await snapshotOpenCodeSessions(cwd).catch(() => [])
-                // Mesma exclusão do bloco de resume acima: a sessão-filha do
-                // GSD Sync aparece em `opencode session list` como sessão de
-                // verdade (sem parentID, de propósito) — sem excluir, ela
-                // podia ser confundida com a sessão real recém-criada deste
-                // terminal se surgisse na mesma janela de detecção.
-                // Exclusão depende só do sentinel existir em disco, não do
-                // toggle atual de `gsdWatcherEnabled` — ver comentário
+                      : command === 'claude'
+                        ? await snapshotClaudeSessions(cwd).catch(() => [])
+                        : await snapshotOpenCodeSessions(cwd).catch(() => [])
+
                 // equivalente no bloco de resume acima.
                 let filteredSessions = sessions
                 if (command === 'opencode') {
@@ -1200,11 +1133,12 @@ export function useXtermSession(params: {
                   cwd,
                   before,
                   filteredSessions,
-                  response.id,
+                  sessionPersistenceKey,
                 )
                 if (newSession) {
                   saveSession(sessionPersistenceKey, {
                     sessionId: response.id,
+                    claudeSessionId: command === 'claude' ? newSession.id : undefined,
                     codexSessionId: command === 'codex' ? newSession.id : undefined,
                     antigravitySessionId: command === 'antigravity' ? newSession.id : undefined,
                     opencodeSessionId: command === 'opencode' ? newSession.id : undefined,
@@ -1213,7 +1147,12 @@ export function useXtermSession(params: {
                     timestamp: Date.now(),
                   })
                   onSessionIdRef.current?.(newSession.id)
-                  return
+                  if (command !== 'claude') return
+                  // Claude can switch conversation again through /new or /resume,
+                  // so the watcher stays alive for the life of the pane.
+                  before.add(newSession.id)
+                  attempt = 0
+                  continue
                 }
                 attempt += 1
               }
@@ -1236,9 +1175,6 @@ export function useXtermSession(params: {
           setRetryKey((value) => value + 1)
         }
 
-        // Painel fora de tela no boot — mesma lógica de attachExistingPty:
-        // pula o replay agora, `doResync` traz tudo quando ficar visível. O
-        // conflito de resume do Codex continua coberto pelo `inspectChunk`
         // registrado logo abaixo, que roda nos dois canais de streaming.
         if (isPanelVisibleRef.current) {
           const replay = await attachPty(response.id)
@@ -1252,12 +1188,10 @@ export function useXtermSession(params: {
             handleResumeConflict()
             return
           }
-          if (replay) queueTerminalWrite(replay)
+          if (replay) await queueTerminalWriteAndWait(replay)
+          if (disposed) return
         }
 
-        // Race fix: se o componente desmontar entre o await e a atribuição,
-        // a cleanup function já rodou com unlistenData/unlistenExit ainda
-        // undefined — chamamos manualmente pra evitar listener órfão.
         const inspectResumeConflict = (chunk: string) => {
           if (command !== 'codex' || !usedResumeRef.current || resumeConflictHandled) return
           // PTY events can split the bootstrap error between chunks, so keep
@@ -1270,9 +1204,6 @@ export function useXtermSession(params: {
         if (!(await registerPtyStreamListeners(response.id, inspectResumeConflict))) return
 
         const exitUnlisten = await listenPtyExit(response.id, (payload) => {
-          // unlistenExit só roda na cleanup do effect, depois de dispose() — um exit
-          // que chega no meio dessa janela ainda dispara este callback contra um
-          // terminal já disposed (renderer removido), daí o guard antes de qualquer write.
           if (disposed) return
           console.info(
             `[pty-launch] ${command ?? 'shell'} EXIT id=${response.id} code=${payload.code ?? '—'} reason=${payload.reason ?? '—'}`,
@@ -1293,8 +1224,7 @@ export function useXtermSession(params: {
             command === 'opencode' ||
             command === 'antigravity'
           const elapsed = Date.now() - spawnedAtRef.current
-          // Fallback 1: agent morreu no nascimento COM resume → sessão órfã.
-          // Limpa e reabre uma vez com sessão nova, em vez de deixar o pane cinza.
+
           if (
             isAgent &&
             elapsed < EARLY_EXIT_MS &&
@@ -1317,8 +1247,7 @@ export function useXtermSession(params: {
             setRetryKey((v) => v + 1)
             return
           }
-          // Fallback 2: agent morreu no nascimento SEM resume (binário/instalação
-          // quebrada). Não relança em loop; deixa um aviso visível em vez de cinza.
+
           if (isAgent && elapsed < EARLY_EXIT_MS) {
             console.warn(
               `[pty-launch] ${command} saiu em ${elapsed}ms (code ${payload.code ?? '—'}) — sem retry`,
@@ -1331,7 +1260,7 @@ export function useXtermSession(params: {
           useTerminalsStore.getState().markExited(response.id)
           completionMonitor?.dispose()
           completionMonitor = null
-          // Clean exit → não resume na próxima vez
+
           removeSession(sessionPersistenceKey)
           onExitRef.current?.(payload.code)
         })
@@ -1355,7 +1284,8 @@ export function useXtermSession(params: {
                 Date.now() >= earliestSendAt &&
                 runtime?.alive &&
                 (quietFor >= 700 || Date.now() >= timedSendAt)
-              ) break
+              )
+                break
             }
             if (disposed) return
             try {
@@ -1375,6 +1305,7 @@ export function useXtermSession(params: {
         if (!disposed) setBootPhase('ready')
       } catch (err) {
         console.error(`[pty-launch] ${command ?? 'shell'} FALHOU ao iniciar PTY:`, err)
+        onLaunchErrorRef.current?.(err)
         if (!disposed) terminal.writeln(`Failed to start PTY: ${String(err)}`)
         if (!disposed) setBootPhase('ready')
       }
@@ -1395,8 +1326,11 @@ export function useXtermSession(params: {
       container.removeEventListener('pointerdown', focusTerminal, true)
       container.removeEventListener('click', focusTerminal)
       container.removeEventListener('paste', onPaste)
-      window.removeEventListener('focus', restoreHoveredFocus)
-      document.removeEventListener('visibilitychange', restoreHoveredFocus)
+      container.removeEventListener('focusin', rememberTerminalFocus)
+      container.removeEventListener('focusout', forgetTerminalFocus)
+      document.removeEventListener('pointerdown', rememberPointerFocusIntent, true)
+      window.removeEventListener('focus', restoreLastTerminalFocus)
+      document.removeEventListener('visibilitychange', restoreLastTerminalFocus)
       window.removeEventListener('alethe:zoom-changed', onZoomChanged)
       window.removeEventListener('alethe:terminal-resize-request', onResizeRequest)
       ro.disconnect()
@@ -1404,6 +1338,7 @@ export function useXtermSession(params: {
       if (writeFrame !== null) window.cancelAnimationFrame(writeFrame)
       pendingWrites = []
       pendingWriteLength = 0
+      pendingWriteDrainResolvers = []
       queuedInput = ''
       window.clearTimeout(initialFitTimer)
       unlistenData?.()
@@ -1420,16 +1355,10 @@ export function useXtermSession(params: {
       if (resyncTerminalRef.current === doResync) resyncTerminalRef.current = null
       terminal.dispose()
     }
-    // A identidade estável da sub-tab evita remontar assim que o spawn troca o
-    // ptyId temporário pelo ID real; isso também deixa a descoberta assíncrona
-    // da conversa terminar e persistir o ID antes de um reload.
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionPersistenceKey, retryKey])
 
-  // Propaga a visibilidade lógica do painel pro backend (gate do canal
-  // `data`) e, só na transição invisível→visível, refaz o resync do
-  // scrollback. Efeito leve e independente do mount do terminal — não deve
-  // disparar um respawn/reattach completo, só o `AtomicBool` no backend.
   useEffect(() => {
     isPanelVisibleRef.current = isPanelVisible
     const wasVisible = wasPanelVisibleRef.current
@@ -1443,10 +1372,23 @@ export function useXtermSession(params: {
     let cancelled = false
     let resyncTimer: number | null = null
 
+    // While hidden the PTY still reports activity, so lastIoAt tells us whether anything was
+    // produced. If nothing was, the buffer on screen is already correct and resyncing would only
+    // clear the terminal and rewrite identical bytes — a visible flash for no reason.
+    const ioAtNow = () => useTerminalsStore.getState().byPtyId[ptyId]?.lastIoAt ?? 0
+    if (!isPanelVisible) lastIoWhenHiddenRef.current = ioAtNow()
+
     void setPtyVisible(ptyId, isPanelVisible)
-      .catch(() => {})
-      .then(() => {
+      .catch(() => false)
+      .then((applied) => {
+        if (!applied && isPanelVisible) {
+          console.warn(
+            `[pty-visibility] ${ptyId} was not registered when the panel became visible; ` +
+              'the resource sampler will reconcile it',
+          )
+        }
         if (cancelled || !isPanelVisible || wasVisible) return
+        if (lastIoWhenHiddenRef.current !== null && ioAtNow() === lastIoWhenHiddenRef.current) return
         resyncTimer = window.setTimeout(() => {
           if (!cancelled) void resyncTerminalRef.current?.()
         }, PANEL_RESYNC_DEBOUNCE_MS)

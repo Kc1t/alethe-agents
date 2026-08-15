@@ -35,16 +35,21 @@ pub fn open_in_file_explorer(path: String) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     let result = if target.is_file() {
-        Command::new("open").arg("-R").arg(target.as_os_str()).spawn()
+        Command::new("open")
+            .arg("-R")
+            .arg(target.as_os_str())
+            .spawn()
     } else {
         Command::new("open").arg(target.as_os_str()).spawn()
     };
 
-    // xdg-open não tem "revelar/selecionar": abre o diretório (pai, se for arquivo).
     #[cfg(all(unix, not(target_os = "macos")))]
     let result = {
         let dir = if target.is_file() {
-            target.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| target.clone())
+            target
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| target.clone())
         } else {
             target.clone()
         };
@@ -68,7 +73,10 @@ pub fn open_in_vscode(path: String) -> Result<(), String> {
 
     let result = if is_cmd {
         let mut command = Command::new("cmd");
-        command.arg("/C").arg(launcher.as_os_str()).arg(target.as_os_str());
+        command
+            .arg("/C")
+            .arg(launcher.as_os_str())
+            .arg(target.as_os_str());
         crate::git_control::hide_console(&mut command);
         command.spawn()
     } else {
@@ -139,8 +147,6 @@ pub fn read_clipboard_text() -> Result<String, String> {
     }
 }
 
-/// Payload unificado do clipboard: texto, paths de arquivo (CF_HDROP) ou uma
-/// imagem crua (CF_DIB / formato "PNG" registrado) já salva num PNG temporario.
 #[derive(serde::Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ClipboardPayload {
@@ -170,8 +176,8 @@ mod windows_clipboard {
     use std::time::Duration;
     use windows_sys::Win32::Foundation::GlobalFree;
     use windows_sys::Win32::System::DataExchange::{
-        CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard,
-        RegisterClipboardFormatW, SetClipboardData,
+        CloseClipboard, EmptyClipboard, GetClipboardData, IsClipboardFormatAvailable,
+        OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
     };
     use windows_sys::Win32::System::Memory::{
         GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock, GMEM_MOVEABLE,
@@ -259,7 +265,7 @@ mod windows_clipboard {
     }
 
     /// Le CF_UNICODETEXT assumindo que o clipboard ja esta aberto e o formato
-    /// disponivel foi verificado pelo chamador.
+
     fn read_unicode_text_locked() -> Result<String, String> {
         let handle = unsafe { GetClipboardData(CF_UNICODETEXT_U32) };
         if handle.is_null() {
@@ -284,8 +290,7 @@ mod windows_clipboard {
     }
 
     /// Enumera os paths de CF_HDROP (arquivos copiados no Windows Explorer).
-    /// O handle de CF_HDROP e usado diretamente por DragQueryFileW — sem
-    /// GlobalLock/GlobalUnlock, diferente dos outros formatos deste modulo.
+
     fn read_hdrop_paths() -> Result<Vec<String>, String> {
         let handle = unsafe { GetClipboardData(CF_HDROP_U32) };
         if handle.is_null() {
@@ -339,8 +344,7 @@ mod windows_clipboard {
     }
 
     /// Se o clipboard tiver o formato registrado "PNG" (Chrome/Edge colocam
-    /// isso ao copiar uma imagem da web), os bytes ja sao um PNG valido —
-    /// grava direto em disco, sem recodificar.
+
     fn read_registered_png() -> Option<Result<String, String>> {
         let name: Vec<u16> = "PNG".encode_utf16().chain(std::iter::once(0)).collect();
         let format = unsafe { RegisterClipboardFormatW(name.as_ptr()) };
@@ -350,9 +354,8 @@ mod windows_clipboard {
         Some(read_format_bytes(format).and_then(|bytes| write_bytes_to_temp_png(&bytes)))
     }
 
-    /// CF_DIB devolve um BITMAPINFOHEADER + pixels, sem o BITMAPFILEHEADER de
     /// 14 bytes que um .bmp de verdade tem. Prepende esse header manualmente
-    /// pra poder decodificar com a crate `image` e reexportar como PNG.
+
     fn read_dib_as_png() -> Result<String, String> {
         let dib = read_format_bytes(CF_DIB_U32)?;
         if dib.len() < 40 {
@@ -468,8 +471,6 @@ pub fn open_spawn_log(app: AppHandle) -> Result<(), String> {
     result.map(|_| ()).map_err(|error| error.to_string())
 }
 
-/// Limpa todo o conteúdo de `%LOCALAPPDATA%\dev.alethe\` (projects.json,
-/// scrollback/, spawn.log). Itera em vez de remover o dir inteiro pra
 /// permitir que o app continue rodando.
 #[tauri::command]
 pub fn reset_app_data(app: AppHandle) -> Result<(), String> {
@@ -517,8 +518,6 @@ pub fn wipe_all_app_data(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Abre a pasta de logs (raiz `app_local_data_dir()/logs`, compartilhada por
-/// todos os perfis) no explorer/Finder.
 #[tauri::command]
 pub fn open_logs_folder(app: AppHandle) -> Result<(), String> {
     let path = crate::logging::logs_dir(&app)?;
@@ -534,8 +533,6 @@ pub fn open_logs_folder(app: AppHandle) -> Result<(), String> {
     result.map(|_| ()).map_err(|error| error.to_string())
 }
 
-/// Empacota a pasta de logs num zip em `target_path` (pra anexar a um report de
-/// bug). Mesmo padrão de `backup::export_backup`.
 #[tauri::command]
 pub fn export_logs(app: AppHandle, target_path: String) -> Result<(), String> {
     use std::io::Write;

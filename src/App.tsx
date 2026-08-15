@@ -32,6 +32,7 @@ import { SyncModal } from './components/modals/SyncModal'
 import { ThemePickerModal } from './components/modals/ThemePickerModal'
 import { TodoSettingsModal } from './components/modals/TodoSettingsModal'
 import { TopbarSettingsModal } from './components/modals/TopbarSettingsModal'
+import { RecentChatsModal } from './components/modals/RecentChatsModal'
 import { UpdateModal } from './components/modals/UpdateModal'
 import { WelcomeModal } from './components/modals/WelcomeModal'
 import { WhatsNewModal } from './components/modals/WhatsNewModal'
@@ -45,14 +46,16 @@ import { useCliOpenRequests } from './hooks/useCliOpenRequests'
 import { useCloseConfirmation } from './hooks/useCloseConfirmation'
 import { useDiscordPresence } from './hooks/useDiscordPresence'
 import { useKeybindings } from './hooks/useKeybindings'
+import { useRemoteControlService } from './hooks/useRemoteControlService'
 import { useResourceSupervisor } from './hooks/useResourceSupervisor'
 import { startActivityTracker } from './lib/activityTracker'
 import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
 import { intlLocale, translate, useT } from './lib/i18n'
+import { visibilityFromPanelResize, widthFromPanelResize } from './lib/sidebarPanelState'
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
 import { ghosttyKillAll, setWindowOpacity } from './lib/tauri'
 import { getLastCrashReport } from './lib/tauri'
-import { getThemeIcon } from './lib/themeIcons'
+import { loadThemeIconBytes } from './lib/themeIcons'
 import { checkForUpdate } from './lib/updater'
 import { useProjectsStore } from './stores/projectsStore'
 import { type InAppToast, useUiStore } from './stores/uiStore'
@@ -172,6 +175,7 @@ export default function App() {
   const hydrate = useProjectsStore((s) => s.hydrate)
   const hydrated = useProjectsStore((s) => s.hydrated)
   const uiTheme = useProjectsStore((s) => s.preferences.uiTheme)
+  const visualStyle = useProjectsStore((s) => s.preferences.visualStyle ?? 'normal')
   const appIconTheme = useProjectsStore((s) => s.preferences.appIconTheme)
   const uiZoom = useProjectsStore((s) => s.preferences.uiZoom)
   const windowOpacity = useProjectsStore((s) => s.preferences.windowOpacity)
@@ -189,15 +193,29 @@ export default function App() {
   // resize event can make react-resizable-panels rebuild the layout mid-drag.
   const leftSidebarDefaultRef = useRef(leftSidebarWidth)
   const rightSidebarDefaultRef = useRef(rightSidebarWidth)
+  const sidebarDefaultsHydratedRef = useRef(false)
   const leftPanelRef = usePanelRef()
   const rightPanelRef = usePanelRef()
   const leftSidebarSaveTimerRef = useRef<number | null>(null)
   const rightSidebarSaveTimerRef = useRef<number | null>(null)
+  const leftSidebarLayoutReadyRef = useRef(false)
+  const rightSidebarLayoutReadyRef = useRef(false)
+  const leftSidebarResizeActiveRef = useRef(false)
+  const rightSidebarResizeActiveRef = useRef(false)
   const leftPanelElementRef = useRef<HTMLDivElement>(null)
   const rightPanelElementRef = useRef<HTMLDivElement>(null)
 
+  // Hydration completes before the panels mount. Capture the persisted widths
+  // on that render so their first layout does not fall back to store defaults.
+  if (hydrated && !sidebarDefaultsHydratedRef.current) {
+    leftSidebarDefaultRef.current = leftSidebarWidth
+    rightSidebarDefaultRef.current = rightSidebarWidth
+    sidebarDefaultsHydratedRef.current = true
+  }
+
   useKeybindings()
   useDiscordPresence()
+  useRemoteControlService()
   useCloseConfirmation()
   useResourceSupervisor(hydrated)
   useCliOpenRequests(hydrated)
@@ -217,11 +235,15 @@ export default function App() {
   }, [uiTheme])
 
   useEffect(() => {
+    document.documentElement.dataset.visualStyle = visualStyle
+  }, [visualStyle])
+
+  useEffect(() => {
     if (!hydrated) return
-    void getCurrentWindow()
-      .setIcon(getThemeIcon(appIconTheme))
-      .catch(() => {
-        // Browser/test environments do not expose the native window icon API.
+    void loadThemeIconBytes(appIconTheme)
+      .then((bytes) => getCurrentWindow().setIcon(bytes))
+      .catch((error) => {
+        console.error('[app-icon] failed to apply window icon', error)
       })
   }, [appIconTheme, hydrated])
 
@@ -255,6 +277,7 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return
+    leftSidebarLayoutReadyRef.current = false
     const element = leftPanelElementRef.current
     if (element) element.style.transition = 'flex-grow 180ms ease, flex-basis 180ms ease'
     const frame = window.requestAnimationFrame(() => {
@@ -263,6 +286,7 @@ export default function App() {
     })
     const timer = window.setTimeout(() => {
       if (element) element.style.transition = ''
+      leftSidebarLayoutReadyRef.current = true
     }, 220)
     return () => {
       window.cancelAnimationFrame(frame)
@@ -273,6 +297,7 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return
+    rightSidebarLayoutReadyRef.current = false
     const element = rightPanelElementRef.current
     if (element) element.style.transition = 'flex-grow 180ms ease, flex-basis 180ms ease'
     const frame = window.requestAnimationFrame(() => {
@@ -281,6 +306,7 @@ export default function App() {
     })
     const timer = window.setTimeout(() => {
       if (element) element.style.transition = ''
+      rightSidebarLayoutReadyRef.current = true
     }, 220)
     return () => {
       window.cancelAnimationFrame(frame)
@@ -324,10 +350,10 @@ export default function App() {
         if (!cancelled) useUiStore.getState().setUpdateInfo(info)
       })
       .catch((error) => {
-        // Checagem de fundo no boot — silenciosa de propósito (não vale
-        // interromper o usuário por causa de uma falha de rede aqui; a tela
-        // "Sobre & Atualizações" já oferece checagem sob demanda com erro
-        // visível). Só loga pra não ficar indistinguível de "sem update".
+                                                                        
+                                                                            
+                                                                          
+                                                                          
         console.error('[update] checagem de fundo falhou:', error)
       })
     return () => {
@@ -381,16 +407,29 @@ export default function App() {
             collapsible
             groupResizeBehavior="preserve-pixel-size"
             onResize={(size, _id, previous) => {
-              if (
-                size.inPixels >= 220 &&
-                previous &&
-                Math.abs(size.inPixels - previous.inPixels) >= 1
-              ) {
-                const nextWidth = Math.max(220, Math.min(380, Math.round(size.inPixels)))
+              const currentVisible = useProjectsStore.getState().preferences.leftSidebarVisible
+              const nextVisible = visibilityFromPanelResize(
+                leftSidebarLayoutReadyRef.current,
+                leftSidebarResizeActiveRef.current,
+                size,
+                previous,
+                currentVisible,
+              )
+              if (nextVisible !== null) setPreferences({ leftSidebarVisible: nextVisible })
+              const nextWidth = widthFromPanelResize(
+                leftSidebarLayoutReadyRef.current,
+                leftSidebarResizeActiveRef.current,
+                size,
+                previous,
+                220,
+                380,
+              )
+              if (nextWidth !== null) {
                 if (leftSidebarSaveTimerRef.current !== null)
                   window.clearTimeout(leftSidebarSaveTimerRef.current)
                 leftSidebarSaveTimerRef.current = window.setTimeout(() => {
                   leftSidebarSaveTimerRef.current = null
+                  leftSidebarDefaultRef.current = nextWidth
                   setPreferences({ leftSidebarWidth: nextWidth })
                 }, 180)
               }
@@ -402,6 +441,27 @@ export default function App() {
           </Panel>
           <Separator
             className={`${styles.shellSeparator} ${leftSidebarVisible ? '' : styles.shellSeparatorHidden}`}
+            onPointerDown={() => {
+              leftSidebarResizeActiveRef.current = true
+            }}
+            onPointerUp={() => {
+              leftSidebarResizeActiveRef.current = false
+            }}
+            onPointerCancel={() => {
+              leftSidebarResizeActiveRef.current = false
+            }}
+            onLostPointerCapture={() => {
+              leftSidebarResizeActiveRef.current = false
+            }}
+            onKeyDown={() => {
+              leftSidebarResizeActiveRef.current = true
+            }}
+            onKeyUp={() => {
+              leftSidebarResizeActiveRef.current = false
+            }}
+            onBlur={() => {
+              leftSidebarResizeActiveRef.current = false
+            }}
           />
 
           <Panel id="alethe-main" minSize="360px">
@@ -426,6 +486,27 @@ export default function App() {
             <>
               <Separator
                 className={`${styles.shellSeparator} ${rightSidebarVisible ? '' : styles.shellSeparatorHidden}`}
+                onPointerDown={() => {
+                  rightSidebarResizeActiveRef.current = true
+                }}
+                onPointerUp={() => {
+                  rightSidebarResizeActiveRef.current = false
+                }}
+                onPointerCancel={() => {
+                  rightSidebarResizeActiveRef.current = false
+                }}
+                onLostPointerCapture={() => {
+                  rightSidebarResizeActiveRef.current = false
+                }}
+                onKeyDown={() => {
+                  rightSidebarResizeActiveRef.current = true
+                }}
+                onKeyUp={() => {
+                  rightSidebarResizeActiveRef.current = false
+                }}
+                onBlur={() => {
+                  rightSidebarResizeActiveRef.current = false
+                }}
               />
               <Panel
                 id="alethe-todo-sidebar"
@@ -438,16 +519,30 @@ export default function App() {
                 collapsible
                 groupResizeBehavior="preserve-pixel-size"
                 onResize={(size, _id, previous) => {
-                  if (
-                    size.inPixels >= 260 &&
-                    previous &&
-                    Math.abs(size.inPixels - previous.inPixels) >= 1
-                  ) {
-                    const nextWidth = Math.max(260, Math.min(420, Math.round(size.inPixels)))
+                  const currentVisible =
+                    useProjectsStore.getState().preferences.rightSidebarVisible
+                  const nextVisible = visibilityFromPanelResize(
+                    rightSidebarLayoutReadyRef.current,
+                    rightSidebarResizeActiveRef.current,
+                    size,
+                    previous,
+                    currentVisible,
+                  )
+                  if (nextVisible !== null) setPreferences({ rightSidebarVisible: nextVisible })
+                  const nextWidth = widthFromPanelResize(
+                    rightSidebarLayoutReadyRef.current,
+                    rightSidebarResizeActiveRef.current,
+                    size,
+                    previous,
+                    260,
+                    420,
+                  )
+                  if (nextWidth !== null) {
                     if (rightSidebarSaveTimerRef.current !== null)
                       window.clearTimeout(rightSidebarSaveTimerRef.current)
                     rightSidebarSaveTimerRef.current = window.setTimeout(() => {
                       rightSidebarSaveTimerRef.current = null
+                      rightSidebarDefaultRef.current = nextWidth
                       setPreferences({ rightSidebarWidth: nextWidth })
                     }, 180)
                   }
@@ -497,6 +592,7 @@ export default function App() {
         <AiUsageModal />
         <UpdateModal />
         <WhatsNewModal />
+        <RecentChatsModal />
         <RemoteControlModal />
       </ErrorBoundary>
       <InAppNotifications />

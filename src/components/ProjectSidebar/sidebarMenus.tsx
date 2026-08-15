@@ -9,6 +9,8 @@ import {
   Pencil,
   Plus,
   Power,
+  Smartphone,
+  SmartphoneNfc,
   Trash2,
 } from 'lucide-react'
 
@@ -26,7 +28,7 @@ import { collectDescendants } from './GroupNode'
 type ProjectsState = ReturnType<typeof useProjectsStore.getState>
 type UiState = ReturnType<typeof useUiStore.getState>
 
-/** Ações do store necessárias pra construir os menus de contexto da sidebar. */
+                                                                                
 type MenuActions = Pick<
   ProjectsState,
   | 'openProjectWorkspace'
@@ -52,6 +54,7 @@ type MenuActions = Pick<
   | 'setTerminalDisabled'
   | 'killTerminal'
   | 'setLaneVisible'
+  | 'setTerminalRemoteExcluded'
   | 'deleteTerminal'
   | 'deleteTerminalWithWorktreeCleanup'
   | 'setPreferences'
@@ -72,12 +75,12 @@ export type SidebarMenuDeps = {
   openMarkdownSidebar: UiState['openMarkdownSidebar']
 }
 
-/** Terminais "reais" de um projeto, sem o viewer somente-leitura da gaveta GSD Sync. */
+                                                                                        
 function visibleProjectTerminals(project: Project): Terminal[] {
   return project.terminals.filter((term) => !term.gsdSyncViewer)
 }
 
-/** Fábrica dos menus de contexto (projeto/grupo/terminal) da sidebar. */
+                                                                         
 export function createSidebarMenus(deps: SidebarMenuDeps) {
   const {
     t,
@@ -519,6 +522,19 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
                 openMarkdownSidebar(term.filePath!, term.name)
                 actions.setPreferences({ rightSidebarVisible: true })
               },
+            },
+          ]
+        : []),
+      ...(isTerminalPane
+        ? [
+            {
+              kind: 'item' as const,
+              label: term.remoteExcluded
+                ? t('ui.terminal.shareWithRemote')
+                : t('ui.terminal.hideFromRemote'),
+              icon: term.remoteExcluded ? <Smartphone size={14} /> : <SmartphoneNfc size={14} />,
+              onClick: () =>
+                actions.setTerminalRemoteExcluded(projectId, term.id, !term.remoteExcluded),
             },
           ]
         : []),

@@ -1,22 +1,18 @@
 import { useEffect } from 'react'
 
+import { getLocale, translate } from '../lib/i18n'
 import {
   MAX_RECENT_PROJECT_TABS,
-  UI_ZOOM_LIMITS,
   selectActiveContainer,
   selectActiveProject,
+  UI_ZOOM_LIMITS,
   useProjectsStore,
 } from '../stores/projectsStore'
 import { useUiStore } from '../stores/uiStore'
 
-/**
- * Atalhos globais. Ignora se o foco estiver num input/textarea editáveis —
- * exceto Esc, que sempre fecha o modal aberto.
- */
 export function useKeybindings() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Esc fecha modal aberto
       if (e.key === 'Escape') {
         const ui = useUiStore.getState()
         if (ui.openModal) {
@@ -53,8 +49,6 @@ export function useKeybindings() {
 
       if (!ctrl && inEditable) return
 
-      // R → reinicia o terminal selecionado quando o foco está na UI.
-      // Dentro do xterm o helper é um textarea, então a digitação normal de "r" é preservada.
       if (!ctrl && !e.shiftKey && !e.altKey && (e.key === 'r' || e.key === 'R')) {
         const projects = useProjectsStore.getState()
         const selected = useUiStore.getState().activeTerminal
@@ -79,7 +73,15 @@ export function useKeybindings() {
         return
       }
 
-      // Ctrl+T → abre o modal de novo terminal
+      if (ctrl && !e.shiftKey && !e.altKey && (e.key === 'b' || e.key === 'B')) {
+        e.preventDefault()
+        const projects = useProjectsStore.getState()
+        projects.setPreferences({
+          leftSidebarVisible: !projects.preferences.leftSidebarVisible,
+        })
+        return
+      }
+
       if (ctrl && !e.shiftKey && !e.altKey && (e.key === 't' || e.key === 'T')) {
         e.preventDefault()
         const project = selectActiveProject(useProjectsStore.getState())
@@ -88,14 +90,41 @@ export function useKeybindings() {
         return
       }
 
-      // Ctrl+Shift+T → reabre a última tab fechada
+      // Ctrl+Alt+T repeats the last terminal configuration without reopening the picker.
+      if (ctrl && e.altKey && !e.shiftKey && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault()
+        const projects = useProjectsStore.getState()
+        const project = selectActiveProject(projects)
+        if (!project) return
+        const creation = projects.preferences.lastTerminalCreation
+        if (!creation) {
+          useUiStore.getState().openModal_('newTerminal', { projectId: project.id })
+          return
+        }
+        void projects
+          .createAgentTerminal(project.id, {
+            ...creation,
+            firstTab: {
+              ...creation.firstTab,
+              extraArgs: creation.firstTab.extraArgs?.slice(),
+            },
+          })
+          .catch((error) => {
+            const locale = getLocale()
+            useUiStore.getState().pushToast({
+              title: translate(locale, 'term.repeatCreationFailed'),
+              body: String(error),
+            })
+          })
+        return
+      }
+
       if (ctrl && e.shiftKey && (e.key === 'T' || e.key === 't')) {
         e.preventDefault()
         useProjectsStore.getState().reopenClosedWorkspaceTab()
         return
       }
 
-      // Ctrl+Shift+A → modal de conteúdo (Markdown ou browser)
       if (ctrl && e.shiftKey && !e.altKey && (e.key === 'A' || e.key === 'a')) {
         e.preventDefault()
         const project = selectActiveProject(useProjectsStore.getState())
@@ -104,7 +133,6 @@ export function useKeybindings() {
         return
       }
 
-      // Ctrl+W → fecha (oculta) o primeiro pane do container ativo
       if (ctrl && !e.shiftKey && (e.key === 'w' || e.key === 'W')) {
         e.preventDefault()
         const projects = useProjectsStore.getState()
@@ -121,14 +149,12 @@ export function useKeybindings() {
         return
       }
 
-      // Ctrl+Shift+P → modal novo projeto
       if (ctrl && e.shiftKey && (e.key === 'P' || e.key === 'p')) {
         e.preventDefault()
         useUiStore.getState().openModal_('newProject')
         return
       }
 
-      // Ctrl+Shift+G → modal novo grupo
       if (ctrl && e.shiftKey && (e.key === 'G' || e.key === 'g')) {
         e.preventDefault()
         useUiStore.getState().openModal_('newGroup')
@@ -142,7 +168,6 @@ export function useKeybindings() {
         return
       }
 
-      // Ctrl+1..9 → pula pra projeto N (na ordem da sidebar)
       if (ctrl && !e.shiftKey && /^[1-9]$/.test(e.key)) {
         e.preventDefault()
         const idx = Number(e.key) - 1
@@ -152,7 +177,6 @@ export function useKeybindings() {
         return
       }
 
-      // Alt+Left / Alt+Right → histórico persistente da workspace.
       if (e.altKey && !ctrl && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault()
         const projects = useProjectsStore.getState()
@@ -161,8 +185,15 @@ export function useKeybindings() {
         return
       }
 
-      // Shift+Tab → próximo terminal dentro do grupo/projeto atual.
-      if (!ctrl && e.shiftKey && !e.altKey && e.key === 'Tab') {
+      const cycleTerminalDirection =
+        ctrl && !e.altKey && (e.key === 'PageUp' || e.key === 'PageDown')
+          ? e.key === 'PageUp'
+            ? -1
+            : 1
+          : !ctrl && e.shiftKey && !e.altKey && e.key === 'Tab'
+            ? 1
+            : 0
+      if (cycleTerminalDirection !== 0) {
         e.preventDefault()
         const projects = useProjectsStore.getState()
         const ui = useUiStore.getState()
@@ -188,7 +219,11 @@ export function useKeybindings() {
         const activeTerminalId =
           ui.activeTerminal?.terminalId ?? projects.workspace.focusedTerminalId
         const currentIndex = terminals.findIndex((item) => item.terminalId === activeTerminalId)
-        const next = terminals[(currentIndex + 1) % terminals.length]
+        const nextIndex =
+          currentIndex === -1
+            ? 0
+            : (currentIndex + cycleTerminalDirection + terminals.length) % terminals.length
+        const next = terminals[nextIndex]
         projects.focusWorkspaceTerminal(next.projectId, next.terminalId)
         ui.setActiveTerminal(next.projectId, next.terminalId)
         ui.requestPaneFocus(next.terminalId)
@@ -196,7 +231,6 @@ export function useKeybindings() {
         return
       }
 
-      // Ctrl+Tab → alterna tabs de projeto da topbar sem reordenar os slots.
       if (ctrl && e.key === 'Tab') {
         e.preventDefault()
         const projects = useProjectsStore.getState()

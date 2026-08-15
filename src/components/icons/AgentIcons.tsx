@@ -33,7 +33,7 @@ export function FreebuffIcon({ size = 16 }: { size?: number }) {
   return <img src={freebuffLogo} alt="" width={size} height={size} draggable={false} />
 }
 
-/** Provisório: lettermark "M" monocromático (currentColor). Trocar pelo logo oficial. */
+                                                                                         
 export function MimoIcon({ size = 16 }: { size?: number }) {
   return (
     <svg

@@ -1,7 +1,7 @@
+use nanoid::nanoid;
+use serde_json::json;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
-use serde_json::json;
-use nanoid::nanoid;
 
 #[allow(dead_code)]
 pub struct MonitoredAgent {
@@ -20,22 +20,30 @@ pub fn get_monitored_agents() -> &'static Mutex<HashMap<String, MonitoredAgent>>
     MONITORED_AGENTS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-pub fn start_monitoring(agent_id: String, worktree_path: String, project_id: String, task_id: String) {
+pub fn start_monitoring(
+    agent_id: String,
+    worktree_path: String,
+    project_id: String,
+    task_id: String,
+) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
 
     let mut map = get_monitored_agents().lock().unwrap();
-    map.insert(agent_id.clone(), MonitoredAgent {
-        agent_id,
-        worktree_path,
-        project_id,
-        task_id,
-        last_activity_ms: now,
-        retry_count: 0,
-        max_retries: 3,
-    });
+    map.insert(
+        agent_id.clone(),
+        MonitoredAgent {
+            agent_id,
+            worktree_path,
+            project_id,
+            task_id,
+            last_activity_ms: now,
+            retry_count: 0,
+            max_retries: 3,
+        },
+    );
 }
 
 pub fn stop_monitoring(agent_id: &str) {
@@ -62,7 +70,6 @@ pub fn start_supervisor_event_loop() {
         }
     });
 
-    // 2. Loop de polling para timeouts (a cada 5 segundos)
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;

@@ -11,15 +11,17 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import {
+  Files,
   Folder,
   FolderPlus,
   GitBranch,
-  Grid3x3,
   Home,
   MoreHorizontal,
   Plus,
   RefreshCw,
   Search,
+  Settings,
+  SquareTerminal,
   Users,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
@@ -43,10 +45,10 @@ import { FileExplorer } from './FileExplorer'
 import { GitControl } from './GitControl'
 import { GroupNode } from './GroupNode'
 import { LayoutFooter, WorkspaceLayoutFooter } from './LayoutFooter'
+import { NormalProjectSidebar } from './NormalProjectSidebar'
 import { ProjectNode } from './ProjectNode'
 import styles from './ProjectSidebar.module.css'
 import { createSidebarMenus } from './sidebarMenus'
-import { SidebarMergePanel } from './SidebarMergePanel'
 import { SidebarUpdate } from './SidebarUpdate'
 
 type ContextMenuState = { x: number; y: number; items: MenuItem[] } | null
@@ -103,6 +105,11 @@ function dropIndicatorForEvent(event: DragMoveEvent | DragEndEvent): SidebarDrop
 }
 
 export function ProjectSidebar() {
+  const visualStyle = useProjectsStore((state) => state.preferences.visualStyle ?? 'normal')
+  return visualStyle === 'clean' ? <CleanProjectSidebar /> : <NormalProjectSidebar />
+}
+
+function CleanProjectSidebar() {
   const t = useT()
   // --- data selectors (reactive) ---
   const projects = useProjectsStore((s) => s.projects)
@@ -147,6 +154,7 @@ export function ProjectSidebar() {
       reorderGroups: s.reorderGroups,
       togglePane: s.togglePane,
       setLaneVisible: s.setLaneVisible,
+      setTerminalRemoteExcluded: s.setTerminalRemoteExcluded,
       setSubTabCompletionUnread: s.setSubTabCompletionUnread,
       createFilePane: s.createFilePane,
       createGraphifyPane: s.createGraphifyPane,
@@ -167,13 +175,12 @@ export function ProjectSidebar() {
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropIndicator, setDropIndicator] = useState<SidebarDropIndicator | null>(null)
   const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects'>('projects')
-  const keepHome = activeView === 'home'
 
   useEffect(() => {
     if (!showGitControl && sidebarTab === 'git') setSidebarTab('projects')
   }, [showGitControl, sidebarTab])
 
-  // map projectId → Set<paneIds> pra checar se cada terminal está aberto
+                                                                         
   const openPaneSets = useMemo(() => {
     const map: Record<string, Set<string>> = {}
     for (const c of containers) map[c.projectId] = new Set(c.paneIds)
@@ -238,7 +245,7 @@ export function ProjectSidebar() {
     const target = String(over.id)
     if (dragged === target) return
 
-    // term:<projectId>:<terminalId>  →  proj:<projectId> = move terminal entre projetos
+                                                                                        
     if (dragged.startsWith('term:') && target.startsWith('proj:')) {
       const [, fromProject, terminalId] = dragged.split(':')
       const [, toProject] = target.split(':')
@@ -246,8 +253,8 @@ export function ProjectSidebar() {
       return
     }
 
-    // proj:<id>  →  proj:<id>  = REORDENA dentro do mesmo pai (grupo OU Solto).
-    // Se o destino tá em outro grupo, move pra esse grupo na posição do alvo.
+                                                                                
+                                                                              
     if (dragged.startsWith('proj:') && target.startsWith('proj:')) {
       const fromId = dragged.slice('proj:'.length)
       const toId = target.slice('proj:'.length)
@@ -290,7 +297,7 @@ export function ProjectSidebar() {
       return
     }
 
-    // proj:<projectId>  →  group:<groupId>  (groupId pode ser "ungrouped")
+                                                                           
     if (dragged.startsWith('proj:') && target.startsWith('group:')) {
       const [, projectId] = dragged.split(':')
       const [, groupId] = target.split(':')
@@ -316,7 +323,7 @@ export function ProjectSidebar() {
       return
     }
 
-    // grp:<groupId>  →  group:<groupId>|"ungrouped" = nest/unnest grupo
+                                                                        
     if (dragged.startsWith('grp:') && target.startsWith('group:')) {
       const [, srcGroupId] = dragged.split(':')
       const [, parentId] = target.split(':')
@@ -366,12 +373,11 @@ export function ProjectSidebar() {
       onActivate={() => {
         activateProject(p)
       }}
-      onToggleCollapsed={() => actions.toggleProjectCollapsed(p.id)}
       onTerminalClick={(t) => {
-        // Terminal "viewer" de sessão GSD Sync: nunca vai pro fluxo genérico
-        // de abrir pane (que ou não faz nada, se ele não estiver em nenhum
-        // container, ou pior, cria um container/tab novo pra ele) — sempre
-        // abre em tela cheia, igual clicar na gaveta GSD Sync.
+                                                                             
+                                                                           
+                                                                           
+                                                               
         if (t.gsdSyncViewer) {
           actions.setFullscreenPane(t.id)
           setActiveView('workspace')
@@ -397,17 +403,11 @@ export function ProjectSidebar() {
         requestPaneFocus(t.id)
         setActiveView(p.mode === 'agentSandbox' ? 'agentSandbox' : 'workspace')
       }}
+      onAddTerminal={() => openModal('newTerminal', { projectId: p.id })}
       onProjectMenu={(e) => setMenu({ x: e.clientX, y: e.clientY, items: projectMenu(p) })}
       onTerminalMenu={(t, e) =>
         setMenu({ x: e.clientX, y: e.clientY, items: terminalMenu(p.id, t) })
       }
-      onAddTerminal={() => openModal('newTerminal', { projectId: p.id })}
-      onQuickOpen={() => activateProject(p, 'open')}
-      onToggleDisabled={() => {
-        const visible = p.terminals.filter((term) => !term.gsdSyncViewer)
-        const allDisabled = visible.length > 0 && visible.every((term) => term.disabled)
-        actions.setProjectDisabled(p.id, !allDisabled)
-      }}
       dropEdge={dropIndicator?.id === `proj:${p.id}` ? dropIndicator.edge : null}
     />
   )
@@ -418,19 +418,17 @@ export function ProjectSidebar() {
 
   const groupsByParent = useMemo(() => {
     const map = new Map<string | null, Group[]>()
-    for (const g of groups.filter((group) => !group.archived)) {
-      const key = g.parentGroupId
+    const visibleGroups = groups.filter((group) => !group.archived)
+    const visibleIds = new Set(visibleGroups.map((group) => group.id))
+    for (const g of visibleGroups) {
+      // Orphans from an archived/deleted parent remain visible with the root groups.
+      const key = g.parentGroupId && visibleIds.has(g.parentGroupId) ? g.parentGroupId : null
       const arr = map.get(key) ?? []
       arr.push(g)
       map.set(key, arr)
     }
     return map
   }, [groups])
-
-  const onGroupOpenAll = (g: Group, mode: 'append' | 'only' = 'append') => {
-    actions.openGroupWorkspace(g.id, mode)
-    setActiveView('workspace')
-  }
 
   const renderGroup = (g: Group): React.ReactNode => {
     const projectsInGroup = g.projectIds
@@ -453,8 +451,6 @@ export function ProjectSidebar() {
           })
         }
         onToggle={() => actions.toggleGroupCollapsed(g.id)}
-        onOpenAll={() => onGroupOpenAll(g)}
-        onOpenOnly={() => onGroupOpenAll(g, 'only')}
         dragKind={draggingKind}
         reorderEdge={dropIndicator?.id === `grp:${g.id}` ? dropIndicator.edge : null}
         dropInside={dropIndicator?.id === `group:${g.id}`}
@@ -464,12 +460,10 @@ export function ProjectSidebar() {
 
   return (
     <aside className={styles.sidebar}>
-      <div className={styles.sidebarTabs} role="tablist" aria-label={t('ui.sidebar.navigation')}>
+      <div className={styles.sidebarToolbar} aria-label={t('ui.sidebar.navigation')}>
         <button
           type="button"
-          role="tab"
-          aria-selected={activeView === 'home'}
-          className={`${styles.sidebarTab} ${activeView === 'home' ? styles.sidebarTabActive : ''}`}
+          className={`${styles.toolbarButton} ${activeView === 'home' ? styles.toolbarButtonActive : ''}`}
           onClick={() => {
             if (activeView !== 'home') {
               setActiveView('home')
@@ -479,94 +473,91 @@ export function ProjectSidebar() {
           aria-label={t('ui.sidebar.home')}
         >
           <Home size={14} />
-          <span>{t('ui.sidebar.home')}</span>
         </button>
+        <span className={styles.toolbarDivider} />
         <button
           type="button"
-          role="tab"
-          aria-selected={sidebarTab === 'projects'}
           aria-label={t('ui.sidebar.projects')}
           title={t('ui.sidebar.projects')}
-          className={`${styles.sidebarTab} ${sidebarTab === 'projects' ? styles.sidebarTabActive : ''}`}
+          className={`${styles.toolbarButton} ${activeView !== 'home' && sidebarTab === 'projects' ? styles.toolbarButtonActive : ''}`}
           onClick={() => {
             setSidebarTab('projects')
-            if (!keepHome) setActiveView('workspace')
-          }}
-        >
-          <Grid3x3 size={14} />
-          <span>{t('ui.sidebar.projects')}</span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={sidebarTab === 'files'}
-          aria-label={t('ui.sidebar.files')}
-          title={t('ui.sidebar.files')}
-          className={`${styles.sidebarTab} ${sidebarTab === 'files' ? styles.sidebarTabActive : ''}`}
-          onClick={() => {
-            setSidebarTab('files')
-            if (!keepHome) setActiveView('workspace')
+            setActiveView('workspace')
           }}
         >
           <Folder size={14} />
-          <span>{t('ui.sidebar.files')}</span>
+        </button>
+        <button
+          type="button"
+          aria-label={t('ui.sidebar.files')}
+          title={t('ui.sidebar.files')}
+          className={`${styles.toolbarButton} ${activeView !== 'home' && sidebarTab === 'files' ? styles.toolbarButtonActive : ''}`}
+          onClick={() => {
+            setSidebarTab('files')
+            setActiveView('workspace')
+          }}
+        >
+          <Files size={14} />
         </button>
         {showGitControl && preferences.gitControlPlacement === 'left' ? (
           <button
             type="button"
-            role="tab"
-            aria-selected={sidebarTab === 'git'}
             aria-label={t('ui.sidebar.git')}
             title={t('ui.sidebar.git')}
-            className={`${styles.sidebarTab} ${sidebarTab === 'git' ? styles.sidebarTabActive : ''}`}
+            className={`${styles.toolbarButton} ${activeView !== 'home' && sidebarTab === 'git' ? styles.toolbarButtonActive : ''}`}
             onClick={() => {
               setSidebarTab('git')
-              if (!keepHome) setActiveView('workspace')
+              setActiveView('workspace')
             }}
           >
             <GitBranch size={14} />
-            <span>{t('ui.sidebar.git')}</span>
           </button>
         ) : null}
-      </div>
-
-      <div className={styles.quickNavList}>
+        <span className={styles.toolbarSpacer} />
         <button
           type="button"
-          className={styles.quickNavItem}
+          className={styles.toolbarButton}
           onClick={() => openModal('findJump')}
-          title="Search"
+          title={t('ui.sidebar.search')}
+          aria-label={t('ui.sidebar.search')}
         >
-          <Search size={15} className={styles.quickNavIcon} />
-          <span>Search</span>
+          <Search size={14} />
+        </button>
+        <button
+          type="button"
+          className={`${styles.toolbarButton} ${styles.toolbarCreateButton}`}
+          onClick={() => openModal('newProject')}
+          title={t('ui.sidebar.newProjectTitle', { shortcut: formatShortcut('Ctrl+Shift+P') })}
+          aria-label={t('ui.sidebar.newProject')}
+        >
+          <Plus size={15} />
+        </button>
+        <button
+          type="button"
+          className={styles.toolbarButton}
+          onClick={() => openModal('preferences')}
+          title={t('profile.preferences')}
+          aria-label={t('profile.preferences')}
+        >
+          <Settings size={14} />
         </button>
       </div>
-
-      {sidebarTab === 'projects' ? (
-        <header className={styles.header}>
-          <span className={styles.title}>{t('ui.sidebar.projects')}</span>
-          <div className={styles.headerActions}>
-            <button
-              type="button"
-              className={styles.iconBtn}
-              onClick={() => openModal('newGroup')}
-              title={t('ui.sidebar.newGroupTitle', { shortcut: formatShortcut('Ctrl+Shift+G') })}
-              aria-label={t('ui.sidebar.newGroup')}
-            >
-              <FolderPlus size={14} />
-            </button>
-            <button
-              type="button"
-              className={styles.iconBtn}
-              onClick={() => openModal('newProject')}
-              title={t('ui.sidebar.newProjectTitle', { shortcut: formatShortcut('Ctrl+Shift+P') })}
-              aria-label={t('ui.sidebar.newProject')}
-            >
-              <Plus size={14} />
-            </button>
-          </div>
-        </header>
-      ) : null}
+      <button
+        type="button"
+        className={styles.newAgentButton}
+        onClick={() => {
+          if (activeProject) {
+            openModal('newTerminal', { projectId: activeProject.id })
+          } else {
+            openModal('newProject')
+          }
+        }}
+        title={`${t('ui.sidebar.newAgent')}  ${formatShortcut('Ctrl+T')}`}
+      >
+        <SquareTerminal size={14} className={styles.newAgentIcon} />
+        <span>{t('ui.sidebar.newAgent')}</span>
+        <kbd>{formatShortcut('Ctrl+T')}</kbd>
+      </button>
 
       {sidebarTab === 'files' ? (
         <section className={styles.explorerPanel}>
@@ -678,9 +669,6 @@ export function ProjectSidebar() {
         </DndContext>
       ) : null}
 
-      {/* PAINEL DE MERGES NA BARRA LATERAL */}
-      <SidebarMergePanel />
-
       {menu ? (
         <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />
       ) : null}
@@ -715,9 +703,11 @@ export function ProjectSidebar() {
           </div>
         </div>
       ) : null}
-      <SidebarNowPlaying />
-      <SidebarUpdate />
-      <UserProfile />
+      <div className={styles.sidebarFooter}>
+        <SidebarNowPlaying />
+        <SidebarUpdate />
+        <UserProfile />
+      </div>
     </aside>
   )
 }

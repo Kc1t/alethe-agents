@@ -4,14 +4,14 @@ import { getActiveSessions } from '../lib/sessionResume'
 import { getSessionCost, type SessionCost } from '../lib/tauri'
 import { useTerminalsStore } from './terminalsStore'
 
-/**
- * Custo ao vivo por agente, pro Token HUD. Fonte da verdade de "quem está vivo"
- * = terminalsStore (PtyRuntime.alive); o mapeamento ptyId -> sessionId vem do
- * sessionResume (active-sessions no localStorage, gravado pelo XTermView após o
- * spawn). Poll adaptativo: ~4s quando há agente vivo, pausa quando não há.
- *
- * Não recria o parser — só orquestra chamadas a get_session_cost (agent_cost.rs).
- */
+   
+                                                                                
+                                                                              
+                                                                                
+                                                                           
+  
+                                                                                  
+   
 
 export type AgentCostEntry = {
   ptyId: string
@@ -19,17 +19,17 @@ export type AgentCostEntry = {
   sessionId: string
   cwd: string
   cost: SessionCost | null
-  /** ms da última atualização bem-sucedida. */
+                                               
   updatedAt: number
 }
 
 type AgentCostState = {
   byPtyId: Record<string, AgentCostEntry>
-  /** Lê sessões ativas vivas e atualiza o custo de cada uma. */
+                                                                
   refresh: () => Promise<void>
 }
 
-/** ptyId -> {agent, sessionId, cwd} das sessões vivas (claude/codex com id resolvido). */
+                                                                                          
 function liveAgentSessions(): Array<{
   ptyId: string
   agent: string
@@ -67,7 +67,7 @@ export const useAgentCostStore = create<AgentCostState>((set) => ({
           const cost = await getSessionCost(s.agent, s.cwd, s.sessionId)
           return { ...s, cost, updatedAt: Date.now() } as AgentCostEntry
         } catch {
-          // Sessão ainda não detectada / arquivo não existe: mantém o que já havia.
+                                                                                    
           return null
         }
       }),
@@ -75,7 +75,7 @@ export const useAgentCostStore = create<AgentCostState>((set) => ({
 
     set((state) => {
       const next: Record<string, AgentCostEntry> = {}
-      // Mantém entradas vivas (atualizadas ou as anteriores se a chamada falhou).
+                                                                                  
       for (const s of live) {
         const fresh = results.find((r) => r && r.ptyId === s.ptyId) ?? null
         next[s.ptyId] = fresh ??
@@ -95,7 +95,7 @@ export const useAgentCostStore = create<AgentCostState>((set) => ({
   },
 }))
 
-/** Total agregado de USD e tokens entre todos os agentes vivos. */
+                                                                   
 export function selectCostTotals(state: AgentCostState): {
   costUsd: number
   totalTokens: number

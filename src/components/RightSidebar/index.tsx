@@ -6,16 +6,17 @@ import {
   ListTodo,
   PanelRightClose,
   RefreshCw,
+  Settings,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
-import type { Project, SubTab, Terminal } from '../../lib/types'
 import { readTextFile, writeClipboardText } from '../../lib/tauri'
+import type { Project, SubTab, Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { MarkdownRenderer } from '../MarkdownPane/MarkdownRenderer'
 import { EmptyState } from '../EmptyState/EmptyState'
+import { MarkdownRenderer } from '../MarkdownPane/MarkdownRenderer'
 import { GitControl } from '../ProjectSidebar/GitControl'
 import { TodoSidebar } from '../TodoSidebar'
 import styles from './RightSidebar.module.css'
@@ -28,7 +29,9 @@ export function RightSidebar() {
   const setMode = useUiStore((state) => state.showTodoSidebar)
   const openMarkdown = useUiStore((state) => state.showMarkdownSidebar)
   const showGit = useUiStore((state) => state.showGitSidebar)
+  const openModal = useUiStore((state) => state.openModal_)
   const preferences = useProjectsStore((state) => state.preferences)
+  const setPreferences = useProjectsStore((state) => state.setPreferences)
   const activeProjectId = useProjectsStore((state) => state.activeProjectId)
   const projects = useProjectsStore((state) => state.projects)
   const activeProject = projects.find((project) => project.id === activeProjectId) ?? projects[0]
@@ -78,6 +81,28 @@ export function RightSidebar() {
             <span>{t('ui.sidebar.git')}</span>
           </button>
         ) : null}
+        <span className={styles.toolbarSpacer} />
+        {mode === 'todo' ? (
+          <button
+            type="button"
+            className={styles.toolbarUtility}
+            onClick={() => openModal('todoSettings')}
+            title={t('todo.openSettings')}
+            aria-label={t('todo.openSettings')}
+          >
+            <Settings size={14} />
+          </button>
+        ) : null}
+        <span className={styles.toolbarDivider} />
+        <button
+          type="button"
+          className={styles.toolbarUtility}
+          onClick={() => setPreferences({ rightSidebarVisible: false })}
+          title={t('todo.closeSidebar')}
+          aria-label={t('todo.closeSidebar')}
+        >
+          <PanelRightClose size={14} />
+        </button>
       </div>
       <div className={styles.tabContent}>
         {mode === 'markdown' ? <MarkdownSidebarViewer /> : null}
@@ -240,7 +265,7 @@ function MarkdownSidebarViewer() {
           </button>
           <button
             type="button"
-            className={styles.headerAction}
+            className={`${styles.headerAction} ${styles.cleanRedundantAction}`}
             onClick={showTodoSidebar}
             title={t('rightSidebar.backToTodo')}
             aria-label={t('rightSidebar.backToTodo')}
@@ -249,7 +274,7 @@ function MarkdownSidebarViewer() {
           </button>
           <button
             type="button"
-            className={styles.headerAction}
+            className={`${styles.headerAction} ${styles.cleanRedundantAction}`}
             onClick={() => setPreferences({ rightSidebarVisible: false })}
             title={t('todo.closeSidebar')}
             aria-label={t('todo.closeSidebar')}

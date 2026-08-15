@@ -36,7 +36,7 @@ function formatResetMs(resetsAtMs: number): string {
   return formatDiff(resetsAtMs - Date.now())
 }
 
-/** Cor do medidor: base (cor do agente) até 50%, âmbar até 80%, vermelho acima. */
+                                                                                   
 function meterColor(util: number, base: string): string {
   if (util >= 80) return 'var(--status-offline)'
   if (util >= 50) return 'var(--status-waiting)'

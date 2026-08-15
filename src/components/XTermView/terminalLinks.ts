@@ -1,6 +1,5 @@
 import type { ILink } from '@xterm/xterm'
 
-/** Categoria de arquivo apontado por um link de path — decide o viewer no grid. */
 export type FileLinkKind = 'markdown' | 'image' | 'video' | 'text'
 
 export type DetectedTerminalLink = {
@@ -9,7 +8,7 @@ export type DetectedTerminalLink = {
   index: number
   displayLength: number
   kind: 'url' | 'path'
-  /** Só para `kind: 'path'` — que tipo de arquivo é, ou undefined se não parecer arquivo. */
+
   fileKind?: FileLinkKind
 }
 
@@ -33,7 +32,7 @@ const LINK_START_PATTERN =
 const URL_PROTOCOL_PATTERN = /^https?:\/\//i
 const BARE_URL_PATTERN =
   /^(?:localhost(?::\d{1,5})?|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:app|ai|biz|br|ca|cloud|co|com|de|dev|edu|fr|gg|gov|info|io|jp|live|me|net|online|org|page|sh|site|tech|tools|tv|uk|xyz))(?::\d{1,5})?(?:\/[^\s<>"'`|]*)?/i
-/** Sufixo `:linha` ou `:linha:coluna` que agents anexam a paths (ex.: `foo.ts:42:10`). */
+
 const LINE_COL_SUFFIX = /:\d+(?::\d+)?$/
 const MARKDOWN_EXT_PATTERN = /\.(md|markdown|mdx)$/i
 const IMAGE_EXT_PATTERN = /\.(png|jpe?g|gif|webp|bmp|avif|ico|svg)$/i
@@ -51,12 +50,10 @@ export function isMarkdownFilePath(path: string): boolean {
   return MARKDOWN_EXT_PATTERN.test(stripLineColumn(path.trim()))
 }
 
-/** Remove o sufixo `:linha:coluna` de um path pra obter o arquivo real. */
 export function stripLineColumn(text: string): string {
   return text.replace(LINE_COL_SUFFIX, '')
 }
 
-/** Classifica um path pela extensão. `undefined` = não parece um arquivo abrível. */
 export function classifyFileLink(text: string): FileLinkKind | undefined {
   const clean = stripLineColumn(text)
   if (MARKDOWN_EXT_PATTERN.test(clean)) return 'markdown'
@@ -95,6 +92,13 @@ function findLinkEnd(line: string, start: number, isUrl: boolean): number {
     if (HARD_LINK_DELIMITERS.has(char)) break
     if (isUrl && /\s/.test(char)) break
     if (char === ' ' && line[end + 1] === ' ') break
+    if (char === ' ' && !isUrl) {
+      const pathSoFar = line.slice(start, end)
+      const endsAtDirectorySeparator =
+        pathSoFar.endsWith('/') ||
+        (/^(?:[A-Za-z]:\\|\\\\)/.test(pathSoFar) && pathSoFar.endsWith('\\'))
+      if (endsAtDirectorySeparator) break
+    }
 
     // A second link after whitespace belongs to a separate match.
     if (char === ' ') {
@@ -102,16 +106,12 @@ function findLinkEnd(line: string, start: number, isUrl: boolean): number {
       if (/^(?:https?:\/\/|[A-Za-z]:\\|\\\\|~\/|\/)/.test(remainder)) break
     }
     end += 1
-    // Agentes frequentemente imprimem um caminho seguido de uma frase com
-    // apenas um espaço (ex.: `arquivo.md com as projeções...`). Não deixe o
-    // texto explicativo virar parte do link; extensões conhecidas encerram o
-    // alvo quando o próximo caractere já é um delimitador natural.
+
     if (!isUrl && FILE_EXT_BOUNDARY_PATTERN.test(line.slice(start, end))) break
   }
   return end
 }
 
-/** Detecta URLs e paths, preservando espaços que fazem parte do alvo. */
 export function detectTerminalLinks(line: string): DetectedTerminalLink[] {
   const links: DetectedTerminalLink[] = []
   LINK_START_PATTERN.lastIndex = 0
@@ -140,11 +140,6 @@ export function detectTerminalLinks(line: string): DetectedTerminalLink[] {
   return links
 }
 
-/**
- * Reconstrói a linha lógica do xterm. Linhas quebradas apenas pelo viewport têm
- * `isWrapped`; as intermediárias precisam manter o padding até `cols` para que
- * os offsets continuem correspondendo às coordenadas das células.
- */
 export function getLogicalTerminalLine(
   buffer: TerminalBuffer,
   bufferLineNumber: number,

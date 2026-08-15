@@ -27,7 +27,7 @@ export function UpdateModal() {
       await installPendingUpdate(({ downloaded, total }) => {
         setPercent(total > 0 ? Math.min(100, Math.round((downloaded / total) * 100)) : 0)
       })
-      // relaunch() acontece dentro de installPendingUpdate; se voltar aqui, não reiniciou.
+                                                                                           
     } catch (err) {
       setPhase('error')
       setError(String(err))
@@ -37,7 +37,7 @@ export function UpdateModal() {
   return (
     <Modal
       open={open}
-      // Trava o fechar-por-fora enquanto instala pra não interromper o download.
+                                                                                 
       onClose={installing ? () => {} : closeModal}
       title={t('update.availableTitle', { version: info.version })}
       footer={

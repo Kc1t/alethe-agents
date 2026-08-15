@@ -1,25 +1,17 @@
 //! Bridge nativo macOS para o backend de terminal Ghostty.
 //!
-//! Este módulo é compilado APENAS no macOS (`cfg(target_os = "macos")`). Em
+
 //! Windows/Linux ele vira um conjunto de stubs que retornam erro, para que o
 //! `invoke_handler` continue registrando os mesmos comandos em todas as
-//! plataformas sem `cfg` no `lib.rs` — o frontend só os chama quando
-//! `platform === 'macos'` e a flag `nativeTerminalMacos` está ligada.
+
 //!
-//! Estratégia (ver docs/PLAN-ghostty-native-macos.md §4):
-//! a UI inteira do Alethe vive numa WKWebView (Tauri). As surfaces de terminal
-//! são `NSView`s nativas adicionadas como IRMÃS da WebView, por cima dela, na
+
 //! mesma `NSWindow`. O frontend desenha um placeholder `<div data-surface-id>`
-//! e nos manda, via `ghostty_sync_frame`, o retângulo em coordenadas de tela
-//! da WebView; nós convertemos para coordenadas AppKit e posicionamos a NSView.
+
 //!
-//! NESTA FASE (spike), a NSView é um STUB colorido — sem libghostty ainda — só
-//! para validar reparenting + sincronização de layout. A troca pela surface
-//! real do Ghostty é a etapa seguinte (task #5 / §6 Fase 5 do plano).
 
 use serde::Serialize;
 
-/// Retângulo em coordenadas da WebView (CSS px, origem no topo-esquerda),
 /// como o `getBoundingClientRect()` do placeholder reporta.
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
@@ -33,12 +25,12 @@ pub struct WebRect {
 #[derive(Serialize)]
 pub struct GhosttySurfaceResponse {
     pub id: String,
-    /// true quando a NSView nativa foi de fato criada e anexada à janela.
+
     pub attached: bool,
 }
 
 // ---------------------------------------------------------------------------
-// Implementação macOS
+
 // ---------------------------------------------------------------------------
 #[cfg(target_os = "macos")]
 mod imp {
@@ -54,34 +46,23 @@ mod imp {
     use objc2_foundation::{MainThreadMarker, NSRect};
     use tauri::{Manager, State};
 
-    /// Garante que o auto-probe de debug rode só uma vez por processo.
     #[cfg(ghostty_linked)]
-    static PROBE_STARTED: std::sync::atomic::AtomicBool =
-        std::sync::atomic::AtomicBool::new(false);
+    static PROBE_STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     #[cfg(ghostty_linked)]
-    static WATCH_STARTED: std::sync::atomic::AtomicBool =
-        std::sync::atomic::AtomicBool::new(false);
+    static WATCH_STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
     /// Registro global de surfaces vivas: surfaceId -> NSView nativa.
-    /// Protegido por Mutex; todo acesso à AppKit é feito na main thread (ver
-    /// `MainThreadMarker`), então o Mutex só guarda o mapa, não a UI.
+
     #[derive(Default)]
     pub struct GhosttySurfaces {
         // Guardamos o ponteiro como usize para o mapa ser Send/Sync; a NSView
-        // só é tocada na main thread, onde reconstruímos o Retained.
         views: Mutex<HashMap<String, SurfaceEntry>>,
-        // IDs com criação em andamento (reservados mas ainda sem entry no mapa).
-        // Fecha a janela entre "checar que não existe" e "inserir a surface":
-        // sem isto, duas chamadas de spawn pro mesmo id poderiam ambas passar o
+
         // check e criar duas surfaces (over-spawn do StrictMode). #4
         reserving: Mutex<std::collections::HashSet<String>>,
     }
 
     impl GhosttySurfaces {
-        /// Reserva um id para criação. Retorna true se reservou (não havia
-        /// surface viva nem outra reserva pendente); false se já existe/reservado.
-        /// Atômico: check de views + reserving sob locks, antes de qualquer
-        /// criação cara de surface.
         pub fn try_reserve(&self, id: &str) -> bool {
             let views = self.views.lock().expect("views lock");
             if views.contains_key(id) {
@@ -91,7 +72,6 @@ mod imp {
             reserving.insert(id.to_string())
         }
 
-        /// Libera uma reserva (ex.: a criação falhou ou concluiu e já está no
         /// mapa de views).
         pub fn release_reservation(&self, id: &str) {
             if let Ok(mut reserving) = self.reserving.lock() {
@@ -101,30 +81,22 @@ mod imp {
     }
 
     struct SurfaceEntry {
-        /// Devicepixel ratio com que a última sync foi feita.
         last_scale: f64,
-        /// Modo real (libghostty linkado): o shim cria/gere a NSView de input e
-        /// a surface; guardamos só o handle e posicionamos via shim.
+
         #[cfg(ghostty_linked)]
         surface: crate::ghostty_ffi::AletheSurface,
-        /// Modo stub (sem libghostty): NSView colorida que o Rust gere.
+
         #[cfg(not(ghostty_linked))]
         view: Retained<NSView>,
     }
 
-    // SAFETY: as NSViews só são acessadas na main thread (todos os comandos
-    // abaixo exigem MainThreadMarker). O HashMap em si é protegido por Mutex.
     unsafe impl Send for SurfaceEntry {}
     unsafe impl Sync for SurfaceEntry {}
 
     pub type GhosttyState = GhosttySurfaces;
 
-    /// Converte um retângulo em coordenadas da WebView (origem topo-esquerda,
-    /// CSS px) para o frame de uma subview da content view (origem inferior-
     /// esquerda no AppKit), respeitando a altura total da content view.
     fn web_rect_to_appkit_frame(content_height: f64, rect: WebRect) -> NSRect {
-        // AppKit: y cresce pra cima. Web: y cresce pra baixo a partir do topo.
-        // Como a NSView é irmã da WebView e ambas preenchem a content view,
         // basta inverter o eixo Y usando a altura da content view.
         let appkit_y = content_height - rect.y - rect.height;
         NSRect::new(
@@ -133,8 +105,6 @@ mod imp {
         )
     }
 
-    /// Pega a content view da NSWindow do Tauri (a view raiz que contém a
-    /// WebView). É aí que penduramos as surfaces como irmãs da WebView.
     fn content_view(
         window: &tauri::WebviewWindow,
         _mtm: MainThreadMarker,
@@ -145,7 +115,7 @@ mod imp {
         if ns_window_ptr.is_null() {
             return Err("ns_window retornou ponteiro nulo".into());
         }
-        // SAFETY: ns_window_ptr é uma NSWindow* válida fornecida pelo Tauri.
+
         unsafe {
             let ns_window: &AnyObject = &*(ns_window_ptr as *const AnyObject);
             let content: *mut NSView = objc2::msg_send![ns_window, contentView];
@@ -165,17 +135,13 @@ mod imp {
     ) -> Result<GhosttySurfaceResponse, String> {
         let mtm = MainThreadMarker::new()
             .ok_or_else(|| "ghostty_spawn precisa rodar na main thread".to_string())?;
-        let _ = (&cwd, &command); // usados só no caminho ghostty_linked
+        let _ = (&cwd, &command);
 
-        // Idempotente + atômico (#4): reserva o id sob lock. Se já há surface
-        // viva OU outra criação em andamento pro mesmo id, não criamos a 2ª —
-        // devolvemos a existente. Isso fecha a janela entre o check e a inserção
         // (o StrictMode chamava spawn 2x e gerava over-spawn).
         if !state.try_reserve(&id) {
             return Ok(GhosttySurfaceResponse { id, attached: true });
         }
-        // Guard RAII: libera a reserva em QUALQUER saída (erro com `?`, pânico,
-        // ou sucesso). Chamamos `.done()` no fim pra não liberar antes da hora.
+
         struct ReservationGuard<'a> {
             state: &'a GhosttyState,
             id: String,
@@ -188,22 +154,24 @@ mod imp {
                 }
             }
         }
-        let mut guard = ReservationGuard { state, id: id.clone(), active: true };
+        let mut guard = ReservationGuard {
+            state,
+            id: id.clone(),
+            active: true,
+        };
 
         let window = app
             .get_webview_window("main")
             .ok_or_else(|| "janela 'main' não encontrada".to_string())?;
         let content = content_view(&window, mtm)?;
 
-        // Modo REAL: o shim cria a NSView de input + a surface dentro da content
-        // view e devolve o handle. O Ghostty faz o spawn do shell (backend EXEC).
         #[cfg(ghostty_linked)]
         let entry = {
             use crate::ghostty_ffi::*;
             use std::ffi::CString;
             let content_ptr = objc2::rc::Retained::as_ptr(&content) as *mut std::ffi::c_void;
             let scale = window.scale_factor().unwrap_or(2.0);
-            // CStrings vivem até depois do surface_new (ponteiros usados na chamada).
+
             let cwd_c = cwd
                 .as_deref()
                 .filter(|s| !s.trim().is_empty())
@@ -226,13 +194,8 @@ mod imp {
             }
             eprintln!("[alethe-ghostty] surface criada id={id}");
 
-            // Auto-probe opcional: com ALETHE_GHOSTTY_PROBE=1, depois de a surface
             // estabilizar, digitamos um echo e lemos o grid de volta — provando o
-            // fluxo input→shell→render no app REAL, e logando o resultado. É o que
-            // o smoke usa pra verificar de forma determinística (sem screenshot).
-            // Só registra o probe UMA vez por processo (o StrictMode/re-render
-            // cria várias surfaces; queremos um único teste, com retry até achar
-            // uma surface viva — imune ao churn de montagem do React).
+
             if std::env::var("ALETHE_GHOSTTY_PROBE").as_deref() == Ok("1")
                 && !PROBE_STARTED.swap(true, std::sync::atomic::Ordering::SeqCst)
             {
@@ -252,7 +215,12 @@ mod imp {
                                 v.and_then(|m| m.keys().next().cloned())
                             };
                             let result = live_id.and_then(|lid| {
-                                debug_send_read(&state, lid, "echo alethe_app_marker_99\r".to_string()).ok()
+                                debug_send_read(
+                                    &state,
+                                    lid,
+                                    "echo alethe_app_marker_99\r".to_string(),
+                                )
+                                .ok()
                             });
                             let _ = tx.send(result);
                         });
@@ -274,9 +242,6 @@ mod imp {
                 });
             }
 
-            // WATCH: com ALETHE_GHOSTTY_WATCH=1, loga o conteúdo do grid a cada
-            // 2s — pra EU observar o que está renderizado sem depender de
-            // screenshot/usuário. Só uma vez por processo.
             if std::env::var("ALETHE_GHOSTTY_WATCH").as_deref() == Ok("1")
                 && !WATCH_STARTED.swap(true, std::sync::atomic::Ordering::SeqCst)
             {
@@ -306,10 +271,12 @@ mod imp {
                 });
             }
 
-            SurfaceEntry { last_scale: scale, surface: s }
+            SurfaceEntry {
+                last_scale: scale,
+                surface: s,
+            }
         };
 
-        // Modo STUB: NSView colorida gerida pelo Rust, só pra provar reparenting.
         #[cfg(not(ghostty_linked))]
         let entry = {
             let v = NSView::new(mtm);
@@ -322,14 +289,20 @@ mod imp {
                     let _: () = objc2::msg_send![&*layer, setBackgroundColor: &*cg];
                 }
             }
-            SurfaceEntry { last_scale: 1.0, view: v }
+            SurfaceEntry {
+                last_scale: 1.0,
+                view: v,
+            }
         };
 
         {
-            let mut views = state.views.lock().map_err(|_| "lock poisoned".to_string())?;
+            let mut views = state
+                .views
+                .lock()
+                .map_err(|_| "lock poisoned".to_string())?;
             views.insert(id.clone(), entry);
         }
-        // Surface está no mapa de views agora; libera a reserva (sem o guard
+
         // disparar de novo).
         guard.active = false;
         state.release_reservation(&id);
@@ -352,7 +325,10 @@ mod imp {
         let content = content_view(&window, mtm)?;
         let content_height = content.frame().size.height;
 
-        let mut views = state.views.lock().map_err(|_| "lock poisoned".to_string())?;
+        let mut views = state
+            .views
+            .lock()
+            .map_err(|_| "lock poisoned".to_string())?;
         let entry = views
             .get_mut(&id)
             .ok_or_else(|| format!("surface não encontrada: {id}"))?;
@@ -363,8 +339,6 @@ mod imp {
         {
             use crate::ghostty_ffi::*;
             if !entry.surface.is_null() {
-                // Posição da NSView (pontos AppKit) + tamanho/escala da surface
-                // (pixels de dispositivo) — senão o grid sai borrado/errado.
                 let w = (rect.width * scale).round().max(1.0) as u32;
                 let h = (rect.height * scale).round().max(1.0) as u32;
                 unsafe {
@@ -395,7 +369,10 @@ mod imp {
     ) -> Result<(), String> {
         let _mtm = MainThreadMarker::new()
             .ok_or_else(|| "ghostty_set_hidden precisa rodar na main thread".to_string())?;
-        let mut views = state.views.lock().map_err(|_| "lock poisoned".to_string())?;
+        let mut views = state
+            .views
+            .lock()
+            .map_err(|_| "lock poisoned".to_string())?;
         if let Some(entry) = views.get_mut(&id) {
             #[cfg(ghostty_linked)]
             {
@@ -412,10 +389,6 @@ mod imp {
         Ok(())
     }
 
-    /// Mata TODAS as surfaces vivas e limpa o registro. Usado no boot do
-    /// frontend para descartar surfaces órfãs que sobreviveram a um reload da
-    /// WebView (o JS é recriado, mas as NSViews/o app Ghostty persistem). Sem
-    /// isso, surfaces antigas ficam empilhadas e roubam o foco do teclado.
     pub fn kill_all(state: &State<'_, GhosttyState>) -> Result<(), String> {
         let _mtm = MainThreadMarker::new()
             .ok_or_else(|| "ghostty_kill_all precisa rodar na main thread".to_string())?;
@@ -424,7 +397,10 @@ mod imp {
             use crate::ghostty_ffi::*;
             unsafe { alethe_ghostty_kill_all() };
         }
-        let mut views = state.views.lock().map_err(|_| "lock poisoned".to_string())?;
+        let mut views = state
+            .views
+            .lock()
+            .map_err(|_| "lock poisoned".to_string())?;
         #[cfg(not(ghostty_linked))]
         {
             for (_, entry) in views.iter() {
@@ -438,9 +414,6 @@ mod imp {
         Ok(())
     }
 
-    /// DEBUG/automação: envia texto pra surface e devolve o conteúdo do grid
-    /// após um curto tick. Prova o fluxo input→shell→render no app REAL, de
-    /// forma determinística (sem screenshot). Só no modo linked.
     #[cfg(ghostty_linked)]
     pub fn debug_send_read(
         state: &State<'_, GhosttyState>,
@@ -449,11 +422,16 @@ mod imp {
     ) -> Result<String, String> {
         use crate::ghostty_ffi::*;
         use std::ffi::CString;
-        let _mtm = MainThreadMarker::new()
-            .ok_or_else(|| "precisa rodar na main thread".to_string())?;
+        let _mtm =
+            MainThreadMarker::new().ok_or_else(|| "precisa rodar na main thread".to_string())?;
         let surface = {
-            let views = state.views.lock().map_err(|_| "lock poisoned".to_string())?;
-            let e = views.get(&id).ok_or_else(|| format!("surface {id} não encontrada"))?;
+            let views = state
+                .views
+                .lock()
+                .map_err(|_| "lock poisoned".to_string())?;
+            let e = views
+                .get(&id)
+                .ok_or_else(|| format!("surface {id} não encontrada"))?;
             e.surface
         };
         if surface.is_null() {
@@ -463,7 +441,7 @@ mod imp {
             let c = CString::new(text).map_err(|_| "texto inválido".to_string())?;
             unsafe { alethe_ghostty_surface_send_text(surface, c.as_ptr(), c.as_bytes().len()) };
         }
-        // Dá um tempinho pro shell processar e o Ghostty desenhar.
+
         unsafe { alethe_ghostty_app_tick() };
         std::thread::sleep(std::time::Duration::from_millis(400));
         unsafe {
@@ -489,7 +467,10 @@ mod imp {
     ) -> Result<(), String> {
         let _mtm = MainThreadMarker::new()
             .ok_or_else(|| "ghostty_set_focus precisa rodar na main thread".to_string())?;
-        let mut views = state.views.lock().map_err(|_| "lock poisoned".to_string())?;
+        let mut views = state
+            .views
+            .lock()
+            .map_err(|_| "lock poisoned".to_string())?;
         if let Some(entry) = views.get_mut(&id) {
             #[cfg(ghostty_linked)]
             {
@@ -500,8 +481,6 @@ mod imp {
             }
             #[cfg(not(ghostty_linked))]
             {
-                // Modo stub (sem libghostty): a NSView é só um placeholder
-                // colorido, sem shell real — foco de teclado é no-op.
                 let _ = (&entry, focused);
             }
         }
@@ -511,7 +490,10 @@ mod imp {
     pub fn process_exited(state: &State<'_, GhosttyState>, id: String) -> Result<bool, String> {
         let _mtm = MainThreadMarker::new()
             .ok_or_else(|| "ghostty_process_exited precisa rodar na main thread".to_string())?;
-        let views = state.views.lock().map_err(|_| "lock poisoned".to_string())?;
+        let views = state
+            .views
+            .lock()
+            .map_err(|_| "lock poisoned".to_string())?;
         match views.get(&id) {
             #[cfg(ghostty_linked)]
             Some(entry) => {
@@ -523,8 +505,7 @@ mod imp {
             }
             #[cfg(not(ghostty_linked))]
             Some(_entry) => Ok(false),
-            // Surface ausente (já morta/nunca criada) — trata como "saiu" para o
-            // frontend não ficar preso esperando por uma surface inexistente.
+
             None => Ok(true),
         }
     }
@@ -532,7 +513,10 @@ mod imp {
     pub fn kill(state: &State<'_, GhosttyState>, id: String) -> Result<(), String> {
         let _mtm = MainThreadMarker::new()
             .ok_or_else(|| "ghostty_kill precisa rodar na main thread".to_string())?;
-        let mut views = state.views.lock().map_err(|_| "lock poisoned".to_string())?;
+        let mut views = state
+            .views
+            .lock()
+            .map_err(|_| "lock poisoned".to_string())?;
         if let Some(entry) = views.remove(&id) {
             #[cfg(ghostty_linked)]
             {
@@ -551,9 +535,9 @@ mod imp {
     }
 
     // -----------------------------------------------------------------------
-    // Testes — a conversão de coordenadas é pura e roda sempre (cargo test).
+
     // Os testes funcionais do terminal (echo/ls/cd) tocam AppKit/Metal e exigem
-    // main thread + run loop, então ficam #[ignore] (rodados sob demanda com
+
     // `cargo test -- --ignored --test-threads=1`).
     // -----------------------------------------------------------------------
     #[cfg(test)]
@@ -563,10 +547,15 @@ mod imp {
         #[test]
         fn web_rect_to_appkit_inverts_y() {
             // content de 1000px de altura; rect 100px de altura no topo (y=0)
-            // deve ir pro topo em AppKit => appkit_y = 1000 - 0 - 100 = 900.
+
             let f = web_rect_to_appkit_frame(
                 1000.0,
-                WebRect { x: 10.0, y: 0.0, width: 200.0, height: 100.0 },
+                WebRect {
+                    x: 10.0,
+                    y: 0.0,
+                    width: 200.0,
+                    height: 100.0,
+                },
             );
             assert_eq!(f.origin.x, 10.0);
             assert_eq!(f.origin.y, 900.0);
@@ -576,40 +565,44 @@ mod imp {
 
         #[test]
         fn web_rect_to_appkit_bottom() {
-            // rect no rodapé (y=900, h=100) => appkit_y = 1000-900-100 = 0.
             let f = web_rect_to_appkit_frame(
                 1000.0,
-                WebRect { x: 0.0, y: 900.0, width: 50.0, height: 100.0 },
+                WebRect {
+                    x: 0.0,
+                    y: 900.0,
+                    width: 50.0,
+                    height: 100.0,
+                },
             );
             assert_eq!(f.origin.y, 0.0);
         }
 
         #[test]
         fn web_rect_clamps_min_size() {
-            // largura/altura zero nunca viram 0 (Ghostty/AppKit não gostam).
             let f = web_rect_to_appkit_frame(
                 500.0,
-                WebRect { x: 0.0, y: 0.0, width: 0.0, height: 0.0 },
+                WebRect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 0.0,
+                    height: 0.0,
+                },
             );
             assert!(f.size.width >= 1.0);
             assert!(f.size.height >= 1.0);
         }
 
-        // #4: a reserva de slot é atômica e idempotente. A 1ª reserva de um id
-        // vence (true); a 2ª (mesmo id, ainda não liberada/criada) perde (false)
-        // — garante que nunca criamos uma 2ª surface pro mesmo id. Sem GUI.
         #[test]
         fn reserve_is_idempotent_per_id() {
             let s = GhosttySurfaces::default();
             assert!(s.try_reserve("abc"), "1ª reserva deve vencer");
             assert!(!s.try_reserve("abc"), "2ª reserva do mesmo id deve perder");
             assert!(s.try_reserve("xyz"), "id diferente reserva normalmente");
-            // Liberar a reserva permite reservar de novo (ex.: falha na criação).
+
             s.release_reservation("abc");
             assert!(s.try_reserve("abc"), "após liberar, pode reservar de novo");
         }
 
-        // Teste funcional do terminal real. Só com libghostty linkado. #[ignore]
         // porque exige GUI/main thread; rode com:
         //   cargo test -- --ignored --test-threads=1 terminal_runs
         #[cfg(ghostty_linked)]
@@ -626,8 +619,6 @@ mod imp {
             super::super::functional_tests::run_cwd_respected();
         }
 
-        // #2: a surface deve se redesenhar continuamente (display link), sem
-        // input nem sync manual. RED até o CADisplayLink existir.
         #[cfg(ghostty_linked)]
         #[test]
         #[ignore]
@@ -635,9 +626,6 @@ mod imp {
             super::super::functional_tests::run_render_loop_draws();
         }
 
-        // #3: a composição de dead-key (NSTextInputClient) encaminha o caractere
-        // acentuado ao terminal. Exercita setMarkedText+insertText (o mesmo
-        // caminho do teclado real) e confere que "á" renderiza no grid.
         #[cfg(ghostty_linked)]
         #[test]
         #[ignore]
@@ -645,7 +633,6 @@ mod imp {
             super::super::functional_tests::run_ime_dead_key();
         }
 
-        // input: digitar pelo caminho REAL do keyDown renderiza, sem app_tick
         // manual — prova a root fix (tick no render loop). Era o bug "nada
         // aparece ao digitar".
         #[cfg(ghostty_linked)]
@@ -655,8 +642,6 @@ mod imp {
             super::super::functional_tests::run_typed_input_renders();
         }
 
-        // dead-key (UCKeyTranslate): compõe acento + vogal, e NÃO quebra
-        // digitação básica / Enter. Prova via o texto que chega à surface.
         #[cfg(ghostty_linked)]
         #[test]
         #[ignore]
@@ -666,8 +651,6 @@ mod imp {
     }
 }
 
-// Implementação dos testes funcionais (fora de #[cfg(test)] para poder usar o
-// FFI linkado; chamado pelo teste #[ignore] acima).
 #[cfg(all(target_os = "macos", ghostty_linked, test))]
 mod functional_tests {
     use crate::ghostty_ffi::*;
@@ -721,7 +704,6 @@ mod functional_tests {
         unsafe { alethe_ghostty_surface_send_text(s, c.as_ptr(), text.len()) };
     }
 
-    /// Digita 1 char pelo caminho REAL do keyDown (NSEvent sintético).
     fn type_char(s: *mut c_void, ch: &str, keycode: u16) {
         let c = CString::new(ch).unwrap();
         unsafe { alethe_ghostty_test_type_key(s, c.as_ptr(), keycode) };
@@ -732,16 +714,14 @@ mod functional_tests {
         if p.is_null() {
             return String::new();
         }
-        unsafe { std::ffi::CStr::from_ptr(p) }.to_string_lossy().to_string()
+        unsafe { std::ffi::CStr::from_ptr(p) }
+            .to_string_lossy()
+            .to_string()
     }
     fn last_key_composing() -> bool {
         unsafe { alethe_ghostty_test_last_key_composing() }
     }
 
-    /// Prova a composição de dead-key (UCKeyTranslate) pelo caminho REAL do
-    /// keyDown, SEM ler o grid — verifica o texto que chega à surface.
-    /// Robusto ao layout: se o keycode 39 não for dead-key no layout atual
-    /// (ex.: US puro = apóstrofo), valida o comportamento correto desse layout.
     pub fn run_deadkey_compose() {
         assert!(unsafe { alethe_ghostty_ensure_app() }, "ensure_app falhou");
         let view = make_nsview();
@@ -749,14 +729,12 @@ mod functional_tests {
             unsafe { alethe_ghostty_surface_new(view, std::ptr::null(), std::ptr::null(), 2.0) };
         assert!(!surface.is_null(), "surface_new NULL");
 
-        // --- regressão: digitação básica e controle NÃO podem quebrar ---
         type_char(surface, "a", 0);
         assert_eq!(last_key_text(), "a", "letra normal deve emitir 'a'");
         assert!(!last_key_composing(), "letra normal não é composing");
 
         type_char(surface, "", 36); // Enter
-        // UCKeyTranslate traduz Enter -> "\r" (carriage return) — é o que faz o
-        // shell executar. O importante: NÃO pode ficar travado em composing.
+
         assert_eq!(last_key_text(), "\r", "Enter deve emitir CR");
         assert!(!last_key_composing(), "Enter NÃO pode ficar composing");
 
@@ -764,20 +742,19 @@ mod functional_tests {
         type_char(surface, "", 39); // tecla de acento (´ no ABNT2)
         let dead = last_key_composing();
         if dead {
-            // Layout com dead-key: a próxima vogal deve compor.
             assert_eq!(last_key_text(), "", "dead-key pendente não emite texto");
             type_char(surface, "a", 0);
             assert!(!last_key_composing(), "após compor, não é mais composing");
             let composed = last_key_text();
             assert!(
-                composed == "á" || composed == "à" || composed == "ã"
-                    || composed == "â" || composed == "ä",
+                composed == "á"
+                    || composed == "à"
+                    || composed == "ã"
+                    || composed == "â"
+                    || composed == "ä",
                 "dead-key + a deveria compor um 'a' acentuado, veio: {composed:?}"
             );
         } else {
-            // Layout sem dead-key (ex.: US): a tecla emite um caractere direto.
-            // Aceita qualquer caractere não-vazio (apóstrofo, etc.) — só garante
-            // que NÃO travou em composing.
             eprintln!(
                 "[teste] keycode 39 não é dead-key neste layout (emitiu {:?}) — ok",
                 last_key_text()
@@ -786,9 +763,6 @@ mod functional_tests {
         unsafe { alethe_ghostty_surface_free(surface) };
     }
 
-    /// #input: digita pelo caminho real do keyDown e confirma que renderiza SEM
-    /// app_tick manual — só o run loop (que agora faz tick por frame). Falha se
-    /// o render loop não bombear o IO (era o bug do "nada aparece").
     pub fn run_typed_input_renders() {
         assert!(unsafe { alethe_ghostty_ensure_app() }, "ensure_app falhou");
         let view = make_nsview();
@@ -799,21 +773,26 @@ mod functional_tests {
             alethe_ghostty_surface_set_content_scale(surface, 2.0, 2.0);
             alethe_ghostty_surface_set_size(surface, 1600, 960);
         }
-        // Deixa o shell iniciar — aqui pode usar pump (com tick) só pra subir.
+
         pump(Duration::from_secs(2));
 
-        // Digita "echo zztop" pelo keyDown real. Virtual keycodes (US layout).
         // e=14 c=8 h=4 o=31 space=49 z=6 t=17 p=35
         let keys: &[(&str, u16)] = &[
-            ("e", 14), ("c", 8), ("h", 4), ("o", 31), (" ", 49),
-            ("z", 6), ("z", 6), ("t", 17), ("o", 31), ("p", 35),
+            ("e", 14),
+            ("c", 8),
+            ("h", 4),
+            ("o", 31),
+            (" ", 49),
+            ("z", 6),
+            ("z", 6),
+            ("t", 17),
+            ("o", 31),
+            ("p", 35),
         ];
         for (ch, kc) in keys {
             type_char(surface, ch, *kc);
         }
 
-        // Render SÓ pelo run loop (sem app_tick manual) — é o que prova a root
-        // fix: o NSTimer precisa fazer tick por frame pra o texto digitado e o
         // echo do shell aparecerem.
         pump_runloop_only(Duration::from_millis(1500));
 
@@ -845,7 +824,10 @@ mod functional_tests {
         send(surface, "echo alethe_marker_42\r");
         pump(Duration::from_secs(2));
         let screen = read_screen(surface);
-        assert!(screen.contains("alethe_marker_42"), "echo falhou:\n{screen}");
+        assert!(
+            screen.contains("alethe_marker_42"),
+            "echo falhou:\n{screen}"
+        );
 
         send(surface, "cd /tmp && pwd\r");
         pump(Duration::from_secs(2));
@@ -866,15 +848,12 @@ mod functional_tests {
         unsafe { alethe_ghostty_surface_free(surface) };
     }
 
-    /// Prova que o `cwd` passado a surface_new é respeitado: cria a surface em
-    /// /tmp e confirma que `pwd` (sem cd) já reporta /tmp. (#5)
     pub fn run_cwd_respected() {
         assert!(unsafe { alethe_ghostty_ensure_app() }, "ensure_app falhou");
         let view = make_nsview();
         let cwd = CString::new("/tmp").unwrap();
-        let surface = unsafe {
-            alethe_ghostty_surface_new(view, cwd.as_ptr(), std::ptr::null(), 2.0)
-        };
+        let surface =
+            unsafe { alethe_ghostty_surface_new(view, cwd.as_ptr(), std::ptr::null(), 2.0) };
         assert!(!surface.is_null(), "surface_new NULL (Metal headless?)");
         unsafe {
             alethe_ghostty_surface_set_content_scale(surface, 2.0, 2.0);
@@ -892,8 +871,6 @@ mod functional_tests {
         unsafe { alethe_ghostty_surface_free(surface) };
     }
 
-    /// Roda SÓ o run loop por `dur`, sem chamar app_tick/draw manualmente.
-    /// Assim isolamos o render espontâneo (display link) do render por input.
     fn pump_runloop_only(dur: Duration) {
         use objc2::msg_send;
         use objc2::runtime::AnyClass;
@@ -911,9 +888,6 @@ mod functional_tests {
         }
     }
 
-    /// #3: prova que a composição de dead-key (NSTextInputClient) entrega o
-    /// caractere acentuado ao terminal. Monta `echo MARK_á_END` onde o "á" vem
-    /// da composição IME (setMarkedText "´" + insertText "á"), e confere no grid.
     pub fn run_ime_dead_key() {
         assert!(unsafe { alethe_ghostty_ensure_app() }, "ensure_app falhou");
         let view = make_nsview();
@@ -928,15 +902,14 @@ mod functional_tests {
 
         // Prefixo do comando via texto normal.
         send(surface, "echo IME_");
-        // Composição dead-key: "´" marcado, depois "á" inserido (como option+e,a).
+
         let marked = CString::new("\u{00b4}").unwrap(); // ´
-        let final_ = CString::new("\u{00e1}").unwrap(); // á
-        let ok = unsafe {
-            alethe_ghostty_test_ime_compose(surface, marked.as_ptr(), final_.as_ptr())
-        };
+        let final_ = CString::new("\u{00e1}").unwrap();
+        let ok =
+            unsafe { alethe_ghostty_test_ime_compose(surface, marked.as_ptr(), final_.as_ptr()) };
         assert!(ok, "test_ime_compose não achou a view");
-        // Mais acentos por insertText direto (ç, ã) e fecha o comando.
-        let cedilha = CString::new("\u{00e7}\u{00e3}").unwrap(); // çã
+
+        let cedilha = CString::new("\u{00e7}\u{00e3}").unwrap();
         unsafe { alethe_ghostty_test_ime_compose(surface, std::ptr::null(), cedilha.as_ptr()) };
         send(surface, "_END\r");
         pump(Duration::from_secs(2));
@@ -949,8 +922,6 @@ mod functional_tests {
         unsafe { alethe_ghostty_surface_free(surface) };
     }
 
-    /// #2: prova que a surface se redesenha sozinha (display link), sem input
-    /// nem tick/draw manual. Conta os draws antes/depois de ~1s só de run loop.
     pub fn run_render_loop_draws() {
         assert!(unsafe { alethe_ghostty_ensure_app() }, "ensure_app falhou");
         let view = make_nsview();
@@ -961,14 +932,13 @@ mod functional_tests {
             alethe_ghostty_surface_set_content_scale(surface, 2.0, 2.0);
             alethe_ghostty_surface_set_size(surface, 1600, 960);
         }
-        // Deixa estabilizar (com tick), depois mede SÓ o run loop.
+
         pump(Duration::from_secs(1));
         let before = unsafe { alethe_ghostty_draw_count() };
         pump_runloop_only(Duration::from_millis(1000));
         let after = unsafe { alethe_ghostty_draw_count() };
         let frames = after - before;
-        // Um display link a ~60fps faz dezenas de draws em 1s. Sem render
-        // contínuo (estado atual), frames == 0 -> RED.
+
         assert!(
             frames >= 20,
             "render contínuo ausente: {frames} draws em 1s só de run loop (esperado >= 20)"
@@ -978,7 +948,7 @@ mod functional_tests {
 }
 
 // ---------------------------------------------------------------------------
-// Stubs para plataformas não-macOS
+
 // ---------------------------------------------------------------------------
 #[cfg(not(target_os = "macos"))]
 mod imp {
@@ -1023,10 +993,7 @@ mod imp {
     ) -> Result<(), String> {
         Err(UNSUPPORTED.into())
     }
-    pub fn process_exited(
-        _state: &State<'_, GhosttyState>,
-        _id: String,
-    ) -> Result<bool, String> {
+    pub fn process_exited(_state: &State<'_, GhosttyState>, _id: String) -> Result<bool, String> {
         Err(UNSUPPORTED.into())
     }
     pub fn kill(_state: &State<'_, GhosttyState>, _id: String) -> Result<(), String> {
@@ -1092,21 +1059,15 @@ pub fn ghostty_surface_exited(
 }
 
 #[tauri::command]
-pub fn ghostty_kill(
-    state: tauri::State<'_, GhosttyState>,
-    id: String,
-) -> Result<(), String> {
+pub fn ghostty_kill(state: tauri::State<'_, GhosttyState>, id: String) -> Result<(), String> {
     imp::kill(&state, id)
 }
 
-/// Mata todas as surfaces vivas (limpeza de órfãs no boot/reload da WebView).
 #[tauri::command]
 pub fn ghostty_kill_all(state: tauri::State<'_, GhosttyState>) -> Result<(), String> {
     imp::kill_all(&state)
 }
 
-/// DEBUG/automação: envia texto pra surface e lê o grid de volta. Prova o fluxo
-/// input→shell→render no app real, sem screenshot. No-op fora do macOS/linked.
 #[tauri::command]
 pub fn ghostty_debug_send_read(
     state: tauri::State<'_, GhosttyState>,

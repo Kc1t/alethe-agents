@@ -1,7 +1,7 @@
 import type { Theme } from '../../lib/types'
 import type { FileLinkKind } from './terminalLinks'
 
-/** Estado do menu de ações de link, ancorado no ponto do clique. */
+                                                                    
 export type LinkActionState = {
   text: string
   target: string
@@ -158,7 +158,31 @@ const MIN_LIGHT_THEME = {
   brightWhite: '#ffffff',
 } as const
 
+const EMBER_THEME = {
+  background: '#0b0d0e',
+  foreground: '#dfe3e6',
+  cursor: '#e0873f',
+  selectionBackground: '#2e363b',
+  black: '#191d21',
+  red: '#e0605c',
+  green: '#8fbf7f',
+  yellow: '#d9b44a',
+  blue: '#7fa8c9',
+  magenta: '#b294bb',
+  cyan: '#82b5b5',
+  white: '#dfe3e6',
+  brightBlack: '#525b61',
+  brightRed: '#eb7a76',
+  brightGreen: '#a5cf96',
+  brightYellow: '#e0873f',
+  brightBlue: '#9cc0dc',
+  brightMagenta: '#c8aecf',
+  brightCyan: '#9bcaca',
+  brightWhite: '#ffffff',
+} as const
+
 export function getXtermTheme(theme: Theme) {
+  if (theme === 'ember') return EMBER_THEME
   if (theme === 'light') return LIGHT_THEME
   if (theme === 'dracula') return DRACULA_THEME
   if (theme === 'nord') return NORD_THEME

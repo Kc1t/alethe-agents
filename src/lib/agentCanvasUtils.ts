@@ -94,7 +94,7 @@ export function tailSummary(raw: string, max = 320): string {
     .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
     // outros escapes ESC de 1 char
     .replace(/\x1b[@-Z\\-_]/g, '')
-    // bytes de controle restantes (preserva \n e \t)
+                                                     
     .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '')
     .replace(/[^\S\n]+/g, ' ')
     .replace(/\n{2,}/g, '\n')
@@ -102,13 +102,13 @@ export function tailSummary(raw: string, max = 320): string {
   return clean.length > max ? `…${clean.slice(-max)}` : clean
 }
 
-/** Monta os extraArgs one-shot por agente pra rodar uma task sem depender da TUI. */
+                                                                                     
 export function execArgsFor(agent: AgentType, task: string): string[] | undefined {
   switch (agent) {
     case 'codex':
       return ['exec', '--skip-git-repo-check', task]
     case 'claude':
-      // headless: -p roda a task e sai; sem permissões pra não travar no prompt.
+                                                                                 
       return ['-p', task, '--dangerously-skip-permissions']
     case 'opencode':
       return ['run', task]
@@ -117,7 +117,7 @@ export function execArgsFor(agent: AgentType, task: string): string[] | undefine
   }
 }
 
-/** Classe de status do badge de um nó (tokens do tema). */
+                                                           
 export function statusBadgeClass(status: AgentNode['status'], styles: CanvasStyleMap): string {
   if (status === 'running') return styles.statusRunning
   if (status === 'idle') return styles.statusIdle
@@ -132,7 +132,7 @@ export function costClassFor(usd: number, styles: CanvasStyleMap): string {
   return styles.costLow
 }
 
-/** Custo hipotético de um nó se tivesse rodado num modelo (rate) diferente. */
+                                                                               
 export function costAtRate(c: SessionCost, rate: ModelRate): number {
   return (
     (c.input * rate.input +
@@ -144,12 +144,12 @@ export function costAtRate(c: SessionCost, rate: ModelRate): number {
   )
 }
 
-/**
- * Economia estimada (USD) por ter roteado nós pra modelos mais baratos que o
- * lead: para cada nó com custo conhecido e família mais barata, soma
- * (custo no modelo do lead − custo real). Estimativa honesta, baseada em tokens
- * reais — não conta nós sem preço (codex) nem os no mesmo nível do lead.
- */
+   
+                                                                             
+                                                                     
+                                                                                
+                                                                         
+   
 export function estimateRoutingSavings(
   nodeCosts: Record<string, SessionCost>,
   leadModel: string | null,
@@ -172,7 +172,7 @@ export function estimateRoutingSavings(
   return saved
 }
 
-/** Ícone de persona por heurística de nome do agente. */
+                                                         
 export function personaIconFor(agentName: string): LucideIcon {
   const name = agentName.toLowerCase()
   if (name.includes('orchestr') || name.includes('tech-lead')) return LayoutTemplate

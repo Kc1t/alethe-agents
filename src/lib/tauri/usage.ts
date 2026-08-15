@@ -56,7 +56,7 @@ export async function getAntigravityUsage(): Promise<AntigravityUsage> {
   return invoke<AntigravityUsage>('get_antigravity_usage')
 }
 
-/** Preço por 1M de tokens por família de modelo (opus/sonnet/haiku). */
+                                                                        
 export type ModelRate = {
   family: string
   input: number
@@ -66,14 +66,14 @@ export type ModelRate = {
   cache_read: number
 }
 
-/** Tabela de preço (do backend) pra estimar economia por roteamento no front. */
+                                                                                 
 export async function getModelPricing(): Promise<ModelRate[]> {
   return invoke<ModelRate[]>('get_model_pricing')
 }
 
-/** Resumo de custo/tokens do OpenCode numa janela de horas — não existe
- * conceito de "% de plano" pro OpenCode (BYOK multi-provider), então o
- * OpenCodeCard mostra isso em vez de uma barra de utilização. */
+                                                                        
+                                                                       
+                                                                 
 export type OpenCodeUsageSummary = {
   cost_usd: number
   input_tokens: number
@@ -97,8 +97,8 @@ export async function getClaudeActivity(days = 91): Promise<ActivityDay[]> {
   return invoke<ActivityDay[]>('get_claude_activity', { days }).catch(() => [])
 }
 
-/** Mesma janela, mas somando Claude + Codex + OpenCode — ver
- * get_multi_agent_activity em claude_sessions.rs pra granularidade por agente. */
+                                                             
+                                                                                  
 export async function getMultiAgentActivity(days: number): Promise<ActivityDay[]> {
   return invoke<ActivityDay[]>('get_multi_agent_activity', { days })
 }

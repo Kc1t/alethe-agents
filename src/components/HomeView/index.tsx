@@ -84,7 +84,7 @@ export function HomeView() {
   const notifications = useUiStore((s) => s.notifications)
   const clearNotifications = useUiStore((s) => s.clearNotifications)
 
-  // último uso de cada projeto: container aberto ou maior lastUsedAt dos terminais
+                                                                                   
   const lastUsedByProject = useMemo(() => {
     const map = new Map<string, number>()
     for (const c of containers) {
@@ -160,8 +160,8 @@ export function HomeView() {
   const [quickUnrestricted, setQuickUnrestricted] = useState(false)
   const quickPromptRef = useRef<HTMLInputElement>(null)
   const [quickCwd, setQuickCwd] = useState('')
-  // Agente efetivo derivado no render: se o escolhido não está mais habilitado,
-  // cai no primeiro disponível — sem precisar de um useEffect de correção.
+                                                                                
+                                                                           
   const quickAgent = quickAgents.some((agent) => agent.type === quickAgentRaw)
     ? quickAgentRaw
     : (quickAgents[0]?.type ?? 'claude')

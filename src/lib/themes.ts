@@ -19,6 +19,7 @@ export const THEME_OPTIONS: ThemeOption[] = [
   { id: 'min-light', colors: ['#ffffff', '#1976D2', '#6f42c1'] },
   { id: 'dark-lemon', colors: ['#141414', '#ffff50', '#c792ea'] },
   { id: 'orca', colors: ['#0b0b0b', '#181818', '#22c55e'] },
+  { id: 'ember', colors: ['#0b0d0e', '#232a2f', '#e0873f'] },
 ]
 
 /** Label localizado do tema (uso em componentes React, via `t`). */
@@ -26,12 +27,12 @@ export function themeLabel(t: TFunction, id: Theme): string {
   return t(`theme.${id}.label` as MessageKey)
 }
 
-/** Descrição localizada do tema (uso em componentes React, via `t`). */
+                                                                        
 export function themeDescription(t: TFunction, id: Theme): string {
   return t(`theme.${id}.desc` as MessageKey)
 }
 
-/** Label localizado do tema fora de React (lê o locale atual do store). */
+                                                                           
 export function getThemeLabel(id: Theme): string {
   return translate(getLocale(), `theme.${id}.label` as MessageKey)
 }

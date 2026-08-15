@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 
 import { normalizeBrowserUrl } from '../../lib/browserUrl'
 import { useT } from '../../lib/i18n'
+import type { BrowserResourceMode } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import styles from './AddBrowserModal.module.css'
@@ -33,6 +34,7 @@ export function AddBrowserModal() {
   const [urlInput, setUrlInput] = useState('')
   const [name, setName] = useState('')
   const [javascriptEnabled, setJavascriptEnabled] = useState(true)
+  const [resourceMode, setResourceMode] = useState<BrowserResourceMode>('app-first')
   const [zoom, setZoom] = useState(1)
   const normalizedUrl = normalizeBrowserUrl(urlInput)
 
@@ -41,6 +43,7 @@ export function AddBrowserModal() {
     setUrlInput(context?.url ?? '')
     setName('')
     setJavascriptEnabled(true)
+    setResourceMode('app-first')
     setZoom(1)
   }, [context?.url, open])
 
@@ -50,6 +53,7 @@ export function AddBrowserModal() {
       url: normalizedUrl,
       name: name.trim() || undefined,
       javascriptEnabled,
+      resourceMode,
       zoom,
     })
     useUiStore.getState().setActiveView('workspace')
@@ -152,6 +156,23 @@ export function AddBrowserModal() {
             <small>{t('browser.javascriptDescription')}</small>
           </span>
         </label>
+      </div>
+
+      <div className={controls.field}>
+        <label className={controls.label} htmlFor="add-browser-resource-mode">
+          {t('browser.resourceMode')}
+        </label>
+        <select
+          id="add-browser-resource-mode"
+          className={controls.input}
+          value={resourceMode}
+          onChange={(event) => setResourceMode(event.target.value as BrowserResourceMode)}
+        >
+          <option value="app-first">{t('browser.resourceModeAppFirst')}</option>
+          <option value="balanced">{t('browser.resourceModeBalanced')}</option>
+          <option value="keep-alive">{t('browser.resourceModeKeepAlive')}</option>
+        </select>
+        <span className={controls.hint}>{t(`browser.resourceModeDescription.${resourceMode}`)}</span>
       </div>
 
       {project ? (

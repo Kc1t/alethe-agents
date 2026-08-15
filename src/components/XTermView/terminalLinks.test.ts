@@ -16,6 +16,15 @@ describe('terminal links', () => {
     expect(detectTerminalLinks('D:\\public launch\\src\\file.ts')).toEqual([
       expect.objectContaining({ text: 'D:\\public launch\\src\\file.ts', kind: 'path' }),
     ])
+    expect(
+      detectTerminalLinks('"D:\\tmp\\shot-lab-strips\\ um PNG por shot, nome = slug."')[0],
+    ).toEqual(
+      expect.objectContaining({
+        text: 'D:\\tmp\\shot-lab-strips\\',
+        target: 'D:\\tmp\\shot-lab-strips\\',
+        kind: 'path',
+      }),
+    )
   })
 
   it('detects mixed-case protocols and bare deployment domains', () => {

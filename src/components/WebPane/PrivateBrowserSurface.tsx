@@ -2,9 +2,11 @@ import { isTauri } from '@tauri-apps/api/core'
 import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
 import { Webview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
+import { isOverlayPresent, subscribeOverlayPresence } from '../../lib/overlayPresence'
+import { recordFrontendError } from '../../lib/tauri'
 import styles from './WebPane.module.css'
 
 type PrivateBrowserSurfaceProps = {
@@ -13,6 +15,7 @@ type PrivateBrowserSurfaceProps = {
   title: string
   reloadKey: number
   javascriptEnabled: boolean
+  hiddenEvictionDelayMs: number | null
   zoom: number
   visible: boolean
 }
@@ -42,6 +45,7 @@ export function PrivateBrowserSurface({
   title,
   reloadKey,
   javascriptEnabled,
+  hiddenEvictionDelayMs,
   zoom,
   visible,
 }: PrivateBrowserSurfaceProps) {
@@ -49,14 +53,20 @@ export function PrivateBrowserSurface({
   const privateStartFailed = t('webPane.privateStartFailed')
   const placeholderRef = useRef<HTMLDivElement | null>(null)
   const visibleRef = useRef(visible)
+  const hiddenEvictionDelayRef = useRef(hiddenEvictionDelayMs)
   const reevaluateRef = useRef<(() => void) | null>(null)
   const [surfaceState, setSurfaceState] = useState<SurfaceState>('loading')
   const [error, setError] = useState('')
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     visibleRef.current = visible
     reevaluateRef.current?.()
   }, [visible])
+
+  useEffect(() => {
+    hiddenEvictionDelayRef.current = hiddenEvictionDelayMs
+    reevaluateRef.current?.()
+  }, [hiddenEvictionDelayMs])
 
   useEffect(() => {
     const node = placeholderRef.current
@@ -68,14 +78,12 @@ export function PrivateBrowserSurface({
     let shown: boolean | null = null
     let lastRect: SurfaceRect | null = null
     let frame: number | null = null
+    let evictionTimer: number | null = null
     let webview: Webview | null = null
     let unlistenCreated: (() => void) | null = null
     let unlistenError: (() => void) | null = null
     setSurfaceState('loading')
     setError('')
-
-    const overlaysOpen = () =>
-      document.querySelector('[role="dialog"][data-state="open"], [role="menu"]') !== null
 
     const readRect = (): SurfaceRect | null => {
       const rect = node.getBoundingClientRect()
@@ -83,14 +91,44 @@ export function PrivateBrowserSurface({
       return { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
     }
 
-    const label = `browser-${paneId}-${reloadKey}`
+    const clearEvictionTimer = () => {
+      if (evictionTimer === null) return
+      window.clearTimeout(evictionTimer)
+      evictionTimer = null
+    }
+
+    const closeWebview = () => {
+      clearEvictionTimer()
+      const closing = webview
+      webview = null
+      created = false
+      shown = null
+      lastRect = null
+      if (!closing) return
+      if (!disposed) setSurfaceState('loading')
+      void closing
+        .hide()
+        .catch(() => {})
+        .then(() => closing.close().catch(() => {}))
+    }
+
+    const scheduleEviction = () => {
+      if (evictionTimer !== null || !webview) return
+      const delay = hiddenEvictionDelayRef.current
+      if (delay === null) return
+      evictionTimer = window.setTimeout(closeWebview, delay)
+    }
 
     const startWebview = () => {
       if (disposed || webview) return
       const initialRect = readRect()
       if (!initialRect) return
 
-      webview = new Webview(getCurrentWindow(), label, {
+      // Every recreation gets a new label so a closing native surface cannot
+      // collide with the replacement during StrictMode or rapid modal changes.
+      const label = `browser-${paneId}-${reloadKey}-${crypto.randomUUID()}`
+
+      const instance = new Webview(getCurrentWindow(), label, {
         url,
         x: initialRect.x,
         y: initialRect.y,
@@ -102,17 +140,18 @@ export function PrivateBrowserSurface({
         generalAutofillEnabled: false,
         zoomHotkeysEnabled: false,
       })
+      webview = instance
 
-      void webview
+      void instance
         .once('tauri://created', () => {
-          if (disposed || !webview) {
-            void webview?.close().catch(() => {})
+          if (disposed || webview !== instance) {
+            void instance.close().catch(() => {})
             return
           }
           created = true
           setSurfaceState('ready')
           setError('')
-          void webview.setZoom(zoom).catch(() => {})
+          void instance.setZoom(zoom).catch(() => {})
           scheduleSync()
         })
         .then((unlisten) => {
@@ -120,11 +159,14 @@ export function PrivateBrowserSurface({
           else unlistenCreated = unlisten
         })
 
-      void webview
+      void instance
         .once<string>('tauri://error', (event) => {
-          if (disposed) return
+          if (disposed || webview !== instance) return
+          const detail = String(event.payload || privateStartFailed)
+          if (import.meta.env.DEV) console.error('[Alethe][private-browser]', detail)
+          void recordFrontendError(detail, null, 'private-browser.create')
           setSurfaceState('error')
-          setError(String(event.payload || privateStartFailed))
+          setError(detail)
         })
         .then((unlisten) => {
           if (disposed) unlisten()
@@ -136,18 +178,22 @@ export function PrivateBrowserSurface({
       frame = null
       if (disposed) return
       if (!webview) {
+        if (!visibleRef.current || !intersecting || isOverlayPresent()) return
         startWebview()
         return
       }
       if (!created) return
-      const shouldShow = visibleRef.current && intersecting && !overlaysOpen()
+      const shouldShow = visibleRef.current && intersecting && !isOverlayPresent()
       if (!shouldShow) {
         if (shown !== false) {
           shown = false
           await webview.hide().catch(() => {})
         }
+        scheduleEviction()
         return
       }
+
+      clearEvictionTimer()
 
       const rect = readRect()
       if (!rect) return
@@ -168,7 +214,10 @@ export function PrivateBrowserSurface({
       if (frame !== null) return
       frame = window.requestAnimationFrame(() => void sync())
     }
-    reevaluateRef.current = scheduleSync
+    reevaluateRef.current = () => {
+      clearEvictionTimer()
+      scheduleSync()
+    }
 
     const resizeObserver = new ResizeObserver(scheduleSync)
     resizeObserver.observe(node)
@@ -180,13 +229,7 @@ export function PrivateBrowserSurface({
       { threshold: 0 },
     )
     intersectionObserver.observe(node)
-    const mutationObserver = new MutationObserver(scheduleSync)
-    mutationObserver.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['data-state', 'role'],
-    })
+    const unsubscribeOverlayPresence = subscribeOverlayPresence(scheduleSync)
     window.addEventListener('resize', scheduleSync)
     window.addEventListener('scroll', scheduleSync, true)
     window.addEventListener('alethe:zoom-changed', scheduleSync)
@@ -194,9 +237,10 @@ export function PrivateBrowserSurface({
 
     return () => {
       disposed = true
+      clearEvictionTimer()
       resizeObserver.disconnect()
       intersectionObserver.disconnect()
-      mutationObserver.disconnect()
+      unsubscribeOverlayPresence()
       window.removeEventListener('resize', scheduleSync)
       window.removeEventListener('scroll', scheduleSync, true)
       window.removeEventListener('alethe:zoom-changed', scheduleSync)
@@ -204,8 +248,7 @@ export function PrivateBrowserSurface({
       if (frame !== null) window.cancelAnimationFrame(frame)
       unlistenCreated?.()
       unlistenError?.()
-      void webview?.hide().catch(() => {})
-      void webview?.close().catch(() => {})
+      closeWebview()
     }
   }, [javascriptEnabled, paneId, privateStartFailed, reloadKey, url, zoom])
 

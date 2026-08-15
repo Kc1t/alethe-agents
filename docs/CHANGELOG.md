@@ -10,24 +10,291 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Removed
+
+- The Merge Center is gone: its sidebar panel, the **Merge** tab of the project editor, the branch
+  testing dialog, the merge store, and the `merge_analyze` / `merge_prepare` / `merge_finalize` /
+  `merge_abort` / `merge_preflight_abort` / `merge_rebase_onto_target` / `merge_force_cleanup`
+  backend commands, along with the `merge_analyzer` and `conflict_resolution` modules behind them.
+  Projects no longer carry a post-merge action setting. Worktrees, the conflict-resolution agent
+  settings and GSD Sync are untouched — they only shared the `merge.` prefix.
+
+### Added
+
+- Agents that are not installed can now be installed from inside Alethe. The onboarding agent step
+  and the "not found" overlay of a terminal both offer an **Install** button that runs the official
+  installer in a real shell and streams its output, then confirms the CLI is reachable before
+  reporting success. Alethe probes the machine for Node, npm, WinGet, Scoop and Chocolatey and only
+  offers the methods that work there, preferring each vendor's official installer — which needs no
+  Node — and listing the alternatives under **Other ways**.
+- A **Recent chats** button on the terminal toolbar, next to Open in VS Code, lists the Claude and
+  Codex conversations of that pane's working directory and resumes any of them, either in a new pane
+  on the current grid or in the pane it was opened from. The panel opens on the tab matching the
+  pane's agent, and unrestricted mode is a checkbox applied to the resumed session.
+- **Ctrl+B** toggles the left sidebar open and closed. The topbar button now shows the shortcut in
+  its tooltip.
+- Installing an agent now happens in a dialog. It lists every method that works on this machine —
+  the vendor's own installer, npm, WinGet, Scoop, Chocolatey — with the exact command each one runs,
+  and you pick which to use instead of being given one button and a hidden "other ways" list.
+- When an agent can only be installed through npm and Node.js is missing, its install dialog now says
+  so instead of dead-ending on "no automatic installer". It offers a one-click Node.js install
+  through WinGet, Scoop or Chocolatey when one of them is available, and a **Download Node.js**
+  button otherwise. Once Node lands, the agent's own installer appears without reopening the card.
+- Freebuff and Mimo can now be installed from inside Alethe like the other agents, with their
+  documentation links — until now they were the only agents with no installer at all.
+- Installed agents can be **uninstalled** from the onboarding agent step. Confirmation happens in a
+  dialog that shows the exact command about to run, and the agent is only reported as removed once
+  its CLI can no longer be found. Only one agent can be installed, updated or uninstalled at a time —
+  package managers share a single global directory and corrupt each other when run in parallel. Agents whose only installer is a
+  vendor script offer no uninstall, since none of them documents one and guessing what to delete
+  would be worse than doing nothing.
+- The onboarding agent step was rebuilt as a table. Every agent is one row with its icon, the
+  resolved path of its CLI, the installed version, a status tag, and its actions — install, update
+  or uninstall — so all rows line up regardless of what each agent offers. Above it there is a
+  counter strip (enabled, up to date, with updates, installable), a search field that matches on name
+  or path, and All / Detected / Installable filters. A **Scan again** link re-runs detection without
+  leaving the step, for when an agent was installed outside Alethe.
+- Agents with a newer release published on npm can be updated in place from that table.
+
 ### Changed
 
+- Switching workspace tabs no longer reloads them. Every tab in the tab bar — the same ones Ctrl+Tab
+  cycles through — stays mounted in the background instead of being torn down, so its terminals keep
+  their scrollback, their PTY attachment and their scroll position. Coming back to a tab no longer
+  shows a boot spinner and never restarts anything, however many projects you move between. The two
+  most recently used background tabs also keep receiving output, so returning to them costs nothing
+  at all; the rest pause their stream while hidden and redraw on return. None of them are suspended
+  for being idle while they stay mounted. A tab that produced no output while it was away skips the
+  redraw entirely and comes back untouched.
+
+### Fixed
+
+- A terminal that accepted keystrokes but rendered nothing — recoverable only by restarting it — now
+  recovers on its own. Output is gated per PTY by a visibility flag, and the call that switches it
+  back on was silently ignored whenever it landed while the session was spawning or restarting,
+  leaving the stream off with nothing to turn it back on. The resource sampler now re-asserts
+  visibility for every PTY on each pass, so a stuck stream clears within one sample instead of
+  lasting until the terminal is restarted.
+- Terminals start faster. Resolving an agent's launcher scanned every directory in PATH on every
+  boot; successful lookups are now remembered and revalidated against the file itself, so installing
+  or removing a CLI is still picked up immediately.
+- An agent pane no longer loses the conversation it was resuming when you leave and come back to it
+  quickly. The saved session was being read destructively at launch, so a pane torn down mid-launch —
+  switching workspace tabs with Ctrl+Tab, for example — erased the only record of its conversation and
+  came back on a different chat. The record now survives until a new session actually replaces it.
+- The terminal "command not found" overlay was written in English regardless of the selected
+  language; its text now goes through the translation system like the rest of the app.
+- A pane no longer starts an empty chat when you come back to it after a long time away. The session
+  claim that prevents two panes from writing to the same conversation was tied to the PTY id, so a
+  PTY that ended on its own — parked by memory control, suspended, or killed — left the conversation
+  permanently marked as taken and the pane silently dropped its own session id.
+- Reopening a pane no longer replays its history line by line. The stored scrollback was fed to the
+  terminal in 16 KB slices, one rendered frame each, so a large buffer visibly scrolled from the top
+  down to the prompt and took seconds; it is now written in a single pass straight to the bottom.
+- Switching conversation from inside the CLI with `/new` or `/resume` now sticks. Alethe pinned the
+  session id given at launch and sent the old one back on the next restart, dragging the pane to the
+  previous chat.
+
+- The Files sidebar now supports quick previews, adding or dragging files into the workspace grid,
+  revealing entries in File Explorer, renaming, and confirmed deletion. Git file rows can also open
+  the working file in the grid or reveal it alongside the existing stage, discard, commit, and sync actions.
+- Browser panes now offer app-first, balanced, and keep-alive resource modes. App-first is the default,
+  and every mode releases hidden native webviews when Alethe detects memory pressure.
+- The layout organizer now includes adaptive presets and keeps the eight most recently saved layouts
+  separately for each project, group, and workspace.
+- New **Ember** interface theme: cool charcoal surfaces, hairline dividers and a single ember-orange
+  accent for live state, with a matching terminal palette. Selectable in Preferences → Appearance and
+  as the terminal theme; it does not ship a native app icon variant.
+- Remote control now pairs through a **short-lived pairing window**. The QR code is valid for two
+  minutes and stops working as soon as one device pairs; a paired device receives its own session
+  token and can be revoked individually. Preferences → Remote control can reopen or close the window
+  at any time.
+- A message sent from a paired phone now raises a desktop notification naming the device and showing
+  what it sent, so remote input is never silently typed into a terminal.
+- Individual terminals can now be hidden from remote devices from the sidebar context menu. A hidden
+  terminal disappears from the phone's list and its output and input are refused server-side.
+- Remote control gained a **read-only mode** (on by default) and a separate switch that decides
+  whether plain shell terminals accept remote input. With both at their defaults a paired phone can
+  watch terminals but cannot type into them.
+
+### Changed
+
+- **Remote control is now off by default and stays off until you turn it on.** Alethe used to open a
+  LAN listener on every launch, and the on/off switch was lost when the app restarted. The setting is
+  now saved with your preferences and the listener only starts while it is enabled.
+- The remote pairing address and QR code are only shown while a pairing window is open, and the
+  address the phone uses is no longer carried in the page URL after pairing.
+
+### Fixed
+
+- Remote control session lifetime, the device limit, and per-device revocation now apply to the whole
+  remote surface. They previously only guarded the live WebSocket, so an expired or revoked device
+  could still read terminal output and send messages over HTTP.
+- A paired phone now only receives output from the terminal it is watching. Every terminal's output
+  was previously broadcast to every connected device.
+- The remote workspace listing now sends only the fields the phone renders, instead of copying raw
+  workspace records.
+- Remote requests split across network packets are no longer truncated, oversized requests are
+  rejected, and a failed request always gets a response instead of leaving the phone waiting.
+- Remote connections now time out, are capped in number, must authenticate within ten seconds, and
+  repeated bad tokens temporarily block the offending address — a device on the same network can no
+  longer exhaust the app's connections.
+- Remote control now re-reads the machine's network address every time it is enabled, so the pairing
+  QR code stays valid after switching Wi-Fi networks.
+
+- The **App icon** setting in Preferences → Appearance now actually changes the taskbar and window
+  icon. It previously sent the bundled asset URL to the native window, which silently failed, so the
+  icon never left the default variant. Each icon now ships at 32, 48, and 64 pixels and the variant
+  matching the display scaling is used, so the taskbar no longer shows a blurry downscale.
+- Critical Windows memory pressure now suspends one eligible hidden idle runtime at a time, preserving
+  session scrollback while preventing system-wide stalls that can make even Alt+Tab stop responding.
+- Submitting `/new` in an agent terminal now clears both the visible conversation and its persisted
+  terminal scrollback, so the fresh session no longer inherits the previous conversation on screen.
+- Terminals now recover automatically when a native PTY write stalls instead of blocking every
+  later keystroke until a manual refresh, and use the stable xterm DOM renderer to avoid a renderer
+  transition race that could leave the terminal unable to accept input.
+- Large terminal pastes now use bounded high-throughput IPC chunks, preserve Unicode boundaries, share
+  the normal input queue, skip synchronous per-character prompt-history work, and always close
+  bracketed-paste mode after partial failures. This prevents Claude Code and Codex pastes from freezing
+  the app, interleaving with typing, or stopping halfway.
+- Native browser panes now remain hidden for the full lifetime of modal and menu overlays, including
+  closing animations, preventing them from flashing above or interfering with dialogs.
+- Opening a terminal's tabs lane now moves only its left floating identity to the right, while the
+  existing right-side actions remain anchored in place. The pane drag handle moves into the lane,
+  directly above its tab items, so it no longer covers terminal content.
+- Fixed the freezes and runaway memory growth introduced with the new sidebar. The conversation
+  title shown on each session row was rescanning and fully parsing every Claude session file of the
+  project — up to hundreds of MB — every 12 seconds, on the thread that serves the whole UI. Rows
+  now read only their own session file, off the main thread, and stop once the title is known.
+- Session scans no longer load a whole record into memory, so a single oversized message can no
+  longer abort the app with an out-of-memory error and take every open terminal down with it.
+- Session scans that take longer than 250 ms are now recorded in `logs/app-events.log`.
+- Closing the app no longer crashes or becomes unresponsive mid-shutdown. Process-tree cleanup now
+  runs outside the native event loop, while a frontend deadline destroys the window if the native
+  quit request does not settle, so slow Windows process termination cannot hold the interface open.
+
+### Changed
+
+- High-volume terminal output now coalesces runtime activity timestamps, avoiding repeated global
+  state updates and skips remote-control serialization when no remote device is connected, without
+  delaying terminal rendering or process I/O.
+- Spotify playback widgets now share connection and track requests instead of polling the backend
+  independently.
+- The title bar now uses a lightweight connected-device count and pauses remote-control polling while
+  the app is inactive, avoiding repeated QR-code generation for a badge update.
+- Native browser panes now share one overlay observer instead of each watching the entire application
+  DOM independently.
+- Remote-control polling now reuses the pairing QR code until its URL or token changes.
+- GSD session watching now reads child state in one background command instead of launching three Git
+  root-resolution processes per watched item every five seconds.
+- Layout editing now provides a smoother drag preview, a clearer preset/history library, and reduced-
+  motion support. Sidebar activity indicators now share the trailing action slot with the three-dot
+  menu, while Todo edit and delete actions no longer reserve empty space before hover or keyboard focus.
+- Repository instructions now explicitly require English for source comments, JSDoc, internal logs,
+  documentation, changelog entries, and default user-facing strings.
+- Windows installers now include the official WebView2 bootstrapper and automatically install the
+  Evergreen Runtime when it is missing, instead of downloading the bootstrapper separately.
+- App icon choices now update the running native window and taskbar icon immediately.
+- The corrected Windows installer now identifies itself as 1.5.1 so it reliably upgrades existing
+  1.5.0 installations instead of entering same-version maintenance mode.
+- Memory monitoring no longer parks runtimes, closes tabs, or blocks new sessions automatically.
+  Memory Analytics now bases its health alert on available Windows memory and keeps session closure
+  under explicit user control.
+- Sidebar visibility and widths now change only after explicit user input, so startup and automatic
+  layout adjustments cannot close a sidebar or overwrite its saved size; pending workspace changes
+  are also flushed before the native window closes.
+- Resource health is recorded periodically in `logs/resource.log`, and failed `projects.json` saves
+  are logged and retried instead of being silently discarded.
+- Everything inside a group now sits indented under a barely-there rail that picks up the group's
+  color on hover, so a grouped project is distinguishable from a loose one without adding noise.
+- Groups and projects now expand and collapse with a short height-and-fade animation, and the
+  disclosure chevron rotates instead of swapping icons. Both respect reduced-motion.
+- Group headers now read as section labels — quiet 11px text and a rule line, with no folder mark —
+  so they are no longer mistaken for project rows, and project and session rows were tightened to a
+  28px scale so the group no longer competes with them.
+- Reworked both sidebar styles into a flat three-level list. Groups are now section dividers (label,
+  rule, add and collapse actions) instead of a tree level, every project renders as a single folder
+  row with its sessions underneath, and the boxed active-project card, its primary badge and its
+  separate new-terminal button are gone — the row's + creates a session and clicking a group header
+  only expands or collapses it.
+- Row actions (+ and the three-dot menu) now appear on hover, and the selected session is marked
+  only by a solid background.
+- Hidden and paused agents are now signalled only by a desaturated agent logo and a softer name —
+  the strikethrough and the italic "disabled" styling are gone.
+- The agent logo is now the leading element of every terminal row; the running indicator and the
+  response-ready badge moved to the right end of the row.
 - Standardized the entire changelog in English and made English the explicit default language for
   versioned repository content and commit messages.
-- Replaced the active project's ambiguous terminal `+` icon with an always-visible, labeled
-  **New terminal** action using a terminal-specific icon.
+- Added Normal and Clean application-wide visual styles. Normal preserves the production UI with
+  colored borders and rounded surfaces, while Clean uses the new compact project tree, flat right
+  sidebar, square terminal containers, restrained hover states, and single-row profile footer.
+- Added shared Clean visual tokens for row and control heights, spacing, radii, borders, hover
+  surfaces, and transition behavior so the minimal language can be extended consistently.
+- Simplified Clean sidebar selection with subtle background feedback and no side markers, preserved
+  animated running-state indicators, removed the Ungrouped heading and Primary badge, increased tree
+  spacing, and added a direct new-terminal action to every project.
+- The Clean sidebar footer now keeps the latest known Spotify track visible when playback is
+  inactive and stays hidden when no real track is available, without an empty connection prompt.
+- Clean mode now presents a dedicated New Agent action, folder-based project rows, one focused row at
+  a time, dimmed inactive agent icons, and matching flat selection feedback in the top bar.
+- Extended Clean styling across dialogs, dropdowns, context menus, workspace panes, browser/video/
+  Markdown surfaces, sub-tabs, Home cards, empty states, and floating inspectors with neutral focus,
+  flat hover feedback, reduced motion, and no heavy elevation shadows.
+- Tightened the Clean sidebar tree: New Agent moved below the toolbar and reads as a quiet row,
+  project rows dropped the branch label, agent counter and standalone AI icon, every project now
+  expands by default with its own chevron, and group, project and terminal rows were reduced in
+  height with clearer indentation between the three levels.
+- Removed finished-agent badges from Clean sidebar items while preserving the aligned state gutter
+  and animated working indicator for agents that are actively running.
+- Removed the workspace's animated gradient focus frame in both visual styles, increased the Clean
+  sidebar's separation between groups and projects, and added group logo selection to both group
+  creation and editing with a folder fallback.
+- Removed the space-consuming terminal header bar in both visual styles and kept its controls
+  available in a compact hover overlay that does not reduce terminal content height. The overlay
+  now also shows the active conversation's agent logo and name on the left.
+- Spotify now refreshes existing connections automatically and falls back to the most recently
+  played track when nothing is currently active, while connection prompts no longer appear in the
+  sidebar or Home dock.
+- Increased inactive Clean top-bar tab and logo contrast, aligned Spotify and profile footer rows to
+  the same proportions, and restyled the profile menu with the shared compact Clean popover metrics.
+- Matched the Clean right sidebar to the left sidebar's flat toolbar, controls, spacing, and list
+  treatment, and standardized every Clean menu and dropdown on the profile menu's smooth entrance
+  motion, including model, project, agent-usage, context, Home, and terminal-link selectors.
+- Project and group rows now prefer their configured logo over the folder fallback in Clean mode,
+  and the right sidebar mirrors the left toolbar's button sizing, spacing, utilities, and active states.
+- Claude rows in both sidebar styles now show the live conversation title, falling back to the first
+  user prompt and then the agent name, with long titles truncated without disturbing row actions.
+- Groups are always ordered above loose projects at every sidebar level, orphaned subgroups remain
+  visible at the root, and configurable group logos replace the folder fallback in both styles.
+- The Clean Organization layout strip now matches the 40 px footer rhythm with compact, flat controls.
+- Extended Clean mode to the remaining top-bar controls: flat icon buttons without scale-on-hover,
+  borderless usage, RAM, profile and sync pills, and a lighter usage popover.
+- The onboarding now asks which interface style to use (Normal or Clean) with a live preview of each
+  one, right after the theme step.
+- Removed the optional GitHub repository clone field from the new-project dialog.
+- Removed Merge Center from both project-sidebar visual styles.
 - Restored browser panes in the workspace grid. **Add browser** is available from the app menu
   and each project's three-dot menu, opens a dedicated URL and settings dialog, and runs every
   page in a native incognito webview whose cookies, cache, autofill, and site storage are discarded
   when the pane closes.
 - Added a live Remote Control device counter to the top bar with direct access to the connection
   panel.
-- The animated rainbow border now indicates focus for every workspace container instead of being
-  only a project color effect. Focused containers show the animated border; unfocused containers
-  return to their configured project color.
+- Removed the Infinite Rainbow project-color option, its animated styles, and its workspace focus
+  treatment. Existing invalid or retired accent values now fall back to a stable solid color.
 
 ### Fixed
 
+- Prevented private browser panes from failing to start when development-mode effect remounts
+  briefly overlap while a previous native webview is closing.
+- Fixed the Git initialization button contrast across accent colors by using the theme's matching
+  foreground token.
+- Fixed project-name overflow so long paths use a clean ellipsis without colliding with status
+  badges in either visual style.
+- Fixed backup imports by excluding locked WebView runtime caches, ignoring those entries in legacy
+  archives, validating the archive before deleting local data, and closing active terminals before
+  restoration.
+- Clean sidebar group headers now only expand or collapse the tree instead of also adding every
+  project in the group to the workspace.
 - GitHub repository cloning no longer depends on a hardcoded `D:\Projects` directory. The selected
   destination is now respected, with `~/Alethe/<repository>` as the cross-platform fallback.
 - Removed the unused WebGL terminal rendering path and dependency. Terminals continue to use the
@@ -53,8 +320,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   reliable icon source for compositors that prefer desktop-file lookup.
 - Linux now sets `WEBKIT_DISABLE_DMABUF_RENDERER=1` before creating the webview, avoiding the known
   WebKitGTK DMA-BUF animation and fractional-scaling issues documented by Tauri.
-- Linux animations now prefer compositable properties and avoid `transition: all`, animated width,
-  and the costly rainbow-border hue rotation.
+- Linux animations now prefer compositable properties and avoid `transition: all` and animated width.
 - GSD child sessions are read-only across xterm input, paste, prompt history, and force-kill shortcuts.
 - OpenCode no longer emits unsupported OSC 66 width queries in xterm.js because spawns set the
   documented `OPENTUI_FORCE_EXPLICIT_WIDTH=false` compatibility flag.

@@ -13,7 +13,7 @@ type AgentNodeCardProps = {
   node: AgentNode
   cost: SessionCost | undefined
   onSelect: (id: string) => void
-  /** Mapa de refs compartilhado com o cálculo de arestas do canvas. */
+                                                                       
   cardRefs: MutableRefObject<Map<string, HTMLDivElement>>
 }
 

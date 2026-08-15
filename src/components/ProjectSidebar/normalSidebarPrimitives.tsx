@@ -1,6 +1,6 @@
-import styles from './ProjectSidebar.module.css'
+import styles from './NormalProjectSidebar.module.css'
 
-/** Iniciais (1–2 letras) pro monograma do projeto/grupo. */
+                                                            
 export function initialsOf(name: string): string {
   const parts = name
     .trim()
@@ -11,7 +11,7 @@ export function initialsOf(name: string): string {
   return (parts[0][0] + parts[1][0]).toLowerCase()
 }
 
-/** Monograma colorido: iniciais sobre a cor do projeto/grupo; iconUrl custom sobrepõe. */
+                                                                                          
 export function Monogram({
   name,
   iconUrl,
@@ -49,7 +49,7 @@ export function Monogram({
   )
 }
 
-/** Badge do grupo: monograma em tamanho compacto. */
+                                                     
 export function GroupBadge({
   name,
   iconUrl,
@@ -59,5 +59,5 @@ export function GroupBadge({
   iconUrl?: string
   color: string
 }) {
-  return <Monogram name={name} iconUrl={iconUrl} color={color} size={18} />
+  return <Monogram name={name} iconUrl={iconUrl} color={color} size={14} />
 }

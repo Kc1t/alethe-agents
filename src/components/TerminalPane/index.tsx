@@ -1,5 +1,6 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import {
+  Clock,
   GripVertical,
   Maximize2,
   Minimize2,
@@ -13,26 +14,26 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useGridResize } from '../../hooks/useGridResize'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
+import { buildGhosttyCommand } from '../../lib/ghosttyCommand'
 import { useT } from '../../lib/i18n'
+import { shouldUseNativeBackend } from '../../lib/platform'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
-import { getActiveSessions, saveSession, savedConversationIdFor } from '../../lib/sessionResume'
+import { getActiveSessions, savedConversationIdFor, saveSession } from '../../lib/sessionResume'
+import { getPtyCwd, openInVscode, restartPty, snapshotCodexSessions } from '../../lib/tauri'
+import {
+  agentCliCommand,
+  type AgentType,
+  type SubTab,
+  type Terminal as TerminalEntry,
+  type Theme,
+} from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
-import {
-  agentCliCommand,
-  type Terminal as TerminalEntry,
-  type SubTab,
-  type Theme,
-  type AgentType,
-} from '../../lib/types'
-import { getPtyCwd, openInVscode, restartPty, snapshotCodexSessions } from '../../lib/tauri'
+import { GhosttySurface } from '../GhosttySurface'
 import { AgentIcon, VSCodeIcon } from '../icons/AgentIcons'
 import { SubTabsLane } from '../SubTabsLane'
 import { XTermView } from '../XTermView'
-import { GhosttySurface } from '../GhosttySurface'
-import { shouldUseNativeBackend } from '../../lib/platform'
-import { buildGhosttyCommand } from '../../lib/ghosttyCommand'
 import styles from './TerminalPane.module.css'
 
 export type TerminalPaneProps = {
@@ -40,9 +41,9 @@ export type TerminalPaneProps = {
   terminal: TerminalEntry
   /** Hide the pane drag affordance when the parent group has nothing to reorder. */
   paneDragEnabled?: boolean
-  /** True quando renderizado dentro do FocusOverlay (mostra Minimize, esconde Focus). */
+
   inFocusOverlay?: boolean
-  /** True quando renderizado na Home — esconde grip, actions, lane, grid resize. */
+
   preview?: boolean
 }
 
@@ -55,10 +56,11 @@ export const TerminalPane = memo(function TerminalPane({
 }: TerminalPaneProps) {
   const t = useT()
   const [resumeNonce, setResumeNonce] = useState(0)
+  const [resumePending, setResumePending] = useState(false)
   const focusedTerminalId = useUiStore((s) => s.focusedTerminalId)
   const isFocusMode = inFocusOverlay || focusedTerminalId === terminal.id
   const canDragPane = paneDragEnabled && !isFocusMode && !preview
-  // Drag-and-drop pra reordenar entre panes (igual canvas-agents focus mode).
+
   // Skip the focus overlay; a single pane cannot be reordered.
   const draggable = useDraggable({
     id: `pane:${terminal.id}`,
@@ -106,7 +108,9 @@ export const TerminalPane = memo(function TerminalPane({
   const setSubTabSessionId = useProjectsStore((s) => s.setSubTabSessionId)
   const setSubTabInitialInput = useProjectsStore((s) => s.setSubTabInitialInput)
   const setSubTabCompletionUnread = useProjectsStore((s) => s.setSubTabCompletionUnread)
-  const deleteTerminalWithWorktreeCleanup = useProjectsStore((s) => s.deleteTerminalWithWorktreeCleanup)
+  const deleteTerminalWithWorktreeCleanup = useProjectsStore(
+    (s) => s.deleteTerminalWithWorktreeCleanup,
+  )
   const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
   const openModal = useUiStore((s) => s.openModal_)
   const setFocusedTerminal = useUiStore((s) => s.setFocusedTerminal)
@@ -123,7 +127,6 @@ export const TerminalPane = memo(function TerminalPane({
   const nativeTerminalMacos = useProjectsStore((s) => s.preferences.nativeTerminalMacos ?? false)
   const useNativeBackend = shouldUseNativeBackend(nativeTerminalMacos)
 
-  // RFC-004 — projeto com Graphify habilitado: cada spawn de agente recebe o
   // repo para injetar o MCP (o XTermView resolve o config/bootstrap).
   const graphifyRepo = useProjectsStore((s) => {
     const p = s.projects.find((p) => p.id === projectId)
@@ -131,15 +134,12 @@ export const TerminalPane = memo(function TerminalPane({
     return terminal.cwd || p.terminals[0]?.cwd || null
   })
 
-  // Gate de Conclusão de Planejamento GSD: projeto com o monitoramento
-  // ligado ganha o plugin OpenCode que mantém .planning/ sincronizado
   // sozinho (ver XTermView, gatilho condicionado a command === 'opencode').
   const gsdWatcherEnabled = useProjectsStore((s) => {
     const p = s.projects.find((p) => p.id === projectId)
     return Boolean(p?.gsdWatcherEnabled)
   })
 
-  // Resize de span no grid do PROJETO (quando project.layoutMode === 'grid').
   const projectGrid = useProjectsStore((s) => {
     const p = s.projects.find((p) => p.id === projectId)
     if (!p || p.layoutMode !== 'grid' || !p.gridLayout) return null
@@ -156,6 +156,9 @@ export const TerminalPane = memo(function TerminalPane({
   )
 
   const effectiveLaneVisible = terminal.tabs.length > 1 ? true : terminal.laneVisible === true
+  const isShell = activeTab?.type === 'shell'
+  const showFloatingIdentity = Boolean(activeTab && !isShell)
+  const showLeftFloating = showFloatingIdentity || (canDragPane && !isShell)
 
   const ptyRuntime = useTerminalsStore((s) =>
     activeTab?.ptyId ? (s.byPtyId[activeTab.ptyId] ?? null) : null,
@@ -177,6 +180,8 @@ export const TerminalPane = memo(function TerminalPane({
   const onRestart = async () => {
     if (!activeTab?.ptyId || terminal.disabled) return
     if (ptyParked) {
+      if (resumePending) return
+      setResumePending(true)
       setResumeNonce((value) => value + 1)
       requestPaneFocus(terminal.id)
       return
@@ -190,9 +195,7 @@ export const TerminalPane = memo(function TerminalPane({
     const savedSession = activeSessions[activeTab.id] ?? activeSessions[ptyId] ?? null
     let resumeSessionId =
       activeTab.sessionId ?? savedConversationIdFor(savedSession, activeTab.type, restartCwd)
-    // A descoberta do ID do Codex ocorre depois do spawn. Se o usuário precisar
-    // recuperar o PTY antes dela terminar, o rollout mais recente desse cwd é a
-    // conversa que estava ativa e deve ser retomada, não uma sessão vazia.
+
     if (!resumeSessionId && activeTab.type === 'codex' && restartCwd) {
       resumeSessionId = (await snapshotCodexSessions(restartCwd).catch(() => []))[0]?.id
     }
@@ -205,7 +208,7 @@ export const TerminalPane = memo(function TerminalPane({
     if (launch.sessionId && launch.sessionId !== activeTab.sessionId) {
       setSubTabSessionId(projectId, terminal.id, activeTab.id, launch.sessionId)
     }
-    // Marca início do restart pra ignorar o exit event do PTY antigo (chega async).
+
     useTerminalsStore.getState().beginRestart(ptyId)
     try {
       await restartPty({
@@ -218,8 +221,6 @@ export const TerminalPane = memo(function TerminalPane({
         env: preparedRuntime.env,
       })
       if (launch.sessionId) {
-        // XTermView usa a identidade estável da sub-tab como chave; manter a
-        // mesma chave garante que remounts posteriores consumam este resume.
         saveSession(activeTab.id, {
           sessionId: ptyId,
           claudeSessionId: activeTab.type === 'claude' ? launch.sessionId : undefined,
@@ -291,37 +292,57 @@ export const TerminalPane = memo(function TerminalPane({
       }}
       className={`${styles.pane} ${isFocusMode ? styles.paneFocus : ''} ${terminal.disabled ? styles.disabled : ''} ${dragging ? styles.dragging : ''} ${dropTarget ? styles.dropTarget : ''}`}
     >
-      <header className={styles.header}>
-        <div
-          className={styles.headLeft}
-          onDoubleClick={() => setFocusedTerminal(isFocusMode ? null : terminal.id)}
-          title={isFocusMode ? t('ui.terminal.exitFocusModeEsc') : t('ui.terminal.focusModeFullscreen')}
-        >
-          {canDragPane ? (
-            <button
-              type="button"
-              className={`${styles.action} ${styles.gripBtn}`}
-              {...draggable.attributes}
-              {...draggable.listeners}
-              title={t('ui.terminal.dragToReorder')}
-              aria-label={t('ui.terminal.dragToReorder')}
-            >
-              <GripVertical size={12} />
-            </button>
-          ) : null}
-          <span className={styles.iconWrap}>
-            {activeTab ? <AgentIcon type={activeTab.type} size={16} theme={terminalTheme} /> : null}
-          </span>
-          <div className={styles.identity}>
-            <span className={styles.name} title={terminal.name}>
-              {terminal.name}
-            </span>
+      <header className={`${styles.header} ${effectiveLaneVisible ? styles.headerWithLane : ''}`}>
+        {showLeftFloating ? (
+          <div
+            className={`${styles.headLeft} ${showFloatingIdentity ? '' : styles.headLeftControlsOnly}`}
+            onDoubleClick={() => setFocusedTerminal(isFocusMode ? null : terminal.id)}
+            title={
+              isFocusMode ? t('ui.terminal.exitFocusModeEsc') : t('ui.terminal.focusModeFullscreen')
+            }
+          >
+            {canDragPane && !isShell && !effectiveLaneVisible ? (
+              <button
+                type="button"
+                className={`${styles.action} ${styles.gripBtn}`}
+                {...draggable.attributes}
+                {...draggable.listeners}
+                title={t('ui.terminal.dragToReorder')}
+                aria-label={t('ui.terminal.dragToReorder')}
+              >
+                <GripVertical size={12} />
+              </button>
+            ) : null}
+            {showFloatingIdentity && activeTab ? (
+              <>
+                <span className={styles.iconWrap}>
+                  <AgentIcon type={activeTab.type} size={16} theme={terminalTheme} />
+                </span>
+                <div className={styles.identity}>
+                  <span className={styles.name} title={activeTab.name || terminal.name}>
+                    {activeTab.name || terminal.name}
+                  </span>
+                </div>
+              </>
+            ) : null}
           </div>
-        </div>
+        ) : null}
 
         {!preview ? (
           <div className={styles.headRight}>
             <div className={styles.actions}>
+              {canDragPane && isShell && !effectiveLaneVisible ? (
+                <button
+                  type="button"
+                  className={`${styles.action} ${styles.gripBtn}`}
+                  {...draggable.attributes}
+                  {...draggable.listeners}
+                  title={t('ui.terminal.dragToReorder')}
+                  aria-label={t('ui.terminal.dragToReorder')}
+                >
+                  <GripVertical size={12} />
+                </button>
+              ) : null}
               <button
                 type="button"
                 className={styles.action}
@@ -337,6 +358,23 @@ export const TerminalPane = memo(function TerminalPane({
               >
                 {effectiveLaneVisible ? <PanelLeftClose size={12} /> : <PanelLeftOpen size={12} />}
               </button>
+              {activeTab && activeTab.type !== 'shell' ? (
+                <button
+                  type="button"
+                  className={styles.action}
+                  onClick={() =>
+                    openModal('recentChats', {
+                      projectId,
+                      terminalId: terminal.id,
+                      agent: activeTab.type,
+                    })
+                  }
+                  title={t('ui.terminal.recentChats')}
+                  aria-label={t('ui.terminal.recentChats')}
+                >
+                  <Clock size={12} />
+                </button>
+              ) : null}
               <button
                 type="button"
                 className={styles.action}
@@ -396,6 +434,20 @@ export const TerminalPane = memo(function TerminalPane({
             onActivate={(id) => setActiveTab(projectId, terminal.id, id)}
             onClose={(id) => closeSubTab(projectId, terminal.id, id)}
             onAdd={() => openModal('newSubTab', { projectId, terminalId: terminal.id })}
+            leadingControl={
+              canDragPane ? (
+                <button
+                  type="button"
+                  className={`${styles.action} ${styles.gripBtn} ${styles.laneGripBtn}`}
+                  {...draggable.attributes}
+                  {...draggable.listeners}
+                  title={t('ui.terminal.dragToReorder')}
+                  aria-label={t('ui.terminal.dragToReorder')}
+                >
+                  <GripVertical size={12} />
+                </button>
+              ) : null
+            }
           />
         ) : null}
 
@@ -417,6 +469,7 @@ export const TerminalPane = memo(function TerminalPane({
                   cwd={activeTab.cwd?.trim() || terminal.cwd?.trim() || undefined}
                   command={buildGhosttyCommand(activeTab.type, activeTab.extraArgs)}
                   onSpawned={(id) => {
+                    setResumePending(false)
                     if (activeTab.ptyId !== id) {
                       setSubTabPtyId(projectId, terminal.id, activeTab.id, id)
                     }
@@ -440,6 +493,7 @@ export const TerminalPane = memo(function TerminalPane({
                   readOnly={terminal.gsdSyncViewer}
                   terminalTheme={terminalTheme}
                   onSpawned={(id) => {
+                    setResumePending(false)
                     if (activeTab.ptyId !== id) {
                       setSubTabPtyId(projectId, terminal.id, activeTab.id, id)
                     }
@@ -452,6 +506,12 @@ export const TerminalPane = memo(function TerminalPane({
                   onInitialInputSent={() =>
                     setSubTabInitialInput(projectId, terminal.id, activeTab.id, undefined)
                   }
+                  onLaunchError={(error) => {
+                    if (!resumePending || !activeTab.ptyId) return
+                    setResumePending(false)
+                    useTerminalsStore.getState().markSuspended(activeTab.ptyId)
+                    pushToast({ title: t('ui.terminal.resumeFailed'), body: String(error) })
+                  }}
                   onAgentComplete={() =>
                     setSubTabCompletionUnread(projectId, terminal.id, activeTab.id, true)
                   }
@@ -467,8 +527,14 @@ export const TerminalPane = memo(function TerminalPane({
                     type="button"
                     className={styles.restartBtn}
                     onClick={() => void onRestart()}
+                    disabled={resumePending}
+                    aria-busy={resumePending}
                   >
-                    {ptyParked ? t('ui.terminal.resume') : t('ui.terminal.restart')}
+                    {resumePending
+                      ? t('ui.terminal.resuming')
+                      : ptyParked
+                        ? t('ui.terminal.resume')
+                        : t('ui.terminal.restart')}
                   </button>
                 </div>
               ) : null}

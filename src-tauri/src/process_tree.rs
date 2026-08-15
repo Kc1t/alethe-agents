@@ -8,8 +8,6 @@ use sysinfo::{Pid, ProcessesToUpdate, System};
 /// Mapeia ptyId → PID raiz do PTY (pwsh.exe / bash).
 static PTY_ROOTS: OnceLock<Mutex<HashMap<String, u32>>> = OnceLock::new();
 
-/// Cache da árvore de processos: PID → lista de PIDs filhos diretos.
-/// Atualizado a cada pedido com staleness > 2s.
 static TREE_CACHE: OnceLock<Mutex<Option<(Instant, HashMap<u32, Vec<u32>>)>>> = OnceLock::new();
 
 fn roots() -> &'static Mutex<HashMap<String, u32>> {
@@ -20,14 +18,10 @@ fn tree_cache() -> &'static Mutex<Option<(Instant, HashMap<u32, Vec<u32>>)>> {
     TREE_CACHE.get_or_init(|| Mutex::new(None))
 }
 
-/// Monta um mapa pai→filhos de todos os processos do sistema via sysinfo.
 fn build_parent_map(sys: &mut System) -> HashMap<u32, Vec<u32>> {
     sys.refresh_processes(ProcessesToUpdate::All);
     let mut map: HashMap<u32, Vec<u32>> = HashMap::new();
     for (pid, process) in sys.processes() {
-        // Threads de /proc/<pid>/task/<tid> entram no mesmo mapa do sysinfo
-        // (thread_kind() == Some) — sem filtrar, a árvore fica cheia de
-        // "PIDs" que na verdade são threads do mesmo processo, inflando
         // contagem/kill de PTY tree e deixando spawn/kill bem mais lentos.
         if process.thread_kind().is_some() {
             continue;
@@ -40,10 +34,11 @@ fn build_parent_map(sys: &mut System) -> HashMap<u32, Vec<u32>> {
     map
 }
 
-/// Retorna a árvore de processos (cached 2s).
 fn get_parent_map() -> HashMap<u32, Vec<u32>> {
     let cache = tree_cache();
-    let mut guard = cache.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut guard = cache
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if let Some((at, map)) = guard.as_ref() {
         if at.elapsed() < Duration::from_secs(2) {
             return map.clone();
@@ -55,7 +50,6 @@ fn get_parent_map() -> HashMap<u32, Vec<u32>> {
     fresh
 }
 
-/// Obtém todos os descendentes (BFS) de um PID raiz.
 fn collect_descendants(root: u32, parent_map: &HashMap<u32, Vec<u32>>) -> Vec<u32> {
     let mut result = Vec::new();
     let mut frontier = vec![root];
@@ -98,10 +92,6 @@ pub fn unregister_pty(pty_id: &str) {
     persist_roots();
 }
 
-/// Identidade de um PID raiz persistida em disco — além do PID, guarda
-/// nome+start_time pra detectar reaproveitamento de PID pelo SO entre a
-/// gravação e a leitura (`sweep_orphans_from_previous_session` só mata se os
-/// três baterem, nunca só pelo PID sozinho).
 #[derive(Serialize, Deserialize, Clone)]
 struct PersistedRoot {
     pid: u32,
@@ -110,23 +100,17 @@ struct PersistedRoot {
 }
 
 /// Caminho fixo, independente de perfil/`AppHandle` — `register_pty_root`/
-/// `unregister_pty` são chamados de pontos do `pty.rs` sem acesso fácil a um
-/// `AppHandle`, e PIDs são globais ao SO de qualquer forma (não fazem sentido
-/// escopados por perfil). Reaproveita o mesmo diretório-base que
-/// `agent_cost.rs` já usa via `dirs_next::data_local_dir()`.
+
 fn roots_file_path() -> Option<PathBuf> {
     dirs_next::data_local_dir().map(|d| d.join("Alethe").join("pty_roots.json"))
 }
 
-/// Sobrescreve `pty_roots.json` com o snapshot atual do registro em memória —
-/// chamado a cada `register_pty_root`/`unregister_pty` (baixa frequência: só
-/// muda ao abrir/fechar terminal, não por keystroke/output). É essa cópia em
-/// disco que permite ao PRÓXIMO boot (via `crash_watch`) saber quais PIDs
-/// raiz existiam quando a sessão anterior morreu sem sair limpa, mesmo que o
 /// Job Object (`pty::install_kill_on_close_guard`) tenha falhado silenciosamente
-/// naquela sessão.
+
 fn persist_roots() {
-    let Some(path) = roots_file_path() else { return };
+    let Some(path) = roots_file_path() else {
+        return;
+    };
     let snapshot: Vec<PersistedRoot> = {
         let Ok(guard) = roots().lock() else { return };
         let mut sys = System::new();
@@ -145,23 +129,26 @@ fn persist_roots() {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let Ok(json) = serde_json::to_vec(&snapshot) else { return };
+    let Ok(json) = serde_json::to_vec(&snapshot) else {
+        return;
+    };
     let tmp = path.with_extension("json.tmp");
     if std::fs::write(&tmp, &json).is_ok() {
         let _ = std::fs::rename(&tmp, &path);
     }
 }
 
-/// Varre `pty_roots.json` deixado pela sessão anterior e mata a árvore
 /// inteira de qualquer PID raiz ainda vivo cujo nome+start_time batam com o
-/// que foi persistido — só chamado por `crash_watch` quando a sessão anterior
-/// não saiu limpa (segunda camada de defesa: cobre o caso raro do Job Object
+
 /// falhar silenciosamente, ou qualquer processo que tenha escapado dele).
-/// Consome o arquivo (remove após ler) — a sessão atual escreve o seu
-/// próprio conforme registra PTYs. Retorna quantas árvores raiz foram mortas.
+
 pub fn sweep_orphans_from_previous_session() -> usize {
-    let Some(path) = roots_file_path() else { return 0 };
-    let Ok(bytes) = std::fs::read(&path) else { return 0 };
+    let Some(path) = roots_file_path() else {
+        return 0;
+    };
+    let Ok(bytes) = std::fs::read(&path) else {
+        return 0;
+    };
     let _ = std::fs::remove_file(&path);
     let Ok(persisted) = serde_json::from_slice::<Vec<PersistedRoot>>(&bytes) else {
         return 0;
@@ -179,7 +166,7 @@ pub fn sweep_orphans_from_previous_session() -> usize {
             continue;
         };
         if proc.name().to_string_lossy() != root.name || proc.start_time() != root.start_time {
-            continue; // PID reaproveitado por outro processo desde então — não mata
+            continue;
         }
         let mut all = collect_descendants(root.pid, &parent_map);
         all.reverse();
@@ -215,10 +202,6 @@ pub fn get_pty_tree(pty_id: &str) -> Option<PtyTreeInfo> {
     })
 }
 
-/// Espera o comando terminar sem travar indefinidamente se ele mesmo travar —
-/// já visto ao vivo sob pressão de memória/antivírus no Windows (`taskkill`
-/// pendurado). Best-effort: se não terminar dentro do timeout, desiste e
-/// segue — o kill já foi disparado, esperar mais não muda o resultado.
 fn run_with_timeout(mut command: std::process::Command, timeout: Duration) {
     let Ok(mut child) = command.spawn() else {
         return;
@@ -240,10 +223,7 @@ fn run_with_timeout(mut command: std::process::Command, timeout: Duration) {
 }
 
 /// Mata um PID (Windows via taskkill /F, Unix via SIGKILL). Descarta
-/// stdout/stderr do comando: sem isso, herdam o console do processo pai (o
-/// terminal do `tauri dev`) e "processo não encontrado" — esperado quando um
-/// descendente já morreu sozinho antes da nossa vez de matá-lo — vaza cru
-/// pro log, sem indicar nenhum problema real.
+
 fn kill_pid(pid: u32) {
     #[cfg(windows)]
     {
@@ -264,8 +244,6 @@ fn kill_pid(pid: u32) {
     }
 }
 
-/// Mata a árvore inteira de um PTY (raiz + todos os descendentes).
-/// Ordem: folhas primeiro → raiz por último para evitar reparentamento.
 pub fn kill_pty_tree(pty_id: &str) -> Result<Vec<u32>, String> {
     let root_pid = {
         let guard = roots().lock().map_err(|_| "PTY roots lock poisoned")?;
@@ -275,7 +253,7 @@ pub fn kill_pty_tree(pty_id: &str) -> Result<Vec<u32>, String> {
 
     let parent_map = get_parent_map();
     let mut all = collect_descendants(root, &parent_map);
-    // Garante que root é o último a morrer (ordem reversa de profundidade)
+
     all.reverse();
     all.push(root);
 
@@ -298,8 +276,7 @@ pub fn get_pty_tree_info(pty_id: String) -> Option<PtyTreeInfo> {
 #[tauri::command]
 pub async fn kill_pty_tree_cmd(pty_id: String) -> Result<Vec<u32>, String> {
     // `kill_pty_tree` roda `taskkill`/`kill` por descendente, sequencial e
-    // bloqueante — na thread de despacho do Tauri isso travava TODO comando
-    // IPC atrás dele (mesma classe de bug já corrigida em spawn_pty/attach_pty).
+
     tokio::task::spawn_blocking(move || kill_pty_tree(&pty_id))
         .await
         .map_err(|error| format!("kill_pty_tree_cmd: falha na task bloqueante: {error}"))?

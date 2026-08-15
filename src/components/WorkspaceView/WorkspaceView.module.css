@@ -10,6 +10,25 @@
   overflow: hidden;
 }
 
+.fileDropActive {
+  position: relative;
+}
+
+.fileDropOverlay {
+  position: absolute;
+  inset: 10px;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 650;
+}
+
 .area {
   flex: 1;
   position: relative;
@@ -17,6 +36,27 @@
   overflow: hidden;
   min-width: 0;
   min-height: 0;
+}
+
+.surfaceStack {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.surface {
+  position: absolute;
+  inset: 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Inactive workspace tabs keep their layout box so xterm never resizes to zero on switch. */
+.surfaceHidden {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .singlePane,
@@ -109,9 +149,11 @@
   overflow: hidden;
 }
 
-/* Separators visíveis com gap + dot handle ao hover. Usadas via prop
-   `className` direto no <Separator /> — assim não dependo do aria-orientation
-   que o react-resizable-panels v4 nem sempre seta como esperado. */
+:global([data-visual-style='clean']) .paneGroup {
+  border-radius: 0;
+}
+
+/* Normal mode keeps the production separator spacing and visible center line. */
 .sepH,
 .sepV {
   flex-shrink: 0;
@@ -121,18 +163,14 @@
   transition: background 0.12s ease;
 }
 .sepH {
-  /* Hitbox amplo; a linha continua fina no centro via ::before. */
   width: 10px;
   cursor: col-resize;
-  background: transparent;
 }
 .sepV {
   height: 10px;
   cursor: row-resize;
-  background: transparent;
 }
 
-/* Linha sutil sempre visível no meio do separator. */
 .sepH::before,
 .sepV::before {
   content: '';
@@ -192,6 +230,33 @@
 .sepH[data-resize-handle-active]::before,
 .sepV[data-resize-handle-active]::before {
   opacity: 0;
+}
+
+/* Clean mode overlays an invisible resize hit area so adjacent panes remain flush. */
+:global([data-visual-style='clean']) .sepH,
+:global([data-visual-style='clean']) .sepV {
+  z-index: 4;
+  touch-action: none;
+}
+
+:global([data-visual-style='clean']) .sepH {
+  width: 8px;
+  margin-inline: -4px;
+}
+
+:global([data-visual-style='clean']) .sepV {
+  height: 8px;
+  margin-block: -4px;
+}
+
+:global([data-visual-style='clean']) .sepH::before,
+:global([data-visual-style='clean']) .sepV::before {
+  content: none;
+}
+
+:global([data-visual-style='clean']) .sepH:hover,
+:global([data-visual-style='clean']) .sepV:hover {
+  background: transparent;
 }
 
 .emptyShell {

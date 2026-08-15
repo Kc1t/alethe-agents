@@ -1,6 +1,6 @@
-// Barrel do wrapper de IPC do Alethe. Reexporta todos os comandos do backend,
-// agora divididos por domínio dentro de `src/lib/tauri/`. Os call-sites seguem
-// importando de `.../lib/tauri` sem mudança — este barrel resolve tudo.
+                                                                              
+                                                                               
+                                                                        
 
 export * from './agents'
 export * from './cli'

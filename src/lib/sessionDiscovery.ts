@@ -4,7 +4,7 @@ export type SessionSnapshot = {
 }
 
 const claimedIds = new Map<string, Set<string>>()
-/** ptyId → claims que ele fez, para eviction quando o PTY fecha (evita crescimento sem limite). */
+                                                                                                   
 const claimOwners = new Map<string, Array<{ key: string; sessionId: string }>>()
 
 function claimKey(agent: string, cwd: string): string {
@@ -14,6 +14,7 @@ function claimKey(agent: string, cwd: string): string {
 function trackOwner(ptyId: string | undefined, key: string, sessionId: string): void {
   if (!ptyId) return
   const list = claimOwners.get(ptyId) ?? []
+  if (list.some((claim) => claim.key === key && claim.sessionId === sessionId)) return
   list.push({ key, sessionId })
   claimOwners.set(ptyId, list)
 }
@@ -44,11 +45,11 @@ export function isSessionClaimed(
   return claimOwners.get(ownerId)?.some((claim) => claim.key === key && claim.sessionId === sessionId) !== true
 }
 
-/**
- * Reserva atomicamente um ID novo para um único pane. Se mais de uma sessão
- * aparecer entre snapshots, a associação pane -> conversa ficou ambígua e é
- * melhor não persistir nada do que retomar o chat errado no próximo boot.
- */
+   
+                                                                            
+                                                                            
+                                                                          
+   
 export function claimDiscoveredSession(
   agent: string,
   cwd: string,
@@ -70,14 +71,14 @@ export function claimDiscoveredSession(
   return candidate
 }
 
-/**
- * Reivindica a sessão EXISTENTE mais recente pra um cwd que ainda não foi
- * pega por outro pane. Ao contrário de `claimDiscoveredSession` (que ordena
- * ascendente pra achar sessões NOVAS na ordem em que apareceram), aqui
- * queremos a mais recente de todas — usado antes do spawn, quando não temos
- * ID salvo mas pode já existir uma conversa naquele diretório (ex.: reabrir
- * terminal depois de restart do app).
- */
+   
+                                                                          
+                                                                            
+                                                                       
+                                                                            
+                                                                            
+                                      
+   
 export function claimMostRecentSession(
   agent: string,
   cwd: string,
@@ -96,12 +97,12 @@ export function claimMostRecentSession(
   return candidate
 }
 
-/**
- * Libera os claims feitos por um pane quando seu PTY fecha. Sem isto, o
- * `claimedIds` cresceria monotonicamente (uma entrada por cwd já aberto + um id
- * por sessão já spawnada) pela vida inteira do app. Só remove os ids do próprio
- * ptyId, então não afeta o guard anti-duplo-claim de outros panes vivos.
- */
+   
+                                                                        
+                                                                                
+                                                                                
+                                                                         
+   
 export function releaseSessionClaim(ptyId: string): void {
   const owned = claimOwners.get(ptyId)
   if (!owned) return

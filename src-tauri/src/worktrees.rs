@@ -1,22 +1,21 @@
 //! RFC-003 — Worktree Manager (dual-mode).
 //!
-//! Isolamento físico por agente, com dois modos escolhidos por projeto:
+
 //!
-//! - **GitWorktree** (rápido/leve): `git worktree add` em
+
 //!   `<repo>/.alethe/worktrees/<id>/`, compartilhando o `.git` do repo. Nesse
-//!   modo o `.git` do worktree é um ARQUIVO (ponteiro gitdir).
+
 //! - **LocalCopy** (pesado/mais funcional): `git clone --local` gera um repo
-//!   independente (objetos por hardlink), sem as limitações do worktree nativo.
-//!   Aqui o `.git` é um DIRETÓRIO — é justamente esse marcador que distingue os
+
 //!   dois modos ao listar/remover.
 //!
-//! Reusa os helpers defensivos de [`crate::git_control`] (resolução/validação de
-//! repositório, `git` com console oculto no Windows).
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-use crate::git_control::{checked_output, git_command, main_repository_root, repository_root, with_lock_awareness};
+use crate::git_control::{
+    checked_output, git_command, main_repository_root, repository_root, with_lock_awareness,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,8 +33,6 @@ pub struct WorktreeInfo {
     pub mode: WorktreeMode,
 }
 
-/// Só aceita ids alfanuméricos + `-`/`_`. Impede path traversal (o id vira nome
-/// de diretório e sufixo de branch), então nada de `/`, `\\`, `..` ou espaços.
 fn sanitize_id(agent_id: &str) -> Result<String, String> {
     let trimmed = agent_id.trim();
     if trimmed.is_empty() {
@@ -55,14 +52,9 @@ fn worktrees_base(root: &Path) -> PathBuf {
 }
 
 /// Remove o prefixo verbatim `\\?\` do Windows. `repository_root` canonicaliza os
-/// caminhos, e o `git` rejeita esse prefixo quando ele chega como ARGUMENTO
+
 /// (ex.: destino de `worktree add`/`clone`) — como `current_dir` funciona normal
-/// pro próprio git. Também usado em `WorktreeInfo.path` antes de devolver pro
-/// frontend: esse valor vira `terminal.cwd` e, na sequência, o cwd real de
-/// `CreateProcess` ao spawnar o PTY do agente — e ali o prefixo NÃO é
-/// transparente pra todo processo (CLIs Node como o Antigravity podem se
-/// comportar mal com `\\?\` como diretório de trabalho, mesmo sem erro
-/// explícito). No-op para caminhos que não têm o prefixo (incl. fora do
+
 /// Windows).
 pub(crate) fn git_arg(path: &Path) -> String {
     let raw = path.to_string_lossy();
@@ -74,8 +66,6 @@ pub(crate) fn git_arg(path: &Path) -> String {
     stripped
 }
 
-/// `.git` ARQUIVO ⇒ worktree nativo; `.git` DIRETÓRIO ⇒ clone local. `None` se o
-/// diretório não parece um checkout gerenciado por nós.
 fn detect_mode(dir: &Path) -> Option<WorktreeMode> {
     let marker = dir.join(".git");
     if marker.is_file() {
@@ -95,14 +85,6 @@ fn current_branch(dir: &Path) -> String {
         .unwrap_or_default()
 }
 
-// Comandos deste arquivo rodam `git`/IO de verdade (subprocesso + filesystem)
-// — igual ao `openpty`/`spawn_command` do `pty.rs` (já corrigido), isso nunca
-// pode rodar direto na thread de despacho do Tauri: uma lentidão real
-// (repo grande, disco lento, lock do git) travaria TODO comando IPC atrás
-// dele, terminal nenhum responde. Lógica de cada comando fica numa função
-// `_inner` síncrona comum (testável direto, sem runtime async — os testes
-// deste módulo e `scheduler.rs` chamam essas direto), e o `#[tauri::command]`
-// exposto é só um wrapper fino em `tokio::task::spawn_blocking`.
 #[tauri::command]
 pub async fn worktree_provision(
     repo: String,
@@ -119,10 +101,6 @@ pub(crate) fn worktree_provision_inner(
     agent_id: String,
     mode: WorktreeMode,
 ) -> Result<WorktreeInfo, String> {
-    // main_repository_root (não repository_root) — `repo` pode já ser uma
-    // worktree isolada (ex.: projeto onde todos os terminais conhecidos já
-    // são isolados, sem nenhum "puro" sobrando pro frontend usar como base).
-    // Resolver pelo `.git` compartilhado evita criar uma worktree aninhada
     // dentro da outra.
     let root = main_repository_root(&repo)?;
     let id = sanitize_id(&agent_id)?;
@@ -138,13 +116,15 @@ pub(crate) fn worktree_provision_inner(
 
     match mode {
         WorktreeMode::GitWorktree => {
-            checked_output(&root, &["worktree", "add", "-b", &branch, &dest_arg, "HEAD"])?;
+            checked_output(
+                &root,
+                &["worktree", "add", "-b", &branch, &dest_arg, "HEAD"],
+            )?;
         }
         WorktreeMode::LocalCopy => {
             let root_arg = git_arg(&root);
             // `--local` usa hardlinks nos objetos: independente do repo original,
-            // porém rápido. A cópia crua (replicar node_modules/build) fica como
-            // evolução — ver decisão em aberto no blueprint (RFC-003).
+
             checked_output(&root, &["clone", "--local", &root_arg, &dest_arg])?;
             checked_output(&dest, &["checkout", "-b", &branch])?;
         }
@@ -203,7 +183,11 @@ pub async fn worktree_remove(repo: String, agent_id: String, force: bool) -> Res
         .map_err(|error| format!("worktree_remove: falha na task bloqueante: {error}"))?
 }
 
-pub(crate) fn worktree_remove_inner(repo: String, agent_id: String, force: bool) -> Result<(), String> {
+pub(crate) fn worktree_remove_inner(
+    repo: String,
+    agent_id: String,
+    force: bool,
+) -> Result<(), String> {
     let root = repository_root(&repo)?;
     let id = sanitize_id(&agent_id)?;
     let base = worktrees_base(&root);
@@ -212,7 +196,6 @@ pub(crate) fn worktree_remove_inner(repo: String, agent_id: String, force: bool)
         return Err("worktree_not_found".to_string());
     }
 
-    // Trava dupla contra apagar fora da árvore gerenciada: canonicaliza e exige
     // que o destino esteja dentro de `<repo>/.alethe/worktrees`.
     let canon_base = base
         .canonicalize()
@@ -227,11 +210,7 @@ pub(crate) fn worktree_remove_inner(repo: String, agent_id: String, force: bool)
     match detect_mode(&dest) {
         Some(WorktreeMode::GitWorktree) => {
             let dest_arg = git_arg(&canon_dest);
-            // `lock_target = canon_dest` (não `root`): quem pode estar travado
-            // administrativamente é o worktree-alvo, não o repo principal de onde
-            // o comando roda. `checked_output` internamente já é lock-aware sobre
-            // `root` (retry de index.lock genérico) — esta camada extra cobre o
-            // caso específico do lock administrativo do worktree sendo removido.
+
             with_lock_awareness(&canon_dest, || {
                 if force {
                     checked_output(&root, &["worktree", "remove", "--force", &dest_arg])
@@ -240,8 +219,7 @@ pub(crate) fn worktree_remove_inner(repo: String, agent_id: String, force: bool)
                 }
             })?;
         }
-        // Clone local (ou diretório órfão): remove a pasta. O branch é preservado
-        // de propósito — remover trabalho não-mergeado exige ação explícita.
+
         _ => {
             std::fs::remove_dir_all(&canon_dest)
                 .map_err(|error| format!("remove_failed:{error}"))?;
@@ -251,17 +229,23 @@ pub(crate) fn worktree_remove_inner(repo: String, agent_id: String, force: bool)
 }
 
 /// Trava administrativamente um worktree (`git worktree lock`), com motivo
-/// opcional — o motivo fica gravado no arquivo físico `locked` que o
-/// `admin_lock_reason` (git_control.rs) lê pra dar precedência absoluta sobre
-/// retries de `index.lock` transitório.
+
 #[tauri::command]
-pub async fn worktree_lock(repo: String, agent_id: String, reason: Option<String>) -> Result<(), String> {
+pub async fn worktree_lock(
+    repo: String,
+    agent_id: String,
+    reason: Option<String>,
+) -> Result<(), String> {
     tokio::task::spawn_blocking(move || worktree_lock_inner(repo, agent_id, reason))
         .await
         .map_err(|error| format!("worktree_lock: falha na task bloqueante: {error}"))?
 }
 
-pub(crate) fn worktree_lock_inner(repo: String, agent_id: String, reason: Option<String>) -> Result<(), String> {
+pub(crate) fn worktree_lock_inner(
+    repo: String,
+    agent_id: String,
+    reason: Option<String>,
+) -> Result<(), String> {
     let root = repository_root(&repo)?;
     let id = sanitize_id(&agent_id)?;
     let dest = worktrees_base(&root).join(&id);
@@ -269,7 +253,11 @@ pub(crate) fn worktree_lock_inner(repo: String, agent_id: String, reason: Option
         return Err("worktree_not_found".to_string());
     }
     let dest_arg = git_arg(&dest);
-    match reason.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+    match reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         Some(value) => checked_output(&root, &["worktree", "lock", "--reason", value, &dest_arg])?,
         None => checked_output(&root, &["worktree", "lock", &dest_arg])?,
     };
@@ -291,16 +279,11 @@ pub(crate) fn worktree_unlock_inner(repo: String, agent_id: String) -> Result<()
         return Err("worktree_not_found".to_string());
     }
     let dest_arg = git_arg(&dest);
-    // `git worktree unlock` não passa por `with_lock_awareness`/precedência —
-    // é o próprio mecanismo de destravar, não deve ser bloqueado pelo lock que
-    // ele mesmo está removendo.
+
     checked_output(&root, &["worktree", "unlock", &dest_arg])?;
     Ok(())
 }
 
-/// Integração do modo LocalCopy: o branch `alethe/agent-<id>` vive no CLONE, não
-/// no `.git` principal — traz ele para o repo antes do ciclo de merge.
-/// No modo GitWorktree o branch já é visível e isso é um no-op ok.
 #[tauri::command]
 pub async fn worktree_fetch_branch(repo: String, agent_id: String) -> Result<(), String> {
     tokio::task::spawn_blocking(move || worktree_fetch_branch_inner(repo, agent_id))
@@ -345,10 +328,6 @@ mod tests {
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    // Testes chamam a lógica síncrona direto, sem precisar de runtime async —
-    // os `#[tauri::command]` async acima são só wrappers finos em
-    // `spawn_blocking`. Shadowing explícito vence o `use super::*` acima sem
-    // conflito (regra padrão de resolução de nomes do Rust).
     use super::worktree_cleanup_inner as worktree_cleanup;
     use super::worktree_fetch_branch_inner as worktree_fetch_branch;
     use super::worktree_list_inner as worktree_list;
@@ -387,25 +366,39 @@ mod tests {
         let root = temp_repo();
         let root_str = root.to_string_lossy().into_owned();
 
-        let lc = worktree_provision(root_str.clone(), "fetchme".into(), WorktreeMode::LocalCopy).unwrap();
+        let lc = worktree_provision(root_str.clone(), "fetchme".into(), WorktreeMode::LocalCopy)
+            .unwrap();
         let env = Path::new(&lc.path);
-        // Commit no CLONE — invisível ao repo principal até o fetch.
+
         fs::write(env.join("file.txt"), "changed in copy\n").unwrap();
         checked_output(env, &["config", "user.name", "Alethe Test"]).unwrap();
         checked_output(env, &["config", "user.email", "alethe@example.invalid"]).unwrap();
         checked_output(env, &["commit", "-am", "copy work"]).unwrap();
 
-        let missing = git_command(&root, &["rev-parse", "--verify", "refs/heads/alethe/agent-fetchme"])
-            .unwrap();
-        assert!(!missing.status.success(), "branch não devia existir antes do fetch");
+        let missing = git_command(
+            &root,
+            &["rev-parse", "--verify", "refs/heads/alethe/agent-fetchme"],
+        )
+        .unwrap();
+        assert!(
+            !missing.status.success(),
+            "branch não devia existir antes do fetch"
+        );
 
         worktree_fetch_branch(root_str.clone(), "fetchme".into()).unwrap();
-        let present = git_command(&root, &["rev-parse", "--verify", "refs/heads/alethe/agent-fetchme"])
-            .unwrap();
-        assert!(present.status.success(), "branch devia existir após o fetch");
+        let present = git_command(
+            &root,
+            &["rev-parse", "--verify", "refs/heads/alethe/agent-fetchme"],
+        )
+        .unwrap();
+        assert!(
+            present.status.success(),
+            "branch devia existir após o fetch"
+        );
 
         // GitWorktree: no-op ok. Inexistente: erro limpo.
-        let wt = worktree_provision(root_str.clone(), "wtnoop".into(), WorktreeMode::GitWorktree).unwrap();
+        let wt = worktree_provision(root_str.clone(), "wtnoop".into(), WorktreeMode::GitWorktree)
+            .unwrap();
         assert_eq!(wt.mode, WorktreeMode::GitWorktree);
         worktree_fetch_branch(root_str.clone(), "wtnoop".into()).unwrap();
         assert!(worktree_fetch_branch(root_str.clone(), "nope".into()).is_err());
@@ -420,19 +413,22 @@ mod tests {
         let root = temp_repo();
         let root_str = root.to_string_lossy().into_owned();
 
-        let wt = worktree_provision(root_str.clone(), "wt1".into(), WorktreeMode::GitWorktree).unwrap();
+        let wt =
+            worktree_provision(root_str.clone(), "wt1".into(), WorktreeMode::GitWorktree).unwrap();
         assert_eq!(wt.mode, WorktreeMode::GitWorktree);
         assert!(Path::new(&wt.path).join(".git").is_file());
 
-        let lc = worktree_provision(root_str.clone(), "lc1".into(), WorktreeMode::LocalCopy).unwrap();
+        let lc =
+            worktree_provision(root_str.clone(), "lc1".into(), WorktreeMode::LocalCopy).unwrap();
         assert_eq!(lc.mode, WorktreeMode::LocalCopy);
         assert!(Path::new(&lc.path).join(".git").is_dir());
 
         let listed = worktree_list(root_str.clone()).unwrap();
         assert_eq!(listed.len(), 2);
 
-        // Reprovisionar o mesmo id deve falhar (destino já existe).
-        assert!(worktree_provision(root_str.clone(), "wt1".into(), WorktreeMode::GitWorktree).is_err());
+        assert!(
+            worktree_provision(root_str.clone(), "wt1".into(), WorktreeMode::GitWorktree).is_err()
+        );
 
         worktree_remove(root_str.clone(), "wt1".into(), false).unwrap();
         worktree_remove(root_str.clone(), "lc1".into(), false).unwrap();
@@ -447,21 +443,33 @@ mod tests {
         let root = temp_repo();
         let root_str = root.to_string_lossy().into_owned();
 
-        let wt = worktree_provision(root_str.clone(), "ambiente-a".into(), WorktreeMode::GitWorktree).unwrap();
+        let wt = worktree_provision(
+            root_str.clone(),
+            "ambiente-a".into(),
+            WorktreeMode::GitWorktree,
+        )
+        .unwrap();
 
         // Trava administrativa real via `git worktree lock --reason`, como um
-        // usuário faria fora do Alethe.
-        checked_output(&root, &["worktree", "lock", "--reason", "Aguardando homologacao", &wt.path]).unwrap();
 
-        // A garantia de "nunca faz retry" é estrutural (with_lock_awareness
-        // checa admin_lock_reason ANTES de chamar run()) e já é coberta por
+        checked_output(
+            &root,
+            &[
+                "worktree",
+                "lock",
+                "--reason",
+                "Aguardando homologacao",
+                &wt.path,
+            ],
+        )
+        .unwrap();
+
         // timing em git_control::tests::admin_lock_takes_precedence_and_is_never_retried.
-        // Aqui só confirmamos que a integração real com worktree_remove propaga o
+
         // motivo correto.
         let error = worktree_remove(root_str.clone(), "ambiente-a".into(), true).unwrap_err();
         assert_eq!(error, "admin_locked:Aguardando homologacao");
 
-        // Destrava e confirma que a remoção funciona normalmente depois.
         worktree_unlock(root_str.clone(), "ambiente-a".into()).unwrap();
         worktree_remove(root_str.clone(), "ambiente-a".into(), true).unwrap();
         assert_eq!(worktree_list(root_str).unwrap().len(), 0);
@@ -470,18 +478,11 @@ mod tests {
     }
 
     // ========================================================================
-    // E2E: N agentes OpenCode reais em paralelo, cada um numa worktree isolada.
+
     //
-    // Pedido explícito do dono desta sessão: validação de verdade do ciclo de
-    // worktree usando o OpenCode como agente de teste (não só unit tests
-    // determinísticos), com modelos GRATUITOS, rodando em PARALELO (fiel ao
-    // caso de uso real do Alethe — vários agentes ao mesmo tempo), sem
-    // `--continue` (relatado como não-confiável), e SEM `--pure` (confirmado
-    // nesta sessão via probe real: --pure esconde as ferramentas MCP,
-    // incluindo o graphify — o próprio dono confirmou e pediu pra não usar).
+
     //
-    // `#[ignore]` de propósito: depende de rede + do binário `opencode`
-    // instalado + custo de tempo real (mesmo com modelo free). Rodar
+
     // manualmente com `cargo test --lib worktrees::tests::opencode_e2e -- --ignored --nocapture`.
     #[cfg(test)]
     mod opencode_e2e {
@@ -496,29 +497,14 @@ mod tests {
         use std::process::{Command, Stdio};
         use std::time::{SystemTime, UNIX_EPOCH};
 
-        /// Achado real desta sessão (não estava confirmado quando o plano foi
-        /// escrito): `opencode run --format json` já devolve o `sessionID` no
-        /// PRÓPRIO stream de eventos (todo evento tem `sessionID` no topo) —
-        /// não precisa do snapshot-antes/depois de `opencode session list` que
-        /// o plano original previa pra capturar o ID; é mais simples e sem
         /// corrida nenhuma, ainda mais com N agentes paralelos.
         fn opencode_binary() -> Option<PathBuf> {
             crate::cli_resolver::find_windows_cli_launcher("opencode")
         }
 
-        /// Modelo free real confirmado nesta sessão via probe ao vivo
-        /// (`opencode models` listou vários `*-free`; testado de verdade com
-        /// custo $0 nos eventos step_finish). Não hardcodar sem checar de novo
-        /// se o catálogo do OpenCode mudar.
         const FREE_MODEL: &str = "opencode/deepseek-v4-flash-free";
 
-        /// Pool pequeno de tarefas candidatas — cada execução do teste sorteia
-        /// uma por worktree (pedido do dono: "deixar mais aleatório a
-        /// verificação" em vez de sempre checar exatamente a mesma coisa).
-        /// Cada tarefa pede um arquivo com nome/conteúdo verificável e
-        /// determinístico o bastante pra assert automatizado.
         fn task_pool() -> Vec<(&'static str, &'static str, &'static str)> {
-            // (prompt, nome do arquivo esperado, substring esperada no conteúdo)
             vec![
                 (
                     "Crie um arquivo chamado resultado.txt contendo exatamente a palavra ALFA (maiúsculas, sem mais nada). Não peça confirmação, apenas crie.",
@@ -538,9 +524,6 @@ mod tests {
             ]
         }
 
-        /// Sorteio simples sem dependência nova (sem crate `rand`) — nanotime
-        /// como semente é suficiente pra "não sempre a mesma tarefa", que é o
-        /// objetivo real aqui (não segurança criptográfica).
         fn pick_pseudo_random<T: Copy>(pool: &[T], salt: u128) -> T {
             let nanos = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -555,10 +538,12 @@ mod tests {
             raw_events: Vec<serde_json::Value>,
         }
 
-        /// Roda `opencode run` não-interativo, sem --pure (graphify precisa
-        /// aparecer), com --auto (aprova permissões sem travar o script) e
-        /// captura o stream --format json linha a linha.
-        fn run_opencode(bin: &Path, cwd: &Path, prompt: &str, session_id: Option<&str>) -> Result<OpenCodeRunOutcome, String> {
+        fn run_opencode(
+            bin: &Path,
+            cwd: &Path,
+            prompt: &str,
+            session_id: Option<&str>,
+        ) -> Result<OpenCodeRunOutcome, String> {
             let mut cmd = Command::new(bin);
             cmd.current_dir(cwd)
                 .args(["run", "--format", "json", "--auto", "-m", FREE_MODEL]);
@@ -569,7 +554,9 @@ mod tests {
             cmd.stdout(Stdio::piped());
             cmd.stderr(Stdio::piped());
 
-            let output = cmd.output().map_err(|e| format!("falha ao rodar opencode: {e}"))?;
+            let output = cmd
+                .output()
+                .map_err(|e| format!("falha ao rodar opencode: {e}"))?;
             if !output.status.success() {
                 return Err(format!(
                     "opencode run saiu com codigo {:?}\nstderr: {}\nstdout (ultimos 2000 chars): {}",
@@ -606,7 +593,10 @@ mod tests {
 
             let session_id = session_id_found
                 .ok_or_else(|| "sessionID nunca apareceu no stream de eventos".to_string())?;
-            Ok(OpenCodeRunOutcome { session_id, raw_events })
+            Ok(OpenCodeRunOutcome {
+                session_id,
+                raw_events,
+            })
         }
 
         #[test]
@@ -621,22 +611,20 @@ mod tests {
             let root = temp_repo();
             let root_str = root.to_string_lossy().into_owned();
 
-            // Graphify ligado no repo principal — cada worktree herda o mesmo
-            // opencode.json (git worktree compartilha árvore de trabalho fora
-            // de .git, então escrever uma vez no root já vale pras worktrees
-            // via `git worktree add`... na prática cada worktree tem sua PRÓPRIA
-            // working tree, então escrevemos por worktree, não no root).
             let pool = task_pool();
 
             // 1) Provisiona N worktrees.
             let mut worktrees = Vec::new();
             for i in 0..N {
                 let agent_id = format!("e2e-{i}");
-                let wt = worktree_provision(root_str.clone(), agent_id.clone(), WorktreeMode::GitWorktree)
-                    .expect("worktree_provision falhou");
+                let wt = worktree_provision(
+                    root_str.clone(),
+                    agent_id.clone(),
+                    WorktreeMode::GitWorktree,
+                )
+                .expect("worktree_provision falhou");
                 let wt_path = PathBuf::from(&wt.path);
-                // Graphify por worktree — mesmo padrão real que o Alethe usa ao
-                // spawnar um terminal opencode num projeto com graphifyEnabled.
+
                 let _ = crate::graphify::graphify_opencode_config_write_inner(
                     wt_path.to_string_lossy().into_owned(),
                     None,
@@ -647,7 +635,7 @@ mod tests {
             }
 
             // 2) Dispara os N `opencode run` em paralelo de verdade (threads,
-            //    não sequencial) — fiel ao caso de uso real do Alethe.
+
             let handles: Vec<_> = worktrees
                 .iter()
                 .map(|(agent_id, wt_path, prompt, _, _)| {
@@ -664,7 +652,9 @@ mod tests {
 
             let mut outcomes = std::collections::HashMap::new();
             for h in handles {
-                let (agent_id, result) = h.join().expect("thread do opencode paralelo entrou em pânico");
+                let (agent_id, result) = h
+                    .join()
+                    .expect("thread do opencode paralelo entrou em pânico");
                 match result {
                     Ok(outcome) => {
                         outcomes.insert(agent_id, outcome);
@@ -673,8 +663,6 @@ mod tests {
                 }
             }
 
-            // 3) Isolamento: o arquivo de cada tarefa só pode existir NA
-            //    worktree daquele agente — não em nenhuma outra worktree nem
             //    no repo principal.
             for (agent_id, wt_path, _, expected_file, expected_content) in &worktrees {
                 let own_file = wt_path.join(expected_file);
@@ -688,11 +676,6 @@ mod tests {
                     "conteúdo de {expected_file} do agente {agent_id} não bate com o esperado ({expected_content}): {content:?}"
                 );
 
-                // As 3 tarefas do pool usam o MESMO nome de arquivo
-                // (resultado.txt) de propósito — cada worktree ter seu próprio
-                // resultado.txt é esperado, não é vazamento. O que prova
-                // isolamento real é o CONTEÚDO: o conteúdo de UM agente não
-                // pode aparecer no arquivo de OUTRO agente.
                 for (other_id, other_path, _, _, other_expected_content) in &worktrees {
                     if other_id == agent_id || expected_content == other_expected_content {
                         continue;
@@ -713,9 +696,6 @@ mod tests {
                 );
             }
 
-            // 4) Continuidade de sessão: retoma cada uma com --session
-            //    explícito (nunca --continue) e confirma que o sessionID da
-            //    retomada é o MESMO (prova que é a mesma sessão, não uma nova).
             for (agent_id, wt_path, _, _, _) in &worktrees {
                 let outcome = outcomes.get(agent_id).unwrap();
                 let resumed = run_opencode(
@@ -736,10 +716,10 @@ mod tests {
                 );
             }
 
-            // 5) Limpeza: remove as N worktrees e confirma que sumiram.
             for (agent_id, _, _, _, _) in &worktrees {
-                worktree_remove(root_str.clone(), agent_id.clone(), true)
-                    .unwrap_or_else(|e| panic!("worktree_remove falhou pro agente {agent_id}: {e}"));
+                worktree_remove(root_str.clone(), agent_id.clone(), true).unwrap_or_else(|e| {
+                    panic!("worktree_remove falhou pro agente {agent_id}: {e}")
+                });
             }
             assert_eq!(
                 worktree_list(root_str).unwrap().len(),

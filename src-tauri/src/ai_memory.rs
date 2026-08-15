@@ -1,22 +1,10 @@
-//! Integração com o **ai-memory** (https://github.com/akitaonrails/ai-memory) —
-//! memória de longo prazo compartilhada entre agentes de código.
 //!
-//! O ai-memory é uma ferramenta EXTERNA (o Alethe apenas detecta e injeta, não
-//! reimplementa): um binário Rust que sobe um servidor local (MCP + HTTP) e
-//! roteia por-projeto automaticamente pela cwd do agente / marcador
-//! `.ai-memory.toml`. Aqui tratamos apenas da **injeção do MCP** por sessão,
-//! espelhando o padrão do Graphify (ver `graphify.rs`):
+
 //!
-//! - **Claude Code:** gera um arquivo de config MCP temporário e o front injeta
+
 //!   via `--mcp-config <path>` no `buildAgentLaunch`.
-//! - **OpenCode / Codex:** não têm flag equivalente — leem MCP de um arquivo de
-//!   config ambiente no diretório do projeto (`opencode.json` / `.codex/config.toml`),
-//!   então a injeção é mesclar esse arquivo antes do spawn.
+
 //!
-//! Diferente do Graphify, o bridge NÃO recebe o root do projeto como argumento:
-//! o ai-memory infere o projeto a partir da cwd do agente. O comando/args/transporte
-//! exatos do MCP ainda dependem de pinar a interface oficial — por isso ficam
-//! concentrados em `mcp_server_spec`, ponto único a ajustar.
 
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::Path;
@@ -28,18 +16,16 @@ use serde_json::Value;
 
 use crate::git_control::{hide_console, repository_root};
 
-/// Nome padrão do binário do ai-memory. Configurável a partir do front.
 const DEFAULT_COMMAND: &str = "ai-memory";
-/// Endpoint padrão (loopback) do servidor do ai-memory — usado só para o
+
 /// health-check de "running".
 const DEFAULT_ENDPOINT: &str = "127.0.0.1:49374";
-/// Chave usada nos arquivos de config MCP dos agentes.
+
 const MCP_KEY: &str = "ai-memory";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiMemoryStatus {
-    /// Binário encontrado no PATH (`<cmd> --version` respondeu).
     installed: bool,
     /// Servidor respondendo no endpoint loopback.
     running: bool,
@@ -55,10 +41,9 @@ fn short_hash(input: &str) -> String {
     format!("{:x}", hasher.finish())
 }
 
-/// Especificação do servidor MCP do ai-memory. Ponto único a ajustar quando a
 /// interface oficial for pinada (stdio via `ai-memory mcp` vs. transporte
 /// HTTP/SSE no endpoint loopback). Por ora usa o bridge stdio, coerente com o
-/// padrão do Graphify; o ai-memory infere o projeto pela cwd, então não passamos
+
 /// o root como argumento.
 fn mcp_server_spec(command: &str) -> Value {
     serde_json::json!({
@@ -67,8 +52,6 @@ fn mcp_server_spec(command: &str) -> Value {
     })
 }
 
-/// Detecta se o ai-memory está instalado (`<cmd> --version`) e se o servidor
-/// está de pé (conexão TCP no endpoint loopback). Best-effort: nunca falha por
 /// causa do health-check.
 #[tauri::command]
 pub fn ai_memory_detect(command: Option<String>) -> Result<AiMemoryStatus, String> {
@@ -96,7 +79,6 @@ pub fn ai_memory_detect(command: Option<String>) -> Result<AiMemoryStatus, Strin
     })
 }
 
-/// Health-check leve: tenta abrir uma conexão TCP no endpoint com timeout curto.
 fn endpoint_alive(endpoint: &str) -> bool {
     let Ok(mut addrs) = endpoint.to_socket_addrs() else {
         return false;
@@ -104,15 +86,12 @@ fn endpoint_alive(endpoint: &str) -> bool {
     addrs.any(|addr| TcpStream::connect_timeout(&addr, Duration::from_millis(250)).is_ok())
 }
 
-/// Escreve (idempotente por projeto) o config MCP que registra o servidor do
-/// ai-memory e retorna o path. O front injeta via `--mcp-config <path>` no launch
-/// do Claude, sem tocar no `.claude/` do repo do usuário.
 #[tauri::command]
 pub fn ai_memory_mcp_config_path(repo: String, command: Option<String>) -> Result<String, String> {
     let root = repository_root(&repo)?;
     let cmd = command.unwrap_or_else(|| DEFAULT_COMMAND.to_string());
     let config = serde_json::json!({
-        // Chave dinâmica no json! precisa vir parentizada.
+
         "mcpServers": { (MCP_KEY): mcp_server_spec(&cmd) }
     });
     let file_name = format!(
@@ -125,8 +104,6 @@ pub fn ai_memory_mcp_config_path(repo: String, command: Option<String>) -> Resul
     Ok(path.to_string_lossy().into_owned())
 }
 
-/// Mescla (sem sobrescrever outras chaves) a entrada `mcp.ai-memory` em
-/// `<repo>/opencode.json`. Best-effort: chamado no spawn, nunca deve bloquear.
 #[tauri::command]
 pub fn ai_memory_opencode_config_write(
     repo: String,
@@ -140,8 +117,7 @@ pub fn ai_memory_opencode_config_write(
         let raw = std::fs::read_to_string(&path).map_err(|e| format!("read_failed:{e}"))?;
         match serde_json::from_str::<Value>(&raw) {
             Ok(Value::Object(map)) => map,
-            // Arquivo existe mas não é JSON de objeto limpo (JSONC/corrompido) —
-            // não arrisca sobrescrever config do usuário às cegas.
+
             _ => return Ok(()),
         }
     } else {
@@ -171,10 +147,6 @@ pub fn ai_memory_opencode_config_write(
     std::fs::write(&path, body).map_err(|e| format!("write_failed:{e}"))
 }
 
-/// Mescla (sem sobrescrever outras chaves) a tabela `[mcp_servers.ai-memory]`
-/// em `<repo>/.codex/config.toml`. Remove só o bloco pré-existente com essa
-/// chave (delimitado até a próxima linha `[...]` ou EOF) e acrescenta o bloco
-/// atualizado no fim, preservando o resto do arquivo (comentários/formatação).
 #[tauri::command]
 pub fn ai_memory_codex_config_write(repo: String, command: Option<String>) -> Result<(), String> {
     let root = repository_root(&repo)?;
@@ -189,7 +161,6 @@ pub fn ai_memory_codex_config_write(repo: String, command: Option<String>) -> Re
         String::new()
     };
 
-    // A chave TOML tem hífen, então precisa vir entre aspas: [mcp_servers."ai-memory"].
     let header = format!("[mcp_servers.\"{MCP_KEY}\"]");
     let mut kept_lines: Vec<&str> = Vec::new();
     let mut skipping = false;
@@ -210,9 +181,7 @@ pub fn ai_memory_codex_config_write(repo: String, command: Option<String>) -> Re
     if !body.is_empty() && !body.ends_with('\n') {
         body.push('\n');
     }
-    // Escapa para string básica TOML: contrabarra e aspas (nessa ordem). Sem isso,
-    // um path do Windows (C:\Users\..\ai-memory.exe) vira escape TOML inválido e
-    // corrompe TODO o config.toml do usuário.
+
     let toml_escape = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
     let cmd_toml = toml_escape(&cmd);
     body.push_str(&format!(

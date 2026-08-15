@@ -17,10 +17,6 @@
     opacity 0.15s ease;
 }
 
-/* Foco do pane (Alethe focus mode): anel sólido em camadas (mesmo padrão do
-   .dropTarget abaixo), sem bg/lift extras. Acende sempre que o xterm de
-   dentro recebe foco. Suprimido quando .paneFocus (overlay) — lá não
-   queremos anel azul. */
 .pane:focus-within:not(.paneFocus) {
   border-color: var(--focus-ring, #38bdf8);
   box-shadow:
@@ -29,7 +25,6 @@
   z-index: 2;
 }
 
-/* Pane em focus mode: o próprio painel vira fixed; o overlay é só backdrop. */
 .paneFocus {
   position: fixed;
   inset: 24px 32px;
@@ -64,8 +59,6 @@
   opacity: 0.85;
 }
 
-/* Resize handle do canto inferior-direito do pane — só aparece quando o
-   projeto pai está em layoutMode === 'grid'. Mesmo estilo do ProjectContainer. */
 .gridResize {
   position: absolute;
   right: 2px;
@@ -121,20 +114,42 @@
   cursor: grabbing;
 }
 
-/* Header — mais denso (32px) e bg só ligeiramente destacado pra não ficar
-   "forte". Baseado no focus-pane-head do canvas-agents mas reduzido. */
+.laneGripBtn {
+  width: 24px;
+  height: 24px;
+}
+
 .header {
-  height: 28px;
-  flex: 0 0 28px;
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  right: 4px;
+  z-index: 8;
+  width: auto;
+  height: 26px;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  padding: 0 6px;
-  background: var(--shape-tabs-lane-bg);
-  border-bottom: 1px solid var(--shape-tabs-lane-border);
+  gap: 8px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   font-size: 12px;
-  flex-shrink: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.pane:hover .header,
+.header:focus-within {
+  opacity: 1;
+}
+
+.headerWithLane {
+  justify-content: flex-end;
 }
 
 .headLeft {
@@ -142,7 +157,21 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  flex: 1;
+  flex: 0 1 auto;
+  overflow: hidden;
+  width: fit-content;
+  max-width: min(50%, 320px);
+  height: 26px;
+  padding: 2px 6px;
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  pointer-events: auto;
+}
+
+.headLeftControlsOnly {
+  flex: 0 0 auto;
+  padding-inline: 3px;
 }
 
 .headRight {
@@ -150,6 +179,12 @@
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+  height: 26px;
+  padding: 2px 3px;
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  pointer-events: auto;
 }
 
 .iconWrap {
@@ -167,6 +202,7 @@
   align-items: center;
   gap: 5px;
   min-width: 0;
+  overflow: hidden;
 }
 
 .name {
@@ -244,8 +280,6 @@
   }
 }
 
-/* Actions sempre visíveis. As secundárias só aparecem quando expandido
-   via botão ⋯. */
 .actions {
   display: inline-flex;
   align-items: center;
@@ -291,7 +325,6 @@
   background: var(--status-offline-soft);
 }
 .vscode {
-  /* mantém o logo colorido sem tint */
 }
 
 .body {
@@ -382,7 +415,6 @@
   border-color: var(--accent);
 }
 
-/* Overlay "processo encerrado" — fica por cima do terminal morto */
 .exitedOverlay {
   position: absolute;
   inset: 0;
@@ -425,4 +457,28 @@
 .restartBtn:hover {
   background: var(--panel-hover);
   border-color: var(--accent);
+}
+
+.restartBtn:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+:global([data-visual-style='clean']) .pane:focus-within:not(.paneFocus) {
+  border-color: var(--clean-focus-border);
+  box-shadow: inset 0 0 0 1px var(--clean-focus-border);
+}
+
+:global([data-visual-style='clean']) .paneFocus {
+  border-color: var(--border-strong) !important;
+  box-shadow: var(--clean-shadow);
+  animation: none;
+}
+
+:global([data-visual-style='clean']) :is(.headLeft, .headRight) {
+  border-radius: var(--clean-control-radius);
+}
+
+:global([data-visual-style='clean']) :is(.reactivateBtn, .restartBtn) {
+  border-radius: var(--clean-control-radius);
 }

@@ -4,8 +4,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Panel, Separator } from 'react-resizable-panels'
 
 import { pickDirectory } from '../../lib/dialog'
+import { hasFileDragPayload, readFileDragPayload } from '../../lib/fileDrag'
 import { cellStyle, gridContainerStyle, reconcileGridLayout } from '../../lib/gridLayout'
 import { useT } from '../../lib/i18n'
+import { MAX_WORKSPACE_TABS } from '../../lib/workspaceNavigation'
 import type {
   AgentType,
   GridLayout,
@@ -21,10 +23,35 @@ import { AgentIcon } from '../icons/AgentIcons'
 import { PaneArea } from './PaneArea'
 import { PersistentPanelGroup as PanelGroup } from './PersistentPanelGroup'
 import { ProjectContainer } from './ProjectContainer'
+import { WorkspaceSurfaceProvider } from './workspaceSurface'
 import styles from './WorkspaceView.module.css'
 
 function resolveGroup(project: Project, groupsById: Map<string, Group>): Group | null {
   return project.groupId ? (groupsById.get(project.groupId) ?? null) : null
+}
+
+/*
+ * Two tiers, because the two costs are different.
+ *
+ * MOUNTED: the tab keeps its React tree, so its xterm instances are never disposed and never
+ * re-attach or replay their scrollback. This matches the number of tabs the tab bar holds — every
+ * tab reachable with Ctrl+Tab stays mounted, or cycling through projects evicts them in a loop.
+ * The cost is memory for the hidden terminals.
+ *
+ * STREAMING: on top of that, this many of the most recent hidden tabs keep receiving output from
+ * their PTYs. Beyond them, hidden panes stop streaming and resync when they come back — a redraw,
+ * not a restart. This bounds the IPC traffic of a large workspace.
+ */
+const MAX_LIVE_WORKSPACE_TABS = MAX_WORKSPACE_TABS
+const MAX_STREAMING_BACKGROUND_TABS = 2
+
+type WorkspaceSurface = {
+  key: string
+  tabId: string | null
+  active: boolean
+  containers: WorkspaceContainer[]
+  activeGroupId: string | null
+  flat: boolean
 }
 
 function collectGroupProjectIds(groupId: string, groups: Group[]): Set<string> {
@@ -61,33 +88,131 @@ export function WorkspaceView() {
   const openProjectWorkspace = useProjectsStore((s) => s.openProjectWorkspace)
   const openModal = useUiStore((s) => s.openModal_)
   const activeGroupTabId = useProjectsStore((s) => s.workspace.activeGroupId)
+  const workspaceTabs = useProjectsStore((s) => s.workspace.tabs)
+  const activeTabId = useProjectsStore((s) => s.workspace.activeTabId)
   const focusedTerminalId = useProjectsStore((s) => s.workspace.focusedTerminalId)
   const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
+  const setKeptAlivePanes = useUiStore((s) => s.setKeptAlivePanes)
+  const setMountedPanes = useUiStore((s) => s.setMountedPanes)
+  const createFilePane = useProjectsStore((s) => s.createFilePane)
+  const openPane = useProjectsStore((s) => s.openPane)
   const initialWorkspaceEnsured = useRef(false)
+  const fileDragDepth = useRef(0)
+  const [fileDropActive, setFileDropActive] = useState(false)
+  const t = useT()
 
   const projectsById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
   const groupsById = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups])
-  const activeGroupProjectIds = useMemo(
-    () => (activeGroupTabId ? collectGroupProjectIds(activeGroupTabId, groups) : null),
-    [activeGroupTabId, groups],
-  )
+
+  const [liveTabIds, setLiveTabIds] = useState<string[]>([])
+
+  useEffect(() => {
+    if (!activeTabId) return
+    setLiveTabIds((prev) => {
+      const known = new Set(workspaceTabs.map((tab) => tab.id))
+      const next = [activeTabId, ...prev]
+        .filter((id, index, list) => known.has(id) && list.indexOf(id) === index)
+        .slice(0, MAX_LIVE_WORKSPACE_TABS)
+      const unchanged = next.length === prev.length && next.every((id, i) => id === prev[i])
+      return unchanged ? prev : next
+    })
+  }, [activeTabId, workspaceTabs])
+
+  const surfaces = useMemo<WorkspaceSurface[]>(() => {
+    const withinGroup = (list: WorkspaceContainer[], groupId: string | null) => {
+      if (!groupId) return list
+      const projectIds = collectGroupProjectIds(groupId, groups)
+      return list.filter((container) => projectIds.has(container.projectId))
+    }
+
+    const entries: WorkspaceSurface[] = []
+    if (!activeTabId) {
+      entries.push({
+        key: 'workspace',
+        tabId: null,
+        active: true,
+        containers: withinGroup(allContainers, activeGroupTabId),
+        activeGroupId: activeGroupTabId,
+        flat,
+      })
+    } else {
+      const orderedIds = [activeTabId, ...liveTabIds.filter((id) => id !== activeTabId)]
+      for (const tabId of orderedIds) {
+        const active = tabId === activeTabId
+        const snapshot = workspaceTabs.find((tab) => tab.id === tabId)?.snapshot
+        if (!snapshot && !active) continue
+        const groupId = active ? activeGroupTabId : (snapshot?.activeGroupId ?? null)
+        entries.push({
+          key: tabId,
+          tabId,
+          active,
+          containers: withinGroup(active ? allContainers : (snapshot?.containers ?? []), groupId),
+          activeGroupId: groupId,
+          flat: active ? flat : (snapshot?.workspaceFlat ?? flat),
+        })
+      }
+    }
+
+    // A pane may belong to several tabs; only the highest-priority surface renders it, so two
+    // XTermView instances never attach to the same PTY at once.
+    const claimed = new Set<string>()
+    return entries.map((entry) => {
+      const containers = entry.containers
+        .map((container) => ({
+          ...container,
+          paneIds: container.paneIds.filter((id) => !claimed.has(id)),
+        }))
+        .filter((container) => container.paneIds.length > 0)
+      for (const container of containers) for (const id of container.paneIds) claimed.add(id)
+      return { ...entry, containers }
+    })
+  }, [activeGroupTabId, activeTabId, allContainers, flat, groups, liveTabIds, workspaceTabs])
+
   const containers = useMemo(
-    () =>
-      activeGroupTabId === null
-        ? allContainers
-        : allContainers.filter((c) => activeGroupProjectIds?.has(c.projectId)),
-    [activeGroupTabId, activeGroupProjectIds, allContainers],
+    () => surfaces.find((surface) => surface.active)?.containers ?? [],
+    [surfaces],
   )
+
+  const keptAlivePaneIds = useMemo(
+    () =>
+      surfaces
+        .filter((surface) => !surface.active)
+        .slice(0, MAX_STREAMING_BACKGROUND_TABS)
+        .flatMap((surface) =>
+          surface.containers.filter((c) => !c.collapsed).flatMap((c) => c.paneIds),
+        ),
+    [surfaces],
+  )
+
+  const mountedPaneIds = useMemo(
+    () =>
+      surfaces
+        .filter((surface) => !surface.active)
+        .flatMap((surface) =>
+          surface.containers.filter((c) => !c.collapsed).flatMap((c) => c.paneIds),
+        ),
+    [surfaces],
+  )
+
+  useEffect(() => {
+    setKeptAlivePanes(keptAlivePaneIds)
+    return () => setKeptAlivePanes([])
+  }, [keptAlivePaneIds, setKeptAlivePanes])
+
+  useEffect(() => {
+    setMountedPanes(mountedPaneIds)
+    return () => setMountedPanes([])
+  }, [mountedPaneIds, setMountedPanes])
 
   useEffect(() => {
     if (!focusedTerminalId) return
     requestPaneFocus(focusedTerminalId)
   }, [focusedTerminalId, requestPaneFocus])
 
-  // Um projects.json pode ter projetos válidos, mas nenhuma aba/container
-  // restaurável (por exemplo, depois de um primeiro boot ou de uma migração).
-  // Nesse caso, abrir a Workspace vazia e pedir "Criar projeto" é enganoso:
-  // selecione o projeto recente com terminais uma única vez.
+                                                                          
+                                                                              
+                                                                            
+                                                             
   useEffect(() => {
     if (
       initialWorkspaceEnsured.current ||
@@ -117,10 +242,10 @@ export function WorkspaceView() {
     recentProjectIds,
   ])
 
-  // Container/projeto de fullscreenContainerId pode deixar de existir nesta
-  // vista (removido, filtrado por grupo, etc.) — sem isso o botão de tela
-  // cheia "trava": o estado fica preso apontando pra um alvo que nunca mais
-  // renderiza fullscreen, mas também não volta pra vista normal sozinho.
+                                                                            
+                                                                          
+                                                                            
+                                                                         
   useEffect(() => {
     if (!fullscreenId) return
     const c = containers.find((x) => x.projectId === fullscreenId)
@@ -135,9 +260,9 @@ export function WorkspaceView() {
     const to = e.over ? String(e.over.id) : ''
     if (!from || !to || from === to) return
 
-    // pane: reordena dentro do mesmo container.
-    // Se o projeto está em modo grid, faz SWAP das células do grid (não da
-    // ordem linear) — assim o card vai pra posição visual do alvo.
+                                                
+                                                                           
+                                                                   
     if (from.startsWith('pane:') && to.startsWith('pane:')) {
       const fromId = from.slice('pane:'.length)
       const toId = to.slice('pane:'.length)
@@ -162,8 +287,8 @@ export function WorkspaceView() {
     }
 
     // cont: drag de container sobre outro.
-    // Se há grid layout ativo (workspace OU grupo), SWAP das células.
-    // Senão, reorder linear no array.
+                                                                      
+                                      
     if (from.startsWith('cont:') && to.startsWith('cont:')) {
       const fromPid = from.slice('cont:'.length)
       const toPid = to.slice('cont:'.length)
@@ -183,7 +308,7 @@ export function WorkspaceView() {
         }
       }
 
-      // group grid da tab ativa (grupo/subgrupo), incluindo descendentes.
+                                                                          
       if (activeGroupTabId) {
         const grp = state.groups.find((g) => g.id === activeGroupTabId)
         if (grp?.layoutMode === 'grid' && grp.gridLayout) {
@@ -199,7 +324,7 @@ export function WorkspaceView() {
         }
       }
 
-      // group grid (todos os containers no mesmo grupo direto)?
+                                                                
       const groupIds = new Set(
         containers.map((c) => projectsById.get(c.projectId)?.groupId ?? null),
       )
@@ -231,7 +356,35 @@ export function WorkspaceView() {
 
   /** Wrapper compartilhado: workspace shell + DndContext. */
   const shell = (children: React.ReactNode, withDnd = true) => (
-    <div className={styles.workspace}>
+    <div
+      className={`${styles.workspace} ${fileDropActive ? styles.fileDropActive : ''}`}
+      onDragEnter={(event) => {
+        if (!hasFileDragPayload(event.dataTransfer)) return
+        event.preventDefault()
+        fileDragDepth.current += 1
+        setFileDropActive(true)
+      }}
+      onDragOver={(event) => {
+        if (!hasFileDragPayload(event.dataTransfer)) return
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'copy'
+      }}
+      onDragLeave={(event) => {
+        if (!hasFileDragPayload(event.dataTransfer)) return
+        fileDragDepth.current = Math.max(0, fileDragDepth.current - 1)
+        if (fileDragDepth.current === 0) setFileDropActive(false)
+      }}
+      onDrop={(event) => {
+        const payload = readFileDragPayload(event.dataTransfer)
+        if (!payload) return
+        event.preventDefault()
+        fileDragDepth.current = 0
+        setFileDropActive(false)
+        const pane = createFilePane(payload.projectId, { filePath: payload.path })
+        openPane(payload.projectId, pane.id)
+        requestPaneFocus(pane.id)
+      }}
+    >
       <div className={styles.area}>
         {withDnd ? (
           <DndContext sensors={sensors} onDragEnd={onDragEnd}>
@@ -241,42 +394,83 @@ export function WorkspaceView() {
           children
         )}
       </div>
+      {fileDropActive ? <div className={styles.fileDropOverlay}>{t('files.dropToGrid')}</div> : null}
     </div>
   )
 
-  // estado vazio
-  if (containers.length === 0) {
-    return shell(
-      <NoWorkspace
-        project={activeProject}
-        onAddTerminal={(defaultCwd) =>
-          activeProject
-            ? openModal('newTerminal', { projectId: activeProject.id })
-            : openModal('newProject', defaultCwd ? { defaultCwd } : undefined)
-        }
-      />,
-      false,
-    )
-  }
+  const hasAnyContainer = surfaces.some((surface) => surface.containers.length > 0)
 
-  // fullscreen: só o container escolhido (a gaveta GSD Sync usa o mesmo
-  // caminho, via `isolatedPaneId` — ver ProjectContainer.tsx)
+  return shell(
+    <div className={styles.surfaceStack}>
+      {surfaces.map((surface) => (
+        <WorkspaceSurfaceProvider
+          key={surface.key}
+          value={{ tabId: surface.tabId, active: surface.active }}
+        >
+          <div
+            className={`${styles.surface} ${surface.active ? '' : styles.surfaceHidden}`}
+            aria-hidden={surface.active ? undefined : true}
+          >
+            {surface.containers.length === 0 ? (
+              surface.active ? (
+                <NoWorkspace
+                  project={activeProject}
+                  onAddTerminal={(defaultCwd) =>
+                    activeProject
+                      ? openModal('newTerminal', { projectId: activeProject.id })
+                      : openModal('newProject', defaultCwd ? { defaultCwd } : undefined)
+                  }
+                />
+              ) : null
+            ) : (
+              <SurfaceLayout
+                containers={surface.containers}
+                activeGroupTabId={surface.activeGroupId}
+                flat={surface.flat}
+                fullscreenId={surface.active ? fullscreenId : null}
+                projectsById={projectsById}
+                groupsById={groupsById}
+              />
+            )}
+          </div>
+        </WorkspaceSurfaceProvider>
+      ))}
+    </div>,
+    hasAnyContainer,
+  )
+}
+
+function SurfaceLayout({
+  containers,
+  activeGroupTabId,
+  flat,
+  fullscreenId,
+  projectsById,
+  groupsById,
+}: {
+  containers: WorkspaceContainer[]
+  activeGroupTabId: string | null
+  flat: boolean
+  fullscreenId: string | null
+  projectsById: Map<string, Project>
+  groupsById: Map<string, Group>
+}) {
+  // Fullscreen has its own path via `isolatedPaneId` — see ProjectContainer.tsx.
   if (fullscreenId) {
     const c = containers.find((x) => x.projectId === fullscreenId)
     const project = c ? projectsById.get(c.projectId) : null
     if (c && project) {
-      return shell(
+      return (
         <ProjectContainer
           container={c}
           project={project}
           group={resolveGroup(project, groupsById)}
           isFullscreen
-        />,
+        />
       )
     }
   }
 
-  // modo flat — junta todos os panes num grid sem containers
   if (flat) {
     const flatPanes: { projectId: string; terminal: Terminal }[] = []
     for (const c of containers) {
@@ -289,39 +483,38 @@ export function WorkspaceView() {
       }
     }
     if (flatPanes.length === 0) return null
-    return shell(
+    return (
       <PaneArea
         projectId={flatPanes[0].projectId}
         idPrefix="flat"
         terminals={flatPanes.map((f) => f.terminal)}
         layoutMode="auto"
-      />,
+      />
     )
   }
 
-  // container único
   if (containers.length === 1) {
     const c = containers[0]
     const project = projectsById.get(c.projectId)
     if (!project) return null
-    return shell(
+    return (
       <ProjectContainer
         container={c}
         project={project}
         group={resolveGroup(project, groupsById)}
         showHeader={false}
-      />,
+      />
     )
   }
 
   // 2+ containers → auto-grid
-  return shell(
+  return (
     <ContainerAutoGrid
       containers={containers}
       projectsById={projectsById}
       groupsById={groupsById}
       activeGroupTabId={activeGroupTabId}
-    />,
+    />
   )
 }
 
@@ -337,8 +530,8 @@ function ContainerAutoGrid({
   activeGroupTabId: string | null
 }) {
   const workspaceGridLayout = useProjectsStore((s) => s.preferences.workspaceGridLayout)
-  // Prioridade: 1) workspace custom  2) grupo/subgrupo ativo
-  // 3) grupo direto único  4) auto-grid
+                                                             
+                                        
   const activeGroup = activeGroupTabId ? groupsById.get(activeGroupTabId) : null
   if (workspaceGridLayout) {
     return (
@@ -361,7 +554,7 @@ function ContainerAutoGrid({
       />
     )
   }
-  // Detecta se todos os containers pertencem ao MESMO grupo com gridLayout salvo.
+                                                                                  
   const groupId = (() => {
     const ids = new Set(containers.map((c) => projectsById.get(c.projectId)?.groupId ?? null))
     if (ids.size === 1) {
@@ -415,7 +608,7 @@ function ContainerAutoGrid({
     )
   }
 
-  // 3+ → vira grid: linhas verticais com no máx 2 containers por linha
+                                                                       
   const rows: WorkspaceContainer[][] = []
   for (let i = 0; i < containers.length; i += 2) {
     rows.push(containers.slice(i, i + 2))

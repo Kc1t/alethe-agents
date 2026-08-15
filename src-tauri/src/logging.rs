@@ -1,11 +1,5 @@
 // Logging de crash (Rust) e de erros do frontend.
 //
-// Grava na RAIZ dos dados do app (`app_local_data_dir()/logs/`), NÃO no diretório
-// do perfil — um panic pode ocorrer antes de o perfil ser resolvido. Crash logs do
-// Rust saem do panic hook, que não tem `AppHandle`, então o diretório é guardado
-// num `OnceLock` populado no `.setup()`. O hook é instalado cedo (antes do builder):
-// se um panic ocorrer antes do setup, o `OnceLock` está vazio e o hook só repassa
-// pro hook anterior (stderr), sem gravar.
 
 use std::fs;
 use std::io::Write;
@@ -17,8 +11,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager};
 
 use crate::diagnostics::timestamp_ms;
+use crate::resources::RuntimeSnapshot;
 
-/// Quantos arquivos manter por prefixo (`crash-`, `frontend-`) — retenção simples.
 const MAX_FILES_PER_PREFIX: usize = 20;
 
 static LOGS_DIR: OnceLock<PathBuf> = OnceLock::new();
@@ -30,16 +24,11 @@ fn unix_secs() -> u64 {
         .unwrap_or(0)
 }
 
-/// `app_local_data_dir()/logs` — raiz, compartilhada por todos os perfis.
 pub fn logs_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let root = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|e| e.to_string())?;
+    let root = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
     Ok(root.join("logs"))
 }
 
-/// Resolve e memoiza o diretório de logs pro panic hook. Chamar no `.setup()`.
 pub fn set_logs_dir(app: &AppHandle) {
     if let Ok(dir) = logs_dir(app) {
         let _ = fs::create_dir_all(&dir);
@@ -47,8 +36,6 @@ pub fn set_logs_dir(app: &AppHandle) {
     }
 }
 
-/// Append com timestamp, criando o dir se preciso. Reusa o padrão de
-/// `diagnostics::append_spawn_log` (append-only, sem rewrite).
 fn append_log(path: &Path, message: &str) {
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);
@@ -58,8 +45,36 @@ fn append_log(path: &Path, message: &str) {
     }
 }
 
-/// Mantém só os `MAX_FILES_PER_PREFIX` arquivos mais novos com o prefixo dado.
-/// Os nomes incluem unix secs, então a ordem lexicográfica acompanha a cronológica.
+/// Records periodic resource health without changing runtime state. This log is
+/// intentionally concise so freezes can be compared with Windows availability
+/// and the exact PTY count after the next launch.
+pub fn record_resource_snapshot(
+    app: &AppHandle,
+    level: &str,
+    snapshot: &RuntimeSnapshot,
+    idle_candidates: usize,
+    action: &str,
+) {
+    let Ok(dir) = logs_dir(app) else {
+        return;
+    };
+    let memory = &snapshot.memory;
+    append_log(
+        &dir.join("resource.log"),
+        &format!(
+            "level={level} action={action} app_total_mb={:.0} app_mb={:.0} webview_mb={:.0} ptys_mb={:.0} windows_available_mb={:.0} windows_total_mb={:.0} processes={} live_ptys={} idle_recommendations={idle_candidates}",
+            snapshot.effective_total_mb,
+            memory.app_mb,
+            memory.webview_mb,
+            memory.ptys_mb,
+            memory.system_available_mb,
+            memory.system_total_mb,
+            memory.process_count,
+            snapshot.ptys.len(),
+        ),
+    );
+}
+
 fn prune(dir: &Path, prefix: &str) {
     let Ok(entries) = fs::read_dir(dir) else {
         return;
@@ -84,7 +99,6 @@ fn prune(dir: &Path, prefix: &str) {
     }
 }
 
-/// Instala o panic hook global. Chamar uma vez, cedo no `run()`, antes do builder.
 pub fn install_panic_hook() {
     let previous = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
@@ -113,13 +127,13 @@ pub fn install_panic_hook() {
             append_log(&path, &msg);
             prune(dir, "crash-");
         }
-        // Preserva o comportamento padrão (stderr) encadeando o hook anterior.
+
         previous(info);
     }));
 }
 
 /// Persiste um erro vindo do frontend (window.onerror / unhandledrejection /
-/// ErrorBoundary). Fire-and-forget — nunca falha de um jeito que quebre a UI.
+
 #[tauri::command]
 pub fn record_frontend_error(
     message: String,
@@ -136,5 +150,29 @@ pub fn record_frontend_error(
     };
     append_log(&path, &body);
     prune(dir, "frontend-");
+    Ok(())
+}
+
+/// Records non-sensitive lifecycle facts used to diagnose persistence and UI
+/// restoration. Callers must send counts/flags only, never project names or paths.
+#[tauri::command]
+pub fn record_app_event(kind: String, message: String) -> Result<(), String> {
+    let Some(dir) = LOGS_DIR.get() else {
+        return Ok(());
+    };
+    let safe_kind: String = kind
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_'))
+        .take(64)
+        .collect();
+    let safe_message = message.replace('\r', " ").replace('\n', " ");
+    append_log(
+        &dir.join("app-events.log"),
+        &format!(
+            "[{}] {}",
+            safe_kind,
+            safe_message.chars().take(512).collect::<String>()
+        ),
+    );
     Ok(())
 }

@@ -1,8 +1,8 @@
-/**
- * Factories e helpers puros de Terminal/pane, extraídos do projectsStore pra
- * ficarem testáveis e reutilizáveis. Nenhum acesso a estado global — só
- * transformam dados de entrada em objetos de domínio.
- */
+   
+                                                                             
+                                                                        
+                                                      
+   
 
 import { nanoid } from 'nanoid'
 
@@ -20,7 +20,7 @@ import type {
   WorkspaceRecentTab,
 } from './types'
 
-/** Cria um container default pra um projeto. */
+                                                
 export function newContainer(
   projectId: string,
   paneIds: string[],
@@ -100,15 +100,15 @@ export function makeDefaultTerminal(args: {
 const MARKDOWN_FILE_PATTERN = /\.(md|markdown|mdx)$/i
 const VIDEO_FILE_PATTERN = /\.(mp4|m4v|mov|avi|mkv|webm|ogv)$/i
 
-/** Escolhe o viewer certo pela extensão. Imagem fica pra depois (precisa de backend). */
+                                                                                         
 function classifyPaneKind(filePath: string): 'markdown' | 'video' | 'file' {
   if (VIDEO_FILE_PATTERN.test(filePath)) return 'video'
   return MARKDOWN_FILE_PATTERN.test(filePath) ? 'markdown' : 'file'
 }
 
 export function makeFilePane(args: { filePath: string; name?: string }): Terminal {
-  // Remove o sufixo `:linha:coluna` que agents anexam (ex.: `foo.ts:42:10`) —
-  // senão o read_text_file não acha o arquivo.
+                                                                              
+                                               
   const filePath = args.filePath.trim().replace(/:\d+(?::\d+)?$/, '')
   return {
     id: nanoid(),
@@ -152,7 +152,7 @@ export function makeWebPane(args: BrowserPaneOptions): Terminal {
   try {
     host = new URL(url).hostname
   } catch {
-    // A validação ocorre no modal; mantém fallback defensivo para dados importados.
+                                                                                    
   }
   return {
     id: nanoid(),
@@ -168,6 +168,7 @@ export function makeWebPane(args: BrowserPaneOptions): Terminal {
     browserConfig: {
       javascriptEnabled: args.javascriptEnabled ?? true,
       zoom: args.zoom ?? 1,
+      resourceMode: args.resourceMode ?? 'app-first',
     },
   }
 }
@@ -211,9 +212,9 @@ export function clearTerminalPtyIds(terminal: Terminal): Terminal {
   }
 }
 
-/** Como clearTerminalPtyIds, mas também DESCARTA a sessão do agente (sessionId) e o
- *  badge de conclusão. Usado pelo "kill": mata o processo e reinicia do zero na
- *  próxima abertura, ao contrário do "disable" (olhinho), que preserva sessionId. */
+                                                                                    
+                                                                                
+                                                                                     
 export function resetTerminalRuntime(terminal: Terminal): Terminal {
   if (terminal.tabs.length === 0) return terminal
   return {
@@ -255,42 +256,42 @@ export function getProjectDefaultCwd(
  *  ainda aponta pro segmento mais externo (a raiz real). */
 const ALETHE_WORKTREES_SEGMENT = /[\\/]\.alethe[\\/]worktrees[\\/]/i
 
-/** Deriva a raiz do repo a partir do cwd de uma worktree isolada, sem git:
- *  o próprio Alethe sempre cria worktrees em `<raiz>/.alethe/worktrees/<id>`
- *  (ver `worktrees_base` em `worktrees.rs`) — cortar nesse ponto devolve a
- *  raiz original, mesmo que o cwd seja de uma worktree aninhada. */
+                                                                           
+                                                                             
+                                                                           
+                                                                    
 function deriveRepoRootFromWorktreeCwd(cwd: string): string {
   const match = cwd.match(ALETHE_WORKTREES_SEGMENT)
   if (!match || match.index === undefined) return ''
   return cwd.slice(0, match.index)
 }
 
-/**
- * Como getProjectDefaultCwd, mas nunca devolve o cwd de um terminal já
- * migrado pra worktree — operações de merge/migração precisam da raiz real
- * do repositório, não de um subdiretório de worktree isolada.
- */
+   
+                                                                       
+                                                                           
+                                                              
+   
 export function getProjectRepoRoot(project: Project | null | undefined): string {
   if (!project) return ''
   const sorted = [...project.terminals].sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))
 
-  // `gsdSyncViewer` nunca conta como "puro": o cwd dele É a worktree (só não
-  // tem `worktreeAgentId` porque não é o agente isolado em si, é só um
-  // viewer secundário) — sem essa exclusão ele era escolhido como referência
+                                                                             
+                                                                       
+                                                                             
   // de raiz, devolvendo o path da worktree em vez do repo de verdade, e
-  // quebrava a descoberta de sessões GSD Sync do próprio projeto (a raiz
-  // "descoberta" batia com o cwd do terminal isolado, então o filtro de
-  // `watched` nunca via nenhum terminal de worktree pra vigiar).
+                                                                         
+                                                                        
+                                                                 
   const pure = sorted.filter((terminal) => !terminal.worktreeAgentId && !terminal.gsdSyncViewer)
   for (const terminal of pure) {
     const cwd = resolveTerminalCwd(terminal)
     if (cwd) return cwd
   }
 
-  // Nenhum terminal "puro" sobrou (todos já isolados, ex.: projeto que só
-  // teve agentes isolados desde o início, ou cujo terminal original foi
-  // removido) — deriva a raiz a partir do padrão de path conhecido, sem
-  // precisar de nenhum terminal de referência "limpo".
+                                                                          
+                                                                        
+                                                                        
+                                                       
   for (const terminal of sorted) {
     const cwd = resolveTerminalCwd(terminal)
     const derived = cwd && deriveRepoRootFromWorktreeCwd(cwd)

@@ -1,13 +1,6 @@
-//! Bloco 2.3 do plano da Central de Merges — probe de saúde ao vivo.
 //!
-//! Sobe o comando de start do backend do projeto do usuário num ambiente
-//! efêmero (mesmo `env_path` de `merge_prepare`), numa porta isolada obtida
-//! via bind de teste (nunca colide com o dev server real do usuário), e faz
-//! poll de um endpoint de saúde até responder ou estourar o timeout. A árvore
-//! de processo é morta INCONDICIONALMENTE ao final — sucesso, falha ou
+
 //! timeout — nunca deixa um servidor de teste vivo em background. Camada de
-//! AVISO (Camada 4 do Escudo): o resultado nunca bloqueia o merge sozinho,
-//! só informa quem decide (Camada 5 — o usuário).
 
 use serde::Serialize;
 use std::net::TcpListener;
@@ -104,7 +97,11 @@ pub async fn health_probe(
     }
 
     let url = {
-        let normalized = if path.starts_with('/') { path.clone() } else { format!("/{path}") };
+        let normalized = if path.starts_with('/') {
+            path.clone()
+        } else {
+            format!("/{path}")
+        };
         format!("http://127.0.0.1:{port}{normalized}")
     };
     let client = reqwest::Client::builder()
@@ -124,15 +121,13 @@ pub async fn health_probe(
             }
             Err(_) => {
                 if let Ok(Some(_)) = child.try_wait() {
-                    break; // processo já morreu — parar de tentar, resto do tempo seria desperdiçado
+                    break;
                 }
                 tokio::time::sleep(Duration::from_millis(400)).await;
             }
         }
     }
 
-    // Kill incondicional da árvore inteira — nunca deixa o servidor de teste
-    // vivo em background, não importa como o loop acima terminou.
     if let Some(pid) = pid {
         kill_process_tree(pid);
     }
@@ -174,8 +169,7 @@ mod tests {
     async fn kills_process_and_reports_no_response_on_timeout() {
         let dir = std::env::temp_dir().join(format!("alethe-healthprobe-{}", nanoid::nanoid!(6)));
         std::fs::create_dir_all(&dir).unwrap();
-        // Comando que nunca abre porta nenhuma — probe deve estourar o timeout
-        // curto e voltar com responded:false, sem travar o teste.
+
         let sleep_cmd = if cfg!(windows) {
             "ping -n 30 127.0.0.1 >NUL"
         } else {

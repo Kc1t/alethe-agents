@@ -13,15 +13,14 @@ pub struct AntigravitySessionSnapshot {
 }
 
 pub(crate) fn antigravity_metadata_file() -> Option<PathBuf> {
-    provider_home_dir(&[".gemini", "antigravity-cli", "cache", "conversation_metadata.json"])
+    provider_home_dir(&[
+        ".gemini",
+        "antigravity-cli",
+        "cache",
+        "conversation_metadata.json",
+    ])
 }
 
-/// Resolve o timestamp de uma conversa: prioriza `summary.UpdatedAt` (UTC),
-/// cai pro `last_modified_time` irmão quando summary está ausente (conversas
-/// internas não têm summary), e só usa o mtime do arquivo inteiro como
-/// último recurso — sem isso toda conversa fica com o MESMO timestamp e a
-/// ordenação por recência não funciona (o container inteiro compartilha um
-/// único arquivo `conversation_metadata.json`).
 fn conversation_modified_ms(item: &serde_json::Value, default_ms: u128) -> u128 {
     let summary_updated = item
         .get("summary")
@@ -60,12 +59,10 @@ fn normalize_uri_path(uri: &str) -> String {
     }
 }
 
-/// Compara dois paths já normalizados permitindo que um seja ancestral do
 /// outro (workspace root vs subpasta — o Antigravity registra `WorkspaceURIs`
-/// por workspace, que pode ser mais amplo que o cwd do pane), mas exige
-/// fronteira de separador logo após a string mais curta — sem isso
+
 /// "c:\users\foo\project" e "c:\users\foo\project2" combinariam
-/// incorretamente (o segundo só começa com o primeiro).
+
 fn cwd_matches(norm: &str, target_cwd: &str) -> bool {
     if norm == target_cwd {
         return true;
@@ -84,18 +81,20 @@ fn cwd_matches(norm: &str, target_cwd: &str) -> bool {
     false
 }
 
-/// `async` + `spawn_blocking`: varre diretórios de sessão no disco, mesma
-/// classe de I/O bloqueante já corrigida em `cli_resolver.rs`; chamado a
-/// cada spawn/validação de resumo de terminal (`XTermView`), então travar a
-/// thread de despacho do Tauri aqui trava outros comandos IPC concorrentes.
 #[tauri::command]
-pub async fn snapshot_antigravity_sessions(cwd: String) -> Result<Vec<AntigravitySessionSnapshot>, String> {
+pub async fn snapshot_antigravity_sessions(
+    cwd: String,
+) -> Result<Vec<AntigravitySessionSnapshot>, String> {
     tokio::task::spawn_blocking(move || snapshot_antigravity_sessions_inner(cwd))
         .await
-        .map_err(|error| format!("snapshot_antigravity_sessions: falha na task bloqueante: {error}"))?
+        .map_err(|error| {
+            format!("snapshot_antigravity_sessions: falha na task bloqueante: {error}")
+        })?
 }
 
-fn snapshot_antigravity_sessions_inner(cwd: String) -> Result<Vec<AntigravitySessionSnapshot>, String> {
+fn snapshot_antigravity_sessions_inner(
+    cwd: String,
+) -> Result<Vec<AntigravitySessionSnapshot>, String> {
     let Some(meta_path) = antigravity_metadata_file() else {
         return Ok(Vec::new());
     };

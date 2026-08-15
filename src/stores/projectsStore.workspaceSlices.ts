@@ -9,11 +9,31 @@ import {
   touchTerminalUsage,
 } from '../lib/terminalFactory'
 import type {
+  GridLayout,
+  GridLayoutHistoryEntry,
   Preferences,
   WorkspaceContainer,
   WorkspaceTab,
   WorkspaceViewSnapshot,
 } from '../lib/types'
+
+const MAX_GRID_LAYOUT_HISTORY = 8
+
+function layoutsMatch(left: GridLayout, right: GridLayout): boolean {
+  return JSON.stringify(left) === JSON.stringify(right)
+}
+
+function rememberGridLayout(
+  history: GridLayoutHistoryEntry[] | undefined,
+  layout: GridLayout,
+): GridLayoutHistoryEntry[] {
+  const current = history ?? []
+  if (current[0] && layoutsMatch(current[0].layout, layout)) return current
+  return [{ id: nanoid(), savedAt: Date.now(), layout: structuredClone(layout) }, ...current].slice(
+    0,
+    MAX_GRID_LAYOUT_HISTORY,
+  )
+}
 import {
   MAX_WORKSPACE_TABS,
   captureWorkspaceSnapshot,
@@ -93,7 +113,7 @@ export function createWorkspaceSlice({
         const target = state.projects.find((p) => p.id === id)
         if (!target) return { activeProjectId: id }
         const now = Date.now()
-        // Se o container já existe, preserva panes/ordem/layout e só marca como usado.
+                                                                                       
         const existing = state.workspace.containers.find((c) => c.projectId === id)
         if (target.terminals.length === 0) {
           return {
@@ -290,9 +310,9 @@ export function createWorkspaceSlice({
     },
 
     openGroupWorkspace: (groupId, mode = 'append') => {
-      // APPEND: junta os terminais do grupo à tela atual, formando um
-      // "agrupado de grupos" (composition cross-grupo). Single-pass e explícito
-      // — sem depender do nav-sync nem de grid de grupo herdado.
+                                                                      
+                                                                                
+                                                                 
       if (mode === 'append' && get().workspace.activeTabId) {
         navigationUpdate((state) => {
           const activeTab = state.workspace.tabs.find(
@@ -316,8 +336,8 @@ export function createWorkspaceSlice({
               )
             }
           }
-          // Agrupado = composition: zera o filtro de grupo e o grid herdado pra
-          // o auto-grid reflowar TODOS os containers (incluindo os recém-juntados).
+                                                                                
+                                                                                    
           const snapshot = makeSnapshot(state, containers, toAdd[0].id, null, null, {
             workspaceGridLayout: undefined,
             workspaceFlat: false,
@@ -561,7 +581,7 @@ export function createWorkspaceSlice({
         const tabs = state.workspace.tabs.map((tab) =>
           tab.id === tabId ? { ...tab, pinned: !tab.pinned, updatedAt: Date.now() } : tab,
         )
-        // Fixadas primeiro, preservando a ordem relativa de cada grupo.
+                                                                        
         const ordered = [...tabs.filter((tab) => tab.pinned), ...tabs.filter((tab) => !tab.pinned)]
         return { workspace: { ...state.workspace, tabs: ordered } }
       }),
@@ -668,13 +688,21 @@ export function createWorkspaceSlice({
       updateContainer(projectId, (c) => ({ ...c, internalLayout: layout }))
     },
 
-    setProjectGridLayout: (projectId, layout) =>
+    setProjectGridLayout: (projectId, layout, recordHistory = false) =>
       update((state) => ({
         projects: state.projects.map((p) =>
-          p.id === projectId ? { ...p, gridLayout: layout, layoutMode: 'grid' } : p,
+          p.id === projectId
+            ? {
+                ...p,
+                gridLayout: layout,
+                layoutMode: 'grid',
+                gridLayoutHistory: recordHistory
+                  ? rememberGridLayout(p.gridLayoutHistory, layout)
+                  : p.gridLayoutHistory,
+              }
+            : p,
         ),
-        // sincroniza o container aberto na workspace pra que o novo grid
-        // entre em vigor imediatamente (sem precisar reabrir o projeto)
+        // Keep the open workspace container in sync so the new grid applies immediately.
         workspace: {
           ...state.workspace,
           containers: state.workspace.containers.map((c) =>
@@ -688,27 +716,40 @@ export function createWorkspaceSlice({
         groups: state.groups.map((g) => (g.id === groupId ? { ...g, layoutMode: mode } : g)),
       })),
 
-    setGroupGridLayout: (groupId, layout) =>
+    setGroupGridLayout: (groupId, layout, recordHistory = false) =>
       update((state) => ({
         groups: state.groups.map((g) =>
-          g.id === groupId ? { ...g, gridLayout: layout, layoutMode: 'grid' } : g,
+          g.id === groupId
+            ? {
+                ...g,
+                gridLayout: layout,
+                layoutMode: 'grid',
+                gridLayoutHistory: recordHistory
+                  ? rememberGridLayout(g.gridLayoutHistory, layout)
+                  : g.gridLayoutHistory,
+              }
+            : g,
         ),
       })),
 
-    setWorkspaceGridLayout: (layout) =>
+    setWorkspaceGridLayout: (layout, recordHistory = false) =>
       update((state) => {
         const workspaceGridLayout = layout ?? undefined
         const preferences = {
           ...state.preferences,
           workspaceFlat: false,
           workspaceGridLayout,
+          workspaceGridLayoutHistory:
+            layout && recordHistory
+              ? rememberGridLayout(state.preferences.workspaceGridLayoutHistory, layout)
+              : state.preferences.workspaceGridLayoutHistory,
         }
         const activeTab = state.workspace.tabs.find((tab) => tab.id === state.workspace.activeTabId)
         if (!activeTab) return { preferences }
 
-        // O redimensionamento acontece em `preferences`, mas cada aba salva
-        // seu próprio snapshot. Atualizar os dois evita que a navegação restaure
-        // o grid antigo/default ao voltar para o projeto.
+                                                                            
+                                                                                 
+                                                          
         const snapshot = captureWorkspaceSnapshot({
           containers: state.workspace.containers,
           activeProjectId: state.activeProjectId,

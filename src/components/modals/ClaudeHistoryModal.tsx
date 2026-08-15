@@ -77,7 +77,7 @@ export function ClaudeHistoryModal({
     if (!ptyId) return
     setBusyId(sessionId)
     try {
-      // Preserva flags existentes (ex: --dangerously-skip-permissions),
+                                                                        
       // remove --resume <id> antigo e adiciona o novo.
       const old = extraArgs ?? []
       const filtered: string[] = []
@@ -100,7 +100,7 @@ export function ClaudeHistoryModal({
       })
       window.dispatchEvent(new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId } }))
 
-      // Persiste extraArgs na subtab pra que reabrir o app respawne com a mesma sessao
+                                                                                       
       useProjectsStore.getState().setSubTabSessionId(projectId, terminalId, tabId, sessionId)
 
       onClose()

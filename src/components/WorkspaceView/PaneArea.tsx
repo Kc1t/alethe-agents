@@ -16,7 +16,7 @@ import styles from './WorkspaceView.module.css'
 
 const EMPTY_PANE_GROUPS: { id: string; paneIds: string[] }[] = []
 
-/** Renderiza o pane certo conforme o tipo (terminal ou viewer de arquivo). */
+                                                                              
 function Pane({
   projectId,
   terminal,
@@ -94,7 +94,7 @@ function PaneGroupView({
 
 export type PaneAreaProps = {
   projectId: string
-  /** Prefixo único pros Panel ids — vital quando vários containers coexistem. */
+                                                                                 
   idPrefix: string
   terminals: Terminal[]
   layoutMode: LayoutMode
@@ -138,7 +138,7 @@ function GridLayoutComponent({
   const reconciled = layout
     ? reconcileGridLayout(layout, ids)
     : { cols: 2, rows: Math.ceil(ids.length / 2), cells: {} as GridLayout['cells'] }
-  // se sem layout salvo, faz auto-fill posicional
+                                                  
   if (!layout) {
     ids.forEach((id, i) => {
       reconciled.cells[id] = {

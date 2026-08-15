@@ -2,6 +2,7 @@ mod activity_stats;
 mod agent_cost;
 mod agent_events;
 mod agent_library;
+mod ai_memory;
 mod antigravity_sessions;
 mod antigravity_usage;
 mod backup;
@@ -10,54 +11,51 @@ mod claude_usage;
 mod cli_launch;
 mod cli_resolver;
 mod cli_shim;
-mod codex_sessions;
 mod codex_app_server;
+mod codex_sessions;
 mod codex_usage;
+mod contract_check;
 mod crash_watch;
 mod diagnostics;
 mod discord_presence;
 mod economy_agents;
+mod event_bus;
 mod filesystem;
 mod ghostty_bridge;
 #[cfg(all(target_os = "macos", ghostty_linked))]
 mod ghostty_ffi;
 mod git_control;
 mod github_sync;
+mod graphify;
+mod health_probe;
 mod logging;
+mod opencode_bridge;
+mod opencode_gsd_plugin;
+mod opencode_sessions;
 mod paths;
-mod profiles;
-mod projects;
-mod pty;
-mod resources;
+mod planning;
+mod planning_gate;
+mod plugins;
 mod process_tree;
+mod profiles;
+mod project_detector;
+mod projects;
+mod provider_common;
+mod pty;
+mod remote;
 mod resource_manager;
+mod resources;
+mod scheduler;
 mod session_watcher;
 mod spotify;
 mod stats;
+mod supervisor;
+mod telemetry;
+mod validation;
 mod window_style;
 #[cfg(windows)]
 mod windows_webview;
 mod worktrees;
-mod event_bus;
-mod telemetry;
-mod validation;
-mod planning;
-mod planning_gate;
-mod opencode_gsd_plugin;
-mod scheduler;
-mod supervisor;
-mod merge_analyzer;
-mod conflict_resolution;
-mod graphify;
-mod ai_memory;
-mod plugins;
-mod opencode_sessions;
-mod opencode_bridge;
-mod project_detector;
-mod contract_check;
-mod health_probe;
-mod provider_common;
-mod remote;
 
 use crate::pty::{PtySession, PtySessions};
 use std::collections::HashMap;
@@ -96,24 +94,21 @@ use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Precisa ser setado ANTES da webview ser criada (mais abaixo, via
-    // Tauri Builder). WebKitGTK, no caminho de composição via DMA-BUF, tem
     // bugs conhecidos no Wayland — escala fracionada quebrando layout,
-    // animações CSS travando/renderizando parcial, e um crash silencioso
+
     // ("Error 71") em alguns drivers de GPU — documentados oficialmente em
     // https://v2.tauri.app/develop/debug/linux-graphics/. Desligar o
-    // renderer DMA-BUF custa o caminho de rendering mais rápido, mas evita
-    // essa classe inteira de bug; não mexe em nada no Windows/macOS.
+
     #[cfg(target_os = "linux")]
     std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
 
     let _ = dotenvy::dotenv();
     // `npm run app` (dev) injeta EDITOR=vi e GIT_EDITOR=true no ambiente do
-    // processo. Shells spawnados pelos terminais herdariam isso e o zsh ligaria
+
     // o vi-mode (Ctrl+R vira "redisplay", Ctrl+A/E viram self-insert — bug real
-    // depurado no macOS). Removemos APENAS quando é claramente o artefato do
+
     // npm (rodando sob npm run + valores exatos que o npm injeta); o ambiente
-    // do usuário em produção passa intocado, em todas as plataformas.
+
     if std::env::var_os("npm_lifecycle_event").is_some() {
         if std::env::var("EDITOR").as_deref() == Ok("vi") {
             std::env::remove_var("EDITOR");
@@ -122,16 +117,14 @@ pub fn run() {
             std::env::remove_var("GIT_EDITOR");
         }
     }
-    // Instala o panic hook cedo (antes do builder). O diretório de logs só é
-    // resolvido no .setup(); panics anteriores a isso caem só no stderr.
+
     logging::install_panic_hook();
-    // Rede de segurança contra terminais órfãos: se o app morrer por crash/kill
-    // forçado (onde RunEvent::Exit não roda), o Job Object mata a árvore de PTYs.
+
     pty::install_kill_on_close_guard();
     let sessions: PtySessions = Arc::new(Mutex::new(HashMap::<String, PtySession>::new()));
     let codex_app_server_state = codex_app_server::CodexAppServerState::default();
     let sessions_for_exit = Arc::clone(&sessions);
-            let sessions_for_resources = Arc::clone(&sessions);
+    let sessions_for_resources = Arc::clone(&sessions);
     let resource_supervisor = Arc::new(resources::ResourceSupervisor::default());
     let resource_supervisor_for_setup = Arc::clone(&resource_supervisor);
 
@@ -150,13 +143,6 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build());
 
-    // Impede execuções paralelas do Alethe — pré-requisito real da guarda de
-    // monotonicidade de `save_projects` (projects.rs): duas instâncias teriam
-    // cada uma seu próprio LAST_WRITE_SEQUENCE em memória, e a garantia de
-    // last-write-wins deixaria de valer entre processos. Segunda instância só
-    // foca a janela existente em vez de abrir outra — e, quando veio de
-    // `alethe <path>` no terminal, entrega o diretório pedido pra ela (ver
-    // cli_launch.rs) antes de morrer.
     #[cfg(desktop)]
     {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
@@ -170,20 +156,9 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_title("(DEV) Alethe");
             }
-            // `tauri dev` no Linux não instala `.desktop` file nenhum (só um
-            // build empacotado via .deb/AppImage faz isso), então KWin/GNOME
-            // Shell não têm de onde puxar o ícone pro Alt+Tab/task switcher e
-            // caem num genérico — a config em `tauri.conf.json` (`bundle.icon`)
-            // só é consumida no empacotamento, não em dev. `set_icon` seta
-            // `_NET_WM_ICON` diretamente na janela em runtime, sem depender de
-            // `.desktop` — não é garantia de funcionar em todo compositor
-            // (alguns preferem lookup por tema/`.desktop` mesmo com o hint
-            // presente), mas não tem custo nenhum tentar.
+
             #[cfg(target_os = "linux")]
             if let Some(window) = app.get_webview_window("main") {
-                // `tauri::image::Image` não decodifica PNG diretamente nesta
-                // versão (só aceita pixels RGBA crus + dimensões) — decodifica
-                // com a crate `image` (já dependência direta) antes.
                 match image::load_from_memory(include_bytes!("../icons/128x128.png")) {
                     Ok(decoded) => {
                         let rgba = decoded.to_rgba8();
@@ -201,25 +176,23 @@ pub fn run() {
             #[cfg(not(debug_assertions))]
             let _ = cli_shim::cli_shim_install();
             // `alethe <path>` com o app fechado: guarda o alvo agora, o
-            // frontend consome no boot (a webview ainda não existe aqui).
+
             cli_launch::capture_cold_start(app.handle());
             event_bus::set_app_handle(app.handle().clone());
             // Cantos arredondados no macOS (no-op nas outras plataformas). A
-            // janela roda sem decorações nativas, então reaplicamos o
-            // arredondamento no nível do AppKit.
+
             window_style::apply_rounded_corners(app.handle());
-            // Detecta saída suja anterior (crash/OOM/kill) e sobe o heartbeat.
+
             crash_watch::start(app.handle().clone());
             resources::start(
                 app.handle().clone(),
                 Arc::clone(&sessions_for_resources),
                 Arc::clone(&resource_supervisor_for_setup),
             );
-            // Limpa scrollback órfão antes de qualquer spawn (sem corrida).
+
             pty::cleanup_orphan_scrollback(app.handle());
             agent_events::start_listener(app.handle().clone());
-            remote::start(app.handle().clone(), Arc::clone(&sessions));
-            // Best-effort: escreve/atualiza o plugin global do OpenCode que
+
             // reporta working/idle real de volta pro Alethe (ver opencode_bridge.rs).
             opencode_bridge::ensure_installed();
             session_watcher::start_watcher(app.handle().clone());
@@ -253,19 +226,27 @@ pub fn run() {
             filesystem::list_directory,
             filesystem::read_text_file,
             filesystem::write_text_file,
+            filesystem::rename_filesystem_entry,
+            filesystem::delete_filesystem_entry,
             filesystem::ensure_todo_template,
             filesystem::watch_file,
             filesystem::unwatch_file,
             pty::pty_exists,
             pty::spawn_pty,
             pty::attach_pty,
+            pty::clear_pty_scrollback,
             pty::restart_pty,
             pty::write_pty,
+            remote::remote_control_connected_devices,
             remote::remote_control_info,
+            remote::remote_control_open_pairing,
+            remote::remote_control_close_pairing,
             remote::remote_control_revoke,
             remote::remote_control_revoke_device,
             remote::remote_control_set_max_devices,
             remote::remote_control_set_session_expiry,
+            remote::remote_control_set_read_only,
+            remote::remote_control_set_shell_input,
             remote::remote_control_set_enabled,
             pty::resize_pty,
             pty::kill_pty,
@@ -296,6 +277,8 @@ pub fn run() {
             profiles::rename_profile,
             profiles::delete_profile,
             cli_resolver::find_cli_launcher,
+            cli_resolver::probe_install_toolchain,
+            cli_resolver::agent_cli_version,
             cli_launch::cli_take_pending_open,
             cli_shim::cli_shim_status,
             cli_shim::cli_shim_install,
@@ -332,6 +315,7 @@ pub fn run() {
             diagnostics::open_logs_folder,
             diagnostics::export_logs,
             logging::record_frontend_error,
+            logging::record_app_event,
             discord_presence::set_discord_presence,
             discord_presence::clear_discord_presence,
             stats::get_memory_stats,
@@ -344,6 +328,8 @@ pub fn run() {
             spotify::spotify_get_current,
             claude_sessions::snapshot_claude_sessions,
             claude_sessions::list_claude_sessions,
+            claude_sessions::get_claude_session_title,
+            claude_sessions::get_claude_session_title,
             claude_sessions::get_claude_activity,
             claude_sessions::get_multi_agent_activity,
             codex_sessions::snapshot_codex_sessions,
@@ -378,6 +364,7 @@ pub fn run() {
             planning::get_planning_autocommit,
             planning_gate::read_planning_status,
             planning_gate::read_gsd_child_session,
+            planning_gate::read_gsd_child_state,
             planning_gate::read_gsd_child_busy,
             planning_gate::read_gsd_child_error,
             planning_gate::read_gsd_procedure,
@@ -385,13 +372,6 @@ pub fn run() {
             scheduler::get_scheduler_tasks,
             scheduler::trigger_scheduler_tick,
             scheduler::cancel_task,
-            merge_analyzer::merge_analyze,
-            conflict_resolution::merge_prepare,
-            conflict_resolution::merge_finalize,
-            conflict_resolution::merge_abort,
-            conflict_resolution::merge_preflight_abort,
-            conflict_resolution::merge_rebase_onto_target,
-            conflict_resolution::merge_force_cleanup,
             project_detector::detect_project_stack,
             contract_check::contract_check,
             health_probe::health_probe,
@@ -419,18 +399,13 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building alethe")
         .run(move |_app_handle, event| {
-            // Faça o teardown assim que o runtime começa a sair. Em alguns
-            // caminhos do Windows a janela é destruída, mas o loop demora a
             // emitir `Exit`; esperar esse evento deixa shells/agentes vivos
-            // por tempo indefinido (e inacessíveis ao usuário).
+
             if let tauri::RunEvent::ExitRequested { .. } = event {
-                pty::kill_all_sessions(&sessions_for_exit);
+                pty::kill_all_sessions_background(&sessions_for_exit);
             }
-            // Saída limpa (event loop encerrou normalmente) → marca a sessão como
-            // OK. Se o processo for morto/crashar, isto NÃO roda e o próximo boot
-            // reporta a saída suja.
+
             if let tauri::RunEvent::Exit = event {
-                pty::kill_all_sessions(&sessions_for_exit);
                 crash_watch::mark_clean_exit();
             }
         });
@@ -438,10 +413,10 @@ pub fn run() {
 
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle, sessions: tauri::State<'_, PtySessions>) {
-    // Última barreira do caminho normal de fechamento: o frontend chama este
-    // comando depois de destruir a janela, então não dependemos do timing do
-    // event loop para matar shells, agentes e seus descendentes.
-    pty::kill_all_sessions(sessions.inner());
+    // The Windows job object remains the hard guarantee that descendants die with the app. The
+    // best-effort explicit teardown runs in the background so a slow process tree cannot block exit.
+    pty::kill_all_sessions_background(sessions.inner());
+    crash_watch::mark_clean_exit();
     app.exit(0);
 }
 

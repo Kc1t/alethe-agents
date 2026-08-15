@@ -14,6 +14,7 @@
     "core:window:allow-destroy",
     "core:window:allow-start-dragging",
     "core:window:allow-is-maximized",
+    "core:window:allow-set-icon",
     "core:window:allow-set-title",
     "core:webview:allow-create-webview",
     "core:webview:allow-webview-close",

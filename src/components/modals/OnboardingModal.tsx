@@ -1,21 +1,24 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { BrainCircuit, Check, GitBranch, Globe, ListTodo, Network } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
-import aletheLogo from '../../assets/alethe-logo.png'
+import { getThemeIcon } from '../../lib/themeIcons'
 import { FEATURES } from '../../lib/features'
 import { LOCALES, useT } from '../../lib/i18n'
 import { DEFAULT_PROFILE_IMAGE_URL, getProfileInitial } from '../../lib/profile'
-import { findCliLauncher } from '../../lib/tauri'
+import { latestNpmVersion, npmPackageFor } from '../../lib/agentVersions'
+import { agentCliVersion, findCliLauncher } from '../../lib/tauri'
 import { THEME_OPTIONS, themeDescription, themeLabel } from '../../lib/themes'
-import { agentCliCommand, type AgentType } from '../../lib/types'
+import { agentCliCommand, type AgentType, type VisualStyle } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { AgentIcon } from '../icons/AgentIcons'
 import { ImageInput } from './ImageInput'
+import { AgentsStep } from './onboarding/AgentsStep'
 import styles from './OnboardingModal.module.css'
 
-const STEP_COUNT = 4
+const STEP_COUNT = 5
+
+const VISUAL_STYLES: VisualStyle[] = ['normal', 'clean']
 
 const CLI_DETECTION_TIMEOUT_MS = 4000
 
@@ -74,10 +77,12 @@ export function OnboardingModal() {
     {},
   )
   const [detectingAgents, setDetectingAgents] = useState(true)
+  const [agentVersions, setAgentVersions] = useState<Partial<Record<CodingAgent, string>>>({})
+  const [agentLatest, setAgentLatest] = useState<Partial<Record<CodingAgent, string>>>({})
+  const [agentPaths, setAgentPaths] = useState<Partial<Record<CodingAgent, string>>>({})
   const contentRef = useRef<HTMLDivElement | null>(null)
   const agentDetectionStartedRef = useRef(false)
 
-  const enabledCount = AGENTS.filter((agent) => preferences.enabledAgents[agent.id]).length
   const trimmedName = name.trim()
   const trimmedPhotoUrl = photoUrl.trim()
   const initial = getProfileInitial(trimmedName)
@@ -93,37 +98,68 @@ export function OnboardingModal() {
     setImgFailed(false)
   }, [preferences.displayName, preferences.onboardingDone, preferences.profileImageUrl])
 
+  const detectAgents = useCallback(async () => {
+    setDetectingAgents(true)
+    const detected = await Promise.all(
+      AGENTS.map(async (agent) => {
+        const command = agentCliCommand(agent.id)
+        if (!command) return [agent.id, null] as const
+        try {
+          const found = await withTimeout(findCliLauncher(command), CLI_DETECTION_TIMEOUT_MS, null)
+          return [agent.id, found] as const
+        } catch {
+          return [agent.id, null] as const
+        }
+      }),
+    )
+
+    const availability = Object.fromEntries(
+      detected.map(([id, path]) => [id, Boolean(path)]),
+    ) as Record<CodingAgent, boolean>
+    const resolvedPaths = Object.fromEntries(
+      detected.filter(([, path]) => path).map(([id, path]) => [id, path as string]),
+    ) as Partial<Record<CodingAgent, string>>
+
+    setAgentAvailability(availability)
+    setAgentPaths(resolvedPaths)
+    setPreferences({
+      enabledAgents: {
+        ...useProjectsStore.getState().preferences.enabledAgents,
+        shell: true,
+      },
+    })
+    setDetectingAgents(false)
+
+    // Versions and the registry lookup run after detection so the table is interactive first.
+    const installed = AGENTS.filter((agent) => availability[agent.id])
+    await Promise.all(
+      installed.map(async (agent) => {
+        const command = agentCliCommand(agent.id)
+        if (!command) return
+        const version = await withTimeout(
+          agentCliVersion(command),
+          CLI_DETECTION_TIMEOUT_MS,
+          null,
+        ).catch(() => null)
+        if (version) setAgentVersions((current) => ({ ...current, [agent.id]: version }))
+      }),
+    )
+
+    await Promise.all(
+      installed.map(async (agent) => {
+        const packageName = npmPackageFor(agent.id)
+        if (!packageName) return
+        const latest = await latestNpmVersion(packageName)
+        if (latest) setAgentLatest((current) => ({ ...current, [agent.id]: latest }))
+      }),
+    )
+  }, [setPreferences])
+
   useEffect(() => {
     if (preferences.onboardingDone || agentDetectionStartedRef.current) return
     agentDetectionStartedRef.current = true
-
-    const detectAgents = async () => {
-      const detected = await Promise.all(
-        AGENTS.map(async (agent) => {
-          const command = agentCliCommand(agent.id)
-          if (!command) return [agent.id, false] as const
-          try {
-            const found = await withTimeout(findCliLauncher(command), CLI_DETECTION_TIMEOUT_MS, null)
-            return [agent.id, Boolean(found)] as const
-          } catch {
-            return [agent.id, false] as const
-          }
-        }),
-      )
-
-      const availability = Object.fromEntries(detected) as Record<CodingAgent, boolean>
-      setAgentAvailability(availability)
-      setPreferences({
-        enabledAgents: {
-          ...preferences.enabledAgents,
-          shell: true,
-        },
-      })
-      setDetectingAgents(false)
-    }
-
     void detectAgents()
-  }, [preferences.enabledAgents, preferences.onboardingDone, setPreferences])
+  }, [detectAgents, preferences.onboardingDone])
 
   useEffect(() => {
     const node = contentRef.current?.querySelector<HTMLElement>('[data-autofocus]')
@@ -142,9 +178,7 @@ export function OnboardingModal() {
       displayName: trimmedName,
       profileImageUrl: trimmedPhotoUrl,
     })
-    // A primeira tela útil após o onboarding é a Home. O modal de criação de
-    // projeto continua abrindo por cima dela, evitando o flash da workspace
-    // vazia que antes aparecia entre as duas etapas.
+
     useUiStore.getState().setActiveView('home')
     window.setTimeout(() => {
       openModal('newProject')
@@ -184,7 +218,7 @@ export function OnboardingModal() {
                 <div className={styles.compactBrand}>
                   <img
                     className={styles.brandLogo}
-                    src={aletheLogo}
+                    src={getThemeIcon(preferences.appIconTheme)}
                     alt="Alethe"
                     draggable={false}
                   />
@@ -377,66 +411,63 @@ export function OnboardingModal() {
                   {step === 2 ? (
                     <>
                       <div className={styles.sectionIntro}>
-                        <h2 className={styles.sectionTitle}>{t('onboarding.agentsTitle')}</h2>
-                        <p className={styles.sectionSubtitle}>{t('onboarding.agentsSubtitle')}</p>
+                        <h2 className={styles.sectionTitle}>{t('onboarding.visualStyleTitle')}</h2>
+                        <p className={styles.sectionSubtitle}>
+                          {t('onboarding.visualStyleSubtitle')}
+                        </p>
                       </div>
 
-                      <div className={styles.agentSummary}>
-                        <span>{t('onboarding.agentsCount', { count: enabledCount })}</span>
-                        <span>
-                          {detectingAgents
-                            ? t('onboarding.agentsDetecting')
-                            : t('onboarding.agentsDetected')}
-                        </span>
-                      </div>
-
-                      <div className={styles.agentGrid}>
-                        {AGENTS.map((agent) => {
-                          const active = preferences.enabledAgents[agent.id]
-                          const installed = agentAvailability[agent.id] ?? false
+                      <div className={styles.visualStyleGrid}>
+                        {VISUAL_STYLES.map((visualStyle) => {
+                          const active = (preferences.visualStyle ?? 'normal') === visualStyle
+                          const clean = visualStyle === 'clean'
                           return (
                             <button
-                              key={agent.id}
+                              key={visualStyle}
                               type="button"
-                              disabled={detectingAgents}
                               className={[
-                                styles.agentOption,
-                                active ? styles.agentOptionActive : '',
-                                !detectingAgents && !installed ? styles.agentOptionUnavailable : '',
+                                styles.visualStyleOption,
+                                active ? styles.visualStyleActive : '',
                               ]
                                 .filter(Boolean)
                                 .join(' ')}
-                              onClick={() => setAgentEnabled(agent.id, !active)}
+                              onClick={() => setPreferences({ visualStyle })}
+                              aria-pressed={active}
                               data-autofocus={active ? 'true' : undefined}
                             >
-                              <div className={styles.agentIconWrap}>
-                                <AgentIcon
-                                  type={agent.id}
-                                  size={20}
-                                  theme={preferences.terminalTheme ?? preferences.uiTheme}
-                                />
-                              </div>
-                              <div className={styles.agentOptionBody}>
-                                <div className={styles.agentNameRow}>
-                                  <span className={styles.agentName}>{agent.label}</span>
-                                  {detectingAgents ? (
-                                    <span className={styles.agentStatus}>
-                                      {t('onboarding.agentChecking')}
-                                    </span>
-                                  ) : installed ? (
-                                    active ? (
-                                      <Check size={15} className={styles.checkMark} />
-                                    ) : null
-                                  ) : (
-                                    <span className={styles.agentStatus}>
-                                      {t('onboarding.agentNotInstalled')}
-                                    </span>
+                              <span
+                                className={[
+                                  styles.visualStylePreview,
+                                  clean
+                                    ? styles.visualStylePreviewClean
+                                    : styles.visualStylePreviewNormal,
+                                ].join(' ')}
+                                aria-hidden
+                              >
+                                <span className={styles.previewToolbar} />
+                                <span className={styles.previewSidebar}>
+                                  <span />
+                                  <span />
+                                  <span />
+                                </span>
+                                <span className={styles.previewWorkspace}>
+                                  <span />
+                                  <span />
+                                </span>
+                              </span>
+                              <span className={styles.visualStyleCopy}>
+                                <strong>
+                                  {t(clean ? 'prefs.visualStyleClean' : 'prefs.visualStyleNormal')}
+                                </strong>
+                                <small>
+                                  {t(
+                                    clean
+                                      ? 'prefs.visualStyleCleanDesc'
+                                      : 'prefs.visualStyleNormalDesc',
                                   )}
-                                </div>
-                                <div className={styles.agentDesc}>
-                                  {t(`agent.${agent.id}.desc`)}
-                                </div>
-                              </div>
+                                </small>
+                              </span>
+                              {active ? <Check size={15} className={styles.checkMark} /> : null}
                             </button>
                           )
                         })}
@@ -445,6 +476,31 @@ export function OnboardingModal() {
                   ) : null}
 
                   {step === 3 ? (
+                    <AgentsStep
+                      agents={AGENTS}
+                      availability={agentAvailability}
+                      versions={agentVersions}
+                      latest={agentLatest}
+                      paths={agentPaths}
+                      enabled={preferences.enabledAgents}
+                      detecting={detectingAgents}
+                      terminalTheme={preferences.terminalTheme ?? preferences.uiTheme}
+                      onToggle={(id, value) => setAgentEnabled(id, value)}
+                      onRescan={() => void detectAgents()}
+                      onInstalled={(id) => {
+                        setAgentAvailability((current) => ({ ...current, [id]: true }))
+                        setAgentEnabled(id, true)
+                        void detectAgents()
+                      }}
+                      onUninstalled={(id) => {
+                        setAgentAvailability((current) => ({ ...current, [id]: false }))
+                        setAgentVersions((current) => ({ ...current, [id]: undefined }))
+                        setAgentEnabled(id, false)
+                      }}
+                    />
+                  ) : null}
+
+                  {step === 4 ? (
                     <>
                       <div className={styles.sectionIntro}>
                         <h2 className={styles.sectionTitle}>{t('onboarding.featuresTitle')}</h2>

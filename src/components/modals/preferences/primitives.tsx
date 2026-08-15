@@ -2,8 +2,8 @@ import type { ReactNode } from 'react'
 
 import styles from '../PreferencesModal.module.css'
 
-// Bloco de seção reutilizado por todas as páginas de preferências. O
-// `data-setting-id` é o alvo usado pela busca para rolar/focar a seção.
+                                                                     
+                                                                        
 export function SettingsSection({
   id,
   title,
@@ -26,8 +26,8 @@ export function SettingsSection({
   )
 }
 
-// Avatar do perfil: mostra a imagem quando houver URL, senão cai para a
-// inicial. Usado tanto na sidebar do modal quanto na página de conta.
+                                                                        
+                                                                      
 export function Avatar({
   url,
   initial,

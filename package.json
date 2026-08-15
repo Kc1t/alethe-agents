@@ -1,6 +1,6 @@
 {
   "name": "alethe",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "license": "AGPL-3.0-or-later",
   "private": true,
   "type": "module",
@@ -30,7 +30,6 @@
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@types/cytoscape": "^3.21.9",
-    "@xterm/addon-canvas": "^0.7.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-search": "^0.16.0",
     "@xterm/addon-unicode11": "^0.9.0",

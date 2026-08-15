@@ -239,7 +239,7 @@
   height: 22px;
 }
 
-/* árvore de arquivos */
+                        
 .tree {
   padding: 0 4px 4px;
 }
@@ -303,7 +303,7 @@
   color: var(--fg-muted);
 }
 
-/* cores de status (só tokens semânticos do tema) */
+                                                    
 .stAdded {
   color: var(--status-working);
 }
@@ -396,6 +396,17 @@
 }
 .retry:hover {
   background: var(--panel-hover);
+}
+.retryPrimary {
+  color: var(--accent-on);
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.retryPrimary:hover {
+  color: var(--accent-on);
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
 }
 .spinning {
   animation: spin 800ms linear infinite;

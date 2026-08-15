@@ -33,7 +33,7 @@ export function normalizeTodoTags(value: unknown): string[] {
   return tags.slice(0, 6)
 }
 
-/** Reordena somente dentro da mesma seção (ativa ou concluída). */
+                                                                   
 export function reorderTodoItems(
   items: TodoItem[],
   draggedId: string,

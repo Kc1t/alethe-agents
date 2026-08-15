@@ -14,11 +14,11 @@ import {
 
 type Session = { folder: string; ptyId: string }
 
-/**
- * Agents instalados na pasta da sessão: listagem, instalação por
- * clique/drag, remoção, modo economia e auto-instalação do time-base
- * (CORE_AGENTS) antes do lead subir. Owner desse estado.
- */
+   
+                                                                 
+                                                                     
+                                                         
+   
 export function useInstalledAgents(session: Session | null) {
   const t = useT()
   const [installed, setInstalled] = useState<InstalledAgent[]>([])
@@ -39,7 +39,7 @@ export function useInstalledAgents(session: Session | null) {
       .catch((err) => console.error('[AgentCanvasPOC] falha listando agents:', err))
   }, [session])
 
-  // Estado inicial: modo economia + agents instalados na pasta.
+                                                                
   useEffect(() => {
     if (!session) return
     economyAgentsEnabled(session.folder)
@@ -48,10 +48,10 @@ export function useInstalledAgents(session: Session | null) {
     refreshInstalled()
   }, [session, refreshInstalled])
 
-  // Auto-instala o time-base (CORE_AGENTS) ANTES de spawnar o lead, pra ele já
-  // poder consultar o orchestrator e delegar pra front/back/qa/docs. Best-effort:
-  // conflito com agent externo de mesmo nome é ignorado (allSettled). A sessão do
-  // lead só monta quando isto termina (coreAgentsReady), senão nasceria sem time.
+                                                                               
+                                                                                  
+                                                                                  
+                                                                                  
   useEffect(() => {
     if (!session) return
     setCoreAgentsReady(false)

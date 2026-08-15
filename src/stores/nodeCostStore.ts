@@ -2,22 +2,22 @@ import { create } from 'zustand'
 
 import { getTranscriptCost, type SessionCost } from '../lib/tauri'
 
-/**
- * Custo por NÓ do agent canvas (subagent/teammate), parseado do transcript
- * JSONL de cada um. Diferente do agentCostStore (que é por sessão/PTY viva): os
- * nós aqui são subagents in-process do Claude, que não têm PTY próprio — o que
- * temos deles é o `agent_transcript_path` (chega no SubagentStop). Por isso o
- * custo de um nó fica disponível quando ele termina/pausa; teammates que voltam
- * a rodar têm o transcript crescido, então o re-poll mantém atualizado.
- *
- * Não recria o parser — só chama get_transcript_cost (agent_cost.rs) por path.
- */
+   
+                                                                           
+                                                                                
+                                                                               
+                                                                              
+                                                                                
+                                                                        
+  
+                                                                               
+   
 
 type NodeLike = { id: string; transcriptPath: string | null }
 
 type NodeCostState = {
   byNodeId: Record<string, SessionCost>
-  /** Relê o custo de cada nó que já tem transcriptPath. */
+                                                           
   refresh: (nodes: NodeLike[]) => Promise<void>
   clear: () => void
 }
@@ -37,7 +37,7 @@ export const useNodeCostStore = create<NodeCostState>((set) => ({
           const cost = await getTranscriptCost(n.transcriptPath)
           return [n.id, cost] as const
         } catch {
-          // Transcript ainda não escrito / não encontrado: mantém o que havia.
+                                                                               
           return null
         }
       }),
@@ -53,7 +53,7 @@ export const useNodeCostStore = create<NodeCostState>((set) => ({
   clear: () => set({ byNodeId: {} }),
 }))
 
-/** Total agregado de USD e tokens entre os nós com custo conhecido. */
+                                                                       
 export function selectNodeCostTotals(byNodeId: Record<string, SessionCost>): {
   costUsd: number
   totalTokens: number

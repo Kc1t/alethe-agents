@@ -1,10 +1,10 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { Minus, Plus, X } from 'lucide-react'
+import { Clock3, LayoutGrid, Minus, Plus, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { autoGridLayout, reconcileGridLayout } from '../../lib/gridLayout'
 import { useT } from '../../lib/i18n'
-import type { GridCell, GridLayout } from '../../lib/types'
+import type { GridCell, GridLayout, GridLayoutHistoryEntry } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import controls from './controls.module.css'
@@ -14,7 +14,7 @@ type DesignerChild = {
   id: string
   label: string
   color?: string
-  /** Texto secundário pequeno (cwd, type, etc). */
+                                                   
   hint?: string
 }
 
@@ -46,8 +46,8 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
   const setGroupGridLayout = useProjectsStore((s) => s.setGroupGridLayout)
   const setWorkspaceGridLayout = useProjectsStore((s) => s.setWorkspaceGridLayout)
 
-  const [title, children, currentLayout] = useMemo<
-    [string, DesignerChild[], GridLayout | undefined]
+  const [title, children, currentLayout, history] = useMemo<
+    [string, DesignerChild[], GridLayout | undefined, GridLayoutHistoryEntry[]]
   >(() => {
     if (context.kind === 'project' && project) {
       return [
@@ -59,6 +59,7 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
           hint: term.tabs[0]?.type ?? 'shell',
         })),
         project.gridLayout,
+        project.gridLayoutHistory ?? [],
       ]
     }
     if (context.kind === 'group' && group) {
@@ -74,6 +75,7 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
           hint: t('mod.terminalCount', { count: p.terminals.length }),
         })),
         group.gridLayout,
+        group.gridLayoutHistory ?? [],
       ]
     }
     if (context.kind === 'workspace') {
@@ -89,9 +91,10 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
           hint: t('mod.terminalCount', { count: p.terminals.length }),
         })),
         workspaceLayout,
+        useProjectsStore.getState().preferences.workspaceGridLayoutHistory ?? [],
       ]
     }
-    return [t('mod.layoutTitleFallback'), [], undefined]
+    return [t('mod.layoutTitleFallback'), [], undefined, []]
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context, project, group, projects, containers, workspaceLayout])
 
@@ -118,10 +121,12 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
   )
   const [selected, setSelected] = useState<string | null>(null)
   const [dragging, setDragging] = useState<string | null>(null)
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const canvasRef = useRef<HTMLDivElement | null>(null)
+  const dragFrameRef = useRef<number | null>(null)
 
-  // mantém o grid coerente quando muda cols/rows: clamp + resolve overlaps
-  // movendo cells colidentes pra próxima célula livre.
+                                                                           
+                                                       
   useEffect(() => {
     setCells((prev) => {
       const ids = Object.keys(prev)
@@ -149,7 +154,7 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
             if (!overlaps(c, r, colSpan, rowSpan)) return { col: c, row: r }
           }
         }
-        // sem espaço pra esse span — força span 1x1 e busca de novo
+                                                                    
         for (let r = 1; r <= rows; r++) {
           for (let c = 1; c <= cols; c++) {
             if (!occupied.has(`${r}:${c}`)) return { col: c, row: r }
@@ -168,7 +173,7 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
           next[id] = { col, row, colSpan, rowSpan }
           occupy(col, row, colSpan, rowSpan)
         } else {
-          // tenta manter o span; se não couber, reduz pra 1x1
+                                                              
           let spot = findFreeSpot(colSpan, rowSpan)
           let finalColSpan = colSpan
           let finalRowSpan = rowSpan
@@ -206,7 +211,7 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
       if (!cur) return prev
       const colSpan = Math.min(cur.colSpan, cols - col + 1)
       const rowSpan = Math.min(cur.rowSpan, rows - row + 1)
-      // swap com qualquer filho ocupando a célula destino
+                                                          
       const occupant = Object.entries(prev).find(([oid, c]) => {
         if (oid === id) return false
         return (
@@ -231,30 +236,37 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
     })
   }
 
-  /** Pointer-based drag — substitui HTML5 drag que falha quando o source box
-      cobre seu próprio drop slot. Detecta drop pela coord do pointer. */
+                                                                             
+                                                                         
   const startDrag = (id: string, e: React.PointerEvent) => {
     // ignora se o user clicou no resize handle (handle pega o evento via stopPropagation)
     if ((e.target as HTMLElement).closest('[data-resize-handle="1"]')) return
     e.preventDefault()
-    // Sem capturar o ponteiro no elemento, o gesto de arrastar pode "vazar"
-    // pro nível do SO/gerenciador de janelas (no GNOME isso pode ser lido
-    // como arrastar a JANELA pra borda da tela — o "snap" pra esquerda que
-    // parece "jogar a interface inteira" pro lado). setPointerCapture garante
-    // que o próprio elemento recebe os eventos até soltar.
+                                                                            
+                                                                          
+                                                                           
+                                                                              
+                                                           
     const target = e.currentTarget
     target.setPointerCapture(e.pointerId)
     setDragging(id)
     setSelected(id)
+    const origin = { x: e.clientX, y: e.clientY }
     const onMove = (ev: PointerEvent) => {
       ev.preventDefault()
+      if (dragFrameRef.current !== null) cancelAnimationFrame(dragFrameRef.current)
+      dragFrameRef.current = requestAnimationFrame(() => {
+        setDragOffset({ x: ev.clientX - origin.x, y: ev.clientY - origin.y })
+        dragFrameRef.current = null
+      })
     }
     const onUp = (ev: PointerEvent) => {
       target.releasePointerCapture(e.pointerId)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      if (dragFrameRef.current !== null) cancelAnimationFrame(dragFrameRef.current)
       const cell = pixelToCell(ev.clientX, ev.clientY)
-      // só dropa se o cursor terminou DENTRO do canvas
+                                                       
       const el = canvasRef.current
       if (el) {
         const rect = el.getBoundingClientRect()
@@ -266,12 +278,13 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
         if (inside) dropAt(id, cell.col, cell.row)
       }
       setDragging(null)
+      setDragOffset({ x: 0, y: 0 })
     }
     window.addEventListener('pointermove', onMove, { passive: false })
     window.addEventListener('pointerup', onUp)
   }
 
-  /** Mapeia coordenada de pixel pra célula (col/row 1-based) usando os pesos atuais. */
+                                                                                        
   const pixelToCell = (clientX: number, clientY: number): { col: number; row: number } => {
     const el = canvasRef.current
     if (!el) return { col: 1, row: 1 }
@@ -328,7 +341,7 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
     window.addEventListener('pointerup', onUp)
   }
 
-  /** Drag entre 2 colunas pra ajustar fração (em fr). */
+                                                         
   const startColResize = (colIdx: number, e: React.PointerEvent) => {
     e.stopPropagation()
     e.preventDefault()
@@ -341,14 +354,14 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
     const total = initialSizes.reduce((a, b) => a + b, 0)
     const onMove = (ev: PointerEvent) => {
       const xFrac = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width))
-      // Soma das frações ANTES do par (colIdx-1, colIdx) — exclui a própria
-      // col colIdx-1, que faz parte do par, não vem antes dele. Incluí-la
-      // por engano (i < colIdx) fazia o cálculo de leftFrac cair muito perto
-      // do mínimo assim que o arrasto começava, colapsando a coluna esquerda
-      // quase instantaneamente ("jogar tudo pra um lado").
+                                                                            
+                                                                          
+                                                                             
+                                                                             
+                                                           
       let before = 0
       for (let i = 0; i < colIdx - 1; i++) before += initialSizes[i] / total
-      // tamanho combinado das duas cols envolvidas (colIdx-1 e colIdx)
+                                                                       
       const combinedFrac = (initialSizes[colIdx - 1] + initialSizes[colIdx]) / total
       const leftFrac = Math.max(0.05, Math.min(combinedFrac - 0.05, xFrac - before))
       const rightFrac = combinedFrac - leftFrac
@@ -378,8 +391,8 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
     const total = initialSizes.reduce((a, b) => a + b, 0)
     const onMove = (ev: PointerEvent) => {
       const yFrac = Math.max(0, Math.min(1, (ev.clientY - rect.top) / rect.height))
-      // Mesmo bug do startColResize (ver comentário lá) — exclui a própria
-      // row rowIdx-1 da soma de "antes do par".
+                                                                           
+                                                
       let before = 0
       for (let i = 0; i < rowIdx - 1; i++) before += initialSizes[i] / total
       const combinedFrac = (initialSizes[rowIdx - 1] + initialSizes[rowIdx]) / total
@@ -407,6 +420,23 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
     setRowSizes(Array(auto.rows).fill(1))
   }
 
+  const applyDraft = (draft: GridLayout) => {
+    const next = reconcileGridLayout(draft, childIds)
+    setCols(next.cols)
+    setRows(next.rows)
+    setCells(next.cells)
+    setColSizes(next.colSizes ?? Array(next.cols).fill(1))
+    setRowSizes(next.rowSizes ?? Array(next.rows).fill(1))
+    setSelected(null)
+  }
+
+  const presets = useMemo(
+    () => createLayoutPresets(childIds),
+    // The modal is remounted for each context and child IDs are stable during editing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [childIds.join('|')],
+  )
+
   const save = () => {
     const layout = reconcileGridLayout(
       {
@@ -418,9 +448,9 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
       },
       childIds,
     )
-    if (context.kind === 'project') setProjectGridLayout(context.id, layout)
-    else if (context.kind === 'group') setGroupGridLayout(context.id, layout)
-    else setWorkspaceGridLayout(layout)
+    if (context.kind === 'project') setProjectGridLayout(context.id, layout, true)
+    else if (context.kind === 'group') setGroupGridLayout(context.id, layout, true)
+    else setWorkspaceGridLayout(layout, true)
     onClose()
   }
 
@@ -477,9 +507,55 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
             <span className={styles.hint}>{t('mod.layoutHint')}</span>
           </div>
 
-          <div
-            ref={canvasRef}
-            className={styles.canvas}
+          <div className={styles.designerBody}>
+            <aside className={styles.library} aria-label={t('mod.layoutLibrary')}>
+              <div className={styles.libraryHeading}>
+                <LayoutGrid size={13} />
+                <span>{t('mod.layoutPresets')}</span>
+              </div>
+              <div className={styles.libraryList}>
+                {presets.map((preset) => (
+                  <button
+                    type="button"
+                    className={styles.libraryItem}
+                    key={preset.id}
+                    onClick={() => applyDraft(preset.layout)}
+                  >
+                    <span>{t(preset.label)}</span>
+                    <span className={styles.libraryMeta}>
+                      {preset.layout.cols}×{preset.layout.rows}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className={styles.libraryHeading}>
+                <Clock3 size={13} />
+                <span>{t('mod.layoutRecent')}</span>
+              </div>
+              {history.length ? (
+                <div className={styles.libraryList}>
+                  {history.map((entry) => (
+                    <button
+                      type="button"
+                      className={styles.libraryItem}
+                      key={entry.id}
+                      onClick={() => applyDraft(entry.layout)}
+                    >
+                      <span>{new Date(entry.savedAt).toLocaleString()}</span>
+                      <span className={styles.libraryMeta}>
+                        {entry.layout.cols}×{entry.layout.rows}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className={styles.libraryEmpty}>{t('mod.layoutRecentEmpty')}</p>
+              )}
+            </aside>
+
+            <div
+              ref={canvasRef}
+              className={styles.canvas}
             style={{
               gridTemplateColumns: colSizes
                 .map((s) => `minmax(0, ${Math.max(0.05, s)}fr)`)
@@ -487,7 +563,7 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
               gridTemplateRows: rowSizes.map((s) => `minmax(0, ${Math.max(0.05, s)}fr)`).join(' '),
             }}
           >
-            {/* slots de fundo (visual apenas — drop é pointer-based no box) */}
+            {/* Background slots are visual only; dropping is pointer-based on the canvas. */}
             {cellsArray.map(({ col, row }) => (
               <div
                 key={`slot-${col}-${row}`}
@@ -495,7 +571,7 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
                 style={{ gridColumn: col, gridRow: row, pointerEvents: 'none' }}
               />
             ))}
-            {/* resizers verticais (entre cols) */}
+            {/* Vertical column resizers. */}
             {Array.from({ length: cols - 1 }).map((_, i) => (
               <div
                 key={`crz-${i}`}
@@ -507,7 +583,7 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
                 onPointerDown={(e) => startColResize(i + 1, e)}
               />
             ))}
-            {/* resizers horizontais (entre rows) */}
+            {/* Horizontal row resizers. */}
             {Array.from({ length: rows - 1 }).map((_, i) => (
               <div
                 key={`rrz-${i}`}
@@ -519,7 +595,7 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
                 onPointerDown={(e) => startRowResize(i + 1, e)}
               />
             ))}
-            {/* filhos posicionados */}
+            {/* Positioned children. */}
             {children.map((child) => {
               const cell = cells[child.id]
               if (!cell) return null
@@ -534,6 +610,10 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
                     gridColumn: `${cell.col} / span ${cell.colSpan}`,
                     gridRow: `${cell.row} / span ${cell.rowSpan}`,
                     borderColor: isSelected ? 'var(--accent)' : undefined,
+                    transform:
+                      dragging === child.id
+                        ? `translate3d(${dragOffset.x}px, ${dragOffset.y}px, 0)`
+                        : undefined,
                   }}
                   onPointerDown={(e) => startDrag(child.id, e)}
                   onClick={() => setSelected((cur) => (cur === child.id ? null : child.id))}
@@ -557,6 +637,7 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
                 </div>
               )
             })}
+            </div>
           </div>
 
           <footer className={styles.footer}>
@@ -585,6 +666,51 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
       </Dialog.Portal>
     </Dialog.Root>
   )
+}
+
+type LayoutPreset = {
+  id: string
+  label:
+    | 'mod.layoutPresetBalanced'
+    | 'mod.layoutPresetColumns'
+    | 'mod.layoutPresetRows'
+    | 'mod.layoutPresetFocusLeft'
+    | 'mod.layoutPresetFocusTop'
+  layout: GridLayout
+}
+
+function createLayoutPresets(childIds: string[]): LayoutPreset[] {
+  const count = Math.max(1, childIds.length)
+  const balancedCols = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(count))))
+  const columns = autoGridLayout(childIds, count)
+  const rows = autoGridLayout(childIds, 1)
+  const focusRows = Math.max(1, childIds.length - 1)
+  const focusLeftCells: Record<string, GridCell> = {}
+  const focusTopCells: Record<string, GridCell> = {}
+  childIds.forEach((id, index) => {
+    if (index === 0) {
+      focusLeftCells[id] = { col: 1, row: 1, colSpan: childIds.length > 1 ? 1 : 2, rowSpan: focusRows }
+      focusTopCells[id] = { col: 1, row: 1, colSpan: focusRows, rowSpan: childIds.length > 1 ? 1 : 2 }
+    } else {
+      focusLeftCells[id] = { col: 2, row: index, colSpan: 1, rowSpan: 1 }
+      focusTopCells[id] = { col: index, row: 2, colSpan: 1, rowSpan: 1 }
+    }
+  })
+  return [
+    { id: 'balanced', label: 'mod.layoutPresetBalanced', layout: autoGridLayout(childIds, balancedCols) },
+    { id: 'columns', label: 'mod.layoutPresetColumns', layout: columns },
+    { id: 'rows', label: 'mod.layoutPresetRows', layout: rows },
+    {
+      id: 'focus-left',
+      label: 'mod.layoutPresetFocusLeft',
+      layout: { cols: childIds.length > 1 ? 2 : 1, rows: focusRows, cells: focusLeftCells },
+    },
+    {
+      id: 'focus-top',
+      label: 'mod.layoutPresetFocusTop',
+      layout: { cols: focusRows, rows: childIds.length > 1 ? 2 : 1, cells: focusTopCells },
+    },
+  ]
 }
 
 function Stepper({

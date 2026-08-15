@@ -178,3 +178,21 @@
   border-top: 1px solid var(--border);
   font-size: 10px;
 }
+
+:global([data-visual-style='clean']) .pane {
+  border-radius: var(--clean-surface-radius);
+}
+
+:global([data-visual-style='clean']) .paneFocus {
+  border-color: var(--clean-focus-border);
+  box-shadow: var(--clean-shadow);
+}
+
+:global([data-visual-style='clean']) .header {
+  height: var(--clean-row-height);
+  flex-basis: var(--clean-row-height);
+}
+
+:global([data-visual-style='clean']) .action {
+  border-radius: var(--clean-control-radius);
+}

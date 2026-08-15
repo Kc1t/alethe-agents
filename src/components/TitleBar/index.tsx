@@ -29,7 +29,8 @@ import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
 import { requestAppClose } from '../../hooks/useCloseConfirmation'
 import { observeClaudeReset, observeCodexReset } from '../../lib/limitResetWatch'
 import { useT } from '../../lib/i18n'
-import { killPty, remoteControlInfo } from '../../lib/tauri'
+import { formatShortcut } from '../../lib/platform'
+import { killPty, remoteControlConnectedDevices } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import styles from './TitleBar.module.css'
@@ -138,22 +139,23 @@ export function TitleBar() {
       return
     }
     void killPty(agentCanvasSession.ptyId).catch(() => {
-      /* PTY pode já ter morrido */
+                                   
     })
     setAgentCanvasSession(null)
   }
 
-  // Pausa apenas o polling remoto de usage quando a janela não está visível.
-  // O supervisor de memória continua ativo no background por segurança.
+                                                                             
+                                                                        
   const activeRef = useRef(true)
 
   useEffect(() => {
     let cancelled = false
     const refreshRemoteDevices = async () => {
+      if (!activeRef.current) return
       try {
-        const info = await remoteControlInfo()
+        const connectedDevices = await remoteControlConnectedDevices()
         if (!cancelled) {
-          setRemoteConnectedDevices(info.enabled ? info.connected_devices : 0)
+          setRemoteConnectedDevices(connectedDevices)
         }
       } catch {
         if (!cancelled) setRemoteConnectedDevices(0)
@@ -170,7 +172,7 @@ export function TitleBar() {
     }
   }, [])
 
-  // Claude usage polling — adiado 1.5s (HTTP call externa, não trava boot).
+                                                                            
   useEffect(() => {
     let cancelled = false
     let interval: number | null = null
@@ -185,8 +187,8 @@ export function TitleBar() {
           consecutiveFailures = 0
         }
       } catch {
-        // Só limpa após 3 falhas consecutivas — evita "sem token" intermitente
-        // quando o credentials.json está sendo escrito pelo Claude ou rede flaky.
+                                                                               
+                                                                                  
         consecutiveFailures += 1
         if (consecutiveFailures >= 3 && !cancelled) {
           setClaudeUsage(null)
@@ -204,8 +206,8 @@ export function TitleBar() {
     }
   }, [setClaudeUsage])
 
-  // Codex usage polling — sobe o `codex app-server` (subprocesso pesado), então
-  // arranca depois do Claude (2.5s) e reusa o mesmo intervalo de 5min.
+                                                                                
+                                                                       
   useEffect(() => {
     let cancelled = false
     let interval: number | null = null
@@ -237,7 +239,7 @@ export function TitleBar() {
     }
   }, [setCodexUsage])
 
-  // Antigravity usage polling — checa localmente se agy.exe está instalado e lê as conversas ativas.
+                                                                                                     
   useEffect(() => {
     let cancelled = false
     let interval: number | null = null
@@ -267,7 +269,7 @@ export function TitleBar() {
 
   const win = getCurrentWindow()
 
-  // Rastreia foco/visibilidade da janela pra pausar o polling em background.
+                                                                             
   useEffect(() => {
     const update = (focused: boolean) => {
       activeRef.current = focused && document.visibilityState === 'visible'
@@ -322,11 +324,11 @@ export function TitleBar() {
           type="button"
           className={`${styles.iconBtn} ${preferences.leftSidebarVisible ? styles.iconBtnActive : ''}`}
           onClick={() => setPreferences({ leftSidebarVisible: !preferences.leftSidebarVisible })}
-          title={
+          title={`${
             preferences.leftSidebarVisible
               ? t('ui.titlebar.closeSidebar')
               : t('ui.titlebar.openSidebar')
-          }
+          } (${formatShortcut('Ctrl+B')})`}
           aria-label={
             preferences.leftSidebarVisible
               ? t('ui.titlebar.closeSidebar')

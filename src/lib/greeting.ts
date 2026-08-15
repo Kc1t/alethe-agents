@@ -1,9 +1,9 @@
 import { getLocale, intlLocale, translate, type Locale } from './i18n'
 
-/**
- * Saudação dinâmica baseada na hora local, localizada.
- * 5:00–11:59 → manhã · 12:00–17:59 → tarde · 18:00–4:59 → noite
- */
+   
+                                                       
+                                                                
+   
 export function getGreeting(date: Date = new Date(), locale: Locale = getLocale()): string {
   const h = date.getHours()
   if (h >= 5 && h < 12) return translate(locale, 'greeting.morning')
@@ -11,7 +11,7 @@ export function getGreeting(date: Date = new Date(), locale: Locale = getLocale(
   return translate(locale, 'greeting.evening')
 }
 
-/** Abreviação de dia da semana no idioma atual (ex: "wed" / "qua"). */
+                                                                       
 function weekdayShort(date: Date, locale: Locale): string {
   return new Intl.DateTimeFormat(intlLocale(locale), { weekday: 'short' })
     .format(date)
@@ -19,7 +19,7 @@ function weekdayShort(date: Date, locale: Locale): string {
     .toLowerCase()
 }
 
-/** Abreviação de mês no idioma atual (ex: "may" / "mai"). */
+                                                             
 function monthShort(date: Date, locale: Locale): string {
   return new Intl.DateTimeFormat(intlLocale(locale), { month: 'short' })
     .format(date)

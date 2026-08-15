@@ -2,22 +2,22 @@ import { create } from 'zustand'
 
 import { basename } from '../lib/paths'
 
-/**
- * Fase 2 do agent canvas — estado compartilhado entre canvas e modal.
- *
- * Tudo entra por `ingest(raw)` (payload cru do evento Tauri `agent-hook`).
- * Correlação é 100% por `agent_id`: confirmado na Etapa 0 que SubagentStart/
- * Stop e os PreToolUse DENTRO do subagent trazem o mesmo id, e que os
- * PreToolUse da sessão principal vêm SEM `agent_id` — é isso que impede a
- * sessão principal de virar card.
- *
- * O prompt do subagent não vem no SubagentStart; ele vem no PreToolUse da
- * SESSÃO PRINCIPAL com tool_name "Agent"/"Task" (tool_input.description/
- * .prompt/.subagent_type). Guardamos como pendência por tipo e o próximo
- * SubagentStart do mesmo tipo consome (FIFO) — com 2+ spawns simultâneos do
- * MESMO tipo a ordem pode trocar prompt entre irmãos, mas o id do card em si
- * nunca embaralha.
- */
+   
+                                                                      
+  
+                                                                           
+                                                                             
+                                                                      
+                                                                          
+                                  
+  
+                                                                          
+                                                                         
+                                                                         
+                                                                            
+                                                                             
+                   
+   
 
 export type AgentHookPayload = {
   hook_event_name?: string
@@ -70,7 +70,7 @@ export type TeamTask = {
   owner: string | null
 }
 
-/** Cap por node — feed é observabilidade, não histórico infinito. */
+                                                                     
 const FEED_CAP = 300
 
 const SPAWNER_TOOLS = new Set(['Agent', 'Task'])
@@ -79,7 +79,7 @@ function str(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null
 }
 
-/** Resumo de uma linha por tool call, pro feed do card/modal. */
+                                                                 
 export function summarizeTool(toolName: string, input?: Record<string, unknown>): string {
   if (!input) return ''
   const clip = (s: string, n = 80) => (s.length > n ? `${s.slice(0, n)}…` : s)
@@ -115,7 +115,7 @@ type AgentCanvasState = {
   nodes: AgentNode[]
   selectedId: string | null
   lastEventAt: number | null
-  /** Prompts de Agent tool calls da sessão principal aguardando o Start. */
+                                                                            
   pendingPrompts: Record<string, PendingPrompt[]>
   /** Active team name from the lead's TeamCreate event. */
   teamName: string | null
@@ -205,8 +205,8 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
       const id = raw.agent_id
       if (!id) return
       set((s) => {
-        // Encarnação de teammate terminando = teammate fica idle (não done —
-        // ele acorda de novo no próximo turno).
+                                                                             
+                                                
         const teammateNodeId = s.incarnations[id]
         const idx = s.nodes.findIndex((n) => n.id === (teammateNodeId ?? id))
         if (idx === -1) {
@@ -235,7 +235,7 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
       const agentId = raw.agent_id
       const input = raw.tool_input ?? {}
 
-      // TaskUpdate (lead OU teammate) → estado da task list.
+                                                             
       if (raw.tool_name === 'TaskUpdate') {
         const taskId = str(input.taskId) ?? str(input.task_id)
         if (taskId) {
@@ -257,11 +257,11 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
             }
           })
         }
-        // segue — se veio de um teammate, também entra no feed dele abaixo.
+                                                                            
       }
 
       if (!agentId) {
-        // Sessão principal (lead).
+                                   
         if (raw.tool_name === 'TeamCreate') {
           const teamName = str(input.team_name)
           console.log('[agentCanvasStore] TeamCreate:', teamName)
@@ -273,7 +273,7 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
           const teamName = str(input.team_name)
           if (teammateName && teamName) {
             // Spawn de TEAMMATE (tool_input tem name+team_name; subagent comum
-            // tem subagent_type). Cria o card grande do teammate.
+                                                                  
             const nodeId = `teammate:${teammateName}`
             console.log(`[agentCanvasStore] teammate spawnado: ${teammateName} (${teamName})`)
             set((s) => {
@@ -301,14 +301,14 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
             })
             return
           }
-          // Spawn de subagent comum: guarda description/prompt pro próximo
-          // Start do mesmo tipo casar.
+                                                                           
+                                       
           const subagentType = str(input.subagent_type) ?? 'general-purpose'
           set((s) => ({
             pendingPrompts: {
               ...s.pendingPrompts,
-              // Limita a fila: spawns órfãos (sem Start correspondente) não podem
-              // acumular pra sempre.
+                                                                                  
+                                     
               [subagentType]: [
                 ...(s.pendingPrompts[subagentType] ?? []),
                 { description: str(input.description), prompt: str(input.prompt) },
@@ -329,9 +329,9 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
         const targetId = s.incarnations[agentId] ?? agentId
         const idx = s.nodes.findIndex((n) => n.id === targetId)
         if (idx === -1) {
-          // Start se perdeu (listener fora do ar no spawn) — ensureNode: cria
-          // o card aqui mesmo. Seguro porque a sessão principal nunca chega
-          // neste branch (não tem agent_id).
+                                                                              
+                                                                            
+                                             
           console.warn(
             `[agentCanvasStore] PreToolUse sem node, criando via ensureNode id=${agentId}`,
           )
@@ -420,7 +420,7 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
       return
     }
 
-    // PostToolUse: por ora só observabilidade no log do Rust — nada no store.
+                                                                              
   },
 
   select: (id) => {

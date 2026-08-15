@@ -1,9 +1,12 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App'
-import { recordFrontendError } from './lib/tauri'
 import './styles/reset.css'
 import './styles/theme.css'
+import './styles/visual-clean.css'
+
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+
+import App from './App'
+import { recordFrontendError } from './lib/tauri'
 
 // Capture uncaught errors that React boundaries cannot handle, such as PTY callbacks.
 let lastErrorAt = 0

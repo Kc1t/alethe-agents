@@ -4,10 +4,10 @@ import { useUiStore } from '../../stores/uiStore'
 import { useT } from '../../lib/i18n'
 import styles from './SidebarUpdate.module.css'
 
-/**
- * Mostra apenas atualizações disponíveis na sidebar. A versão instalada fica
- * acessível em Preferências > Sobre, sem ocupar espaço no rodapé.
- */
+   
+                                                                             
+                                                                  
+   
 export function SidebarUpdate() {
   const t = useT()
   const info = useUiStore((s) => s.updateInfo)

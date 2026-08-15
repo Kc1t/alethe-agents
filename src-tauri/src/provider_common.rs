@@ -4,8 +4,7 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Resolve `~/<segments>` a partir de `USERPROFILE` (Windows) ou `HOME` (Unix).
-/// Usado pelos módulos de sessão/uso por provider (Claude, Codex, Antigravity)
-/// para achar o diretório de dados do CLI correspondente.
+
 pub(crate) fn provider_home_dir(segments: &[&str]) -> Option<PathBuf> {
     let home = env::var_os("USERPROFILE")
         .or_else(|| env::var_os("HOME"))
@@ -13,9 +12,6 @@ pub(crate) fn provider_home_dir(segments: &[&str]) -> Option<PathBuf> {
     Some(segments.iter().fold(home, |acc, seg| acc.join(seg)))
 }
 
-/// mtime de um arquivo em milissegundos desde a época UNIX, com fallback 0
-/// (arquivo sem mtime legível não deve quebrar a listagem, só perde a
-/// ordenação por recência).
 pub(crate) fn file_modified_ms(metadata: &fs::Metadata) -> u128 {
     metadata
         .modified()
@@ -25,7 +21,6 @@ pub(crate) fn file_modified_ms(metadata: &fs::Metadata) -> u128 {
         .unwrap_or(0)
 }
 
-/// Agora em milissegundos desde a época UNIX, com fallback 0.
 pub(crate) fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -33,9 +28,6 @@ pub(crate) fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// Normaliza um cwd pra comparação: sem separador final, case-insensitive só
-/// no Windows (filesystems Unix são case-sensitive). Usado pelos módulos de
-/// sessão que filtram por cwd exato (Codex, Antigravity).
 pub(crate) fn normalize_cwd(cwd: &str) -> String {
     let trimmed = cwd.trim().trim_end_matches(|c: char| c == '\\' || c == '/');
     if cfg!(windows) {

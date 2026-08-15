@@ -11,6 +11,7 @@ import {
 import { memo, useRef, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
+import { browserHiddenEvictionDelay } from '../../lib/browserResourcePolicy'
 import { openInBrowser } from '../../lib/tauri'
 import type { Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -40,6 +41,7 @@ export const WebPane = memo(function WebPane({
   const openModal = useUiStore((state) => state.openModal)
   const showMainMenu = useUiStore((state) => state.showMainMenu)
   const linkViewerUrl = useUiStore((state) => state.linkViewerUrl)
+  const memoryPressure = useUiStore((state) => state.runtimeSnapshot?.pressure.level ?? 'normal')
   const isFocusMode = inFocusOverlay || focusedTerminalId === terminal.id
   const browserVisible =
     !preview &&
@@ -48,6 +50,10 @@ export const WebPane = memo(function WebPane({
     !showMainMenu &&
     !linkViewerUrl &&
     (!focusedTerminalId || focusedTerminalId === terminal.id)
+  const hiddenEvictionDelayMs = browserHiddenEvictionDelay(
+    terminal.browserConfig?.resourceMode ?? 'app-first',
+    memoryPressure,
+  )
   const setFocusedTerminal = useUiStore((state) => state.setFocusedTerminal)
   const setActiveTerminal = useUiStore((state) => state.setActiveTerminal)
   const deleteTerminal = useProjectsStore((state) => state.deleteTerminal)
@@ -164,6 +170,7 @@ export const WebPane = memo(function WebPane({
             title={terminal.name}
             reloadKey={reloadKey}
             javascriptEnabled={terminal.browserConfig?.javascriptEnabled ?? true}
+            hiddenEvictionDelayMs={hiddenEvictionDelayMs}
             zoom={terminal.browserConfig?.zoom ?? 1}
             visible={browserVisible}
           />

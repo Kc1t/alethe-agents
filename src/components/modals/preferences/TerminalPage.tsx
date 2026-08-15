@@ -1,10 +1,12 @@
-import { Minus, Plus, RotateCcw } from 'lucide-react'
+import { Activity, Minus, Plus, RotateCcw } from 'lucide-react'
 import { useState } from 'react'
 
+import { cliPathMatchesAgent } from '../../../lib/agentCliPath'
+import { pickFile } from '../../../lib/dialog'
 import { useT } from '../../../lib/i18n'
 import { isMacOS } from '../../../lib/platform'
 import { countLiveResumablePanes, resetLastSession } from '../../../lib/resetLastSession'
-import type { AgentType } from '../../../lib/types'
+import { agentCliCommand, type AgentType } from '../../../lib/types'
 import { SPAWN_CONCURRENCY_LIMITS, useProjectsStore } from '../../../stores/projectsStore'
 import { useUiStore } from '../../../stores/uiStore'
 import { AgentIcon } from '../../icons/AgentIcons'
@@ -26,35 +28,12 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
   const preferences = useProjectsStore((state) => state.preferences)
   const setAgentEnabled = useProjectsStore((state) => state.setAgentEnabled)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
+  const cliPaths = useProjectsStore((state) => state.cliPaths)
+  const setCliPath = useProjectsStore((state) => state.setCliPath)
   const pushToast = useUiStore((state) => state.pushToast)
+  const openModal = useUiStore((state) => state.openModal_)
   const [resetting, setResetting] = useState(false)
   const concurrency = preferences.spawnConcurrency
-  const resourcePolicy = preferences.resourcePolicy
-  const effectiveResourceMode =
-    resourcePolicy.automaticParkingOptIn === true && resourcePolicy.mode === 'smart-lru'
-      ? 'smart-lru'
-      : 'manual'
-  const setResourcePolicy = (patch: Partial<typeof resourcePolicy>) => {
-    const next = { ...resourcePolicy, ...patch }
-    next.memoryBudgetMb = Math.min(8192, Math.max(768, Math.round(next.memoryBudgetMb)))
-    next.warningThresholdMb = Math.min(
-      next.memoryBudgetMb - 64,
-      Math.max(512, Math.round(next.warningThresholdMb)),
-    )
-    next.recoveryTargetMb = Math.min(
-      next.warningThresholdMb - 64,
-      Math.max(384, Math.round(next.recoveryTargetMb)),
-    )
-    next.hiddenAgentIdleMinutes = Math.min(
-      240,
-      Math.max(5, Math.round(next.hiddenAgentIdleMinutes)),
-    )
-    next.hiddenShellIdleMinutes = Math.min(
-      480,
-      Math.max(5, Math.round(next.hiddenShellIdleMinutes)),
-    )
-    setPreferences({ resourcePolicy: next })
-  }
   const setConcurrency = (n: number) =>
     setPreferences({
       spawnConcurrency: Math.min(
@@ -63,6 +42,24 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
       ),
     })
 
+  const onPickCliPath = async (agent: AgentType) => {
+    const picked = await pickFile({
+      title: t('prefs.cliPathPick', { agent }),
+      filters: [
+        { name: 'Executable', extensions: ['cmd', 'exe', 'bat', 'ps1'] },
+        { name: 'All files', extensions: ['*'] },
+      ],
+    })
+    if (!picked) return
+    setCliPath(agent, picked)
+    if (!cliPathMatchesAgent(agent, picked)) {
+      pushToast({
+        title: t('prefs.cliPathMismatch'),
+        body: t('prefs.cliPathMismatchBody', { agent, command: agentCliCommand(agent) ?? agent }),
+      })
+    }
+  }
+
   const onResetLastSession = async () => {
     if (resetting) return
     const count = countLiveResumablePanes()
@@ -70,9 +67,7 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
       pushToast({ title: t('prefs.resetSessionEmpty'), body: t('prefs.resetSessionEmptyBody') })
       return
     }
-    // Abrange TODOS os projetos/grupos com agente vivo em background, não só
-    // o visível — com vários acumulados isso reinicia muitos processos de
-    // uma vez, então confirma explicitamente mostrando a contagem real.
+
     if (count > 1 && !window.confirm(t('prefs.resetSessionConfirm', { count }))) return
     setResetting(true)
     try {
@@ -100,94 +95,15 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
         description={t('prefs.resourcePolicyDesc')}
       >
         <div className={styles.resourceControls}>
-          <div className={styles.segmented}>
-            <button
-              type="button"
-              className={effectiveResourceMode === 'smart-lru' ? styles.segmentActive : undefined}
-              onClick={() => setResourcePolicy({ mode: 'smart-lru', automaticParkingOptIn: true })}
-            >
-              {t('prefs.resourcePolicySmart')}
-            </button>
-            <button
-              type="button"
-              className={effectiveResourceMode === 'manual' ? styles.segmentActive : undefined}
-              onClick={() => setResourcePolicy({ mode: 'manual', automaticParkingOptIn: false })}
-            >
-              {t('prefs.resourcePolicyManual')}
-            </button>
-          </div>
-          <div className={styles.resourceGrid}>
-            <label>
-              <span>{t('prefs.resourceBudget')}</span>
-              <input
-                type="number"
-                min={768}
-                max={8192}
-                step={128}
-                value={resourcePolicy.memoryBudgetMb}
-                onChange={(event) =>
-                  setResourcePolicy({ memoryBudgetMb: Number(event.target.value) })
-                }
-              />
-            </label>
-            <label>
-              <span>{t('prefs.resourceWarning')}</span>
-              <input
-                type="number"
-                min={512}
-                max={resourcePolicy.memoryBudgetMb - 64}
-                step={64}
-                value={resourcePolicy.warningThresholdMb}
-                onChange={(event) =>
-                  setResourcePolicy({ warningThresholdMb: Number(event.target.value) })
-                }
-              />
-            </label>
-            <label>
-              <span>{t('prefs.resourceRecovery')}</span>
-              <input
-                type="number"
-                min={384}
-                max={resourcePolicy.warningThresholdMb - 64}
-                step={64}
-                value={resourcePolicy.recoveryTargetMb}
-                onChange={(event) =>
-                  setResourcePolicy({ recoveryTargetMb: Number(event.target.value) })
-                }
-              />
-            </label>
-            <label>
-              <span>{t('prefs.resourceAgentIdle')}</span>
-              <input
-                type="number"
-                min={5}
-                max={240}
-                step={5}
-                value={resourcePolicy.hiddenAgentIdleMinutes}
-                onChange={(event) =>
-                  setResourcePolicy({ hiddenAgentIdleMinutes: Number(event.target.value) })
-                }
-              />
-            </label>
-            <label>
-              <span>{t('prefs.resourceShellIdle')}</span>
-              <input
-                type="number"
-                min={5}
-                max={480}
-                step={5}
-                value={resourcePolicy.hiddenShellIdleMinutes}
-                onChange={(event) =>
-                  setResourcePolicy({ hiddenShellIdleMinutes: Number(event.target.value) })
-                }
-              />
-            </label>
-          </div>
-          <p className={styles.resourceHint}>
-            {effectiveResourceMode === 'smart-lru'
-              ? t('prefs.resourcePolicySmartHint')
-              : t('prefs.resourcePolicyManualHint')}
-          </p>
+          <p className={styles.resourceHint}>{t('prefs.resourcePolicyManualHint')}</p>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => openModal('memoryAnalytics')}
+          >
+            <Activity size={15} />
+            {t('ui.titlebar.openMemoryAnalytics')}
+          </button>
         </div>
       </SettingsSection>
 
@@ -254,6 +170,49 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
                   onChange={(event) => setAgentEnabled(agent.id, event.target.checked)}
                 />
               </label>
+            )
+          })}
+        </div>
+      </SettingsSection>
+
+      <SettingsSection
+        id="cli-paths"
+        title={t('prefs.cliPaths')}
+        description={t('prefs.cliPathsDesc')}
+      >
+        <div className={styles.agentList}>
+          {AGENTS.filter((agent) => agent.id !== 'shell').map((agent) => {
+            const override = cliPaths[agent.id]
+            const mismatch = override ? !cliPathMatchesAgent(agent.id, override) : false
+            return (
+              <div key={agent.id} className={styles.cliPathRow}>
+                <span className={styles.agentIcon}>
+                  <AgentIcon
+                    type={agent.id}
+                    size={20}
+                    theme={preferences.terminalTheme ?? preferences.uiTheme}
+                  />
+                </span>
+                <span className={styles.agentCopy}>
+                  <strong>{agent.label}</strong>
+                  <span
+                    className={mismatch ? styles.cliPathWarning : styles.cliPathValue}
+                    title={override ?? undefined}
+                  >
+                    {override ?? t('prefs.cliPathAuto')}
+                  </span>
+                </span>
+                <span className={styles.cliPathActions}>
+                  <button type="button" onClick={() => void onPickCliPath(agent.id)}>
+                    {t('prefs.cliPathSet')}
+                  </button>
+                  {override ? (
+                    <button type="button" onClick={() => setCliPath(agent.id, null)}>
+                      {t('prefs.cliPathReset')}
+                    </button>
+                  ) : null}
+                </span>
+              </div>
             )
           })}
         </div>

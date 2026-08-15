@@ -17,20 +17,17 @@ pub struct CodexUsageWindow {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct CodexUsage {
-    /// Janela primária (tipicamente 5h).
     pub primary: CodexUsageWindow,
-    /// Janela secundária (tipicamente semanal).
+
     pub secondary: CodexUsageWindow,
     /// Plano da conta ("plus", "pro", ...). Vazio se desconhecido.
     pub plan: String,
-    /// Se o limite já foi atingido (rateLimitReachedType != null).
+
     pub rate_limited: bool,
-    /// Créditos de reset disponíveis (0 se nenhum).
+
     pub reset_credits: u64,
 }
 
-/// Resolve o executável do `codex` usando o PATH reconstruído (mesma lógica
-/// que o resto do app usa pra achar CLIs no Windows).
 fn resolve_codex() -> Option<std::path::PathBuf> {
     let path = cli_resolver::rebuilt_path();
     let cwd = std::env::current_dir().unwrap_or_default();
@@ -49,7 +46,10 @@ fn parse_window(value: Option<&serde_json::Value>) -> CodexUsageWindow {
     if obj.is_null() {
         return default;
     }
-    let used_percent = obj.get("usedPercent").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let used_percent = obj
+        .get("usedPercent")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
     let window_minutes = obj
         .get("windowDurationMins")
         .and_then(|v| v.as_u64())
@@ -66,7 +66,6 @@ fn parse_window(value: Option<&serde_json::Value>) -> CodexUsageWindow {
     }
 }
 
-/// Sobe `codex app-server`, faz o handshake JSON-RPC e lê `account/rateLimits/read`.
 /// Bloqueante — chamado via `spawn_blocking`.
 fn fetch_usage() -> Result<CodexUsage, String> {
     let exe = resolve_codex().ok_or_else(|| "codex_not_found".to_string())?;
@@ -80,14 +79,11 @@ fn fetch_usage() -> Result<CodexUsage, String> {
 
     crate::git_control::hide_console(&mut command);
 
-    let mut child = command
-        .spawn()
-        .map_err(|e| format!("spawn failed: {e}"))?;
+    let mut child = command.spawn().map_err(|e| format!("spawn failed: {e}"))?;
 
     let mut stdin = child.stdin.take().ok_or("no stdin")?;
     let stdout = child.stdout.take().ok_or("no stdout")?;
 
-    // Handshake + leitura dos limites. id=2 é a resposta que nos interessa.
     let requests = concat!(
         r#"{"id":1,"method":"initialize","params":{"clientInfo":{"name":"alethe","version":"1.2.0"}}}"#,
         "\n",
@@ -101,7 +97,6 @@ fn fetch_usage() -> Result<CodexUsage, String> {
         .map_err(|e| format!("write failed: {e}"))?;
     stdin.flush().map_err(|e| format!("flush failed: {e}"))?;
 
-    // Lê o stdout numa thread pra poder aplicar timeout sem travar pra sempre.
     let (tx, rx) = mpsc::channel();
     let reader_handle = thread::spawn(move || {
         let reader = BufReader::new(stdout);
@@ -122,7 +117,6 @@ fn fetch_usage() -> Result<CodexUsage, String> {
 
     let received = rx.recv_timeout(Duration::from_secs(12));
 
-    // O app-server é um daemon — precisa ser encerrado, senão vira processo órfão.
     let _ = child.kill();
     let _ = child.wait();
     drop(stdin);

@@ -10,15 +10,21 @@
 }
 
 .header {
-  height: 38px;
   flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 10px 10px 0;
+  border-bottom: 0;
+  animation: todoPanelIn 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.headerTop {
+  min-height: 28px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 0 10px 0 12px;
-  border-bottom: 1px solid var(--border);
-  animation: todoPanelIn 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .heading {
@@ -28,27 +34,66 @@
   align-items: center;
   gap: 7px;
   color: var(--fg);
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.pendingCount {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fg-faint);
-  font-size: 10px;
+  font-size: 14px;
   font-weight: 500;
 }
 
-.headerActions {
-  display: inline-flex;
+.progress {
+  display: flex;
   align-items: center;
-  gap: 2px;
-  flex: 0 0 auto;
+  gap: 9px;
+  margin: 8px 2px 7px;
 }
 
-.headerAction,
+.progressTrack {
+  flex: 1;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+
+.progressFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--status-working);
+  transition: width 220ms var(--ease-out-fluid);
+}
+
+.progressCount {
+  color: var(--fg-faint);
+  font: 10px/1 var(--font-mono);
+}
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 32px;
+  border-bottom: 1px solid var(--border);
+}
+
+.filterButton {
+  width: auto;
+  height: 25px;
+  padding: 0 9px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-faint);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.filterButton:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.filterButtonActive {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
 .rowAction,
 .dragHandle,
 .checkButton,
@@ -59,24 +104,87 @@
   color: var(--fg-muted);
 }
 
-.headerAction {
-  width: 24px;
-  height: 24px;
-}
-
-.headerAction:hover,
 .rowAction:hover {
   color: var(--fg);
   background: var(--panel-hover);
 }
 
 .addForm {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 30px;
-  gap: 6px;
-  padding: 10px;
-  border-bottom: 1px solid var(--border);
+  display: block;
+  padding: 10px 10px 2px;
+  border-bottom: 0;
   animation: todoPanelIn 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.composerBox {
+  min-width: 0;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--fg-faint);
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.composerBox:focus-within {
+  border-style: solid;
+  border-color: var(--fg-faint);
+  background: var(--bg-sunken);
+}
+
+.composerSubmit {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 22px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+}
+
+.composerSubmit:hover:not(:disabled) {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.composerSubmit:disabled {
+  opacity: 0.55;
+}
+
+.composerInput {
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  padding: 0;
+  color: var(--fg);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: 12px var(--font-sans);
+}
+
+.composerInput::placeholder {
+  color: var(--fg-faint);
+}
+
+.composerShortcut {
+  flex: 0 0 auto;
+  color: var(--fg-faint);
+  background: transparent;
+  border: 0;
+  font: 9px var(--font-mono);
+}
+
+.composerDetails {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+  padding-top: 6px;
 }
 
 .projectInputWrap {
@@ -259,13 +367,13 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 8px 6px 18px;
+  padding: 4px 8px 14px;
   scrollbar-gutter: stable;
   animation: todoPanelIn 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .section + .section {
-  margin-top: 14px;
+  margin-top: 16px;
 }
 
 .section {
@@ -280,43 +388,112 @@
   height: 26px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 6px;
+  gap: 2px;
+  padding: 0;
   color: var(--fg-faint);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+}
+
+.sectionToggle {
+  min-width: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  padding: 0 5px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-faint);
+  cursor: pointer;
+}
+
+.sectionToggle:hover {
+  color: var(--fg-muted);
+  background: var(--panel-hover);
+}
+
+.sectionChevron {
+  flex: 0 0 auto;
+  transition: transform 160ms var(--ease-out-fluid);
+}
+
+.sectionChevronClosed {
+  transform: rotate(-90deg);
+}
+
+.sectionIcon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  border-radius: 3px;
+  object-fit: cover;
+}
+
+.sectionName {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sectionCount {
-  min-width: 17px;
-  height: 17px;
+  min-width: 18px;
+  height: 16px;
   display: inline-grid;
   place-items: center;
   padding: 0 5px;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: 999px;
+  background: var(--bg-elevated);
   color: var(--fg-muted);
   font-size: 9px;
   letter-spacing: 0;
 }
 
+.sectionRule {
+  height: 1px;
+  flex: 1;
+  background: var(--border);
+}
+
+.sectionAdd {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 22px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-faint);
+  opacity: 0;
+}
+
+.sectionHeader:hover .sectionAdd,
+.sectionAdd:focus-visible {
+  opacity: 1;
+}
+
+.sectionAdd:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
 .list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .todoRow {
-  min-height: 34px;
+  min-height: 36px;
   display: grid;
-  grid-template-columns: 15px 22px minmax(0, 1fr) auto;
+  grid-template-columns: 13px 19px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 2px;
-  padding: 3px 4px 3px 1px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  gap: 5px;
+  padding: 2px 5px 2px 1px;
+  border: 0;
+  border-radius: var(--radius-md);
   color: var(--fg);
   transition:
     background-color 140ms ease,
@@ -329,7 +506,6 @@
 .todoRow:hover,
 .todoRow:focus-within {
   background: var(--panel-hover);
-  border-color: var(--border);
 }
 
 .todoRowDragging {
@@ -347,11 +523,14 @@
 }
 
 .dragHandle {
-  width: 15px;
+  width: 13px;
   height: 24px;
   opacity: 0;
   cursor: grab;
-  transition: color 140ms ease, opacity 140ms ease, transform 140ms ease;
+  transition:
+    color 140ms ease,
+    opacity 140ms ease,
+    transform 140ms ease;
 }
 
 .todoRow:hover .dragHandle,
@@ -366,22 +545,30 @@
 }
 
 .checkButton {
-  width: 22px;
-  height: 24px;
+  width: 17px;
+  height: 17px;
+  border: 1.5px solid var(--fg-faint);
+  border-radius: 5px;
   color: var(--fg-faint);
 }
 
 .checkButton:hover {
-  color: var(--status-working);
+  color: var(--fg);
+  border-color: var(--fg-muted);
 }
 
 .todoRowCompleted .checkButton {
-  color: var(--status-working);
+  color: var(--bg);
+  border-color: var(--status-working);
+  background: var(--status-working);
 }
 
 .todoTitle {
   min-width: 0;
-  padding: 4px 3px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 0;
   overflow: hidden;
   color: inherit;
   font-size: 12px;
@@ -391,7 +578,8 @@
 
 .titleButton {
   display: block;
-  width: 100%;
+  width: auto;
+  flex: 1;
   min-width: 0;
   padding: 0;
   overflow: hidden;
@@ -415,7 +603,8 @@
   align-items: center;
   gap: 4px;
   max-width: 100%;
-  margin-top: 3px;
+  flex: 0 1 84px;
+  margin-top: 0;
   color: var(--fg-faint);
   position: relative;
   min-height: 21px;
@@ -438,20 +627,22 @@
 }
 
 .tags {
-  display: flex;
-  flex-wrap: wrap;
+  display: inline-flex;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
   gap: 3px;
-  margin-top: 2px;
+  margin-top: 0;
+  overflow: hidden;
 }
 
 .tag {
-  max-width: 100%;
-  padding: 1px 4px;
+  max-width: 72px;
+  padding: 0;
   overflow: hidden;
   color: var(--fg-faint);
-  background: var(--accent-soft);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
   font-size: 9px;
   line-height: 13px;
   text-overflow: ellipsis;
@@ -474,17 +665,34 @@
   display: inline-flex;
   align-items: center;
   gap: 1px;
+  width: 0;
+  max-width: 0;
+  overflow: hidden;
   opacity: 0;
+  pointer-events: none;
+  transition:
+    width 120ms ease,
+    max-width 120ms ease,
+    opacity 120ms ease;
 }
 
 .todoRow:hover .rowActions,
 .todoRow:focus-within .rowActions {
+  width: auto;
+  max-width: 66px;
   opacity: 1;
+  pointer-events: auto;
 }
 
 .rowAction {
-  width: 23px;
-  height: 23px;
+  width: 20px;
+  height: 20px;
+}
+
+.filterEmpty {
+  margin: 12px 6px;
+  color: var(--fg-faint);
+  font-size: 11px;
 }
 
 .deleteAction:hover {
@@ -634,4 +842,110 @@
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* Clean mode removes card treatment and motion from dense task lists. */
+:global([data-visual-style='clean']) .sidebar,
+:global([data-visual-style='clean']) .header,
+:global([data-visual-style='clean']) .addForm,
+:global([data-visual-style='clean']) .content,
+:global([data-visual-style='clean']) .section {
+  animation: none;
+}
+
+:global([data-visual-style='clean']) .header {
+  height: auto;
+  padding: 8px 8px 0;
+}
+
+:global([data-visual-style='clean']) .heading {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+:global([data-visual-style='clean']) .addForm {
+  padding: 8px 8px 2px;
+}
+
+:global([data-visual-style='clean']) .content {
+  padding: 4px 8px 14px;
+}
+
+:global([data-visual-style='clean']) .sectionHeader {
+  padding: 0;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+:global([data-visual-style='clean']) .sectionCount {
+  min-width: auto;
+  height: auto;
+  display: inline;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+:global([data-visual-style='clean']) .list {
+  gap: 0;
+}
+
+:global([data-visual-style='clean']) .todoRow,
+:global([data-visual-style='clean']) .gsdRow {
+  min-height: var(--clean-row-height);
+  border: 0;
+  border-radius: var(--clean-row-radius);
+}
+
+:global([data-visual-style='clean']) .todoRow {
+  padding: 2px 5px 2px 1px;
+}
+
+:global([data-visual-style='clean']) .composerBox {
+  border-radius: var(--clean-control-radius);
+}
+
+:global([data-visual-style='clean'])
+  :is(.addInput, .editInput, .tagInputWrap, .projectInputWrap, .projectLink) {
+  border-radius: var(--clean-control-radius);
+  background: transparent;
+  box-shadow: none;
+}
+
+:global([data-visual-style='clean'])
+  :is(.addInput, .editInput, .tagInputWrap, .projectInputWrap):focus-within {
+  border-color: var(--border-strong);
+  box-shadow: none;
+}
+
+:global([data-visual-style='clean']) .addButton {
+  color: var(--fg);
+  background: var(--panel-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--clean-control-radius);
+}
+
+:global([data-visual-style='clean']) .projectMenu {
+  border-color: var(--border);
+  border-radius: var(--clean-popover-radius);
+  box-shadow: var(--clean-shadow);
+  transform-origin: top center;
+  animation: var(--clean-popover-animation);
+}
+
+:global([data-visual-style='clean']) .projectOptionSelected {
+  color: var(--fg);
+}
+
+:global([data-visual-style='clean']) .projectLink {
+  min-height: 20px;
+  border-color: transparent;
+}
+
+:global([data-visual-style='clean']) .tag {
+  background: transparent;
+  border-color: var(--border);
+  border-radius: var(--clean-control-radius);
 }

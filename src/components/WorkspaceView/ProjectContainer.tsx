@@ -10,8 +10,8 @@ import {
 } from 'lucide-react'
 import { memo, useMemo } from 'react'
 
-import type { Group, Project, Terminal, WorkspaceContainer } from '../../lib/types'
 import { useT } from '../../lib/i18n'
+import type { Group, Project, Terminal, WorkspaceContainer } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { EmptyState } from '../EmptyState/EmptyState'
 import { PaneArea } from './PaneArea'
@@ -21,9 +21,9 @@ export type ProjectContainerProps = {
   container: WorkspaceContainer
   project: Project
   group: Group | null
-  /** True quando o container é o único visível (fullscreen). */
+                                                                
   isFullscreen?: boolean
-  /** Cabeçalho é redundante quando a workspace tem apenas um container. */
+                                                                           
   showHeader?: boolean
 }
 
@@ -52,10 +52,10 @@ export const ProjectContainer = memo(function ProjectContainer({
     return { groupId: group.id, layout: group.gridLayout }
   }, [group])
 
-  // Resize LIVRE: arrasta o canto inferior-direito pra ajustar a proporção
-  // `fr` da última col/row que esse container ocupa, roubando da col/row
-  // adjacente. Diferente do LayoutDesigner que muda colSpan inteiro — aqui
-  // o ajuste é contínuo (alguns pixels = poucos %).
+                                                                           
+                                                                         
+                                                                           
+                                                    
   const startGridResize = (e: React.PointerEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -96,7 +96,7 @@ export const ProjectContainer = memo(function ProjectContainer({
     const totalColUnits = initialCols.reduce((a, b) => a + b, 0)
     const totalRowUnits = initialRows.reduce((a, b) => a + b, 0)
 
-    // 0-based índices da última col/row da célula
+                                                  
     const lastColIdx = cell.col + cell.colSpan - 2 // a col que cresce
     const nextColIdx = lastColIdx + 1 // a col que encolhe
     const lastRowIdx = cell.row + cell.rowSpan - 2
@@ -145,8 +145,8 @@ export const ProjectContainer = memo(function ProjectContainer({
 
   const showResizeHandle = Boolean(workspaceGridLayout || activeGroupGrid) && !isFullscreen
 
-  // Drag-and-drop pra reordenar containers entre si na workspace.
-  // Disabled em fullscreen (não faz sentido reordenar quando só tem 1).
+                                                                  
+                                                                        
   const dragId = `cont:${project.id}`
   const draggable = useDraggable({ id: dragId, disabled: isFullscreen })
   const droppable = useDroppable({ id: dragId, disabled: isFullscreen })
@@ -156,11 +156,11 @@ export const ProjectContainer = memo(function ProjectContainer({
   }
   const isDropTarget = droppable.isOver && !draggable.isDragging
 
-  // Fullscreen isolando UMA pane só (gaveta GSD Sync) — reaproveita o mesmo
-  // fullscreen de container de sempre, só troca quais terminais são
+                                                                            
+                                                                    
   // renderizados. O terminal isolado busca direto em `project.terminals`,
-  // não em `container.paneIds`, porque a pane "GSD Sync" nunca é inserida
-  // na grade normal — só existe pra esse fullscreen isolado.
+                                                                          
+                                                             
   const terminals = useMemo<Terminal[]>(() => {
     if (isFullscreen && isolatedPaneId) {
       const isolated = project.terminals.find((term) => term.id === isolatedPaneId)
@@ -175,24 +175,24 @@ export const ProjectContainer = memo(function ProjectContainer({
     (terminal) => terminal.kind !== 'graphify' && terminal.cwd,
   )?.cwd
 
-  // Cor do container = cor do PROJETO (cada projeto fica visualmente único).
-  // Cor do grupo fica reservada pro bullet/tag na sidebar (organização).
-  // Fallback pro neutro se o projeto não tem cor.
-  const accent = project.color || group?.color || 'var(--border-strong)'
-  const isRainbow = accent === 'rgb-rainbow'
+                                                                             
+                                                                         
+                                                  
+  const storedAccent = project.color || group?.color
+  const accent = storedAccent && CSS.supports('color', storedAccent) ? storedAccent : '#6ea8ff'
 
   if (container.collapsed) {
     return (
       <div
-        className={`${styles.collapsed} rainbow-container-border`}
-        style={{ ['--container-accent' as string]: isRainbow ? undefined : accent }}
+        className={styles.collapsed}
+        style={{ ['--container-accent' as string]: accent }}
         onClick={() => setCollapsed(project.id, false)}
         title={`${group ? group.name + ' · ' : ''}${t('ws.containerExpandHint', { name: project.name })}`}
       >
         {project.iconUrl ? (
           <img src={project.iconUrl} alt="" className={styles.projectIcon} />
         ) : (
-          <span className={`${styles.bullet} ${isRainbow ? 'swatch-rgb-rainbow' : ''}`} style={isRainbow ? undefined : { background: accent }} />
+          <span className={styles.bullet} style={{ background: accent }} />
         )}
         <span className={styles.collapsedName}>{project.name}</span>
         <span className={styles.collapsedCount}>{container.paneIds.length}</span>
@@ -204,10 +204,10 @@ export const ProjectContainer = memo(function ProjectContainer({
     <div
       ref={setRefs}
       data-pane-box="1"
-      className={`${styles.box} rainbow-container-border ${draggable.isDragging ? styles.boxDragging : ''} ${
+      className={`${styles.box} ${draggable.isDragging ? styles.boxDragging : ''} ${
         isDropTarget ? styles.boxDropTarget : ''
       }`}
-      style={{ ['--container-accent' as string]: isRainbow ? undefined : accent }}
+      style={{ ['--container-accent' as string]: accent }}
     >
       {showHeader ? (
         <div className={styles.tag}>

@@ -1,11 +1,11 @@
 import type React from 'react'
 import type { GridLayout } from '../lib/types'
 
-/**
- * Retorna um handler de pointerDown que inicia o resize de uma célula
- * num CSS Grid. O resize redistribui os `fr` entre a borda direita/inferior
- * da célula e a coluna/linha vizinha.
- */
+   
+                                                                      
+                                                                            
+                                      
+   
 export function useGridResize(
   cellId: string,
   gridLayout: GridLayout | null,

@@ -1,7 +1,7 @@
 .lane {
   width: 36px;
   height: 100%;
-  /* Mesmo overlay do header rich pra parecerem o mesmo "chrome" */
+                                                                   
   background: var(--shape-tabs-lane-bg);
   border-right: 1px solid var(--shape-tabs-lane-border);
   display: flex;
@@ -10,6 +10,16 @@
   padding: 6px 0;
   gap: 5px;
   flex-shrink: 0;
+}
+
+.leadingControl {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  margin-bottom: 1px;
+  border-bottom: 1px solid var(--shape-tabs-lane-border);
 }
 
 .itemWrap {
@@ -138,4 +148,38 @@
   background: var(--accent-soft);
   color: var(--fg);
   border-color: var(--accent-border);
+}
+
+:global([data-visual-style='clean']) .itemWrap,
+:global([data-visual-style='clean']) .item,
+:global([data-visual-style='clean']) .add {
+  border-radius: var(--clean-control-radius);
+}
+
+:global([data-visual-style='clean']) .itemWrap {
+  animation: none;
+}
+
+:global([data-visual-style='clean']) .active::before {
+  display: none;
+}
+
+:global([data-visual-style='clean']) .item:hover {
+  transform: none;
+  background: var(--clean-hover-bg);
+}
+
+:global([data-visual-style='clean']) .active .item {
+  background: var(--clean-active-bg);
+  box-shadow: none;
+}
+
+:global([data-visual-style='clean']) .itemWrap:not(.active) .item {
+  opacity: 0.46;
+  filter: saturate(0.45);
+}
+
+:global([data-visual-style='clean']) .active .item {
+  opacity: 1;
+  filter: none;
 }

@@ -41,10 +41,10 @@ export async function graphifyDetect(command?: string): Promise<GraphifyStatus> 
   return invoke<GraphifyStatus>('graphify_detect', { command })
 }
 
-/**
- * Bootstrap único do grafo: o primeiro terminal de agente dispara a geração;
- * os demais recebem 'exists'/'generating' e só usam. 'unavailable' = CLI ausente.
- */
+   
+                                                                             
+                                                                                  
+   
 export async function graphifyEnsureGraph(
   repo: string,
   command?: string,
@@ -59,12 +59,12 @@ export async function graphifyMcpConfigPath(repo: string, command?: string): Pro
   return invoke<string>('graphify_mcp_config_path', { repo, command })
 }
 
-/** OpenCode não tem `--mcp-config`: lê MCP de `opencode.json` no root do projeto — escreve/mescla essa entrada antes do spawn. */
+                                                                                                                                  
 export async function graphifyOpenCodeConfigWrite(repo: string, command?: string): Promise<void> {
   await invoke('graphify_opencode_config_write', { repo, command })
 }
 
-/** Codex não tem `--mcp-config`: lê MCP de `.codex/config.toml` no root do projeto (só em "trusted projects") — escreve/mescla essa entrada antes do spawn. */
+                                                                                                                                                               
 export async function graphifyCodexConfigWrite(repo: string, command?: string): Promise<void> {
   await invoke('graphify_codex_config_write', { repo, command })
 }

@@ -43,16 +43,14 @@ fn empty_usage(status: &str, cli_path: String) -> AntigravityUsage {
 }
 
 /// O `agy` guarda o envelope OAuth no Credential Manager usando o target
-/// literal `gemini:antigravity` — precisa de `new_with_target` porque
+
 /// `Entry::new(service, user)` monta o target como `"{user}.{service}"` no
 /// backend Windows do crate `keyring`, que nunca bate com o que o `agy`
-/// (binário Go) escreveu lá. Também usamos `get_secret` (bytes crus) em vez
-/// de `get_password`: este último sempre assume blob UTF-16LE (convenção do
-/// próprio crate ao gravar), mas o `agy` grava JSON em UTF-8 puro. Apenas o
-/// access token é mantido em memória durante a requisição; nunca
+
 /// persistimos nem registramos o segredo.
 fn discover_access_token() -> Option<String> {
-    let entry = keyring::Entry::new_with_target("gemini:antigravity", "gemini", "antigravity").ok()?;
+    let entry =
+        keyring::Entry::new_with_target("gemini:antigravity", "gemini", "antigravity").ok()?;
     let secret = String::from_utf8(entry.get_secret().ok()?).ok()?;
     let value: serde_json::Value = serde_json::from_str(&secret).ok()?;
     value
@@ -134,17 +132,12 @@ fn bucket_label(models: &BTreeSet<String>) -> String {
     }
 }
 
-fn parse_usage(
-    body: &serde_json::Value,
-    cli_path: String,
-) -> Result<AntigravityUsage, String> {
+fn parse_usage(body: &serde_json::Value, cli_path: String) -> Result<AntigravityUsage, String> {
     let models = body
         .get("models")
         .and_then(|models| models.as_object())
         .ok_or_else(|| "models_missing".to_string())?;
 
-    // Modelos que compartilham fração restante e reset pertencem ao mesmo
-    // bucket de quota. Agrupá-los evita repetir dezenas de variantes no modal.
     let mut grouped: BTreeMap<(u64, String), BTreeSet<String>> = BTreeMap::new();
     for (model_id, model) in models {
         let Some(quota) = model.get("quotaInfo") else {
@@ -224,11 +217,10 @@ pub async fn get_antigravity_usage() -> Result<AntigravityUsage, String> {
         Ok(body) => body,
         Err(FetchError::Unauthorized) => {
             let refresh_launcher = launcher.clone();
-            let refreshed = tokio::task::spawn_blocking(move || {
-                refresh_credential_with_agy(&refresh_launcher)
-            })
-            .await
-            .unwrap_or(false);
+            let refreshed =
+                tokio::task::spawn_blocking(move || refresh_credential_with_agy(&refresh_launcher))
+                    .await
+                    .unwrap_or(false);
             if !refreshed {
                 return Ok(empty_usage("no_auth", cli_path));
             }
@@ -239,9 +231,7 @@ pub async fn get_antigravity_usage() -> Result<AntigravityUsage, String> {
             match fetch_models(&token).await {
                 Ok(body) => body,
                 Err(FetchError::Unauthorized) => return Ok(empty_usage("no_auth", cli_path)),
-                Err(FetchError::Unavailable) => {
-                    return Ok(empty_usage("unavailable", cli_path))
-                }
+                Err(FetchError::Unavailable) => return Ok(empty_usage("unavailable", cli_path)),
             }
         }
         Err(FetchError::Unavailable) => return Ok(empty_usage("unavailable", cli_path)),

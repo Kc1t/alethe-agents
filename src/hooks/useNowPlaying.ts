@@ -1,19 +1,45 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { readScopedStorage, writeScopedStorage } from '../lib/storageNamespace'
 import {
+  type NowPlaying,
+  type SpotifyCredentials,
   spotifyGetCurrent,
   spotifyLogin,
   spotifyLogout,
   spotifyStatus,
-  type NowPlaying,
 } from '../lib/tauri'
-import { readScopedStorage, writeScopedStorage } from '../lib/storageNamespace'
 import { useProjectsStore } from '../stores/projectsStore'
 
 const POLL_MS = 8000
 const LAST_TRACK_KEY = 'home.nowPlaying.last'
 
-/** Lê a última faixa conhecida do storage (marcada como pausada). */
+let statusRequest: Promise<boolean> | null = null
+let currentRequest: { key: string; promise: Promise<NowPlaying | null> } | null = null
+
+function getSpotifyStatus(): Promise<boolean> {
+  if (!statusRequest) {
+    const promise = spotifyStatus().finally(() => {
+      if (statusRequest === promise) statusRequest = null
+    })
+    statusRequest = promise
+  }
+  return statusRequest
+}
+
+function getCurrentTrack(credentials: SpotifyCredentials): Promise<NowPlaying | null> {
+  const key = `${credentials.clientId ?? ''}\u0000${credentials.clientSecret ?? ''}`
+  if (currentRequest?.key === key) return currentRequest.promise
+
+  const request = spotifyGetCurrent(credentials)
+  const promise = request.finally(() => {
+    if (currentRequest?.promise === promise) currentRequest = null
+  })
+  currentRequest = { key, promise }
+  return promise
+}
+
+                                                                     
 function loadLastTrack(): NowPlaying | null {
   try {
     const raw = readScopedStorage(LAST_TRACK_KEY, true)
@@ -26,19 +52,19 @@ function loadLastTrack(): NowPlaying | null {
   }
 }
 
-/** Persiste a faixa atual pra não perder o estado entre sessões. */
+                                                                    
 function saveLastTrack(np: NowPlaying): void {
   try {
     writeScopedStorage(LAST_TRACK_KEY, JSON.stringify(np))
   } catch {
-    /* storage cheio/indisponível — ignora */
+                                             
   }
 }
 
 export type NowPlayingState = {
-  /** null = ainda checando status */
+  /** null means the connection status is still being checked. */
   connected: boolean | null
-  /** null = não tocando ou desconectado */
+                                           
   current: NowPlaying | null
   error: string | null
   loading: boolean
@@ -47,66 +73,70 @@ export type NowPlayingState = {
   refresh: () => Promise<void>
 }
 
-/**
- * Hook que mantém o estado de "tocando agora" do Spotify.
- * - Polling a cada 8s enquanto `enabled === true` e conectado
- * - Pausa o polling quando `enabled` vira false (ex: Home não visível)
- */
+   
+                                                          
+                                                              
+                                                                       
+   
 export function useNowPlaying(enabled: boolean): NowPlayingState {
   const spotifyClientId = useProjectsStore((s) => s.preferences.spotifyClientId)
   const spotifyClientSecret = useProjectsStore((s) => s.preferences.spotifyClientSecret)
   const [connected, setConnected] = useState<boolean | null>(null)
-  // hidrata com a última faixa conhecida pra Home nunca aparecer vazia
+                                                                       
   const [current, setCurrent] = useState<NowPlaying | null>(() => loadLastTrack())
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   const cancelledRef = useRef(false)
-  const credentials = {
-    clientId: spotifyClientId.trim() || undefined,
-    clientSecret: spotifyClientSecret.trim() || undefined,
-  }
+  const credentials = useMemo(
+    () => ({
+      clientId: spotifyClientId.trim() || undefined,
+      clientSecret: spotifyClientSecret.trim() || undefined,
+    }),
+    [spotifyClientId, spotifyClientSecret],
+  )
 
-  const fetchCurrent = async () => {
+  const fetchCurrent = useCallback(async () => {
     try {
-      const np = await spotifyGetCurrent(credentials)
+      const np = await getCurrentTrack(credentials)
       if (cancelledRef.current) return
       if (np) {
         setCurrent(np)
         saveLastTrack(np)
       } else {
-        // nada tocando: mantém a última faixa, só marca como pausada
-        setCurrent((prev) => (prev ? { ...prev, playing: false } : null))
+                                                                     
+        setCurrent((previous) => (previous ? { ...previous, playing: false } : null))
       }
       setError(null)
     } catch (err) {
       if (cancelledRef.current) return
       setError(String(err))
     }
-  }
+  }, [credentials])
 
-  // checa status na primeira montagem
+  // Check the connection once on mount. Concurrent widgets share the same request.
   useEffect(() => {
     cancelledRef.current = false
-    spotifyStatus()
+    getSpotifyStatus()
       .then((ok) => {
         if (cancelledRef.current) return
         setConnected(ok)
-        if (ok) void fetchCurrent()
       })
-      .catch(() => setConnected(false))
+      .catch(() => {
+        if (!cancelledRef.current) setConnected(false)
+      })
     return () => {
       cancelledRef.current = true
     }
   }, [])
 
-  // polling
+  // Poll while visible. Concurrent widgets share each in-flight backend request.
   useEffect(() => {
     if (!enabled || !connected) return
     void fetchCurrent()
     const id = setInterval(fetchCurrent, POLL_MS)
     return () => clearInterval(id)
-  }, [enabled, connected])
+  }, [enabled, connected, fetchCurrent])
 
   const connect = async () => {
     setLoading(true)
@@ -116,6 +146,7 @@ export function useNowPlaying(enabled: boolean): NowPlayingState {
       setConnected(true)
       await fetchCurrent()
     } catch (err) {
+      setConnected(false)
       setError(String(err))
     } finally {
       setLoading(false)

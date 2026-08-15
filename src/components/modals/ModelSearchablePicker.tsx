@@ -40,7 +40,7 @@ export function ModelSearchablePicker({
       opt.id.length >= 3,
   )
 
-  // Seleção atual (preserva o valor ativo mesmo que ele não esteja em cleanOptions ainda)
+                                                                                          
   const selected = value
     ? cleanOptions.find((opt) => opt.id === value) ?? { id: value, label: value }
     : cleanOptions[0]
@@ -53,7 +53,7 @@ export function ModelSearchablePicker({
       opt.id.toLowerCase().includes(trimmedSearch.toLowerCase()),
   )
 
-  // Verifica se a busca traz um modelo customizado não presente na lista
+                                                                         
   const hasExactMatch = cleanOptions.some(
     (opt) =>
       opt.id.toLowerCase() === trimmedSearch.toLowerCase() ||
@@ -81,7 +81,7 @@ export function ModelSearchablePicker({
     }
   }
 
-  // Fecha o dropdown se clicar fora
+                                    
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -94,7 +94,7 @@ export function ModelSearchablePicker({
 
   return (
     <div className={styles.wrapper} ref={containerRef}>
-      {/* Botão Seletor Principal */}
+      {                             }
       <button
         type="button"
         className={`${styles.trigger} ${open ? styles.triggerActive : ''}`}

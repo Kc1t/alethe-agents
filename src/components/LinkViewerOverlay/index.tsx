@@ -11,12 +11,12 @@ import { MarkdownRenderer } from '../MarkdownPane/MarkdownRenderer'
 import { isMarkdownFilePath, isVideoFilePath } from '../XTermView/terminalLinks'
 import styles from './LinkViewerOverlay.module.css'
 
-/**
- * Visualizador in-app de links (overlay com iframe), no mesmo espírito do
- * FocusOverlay dos terminais — abre dentro do app em vez de jogar o usuário pro
- * browser externo. Frontend puro (sem Rust): alguns sites bloqueiam embed
- * (`X-Frame-Options`), por isso o header sempre oferece "abrir no browser".
- */
+   
+                                                                          
+                                                                                
+                                                                          
+                                                                            
+   
 export function LinkViewerOverlay() {
   const t = useT()
   const url = useUiStore((s) => s.linkViewerUrl)

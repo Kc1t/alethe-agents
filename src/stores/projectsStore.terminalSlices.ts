@@ -46,6 +46,7 @@ type TerminalsSlice = Pick<
   | 'setTerminalDisabled'
   | 'setProjectDisabled'
   | 'setLaneVisible'
+  | 'setTerminalRemoteExcluded'
   | 'markTerminalUsed'
 >
 
@@ -105,17 +106,17 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
       const project = state.projects.find((p) => p.id === projectId)
       const wantsIsolation = Boolean(project?.autoWorktree) && args.firstTab.type !== 'shell'
       if (project && wantsIsolation) {
-        // getProjectRepoRoot prioriza um terminal SEM worktreeAgentId (raiz
-        // "pura" conhecida). Se TODOS os terminais já estiverem isolados (ou
-        // se o projeto não tiver NENHUM terminal ainda — nada de histórico
-        // pra derivar nada), ela devolve vazio e isolamento silenciosamente
-        // não acontecia. Os dois fallbacks abaixo são seguros porque
+                                                                            
+                                                                             
+                                                                           
+                                                                            
+                                                                     
         // worktree_provision resolve a raiz de verdade via `--git-common-dir`
-        // no backend (main_repository_root), não via `--show-toplevel` — não
-        // cria mais worktree aninhada mesmo partindo de outra worktree ou de
-        // qualquer subpasta arbitrária dentro do repo. Último fallback
-        // (args.cwd) é a própria pasta escolhida no modal — só relevante
-        // quando o projeto não tem terminal nenhum pra referenciar ainda.
+                                                                             
+                                                                             
+                                                                       
+                                                                         
+                                                                          
         const repo =
           getProjectRepoRoot(project) || getProjectDefaultCwd(project, state.projects) || args.cwd.trim()
         if (repo) {
@@ -125,8 +126,8 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
           )
           try {
             const { worktreeProvision, gitInit } = await import('../lib/tauri')
-            // Se a pasta não for um repositório Git ainda, auto-inicializa o Git
-            // silenciosamente para garantir que a worktree nasça sem erros.
+                                                                                 
+                                                                            
             try {
               await gitInit(repo)
             } catch (initErr) {
@@ -310,15 +311,15 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
       update((state) => {
         const project = state.projects.find((p) => p.id === projectId)
         const terminal = project?.terminals.find((t) => t.id === terminalId)
-        // Deletar o terminal de um agente isolado (worktreeAgentId) é sempre o
+                                                                               
         // teardown da worktree inteira — arrasta junto o terminal "viewer" GSD
-        // Sync da mesma worktree (casado por `cwd`, já que o viewer não tem
-        // `worktreeAgentId` próprio). Sem isso, o PTY do viewer (se já foi
-        // aberto ao menos uma vez pela gaveta) vaza pra sempre: assim que o
-        // agente morre, o viewer some da lista vigiada e nunca mais aparece em
-        // lugar nenhum da interface pra ser fechado manualmente. Centralizado
-        // aqui (em vez de em cada chamador) pra cobrir TODOS os caminhos de
-        // teardown — merge integrado, abort, rejeição — de uma vez só.
+                                                                            
+                                                                           
+                                                                            
+                                                                               
+                                                                              
+                                                                            
+                                                                       
         const idsToRemove = new Set([terminalId])
         if (terminal?.worktreeAgentId && terminal.cwd) {
           for (const sibling of project?.terminals ?? []) {
@@ -395,9 +396,9 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
       }
       const { killPtyTree, worktreeRemove } = await import('../lib/tauri')
       const ptyIds = collectTerminalPtyIds([terminal])
-      // Mesma causa-raiz já corrigida no fluxo de merge: no Windows, apagar
-      // uma pasta que ainda é o cwd de um processo vivo falha — aguarda a
-      // árvore de processos morrer de verdade antes de tentar remover.
+                                                                            
+                                                                          
+                                                                       
       await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(() => [])))
       const repo = getProjectRepoRoot(project)
       if (repo) {
@@ -405,21 +406,21 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
           await worktreeRemove(repo, terminal.worktreeAgentId, true)
         } catch (firstErr) {
           if (String(firstErr).includes('worktree_not_found')) {
-            // já tinha sido removida, inofensivo — nada a fazer.
+                                                                 
           } else {
-            // No Windows o handle da pasta pode não ter sido liberado ainda
-            // no instante em que killPtyTree retornou (lag do SO/antivírus
-            // entre o processo morrer de verdade e o handle soltar) — uma
-            // segunda tentativa depois de um respiro curto resolve a maioria
-            // dos casos sem precisar cair pra órfã rastreada.
+                                                                            
+                                                                           
+                                                                          
+                                                                             
+                                                              
             await new Promise((resolve) => setTimeout(resolve, 400))
             try {
               await worktreeRemove(repo, terminal.worktreeAgentId, true)
             } catch (secondErr) {
-              // Falha real (persistiu no retry) vira órfã rastreada (mesma
-              // rede de segurança do fluxo de merge) — sem isso a pasta
-              // ficava perdida em disco sem nenhum rastro na interface pra
-              // limpar depois.
+                                                                           
+                                                                        
+                                                                           
+                               
               if (!String(secondErr).includes('worktree_not_found')) {
                 get().addOrphanWorktree(projectId, {
                   path: terminal.cwd ?? '',
@@ -440,8 +441,8 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
           .find((p) => p.id === projectId)
           ?.terminals.find((t) => t.id === terminalId)
         if (terminal) cleanupPtys(collectTerminalPtyIds([terminal]))
-        // Mantém o terminal em project.terminals (é um atalho permanente); só
-        // reseta o runtime (ptyId + sessionId + badge) e fecha o pane.
+                                                                              
+                                                                       
         const projects = state.projects.map((p) =>
           p.id === projectId
             ? {
@@ -522,7 +523,7 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
           }
         })
         if (disabled) {
-          // Fecha o container pra liberar RAM
+                                              
           const containers = state.workspace.containers.filter((c) => c.projectId !== projectId)
           return { projects, workspace: { ...state.workspace, containers } }
         }
@@ -531,6 +532,9 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
 
     setLaneVisible: (projectId, terminalId, visible) =>
       updateTerminal(projectId, terminalId, (t) => ({ ...t, laneVisible: visible })),
+
+    setTerminalRemoteExcluded: (projectId, terminalId, excluded) =>
+      updateTerminal(projectId, terminalId, (t) => ({ ...t, remoteExcluded: excluded })),
 
     markTerminalUsed: (projectId, terminalId) =>
       updateTerminal(projectId, terminalId, (t) => touchTerminalUsage(t)),

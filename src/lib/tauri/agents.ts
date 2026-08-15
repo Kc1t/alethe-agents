@@ -1,9 +1,9 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
-/** Endpoint HTTP local (listener já usado pelos hooks do Claude Code em
- * agent_events.rs) — reaproveitado pelo plugin do OpenCode pra reportar
- * working/idle real (ver opencode_bridge.rs). */
+                                                                        
+                                                                        
+                                                 
 export async function agentHooksEndpoint(): Promise<string> {
   return invoke('agent_hooks_endpoint')
 }
@@ -40,23 +40,23 @@ export async function agentHooksSettingsPath(): Promise<string> {
 
 export type InstalledAgent = { name: string; from_alethe: boolean }
 
-/** Agents (.md) instalados na pasta do projeto (.claude/agents/…). */
+                                                                      
 export async function listInstalledAgents(folder: string): Promise<InstalledAgent[]> {
   return invoke<InstalledAgent[]>('list_installed_agents', { folder })
 }
 
-/** Se o modo economia (roteamento por sub-agents) está ativo na pasta. */
+                                                                          
 export async function economyAgentsEnabled(folder: string): Promise<boolean> {
   return invoke<boolean>('economy_agents_enabled', { folder })
 }
 
-/** Liga/desliga o modo economia; devolve os arquivos tocados. */
+                                                                 
 export async function setEconomyAgents(folder: string, enabled: boolean): Promise<string[]> {
   return invoke<string[]>('set_economy_agents', { folder, enabled })
 }
 
-/** Instala um agent (.md) na pasta; devolve o path. `force` sobrescreve
- * um agent externo de mesmo nome (senão rejeita com 'conflict'). */
+                                                                        
+                                                                    
 export async function installAgent(args: {
   folder: string
   name: string
@@ -66,7 +66,7 @@ export async function installAgent(args: {
   return invoke<string>('install_agent', args)
 }
 
-/** Remove um agent (.md) da pasta. */
+                                      
 export async function uninstallAgent(folder: string, name: string, force = true): Promise<void> {
   await invoke('uninstall_agent', { folder, name, force })
 }
@@ -82,8 +82,8 @@ export type OpenCodeBridgeStatus = {
   state: 'working' | 'idle'
 }
 
-/** Sinal real de working/idle do OpenCode, reportado pelo plugin global
- * (~/.config/opencode/plugin/alethe-bridge.js) via POST local. */
+                                                                        
+                                                                  
 export function listenOpenCodeBridgeStatus(
   handler: (payload: OpenCodeBridgeStatus) => void,
 ): Promise<UnlistenFn> {

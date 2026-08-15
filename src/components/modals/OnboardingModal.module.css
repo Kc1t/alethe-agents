@@ -12,7 +12,7 @@
   top: 50%;
   left: 50%;
   translate: -50% -50%;
-  width: min(860px, calc(100vw - 48px));
+  width: min(980px, calc(100vw - 48px));
   height: auto;
   max-height: calc(100vh - 48px);
   background: var(--bg-elevated);
@@ -465,6 +465,119 @@
   flex-shrink: 0;
 }
 
+.visualStyleGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.visualStyleOption {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 14px;
+  color: var(--fg);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.visualStyleOption:hover {
+  background: var(--panel-hover);
+  border-color: var(--border-strong);
+}
+
+.visualStyleActive {
+  background: var(--accent-faint);
+  border-color: var(--accent);
+}
+
+.visualStylePreview {
+  grid-column: 1 / -1;
+  height: 124px;
+  display: grid;
+  grid-template-columns: 34% 1fr;
+  grid-template-rows: 20px 1fr;
+  overflow: hidden;
+  color: var(--fg-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.previewToolbar {
+  grid-column: 1 / -1;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+
+.previewSidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 6px;
+  border-right: 1px solid var(--border);
+}
+
+.previewSidebar span,
+.previewWorkspace span {
+  display: block;
+  min-height: 17px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.previewWorkspace {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 8px;
+}
+
+.visualStylePreviewNormal {
+  border-radius: 8px;
+}
+
+.visualStylePreviewNormal .previewSidebar span,
+.visualStylePreviewNormal .previewWorkspace span {
+  border-top-color: var(--accent);
+  border-radius: 6px;
+}
+
+.visualStylePreviewClean,
+.visualStylePreviewClean .previewSidebar span,
+.visualStylePreviewClean .previewWorkspace span {
+  border-radius: 0;
+}
+
+.visualStylePreviewClean .previewSidebar span {
+  min-height: 13px;
+  background: transparent;
+  border-width: 0 0 1px;
+}
+
+.visualStyleCopy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.visualStyleCopy strong {
+  font-size: 13px;
+}
+
+.visualStyleCopy small {
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .themeGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -540,8 +653,23 @@
 
 .agentGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 10px;
+  align-items: stretch;
+}
+
+.agentInstall {
+  padding-top: 8px;
+  cursor: default;
+}
+
+.agentOptionBodyFill {
+  height: 100%;
+}
+
+/* One spacer, so everything after the description lands at the bottom of the tile. */
+.agentOptionBodyFill .agentDesc {
+  margin-bottom: auto;
 }
 
 .agentOption {
@@ -560,6 +688,16 @@
     border-color 120ms ease,
     background 120ms ease,
     opacity 120ms ease;
+}
+
+/*
+ * Agent tiles carry more than a label — version, update badge, and sometimes an installer — so they
+ * anchor to the top and share one height across the grid instead of each sizing to its content.
+ */
+.agentCard {
+  align-items: flex-start;
+  min-height: 148px;
+  height: 100%;
 }
 
 .agentOption:hover:not(:disabled) {
@@ -625,6 +763,37 @@
   color: var(--fg-muted);
   font-size: 11px;
   line-height: 1.45;
+}
+
+.agentVersionRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  min-height: 24px;
+}
+
+.agentVersion {
+  font: 600 10px/1 var(--font-mono);
+  color: var(--fg-faint);
+}
+
+.agentUpdate {
+  font: 600 9px/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  padding: 3px 5px;
+}
+
+.agentUpToDate {
+  font: 600 9px/1 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-faint);
 }
 
 .footer {

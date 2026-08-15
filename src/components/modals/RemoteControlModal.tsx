@@ -2,12 +2,13 @@ import { Smartphone, Wifi, WifiOff } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 
 import {
+  openRemoteControlPairing,
   remoteControlInfo,
   remoteControlRevoke,
-  setRemoteControlEnabled,
   type RemoteControlInfo,
 } from '../../lib/tauri'
 import { useT } from '../../lib/i18n'
+import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { Modal } from './Modal'
 import controls from './controls.module.css'
@@ -18,6 +19,7 @@ export function RemoteControlModal() {
   const open = useUiStore((state) => state.openModal === 'remoteControl')
   const closeModal = useUiStore((state) => state.closeModal)
   const openModal = useUiStore((state) => state.openModal_)
+  const setPreferences = useProjectsStore((state) => state.setPreferences)
   const [info, setInfo] = useState<RemoteControlInfo | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -33,26 +35,14 @@ export function RemoteControlModal() {
   useEffect(() => {
     if (!open) return
     void refresh()
-    const timer = window.setInterval(() => void refresh(), 2000)
+    const timer = window.setInterval(() => void refresh(), 1000)
     return () => window.clearInterval(timer)
   }, [open, refresh])
 
-  const setEnabled = async (enabled: boolean) => {
+  const run = async (operation: () => Promise<RemoteControlInfo>) => {
     setBusy(true)
     try {
-      setInfo(await setRemoteControlEnabled(enabled))
-      setError(null)
-    } catch (value) {
-      setError(String(value))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const revoke = async () => {
-    setBusy(true)
-    try {
-      setInfo(await remoteControlRevoke())
+      setInfo(await operation())
       setError(null)
     } catch (value) {
       setError(String(value))
@@ -62,6 +52,7 @@ export function RemoteControlModal() {
   }
 
   const enabled = info?.enabled === true
+  const pairingOpen = info?.pairing_open === true
 
   return (
     <Modal
@@ -75,7 +66,7 @@ export function RemoteControlModal() {
             <button
               type="button"
               className={`${controls.btn} ${controls.btnDanger}`}
-              onClick={() => void setEnabled(false)}
+              onClick={() => setPreferences({ remoteEnabled: false })}
               disabled={busy}
             >
               <WifiOff size={14} />
@@ -85,7 +76,7 @@ export function RemoteControlModal() {
             <button
               type="button"
               className={`${controls.btn} ${controls.btnPrimary}`}
-              onClick={() => void setEnabled(true)}
+              onClick={() => setPreferences({ remoteEnabled: true })}
               disabled={busy}
             >
               <Wifi size={14} />
@@ -114,25 +105,41 @@ export function RemoteControlModal() {
 
       {error ? <p className={styles.error}>{error}</p> : null}
 
-      {enabled && info?.pairing_url ? (
+      {enabled ? (
         <div className={styles.contentGrid}>
           <section className={styles.qrCard}>
-            {info.qr_svg ? (
-              <img
-                className={styles.qr}
-                src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(info.qr_svg)}`}
-                alt={t('remote.qrAlt')}
-              />
-            ) : null}
-            <span className={styles.scanHint}>{t('remote.scanHint')}</span>
+            {pairingOpen && info?.qr_svg ? (
+              <>
+                <img
+                  className={styles.qr}
+                  src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(info.qr_svg)}`}
+                  alt={t('remote.qrAlt')}
+                />
+                <span className={styles.scanHint}>
+                  {t('remote.pairingCountdown', { seconds: String(info.pairing_expires_in) })}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className={styles.scanHint}>{t('remote.pairingClosedHint')}</span>
+                <button
+                  type="button"
+                  className={`${controls.btn} ${controls.btnPrimary}`}
+                  onClick={() => void run(openRemoteControlPairing)}
+                  disabled={busy}
+                >
+                  {t('remote.pairingOpenAction')}
+                </button>
+              </>
+            )}
           </section>
 
           <section className={styles.details}>
             <div className={styles.metric}>
               <span className={styles.metricLabel}>{t('remote.connectedDevices')}</span>
-              <strong>{info.connected_devices}/{info.max_devices}</strong>
+              <strong>{info?.connected_devices ?? 0}/{info?.max_devices ?? 1}</strong>
               <span className={styles.metricHint}>
-                {info.connected_devices === 1 ? t('remote.deviceSingular') : t('remote.devicePlural')}
+                {info?.connected_devices === 1 ? t('remote.deviceSingular') : t('remote.devicePlural')}
               </span>
             </div>
             <button type="button" className={controls.btn} onClick={() => { closeModal(); openModal('preferences', { category: 'remoteControl' }) }}>
@@ -140,9 +147,9 @@ export function RemoteControlModal() {
             </button>
             <div className={styles.urlBlock}>
               <span className={styles.metricLabel}>{t('remote.urlLabel')}</span>
-              <code>{info.connected_devices > 0 ? info.pairing_url : t('remote.hiddenAddressPlaceholder')}</code>
+              <code>{pairingOpen && info?.pairing_url ? info.pairing_url : t('remote.hiddenAddressPlaceholder')}</code>
             </div>
-            <button type="button" className={controls.btn} onClick={() => void revoke()} disabled={busy}>
+            <button type="button" className={controls.btn} onClick={() => void run(remoteControlRevoke)} disabled={busy}>
               {t('remote.revoke')}
             </button>
           </section>

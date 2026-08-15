@@ -1,16 +1,12 @@
 // Spotify integration — OAuth Authorization Code flow + currently-playing polling.
 //
 // Fluxo:
-// 1. `spotify_login` abre o browser pra autorizar e levanta um loopback HTTP
-//    em 127.0.0.1:8888/callback pra capturar o `code`.
+
 // 2. Trocamos `code` por `access_token`/`refresh_token` no /api/token.
 // 3. Tokens persistem em `app_local_data_dir/spotify_tokens.json`.
 // 4. `spotify_get_current` chama /me/player/currently-playing, refrescando
-//    o access_token se já passou da validade.
+
 //
-// Credenciais: recebidas do frontend (Preferências) ou lidas de
-// `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` em dev local. Não há fallback
-// hardcoded em builds públicas.
 
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -24,19 +20,18 @@ use tauri::AppHandle;
 use crate::paths::app_data_dir;
 
 const REDIRECT_URI: &str = "http://127.0.0.1:8888/callback";
-const SCOPES: &str = "user-read-currently-playing user-read-playback-state";
+const SCOPES: &str =
+    "user-read-currently-playing user-read-playback-state user-read-recently-played";
 const AUTHORIZE_URL: &str = "https://accounts.spotify.com/authorize";
 const TOKEN_URL: &str = "https://accounts.spotify.com/api/token";
 const NOW_PLAYING_URL: &str = "https://api.spotify.com/v1/me/player/currently-playing";
+const RECENTLY_PLAYED_URL: &str = "https://api.spotify.com/v1/me/player/recently-played?limit=1";
 
-/// Cliente HTTP compartilhado — reusa o pool de conexões entre chamadas.
 fn http_client() -> &'static reqwest::Client {
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     CLIENT.get_or_init(reqwest::Client::new)
 }
 
-// Flag pra impedir dois logins simultâneos (a porta 8888 é exclusiva).
-// AtomicBool pq MutexGuard de std não é Send across awaits.
 static LOGIN_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
 
 struct LoginGuard;
@@ -70,8 +65,7 @@ fn resolve_credentials(
         .to_string();
     if cid.is_empty() || secret.is_empty() {
         return Err(
-            "spotify credentials not configured — set Client ID/Secret in Preferences"
-                .to_string(),
+            "spotify credentials not configured — set Client ID/Secret in Preferences".to_string(),
         );
     }
     Ok(SpotifyCredentials {
@@ -131,11 +125,14 @@ struct TokenResponse {
     access_token: String,
     /// segundos
     expires_in: u64,
-    /// só vem na primeira troca; refresh pode reusar o antigo
+
     refresh_token: Option<String>,
 }
 
-async fn exchange_code(code: &str, credentials: &SpotifyCredentials) -> Result<TokenResponse, String> {
+async fn exchange_code(
+    code: &str,
+    credentials: &SpotifyCredentials,
+) -> Result<TokenResponse, String> {
     let basic = base64::engine::general_purpose::STANDARD.encode(format!(
         "{}:{}",
         credentials.client_id, credentials.client_secret
@@ -211,13 +208,10 @@ async fn ensure_fresh_access_token(
     Ok(new_tokens.access_token)
 }
 
-/// Levanta um loopback HTTP em 127.0.0.1:8888 e bloqueia até receber UMA conexão
-/// no path /callback. Retorna `(code, state)` parseados da query.
 fn wait_for_oauth_callback(expected_state: &str) -> Result<String, String> {
     let listener = TcpListener::bind("127.0.0.1:8888").map_err(|e| format!("bind 8888: {e}"))?;
     listener.set_nonblocking(false).map_err(|e| e.to_string())?;
 
-    // Loop aceitando conexões até pegar uma com /callback?code=...
     loop {
         let (mut stream, _) = listener.accept().map_err(|e| e.to_string())?;
         let mut buf = [0u8; 4096];
@@ -274,7 +268,7 @@ pub async fn spotify_login(
     client_secret: Option<String>,
 ) -> Result<(), String> {
     let credentials = resolve_credentials(client_id, client_secret)?;
-    // bloqueia chamadas concorrentes; libera quando esse `_guard` cai
+
     if LOGIN_IN_PROGRESS
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
@@ -292,7 +286,6 @@ pub async fn spotify_login(
         urlencoding::encode(&state),
     );
 
-    // Abre no browser default. Usa `rundll32` no Windows pq `cmd start`
     // interpreta os `&` da URL como separadores de comando.
     #[cfg(target_os = "windows")]
     {
@@ -316,7 +309,6 @@ pub async fn spotify_login(
             .map_err(|e| format!("open browser: {e}"))?;
     }
 
-    // Espera callback numa thread blocking pra não travar o runtime async
     let expected_state = state.clone();
     let code =
         tauri::async_runtime::spawn_blocking(move || wait_for_oauth_callback(&expected_state))
@@ -357,6 +349,79 @@ pub struct NowPlaying {
     pub track_url: Option<String>,
 }
 
+fn parse_track(item: &serde_json::Value, playing: bool, progress_ms: u64) -> Option<NowPlaying> {
+    if item.is_null() {
+        return None;
+    }
+    let track = item.get("name")?.as_str()?.to_string();
+    let artist = item
+        .get("artists")
+        .and_then(|value| value.as_array())
+        .map(|artists| {
+            artists
+                .iter()
+                .filter_map(|artist| artist.get("name").and_then(|name| name.as_str()))
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default();
+    let album = item
+        .get("album")
+        .and_then(|value| value.get("name"))
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .to_string();
+    let cover_url = item
+        .get("album")
+        .and_then(|value| value.get("images"))
+        .and_then(|value| value.as_array())
+        .and_then(|images| images.last())
+        .and_then(|image| image.get("url"))
+        .and_then(|value| value.as_str())
+        .map(String::from);
+    let track_url = item
+        .get("external_urls")
+        .and_then(|value| value.get("spotify"))
+        .and_then(|value| value.as_str())
+        .map(String::from);
+    let duration_ms = item
+        .get("duration_ms")
+        .and_then(|value| value.as_u64())
+        .unwrap_or(0);
+
+    Some(NowPlaying {
+        playing,
+        track,
+        artist,
+        album,
+        cover_url,
+        duration_ms,
+        progress_ms,
+        track_url,
+    })
+}
+
+async fn fetch_recently_played(access: &str) -> Result<Option<NowPlaying>, String> {
+    let response = http_client()
+        .get(RECENTLY_PLAYED_URL)
+        .header("Authorization", format!("Bearer {access}"))
+        .send()
+        .await
+        .map_err(|error| format!("recently played request: {error}"))?;
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("recently played failed ({status}): {body}"));
+    }
+    let json: serde_json::Value = response.json().await.map_err(|error| error.to_string())?;
+    let track = json
+        .get("items")
+        .and_then(|value| value.as_array())
+        .and_then(|items| items.first())
+        .and_then(|item| item.get("track"));
+    Ok(track.and_then(|item| parse_track(item, false, 0)))
+}
+
 #[tauri::command]
 pub async fn spotify_get_current(
     app: AppHandle,
@@ -381,8 +446,7 @@ pub async fn spotify_get_current(
 
     let status = resp.status();
     if status.as_u16() == 204 {
-        // sem música tocando
-        return Ok(None);
+        return fetch_recently_played(&access).await;
     }
     if !status.is_success() {
         let body = resp.text().await.unwrap_or_default();
@@ -394,61 +458,43 @@ pub async fn spotify_get_current(
         .get("is_playing")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let item = json.get("item").cloned().unwrap_or(serde_json::Value::Null);
-    if item.is_null() {
-        return Ok(None);
-    }
-    let track = item
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let artist = item
-        .get("artists")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|a| a.get("name").and_then(|n| n.as_str()))
-                .collect::<Vec<_>>()
-                .join(", ")
-        })
-        .unwrap_or_default();
-    let album = item
-        .get("album")
-        .and_then(|a| a.get("name"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    let cover_url = item
-        .get("album")
-        .and_then(|a| a.get("images"))
-        .and_then(|v| v.as_array())
-        .and_then(|imgs| imgs.last())
-        .and_then(|img| img.get("url"))
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    let track_url = item
-        .get("external_urls")
-        .and_then(|u| u.get("spotify"))
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    let duration_ms = item
-        .get("duration_ms")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
     let progress_ms = json
         .get("progress_ms")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
+    if let Some(now_playing) = json
+        .get("item")
+        .and_then(|item| parse_track(item, playing, progress_ms))
+    {
+        return Ok(Some(now_playing));
+    }
+    fetch_recently_played(&access).await
+}
 
-    Ok(Some(NowPlaying {
-        playing,
-        track,
-        artist,
-        album,
-        cover_url,
-        duration_ms,
-        progress_ms,
-        track_url,
-    }))
+#[cfg(test)]
+mod tests {
+    use super::parse_track;
+
+    #[test]
+    fn parses_recent_track_as_paused_now_playing() {
+        let item = serde_json::json!({
+            "name": "A Track",
+            "artists": [{ "name": "An Artist" }],
+            "album": {
+                "name": "An Album",
+                "images": [{ "url": "https://example.com/large.jpg" }, { "url": "https://example.com/small.jpg" }]
+            },
+            "duration_ms": 123_000,
+            "external_urls": { "spotify": "https://open.spotify.com/track/example" }
+        });
+
+        let parsed = parse_track(&item, false, 0).expect("track should parse");
+        assert!(!parsed.playing);
+        assert_eq!(parsed.track, "A Track");
+        assert_eq!(parsed.artist, "An Artist");
+        assert_eq!(
+            parsed.cover_url.as_deref(),
+            Some("https://example.com/small.jpg")
+        );
+    }
 }

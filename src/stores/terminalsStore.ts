@@ -2,15 +2,17 @@ import { create } from 'zustand'
 
 import type { PtyStatus } from '../lib/types'
 
-/**
- * Runtime PTY state — não persistido. Mapeia ptyId → status atual,
- * timestamp da última transição (pra mostrar "há X min" no AgentMonitor)
- * e flag de "tem PTY vivo no backend?".
- *
- * O `status` é derivado por heurística do output (ANSI clear screens,
- * spinners típicos de Claude/Codex etc). Por enquanto só armazena, a
- * inferência vem quando portarmos `agentMonitor.ts`.
- */
+export const IO_TIMESTAMP_THROTTLE_MS = 250
+
+   
+                                                                   
+                                                                         
+                                        
+  
+                                                                      
+                                                                     
+                                                     
+   
 
 export type TerminalSnapshot = {
   ansiBuffer: string
@@ -23,23 +25,23 @@ export type TerminalSnapshot = {
 export type PtyRuntime = {
   ptyId: string
   status: PtyStatus
-  /** ms desde última transição de status. Atualizado quando setStatus muda o valor. */
+                                                                                       
   lastTransitionAt: number
-  /** true entre spawn_pty bem-sucedido e pty://exit. */
+                                                        
   alive: boolean
-  /** PTY encerrado automaticamente, com sessão/scrollback preservados para retomada. */
+                                                                                        
   parked: boolean
-  /** Nascimento do processo atual, usado pela janela de graça do supervisor. */
+                                                                                
   spawnedAt: number
-  /** Último input ou output observado pelo frontend. */
+                                                        
   lastIoAt: number
-  /**
-   * Contador de exit events pendentes de PTYs antigos (após restarts). Cada
-   * `beginRestart` incrementa; cada exit event recebido decrementa antes de
-   * marcar como exited. Sem isso, o exit do PTY antigo (que chega async após
-   * o restart resolver) marca o novo PTY como morto e o overlay "Reiniciar"
-   * fica grudado.
-   */
+     
+                                                                            
+                                                                            
+                                                                             
+                                                                            
+                  
+     
   expectedOldExits: number
   lastFocusedAt?: number
   poolState?: 'ACTIVE' | 'HIBERNATING' | 'HIBERNATED' | 'RESTORING' | 'FAILED'
@@ -51,7 +53,7 @@ type TerminalsState = {
 
   reset: () => void
   registerPty: (ptyId: string) => void
-  /** Sinaliza que um restart foi iniciado — o próximo exit event será ignorado. */
+                                                                                   
   beginRestart: (ptyId: string) => void
   setStatus: (ptyId: string, status: PtyStatus) => void
   recordIo: (ptyId: string) => void
@@ -130,10 +132,12 @@ export const useTerminalsStore = create<TerminalsState>((set) => ({
     set((state) => {
       const current = state.byPtyId[ptyId]
       if (!current) return state
+      const now = Date.now()
+      if (now - current.lastIoAt < IO_TIMESTAMP_THROTTLE_MS) return state
       return {
         byPtyId: {
           ...state.byPtyId,
-          [ptyId]: { ...current, lastIoAt: Date.now() },
+          [ptyId]: { ...current, lastIoAt: now },
         },
       }
     }),
@@ -142,7 +146,7 @@ export const useTerminalsStore = create<TerminalsState>((set) => ({
     set((state) => {
       const current = state.byPtyId[ptyId]
       if (!current) return state
-      // Exit pendente de restart anterior — só consome o contador, não marca exited.
+                                                                                     
       if (current.expectedOldExits > 0) {
         return {
           byPtyId: {

@@ -138,3 +138,23 @@
     flex: 1 1 100%;
   }
 }
+
+:global([data-visual-style='clean']) .root {
+  border-radius: var(--clean-surface-radius);
+  background: transparent;
+}
+
+:global([data-visual-style='clean']) .iconWrap {
+  border-radius: var(--clean-control-radius);
+  box-shadow: var(--clean-shadow);
+}
+
+:global([data-visual-style='clean']) .actions button {
+  min-height: var(--clean-control-height);
+  border-radius: var(--clean-control-radius);
+  box-shadow: none;
+}
+
+:global([data-visual-style='clean']) .actions button:hover:not(:disabled) {
+  transform: none;
+}

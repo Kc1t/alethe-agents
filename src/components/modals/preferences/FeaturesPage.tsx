@@ -5,7 +5,7 @@ import { useT } from '../../../lib/i18n'
 import { useProjectsStore } from '../../../stores/projectsStore'
 import styles from '../PreferencesModal.module.css'
 
-// Ícone por feature opcional. Mantido junto da página que o consome.
+                                                                     
 const FEATURE_ICONS = {
   todos: ListTodo,
   git: GitBranch,

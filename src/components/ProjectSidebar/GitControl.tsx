@@ -5,7 +5,9 @@ import {
   ChevronDown,
   ChevronRight,
   Folder,
+  FolderSearch,
   GitBranch,
+  LayoutGrid,
   Minus,
   Plus,
   RefreshCw,
@@ -14,19 +16,20 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { readableError } from '../../lib/errors'
-import { useT, type MessageKey } from '../../lib/i18n'
+import { type MessageKey,useT } from '../../lib/i18n'
 import {
   getPtyCwd,
   gitCommit,
   gitDiscard,
+  type GitFileChange,
   gitInit,
   gitPull,
   gitPush,
+  type GitRepositoryStatus,
   gitStage,
   gitStatus,
   gitUnstage,
-  type GitFileChange,
-  type GitRepositoryStatus,
+  openInFileExplorer,
 } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -57,7 +60,7 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const requestId = useRef(0)
-  // Coalesce refreshes automáticos (interval + focus) — defesa extra contra
+                                                                            
   // rajadas de eventos de foco que poderiam disparar git em loop. Refresh manual
   // (quiet=false) ignora o throttle.
   const lastAutoRefreshRef = useRef(0)
@@ -158,8 +161,8 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
     }, t('git.commit.done'))
   }
 
-  // Sync estilo VSCode: puxa se está atrás, empurra sempre (push sem nada a
-  // enviar é "Everything up-to-date"; sem upstream, publica a branch).
+                                                                            
+                                                                       
   const sync = async () => {
     if (!status || busy) return
     await run(async () => {
@@ -195,14 +198,20 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
     return (
       <GitMessage
         title={t(ERROR_KEYS[error] ?? 'git.error.generic')}
-        description={isNotRepo ? t('git.initOffer.body') : (error.startsWith('git_command_failed:') ? error.slice(error.indexOf(':') + 1) : undefined)}
+        description={
+          isNotRepo
+            ? t('git.initOffer.body')
+            : error.startsWith('git_command_failed:')
+              ? error.slice(error.indexOf(':') + 1)
+              : undefined
+        }
         action={
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
             {isNotRepo ? (
               <button
                 type="button"
-                className={styles.retry}
-                style={{ width: '100%', background: 'var(--accent)', color: '#fff', borderColor: 'var(--accent)', fontWeight: 600 }}
+                className={`${styles.retry} ${styles.retryPrimary}`}
+                style={{ width: '100%' }}
                 disabled={busy}
                 onClick={() => void handleInitGit()}
               >
@@ -210,7 +219,12 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
                 {busy ? t('git.initOffer.busy') : t('git.initOffer.button')}
               </button>
             ) : null}
-            <button type="button" className={styles.retry} style={{ width: '100%' }} onClick={() => void refresh()}>
+            <button
+              type="button"
+              className={styles.retry}
+              style={{ width: '100%' }}
+              onClick={() => void refresh()}
+            >
               <RefreshCw size={13} />
               {t('git.refresh')}
             </button>
@@ -232,6 +246,15 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
           <strong>{terminalName}</strong>
           <span>{status.repoRoot}</span>
         </div>
+        <button
+          type="button"
+          className={styles.iconButton}
+          onClick={() => void openInFileExplorer(status.repoRoot)}
+          title={t('files.revealFolder')}
+          aria-label={t('files.revealFolder')}
+        >
+          <FolderSearch size={13} />
+        </button>
         <button
           type="button"
           className={styles.iconButton}
@@ -464,13 +487,23 @@ function TreeNodeView({
   const indent = { paddingLeft: 8 + depth * 12 }
 
   const createDiffPane = useProjectsStore((s) => s.createDiffPane)
+  const createFilePane = useProjectsStore((s) => s.createFilePane)
   const openPane = useProjectsStore((s) => s.openPane)
   const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
 
   const handleDoubleClick = (filePath: string) => {
-    if (kind === 'untracked') return
+    if (kind === 'untracked') {
+      openFile(filePath)
+      return
+    }
     const isStaged = kind === 'staged'
     const pane = createDiffPane(projectId, { filePath, repoRoot, staged: isStaged })
+    openPane(projectId, pane.id)
+    requestPaneFocus(pane.id)
+  }
+
+  const openFile = (filePath: string) => {
+    const pane = createFilePane(projectId, { filePath: absoluteRepoPath(repoRoot, filePath) })
     openPane(projectId, pane.id)
     requestPaneFocus(pane.id)
   }
@@ -490,6 +523,22 @@ function TreeNodeView({
           {statusChar(kind, change.status)}
         </span>
         <div className={styles.fileActions}>
+          <button
+            type="button"
+            title={t('files.reveal')}
+            aria-label={t('files.reveal')}
+            onClick={() => void openInFileExplorer(absoluteRepoPath(repoRoot, change.path))}
+          >
+            <FolderSearch size={12} />
+          </button>
+          <button
+            type="button"
+            title={t('files.addToGrid')}
+            aria-label={t('files.addToGrid')}
+            onClick={() => openFile(change.path)}
+          >
+            <LayoutGrid size={12} />
+          </button>
           {onDiscard ? (
             <button
               type="button"
@@ -590,7 +639,7 @@ function GitMessage({
   )
 }
 
-// ---- árvore de arquivos (estilo VSCode, com folder compression) ----
+                                                                       
 
 type DirNode = { type: 'dir'; name: string; path: string; children: TreeNode[] }
 type FileNode = { type: 'file'; name: string; change: GitFileChange }
@@ -619,7 +668,7 @@ function buildTree(items: GitFileChange[]): TreeNode[] {
   return root.children.map(compress).sort(compareNodes)
 }
 
-/** Comprime cadeias de pastas com filho único (a/b/c → "a/b/c"), como o VSCode. */
+                                                                                   
 function compress(node: TreeNode): TreeNode {
   if (node.type === 'file') return node
   let current = node
@@ -636,7 +685,7 @@ function compress(node: TreeNode): TreeNode {
   return current
 }
 
-/** Pastas antes de arquivos, cada bloco em ordem alfabética. */
+                                                                
 function compareNodes(a: TreeNode, b: TreeNode): number {
   if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
   return a.name.localeCompare(b.name)
@@ -671,4 +720,10 @@ function uniquePaths(items: GitFileChange[]): string[] {
 function errorCode(error: unknown): string {
   const value = String(error)
   return Object.keys(ERROR_KEYS).find((key) => value.includes(key)) ?? value
+}
+
+function absoluteRepoPath(repoRoot: string, relativePath: string): string {
+  if (/^(?:[A-Za-z]:[\\/]|\/)/.test(relativePath)) return relativePath
+  const separator = repoRoot.includes('\\') ? '\\' : '/'
+  return `${repoRoot.replace(/[\\/]+$/, '')}${separator}${relativePath.replace(/^[\\/]+/, '').replace(/[\\/]/g, separator)}`
 }

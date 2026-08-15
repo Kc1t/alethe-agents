@@ -405,9 +405,19 @@
   flex-direction: column;
   gap: 4px;
 }
-.optionCopy strong { font-size: 12px; }
-.optionCopy span { color: var(--fg-muted); font-size: 10px; }
-.rowActions { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.optionCopy strong {
+  font-size: 12px;
+}
+.optionCopy span {
+  color: var(--fg-muted);
+  font-size: 10px;
+}
+.rowActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
 .iconActionDanger {
   width: 30px;
   height: 30px;
@@ -417,12 +427,124 @@
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
 }
-.iconActionDanger:hover { background: var(--status-offline-soft); border-color: var(--status-offline); }
+.iconActionDanger:hover {
+  background: var(--status-offline-soft);
+  border-color: var(--status-offline);
+}
 
 .themeGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+}
+
+.visualStyleGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.visualStyleOption {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 10px;
+  color: var(--fg);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  text-align: left;
+}
+
+.visualStyleOption:hover {
+  background: var(--panel-hover);
+  border-color: var(--border-strong);
+}
+
+.visualStyleActive {
+  background: var(--accent-faint);
+  border-color: var(--accent);
+}
+
+.visualStylePreview {
+  grid-column: 1 / -1;
+  height: 104px;
+  display: grid;
+  grid-template-columns: 34% 1fr;
+  grid-template-rows: 18px 1fr;
+  overflow: hidden;
+  color: var(--fg-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.previewToolbar {
+  grid-column: 1 / -1;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.previewSidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px 5px;
+  border-right: 1px solid var(--border);
+}
+
+.previewSidebar span,
+.previewWorkspace span {
+  display: block;
+  min-height: 15px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+}
+
+.previewWorkspace {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  padding: 6px;
+}
+
+.visualStylePreviewNormal {
+  border-radius: 8px;
+}
+
+.visualStylePreviewNormal .previewSidebar span,
+.visualStylePreviewNormal .previewWorkspace span {
+  border-top-color: var(--accent);
+  border-radius: 6px;
+}
+
+.visualStylePreviewClean,
+.visualStylePreviewClean .previewSidebar span,
+.visualStylePreviewClean .previewWorkspace span {
+  border-radius: 0;
+}
+
+.visualStylePreviewClean .previewSidebar span {
+  min-height: 12px;
+  background: transparent;
+  border-width: 0 0 1px;
+}
+
+.visualStyleCopy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.visualStyleCopy strong {
+  font-size: 12px;
+}
+
+.visualStyleCopy small {
+  color: var(--fg-muted);
+  font-size: 10px;
+  line-height: 1.4;
 }
 .themeGrid > button {
   min-width: 0;
@@ -443,6 +565,21 @@
 .themeGrid > button.themeActive {
   background: var(--accent-faint);
   border-color: var(--accent);
+}
+
+:global([data-visual-style='clean']) .searchWrap:focus-within {
+  border-color: var(--clean-focus-border);
+}
+
+:global([data-visual-style='clean']) .nav button.navActive {
+  background: var(--clean-active-bg);
+  box-shadow: none;
+}
+
+:global([data-visual-style='clean'])
+  :is(.choiceGrid button.choiceActive, .visualStyleActive, .themeGrid > button.themeActive) {
+  background: var(--clean-active-bg);
+  border-color: var(--clean-focus-border);
 }
 .themeGrid > button > span:last-child {
   color: var(--fg-muted);
@@ -617,7 +754,7 @@
   font-size: 10px;
   line-height: 1.5;
 }
-/* Comando de terminal (`alethe`) — bloco de uso + ações de instalar/remover. */
+
 .cliUsage {
   margin: 0;
   padding: 10px 12px;
@@ -879,4 +1016,53 @@
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
   }
+}
+
+/* Same shell as .agentList label, but a row of actions instead of a single toggle. */
+.cliPathRow {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.cliPathValue,
+.cliPathWarning {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+.cliPathWarning {
+  color: var(--danger);
+}
+
+.cliPathActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cliPathActions button {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cliPathActions button:hover {
+  color: var(--fg);
+  border-color: var(--border-strong);
 }
