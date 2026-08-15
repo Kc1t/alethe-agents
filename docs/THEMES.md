@@ -198,7 +198,9 @@ export function getXtermTheme(theme: Theme) {
 
 Add the new theme's palette and a corresponding condition in `getXtermTheme()`.
 
-ANSI color overrides such as `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, and their `bright*` variants are optional. Existing themes provide examples of both minimal and full terminal palettes.
+ANSI color overrides such as `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, and their `bright*` variants are optional **on a dark background**. On a light background they are **mandatory**: xterm.js falls back to the dark-oriented Tango palette for any slot a light theme omits, and 8 of the 16 Tango slots fail WCAG AA (4.5:1) against a near-white background (see issue #97). Every slot a light theme ships must hold at least **4.5:1** against its own `background`.
+
+The one sanctioned exception is `white` / `brightWhite` on a light background: they double as painted backgrounds (`\x1b[47m`, `\x1b[107m` — used by `less` status bars), so they stay light and the render-time `minimumContrastRatio` floor (4.5, enabled for light themes only) darkens them when they are used as text. `docs/THEMES.md` documents both rules so the next light theme does not repeat this class of bug.
 
 ### 7. Add the Theme Icon
 
@@ -227,6 +229,8 @@ export const THEME_ICONS: Record<AppIconTheme, string> = {
 ```
 
 Add the new icon import and its entry in `THEME_ICONS`.
+
+Light themes must also keep the terminal's `minimumContrastRatio` floor: `getMinimumContrastRatio()` in `src/components/XTermView/xtermThemes.ts` returns `4.5` for light-background themes and is wired into the xterm `Terminal` options in `useXtermSession.ts` and the theme-change effect in `index.tsx`. A 16-slot palette cannot cover the 256-color / truecolor output agents emit directly; only the render-time floor can. Dark themes stay byte-identical — the floor applies to light-background themes only.
 
 ## Contrast & Design Guidelines
 
