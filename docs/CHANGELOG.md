@@ -55,6 +55,8 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   or path, and All / Detected / Installable filters. A **Scan again** link re-runs detection without
   leaving the step, for when an agent was installed outside Alethe.
 - Agents with a newer release published on npm can be updated in place from that table.
+- Right-clicking a terminal pane pastes the clipboard (text, images and files) when nothing is
+  selected; with a selection, the right click copies it and clears the highlight.
 
 ### Changed
 
@@ -94,6 +96,21 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - Switching conversation from inside the CLI with `/new` or `/resume` now sticks. Alethe pinned the
   session id given at launch and sent the old one back on the next restart, dragging the pane to the
   previous chat.
+- Agent CLIs installed through Homebrew were invisible on macOS. An `.app` launched from Finder does
+  not run as a login shell, so it inherits the minimal Launch Services PATH without `.zshrc` /
+  `.zprofile`. Launcher discovery and the PATH rebuilt for terminals now include the default Homebrew
+  prefixes (`/opt/homebrew/bin` and `sbin` on Apple Silicon, `/usr/local/bin` and `sbin` on Intel) as
+  a fixed fallback.
+- The Antigravity usage widget showed "—" on Linux. The OAuth token lookup used an explicit keyring
+  target required by the Windows Credential Manager, which prevented the Linux Secret Service (GNOME
+  Keyring / KWallet) from finding the entry written by the `agy` CLI. Credential discovery now
+  supports both layouts and also looks for the `agy` binary in `~/.local/bin` and `~/.cargo/bin` on
+  Linux and macOS.
+- Pasting an image or files into a terminal did nothing on Linux, silently. `read_clipboard_payload`
+  was implemented on Windows only and errored out everywhere else without falling back. A Linux/BSD
+  backend using `wl-paste` / `wl-copy` (Wayland) or `xclip` (X11) now handles screenshots, images
+  copied from the web (`image/png`) and files copied in a file manager (`text/uri-list`). macOS is
+  still unimplemented.
 
 - The Files sidebar now supports quick previews, adding or dragging files into the workspace grid,
   revealing entries in File Explorer, renaming, and confirmed deletion. Git file rows can also open

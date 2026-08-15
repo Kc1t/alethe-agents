@@ -101,16 +101,30 @@ Custom grids support `colSpan`, `rowSpan`, drag-and-drop swapping, and resizable
 - Jump modal for terminals.
 - Filter by project name, terminal name, and cwd.
 - Keyboard navigation with arrows and Enter.
-- Common shortcuts:
-  - `Ctrl+T`: quick shell.
-  - `Ctrl+Shift+T`: new terminal.
-  - `Ctrl+W`: close/hide current pane.
-  - `Ctrl+P`: find/jump.
-  - `Ctrl+Shift+P`: new project.
-  - `Ctrl+Shift+G`: new group.
-  - `Ctrl+Shift+H`: toggle Home/workspace.
-  - `Ctrl+Tab`: cycle panes.
-  - `Esc`: close modal or leave focus/fullscreen modes.
+- Keyboard shortcuts:
+
+  On macOS, `Ctrl` is read as `Cmd` (`e.ctrlKey || e.metaKey`), so the table
+  below is the same on both platforms. Most shortcuts are ignored while focus
+  is in an editable field; `Esc`, zoom, and the `Ctrl`-prefixed shortcuts are
+  the exceptions.
+
+  | Shortcut | Action |
+  | --- | --- |
+  | `Ctrl+T` | Open the new-terminal modal |
+  | `Ctrl+Shift+T` | Reopen the last closed tab |
+  | `Ctrl+Shift+A` | Add a Markdown or browser pane |
+  | `Ctrl+W` | Close/hide the first pane in the active container |
+  | `Ctrl+P` | Find/jump |
+  | `Ctrl+Shift+P` | New project |
+  | `Ctrl+Shift+G` | New group |
+  | `Ctrl+Shift+H` | Toggle between Home and the workspace |
+  | `Ctrl+1` … `Ctrl+9` | Jump to the Nth project in sidebar order |
+  | `Alt+Left` / `Alt+Right` | Navigate persistent workspace history |
+  | `Shift+Tab` | Focus the next terminal in the current group/project |
+  | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Cycle project tabs without reordering them |
+  | `Ctrl++` / `Ctrl+-` / `Ctrl+0` | UI zoom in, out, reset (numpad variants included) |
+  | `R` | Restart the selected terminal when focus is on the UI, not inside the terminal |
+  | `Esc` | Close the open modal, or leave fullscreen |
 
 ## System Integration
 

@@ -664,18 +664,18 @@ export const ptBR: Record<MessageKey, string> = {
   'whatsNew.close': 'Entendi',
   'whatsNew.update': 'Ver atualização',
   'whatsNew.releaseHeading': 'v{version} — {date}',
-  'whatsNew.v141.note1':
-    'Corrigidas as notas de versão mostradas aqui e no GitHub — elas vinham de uma cópia solta e desatualizada do changelog.',
-  'whatsNew.v140.note1':
-    'Graphify agora é opcional: ligue ou desligue o painel de grafo em Preferências sem mexer na config MCP dos agentes.',
-  'whatsNew.v140.note2':
-    'O comando `alethe` no terminal abre a pasta atual como projeto — ou foca o app, se já estiver aberto.',
-  'whatsNew.v140.note3':
-    'File Explorer: duplo-clique em qualquer arquivo para abri-lo como pane no workspace.',
-  'whatsNew.v140.note4':
-    'Git Control: duplo-clique num arquivo em Changes ou Staged abre o diff como pane.',
-  'whatsNew.v140.note5':
-    'Nova tela "Sobre & Atualizações" nas Preferências, com progresso e erros visíveis ao atualizar.',
+  'whatsNew.v150.note1': 'O export de backup de perfil agora arquiva o perfil inteiro (todos, histórico, preferências, tokens, scrollback) em vez de uma lista curta fixa.',
+  'whatsNew.v150.note2': 'Nova ação de menu “Erase all data (fresh install)” apaga todos os perfis, contas, projetos, scrollback, configurações e logs.',
+  'whatsNew.v150.note3': 'Tela de carregamento inicial reformulada para compartilhar o fundo e o ASCII art da Home.',
+  'whatsNew.v150.note4': 'Corrigido o travamento ao trocar de conta em “PTY reader flush barrier timed out”, fechando os pseudoconsoles dos terminais estacionados antes da espera final.',
+  'whatsNew.v150.note5': 'Corrigida a criação de conta presa em loading quebrado, e detecção de CLI com timeout para o onboarding não congelar em “Detecting installed CLIs…”.',
+  'whatsNew.v150.note6': 'Controle remoto via LAN: visão web móvel autenticada para ver chats, acompanhar o terminal ao vivo e enviar uma mensagem por vez.',
+  'whatsNew.v141.note1': 'Corrigidas as notas de versão mostradas aqui e no GitHub — elas vinham de uma cópia solta e desatualizada do changelog.',
+  'whatsNew.v140.note1': 'Graphify agora é opcional: ligue ou desligue o painel de grafo em Preferências sem mexer na config MCP dos agentes.',
+  'whatsNew.v140.note2': 'O comando `alethe` no terminal abre a pasta atual como projeto — ou foca o app, se já estiver aberto.',
+  'whatsNew.v140.note3': 'File Explorer: duplo-clique em qualquer arquivo para abri-lo como pane no workspace.',
+  'whatsNew.v140.note4': 'Git Control: duplo-clique num arquivo em Changes ou Staged abre o diff como pane.',
+  'whatsNew.v140.note5': 'Nova tela "Sobre & Atualizações" nas Preferências, com progresso e erros visíveis ao atualizar.',
   'whatsNew.v140.note6': 'A versão instalada agora aparece sempre no rodapé da sidebar.',
   'whatsNew.v140.note7':
     'Segurança: o listener HTTP interno do AgentCanvas agora exige token secreto, e o corpo da requisição é limitado a 1 MB.',
@@ -1230,6 +1230,10 @@ export const ptBR: Record<MessageKey, string> = {
   'ui.sidebar.project': 'Projeto',
   'ui.sidebar.group': 'Grupo',
   'ui.sidebar.explorer': 'Explorer',
+  'ui.fileExplorer.refresh': 'Atualizar arquivos',
+  'ui.fileExplorer.noActiveFolder': 'Este terminal não possui uma pasta ativa.',
+  'ui.fileExplorer.loading': 'Carregando...',
+  'ui.fileExplorer.readError': 'Não foi possível ler esta pasta.',
   'ui.sidebar.navigation': 'Navegacao da barra lateral',
   'ui.sidebar.archiveGroup': 'Arquivar grupo',
   'ui.sidebar.archiveProject': 'Arquivar projeto',

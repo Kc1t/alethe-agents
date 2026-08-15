@@ -164,7 +164,27 @@ pub fn find_windows_cli_launcher(command: &str) -> Option<PathBuf> {
 fn resolve_cli_launcher(command: &str) -> Option<PathBuf> {
     #[cfg(not(windows))]
     {
-        return which::which(command).ok();
+        if let Ok(path) = which::which(command) {
+            return Some(path);
+        }
+        let mut dirs = Vec::<PathBuf>::new();
+        if let Some(home) = env::var_os("HOME").map(PathBuf::from) {
+            dirs.push(home.join(".local").join("bin"));
+            dirs.push(home.join(".cargo").join("bin"));
+        }
+        // App .app lançado via Finder/DMG não roda como login shell: herda o
+        // PATH mínimo do Launch Services (sem .zshrc/.zprofile), então CLIs
+        // instaladas via `brew install` ficam invisíveis pro `which` acima
+        // mesmo estando no disco. Cobrir os prefixos padrão do Homebrew
+        // (Apple Silicon e Intel) como fallback fixo.
+        dirs.extend(homebrew_dirs());
+        for dir in dirs {
+            let candidate = dir.join(command);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+        return None;
     }
 
     #[cfg(windows)]
@@ -277,6 +297,21 @@ pub async fn probe_install_toolchain() -> InstallToolchain {
     .unwrap_or_default()
 }
 
+/// Default Homebrew prefixes on macOS (Apple Silicon uses `/opt/homebrew`, Intel
+/// uses `/usr/local`). Fixed fallback — it does not rely on the login shell having
+/// run `brew shellenv` in the session of the process that launched the app.
+#[cfg(not(windows))]
+fn homebrew_dirs() -> Vec<PathBuf> {
+    vec![
+        PathBuf::from("/opt/homebrew/bin"),
+        PathBuf::from("/opt/homebrew/sbin"),
+        PathBuf::from("/usr/local/bin"),
+        PathBuf::from("/usr/local/sbin"),
+    ]
+}
+
+/// Looks for the VS Code launcher (`code`) in common locations plus PATH.
+/// Returns the first one that exists.
 pub fn find_vscode_launcher() -> Option<PathBuf> {
     #[cfg(not(windows))]
     {
@@ -477,7 +512,16 @@ pub fn rebuilt_path() -> String {
 
 pub(crate) fn build_rebuilt_path() -> String {
     if !cfg!(windows) {
-        return env::var("PATH").unwrap_or_default();
+        let mut paths: Vec<PathBuf> = env::var_os("PATH")
+            .map(|value| env::split_paths(&value).collect())
+            .unwrap_or_default();
+        #[cfg(not(windows))]
+        paths.extend(homebrew_dirs());
+        return dedupe_paths(paths)
+            .into_iter()
+            .map(|path| path.to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join(":");
     }
 
     let mut paths = Vec::<PathBuf>::new();
@@ -814,4 +858,78 @@ pub async fn discover_provider_models(provider: String) -> Result<Vec<ModelOptio
     tokio::task::spawn_blocking(move || discover_provider_models_inner(provider))
         .await
         .map_err(|error| format!("discover_provider_models: falha na task bloqueante: {error}"))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn accepts_model_ids_and_rejects_cli_prose() {
+        for id in ["claude-sonnet-4-5", "gpt-5", "o3-mini", "model-error-free"] {
+            assert!(is_valid_model_id(id), "expected valid model id: {id}");
+        }
+
+        for id in [
+            "",
+            "ab",
+            "--help",
+            "# comment",
+            "gpt 5",
+            "usage: claude [options]",
+            "Usage: claude [options]",
+            "could not find model",
+            "ERROR: invalid model",
+            "failed to list models",
+            "let me explain",
+            "flags: --json",
+            "available models:",
+        ] {
+            assert!(!is_valid_model_id(id), "expected invalid model id: {id}");
+        }
+    }
+
+    #[test]
+    fn dedupe_paths_drops_empty_values_and_keeps_first_spelling() {
+        let paths = dedupe_paths(vec![
+            PathBuf::from("  "),
+            PathBuf::from(r"C:\Bin"),
+            PathBuf::from(r"c:\bin"),
+            PathBuf::from(r"D:\Tools"),
+            PathBuf::from(""),
+        ]);
+
+        assert_eq!(paths, vec![PathBuf::from(r"C:\Bin"), PathBuf::from(r"D:\Tools")]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn expands_windows_environment_variables_case_insensitively() {
+        std::env::set_var("alethe_test_path", r"C:\Tools");
+
+        assert_eq!(
+            expand_windows_env_vars(r"%ALETHE_TEST_PATH%\bin;%alethe_test_path%"),
+            r"C:\Tools\bin;C:\Tools"
+        );
+        assert_eq!(expand_windows_env_vars(r"%NOPE%"), r"%NOPE%");
+
+        std::env::remove_var("alethe_test_path");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn splits_expanded_windows_paths_and_drops_empty_segments() {
+        assert_eq!(
+            split_windows_path_expanded(r"a;; b ;"),
+            vec![PathBuf::from("a"), PathBuf::from("b")]
+        );
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn resolves_cli_launcher_on_unix() {
+        assert!(find_windows_cli_launcher("sh").is_some());
+        assert!(find_windows_cli_launcher("non_existent_binary_xyz_123").is_none());
+    }
 }

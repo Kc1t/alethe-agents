@@ -18,7 +18,7 @@ import type {
 } from '../../lib/types'
 import { selectActiveProject, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { EmptyState } from '../EmptyState/EmptyState'
+import { EmptyState } from '../EmptyState'
 import { AgentIcon } from '../icons/AgentIcons'
 import { PaneArea } from './PaneArea'
 import { PersistentPanelGroup as PanelGroup } from './PersistentPanelGroup'

@@ -13,7 +13,7 @@ import { memo, useMemo } from 'react'
 import { useT } from '../../lib/i18n'
 import type { Group, Project, Terminal, WorkspaceContainer } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
-import { EmptyState } from '../EmptyState/EmptyState'
+import { EmptyState } from '../EmptyState'
 import { PaneArea } from './PaneArea'
 import styles from './ProjectContainer.module.css'
 
