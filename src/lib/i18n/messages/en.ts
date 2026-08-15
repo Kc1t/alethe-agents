@@ -214,6 +214,10 @@ export const en = {
   'agentInstall.uninstall': 'Uninstall',
   'agentInstall.uninstalling': 'Uninstalling…',
   'agentInstall.uninstallFailed': 'Uninstall did not complete',
+  'agentInstall.updateFailed': 'Update did not complete',
+  'agentInstall.updateFailedBody': '{agent} may still be on the previous version. Try again.',
+  'agentInstall.updateFailedShadowed':
+    '{agent} was reinstalled, but {path} is still the version on PATH.',
   'agentInstall.uninstallTitle': 'Uninstall {agent}',
   'agentInstall.uninstallConfirm':
     'This removes {agent} from this machine. Alethe will run the command below in a shell:',

@@ -99,6 +99,14 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- The agent update button in onboarding no longer fails silently. It decided success purely by
+  checking whether the CLI binary was still on PATH, which is true even when the update itself
+  failed (network error, permission denied, ...), since the previous binary is still there. The
+  installer's real exit code is now checked first, and a failed update shows a toast instead of
+  quietly leaving the CLI on its old version. It also now catches the case where the installer
+  genuinely succeeds but a second, unmanaged install of the same CLI earlier on PATH shadows the
+  one that was just updated: if the resolved binary's version hasn't moved, the update is reported
+  as failed and the toast names the shadowing binary's path instead of reporting a false success.
 - A terminal that accepted keystrokes but rendered nothing — recoverable only by restarting it — now
   recovers on its own. Output is gated per PTY by a visibility flag, and the call that switches it
   back on was silently ignored whenever it landed while the session was spawning or restarting,
