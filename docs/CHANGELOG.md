@@ -99,6 +99,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- The topbar widgets no longer jump sideways when you hover them. The pencil button that opens the
+  widget settings used to expand from zero width on hover, pushing every pill 26px to the left —
+  enough for the pill you were reaching for to slide out from under the cursor, which dropped the
+  hover, collapsed the button and shifted everything back, flickering in place. Its slot is now
+  reserved at all times and only the button itself fades in.
 - A terminal that accepted keystrokes but rendered nothing — recoverable only by restarting it — now
   recovers on its own. Output is gated per PTY by a visibility flag, and the call that switches it
   back on was silently ignored whenever it landed while the session was spawning or restarting,
