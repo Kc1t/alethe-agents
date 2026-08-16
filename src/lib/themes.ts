@@ -20,6 +20,7 @@ export const THEME_OPTIONS: ThemeOption[] = [
   { id: 'dark-lemon', colors: ['#141414', '#ffff50', '#c792ea'] },
   { id: 'orca', colors: ['#0b0b0b', '#181818', '#22c55e'] },
   { id: 'ember', colors: ['#0b0d0e', '#232a2f', '#e0873f'] },
+  { id: 'golden-premium', colors: ['#1c1815', '#28211c', '#d4af37'] },
 ]
 
 /** Label localizado do tema (uso em componentes React, via `t`). */

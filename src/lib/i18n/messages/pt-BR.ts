@@ -672,6 +672,8 @@ export const ptBR: Record<MessageKey, string> = {
   'theme.ember.label': 'Ember',
   'theme.ember.desc':
     'Carvão frio, divisores de fio de cabelo e um acento laranja brasa no que está ativo.',
+  'theme.golden-premium.label': 'Dourado Premium',
+  'theme.golden-premium.desc': 'Luxuoso marrom escuro e pretos profundos com elegantes detalhes dourados.',
   'todo.tagsPlaceholder': 'Tags: docs, fix',
   'todo.linkProject': 'Vincular tarefa a um projeto',
   'todo.noProject': 'Nenhum projeto',

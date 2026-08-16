@@ -112,13 +112,17 @@ export function ProjectSidebar() {
 function CleanProjectSidebar() {
   const t = useT()
   // --- data selectors (reactive) ---
-  const projects = useProjectsStore((s) => s.projects)
-  const groups = useProjectsStore((s) => s.groups)
-  const ungroupedOrder = useProjectsStore((s) => s.ungroupedOrder)
-  const containers = useProjectsStore((s) => s.workspace.containers)
-  const activeProjectId = useProjectsStore((s) => s.activeProjectId)
-  const showGitControl = useProjectsStore((s) => s.preferences.enabledFeatures.git)
-  const preferences = useProjectsStore((s) => s.preferences)
+  const { projects, groups, ungroupedOrder, containers, activeProjectId, showGitControl, preferences } = useProjectsStore(
+    useShallow((s) => ({
+      projects: s.projects,
+      groups: s.groups,
+      ungroupedOrder: s.ungroupedOrder,
+      containers: s.workspace.containers,
+      activeProjectId: s.activeProjectId,
+      showGitControl: s.preferences.enabledFeatures.git,
+      preferences: s.preferences,
+    }))
+  )
 
   // --- action selectors (stable refs, grouped for readability) ---
   const actions = useProjectsStore(
@@ -162,14 +166,27 @@ function CleanProjectSidebar() {
     })),
   )
 
-  const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
-  const openModal = useUiStore((s) => s.openModal_)
-  const activeView = useUiStore((s) => s.activeView)
-  const setActiveView = useUiStore((s) => s.setActiveView)
-  const activeTerminalRef = useUiStore((s) => s.activeTerminal)
-  const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
-  const setFocusedTerminal = useUiStore((s) => s.setFocusedTerminal)
-  const openMarkdownSidebar = useUiStore((s) => s.openMarkdownSidebar)
+  const {
+    requestPaneFocus,
+    openModal,
+    activeView,
+    setActiveView,
+    activeTerminalRef,
+    setActiveTerminal,
+    setFocusedTerminal,
+    openMarkdownSidebar,
+  } = useUiStore(
+    useShallow((s) => ({
+      requestPaneFocus: s.requestPaneFocus,
+      openModal: s.openModal_,
+      activeView: s.activeView,
+      setActiveView: s.setActiveView,
+      activeTerminalRef: s.activeTerminal,
+      setActiveTerminal: s.setActiveTerminal,
+      setFocusedTerminal: s.setFocusedTerminal,
+      openMarkdownSidebar: s.openMarkdownSidebar,
+    }))
+  )
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const [menu, setMenu] = useState<ContextMenuState>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)

@@ -9,6 +9,7 @@ import {
 import { FolderOpen, FolderPlus, TerminalSquare } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Panel, Separator } from 'react-resizable-panels'
+import { useShallow } from 'zustand/react/shallow'
 
 import { pickDirectory } from '../../lib/dialog'
 import { hasFileDragPayload, readFileDragPayload } from '../../lib/fileDrag'
@@ -84,32 +85,60 @@ function collectGroupProjectIds(groupId: string, groups: Group[]): Set<string> {
 }
 
 export function WorkspaceView() {
-  const allContainers = useProjectsStore((s) => s.workspace.containers)
-  const projects = useProjectsStore((s) => s.projects)
-  const groups = useProjectsStore((s) => s.groups)
-  const flat = useProjectsStore((s) => s.preferences.workspaceFlat)
-  const fullscreenId = useProjectsStore((s) => s.preferences.fullscreenContainerId)
-  const setFullscreenContainer = useProjectsStore((s) => s.setFullscreenContainer)
-  const reorderPane = useProjectsStore((s) => s.reorderPaneInContainer)
-  const reorderContainers = useProjectsStore((s) => s.reorderContainers)
-  const setWorkspaceGridLayout = useProjectsStore((s) => s.setWorkspaceGridLayout)
-  const setGroupGridLayout = useProjectsStore((s) => s.setGroupGridLayout)
-  const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
-  const activeProject = useProjectsStore(
-    (state) => selectActiveProject(state) ?? state.projects[0] ?? null,
+  const {
+    allContainers,
+    projects,
+    groups,
+    flat,
+    fullscreenId,
+    setFullscreenContainer,
+    reorderPane,
+    reorderContainers,
+    setWorkspaceGridLayout,
+    setGroupGridLayout,
+    setProjectGridLayout,
+    activeProject,
+    recentProjectIds,
+    openProjectWorkspace,
+    activeGroupTabId,
+    workspaceTabs,
+    activeTabId,
+    focusedTerminalId,
+    createFilePane,
+    openPane,
+  } = useProjectsStore(
+    useShallow((s) => ({
+      allContainers: s.workspace.containers,
+      projects: s.projects,
+      groups: s.groups,
+      flat: s.preferences.workspaceFlat,
+      fullscreenId: s.preferences.fullscreenContainerId,
+      setFullscreenContainer: s.setFullscreenContainer,
+      reorderPane: s.reorderPaneInContainer,
+      reorderContainers: s.reorderContainers,
+      setWorkspaceGridLayout: s.setWorkspaceGridLayout,
+      setGroupGridLayout: s.setGroupGridLayout,
+      setProjectGridLayout: s.setProjectGridLayout,
+      activeProject: selectActiveProject(s) ?? s.projects[0] ?? null,
+      recentProjectIds: s.workspace.recentProjectIds,
+      openProjectWorkspace: s.openProjectWorkspace,
+      activeGroupTabId: s.workspace.activeGroupId,
+      workspaceTabs: s.workspace.tabs,
+      activeTabId: s.workspace.activeTabId,
+      focusedTerminalId: s.workspace.focusedTerminalId,
+      createFilePane: s.createFilePane,
+      openPane: s.openPane,
+    }))
   )
-  const recentProjectIds = useProjectsStore((s) => s.workspace.recentProjectIds)
-  const openProjectWorkspace = useProjectsStore((s) => s.openProjectWorkspace)
-  const openModal = useUiStore((s) => s.openModal_)
-  const activeGroupTabId = useProjectsStore((s) => s.workspace.activeGroupId)
-  const workspaceTabs = useProjectsStore((s) => s.workspace.tabs)
-  const activeTabId = useProjectsStore((s) => s.workspace.activeTabId)
-  const focusedTerminalId = useProjectsStore((s) => s.workspace.focusedTerminalId)
-  const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
-  const setKeptAlivePanes = useUiStore((s) => s.setKeptAlivePanes)
-  const setMountedPanes = useUiStore((s) => s.setMountedPanes)
-  const createFilePane = useProjectsStore((s) => s.createFilePane)
-  const openPane = useProjectsStore((s) => s.openPane)
+
+  const { openModal, requestPaneFocus, setKeptAlivePanes, setMountedPanes } = useUiStore(
+    useShallow((s) => ({
+      openModal: s.openModal_,
+      requestPaneFocus: s.requestPaneFocus,
+      setKeptAlivePanes: s.setKeptAlivePanes,
+      setMountedPanes: s.setMountedPanes,
+    }))
+  )
   const initialWorkspaceEnsured = useRef(false)
   const fileDragDepth = useRef(0)
   const [fileDropActive, setFileDropActive] = useState(false)

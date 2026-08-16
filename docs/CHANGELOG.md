@@ -31,6 +31,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   and they remain available while visiting the Todos, Git, or MCP sidebar modes.
 - GitHub Copilot CLI is now available as an agent throughout onboarding, installation, quick launch,
   terminal creation, sub-tabs, CLI path overrides and unrestricted mode.
+- New **Golden Premium** theme, with its own terminal palette.
 - New **MCP** tab in the right sidebar: a single place to see every MCP server configured on the
   machine, grouped by server name and showing which agents have it. It reads Claude Code
   (`~/.claude.json`, `.mcp.json`), Codex (`~/.codex/config.toml`), OpenCode (`opencode.json`) and

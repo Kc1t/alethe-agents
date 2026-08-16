@@ -12,7 +12,16 @@ import {
   Settings,
   X,
 } from 'lucide-react'
-import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type DragEvent,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { hasFileDragPayload, readFileDragPayload } from '../../lib/fileDrag'
 import { useT } from '../../lib/i18n'
@@ -23,7 +32,8 @@ import type { Project, SubTab, Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
-import { MarkdownRenderer } from '../MarkdownPane/MarkdownRenderer'
+
+const MarkdownRenderer = lazy(() => import('../MarkdownPane/MarkdownRenderer').then(m => ({ default: m.MarkdownRenderer })))
 import { McpPanel } from '../McpPanel'
 import { GitControl } from '../ProjectSidebar/GitControl'
 import { TodoSidebar } from '../TodoSidebar'
@@ -502,7 +512,9 @@ function MarkdownSidebarViewer() {
           </div>
         ) : (
           <div ref={markdownRef} className={styles.commentableMarkdown}>
-            <MarkdownRenderer content={content} dark={dark} />
+            <Suspense fallback={<span>{t('ui.markdown.loading')}</span>}>
+              <MarkdownRenderer content={content} dark={dark} />
+            </Suspense>
           </div>
         )}
         </div>

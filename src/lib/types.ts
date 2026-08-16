@@ -87,10 +87,11 @@ export type Theme =
   | 'dark-lemon'
   | 'orca'
   | 'ember'
+  | 'golden-premium'
 
 /** Native desktop icon variants. The UI theme and app icon theme are independent. */
 export type AppIconTheme =
-  | Exclude<Theme, 'ember'>
+  | Exclude<Theme, 'ember' | 'golden-premium'>
   | 'alethe-blue-gradient'
   | 'alethe-pink-gradient'
 

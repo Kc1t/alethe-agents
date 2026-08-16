@@ -14,6 +14,7 @@ import {
   TerminalSquare,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
 import { getCachedActivity } from '../../lib/activityCache'
 import { pickDirectory } from '../../lib/dialog'
@@ -71,20 +72,45 @@ const NOTIF_AGENT_CLASS: Record<AgentType, string> = {
 
 export function HomeView() {
   const t = useT()
-  const language = useProjectsStore((s) => s.preferences.language)
-  const preferences = useProjectsStore((s) => s.preferences)
-  const projects = useProjectsStore((s) => s.projects)
-  const recentProjectIds = useProjectsStore((s) => s.workspace.recentProjectIds)
-  const containers = useProjectsStore((s) => s.workspace.containers)
-  const openContainerWithAllPanes = useProjectsStore((s) => s.openContainerWithAllPanes)
-  const setActiveProjectOnly = useProjectsStore((s) => s.setActiveProjectOnly)
-  const createAgentTerminal = useProjectsStore((s) => s.createAgentTerminal)
-  const openModal = useUiStore((s) => s.openModal_)
-  const setActiveView = useUiStore((s) => s.setActiveView)
-  const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
-  const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
-  const notifications = useUiStore((s) => s.notifications)
-  const clearNotifications = useUiStore((s) => s.clearNotifications)
+  const {
+    language,
+    preferences,
+    projects,
+    recentProjectIds,
+    containers,
+    openContainerWithAllPanes,
+    setActiveProjectOnly,
+    createAgentTerminal,
+  } = useProjectsStore(
+    useShallow((s) => ({
+      language: s.preferences.language,
+      preferences: s.preferences,
+      projects: s.projects,
+      recentProjectIds: s.workspace.recentProjectIds,
+      containers: s.workspace.containers,
+      openContainerWithAllPanes: s.openContainerWithAllPanes,
+      setActiveProjectOnly: s.setActiveProjectOnly,
+      createAgentTerminal: s.createAgentTerminal,
+    }))
+  )
+
+  const {
+    openModal,
+    setActiveView,
+    setActiveTerminal,
+    requestPaneFocus,
+    notifications,
+    clearNotifications,
+  } = useUiStore(
+    useShallow((s) => ({
+      openModal: s.openModal_,
+      setActiveView: s.setActiveView,
+      setActiveTerminal: s.setActiveTerminal,
+      requestPaneFocus: s.requestPaneFocus,
+      notifications: s.notifications,
+      clearNotifications: s.clearNotifications,
+    }))
+  )
 
                                                                                    
   const lastUsedByProject = useMemo(() => {
