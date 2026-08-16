@@ -13,9 +13,12 @@ import { useT } from '../../lib/i18n'
 import type { GridLayout, LayoutMode, Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { DiffPane } from '../DiffPane'
-import { GraphifyView } from '../GraphifyView'
+import { lazy, Suspense } from 'react'
+
 import { GridCellHandles } from '../GridCellHandles'
-import { MarkdownPane } from '../MarkdownPane'
+
+const GraphifyView = lazy(() => import('../GraphifyView').then(m => ({ default: m.GraphifyView })))
+const MarkdownPane = lazy(() => import('../MarkdownPane').then(m => ({ default: m.MarkdownPane })))
 import { TerminalPane } from '../TerminalPane'
 import { VideoPane } from '../VideoPane'
 import { WebPane } from '../WebPane'
@@ -41,10 +44,18 @@ function Pane({
     : undefined
   if (group) return <PaneGroupView projectId={projectId} group={group} />
   if (terminal.kind === 'graphify') {
-    return <GraphifyView repo={terminal.cwd} projectId={projectId} terminalId={terminal.id} />
+    return (
+      <Suspense fallback={<div className={styles.paneLoading}>Loading graph...</div>}>
+        <GraphifyView repo={terminal.cwd} projectId={projectId} terminalId={terminal.id} />
+      </Suspense>
+    )
   }
   if (terminal.kind === 'markdown' || terminal.kind === 'file') {
-    return <MarkdownPane projectId={projectId} terminal={terminal} />
+    return (
+      <Suspense fallback={<div className={styles.paneLoading}>Loading markdown...</div>}>
+        <MarkdownPane projectId={projectId} terminal={terminal} />
+      </Suspense>
+    )
   }
   if (terminal.kind === 'web') {
     return <WebPane projectId={projectId} terminal={terminal} />

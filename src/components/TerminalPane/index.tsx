@@ -1,5 +1,6 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import {
+  ArrowRightLeft,
   Clock,
   GripVertical,
   Maximize2,
@@ -18,7 +19,13 @@ import { useT } from '../../lib/i18n'
 import { shouldUseNativeBackend } from '../../lib/platform'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import { getActiveSessions, savedConversationIdFor, saveSession } from '../../lib/sessionResume'
-import { getPtyCwd, openInVscode, restartPty, snapshotCodexSessions } from '../../lib/tauri'
+import {
+  completeAgentHandoff,
+  getPtyCwd,
+  openInVscode,
+  restartPty,
+  snapshotCodexSessions,
+} from '../../lib/tauri'
 import {
   agentCliCommand,
   type AgentType,
@@ -106,6 +113,7 @@ export const TerminalPane = memo(function TerminalPane({
   const setSubTabPtyId = useProjectsStore((s) => s.setSubTabPtyId)
   const setSubTabSessionId = useProjectsStore((s) => s.setSubTabSessionId)
   const setSubTabInitialInput = useProjectsStore((s) => s.setSubTabInitialInput)
+  const setSubTabHandoff = useProjectsStore((s) => s.setSubTabHandoff)
   const setSubTabCompletionUnread = useProjectsStore((s) => s.setSubTabCompletionUnread)
   const deleteTerminalWithWorktreeCleanup = useProjectsStore(
     (s) => s.deleteTerminalWithWorktreeCleanup,
@@ -118,6 +126,8 @@ export const TerminalPane = memo(function TerminalPane({
   const groupPanes = useProjectsStore((s) => s.groupPanes)
   const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
   const pushToast = useUiStore((s) => s.pushToast)
+  const claudeUsage = useUiStore((s) => s.claudeUsage)
+  const codexUsage = useUiStore((s) => s.codexUsage)
   const terminalTheme = useProjectsStore(
     (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,
   )
@@ -142,6 +152,11 @@ export const TerminalPane = memo(function TerminalPane({
     () => terminal.tabs.find((tab) => tab.id === terminal.activeTabId) ?? terminal.tabs[0],
     [terminal.tabs, terminal.activeTabId],
   )
+  const runtimeExtraArgs = useMemo(() => {
+    const args = [...(activeTab?.extraArgs ?? [])]
+    if (activeTab?.handoff) args.push('--add-dir', activeTab.handoff.contextDir)
+    return args
+  }, [activeTab?.extraArgs, activeTab?.handoff])
 
   const effectiveLaneVisible = terminal.tabs.length > 1 ? true : terminal.laneVisible === true
   const isShell = activeTab?.type === 'shell'
@@ -153,6 +168,10 @@ export const TerminalPane = memo(function TerminalPane({
   )
   const ptyExited = ptyRuntime !== null && !ptyRuntime.alive
   const ptyParked = ptyRuntime?.parked === true
+  const canHandoff = activeTab?.type === 'claude' || activeTab?.type === 'codex'
+  const handoffSuggested =
+    (activeTab?.type === 'claude' && (claudeUsage?.five_hour.utilization ?? 0) >= 100) ||
+    (activeTab?.type === 'codex' && codexUsage?.rate_limited === true)
 
   const openVscode = async () => {
     let target = cwd
@@ -243,8 +262,22 @@ export const TerminalPane = memo(function TerminalPane({
 
   const onDelete = () => {
     if (!window.confirm(t('ui.sidebar.confirmDeleteTerminal', { name: terminal.name }))) return
-    void deleteTerminalWithWorktreeCleanup(projectId, terminal.id)
+    const handoffIds = terminal.tabs.flatMap((tab) => (tab.handoff ? [tab.handoff.id] : []))
+    void Promise.allSettled(handoffIds.map((id) => completeAgentHandoff(id))).then(() =>
+      deleteTerminalWithWorktreeCleanup(projectId, terminal.id),
+    )
     if (isFocusMode) setFocusedTerminal(null)
+  }
+
+  const onCloseSubTab = (tabId: string) => {
+    const handoffId = terminal.tabs.find((tab) => tab.id === tabId)?.handoff?.id
+    if (!handoffId) {
+      closeSubTab(projectId, terminal.id, tabId)
+      return
+    }
+    void completeAgentHandoff(handoffId)
+      .catch((cause) => console.warn('[handoff] could not clean the closed packet:', cause))
+      .finally(() => closeSubTab(projectId, terminal.id, tabId))
   }
 
   const onToggleLane = () => {
@@ -363,6 +396,28 @@ export const TerminalPane = memo(function TerminalPane({
                   <Clock size={12} />
                 </button>
               ) : null}
+              {canHandoff ? (
+                <button
+                  type="button"
+                  className={`${styles.action} ${handoffSuggested ? styles.handoffSuggested : ''}`}
+                  onClick={() =>
+                    openModal('handoff', {
+                      projectId,
+                      terminalId: terminal.id,
+                      agent: activeTab?.type,
+                      sourceSessionId: activeTab?.sessionId,
+                    })
+                  }
+                  title={
+                    handoffSuggested
+                      ? t('ui.terminal.handoffSuggested')
+                      : t('ui.terminal.handoff')
+                  }
+                  aria-label={t('ui.terminal.handoff')}
+                >
+                  <ArrowRightLeft size={12} />
+                </button>
+              ) : null}
               <button
                 type="button"
                 className={styles.action}
@@ -420,7 +475,7 @@ export const TerminalPane = memo(function TerminalPane({
             tabs={terminal.tabs}
             activeTabId={terminal.activeTabId}
             onActivate={(id) => setActiveTab(projectId, terminal.id, id)}
-            onClose={(id) => closeSubTab(projectId, terminal.id, id)}
+            onClose={onCloseSubTab}
             onAdd={() => openModal('newSubTab', { projectId, terminalId: terminal.id })}
             leadingControl={
               canDragPane ? (
@@ -450,7 +505,7 @@ export const TerminalPane = memo(function TerminalPane({
             />
           ) : activeTab ? (
             <>
-              {useNativeBackend ? (
+              {useNativeBackend && !activeTab.handoff ? (
                 <GhosttySurface
                   key={`${activeTab.id}:${resumeNonce}`}
                   surfaceId={activeTab.id}
@@ -471,7 +526,7 @@ export const TerminalPane = memo(function TerminalPane({
                   sessionKey={activeTab.id}
                   command={activeTab.type === 'shell' ? null : activeTab.type}
                   cwd={activeTab.cwd || null}
-                  extraArgs={activeTab.extraArgs}
+                  extraArgs={runtimeExtraArgs}
                   initialInput={activeTab.initialInput}
                   runtimeProfile={activeTab.runtimeProfile}
                   sessionId={activeTab.sessionId}
@@ -500,9 +555,17 @@ export const TerminalPane = memo(function TerminalPane({
                     useTerminalsStore.getState().markSuspended(activeTab.ptyId)
                     pushToast({ title: t('ui.terminal.resumeFailed'), body: String(error) })
                   }}
-                  onAgentComplete={() =>
+                  onAgentComplete={() => {
                     setSubTabCompletionUnread(projectId, terminal.id, activeTab.id, true)
-                  }
+                    if (!activeTab.handoff) return
+                    void completeAgentHandoff(activeTab.handoff.id)
+                      .then(() =>
+                        setSubTabHandoff(projectId, terminal.id, activeTab.id, undefined),
+                      )
+                      .catch((cause) =>
+                        console.warn('[handoff] could not clean the completed packet:', cause),
+                      )
+                  }}
                 />
               )}
               {ptyExited && !useNativeBackend ? (

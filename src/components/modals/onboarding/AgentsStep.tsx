@@ -228,6 +228,7 @@ export function AgentsStep({
                         {row.outdated ? (
                           <AgentUpdateButton
                             agent={row.agent.id}
+                            label={row.agent.label}
                             onUpdated={() => onInstalled(row.agent.id)}
                           />
                         ) : null}

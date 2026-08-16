@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 
 import { installShellLine, type InstallMethod } from '../lib/agentInstall'
 import {
+  agentCliVersion,
   findCliLauncher,
   killPty,
   listenPtyData,
@@ -12,6 +13,14 @@ import {
 import { agentCliCommand, type AgentType } from '../lib/types'
 
 export type AgentInstallStatus = 'idle' | 'running' | 'success' | 'failed'
+
+/**
+ * Set only when a run finished with the installer reporting success and the resolver still
+ * finding a binary, but the version at that binary never moved — the installer likely updated a
+ * different install of the same CLI than the one PATH resolves to. Holds that binary's path so
+ * the caller can name it.
+ */
+export type AgentInstallShadowConflict = { path: string }
 
 const MAX_LOG_CHARS = 12_000
 const PROMPT_SETTLE_MS = 400
@@ -51,6 +60,7 @@ export function useAgentOperationBusy(): string | null {
 export function useAgentInstall(agent: AgentType, lockKey: string = agent) {
   const [status, setStatus] = useState<AgentInstallStatus>('idle')
   const [log, setLog] = useState('')
+  const [shadowConflict, setShadowConflict] = useState<AgentInstallShadowConflict | null>(null)
   const ptyIdRef = useRef<string | null>(null)
   const cleanupRef = useRef<Array<() => void>>([])
   const disposedRef = useRef(false)
@@ -78,8 +88,14 @@ export function useAgentInstall(agent: AgentType, lockKey: string = agent) {
       if (status === 'running' || busyAgent !== null) return
       teardown()
       setLog('')
+      setShadowConflict(null)
       setStatus('running')
       setBusyAgent(lockKey)
+
+      const command = method.verifyCommand ?? agentCliCommand(agent)
+      // Only meaningful for an update of something already on PATH — a fresh install has
+      // nothing to compare against, and verifyAbsent (uninstall) checks absence, not a version.
+      const beforeVersion = command && !method.verifyAbsent ? await agentCliVersion(command) : null
 
       const ptyId = `agent-install:${lockKey}:${Date.now()}`
       try {
@@ -99,21 +115,46 @@ export function useAgentInstall(agent: AgentType, lockKey: string = agent) {
           }),
         )
         cleanupRef.current.push(
-          await listenPtyExit(spawned.id, () => {
+          await listenPtyExit(spawned.id, (payload) => {
             ptyIdRef.current = null
             if (busyAgent === lockKey) setBusyAgent(null)
-            const command = method.verifyCommand ?? agentCliCommand(agent)
+            // `installShellLine` ends the shell with a bare `exit`, which carries the
+            // installer command's own exit status. A non-zero code means the installer
+            // itself reported failure (network error, permission denied, ...) — trust it
+            // instead of falling through to the resolver, which would still find the
+            // previous binary on PATH and misreport the run as a success.
+            if (payload.code !== 0) {
+              setStatus('failed')
+              return
+            }
             if (!command) {
               setStatus('failed')
               return
             }
-            // The exit code of the shell says nothing about whether the binary
-            // landed somewhere we can launch it from, so ask the resolver.
+            // A zero exit code still doesn't confirm the binary landed somewhere we
+            // can launch it from, so ask the resolver.
             void findCliLauncher(command)
-              .then((found) => {
+              .then(async (found) => {
                 if (disposedRef.current) return
                 const worked = method.verifyAbsent ? !found : Boolean(found)
-                setStatus(worked ? 'success' : 'failed')
+                if (!worked) {
+                  setStatus('failed')
+                  return
+                }
+                // The resolver found a binary and the installer exited clean, but if that
+                // binary's version is exactly what it was before, the installer likely
+                // reached a different install of this CLI than the one PATH resolves to —
+                // a shadowing install earlier on PATH that the update never touched.
+                if (beforeVersion && found) {
+                  const afterVersion = await agentCliVersion(command)
+                  if (disposedRef.current) return
+                  if (afterVersion && afterVersion === beforeVersion) {
+                    setShadowConflict({ path: found })
+                    setStatus('failed')
+                    return
+                  }
+                }
+                setStatus('success')
               })
               .catch(() => {
                 if (!disposedRef.current) setStatus('failed')
@@ -136,8 +177,9 @@ export function useAgentInstall(agent: AgentType, lockKey: string = agent) {
   const reset = useCallback(() => {
     teardown()
     setLog('')
+    setShadowConflict(null)
     setStatus('idle')
   }, [teardown])
 
-  return { status, log, install, reset }
+  return { status, log, shadowConflict, install, reset }
 }

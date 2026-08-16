@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { intlLocale, useT, type Locale, type TFunction } from '../../lib/i18n'
+import { intlLocale, type Locale, type TFunction,useT } from '../../lib/i18n'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import {
+  type ClaudeSessionMeta,
   listClaudeSessions,
   restartPty,
   snapshotCodexSessions,
-  type ClaudeSessionMeta,
 } from '../../lib/tauri'
 import { agentCliCommand, UNRESTRICTED_FLAG } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -60,6 +60,7 @@ export function RecentChatsModal() {
   const t = useT()
   const open = useUiStore((s) => s.openModal === 'recentChats')
   const closeModal = useUiStore((s) => s.closeModal)
+  const openModal = useUiStore((s) => s.openModal_)
   const modalContext = useUiStore((s) => s.modalContext)
   const activeTerminalRef = useUiStore((s) => s.activeTerminal)
   const language = useProjectsStore((s) => s.preferences.language)
@@ -276,6 +277,24 @@ export function RecentChatsModal() {
                   </div>
                 </div>
                 <div className={styles.itemActions}>
+                  <button
+                    type="button"
+                    className={styles.actionBtn}
+                    disabled={busyId !== null || !project || !targetTerminal}
+                    onClick={() =>
+                      openModal('handoff', {
+                        projectId: project?.id,
+                        terminalId: targetTerminal?.id,
+                        agent,
+                        sourceSessionId: entry.id,
+                      })
+                    }
+                    title={t('recentChats.handoffTooltip')}
+                  >
+                    {t('recentChats.handoff', {
+                      agent: agent === 'claude' ? 'Codex' : 'Claude Code',
+                    })}
+                  </button>
                   <button
                     type="button"
                     className={styles.actionBtn}

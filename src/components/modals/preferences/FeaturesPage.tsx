@@ -3,6 +3,8 @@ import { BrainCircuit, GitBranch, Globe2, ListTodo, Network, Plug } from 'lucide
 import { FEATURES } from '../../../lib/features'
 import { useT } from '../../../lib/i18n'
 import { useProjectsStore } from '../../../stores/projectsStore'
+import { useUiStore } from '../../../stores/uiStore'
+import controls from '../controls.module.css'
 import styles from '../PreferencesModal.module.css'
 
                                                                      
@@ -59,6 +61,15 @@ export function FeaturesPage() {
           )
         })}
       </div>
+      {preferences.enabledFeatures.mcp ? (
+        <button
+          type="button"
+          className={controls.btnLink}
+          onClick={() => useUiStore.getState().openModal_('mcpIntro')}
+        >
+          {t('mcp.runSetup')}
+        </button>
+      ) : null}
     </div>
   )
 }

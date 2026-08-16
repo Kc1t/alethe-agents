@@ -1,5 +1,5 @@
 import { ExternalLink, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 
 import { useOnEscape } from '../../hooks/useOnEscape'
 import { useT } from '../../lib/i18n'
@@ -7,7 +7,8 @@ import { openInBrowser, readTextFile } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { VideoPreview } from '../VideoPreview'
-import { MarkdownRenderer } from '../MarkdownPane/MarkdownRenderer'
+
+const MarkdownRenderer = lazy(() => import('../MarkdownPane/MarkdownRenderer').then(m => ({ default: m.MarkdownRenderer })))
 import { isMarkdownFilePath, isVideoFilePath } from '../XTermView/terminalLinks'
 import styles from './LinkViewerOverlay.module.css'
 
@@ -88,7 +89,9 @@ export function LinkViewerOverlay() {
             <VideoPreview path={url} className={styles.video} />
           ) : markdownFile && markdown !== null ? (
             <div className={styles.markdown}>
-              <MarkdownRenderer content={markdown} dark={dark} />
+              <Suspense fallback={<span>{t('ui.markdown.loading')}</span>}>
+                <MarkdownRenderer content={markdown} dark={dark} />
+              </Suspense>
             </div>
           ) : (
             <iframe

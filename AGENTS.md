@@ -49,7 +49,7 @@ When returning the path of a generated installer, always report the **full absol
 (for example, `D:\project\src-tauri\target\release\bundle\nsis\Alethe_setup.exe`), never just the
 path relative to the repository.
 
-Details in `docs/BUILD_WINDOWS.md` (not versioned in this repo — only on the owner's machine).
+
 
 ## 5. Non-negotiable rules
 
@@ -127,9 +127,7 @@ Versioned in this repo:
 - [`docs/DIAGNOSTICO_MATURIDADE_TECNICA.md`](docs/DIAGNOSTICO_MATURIDADE_TECNICA.md) — diagnostic of
   code organization, duplication, and performance, with prioritized recommendations.
 
-Only on the owner's machine (not versioned): `CODE_STANDARDS.md`, `GLOSSARY.md`, `CONTEXTO_IA.md`,
-`HANDOFF_STATUS.md`, `CURRENT_STEP.md`. The domain glossary (Group, Project, Container, Pane,
-Sub-tab, PTY) is summarized in `CONTRIBUTING.md`.
+The domain glossary (Group, Project, Container, Pane, Sub-tab, PTY) is summarized in `CONTRIBUTING.md`.
 
 ## graphify
 

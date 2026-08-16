@@ -76,7 +76,9 @@ fn extract_token_from_entry(entry: &keyring::Entry) -> Option<String> {
 /// persistimos nem registramos o segredo.
 fn discover_access_token() -> Option<String> {
     // 1. Target literal `gemini:antigravity` (necessário no Windows Credential Manager)
-    if let Ok(entry) = keyring::Entry::new_with_target("gemini:antigravity", "gemini", "antigravity") {
+    if let Ok(entry) =
+        keyring::Entry::new_with_target("gemini:antigravity", "gemini", "antigravity")
+    {
         if let Some(token) = extract_token_from_entry(&entry) {
             return Some(token);
         }

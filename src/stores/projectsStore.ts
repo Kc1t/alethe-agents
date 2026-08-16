@@ -13,6 +13,7 @@ import {
 } from '../lib/tauri'
 import { getProjectDefaultCwd, getProjectRepoRoot } from '../lib/terminalFactory'
 import {
+  type AgentHandoffBootstrap,
   type AgentRuntimeProfile,
   type AgentType,
   type BrowserPaneOptions,
@@ -197,6 +198,7 @@ export type ProjectsState = ProjectsFile & {
         cwd: string
         extraArgs?: string[]
         initialInput?: string
+        handoff?: AgentHandoffBootstrap
         runtimeProfile?: AgentRuntimeProfile
       }
       worktreeAgentId?: string
@@ -219,6 +221,7 @@ export type ProjectsState = ProjectsFile & {
         cwd: string
         extraArgs?: string[]
         initialInput?: string
+        handoff?: AgentHandoffBootstrap
         runtimeProfile?: AgentRuntimeProfile
       }
     },
@@ -288,6 +291,7 @@ export type ProjectsState = ProjectsFile & {
       cwd: string
       name?: string
       extraArgs?: string[]
+      handoff?: AgentHandoffBootstrap
       runtimeProfile?: AgentRuntimeProfile
     },
   ) => SubTab
@@ -317,6 +321,12 @@ export type ProjectsState = ProjectsFile & {
     terminalId: string,
     tabId: string,
     initialInput: string | undefined,
+  ) => void
+  setSubTabHandoff: (
+    projectId: string,
+    terminalId: string,
+    tabId: string,
+    handoff: AgentHandoffBootstrap | undefined,
   ) => void
 
   // preferences / cli

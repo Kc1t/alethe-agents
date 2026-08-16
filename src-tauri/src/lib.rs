@@ -27,9 +27,12 @@ mod ghostty_ffi;
 mod git_control;
 mod github_sync;
 mod graphify;
+mod handoff;
 mod health_probe;
 mod logging;
 mod mcp_agents;
+mod mcp_catalog;
+mod mcp_health;
 mod mcp_model;
 mod mcp_store;
 mod opencode_bridge;
@@ -50,6 +53,7 @@ mod resource_manager;
 mod resources;
 mod scheduler;
 mod session_watcher;
+mod skills;
 mod spotify;
 mod stats;
 mod supervisor;
@@ -336,6 +340,9 @@ pub fn run() {
             claude_sessions::get_claude_activity,
             claude_sessions::get_multi_agent_activity,
             codex_sessions::snapshot_codex_sessions,
+            handoff::prepare_agent_handoff,
+            handoff::materialize_agent_handoff,
+            handoff::complete_agent_handoff,
             antigravity_sessions::snapshot_antigravity_sessions,
             claude_usage::get_claude_usage,
             codex_usage::get_codex_usage,
@@ -403,6 +410,12 @@ pub fn run() {
             mcp_store::mcp_remove,
             mcp_store::mcp_set_enabled,
             mcp_store::mcp_reveal_env,
+            mcp_store::mcp_sync,
+            mcp_catalog::mcp_registry_search,
+            mcp_health::mcp_health_check,
+            skills::skills_scan,
+            skills::skills_detail,
+            skills::skills_uninstall,
             opencode_sessions::snapshot_opencode_sessions,
             ping,
         ])

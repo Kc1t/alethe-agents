@@ -1,9 +1,3 @@
-//!
-
-//!
-
-//!
-
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -16,10 +10,8 @@ const OPEN_PATH_FLAG: &str = "--open-path";
 #[derive(Default)]
 pub struct PendingOpen(Mutex<Option<String>>);
 
-/// Extrai o caminho cru do `argv`, ignorando `argv[0]` e qualquer outra flag.
-///
-/// Ignorar flags desconhecidas importa de verdade: o macOS injeta `-psn_0_1234`
-
+/// Unknown flags must be skipped rather than treated as the target: macOS injects
+/// `-psn_0_1234` when launching a bundled app from Finder.
 fn extract_path_arg(args: &[String]) -> Option<String> {
     let mut iter = args.iter().skip(1);
     while let Some(arg) = iter.next() {
@@ -37,8 +29,6 @@ fn extract_path_arg(args: &[String]) -> Option<String> {
     None
 }
 
-///
-
 fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
     let text = path.to_string_lossy();
 
@@ -50,8 +40,6 @@ fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
         None => path,
     }
 }
-
-///
 
 fn normalize_dir(candidate: &Path) -> Option<PathBuf> {
     let resolved = candidate
@@ -79,8 +67,6 @@ pub fn resolve_target_dir(args: &[String], cwd: &Path) -> Option<PathBuf> {
     let candidate = if candidate.is_absolute() {
         candidate
     } else {
-        // `.`, `..` e relativos resolvem contra o cwd de QUEM chamou — no caso
-
         cwd.join(candidate)
     };
 
@@ -125,6 +111,10 @@ mod tests {
         list.iter().map(|item| item.to_string()).collect()
     }
 
+    fn temp_root() -> PathBuf {
+        strip_verbatim_prefix(std::env::temp_dir().canonicalize().expect("temp dir"))
+    }
+
     #[test]
     fn ignores_argv0_and_reads_flag() {
         assert_eq!(
@@ -166,19 +156,19 @@ mod tests {
 
     #[test]
     fn dot_resolves_against_caller_cwd() {
-        let cwd = std::env::temp_dir().canonicalize().expect("temp dir");
-        let resolved = resolve_target_dir(&args(&["alethe", "."]), &cwd).expect("resolvido");
+        let cwd = temp_root();
+        let resolved = resolve_target_dir(&args(&["alethe", "."]), &cwd).expect("resolved");
         assert_eq!(resolved, cwd);
     }
 
     #[test]
     fn relative_path_resolves_against_caller_cwd() {
-        let base = std::env::temp_dir().canonicalize().expect("temp dir");
+        let base = temp_root();
         let nested = base.join("alethe-cli-test-rel");
-        std::fs::create_dir_all(&nested).expect("criar dir");
+        std::fs::create_dir_all(&nested).expect("create dir");
 
-        let resolved = resolve_target_dir(&args(&["alethe", "alethe-cli-test-rel"]), &base)
-            .expect("resolvido");
+        let resolved =
+            resolve_target_dir(&args(&["alethe", "alethe-cli-test-rel"]), &base).expect("resolved");
         assert_eq!(resolved, nested);
 
         let _ = std::fs::remove_dir_all(&nested);
@@ -186,15 +176,15 @@ mod tests {
 
     #[test]
     fn file_target_falls_back_to_its_directory() {
-        let base = std::env::temp_dir().canonicalize().expect("temp dir");
+        let base = temp_root();
         let dir = base.join("alethe-cli-test-file");
-        std::fs::create_dir_all(&dir).expect("criar dir");
+        std::fs::create_dir_all(&dir).expect("create dir");
         let file = dir.join("README.md");
-        std::fs::write(&file, b"x").expect("escrever arquivo");
+        std::fs::write(&file, b"x").expect("write file");
 
         let resolved =
             resolve_target_dir(&args(&["alethe", &file.to_string_lossy()]), Path::new("/"))
-                .expect("resolvido");
+                .expect("resolved");
         assert_eq!(resolved, dir);
 
         let _ = std::fs::remove_dir_all(&dir);

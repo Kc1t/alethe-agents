@@ -9,6 +9,7 @@ import { nanoid } from 'nanoid'
 import { MAX_RECENT_PROJECT_TABS } from '../stores/projectsStore.constants'
 import { basename } from './paths'
 import type {
+  AgentHandoffBootstrap,
   AgentRuntimeProfile,
   AgentType,
   BrowserPaneOptions,
@@ -64,6 +65,7 @@ export function makeDefaultTerminal(args: {
     cwd: string
     extraArgs?: string[]
     initialInput?: string
+    handoff?: AgentHandoffBootstrap
     runtimeProfile?: AgentRuntimeProfile
   }
   worktreeAgentId?: string
@@ -91,6 +93,7 @@ export function makeDefaultTerminal(args: {
         ptyId: null,
         extraArgs: args.firstTab.extraArgs,
         initialInput: args.firstTab.initialInput,
+        handoff: args.firstTab.handoff,
         runtimeProfile: args.firstTab.runtimeProfile,
       },
     ],
@@ -152,7 +155,7 @@ export function makeWebPane(args: BrowserPaneOptions): Terminal {
   try {
     host = new URL(url).hostname
   } catch {
-                                                                                    
+    // Keep the original value as the display name when the URL is incomplete.
   }
   return {
     id: nanoid(),

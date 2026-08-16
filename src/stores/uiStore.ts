@@ -1,5 +1,10 @@
 import { create } from 'zustand'
 
+import {
+  addMarkdownSidebarHistoryEntry,
+  readMarkdownSidebarHistory,
+  writeMarkdownSidebarHistory,
+} from '../lib/markdownSidebarHistory'
 import { basename } from '../lib/paths'
 import type {
   AntigravityUsage,
@@ -39,11 +44,14 @@ type ModalKind =
   | 'whatsNew'
   | 'remoteControl'
   | 'recentChats'
+  | 'handoff'
   | 'mcpManager'
+  | 'mcpIntro'
   | null
 
 export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox'
 export type RightSidebarMode = 'todo' | 'markdown' | 'git' | 'mcp'
+export type MarkdownSidebarTab = { path: string; title: string }
 
 export type MemorySample = MemoryStats & {
   ts: number
@@ -94,6 +102,7 @@ type UiState = {
                                                 
   rightSidebarMode: RightSidebarMode
   rightSidebarMarkdown: { path: string; title: string } | null
+  rightSidebarMarkdownTabs: MarkdownSidebarTab[]
                                                                              
   agentCanvasSession: { folder: string; ptyId: string } | null
                                                                   
@@ -128,6 +137,8 @@ type UiState = {
   setActiveView: (v: ActiveView) => void
   toggleHome: () => void
   openMarkdownSidebar: (path: string, title?: string) => void
+  closeMarkdownSidebarTab: (path: string) => void
+  restoreMarkdownSidebarHistory: () => void
   showMarkdownSidebar: () => void
   showTodoSidebar: () => void
   showGitSidebar: () => void
@@ -168,6 +179,7 @@ export const useUiStore = create<UiState>((set) => ({
   activeView: 'workspace',
   rightSidebarMode: 'todo',
   rightSidebarMarkdown: null,
+  rightSidebarMarkdownTabs: [],
   agentCanvasSession: null,
   agentCanvasBudgetUsd: null,
   toasts: [],
@@ -227,12 +239,44 @@ export const useUiStore = create<UiState>((set) => ({
   setActiveView: (v) => set((s) => (s.activeView === v ? s : { activeView: v })),
   toggleHome: () => set((s) => ({ activeView: s.activeView === 'home' ? 'workspace' : 'home' })),
   openMarkdownSidebar: (path, title) =>
-    set({
-      rightSidebarMode: 'markdown',
-      rightSidebarMarkdown: { path, title: title || basename(path) || path },
+    set((state) => {
+      const tab = { path, title: title || basename(path) || path }
+      const tabs = addMarkdownSidebarHistoryEntry(state.rightSidebarMarkdownTabs, tab)
+      if (tabs !== state.rightSidebarMarkdownTabs) {
+        writeMarkdownSidebarHistory(tabs, tab.path)
+      }
+      return {
+        rightSidebarMode: 'markdown',
+        rightSidebarMarkdown: tab,
+        rightSidebarMarkdownTabs: tabs,
+      }
+    }),
+  closeMarkdownSidebarTab: (path) =>
+    set((state) => {
+      const tabs = state.rightSidebarMarkdownTabs.filter((entry) => entry.path !== path)
+      if (state.rightSidebarMarkdown?.path !== path) {
+        writeMarkdownSidebarHistory(tabs, state.rightSidebarMarkdown?.path ?? null)
+        return { rightSidebarMarkdownTabs: tabs }
+      }
+      const next = tabs[tabs.length - 1] ?? null
+      writeMarkdownSidebarHistory(tabs, next?.path ?? null)
+      return {
+        rightSidebarMarkdownTabs: tabs,
+        rightSidebarMarkdown: next,
+        rightSidebarMode: next ? 'markdown' : 'todo',
+      }
+    }),
+  restoreMarkdownSidebarHistory: () =>
+    set(() => {
+      const history = readMarkdownSidebarHistory()
+      const active = history.tabs.find((tab) => tab.path === history.activePath) ?? null
+      return {
+        rightSidebarMarkdownTabs: history.tabs,
+        rightSidebarMarkdown: active,
+      }
     }),
   showMarkdownSidebar: () => set({ rightSidebarMode: 'markdown' }),
-  showTodoSidebar: () => set({ rightSidebarMode: 'todo', rightSidebarMarkdown: null }),
+  showTodoSidebar: () => set({ rightSidebarMode: 'todo' }),
   showGitSidebar: () => set({ rightSidebarMode: 'git' }),
   showMcpSidebar: () => set({ rightSidebarMode: 'mcp' }),
   setAgentCanvasSession: (session) => set({ agentCanvasSession: session }),

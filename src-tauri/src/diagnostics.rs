@@ -447,14 +447,22 @@ mod unix_clipboard {
     }
 
     fn paste_tool() -> Result<&'static str, String> {
-        let (tool, package) = if wayland() { ("wl-paste", "wl-clipboard") } else { ("xclip", "xclip") };
+        let (tool, package) = if wayland() {
+            ("wl-paste", "wl-clipboard")
+        } else {
+            ("xclip", "xclip")
+        };
         which::which(tool)
             .map(|_| tool)
             .map_err(|_| format!("{tool} não encontrado no PATH (pacote `{package}`)"))
     }
 
     fn copy_tool() -> Result<&'static str, String> {
-        let (tool, package) = if wayland() { ("wl-copy", "wl-clipboard") } else { ("xclip", "xclip") };
+        let (tool, package) = if wayland() {
+            ("wl-copy", "wl-clipboard")
+        } else {
+            ("xclip", "xclip")
+        };
         which::which(tool)
             .map(|_| tool)
             .map_err(|_| format!("{tool} não encontrado no PATH (pacote `{package}`)"))
@@ -463,11 +471,15 @@ mod unix_clipboard {
     /// Lista os mimetypes disponíveis no clipboard (equivalente a
     /// IsClipboardFormatAvailable, mas descobrindo tudo de uma vez).
     fn list_types() -> Vec<String> {
-        let Ok(tool) = paste_tool() else { return Vec::new() };
+        let Ok(tool) = paste_tool() else {
+            return Vec::new();
+        };
         let output = if tool == "wl-paste" {
             Command::new("wl-paste").arg("--list-types").output()
         } else {
-            Command::new("xclip").args(["-selection", "clipboard", "-t", "TARGETS", "-o"]).output()
+            Command::new("xclip")
+                .args(["-selection", "clipboard", "-t", "TARGETS", "-o"])
+                .output()
         };
         output
             .ok()
@@ -486,9 +498,13 @@ mod unix_clipboard {
     fn read_type(mime: &str) -> Result<Vec<u8>, String> {
         let tool = paste_tool()?;
         let output = if tool == "wl-paste" {
-            Command::new("wl-paste").args(["--type", mime, "--no-newline"]).output()
+            Command::new("wl-paste")
+                .args(["--type", mime, "--no-newline"])
+                .output()
         } else {
-            Command::new("xclip").args(["-selection", "clipboard", "-t", mime, "-o"]).output()
+            Command::new("xclip")
+                .args(["-selection", "clipboard", "-t", mime, "-o"])
+                .output()
         }
         .map_err(|e| e.to_string())?;
         if !output.status.success() {
@@ -578,7 +594,10 @@ mod unix_clipboard {
             cmd
         };
 
-        let mut child = command.stdin(Stdio::piped()).spawn().map_err(|e| e.to_string())?;
+        let mut child = command
+            .stdin(Stdio::piped())
+            .spawn()
+            .map_err(|e| e.to_string())?;
         child
             .stdin
             .take()
@@ -602,7 +621,10 @@ mod unix_clipboard {
             let raw = "file:///home/user/My%20Screenshot.png\nfile:///tmp/plain.png\n";
             assert_eq!(
                 parse_uri_list(raw),
-                vec!["/home/user/My Screenshot.png".to_string(), "/tmp/plain.png".to_string()]
+                vec![
+                    "/home/user/My Screenshot.png".to_string(),
+                    "/tmp/plain.png".to_string()
+                ]
             );
         }
 
@@ -787,7 +809,9 @@ mod macos_clipboard {
             .map_err(|e| e.to_string())?;
 
         if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+            stdin
+                .write_all(text.as_bytes())
+                .map_err(|e| e.to_string())?;
         }
 
         let status = child.wait().map_err(|e| e.to_string())?;
@@ -799,7 +823,9 @@ mod macos_clipboard {
     }
 
     pub fn read_text() -> Result<String, String> {
-        let output = Command::new("pbpaste").output().map_err(|e| e.to_string())?;
+        let output = Command::new("pbpaste")
+            .output()
+            .map_err(|e| e.to_string())?;
         if output.status.success() {
             Ok(String::from_utf8_lossy(&output.stdout).to_string())
         } else {

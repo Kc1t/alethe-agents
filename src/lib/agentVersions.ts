@@ -50,3 +50,32 @@ export async function latestNpmVersion(packageName: string): Promise<string | nu
     return null
   }
 }
+
+/** Latest release tag of a public GitHub repo, for agents not distributed through npm. */
+export async function latestGithubReleaseVersion(repo: string): Promise<string | null> {
+  try {
+    const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
+      signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
+      headers: { Accept: 'application/vnd.github+json' },
+    })
+    if (!response.ok) return null
+    const payload = (await response.json()) as { tag_name?: unknown }
+    return typeof payload.tag_name === 'string' ? payload.tag_name.replace(/^v/, '') : null
+  } catch {
+    return null
+  }
+}
+
+/** Agents not on npm, mapped to the public GitHub repo whose releases track their CLI version. */
+const GITHUB_RELEASE_REPO: Partial<Record<AgentType, string>> = {
+  antigravity: 'google-antigravity/antigravity-cli',
+}
+
+/** Latest published version for any agent, npm or GitHub releases, whichever the catalog has. */
+export async function latestVersionFor(agent: AgentType): Promise<string | null> {
+  const packageName = npmPackageFor(agent)
+  if (packageName) return latestNpmVersion(packageName)
+  const repo = GITHUB_RELEASE_REPO[agent]
+  if (repo) return latestGithubReleaseVersion(repo)
+  return null
+}

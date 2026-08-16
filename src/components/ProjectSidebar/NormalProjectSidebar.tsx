@@ -42,7 +42,7 @@ import { ContextMenu, type MenuItem } from './ContextMenu'
 import { FileExplorer } from './FileExplorer'
 import { GitControl } from './GitControl'
 import { NormalGroupNode as GroupNode } from './NormalGroupNode'
-import { OrganizationPanel } from './OrganizationPanel'
+import { LayoutFooter, WorkspaceLayoutFooter } from './LayoutFooter'
 import { NormalProjectNode as ProjectNode } from './NormalProjectNode'
 import styles from './NormalProjectSidebar.module.css'
 import { createSidebarMenus } from './sidebarMenus'
@@ -684,7 +684,8 @@ export function NormalProjectSidebar() {
       {menu ? (
         <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />
       ) : null}
-      <OrganizationPanel />
+      <WorkspaceLayoutFooter />
+      <LayoutFooter />
       {preferences.topbarStyle === 'three-areas' ? (
         <div className={styles.systemFooter}>
           <span className={styles.systemFooterLabel}>{t('ui.sidebar.system')}</span>

@@ -1,11 +1,19 @@
 export type AgentType =
-  'shell' | 'claude' | 'codex' | 'opencode' | 'freebuff' | 'mimo' | 'antigravity'
+  | 'shell'
+  | 'claude'
+  | 'codex'
+  | 'copilot'
+  | 'opencode'
+  | 'freebuff'
+  | 'mimo'
+  | 'antigravity'
 
                                                                            
                                                                                  
 export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
+  copilot: 'GitHub Copilot',
   antigravity: 'Antigravity',
   opencode: 'OpenCode',
   mimo: 'Mimo',
@@ -19,6 +27,7 @@ export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
 export const ALL_AGENT_TYPES: AgentType[] = [
   'claude',
   'codex',
+  'copilot',
   'antigravity',
   'opencode',
   'mimo',
@@ -78,10 +87,11 @@ export type Theme =
   | 'dark-lemon'
   | 'orca'
   | 'ember'
+  | 'golden-premium'
 
 /** Native desktop icon variants. The UI theme and app icon theme are independent. */
 export type AppIconTheme =
-  | Exclude<Theme, 'ember'>
+  | Exclude<Theme, 'ember' | 'golden-premium'>
   | 'alethe-blue-gradient'
   | 'alethe-pink-gradient'
 
@@ -117,8 +127,18 @@ export type SubTab = {
   extraArgs?: string[]
                                                                             
   initialInput?: string
+  /** One-shot context packet used to bootstrap a cross-provider session. */
+  handoff?: AgentHandoffBootstrap
                                                                                       
   runtimeProfile?: AgentRuntimeProfile
+}
+
+export type AgentHandoffBootstrap = {
+  id: string
+  contextDir: string
+  contextPath: string
+  sourceProvider: 'claude' | 'codex'
+  sourceSessionId: string
 }
 
 export type AgentRuntimeProfile = 'full' | 'lean' | 'diagnostic'
@@ -130,6 +150,7 @@ export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
   shell: null,
   claude: '--dangerously-skip-permissions',
   codex: '--dangerously-bypass-approvals-and-sandbox',
+  copilot: '--allow-all',
   opencode: '--dangerously-skip-permissions',
                                                                    
   freebuff: null,
@@ -543,6 +564,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
     shell: true,
     claude: true,
     codex: true,
+    copilot: true,
     antigravity: true,
     opencode: true,
     freebuff: true,
@@ -658,6 +680,7 @@ export const PROVIDER_MODELS: Record<AgentType, { id: string; label: string }[]>
     { id: 'o1', label: 'o1 (Avançado)' },
     { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
   ],
+  copilot: [],
   opencode: [
     { id: 'deepseek/deepseek-r1', label: 'DeepSeek R1 (Raciocínio)' },
     { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3' },
@@ -708,10 +731,26 @@ export type McpServer = {
   bearerTokenEnvVar: string | null
 }
 
+/**
+ * `local` is Claude's default `claude mcp add` target: the servers it keeps inside
+ * `~/.claude.json` under `projects.<cwd>` rather than in the repo's `.mcp.json`.
+ */
+export type McpSourceKind = 'user' | 'local' | 'project'
+
+export type McpSourceState = {
+  kind: McpSourceKind
+  path: string
+  exists: boolean
+  writable: boolean
+  parseError: string | null
+  mtimeMs: number
+}
+
 export type McpServerRecord = {
   server: McpServer
   agent: McpAgent
   scope: McpScope
+  sourceKind: McpSourceKind
   sourcePath: string
   managedByImport: string | null
 }
@@ -719,11 +758,7 @@ export type McpServerRecord = {
 export type McpAgentSnapshot = {
   agent: McpAgent
   scope: McpScope
-  sourcePath: string | null
-  exists: boolean
-  writable: boolean
-  parseError: string | null
-  mtimeMs: number
+  sources: McpSourceState[]
   servers: McpServerRecord[]
 }
 

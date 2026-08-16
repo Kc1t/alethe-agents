@@ -10,13 +10,45 @@ pub enum McpScope {
     Project,
 }
 
-impl McpScope {
+/// One agent+scope can be served by more than one file. Claude in particular keeps the
+/// servers added by `claude mcp add` (its default `local` scope) inside `~/.claude.json`
+/// under `projects.<cwd>`, not in the repo's `.mcp.json`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum McpSourceKind {
+    User,
+    Local,
+    Project,
+}
+
+impl McpSourceKind {
     pub fn as_str(self) -> &'static str {
         match self {
-            McpScope::Global => "global",
-            McpScope::Project => "project",
+            McpSourceKind::User => "user",
+            McpSourceKind::Local => "local",
+            McpSourceKind::Project => "project",
         }
     }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "user" => Some(McpSourceKind::User),
+            "local" => Some(McpSourceKind::Local),
+            "project" => Some(McpSourceKind::Project),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpSourceState {
+    pub kind: McpSourceKind,
+    pub path: String,
+    pub exists: bool,
+    pub writable: bool,
+    pub parse_error: Option<String>,
+    pub mtime_ms: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -251,6 +283,7 @@ pub struct McpServerRecord {
     pub server: McpServer,
     pub agent: McpAgent,
     pub scope: McpScope,
+    pub source_kind: McpSourceKind,
     pub source_path: String,
     pub managed_by_import: Option<String>,
 }
@@ -261,6 +294,7 @@ pub struct McpServerRecordView {
     pub server: McpServerView,
     pub agent: McpAgent,
     pub scope: McpScope,
+    pub source_kind: McpSourceKind,
     pub source_path: String,
     pub managed_by_import: Option<String>,
 }
@@ -271,6 +305,7 @@ impl McpServerRecord {
             server: self.server.view(),
             agent: self.agent,
             scope: self.scope,
+            source_kind: self.source_kind,
             source_path: self.source_path.clone(),
             managed_by_import: self.managed_by_import.clone(),
         }
@@ -282,11 +317,7 @@ impl McpServerRecord {
 pub struct McpAgentSnapshot {
     pub agent: McpAgent,
     pub scope: McpScope,
-    pub source_path: Option<String>,
-    pub exists: bool,
-    pub writable: bool,
-    pub parse_error: Option<String>,
-    pub mtime_ms: u64,
+    pub sources: Vec<McpSourceState>,
     pub servers: Vec<McpServerRecordView>,
 }
 
@@ -357,11 +388,22 @@ pub fn unsupported_fields(agent: McpAgent, server: &McpServer) -> Vec<Unsupporte
     let mut out = Vec::new();
 
     if !caps.env_passthrough {
-        for (key, entry) in &server.env {
+        let headers = server.transport.headers();
+        let entries = server
+            .env
+            .iter()
+            .map(|(key, entry)| (format!("env.{key}"), entry))
+            .chain(
+                headers
+                    .into_iter()
+                    .flatten()
+                    .map(|(key, entry)| (format!("headers.{key}"), entry)),
+            );
+        for (field, entry) in entries {
             if let Some(from) = &entry.passthrough_from {
                 out.push(UnsupportedField {
                     agent,
-                    field: format!("env.{key}"),
+                    field,
                     detail: from.clone(),
                 });
             }

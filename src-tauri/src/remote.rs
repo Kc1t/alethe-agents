@@ -281,7 +281,12 @@ impl RemoteHub {
         }
     }
 
-    fn pair(&self, provided: &str, name: String, address: String) -> Result<(usize, String), &'static str> {
+    fn pair(
+        &self,
+        provided: &str,
+        name: String,
+        address: String,
+    ) -> Result<(usize, String), &'static str> {
         if self.pairing_remaining() == 0 {
             return Err("Pairing window is closed");
         }
@@ -309,10 +314,7 @@ impl RemoteHub {
             address,
             connected_at: now,
             expires_at: Instant::now() + Duration::from_secs(lifetime),
-            expires_at_unix: now
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs()
+            expires_at_unix: now.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
                 + lifetime,
             subscription: None,
             sender: None,
@@ -734,13 +736,18 @@ fn handle_websocket(
     let _ = stream.set_read_timeout(Some(SOCKET_TIMEOUT));
     let _ = stream.set_write_timeout(Some(SOCKET_TIMEOUT));
     let expected_origin = allowed_origin(&hub);
-    let handshake = accept_hdr(stream, |request: &Request, response: Response| {
-        match request.headers().get("Origin").and_then(|value| value.to_str().ok()) {
+    let handshake = accept_hdr(
+        stream,
+        |request: &Request, response: Response| match request
+            .headers()
+            .get("Origin")
+            .and_then(|value| value.to_str().ok())
+        {
             None => Ok(response),
             Some(origin) if origin == expected_origin => Ok(response),
             Some(_) => Err(ErrorResponse::new(Some("Origin not allowed".into()))),
-        }
-    });
+        },
+    );
     let mut socket = match handshake {
         Ok(socket) => socket,
         Err(_) => return,
@@ -975,7 +982,9 @@ fn handle_http(
             );
         };
         hub.clear_auth_failures(&address);
-        return handle_api(stream, app, hub, sessions, session_id, method, target, &body);
+        return handle_api(
+            stream, app, hub, sessions, session_id, method, target, &body,
+        );
     }
 
     match path {
@@ -1034,7 +1043,12 @@ fn handle_api(
         );
     }
     if path == "/api/state" {
-        return respond(stream, 200, "application/json", &workspace_snapshot(app)?.to_string());
+        return respond(
+            stream,
+            200,
+            "application/json",
+            &workspace_snapshot(app)?.to_string(),
+        );
     }
     if path == "/api/scrollback" {
         let id = query_value(target, "id").ok_or_else(|| "Missing PTY id".to_string())?;
@@ -1276,13 +1290,17 @@ fn write_remote(sessions: &PtySessions, id: &str, data: &str) -> Result<(), Stri
         let sessions = sessions
             .lock()
             .map_err(|_| "PTY sessions lock poisoned".to_string())?;
-        let session = sessions.get(id).ok_or_else(|| "PTY not found".to_string())?;
+        let session = sessions
+            .get(id)
+            .ok_or_else(|| "PTY not found".to_string())?;
         Arc::clone(&session.writer)
     };
     let mut writer = writer
         .lock()
         .map_err(|_| "PTY writer lock poisoned".to_string())?;
-    writer.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
+    writer
+        .write_all(data.as_bytes())
+        .map_err(|e| e.to_string())?;
     writer.flush().map_err(|e| e.to_string())
 }
 
@@ -1321,7 +1339,10 @@ fn bind_listener(host: &str, start: u16, end: u16) -> Option<TcpListener> {
 }
 
 fn peer_ip(address: &str) -> Option<IpAddr> {
-    address.parse::<std::net::SocketAddr>().ok().map(|addr| addr.ip())
+    address
+        .parse::<std::net::SocketAddr>()
+        .ok()
+        .map(|addr| addr.ip())
 }
 
 fn tokens_equal(provided: &str, expected: &str) -> bool {

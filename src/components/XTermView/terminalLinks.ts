@@ -98,6 +98,11 @@ function findLinkEnd(line: string, start: number, isUrl: boolean): number {
         pathSoFar.endsWith('/') ||
         (/^(?:[A-Za-z]:\\|\\\\)/.test(pathSoFar) && pathSoFar.endsWith('\\'))
       if (endsAtDirectorySeparator) break
+
+      // A space is only worth crossing to reach a file extension — that is what a path
+      // with spaces looks like. With no extension ahead, the rest of the line is prose.
+      const escaped = line[end - 1] === '\\'
+      if (!escaped && !FILE_EXT_BOUNDARY_PATTERN.test(line.slice(end + 1))) break
     }
 
     // A second link after whitespace belongs to a separate match.

@@ -52,6 +52,13 @@ export const AGENT_INSTALL_CATALOG: Partial<Record<AgentType, AgentInstallCatalo
       { id: 'npm', command: 'npm install -g @openai/codex', requires: 'npm' },
     ],
   },
+  copilot: {
+    docsUrl: 'https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started',
+    methods: [
+      { id: 'winget', command: 'winget install GitHub.Copilot', requires: 'winget' },
+      { id: 'npm', command: 'npm install -g @github/copilot', requires: 'npm' },
+    ],
+  },
   antigravity: {
     docsUrl: 'https://antigravity.google/docs/cli/install',
     methods: [{ id: 'native', command: 'irm https://antigravity.google/cli/install.ps1 | iex' }],

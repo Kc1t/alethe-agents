@@ -181,6 +181,29 @@ const EMBER_THEME = {
   brightWhite: '#ffffff',
 } as const
 
+const GOLDEN_PREMIUM_THEME = {
+  background: '#1c1815',
+  foreground: '#f5eedc',
+  cursor: '#d4af37',
+  selectionBackground: '#2b2320',
+  black: '#14110e',
+  red: '#ef4444',
+  green: '#4ade80',
+  yellow: '#facc15',
+  blue: '#d4af37',
+  magenta: '#c084fc',
+  cyan: '#38bdf8',
+  white: '#f5eedc',
+  brightBlack: '#736754',
+  brightRed: '#f87171',
+  brightGreen: '#86efac',
+  brightYellow: '#fef08a',
+  brightBlue: '#fde047',
+  brightMagenta: '#d8b4fe',
+  brightCyan: '#7dd3fc',
+  brightWhite: '#ffffff',
+} as const
+
 export function getXtermTheme(theme: Theme) {
   if (theme === 'ember') return EMBER_THEME
   if (theme === 'light') return LIGHT_THEME
@@ -193,5 +216,6 @@ export function getXtermTheme(theme: Theme) {
   if (theme === 'min-dark') return MIN_DARK_THEME
   if (theme === 'min-light') return MIN_LIGHT_THEME
   if (theme === 'dark-lemon') return DARK_LEMON_THEME
+  if (theme === 'golden-premium') return GOLDEN_PREMIUM_THEME
   return DARK_THEME
 }
