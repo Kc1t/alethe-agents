@@ -24,12 +24,19 @@ pub struct ClaudeSessionSnapshot {
     pub size_bytes: u64,
 }
 
+/// Mirrors how Claude names the directory it stores a project's sessions in.
+///
+/// The dot matters. Worktrees live under `<repo>/.alethe/worktrees/<id>`, and
+/// Claude folds the dot into a hyphen along with the separators, writing
+/// `-home-user-repo--alethe-worktrees-<id>`. Leaving it as `.alethe` produced a
+/// path that never exists, so no session was ever found for a pane running in a
+/// worktree.
 fn encode_cwd_for_claude(cwd: &str) -> String {
     let trimmed = cwd.trim_end_matches(|c: char| c == '\\' || c == '/');
     trimmed
         .chars()
         .map(|c| match c {
-            ':' | '\\' | '/' => '-',
+            ':' | '\\' | '/' | '.' => '-',
             _ => c,
         })
         .collect()
@@ -671,5 +678,28 @@ mod tests {
         let header = serde_json::from_str::<RecordHeader>(line).unwrap();
         assert_eq!(header.entry_type.as_deref(), Some("user"));
         assert_eq!(first_text_block(line).as_deref(), Some("oi"));
+    }
+}
+
+#[cfg(test)]
+mod encode_cwd_tests {
+    use super::encode_cwd_for_claude;
+
+    #[test]
+    fn folds_the_dot_of_a_worktree_path() {
+        assert_eq!(
+            encode_cwd_for_claude("/home/user/repo/.alethe/worktrees/cl-a1b2c3"),
+            "-home-user-repo--alethe-worktrees-cl-a1b2c3"
+        );
+    }
+
+    #[test]
+    fn a_path_without_a_dot_is_unaffected() {
+        assert_eq!(encode_cwd_for_claude("/home/user/repo"), "-home-user-repo");
+    }
+
+    #[test]
+    fn trailing_separator_is_dropped() {
+        assert_eq!(encode_cwd_for_claude("/tmp/x/"), "-tmp-x");
     }
 }
