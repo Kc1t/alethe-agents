@@ -17,6 +17,7 @@ const AGENTS: { id: AgentType; label: string }[] = [
   { id: 'shell', label: 'Shell' },
   { id: 'claude', label: 'Claude Code' },
   { id: 'codex', label: 'Codex' },
+  { id: 'copilot', label: 'GitHub Copilot' },
   { id: 'antigravity', label: 'Antigravity' },
   { id: 'opencode', label: 'OpenCode' },
   { id: 'freebuff', label: 'Freebuff' },
@@ -51,13 +52,14 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
       ],
     })
     if (!picked) return
-    setCliPath(agent, picked)
     if (!cliPathMatchesAgent(agent, picked)) {
       pushToast({
         title: t('prefs.cliPathMismatch'),
         body: t('prefs.cliPathMismatchBody', { agent, command: agentCliCommand(agent) ?? agent }),
       })
+      return
     }
+    setCliPath(agent, picked)
   }
 
   const onResetLastSession = async () => {

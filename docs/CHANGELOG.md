@@ -21,16 +21,53 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- Claude Code and Codex conversations can now be continued in the other agent from the terminal
+  toolbar or Recent chats. Alethe builds an editable, locally redacted context packet, opens the
+  target agent in a new pane, keeps the source conversation available, and removes the temporary
+  packet after the first target turn or when its pane is closed.
+- The right sidebar now keeps a cumulative, per-profile history of up to 12 recently opened
+  Markdown files as switchable tabs, persisted across app launches. Markdown files can be sent
+  there from the Explorer or dropped from the desktop, history tabs can be closed individually,
+  and they remain available while visiting the Todos, Git, or MCP sidebar modes.
+- GitHub Copilot CLI is now available as an agent throughout onboarding, installation, quick launch,
+  terminal creation, sub-tabs, CLI path overrides and unrestricted mode.
 - New **MCP** tab in the right sidebar: a single place to see every MCP server configured on the
   machine, grouped by server name and showing which agents have it. It reads Claude Code
   (`~/.claude.json`, `.mcp.json`), Codex (`~/.codex/config.toml`), OpenCode (`opencode.json`) and
   Antigravity (`~/.gemini/config/mcp_config.json`), with a Global/Project switch — so a server
-  present in Claude but missing in Codex is visible at a glance. Environment values are masked and
+  present in Claude but missing in Codex is visible at a glance. At project scope it also reads the
+  servers `claude mcp add` writes by default, which Claude keeps inside `~/.claude.json` under the
+  project's entry rather than in the repo, and labels each row with the file it came from. Environment values are masked and
   only leave the backend one key at a time, on an explicit click. A config that cannot be parsed is
-  reported as read-only and is never written to. Servers can be added, edited, removed and
-  enabled/disabled; every write is preceded by a backup, validated by re-parsing the result and
-  checking that no other server changed, and committed atomically. The feature can be turned off in
-  Preferences → Features.
+  reported as read-only and is never written to. Servers can be added, removed and enabled/disabled;
+  every write is preceded by a backup, validated by re-parsing the result and checking that no other
+  server changed, and committed atomically. A server can be **copied from one agent to another** in
+  one click, and adding a new one takes a form, a pasted JSON block in any of the shapes the agents'
+  own docs use, or a search of the official MCP registry — which turns a published package into a
+  ready-to-run command and pre-fills the variables it expects, marking the secret ones empty. The
+  last successful search of each term is kept on disk so the list still opens when the registry is
+  unreachable, labelled with the date it was captured. Alethe translates a server to each target's
+  format and refuses, rather than silently dropping, a field the target cannot express. A per-agent
+  **Check** button asks the agent itself whether it can actually reach each server — the one thing no
+  config file can answer. The first time the app opens with the feature on, a card shows what was
+  found and offers to align the agents in one click; it can be reopened at any time from
+  Preferences → Features, where the whole feature can also be turned off.
+- The MCP tab splits into **Servers** and **Skills**, each with its own search and an **Add more**
+  button that opens the manager straight on the registry search. Every row shows the icon of each
+  agent that has the entry, greyed out for the ones missing it, and a row of agent buttons filters
+  the list down to a single agent. A server or a skill can be removed from every agent at once
+  instead of one row at a time, and the add flow asks which agents get it before writing anything.
+  The registry search filters by whether a server runs locally or remotely.
+- A **Skills** tab in the same manager lists every skill installed for each agent, reading
+  `~/.claude/skills`, `~/.codex/skills` and the shared `~/.agents/skills` store. It resolves links
+  (including Windows junctions) so a skill shared between agents is shown once with its real
+  location, renders the SKILL.md frontmatter, folder structure and body, and surfaces where the
+  skill was installed from. Skills that ship with the agent are locked and cannot be deleted;
+  removing a linked skill unlinks it from that agent only and keeps the shared copy the other
+  agents point at.
+- The sidebar's **Organization** block is back to the 1.5.0 layout: the label with the four layout
+  modes, plus the workspace grid button — the reworked panel with stacked icon rows and a scope
+  switch in its header was reverted.
 - The right sidebar no longer depends on the Todos feature being enabled — it now appears whenever
   Todos, MCP, or Git-on-the-right is active.
 - Grid layouts are now edited directly on the grid. Every pane and every project container carries
@@ -40,11 +77,6 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   around it, so a lone pane on the bottom row can finally take the whole row without opening a
   dialog. Empty cells also became drop targets: dragging a pane or a container onto one moves it
   there instead of swapping with a neighbour.
-- The sidebar's **Organization** block now shows a live mini-map of the current arrangement. Cells can
-  be dragged inside it to rearrange the grid and clicked to focus a pane, a Project/Workspace switch
-  picks which grid it edits, and one-click presets (side by side, stacked, 2×2, focus) apply a layout
-  without opening the layout designer — the quickest way to stack the terminals of a single project
-  while the other projects keep their own arrangement.
 - The project container header has a **+** button that creates a new terminal in that project.
 - Agents that are not installed can now be installed from inside Alethe. The onboarding agent step
   and the "not found" overlay of a terminal both offer an **Install** button that runs the official
@@ -70,8 +102,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - Installed agents can be **uninstalled** from the onboarding agent step. Confirmation happens in a
   dialog that shows the exact command about to run, and the agent is only reported as removed once
   its CLI can no longer be found. Only one agent can be installed, updated or uninstalled at a time —
-  package managers share a single global directory and corrupt each other when run in parallel. Agents whose only installer is a
-  vendor script offer no uninstall, since none of them documents one and guessing what to delete
+  package managers share a single global directory and corrupt each other when run in parallel.
+  Agents whose only installer is a vendor script offer no uninstall, since none of them documents
+  one and guessing what to delete
   would be worse than doing nothing.
 - The onboarding agent step was rebuilt as a table. Every agent is one row with its icon, the
   resolved path of its CLI, the installed version, a status tag, and its actions — install, update
@@ -85,6 +118,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Changed
 
+- GitHub Copilot is drawn with its official mark instead of the generic robot placeholder, so every
+  agent in the app now carries its own logo.
+- Setting MCP up is no longer a step of first-run onboarding. It is offered once as its own card
+  after the app opens, and stays available in Preferences → Features — onboarding goes back to five
+  steps.
 - The layout designer dialog now uses the same drag-and-drop engine as the rest of the app. Cards
   follow the cursor without lag, only the cell under the pointer lights up, a plain click still just
   selects, and cards are resized with the same edge handles as the real grid.
@@ -99,6 +137,13 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- An extensionless path in terminal output no longer swallows the rest of the sentence as a link:
+  `/pt-br/vitrine-dupla/trajetoria — 5 variações` used to underline the whole line. A space now ends
+  the link unless a file extension is waiting on the other side, which is what a path with spaces
+  actually looks like.
+- Invalid CLI overrides are rejected instead of being saved and launched. Existing invalid overrides
+  are cleared automatically, preventing the Antigravity desktop application from opening when Alethe
+  expects the `agy` command-line executable.
 - A terminal that accepted keystrokes but rendered nothing — recoverable only by restarting it — now
   recovers on its own. Output is gated per PTY by a visibility flag, and the call that switches it
   back on was silently ignored whenever it landed while the session was spawning or restarting,

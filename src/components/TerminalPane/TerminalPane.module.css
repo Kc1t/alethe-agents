@@ -316,6 +316,12 @@
   background: var(--accent-soft);
   color: var(--fg);
 }
+
+.handoffSuggested {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
 .action:disabled {
   opacity: 0.3;
   cursor: not-allowed;

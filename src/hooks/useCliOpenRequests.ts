@@ -17,11 +17,19 @@ import { useUiStore } from '../stores/uiStore'
    
 
                                                                            
-const AGENT_PREFERENCE: AgentType[] = ['claude', 'codex', 'antigravity', 'opencode', 'shell']
+const AGENT_PREFERENCE: AgentType[] = [
+  'claude',
+  'codex',
+  'copilot',
+  'antigravity',
+  'opencode',
+  'shell',
+]
 
 const AGENT_LABEL: Record<AgentType, string> = {
   claude: 'Claude',
   codex: 'Codex',
+  copilot: 'GitHub Copilot',
   antigravity: 'Antigravity',
   opencode: 'OpenCode',
   shell: 'Shell',

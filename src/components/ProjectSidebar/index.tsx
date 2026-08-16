@@ -45,7 +45,7 @@ import { FileExplorer } from './FileExplorer'
 import { GitControl } from './GitControl'
 import { GroupNode } from './GroupNode'
 import { NormalProjectSidebar } from './NormalProjectSidebar'
-import { OrganizationPanel } from './OrganizationPanel'
+import { LayoutFooter, WorkspaceLayoutFooter } from './LayoutFooter'
 import { ProjectNode } from './ProjectNode'
 import styles from './ProjectSidebar.module.css'
 import { createSidebarMenus } from './sidebarMenus'
@@ -672,7 +672,8 @@ function CleanProjectSidebar() {
       {menu ? (
         <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />
       ) : null}
-      <OrganizationPanel />
+      <WorkspaceLayoutFooter />
+      <LayoutFooter />
       {preferences.topbarStyle === 'three-areas' ? (
         <div className={styles.systemFooter}>
           <span className={styles.systemFooterLabel}>{t('ui.sidebar.system')}</span>

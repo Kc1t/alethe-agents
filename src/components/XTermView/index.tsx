@@ -355,7 +355,6 @@ export function XTermView({
         ],
       })
       if (!picked) return
-      setCliPath(agent, picked)
       if (!cliPathMatchesAgent(agent, picked)) {
         useUiStore.getState().pushToast({
           title: translate(getLocale(), 'prefs.cliPathMismatch'),
@@ -364,7 +363,9 @@ export function XTermView({
             command: agentCliCommand(agent) ?? agent,
           }),
         })
+        return
       }
+      setCliPath(agent, picked)
       setCommandNotFound(null)
       setRetryKey((v) => v + 1)
     },

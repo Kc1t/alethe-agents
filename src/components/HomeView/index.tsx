@@ -45,6 +45,7 @@ const RELEASES_URL = `${REPOSITORY_URL}/releases`
 const QUICK_AGENTS: Array<{ type: AgentType; label: string }> = [
   { type: 'claude', label: 'Claude' },
   { type: 'codex', label: 'Codex' },
+  { type: 'copilot', label: 'GitHub Copilot' },
   { type: 'antigravity', label: 'Antigravity' },
   { type: 'opencode', label: 'OpenCode' },
 ]
@@ -60,6 +61,7 @@ function compactWorkspacePath(path: string): string {
 const NOTIF_AGENT_CLASS: Record<AgentType, string> = {
   claude: styles.notifClaude,
   codex: styles.notifCodex,
+  copilot: styles.notifCodex,
   antigravity: styles.notifAntigravity,
   shell: styles.notifShell,
   opencode: styles.notifOpencode,

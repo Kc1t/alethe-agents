@@ -8,6 +8,7 @@ import { useEffect, useRef } from 'react'
 
 import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
+import { cliPathMatchesAgent } from '../../lib/agentCliPath'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { getLocale, translate } from '../../lib/i18n'
 import { isWindows } from '../../lib/platform'
@@ -851,16 +852,28 @@ export function useXtermSession(params: {
         let launcherOverride: string | undefined
         if (command && command !== 'shell') {
           if (cliPathOverride) {
-            launcherOverride = cliPathOverride
-            console.info(`[pty-launch] ${command} usando override: ${cliPathOverride}`)
-          } else {
+            if (cliPathMatchesAgent(command, cliPathOverride)) {
+              launcherOverride = cliPathOverride
+              console.info(`[pty-launch] ${command} using override: ${cliPathOverride}`)
+            } else {
+              useProjectsStore.getState().setCliPath(command, null)
+              useUiStore.getState().pushToast({
+                title: translate(getLocale(), 'prefs.cliPathMismatch'),
+                body: translate(getLocale(), 'prefs.cliPathMismatchBody', {
+                  agent: command,
+                  command: agentCliCommand(command) ?? command,
+                }),
+              })
+            }
+          }
+          if (!launcherOverride) {
             const auto = await findCliLauncher(agentCliCommand(command) ?? command)
             console.info(
-              `[pty-launch] ${command} findCliLauncher → ${auto ?? 'null (NÃO ENCONTRADO)'}`,
+              `[pty-launch] ${command} findCliLauncher → ${auto ?? 'null (NOT FOUND)'}`,
             )
             if (!auto) {
               console.warn(
-                `[pty-launch] ${command} não resolvido — mostrando overlay "not found" e ficando offline`,
+                `[pty-launch] ${command} unresolved — showing the not-found overlay and staying offline`,
               )
               setCommandNotFound(command)
               useTerminalsStore.getState().setStatus(ptyId, 'offline')
@@ -1041,7 +1054,7 @@ export function useXtermSession(params: {
                     : null
             : null
 
-        // dispara muitos spawn_pty em paralelo e trava o app.
+        // Too many parallel PTY spawns can stall the app.
         setBootPhase('queued')
         const acquiredSpawnSlot = await acquireSpawnSlot(spawnQueueAbort.signal)
         if (!acquiredSpawnSlot) return

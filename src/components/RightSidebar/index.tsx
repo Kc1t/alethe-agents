@@ -1,3 +1,4 @@
+import { getCurrentWebview } from '@tauri-apps/api/webview'
 import {
   ArrowLeft,
   ClipboardCopy,
@@ -9,10 +10,14 @@ import {
   Plug,
   RefreshCw,
   Settings,
+  X,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { hasFileDragPayload, readFileDragPayload } from '../../lib/fileDrag'
 import { useT } from '../../lib/i18n'
+import { isMarkdownPath } from '../../lib/markdownSidebarHistory'
+import { basename } from '../../lib/paths'
 import { readTextFile, writeClipboardText } from '../../lib/tauri'
 import type { Project, SubTab, Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -47,20 +52,39 @@ export function RightSidebar() {
   const sidebarSubTab = sidebarTerminal?.tabs.find((tab) => tab.id === sidebarTerminal.activeTabId)
     ?? sidebarTerminal?.tabs[0]
 
+  const todoEnabled = preferences.enabledFeatures.todos
+  const gitEnabled =
+    preferences.enabledFeatures.git && preferences.gitControlPlacement === 'right'
+  const mcpEnabled = preferences.enabledFeatures.mcp
+  // The panel now survives its features being turned off one by one, so a mode whose
+  // feature was disabled has to fall back instead of rendering a hidden feature.
+  useEffect(() => {
+    const modeStillEnabled =
+      mode === 'markdown' ||
+      (mode === 'todo' && todoEnabled) ||
+      (mode === 'git' && gitEnabled) ||
+      (mode === 'mcp' && mcpEnabled)
+    if (modeStillEnabled) return
+    if (todoEnabled) setMode()
+    else openMarkdown()
+  }, [gitEnabled, mcpEnabled, mode, openMarkdown, setMode, todoEnabled])
+
   return (
     <aside className={styles.sidebar} aria-label={t('rightSidebar.navigation')}>
       <div className={styles.sidebarTabs} role="tablist" aria-label={t('rightSidebar.navigation')}>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === 'todo'}
-          className={`${styles.sidebarTab} ${mode === 'todo' ? styles.sidebarTabActive : ''}`}
-          onClick={setMode}
-          title={t('todo.title')}
-        >
-          <ListTodo size={14} />
-          <span>{t('rightSidebar.todoTab')}</span>
-        </button>
+        {todoEnabled ? (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'todo'}
+            className={`${styles.sidebarTab} ${mode === 'todo' ? styles.sidebarTabActive : ''}`}
+            onClick={setMode}
+            title={t('todo.title')}
+          >
+            <ListTodo size={14} />
+            <span>{t('rightSidebar.todoTab')}</span>
+          </button>
+        ) : null}
         <button
           type="button"
           role="tab"
@@ -72,7 +96,7 @@ export function RightSidebar() {
           <FileText size={14} />
           <span>{t('rightSidebar.markdownTab')}</span>
         </button>
-        {preferences.enabledFeatures.git && preferences.gitControlPlacement === 'right' ? (
+        {gitEnabled ? (
           <button
             type="button"
             role="tab"
@@ -85,7 +109,7 @@ export function RightSidebar() {
             <span>{t('ui.sidebar.git')}</span>
           </button>
         ) : null}
-        {preferences.enabledFeatures.mcp ? (
+        {mcpEnabled ? (
           <button
             type="button"
             role="tab"
@@ -99,7 +123,7 @@ export function RightSidebar() {
           </button>
         ) : null}
         <span className={styles.toolbarSpacer} />
-        {mode === 'todo' ? (
+        {mode === 'todo' && todoEnabled ? (
           <button
             type="button"
             className={styles.toolbarUtility}
@@ -110,7 +134,7 @@ export function RightSidebar() {
             <Settings size={14} />
           </button>
         ) : null}
-        {mode === 'mcp' ? (
+        {mode === 'mcp' && mcpEnabled ? (
           <button
             type="button"
             className={styles.toolbarUtility}
@@ -134,9 +158,9 @@ export function RightSidebar() {
       </div>
       <div className={styles.tabContent}>
         {mode === 'markdown' ? <MarkdownSidebarViewer /> : null}
-        {mode === 'todo' ? <TodoSidebar /> : null}
-        {mode === 'mcp' ? <McpPanel /> : null}
-        {mode === 'git' ? (
+        {mode === 'todo' && todoEnabled ? <TodoSidebar /> : null}
+        {mode === 'mcp' && mcpEnabled ? <McpPanel /> : null}
+        {mode === 'git' && gitEnabled ? (
           <GitSidebarContent
             activeProject={activeProject}
             sidebarTerminal={sidebarTerminal}
@@ -188,6 +212,9 @@ function GitSidebarContent({
 function MarkdownSidebarViewer() {
   const t = useT()
   const markdown = useUiStore((state) => state.rightSidebarMarkdown)
+  const markdownTabs = useUiStore((state) => state.rightSidebarMarkdownTabs)
+  const openMarkdownSidebar = useUiStore((state) => state.openMarkdownSidebar)
+  const closeMarkdownSidebarTab = useUiStore((state) => state.closeMarkdownSidebarTab)
   const showTodoSidebar = useUiStore((state) => state.showTodoSidebar)
   const pushToast = useUiStore((state) => state.pushToast)
   const activeProjectId = useProjectsStore((state) => state.activeProjectId)
@@ -199,16 +226,23 @@ function MarkdownSidebarViewer() {
   const [content, setContent] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [dropActive, setDropActive] = useState(false)
   const [selectedPath, setSelectedPath] = useState(markdown?.path ?? '')
+  const panelRef = useRef<HTMLElement | null>(null)
+  const nativeDragHasMarkdownRef = useRef(false)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const markdownRef = useRef<HTMLDivElement | null>(null)
 
   const readmeTabs = useMemo(() => {
     const project = projects.find((item) => item.id === activeProjectId)
-    return (project?.terminals ?? [])
+    const projectTabs = (project?.terminals ?? [])
       .filter((terminal) => terminal.kind === 'markdown' && terminal.filePath)
       .map((terminal) => ({ path: terminal.filePath!, title: terminal.name }))
-  }, [activeProjectId, projects])
+    const merged = new Map<string, { path: string; title: string; closable: boolean }>()
+    for (const tab of projectTabs) merged.set(tab.path, { ...tab, closable: false })
+    for (const tab of markdownTabs) merged.set(tab.path, { ...tab, closable: true })
+    return [...merged.values()]
+  }, [activeProjectId, markdownTabs, projects])
   const selected =
     readmeTabs.find((tab) => tab.path === selectedPath) ??
     (markdown ? { path: markdown.path, title: markdown.title } : null)
@@ -243,6 +277,78 @@ function MarkdownSidebarViewer() {
     if (markdown?.path) setSelectedPath(markdown.path)
   }, [markdown?.path])
 
+  const openDroppedMarkdownPaths = useCallback(
+    (paths: string[]) => {
+      for (const path of paths.filter(isMarkdownPath)) {
+        openMarkdownSidebar(path, basename(path) || path)
+      }
+    },
+    [openMarkdownSidebar],
+  )
+
+  useEffect(() => {
+    let disposed = false
+    let unlisten: (() => void) | undefined
+    const isOverViewer = (position: { x: number; y: number }) => {
+      const dpr = window.devicePixelRatio || 1
+      const element = document.elementFromPoint(position.x / dpr, position.y / dpr)
+      return Boolean(element && panelRef.current?.contains(element))
+    }
+    void getCurrentWebview()
+      .onDragDropEvent((event) => {
+        const payload = event.payload
+        if (payload.type === 'enter') {
+          nativeDragHasMarkdownRef.current = payload.paths.some(isMarkdownPath)
+          setDropActive(
+            nativeDragHasMarkdownRef.current && isOverViewer(payload.position),
+          )
+        } else if (payload.type === 'over') {
+          setDropActive(
+            nativeDragHasMarkdownRef.current && isOverViewer(payload.position),
+          )
+        } else if (payload.type === 'leave') {
+          nativeDragHasMarkdownRef.current = false
+          setDropActive(false)
+        } else {
+          const overViewer = isOverViewer(payload.position)
+          nativeDragHasMarkdownRef.current = false
+          setDropActive(false)
+          if (overViewer) openDroppedMarkdownPaths(payload.paths)
+        }
+      })
+      .then((dispose) => {
+        if (disposed) dispose()
+        else unlisten = dispose
+      })
+      .catch(() => undefined)
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
+  }, [openDroppedMarkdownPaths])
+
+  const onInternalDragOver = (event: DragEvent<HTMLElement>) => {
+    if (!hasFileDragPayload(event.dataTransfer)) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = 'copy'
+    setDropActive(true)
+  }
+
+  const onInternalDragLeave = (event: DragEvent<HTMLElement>) => {
+    if (event.relatedTarget && event.currentTarget.contains(event.relatedTarget as Node)) return
+    setDropActive(false)
+  }
+
+  const onInternalDrop = (event: DragEvent<HTMLElement>) => {
+    const payload = readFileDragPayload(event.dataTransfer)
+    if (!payload) return
+    event.preventDefault()
+    event.stopPropagation()
+    setDropActive(false)
+    openDroppedMarkdownPaths([payload.path])
+  }
+
   const copyMarkdown = async () => {
     if (content === null) return
     try {
@@ -257,16 +363,37 @@ function MarkdownSidebarViewer() {
 
   if (!markdown) {
     return (
-      <section className={styles.emptyMarkdown}>
+      <section
+        ref={panelRef}
+        className={`${styles.emptyMarkdown} ${dropActive ? styles.markdownDropActive : ''}`}
+        onDragEnter={onInternalDragOver}
+        onDragOver={onInternalDragOver}
+        onDragLeave={onInternalDragLeave}
+        onDrop={onInternalDrop}
+      >
         <FileText size={20} />
         <strong>{t('rightSidebar.markdownEmptyTitle')}</strong>
         <span>{t('rightSidebar.markdownEmptyDesc')}</span>
+        {dropActive ? (
+          <div className={styles.markdownDropOverlay}>{t('rightSidebar.dropMarkdown')}</div>
+        ) : null}
       </section>
     )
   }
 
   return (
-    <section className={styles.markdownPanel} aria-label={t('rightSidebar.markdownViewer')}>
+    <section
+      ref={panelRef}
+      className={`${styles.markdownPanel} ${dropActive ? styles.markdownDropActive : ''}`}
+      aria-label={t('rightSidebar.markdownViewer')}
+      onDragEnter={onInternalDragOver}
+      onDragOver={onInternalDragOver}
+      onDragLeave={onInternalDragLeave}
+      onDrop={onInternalDrop}
+    >
+      {dropActive ? (
+        <div className={styles.markdownDropOverlay}>{t('rightSidebar.dropMarkdown')}</div>
+      ) : null}
       <header className={styles.header}>
         <div className={styles.heading}>
           <FileText size={15} />
@@ -319,18 +446,36 @@ function MarkdownSidebarViewer() {
           aria-label={t('rightSidebar.markdownTabs')}
         >
           {readmeTabs.map((tab) => (
-            <button
+            <div
               key={tab.path}
-              type="button"
               role="tab"
               aria-selected={selected?.path === tab.path}
               className={`${styles.readmeTab} ${selected?.path === tab.path ? styles.readmeTabActive : ''}`}
-              onClick={() => setSelectedPath(tab.path)}
               title={tab.path}
             >
-              <FileText size={11} />
-              <span>{tab.title}</span>
-            </button>
+              <button
+                type="button"
+                className={styles.readmeTabSelect}
+                onClick={() => {
+                  setSelectedPath(tab.path)
+                  openMarkdownSidebar(tab.path, tab.title)
+                }}
+              >
+                <FileText size={11} />
+                <span>{tab.title}</span>
+              </button>
+              {tab.closable ? (
+                <button
+                  type="button"
+                  className={styles.readmeTabClose}
+                  onClick={() => closeMarkdownSidebarTab(tab.path)}
+                  title={t('rightSidebar.closeMarkdownTab')}
+                  aria-label={t('rightSidebar.closeMarkdownTab')}
+                >
+                  <X size={10} />
+                </button>
+              ) : null}
+            </div>
           ))}
         </div>
       ) : null}

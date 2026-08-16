@@ -95,6 +95,27 @@ describe('terminal links', () => {
     expect(detectTerminalLinks('https://example.com/x')[0].fileKind).toBeUndefined()
   })
 
+  it('stops an extensionless path at the first space instead of eating the sentence', () => {
+    const [link] = detectTerminalLinks(
+      '/pt-br/vitrine-dupla/trajetoria — 5 variações de trajetória',
+    )
+    expect(link.text).toBe('/pt-br/vitrine-dupla/trajetoria')
+
+    expect(detectTerminalLinks('/api/users retorna 401 quando o token expira')[0].text).toBe(
+      '/api/users',
+    )
+    expect(detectTerminalLinks('~/projetos/alethe roda em dev e em prod')[0].text).toBe(
+      '~/projetos/alethe',
+    )
+  })
+
+  it('still crosses a space when a file extension is waiting on the other side', () => {
+    expect(detectTerminalLinks('/tmp/my folder/readme.md')[0].text).toBe('/tmp/my folder/readme.md')
+    expect(detectTerminalLinks('D:\\public launch\\src\\file.ts')[0].text).toBe(
+      'D:\\public launch\\src\\file.ts',
+    )
+  })
+
   it('does not turn prose slashes into links', () => {
     expect(detectTerminalLinks('/ Zambia / India')).toEqual([])
     expect(detectTerminalLinks('IP residencial/mobile + UA')).toEqual([])

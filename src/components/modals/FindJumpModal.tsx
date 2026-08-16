@@ -12,6 +12,7 @@ const ICONS: Record<AgentType, LucideIcon> = {
   shell: Terminal,
   claude: Sparkles,
   codex: Code2,
+  copilot: Bot,
   antigravity: Sparkles,
   opencode: Boxes,
   freebuff: Gift,

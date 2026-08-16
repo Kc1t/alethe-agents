@@ -227,7 +227,10 @@ pub struct InstallToolchain {
 
 fn node_version() -> Option<String> {
     let node = find_windows_cli_launcher("node")?;
-    let output = std::process::Command::new(node).arg("--version").output().ok()?;
+    let output = std::process::Command::new(node)
+        .arg("--version")
+        .output()
+        .ok()?;
     if !output.status.success() {
         return None;
     }
@@ -261,7 +264,9 @@ pub async fn agent_cli_version(agent: String) -> Option<String> {
                 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
                 command.creation_flags(CREATE_NO_WINDOW);
             }
-            let Ok(output) = command.output() else { continue };
+            let Ok(output) = command.output() else {
+                continue;
+            };
             let stdout = String::from_utf8_lossy(&output.stdout);
             if let Some(version) = parse_version(&stdout) {
                 return Some(version);
@@ -900,7 +905,10 @@ mod tests {
             PathBuf::from(""),
         ]);
 
-        assert_eq!(paths, vec![PathBuf::from(r"C:\Bin"), PathBuf::from(r"D:\Tools")]);
+        assert_eq!(
+            paths,
+            vec![PathBuf::from(r"C:\Bin"), PathBuf::from(r"D:\Tools")]
+        );
     }
 
     #[cfg(windows)]

@@ -8,18 +8,11 @@ type Props = {
   onChange: (scope: McpScope) => void
 }
 
+/** Project comes first: it is the scope tied to what the user is looking at right now. */
 export function ScopeSwitch({ value, projectAvailable, onChange }: Props) {
   const t = useT()
   return (
-    <div className={styles.segmented} role="group" aria-label={t('mcp.scopeLabel')}>
-      <button
-        type="button"
-        aria-pressed={value === 'global'}
-        onClick={() => onChange('global')}
-        title={t('mcp.scopeGlobalHint')}
-      >
-        {t('mcp.scopeGlobal')}
-      </button>
+    <span className={styles.scopeToggle} role="group" aria-label={t('mcp.scopeLabel')}>
       <button
         type="button"
         aria-pressed={value === 'project'}
@@ -29,6 +22,15 @@ export function ScopeSwitch({ value, projectAvailable, onChange }: Props) {
       >
         {t('mcp.scopeProject')}
       </button>
-    </div>
+      <i aria-hidden />
+      <button
+        type="button"
+        aria-pressed={value === 'global'}
+        onClick={() => onChange('global')}
+        title={t('mcp.scopeGlobalHint')}
+      >
+        {t('mcp.scopeGlobal')}
+      </button>
+    </span>
   )
 }

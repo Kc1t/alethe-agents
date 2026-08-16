@@ -1,0 +1,252 @@
+.layout {
+  display: grid;
+  grid-template-columns: 210px 1fr;
+  gap: 14px;
+  min-height: 380px;
+  max-height: 60vh;
+}
+
+.list {
+  overflow-y: auto;
+  border-right: 1px solid var(--border-subtle);
+  padding-right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.skillCount {
+  flex: none;
+  font-size: 11px;
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.agentRows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agentRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  min-width: 0;
+}
+
+.agentName {
+  flex: none;
+  min-width: 92px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.skillButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 9px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.skillButton:hover {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.skillButtonActive {
+  background: var(--surface-card-selected);
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+
+.skillName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail {
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.detailHead {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detailTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.detailName {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-size: 10.5px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  color: var(--fg-faint);
+}
+
+
+.description {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--fg-muted);
+  line-height: 1.45;
+}
+
+.path {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  color: var(--fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.sectionTitle {
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  margin-bottom: 7px;
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.field {
+  display: flex;
+  gap: 10px;
+  padding: 7px 11px;
+  border-bottom: 1px solid var(--border-subtle);
+  min-width: 0;
+}
+
+.field:last-child {
+  border-bottom: 0;
+}
+
+.fieldKey {
+  flex: none;
+  min-width: 110px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  color: var(--fg-muted);
+}
+
+.fieldValue {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.tree {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 6px 0;
+  max-height: 210px;
+  overflow-y: auto;
+}
+
+.treeRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  background: none;
+  border: 0;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: default;
+}
+
+button.treeRow {
+  cursor: pointer;
+}
+
+button.treeRow:hover {
+  color: var(--fg);
+}
+
+.body {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  max-height: 320px;
+  overflow-y: auto;
+  font-size: 13px;
+}
+
+.placeholder {
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+}
+
+.emptyWrap {
+  display: grid;
+  place-items: center;
+  min-height: 300px;
+}
+
+.muted {
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+
+.note {
+  margin: 8px 0 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  color: var(--fg-faint);
+  overflow-wrap: anywhere;
+}

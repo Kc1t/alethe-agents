@@ -8,6 +8,7 @@ import {
   FolderOpen,
   FolderSearch,
   LayoutGrid,
+  PanelRightOpen,
   Pencil,
   RefreshCw,
   Trash2,
@@ -20,12 +21,12 @@ import { useT } from '../../lib/i18n'
 import { basename } from '../../lib/paths'
 import {
   deleteFilesystemEntry,
+  type DirectoryEntry,
   getPtyCwd,
   listDirectory,
   openInFileExplorer,
   readTextFile,
   renameFilesystemEntry,
-  type DirectoryEntry,
 } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -45,6 +46,7 @@ type ContextMenu = { entry: DirectoryEntry; x: number; y: number }
 const IMAGE_PATTERN = /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i
 const VIDEO_PATTERN = /\.(mp4|m4v|mov|webm|ogv)$/i
 const PDF_PATTERN = /\.pdf$/i
+const MARKDOWN_PATTERN = /\.(md|markdown|mdx)$/i
 const MAX_TEXT_PREVIEW_BYTES = 2 * 1024 * 1024
 
 export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplorerProps) {
@@ -52,7 +54,9 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
   const pushToast = useUiStore((state) => state.pushToast)
   const createFilePane = useProjectsStore((state) => state.createFilePane)
   const openPane = useProjectsStore((state) => state.openPane)
+  const setPreferences = useProjectsStore((state) => state.setPreferences)
   const requestPaneFocus = useUiStore((state) => state.requestPaneFocus)
+  const openMarkdownSidebar = useUiStore((state) => state.openMarkdownSidebar)
   const [reloadKey, setReloadKey] = useState(0)
   const [liveCwd, setLiveCwd] = useState(cwd)
   const [preview, setPreview] = useState<Preview | null>(null)
@@ -87,6 +91,14 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
     const pane = createFilePane(projectId, { filePath: entry.path })
     openPane(projectId, pane.id)
     requestPaneFocus(pane.id)
+    setMenu(null)
+  }
+
+  const openMarkdownInSidebar = (entry: DirectoryEntry) => {
+    if (entry.is_dir || !MARKDOWN_PATTERN.test(entry.path)) return
+    openMarkdownSidebar(entry.path, entry.name)
+    setPreferences({ rightSidebarVisible: true })
+    setPreview(null)
     setMenu(null)
   }
 
@@ -174,6 +186,7 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
         reloadKey={reloadKey}
         onOpen={addToGrid}
         onPreview={showPreview}
+        onOpenMarkdownSidebar={openMarkdownInSidebar}
         onContextMenu={(event, entry) => {
           event.preventDefault()
           event.stopPropagation()
@@ -192,6 +205,13 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
             <>
               <MenuAction icon={<LayoutGrid size={13} />} label={t('files.addToGrid')} onClick={() => addToGrid(menu.entry)} />
               <MenuAction icon={<Eye size={13} />} label={t('files.preview')} onClick={() => void showPreview(menu.entry)} />
+              {MARKDOWN_PATTERN.test(menu.entry.path) ? (
+                <MenuAction
+                  icon={<PanelRightOpen size={13} />}
+                  label={t('files.openMarkdownSidebar')}
+                  onClick={() => openMarkdownInSidebar(menu.entry)}
+                />
+              ) : null}
             </>
           ) : null}
           <MenuAction icon={<FolderSearch size={13} />} label={t('files.reveal')} onClick={() => { setMenu(null); void openInFileExplorer(menu.entry.path) }} />
@@ -200,7 +220,12 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
         </div>
       ) : null}
 
-      <FilePreviewModal preview={preview} onClose={() => setPreview(null)} onAdd={() => preview && addToGrid(preview)} />
+      <FilePreviewModal
+        preview={preview}
+        onClose={() => setPreview(null)}
+        onAdd={() => preview && addToGrid(preview)}
+        onOpenMarkdownSidebar={() => preview && openMarkdownInSidebar(preview)}
+      />
     </div>
   )
 }
@@ -214,6 +239,7 @@ function DirectoryNode({
   reloadKey,
   onOpen,
   onPreview,
+  onOpenMarkdownSidebar,
   onContextMenu,
 }: {
   projectId: string
@@ -224,6 +250,7 @@ function DirectoryNode({
   reloadKey: number
   onOpen: (entry: DirectoryEntry) => void
   onPreview: (entry: DirectoryEntry) => void
+  onOpenMarkdownSidebar: (entry: DirectoryEntry) => void
   onContextMenu: (event: React.MouseEvent, entry: DirectoryEntry) => void
 }) {
   const t = useT()
@@ -286,6 +313,7 @@ function DirectoryNode({
                     reloadKey={reloadKey}
                     onOpen={onOpen}
                     onPreview={onPreview}
+                    onOpenMarkdownSidebar={onOpenMarkdownSidebar}
                     onContextMenu={onContextMenu}
                   />
                 ) : (
@@ -307,6 +335,19 @@ function DirectoryNode({
                     <span className={styles.rowActions}>
                       <button type="button" onClick={(event) => { event.stopPropagation(); onOpen(entry) }} title={t('files.addToGrid')} aria-label={t('files.addToGrid')}><LayoutGrid size={12} /></button>
                       <button type="button" onClick={(event) => { event.stopPropagation(); void onPreview(entry) }} title={t('files.preview')} aria-label={t('files.preview')}><Eye size={12} /></button>
+                      {MARKDOWN_PATTERN.test(entry.path) ? (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            onOpenMarkdownSidebar(entry)
+                          }}
+                          title={t('files.openMarkdownSidebar')}
+                          aria-label={t('files.openMarkdownSidebar')}
+                        >
+                          <PanelRightOpen size={12} />
+                        </button>
+                      ) : null}
                     </span>
                   </div>
                 ),
@@ -322,7 +363,17 @@ function MenuAction({ icon, label, onClick, danger = false }: { icon: React.Reac
   return <button type="button" role="menuitem" className={danger ? styles.dangerAction : undefined} onClick={onClick}>{icon}<span>{label}</span></button>
 }
 
-function FilePreviewModal({ preview, onClose, onAdd }: { preview: Preview | null; onClose: () => void; onAdd: () => void }) {
+function FilePreviewModal({
+  preview,
+  onClose,
+  onAdd,
+  onOpenMarkdownSidebar,
+}: {
+  preview: Preview | null
+  onClose: () => void
+  onAdd: () => void
+  onOpenMarkdownSidebar: () => void
+}) {
   const t = useT()
   const source = preview ? convertFileSrc(preview.path) : ''
   return (
@@ -332,7 +383,24 @@ function FilePreviewModal({ preview, onClose, onAdd }: { preview: Preview | null
       title={preview?.name ?? t('files.preview')}
       width={760}
       footer={
-        preview ? <button type="button" className={styles.modalAction} onClick={onAdd}><LayoutGrid size={14} />{t('files.addToGrid')}</button> : undefined
+        preview ? (
+          <>
+            <button type="button" className={styles.modalAction} onClick={onAdd}>
+              <LayoutGrid size={14} />
+              {t('files.addToGrid')}
+            </button>
+            {MARKDOWN_PATTERN.test(preview.path) ? (
+              <button
+                type="button"
+                className={styles.modalAction}
+                onClick={onOpenMarkdownSidebar}
+              >
+                <PanelRightOpen size={14} />
+                {t('files.openMarkdownSidebar')}
+              </button>
+            ) : null}
+          </>
+        ) : undefined
       }
     >
       {preview ? (

@@ -1,3 +1,7 @@
+.layout[hidden] {
+  display: none;
+}
+
 .layout {
   display: grid;
   grid-template-columns: 232px 1fr;
@@ -42,6 +46,33 @@
 .search input:focus {
   outline: 0;
   border-color: var(--accent);
+}
+
+.addButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.addButton:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.addButton:disabled {
+  color: var(--fg-faint);
+  border-color: var(--border);
+  cursor: default;
 }
 
 .serverList {
@@ -108,9 +139,21 @@
   gap: 3px;
 }
 
+.detailTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 .detailName {
+  flex: 1;
+  min-width: 0;
   font-size: 15px;
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .detailSummary {
@@ -133,12 +176,17 @@
 }
 
 .sectionTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   font-size: 10.5px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--fg-faint);
   margin-bottom: 7px;
 }
+
 
 .agentCards {
   display: flex;
@@ -169,6 +217,25 @@
   font-weight: 500;
 }
 
+.badge {
+  flex: none;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+
+.badgeOk {
+  color: var(--status-working);
+}
+
+.badgeWarn {
+  color: var(--status-waiting);
+}
+
 .agentPath {
   flex: 1;
   min-width: 0;
@@ -189,34 +256,6 @@
   gap: 5px;
 }
 
-.miniBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 9px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
-  color: var(--fg-muted);
-  font: inherit;
-  font-size: 11.5px;
-  cursor: pointer;
-}
-
-.miniBtn:hover:not(:disabled) {
-  color: var(--fg);
-  border-color: var(--border-strong);
-}
-
-.miniBtn:disabled {
-  color: var(--fg-faint);
-  cursor: default;
-}
-
-.miniBtnDanger:hover:not(:disabled) {
-  color: var(--status-stopped);
-  border-color: var(--status-stopped);
-}
 
 .envTable {
   display: flex;

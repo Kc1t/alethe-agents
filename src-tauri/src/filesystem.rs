@@ -55,7 +55,11 @@ pub fn list_directory(path: String) -> Result<Vec<DirectoryEntry>, String> {
                 name: entry.file_name().to_string_lossy().into_owned(),
                 path: entry.path().to_string_lossy().into_owned(),
                 is_dir: file_type.is_dir(),
-                size: entry.metadata().ok().filter(|_| file_type.is_file()).map(|value| value.len()),
+                size: entry
+                    .metadata()
+                    .ok()
+                    .filter(|_| file_type.is_file())
+                    .map(|value| value.len()),
             })
         })
         .collect::<Vec<_>>();

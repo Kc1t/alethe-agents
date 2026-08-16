@@ -38,6 +38,15 @@ describe('installMethodsFor', () => {
     ])
   })
 
+  it('offers the official Copilot CLI packages available on the machine', () => {
+    const methods = installMethodsFor('copilot', { ...BARE, winget: true, npm: true })
+    expect(methods.map((method) => method.id)).toEqual(['npm', 'winget'])
+    expect(methods.map((method) => method.command)).toEqual([
+      'npm install -g @github/copilot',
+      'winget install GitHub.Copilot',
+    ])
+  })
+
   it('falls back to scoop and choco for OpenCode when there is no npm', () => {
     const methods = installMethodsFor('opencode', { ...BARE, scoop: true, choco: true })
     expect(methods.map((method) => method.id)).toEqual(['scoop', 'choco'])

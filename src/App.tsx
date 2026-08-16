@@ -19,6 +19,9 @@ import { AiUsageModal } from './components/modals/AiUsageModal'
 import { EditGroupModal } from './components/modals/EditGroupModal'
 import { EditProjectModal } from './components/modals/EditProjectModal'
 import { FindJumpModal } from './components/modals/FindJumpModal'
+import { HandoffModal } from './components/modals/HandoffModal'
+import { McpIntroModal } from './components/modals/McpIntroModal'
+import { McpManagerModal } from './components/modals/McpManagerModal'
 import { NewGroupModal } from './components/modals/NewGroupModal'
 import { NewProjectModal } from './components/modals/NewProjectModal'
 import { NewSubTabModal } from './components/modals/NewSubTabModal'
@@ -26,14 +29,13 @@ import { NewTerminalModal } from './components/modals/NewTerminalModal'
 import { OnboardingModal } from './components/modals/OnboardingModal'
 import { PreferencesModal } from './components/modals/PreferencesModal'
 import { ProfilesModal } from './components/modals/ProfilesModal'
+import { RecentChatsModal } from './components/modals/RecentChatsModal'
 import { RemoteControlModal } from './components/modals/RemoteControlModal'
 import { SuspendGroupModal } from './components/modals/SuspendGroupModal'
 import { SyncModal } from './components/modals/SyncModal'
 import { ThemePickerModal } from './components/modals/ThemePickerModal'
 import { TodoSettingsModal } from './components/modals/TodoSettingsModal'
 import { TopbarSettingsModal } from './components/modals/TopbarSettingsModal'
-import { McpManagerModal } from './components/modals/McpManagerModal'
-import { RecentChatsModal } from './components/modals/RecentChatsModal'
 import { UpdateModal } from './components/modals/UpdateModal'
 import { WelcomeModal } from './components/modals/WelcomeModal'
 import { WhatsNewModal } from './components/modals/WhatsNewModal'
@@ -47,6 +49,7 @@ import { useCliOpenRequests } from './hooks/useCliOpenRequests'
 import { useCloseConfirmation } from './hooks/useCloseConfirmation'
 import { useDiscordPresence } from './hooks/useDiscordPresence'
 import { useKeybindings } from './hooks/useKeybindings'
+import { useMcpIntroPrompt } from './hooks/useMcpIntroPrompt'
 import { useRemoteControlService } from './hooks/useRemoteControlService'
 import { useResourceSupervisor } from './hooks/useResourceSupervisor'
 import { startActivityTracker } from './lib/activityTracker'
@@ -185,6 +188,8 @@ export default function App() {
   const spawnConcurrency = useProjectsStore((s) => s.preferences.spawnConcurrency)
   const activeView = useUiStore((s) => s.activeView)
   const openModal = useUiStore((s) => s.openModal)
+  const restoreMarkdownSidebarHistory = useUiStore((s) => s.restoreMarkdownSidebarHistory)
+  const activeProfileId = useProjectsStore((s) => s.activeProfileId)
   const leftSidebarVisible = useProjectsStore((s) => s.preferences.leftSidebarVisible)
   const rightSidebarVisible = useProjectsStore((s) => s.preferences.rightSidebarVisible)
   const leftSidebarWidth = useProjectsStore((s) => s.preferences.leftSidebarWidth)
@@ -222,6 +227,7 @@ export default function App() {
 
   useKeybindings()
   useDiscordPresence()
+  useMcpIntroPrompt()
   useRemoteControlService()
   useCloseConfirmation()
   useResourceSupervisor(hydrated)
@@ -230,6 +236,10 @@ export default function App() {
   useEffect(() => {
     void hydrate()
   }, [hydrate])
+
+  useEffect(() => {
+    if (hydrated) restoreMarkdownSidebarHistory()
+  }, [activeProfileId, hydrated, restoreMarkdownSidebarHistory])
 
   useEffect(() => {
     void ghosttyKillAll().catch(() => {
@@ -600,7 +610,9 @@ export default function App() {
         <UpdateModal />
         <WhatsNewModal />
         <RecentChatsModal />
+        <HandoffModal />
         <McpManagerModal />
+        <McpIntroModal />
         <RemoteControlModal />
       </ErrorBoundary>
       <InAppNotifications />
