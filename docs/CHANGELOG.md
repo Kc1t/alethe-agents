@@ -138,6 +138,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- The topbar widgets no longer jump sideways when you hover them. The pencil button that opens the
+  widget settings used to expand from zero width on hover, pushing every pill 26px to the left —
+  enough for the pill you were reaching for to slide out from under the cursor, which dropped the
+  hover, collapsed the button and shifted everything back, flickering in place. Its slot is now
+  reserved at all times and only the button itself fades in.
 - An extensionless path in terminal output no longer swallows the rest of the sentence as a link:
   `/pt-br/vitrine-dupla/trajetoria — 5 variações` used to underline the whole line. A space now ends
   the link unless a file extension is waiting on the other side, which is what a path with spaces
