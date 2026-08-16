@@ -633,6 +633,8 @@ export const en = {
   'theme.ember.label': 'Ember',
   'theme.ember.desc':
     'Cool charcoal chrome with hairline dividers and an ember-orange live accent.',
+  'theme.golden-premium.label': 'Golden Premium',
+  'theme.golden-premium.desc': 'Luxurious dark brown and deep blacks with elegant golden accents.',
   'todo.tagsPlaceholder': 'Tags: docs, fix',
   'todo.linkProject': 'Link task to a project',
   'todo.noProject': 'No project',

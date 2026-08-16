@@ -13,7 +13,7 @@ import { webRectsEqual } from '../../lib/webRect'
                                                                              
                                                                              
                                                                  
-const EXIT_POLL_MS = 2000
+const EXIT_POLL_MS = 2500
 
 export type GhosttySurfaceProps = {
                                                                                

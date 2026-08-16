@@ -815,3 +815,65 @@
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.6);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.7);
 }
+
+[data-theme='golden-premium'] {
+  --bg: #1c1815;
+  --bg-elevated: #28211c;
+  --bg-sunken: #14110e;
+  --panel: #28211c;
+  --panel-hover: #332922;
+  --border: #332922;
+  --border-strong: rgba(212, 175, 55, 0.24);
+
+  --fg: #f5eedc;
+  --fg-muted: #c9bc9e;
+  --fg-faint: #988c75;
+  --text-primary: #f5eedc;
+  --text-secondary: #c9bc9e;
+  --text-tertiary: #988c75;
+  --text-quaternary: #736754;
+
+  --accent: #d4af37;
+  --accent-strong: #ffd700;
+  --accent-on: #1c1815;
+  --accent-soft: rgba(212, 175, 55, 0.14);
+  --accent-faint: rgba(212, 175, 55, 0.08);
+  --accent-border: rgba(212, 175, 55, 0.36);
+  --accent-ring: rgba(212, 175, 55, 0.2);
+  --accent-bg-soft: rgba(212, 175, 55, 0.1);
+  --accent-border-soft: rgba(212, 175, 55, 0.24);
+
+  --surface-modal: #28211c;
+  --surface-card-default: #231c18;
+  --surface-card-default-strong: #332922;
+  --surface-card-selected: rgba(212, 175, 55, 0.1);
+  --border-subtle: #332922;
+  --border-accent: rgba(212, 175, 55, 0.36);
+
+  --status-working: #4ade80;
+  --status-working-soft: rgba(74, 222, 128, 0.16);
+  --status-waiting: #facc15;
+  --status-waiting-soft: rgba(250, 204, 21, 0.16);
+  --status-stopped: #988c75;
+  --status-stopped-soft: rgba(152, 140, 117, 0.14);
+  --status-disabled: #544a3e;
+  --status-offline: #f87171;
+  --status-offline-soft: rgba(248, 113, 113, 0.16);
+
+  --agent-shell: #4ade80;
+  --agent-claude: #f97316;
+  --agent-codex: #38bdf8;
+  --agent-opencode: #c084fc;
+  --agent-shell-soft: rgba(74, 222, 128, 0.14);
+  --agent-claude-soft: rgba(249, 115, 22, 0.15);
+  --agent-codex-soft: rgba(56, 189, 248, 0.15);
+  --agent-opencode-soft: rgba(192, 132, 252, 0.15);
+
+  --focus-ring: #d4af37;
+  --shape-tabs-lane-bg: #14110e;
+  --shape-tabs-lane-border: rgba(245, 238, 220, 0.06);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.65);
+}
