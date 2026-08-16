@@ -6,7 +6,7 @@ import { getThemeIcon } from '../../lib/themeIcons'
 import { FEATURES } from '../../lib/features'
 import { LOCALES, useT } from '../../lib/i18n'
 import { DEFAULT_PROFILE_IMAGE_URL, getProfileInitial } from '../../lib/profile'
-import { latestNpmVersion, npmPackageFor } from '../../lib/agentVersions'
+import { latestVersionFor } from '../../lib/agentVersions'
 import { agentCliVersion, findCliLauncher } from '../../lib/tauri'
 import { THEME_OPTIONS, themeDescription, themeLabel } from '../../lib/themes'
 import { agentCliCommand, type AgentType, type VisualStyle } from '../../lib/types'
@@ -149,9 +149,7 @@ export function OnboardingModal() {
 
     await Promise.all(
       installed.map(async (agent) => {
-        const packageName = npmPackageFor(agent.id)
-        if (!packageName) return
-        const latest = await latestNpmVersion(packageName)
+        const latest = await latestVersionFor(agent.id)
         if (latest) setAgentLatest((current) => ({ ...current, [agent.id]: latest }))
       }),
     )

@@ -148,7 +148,7 @@ function ToastItem({ toast }: { toast: InAppToast }) {
       </div>
       <div className={styles.toastText}>
         <strong>{toast.title}</strong>
-        <span>{toast.body}</span>
+        <span title={toast.body}>{toast.body}</span>
       </div>
       <button
         type="button"

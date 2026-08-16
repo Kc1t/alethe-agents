@@ -217,6 +217,10 @@ export const ptBR: Record<MessageKey, string> = {
   'agentInstall.uninstall': 'Desinstalar',
   'agentInstall.uninstalling': 'Desinstalando…',
   'agentInstall.uninstallFailed': 'A desinstalação não foi concluída',
+  'agentInstall.updateFailed': 'A atualização não foi concluída',
+  'agentInstall.updateFailedBody': '{agent} pode ainda estar na versão anterior. Tente novamente.',
+  'agentInstall.updateFailedShadowed':
+    '{agent} foi reinstalado, mas {path} continua sendo a versão no PATH.',
   'agentInstall.uninstallTitle': 'Desinstalar o {agent}',
   'agentInstall.uninstallConfirm':
     'Isto remove o {agent} desta máquina. O Alethe vai rodar o comando abaixo num shell:',
