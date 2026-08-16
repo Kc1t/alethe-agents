@@ -118,6 +118,20 @@ choice over forced completeness.
 
 - Project and group based workspace.
 - Real terminal processes through a Rust PTY backend.
+
+### Pull Request review and merge
+
+The merge panel can locate an open GitHub Pull Request for an agent worktree
+when the GitHub CLI is installed and authenticated (`gh auth login`). The PR
+action opens the metadata and allows starting an AI review in the existing
+isolated worktree. The agent is instructed to inspect the diff without making
+commits, pushes, merges, or GitHub comments.
+
+Merging remains an explicit human action. Before the squash merge, Alethe
+reloads the PR and verifies that its head SHA has not changed, then passes the
+same SHA to GitHub as a concurrency guard. A draft or conflicted PR is blocked.
+The feature does not store GitHub tokens; authentication is delegated to the
+local GitHub CLI.
 - Split-pane containers with automatic, spotlight, sidebar, and custom grid layouts.
 - Multiple sub-tabs per terminal for agents or shells.
 - Persisted local projects, layouts, scrollback, sessions, and preferences.

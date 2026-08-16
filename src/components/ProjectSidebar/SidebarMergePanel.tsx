@@ -1,4 +1,4 @@
-import { GitMerge, Check, X, Play, ShieldCheck, MessageSquare, RefreshCw } from 'lucide-react'
+import { GitMerge, Check, X, Play, ShieldCheck, MessageSquare, RefreshCw, GitPullRequest } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useProjectsStore, getProjectRepoRoot } from '../../stores/projectsStore'
@@ -12,13 +12,18 @@ import {
   gitDiffSummary,
   readGsdProcedure,
   killPtyTree,
+  githubPrFind,
+  githubPrMerge,
+  type PullRequestSummary,
   type DiffSummaryEntry,
   type GsdProcedureStep,
   type ValidationResult,
 } from '../../lib/tauri'
 import { useT } from '../../lib/i18n'
+import { evaluateMergeGuard } from '../../lib/pullRequestMerge'
 import { useGsdSyncSessionsWatcher } from '../../hooks/useGsdSyncSessions'
 import { BranchTestingModal, type TestingItem } from '../modals/BranchTestingModal'
+import { PullRequestReviewModal } from '../PullRequestReview/PullRequestReviewModal'
 import styles from './SidebarMergePanel.module.css'
 
 /** Prompt inicial do Revisor de Branch — agente-facing (aparece no terminal
@@ -33,6 +38,19 @@ function reviewPrompt(branch: string, target: string): string {
     'inconsistência com o resto do código) — não implemente nada, não corrija nada sozinho, ' +
     'só avalie e explique. O usuário pode te responder aqui no terminal com pedidos de ajuste; ' +
     'quando achar que está tudo certo, diga isso explicitamente.'
+  )
+}
+
+/** Agent-facing prompt for the PR reviewer (shown in its terminal, not in the
+ *  Alethe UI) — out of i18n scope, same convention as reviewPrompt() above.
+ *  Never commits, pushes, merges, or comments on GitHub by itself. */
+function pullRequestReviewPrompt(branch: string, target: string, pr: PullRequestSummary): string {
+  return (
+    `Revise o Pull Request #${pr.number}: "${pr.title}". ` +
+    `A branch local e "${branch}" e o destino e "${target}"; o SHA remoto analisado e ${pr.headSha}. ` +
+    `Use git diff ${target}...HEAD e inspecione os arquivos alterados. ` +
+    'Procure bugs, riscos de seguranca, quebra de contrato, testes ausentes e problemas de compatibilidade. ' +
+    'Nao faca commit, push, merge ou comentarios no GitHub. Apenas apresente achados objetivos, severidade e recomendacoes.'
   )
 }
 
@@ -117,6 +135,10 @@ export function SidebarMergePanel() {
   const [reviewSessions, setReviewSessions] = useState<Record<string, { terminalId: string; tabId: string }>>({})
   const [reviewInputId, setReviewInputId] = useState<string | null>(null)
   const [reviewFeedback, setReviewFeedback] = useState('')
+  const [prTarget, setPrTarget] = useState<PendingMergeCard | null>(null)
+  const [prLoading, setPrLoading] = useState(false)
+  const [prError, setPrError] = useState<string | null>(null)
+  const [prList, setPrList] = useState<PullRequestSummary[]>([])
   const [gateStatus, setGateStatus] = useState<Record<string, GateResult>>({})
   const probingRef = useRef<Set<string>>(new Set())
 
@@ -399,6 +421,90 @@ export function SidebarMergePanel() {
     }
   }
 
+  const handleOpenPullRequest = async (item: PendingMergeCard) => {
+    const proj = projects.find((p) => p.id === item.projectId)
+    const repo = proj ? getProjectRepoRoot(proj) : ''
+    if (!repo) {
+      pushToast({ title: t('merge.prNoRepoTitle'), body: t('merge.prNoRepoBody') })
+      return
+    }
+
+    setPrTarget(item)
+    setPrList([])
+    setPrError(null)
+    setPrLoading(true)
+    try {
+      setPrList(await githubPrFind(repo, item.branchName))
+    } catch (err) {
+      setPrError(String(err))
+    } finally {
+      setPrLoading(false)
+    }
+  }
+
+  const handleStartPullRequestReview = async (pr: PullRequestSummary) => {
+    if (!prTarget) return
+    const proj = projects.find((p) => p.id === prTarget.projectId)
+    if (!proj) return
+
+    let target = pr.baseBranch
+    const repo = getProjectRepoRoot(proj)
+    if (repo) {
+      try {
+        target = (await gitStatus(repo)).branch
+      } catch {
+        // Keep the base branch reported by GitHub as a safe fallback.
+      }
+    }
+
+    const provider = proj.reviewAgentProvider ?? proj.conflictAgentProvider ?? 'claude'
+    const model = proj.reviewAgentModel ?? proj.conflictAgentModel
+    const terminal = createTerminal(prTarget.projectId, {
+      name: `pr-review-${pr.number}`,
+      cwd: prTarget.worktreePath,
+      firstTab: {
+        type: provider,
+        cwd: prTarget.worktreePath,
+        initialInput: pullRequestReviewPrompt(prTarget.branchName, target, pr),
+        extraArgs: model ? ['--model', model] : undefined,
+      },
+    })
+    const tabId = terminal.tabs[0]?.id
+    if (!tabId) return
+
+    setReviewSessions((prev) => ({ ...prev, [prTarget.id]: { terminalId: terminal.id, tabId } }))
+    setPrTarget(null)
+    pushToast({
+      title: t('merge.prReviewStartedTitle'),
+      body: t('merge.prReviewStartedBody', { number: pr.number }),
+    })
+  }
+
+  const handleMergePullRequest = async (pr: PullRequestSummary) => {
+    if (!prTarget) return
+    const proj = projects.find((p) => p.id === prTarget.projectId)
+    const repo = proj ? getProjectRepoRoot(proj) : ''
+    if (!repo) return
+
+    if (!confirm(t('merge.prMergeConfirm', { number: pr.number, title: pr.title }))) return
+
+    try {
+      const latestOpenPrs = await githubPrFind(repo, pr.headBranch)
+      const guard = evaluateMergeGuard(pr, latestOpenPrs)
+      if (!guard.ok) throw new Error(t(guard.errorKey))
+
+      const result = await githubPrMerge(repo, pr.number, 'squash', guard.latest.headSha)
+      pushToast({
+        title: t('merge.prMergedTitle'),
+        body: result || t('merge.prMergedBody', { number: pr.number }),
+      })
+      setPrTarget(null)
+      setPrList([])
+    } catch (err) {
+      setPrError(String(err))
+    }
+  }
+
   const handleStartTesting = (item: PendingMergeCard) => {
     createTerminal(item.projectId, {
       name: `test-${item.agentName}`,
@@ -651,6 +757,17 @@ export function SidebarMergePanel() {
                       <MessageSquare size={12} />
                       <span className={styles.actionBtnLabel}>{t('merge.review')}</span>
                     </button>
+
+                    <button
+                      type="button"
+                      className={`${styles.actionBtn} ${styles.btnReview}`}
+                      disabled={buttonsDisabled}
+                      onClick={() => void handleOpenPullRequest(item)}
+                      title={t('merge.prTooltip')}
+                    >
+                      <GitPullRequest size={12} />
+                      <span className={styles.actionBtnLabel}>{t('merge.pr')}</span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -698,6 +815,21 @@ export function SidebarMergePanel() {
           onSendFeedback={(summary) => void handleSendTestFeedback(testModalTarget, summary)}
         />
       ) : null}
+
+      <PullRequestReviewModal
+        open={Boolean(prTarget)}
+        loading={prLoading}
+        error={prError}
+        pullRequests={prList}
+        branchName={prTarget?.branchName ?? ''}
+        onClose={() => {
+          setPrTarget(null)
+          setPrError(null)
+          setPrList([])
+        }}
+        onStartReview={(pr) => void handleStartPullRequestReview(pr)}
+        onMerge={(pr) => void handleMergePullRequest(pr)}
+      />
     </>
   )
 }

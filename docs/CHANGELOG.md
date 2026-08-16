@@ -12,6 +12,7 @@ Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
 
 ### Adicionado
 
+- **Revisão e merge de Pull Request direto da Central de Merges.** O painel de merge agora localiza um Pull Request aberto no GitHub para a branch de um agente (via GitHub CLI, requer `gh auth login`) e permite abrir sua metadata e iniciar uma revisão por IA na mesma worktree isolada — o agente é instruído a apenas inspecionar o diff, sem commitar, dar push, mesclar ou comentar no GitHub. O merge (squash) continua sendo uma ação humana explícita: antes de mesclar, o Alethe relê o PR e confirma que o SHA da head não mudou, usando o mesmo SHA como trava de concorrência no GitHub; PRs em rascunho ou com conflitos são bloqueados. Nenhum token do GitHub é armazenado — a autenticação é delegada ao GitHub CLI local.
 - **Colar conteúdo do portapapeles via clique direito no terminal (`XTermView`).** Clicar com o botão direito sobre o painel do terminal sem texto selecionado cola o conteúdo do portapapeles (texto, imagens e arquivos). Caso haja texto selecionado no terminal, o clique direito copia a seleção para o portapapeles e limpa o destaque.
 
 ### Alterado

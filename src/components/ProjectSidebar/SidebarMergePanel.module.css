@@ -58,7 +58,9 @@
   border-radius: var(--radius-md);
   padding: 10px;
   margin-bottom: 8px;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 .card:hover {
   border-color: var(--border-strong);
@@ -182,7 +184,11 @@
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   cursor: pointer;
-  transition: background-color 100ms ease, border-color 100ms ease, color 100ms ease, opacity 100ms ease;
+  transition:
+    background-color 100ms ease,
+    border-color 100ms ease,
+    color 100ms ease,
+    opacity 100ms ease;
 }
 .actionBtn:disabled {
   opacity: 0.45;
