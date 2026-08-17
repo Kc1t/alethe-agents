@@ -1,3 +1,5 @@
+/* Home renders inside a resizable pane, so its breakpoints have to measure the pane
+   and not the window — see the `@container home` block at the end of this file. */
 .home {
   flex: 1;
   min-height: 0;
@@ -10,6 +12,8 @@
   display: flex;
   flex-direction: column;
   gap: 22px;
+  container-type: inline-size;
+  container-name: home;
 }
 
 .home > :not(.asciiBackdrop):not(.homeBackdrop) {
@@ -357,7 +361,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
-@media (max-width: 900px) {
+@container home (max-width: 900px) {
   .projectGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -566,7 +570,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
-@media (max-width: 900px) {
+@container home (max-width: 900px) {
   .projectGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -794,7 +798,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
-@media (max-width: 900px) {
+@container home (max-width: 900px) {
   .projectGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -891,7 +895,7 @@
   gap: 22px;
   align-items: start;
 }
-@media (max-width: 900px) {
+@container home (max-width: 900px) {
   .bottomGrid {
     grid-template-columns: 1fr;
   }
@@ -1029,14 +1033,9 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-@media (max-width: 1100px) {
+@container home (max-width: 1100px) {
   .usageStrip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-@media (max-width: 720px) {
-  .usageStrip {
-    grid-template-columns: 1fr;
   }
 }
 
@@ -1077,6 +1076,8 @@
   flex-direction: column;
   min-width: 0;
   min-height: 244px;
+  container-type: inline-size;
+  container-name: usagecard;
   transition:
     border-color 0.18s,
     background 0.18s;
@@ -1086,7 +1087,7 @@
   background: var(--bg-elevated);
 }
 
-/* ---- head: badge + nome + plan + live + refresh ---- */
+/* ---- head: badge + name + plan + live + refresh ---- */
 
 .cardHead {
   display: flex;
@@ -1131,9 +1132,14 @@
   font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--fg);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .plan {
+  flex-shrink: 0;
   margin-left: 2px;
   font-family: var(--font-mono);
   font-size: 9.5px;
@@ -1150,6 +1156,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
+  flex-shrink: 0;
 }
 
 .live {
@@ -1201,6 +1208,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
 }
 .heroNumWrap {
@@ -1208,20 +1216,26 @@
   align-items: baseline;
   gap: 4px;
   min-width: 0;
+  flex: 1 1 auto;
 }
 .heroNum {
   font-family: var(--font-mono);
-  font-size: 28px;
+  font-size: clamp(20px, 11cqw, 28px);
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1;
   color: var(--fg);
+  white-space: nowrap;
 }
 .heroDen {
   font-family: var(--font-mono);
-  font-size: 16px;
+  font-size: clamp(11px, 6cqw, 16px);
   font-weight: 500;
   color: var(--text-quaternary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .timechip {
   font-family: var(--font-mono);
@@ -1582,12 +1596,15 @@
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
+  min-width: 0;
   background: var(--bg-sunken);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   cursor: pointer;
   color: var(--fg);
   font-family: inherit;
+  container-type: inline-size;
+  container-name: actioncard;
   transition:
     border-color 0.15s,
     background 0.15s;
@@ -1608,6 +1625,10 @@
 .actionLabel {
   font-size: 12px;
   color: var(--fg);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .actionSpacer {
@@ -1622,6 +1643,14 @@
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text-tertiary);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+@container actioncard (max-width: 214px) {
+  .kbd {
+    display: none;
+  }
 }
 
 /* ---------- footer ---------- */
@@ -1840,7 +1869,7 @@
   font-size: 9px;
   text-align: right;
 }
-@media (max-width: 900px) {
+@container home (max-width: 900px) {
   .timeSummaryGrid {
     grid-template-columns: 1fr 1fr;
   }
@@ -1852,7 +1881,7 @@
 /* ---------- home composition ---------- */
 
 .home {
-  padding: 0 28px 18px;
+  padding: 0 clamp(16px, 3%, 28px) 18px;
   gap: 24px;
 }
 
@@ -1865,18 +1894,6 @@
   margin-inline: auto;
 }
 
-@media (max-width: 720px) {
-  .footer {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .footerShortcuts {
-    display: none;
-  }
-  .footerLinks {
-    flex-wrap: wrap;
-  }
-}
 
 .homeBackdrop {
   position: absolute;
@@ -2592,7 +2609,7 @@
 
 .overviewGrid .actionList {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px;
 }
 
@@ -2600,11 +2617,7 @@
   grid-template-columns: 1fr;
 }
 
-@media (max-width: 900px) {
-  .home {
-    padding-inline: 18px;
-  }
-
+@container home (max-width: 900px) {
   .asciiBackdrop {
     height: 500px;
     opacity: 0.28;
@@ -2626,9 +2639,41 @@
   .heroFooter {
     gap: 8px;
   }
+
+  .usageStrip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bottomGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .timeSummaryGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .timeBreakdowns {
+    grid-template-columns: 1fr;
+  }
 }
 
-@media (max-width: 620px) {
+@container home (max-width: 720px) {
+  .footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .footerShortcuts {
+    display: none;
+  }
+  .footerLinks {
+    flex-wrap: wrap;
+  }
+  .usageStrip {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container home (max-width: 620px) {
   .headerActions {
     width: 100%;
     justify-content: flex-end;
@@ -2646,11 +2691,11 @@
     padding-inline: 9px;
   }
 
-  .overviewGrid .projectGrid {
+  .timeSummaryGrid {
     grid-template-columns: 1fr;
   }
 
-  .overviewGrid .actionList {
+  .overviewGrid .projectGrid {
     grid-template-columns: 1fr;
   }
 
@@ -2665,6 +2710,15 @@
   }
   .quickSend {
     margin-left: auto;
+  }
+}
+
+@container usagecard (max-width: 216px) {
+  .plan {
+    display: none;
+  }
+  .live {
+    display: none;
   }
 }
 

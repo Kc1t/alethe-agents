@@ -14,7 +14,9 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { AgentInstallButton } from '../AgentInstall/AgentInstallButton'
+import { DotmCircular2 } from '../ui/dotm-circular-2'
 import { cliPathMatchesAgent } from '../../lib/agentCliPath'
+import { normalizeBrowserUrl } from '../../lib/browserUrl'
 import { pickFile } from '../../lib/dialog'
 import { getLocale, translate, useT } from '../../lib/i18n'
 import { writeScopedStorage } from '../../lib/storageNamespace'
@@ -208,6 +210,17 @@ export function XTermView({
     [projectId],
   )
 
+  const openUrlInGrid = useCallback(
+    (target: string) => {
+      if (!projectId) return
+      const url = normalizeBrowserUrl(target)
+      if (!url) return
+      useProjectsStore.getState().createWebPane(projectId, { url })
+      useUiStore.getState().setActiveView('workspace')
+    },
+    [projectId],
+  )
+
   const openLinkInAppViewer = useCallback((target: string) => {
     useUiStore.getState().openLinkViewer(target)
   }, [])
@@ -392,7 +405,15 @@ export function XTermView({
       />
       {bootLabel && !commandNotFound ? (
         <div className={styles.bootOverlay}>
-          <div className={styles.bootSpinner} aria-hidden />
+          <DotmCircular2
+            size={26}
+            dotSize={2}
+            cellPadding={1}
+            speed={1.2}
+            bloom
+            ariaLabel={bootLabel}
+            className={styles.bootSpinner}
+          />
           <div className={styles.bootLabel}>{bootLabel}</div>
         </div>
       ) : null}
@@ -452,6 +473,20 @@ export function XTermView({
                 role="menuitem"
                 onClick={() => {
                   openFileInGrid(linkActions.text)
+                  hideLinkActions()
+                }}
+              >
+                <LayoutGrid size={15} />
+                <span>{t('xterm.openInGrid')}</span>
+              </button>
+            ) : null}
+            {linkActions.kind === 'url' && projectId ? (
+              <button
+                type="button"
+                className={styles.linkMenuItem}
+                role="menuitem"
+                onClick={() => {
+                  openUrlInGrid(linkActions.target)
                   hideLinkActions()
                 }}
               >

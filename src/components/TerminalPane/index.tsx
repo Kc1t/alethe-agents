@@ -154,9 +154,12 @@ export const TerminalPane = memo(function TerminalPane({
   )
   const runtimeExtraArgs = useMemo(() => {
     const args = [...(activeTab?.extraArgs ?? [])]
-    if (activeTab?.handoff) args.push('--add-dir', activeTab.handoff.contextDir)
+    // `--add-dir` is a Claude Code flag; Codex rejects it and exits on launch.
+    if (activeTab?.handoff && activeTab.type === 'claude') {
+      args.push('--add-dir', activeTab.handoff.contextDir)
+    }
     return args
-  }, [activeTab?.extraArgs, activeTab?.handoff])
+  }, [activeTab?.extraArgs, activeTab?.handoff, activeTab?.type])
 
   const effectiveLaneVisible = terminal.tabs.length > 1 ? true : terminal.laneVisible === true
   const isShell = activeTab?.type === 'shell'

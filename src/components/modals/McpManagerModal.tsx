@@ -6,16 +6,16 @@ import {
   groupServersByName,
   matchesQuery,
   mcpErrorKey,
-  transportSummary,
   type McpServerGroup,
+  transportSummary,
 } from '../../lib/mcp'
 import {
+  type McpHealth,
   mcpHealthCheck,
   mcpRemove,
   mcpRevealEnv,
   mcpSetEnabled,
   mcpSync,
-  type McpHealth,
 } from '../../lib/tauri'
 import type { McpAgent, McpEnvEntry, McpServerRecord } from '../../lib/types'
 import { AGENT_TYPE_LABELS, MCP_AGENTS } from '../../lib/types'
@@ -26,8 +26,8 @@ import { EmptyState } from '../EmptyState'
 import controls from './controls.module.css'
 import { AddServerFlow } from './mcp/AddServerFlow'
 import { SkillsBrowser } from './mcp/SkillsBrowser'
-import { Modal } from './Modal'
 import styles from './McpManagerModal.module.css'
+import { Modal } from './Modal'
 
 type ManagerTab = 'servers' | 'skills'
 
@@ -82,15 +82,20 @@ export function McpManagerModal() {
   )
   const active = groups.find((group) => group.name === selected) ?? visible[0] ?? null
 
-  // Clearing runs before the open guard so a revealed plaintext value does not sit in
-  // component state after the modal is closed.
+  // Runs without an open guard so a revealed plaintext value does not sit in component
+  // state after the modal is closed.
   useEffect(() => {
     setRevealed({})
+  }, [open, scope])
+
+  // Deps must not include the state this writes, or picking a server in the list would
+  // re-run it and snap the selection back to whatever opened the modal.
+  useEffect(() => {
     if (!open) return
     if (typeof requestedServer === 'string') setSelected(requestedServer)
     if (requestedTab === 'servers' || requestedTab === 'skills') setTab(requestedTab)
     if (requestedAdd === true) setAdding(true)
-  }, [open, scope, selected, requestedServer, requestedTab, requestedAdd])
+  }, [open, requestedServer, requestedTab, requestedAdd])
 
   if (!open) return null
 

@@ -122,4 +122,18 @@ describe('terminal links', () => {
     expect(detectTerminalLinks('foo/bar')).toEqual([])
     expect(detectTerminalLinks('src/file.ts package.json user@example.com')).toEqual([])
   })
+
+  it('keeps two bracketed paths apart instead of linking the whole parenthetical', () => {
+    expect(
+      detectTerminalLinks('(/pt-br/vitrine-dupla/projetos e /en/double-showcase/projects)').map(
+        (link) => link.text,
+      ),
+    ).toEqual(['/pt-br/vitrine-dupla/projetos', '/en/double-showcase/projects'])
+  })
+
+  it('still stops a bracketed path at the closing bracket', () => {
+    expect(detectTerminalLinks('see (/tmp/my folder/readme.md) now')[0].text).toBe(
+      '/tmp/my folder/readme.md',
+    )
+  })
 })

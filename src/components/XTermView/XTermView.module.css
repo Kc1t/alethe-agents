@@ -110,12 +110,7 @@
 }
 
 .bootSpinner {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--fg-muted) 20%, transparent);
-  border-top-color: var(--accent);
-  animation: bootSpin 700ms linear infinite;
+  color: var(--accent);
 }
 
 .bootLabel {
@@ -218,12 +213,6 @@
 
 .linkMenuItem svg {
   flex: 0 0 auto;
-}
-
-@keyframes bootSpin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 @keyframes linkMenuIn {

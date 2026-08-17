@@ -81,13 +81,13 @@ function normalizeUrlTarget(text: string): string {
 function findLinkEnd(line: string, start: number, isUrl: boolean): number {
   const opener = line[start - 1]
   const closer = opener === '(' ? ')' : opener === '[' ? ']' : undefined
-  if (closer && !isUrl) {
-    const boundedEnd = line.indexOf(closer, start)
-    if (boundedEnd !== -1) return boundedEnd
-  }
+  // The bracket caps the link, it does not define it. Returning its position outright
+  // swallowed every space in between, so "(/a/b and /c/d)" came back as one link.
+  const bracketEnd = closer && !isUrl ? line.indexOf(closer, start) : -1
 
   let end = start
   while (end < line.length) {
+    if (bracketEnd !== -1 && end >= bracketEnd) break
     const char = line[end]
     if (HARD_LINK_DELIMITERS.has(char)) break
     if (isUrl && /\s/.test(char)) break

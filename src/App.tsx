@@ -82,6 +82,12 @@ const MemoryAnalyticsModal = lazy(() =>
   })),
 )
 
+const LEFT_SIDEBAR_MIN_PX = 220
+const LEFT_SIDEBAR_MAX_PX = 380
+const RIGHT_SIDEBAR_MIN_PX = 260
+const RIGHT_SIDEBAR_MAX_PX = 420
+const WORKSPACE_MIN_PX = 240
+
 function LoadingScreen() {
   const t = useT()
   return (
@@ -214,6 +220,7 @@ export default function App() {
   const rightSidebarLayoutReadyRef = useRef(false)
   const leftSidebarResizeActiveRef = useRef(false)
   const rightSidebarResizeActiveRef = useRef(false)
+  const windowHiddenRef = useRef(false)
   const leftPanelElementRef = useRef<HTMLDivElement>(null)
   const rightPanelElementRef = useRef<HTMLDivElement>(null)
 
@@ -291,6 +298,79 @@ export default function App() {
       /* Keep the window opaque where native opacity is unavailable. */
     })
   }, [hydrated, windowOpacity])
+
+  // Dragging a separator until the sidebar collapses gives it `pointer-events: none`, so
+  // its own pointerup never fires and the flag would stay on for the rest of the session —
+  // after which any reflow that momentarily reports 0px is persisted as "user closed it".
+  useEffect(() => {
+    const clearResizeFlags = () => {
+      leftSidebarResizeActiveRef.current = false
+      rightSidebarResizeActiveRef.current = false
+    }
+    const markHidden = () => {
+      windowHiddenRef.current = true
+      clearResizeFlags()
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') markHidden()
+      else windowHiddenRef.current = false
+    }
+    window.addEventListener('pointerup', clearResizeFlags)
+    window.addEventListener('pointercancel', clearResizeFlags)
+    window.addEventListener('blur', clearResizeFlags)
+    window.addEventListener('beforeunload', markHidden)
+    window.addEventListener('pagehide', markHidden)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      window.removeEventListener('pointerup', clearResizeFlags)
+      window.removeEventListener('pointercancel', clearResizeFlags)
+      window.removeEventListener('blur', clearResizeFlags)
+      window.removeEventListener('beforeunload', markHidden)
+      window.removeEventListener('pagehide', markHidden)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [])
+
+  // A collapsible panel auto-collapses whenever the group squeezes it below `minSize`,
+  // which is what a minimize or a narrow window does to both sidebars at once. Nothing
+  // brought them back, because the effects below only run when the preference changes —
+  // so the panels stayed shut while the stored preference still said "visible".
+  useEffect(() => {
+    if (!hydrated) return
+    let timer: number | null = null
+    const reconcile = () => {
+      if (windowHiddenRef.current) return
+      if (leftSidebarResizeActiveRef.current || rightSidebarResizeActiveRef.current) return
+      const wantLeft = leftSidebarVisible
+      const wantRight = rightPanelEnabled && rightSidebarVisible
+      const required =
+        (wantLeft ? LEFT_SIDEBAR_MIN_PX : 0) +
+        (wantRight ? RIGHT_SIDEBAR_MIN_PX : 0) +
+        WORKSPACE_MIN_PX
+      if (window.innerWidth < required) return
+      if (wantLeft && leftPanelRef.current?.isCollapsed()) leftPanelRef.current.expand()
+      if (wantRight && rightPanelRef.current?.isCollapsed()) rightPanelRef.current.expand()
+    }
+    const schedule = () => {
+      if (timer !== null) window.clearTimeout(timer)
+      timer = window.setTimeout(reconcile, 240)
+    }
+    window.addEventListener('resize', schedule)
+    document.addEventListener('visibilitychange', schedule)
+    schedule()
+    return () => {
+      if (timer !== null) window.clearTimeout(timer)
+      window.removeEventListener('resize', schedule)
+      document.removeEventListener('visibilitychange', schedule)
+    }
+  }, [
+    hydrated,
+    leftPanelRef,
+    rightPanelRef,
+    leftSidebarVisible,
+    rightSidebarVisible,
+    rightPanelEnabled,
+  ])
 
   useEffect(() => {
     if (!hydrated) return
@@ -418,8 +498,8 @@ export default function App() {
             panelRef={leftPanelRef}
             elementRef={leftPanelElementRef}
             defaultSize={leftSidebarVisible ? `${leftSidebarDefaultRef.current}px` : '0px'}
-            minSize="220px"
-            maxSize="380px"
+            minSize={`${LEFT_SIDEBAR_MIN_PX}px`}
+            maxSize={`${LEFT_SIDEBAR_MAX_PX}px`}
             collapsedSize="0px"
             collapsible
             groupResizeBehavior="preserve-pixel-size"
@@ -428,6 +508,7 @@ export default function App() {
               const nextVisible = visibilityFromPanelResize(
                 leftSidebarLayoutReadyRef.current,
                 leftSidebarResizeActiveRef.current,
+                windowHiddenRef.current,
                 size,
                 previous,
                 currentVisible,
@@ -436,10 +517,11 @@ export default function App() {
               const nextWidth = widthFromPanelResize(
                 leftSidebarLayoutReadyRef.current,
                 leftSidebarResizeActiveRef.current,
+                windowHiddenRef.current,
                 size,
                 previous,
-                220,
-                380,
+                LEFT_SIDEBAR_MIN_PX,
+                LEFT_SIDEBAR_MAX_PX,
               )
               if (nextWidth !== null) {
                 if (leftSidebarSaveTimerRef.current !== null)
@@ -530,8 +612,8 @@ export default function App() {
                 panelRef={rightPanelRef}
                 elementRef={rightPanelElementRef}
                 defaultSize={rightSidebarVisible ? `${rightSidebarDefaultRef.current}px` : '0px'}
-                minSize="260px"
-                maxSize="420px"
+                minSize={`${RIGHT_SIDEBAR_MIN_PX}px`}
+                maxSize={`${RIGHT_SIDEBAR_MAX_PX}px`}
                 collapsedSize="0px"
                 collapsible
                 groupResizeBehavior="preserve-pixel-size"
@@ -541,6 +623,7 @@ export default function App() {
                   const nextVisible = visibilityFromPanelResize(
                     rightSidebarLayoutReadyRef.current,
                     rightSidebarResizeActiveRef.current,
+                    windowHiddenRef.current,
                     size,
                     previous,
                     currentVisible,
@@ -549,10 +632,11 @@ export default function App() {
                   const nextWidth = widthFromPanelResize(
                     rightSidebarLayoutReadyRef.current,
                     rightSidebarResizeActiveRef.current,
+                    windowHiddenRef.current,
                     size,
                     previous,
-                    260,
-                    420,
+                    RIGHT_SIDEBAR_MIN_PX,
+                    RIGHT_SIDEBAR_MAX_PX,
                   )
                   if (nextWidth !== null) {
                     if (rightSidebarSaveTimerRef.current !== null)

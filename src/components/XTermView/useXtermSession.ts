@@ -1210,6 +1210,19 @@ export function useXtermSession(params: {
           setRetryKey((value) => value + 1)
         }
 
+        // Codex writes the bootstrap error and exits before the stream listeners below
+        // exist, so a hidden pane would never see it: it does not read the replay, and by
+        // the time it is shown the process is long gone. `attach_pty` only reads the
+        // scrollback, so asking for it early costs nothing and consumes nothing.
+        if (command === 'codex' && usedResumeRef.current && !isPanelVisibleRef.current) {
+          const early = await attachPty(response.id).catch(() => '')
+          if (disposed) return
+          if (early && /already has an active writer|thread\/resume failed/i.test(early)) {
+            handleResumeConflict()
+            return
+          }
+        }
+
         // registrado logo abaixo, que roda nos dois canais de streaming.
         if (isPanelVisibleRef.current) {
           const replay = await attachPty(response.id)
