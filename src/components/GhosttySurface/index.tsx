@@ -4,16 +4,12 @@ import {
   ghosttySetFocus,
   ghosttySetHidden,
   ghosttySpawn,
-  ghosttySurfaceExited,
+  listenPtyExit,
   ghosttySyncFrame,
   type WebRect,
 } from '../../lib/tauri'
 import { webRectsEqual } from '../../lib/webRect'
 
-                                                                             
-                                                                             
-                                                                 
-const EXIT_POLL_MS = 2500
 
 export type GhosttySurfaceProps = {
                                                                                
@@ -252,25 +248,17 @@ export function GhosttySurface({
                                                                   
   useEffect(() => {
     let stopped = false
-    const iv = window.setInterval(async () => {
+    const unlistenPromise = listenPtyExit(surfaceId, (payload) => {
       if (stopped) return
-                                                                                 
-      // backend e o comando reportaria "saiu" (ausente), fechando o pane novo.
-      if (!spawnedRef.current) return
-      try {
-        const exited = await ghosttySurfaceExited(surfaceId)
-        if (exited && !stopped) {
-          stopped = true
-          window.clearInterval(iv)
-          onExitRef.current?.()
-        }
-      } catch {
-                                              
+      if (payload.reason === 'exited' || payload.reason === 'killed') {
+        stopped = true
+        onExitRef.current?.()
       }
-    }, EXIT_POLL_MS)
+    })
+
     return () => {
       stopped = true
-      window.clearInterval(iv)
+      unlistenPromise.then((unlisten) => unlisten())
     }
   }, [surfaceId])
 

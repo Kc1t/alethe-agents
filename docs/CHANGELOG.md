@@ -10,6 +10,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Changed
+- Changed Ghostty process exit detection from a heavy frontend IPC polling loop to a lightweight, resource-efficient backend push event mechanism.
+- Removed outdated `HANDOFF_SESSAO_ATUAL.md` documentation file to comply with repository governance rules.
+
 ## [1.6.0] — 2026-08-17
 
 ### Added

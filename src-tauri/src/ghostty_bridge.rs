@@ -1018,7 +1018,27 @@ pub fn ghostty_spawn(
     cwd: Option<String>,
     command: Option<String>,
 ) -> Result<GhosttySurfaceResponse, String> {
-    imp::spawn(&app, &state, id, cwd, command)
+    let res = imp::spawn(&app, &state, id.clone(), cwd, command);
+    if res.is_ok() {
+        let watch_app = app.clone();
+        let watch_id = id.clone();
+        tauri::async_runtime::spawn(async move {
+            use tauri::{Emitter, Manager};
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+                let state = watch_app.state::<GhosttyState>();
+                if let Ok(true) = imp::process_exited(&state, watch_id.clone()) {
+                    let payload = crate::pty::PtyExitPayload {
+                        code: None,
+                        reason: "exited",
+                    };
+                    let _ = watch_app.emit(&format!("pty://exit/{}", watch_id), payload);
+                    break;
+                }
+            }
+        });
+    }
+    res
 }
 
 #[tauri::command]
@@ -1050,13 +1070,6 @@ pub fn ghostty_set_focus(
     imp::set_focus(&state, id, focused)
 }
 
-#[tauri::command]
-pub fn ghostty_surface_exited(
-    state: tauri::State<'_, GhosttyState>,
-    id: String,
-) -> Result<bool, String> {
-    imp::process_exited(&state, id)
-}
 
 #[tauri::command]
 pub fn ghostty_kill(state: tauri::State<'_, GhosttyState>, id: String) -> Result<(), String> {

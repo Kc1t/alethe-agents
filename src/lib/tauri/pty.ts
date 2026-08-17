@@ -136,10 +136,6 @@ export async function ghosttySetFocus(id: string, focused: boolean): Promise<voi
   await invoke('ghostty_set_focus', { id, focused })
 }
 
-                                                                                  
-export async function ghosttySurfaceExited(id: string): Promise<boolean> {
-  return invoke<boolean>('ghostty_surface_exited', { id })
-}
 
 export async function ghosttyKill(id: string): Promise<void> {
   await invoke('ghostty_kill', { id })
