@@ -10,6 +10,8 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-08-17
+
 ### Added
 
 - Added Normal and Clean application-wide visual styles. Normal preserves the production UI with
