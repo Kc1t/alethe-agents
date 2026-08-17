@@ -1,7 +1,6 @@
 import type { Theme } from '../../lib/types'
 import type { FileLinkKind } from './terminalLinks'
 
-                                                                    
 export type LinkActionState = {
   text: string
   target: string
@@ -17,11 +16,37 @@ const DARK_THEME = {
   cursor: '#f3f4f6',
   selectionBackground: '#3b82f666',
 } as const
+// A light background inverts the usual rules: xterm.js falls back to the
+// dark-oriented Tango palette for any slot we omit, which fails WCAG AA on
+// #fafafa. Every slot below therefore ships an explicit color that keeps
+// >= 4.5:1 against the background (#97).
+//
+// The one deliberate exception is white/brightWhite: they serve a dual role
+// as both foreground text and painted background (\x1b[47m / \x1b[107m, used
+// by `less` status bars). Keeping them light lets a painted background still
+// read as a background; the `minimumContrastRatio` floor (4.5, enabled only
+// for light themes) darkens them at render time when they are used as text.
 const LIGHT_THEME = {
   background: '#fafafa',
   foreground: '#18181b',
   cursor: '#18181b',
   selectionBackground: '#3b82f655',
+  black: '#27272a',
+  red: '#b91c1c',
+  green: '#15803d',
+  yellow: '#a16207',
+  blue: '#1d4ed8',
+  magenta: '#a21caf',
+  cyan: '#0e7490',
+  white: '#e4e4e7',
+  brightBlack: '#52525b',
+  brightRed: '#dc2626',
+  brightGreen: '#166534',
+  brightYellow: '#b45309',
+  brightBlue: '#2563eb',
+  brightMagenta: '#c026d3',
+  brightCyan: '#155e75',
+  brightWhite: '#f4f4f5',
 } as const
 const DRACULA_THEME = {
   background: '#282a36',
@@ -143,7 +168,9 @@ const MIN_LIGHT_THEME = {
   black: '#212121',
   red: '#d32f2f',
   green: '#22863a',
-  yellow: '#ff9800',
+  // #ff9800 (Material orange 500) is 2.16:1 on white; darken the yellow
+  // slots to keep the author's amber intent while meeting WCAG AA (#97).
+  yellow: '#b45309',
   blue: '#1976d2',
   magenta: '#6f42c1',
   cyan: '#2b5581',
@@ -151,7 +178,7 @@ const MIN_LIGHT_THEME = {
   brightBlack: '#757575',
   brightRed: '#d32f2f',
   brightGreen: '#22863a',
-  brightYellow: '#ff9800',
+  brightYellow: '#b45309',
   brightBlue: '#1976d2',
   brightMagenta: '#6f42c1',
   brightCyan: '#2b5581',
@@ -218,4 +245,24 @@ export function getXtermTheme(theme: Theme) {
   if (theme === 'dark-lemon') return DARK_LEMON_THEME
   if (theme === 'golden-premium') return GOLDEN_PREMIUM_THEME
   return DARK_THEME
+}
+
+/**
+ * Whether a theme paints a light terminal background. Only these themes get
+ * the render-time contrast floor, so the ten dark themes stay byte-identical.
+ */
+export function isLightTerminalTheme(theme: Theme): boolean {
+  return theme === 'light' || theme === 'min-light'
+}
+
+/**
+ * xterm's `minimumContrastRatio` for a theme, or `undefined` to keep xterm's
+ * default (1). On light backgrounds even a correct palette cannot cover
+ * 256-color / truecolor output from agents (e.g. `\x1b[38;5;N`), and the
+ * white/brightWhite slots double as painted backgrounds, so we enforce a
+ * WCAG-AA floor of 4.5 at render time — the same approach VS Code ships by
+ * default. Dark themes are left untouched (#97).
+ */
+export function getMinimumContrastRatio(theme: Theme): number | undefined {
+  return isLightTerminalTheme(theme) ? 4.5 : undefined
 }

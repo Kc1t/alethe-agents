@@ -81,7 +81,7 @@ import {
   makeXtermLink,
 } from './terminalLinks'
 import { TERMINAL_WRITE_FRAME_BUDGET, writePtyChunked, writePtyWithTimeout } from './terminalWrite'
-import { getXtermTheme, type LinkActionState } from './xtermThemes'
+import { getMinimumContrastRatio, getXtermTheme, type LinkActionState } from './xtermThemes'
 
 // Early exits trigger a single fresh-session retry.
 const EARLY_EXIT_MS = 4000
@@ -253,6 +253,9 @@ export function useXtermSession(params: {
       fontFamily: 'Cascadia Mono, Consolas, "Courier New", monospace',
       fontSize: 14,
       theme: getXtermTheme(terminalTheme),
+      // WCAG-AA render-time floor on light themes only; undefined keeps
+      // xterm's default (1) for dark themes (#97).
+      minimumContrastRatio: getMinimumContrastRatio(terminalTheme),
     })
     const fitAddon = new FitAddon()
     const searchAddon = new SearchAddon()
@@ -883,9 +886,7 @@ export function useXtermSession(params: {
         }
 
         const savedSession =
-          command && RESUMABLE_AGENTS.includes(command)
-            ? peekSession(sessionPersistenceKey)
-            : null
+          command && RESUMABLE_AGENTS.includes(command) ? peekSession(sessionPersistenceKey) : null
         const savedConversationId = savedConversationIdFor(savedSession, command, cwd)
         let resumeId = sessionId ?? savedConversationId
         // Fallback: se a tentativa anterior morreu no nascimento usando resume,
@@ -1424,7 +1425,8 @@ export function useXtermSession(params: {
           )
         }
         if (cancelled || !isPanelVisible || wasVisible) return
-        if (lastIoWhenHiddenRef.current !== null && ioAtNow() === lastIoWhenHiddenRef.current) return
+        if (lastIoWhenHiddenRef.current !== null && ioAtNow() === lastIoWhenHiddenRef.current)
+          return
         resyncTimer = window.setTimeout(() => {
           if (!cancelled) void resyncTerminalRef.current?.()
         }, PANEL_RESYNC_DEBOUNCE_MS)

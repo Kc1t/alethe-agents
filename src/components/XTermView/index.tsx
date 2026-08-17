@@ -31,7 +31,7 @@ import { useUiStore } from '../../stores/uiStore'
 import { type DetectedTerminalLink } from './terminalLinks'
 import { applyPromptHistoryInput, loadPromptHistory, PROMPT_HISTORY_KEY } from './terminalWrite'
 import { useXtermSession } from './useXtermSession'
-import { getXtermTheme, type LinkActionState } from './xtermThemes'
+import { getMinimumContrastRatio, getXtermTheme, type LinkActionState } from './xtermThemes'
 import styles from './XTermView.module.css'
 
 export type XTermViewProps = {
@@ -343,6 +343,9 @@ export function XTermView({
     const terminal = terminalRef.current
     if (!terminal) return
     terminal.options.theme = getXtermTheme(terminalTheme)
+    // 1 is xterm's default, so switching to a dark theme leaves rendering
+    // unchanged while light themes get the WCAG-AA floor (#97).
+    terminal.options.minimumContrastRatio = getMinimumContrastRatio(terminalTheme) ?? 1
   }, [terminalTheme])
 
   const configurePath = useCallback(
