@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  AGENT_INSTALL_CATALOG,
   installMethodsFor,
   installShellLine,
   type InstallToolchain,
@@ -19,21 +20,19 @@ const BARE: InstallToolchain = {
 }
 
 describe('installMethodsFor', () => {
-  it('offers the native installer first even when npm is available', () => {
+  it('offers only package-manager installers for Claude', () => {
     const methods = installMethodsFor('claude', { ...BARE, node: 'v22.3.0', npm: true })
-    expect(methods.map((method) => method.id)).toEqual(['native', 'npm'])
-    expect(methods[0].command).toContain('claude.ai/install.ps1')
+    expect(methods.map((method) => method.id)).toEqual(['npm'])
   })
 
   it('hides npm when the machine has no npm', () => {
     const methods = installMethodsFor('codex', BARE)
-    expect(methods.map((method) => method.id)).toEqual(['native'])
+    expect(methods).toEqual([])
   })
 
   it('surfaces winget for Claude only when winget exists', () => {
-    expect(installMethodsFor('claude', BARE).map((m) => m.id)).toEqual(['native'])
+    expect(installMethodsFor('claude', BARE)).toEqual([])
     expect(installMethodsFor('claude', { ...BARE, winget: true }).map((m) => m.id)).toEqual([
-      'native',
       'winget',
     ])
   })
@@ -58,14 +57,35 @@ describe('installMethodsFor', () => {
 
   it('treats a missing toolchain probe as "only requirement-free methods"', () => {
     expect(installMethodsFor('opencode', null)).toEqual([])
-    expect(installMethodsFor('antigravity', null).map((m) => m.id)).toEqual(['native'])
+    expect(installMethodsFor('antigravity', null)).toEqual([])
   })
 
-  it('installs Freebuff through npm and Mimo through its own script', () => {
+  it('installs Freebuff and Mimo through npm', () => {
     expect(installMethodsFor('freebuff', { ...BARE, npm: true })[0].command).toBe(
       'npm install -g freebuff',
     )
-    expect(installMethodsFor('mimo', BARE).map((method) => method.id)).toEqual(['native'])
+    expect(installMethodsFor('mimo', BARE)).toEqual([])
+    expect(installMethodsFor('mimo', { ...BARE, npm: true })[0].command).toBe(
+      'npm install -g @mimo-ai/cli',
+    )
+  })
+})
+
+describe('AGENT_INSTALL_CATALOG security', () => {
+  const commands = Object.values(AGENT_INSTALL_CATALOG).flatMap((entry) =>
+    entry.methods.map((method) => method.command),
+  )
+
+  it('contains no pipe-to-shell constructs', () => {
+    const shellPipeOrExpressionExecution = /\||\b(?:iex|invoke-expression)\b/i
+
+    expect(commands.filter((command) => shellPipeOrExpressionExecution.test(command))).toEqual([])
+  })
+
+  it('contains no mutable remote script URLs', () => {
+    const remoteUrl = /https?:\/\//i
+
+    expect(commands.filter((command) => remoteUrl.test(command))).toEqual([])
   })
 })
 
@@ -75,9 +95,9 @@ describe('needsNodeToolchain', () => {
     expect(needsNodeToolchain('freebuff', { ...BARE, npm: true })).toBe(false)
   })
 
-  it('stays quiet when the agent has a installer that does not need Node', () => {
-    expect(needsNodeToolchain('claude', BARE)).toBe(false)
-    expect(needsNodeToolchain('mimo', BARE)).toBe(false)
+  it('flags agents whose remaining safe method needs Node', () => {
+    expect(needsNodeToolchain('claude', BARE)).toBe(true)
+    expect(needsNodeToolchain('mimo', BARE)).toBe(true)
   })
 
   it('stays quiet for agents with no installer at all', () => {
@@ -103,7 +123,7 @@ describe('uninstallMethodsFor', () => {
     )
   })
 
-  it('never offers to undo a native install script', () => {
+  it('returns nothing when no package-manager install is available', () => {
     expect(uninstallMethodsFor('antigravity', { ...BARE, npm: true })).toEqual([])
     expect(uninstallMethodsFor('claude', BARE)).toEqual([])
   })
@@ -120,6 +140,8 @@ describe('uninstallMethodsFor', () => {
 
 describe('installShellLine', () => {
   it('closes the shell so the runner can detect completion', () => {
-    expect(installShellLine('npm install -g opencode-ai')).toBe('npm install -g opencode-ai; exit\r')
+    expect(installShellLine('npm install -g opencode-ai')).toBe(
+      'npm install -g opencode-ai; exit\r',
+    )
   })
 })
