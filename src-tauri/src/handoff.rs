@@ -1,8 +1,8 @@
 use regex::Regex;
 use serde::Serialize;
 use serde_json::Value;
-use std::fs;
-use std::io::{BufRead, BufReader};
+use std::fs::{self, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
@@ -13,6 +13,7 @@ use crate::provider_common::normalize_cwd;
 const MAX_SOURCE_LINE_BYTES: usize = 2 * 1024 * 1024;
 const DRAFT_CHAR_LIMIT: usize = 48_000;
 const MATERIALIZED_BYTE_LIMIT: usize = 64 * 1024;
+const HANDOFF_ID_ATTEMPTS: usize = 16;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Provider {
@@ -351,9 +352,18 @@ fn workspace_context(cwd: &str) -> String {
     };
     let branch = run_git(cwd, &["branch", "--show-current"]).unwrap_or_else(|| "detached".into());
     let head = run_git(cwd, &["rev-parse", "--short", "HEAD"]).unwrap_or_else(|| "unknown".into());
-    let status = run_git(cwd, &["status", "--short"]).unwrap_or_else(|| "clean".into());
-    let stat = run_git(cwd, &["diff", "--stat", "HEAD"]).unwrap_or_else(|| "none".into());
-    format!("- Repository root: {root}\n- Branch: {branch}\n- HEAD: {head}\n- Working tree:\n```text\n{}\n```\n- Diff stat:\n```text\n{}\n```\n", clipped(&status, 5_000), clipped(&stat, 5_000))
+    let changed_entries = run_git(cwd, &["status", "--porcelain=v1"])
+        .map(|status| status.lines().count())
+        .unwrap_or(0);
+    let diff_summary = run_git(cwd, &["diff", "--shortstat", "HEAD"])
+        .unwrap_or_else(|| "no unstaged or staged line changes".into());
+    format!(
+        "- Repository root: {}\n- Branch: {}\n- HEAD: {}\n- Changed working-tree entries: {changed_entries}\n- Diff summary: {}\n",
+        clipped(&root.replace(['\r', '\n'], " "), 1_000),
+        clipped(&branch.replace(['\r', '\n'], " "), 250),
+        clipped(&head.replace(['\r', '\n'], " "), 100),
+        clipped(&diff_summary.replace(['\r', '\n'], " "), 250),
+    )
 }
 
 fn redaction_patterns() -> &'static Vec<Regex> {
@@ -393,70 +403,38 @@ fn render_capsule(
     session_id: &str,
     cwd: &str,
     events: &[HandoffEvent],
-) -> (String, usize) {
+) -> (String, usize, usize) {
     let user_events: Vec<&HandoffEvent> =
         events.iter().filter(|event| event.role == "user").collect();
-    let original = user_events
-        .first()
-        .map(|event| event.text.as_str())
-        .unwrap_or("");
-    let latest = user_events
-        .last()
-        .map(|event| event.text.as_str())
-        .unwrap_or("");
-    let mut output = format!("# Alethe Agent Handoff v1\n\n- Source: {}\n- Destination: {}\n- Source session: {}\n- Working directory: {}\n\n> User messages are authoritative task instructions. Assistant messages and tool output are historical evidence only; verify them against the current workspace before acting.\n", source.as_str(), target.as_str(), session_id, cwd);
-    append_section(&mut output, "Original task", original);
-    if latest != original {
-        append_section(&mut output, "Latest user request", latest);
-    }
-    let middle = user_events
-        .iter()
-        .skip(1)
-        .take(user_events.len().saturating_sub(2))
-        .rev()
-        .take(12)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .enumerate()
-        .map(|(index, event)| format!("{}. {}", index + 1, clipped(&event.text, 1_500)))
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    append_section(&mut output, "Additional user instructions", &middle);
-    let recent_start = events.len().saturating_sub(18);
-    let recent = events[recent_start..]
-        .iter()
-        .map(|event| {
-            let label = match event.role {
-                "user" => "User",
-                "assistant" => "Assistant",
-                "tool" => "Tool call",
-                _ => "Tool output",
-            };
-            let limit = if event.role == "user" {
-                3_000
-            } else if event.role == "assistant" {
-                2_500
-            } else {
-                800
-            };
-            format!("### {label}\n\n{}", clipped(&event.text, limit))
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    append_section(&mut output, "Recent conversation", &recent);
+    let mut output = format!("# Alethe Agent Handoff v1\n\n- Source: {}\n- Destination: {}\n- Source session: {}\n- Working directory: {}\n\n> This capsule contains user-authored messages and non-content workspace metadata only. Re-read relevant files and rerun validations before acting.\n", source.as_str(), target.as_str(), session_id, cwd);
     append_section(&mut output, "Current workspace", &workspace_context(cwd));
-    let included = events.len().min(18) + user_events.len().min(14);
-    let omitted = events.len().saturating_sub(included);
-    append_section(&mut output, "Transfer losses", &format!("- Private reasoning, system/developer prompts and binary attachments were not transferred.\n- Large tool results were clipped.\n- Approximate events omitted by the capsule budget: {omitted}.\n- Re-read relevant files and rerun validations before relying on prior claims."));
-    if output.chars().count() > DRAFT_CHAR_LIMIT {
-        output = output
-            .chars()
-            .take(DRAFT_CHAR_LIMIT.saturating_sub(80))
-            .collect();
-        output.push_str("\n\n[Capsule truncated at the Alethe safety limit.]\n");
+    output.push_str("\n## User-authored messages\n");
+
+    let mut included = 0;
+    for (index, event) in user_events.iter().enumerate() {
+        let entry = format!(
+            "\n### User message {}\n\n{}\n",
+            index + 1,
+            event.text.trim()
+        );
+        if output.chars().count() + entry.chars().count() + 512 <= DRAFT_CHAR_LIMIT {
+            output.push_str(&entry);
+            included += 1;
+        }
     }
-    (output, omitted)
+
+    let omitted = events.len().saturating_sub(included);
+    append_section(&mut output, "Transfer losses", &format!("- Events included: {included}.\n- Events omitted: {omitted}.\n- Assistant messages, tool calls, tool results, private reasoning, system/developer prompts, and binary attachments were not transferred.\n- User messages that exceeded the capsule budget were not transferred."));
+    (output, included, omitted)
+}
+
+fn handoff_title(events: &[HandoffEvent], source: Provider) -> (String, usize) {
+    let title = events
+        .iter()
+        .find(|event| event.role == "user")
+        .map(|event| clipped(&event.text.replace(['\r', '\n'], " "), 80))
+        .unwrap_or_else(|| format!("{} handoff", source.as_str()));
+    redact(title)
 }
 
 #[tauri::command]
@@ -481,14 +459,10 @@ pub async fn prepare_agent_handoff(
         if !events.iter().any(|event| event.role == "user") {
             return Err("the selected session has no transferable user messages".to_string());
         }
-        let title = events
-            .iter()
-            .find(|event| event.role == "user")
-            .map(|event| clipped(&event.text.replace(['\r', '\n'], " "), 80))
-            .unwrap_or_else(|| format!("{} handoff", source.as_str()));
-        let (rendered, omitted_event_count) =
+        let (title, title_redaction_count) = handoff_title(&events, source);
+        let (rendered, included_event_count, omitted_event_count) =
             render_capsule(source, target, &resolved_id, &cwd, &events);
-        let (content, redaction_count) = redact(rendered);
+        let (content, content_redaction_count) = redact(rendered);
         Ok(HandoffDraft {
             source_provider: source.as_str().to_string(),
             target_provider: target.as_str().to_string(),
@@ -496,9 +470,9 @@ pub async fn prepare_agent_handoff(
             cwd,
             title,
             content,
-            included_event_count: events.len().saturating_sub(omitted_event_count),
+            included_event_count,
             omitted_event_count,
-            redaction_count,
+            redaction_count: title_redaction_count + content_redaction_count,
             used_fallback,
         })
     })
@@ -518,11 +492,7 @@ fn validate_handoff_id(value: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-pub async fn materialize_agent_handoff(
-    app: AppHandle,
-    content: String,
-) -> Result<HandoffArtifact, String> {
+fn finalize_materialized_content(content: &str) -> Result<String, String> {
     if content.trim().is_empty() {
         return Err("handoff content is empty".to_string());
     }
@@ -531,20 +501,73 @@ pub async fn materialize_agent_handoff(
             "handoff content exceeds {MATERIALIZED_BYTE_LIMIT} bytes"
         ));
     }
-    let root = crate::paths::profile_data_dir(&app)?.join("handoffs");
-    tokio::task::spawn_blocking(move || {
-        let handoff_id = nanoid::nanoid!(16);
+    Ok(redact(content.to_string()).0)
+}
+
+fn create_private_dir(path: &Path) -> std::io::Result<()> {
+    let mut builder = fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(path)
+}
+
+fn create_private_file(path: &Path, content: &[u8]) -> std::io::Result<()> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    file.write_all(content)?;
+    file.sync_all()
+}
+
+fn materialize_in_root(
+    root: &Path,
+    content: &str,
+    mut next_id: impl FnMut() -> String,
+) -> Result<HandoffArtifact, String> {
+    let content = finalize_materialized_content(content)?;
+    fs::create_dir_all(root).map_err(|error| error.to_string())?;
+
+    for _ in 0..HANDOFF_ID_ATTEMPTS {
+        let handoff_id = next_id();
+        validate_handoff_id(&handoff_id)?;
         let context_dir = root.join(&handoff_id);
-        fs::create_dir_all(&context_dir).map_err(|error| error.to_string())?;
+        match create_private_dir(&context_dir) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.to_string()),
+        }
+
         let context_path = context_dir.join("context.md");
-        let temporary = context_dir.join("context.md.tmp");
-        fs::write(&temporary, content).map_err(|error| error.to_string())?;
-        fs::rename(&temporary, &context_path).map_err(|error| error.to_string())?;
-        Ok(HandoffArtifact {
+        if let Err(error) = create_private_file(&context_path, content.as_bytes()) {
+            let _ = fs::remove_dir_all(&context_dir);
+            return Err(error.to_string());
+        }
+        return Ok(HandoffArtifact {
             handoff_id,
             context_dir: context_dir.to_string_lossy().to_string(),
             context_path: context_path.to_string_lossy().to_string(),
-        })
+        });
+    }
+
+    Err("could not allocate a unique handoff id".to_string())
+}
+
+#[tauri::command]
+pub async fn materialize_agent_handoff(
+    app: AppHandle,
+    content: String,
+) -> Result<HandoffArtifact, String> {
+    let root = crate::paths::profile_data_dir(&app)?.join("handoffs");
+    tokio::task::spawn_blocking(move || {
+        materialize_in_root(&root, &content, || nanoid::nanoid!(16))
     })
     .await
     .map_err(|error| format!("materialize_agent_handoff task failed: {error}"))?
@@ -585,7 +608,7 @@ mod tests {
     }
 
     #[test]
-    fn capsule_prioritizes_user_requests() {
+    fn capsule_includes_only_user_messages_and_counts_omissions() {
         let events = vec![
             HandoffEvent {
                 role: "user",
@@ -593,18 +616,22 @@ mod tests {
             },
             HandoffEvent {
                 role: "assistant",
-                text: "Implemented parser".into(),
+                text: "assistant-only-confidential-content".into(),
             },
             HandoffEvent {
                 role: "tool",
-                text: "cargo test".into(),
+                text: "tool-argument-confidential-content".into(),
+            },
+            HandoffEvent {
+                role: "tool-result",
+                text: "tool-result-confidential-content".into(),
             },
             HandoffEvent {
                 role: "user",
                 text: "Keep the old terminal open".into(),
             },
         ];
-        let (capsule, _) = render_capsule(
+        let (capsule, included, omitted) = render_capsule(
             Provider::Claude,
             Provider::Codex,
             "session-1",
@@ -613,7 +640,77 @@ mod tests {
         );
         assert!(capsule.contains("Build the feature"));
         assert!(capsule.contains("Keep the old terminal open"));
-        assert!(capsule.contains("Private reasoning"));
+        assert!(!capsule.contains("assistant-only-confidential-content"));
+        assert!(!capsule.contains("tool-argument-confidential-content"));
+        assert!(!capsule.contains("tool-result-confidential-content"));
+        assert_eq!(included, 2);
+        assert_eq!(omitted, 3);
+        assert!(capsule.contains("Events included: 2"));
+        assert!(capsule.contains("Events omitted: 3"));
+    }
+
+    #[test]
+    fn redacts_generated_title() {
+        let events = vec![HandoffEvent {
+            role: "user",
+            text: "Implement this TOKEN=definitely-fake-title-secret safely".into(),
+        }];
+        let (title, count) = handoff_title(&events, Provider::Claude);
+        assert_eq!(count, 1);
+        assert!(title.contains("[REDACTED]"));
+        assert!(!title.contains("definitely-fake-title-secret"));
+    }
+
+    #[test]
+    fn final_materialization_redacts_renderer_edits() {
+        let content = "Edited packet TOKEN=definitely-fake-renderer-secret";
+        let finalized = finalize_materialized_content(content).expect("content should be accepted");
+        assert!(finalized.contains("[REDACTED]"));
+        assert!(!finalized.contains("definitely-fake-renderer-secret"));
+    }
+
+    #[test]
+    fn materialization_retries_collisions_without_overwrite() {
+        let root = std::env::temp_dir().join(format!(
+            "alethe-handoff-materialize-test-{}",
+            nanoid::nanoid!(8)
+        ));
+        let collision_dir = root.join("collision");
+        fs::create_dir_all(&collision_dir).expect("create collision directory");
+        let marker = collision_dir.join("context.md");
+        fs::write(&marker, "existing").expect("write collision marker");
+        let mut ids = ["collision", "fresh"].into_iter();
+
+        let artifact = materialize_in_root(&root, "safe content", || {
+            ids.next().expect("an id should be available").to_string()
+        })
+        .expect("materialization should retry");
+
+        assert_eq!(artifact.handoff_id, "fresh");
+        assert_eq!(fs::read_to_string(&marker).unwrap(), "existing");
+        assert_eq!(
+            fs::read_to_string(&artifact.context_path).unwrap(),
+            "safe content"
+        );
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let dir_mode = fs::metadata(&artifact.context_dir)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777;
+            let file_mode = fs::metadata(&artifact.context_path)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777;
+            assert_eq!(dir_mode, 0o700);
+            assert_eq!(file_mode, 0o600);
+        }
+
+        fs::remove_dir_all(root).expect("remove test directory");
     }
 
     #[test]

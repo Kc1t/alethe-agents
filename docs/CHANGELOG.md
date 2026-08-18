@@ -10,6 +10,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Changed
+
+- Agent handoff packets now transfer only user-authored messages and non-content workspace metadata;
+  edited packets are redacted again when saved, and temporary context files use private,
+  no-overwrite storage.
+
 ## [1.6.0] — 2026-08-17
 
 ### Added
