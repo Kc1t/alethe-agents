@@ -22,7 +22,28 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": ["'none'"],
+        "object-src": ["'none'"],
+        "base-uri": ["'none'"],
+        "form-action": ["'none'"],
+        "frame-ancestors": ["'none'"],
+        "script-src": ["'self'"],
+        "style-src": ["'self'", "'unsafe-inline'"],
+        "img-src": ["'self'", "data:", "asset:", "http://asset.localhost", "http:", "https:"],
+        "media-src": ["'self'", "asset:", "http://asset.localhost"],
+        "font-src": ["'self'"],
+        "connect-src": [
+          "'self'",
+          "ipc:",
+          "http://ipc.localhost",
+          "https://registry.npmjs.org",
+          "https://api.github.com"
+        ],
+        "worker-src": ["'none'"],
+        "frame-src": ["asset:", "http://asset.localhost", "http:", "https:"]
+      },
+      "devCsp": null
     }
   },
   "bundle": {
