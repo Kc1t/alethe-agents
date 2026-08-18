@@ -1956,6 +1956,13 @@ export const en = {
   'mcp.registryNoResults': 'No server matched.',
   'mcp.registryOffline': 'The registry could not be reached and nothing was cached for this search.',
   'mcp.registryStale': 'Registry unreachable — showing the copy saved on {date}.',
+  'mcp.registryReviewTitle': 'Registry selection',
+  'mcp.registryReviewOrigin': 'Registry origin',
+  'mcp.registryReviewName': 'Published title',
+  'mcp.registryReviewVersion': 'Published version',
+  'mcp.registryReviewRepository': 'Repository',
+  'mcp.registryAcknowledgement':
+    'I understand this is third-party software that may execute local code or contact remote services when an agent launches, and that a registry listing is not an endorsement by Alethe.',
   'mcp.addWritten': '{count} server(s) added to {agents}',
   'mcp.fieldName': 'Name',
   'mcp.fieldTransport': 'Transport',
