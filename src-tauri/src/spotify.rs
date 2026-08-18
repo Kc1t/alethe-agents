@@ -1,15 +1,10 @@
-// Spotify integration — OAuth Authorization Code flow + currently-playing polling.
-//
-// Fluxo:
+// Spotify integration — OAuth Authorization Code flow and currently-playing polling.
+// Client secrets and OAuth tokens are profile-scoped in the operating system credential store.
 
-// 2. Trocamos `code` por `access_token`/`refresh_token` no /api/token.
-// 3. Tokens persistem em `app_local_data_dir/spotify_tokens.json`.
-// 4. `spotify_get_current` chama /me/player/currently-playing, refrescando
-
-//
-
+use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::net::TcpListener;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -18,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
 use crate::paths::app_data_dir;
+use crate::secure_store::{OsSecretStore, SecretKind, SecretStore};
 
 const REDIRECT_URI: &str = "http://127.0.0.1:8888/callback";
 const SCOPES: &str =
@@ -47,30 +43,45 @@ struct SpotifyCredentials {
     client_secret: String,
 }
 
+fn active_profile_id(app: &AppHandle) -> Result<String, String> {
+    Ok(crate::profiles::ensure_profiles_index(app)?.active_profile_id)
+}
+
 fn resolve_credentials(
+    profile_id: &str,
     client_id: Option<String>,
     client_secret: Option<String>,
+    store: &impl SecretStore,
 ) -> Result<SpotifyCredentials, String> {
-    let cid = client_id
-        .filter(|v| !v.trim().is_empty())
+    let client_id = client_id
+        .filter(|value| !value.trim().is_empty())
         .or_else(|| std::env::var("SPOTIFY_CLIENT_ID").ok())
         .unwrap_or_default()
         .trim()
         .to_string();
-    let secret = client_secret
-        .filter(|v| !v.trim().is_empty())
+    let supplied_secret = client_secret.filter(|value| !value.trim().is_empty());
+    let stored_secret = if supplied_secret.is_none() {
+        store
+            .get(profile_id, SecretKind::SpotifyClientSecret)
+            .map_err(|error| error.to_string())?
+            .filter(|value| !value.trim().is_empty())
+    } else {
+        None
+    };
+    let client_secret = supplied_secret
+        .or(stored_secret)
         .or_else(|| std::env::var("SPOTIFY_CLIENT_SECRET").ok())
         .unwrap_or_default()
         .trim()
         .to_string();
-    if cid.is_empty() || secret.is_empty() {
+    if client_id.is_empty() || client_secret.is_empty() {
         return Err(
             "spotify credentials not configured — set Client ID/Secret in Preferences".to_string(),
         );
     }
     Ok(SpotifyCredentials {
-        client_id: cid,
-        client_secret: secret,
+        client_id,
+        client_secret,
     })
 }
 
@@ -85,39 +96,357 @@ fn rand_state() -> String {
     nanoid::nanoid!(24)
 }
 
-fn tokens_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+fn tokens_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app_data_dir(app)?.join("spotify_tokens.json"))
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-struct StoredTokens {
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+struct StoredTokenFile {
+    #[serde(default)]
     access_token: String,
+    #[serde(default)]
     refresh_token: String,
-    /// epoch seconds when access_token expires
+    #[serde(default)]
     expires_at: u64,
 }
 
-fn load_tokens(app: &AppHandle) -> Option<StoredTokens> {
-    let path = tokens_path(app).ok()?;
-    let raw = std::fs::read_to_string(&path).ok()?;
-    serde_json::from_str(&raw).ok()
+#[derive(Serialize, Clone, Debug)]
+struct TokenMetadata {
+    expires_at: u64,
 }
 
-fn save_tokens(app: &AppHandle, tokens: &StoredTokens) -> Result<(), String> {
-    let path = tokens_path(app).map_err(|e| e.to_string())?;
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct StoredTokens {
+    access_token: String,
+    refresh_token: String,
+    expires_at: u64,
+}
+
+type SecretSnapshot = Vec<(SecretKind, Option<String>)>;
+
+fn write_raw_atomic(path: &Path, raw: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        fs::create_dir_all(parent).map_err(|_| "spotify_metadata_write_failed".to_string())?;
     }
-    let json = serde_json::to_string(tokens).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())
+    let temporary = path.with_extension(format!("json.{}.tmp", nanoid::nanoid!(10)));
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(&temporary)
+        .map_err(|_| "spotify_metadata_write_failed".to_string())?;
+    if file
+        .write_all(raw.as_bytes())
+        .and_then(|_| file.sync_all())
+        .is_err()
+    {
+        let _ = fs::remove_file(&temporary);
+        return Err("spotify_metadata_write_failed".to_string());
+    }
+    #[cfg(windows)]
+    if path.exists() {
+        fs::remove_file(path).map_err(|_| "spotify_metadata_write_failed".to_string())?;
+    }
+    if fs::rename(&temporary, path).is_err() {
+        let _ = fs::remove_file(&temporary);
+        return Err("spotify_metadata_write_failed".to_string());
+    }
+    Ok(())
+}
+
+fn write_json_atomic(path: &Path, value: &impl Serialize) -> Result<(), String> {
+    let raw = serde_json::to_string_pretty(value)
+        .map_err(|_| "spotify_metadata_write_failed".to_string())?;
+    write_raw_atomic(path, &raw)
+}
+
+fn restore_secrets(
+    store: &impl SecretStore,
+    profile_id: &str,
+    snapshot: &SecretSnapshot,
+) -> Result<(), String> {
+    for (kind, previous) in snapshot {
+        match previous {
+            Some(value) => store.set(profile_id, *kind, value),
+            None => store.delete(profile_id, *kind),
+        }
+        .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+fn replace_secrets(
+    store: &impl SecretStore,
+    profile_id: &str,
+    replacements: &[(SecretKind, &str)],
+) -> Result<SecretSnapshot, String> {
+    let mut snapshot = Vec::with_capacity(replacements.len());
+    for (kind, _) in replacements {
+        snapshot.push((
+            *kind,
+            store
+                .get(profile_id, *kind)
+                .map_err(|error| error.to_string())?,
+        ));
+    }
+
+    for (kind, value) in replacements {
+        let result = store
+            .set(profile_id, *kind, value)
+            .map_err(|error| error.to_string())
+            .and_then(|()| {
+                let verified = store
+                    .get(profile_id, *kind)
+                    .map_err(|error| error.to_string())?;
+                if verified.as_deref() == Some(*value) {
+                    Ok(())
+                } else {
+                    Err("secure_store_verification_failed".to_string())
+                }
+            });
+        if let Err(error) = result {
+            if restore_secrets(store, profile_id, &snapshot).is_err() {
+                return Err("secure_store_rollback_failed".to_string());
+            }
+            return Err(error);
+        }
+    }
+    Ok(snapshot)
+}
+
+fn delete_spotify_secrets(store: &impl SecretStore, profile_id: &str) -> Result<(), String> {
+    let kinds = [
+        SecretKind::SpotifyClientSecret,
+        SecretKind::SpotifyAccessToken,
+        SecretKind::SpotifyRefreshToken,
+    ];
+    let mut snapshot = Vec::with_capacity(kinds.len());
+    for kind in kinds {
+        snapshot.push((
+            kind,
+            store
+                .get(profile_id, kind)
+                .map_err(|error| error.to_string())?,
+        ));
+    }
+    for kind in kinds {
+        if let Err(error) = store
+            .delete(profile_id, kind)
+            .map_err(|error| error.to_string())
+        {
+            if restore_secrets(store, profile_id, &snapshot).is_err() {
+                return Err("secure_store_rollback_failed".to_string());
+            }
+            return Err(error);
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn migrate_client_secret_content(
+    content: &str,
+    profile_id: &str,
+    store: &impl SecretStore,
+) -> Result<String, String> {
+    let mut value: serde_json::Value =
+        serde_json::from_str(content).map_err(|_| "invalid_projects_file".to_string())?;
+    let Some(preferences) = value
+        .get_mut("preferences")
+        .and_then(serde_json::Value::as_object_mut)
+    else {
+        return Ok(content.to_string());
+    };
+    let Some(legacy_value) = preferences.get("spotifyClientSecret") else {
+        return Ok(content.to_string());
+    };
+    let plaintext = legacy_value.as_str().unwrap_or_default().trim().to_string();
+    if !plaintext.is_empty() {
+        let existing = store
+            .get(profile_id, SecretKind::SpotifyClientSecret)
+            .map_err(|error| error.to_string())?
+            .filter(|secret| !secret.trim().is_empty());
+        if existing.is_none() {
+            replace_secrets(
+                store,
+                profile_id,
+                &[(SecretKind::SpotifyClientSecret, plaintext.as_str())],
+            )?;
+        }
+    }
+    preferences.remove("spotifyClientSecret");
+    serde_json::to_string_pretty(&value).map_err(|_| "invalid_projects_file".to_string())
+}
+
+pub(crate) fn sanitize_client_secret_content(content: &str) -> Result<String, String> {
+    let mut value: serde_json::Value =
+        serde_json::from_str(content).map_err(|_| "invalid_projects_file".to_string())?;
+    let removed = value
+        .get_mut("preferences")
+        .and_then(serde_json::Value::as_object_mut)
+        .and_then(|preferences| preferences.remove("spotifyClientSecret"))
+        .is_some();
+    if !removed {
+        return Ok(content.to_string());
+    }
+    serde_json::to_string_pretty(&value).map_err(|_| "invalid_projects_file".to_string())
+}
+
+fn load_tokens_from(
+    path: &Path,
+    profile_id: &str,
+    store: &impl SecretStore,
+) -> Result<Option<StoredTokens>, String> {
+    let (stored, had_plaintext_fields) = match fs::read_to_string(path) {
+        Ok(raw) => {
+            let value: serde_json::Value =
+                serde_json::from_str(&raw).map_err(|_| "invalid_spotify_metadata".to_string())?;
+            let had_fields =
+                value.get("access_token").is_some() || value.get("refresh_token").is_some();
+            let stored = serde_json::from_value::<StoredTokenFile>(value)
+                .map_err(|_| "invalid_spotify_metadata".to_string())?;
+            (stored, had_fields)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            (StoredTokenFile::default(), false)
+        }
+        Err(_) => return Err("spotify_metadata_read_failed".to_string()),
+    };
+
+    let mut access = store
+        .get(profile_id, SecretKind::SpotifyAccessToken)
+        .map_err(|error| error.to_string())?
+        .filter(|secret| !secret.trim().is_empty());
+    let mut refresh = store
+        .get(profile_id, SecretKind::SpotifyRefreshToken)
+        .map_err(|error| error.to_string())?
+        .filter(|secret| !secret.trim().is_empty());
+    let mut replacements = Vec::new();
+    if access.is_none() && !stored.access_token.trim().is_empty() {
+        replacements.push((SecretKind::SpotifyAccessToken, stored.access_token.as_str()));
+    }
+    if refresh.is_none() && !stored.refresh_token.trim().is_empty() {
+        replacements.push((
+            SecretKind::SpotifyRefreshToken,
+            stored.refresh_token.as_str(),
+        ));
+    }
+    if !replacements.is_empty() {
+        replace_secrets(store, profile_id, &replacements)?;
+        access = store
+            .get(profile_id, SecretKind::SpotifyAccessToken)
+            .map_err(|error| error.to_string())?
+            .filter(|secret| !secret.trim().is_empty());
+        refresh = store
+            .get(profile_id, SecretKind::SpotifyRefreshToken)
+            .map_err(|error| error.to_string())?
+            .filter(|secret| !secret.trim().is_empty());
+    }
+    if had_plaintext_fields {
+        write_json_atomic(
+            path,
+            &TokenMetadata {
+                expires_at: stored.expires_at,
+            },
+        )?;
+    }
+
+    match (access, refresh) {
+        (None, None) => Ok(None),
+        (Some(access_token), Some(refresh_token)) => Ok(Some(StoredTokens {
+            access_token,
+            refresh_token,
+            expires_at: stored.expires_at,
+        })),
+        _ => Err("spotify_secure_credentials_incomplete".to_string()),
+    }
+}
+
+pub(crate) fn migrate_profile_plaintext_files(
+    profile_dir: &Path,
+    profile_id: &str,
+    store: &impl SecretStore,
+) -> Result<(), String> {
+    let projects_path = profile_dir.join("projects.json");
+    if projects_path.exists() {
+        let content = fs::read_to_string(&projects_path)
+            .map_err(|_| "spotify_projects_read_failed".to_string())?;
+        let migrated = migrate_client_secret_content(&content, profile_id, store)?;
+        if migrated != content {
+            write_raw_atomic(&projects_path, &migrated)?;
+        }
+    }
+    let _ = load_tokens_from(&profile_dir.join("spotify_tokens.json"), profile_id, store)?;
+    Ok(())
+}
+
+fn load_tokens(app: &AppHandle) -> Result<Option<StoredTokens>, String> {
+    let profile_id = active_profile_id(app)?;
+    load_tokens_from(&tokens_path(app)?, &profile_id, &OsSecretStore)
+}
+
+fn save_tokens_from(
+    path: &Path,
+    profile_id: &str,
+    store: &impl SecretStore,
+    tokens: &StoredTokens,
+    client_secret: Option<&str>,
+) -> Result<(), String> {
+    let mut replacements = vec![
+        (SecretKind::SpotifyAccessToken, tokens.access_token.as_str()),
+        (
+            SecretKind::SpotifyRefreshToken,
+            tokens.refresh_token.as_str(),
+        ),
+    ];
+    if let Some(secret) = client_secret.filter(|secret| !secret.trim().is_empty()) {
+        replacements.push((SecretKind::SpotifyClientSecret, secret));
+    }
+    let snapshot = replace_secrets(store, profile_id, &replacements)?;
+    if let Err(error) = write_json_atomic(
+        path,
+        &TokenMetadata {
+            expires_at: tokens.expires_at,
+        },
+    ) {
+        if restore_secrets(store, profile_id, &snapshot).is_err() {
+            return Err("secure_store_rollback_failed".to_string());
+        }
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn save_tokens(
+    app: &AppHandle,
+    tokens: &StoredTokens,
+    client_secret: Option<&str>,
+) -> Result<(), String> {
+    let profile_id = active_profile_id(app)?;
+    save_tokens_from(
+        &tokens_path(app)?,
+        &profile_id,
+        &OsSecretStore,
+        tokens,
+        client_secret,
+    )
 }
 
 fn delete_tokens(app: &AppHandle) -> Result<(), String> {
+    let profile_id = active_profile_id(app)?;
+    delete_spotify_secrets(&OsSecretStore, &profile_id)?;
     let path = tokens_path(app)?;
     if path.exists() {
-        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+        fs::remove_file(path).map_err(|_| "spotify_metadata_delete_failed".to_string())?;
     }
     Ok(())
+}
+
+pub(crate) fn delete_profile_secrets(profile_id: &str) -> Result<(), String> {
+    delete_spotify_secrets(&OsSecretStore, profile_id)
 }
 
 #[derive(Deserialize)]
@@ -151,8 +480,7 @@ async fn exchange_code(
         .await
         .map_err(|e| format!("token request: {e}"))?;
     if !resp.status().is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("token exchange failed: {body}"));
+        return Err(format!("token exchange failed ({})", resp.status()));
     }
     resp.json::<TokenResponse>()
         .await
@@ -180,31 +508,34 @@ async fn refresh_token(
         .await
         .map_err(|e| format!("refresh request: {e}"))?;
     if !resp.status().is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("refresh failed: {body}"));
+        return Err(format!("refresh failed ({})", resp.status()));
     }
     resp.json::<TokenResponse>()
         .await
         .map_err(|e| format!("refresh parse: {e}"))
 }
 
+fn rotated_refresh_token(previous: String, replacement: Option<String>) -> String {
+    replacement
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(previous)
+}
+
 async fn ensure_fresh_access_token(
     app: &AppHandle,
     credentials: &SpotifyCredentials,
 ) -> Result<String, String> {
-    let tokens = load_tokens(app).ok_or_else(|| "not connected".to_string())?;
+    let tokens = load_tokens(app)?.ok_or_else(|| "not connected".to_string())?;
     if tokens.expires_at > now_secs() + 30 {
         return Ok(tokens.access_token);
     }
     let refreshed = refresh_token(&tokens.refresh_token, credentials).await?;
     let new_tokens = StoredTokens {
         access_token: refreshed.access_token.clone(),
-        refresh_token: refreshed
-            .refresh_token
-            .unwrap_or(tokens.refresh_token.clone()),
+        refresh_token: rotated_refresh_token(tokens.refresh_token, refreshed.refresh_token),
         expires_at: now_secs() + refreshed.expires_in,
     };
-    save_tokens(app, &new_tokens)?;
+    save_tokens(app, &new_tokens, None)?;
     Ok(new_tokens.access_token)
 }
 
@@ -267,7 +598,8 @@ pub async fn spotify_login(
     client_id: Option<String>,
     client_secret: Option<String>,
 ) -> Result<(), String> {
-    let credentials = resolve_credentials(client_id, client_secret)?;
+    let profile_id = active_profile_id(&app)?;
+    let credentials = resolve_credentials(&profile_id, client_id, client_secret, &OsSecretStore)?;
 
     if LOGIN_IN_PROGRESS
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -323,7 +655,7 @@ pub async fn spotify_login(
             .ok_or_else(|| "spotify did not return a refresh token".to_string())?,
         expires_at: now_secs() + token_resp.expires_in,
     };
-    save_tokens(&app, &tokens)?;
+    save_tokens(&app, &tokens, Some(&credentials.client_secret))?;
     Ok(())
 }
 
@@ -333,8 +665,8 @@ pub fn spotify_logout(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn spotify_status(app: AppHandle) -> bool {
-    load_tokens(&app).is_some()
+pub fn spotify_status(app: AppHandle) -> Result<bool, String> {
+    Ok(load_tokens(&app)?.is_some())
 }
 
 #[derive(Serialize, Default)]
@@ -410,8 +742,7 @@ async fn fetch_recently_played(access: &str) -> Result<Option<NowPlaying>, Strin
         .map_err(|error| format!("recently played request: {error}"))?;
     let status = response.status();
     if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-        return Err(format!("recently played failed ({status}): {body}"));
+        return Err(format!("recently played failed ({status})"));
     }
     let json: serde_json::Value = response.json().await.map_err(|error| error.to_string())?;
     let track = json
@@ -428,10 +759,13 @@ pub async fn spotify_get_current(
     client_id: Option<String>,
     client_secret: Option<String>,
 ) -> Result<Option<NowPlaying>, String> {
-    let credentials = match resolve_credentials(client_id, client_secret) {
-        Ok(credentials) => credentials,
-        Err(_) => return Ok(None),
-    };
+    let profile_id = active_profile_id(&app)?;
+    let credentials =
+        match resolve_credentials(&profile_id, client_id, client_secret, &OsSecretStore) {
+            Ok(credentials) => credentials,
+            Err(error) if error.starts_with("secure_store_") => return Err(error),
+            Err(_) => return Ok(None),
+        };
     let access = match ensure_fresh_access_token(&app, &credentials).await {
         Ok(t) => t,
         Err(e) if e == "not connected" => return Ok(None),
@@ -449,8 +783,7 @@ pub async fn spotify_get_current(
         return fetch_recently_played(&access).await;
     }
     if !status.is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("now playing failed ({status}): {body}"));
+        return Err(format!("now playing failed ({status})"));
     }
 
     let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
@@ -473,7 +806,324 @@ pub async fn spotify_get_current(
 
 #[cfg(test)]
 mod tests {
-    use super::parse_track;
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct MockStore {
+        values: Mutex<HashMap<(String, SecretKind), String>>,
+        fail_set: Mutex<Option<SecretKind>>,
+        fail_delete: Mutex<Option<SecretKind>>,
+    }
+
+    impl MockStore {
+        fn put(&self, profile_id: &str, kind: SecretKind, value: &str) {
+            self.values
+                .lock()
+                .expect("values")
+                .insert((profile_id.to_string(), kind), value.to_string());
+        }
+
+        fn value(&self, profile_id: &str, kind: SecretKind) -> Option<String> {
+            self.values
+                .lock()
+                .expect("values")
+                .get(&(profile_id.to_string(), kind))
+                .cloned()
+        }
+
+        fn fail_next_set(&self, kind: SecretKind) {
+            *self.fail_set.lock().expect("fail set") = Some(kind);
+        }
+
+        fn fail_next_delete(&self, kind: SecretKind) {
+            *self.fail_delete.lock().expect("fail delete") = Some(kind);
+        }
+    }
+
+    impl SecretStore for MockStore {
+        fn get(
+            &self,
+            profile_id: &str,
+            kind: SecretKind,
+        ) -> Result<Option<String>, crate::secure_store::SecureStoreError> {
+            Ok(self.value(profile_id, kind))
+        }
+
+        fn set(
+            &self,
+            profile_id: &str,
+            kind: SecretKind,
+            value: &str,
+        ) -> Result<(), crate::secure_store::SecureStoreError> {
+            let mut fail_set = self.fail_set.lock().expect("fail set");
+            if *fail_set == Some(kind) {
+                *fail_set = None;
+                return Err(crate::secure_store::SecureStoreError::Unavailable("write"));
+            }
+            drop(fail_set);
+            self.put(profile_id, kind, value);
+            Ok(())
+        }
+
+        fn delete(
+            &self,
+            profile_id: &str,
+            kind: SecretKind,
+        ) -> Result<(), crate::secure_store::SecureStoreError> {
+            let mut fail_delete = self.fail_delete.lock().expect("fail delete");
+            if *fail_delete == Some(kind) {
+                *fail_delete = None;
+                return Err(crate::secure_store::SecureStoreError::Unavailable("delete"));
+            }
+            drop(fail_delete);
+            self.values
+                .lock()
+                .expect("values")
+                .remove(&(profile_id.to_string(), kind));
+            Ok(())
+        }
+    }
+
+    fn temp_path(label: &str, file_name: &str) -> (PathBuf, PathBuf) {
+        let directory = std::env::temp_dir().join(format!(
+            "alethe-spotify-{label}-{}-{}",
+            std::process::id(),
+            nanoid::nanoid!(8)
+        ));
+        fs::create_dir_all(&directory).expect("temp directory");
+        let path = directory.join(file_name);
+        (directory, path)
+    }
+
+    #[test]
+    fn migrates_legacy_tokens_only_after_verified_keyring_writes() {
+        let (directory, path) = temp_path("migration", "spotify_tokens.json");
+        let legacy =
+            r#"{"access_token":"legacy-access","refresh_token":"legacy-refresh","expires_at":42}"#;
+        fs::write(&path, legacy).expect("legacy tokens");
+        let store = MockStore::default();
+
+        let loaded = load_tokens_from(&path, "profile-a", &store)
+            .expect("migration")
+            .expect("tokens");
+        assert_eq!(loaded.access_token, "legacy-access");
+        assert_eq!(loaded.refresh_token, "legacy-refresh");
+        assert_eq!(loaded.expires_at, 42);
+        assert_eq!(
+            store.value("profile-a", SecretKind::SpotifyAccessToken),
+            Some("legacy-access".to_string())
+        );
+        let scrubbed = fs::read_to_string(&path).expect("scrubbed metadata");
+        assert!(!scrubbed.contains("legacy-access"));
+        assert!(!scrubbed.contains("legacy-refresh"));
+        assert!(scrubbed.contains("42"));
+
+        fs::remove_dir_all(directory).expect("cleanup");
+    }
+
+    #[test]
+    fn keyring_failure_preserves_the_legacy_token_file_and_rolls_back() {
+        let (directory, path) = temp_path("failure", "spotify_tokens.json");
+        let legacy = r#"{"access_token":"only-copy-access","refresh_token":"only-copy-refresh","expires_at":42}"#;
+        fs::write(&path, legacy).expect("legacy tokens");
+        let store = MockStore::default();
+        store.fail_next_set(SecretKind::SpotifyRefreshToken);
+
+        let error = load_tokens_from(&path, "profile-a", &store).expect_err("must fail");
+        assert_eq!(error, "secure_store_unavailable: write");
+        assert_eq!(fs::read_to_string(&path).expect("legacy file"), legacy);
+        assert_eq!(
+            store.value("profile-a", SecretKind::SpotifyAccessToken),
+            None
+        );
+        assert_eq!(
+            store.value("profile-a", SecretKind::SpotifyRefreshToken),
+            None
+        );
+
+        fs::remove_dir_all(directory).expect("cleanup");
+    }
+
+    #[test]
+    fn existing_secure_tokens_win_over_stale_plaintext() {
+        let (directory, path) = temp_path("precedence", "spotify_tokens.json");
+        fs::write(
+            &path,
+            r#"{"access_token":"stale-access","refresh_token":"stale-refresh","expires_at":99}"#,
+        )
+        .expect("legacy tokens");
+        let store = MockStore::default();
+        store.put("profile-a", SecretKind::SpotifyAccessToken, "secure-access");
+        store.put(
+            "profile-a",
+            SecretKind::SpotifyRefreshToken,
+            "secure-refresh",
+        );
+
+        let loaded = load_tokens_from(&path, "profile-a", &store)
+            .expect("migration")
+            .expect("tokens");
+        assert_eq!(loaded.access_token, "secure-access");
+        assert_eq!(loaded.refresh_token, "secure-refresh");
+        let scrubbed = fs::read_to_string(&path).expect("scrubbed metadata");
+        assert!(!scrubbed.contains("stale-access"));
+        assert!(!scrubbed.contains("stale-refresh"));
+
+        fs::remove_dir_all(directory).expect("cleanup");
+    }
+
+    #[test]
+    fn existing_secure_client_secret_wins_and_plaintext_is_scrubbed() {
+        let store = MockStore::default();
+        store.put(
+            "profile-a",
+            SecretKind::SpotifyClientSecret,
+            "secure-client-secret",
+        );
+        let legacy = r#"{"preferences":{"spotifyClientId":"public-id","spotifyClientSecret":"stale-client-secret"}}"#;
+
+        let migrated = migrate_client_secret_content(legacy, "profile-a", &store)
+            .expect("client secret migration");
+        assert!(!migrated.contains("stale-client-secret"));
+        assert!(migrated.contains("public-id"));
+        assert_eq!(
+            store.value("profile-a", SecretKind::SpotifyClientSecret),
+            Some("secure-client-secret".to_string())
+        );
+    }
+
+    #[test]
+    fn client_secret_keyring_failure_preserves_projects_plaintext() {
+        let (directory, path) = temp_path("client-secret-failure", "projects.json");
+        let legacy = r#"{"preferences":{"spotifyClientId":"public-id","spotifyClientSecret":"only-copy-client-secret"}}"#;
+        fs::write(&path, legacy).expect("legacy projects");
+        let store = MockStore::default();
+        store.fail_next_set(SecretKind::SpotifyClientSecret);
+
+        let error = migrate_profile_plaintext_files(&directory, "profile-a", &store)
+            .expect_err("migration must fail");
+        assert_eq!(error, "secure_store_unavailable: write");
+        assert_eq!(fs::read_to_string(&path).expect("projects"), legacy);
+        assert_eq!(
+            store.value("profile-a", SecretKind::SpotifyClientSecret),
+            None
+        );
+
+        fs::remove_dir_all(directory).expect("cleanup");
+    }
+
+    #[test]
+    fn token_rotation_is_verified_and_rolls_back_on_partial_failure() {
+        let (directory, path) = temp_path("rotation", "spotify_tokens.json");
+        let store = MockStore::default();
+        store.put("profile-a", SecretKind::SpotifyAccessToken, "old-access");
+        store.put("profile-a", SecretKind::SpotifyRefreshToken, "old-refresh");
+        store.put(
+            "profile-a",
+            SecretKind::SpotifyClientSecret,
+            "old-client-secret",
+        );
+        let first = StoredTokens {
+            access_token: "new-access".to_string(),
+            refresh_token: "new-refresh".to_string(),
+            expires_at: 100,
+        };
+        save_tokens_from(
+            &path,
+            "profile-a",
+            &store,
+            &first,
+            Some("new-client-secret"),
+        )
+        .expect("rotation");
+        assert_eq!(
+            store.value("profile-a", SecretKind::SpotifyRefreshToken),
+            Some("new-refresh".to_string())
+        );
+
+        store.fail_next_set(SecretKind::SpotifyRefreshToken);
+        let failed = StoredTokens {
+            access_token: "failed-access".to_string(),
+            refresh_token: "failed-refresh".to_string(),
+            expires_at: 200,
+        };
+        assert!(save_tokens_from(&path, "profile-a", &store, &failed, None).is_err());
+        assert_eq!(
+            store.value("profile-a", SecretKind::SpotifyAccessToken),
+            Some("new-access".to_string())
+        );
+        assert_eq!(
+            store.value("profile-a", SecretKind::SpotifyRefreshToken),
+            Some("new-refresh".to_string())
+        );
+        assert_eq!(
+            store.value("profile-a", SecretKind::SpotifyClientSecret),
+            Some("new-client-secret".to_string())
+        );
+
+        fs::remove_dir_all(directory).expect("cleanup");
+    }
+
+    #[test]
+    fn refresh_preserves_the_previous_token_when_spotify_omits_a_replacement() {
+        assert_eq!(
+            rotated_refresh_token("existing-refresh".to_string(), None),
+            "existing-refresh"
+        );
+        assert_eq!(
+            rotated_refresh_token("existing-refresh".to_string(), Some(String::new())),
+            "existing-refresh"
+        );
+        assert_eq!(
+            rotated_refresh_token(
+                "existing-refresh".to_string(),
+                Some("rotated-refresh".to_string())
+            ),
+            "rotated-refresh"
+        );
+    }
+
+    #[test]
+    fn cleanup_deletes_all_spotify_secrets_and_rolls_back_on_failure() {
+        let store = MockStore::default();
+        for (kind, value) in [
+            (SecretKind::SpotifyClientSecret, "client"),
+            (SecretKind::SpotifyAccessToken, "access"),
+            (SecretKind::SpotifyRefreshToken, "refresh"),
+        ] {
+            store.put("profile-a", kind, value);
+        }
+        store.fail_next_delete(SecretKind::SpotifyRefreshToken);
+        assert!(delete_spotify_secrets(&store, "profile-a").is_err());
+        assert_eq!(
+            store.value("profile-a", SecretKind::SpotifyClientSecret),
+            Some("client".to_string())
+        );
+        assert_eq!(
+            store.value("profile-a", SecretKind::SpotifyAccessToken),
+            Some("access".to_string())
+        );
+        assert_eq!(
+            store.value("profile-a", SecretKind::SpotifyRefreshToken),
+            Some("refresh".to_string())
+        );
+
+        delete_spotify_secrets(&store, "profile-a").expect("cleanup");
+        assert_eq!(
+            store.value("profile-a", SecretKind::SpotifyClientSecret),
+            None
+        );
+        assert_eq!(
+            store.value("profile-a", SecretKind::SpotifyAccessToken),
+            None
+        );
+        assert_eq!(
+            store.value("profile-a", SecretKind::SpotifyRefreshToken),
+            None
+        );
+    }
 
     #[test]
     fn parses_recent_track_as_paused_now_playing() {

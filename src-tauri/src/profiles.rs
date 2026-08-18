@@ -479,6 +479,7 @@ pub fn delete_profile_state(app: &AppHandle, profile_id: &str) -> Result<Profile
         .cloned()
         .ok_or_else(|| format!("profile not found: {profile_id}"))?;
     let target_dir = profile_dir(&root, &target.id);
+    crate::spotify::delete_profile_secrets(&target.id)?;
     if target_dir.exists() {
         fs::remove_dir_all(&target_dir).map_err(|error| error.to_string())?;
     }

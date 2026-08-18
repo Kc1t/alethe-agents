@@ -10,6 +10,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Changed
+
+- Spotify Client Secrets and OAuth access/refresh tokens now use the profile-scoped operating system
+  credential store. Verified legacy migration removes plaintext from profile files and backups, while
+  preserving the original copy if secure storage is unavailable.
+
 ## [1.6.0] — 2026-08-17
 
 ### Added
