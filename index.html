@@ -4,17 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Alethe</title>
-    <script type="module">
-      if (import.meta.env.DEV) {
-        document.title = '(DEV) Alethe'
-      }
-      // Marca a plataforma o quanto antes (antes do React montar) para o CSS
-      // dos cantos arredondados no macOS não causar flash de fundo opaco no
-      // primeiro paint. O App.tsx reconfirma isto depois. Ver reset.css.
-      document.documentElement.dataset.platform = /Macintosh|Mac OS X/i.test(navigator.userAgent)
-        ? 'macos'
-        : 'other'
-    </script>
   </head>
   <body>
     <div id="root"></div>
