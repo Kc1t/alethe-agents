@@ -59,6 +59,24 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Prepare compatible Linux AppImage GTK plugin
+        if: matrix.platform == 'ubuntu-22.04'
+        env:
+          GTK_PLUGIN_COMMIT: b5eb8d05b4c0ed40107fe2158c5d8527f94568ef
+          GTK_PLUGIN_SHA256: cb379f9b0733e9ad9f8bd78f8c2fa038aef2478523bb7d4c8e64ff6a1ea3501a
+        run: |
+          set -euo pipefail
+          cache_dir="${XDG_CACHE_HOME:-$HOME/.cache}/tauri"
+          upstream_plugin="$cache_dir/alethe-gtk-upstream.sh"
+          mkdir -p "$cache_dir"
+          curl --proto '=https' --tlsv1.2 --fail --location --silent --show-error \
+            "https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gtk/$GTK_PLUGIN_COMMIT/linuxdeploy-plugin-gtk.sh" \
+            --output "$upstream_plugin"
+          printf '%s  %s\n' "$GTK_PLUGIN_SHA256" "$upstream_plugin" | sha256sum --check
+          chmod 0755 "$upstream_plugin"
+          install -m 0755 scripts/linuxdeploy-plugin-gtk-wrapper.sh \
+            "$cache_dir/linuxdeploy-plugin-gtk.sh"
+
       - name: Build and upload Tauri bundles
         uses: tauri-apps/tauri-action@v0
         env:
