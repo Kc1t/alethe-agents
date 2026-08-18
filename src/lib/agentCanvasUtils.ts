@@ -13,6 +13,7 @@ import {
 import type { AgentNode } from '../stores/agentCanvasStore'
 import { AGENT_COLORS, FAMILY_RANK } from './agentCanvasConfig'
 import { costLevel, shortModel } from './costFormat'
+import { guardedExecArgsFor } from './experimentalAgentPolicy'
 import type { ModelRate, SessionCost } from './tauri'
 import type { AgentType } from './types'
 
@@ -102,19 +103,9 @@ export function tailSummary(raw: string, max = 320): string {
   return clean.length > max ? `…${clean.slice(-max)}` : clean
 }
 
-                                                                                     
+/** Build guarded one-shot arguments for a real canvas worker. */
 export function execArgsFor(agent: AgentType, task: string): string[] | undefined {
-  switch (agent) {
-    case 'codex':
-      return ['exec', '--skip-git-repo-check', task]
-    case 'claude':
-                                                                                 
-      return ['-p', task, '--dangerously-skip-permissions']
-    case 'opencode':
-      return ['run', task]
-    default:
-      return undefined
-  }
+  return guardedExecArgsFor(agent, task)
 }
 
                                                            

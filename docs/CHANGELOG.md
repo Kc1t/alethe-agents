@@ -10,6 +10,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Changed
+
+- Experimental Agent Sandbox and Agent Canvas sessions now start with guarded Claude permissions and
+  Codex approval-on-request/workspace-write policies; unattended approval requests are denied and
+  surfaced in the worker status instead of being accepted automatically.
+
 ## [1.6.0] — 2026-08-17
 
 ### Added
