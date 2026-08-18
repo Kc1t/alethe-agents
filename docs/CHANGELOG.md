@@ -10,6 +10,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Changed
+
+- Hardened the production renderer with a defense-in-depth Content Security Policy and replaced its
+  broad core/plugin defaults with the audited permissions used by the main webview. Privileged custom
+  commands still depend on their own authorization and input-validation boundaries.
+
 ### Fixed
 
 - Windows updates no longer close the app without coming back. The update manifest pointed Windows

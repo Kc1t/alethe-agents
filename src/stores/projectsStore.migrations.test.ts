@@ -36,6 +36,22 @@ describe('preference normalization', () => {
       automaticParkingOptIn: false,
     })
   })
+
+  it('keeps Discord Rich Presence opt-in while preserving an existing choice', () => {
+    expect(normalizePreferences(undefined).discordRichPresenceEnabled).toBe(false)
+    expect(
+      normalizePreferences({
+        ...DEFAULT_PREFERENCES,
+        discordRichPresenceEnabled: true,
+      }).discordRichPresenceEnabled,
+    ).toBe(true)
+    expect(
+      normalizePreferences({
+        ...DEFAULT_PREFERENCES,
+        discordRichPresenceEnabled: false,
+      }).discordRichPresenceEnabled,
+    ).toBe(false)
+  })
 })
 
 describe('projects file migration', () => {

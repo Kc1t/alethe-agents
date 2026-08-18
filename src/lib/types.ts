@@ -585,7 +585,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   gitControlPlacement: 'left',
   spotifyClientId: '',
   spotifyClientSecret: '',
-  discordRichPresenceEnabled: true,
+  discordRichPresenceEnabled: false,
   topbarShowClaudeUsage: true,
   topbarShowCodexUsage: true,
   topbarShowAntigravityUsage: true,
