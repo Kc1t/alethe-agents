@@ -523,7 +523,7 @@ export type ResourcePolicyPreferences = {
 }
 
 export type ProjectsFile = {
-  version: 7
+  version: 8
   groups: Group[]
                                                      
   ungroupedOrder: string[]
@@ -586,9 +586,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   spotifyClientId: '',
   spotifyClientSecret: '',
   discordRichPresenceEnabled: true,
-  topbarShowClaudeUsage: true,
-  topbarShowCodexUsage: true,
-  topbarShowAntigravityUsage: true,
+  topbarShowClaudeUsage: false,
+  topbarShowCodexUsage: false,
+  topbarShowAntigravityUsage: false,
   topbarShowSync: true,
   topbarShowProfile: true,
   topbarShowMemory: true,
@@ -629,7 +629,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
 }
 
 export const EMPTY_PROJECTS_FILE: ProjectsFile = {
-  version: 7,
+  version: 8,
   groups: [],
   ungroupedOrder: [],
   projects: [],

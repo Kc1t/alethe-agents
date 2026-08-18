@@ -178,6 +178,10 @@ export function TitleBar() {
 
                                                                             
   useEffect(() => {
+    if (!preferences.topbarShowClaudeUsage) {
+      setClaudeUsage(null)
+      return
+    }
     let cancelled = false
     let interval: number | null = null
     let consecutiveFailures = 0
@@ -208,11 +212,15 @@ export function TitleBar() {
       window.clearTimeout(startupDelay)
       if (interval !== null) window.clearInterval(interval)
     }
-  }, [setClaudeUsage])
+  }, [preferences.topbarShowClaudeUsage, setClaudeUsage])
 
                                                                                 
                                                                        
   useEffect(() => {
+    if (!preferences.topbarShowCodexUsage) {
+      setCodexUsage(null)
+      return
+    }
     let cancelled = false
     let interval: number | null = null
     let consecutiveFailures = 0
@@ -241,10 +249,14 @@ export function TitleBar() {
       window.clearTimeout(startupDelay)
       if (interval !== null) window.clearInterval(interval)
     }
-  }, [setCodexUsage])
+  }, [preferences.topbarShowCodexUsage, setCodexUsage])
 
                                                                                                      
   useEffect(() => {
+    if (!preferences.topbarShowAntigravityUsage) {
+      setAntigravityUsage(null)
+      return
+    }
     let cancelled = false
     let interval: number | null = null
     const tick = async () => {
@@ -269,7 +281,7 @@ export function TitleBar() {
       window.clearTimeout(startupDelay)
       if (interval !== null) window.clearInterval(interval)
     }
-  }, [setAntigravityUsage])
+  }, [preferences.topbarShowAntigravityUsage, setAntigravityUsage])
 
   const win = getCurrentWindow()
 

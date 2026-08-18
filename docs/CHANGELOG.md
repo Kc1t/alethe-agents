@@ -10,6 +10,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Changed
+
+- Claude Code, Codex, and Antigravity topbar usage polling is now opt-in. Enabling an indicator may
+  use existing provider or CLI credentials and contact provider services.
+
 ## [1.6.0] — 2026-08-17
 
 ### Added

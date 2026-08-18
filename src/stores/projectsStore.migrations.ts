@@ -40,7 +40,9 @@ function normalizeStoredAccent(value: unknown, fallback?: string): string | unde
   return /^#(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i.test(value) ? value : fallback
 }
 
-function normalizeStoredAccents(file: ProjectsFile): ProjectsFile {
+type ProjectsFileV7 = Omit<ProjectsFile, 'version'> & { version: 7 }
+
+function normalizeStoredAccents<T extends ProjectsFile | ProjectsFileV7>(file: T): T {
   const normalizeTab = (tab: WorkspaceTab): WorkspaceTab => ({
     ...tab,
     color: normalizeStoredAccent(tab.color),
@@ -48,11 +50,11 @@ function normalizeStoredAccents(file: ProjectsFile): ProjectsFile {
 
   return {
     ...file,
-    groups: file.groups.map((group) => ({
+    groups: file.groups.map((group: Group) => ({
       ...group,
       color: normalizeStoredAccent(group.color, GROUP_COLORS[0])!,
     })),
-    projects: file.projects.map((project) => ({
+    projects: file.projects.map((project: Project) => ({
       ...project,
       color: normalizeStoredAccent(project.color),
     })),
@@ -61,7 +63,7 @@ function normalizeStoredAccents(file: ProjectsFile): ProjectsFile {
       tabs: file.workspace.tabs.map(normalizeTab),
       closedTabs: file.workspace.closedTabs?.map(normalizeTab),
     },
-  }
+  } as T
 }
 
 export function normalizePreferences(raw: LegacyPreferences | undefined): Preferences {
@@ -289,7 +291,7 @@ export function migrateWorkspaceNavigation(base: {
   }
 }
 
-function migrateToV7(parsed: any): ProjectsFile {
+function migrateToV7(parsed: any): ProjectsFileV7 {
   return normalizeStoredAccents({
     ...parsed,
     version: 7,
@@ -308,10 +310,27 @@ function migrateToV7(parsed: any): ProjectsFile {
   })
 }
 
+function migrateToV8(parsed: any, resetLegacyProviderUsage: boolean): ProjectsFile {
+  const preferences = normalizePreferences(parsed.preferences)
+  return {
+    ...parsed,
+    version: 8,
+    preferences: resetLegacyProviderUsage
+      ? {
+          ...preferences,
+          topbarShowClaudeUsage: false,
+          topbarShowCodexUsage: false,
+          topbarShowAntigravityUsage: false,
+        }
+      : preferences,
+  }
+}
+
 /** Migrates older files and normalizes restorable snapshots. */
 export function migrate(parsed: any): ProjectsFile {
-  if (parsed.version === 7) return migrateToV7(parsed)
-  if (parsed.version === 6) return migrateToV7(parsed)
+  if (parsed.version === 8) return migrateToV8(parsed, false)
+  if (parsed.version === 7) return migrateToV8(migrateToV7(parsed), true)
+  if (parsed.version === 6) return migrateToV8(migrateToV7(parsed), true)
 
   const v5Result = parsed.version === 5 ? parsed : migrateToV5(parsed)
 
@@ -321,12 +340,15 @@ export function migrate(parsed: any): ProjectsFile {
     orphanWorktrees: p.orphanWorktrees ?? [],
   }))
 
-  return migrateToV7({
-    ...v5Result,
-    version: 6,
-    projects: v6Projects,
-    preferences: normalizePreferences(v5Result.preferences),
-  })
+  return migrateToV8(
+    migrateToV7({
+      ...v5Result,
+      version: 6,
+      projects: v6Projects,
+      preferences: normalizePreferences(v5Result.preferences),
+    }),
+    true,
+  )
 }
 
 function migrateToV5(parsed: any): any {

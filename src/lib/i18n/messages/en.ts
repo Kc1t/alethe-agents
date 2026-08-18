@@ -1156,7 +1156,8 @@ export const en = {
   'ui.titlebar.openMemoryAnalytics': 'Open memory analytics',
   'ui.titlebar.customize': 'Customize topbar',
   'ui.titlebar.customizeTitle': 'Customize topbar',
-  'ui.titlebar.customizeDescription': 'Choose which indicators appear in the topbar.',
+  'ui.titlebar.customizeDescription':
+    'Choose which indicators appear in the topbar. Enabling provider usage accesses existing provider or CLI credentials and may contact provider services.',
   'ui.titlebar.codexUsageTooltip': 'Codex: {primary}% in the current window · {secondary}% weekly',
   'ui.titlebar.antigravityUsageTooltip': 'Antigravity: {conversations} active conversations',
   'ui.titlebar.openUsageDetails': 'Open AI usage details',
