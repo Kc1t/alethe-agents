@@ -94,7 +94,7 @@
 .primary {
   border-color: var(--accent);
   background: var(--accent);
-  color: var(--accent-fg);
+  color: var(--accent-on);
 }
 
 .secondary {

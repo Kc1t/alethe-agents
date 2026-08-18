@@ -10,6 +10,19 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows updates no longer close the app without coming back. The update manifest pointed Windows
+  at the MSI, but the installer nearly everyone actually has is the NSIS `setup.exe` the download
+  page serves. An MSI applied over an NSIS install neither upgrades it nor restarts the app, so the
+  updater downloaded, closed Alethe, and left the old version behind. The generic Windows entry now
+  points at the NSIS installer; the `-msi` and `-nsis` entries are still published for anyone
+  pinning one deliberately. Existing installs that ended up with both an MSI and an NSIS entry
+  registered will settle onto NSIS after this update.
+- The **Continue in Claude Code** button in the agent handoff dialog was unreadable. It painted its
+  label with a colour token that does not exist anywhere in the app, so the text fell back to the
+  inherited foreground and sat light-on-accent.
+
 ## [1.6.0] — 2026-08-17
 
 ### Added

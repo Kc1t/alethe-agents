@@ -75,3 +75,76 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+  # O tauri-action escolhe sozinho qual bundle do Windows vai na chave genérica
+  # `windows-x86_64` do latest.json, e escolhe o MSI. Quase todo mundo instala
+  # pelo NSIS (a landing serve o setup.exe), e um MSI aplicado sobre uma
+  # instalação NSIS não faz upgrade dela nem reinicia o app — o updater fecha o
+  # Alethe e nada volta. Aqui a chave genérica é reapontada para o NSIS, sem
+  # remover as chaves `-msi` / `-nsis`, que continuam publicadas.
+  fix-updater-target:
+    name: Point windows-x86_64 at NSIS
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Rewrite latest.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq '.[0].tagName')
+          echo "Release: $VERSION"
+
+          gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" --pattern latest.json --output latest.json --clobber
+
+          node <<'NODE'
+          const fs = require('fs')
+          const manifest = JSON.parse(fs.readFileSync('latest.json', 'utf8'))
+          const nsis = manifest.platforms['windows-x86_64-nsis']
+          if (!nsis) {
+            console.error('windows-x86_64-nsis missing from latest.json — refusing to rewrite')
+            process.exit(1)
+          }
+          const before = manifest.platforms['windows-x86_64']?.url ?? '(absent)'
+          manifest.platforms['windows-x86_64'] = nsis
+          fs.writeFileSync('latest.json', JSON.stringify(manifest, null, 2))
+          console.log(`windows-x86_64: ${before.split('/').pop()} -> ${nsis.url.split('/').pop()}`)
+          NODE
+
+          gh release upload "$VERSION" latest.json --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Verify every platform is present
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq '.[0].tagName')
+          gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" --pattern latest.json --output check.json --clobber
+
+          node <<'NODE'
+          const manifest = JSON.parse(require('fs').readFileSync('check.json', 'utf8'))
+          const required = ['windows-x86_64', 'darwin-x86_64', 'darwin-aarch64', 'linux-x86_64']
+          const missing = required.filter((key) => !manifest.platforms[key])
+          const unsigned = Object.entries(manifest.platforms)
+            .filter(([, value]) => !value.signature)
+            .map(([key]) => key)
+
+          for (const [key, value] of Object.entries(manifest.platforms)) {
+            console.log(`  ${key.padEnd(22)} ${value.url.split('/').pop()}`)
+          }
+          if (missing.length) {
+            console.error(`\nMissing platforms: ${missing.join(', ')}`)
+            process.exit(1)
+          }
+          if (unsigned.length) {
+            console.error(`\nUnsigned platforms: ${unsigned.join(', ')}`)
+            process.exit(1)
+          }
+          if (!manifest.platforms['windows-x86_64'].url.endsWith('.exe')) {
+            console.error('\nwindows-x86_64 is not the NSIS installer')
+            process.exit(1)
+          }
+          console.log('\nManifest OK')
+          NODE
