@@ -88,7 +88,7 @@ const RIGHT_SIDEBAR_MIN_PX = 260
 const RIGHT_SIDEBAR_MAX_PX = 420
 const WORKSPACE_MIN_PX = 240
 
-function LoadingScreen() {
+function LoadingScreen({ reducedMotion = false }: { reducedMotion?: boolean }) {
   const t = useT()
   return (
     <div className={styles.loadingScreen} role="status" aria-label={t('loading.initializing')}>
@@ -98,6 +98,7 @@ function LoadingScreen() {
           alt=""
           variant="flow"
           fontSize={8}
+          reducedMotion={reducedMotion}
           brightnessBoost={2.25}
           contrast={1.15}
           threshold={0.02}
@@ -187,6 +188,7 @@ export default function App() {
   const hydrated = useProjectsStore((s) => s.hydrated)
   const uiTheme = useProjectsStore((s) => s.preferences.uiTheme)
   const visualStyle = useProjectsStore((s) => s.preferences.visualStyle ?? 'normal')
+  const motionPreference = useProjectsStore((s) => s.preferences.motionPreference)
   const appIconTheme = useProjectsStore((s) => s.preferences.appIconTheme)
   const uiZoom = useProjectsStore((s) => s.preferences.uiZoom)
   const windowOpacity = useProjectsStore((s) => s.preferences.windowOpacity)
@@ -481,7 +483,8 @@ export default function App() {
   }, [hydrated])
 
   if (!hydrated) {
-    return <LoadingScreen />
+    // Persisted preferences are not known yet, so keep startup decorative motion static.
+    return <LoadingScreen reducedMotion />
   }
 
   return (
@@ -566,7 +569,9 @@ export default function App() {
           <Panel id="alethe-main" minSize="360px">
             <main className={styles.mainView}>
               <ErrorBoundary label="view">
-                <Suspense fallback={<LoadingScreen />}>
+                <Suspense
+                  fallback={<LoadingScreen reducedMotion={motionPreference === 'reduced'} />}
+                >
                   {activeView === 'home' ? (
                     <HomeView />
                   ) : activeView === 'agentSandbox' && AGENT_SANDBOX_ENABLED ? (
