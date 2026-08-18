@@ -13,23 +13,28 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { saveFile } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
-import { DEFAULT_PROFILE_IMAGE_URL, getProfileImageUrl, getProfileInitial } from '../../lib/profile'
+import {
+  DEFAULT_PROFILE_IMAGE_URL,
+  getProfileAccountName,
+  getProfileImageUrl,
+  getProfileInitial,
+} from '../../lib/profile'
 import {
   createProfile,
   deleteProfile,
   exportProfileBackup,
   listProfileSummaries,
+  type ProfileSummary,
   renameProfile,
   setActiveProfile,
   suspendPty,
-  type ProfileSummary,
 } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { Avatar } from '../ui/Avatar'
-import { Modal } from './Modal'
 import controls from './controls.module.css'
+import { Modal } from './Modal'
 import styles from './ProfilesModal.module.css'
 
 type BusyAction = null | 'load' | 'create' | 'rename' | 'switch' | 'backup' | 'delete'
@@ -110,7 +115,16 @@ export function ProfilesModal() {
       })),
     [activeProfileId, preferences.profileImageUrl, profiles, projects],
   )
-  const items = summaries.length > 0 ? summaries : fallbackSummaries
+  const sourceItems = summaries.length > 0 ? summaries : fallbackSummaries
+  const items = sourceItems.map((profile) => ({
+    ...profile,
+    name: getProfileAccountName({
+      profileId: profile.id,
+      profileName: profile.name,
+      activeProfileId,
+      displayName: preferences.displayName,
+    }),
+  }))
   const activeProfile =
     items.find((profile) => profile.is_active || profile.id === activeProfileId) ?? null
   const currentPtyIds = projects.flatMap((project) =>
