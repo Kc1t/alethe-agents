@@ -80,9 +80,19 @@ pub fn load_projects(app: AppHandle) -> Result<Option<String>, String> {
     if !path.exists() {
         return Ok(None);
     }
-    fs::read_to_string(&path)
-        .map(|content| Some(merge_external_todos(content)))
-        .map_err(|error| error.to_string())
+    let content = fs::read_to_string(&path).map_err(|error| error.to_string())?;
+    let profile_id = crate::profiles::ensure_profiles_index(&app)?.active_profile_id;
+    let migrated = crate::spotify::migrate_client_secret_content(
+        &content,
+        &profile_id,
+        &crate::secure_store::OsSecretStore,
+    )?;
+    if migrated != content {
+        let temporary = path.with_extension("json.tmp");
+        fs::write(&temporary, &migrated).map_err(|error| error.to_string())?;
+        fs::rename(&temporary, &path).map_err(|error| error.to_string())?;
+    }
+    Ok(Some(merge_external_todos(migrated)))
 }
 
 ///
@@ -107,6 +117,12 @@ pub async fn save_projects(app: AppHandle, content: String, sequence: u64) -> Re
     }
 
     let path = projects_file_path(&app)?;
+    let profile_id = crate::profiles::ensure_profiles_index(&app)?.active_profile_id;
+    let content = crate::spotify::migrate_client_secret_content(
+        &content,
+        &profile_id,
+        &crate::secure_store::OsSecretStore,
+    )?;
     // I/O em spawn_blocking: escrever/renomear em disco lento (rede, AV scan)
 
     tokio::task::spawn_blocking(move || -> Result<(), String> {

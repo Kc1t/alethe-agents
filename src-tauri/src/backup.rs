@@ -73,8 +73,18 @@ fn is_runtime_archive_entry(name: &str) -> bool {
         .is_some_and(|component| component.eq_ignore_ascii_case("EBWebView"))
 }
 
+fn is_profile_root_file(root: &Path, path: &Path, name: &str) -> bool {
+    path.strip_prefix(root)
+        .ok()
+        .filter(|relative| relative.components().count() == 1)
+        .and_then(|relative| relative.file_name())
+        .and_then(|file_name| file_name.to_str())
+        .is_some_and(|file_name| file_name.eq_ignore_ascii_case(name))
+}
+
 fn is_excluded_from_backup(root: &Path, path: &Path) -> bool {
-    if is_runtime_backup_path(root, path) {
+    if is_runtime_backup_path(root, path) || is_profile_root_file(root, path, "spotify_tokens.json")
+    {
         return true;
     }
     matches!(
@@ -107,6 +117,13 @@ fn add_dir_to_zip<W: Write + io::Seek>(
         let name = rel.to_string_lossy().replace('\\', "/");
         zip.start_file(name, opts).map_err(|e| e.to_string())?;
         let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+        let bytes = if is_profile_root_file(root, &path, "projects.json") {
+            let content =
+                String::from_utf8(bytes).map_err(|_| "backup_projects_not_utf8".to_string())?;
+            crate::spotify::sanitize_client_secret_content(&content)?.into_bytes()
+        } else {
+            bytes
+        };
         zip.write_all(&bytes).map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -172,6 +189,13 @@ fn import_backup_inner(app: AppHandle, source_path: String) -> Result<(), String
         let _ = read_remaining(&mut entry);
     }
 
+    let profile_id = crate::profiles::ensure_profiles_index(&app)?.active_profile_id;
+    crate::spotify::migrate_profile_plaintext_files(
+        &dir,
+        &profile_id,
+        &crate::secure_store::OsSecretStore,
+    )?;
+
     Ok(())
 }
 
@@ -181,7 +205,9 @@ fn read_remaining<R: Read>(r: &mut R) -> io::Result<u64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_runtime_archive_entry, is_runtime_backup_path};
+    use super::{export_backup_from_dir, is_runtime_archive_entry, is_runtime_backup_path};
+    use std::fs;
+    use std::io::Read;
     use std::path::Path;
 
     #[test]
@@ -194,5 +220,44 @@ mod tests {
         assert!(is_runtime_archive_entry("EBWebView/Default/LOCK"));
         assert!(is_runtime_archive_entry("ebwebview\\Default\\LOCK"));
         assert!(!is_runtime_archive_entry("scrollback/session.bin"));
+    }
+
+    #[test]
+    fn exported_backup_excludes_spotify_plaintext() {
+        let root = std::env::temp_dir().join(format!(
+            "alethe-spotify-backup-{}-{}",
+            std::process::id(),
+            nanoid::nanoid!(8)
+        ));
+        let profile = root.join("profile");
+        let archive_path = root.join("profile.zip");
+        fs::create_dir_all(&profile).expect("profile");
+        fs::write(
+            profile.join("projects.json"),
+            r#"{"preferences":{"spotifyClientId":"public-id","spotifyClientSecret":"backup-client-secret"}}"#,
+        )
+        .expect("projects");
+        fs::write(
+            profile.join("spotify_tokens.json"),
+            r#"{"access_token":"backup-access","refresh_token":"backup-refresh","expires_at":1}"#,
+        )
+        .expect("tokens");
+
+        export_backup_from_dir(profile, archive_path.to_string_lossy().into_owned())
+            .expect("export");
+        let file = fs::File::open(&archive_path).expect("archive");
+        let mut archive = zip::ZipArchive::new(file).expect("zip");
+        assert!(archive.by_name("spotify_tokens.json").is_err());
+        let mut projects = String::new();
+        archive
+            .by_name("projects.json")
+            .expect("projects entry")
+            .read_to_string(&mut projects)
+            .expect("read projects");
+        assert!(projects.contains("public-id"));
+        assert!(!projects.contains("backup-client-secret"));
+        assert!(!projects.contains("spotifyClientSecret"));
+
+        fs::remove_dir_all(root).expect("cleanup");
     }
 }

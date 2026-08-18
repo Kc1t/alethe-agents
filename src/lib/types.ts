@@ -440,8 +440,9 @@ export type Preferences = {
   /** Local do controle Git: sidebar esquerda ou direita. */
   gitControlPlacement: 'left' | 'right'
 
-  /** Credenciais locais do Spotify Developer Dashboard para Now Playing. */
+  /** Non-secret Spotify Developer Dashboard identifier for Now Playing. */
   spotifyClientId: string
+  /** Runtime-only input. Persistence strips it after the backend migrates legacy values. */
   spotifyClientSecret: string
   /** Exibe a atividade atual do Alethe no perfil do Discord. */
   discordRichPresenceEnabled: boolean

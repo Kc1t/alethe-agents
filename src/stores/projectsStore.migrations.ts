@@ -113,7 +113,8 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     profileImageUrl: preferences.profileImageUrl.trim(),
     todoStoragePath: preferences.todoStoragePath.trim(),
     spotifyClientId: preferences.spotifyClientId.trim(),
-    spotifyClientSecret: preferences.spotifyClientSecret.trim(),
+    // The backend migrates a legacy value before hydration. Keep this field runtime-only.
+    spotifyClientSecret: '',
     uiZoom: clampUiZoom(preferences.uiZoom),
     spawnConcurrency: clampSpawnConcurrency(preferences.spawnConcurrency),
     resourcePolicy: {

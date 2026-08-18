@@ -27,11 +27,11 @@ function getSpotifyStatus(): Promise<boolean> {
   return statusRequest
 }
 
-function getCurrentTrack(credentials: SpotifyCredentials): Promise<NowPlaying | null> {
-  const key = `${credentials.clientId ?? ''}\u0000${credentials.clientSecret ?? ''}`
+function getCurrentTrack(clientId?: string): Promise<NowPlaying | null> {
+  const key = clientId ?? ''
   if (currentRequest?.key === key) return currentRequest.promise
 
-  const request = spotifyGetCurrent(credentials)
+  const request = spotifyGetCurrent({ clientId })
   const promise = request.finally(() => {
     if (currentRequest?.promise === promise) currentRequest = null
   })
@@ -81,6 +81,7 @@ export type NowPlayingState = {
 export function useNowPlaying(enabled: boolean): NowPlayingState {
   const spotifyClientId = useProjectsStore((s) => s.preferences.spotifyClientId)
   const spotifyClientSecret = useProjectsStore((s) => s.preferences.spotifyClientSecret)
+  const setPreferences = useProjectsStore((s) => s.setPreferences)
   const [connected, setConnected] = useState<boolean | null>(null)
                                                                        
   const [current, setCurrent] = useState<NowPlaying | null>(() => loadLastTrack())
@@ -88,7 +89,7 @@ export function useNowPlaying(enabled: boolean): NowPlayingState {
   const [loading, setLoading] = useState(false)
 
   const cancelledRef = useRef(false)
-  const credentials = useMemo(
+  const credentials = useMemo<SpotifyCredentials>(
     () => ({
       clientId: spotifyClientId.trim() || undefined,
       clientSecret: spotifyClientSecret.trim() || undefined,
@@ -98,7 +99,7 @@ export function useNowPlaying(enabled: boolean): NowPlayingState {
 
   const fetchCurrent = useCallback(async () => {
     try {
-      const np = await getCurrentTrack(credentials)
+      const np = await getCurrentTrack(credentials.clientId)
       if (cancelledRef.current) return
       if (np) {
         setCurrent(np)
@@ -143,6 +144,7 @@ export function useNowPlaying(enabled: boolean): NowPlayingState {
     setError(null)
     try {
       await spotifyLogin(credentials)
+      setPreferences({ spotifyClientSecret: '' })
       setConnected(true)
       await fetchCurrent()
     } catch (err) {
