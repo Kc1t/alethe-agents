@@ -10,6 +10,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Security
+
+- Removed install options that downloaded mutable vendor scripts and executed them directly through
+  a shell. Safe package-manager options and links to each vendor's installation documentation remain
+  available.
+
 ## [1.6.0] — 2026-08-17
 
 ### Added

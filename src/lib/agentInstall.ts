@@ -40,17 +40,13 @@ export const AGENT_INSTALL_CATALOG: Partial<Record<AgentType, AgentInstallCatalo
   claude: {
     docsUrl: 'https://code.claude.com/docs/en/setup',
     methods: [
-      { id: 'native', command: 'irm https://claude.ai/install.ps1 | iex' },
       { id: 'winget', command: 'winget install Anthropic.ClaudeCode', requires: 'winget' },
       { id: 'npm', command: 'npm install -g @anthropic-ai/claude-code', requires: 'npm' },
     ],
   },
   codex: {
     docsUrl: 'https://github.com/openai/codex',
-    methods: [
-      { id: 'native', command: 'irm https://chatgpt.com/codex/install.ps1 | iex' },
-      { id: 'npm', command: 'npm install -g @openai/codex', requires: 'npm' },
-    ],
+    methods: [{ id: 'npm', command: 'npm install -g @openai/codex', requires: 'npm' }],
   },
   copilot: {
     docsUrl: 'https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started',
@@ -61,14 +57,11 @@ export const AGENT_INSTALL_CATALOG: Partial<Record<AgentType, AgentInstallCatalo
   },
   antigravity: {
     docsUrl: 'https://antigravity.google/docs/cli/install',
-    methods: [{ id: 'native', command: 'irm https://antigravity.google/cli/install.ps1 | iex' }],
+    methods: [],
   },
   mimo: {
     docsUrl: 'https://github.com/XiaomiMiMo/MiMo-Code',
-    methods: [
-      { id: 'native', command: 'irm https://mimo.xiaomi.com/install.ps1 | iex' },
-      { id: 'npm', command: 'npm install -g @mimo-ai/cli', requires: 'npm' },
-    ],
+    methods: [{ id: 'npm', command: 'npm install -g @mimo-ai/cli', requires: 'npm' }],
   },
   freebuff: {
     docsUrl: 'https://freebuff.com',
@@ -122,7 +115,7 @@ const NODE_INSTALL_METHODS: InstallMethod[] = [
 
 /**
  * True when the agent would be installable here if Node were present: it has installers, but every
- * one of them needs npm and npm is missing. Agents with a native installer never qualify.
+ * one of them needs npm and npm is missing.
  */
 export function needsNodeToolchain(agent: AgentType, toolchain: InstallToolchain | null): boolean {
   const entry = AGENT_INSTALL_CATALOG[agent]
@@ -149,9 +142,8 @@ const UNINSTALL_TEMPLATE: Partial<Record<InstallMethodId, (target: string) => st
 }
 
 /**
- * How this agent can be removed on this machine, best first. `native` installers are skipped: none
- * of the vendors documents an uninstall for their install script, and guessing would delete the
- * wrong thing. An empty list means "we cannot remove it for you".
+ * How this agent can be removed on this machine, best first. An empty list means "we cannot remove
+ * it for you".
  */
 export function uninstallMethodsFor(
   agent: AgentType,
