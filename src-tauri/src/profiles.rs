@@ -479,6 +479,9 @@ pub fn delete_profile_state(app: &AppHandle, profile_id: &str) -> Result<Profile
         .cloned()
         .ok_or_else(|| format!("profile not found: {profile_id}"))?;
     let target_dir = profile_dir(&root, &target.id);
+    if target_dir.join("github_sync.json").is_file() {
+        crate::secure_store::delete_github_sync_token(&target.id)?;
+    }
     if target_dir.exists() {
         fs::remove_dir_all(&target_dir).map_err(|error| error.to_string())?;
     }
