@@ -2,11 +2,13 @@
 //
 // O Claude Code dispara hooks `SubagentStart`/`SubagentStop` como POST HTTP
 
-use std::io::Read;
+use std::fs::OpenOptions;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU16, Ordering};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 const HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 9123;
@@ -14,6 +16,7 @@ const MAX_PORT: u16 = 9143;
 const BODY_LIMIT: u64 = 1024 * 1024; // 1 MB
 static LISTENER_PORT: AtomicU16 = AtomicU16::new(0);
 static LISTENER_TOKEN: OnceLock<String> = OnceLock::new();
+static SETTINGS_FILE: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
 
 fn init_token() -> &'static str {
     LISTENER_TOKEN.get_or_init(|| nanoid::nanoid!(32))
@@ -53,6 +56,109 @@ fn wait_for_listener_port() -> Option<u16> {
     }
 }
 
+fn settings_file_state() -> &'static Mutex<Option<PathBuf>> {
+    SETTINGS_FILE.get_or_init(|| Mutex::new(None))
+}
+
+fn hook_runtime_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    #[cfg(unix)]
+    if let Some(runtime_dir) = std::env::var_os("XDG_RUNTIME_DIR") {
+        let runtime_dir = PathBuf::from(runtime_dir);
+        if runtime_dir.is_absolute() {
+            return Ok(runtime_dir.join("alethe"));
+        }
+    }
+
+    app.path()
+        .app_cache_dir()
+        .map(|path| path.join("runtime"))
+        .map_err(|error| error.to_string())
+}
+
+fn ensure_private_dir(path: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(path).map_err(|error| error.to_string())?;
+    let metadata = std::fs::symlink_metadata(path).map_err(|error| error.to_string())?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err("agent hook runtime path is not a private directory".to_string());
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+            .map_err(|error| error.to_string())?;
+    }
+
+    Ok(())
+}
+
+fn new_settings_path(directory: &Path) -> PathBuf {
+    directory.join(format!("alethe-agent-hooks-{}.json", nanoid::nanoid!(12)))
+}
+
+fn is_private_settings_file(path: &Path) -> bool {
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return false;
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return false;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if metadata.permissions().mode() & 0o077 != 0 {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn write_private_file(path: &Path, body: &[u8]) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "agent hook settings path has no parent".to_string())?;
+    ensure_private_dir(parent)?;
+    let temporary = parent.join(format!(".alethe-agent-hooks-{}.tmp", nanoid::nanoid!(12)));
+
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+
+    let write_result = (|| -> Result<(), String> {
+        let mut file = options
+            .open(&temporary)
+            .map_err(|error| error.to_string())?;
+        file.write_all(body).map_err(|error| error.to_string())?;
+        file.sync_all().map_err(|error| error.to_string())?;
+        std::fs::rename(&temporary, path).map_err(|error| error.to_string())?;
+        Ok(())
+    })();
+
+    if write_result.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    write_result
+}
+
+pub fn cleanup_settings_file() {
+    let Ok(mut current) = settings_file_state().lock() else {
+        return;
+    };
+    let Some(path) = current.take() else {
+        return;
+    };
+    let _ = std::fs::remove_file(&path);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::remove_dir(parent);
+    }
+}
+
 #[tauri::command]
 pub fn agent_hooks_endpoint() -> Result<String, String> {
     let port = wait_for_listener_port()
@@ -66,11 +172,10 @@ pub fn agent_hooks_token() -> String {
 }
 
 #[tauri::command]
-pub fn agent_hooks_settings_path() -> Result<String, String> {
+pub fn agent_hooks_settings_path(app: AppHandle) -> Result<String, String> {
     let port = wait_for_listener_port()
         .ok_or_else(|| "listener de agents ainda nao esta disponivel".to_string())?;
     let endpoint = listener_endpoint(port);
-    let path = std::env::temp_dir().join("alethe-agent-hooks.json");
     let token = init_token();
     let hook = serde_json::json!([
         { "hooks": [ {
@@ -99,12 +204,23 @@ pub fn agent_hooks_settings_path() -> Result<String, String> {
         }
     });
     let body = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    std::fs::write(&path, body).map_err(|e| e.to_string())?;
-    eprintln!(
-        "[agent_events] hooks settings escrito em {}",
-        path.display()
-    );
-    Ok(path.to_string_lossy().to_string())
+
+    let mut current = settings_file_state()
+        .lock()
+        .map_err(|_| "agent hook settings lock poisoned".to_string())?;
+    if let Some(path) = current.as_ref() {
+        if is_private_settings_file(path) {
+            return Ok(path.to_string_lossy().into_owned());
+        }
+        let _ = std::fs::remove_file(path);
+        *current = None;
+    }
+
+    let directory = hook_runtime_dir(&app)?;
+    let path = new_settings_path(&directory);
+    write_private_file(&path, body.as_bytes())?;
+    *current = Some(path.clone());
+    Ok(path.to_string_lossy().into_owned())
 }
 
 pub fn start_listener(app: AppHandle) {
@@ -139,6 +255,11 @@ pub fn start_listener(app: AppHandle) {
         for mut request in server.incoming_requests() {
             let url = request.url().to_string();
 
+            if request.method() != &tiny_http::Method::Post {
+                let _ = request.respond(tiny_http::Response::empty(405));
+                continue;
+            }
+
             if !check_token(&request) {
                 let _ = request.respond(tiny_http::Response::empty(401));
                 continue;
@@ -159,7 +280,7 @@ pub fn start_listener(app: AppHandle) {
             // `curl -X POST /spawn -d '{"agent":"codex","task":"...","mode":"exec"}'`.
             // O Alethe emite `agent-spawn`; o front sobe um PTY worker. Campos:
 
-            if url.starts_with("/spawn") {
+            if url == "/spawn" {
                 match serde_json::from_str::<serde_json::Value>(&body) {
                     Ok(payload) => {
                         let agent = payload
@@ -216,7 +337,7 @@ pub fn start_listener(app: AppHandle) {
             // Alias legado: o control plane antigo despacha texto cru pro codex
 
             // emitindo agent-spawn com agent=codex.
-            if url.starts_with("/codex") {
+            if url == "/codex" {
                 let task = body.trim().to_string();
                 eprintln!("[agent_events] /codex (legado) task ({} chars)", task.len());
                 let payload = serde_json::json!({ "agent": "codex", "task": task });
@@ -231,7 +352,7 @@ pub fn start_listener(app: AppHandle) {
             // working/idle real de sessoes OpenCode. Campos: directory
 
             // state ("working" | "idle").
-            if url.starts_with("/opencode-status") {
+            if url == "/opencode-status" {
                 match serde_json::from_str::<serde_json::Value>(&body) {
                     Ok(payload) => {
                         let _ = app.emit("opencode-bridge-status", &payload);
@@ -239,6 +360,11 @@ pub fn start_listener(app: AppHandle) {
                     Err(e) => eprintln!("[agent_events] /opencode-status payload inválido: {e}"),
                 }
                 let _ = request.respond(tiny_http::Response::empty(200));
+                continue;
+            }
+
+            if url != "/hook" {
+                let _ = request.respond(tiny_http::Response::empty(404));
                 continue;
             }
 
@@ -258,8 +384,6 @@ pub fn start_listener(app: AppHandle) {
                         get("agent_type"),
                     );
 
-                    let preview: String = body.chars().take(600).collect();
-                    eprintln!("[agent_events] payload: {preview}");
                     if let Err(e) = app.emit("agent-hook", &payload) {
                         eprintln!("[agent_events] falha ao emitir agent-hook: {e}");
                     }
@@ -270,4 +394,44 @@ pub fn start_listener(app: AppHandle) {
             let _ = request.respond(tiny_http::Response::empty(200));
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_dir(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("alethe-agent-hooks-{label}-{}", nanoid::nanoid!(8)))
+    }
+
+    #[test]
+    fn settings_paths_are_session_specific() {
+        let directory = test_dir("paths");
+        assert_ne!(new_settings_path(&directory), new_settings_path(&directory));
+    }
+
+    #[test]
+    fn writes_private_settings() {
+        let directory = test_dir("permissions");
+        let path = new_settings_path(&directory);
+        write_private_file(&path, br#"{"hooks":{}}"#).unwrap();
+
+        assert_eq!(std::fs::read(&path).unwrap(), br#"{"hooks":{}}"#);
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&directory).unwrap().permissions().mode() & 0o777,
+                0o700
+            );
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+
+        std::fs::remove_file(&path).unwrap();
+        std::fs::remove_dir(&directory).unwrap();
+    }
 }
