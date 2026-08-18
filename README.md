@@ -30,12 +30,18 @@
     ·
     <a href="https://github.com/Kc1t/alethe-agents/issues/new?labels=enhancement">Request Feature</a>
     ·
+    <a href="./SECURITY.md">Security</a>
+    ·
+    <a href="./docs/PRIVACY.md">Privacy</a>
+    ·
     <a href="#contributing">Contribute</a>
   </p>
 </div>
 
 > [!IMPORTANT]
-> Alethe is an early public release. The desktop app is free, open source, and local-first. Optional hosted services, such as sync or cloud backup, may be offered separately later.
+> Alethe is an early public release. The desktop app is free, open source, and local-first, not
+> local-only: update checks and provider usage polling are on by default, while other network features
+> are optional or action-triggered. See the [privacy and data-flow guide](./docs/PRIVACY.md).
 
 <div align="center">
   <img src="./docs/assets/alethe-preview.gif" alt="Alethe multi-agent coding workspace preview" width="760">
@@ -53,6 +59,8 @@ of that, Alethe manages the things agents share: their CLIs, their MCP servers, 
 conversations you move between them.
 
 Cross-platform (Windows, macOS, Linux), local-first, built with Tauri, Rust, React, and `xterm.js`.
+“Local-first” describes workspace persistence, not an internet-free guarantee; see
+[`docs/PRIVACY.md`](./docs/PRIVACY.md) for current network defaults, credentials, and retention.
 
 ## Supported Platforms
 
@@ -114,7 +122,8 @@ registry, npm/pnpm/Volta/fnm/nvm/Bun/Cargo/Scoop/Chocolatey, and can be pointed 
 - Sessions of Claude Code, Codex, and OpenCode resume after a crash or a restart.
 - **Recent chats** lists the conversations of a pane's working directory and reopens any of them.
 - A Claude Code conversation can be **handed off to Codex** (and back) through a locally redacted
-  context packet — no copy-pasting the thread by hand.
+  context packet — no copy-pasting the thread by hand. Redaction is best effort, so review the packet
+  before starting the target agent.
 - Scrollback is persisted per PTY, so reattaching shows what happened before.
 
 **Manage what the agents share**
@@ -136,9 +145,11 @@ registry, npm/pnpm/Volta/fnm/nvm/Bun/Cargo/Scoop/Chocolatey, and can be pointed 
 - Todos per project, isolated profiles, local backup export/import, 14 UI and terminal themes,
   EN and pt-BR.
 - **Remote Control**: an authenticated LAN web view, paired by QR code, to follow and answer agents
-  from your phone.
+  from your phone. It is off by default and uses unencrypted HTTP/WebSocket transport on the LAN, so
+  enable it only on a trusted network.
 - Spotify Now Playing, using your own Spotify app credentials in **Preferences ▸ Spotify** with
-  `http://127.0.0.1:8888/callback` as the redirect URI.
+  `http://127.0.0.1:8888/callback` as the redirect URI. Current releases store those credentials in
+  local profile files; see the privacy guide before exporting or sharing profile data.
 
 ## Core Concepts
 
@@ -163,10 +174,10 @@ Use the published installers from [Releases](https://github.com/Kc1t/alethe-agen
 
 > [!WARNING]
 > Windows builds are **not code-signed yet**, so Defender may flag `alethe.exe` as
-> `Trojan:Win32/Bearfoos.A!ml` and quarantine it. **This is a false positive** — the `!ml` suffix
-> means a machine-learning heuristic, not a malware signature, and Alethe trips it by doing what a
-> terminal multiplexer must do: spawn child processes, create PTYs, write into them, and self-update
-> from an unsigned binary.
+> `Trojan:Win32/Bearfoos.A!ml` and quarantine it. The `!ml` suffix denotes a machine-learning
+> heuristic rather than a publisher signature, and terminal-multiplexer behavior such as spawning
+> child processes and creating PTYs can produce false positives. Verify that the download came from
+> the official Releases page; do not bypass a warning for an artifact from another source.
 
 To recover it: **Windows Security → Virus & threat protection → Protection history → Actions →
 Restore**, then add an exclusion for `%LOCALAPPDATA%\Alethe` (and `src-tauri/target` if you build
@@ -291,6 +302,8 @@ offered separately. The **Alethe** name, logo, and official branding are reserve
 
 ## Community
 
+- Security reports: [`SECURITY.md`](SECURITY.md)
+- Privacy and data flows: [`docs/PRIVACY.md`](docs/PRIVACY.md)
 - Maintainer: [Kc1t](https://github.com/Kc1t)
 - Project: <https://github.com/Kc1t/alethe-agents>
 - Bugs and feature requests: <https://github.com/Kc1t/alethe-agents/issues>
