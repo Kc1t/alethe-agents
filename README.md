@@ -41,7 +41,9 @@
 > [!IMPORTANT]
 > Alethe is an early public release. The desktop app is free, open source, and local-first, not
 > local-only: update checks and provider usage polling are on by default, while other network features
-> are optional or action-triggered. See the [privacy and data-flow guide](./docs/PRIVACY.md).
+> are optional or action-triggered. Manual GitHub Gist Sync is already available; first-party hosted
+> sync or cloud backup may be offered separately later. See the
+> [privacy and data-flow guide](./docs/PRIVACY.md).
 
 <div align="center">
   <img src="./docs/assets/alethe-preview.gif" alt="Alethe multi-agent coding workspace preview" width="760">
@@ -146,7 +148,8 @@ registry, npm/pnpm/Volta/fnm/nvm/Bun/Cargo/Scoop/Chocolatey, and can be pointed 
   EN and pt-BR.
 - **Remote Control**: an authenticated LAN web view, paired by QR code, to follow and answer agents
   from your phone. It is off by default and uses unencrypted HTTP/WebSocket transport on the LAN, so
-  enable it only on a trusted network.
+  enable it only on a trusted network. Clean profiles are read-only; answering agents requires a
+  separate input opt-in, and shell input has its own additional opt-in.
 - Spotify Now Playing, using your own Spotify app credentials in **Preferences ▸ Spotify** with
   `http://127.0.0.1:8888/callback` as the redirect URI. Current releases store those credentials in
   local profile files; see the privacy guide before exporting or sharing profile data.
@@ -230,7 +233,7 @@ is already running, the existing window is focused. The command lands in `~/.loc
 - [x] Releases for Windows, Linux, and macOS.
 - [ ] Windows release signing and macOS notarization.
 - [ ] Broader Linux/macOS validation on real machines.
-- [ ] Optional cloud sync/backup.
+- [ ] First-party hosted cloud sync/backup (manual GitHub Gist Sync is already available).
 
 ## Contributing
 

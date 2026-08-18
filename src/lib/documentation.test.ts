@@ -71,8 +71,10 @@ describe('security and privacy documentation', () => {
       '“Local-first” describes workspace persistence, not an internet-free guarantee',
     )
     expect(readmeText).toContain('update checks and provider usage polling are on by default')
+    expect(readmeText).toContain('Manual GitHub Gist Sync is already available')
     expect(readmeText).toContain('Redaction is best effort')
     expect(readmeText).toContain('unencrypted HTTP/WebSocket transport')
+    expect(readmeText).toContain('Clean profiles are read-only')
     expect(readmeText).not.toContain('This is a false positive')
     expect(overviewText).toContain('root-level `logs/`')
     expect(overviewText).toContain('plaintext credential storage')
