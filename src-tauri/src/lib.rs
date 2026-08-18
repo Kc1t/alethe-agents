@@ -52,6 +52,7 @@ mod remote;
 mod resource_manager;
 mod resources;
 mod scheduler;
+mod secure_store;
 mod session_watcher;
 mod skills;
 mod spotify;

@@ -10,6 +10,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Changed
+
+- GitHub Gist Sync now stores its token in the operating system credential store. Existing plaintext
+  profile tokens migrate only after a verified keyring write and remain intact if migration fails.
+
 ## [1.6.0] — 2026-08-17
 
 ### Added
