@@ -2,7 +2,7 @@
 
 Alethe is a desktop workspace for running coding agents and shells side by side. It turns terminals into persistent workspace units: each pane has its own cwd, PTY, scrollback, tabs, layout state, and local resume data.
 
-The app is local-first. Projects, preferences, layouts, scrollback, sessions, and Spotify credentials stay on the user's machine unless an optional cloud service is added later.
+The app is local-first, not local-only. Its primary workspace state is stored on the user's machine, while update checks, provider usage polling, optional integrations, embedded web content, LAN remote control, and coding-agent subprocesses have the data flows documented in the [privacy guide](PRIVACY.md). See the repository [security policy](../SECURITY.md) for private vulnerability reporting.
 
 ## What It Provides
 
@@ -58,7 +58,15 @@ Typical files include:
 - `profiles/<profileId>/projects.json`: projects, groups, workspace state, preferences, and CLI paths.
 - `profiles/<profileId>/scrollback/`: terminal scrollback snapshots.
 - `profiles/<profileId>/spotify_tokens.json`: local Spotify token cache, when configured.
-- `profiles/<profileId>/spawn.log`: local spawn and diagnostic log.
+- `profiles/<profileId>/github_sync.json`: GitHub Sync token and metadata, when configured.
+- `profiles/<profileId>/spawn.log`: command, launcher, path-preview, timing, and PTY diagnostics.
+- `profiles/<profileId>/handoffs/` and `mcp/`: temporary handoff packets, registry cache, and MCP backups.
+- root-level `logs/`: telemetry, crash, frontend, resource, and lifecycle diagnostics shared by the
+  installation.
+
+Retention, export exclusions, plaintext credential storage, and deletion limits are documented in
+[`PRIVACY.md`](PRIVACY.md); “local” does not mean every local artifact is automatically included in a
+profile backup or removed from external copies.
 
 ## Development
 
@@ -79,4 +87,4 @@ src-tauri/target/release/bundle/
 
 Alethe is currently focused on the local desktop app. Windows is the most tested platform, while Linux and macOS builds are supported by the release workflow and need broader real-machine validation.
 
-Cloud sync, hosted backup, billing, and online services are intentionally separate from the local app.
+Alethe does not require an Alethe cloud account. Current first-party and third-party network surfaces, their defaults, and local retention/deletion behavior are documented in [`PRIVACY.md`](PRIVACY.md).
