@@ -10,6 +10,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Fixed
+
+- Linux AppImages now use the host Wayland client library, preventing blank windows on newer
+  Wayland/Mesa systems.
+
 ## [1.6.0] — 2026-08-17
 
 ### Added
