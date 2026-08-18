@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
-use std::fs;
-use std::path::PathBuf;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -90,10 +91,51 @@ fn cache_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     )
 }
 
+#[cfg(unix)]
+fn make_cache_private(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+}
+
+#[cfg(not(unix))]
+fn make_cache_private(_path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
+fn read_cache_path(path: &Path) -> RegistryCache {
+    if path.exists() && make_cache_private(path).is_err() {
+        return RegistryCache::default();
+    }
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+fn write_cache_path(path: &Path, cache: &RegistryCache) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let raw = serde_json::to_string(cache).map_err(std::io::Error::other)?;
+    if path.exists() {
+        make_cache_private(path)?;
+    }
+    let mut options = OpenOptions::new();
+    options.create(true).truncate(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    make_cache_private(path)?;
+    file.write_all(raw.as_bytes())
+}
+
 fn read_cache(app: &tauri::AppHandle) -> RegistryCache {
     cache_path(app)
-        .and_then(|path| fs::read_to_string(path).ok())
-        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .map(|path| read_cache_path(&path))
         .unwrap_or_default()
 }
 
@@ -101,14 +143,7 @@ fn write_cache(app: &tauri::AppHandle, cache: &RegistryCache) {
     let Some(path) = cache_path(app) else {
         return;
     };
-    if let Some(parent) = path.parent() {
-        if fs::create_dir_all(parent).is_err() {
-            return;
-        }
-    }
-    if let Ok(raw) = serde_json::to_string(cache) {
-        let _ = fs::write(path, raw);
-    }
+    let _ = write_cache_path(&path, cache);
 }
 
 fn text(value: &Value, key: &str) -> Option<String> {
@@ -192,31 +227,44 @@ fn argument_values(value: Option<&Value>) -> Vec<String> {
 }
 
 fn runtime_for(registry_type: &str, hint: Option<&str>) -> Option<&'static str> {
-    match hint {
-        Some("npx") => Some("npx"),
-        Some("uvx") => Some("uvx"),
-        Some("docker") => Some("docker"),
-        Some("dnx") => Some("dnx"),
-        _ => match registry_type {
-            "npm" => Some("npx"),
-            "pypi" => Some("uvx"),
-            "oci" => Some("docker"),
-            "nuget" => Some("dnx"),
-            _ => None,
-        },
+    match (registry_type, hint) {
+        ("npm", None | Some("npx")) => Some("npx"),
+        ("pypi", None | Some("uvx")) => Some("uvx"),
+        // OCI and NuGet metadata does not currently prove a complete immutable invocation.
+        _ => None,
     }
+}
+
+fn exact_package_version<'a>(registry_type: &str, raw: &'a str) -> Option<&'a str> {
+    let version = raw.trim();
+    let valid_characters = version.chars().all(|character| {
+        character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '+' | '_' | '!')
+    });
+    let starts_with_digit = version
+        .chars()
+        .next()
+        .is_some_and(|character| character.is_ascii_digit());
+    let ecosystem_valid = match registry_type {
+        "npm" => !version.contains(['_', '!']),
+        "pypi" => true,
+        _ => false,
+    };
+    (!version.is_empty() && starts_with_digit && valid_characters && ecosystem_valid)
+        .then_some(version)
 }
 
 fn package_install(package: &Value) -> Option<McpInstallOption> {
     let identifier = text(package, "identifier")?;
     let registry_type = text(package, "registryType").unwrap_or_default();
     let runtime = runtime_for(&registry_type, text(package, "runtimeHint").as_deref())?;
+    let raw_version = text(package, "version")?;
+    let version = exact_package_version(&registry_type, &raw_version)?;
 
     let mut args = argument_values(package.get("runtimeArguments"));
-    let version = text(package, "version");
-    args.push(match (&registry_type[..], version.as_deref()) {
-        ("npm", Some(version)) => format!("{identifier}@{version}"),
-        _ => identifier.clone(),
+    args.push(match registry_type.as_str() {
+        "npm" => format!("{identifier}@{version}"),
+        "pypi" => format!("{identifier}=={version}"),
+        _ => return None,
     });
     args.extend(argument_values(package.get("packageArguments")));
 
@@ -469,6 +517,72 @@ mod tests {
     }
 
     #[test]
+    fn a_pypi_package_uses_an_exact_uvx_requirement() {
+        let package: Value = serde_json::from_str(
+            r#"{
+              "registryType":"pypi",
+              "identifier":"example-mcp",
+              "version":"1.4.2",
+              "runtimeHint":"uvx",
+              "transport":{"type":"stdio"},
+              "packageArguments":[{"value":"--verbose"}]
+            }"#,
+        )
+        .expect("fixture");
+        let install = package_install(&package).expect("install");
+        assert_eq!(install.command.as_deref(), Some("uvx"));
+        assert_eq!(install.args, vec!["example-mcp==1.4.2", "--verbose"]);
+    }
+
+    #[test]
+    fn package_options_without_a_required_version_are_omitted() {
+        for registry_type in ["npm", "pypi"] {
+            let package = serde_json::json!({
+                "registryType": registry_type,
+                "identifier": "example-mcp",
+                "transport": { "type": "stdio" }
+            });
+            assert!(package_install(&package).is_none(), "{registry_type}");
+        }
+    }
+
+    #[test]
+    fn mutable_or_range_package_versions_are_omitted() {
+        for (registry_type, version) in [
+            ("npm", "latest"),
+            ("npm", "^1.2.3"),
+            ("npm", "1.2.*"),
+            ("pypi", ">=1.2"),
+            ("pypi", "1.2.*"),
+        ] {
+            let package = serde_json::json!({
+                "registryType": registry_type,
+                "identifier": "example-mcp",
+                "version": version,
+                "transport": { "type": "stdio" }
+            });
+            assert!(
+                package_install(&package).is_none(),
+                "{registry_type}:{version}"
+            );
+        }
+    }
+
+    #[test]
+    fn oci_and_nuget_package_options_are_not_exposed() {
+        for (registry_type, runtime_hint) in [("oci", "docker"), ("nuget", "dnx")] {
+            let package = serde_json::json!({
+                "registryType": registry_type,
+                "identifier": "example-mcp",
+                "version": "1.2.3",
+                "runtimeHint": runtime_hint,
+                "transport": { "type": "stdio" }
+            });
+            assert!(package_install(&package).is_none(), "{registry_type}");
+        }
+    }
+
+    #[test]
     fn environment_hints_carry_the_secret_flag() {
         let install = &parse(PACKAGE_SERVER).installs[0];
         let secret = install
@@ -530,5 +644,31 @@ mod tests {
         assert_eq!(page.entries.len(), 1);
         assert_eq!(page.next_cursor.as_deref(), Some("abc:1.0"));
         assert!(page.stale_since.is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cache_files_are_created_and_tightened_to_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!(
+            "alethe-registry-cache-{}-{}",
+            std::process::id(),
+            crate::provider_common::now_ms()
+        ));
+        let path = dir.join("nested").join("registry-cache.json");
+        write_cache_path(&path, &RegistryCache::default()).expect("create cache");
+        assert_eq!(
+            fs::metadata(&path).expect("metadata").permissions().mode() & 0o777,
+            0o600
+        );
+
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).expect("loosen fixture");
+        let _ = read_cache_path(&path);
+        assert_eq!(
+            fs::metadata(&path).expect("metadata").permissions().mode() & 0o777,
+            0o600
+        );
+        fs::remove_dir_all(dir).expect("clean fixture");
     }
 }

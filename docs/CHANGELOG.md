@@ -10,6 +10,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Changed
+
+- MCP registry package suggestions now require exact npm or PyPI versions, keep their published
+  provenance visible during review, and require an explicit third-party execution acknowledgement
+  before they can be added. Registry cache files are also restricted to the current user on Unix.
+
 ## [1.6.0] — 2026-08-17
 
 ### Added

@@ -1972,6 +1972,13 @@ export const ptBR: Record<MessageKey, string> = {
   'mcp.registryNoResults': 'Nenhum servidor encontrado.',
   'mcp.registryOffline': 'Não deu para alcançar o registry e não há nada em cache para esta busca.',
   'mcp.registryStale': 'Registry fora do ar — mostrando a cópia salva em {date}.',
+  'mcp.registryReviewTitle': 'Seleção do registry',
+  'mcp.registryReviewOrigin': 'Origem no registry',
+  'mcp.registryReviewName': 'Título publicado',
+  'mcp.registryReviewVersion': 'Versão publicada',
+  'mcp.registryReviewRepository': 'Repositório',
+  'mcp.registryAcknowledgement':
+    'Entendo que este é um software de terceiros que pode executar código local ou acessar serviços remotos quando um agente iniciar, e que aparecer no registry não significa um endosso da Alethe.',
   'mcp.addWritten': '{count} servidor(es) adicionado(s) em {agents}',
   'mcp.fieldName': 'Nome',
   'mcp.fieldTransport': 'Transporte',
