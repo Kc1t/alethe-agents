@@ -135,6 +135,15 @@ Custom grids support `colSpan`, `rowSpan`, drag-and-drop swapping, and resizable
 - Open the spawn log.
 - Reset local app data.
 
+## Local Telemetry and Privacy
+
+- Runtime metrics and recent traces stay in memory for the Multi-Agent views.
+- The local `logs/telemetry.jsonl` file contains only event envelope fields and finite numeric
+  `duration_ms`, `cost_usd`, and `memory_mb` values; arbitrary event data is never persisted.
+- The telemetry log is capped at 2 MiB by replacing old content before a new entry would cross the
+  limit, and is created with owner-only permissions on Unix.
+- Alethe has no telemetry uploader; this data stays on the device.
+
 ## Backup
 
 - Export local state as a `.zip`.

@@ -10,6 +10,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Changed
+
+- Local telemetry logs now persist only event identifiers and finite duration, cost, and memory
+  metrics, use owner-only permissions on Unix, and automatically discard old entries before the log
+  can exceed 2 MiB. Telemetry remains local and is never uploaded.
+
 ## [1.6.0] — 2026-08-17
 
 ### Added
