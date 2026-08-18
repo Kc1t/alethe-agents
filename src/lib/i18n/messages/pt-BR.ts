@@ -180,6 +180,23 @@ export const ptBR: Record<MessageKey, string> = {
   'remote.statusOff': 'Desligado',
   'remote.enable': 'Ligar controle remoto',
   'remote.disable': 'Desligar controle remoto',
+  'remote.confirmEnable':
+    'Ligar o Controle Remoto?\n\nO Alethe abrirá listeners HTTP e WebSocket na sua rede local. Dispositivos pareados poderão ver a saída dos terminais compartilhados. As sessões pareadas expiram após {expiry}.\n\n{access}',
+  'remote.confirmAccessReadOnly':
+    'O acesso atual é somente leitura: mensagens para agentes e entrada de shell estão bloqueadas.',
+  'remote.confirmAccessAgentInput':
+    'O acesso atual permite mensagens para agentes; a entrada de shell está bloqueada.',
+  'remote.confirmAccessShellInput':
+    'O acesso atual permite mensagens para agentes e entrada de shell.',
+  'remote.sessionSeconds': '{seconds} segundos',
+  'remote.enableFailedTitle': 'Não foi possível iniciar o controle remoto',
+  'remote.enableFailedBody': 'O Alethe manteve o controle remoto desligado. {error}',
+  'remote.disableFailedTitle': 'Não foi possível desligar o controle remoto',
+  'remote.disableFailedBody':
+    'O Alethe não conseguiu confirmar que o acesso pela rede local foi encerrado. Reinicie o Alethe antes de continuar. {error}',
+  'remote.rollbackFailedTitle': 'A reversão do controle remoto requer atenção',
+  'remote.rollbackFailedBody':
+    'O Alethe não conseguiu salvar ou aplicar completamente o estado desligado. Reinicie o Alethe e confirme que o Controle Remoto está desligado. Erro de inicialização: {error}. Erro de reversão: {rollbackError}',
   'remote.connectedDevices': 'Dispositivos conectados',
   'remote.topbarDeviceConnected': '{count} dispositivo conectado',
   'remote.topbarDevicesConnected': '{count} dispositivos conectados',

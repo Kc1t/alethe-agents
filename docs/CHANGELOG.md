@@ -10,6 +10,13 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Changed
+
+- Remote Control now requires an explicit summary of its local-network exposure and configured access
+  policy before it is enabled. It stays off unless every policy update and both LAN listeners succeed,
+  persists failed-start rollback immediately, and serializes disable/session revocation against remote
+  terminal writes.
+
 ## [1.6.0] — 2026-08-17
 
 ### Added

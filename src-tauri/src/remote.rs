@@ -92,11 +92,13 @@ struct AuthFailures {
 }
 
 pub struct RemoteHub {
+    lifecycle: Mutex<()>,
     pairing_token: Mutex<String>,
     pairing_until: Mutex<Option<Instant>>,
     host: Mutex<String>,
     running: AtomicBool,
     generation: AtomicU64,
+    latest_control_request_id: AtomicU64,
     http_port: AtomicU16,
     ws_port: AtomicU16,
     next_session_id: AtomicUsize,
@@ -113,17 +115,19 @@ pub struct RemoteHub {
 impl RemoteHub {
     fn new() -> Self {
         Self {
+            lifecycle: Mutex::new(()),
             pairing_token: Mutex::new(nanoid::nanoid!(32)),
             pairing_until: Mutex::new(None),
             host: Mutex::new(local_ip()),
             running: AtomicBool::new(false),
             generation: AtomicU64::new(0),
+            latest_control_request_id: AtomicU64::new(0),
             http_port: AtomicU16::new(0),
             ws_port: AtomicU16::new(0),
             next_session_id: AtomicUsize::new(1),
             max_devices: AtomicUsize::new(1),
             session_expiry_secs: AtomicU64::new(DEFAULT_SESSION_EXPIRY_SECS),
-            read_only: AtomicBool::new(false),
+            read_only: AtomicBool::new(true),
             allow_shell_input: AtomicBool::new(false),
             connections: AtomicUsize::new(0),
             sessions: Mutex::new(Vec::new()),
@@ -138,6 +142,15 @@ impl RemoteHub {
 
     fn is_active(&self, generation: u64) -> bool {
         self.running.load(Ordering::SeqCst) && self.generation.load(Ordering::SeqCst) == generation
+    }
+
+    fn record_control_request(&self, request_id: u64) {
+        self.latest_control_request_id
+            .fetch_max(request_id, Ordering::SeqCst);
+    }
+
+    fn control_request_is_current(&self, request_id: u64) -> bool {
+        self.latest_control_request_id.load(Ordering::SeqCst) == request_id
     }
 
     fn host(&self) -> String {
@@ -203,6 +216,7 @@ impl RemoteHub {
 
     fn info(&self) -> RemoteInfo {
         self.prune_expired();
+        let enabled = self.enabled();
         let http_port = self.http_port.load(Ordering::SeqCst);
         let ws_port = self.ws_port.load(Ordering::SeqCst);
         let host = self.host();
@@ -230,7 +244,7 @@ impl RemoteHub {
             })
             .unwrap_or_default();
         RemoteInfo {
-            enabled: self.enabled(),
+            enabled,
             connected_devices: devices.len(),
             online_devices: devices.iter().filter(|device| device.online).count(),
             max_devices: self.max_devices.load(Ordering::Relaxed),
@@ -242,8 +256,44 @@ impl RemoteHub {
             devices,
             pairing_url,
             qr_svg,
-            http_url: (http_port != 0).then(|| format!("http://{host}:{http_port}")),
-            ws_url: (ws_port != 0).then(|| format!("ws://{host}:{ws_port}")),
+            http_url: (enabled && http_port != 0).then(|| format!("http://{host}:{http_port}")),
+            ws_url: (enabled && ws_port != 0).then(|| format!("ws://{host}:{ws_port}")),
+        }
+    }
+
+    fn activate(&self, http_port: u16, ws_port: u16) -> u64 {
+        let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
+        self.http_port.store(http_port, Ordering::SeqCst);
+        self.ws_port.store(ws_port, Ordering::SeqCst);
+        self.running.store(true, Ordering::SeqCst);
+        generation
+    }
+
+    fn shutdown(&self) {
+        self.running.store(false, Ordering::SeqCst);
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        self.http_port.store(0, Ordering::SeqCst);
+        self.ws_port.store(0, Ordering::SeqCst);
+        self.revoke_all();
+        self.close_pairing_window();
+    }
+
+    fn fail_generation(&self, generation: u64) {
+        if self
+            .generation
+            .compare_exchange(
+                generation,
+                generation + 1,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            )
+            .is_ok()
+        {
+            self.running.store(false, Ordering::SeqCst);
+            self.http_port.store(0, Ordering::SeqCst);
+            self.ws_port.store(0, Ordering::SeqCst);
+            self.revoke_all();
+            self.close_pairing_window();
         }
     }
 
@@ -492,31 +542,57 @@ pub fn hub() -> Arc<RemoteHub> {
     HUB.get_or_init(|| Arc::new(RemoteHub::new())).clone()
 }
 
-pub fn start(app: AppHandle, sessions: PtySessions) {
+pub fn start(app: AppHandle, sessions: PtySessions, request_id: u64) -> Result<(), String> {
     let hub = hub();
-    if hub.running.swap(true, Ordering::SeqCst) {
-        return;
+    let _lifecycle = hub
+        .lifecycle
+        .lock()
+        .map_err(|_| "Remote control cannot start because its lifecycle lock is unavailable. Restart Alethe and try again.".to_string())?;
+    if !hub.control_request_is_current(request_id) || hub.enabled() {
+        return Ok(());
     }
     hub.refresh_host();
-    let generation = hub.generation.fetch_add(1, Ordering::SeqCst) + 1;
+    let host = hub.host();
+    let listeners = bind_remote_listeners(&host, bind_listener)?;
+    if !hub.control_request_is_current(request_id) {
+        return Ok(());
+    }
+    let http_port = listeners
+        .http
+        .local_addr()
+        .map_err(|_| {
+            "Remote control could not inspect its HTTP listener. Restart Alethe and try again."
+                .to_string()
+        })?
+        .port();
+    let ws_port = listeners
+        .websocket
+        .local_addr()
+        .map_err(|_| {
+            "Remote control could not inspect its WebSocket listener. Restart Alethe and try again."
+                .to_string()
+        })?
+        .port();
+    let generation = hub.activate(http_port, ws_port);
+    let BoundListeners { http, websocket } = listeners;
     let http_hub = Arc::clone(&hub);
     let http_sessions = Arc::clone(&sessions);
     let http_app = app.clone();
-    thread::spawn(move || run_http(http_app, http_hub, http_sessions, generation));
+    thread::spawn(move || run_http(http, http_app, http_hub, http_sessions, generation));
 
     let ws_hub = Arc::clone(&hub);
     let ws_sessions = Arc::clone(&sessions);
-    thread::spawn(move || run_websocket(ws_hub, ws_sessions, generation));
+    thread::spawn(move || run_websocket(websocket, ws_hub, ws_sessions, generation));
+    eprintln!("[remote] LAN client available at http://{host}:{http_port}");
+    Ok(())
 }
 
-pub fn stop() {
-    let hub = hub();
-    hub.running.store(false, Ordering::SeqCst);
-    hub.generation.fetch_add(1, Ordering::SeqCst);
-    hub.http_port.store(0, Ordering::SeqCst);
-    hub.ws_port.store(0, Ordering::SeqCst);
-    hub.revoke_all();
-    hub.close_pairing_window();
+fn stop(hub: &Arc<RemoteHub>, request_id: u64) {
+    let _lifecycle = hub.lifecycle.lock().ok();
+    if !hub.control_request_is_current(request_id) {
+        return;
+    }
+    hub.shutdown();
     eprintln!("[remote] LAN remote control disabled");
 }
 
@@ -600,14 +676,16 @@ pub fn remote_control_set_enabled(
     app: AppHandle,
     sessions: tauri::State<'_, PtySessions>,
     enabled: bool,
-) -> RemoteInfo {
+    request_id: u64,
+) -> Result<RemoteInfo, String> {
     let remote = hub();
+    remote.record_control_request(request_id);
     if enabled {
-        start(app, Arc::clone(sessions.inner()));
+        start(app, Arc::clone(sessions.inner()), request_id)?;
     } else {
-        stop();
+        stop(&remote, request_id);
     }
-    remote.info()
+    Ok(remote.info())
 }
 
 struct ConnectionGuard(Arc<RemoteHub>);
@@ -629,17 +707,13 @@ impl Drop for ConnectionGuard {
     }
 }
 
-fn run_http(app: AppHandle, hub: Arc<RemoteHub>, sessions: PtySessions, generation: u64) {
-    let host = hub.host();
-    let Some(listener) = bind_listener(&host, HTTP_START, HTTP_END) else {
-        eprintln!("[remote] unable to bind LAN HTTP listener");
-        stop();
-        return;
-    };
-    let port = listener.local_addr().map(|addr| addr.port()).unwrap_or(0);
-    hub.http_port.store(port, Ordering::SeqCst);
-    eprintln!("[remote] LAN client available at http://{host}:{port}");
-    let _ = listener.set_nonblocking(true);
+fn run_http(
+    listener: TcpListener,
+    app: AppHandle,
+    hub: Arc<RemoteHub>,
+    sessions: PtySessions,
+    generation: u64,
+) {
     while hub.is_active(generation) {
         let stream = match listener.accept() {
             Ok((stream, _)) => stream,
@@ -661,7 +735,7 @@ fn run_http(app: AppHandle, hub: Arc<RemoteHub>, sessions: PtySessions, generati
         let app = app.clone();
         thread::spawn(move || {
             let _guard = guard;
-            if let Err(error) = handle_http(&mut stream, &app, &hub, &sessions) {
+            if let Err(error) = handle_http(&mut stream, &app, &hub, &sessions, generation) {
                 eprintln!("[remote] HTTP request failed: {error}");
                 let _ = respond(
                     &mut stream,
@@ -672,21 +746,15 @@ fn run_http(app: AppHandle, hub: Arc<RemoteHub>, sessions: PtySessions, generati
             }
         });
     }
-    if hub.generation.load(Ordering::SeqCst) == generation {
-        hub.http_port.store(0, Ordering::SeqCst);
-    }
+    hub.fail_generation(generation);
 }
 
-fn run_websocket(hub: Arc<RemoteHub>, sessions: PtySessions, generation: u64) {
-    let host = hub.host();
-    let Some(listener) = bind_listener(&host, HTTP_START + 1, HTTP_END + 1) else {
-        eprintln!("[remote] unable to bind LAN WebSocket listener");
-        stop();
-        return;
-    };
-    let port = listener.local_addr().map(|addr| addr.port()).unwrap_or(0);
-    hub.ws_port.store(port, Ordering::SeqCst);
-    let _ = listener.set_nonblocking(true);
+fn run_websocket(
+    listener: TcpListener,
+    hub: Arc<RemoteHub>,
+    sessions: PtySessions,
+    generation: u64,
+) {
     while hub.is_active(generation) {
         let stream = match listener.accept() {
             Ok((stream, _)) => stream,
@@ -710,9 +778,7 @@ fn run_websocket(hub: Arc<RemoteHub>, sessions: PtySessions, generation: u64) {
             handle_websocket(stream, hub, sessions, generation, address);
         });
     }
-    if hub.generation.load(Ordering::SeqCst) == generation {
-        hub.ws_port.store(0, Ordering::SeqCst);
-    }
+    hub.fail_generation(generation);
 }
 
 fn allowed_origin(hub: &RemoteHub) -> String {
@@ -911,6 +977,7 @@ fn handle_http(
     app: &AppHandle,
     hub: &Arc<RemoteHub>,
     sessions: &PtySessions,
+    generation: u64,
 ) -> Result<(), String> {
     let address = stream
         .peer_addr()
@@ -922,6 +989,14 @@ fn handle_http(
             429,
             "application/json",
             r#"{"error":"Too many failed attempts"}"#,
+        );
+    }
+    if !hub.is_active(generation) {
+        return respond(
+            stream,
+            403,
+            "application/json",
+            r#"{"error":"Remote control is disabled"}"#,
         );
     }
     let (head, body) = read_request(stream)?;
@@ -983,7 +1058,7 @@ fn handle_http(
         };
         hub.clear_auth_failures(&address);
         return handle_api(
-            stream, app, hub, sessions, session_id, method, target, &body,
+            stream, app, hub, sessions, generation, session_id, method, target, &body,
         );
     }
 
@@ -1021,6 +1096,7 @@ fn handle_api(
     app: &AppHandle,
     hub: &Arc<RemoteHub>,
     sessions: &PtySessions,
+    generation: u64,
     session_id: usize,
     method: &str,
     target: &str,
@@ -1106,7 +1182,17 @@ fn handle_api(
                 r#"{"error":"Sending commands to shell terminals is disabled"}"#,
             );
         }
-        write_remote(sessions, &payload.pty_id, &format!("{text}\r"))?;
+        let write_completed = with_active_remote_session(hub, generation, session_id, || {
+            write_remote(sessions, &payload.pty_id, &format!("{text}\r"))
+        })?;
+        if !write_completed {
+            return respond(
+                stream,
+                401,
+                "application/json",
+                r#"{"error":"Remote session is no longer active"}"#,
+            );
+        }
         let device_name = hub.device_name(session_id);
         eprintln!(
             "[remote] {device_name} (device {session_id}) sent {} chars to {}",
@@ -1304,6 +1390,26 @@ fn write_remote(sessions: &PtySessions, id: &str, data: &str) -> Result<(), Stri
     writer.flush().map_err(|e| e.to_string())
 }
 
+fn with_active_remote_session<F>(
+    hub: &RemoteHub,
+    generation: u64,
+    session_id: usize,
+    write: F,
+) -> Result<bool, String>
+where
+    F: FnOnce() -> Result<(), String>,
+{
+    let _lifecycle = hub
+        .lifecycle
+        .lock()
+        .map_err(|_| "Remote control lifecycle lock is unavailable".to_string())?;
+    if !hub.is_active(generation) || !hub.session_alive(session_id) {
+        return Ok(false);
+    }
+    write()?;
+    Ok(true)
+}
+
 fn respond(
     stream: &mut TcpStream,
     status: u16,
@@ -1327,6 +1433,38 @@ fn respond(
     stream
         .write_all(response.as_bytes())
         .map_err(|e| e.to_string())
+}
+
+struct BoundListeners {
+    http: TcpListener,
+    websocket: TcpListener,
+}
+
+fn bind_remote_listeners<F>(host: &str, mut bind: F) -> Result<BoundListeners, String>
+where
+    F: FnMut(&str, u16, u16) -> Option<TcpListener>,
+{
+    let http = bind(host, HTTP_START, HTTP_END).ok_or_else(|| {
+        format!(
+            "Remote control could not open an HTTP listener on local address {host} (ports {HTTP_START}-{HTTP_END}). Close another app using that range or change networks, then try again."
+        )
+    })?;
+    let websocket = bind(host, HTTP_START + 1, HTTP_END + 1).ok_or_else(|| {
+        format!(
+            "Remote control could not open a WebSocket listener on local address {host} (ports {}-{}). Close another app using that range or change networks, then try again.",
+            HTTP_START + 1,
+            HTTP_END + 1
+        )
+    })?;
+    http.set_nonblocking(true).map_err(|_| {
+        "Remote control could not configure its HTTP listener. Restart Alethe and try again."
+            .to_string()
+    })?;
+    websocket.set_nonblocking(true).map_err(|_| {
+        "Remote control could not configure its WebSocket listener. Restart Alethe and try again."
+            .to_string()
+    })?;
+    Ok(BoundListeners { http, websocket })
 }
 
 fn bind_listener(host: &str, start: u16, end: u16) -> Option<TcpListener> {
@@ -1423,8 +1561,155 @@ fn local_ip() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{find_headers_end, header_value, percent_decode, RemoteHub};
+    use super::{
+        bind_remote_listeners, find_headers_end, header_value, percent_decode,
+        with_active_remote_session, RemoteHub,
+    };
     use std::cell::Cell;
+    use std::net::TcpListener;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{mpsc, Arc};
+    use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn listener_startup_rolls_back_when_the_second_bind_fails() {
+        let hub = RemoteHub::new();
+        let calls = Cell::new(0);
+        let first_address = Cell::new(None);
+
+        let result = bind_remote_listeners("127.0.0.1", |_, _, _| {
+            calls.set(calls.get() + 1);
+            if calls.get() == 1 {
+                let listener = TcpListener::bind(("127.0.0.1", 0)).expect("first listener");
+                first_address.set(Some(listener.local_addr().expect("listener address")));
+                Some(listener)
+            } else {
+                None
+            }
+        });
+
+        let error = result.err().expect("WebSocket bind should fail");
+        assert!(error.contains("WebSocket listener"));
+        assert!(error.contains("try again"));
+        assert!(!hub.enabled());
+        assert_eq!(hub.http_port.load(Ordering::SeqCst), 0);
+        assert_eq!(hub.ws_port.load(Ordering::SeqCst), 0);
+        TcpListener::bind(
+            first_address
+                .get()
+                .expect("first address should be captured"),
+        )
+        .expect("the successful first listener must be dropped on rollback");
+    }
+
+    #[test]
+    fn activation_reports_enabled_only_with_both_ports() {
+        let hub = RemoteHub::new();
+
+        let generation = hub.activate(9340, 9341);
+        let info = hub.info();
+
+        assert!(info.enabled);
+        assert_eq!(generation, hub.generation.load(Ordering::SeqCst));
+        assert!(info
+            .http_url
+            .as_deref()
+            .is_some_and(|url| url.ends_with(":9340")));
+        assert!(info
+            .ws_url
+            .as_deref()
+            .is_some_and(|url| url.ends_with(":9341")));
+    }
+
+    #[test]
+    fn backend_defaults_to_read_only() {
+        assert!(RemoteHub::new().read_only.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn newer_control_requests_supersede_older_requests() {
+        let hub = RemoteHub::new();
+
+        hub.record_control_request(20);
+        hub.record_control_request(19);
+
+        assert!(hub.control_request_is_current(20));
+        assert!(!hub.control_request_is_current(19));
+    }
+
+    #[test]
+    fn shutdown_waits_for_an_authorized_write_and_blocks_later_writes() {
+        let hub = Arc::new(RemoteHub::new());
+        let generation = hub.activate(9340, 9341);
+        hub.open_pairing_window();
+        let token = hub.pairing_token.lock().expect("pairing token").clone();
+        let (session_id, _) = hub
+            .pair(&token, "Phone".into(), "127.0.0.1:1".into())
+            .expect("pairing should succeed");
+        let (write_started_tx, write_started_rx) = mpsc::channel();
+        let (finish_write_tx, finish_write_rx) = mpsc::channel();
+        let writer_hub = Arc::clone(&hub);
+        let writer = thread::spawn(move || {
+            with_active_remote_session(&writer_hub, generation, session_id, || {
+                write_started_tx.send(()).expect("announce write");
+                finish_write_rx.recv().expect("finish write");
+                Ok(())
+            })
+        });
+
+        write_started_rx.recv().expect("write should start");
+        let (shutdown_finished_tx, shutdown_finished_rx) = mpsc::channel();
+        let shutdown_hub = Arc::clone(&hub);
+        let shutdown = thread::spawn(move || {
+            let _lifecycle = shutdown_hub.lifecycle.lock().expect("lifecycle lock");
+            shutdown_hub.shutdown();
+            shutdown_finished_tx.send(()).expect("announce shutdown");
+        });
+
+        assert!(shutdown_finished_rx
+            .recv_timeout(Duration::from_millis(50))
+            .is_err());
+        finish_write_tx.send(()).expect("release write");
+        assert!(writer.join().expect("writer thread").expect("write result"));
+        shutdown_finished_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("shutdown should finish");
+        shutdown.join().expect("shutdown thread");
+
+        let wrote_after_shutdown = AtomicBool::new(false);
+        assert!(
+            !with_active_remote_session(&hub, generation, session_id, || {
+                wrote_after_shutdown.store(true, Ordering::SeqCst);
+                Ok(())
+            })
+            .expect("authorization check")
+        );
+        assert!(!wrote_after_shutdown.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn shutdown_clears_ports_pairing_and_sessions() {
+        let hub = RemoteHub::new();
+        let generation = hub.activate(9340, 9341);
+        hub.open_pairing_window();
+        let pairing_token = hub.pairing_token.lock().expect("pairing token").clone();
+        let (_, session_token) = hub
+            .pair(&pairing_token, "Phone".into(), "127.0.0.1:5000".into())
+            .expect("device should pair");
+
+        hub.shutdown();
+        let info = hub.info();
+
+        assert!(!info.enabled);
+        assert!(hub.generation.load(Ordering::SeqCst) > generation);
+        assert_eq!(hub.http_port.load(Ordering::SeqCst), 0);
+        assert_eq!(hub.ws_port.load(Ordering::SeqCst), 0);
+        assert!(info.http_url.is_none());
+        assert!(info.ws_url.is_none());
+        assert!(!info.pairing_open);
+        assert!(hub.session_id_for(&session_token).is_none());
+    }
 
     #[test]
     fn publish_does_not_build_payload_without_subscribers() {
