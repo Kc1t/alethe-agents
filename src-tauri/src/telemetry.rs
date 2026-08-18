@@ -1,16 +1,30 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use tauri::AppHandle;
 
 use crate::event_bus::EventBusPayload;
+
+const TELEMETRY_LOG_MAX_BYTES: u64 = 2 * 1024 * 1024;
+const PERSISTED_METRIC_FIELDS: [&str; 3] = ["duration_ms", "cost_usd", "memory_mb"];
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MetricData {
     pub count: i64,
     pub last_value: f64,
     pub sum: f64,
+}
+
+#[derive(serde::Serialize)]
+struct PersistedTelemetryEvent<'a> {
+    event_type: &'a str,
+    timestamp_ms: u64,
+    correlation_id: &'a str,
+    task_id: &'a Option<String>,
+    agent_id: &'a Option<String>,
+    data: BTreeMap<&'static str, f64>,
 }
 
 static METRICS: OnceLock<Mutex<HashMap<String, MetricData>>> = OnceLock::new();
@@ -24,15 +38,94 @@ fn get_traces() -> &'static Mutex<VecDeque<EventBusPayload>> {
     TRACES.get_or_init(|| Mutex::new(VecDeque::with_capacity(500)))
 }
 
-fn append_telemetry_log(app: &AppHandle, event: &EventBusPayload) {
-    if let Ok(dir) = crate::logging::logs_dir(app) {
-        let _ = std::fs::create_dir_all(&dir);
-        let path = dir.join("telemetry.jsonl");
-        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
-            if let Ok(line) = serde_json::to_string(event) {
-                let _ = writeln!(file, "{}", line);
+fn is_persistable_metric(field: &str, value: f64) -> bool {
+    PERSISTED_METRIC_FIELDS.contains(&field) && value.is_finite()
+}
+
+fn persisted_telemetry_line(event: &EventBusPayload) -> serde_json::Result<Vec<u8>> {
+    let mut data = BTreeMap::new();
+    if let serde_json::Value::Object(event_data) = &event.data {
+        for field in PERSISTED_METRIC_FIELDS {
+            if let Some(value) = event_data.get(field).and_then(serde_json::Value::as_f64) {
+                if is_persistable_metric(field, value) {
+                    data.insert(field, value);
+                }
             }
         }
+    }
+
+    let persisted = PersistedTelemetryEvent {
+        event_type: &event.event_type,
+        timestamp_ms: event.timestamp_ms,
+        correlation_id: &event.correlation_id,
+        task_id: &event.task_id,
+        agent_id: &event.agent_id,
+        data,
+    };
+    let mut line = serde_json::to_vec(&persisted)?;
+    line.push(b'\n');
+    Ok(line)
+}
+
+fn telemetry_log_path(app: &AppHandle) -> io::Result<PathBuf> {
+    crate::logging::logs_dir(app)
+        .map(|dir| dir.join("telemetry.jsonl"))
+        .map_err(io::Error::other)
+}
+
+fn open_telemetry_log(path: &Path, truncate: bool) -> io::Result<std::fs::File> {
+    let mut options = OpenOptions::new();
+    options.create(true).write(true);
+    if truncate {
+        options.truncate(true);
+    } else {
+        options.append(true);
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+
+    let file = options.open(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(file)
+}
+
+/// Appends a minimized event, replacing older telemetry when the size cap would be exceeded.
+/// Returns `false` without changing the file when one serialized event exceeds the cap.
+fn append_telemetry_log_at(path: &Path, event: &EventBusPayload) -> io::Result<bool> {
+    let line = persisted_telemetry_line(event).map_err(io::Error::other)?;
+    let line_len = u64::try_from(line.len()).unwrap_or(u64::MAX);
+    if line_len > TELEMETRY_LOG_MAX_BYTES {
+        return Ok(false);
+    }
+
+    let existing_len = match std::fs::metadata(path) {
+        Ok(metadata) => metadata.len(),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => 0,
+        Err(error) => return Err(error),
+    };
+    let replace_existing = existing_len
+        .checked_add(line_len)
+        .map_or(true, |new_len| new_len > TELEMETRY_LOG_MAX_BYTES);
+
+    let mut file = open_telemetry_log(path, replace_existing)?;
+    file.write_all(&line)?;
+    Ok(true)
+}
+
+fn append_telemetry_log(app: &AppHandle, event: &EventBusPayload) {
+    if let Ok(path) = telemetry_log_path(app) {
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = append_telemetry_log_at(&path, event);
     }
 }
 
@@ -42,7 +135,7 @@ fn update_metrics(event: &EventBusPayload) {
         Err(_) => return,
     };
 
-    // 1. Increment total count of events by type
+    // Increment the total event count by type.
     let key = format!("alethe_event_{}", event.event_type.to_lowercase());
     let entry = metrics.entry(key).or_insert(MetricData {
         count: 0,
@@ -51,7 +144,7 @@ fn update_metrics(event: &EventBusPayload) {
     });
     entry.count += 1;
 
-    // 2. Custom metric extraction if there are numbers in event.data
+    // Preserve the existing in-memory aggregation of numeric event data.
     if let serde_json::Value::Object(map) = &event.data {
         for (field, val) in map {
             if let Some(num) = val.as_f64() {
@@ -88,24 +181,14 @@ pub fn start_telemetry_watcher(app: AppHandle) {
         loop {
             match rx.recv().await {
                 Ok(event) => {
-                    // 1. Log to file
                     append_telemetry_log(&app, &event);
-
-                    // 2. Update metrics
                     update_metrics(&event);
-
-                    // 3. Keep trace
                     add_trace(event);
                 }
-
-                // conseguir processar tudo — o `while let Ok(...)` original
-
-                // Execution metrics/Recent event history (aba Multi-Agent &
-
-                // eventos reais continuando a acontecer. O receiver continua
+                // A lagged receiver skips old events and continues processing new ones.
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                     eprintln!(
-                        "[telemetry] receiver atrasado, {skipped} evento(s) perdido(s) — continuando"
+                        "[telemetry] receiver lagged; skipped {skipped} event(s) and continuing"
                     );
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
@@ -140,6 +223,140 @@ pub fn get_telemetry_traces(
 mod tests {
     use super::*;
     use crate::event_bus::EventBusPayload;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
+
+    struct TempTelemetryDir(PathBuf);
+
+    impl TempTelemetryDir {
+        fn new() -> Self {
+            let id = NEXT_TEMP_ID.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir()
+                .join(format!("alethe-telemetry-test-{}-{id}", std::process::id()));
+            std::fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+
+        fn log_path(&self) -> PathBuf {
+            self.0.join("telemetry.jsonl")
+        }
+    }
+
+    impl Drop for TempTelemetryDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn payload(correlation_id: impl Into<String>, data: serde_json::Value) -> EventBusPayload {
+        EventBusPayload {
+            event_type: "TaskFinished".to_string(),
+            timestamp_ms: 2_000,
+            correlation_id: correlation_id.into(),
+            task_id: Some("task-1".to_string()),
+            agent_id: Some("agent-1".to_string()),
+            data,
+        }
+    }
+
+    #[test]
+    fn persisted_events_exclude_arbitrary_data_and_keep_only_numeric_metrics() {
+        let event = payload(
+            "corr-private",
+            serde_json::json!({
+                "duration_ms": 125.5,
+                "cost_usd": "0.50",
+                "memory_mb": 256,
+                "prompt": "never persist this",
+                "credentials": { "token": "secret" },
+                "items": [1, 2, 3]
+            }),
+        );
+
+        let line = persisted_telemetry_line(&event).unwrap();
+        let persisted: serde_json::Value = serde_json::from_slice(&line).unwrap();
+
+        assert_eq!(persisted["event_type"], "TaskFinished");
+        assert_eq!(persisted["timestamp_ms"], 2_000);
+        assert_eq!(persisted["correlation_id"], "corr-private");
+        assert_eq!(persisted["task_id"], "task-1");
+        assert_eq!(persisted["agent_id"], "agent-1");
+        assert_eq!(
+            persisted["data"],
+            serde_json::json!({
+                "duration_ms": 125.5,
+                "memory_mb": 256.0
+            })
+        );
+        assert!(persisted.get("prompt").is_none());
+        assert!(!String::from_utf8(line)
+            .unwrap()
+            .contains("never persist this"));
+        assert!(!persisted["data"]
+            .as_object()
+            .unwrap()
+            .contains_key("credentials"));
+    }
+
+    #[test]
+    fn non_finite_metrics_and_single_oversized_events_are_excluded() {
+        assert!(!is_persistable_metric("duration_ms", f64::NAN));
+        assert!(!is_persistable_metric("cost_usd", f64::INFINITY));
+        assert!(!is_persistable_metric("memory_mb", f64::NEG_INFINITY));
+        assert!(!is_persistable_metric("arbitrary", 1.0));
+
+        let temp = TempTelemetryDir::new();
+        let path = temp.log_path();
+        let original = payload("original", serde_json::json!({ "duration_ms": 1 }));
+        assert!(append_telemetry_log_at(&path, &original).unwrap());
+        let original_contents = std::fs::read(&path).unwrap();
+
+        let oversized = payload(
+            "x".repeat(TELEMETRY_LOG_MAX_BYTES as usize),
+            serde_json::json!({ "duration_ms": 2 }),
+        );
+        assert!(!append_telemetry_log_at(&path, &oversized).unwrap());
+        assert_eq!(std::fs::read(&path).unwrap(), original_contents);
+    }
+
+    #[test]
+    fn telemetry_file_stays_bounded_and_replaces_old_content() {
+        let temp = TempTelemetryDir::new();
+        let path = temp.log_path();
+        let padding = "x".repeat(700 * 1024);
+
+        for index in 0..6 {
+            let event = payload(
+                format!("event-{index}-{padding}"),
+                serde_json::json!({ "memory_mb": index }),
+            );
+            assert!(append_telemetry_log_at(&path, &event).unwrap());
+            assert!(std::fs::metadata(&path).unwrap().len() <= TELEMETRY_LOG_MAX_BYTES);
+        }
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("event-5-"));
+        assert!(!contents.contains("event-0-"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn telemetry_file_is_created_and_migrated_to_owner_only_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = TempTelemetryDir::new();
+        let path = temp.log_path();
+        std::fs::write(&path, b"").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let event = payload("permissions", serde_json::json!({}));
+
+        assert!(append_telemetry_log_at(&path, &event).unwrap());
+        assert_eq!(
+            std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
 
     #[test]
     fn test_telemetry_metrics_and_traces() {
@@ -161,7 +378,7 @@ mod tests {
             data: serde_json::json!({ "duration_ms": 1000.0, "cost_usd": 0.05 }),
         };
 
-        // Simula processamento manual
+        // Process the events manually.
         update_metrics(&payload1);
         add_trace(payload1.clone());
 
@@ -184,7 +401,7 @@ mod tests {
             0.05
         );
 
-        // Verifica traces com correlation_id
+        // Verify traces filtered by correlation_id.
         let traces_all = get_telemetry_traces(None).unwrap();
         assert!(traces_all.len() >= 2);
 
