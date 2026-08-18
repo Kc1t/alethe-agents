@@ -2,6 +2,13 @@ import { create } from 'zustand'
 import { nanoid } from 'nanoid'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
+import {
+  codexApprovalDenial,
+  codexThreadStartParams,
+  codexTurnStartParams,
+  guardedCodexCliArgs,
+  guardedExecArgsFor,
+} from '../lib/experimentalAgentPolicy'
 import { agentHooksEndpoint, agentHooksSettingsPath, agentHooksToken, codexAppServerSend, codexAppServerStart, codexAppServerStop, killPty, listenCodexAppServer, listenPtyData, listenPtyExit, spawnPty, writePty } from '../lib/tauri'
 
 export type SandboxNodeStatus = 'starting' | 'idle' | 'working' | 'done' | 'error'
@@ -78,7 +85,7 @@ type SpawnPayload = {
 }
 
 const DEMO_NODES: Omit<SandboxNode, 'ptyId' | 'status' | 'lastMessage'>[] = [
-  { id: 'lead', label: 'Planner Claude · Haiku · YOLO', role: 'planner', command: 'claude', extraArgs: ['--model', 'haiku', '--dangerously-skip-permissions', '--append-system-prompt', SPAWN_BRIDGE_PROMPT], x: 90, y: 24, width: 420, height: 300, color: 'var(--agent-claude)' },
+  { id: 'lead', label: 'Planner Claude · Haiku · guarded', role: 'planner', command: 'claude', extraArgs: ['--model', 'haiku', '--append-system-prompt', SPAWN_BRIDGE_PROMPT], x: 90, y: 24, width: 420, height: 300, color: 'var(--agent-claude)' },
 ]
 
 const exitCleanups = new Map<string, () => void>()
@@ -164,7 +171,7 @@ export const useAgentSandboxStore = create<AgentSandboxState>((set, get) => ({
         ? payload.agent === 'codex'
           ? undefined
           : payload.agent === 'claude'
-            ? ['--model', 'haiku', '--dangerously-skip-permissions', '-p', task]
+            ? ['--model', 'haiku', ...(guardedExecArgsFor('claude', task) ?? [])]
             : undefined
         : undefined
       const node: SandboxNode = {
@@ -215,7 +222,11 @@ export const useAgentSandboxStore = create<AgentSandboxState>((set, get) => ({
               cwd: payload.cwd || cwd,
               command: node.command === 'shell' ? undefined : node.command,
               extraArgs: [
-                ...(automatedTaskArgs ?? (payload.agent === 'claude' ? ['--model', 'haiku', '--dangerously-skip-permissions'] : [])),
+                ...(automatedTaskArgs ?? (payload.agent === 'claude'
+                  ? ['--model', 'haiku']
+                  : payload.agent === 'codex'
+                    ? guardedCodexCliArgs()
+                    : [])),
                 ...(payload.agent === 'claude' ? ['--settings', settingsPath] : []),
               ],
               env: { ALETHE_AGENT_HOOKS_ENDPOINT: endpoint, ALETHE_AGENT_HOOKS_TOKEN: token },
@@ -250,6 +261,7 @@ export const useAgentSandboxStore = create<AgentSandboxState>((set, get) => ({
             let nextRequestId = 10
             let activeTurnId: string | null = null
             let initialTurnRequested = false
+            let approvalBlocked = false
             const cleanup = await listenCodexAppServer(appServerId, (event) => {
               const method = typeof event.method === 'string' ? event.method : ''
               const params = event.params && typeof event.params === 'object' ? event.params as Record<string, unknown> : {}
@@ -263,6 +275,7 @@ export const useAgentSandboxStore = create<AgentSandboxState>((set, get) => ({
                 set((state) => ({ nodes: state.nodes.map((item) => item.id === node.id ? { ...item, status: 'working', lastMessage: delta || item.lastMessage, output: `${item.output ?? ''}${delta}`.slice(-16000) } : item) }))
               }
               if (method === 'turn/started') {
+                approvalBlocked = false
                 const turn = params.turn && typeof params.turn === 'object' ? params.turn as Record<string, unknown> : null
                 const startedTurnId = typeof turn?.id === 'string' ? turn.id : null
                 if (startedTurnId) {
@@ -285,11 +298,28 @@ export const useAgentSandboxStore = create<AgentSandboxState>((set, get) => ({
                 }
                 turnOutput = ''
                 activeTurnId = null
-                set((state) => ({ nodes: state.nodes.map((item) => item.id === node.id ? { ...item, status: 'idle', output: `${item.output ?? ''}\n\n[Alethe] Turn completed. Ready for another message.\n` } : item) }))
+                const completedStatus: SandboxNodeStatus = approvalBlocked ? 'error' : 'idle'
+                set((state: AgentSandboxState) => ({ nodes: state.nodes.map((item) => item.id === node.id ? {
+                  ...item,
+                  status: completedStatus,
+                  output: `${item.output ?? ''}\n\n[Alethe] ${approvalBlocked ? 'Turn paused after an approval request was denied.' : 'Turn completed. Ready for another message.'}\n`,
+                } : item) }))
               }
-              if (method === 'item/commandExecution/requestApproval' || method === 'item/fileChange/requestApproval') {
+              const approvalDenial = codexApprovalDenial(method)
+              if (approvalDenial) {
+                approvalBlocked = true
                 const requestId = event.id
-                if (requestId !== undefined) void codexAppServerSend(appServerId, { id: requestId, result: { decision: 'accept' } }).catch(() => {})
+                if (requestId !== undefined) {
+                  void codexAppServerSend(appServerId, { id: requestId, result: approvalDenial.response }).catch((error) => {
+                    console.error('[sandbox] failed to deny Codex approval request', error)
+                  })
+                }
+                set((state: AgentSandboxState) => ({ nodes: state.nodes.map((item) => item.id === node.id ? {
+                  ...item,
+                  status: 'error' as SandboxNodeStatus,
+                  lastMessage: approvalDenial.statusMessage,
+                  output: `${item.output ?? ''}\n\n[Alethe] ${approvalDenial.statusMessage}\n`,
+                } : item) }))
               }
               if (event.id === 2 && threadId && task && !initialTurnRequested) {
                 initialTurnRequested = true
@@ -297,7 +327,7 @@ export const useAgentSandboxStore = create<AgentSandboxState>((set, get) => ({
                 void codexAppServerSend(appServerId, {
                   id: requestId,
                   method: 'turn/start',
-                  params: { threadId, input: [{ type: 'text', text: task }], approvalPolicy: 'never' },
+                  params: codexTurnStartParams(threadId, task),
                 }).catch((error) => console.error('[sandbox] app-server turn failed', error))
               }
               if (event.type === 'transport_error' || event.type === 'transport_closed') {
@@ -309,7 +339,7 @@ export const useAgentSandboxStore = create<AgentSandboxState>((set, get) => ({
             await codexAppServerSend(appServerId, {
               id: 2,
               method: 'thread/start',
-              params: { cwd: payload.cwd || cwd, approvalPolicy: 'never', sandbox: 'danger-full-access' },
+              params: codexThreadStartParams(payload.cwd || cwd),
             })
           } else if (automatedTaskArgs && ptyId) {
             let outputUnlisten: UnlistenFn | null = null
@@ -457,7 +487,7 @@ export const useAgentSandboxStore = create<AgentSandboxState>((set, get) => ({
           await codexAppServerSend(target.appServerId, {
             id: Date.now(),
             method: 'turn/start',
-            params: { threadId: target.threadId, input: [{ type: 'text', text: `[Message from ${source?.label ?? from}] ${text.trim()}` }], approvalPolicy: 'never' },
+            params: codexTurnStartParams(target.threadId, `[Message from ${source?.label ?? from}] ${text.trim()}`),
           })
       } else if (target.ptyId) {
         await writePty(target.ptyId, agentInput(target.command, source?.label ?? from, text))

@@ -112,12 +112,16 @@ describe('tailSummary', () => {
 
 describe('execArgsFor', () => {
   it('returns documented argv per agent', () => {
-    expect(execArgsFor('codex', 'do it')).toEqual(['exec', '--skip-git-repo-check', 'do it'])
-    expect(execArgsFor('claude', 'do it')).toEqual([
-      '-p',
+    expect(execArgsFor('codex', 'do it')).toEqual([
+      '--ask-for-approval',
+      'on-request',
+      '--sandbox',
+      'workspace-write',
+      'exec',
+      '--skip-git-repo-check',
       'do it',
-      '--dangerously-skip-permissions',
     ])
+    expect(execArgsFor('claude', 'do it')).toEqual(['-p', 'do it'])
     expect(execArgsFor('opencode', 'do it')).toEqual(['run', 'do it'])
   })
 
