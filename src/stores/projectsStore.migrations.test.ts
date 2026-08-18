@@ -39,6 +39,52 @@ describe('preference normalization', () => {
 })
 
 describe('projects file migration', () => {
+  it('defaults provider-backed usage polling to off for fresh data', () => {
+    expect(DEFAULT_PREFERENCES).toMatchObject({
+      topbarShowClaudeUsage: false,
+      topbarShowCodexUsage: false,
+      topbarShowAntigravityUsage: false,
+    })
+  })
+
+  it('turns legacy automatic provider polling off during the v8 migration', () => {
+    const migrated = migrate({
+      ...EMPTY_PROJECTS_FILE,
+      version: 7,
+      preferences: {
+        ...DEFAULT_PREFERENCES,
+        topbarShowClaudeUsage: true,
+        topbarShowCodexUsage: true,
+        topbarShowAntigravityUsage: true,
+      },
+    })
+
+    expect(migrated.preferences).toMatchObject({
+      topbarShowClaudeUsage: false,
+      topbarShowCodexUsage: false,
+      topbarShowAntigravityUsage: false,
+    })
+  })
+
+  it('preserves choices explicitly saved in v8 data', () => {
+    const migrated = migrate({
+      ...EMPTY_PROJECTS_FILE,
+      version: 8,
+      preferences: {
+        ...DEFAULT_PREFERENCES,
+        topbarShowClaudeUsage: true,
+        topbarShowCodexUsage: false,
+        topbarShowAntigravityUsage: true,
+      },
+    })
+
+    expect(migrated.preferences).toMatchObject({
+      topbarShowClaudeUsage: true,
+      topbarShowCodexUsage: false,
+      topbarShowAntigravityUsage: true,
+    })
+  })
+
   it('adds isolated layout histories when migrating v6 data', () => {
     const migrated = migrate({
       ...EMPTY_PROJECTS_FILE,
@@ -48,7 +94,7 @@ describe('projects file migration', () => {
       preferences: { ...DEFAULT_PREFERENCES, workspaceGridLayoutHistory: undefined },
     })
 
-    expect(migrated.version).toBe(7)
+    expect(migrated.version).toBe(8)
     expect(migrated.projects[0].gridLayoutHistory).toEqual([])
     expect(migrated.groups[0].gridLayoutHistory).toEqual([])
     expect(migrated.preferences.workspaceGridLayoutHistory).toEqual([])

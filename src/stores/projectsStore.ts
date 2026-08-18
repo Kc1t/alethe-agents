@@ -356,7 +356,7 @@ function nextWriteSequence(): number {
 
 function projectsPayload(state: ProjectsState): ProjectsFile {
   return {
-    version: 7,
+    version: 8,
     groups: state.groups,
     ungroupedOrder: state.ungroupedOrder,
     projects: state.projects,

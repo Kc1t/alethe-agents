@@ -1170,7 +1170,8 @@ export const ptBR: Record<MessageKey, string> = {
   'ui.titlebar.openMemoryAnalytics': 'Abrir analytics de memória',
   'ui.titlebar.customize': 'Personalizar topbar',
   'ui.titlebar.customizeTitle': 'Personalizar topbar',
-  'ui.titlebar.customizeDescription': 'Escolha quais indicadores aparecem na topbar.',
+  'ui.titlebar.customizeDescription':
+    'Escolha quais indicadores aparecem na topbar. Ativar o uso de provedores acessa credenciais existentes do provedor ou CLI e pode contatar os serviços do provedor.',
   'ui.titlebar.codexUsageTooltip': 'Codex: {primary}% na janela atual · {secondary}% semanal',
   'ui.titlebar.antigravityUsageTooltip': 'Antigravity: {conversations} conversas ativas',
   'ui.titlebar.openUsageDetails': 'Abrir detalhes de uso de IA',
