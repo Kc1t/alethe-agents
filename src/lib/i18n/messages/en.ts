@@ -180,6 +180,21 @@ export const en = {
   'remote.statusOff': 'Off',
   'remote.enable': 'Enable remote control',
   'remote.disable': 'Turn off remote control',
+  'remote.confirmEnable':
+    'Enable Remote Control?\n\nAlethe will open HTTP and WebSocket listeners on your local network. Paired devices can view shared terminal output. Paired sessions expire after {expiry}.\n\n{access}',
+  'remote.confirmAccessReadOnly':
+    'Current access is read-only: agent messages and shell input are blocked.',
+  'remote.confirmAccessAgentInput': 'Current access allows agent messages; shell input is blocked.',
+  'remote.confirmAccessShellInput': 'Current access allows agent messages and shell input.',
+  'remote.sessionSeconds': '{seconds} seconds',
+  'remote.enableFailedTitle': 'Remote control could not start',
+  'remote.enableFailedBody': 'Alethe kept remote control off. {error}',
+  'remote.disableFailedTitle': 'Remote control could not stop',
+  'remote.disableFailedBody':
+    'Alethe could not confirm that LAN access stopped. Restart Alethe before continuing. {error}',
+  'remote.rollbackFailedTitle': 'Remote control rollback needs attention',
+  'remote.rollbackFailedBody':
+    'Alethe could not fully save or enforce the disabled state. Restart Alethe and verify Remote Control is off. Startup error: {error}. Rollback error: {rollbackError}',
   'remote.connectedDevices': 'Connected devices',
   'remote.topbarDeviceConnected': '{count} device connected',
   'remote.topbarDevicesConnected': '{count} devices connected',

@@ -1,20 +1,21 @@
 import { ShieldCheck, Smartphone, Wifi, WifiOff } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 
+import { useT } from '../../../lib/i18n'
+import { requestRemoteControlPreference } from '../../../lib/remoteControlConsent'
 import {
   closeRemoteControlPairing,
   openRemoteControlPairing,
+  type RemoteControlInfo,
   remoteControlInfo,
   remoteControlRevoke,
   revokeRemoteControlDevice,
-  type RemoteControlInfo,
 } from '../../../lib/tauri'
-import { useT } from '../../../lib/i18n'
 import { useProjectsStore } from '../../../stores/projectsStore'
-import controls from '../controls.module.css'
-import styles from './RemoteControlPage.module.css'
-import { SettingsSection } from './primitives'
 import { Dropdown } from '../../ui/Dropdown'
+import controls from '../controls.module.css'
+import { SettingsSection } from './primitives'
+import styles from './RemoteControlPage.module.css'
 
 const SESSION_OPTIONS = [900, 3600, 86400]
 
@@ -80,7 +81,14 @@ export function RemoteControlPage() {
           <button
             type="button"
             className={`${controls.btn} ${enabled ? controls.btnDanger : controls.btnPrimary}`}
-            onClick={() => setPreferences({ remoteEnabled: !preferences.remoteEnabled })}
+            onClick={() =>
+              requestRemoteControlPreference(
+                !preferences.remoteEnabled,
+                preferences,
+                setPreferences,
+                t,
+              )
+            }
             disabled={busy}
           >
             {enabled ? t('remote.disable') : t('remote.enable')}

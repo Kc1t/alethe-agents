@@ -40,8 +40,11 @@ export async function remoteControlRevoke(): Promise<RemoteControlInfo> {
   return invoke<RemoteControlInfo>('remote_control_revoke')
 }
 
-export async function setRemoteControlEnabled(enabled: boolean): Promise<RemoteControlInfo> {
-  return invoke<RemoteControlInfo>('remote_control_set_enabled', { enabled })
+export async function setRemoteControlEnabled(
+  enabled: boolean,
+  requestId: number,
+): Promise<RemoteControlInfo> {
+  return invoke<RemoteControlInfo>('remote_control_set_enabled', { enabled, requestId })
 }
 
 export async function setRemoteControlMaxDevices(maxDevices: number): Promise<RemoteControlInfo> {
