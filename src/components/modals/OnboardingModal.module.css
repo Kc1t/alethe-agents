@@ -973,3 +973,49 @@
     transition: none !important;
   }
 }
+
+.iconGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 10px;
+}
+
+.iconOption {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  color: var(--fg);
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.iconOption:hover {
+  border-color: var(--border-strong);
+}
+
+.iconOptionActive {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.iconThumb {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+}
+
+.iconOptionLabel {
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--fg-muted);
+}

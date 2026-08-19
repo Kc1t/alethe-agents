@@ -88,12 +88,17 @@ export type Theme =
   | 'orca'
   | 'ember'
   | 'golden-premium'
+  | 'elite-original'
+  | 'elite-pure-black'
+  | 'elite-indigo'
+  | 'elite-blush'
 
 /** Native desktop icon variants. The UI theme and app icon theme are independent. */
 export type AppIconTheme =
-  | Exclude<Theme, 'ember' | 'golden-premium'>
-  | 'alethe-blue-gradient'
-  | 'alethe-pink-gradient'
+  | 'elite-original'
+  | 'elite-pure-black'
+  | 'elite-indigo'
+  | 'elite-blush'
 
 export type VisualStyle = 'normal' | 'clean'
 
@@ -554,9 +559,9 @@ export type ProjectsFile = {
 
 export const DEFAULT_PREFERENCES: Preferences = {
   language: 'en',
-  uiTheme: 'dark',
+  uiTheme: 'elite-indigo',
   visualStyle: 'normal',
-  appIconTheme: 'dark',
+  appIconTheme: 'elite-indigo',
   uiZoom: 1,
   windowOpacity: 1,
   terminalTheme: null,

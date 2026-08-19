@@ -1,8 +1,9 @@
 import { Check, Minus, Plus, RotateCcw } from 'lucide-react'
 
 import { useT } from '../../../lib/i18n'
+import { APP_ICON_OPTIONS, getThemeIcon } from '../../../lib/themeIcons'
 import { THEME_OPTIONS, themeDescription, themeLabel } from '../../../lib/themes'
-import type { AppIconTheme, VisualStyle } from '../../../lib/types'
+import type { VisualStyle } from '../../../lib/types'
 import { UI_ZOOM_LIMITS, useProjectsStore } from '../../../stores/projectsStore'
 import { Dropdown } from '../../ui/Dropdown'
 import styles from '../PreferencesModal.module.css'
@@ -111,20 +112,31 @@ export function AppearancePage() {
         title={t('prefs.appIconTheme')}
         description={t('prefs.appIconThemeDesc')}
       >
-        <Dropdown
-          className={styles.select}
-          value={preferences.appIconTheme}
-          onChange={(value) => setPreferences({ appIconTheme: value as AppIconTheme })}
-          ariaLabel={t('prefs.appIconTheme')}
-          options={[
-            ...THEME_OPTIONS.filter((theme) => theme.id !== 'ember').map((theme) => ({
-              value: theme.id,
-              label: themeLabel(t, theme.id),
-            })),
-            { value: 'alethe-blue-gradient', label: 'Alethe Blue Gradient' },
-            { value: 'alethe-pink-gradient', label: 'Alethe Pink Gradient' },
-          ]}
-        />
+        <div className={styles.appIconGrid}>
+          {APP_ICON_OPTIONS.map((icon) => {
+            const active = preferences.appIconTheme === icon.id
+            return (
+              <button
+                key={icon.id}
+                type="button"
+                className={[styles.appIconOption, active ? styles.appIconOptionActive : '']
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={() => setPreferences({ appIconTheme: icon.id })}
+                aria-pressed={active}
+              >
+                <img
+                  className={styles.appIconThumb}
+                  src={getThemeIcon(icon.id, 64)}
+                  alt=""
+                  draggable={false}
+                />
+                <span className={styles.appIconLabel}>{icon.label}</span>
+                {active ? <Check size={13} className={styles.appIconCheck} /> : null}
+              </button>
+            )
+          })}
+        </div>
       </SettingsSection>
 
       <SettingsSection

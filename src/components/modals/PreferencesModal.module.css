@@ -1066,3 +1066,56 @@
   color: var(--fg);
   border-color: var(--border-strong);
 }
+
+.appIconGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 8px;
+}
+
+.appIconOption {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 8px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  color: var(--fg);
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.appIconOption:hover {
+  border-color: var(--border-strong);
+}
+
+.appIconOptionActive {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+
+.appIconThumb {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--radius-md);
+  object-fit: cover;
+}
+
+.appIconLabel {
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--fg-muted);
+}
+
+.appIconCheck {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  color: var(--accent);
+}

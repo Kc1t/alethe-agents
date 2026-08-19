@@ -50,6 +50,9 @@ export const ptBR: Record<MessageKey, string> = {
   'onboarding.languagePortugueseHint': 'Usar a interface em português.',
   'onboarding.themeTitle': 'Escolha um tema',
   'onboarding.themeSubtitle': 'Escolha a paleta que combina com o ambiente. Dá pra trocar depois.',
+  'onboarding.appIconTitle': 'Escolha o ícone do app',
+  'onboarding.appIconSubtitle':
+    'É o ícone da barra de tarefas e da janela. Dá pra trocar depois.',
   'onboarding.visualStyleTitle': 'Escolha o estilo da interface',
   'onboarding.visualStyleSubtitle':
     'O quanto as superfícies, bordas e painéis aparecem. Dá pra trocar depois.',
@@ -649,6 +652,14 @@ export const ptBR: Record<MessageKey, string> = {
   'themePicker.title': 'Escolher tema',
 
   /* ---- theme labels ---- */
+  'theme.elite-original.label': 'Elite Original',
+  'theme.elite-original.desc': 'Lilás e azul suaves sobre branco papel.',
+  'theme.elite-pure-black.label': 'Elite Pure Black',
+  'theme.elite-pure-black.desc': 'Preto absoluto com contraste máximo.',
+  'theme.elite-indigo.label': 'Elite Indigo',
+  'theme.elite-indigo.desc': 'Fundo quase preto com acento índigo.',
+  'theme.elite-blush.label': 'Elite Blush',
+  'theme.elite-blush.desc': 'Superfícies claras e quentes com acento terroso.',
   'theme.dark.label': 'Escuro',
   'theme.dark.desc': 'Neutro, alto contraste e discreto.',
   'theme.light.label': 'Claro',

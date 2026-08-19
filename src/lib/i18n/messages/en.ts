@@ -50,6 +50,9 @@ export const en = {
   'onboarding.themeTitle': 'Pick a theme',
   'onboarding.themeSubtitle':
     'Choose the palette that fits the room first. You can change it later.',
+  'onboarding.appIconTitle': 'Pick an app icon',
+  'onboarding.appIconSubtitle':
+    'This is the icon on your taskbar and window. You can change it later.',
   'onboarding.visualStyleTitle': 'Pick an interface style',
   'onboarding.visualStyleSubtitle':
     'How dense the surfaces, borders and panels should feel. You can change it later.',
@@ -639,6 +642,14 @@ export const en = {
   'themePicker.title': 'Pick theme',
 
   /* ---- theme labels ---- */
+  'theme.elite-original.label': 'Elite Original',
+  'theme.elite-original.desc': 'Soft lilac and periwinkle on paper white.',
+  'theme.elite-pure-black.label': 'Elite Pure Black',
+  'theme.elite-pure-black.desc': 'True black with maximum contrast.',
+  'theme.elite-indigo.label': 'Elite Indigo',
+  'theme.elite-indigo.desc': 'Near-black workspace with an indigo accent.',
+  'theme.elite-blush.label': 'Elite Blush',
+  'theme.elite-blush.desc': 'Warm light surfaces with a deep clay accent.',
   'theme.dark.label': 'Dark',
   'theme.dark.desc': 'Neutral, high contrast and understated.',
   'theme.light.label': 'Light',

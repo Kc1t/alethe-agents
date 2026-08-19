@@ -7,6 +7,7 @@
 import { nanoid } from 'nanoid'
 
 import { normalizeEnabledFeatures } from '../lib/features'
+import { normalizeAppIconTheme } from '../lib/themeIcons'
 import { normalizeTodoTags, normalizeTodoTitle } from '../lib/todos'
 import {
   DEFAULT_PREFERENCES,
@@ -115,6 +116,7 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     spotifyClientId: preferences.spotifyClientId.trim(),
     spotifyClientSecret: preferences.spotifyClientSecret.trim(),
     uiZoom: clampUiZoom(preferences.uiZoom),
+    appIconTheme: normalizeAppIconTheme(preferences.appIconTheme),
     spawnConcurrency: clampSpawnConcurrency(preferences.spawnConcurrency),
     resourcePolicy: {
       // Automatic parking was removed. Keep the legacy shape for file
