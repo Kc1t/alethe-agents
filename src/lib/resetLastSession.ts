@@ -245,7 +245,7 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
 
       resumed++
     } catch {
-                                                 
+      // Uma falha num painel não aborta o resto.
     } finally {
       releaseSpawnSlot()
     }

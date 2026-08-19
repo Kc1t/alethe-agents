@@ -89,7 +89,7 @@ export const useGraphifyStore = create<GraphifyState>((set, get) => ({
             return
           }
         } catch {
-                                                                               
+          // O arquivo ainda não existe ou está sendo escrito; tente novamente.
         }
       }
 

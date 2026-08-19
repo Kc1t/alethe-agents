@@ -265,7 +265,7 @@ export function GhosttySurface({
           onExitRef.current?.()
         }
       } catch {
-                                              
+        /* erro transitório — tenta de novo */
       }
     }, EXIT_POLL_MS)
     return () => {

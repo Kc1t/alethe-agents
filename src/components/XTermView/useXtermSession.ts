@@ -791,7 +791,9 @@ export function useXtermSession(params: {
           terminal.write(replay, () => {
             try {
               terminal.scrollToBottom()
-            } catch {}
+            } catch {
+              /* internals do xterm.js podem ter mudado de forma — ignora */
+            }
             resolve()
           })
         } catch {
@@ -806,9 +808,10 @@ export function useXtermSession(params: {
 
     const onWheel = (event: WheelEvent) => {
       // TUIs (claude/codex) entram no buffer `alternate` e ligam mouse tracking.
-
+      // Lá não há scrollback do host, então scrollLines() é no-op: se a gente
       // interceptasse o wheel (preventDefault), o evento sumia e nem o host nem
-
+      // a app rolavam. Deixamos seguir pro xterm, que repassa o wheel pra app.
+      // Shift força o scrollback do host (convenção iTerm2 / Windows Terminal).
       if (!shouldScrollHostScrollback(terminal.buffer.active.type, event.shiftKey)) return
       const lines = getWheelScrollLines(event, getTerminalLineHeight())
       if (lines === 0) return
@@ -816,7 +819,9 @@ export function useXtermSession(params: {
       event.stopPropagation()
       try {
         terminal.scrollLines(lines)
-      } catch {}
+      } catch {
+        /* renderer quebrado — não deixa o scroll travar o handler */
+      }
     }
     container.addEventListener('wheel', onWheel, { passive: false, capture: true })
 
@@ -1722,7 +1727,9 @@ export function useXtermSession(params: {
         try {
           const rect = container?.getBoundingClientRect()
           if (rect && rect.width >= 50 && rect.height >= 30) fitAddon.fit()
-        } catch {}
+        } catch {
+          // Renderer ainda não montou — o próximo resize tenta de novo.
+        }
         setCommandNotFound(null)
         setBootPhase('preparing')
 
@@ -1844,7 +1851,9 @@ export function useXtermSession(params: {
               removeSession(sessionPersistenceKey)
               onSessionIdRef.current?.(undefined)
             }
-          } catch {}
+          } catch {
+            // Falha ao checar a sessão — segue com o resumeId que já tinha.
+          }
           if (disposed) return
         }
         // OpenCode não permite escolher o ID no nascimento (ao contrário do
@@ -1867,19 +1876,35 @@ export function useXtermSession(params: {
         ) {
           try {
             const sessions = await snapshotOpenCodeSessions(cwd)
-
+            // A sessão-filha do GSD Sync (ver alethe-gsd-state.ts) é criada
+            // DE PROPÓSITO sem `parentID` — sem isso ela não resumia com
+            // histórico visível na TUI — então, ao contrário de sub-sessões
+            // internas do próprio OpenCode, ELA APARECE em `opencode session
+            // list` como uma sessão de verdade, e fica "mais recente" que a
+            // conversa real a cada ciclo GSD. Sem excluir aqui, um terminal
+            // normal sem sessionId salvo podia reivindicar a sessão-filha
+            // (cheia de instruções internas do GSD) como se fosse a própria
             // — e como `useGsdSyncSessions` acha o terminal certo justamente
-
+            // procurando quem tem esse sessionId, ele então tratava o
+            // terminal normal como se fosse o viewer da sessão-filha,
             // escondendo/fechando a pane dele.
-
+            // Gateado só em `gsdWatcherEnabled` (o toggle atual da UI) e não
+            // na existência real do sentinel: se o plugin já escreveu
             // `.gsd-child-session` em algum momento (spawn anterior com o
-
+            // toggle ligado, worktree que herdou o arquivo do commit-base) e
+            // depois o toggle foi desligado, esse trecho passava a tratar a
+            // sessão-filha como candidata válida de novo — um terminal
+            // normal sem sessionId salvo podia reivindicá-la mesmo com o
+            // watcher desligado. A exclusão agora depende só do sentinel
+            // existir em disco, não do estado atual do toggle.
             const gsdChildId = await readGsdChildSession(cwd).catch(() => null)
             const candidates = gsdChildId ? sessions.filter((s) => s.id !== gsdChildId) : sessions
             const reserved = reservedSessionIdsFor('opencode', sessionPersistenceKey)
             const claimed = claimMostRecentSession('opencode', cwd, candidates, undefined, reserved)
             if (claimed) resumeId = claimed.id
-          } catch {}
+          } catch {
+            // Falha ao listar sessões — segue sem reivindicar nenhuma.
+          }
           if (disposed) return
         }
         const preparedRuntime = command

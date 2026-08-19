@@ -163,7 +163,7 @@ export function useResourceSupervisor(hydrated: boolean): void {
         useUiStore.getState().addMemorySample(stats)
         useUiStore.getState().setRamMb(stats.total_mb)
       } catch {
-                                                                          
+        // Falha transitória de leitura — o próximo ciclo de polling tenta de novo.
       }
     }
 

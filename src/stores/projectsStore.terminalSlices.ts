@@ -414,21 +414,21 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
           await worktreeRemove(repo, terminal.worktreeAgentId, true)
         } catch (firstErr) {
           if (String(firstErr).includes('worktree_not_found')) {
-                                                                 
+            // já tinha sido removida, inofensivo — nada a fazer.
           } else {
-                                                                            
-                                                                           
-                                                                          
-                                                                             
-                                                              
+            // No Windows o handle da pasta pode não ter sido liberado ainda
+            // no instante em que killPtyTree retornou (lag do SO/antivírus
+            // entre o processo morrer de verdade e o handle soltar) — uma
+            // segunda tentativa depois de um respiro curto resolve a maioria
+            // dos casos sem precisar cair pra órfã rastreada.
             await new Promise((resolve) => setTimeout(resolve, 400))
             try {
               await worktreeRemove(repo, terminal.worktreeAgentId, true)
             } catch (secondErr) {
-                                                                           
-                                                                        
-                                                                           
-                               
+              // Falha real (persistiu no retry) vira órfã rastreada (mesma
+              // rede de segurança do fluxo de merge) — sem isso a pasta
+              // ficava perdida em disco sem nenhum rastro na interface pra
+              // limpar depois.
               if (!String(secondErr).includes('worktree_not_found')) {
                 get().addOrphanWorktree(projectId, {
                   path: terminal.cwd ?? '',
