@@ -18,10 +18,14 @@ export function createEmptyFixtureProject(): { path: string; cleanup: () => void
     cleanup: () => {
       try {
         git(path, ['worktree', 'prune'])
-      } catch {}
+      } catch {
+        // best-effort — a pasta será removida de qualquer forma abaixo.
+      }
       try {
         rmSync(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 })
-      } catch {}
+      } catch {
+        // best-effort — cleanup de fixture de teste, não deve travar a suite.
+      }
     },
   }
 }
