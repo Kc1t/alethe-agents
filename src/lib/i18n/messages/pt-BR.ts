@@ -846,6 +846,12 @@ export const ptBR: Record<MessageKey, string> = {
   'crud.editProjectLocalCopy': 'Cópia local (mais lenta)',
   'crud.editProjectValidationCommands': 'Comandos de validação, um por linha',
   'crud.editProjectValidationPlaceholder': 'Exemplo: npm run build\nnpm test',
+  'crud.editProjectHealthCheckCommand': 'Comando de saúde (opcional)',
+  'crud.editProjectHealthCheckCommandPlaceholder': 'Exemplo: npm run dev',
+  'crud.editProjectHealthCheckCommandHint':
+    'Sobe o app num ambiente isolado e confirma que ele responde de verdade antes de Testar/Integrar. O comando precisa escutar na porta indicada pela variável de ambiente %PORT%/$PORT.',
+  'crud.editProjectHealthCheckPath': 'Caminho verificado',
+  'crud.editProjectHealthCheckPathPlaceholder': '/ (padrão)',
   'crud.editProjectGsdWatcher': 'Monitorar arquivos de planejamento GSD (.planning/)',
   'crud.projectColorLabel': 'Cor (borda do container)',
   'crud.projectIconEditHint':
@@ -1165,6 +1171,8 @@ export const ptBR: Record<MessageKey, string> = {
   'git.graph.timeDays': 'há {count}d',
   'git.graph.filesLoading': 'Carregando arquivos alterados…',
   'git.graph.filesEmpty': 'Nenhum arquivo alterado (commit vazio ou de merge).',
+  'git.graph.detail.loadingMessage': 'Carregando mensagem do commit…',
+  'git.graph.detail.filesTitle': 'Arquivos alterados',
   'git.graph.menu.copyHash': 'Copiar hash do commit',
   'git.graph.menu.createBranch': 'Criar branch aqui',
   'git.graph.menu.createBranchPrompt': 'Nome da nova branch',
@@ -1728,10 +1736,12 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.needBranches': 'Este repo precisa de ao menos dois branches locais para merge.',
   'merge.postActionLabel': 'Ação pós-merge do agente',
   'merge.postActionRelocateChat': 'Criar nova branch e manter chat ativo',
-  'merge.postActionRelocateSession': 'Criar nova branch e manter sessão',
+  'merge.postActionRelocateSession': 'Criar nova branch e manter sessão (Beta)',
   'merge.postActionClose': 'Encerrar terminal do agente',
   'merge.postActionHint':
-    '"Manter chat" reabre o painel na branch nova com uma conversa zerada. "Manter sessão" tenta retomar a MESMA conversa lá — não garantido para todo agente/CLI, cai numa conversa nova se o resume não for suportado ou travar.',
+    '"Manter chat" reabre o painel na branch nova com uma conversa zerada. "Manter sessão" tentaria retomar exatamente a mesma conversa lá.',
+  'merge.postActionRelocateSessionDisabledHint':
+    'Desativado por enquanto — retomar uma sessão a partir de outro diretório trava indefinidamente em todo CLI de agente já testado (confirmado com o OpenCode; a causa raiz é upstream, fora do controle da Alethe). Selecionar essa opção hoje cai silenciosamente numa conversa nova, até que uma correção upstream apareça.',
   'merge.commitConfirmTitle': 'Commitar trabalho pendente — {branch}',
   'merge.commitConfirmDescription':
     'Esta worktree tem mudanças que nunca foram commitadas. O merge só move commits — revise o que vai ser commitado e escreva uma descrição antes de integrar.',
@@ -1746,7 +1756,8 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.finalize': 'Finalizar merge',
   'merge.finalizing': 'Finalizando…',
   'merge.abort': 'Abortar',
-  'merge.analysisClean': 'Sem conflitos — o merge pode seguir direto.',
+  'merge.analysisClean':
+    'Sem conflitos de git — isso só checa conflito de merge, não se o código funciona. A validação e o health check (se configurados) ainda rodam quando você clicar em Integrar.',
   'merge.analysisConflicts': '{count} arquivo(s) em conflito:',
   'merge.resolvingHint':
     'O agente de conflito está rodando num terminal do projeto. Quando ele terminar, clique em "Finalizar merge".',
@@ -1757,7 +1768,20 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.conflictBody':
     '{count} arquivo(s) em conflito. Um agente efêmero foi spawnado para resolver.',
   'merge.mergedTitle': 'Merge concluído',
+  'merge.mergedUnverifiedTitle': 'Integrado sem verificação',
+  'merge.mergedUnverifiedBody':
+    'Este projeto não tem comandos de validação configurados — a integração seguiu sem checagem automática de build/testes.',
+  'merge.nothingToIntegrateTitle': 'Nada para integrar',
+  'merge.nothingToIntegrateBody':
+    'A branch do agente não tem nenhuma mudança em relação à branch alvo — nada foi commitado ou integrado.',
+  'merge.worktreeRemoveFailedTitle': 'Não foi possível remover a worktree',
+  'merge.relocateFailedTitle': 'Não foi possível realocar o terminal',
   'merge.contractWarningsTitle': '{count} possível(is) desconexão(ões) de API detectada(s)',
+  'merge.healthProbePassedTitle': 'Boot do app verificado',
+  'merge.healthProbePassedBody': 'Respondeu em {ms}ms (HTTP {status}) num ambiente isolado.',
+  'merge.healthProbeFailedTitle': 'App não respondeu',
+  'merge.healthProbeFailedBody':
+    'O comando de saúde não respondeu em {ms}ms. {output}',
   'merge.blockedTitle': 'Merge barrado: {stage}',
   'merge.retry': 'Retentar ({count})',
   'merge.cleaningUp': 'Limpando…',
@@ -1783,10 +1807,13 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.statusMerged': 'Integrado',
   'merge.statusBlocked': 'Bloqueado',
   'merge.statusGateFailed': 'Falhou verificação automática',
+  'merge.statusUnverified': 'Sem verificação automática',
   'merge.gateFailedDiffEmpty':
     'Planejamento marcado como completo, mas não há alterações de código entre {branch} e {target}.',
   'merge.gateFailedValidation':
     'Planejamento completo, mas a validação falhou em "{stage}": {output}',
+  'merge.gateUnverifiedHint':
+    'Este projeto não tem comandos de validação configurados, então nada foi checado de verdade. Configure na aba Multi-Agentes & MCP.',
   'merge.gateRecheck': 'Reavaliar',
   'merge.noRepoTitle': 'Repositório não encontrado',
   'merge.noRepoBody': 'Não foi possível localizar a raiz do repositório deste projeto.',
@@ -1807,6 +1834,9 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.validationPassedTitle': 'Validação passou',
   'merge.validationPassedBody':
     'Todos os comandos de validação rodaram com sucesso nesta worktree.',
+  'merge.validationUnverifiedTitle': 'Não verificado',
+  'merge.validationUnverifiedBody':
+    'Nenhum comando de validação configurado para este projeto — nada foi checado de verdade (isso não é uma falha).',
   'merge.validationFailedTitle': 'Validação falhou',
   'merge.test': 'Testar',
   'merge.testTooltip': 'Abre um terminal na pasta da worktree pra testar manualmente',
@@ -1825,6 +1855,15 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.testBriefingRunning': 'Executando: {cmd}',
   'merge.testBriefingValidationPassed': 'Todos os comandos de validação passaram.',
   'merge.testBriefingValidationFailed': 'Falhou em "{stage}": {output}',
+  'merge.testHealthTitle': 'Saúde do Servidor',
+  'merge.testHealthNotConfigured':
+    'Nenhum comando de saúde configurado — configure um na aba Multi-Agentes & MCP pra essa seção subir o app de verdade.',
+  'merge.testHealthLoading': 'Subindo o app num ambiente isolado…',
+  'merge.testHealthResponded': 'Respondeu em {ms}ms (HTTP {status}).',
+  'merge.testHealthNoResponse': 'Não respondeu após {ms}ms. {output}',
+  'merge.testHealthTerminalVerified': 'Um terminal de verdade foi aberto e confirmado funcionando.',
+  'merge.testHealthTerminalFailed':
+    'O app respondeu, mas abrir um terminal de verdade contra ele falhou.',
   'merge.testCategorySetup': 'Preparação — necessária antes de testar',
   'merge.testCategoryAction': 'Ação — o próprio passo de teste',
   'merge.testCategoryVerify': 'Verificação — o que checar no resultado',
@@ -1848,6 +1887,12 @@ export const ptBR: Record<MessageKey, string> = {
     'O terminal do revisor ainda está iniciando — tente de novo em instantes.',
   'merge.reviewFeedbackSentTitle': 'Feedback enviado',
   'merge.reviewFeedbackSentBody': 'Sua mensagem foi enviada ao agente revisor no terminal dele.',
+  'merge.treeMainNode': 'main',
+  'merge.treeEmptyForProject': 'Nenhum merge pendente neste projeto — há pendências em outros projetos.',
+  'merge.centerPagerLabel': '{index} de {total}',
+  'merge.centerPrev': 'Merge anterior',
+  'merge.centerNext': 'Próximo merge',
+  'merge.treeResizeHandle': 'Arraste pra redimensionar a lista de merges',
 
   /* ---- fsBrowser ---- */
   'fsBrowser.titleFolder': 'Selecionar Pasta',

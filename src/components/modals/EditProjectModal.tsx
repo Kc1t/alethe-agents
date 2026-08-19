@@ -7,6 +7,7 @@ import { getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore
 import { useUiStore } from '../../stores/uiStore'
 import { useMergeStore } from '../../stores/mergeStore'
 import {
+  detectProjectStack,
   worktreeList,
   worktreeProvision,
   worktreeRemove,
@@ -34,6 +35,8 @@ export function EditProjectModal() {
   const setProjectIconUrl = useProjectsStore((s) => s.setProjectIconUrl)
   const setWorktreeMode = useProjectsStore((s) => s.setWorktreeMode)
   const setValidationCommands = useProjectsStore((s) => s.setValidationCommands)
+  const setHealthCheckCommand = useProjectsStore((s) => s.setHealthCheckCommand)
+  const setHealthCheckPath = useProjectsStore((s) => s.setHealthCheckPath)
   const setGsdWatcherEnabled = useProjectsStore((s) => s.setGsdWatcherEnabled)
   const setConflictAgentProvider = useProjectsStore((s) => s.setConflictAgentProvider)
   const setConflictAgentModel = useProjectsStore((s) => s.setConflictAgentModel)
@@ -54,6 +57,8 @@ export function EditProjectModal() {
   const [iconUrl, setIconUrl] = useState('')
   const [worktreeMode, setWorktreeModeState] = useState<'gitWorktree' | 'localCopy'>('gitWorktree')
   const [validationCommandsStr, setValidationCommandsStr] = useState('')
+  const [healthCheckCommand, setHealthCheckCommandState] = useState('')
+  const [healthCheckPath, setHealthCheckPathState] = useState('')
   const [gsdWatcherEnabled, setGsdWatcherEnabledState] = useState(false)
   const [worktrees, setWorktrees] = useState<any[]>([])
   const [loadingWorktrees, setLoadingWorktrees] = useState(false)
@@ -109,6 +114,8 @@ export function EditProjectModal() {
     setIconUrl(project.iconUrl ?? '')
     setWorktreeModeState(project.worktreeMode ?? 'gitWorktree')
     setValidationCommandsStr((project.validationCommands ?? []).join('\n'))
+    setHealthCheckCommandState(project.healthCheckCommand ?? '')
+    setHealthCheckPathState(project.healthCheckPath ?? '')
     setGsdWatcherEnabledState(project.gsdWatcherEnabled ?? false)
 
     setConflictProviderState(project.conflictAgentProvider ?? 'claude')
@@ -131,6 +138,26 @@ export function EditProjectModal() {
           setMergeSource((prev) => prev || (list.find((b) => b !== main) ?? ''))
         })
         .catch(() => setBranches([]))
+
+      // Sugere comandos de validação prontos quando o campo está vazio — sem
+      // isso, `validationCommands` fica vazio pra sempre (ninguém preenche
+      // manualmente) e o gate de verificação nunca roda nada de verdade. Só
+      // pré-preenche, nunca sobrescreve o que o usuário já digitou; o guard
+      // de `openedProjectId` evita aplicar a sugestão depois que o modal já
+      // foi fechado ou reaberto noutro projeto enquanto a promise corria.
+      if ((project.validationCommands ?? []).length === 0) {
+        const openedProjectId = project.id
+        detectProjectStack(repoPath)
+          .then((detection) => {
+            if (seededForRef.current !== openedProjectId || detection.suggestedCommands.length === 0) {
+              return
+            }
+            setValidationCommandsStr((prev) =>
+              prev.trim() ? prev : detection.suggestedCommands.join('\n'),
+            )
+          })
+          .catch(() => {})
+      }
     } else {
       setWorktrees([])
       setBranches([])
@@ -212,6 +239,15 @@ export function EditProjectModal() {
     const originalCmds = project.validationCommands ?? []
     if (JSON.stringify(cmds) !== JSON.stringify(originalCmds)) {
       setValidationCommands(project.id, cmds)
+    }
+
+    const trimmedHealthCommand = healthCheckCommand.trim()
+    if (trimmedHealthCommand !== (project.healthCheckCommand ?? '')) {
+      setHealthCheckCommand(project.id, trimmedHealthCommand)
+    }
+    const trimmedHealthPath = healthCheckPath.trim()
+    if (trimmedHealthPath !== (project.healthCheckPath ?? '')) {
+      setHealthCheckPath(project.id, trimmedHealthPath)
     }
 
     if (conflictProvider !== (project.conflictAgentProvider ?? 'claude')) {
@@ -446,6 +482,10 @@ export function EditProjectModal() {
                 onWorktreeModeChange={setWorktreeModeState}
                 validationCommandsStr={validationCommandsStr}
                 onValidationCommandsChange={setValidationCommandsStr}
+                healthCheckCommand={healthCheckCommand}
+                onHealthCheckCommandChange={setHealthCheckCommandState}
+                healthCheckPath={healthCheckPath}
+                onHealthCheckPathChange={setHealthCheckPathState}
                 conflictProvider={conflictProvider}
                 onConflictProviderChange={setConflictProviderState}
                 conflictModel={conflictModel}
@@ -697,15 +737,18 @@ export function EditProjectModal() {
                           alignItems: 'center',
                           gap: 6,
                           fontSize: 12,
-                          cursor: 'pointer',
+                          cursor: 'not-allowed',
+                          opacity: 0.6,
                         }}
+                        title={t('merge.postActionRelocateSessionDisabledHint')}
                       >
                         <input
                           type="radio"
                           name="mergePostAction"
                           value="relocateKeepSession"
                           checked={mergePostAction === 'relocateKeepSession'}
-                          onChange={() => setMergePostActionState('relocateKeepSession')}
+                          disabled
+                          onChange={() => {}}
                         />
                         {t('merge.postActionRelocateSession')}
                       </label>
@@ -730,6 +773,9 @@ export function EditProjectModal() {
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 6 }}>
                       {t('merge.postActionHint')}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--status-waiting)', marginTop: 4 }}>
+                      {t('merge.postActionRelocateSessionDisabledHint')}
                     </div>
                   </div>
 

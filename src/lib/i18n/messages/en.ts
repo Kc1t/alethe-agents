@@ -839,6 +839,12 @@ export const en = {
   'crud.editProjectLocalCopy': 'Local copy (slower)',
   'crud.editProjectValidationCommands': 'Validation commands, one per line',
   'crud.editProjectValidationPlaceholder': 'Example: npm run build\nnpm test',
+  'crud.editProjectHealthCheckCommand': 'Health check command (optional)',
+  'crud.editProjectHealthCheckCommandPlaceholder': 'Example: npm run dev',
+  'crud.editProjectHealthCheckCommandHint':
+    'Boots the app in an isolated environment and confirms it actually responds before Test/Merge. The command must listen on the port given by the %PORT%/$PORT environment variable.',
+  'crud.editProjectHealthCheckPath': 'Health check path',
+  'crud.editProjectHealthCheckPathPlaceholder': '/ (default)',
   'crud.editProjectGsdWatcher': 'Watch the GSD planning files (.planning/)',
   'crud.projectColorLabel': 'Color (container border)',
   'crud.projectIconEditHint':
@@ -1152,6 +1158,8 @@ export const en = {
   'git.graph.timeDays': '{count}d ago',
   'git.graph.filesLoading': 'Loading changed files…',
   'git.graph.filesEmpty': 'No file changes (empty or merge commit).',
+  'git.graph.detail.loadingMessage': 'Loading commit message…',
+  'git.graph.detail.filesTitle': 'Changed files',
   'git.graph.menu.copyHash': 'Copy commit hash',
   'git.graph.menu.createBranch': 'Create branch here',
   'git.graph.menu.createBranchPrompt': 'New branch name',
@@ -1713,10 +1721,12 @@ export const en = {
   'merge.needBranches': 'This repo needs at least two local branches to merge.',
   'merge.postActionLabel': 'Agent post-merge action',
   'merge.postActionRelocateChat': 'Create new branch and keep chat active',
-  'merge.postActionRelocateSession': 'Create new branch and keep session',
+  'merge.postActionRelocateSession': 'Create new branch and keep session (Beta)',
   'merge.postActionClose': 'Close agent terminal',
   'merge.postActionHint':
-    '"Keep chat" reopens the panel in the new branch with a fresh conversation. "Keep session" tries to resume the SAME conversation there — not guaranteed for every agent/CLI, falls back to a fresh conversation if resume isn’t supported or hangs.',
+    '"Keep chat" reopens the panel on the new branch with a fresh conversation. "Keep session" would try to resume the exact same conversation there.',
+  'merge.postActionRelocateSessionDisabledHint':
+    'Disabled for now — resuming a session from a different directory hangs indefinitely on every agent CLI tested so far (confirmed with OpenCode; root cause is upstream, outside Alethe’s control). Selecting this option silently falls back to a fresh conversation until an upstream fix lands.',
   'merge.commitConfirmTitle': 'Commit pending work — {branch}',
   'merge.commitConfirmDescription':
     'This worktree has changes that were never committed. Merge only moves commits — review what will be committed and write a description before integrating.',
@@ -1731,7 +1741,8 @@ export const en = {
   'merge.finalize': 'Finalize merge',
   'merge.finalizing': 'Finalizing…',
   'merge.abort': 'Abort',
-  'merge.analysisClean': 'No conflicts — merge can proceed directly.',
+  'merge.analysisClean':
+    'No git conflicts detected — this only checks for merge conflicts, not whether the code actually works. Validation and health check (if configured) still run when you click Merge.',
   'merge.analysisConflicts': '{count} file(s) in conflict:',
   'merge.resolvingHint':
     'Conflict agent is running in a project terminal. When it finishes, click "Finalize merge".',
@@ -1742,7 +1753,20 @@ export const en = {
   'merge.conflictBody':
     '{count} file(s) in conflict. An ephemeral agent was spawned to resolve them.',
   'merge.mergedTitle': 'Merge completed',
+  'merge.mergedUnverifiedTitle': 'Merged without verification',
+  'merge.mergedUnverifiedBody':
+    'This project has no validation commands configured — the merge went through without any automatic build/test check.',
+  'merge.nothingToIntegrateTitle': 'Nothing to integrate',
+  'merge.nothingToIntegrateBody':
+    'The agent branch has no changes compared to the target branch — nothing was committed or merged.',
+  'merge.worktreeRemoveFailedTitle': 'Could not remove the worktree',
+  'merge.relocateFailedTitle': 'Could not relocate the terminal',
   'merge.contractWarningsTitle': '{count} possible API disconnect(s) detected',
+  'merge.healthProbePassedTitle': 'App boot verified',
+  'merge.healthProbePassedBody': 'Responded in {ms}ms (HTTP {status}) in an isolated environment.',
+  'merge.healthProbeFailedTitle': 'App did not respond',
+  'merge.healthProbeFailedBody':
+    'The health check command did not respond within {ms}ms. {output}',
   'merge.blockedTitle': 'Merge blocked: {stage}',
   'merge.retry': 'Retry ({count})',
   'merge.cleaningUp': 'Cleaning up…',
@@ -1768,9 +1792,12 @@ export const en = {
   'merge.statusMerged': 'Merged',
   'merge.statusBlocked': 'Blocked',
   'merge.statusGateFailed': 'Failed automatic check',
+  'merge.statusUnverified': 'No automatic check',
   'merge.gateFailedDiffEmpty':
     'Planning marked as complete, but there are no code changes between {branch} and {target}.',
   'merge.gateFailedValidation': 'Planning complete, but validation failed at "{stage}": {output}',
+  'merge.gateUnverifiedHint':
+    'This project has no validation commands configured, so nothing was actually checked. Configure them in the Multi-Agent & MCP tab.',
   'merge.gateRecheck': 'Recheck',
   'merge.noRepoTitle': 'Repository not found',
   'merge.noRepoBody': 'Could not locate this project’s repository root.',
@@ -1790,6 +1817,9 @@ export const en = {
     'Configure validation commands in the project’s Multi-Agent & MCP tab.',
   'merge.validationPassedTitle': 'Validation passed',
   'merge.validationPassedBody': 'All validation commands ran successfully in this worktree.',
+  'merge.validationUnverifiedTitle': 'Not verified',
+  'merge.validationUnverifiedBody':
+    'No validation commands configured for this project — nothing was actually checked (this is not a failure).',
   'merge.validationFailedTitle': 'Validation failed',
   'merge.test': 'Test',
   'merge.testTooltip': 'Opens a terminal in the worktree folder to test manually',
@@ -1808,6 +1838,15 @@ export const en = {
   'merge.testBriefingRunning': 'Running: {cmd}',
   'merge.testBriefingValidationPassed': 'All validation commands passed.',
   'merge.testBriefingValidationFailed': 'Failed at "{stage}": {output}',
+  'merge.testHealthTitle': 'Server Health',
+  'merge.testHealthNotConfigured':
+    'No health check command configured — configure one in the Multi-Agent & MCP tab to have this section boot the app for real.',
+  'merge.testHealthLoading': 'Booting the app in an isolated environment…',
+  'merge.testHealthResponded': 'Responded in {ms}ms (HTTP {status}).',
+  'merge.testHealthNoResponse': 'Did not respond after {ms}ms. {output}',
+  'merge.testHealthTerminalVerified': 'A real terminal was opened and confirmed working.',
+  'merge.testHealthTerminalFailed':
+    'The app responded, but opening a real terminal against it failed.',
   'merge.testCategorySetup': 'Setup — preparation needed before testing',
   'merge.testCategoryAction': 'Action — the test step itself',
   'merge.testCategoryVerify': 'Verify — what to check in the result',
@@ -1831,6 +1870,12 @@ export const en = {
     'The reviewer’s terminal is still starting up — try again in a moment.',
   'merge.reviewFeedbackSentTitle': 'Feedback sent',
   'merge.reviewFeedbackSentBody': 'Your message was sent to the reviewer agent in its terminal.',
+  'merge.treeMainNode': 'main',
+  'merge.treeEmptyForProject': 'No merges pending in this project — other projects have pending ones.',
+  'merge.centerPagerLabel': '{index} of {total}',
+  'merge.centerPrev': 'Previous merge',
+  'merge.centerNext': 'Next merge',
+  'merge.treeResizeHandle': 'Drag to resize the merge list',
 
   /* ---- fsBrowser ---- */
   'fsBrowser.titleFolder': 'Select Folder',
