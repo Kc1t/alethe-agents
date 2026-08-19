@@ -13,55 +13,52 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { AgentInstallButton } from '../AgentInstall/AgentInstallButton'
+import { DotmCircular2 } from '../ui/dotm-circular-2'
+import { cliPathMatchesAgent } from '../../lib/agentCliPath'
+import { normalizeBrowserUrl } from '../../lib/browserUrl'
 import { pickFile } from '../../lib/dialog'
 import { getLocale, translate, useT } from '../../lib/i18n'
 import { writeScopedStorage } from '../../lib/storageNamespace'
 import { openInBrowser, openInFileExplorer, writeClipboardText, writePty } from '../../lib/tauri'
-import { type AgentRuntimeProfile, type AgentType, type Theme } from '../../lib/types'
+import {
+  AGENT_TYPE_LABELS,
+  agentCliCommand,
+  type AgentRuntimeProfile,
+  type AgentType,
+  type Theme,
+} from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { type DetectedTerminalLink } from './terminalLinks'
-import { loadPromptHistory, PROMPT_HISTORY_KEY } from './terminalWrite'
+import { applyPromptHistoryInput, loadPromptHistory, PROMPT_HISTORY_KEY } from './terminalWrite'
 import { useXtermSession } from './useXtermSession'
 import { getXtermTheme, type LinkActionState } from './xtermThemes'
 import styles from './XTermView.module.css'
 
 export type XTermViewProps = {
   ptyId: string
-  /** Projeto dono deste terminal — usado pra "abrir .md no grid" via hover. */
+
   projectId?: string
-  /** Tipo do agent (claude/codex/opencode) ou null pra shell. */
+
   command?: AgentType | null
   cwd?: string | null
   extraArgs?: string[]
-  /** Prompt opcional enviado uma única vez após o boot do processo. */
+
   initialInput?: string
   /** Identidade persistida da conversa deste pane. */
   sessionId?: string
-  /** Identidade estável da sub-tab, independente das trocas de PTY. */
+
   sessionKey?: string
-  /** Env extra só deste PTY. */
+
   env?: Record<string, string>
-  /** RFC-004 — raiz do repo quando o projeto tem Graphify habilitado. Presente:
-   * o spawn injeta o MCP do grafo (Claude via `--mcp-config`, Codex/OpenCode via
-   * merge no config do projeto) e garante o bootstrap do grafo. */
+
   graphifyRepo?: string | null
-  /** Gate de Conclusão de Planejamento GSD: projeto com o monitoramento
-   * ligado. Presente + `command === 'opencode'`: instala automaticamente o
-   * plugin que mantém `.planning/` sincronizado sozinho antes do spawn. */
+
   gsdWatcherEnabled?: boolean
-  /**
-   * Pula a validação de "sessão órfã" (checagem contra `opencode session
-   * list`) pro `sessionId` recebido — usado pelo terminal "viewer" da gaveta
-   * GSD Sync. Confirmado empiricamente: `opencode session list` nunca lista
-   * sessões-filha (têm `parent_id` setado pelo próprio servidor do OpenCode,
-   * mesmo sem o cliente pedir isso), então a validação normal sempre trata
-   * essa sessão como órfã, descarta o resume e apaga `sessionId` do tab —
-   * era a causa real do "resume abre em branco".
-   */
+
   trustSessionId?: boolean
-  /** Sessão-filha do GSD Sync: visão de subagente, só leitura — nunca deve
-   * aceitar digitação/colar/atalhos que escrevem na PTY. */
+
   readOnly?: boolean
   /**
    * `true` só na primeira montagem de uma tab recém-criada — impede o
@@ -79,6 +76,7 @@ export type XTermViewProps = {
   onInitialInputSent?: () => void
   onSessionClaimSkipped?: () => void
   onExit?: (code: number | null) => void
+  onLaunchError?: (error: unknown) => void
   onAgentComplete?: () => void
 }
 
@@ -112,6 +110,7 @@ export function XTermView({
   onInitialInputSent,
   onSessionClaimSkipped,
   onExit,
+  onLaunchError,
   onAgentComplete,
 }: XTermViewProps) {
   const t = useT()
@@ -132,6 +131,7 @@ export function XTermView({
   const onInitialInputSentRef = useRef(onInitialInputSent)
   const onSessionClaimSkippedRef = useRef(onSessionClaimSkipped)
   const onExitRef = useRef(onExit)
+  const onLaunchErrorRef = useRef(onLaunchError)
   const onAgentCompleteRef = useRef(onAgentComplete)
   useEffect(() => {
     onSpawnedRef.current = onSpawned
@@ -139,12 +139,14 @@ export function XTermView({
     onInitialInputSentRef.current = onInitialInputSent
     onSessionClaimSkippedRef.current = onSessionClaimSkipped
     onExitRef.current = onExit
+    onLaunchErrorRef.current = onLaunchError
     onAgentCompleteRef.current = onAgentComplete
   })
 
   const promptHistoryRef = useRef<string[]>([])
   const historyCursorRef = useRef(-1)
   const currentLineRef = useRef('')
+  const promptHistoryOverflowRef = useRef(false)
 
   const spawnedAtRef = useRef(0)
   const usedResumeRef = useRef(false)
@@ -164,14 +166,11 @@ export function XTermView({
     setLinkActions(null)
   }, [])
 
-  // Clique no link abre um menu compacto junto ao cursor. A posição usa uma
   // estimativa conservadora do tamanho para nunca cortar o menu na viewport.
   const showLinkActionsMenu = useCallback((event: MouseEvent, link: DetectedTerminalLink) => {
     event.preventDefault()
     event.stopPropagation()
-    // O xterm inicia seleção no pointerdown antes de chamar `activate` no
-    // clique. Limpa esse gesto residual para o menu não parecer estar
-    // "segurando" e selecionando o conteúdo que ficou atrás dele.
+
     terminalRef.current?.clearSelection()
     window.getSelection()?.removeAllRanges()
 
@@ -185,6 +184,7 @@ export function XTermView({
 
     setLinkActions({
       text: link.text,
+      target: link.target,
       kind: link.kind,
       fileKind: link.fileKind,
       x,
@@ -192,7 +192,6 @@ export function XTermView({
     })
   }, [])
 
-  // Espelha o estado num ref pro listener do xterm, criado uma vez por PTY.
   useEffect(() => {
     linkActionsRef.current = linkActions
   }, [linkActions])
@@ -223,6 +222,17 @@ export function XTermView({
     (target: string) => {
       if (!projectId) return
       useProjectsStore.getState().createFilePane(projectId, { filePath: target })
+    },
+    [projectId],
+  )
+
+  const openUrlInGrid = useCallback(
+    (target: string) => {
+      if (!projectId) return
+      const url = normalizeBrowserUrl(target)
+      if (!url) return
+      useProjectsStore.getState().createWebPane(projectId, { url })
+      useUiStore.getState().setActiveView('workspace')
     },
     [projectId],
   )
@@ -276,30 +286,29 @@ export function XTermView({
     }
     historyCursorRef.current = -1
     currentLineRef.current = ''
+    promptHistoryOverflowRef.current = false
   }, [ptyId])
 
-  const recordPromptInput = (data: string) => {
-    for (const ch of data) {
-      if (ch === '\r' || ch === '\n') {
-        const line = currentLineRef.current.trim()
-        currentLineRef.current = ''
-        historyCursorRef.current = -1
-        if (line.length < 2) continue
-        const history = promptHistoryRef.current
-        if (history[history.length - 1] === line) continue
-        history.push(line)
-        if (history.length > 50) history.shift()
-        try {
-          writeScopedStorage(PROMPT_HISTORY_KEY(ptyId), JSON.stringify(history))
-        } catch {
-          /* localStorage cheio — ignora */
-        }
-      } else if (ch === '\b' || ch === '\x7f') {
-        currentLineRef.current = currentLineRef.current.slice(0, -1)
-      } else if (ch >= ' ') {
-        currentLineRef.current += ch
-      }
+  const recordPromptInput = (data: string): boolean => {
+    const state = {
+      currentLine: currentLineRef.current,
+      overflow: promptHistoryOverflowRef.current,
+      history: promptHistoryRef.current,
     }
+    let startsNewSession = false
+    const historyChanged = applyPromptHistoryInput(state, data, (line) => {
+      if (line === '/new') startsNewSession = true
+    })
+    currentLineRef.current = state.currentLine
+    promptHistoryOverflowRef.current = state.overflow
+    if (data.includes('\r') || data.includes('\n')) historyCursorRef.current = -1
+    if (!historyChanged) return startsNewSession
+    try {
+      writeScopedStorage(PROMPT_HISTORY_KEY(ptyId), JSON.stringify(state.history))
+    } catch {
+      /* Ignore unavailable or full browser storage. */
+    }
+    return startsNewSession
   }
 
   const navigateHistory = (direction: 'up' | 'down') => {
@@ -314,6 +323,7 @@ export function XTermView({
     const entry = history[cursor] ?? ''
     void writePty(id, `\x15${entry}`)
     currentLineRef.current = entry
+    promptHistoryOverflowRef.current = false
   }
 
   useXtermSession({
@@ -348,6 +358,7 @@ export function XTermView({
     onInitialInputSentRef,
     onSessionClaimSkippedRef,
     onExitRef,
+    onLaunchErrorRef,
     onAgentCompleteRef,
     setBootPhase,
     setCommandNotFound,
@@ -363,6 +374,8 @@ export function XTermView({
     const terminal = terminalRef.current
     if (!terminal) return
     terminal.options.theme = getXtermTheme(terminalTheme)
+    // Swapping the palette alone leaves already-painted rows on the previous colours.
+    terminal.refresh(0, terminal.rows - 1)
   }, [terminalTheme])
 
   const configurePath = useCallback(
@@ -375,6 +388,16 @@ export function XTermView({
         ],
       })
       if (!picked) return
+      if (!cliPathMatchesAgent(agent, picked)) {
+        useUiStore.getState().pushToast({
+          title: translate(getLocale(), 'prefs.cliPathMismatch'),
+          body: translate(getLocale(), 'prefs.cliPathMismatchBody', {
+            agent,
+            command: agentCliCommand(agent) ?? agent,
+          }),
+        })
+        return
+      }
       setCliPath(agent, picked)
       setCommandNotFound(null)
       setRetryKey((v) => v + 1)
@@ -402,21 +425,34 @@ export function XTermView({
       />
       {bootLabel && !commandNotFound ? (
         <div className={styles.bootOverlay}>
-          <div className={styles.bootSpinner} aria-hidden />
+          <DotmCircular2
+            size={26}
+            dotSize={2}
+            cellPadding={1}
+            speed={1.2}
+            bloom
+            ariaLabel={bootLabel}
+            className={styles.bootSpinner}
+          />
           <div className={styles.bootLabel}>{bootLabel}</div>
         </div>
       ) : null}
       {commandNotFound ? (
         <div className={styles.overlay}>
           <div className={styles.overlayText}>
-            <strong>{commandNotFound}</strong> was not found on this machine.
+            {t('xterm.notFoundTitle', { agent: commandNotFound })}
           </div>
+          <AgentInstallButton
+            agent={commandNotFound as AgentType}
+            label={AGENT_TYPE_LABELS[commandNotFound as AgentType] ?? commandNotFound}
+            onInstalled={() => setRetryKey((value) => value + 1)}
+          />
           <button
             type="button"
             className={styles.overlayBtn}
             onClick={() => void configurePath(commandNotFound as AgentType)}
           >
-            Configure path…
+            {t('xterm.configurePath')}
           </button>
         </div>
       ) : null}
@@ -464,13 +500,27 @@ export function XTermView({
                 <span>{t('xterm.openInGrid')}</span>
               </button>
             ) : null}
+            {linkActions.kind === 'url' && projectId ? (
+              <button
+                type="button"
+                className={styles.linkMenuItem}
+                role="menuitem"
+                onClick={() => {
+                  openUrlInGrid(linkActions.target)
+                  hideLinkActions()
+                }}
+              >
+                <LayoutGrid size={15} />
+                <span>{t('xterm.openInGrid')}</span>
+              </button>
+            ) : null}
             {linkActions.kind === 'url' || linkActions.fileKind === 'video' ? (
               <button
                 type="button"
                 className={styles.linkMenuItem}
                 role="menuitem"
                 onClick={() => {
-                  openLinkInAppViewer(linkActions.text)
+                  openLinkInAppViewer(linkActions.target)
                   hideLinkActions()
                 }}
               >
@@ -516,7 +566,7 @@ export function XTermView({
               className={styles.linkMenuItem}
               role="menuitem"
               onClick={() => {
-                void openLinkInBrowser(linkActions.text)
+                void openLinkInBrowser(linkActions.target)
                 hideLinkActions()
               }}
             >

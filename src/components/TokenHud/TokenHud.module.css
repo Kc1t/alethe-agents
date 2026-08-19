@@ -153,7 +153,7 @@
   color: var(--fg-faint);
 }
 
-/* Faixas de gasto — tokens do tema, sem hardcode de cor. */
+                                                            
 .costLow {
   color: var(--accent);
 }
@@ -169,4 +169,19 @@
 .costNone {
   color: var(--fg-faint);
   font-weight: 500;
+}
+
+:global([data-visual-style='clean']) .panel {
+  border-radius: var(--clean-popover-radius);
+  box-shadow: var(--clean-shadow);
+}
+
+:global([data-visual-style='clean']) .row {
+  min-height: var(--clean-row-height);
+  border-radius: var(--clean-control-radius);
+}
+
+:global([data-visual-style='clean']) .pill {
+  border-radius: var(--clean-control-radius);
+  box-shadow: var(--clean-shadow);
 }

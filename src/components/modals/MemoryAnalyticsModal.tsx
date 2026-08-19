@@ -1,6 +1,7 @@
 import {
   Activity,
   AlertTriangle,
+  CheckCircle2,
   Cpu,
   FolderOpen,
   Layers,
@@ -20,11 +21,12 @@ import {
 import { useProjectsStore } from '../../stores/projectsStore'
 import type { MemorySample } from '../../stores/uiStore'
 import { useUiStore } from '../../stores/uiStore'
-import { Modal } from './Modal'
 import controls from './controls.module.css'
 import styles from './MemoryAnalyticsModal.module.css'
+import { Modal } from './Modal'
 
 type Bucket = 'app_mb' | 'webview_mb' | 'ptys_mb'
+type MemoryHealthLevel = 'normal' | 'warning' | 'critical'
 
 const BUCKETS: Array<{
   key: Bucket
@@ -78,6 +80,15 @@ function dominantBucket(
   return top ?? null
 }
 
+function memoryHealth(sample: MemorySample | null): MemoryHealthLevel {
+  if (!sample || sample.system_total_mb <= 0) return 'normal'
+  const criticalAt = Math.max(512, sample.system_total_mb * 0.05)
+  const warningAt = Math.max(1024, sample.system_total_mb * 0.1)
+  if (sample.system_available_mb <= criticalAt) return 'critical'
+  if (sample.system_available_mb <= warningAt) return 'warning'
+  return 'normal'
+}
+
 function buildDiagnostics(history: MemorySample[], t: TFunction): string[] {
   if (history.length === 0) return [t('mod.noDataYet')]
 
@@ -92,19 +103,17 @@ function buildDiagnostics(history: MemorySample[], t: TFunction): string[] {
   const top = dominantBucket(latest, t)
   const diagnostics: string[] = []
 
-  if (latest.total_mb >= 2048) {
-    diagnostics.push(t('mod.diagOver2gb'))
-  } else if (latest.total_mb >= 1024) {
-    diagnostics.push(t('mod.diagOver1gb'))
-  }
+  const health = memoryHealth(latest)
+  if (health === 'critical') diagnostics.push(t('mod.diagSystemCritical'))
+  else if (health === 'warning') diagnostics.push(t('mod.diagSystemWarning'))
 
-  if (totalGrowth >= 250) {
+  if (totalGrowth >= 512) {
     diagnostics.push(t('mod.diagHighGrowth', { value: formatMb(totalGrowth) }))
-  } else if (totalGrowth >= 120) {
+  } else if (totalGrowth >= 256) {
     diagnostics.push(t('mod.diagModerateGrowth', { value: formatMb(totalGrowth) }))
   }
 
-  if (bucketGrowth && bucketGrowth.value >= 80) {
+  if (bucketGrowth && bucketGrowth.value >= 192) {
     diagnostics.push(
       t('mod.diagBucketGrowth', { label: bucketGrowth.label, value: formatMb(bucketGrowth.value) }),
     )
@@ -114,7 +123,7 @@ function buildDiagnostics(history: MemorySample[], t: TFunction): string[] {
     diagnostics.push(t('mod.diagDominant', { label: top.label, pct: (top.share * 100).toFixed(0) }))
   }
 
-  if (latest.process_count >= 20) {
+  if (latest.process_count >= 50) {
     diagnostics.push(t('mod.diagManyProcesses', { count: latest.process_count }))
   }
 
@@ -127,9 +136,9 @@ function buildDiagnostics(history: MemorySample[], t: TFunction): string[] {
 
 type ChartPoint = { x: number; y: number }
 
-/** Catmull-Rom → Bézier cúbica (tensão 1/6): suaviza a linha sem inventar
- * picos/vales que não existem nos dados (ao contrário de simplesmente
- * arredondar o line-join do polyline cru). */
+                                                                          
+                                                                      
+                                              
 function smoothPath(points: ChartPoint[]): string {
   if (points.length < 2) return ''
   if (points.length === 2) {
@@ -269,7 +278,7 @@ export function MemoryAnalyticsModal() {
   const runtimeSnapshot = useUiStore((s) => s.runtimeSnapshot)
   const clearMemoryHistory = useUiStore((s) => s.clearMemoryHistory)
 
-  // Relatório da sessão anterior, se ela caiu/foi morta (saída suja).
+                                                                      
   const [crash, setCrash] = useState<CrashReport | null>(null)
   useEffect(() => {
     void getLastCrashReport()
@@ -277,8 +286,8 @@ export function MemoryAnalyticsModal() {
       .catch(() => {})
   }, [])
 
-  // Rede de segurança contra terminais órfãos (Job Object, Windows) da
-  // sessão ATUAL — null enquanto carrega, pra não afirmar "inativa" antes de
+                                                                       
+                                                                             
   // saber de verdade.
   const [jobGuardActive, setJobGuardActive] = useState<boolean | null>(null)
   useEffect(() => {
@@ -288,6 +297,7 @@ export function MemoryAnalyticsModal() {
   }, [])
 
   const latest = history[history.length - 1] ?? null
+  const health = memoryHealth(latest)
   const peak = history.reduce<MemorySample | null>(
     (current, sample) => (!current || sample.total_mb > current.total_mb ? sample : current),
     null,
@@ -362,6 +372,23 @@ export function MemoryAnalyticsModal() {
             {jobGuardActive ? t('mod.jobGuardActive') : t('mod.jobGuardInactive')}
           </p>
         ) : null}
+
+        <section className={`${styles.panel} ${styles.healthPanel}`} data-level={health}>
+          <div className={styles.panelHeader}>
+            <div>
+              <h3>{t(`mod.health.${health}.title`)}</h3>
+              <p>
+                {latest
+                  ? t(`mod.health.${health}.body`, {
+                      available: formatMb(latest.system_available_mb),
+                      total: formatMb(latest.system_total_mb),
+                    })
+                  : t('mod.waitingData')}
+              </p>
+            </div>
+            {health === 'normal' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+          </div>
+        </section>
 
         <section className={styles.summaryGrid}>
           <div className={styles.metric}>

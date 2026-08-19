@@ -84,6 +84,20 @@
   font: 10px var(--font-mono);
 }
 
+.privateBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  color: var(--status-online);
+  background: color-mix(in srgb, var(--status-online) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--status-online) 28%, var(--border));
+  border-radius: 999px;
+  font-size: 9px;
+  line-height: 1;
+}
+
 .action {
   width: 22px;
   height: 22px;
@@ -132,6 +146,22 @@
   background: var(--bg);
 }
 
+.nativeSurface {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--fg-faint);
+  background: var(--bg);
+  font-size: 11px;
+}
+
+.surfaceError {
+  max-width: 80%;
+  color: var(--status-offline);
+  text-align: center;
+}
+
 .empty {
   height: 100%;
   display: grid;
@@ -147,4 +177,22 @@
   background: var(--shape-tabs-lane-bg);
   border-top: 1px solid var(--border);
   font-size: 10px;
+}
+
+:global([data-visual-style='clean']) .pane {
+  border-radius: var(--clean-surface-radius);
+}
+
+:global([data-visual-style='clean']) .paneFocus {
+  border-color: var(--clean-focus-border);
+  box-shadow: var(--clean-shadow);
+}
+
+:global([data-visual-style='clean']) .header {
+  height: var(--clean-row-height);
+  flex-basis: var(--clean-row-height);
+}
+
+:global([data-visual-style='clean']) .action {
+  border-radius: var(--clean-control-radius);
 }

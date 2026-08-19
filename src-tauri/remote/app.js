@@ -1,8 +1,12 @@
 const app = document.querySelector('#app')
 const params = new URLSearchParams(location.search)
-const token = params.get('token') || ''
+const pairingToken = params.get('pair') || ''
 const httpBase = location.origin
+const SESSION_KEY = 'alethe.remote.session'
+const deviceName = /Android|iPhone|iPad/i.test(navigator.userAgent) ? 'Mobile device' : 'Browser'
+let sessionToken = sessionStorage.getItem(SESSION_KEY) || ''
 let wsBase = null
+let readOnly = false
 let state = { groups: [], projects: [] }
 let selected = null
 let output = ''
@@ -50,13 +54,39 @@ const readableTerminalText = (value) =>
     .replace(/\u0008+/g, '')
     .replace(/\n{4,}/g, '\n\n\n')
 
+class SessionError extends Error {}
+
+const readError = async (response) => {
+  try { return (await response.json()).error || response.statusText } catch { return response.statusText }
+}
+
 const api = async (path, options = {}) => {
-  const response = await fetch(
-    `${httpBase}${path}${path.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`,
-    options,
-  )
-  if (!response.ok) throw new Error(await response.text())
+  const response = await fetch(`${httpBase}${path}`, {
+    ...options,
+    headers: { ...(options.headers || {}), Authorization: `Bearer ${sessionToken}` },
+  })
+  if (response.status === 401 || response.status === 429) throw new SessionError(await readError(response))
+  if (!response.ok) throw new Error(await readError(response))
   return response.status === 204 ? null : response.json()
+}
+
+const pair = async () => {
+  const response = await fetch(`${httpBase}/api/pair`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: pairingToken, deviceName }),
+  })
+  if (!response.ok) throw new SessionError(await readError(response))
+  const paired = await response.json()
+  sessionToken = paired.sessionToken
+  sessionStorage.setItem(SESSION_KEY, sessionToken)
+  history.replaceState(null, '', location.pathname)
+}
+
+function dropSession() {
+  sessionToken = ''
+  sessionStorage.removeItem(SESSION_KEY)
+  if (socket) { socket.onclose = null; socket.close(); socket = null }
 }
 
 function setConnectionState(next) {
@@ -133,17 +163,22 @@ function renderHome(filter = '') {
   setConnectionState(connectionState)
 }
 
+function composerMarkup() {
+  if (readOnly) return '<div class="notice">This device is paired in read-only mode. Sending messages is disabled in Alethe.</div>'
+  return '<div class="notice">Your message is sent to the selected PTY with Enter.</div><form class="composer" id="composer"><textarea id="message" rows="1" autocomplete="off" placeholder="Send a message…"></textarea><button class="send" type="submit" aria-label="Send message">↑</button></form>'
+}
+
 function renderChat() {
   const chat = findChat(selected)
-  app.innerHTML = `<div class="app-frame"><header class="topbar chat-topbar"><button class="back" id="back" aria-label="Back">‹</button><div class="chat-topcopy"><span class="eyebrow">Agent conversation</span><h1>${escapeHtml(chat?.name || 'Agent chat')}</h1><p>${escapeHtml(chat?.projectName || '')} · ${escapeHtml(chat?.agent || 'Terminal')}</p></div>${agentBadge(chat?.agent)}</header><main class="scroll chat-content"><div class="context"><span>${escapeHtml(chat?.projectName || 'Workspace')}</span><span class="context-separator">/</span><span>${escapeHtml(chat?.agent || 'Terminal')}</span></div><section class="output-card"><div class="output-head"><span class="terminal-dot"></span><strong>Live terminal</strong><button id="latest" type="button">Jump to latest</button></div><pre class="terminal" id="terminal">${escapeHtml(output)}</pre></section><div class="notice">Your message is sent to the selected PTY with Enter.</div><form class="composer" id="composer"><textarea id="message" rows="1" autocomplete="off" placeholder="Send a message…"></textarea><button class="send" type="submit" aria-label="Send message">↑</button></form></main></div>`
-  document.querySelector('#back').addEventListener('click', () => {
-    selected = null
-    renderHome()
-  })
-  document.querySelector('#latest').addEventListener('click', () => {
+  app.innerHTML = `<div class="app-frame"><header class="topbar chat-topbar"><button class="back" id="back" aria-label="Back">‹</button><div class="chat-topcopy"><span class="eyebrow">Agent conversation</span><h1>${escapeHtml(chat?.name || 'Agent chat')}</h1><p>${escapeHtml(chat?.projectName || '')} · ${escapeHtml(chat?.agent || 'Terminal')}</p></div>${agentBadge(chat?.agent)}</header><main class="scroll chat-content"><div class="context"><span>${escapeHtml(chat?.projectName || 'Workspace')}</span><span class="context-separator">/</span><span>${escapeHtml(chat?.agent || 'Terminal')}</span></div><section class="output-card"><div class="output-head"><span class="terminal-dot"></span><strong>Live terminal</strong><button id="latest" type="button">Jump to latest</button></div><pre class="terminal" id="terminal">${escapeHtml(output)}</pre></section>${composerMarkup()}</main></div>`
+  document.querySelector('#back').addEventListener('click', () => { selected = null; renderHome() })
+  document.querySelector('#latest').addEventListener('click', () => { const terminal = document.querySelector('#terminal'); if (terminal) terminal.scrollTop = terminal.scrollHeight })
+  if (readOnly) {
     const terminal = document.querySelector('#terminal')
     if (terminal) terminal.scrollTop = terminal.scrollHeight
-  })
+    setConnectionState(connectionState)
+    return
+  }
   const input = document.querySelector('#message')
   input.addEventListener('input', () => {
     input.style.height = 'auto'
@@ -160,15 +195,9 @@ function renderChat() {
     const text = input.value.trim()
     if (!text) return
     input.disabled = true
-    try {
-      await api('/api/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ptyId: selected, text }),
-      })
-      input.value = ''
-      input.style.height = 'auto'
-    } catch (error) {
+    try { await api('/api/message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ptyId: selected, text }) }); input.value = ''; input.style.height = 'auto' }
+    catch (error) {
+      if (error instanceof SessionError) { renderSessionLost(error.message); return }
       window.alert(error.message || error)
     }
     input.disabled = false
@@ -192,42 +221,25 @@ async function openChat(ptyId) {
       terminal.scrollTop = terminal.scrollHeight
     }
   } catch (error) {
+    if (error instanceof SessionError) { renderSessionLost(error.message); return }
     output = `Unable to load terminal output.\n${error.message || error}`
     const terminal = document.querySelector('#terminal')
     if (terminal) terminal.textContent = output
   }
-  if (socket?.readyState === WebSocket.OPEN && socketAuthenticated)
-    socket.send(JSON.stringify({ type: 'subscribe', token, ptyId }))
+  if (socket?.readyState === WebSocket.OPEN && socketAuthenticated) socket.send(JSON.stringify({ type: 'subscribe', sessionToken, ptyId }))
 }
 
 function connectSocket() {
-  if (!wsBase) return
+  if (!wsBase || !sessionToken) return
   setConnectionState('connecting')
-  socket = new WebSocket(`${wsBase}/?token=${encodeURIComponent(token)}`)
-  socket.onopen = () => {
-    setConnectionState('live')
-    socketAuthenticated = false
-    socket.send(
-      JSON.stringify({
-        type: 'hello',
-        token,
-        deviceName: /Android|iPhone|iPad/i.test(navigator.userAgent) ? 'Mobile device' : 'Browser',
-      }),
-    )
-  }
+  socket = new WebSocket(`${wsBase}/`)
+  socket.onopen = () => { setConnectionState('live'); socketAuthenticated = false; socket.send(JSON.stringify({ type: 'hello', sessionToken, deviceName })) }
   socket.onmessage = (event) => {
     let message
-    try {
-      message = JSON.parse(event.data)
-    } catch {
-      return
-    }
-    if (message.type === 'authenticated') {
-      socketAuthenticated = true
-      if (selected) socket.send(JSON.stringify({ type: 'subscribe', token, ptyId: selected }))
-      return
-    }
+    try { message = JSON.parse(event.data) } catch { return }
+    if (message.type === 'authenticated') { socketAuthenticated = true; if (selected) socket.send(JSON.stringify({ type: 'subscribe', sessionToken, ptyId: selected })); return }
     if (message.type === 'error') {
+      if (message.reason === 'expired' || message.reason === 'unauthorized') { renderSessionLost(message.message); return }
       setConnectionState('reconnecting')
       return
     }
@@ -248,21 +260,31 @@ function connectSocket() {
   socket.onerror = () => setConnectionState('reconnecting')
 }
 
+function renderPairingRequired(message) {
+  app.innerHTML = `<div class="fatal"><div class="fatal-card"><span class="brand-mark">›_</span><strong>Pairing link required</strong><p>${escapeHtml(message || 'Open Remote control in Alethe and scan the QR code to connect this device.')}</p></div></div>`
+}
+
+function renderSessionLost(message) {
+  dropSession()
+  app.innerHTML = `<div class="fatal"><div class="fatal-card"><span class="brand-mark">!</span><strong>Remote session ended</strong><p>${escapeHtml(message || 'This device is no longer paired.')}</p><p>Open Remote control in Alethe and scan a new QR code.</p></div></div>`
+}
+
 async function boot() {
-  if (!token) {
-    app.innerHTML =
-      '<div class="fatal"><div class="fatal-card"><span class="brand-mark">›_</span><strong>Pairing link required</strong><p>Scan the QR code shown in Alethe to connect this device.</p></div></div>'
-    return
+  app.innerHTML = '<div class="loading"><div class="loading-card"><span class="brand-mark">›_</span><strong>Connecting to Alethe</strong><p>Preparing your remote workspace…</p></div></div>'
+  if (pairingToken) {
+    try { await pair() }
+    catch (error) { renderPairingRequired(error.message); return }
   }
-  app.innerHTML =
-    '<div class="loading"><div class="loading-card"><span class="brand-mark">›_</span><strong>Connecting to Alethe</strong><p>Preparing your remote workspace…</p></div></div>'
+  if (!sessionToken) { renderPairingRequired(); return }
   try {
     const info = await api('/api/info')
-    wsBase = info.ws_url
+    wsBase = info.wsUrl
+    readOnly = info.readOnly === true
     state = await api('/api/state')
     renderHome()
     connectSocket()
   } catch (error) {
+    if (error instanceof SessionError) { renderSessionLost(error.message); return }
     app.innerHTML = `<div class="fatal"><div class="fatal-card"><span class="brand-mark">!</span><strong>Connection unavailable</strong><p>${escapeHtml(error.message || error)}</p></div></div>`
   }
 }

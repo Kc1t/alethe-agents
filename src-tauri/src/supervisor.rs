@@ -70,7 +70,6 @@ pub fn start_supervisor_event_loop() {
         }
     });
 
-    // 2. Loop de polling para timeouts (a cada 5 segundos)
     tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;

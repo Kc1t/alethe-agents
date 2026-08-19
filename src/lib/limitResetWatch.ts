@@ -1,14 +1,14 @@
-/**
- * Detecta quando uma janela de uso do Claude/Codex reseta e dispara uma
- * notificação dizendo qual foi. Alimentado pelos polls de usage da TitleBar
- * (`observe*`) e por um heartbeat leve (sem rede) que cobre o caso de o reset
- * cair enquanto o app está fora de foco.
- *
- * Regra por janela: guardamos o `resets_at` conhecido. Um reset é detectado
- * quando (a) o heartbeat vê `now` cruzar esse timestamp, ou (b) um poll traz um
- * `resets_at` mais à frente (janela rolou) — o que acontece primeiro. A flag
- * `notified` garante exatamente um aviso por rolagem.
- */
+   
+                                                                        
+                                                                            
+                                                                              
+                                         
+  
+                                                                            
+                                                                                
+                                                                             
+                                                      
+   
 import { useProjectsStore } from '../stores/projectsStore'
 import { getLocale, translate } from './i18n'
 import { notifyLimitReset } from './notifications'
@@ -20,9 +20,9 @@ type Entry = { resetsAt: number; notified: boolean; agent: AgentType; kind: Wind
 
 const entries = new Map<string, Entry>()
 const HEARTBEAT_MS = 60_000
-// Um timestamp futuro pode mudar levemente entre respostas da API sem que a
-// janela tenha resetado. Só tratamos uma mudança como reset quando o timestamp
-// anterior já venceu (com pequena margem para atrasos de polling).
+                                                                            
+                                                                               
+                                                                   
 const RESET_ROLLOVER_GRACE_MS = 5 * 60_000
 let heartbeat: number | null = null
 
@@ -66,19 +66,19 @@ function observe(key: string, agent: AgentType, kind: WindowKind, resetsAt: numb
   ensureHeartbeat()
   const prev = entries.get(key)
   if (!prev) {
-    // Primeira leitura: só firma o baseline, nunca notifica.
+                                                             
     entries.set(key, { resetsAt, notified: false, agent, kind })
     return
   }
   if (resetsAt > prev.resetsAt) {
-    // Janela rolou pra frente => resetou desde a última leitura. Se o heartbeat
-    // ainda não avisou dessa rolagem, avisa agora; depois re-arma a nova janela.
+                                                                                
+                                                                                 
     if (prev.resetsAt <= Date.now() + RESET_ROLLOVER_GRACE_MS && !prev.notified) {
       fire(prev)
     }
     entries.set(key, { resetsAt, notified: false, agent, kind })
   }
-  // resetsAt === prev.resetsAt: mesma janela, nada a fazer.
+                                                            
   // resetsAt < prev.resetsAt: dado mais velho (cache), ignora.
 }
 

@@ -51,15 +51,15 @@ async function ensureNotificationPermission(): Promise<boolean> {
 async function deliver(title: string, body: string, agent?: AgentType): Promise<void> {
   const pushToast = useUiStore.getState().pushToast
 
-  // App na frente → só o banner in-app (banner + histórico).
+                                                             
   if (await appInForeground()) {
     pushToast({ title, body, agent })
     return
   }
 
-  // App fora de foco/minimizado → notificação do SO. Sem permissão, cai
-  // pro banner pra não perder o aviso. Em ambos os casos entra no histórico
-  // uma única vez (silent quando vai pro SO).
+                                                                        
+                                                                            
+                                              
   if (await ensureNotificationPermission()) {
     pushToast({ title, body, agent, silent: true })
     try {
@@ -80,7 +80,7 @@ export async function notifyAgentDone(
   return deliver(title, body, meta?.agent)
 }
 
-/** Aviso de reset de janela de uso (Claude/Codex). `agent` colore o toast in-app. */
+                                                                                     
 export async function notifyLimitReset(
   title: string,
   body: string,

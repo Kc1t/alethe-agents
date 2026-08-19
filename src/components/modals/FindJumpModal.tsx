@@ -12,6 +12,7 @@ const ICONS: Record<AgentType, LucideIcon> = {
   shell: Terminal,
   claude: Sparkles,
   codex: Code2,
+  copilot: Bot,
   antigravity: Sparkles,
   opencode: Boxes,
   freebuff: Gift,
@@ -42,7 +43,7 @@ export function FindJumpModal() {
     if (open) {
       setQuery('')
       setCursor(0)
-      // Modal já tenta autofocus mas reforça
+                                             
       setTimeout(() => inputRef.current?.focus(), 50)
     }
   }, [open])

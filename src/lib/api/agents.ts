@@ -116,28 +116,3 @@ export function listenOpenCodeBridgeStatus(
   }
   return Promise.resolve(() => {})
 }
-
-export type PluginKind = 'agentType' | 'skill' | 'validationPipeline'
-
-export type PluginManifest = {
-  name: string
-  version: string
-  kind: PluginKind
-  description: string
-  spec: Record<string, unknown>
-}
-
-export async function pluginsList(kind?: PluginKind): Promise<PluginManifest[]> {
-  if (isTauriEnv()) return invoke<PluginManifest[]>('plugins_list', { kind })
-  return webApiFetch<PluginManifest[]>(`/api/plugins/list${kind ? `?kind=${kind}` : ''}`)
-}
-
-export async function pluginInstall(manifest: PluginManifest): Promise<void> {
-  if (isTauriEnv()) return invoke('plugin_install', { manifest })
-  await webApiFetch('/api/plugins/install', { method: 'POST', body: JSON.stringify({ manifest }) })
-}
-
-export async function pluginUninstall(id: string): Promise<void> {
-  if (isTauriEnv()) return invoke('plugin_uninstall', { id })
-  await webApiFetch('/api/plugins/uninstall', { method: 'POST', body: JSON.stringify({ id }) })
-}

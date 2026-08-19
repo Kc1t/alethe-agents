@@ -108,7 +108,7 @@ function AgentCanvasInner() {
   const select = useAgentCanvasStore((s) => s.select)
   const clearStore = useAgentCanvasStore((s) => s.clear)
 
-  // Custo por nó (subagents/teammates) + custo do lead (sessão viva no agentCost).
+                                                                                   
   const nodeCosts = useNodeCostStore((s) => s.byNodeId)
   const leadCost = useAgentCostStore((s) =>
     session ? (s.byPtyId[session.ptyId]?.cost ?? null) : null,
@@ -129,7 +129,7 @@ function AgentCanvasInner() {
   const [usageOpen, setUsageOpen] = useState(false)
   const [usageTab, setUsageTab] = useState<UsageTab>('claude')
 
-  // sessionRef pra spawn/usage lerem a sessão viva sem virar dependência.
+                                                                          
   const sessionRef = useRef(session)
   useEffect(() => {
     sessionRef.current = session
@@ -148,7 +148,7 @@ function AgentCanvasInner() {
   const taskRefs = useRef(new Map<string, HTMLDivElement>())
 
   // Workers reais (PTYs claude/codex/opencode) + fallback/uso + zoom/pan +
-  // agents instalados: cada preocupação num hook co-locado.
+                                                            
   const {
     codexWorkers,
     setCodexWorkers,
@@ -201,8 +201,8 @@ function AgentCanvasInner() {
     window.addEventListener('pointercancel', onEnd)
   }
 
-  // Gera o settings com os hooks ANTES de spawnar o claude — o XTermView só
-  // monta quando o path existe, senão a sessão nasceria sem hooks.
+                                                                            
+                                                                   
   useEffect(() => {
     setHooksError(null)
     Promise.all([agentHooksEndpoint(), agentHooksSettingsPath()])
@@ -213,15 +213,15 @@ function AgentCanvasInner() {
         setHooksSettingsPath(path)
       })
       .catch((err) => {
-        // Sem isso, uma falha aqui deixava o terminal Claude preso pra
-        // sempre em "Gerando configuração de hooks..." sem erro nem opção
+                                                                       
+                                                                          
         // de tentar de novo.
         console.error('[AgentCanvasPOC] falha gerando hooks settings:', err)
         setHooksError(String(err))
       })
   }, [hooksRetryNonce])
 
-  // Tabela de preço (uma vez) pra estimar a economia por roteamento.
+                                                                     
   useEffect(() => {
     getModelPricing()
       .then(setPricing)
@@ -232,12 +232,12 @@ function AgentCanvasInner() {
     if (!session) return
     console.log('[AgentCanvasPOC] reiniciando claude — matando PTY', session.ptyId)
     void killPty(session.ptyId).catch(() => {
-      /* PTY pode já ter morrido */
+                                   
     })
     setClaudeExited(null)
     setRestartHint(false)
-    // ptyId novo força o XTermView a remontar e spawnar uma sessão fresca
-    // (que carrega os agents de .claude/agents/ do zero).
+                                                                          
+                                                          
     useUiStore.getState().setAgentCanvasSession({
       folder: session.folder,
       ptyId: `agent-canvas-${Date.now()}`,
@@ -261,8 +261,8 @@ function AgentCanvasInner() {
 
   useEffect(() => {
     const unlistenPromise = listen<AgentHookPayload>('agent-hook', (event) => {
-      // Qualquer sessão claude com hooks (outros projetos, testes headless)
-      // posta na :9123 — o canvas só ingere eventos da SUA pasta.
+                                                                            
+                                                                  
       const cwd = (event.payload as { cwd?: string }).cwd
       if (session && cwd && normalizeCwd(cwd) !== normalizeCwd(session.folder)) {
         console.log('[AgentCanvasPOC] evento de outra sessão ignorado (cwd):', cwd)
@@ -276,30 +276,30 @@ function AgentCanvasInner() {
     }
   }, [session])
 
-  // Fecha o dropdown de uso ao clicar fora ou apertar Esc.
+                                                           
   useOnClickOutside(usageAnchorRef, () => setUsageOpen(false), usageOpen)
   useOnEscape(() => setUsageOpen(false), usageOpen)
-  // Esc também fecha a paleta de biblioteca.
+                                             
   useOnEscape(() => setPaletteOpen(false))
 
-  // Recalcula as linhas SVG control plane → cards a cada mudança de layout.
+                                                                            
   useLayoutEffect(() => {
     const recompute = () => {
       const container = containerRef.current
       const plane = planeRef.current
       const stage = stageRef.current
       if (!container || !plane || !stage) return
-      // Coordenadas relativas ao STAGE (não ao viewport): o svg vive DENTRO do
-      // stage e escala junto, então as arestas ficam coladas nos cards em
-      // qualquer zoom/scroll. Divide por zoom pra voltar ao espaço não-escalado.
+                                                                               
+                                                                          
+                                                                                 
       const sRect = stage.getBoundingClientRect()
       const k = zoom || 1
       const pRect = plane.getBoundingClientRect()
       const x1 = (pRect.left + pRect.width / 2 - sRect.left) / k
       const y1 = (pRect.bottom - sRect.top) / k
-      // Árvore: o lead ramifica em teammates, workers e UMA área por tipo de
-      // subagent (frontend-dev, backend-dev, …). Uma aresta por ramo (grupo),
-      // não por card — assim cresce pra baixo sem virar uma teia.
+                                                                             
+                                                                              
+                                                                  
       const subs = nodes.filter((n) => n.kind === 'subagent')
       const groupTypes = [...new Set(subs.map((n) => n.agentType))]
       const targets = [
@@ -312,7 +312,7 @@ function AgentCanvasInner() {
           done: !subs.some((n) => n.agentType === type && n.status === 'running'),
         })),
       ]
-      // Camada 1: lead → cada teammate/worker/ramo.
+                                                    
       const nodeEdges: Edge[] = targets.flatMap((target) => {
         const el = cardRefs.current.get(target.id)
         if (!el) return []
@@ -328,8 +328,8 @@ function AgentCanvasInner() {
           },
         ]
       })
-      // Camada 2 (DAG): cada task pendura do teammate dono (se existir card dele),
-      // senão do lead. É a leitura visual de "distribuiu e está acompanhando".
+                                                                                   
+                                                                               
       const taskEdges: Edge[] = Object.values(tasks).flatMap((task) => {
         const taskEl = taskRefs.current.get(task.id)
         if (!taskEl) return []
@@ -350,15 +350,15 @@ function AgentCanvasInner() {
       setEdges([...nodeEdges, ...taskEdges])
     }
     recompute()
-    // rAF encadeado garante que o recompute roda após o layout estabilizar
-    // (cards nascem com animação de scale → posição final só no frame seguinte).
+                                                                           
+                                                                                 
     const raf = requestAnimationFrame(() => requestAnimationFrame(recompute))
     const observer = new ResizeObserver(recompute)
     const container = containerRef.current
     if (container) {
       observer.observe(container)
-      // Observa também cada card — feed crescendo muda a altura sem mexer no
-      // array de nodes, e aí os edges ficariam parados.
+                                                                             
+                                                        
       cardRefs.current.forEach((el) => observer.observe(el))
       taskRefs.current.forEach((el) => observer.observe(el))
       container.addEventListener('scroll', recompute, { passive: true })
@@ -370,10 +370,10 @@ function AgentCanvasInner() {
     }
   }, [nodes, codexWorkers, tasks, zoom])
 
-  // Poll de custo: relê o custo de cada nó (pelo transcript) e o do lead (sessão
-  // viva no agentCostStore). Ambos refresh() são adaptativos — pulam sozinhos
-  // quando não há o que ler. Lê os nodes direto do store pra não re-assinar o
-  // effect a cada mudança de feed.
+                                                                                 
+                                                                              
+                                                                              
+                                   
   useEffect(() => {
     if (!session) return
     const tick = () => {
@@ -389,13 +389,13 @@ function AgentCanvasInner() {
     if (session) {
       console.log('[AgentCanvasPOC] saindo — matando PTY', session.ptyId)
       void killPty(session.ptyId).catch(() => {
-        /* PTY pode já ter morrido */
+                                     
       })
     }
-    // Mata os codex workers junto — são PTYs do Alethe, não do Claude.
+                                                                       
     killAllWorkers()
-    // Estado do canvas não sobrevive entre sessões — senão time/cards velhos
-    // (até de testes headless) reaparecem na próxima pasta.
+                                                                             
+                                                            
     clearStore()
     useNodeCostStore.getState().clear()
     useUiStore.getState().setAgentCanvasBudget(null)
@@ -403,9 +403,9 @@ function AgentCanvasInner() {
     setActiveView('home')
   }
 
-  // BUG corrigido: antes este effect não tinha array de deps e re-inscrevia o
-  // listener de window a CADA render. Agora inscreve uma vez ([]) e chama o
-  // exitCanvas mais recente via ref (fecha sobre a sessão viva sem re-subscribe).
+                                                                              
+                                                                            
+                                                                                  
   const exitCanvasRef = useRef(exitCanvas)
   exitCanvasRef.current = exitCanvas
   useEffect(() => {
@@ -416,7 +416,7 @@ function AgentCanvasInner() {
 
   const clearCanvas = () => {
     // Mata os workers reais (PTYs claude/codex = processos pesados) — assim o
-    // botão de limpar também é o "parar tudo / liberar RAM".
+                                                             
     killAllWorkers()
     setCodexWorkers([])
     setExpandedCodexId(null)
@@ -439,8 +439,8 @@ function AgentCanvasInner() {
   const done = nodes.filter((n) => n.status === 'done').length
   const taskList = Object.values(tasks)
 
-  // Agrupa subagents por tipo (frontend-dev, backend-dev, …) — cada tipo vira
-  // uma área/ramo, e os cards empilham pra baixo dentro dela (árvore).
+                                                                              
+                                                                       
   const subagentGroups: Array<[string, AgentNode[]]> = (() => {
     const map = new Map<string, AgentNode[]>()
     for (const n of subagents) {
@@ -451,16 +451,16 @@ function AgentCanvasInner() {
     return [...map]
   })()
 
-  // Custo da sessão = lead (sessão viva) + soma dos nós (subagents/teammates).
+                                                                               
   const nodeTotals = selectNodeCostTotals(nodeCosts)
   const sessionCostUsd = nodeTotals.costUsd + (leadCost?.cost_usd ?? 0)
   const sessionTokens = nodeTotals.totalTokens + (leadCost?.total_tokens ?? 0)
   const hasCost = sessionTokens > 0
 
-  // Economia estimada por rotear nós pra modelos mais baratos que o lead.
+                                                                          
   const routingSavings = estimateRoutingSavings(nodeCosts, leadCost?.model ?? null, pricing)
 
-  // Teto de orçamento: alerta em 80% (aviso) e 100% (crítico).
+                                                               
   const budgetRatio = budgetUsd && budgetUsd > 0 ? sessionCostUsd / budgetUsd : 0
   const budgetWarn = budgetUsd != null && budgetUsd > 0 && budgetRatio >= 0.8
   const budgetCrit = budgetUsd != null && budgetUsd > 0 && sessionCostUsd >= budgetUsd

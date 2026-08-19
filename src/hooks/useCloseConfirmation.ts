@@ -8,6 +8,7 @@ import { isTauriEnv } from '../lib/api/transport'
 import { type CloseFailureStage, createCloseCoordinator } from '../lib/closeCoordinator'
 import { getLocale, translate } from '../lib/i18n'
 import { quitApp, recordFrontendError } from '../lib/tauri'
+import { flushProjectsState } from '../stores/projectsStore'
 import { useUiStore } from '../stores/uiStore'
 
 function errorDetails(error: unknown): { message: string; stack: string | null } {
@@ -54,6 +55,7 @@ const closeCoordinator = createCloseCoordinator({
     })
   },
   confirmFallback: () => window.confirm(translate(getLocale(), 'appClose.message')),
+  beforeClose: flushProjectsState,
   destroyWindow: () => (appWindow ? appWindow.destroy() : Promise.resolve()),
   quitApp: () => quitApp(),
   onFailure: reportCloseFailure,

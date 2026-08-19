@@ -1,14 +1,17 @@
 import {
-  FileText,
   Archive,
   Download,
+  FileText,
   FolderOpen,
+  Globe2,
   Layout,
   MoveRight,
   PanelTopOpen,
   Pencil,
   Plus,
   Power,
+  Smartphone,
+  SmartphoneNfc,
   Trash2,
   Upload,
 } from 'lucide-react'
@@ -17,7 +20,6 @@ import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { pickFile, saveFile } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
-import { agentCliCommand, type Group, type Project, type Terminal } from '../../lib/types'
 import {
   getPtyCwd,
   openInFileExplorer,
@@ -26,6 +28,7 @@ import {
   restartPty,
   writeTextFile,
 } from '../../lib/tauri'
+import { agentCliCommand, type Group, type Project, type Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -35,7 +38,7 @@ import { collectDescendants } from './GroupNode'
 type ProjectsState = ReturnType<typeof useProjectsStore.getState>
 type UiState = ReturnType<typeof useUiStore.getState>
 
-/** Ações do store necessárias pra construir os menus de contexto da sidebar. */
+                                                                                
 type MenuActions = Pick<
   ProjectsState,
   | 'openProjectWorkspace'
@@ -61,6 +64,7 @@ type MenuActions = Pick<
   | 'setTerminalDisabled'
   | 'killTerminal'
   | 'setLaneVisible'
+  | 'setTerminalRemoteExcluded'
   | 'deleteTerminal'
   | 'deleteTerminalWithWorktreeCleanup'
   | 'setPreferences'
@@ -69,6 +73,7 @@ type MenuActions = Pick<
 export type SidebarMenuDeps = {
   t: ReturnType<typeof useT>
   graphifyEnabled: boolean
+  browserEnabled: boolean
   groups: Group[]
   openPaneSets: Record<string, Set<string>>
   actions: MenuActions
@@ -80,16 +85,17 @@ export type SidebarMenuDeps = {
   openMarkdownSidebar: UiState['openMarkdownSidebar']
 }
 
-/** Terminais "reais" de um projeto, sem o viewer somente-leitura da gaveta GSD Sync. */
+                                                                                        
 function visibleProjectTerminals(project: Project): Terminal[] {
   return project.terminals.filter((term) => !term.gsdSyncViewer)
 }
 
-/** Fábrica dos menus de contexto (projeto/grupo/terminal) da sidebar. */
+                                                                         
 export function createSidebarMenus(deps: SidebarMenuDeps) {
   const {
     t,
     graphifyEnabled,
+    browserEnabled,
     groups,
     openPaneSets,
     actions,
@@ -190,6 +196,16 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
       icon: <Plus size={14} />,
       onClick: () => openModal('newTerminal', { projectId: project.id }),
     },
+    ...(browserEnabled
+      ? [
+          {
+            kind: 'item' as const,
+            label: t('menu.addBrowser'),
+            icon: <Globe2 size={14} />,
+            onClick: () => openModal('addBrowser', { projectId: project.id }),
+          },
+        ]
+      : []),
     {
       kind: 'item',
       label: t('ui.sidebar.designLayout'),
@@ -564,6 +580,19 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
                 openMarkdownSidebar(term.filePath!, term.name)
                 actions.setPreferences({ rightSidebarVisible: true })
               },
+            },
+          ]
+        : []),
+      ...(isTerminalPane
+        ? [
+            {
+              kind: 'item' as const,
+              label: term.remoteExcluded
+                ? t('ui.terminal.shareWithRemote')
+                : t('ui.terminal.hideFromRemote'),
+              icon: term.remoteExcluded ? <Smartphone size={14} /> : <SmartphoneNfc size={14} />,
+              onClick: () =>
+                actions.setTerminalRemoteExcluded(projectId, term.id, !term.remoteExcluded),
             },
           ]
         : []),

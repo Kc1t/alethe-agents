@@ -1,14 +1,9 @@
 import { CircleCheck, Folder, Info, Zap } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-import { useUiStore } from '../../stores/uiStore'
-import { basename } from '../../lib/paths'
-import {
-  getProjectDefaultCwd,
-  getProjectRepoRoot,
-  useProjectsStore,
-} from '../../stores/projectsStore'
 import { pickDirectory } from '../../lib/dialog'
+import { useT } from '../../lib/i18n'
+import { basename } from '../../lib/paths'
 import {
   AGENT_TYPE_LABELS,
   ALL_AGENT_TYPES,
@@ -16,10 +11,11 @@ import {
   type AgentRuntimeProfile,
   type AgentType,
 } from '../../lib/types'
+import { getProjectDefaultCwd, getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
+import { useUiStore } from '../../stores/uiStore'
 import { AgentIcon } from '../icons/AgentIcons'
-import { useT } from '../../lib/i18n'
-import { Modal } from './Modal'
 import controls from './controls.module.css'
+import { Modal } from './Modal'
 import styles from './NewTerminalModal.module.css'
 
 const AGENTS: { type: AgentType; label: string }[] = ALL_AGENT_TYPES.map((type) => ({
@@ -56,6 +52,7 @@ export function NewTerminalModal() {
     shell: false,
     claude: false,
     codex: false,
+    copilot: false,
     antigravity: false,
     opencode: false,
     freebuff: false,
@@ -110,6 +107,7 @@ export function NewTerminalModal() {
       shell: alwaysStartUnrestricted,
       claude: alwaysStartUnrestricted,
       codex: alwaysStartUnrestricted,
+      copilot: alwaysStartUnrestricted,
       antigravity: alwaysStartUnrestricted,
       opencode: alwaysStartUnrestricted,
       freebuff: alwaysStartUnrestricted,
@@ -125,6 +123,7 @@ export function NewTerminalModal() {
       shell: false,
       claude: false,
       codex: false,
+      copilot: false,
       antigravity: false,
       opencode: false,
       freebuff: false,
@@ -138,11 +137,13 @@ export function NewTerminalModal() {
     const finalCwd = cwd.trim() || inheritedCwd
     const flag = UNRESTRICTED_FLAG[type]
     const extraArgs = unrestricted[type] && flag ? [flag] : undefined
-    const terminal = await createAgentTerminal(context.projectId, {
+    const creation = {
       name: finalName,
       cwd: finalCwd,
       firstTab: { type, cwd: finalCwd, extraArgs, runtimeProfile },
-    })
+    }
+    const terminal = await createAgentTerminal(context.projectId, creation)
+    setPreferences({ lastTerminalCreation: creation })
     // `createAgentTerminal` só cria o dado — sem isso, o terminal nascia sem
     // nunca ser mostrado: a UI ficava presa na Home (bug real, visto ao vivo
     // via e2e — `.xterm` nunca renderizava). Mesmo padrão de navegação que

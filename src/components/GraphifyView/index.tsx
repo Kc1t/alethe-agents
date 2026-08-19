@@ -9,7 +9,7 @@ import styles from './GraphifyView.module.css'
 /** Quantos snapshots manter ao compactar (memory policy). */
 const KEEP_LAST = 10
 
-/** Lê um token de tema do :root para o Cytoscape honrar o design system. */
+                                                                            
 function token(name: string, fallback: string): string {
   if (typeof window === 'undefined') return fallback
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -17,19 +17,19 @@ function token(name: string, fallback: string): string {
 }
 
 type GraphifyViewProps = {
-  /** Caminho do repositório do projeto ativo (raiz git). */
+                                                            
   repo: string
-  /** Id do projeto, para correlacionar eventos no Event Bus. */
+                                                                
   projectId: string
-  /** Id do terminal (pane) — precisa pra poder se remover do projeto. */
+                                                                         
   terminalId: string
 }
 
-/**
- * RFC-004 — visualização interativa do grafo de conhecimento (Graphify),
- * reusando o Cytoscape. Estados: sem repo, sem grafo, erro, e o grafo em si com
- * snapshots + memory policy.
- */
+   
+                                                                         
+                                                                                
+                             
+   
 export function GraphifyView({ repo, projectId, terminalId }: GraphifyViewProps) {
   const t = useT()
   const {
@@ -52,10 +52,10 @@ export function GraphifyView({ repo, projectId, terminalId }: GraphifyViewProps)
     void load(repo)
   }, [repo, load])
 
-  // Renderizar milhares de nós de uma vez trava a interação do app inteiro
-  // (não é só o layout — é o Cytoscape mantendo/desenhando/hit-testando
-  // todos eles). Acima do limite, mostra só os nós mais conectados (hubs) —
-  // geralmente os mais relevantes pra entender a estrutura do código.
+                                                                           
+                                                                        
+                                                                            
+                                                                      
   const RENDER_NODE_LIMIT = 250
   const { elements, renderTruncated } = useMemo(() => {
     if (!graph) return { elements: [] as cytoscape.ElementDefinition[], renderTruncated: false }
@@ -95,12 +95,12 @@ export function GraphifyView({ repo, projectId, terminalId }: GraphifyViewProps)
     const container = canvasRef.current
     if (!container || !graph) return
 
-    // 'cose' é simulação de física O(n²), roda síncrono e sem animação —
-    // pra grafos grandes (esse repo passa de 2000 nós) isso trava a aba
-    // inteira por vários segundos. Acima do limiar usa 'grid' — não depende
-    // da topologia (breadthfirst tentado antes colapsava em linha achatada
-    // com grafos cíclicos/multi-componente), então nunca degenera, só fica
-    // menos "bonito". 'cose' fica reservado pros grafos pequenos, onde o
+                                                                         
+                                                                        
+                                                                            
+                                                                           
+                                                                           
+                                                                         
     // clustering visual realmente compensa o custo.
     const COSE_NODE_LIMIT = 300
     const layout: cytoscape.LayoutOptions =
@@ -147,9 +147,9 @@ export function GraphifyView({ repo, projectId, terminalId }: GraphifyViewProps)
         },
       ],
       layout,
-      // 0.2 (5x mais lento que o padrão do Cytoscape, que é 1) obrigava a
-      // rolar muito pra chegar perto de um nó — 3 dá um zoom por scroll bem
-      // mais direto sem descontrolar em telas de alta resolução.
+                                                                          
+                                                                            
+                                                                 
       wheelSensitivity: 3,
     })
     cyRef.current = cy

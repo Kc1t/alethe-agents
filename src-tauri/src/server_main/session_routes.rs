@@ -109,7 +109,7 @@ async fn claude_list(Query(p): Query<HashMap<String, String>>) -> impl IntoRespo
         Ok(v) => v,
         Err(e) => return e.into_response(),
     };
-    respond(claude_sessions::list_claude_sessions(cwd))
+    respond(claude_sessions::list_claude_sessions(cwd).await)
 }
 
 async fn opencode_snapshot(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {

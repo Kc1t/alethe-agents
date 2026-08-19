@@ -1,13 +1,13 @@
-/**
- * Reset da última sessão — recuperação manual do resume quando o resume
- * automático falha ao reabrir o app. Para cada painel de agente VIVO, acha a
- * conversa mais recente no disco (pelo cwd) e reinicia o PTY com a flag de
- * resume correta de cada CLI, persistindo o estado pra que os próximos boots
- * também retomem.
- *
- * Reusa o mesmo mecanismo provado do `ClaudeHistoryModal.resumeHere`
- * (restartPty + --resume), generalizado pra toda a workspace.
- */
+   
+                                                                        
+                                                                             
+                                                                           
+                                                                             
+                  
+  
+                                                                     
+                                                              
+   
 
 import { getActiveSessions, saveSession } from './sessionResume'
 import { acquireSpawnSlot, releaseSpawnSlot } from './spawnQueue'
@@ -27,7 +27,7 @@ const RESUMABLE: AgentType[] = ['claude', 'codex', 'opencode', 'antigravity']
 
 export type ResetLastSessionResult = { resumed: number; total: number }
 
-/** Remove uma flag `--flag <valor>` (e o valor seguinte) da lista de args. */
+                                                                              
 function stripFlagWithValue(args: string[], flag: string): string[] {
   const out: string[] = []
   for (let i = 0; i < args.length; i++) {
@@ -44,7 +44,7 @@ function stripFlagWithValue(args: string[], flag: string): string[] {
 export type SessionExclude = {
   /** ID da conversa atualmente aberta no pane — não queremos resumir ela. */
   id?: string
-  /** Timestamp do spawn atual: preferimos sessões anteriores a ele. */
+                                                                       
   before?: number
 }
 
@@ -76,10 +76,10 @@ async function latestSessionId(
     if (agent === 'codex') return pickSessionId(await snapshotCodexSessions(cwd), exclude)
     if (agent === 'claude') return pickSessionId(await snapshotClaudeSessions(cwd), exclude)
     if (agent === 'opencode') {
-      // Estratégia em 3 níveis pra nunca cair no `--continue` global (que
-      // pegaria a sessão mais recente de OUTRO projeto):
-      // 1) ID já persistido pro pane; 2) snapshot filtrado por cwd no backend;
-      // 3) null → --continue como último recurso.
+                                                                          
+                                                         
+                                                                               
+                                                  
       if (savedOpenCodeId) return savedOpenCodeId
       const sessions = await snapshotOpenCodeSessions(cwd)
       if (sessions.length > 0) {
@@ -122,8 +122,8 @@ export function buildResumeArgs(
     )
     return sessionId ? ['--conversation', sessionId, ...clean] : ['--continue', ...clean]
   }
-  // opencode: `--session <id>` quando conhecemos o ID, senão `--continue`
-  // retoma a última sessão.
+                                                                          
+                            
   const clean = stripFlagWithValue(baseArgs, '--session').filter(
     (a) => a !== '--resume' && a !== '--continue',
   )
@@ -140,7 +140,7 @@ type ResumeTarget = {
   extraArgs: string[]
 }
 
-/** Coleta todos os painéis de agente atualmente vivos na workspace. */
+                                                                       
 function collectLivePanes(): ResumeTarget[] {
   const { projects } = useProjectsStore.getState()
   const { byPtyId } = useTerminalsStore.getState()
@@ -166,24 +166,24 @@ function collectLivePanes(): ResumeTarget[] {
   return targets
 }
 
-/**
- * Quantos painéis de agente seriam reiniciados agora, em toda a workspace
- * (todos os projetos/grupos, não só o visível) — usado pra confirmar com o
- * usuário antes de disparar um `resetLastSession()` grande.
- */
+   
+                                                                          
+                                                                           
+                                                            
+   
 export function countLiveResumablePanes(): number {
   return collectLivePanes().length
 }
 
-/**
- * Força o resume da última sessão em cada painel de agente aberto.
- * Retorna quantos foram retomados de quantos painéis vivos havia.
- *
- * Cada restart passa pela `spawnQueue` (mesma fila usada pra abrir terminais
- * normalmente) pra respeitar o teto de concorrência e a pausa de pressão de
- * memória do resource supervisor — sem isso, muitos painéis acumulados em
- * background reiniciariam em sequência sem nenhuma checagem de RAM.
- */
+   
+                                                                   
+                                                                  
+  
+                                                                             
+                                                                            
+                                                                          
+                                                                    
+   
 export async function resetLastSession(): Promise<ResetLastSessionResult> {
   const targets = collectLivePanes()
   let resumed = 0
@@ -198,7 +198,7 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
         cwd = (live ?? '').trim()
       }
 
-      // Sessão atualmente aberta nesse pane (pra não resumir ela mesma).
+                                                                         
       const active = getActiveSessions()[target.ptyId]
       const exclude: SessionExclude = {
         id:
@@ -213,7 +213,7 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
       const sessionId = await latestSessionId(target.agent, cwd, exclude, savedOpenCodeId)
       const extraArgs = buildResumeArgs(target.agent, target.extraArgs, sessionId)
 
-      // Ignora o exit event do PTY antigo (chega async após o restart).
+                                                                        
       useTerminalsStore.getState().beginRestart(target.ptyId)
       await restartPty({
         id: target.ptyId,
@@ -227,7 +227,7 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
         new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: target.ptyId } }),
       )
 
-      // Re-arma o resume automático pra que o próximo boot também retome.
+                                                                          
       saveSession(target.ptyId, {
         sessionId: target.ptyId,
         claudeSessionId: target.agent === 'claude' ? (sessionId ?? undefined) : undefined,
@@ -245,7 +245,7 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
 
       resumed++
     } catch {
-      // Uma falha num painel não aborta o resto.
+                                                 
     } finally {
       releaseSpawnSlot()
     }

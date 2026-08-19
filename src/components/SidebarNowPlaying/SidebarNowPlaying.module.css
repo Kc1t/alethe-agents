@@ -1,11 +1,11 @@
-/* Linha sutil acima do UserProfile. Altura compacta (36px), sem hover
-   intrusivo, sem borda forte. Some quando desconectado ou sem música. */
+                                                                      
+                                                                         
 
 .row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
+  padding: 0 10px;
   border-top: 1px solid var(--border);
   height: 40px;
   flex-shrink: 0;
@@ -16,8 +16,8 @@
 }
 
 .cover {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   border-radius: 3px;
   overflow: hidden;
   flex-shrink: 0;
@@ -68,7 +68,7 @@
 }
 .eqBar {
   width: 2px;
-  background: #1ed760; /* spotify green */
+  background: var(--status-online);
   border-radius: 1px;
   animation: eqPulse 0.9s ease-in-out infinite;
   height: 100%;

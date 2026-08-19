@@ -9,12 +9,10 @@ use crate::paths::{activity_stats_file_path, app_data_dir};
 use crate::profiles::profile_data_dir_for_id;
 
 /// Empacota `projects.json` + `scrollback/` num zip salvo em `target_path`.
-/// Não inclui `spawn.log` (debug-only) nem `tmp` (artefatos do save atômico).
+
 ///
 /// `async` + `spawn_blocking`: I/O de disco real (zip de todo o scrollback),
-/// mesma classe de bloqueio já corrigida em `cli_resolver.rs` — sem isso
-/// trava a thread de despacho de IPC do Tauri, sem indicador de progresso
-/// pro usuário além do botão "parecer travado".
+
 #[tauri::command]
 pub async fn export_backup(app: AppHandle, target_path: String) -> Result<(), String> {
     let dir = app_data_dir(&app)?;
@@ -23,7 +21,6 @@ pub async fn export_backup(app: AppHandle, target_path: String) -> Result<(), St
         .map_err(|error| format!("export_backup: falha na task bloqueante: {error}"))?
 }
 
-/// Igual a `export_backup`, mas pra um perfil específico (não necessariamente o ativo).
 #[tauri::command]
 pub async fn export_profile_backup(
     app: AppHandle,
@@ -54,7 +51,6 @@ pub fn export_backup_from_dir(dir: PathBuf, target_path: String) -> Result<(), S
     let mut zip = ZipWriter::new(file);
     let opts = FileOptions::default().compression_method(CompressionMethod::Deflated);
 
-    // Archive the whole profile so nothing the user owns (Todos, history,
     // preferences, tokens, scrollback, and any future file) is left behind.
     // Only debug logs and temporary atomic-save artifacts are skipped.
     add_dir_to_zip(&mut zip, &source_root, &source_root, opts)?;
@@ -63,7 +59,24 @@ pub fn export_backup_from_dir(dir: PathBuf, target_path: String) -> Result<(), S
     Ok(())
 }
 
-fn is_excluded_from_backup(path: &Path) -> bool {
+fn is_runtime_backup_path(root: &Path, path: &Path) -> bool {
+    path.strip_prefix(root)
+        .ok()
+        .and_then(|relative| relative.components().next())
+        .and_then(|component| component.as_os_str().to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("EBWebView"))
+}
+
+fn is_runtime_archive_entry(name: &str) -> bool {
+    name.split(['/', '\\'])
+        .next()
+        .is_some_and(|component| component.eq_ignore_ascii_case("EBWebView"))
+}
+
+fn is_excluded_from_backup(root: &Path, path: &Path) -> bool {
+    if is_runtime_backup_path(root, path) {
+        return true;
+    }
     matches!(
         path.extension().and_then(|ext| ext.to_str()),
         Some("tmp") | Some("log")
@@ -80,11 +93,14 @@ fn add_dir_to_zip<W: Write + io::Seek>(
         let entry = entry.map_err(|e| e.to_string())?;
         let path = entry.path();
         let file_type = entry.file_type().map_err(|e| e.to_string())?;
+        if is_excluded_from_backup(root, &path) {
+            continue;
+        }
         if file_type.is_dir() {
             add_dir_to_zip(zip, root, &path, opts)?;
             continue;
         }
-        if !file_type.is_file() || is_excluded_from_backup(&path) {
+        if !file_type.is_file() {
             continue;
         }
         let rel = path.strip_prefix(root).map_err(|e| e.to_string())?;
@@ -98,9 +114,9 @@ fn add_dir_to_zip<W: Write + io::Seek>(
 
 /// Replace local state with the contents of `source_path`. Remove existing
 /// scrollback first so deleted PTY data is not retained.
-/// preserva apenas o projects.json novo.
+
 ///
-/// `async` + `spawn_blocking`: mesmo motivo de `export_backup`.
+
 #[tauri::command]
 pub async fn import_backup(app: AppHandle, source_path: String) -> Result<(), String> {
     let dir = app_data_dir(&app)?;
@@ -120,24 +136,33 @@ pub fn import_backup_from_dir(
 ) -> Result<(), String> {
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
-    // Limpa scrollback prévio
+    let file = fs::File::open(&source_path).map_err(|e| e.to_string())?;
+    let mut archive = ZipArchive::new(file).map_err(|e| e.to_string())?;
+    if !archive
+        .file_names()
+        .any(|name| name.replace('\\', "/") == "projects.json")
+    {
+        return Err("backup_missing_projects".to_string());
+    }
+
+    // Remove state that must not survive when it is absent from the backup.
     let scrollback = dir.join("scrollback");
     if scrollback.exists() {
-        let _ = fs::remove_dir_all(&scrollback);
+        fs::remove_dir_all(&scrollback).map_err(|e| e.to_string())?;
     }
     if activity_stats.exists() {
         fs::remove_file(activity_stats).map_err(|e| e.to_string())?;
     }
 
-    let file = fs::File::open(&source_path).map_err(|e| e.to_string())?;
-    let mut archive = ZipArchive::new(file).map_err(|e| e.to_string())?;
-
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
         let entry_name = entry.name().to_string();
 
-        // Sanitização: rejeita absolute paths e ".." pra evitar zip-slip
-        if Path::new(&entry_name).is_absolute() || entry_name.contains("..") {
+        // Ignore legacy WebView caches and reject paths that could escape the profile directory.
+        if is_runtime_archive_entry(&entry_name)
+            || Path::new(&entry_name).is_absolute()
+            || entry_name.contains("..")
+        {
             continue;
         }
 
@@ -151,7 +176,7 @@ pub fn import_backup_from_dir(
         }
         let mut out = fs::File::create(&dest).map_err(|e| e.to_string())?;
         io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
-        let _ = read_remaining(&mut entry); // garante consumir o resto do entry
+        let _ = read_remaining(&mut entry);
     }
 
     Ok(())
@@ -159,4 +184,22 @@ pub fn import_backup_from_dir(
 
 fn read_remaining<R: Read>(r: &mut R) -> io::Result<u64> {
     io::copy(r, &mut io::sink())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_runtime_archive_entry, is_runtime_backup_path};
+    use std::path::Path;
+
+    #[test]
+    fn excludes_webview_runtime_data_from_backups() {
+        let root = Path::new("profile");
+        assert!(is_runtime_backup_path(
+            root,
+            Path::new("profile/EBWebView/Default/LOCK")
+        ));
+        assert!(is_runtime_archive_entry("EBWebView/Default/LOCK"));
+        assert!(is_runtime_archive_entry("ebwebview\\Default\\LOCK"));
+        assert!(!is_runtime_archive_entry("scrollback/session.bin"));
+    }
 }

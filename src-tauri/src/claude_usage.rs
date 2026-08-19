@@ -1,6 +1,5 @@
 use serde::Serialize;
 
-/// Cliente HTTP compartilhado — reusa o pool de conexões entre chamadas.
 fn http_client() -> &'static reqwest::Client {
     static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
     CLIENT.get_or_init(reqwest::Client::new)
@@ -19,8 +18,6 @@ pub struct ClaudeUsage {
     pub seven_day_opus: UsageWindow,
 }
 
-/// Lê o credentials.json com retry — o Claude pode estar reescrevendo o
-/// arquivo (refresh do token), causando JSON parcial/lock temporário.
 fn read_credentials_file_with_retry(path: &std::path::Path) -> Option<String> {
     for attempt in 0..3 {
         if attempt > 0 {
@@ -64,7 +61,7 @@ fn discover_token() -> Option<String> {
 
     // 3. Keyring (Windows Credential Manager / macOS Keychain).
     //    No macOS o Claude Code grava a entrada com account = username local,
-    //    e o segredo é o JSON completo do credentials (não o token cru).
+
     let service = "Claude Code-credentials";
     let mut usernames: Vec<String> = Vec::new();
     if let Ok(user) = std::env::var("USER").or_else(|_| std::env::var("USERNAME")) {
@@ -89,7 +86,6 @@ fn discover_token() -> Option<String> {
     None
 }
 
-/// O segredo do keyring pode ser o token cru ou o JSON do credentials
 /// ({"claudeAiOauth":{"accessToken":...}}), como no macOS Keychain.
 fn extract_token_from_secret(secret: &str) -> String {
     if let Ok(json) = serde_json::from_str::<serde_json::Value>(secret) {

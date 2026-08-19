@@ -1,21 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 
+import { useT } from '../../../lib/i18n'
 import {
   getPlanningAutocommit,
   getTelemetryMetrics,
   getTelemetryTraces,
   planningAuditHistory,
-  pluginInstall,
-  pluginUninstall,
-  pluginsList,
   setPlanningAutocommit,
 } from '../../../lib/tauri'
-import type {
-  EventBusPayload,
-  MetricData,
-  PluginManifest,
-  PlanningCommit,
-} from '../../../lib/tauri'
+import type { EventBusPayload, MetricData, PlanningCommit } from '../../../lib/tauri'
 import { useProjectsStore } from '../../../stores/projectsStore'
 import { useSchedulerStore } from '../../../stores/schedulerStore'
 import controls from '../controls.module.css'
@@ -24,6 +17,7 @@ import { SettingsSection } from './primitives'
 import { Dropdown } from '../../ui/Dropdown'
 
 export function MultiagentPage() {
+  const t = useT()
   const projects = useProjectsStore((state) => state.projects)
   const [selectedProjectId, setSelectedProjectId] = useState<string>(projects[0]?.id ?? '')
   const schedulerStore = useSchedulerStore()
@@ -31,9 +25,6 @@ export function MultiagentPage() {
   const [metrics, setMetrics] = useState<Record<string, MetricData>>({})
   const [traces, setTraces] = useState<EventBusPayload[]>([])
   const [loadingTelemetry, setLoadingTelemetry] = useState(true)
-
-  const [plugins, setPlugins] = useState<PluginManifest[]>([])
-  const [loadingPlugins, setLoadingPlugins] = useState(true)
 
   const [autocommit, setAutocommit] = useState(false)
   const [auditLogs, setAuditLogs] = useState<PlanningCommit[]>([])
@@ -48,17 +39,6 @@ export function MultiagentPage() {
       console.error('Falha ao carregar telemetria:', err)
     } finally {
       setLoadingTelemetry(false)
-    }
-  }, [])
-
-  const loadPlugins = useCallback(async () => {
-    try {
-      const list = await pluginsList()
-      setPlugins(list)
-    } catch (err) {
-      console.error('Falha ao listar plugins:', err)
-    } finally {
-      setLoadingPlugins(false)
     }
   }, [])
 
@@ -94,16 +74,14 @@ export function MultiagentPage() {
   }, [loadTelemetry])
 
   useEffect(() => {
-    void loadPlugins()
     void loadAutocommitState()
-  }, [loadPlugins, loadAutocommitState])
+  }, [loadAutocommitState])
 
   // Inicializa o ouvinte do barramento no schedulerStore
   useEffect(() => {
     return schedulerStore.initListener()
   }, [])
 
-  // Carrega as tarefas sempre que mudar o projeto selecionado
   useEffect(() => {
     if (selectedProjectId) {
       void schedulerStore.loadTasks(selectedProjectId)
@@ -121,41 +99,12 @@ export function MultiagentPage() {
     }
   }
 
-  const handleInstallPlugin = async () => {
-    const raw = prompt('Cole o JSON do Manifest do plugin:')?.trim()
-    if (!raw) return
-    try {
-      const manifest = JSON.parse(raw) as PluginManifest
-      if (!manifest.name || !manifest.version || !manifest.kind) {
-        alert('Invalid manifest. Fill in name, version, and kind.')
-        return
-      }
-      await pluginInstall(manifest)
-      alert('Plugin instalado com sucesso!')
-      void loadPlugins()
-    } catch (err) {
-      alert('Erro ao instalar plugin: ' + err)
-    }
-  }
-
-  const handleUninstallPlugin = async (id: string) => {
-    if (confirm(`Tem certeza que deseja desinstalar o plugin "${id}"?`)) {
-      try {
-        await pluginUninstall(id)
-        alert('Plugin desinstalado!')
-        void loadPlugins()
-      } catch (err) {
-        alert('Erro ao desinstalar plugin: ' + err)
-      }
-    }
-  }
-
   const handleToggleAutocommit = async (enabled: boolean) => {
     try {
       await setPlanningAutocommit(enabled)
       setAutocommit(enabled)
     } catch (err) {
-      alert('Erro ao alterar autocommit: ' + err)
+      alert(t('prefs.multiagentAutocommitError', { error: String(err) }))
     }
   }
 
@@ -182,17 +131,17 @@ export function MultiagentPage() {
     <>
       <SettingsSection
         id="multiagent-scheduler"
-        title="Scheduler & task queue"
-        description="Manage execution waves (Task DAG) per project."
+        title={t('prefs.multiagentSchedulerTitle')}
+        description={t('prefs.multiagentSchedulerDesc')}
       >
         <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
           <Dropdown
             className={controls.input}
             value={selectedProjectId}
             onChange={setSelectedProjectId}
-            ariaLabel="Select a project"
+            ariaLabel={t('prefs.multiagentSelectProjectOption')}
             options={[
-              { value: '', label: '-- Select a project --' },
+              { value: '', label: t('prefs.multiagentSelectProjectOption') },
               ...projects.map((p) => ({ value: p.id, label: p.name })),
             ]}
           />
@@ -204,7 +153,7 @@ export function MultiagentPage() {
               style={{ height: 32, padding: '0 12px', fontSize: 11 }}
               onClick={handleTick}
             >
-              Run tick (force queue)
+              {t('prefs.multiagentRunTick')}
             </button>
           )}
         </div>
@@ -212,11 +161,11 @@ export function MultiagentPage() {
         {selectedProjectId ? (
           schedulerStore.loading ? (
             <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>
-              Carregando fila do projeto...
+              {t('prefs.multiagentLoadingQueue')}
             </div>
           ) : schedulerStore.tasks.length === 0 ? (
             <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
-              Nenhuma tarefa de planejamento (GSD) encontrada em `.planning/`.
+              {t('prefs.multiagentNoTasks')}
             </div>
           ) : (
             <div
@@ -262,7 +211,7 @@ export function MultiagentPage() {
                     </div>
                     {task.dependencies.length > 0 && (
                       <div style={{ fontSize: 9, color: 'var(--fg-muted)', marginTop: 2 }}>
-                        Depende de:{' '}
+                        {t('prefs.multiagentDependsOn')}{' '}
                         <span style={{ fontFamily: 'monospace' }}>
                           {task.dependencies.join(', ')}
                         </span>
@@ -270,7 +219,7 @@ export function MultiagentPage() {
                     )}
                     {task.assignedAgentId && (
                       <div style={{ fontSize: 9, color: 'var(--accent)', marginTop: 2 }}>
-                        Alocado para: Agente {task.assignedAgentId}
+                        {t('prefs.multiagentAssignedTo', { agentId: task.assignedAgentId })}
                       </div>
                     )}
                   </div>
@@ -289,7 +238,7 @@ export function MultiagentPage() {
                         flexShrink: 0,
                       }}
                     >
-                      Cancelar
+                      {t('prefs.multiagentCancel')}
                     </button>
                   )}
                 </div>
@@ -298,21 +247,23 @@ export function MultiagentPage() {
           )
         ) : (
           <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
-            Select a project to inspect and orchestrate its tasks.
+            {t('prefs.multiagentSelectProjectHint')}
           </div>
         )}
       </SettingsSection>
 
       <SettingsSection
         id="multiagent-metrics"
-        title="Execution metrics (phases 1/2)"
-        description="Accumulated global counters from the internal event bus."
+        title={t('prefs.multiagentMetricsTitle')}
+        description={t('prefs.multiagentMetricsDesc')}
       >
         {loadingTelemetry ? (
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Loading metrics...</div>
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>
+            {t('prefs.multiagentLoadingMetrics')}
+          </div>
         ) : Object.keys(metrics).length === 0 ? (
           <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
-            No accumulated event metrics.
+            {t('prefs.multiagentNoMetrics')}
           </div>
         ) : (
           <div
@@ -340,7 +291,7 @@ export function MultiagentPage() {
                   <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>{data.count}</div>
                   {data.last_value > 0 && (
                     <div style={{ fontSize: 9, color: 'var(--accent)', marginTop: 2 }}>
-                      Last: {data.last_value.toFixed(2)}
+                      {t('prefs.multiagentLastValue', { value: data.last_value.toFixed(2) })}
                     </div>
                   )}
                 </div>
@@ -352,14 +303,16 @@ export function MultiagentPage() {
 
       <SettingsSection
         id="multiagent-traces"
-        title="Recent event history"
-        description="Real-time tracking of structured Event Bus logs."
+        title={t('prefs.multiagentTracesTitle')}
+        description={t('prefs.multiagentTracesDesc')}
       >
         {loadingTelemetry ? (
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Loading traces...</div>
+          <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>
+            {t('prefs.multiagentLoadingTraces')}
+          </div>
         ) : traces.length === 0 ? (
           <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
-            No recent events recorded.
+            {t('prefs.multiagentNoTraces')}
           </div>
         ) : (
           <div
@@ -392,7 +345,7 @@ export function MultiagentPage() {
                   </span>
                   {trace.task_id && (
                     <span style={{ color: 'var(--fg-muted)', marginLeft: 6 }}>
-                      Task: {trace.task_id}
+                      {t('prefs.multiagentTraceProject', { id: trace.task_id })}
                     </span>
                   )}
                   <div
@@ -404,7 +357,7 @@ export function MultiagentPage() {
                       textOverflow: 'ellipsis',
                     }}
                   >
-                    CorrId: {trace.correlation_id}
+                    {t('prefs.multiagentTraceCorrId', { id: trace.correlation_id })}
                   </div>
                 </div>
                 <div style={{ textAlign: 'right', color: 'var(--fg-muted)', flexShrink: 0 }}>
@@ -417,75 +370,9 @@ export function MultiagentPage() {
       </SettingsSection>
 
       <SettingsSection
-        id="multiagent-plugins"
-        title="Plugin manager"
-        description="View and install orchestrator plugins and custom tools."
-      >
-        <button
-          type="button"
-          className={styles.secondaryButton}
-          style={{ marginBottom: 12, fontSize: 11 }}
-          onClick={handleInstallPlugin}
-        >
-          Install new plugin (JSON)
-        </button>
-
-        {loadingPlugins ? (
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Carregando plugins...</div>
-        ) : plugins.length === 0 ? (
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
-            Nenhum plugin instalado no momento.
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {plugins.map((plug) => (
-              <div
-                key={plug.name}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '8px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--bg-active)',
-                  border: '1px solid var(--border)',
-                  fontSize: 11,
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: 600 }}>
-                    {plug.name} (v{plug.version})
-                  </div>
-                  <div style={{ fontSize: 9, color: 'var(--fg-muted)' }}>Tipo: {plug.kind}</div>
-                  <div style={{ fontSize: 10, color: 'var(--fg-muted)', marginTop: 2 }}>
-                    {plug.description}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleUninstallPlugin(plug.name)}
-                  style={{
-                    padding: '4px 8px',
-                    fontSize: 10,
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'var(--status-failed-bg, #4c1d1d)',
-                    color: '#ff8888',
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Desinstalar
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </SettingsSection>
-
-      <SettingsSection
         id="multiagent-gsd-audit"
-        title="GSD audit & autocommit"
-        description="Monitor task changes in `.planning/` and configure automatic audit commits."
+        title={t('prefs.multiagentAuditTitle')}
+        description={t('prefs.multiagentAuditDesc')}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <input
@@ -499,18 +386,18 @@ export function MultiagentPage() {
             htmlFor="planningAutocommit"
             style={{ fontSize: 11, cursor: 'pointer', userSelect: 'none' }}
           >
-            Ativar Auto-commit de Auditoria (Opt-in)
+            {t('prefs.multiagentAutocommitLabel')}
           </label>
         </div>
 
         {selectedProjectId ? (
           loadingAudit ? (
             <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>
-              Carregando logs de auditoria...
+              {t('prefs.multiagentLoadingAudit')}
             </div>
           ) : auditLogs.length === 0 ? (
             <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
-              No changes recorded in `.planning/` through Git.
+              {t('prefs.multiagentNoAuditLogs')}
             </div>
           ) : (
             <div
@@ -550,7 +437,8 @@ export function MultiagentPage() {
                     </span>
                     <span>{log.subject}</span>
                     <div style={{ color: 'var(--fg-muted)', fontSize: 9 }}>
-                      Autor: {log.author} {log.agentId ? `· Agente: ${log.agentId}` : ''}
+                      {t('prefs.multiagentAuditAuthor', { author: log.author })}
+                      {log.agentId ? ` ${t('prefs.multiagentAuditAgent', { agentId: log.agentId })}` : ''}
                     </div>
                   </div>
                   <div
@@ -569,7 +457,7 @@ export function MultiagentPage() {
           )
         ) : (
           <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
-            Select a project above to view the GSD audit history.
+            {t('prefs.multiagentSelectProjectAuditHint')}
           </div>
         )}
       </SettingsSection>

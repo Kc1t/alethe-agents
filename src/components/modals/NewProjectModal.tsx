@@ -1,18 +1,18 @@
 import { Folder, GitBranch, Network, Palette, Terminal } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { useUiStore } from '../../stores/uiStore'
-import { useProjectsStore } from '../../stores/projectsStore'
-import { AGENT_SANDBOX_ENABLED } from '../../lib/featureFlags'
-import { GROUP_COLORS, type Project } from '../../lib/types'
-import { useT } from '../../lib/i18n'
 import { pickDirectory } from '../../lib/dialog'
+import { AGENT_SANDBOX_ENABLED } from '../../lib/featureFlags'
+import { useT } from '../../lib/i18n'
 import { cloneGithubRepo, readProjectMarker } from '../../lib/tauri'
+import { GROUP_COLORS, type Project } from '../../lib/types'
+import { useProjectsStore } from '../../stores/projectsStore'
+import { useUiStore } from '../../stores/uiStore'
+import { Dropdown } from '../ui/Dropdown'
 import { ColorPalettePopover } from './ColorPalettePopover'
+import controls from './controls.module.css'
 import { ImageInput } from './ImageInput'
 import { Modal } from './Modal'
-import controls from './controls.module.css'
-import { Dropdown } from '../ui/Dropdown'
 
 export function NewProjectModal() {
   const t = useT()
@@ -39,9 +39,9 @@ export function NewProjectModal() {
   const [isColorPopoverOpen, setIsColorPopoverOpen] = useState(false)
   const [detectedConfig, setDetectedConfig] = useState<Project | null>(null)
 
-  // Herda a pasta já escolhida na tela "Nenhum projeto aberto" quando o
-  // usuário troca pro formulário completo em vez de perder a seleção e
-  // obrigar a escolher a pasta de novo.
+                                                                        
+                                                                       
+                                        
   useEffect(() => {
     if (open && context?.defaultCwd) setDefaultCwd(context.defaultCwd)
   }, [open, context?.defaultCwd])
@@ -91,8 +91,6 @@ export function NewProjectModal() {
     const trimmed = name.trim()
     if (!trimmed) return
     if (mode === 'agentSandbox' && !defaultCwd.trim()) return
-    // Clone e Agent Sandbox são mutuamente exclusivos: o sandbox exige uma
-    // pasta que já exista no disco.
     const trimmedGithub = mode === 'agentSandbox' ? '' : githubUrl.trim()
     const project = createProject({
       name: trimmed,
@@ -138,9 +136,10 @@ export function NewProjectModal() {
     if (mode === 'agentSandbox') {
       setActiveView('agentSandbox')
       closeModal()
-    } else {
-      openModal('newTerminal', { projectId: project.id })
+      return
     }
+
+    openModal('newTerminal', { projectId: project.id })
   }
 
   return (
@@ -317,8 +316,7 @@ export function NewProjectModal() {
             />
           ))}
 
-          {/* Cor customizada ativa (se não estiver nos presets do GROUP_COLORS e não for rainbow) */}
-          {color && !GROUP_COLORS.includes(color as any) && color !== 'rgb-rainbow' && (
+          {color && !GROUP_COLORS.some((preset) => preset === color) && (
             <button
               type="button"
               onClick={() => setIsColorPopoverOpen(true)}
@@ -356,21 +354,6 @@ export function NewProjectModal() {
           >
             <Palette size={13} />
           </button>
-
-          {/* Opção Arco-Íris Infinito (Rainbow RGB) */}
-          <button
-            type="button"
-            onClick={() => setColor('rgb-rainbow')}
-            title="Arco-Íris Infinito (RGB)"
-            className="swatch-rgb-rainbow"
-            style={{
-              width: 24,
-              height: 24,
-              borderRadius: '50%',
-              border: color === 'rgb-rainbow' ? '2px solid var(--fg)' : '2px solid transparent',
-              cursor: 'pointer',
-            }}
-          />
         </div>
       </div>
 

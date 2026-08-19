@@ -171,8 +171,6 @@ fn parse_usage(body: &serde_json::Value, cli_path: String) -> Result<Antigravity
         .and_then(|models| models.as_object())
         .ok_or_else(|| "models_missing".to_string())?;
 
-    // Modelos que compartilham fração restante e reset pertencem ao mesmo
-    // bucket de quota. Agrupá-los evita repetir dezenas de variantes no modal.
     let mut grouped: BTreeMap<(u64, String), BTreeSet<String>> = BTreeMap::new();
     for (model_id, model) in models {
         let Some(quota) = model.get("quotaInfo") else {

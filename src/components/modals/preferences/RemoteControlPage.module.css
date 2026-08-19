@@ -13,7 +13,6 @@
 .statusCard[data-enabled='true'] {
   border-color: var(--status-working);
 }
-.statusIcon,
 .deviceIcon {
   display: grid;
   place-items: center;
@@ -80,6 +79,12 @@
 }
 .empty {
   margin: 0;
+}
+.startupNote {
+  margin: 10px 0 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1.45;
 }
 .error {
   color: var(--status-offline);

@@ -28,6 +28,14 @@ export async function writeTextFile(path: string, content: string): Promise<void
   await invoke('write_text_file', { path, content })
 }
 
+export async function renameFilesystemEntry(path: string, newName: string): Promise<string> {
+  return invoke<string>('rename_filesystem_entry', { path, newName })
+}
+
+export async function deleteFilesystemEntry(path: string): Promise<void> {
+  await invoke('delete_filesystem_entry', { path })
+}
+
 export async function ensureTodoTemplate(directory: string): Promise<string> {
   return invoke<string>('ensure_todo_template', { directory })
 }
@@ -48,7 +56,7 @@ export async function unwatchFile(path: string): Promise<void> {
   await invoke('unwatch_file', { path })
 }
 
-/** Acorda quando um arquivo observado por `watchFile` muda no disco. */
+                                                                        
 export function listenFileChanged(handler: (path: string) => void): Promise<UnlistenFn> {
   return listen<{ path: string }>('md://changed', (event) => handler(event.payload.path))
 }

@@ -245,13 +245,7 @@ pub fn record_activity_samples(app: AppHandle, samples: Vec<ActivitySample>) -> 
         return Ok(());
     }
     let path = activity_stats_file_path(&app)?;
-    // Antes: `.unwrap_or_default()` — se o arquivo existisse mas falhasse ao
-    // ler/parsear (JSON corrompido, versão incompatível), isso resetava as
-    // estatísticas em memória pra vazio e `write_stats` abaixo GRAVAVA esse
-    // vazio de volta no disco, apagando o histórico de Time Analytics pra
-    // sempre, sem nenhum aviso. Agora: um arquivo corrompido faz o comando
-    // falhar (o front já reenfileira e tenta de novo depois, sem perder as
-    // amostras novas) em vez de destruir silenciosamente o que já existia.
+
     let mut stats = read_stats(&path)?;
     for sample in &samples {
         if sample.date.len() == 10 {

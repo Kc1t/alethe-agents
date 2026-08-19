@@ -1,36 +1,30 @@
-//! Gate de conclusão de planejamento GSD para a Central de Merges.
 //!
-//! Módulo deliberadamente independente de `planning.rs` (lado de
-//! escrita/watcher do repo principal) — aqui a pergunta é "o PLANO INTEIRO
-//! desta worktree está completo?", um conceito diferente de uma task
-//! individual. `scheduler.rs` reaproveita `parse_roadmap_items` (abaixo) pra
-//! derivar tasks agendáveis a partir do mesmo `task.md` real, em vez de um
-//! formato próprio.
+
 //!
-//! Lê sob demanda (nunca via watcher): o GSD Watcher observa só o repo
-//! principal do projeto, nunca cada worktree de agente individualmente, então
-//! não há evento pra reagir aqui — o painel de merges faz poll leve.
+
 //!
 //! Estrutura de `.planning/` (ver `assets/opencode-plugins/alethe-gsd-state.ts`):
-//! `status.md` e `task.md` são escritos deterministicamente pelo plugin a
-//! cada `todowrite` (sem LLM); `plan.md` e `goal.md` só a IA escreve, via
-//! skill. Cada arquivo tem exatamente um escritor — sem risco de um
+
 //! sobrescrever o outro.
 
 use serde::Serialize;
 use std::path::Path;
 
-/// Um passo do "Briefing de Testes", registrado pela sessão-filha via tool
 /// dedicada (`gsd_record_step`, em `alethe-gsd-state.ts`) — nunca por parsing
-/// de markdown solto. `category` já vem validada pelo schema zod do lado do
-/// plugin (`setup`/`action`/`verify`), mas aqui é só `String` — se um humano
-/// editar `procedure.json` na mão com outro valor, o frontend decide como
-/// tratar (fallback visual), não é motivo pra falhar a leitura inteira.
+
 #[derive(Debug, Clone, Serialize, serde::Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcedureStep {
     pub description: String,
     pub category: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GsdChildState {
+    pub session_id: Option<String>,
+    pub busy: bool,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Default)]
@@ -41,16 +35,15 @@ pub struct PlanningStatus {
     pub progress: Option<u8>,
     pub roadmap_pending_count: Option<usize>,
     pub roadmap_total_count: Option<usize>,
-    /// Conteúdo cru de `plan.md` — escrito pelo skill do plugin OpenCode
+
     /// (`alethe-gsd-state.ts`) com o plano passo a passo, incluindo o
-    /// procedimento de teste. Sem parsing de seções; o frontend decide como
+
     /// exibir (ex.: dividir em linhas pro checklist do Briefing de Testes).
     pub notes: Option<String>,
 }
 
 /// Parse de `status.md`: linhas `Status: <valor>` / `Progress: <pct>%`.
-/// `status` é autoritativo quando presente; `progress` só decide quando
-/// `status` está ausente — evita que um arquivo parcialmente atualizado
+
 /// (`Status: In Progress` + `Progress: 100%` esquecido) seja lido como
 /// completo por engano.
 fn parse_status_md(content: &str) -> (Option<String>, Option<u8>) {
@@ -76,15 +69,12 @@ fn is_complete_status(status: &str) -> bool {
 }
 
 /// Um item de checklist markdown (`- [ ] texto`/`- [x] texto`), com o texto
-/// preservado — usado pelo Scheduler pra derivar tasks agendáveis a partir do
-/// `task.md` real (ver `scheduler.rs::load_gsd_tasks`), não só a contagem.
+
 pub(crate) struct RoadmapItem {
     pub checked: bool,
     pub text: String,
 }
 
-/// Parse de checkboxes markdown (`- [ ]`/`- [x]`/`- [X]`, indentação
-/// tolerada), na ordem em que aparecem no arquivo.
 pub(crate) fn parse_roadmap_items(content: &str) -> Vec<RoadmapItem> {
     let mut items = Vec::new();
     for line in content.lines() {
@@ -116,10 +106,6 @@ fn count_roadmap_checkboxes(content: &str) -> (usize, usize) {
     (pending, total)
 }
 
-/// Núcleo puro/testável — recebe a raiz JÁ resolvida da worktree. Ausência de
-/// `.planning/`/`status.md`/`task.md` é um estado válido (planejamento ainda
-/// não formalizado), não uma falha — por isso devolve `PlanningStatus` direto,
-/// sem `Result`.
 pub(crate) fn compute_planning_status(worktree_root: &Path) -> PlanningStatus {
     let planning_dir = worktree_root.join(".planning");
     if !planning_dir.is_dir() {
@@ -173,20 +159,14 @@ pub(crate) fn compute_planning_status(worktree_root: &Path) -> PlanningStatus {
     }
 }
 
-/// Lê o estado de planejamento da PRÓPRIA worktree do agente (não do repo
 /// principal) — `repository_root` resolve a raiz real do checkout passado,
-/// mesmo padrão de resolução já usado em `git_control.rs`.
+
 #[tauri::command]
 pub fn read_planning_status(repo_path: String) -> Result<PlanningStatus, String> {
     let root = crate::git_control::repository_root(&repo_path)?;
     Ok(compute_planning_status(&root))
 }
 
-/// Lê `.planning/.gsd-child-session` — sentinel escrito pelo plugin OpenCode
-/// (`alethe-gsd-state.ts`) assim que cria/reaproveita a sessão-filha isolada
-/// que documenta `goal.md`/`plan.md`. O painel de merges usa isso pra saber
-/// que sessionId anexar numa pane "GSD Sync" (via `opencode --session <id>`).
-/// `None` é um estado válido (sessão-filha ainda não existe) — sem `Result`.
 #[tauri::command]
 pub fn read_gsd_child_session(repo_path: String) -> Result<Option<String>, String> {
     let root = crate::git_control::repository_root(&repo_path)?;
@@ -197,20 +177,14 @@ pub fn read_gsd_child_session(repo_path: String) -> Result<Option<String>, Strin
     Ok(content)
 }
 
-/// Lê `.planning/.gsd-child-busy` — sentinel presente enquanto a sessão-filha
-/// está processando um ciclo de sincronização. Usado pra decidir
 /// `laneVisible` da pane "GSD Sync" (aparece enquanto ocupada, colapsa
-/// quando some).
+
 #[tauri::command]
 pub fn read_gsd_child_busy(repo_path: String) -> Result<bool, String> {
     let root = crate::git_control::repository_root(&repo_path)?;
     Ok(root.join(".planning").join(".gsd-child-busy").is_file())
 }
 
-/// Lê (e CONSOME — apaga em seguida) `.planning/.gsd-child-error` — sentinel
-/// escrito pelo plugin só quando TODA a cadeia de fallback de modelos falha.
-/// Consumir na leitura evita mostrar o mesmo toast de erro em polls
-/// seguintes; único consumidor é o poll da sidebar, então ler = "já avisei".
 #[tauri::command]
 pub fn read_gsd_child_error(repo_path: String) -> Result<Option<String>, String> {
     let root = crate::git_control::repository_root(&repo_path)?;
@@ -225,12 +199,41 @@ pub fn read_gsd_child_error(repo_path: String) -> Result<Option<String>, String>
     Ok(content)
 }
 
-/// Lê `.planning/procedure.json` — passos de teste estruturados registrados
-/// pela sessão-filha via tool dedicada (`gsd_record_step`), em vez de texto
-/// solto dentro de `plan.md`. Reescrito do zero a cada ciclo pelo plugin
-/// (mesmo espírito de goal.md/plan.md), então já reflete só o procedimento
-/// atual. Lista vazia é um estado válido (sem planejamento GSD, ciclo ainda
-/// não rodou, ou arquivo malformado) — sem `Result` de erro pra isso.
+fn read_gsd_child_state_inner(repo_path: String) -> Result<GsdChildState, String> {
+    let root = crate::git_control::repository_root(&repo_path)?;
+    let planning = root.join(".planning");
+    let session_id = std::fs::read_to_string(planning.join(".gsd-child-session"))
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let busy = planning.join(".gsd-child-busy").is_file();
+    let error = if session_id.is_some() {
+        let path = planning.join(".gsd-child-error");
+        let content = std::fs::read_to_string(&path)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        if content.is_some() {
+            let _ = std::fs::remove_file(path);
+        }
+        content
+    } else {
+        None
+    };
+    Ok(GsdChildState {
+        session_id,
+        busy,
+        error,
+    })
+}
+
+#[tauri::command]
+pub async fn read_gsd_child_state(repo_path: String) -> Result<GsdChildState, String> {
+    tokio::task::spawn_blocking(move || read_gsd_child_state_inner(repo_path))
+        .await
+        .map_err(|error| format!("read_gsd_child_state task failed: {error}"))?
+}
+
 #[tauri::command]
 pub fn read_gsd_procedure(repo_path: String) -> Result<Vec<ProcedureStep>, String> {
     let root = crate::git_control::repository_root(&repo_path)?;
@@ -398,7 +401,6 @@ mod tests {
         )
         .unwrap();
 
-        // .planning/ completo só na worktree, não no repo principal.
         fs::create_dir_all(worktree.join(".planning")).unwrap();
         fs::write(
             worktree.join(".planning").join("status.md"),
@@ -418,7 +420,7 @@ mod tests {
 
     /// `read_gsd_child_session`/`read_gsd_child_busy` passam por
     /// `repository_root` (igual `read_planning_status`) — precisam de um repo
-    /// git de verdade, não só uma pasta solta.
+
     fn temp_git_repo(label: &str) -> std::path::PathBuf {
         let root = temp_dir(label);
         crate::git_control::checked_output(&root, &["init", "-b", "main"]).unwrap();
@@ -500,6 +502,24 @@ mod tests {
             read_gsd_child_error(root.to_string_lossy().into_owned()).unwrap(),
             None
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn gsd_child_state_reads_all_sentinels_with_one_root_resolution() {
+        let root = temp_git_repo("child-state");
+        let planning = root.join(".planning");
+        fs::create_dir_all(&planning).unwrap();
+        fs::write(planning.join(".gsd-child-session"), "ses_combined\n").unwrap();
+        fs::write(planning.join(".gsd-child-busy"), "1").unwrap();
+        fs::write(planning.join(".gsd-child-error"), "model failed\n").unwrap();
+
+        let state = read_gsd_child_state_inner(root.to_string_lossy().into_owned()).unwrap();
+
+        assert_eq!(state.session_id.as_deref(), Some("ses_combined"));
+        assert!(state.busy);
+        assert_eq!(state.error.as_deref(), Some("model failed"));
+        assert!(!planning.join(".gsd-child-error").exists());
         fs::remove_dir_all(root).unwrap();
     }
 }

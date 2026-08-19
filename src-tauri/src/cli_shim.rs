@@ -1,24 +1,17 @@
-//! Instalação do comando `alethe` no PATH do usuário.
 //!
 //! Equivalente ao "Install 'code' command in PATH" do VS Code: escreve um shim
-//! (script) que resolve o diretório alvo e chama o binário do app com
+
 //! `--open-path <dir>` (ver `cli_launch.rs`).
 //!
-//! O shim é quem faz o trabalho de resolver `alethe` sem argumento → `$PWD`.
-//! Assim o binário só abre projeto quando recebe caminho **explícito**, e subir
-//! o app pelo ícone continua caindo na Home normal.
+
 //!
-//! Onde o shim é escrito:
+
 //!
 //! | Plataforma      | Caminho                              | PATH                          |
 //! |-----------------|--------------------------------------|-------------------------------|
-//! | macOS / Linux   | `~/.local/bin/alethe`                | já costuma estar; só avisamos |
+
 //! | Windows         | `%LOCALAPPDATA%\Alethe\bin\alethe.cmd` | registrado em `HKCU\Environment` |
 //!
-//! Em Unix **não** mexemos em `.zshrc`/`.bashrc` nem pedimos sudo pra escrever
-//! em `/usr/local/bin`: instalar é uma ação explícita do usuário, mas nem por
-//! isso deve editar shell rc dele. Quando `~/.local/bin` não está no PATH, o
-//! status devolve `on_path: false` e a UI mostra a linha pra ele colar.
 
 use std::path::{Path, PathBuf};
 
@@ -29,23 +22,19 @@ const SHIM_FILE_NAME: &str = "alethe.cmd";
 #[cfg(not(windows))]
 const SHIM_FILE_NAME: &str = "alethe";
 
-/// Estado do comando de terminal, do jeito que a tela de Integrações precisa.
 #[derive(Serialize, Default)]
 pub struct CliShimStatus {
-    /// `false` em plataformas onde não sabemos instalar (mobile).
     pub supported: bool,
     pub installed: bool,
-    /// Shim instalado, mas apontando pra um binário que não é mais o atual —
-    /// acontece quando o app é movido/reinstalado. A UI oferece reinstalar.
+
     pub stale: bool,
-    /// Caminho do shim (mesmo que ainda não exista) — mostrado na UI.
+
     pub path: Option<String>,
     pub bin_dir: Option<String>,
-    /// `bin_dir` está no PATH do processo atual.
+
     pub on_path: bool,
 }
 
-/// Diretório onde o shim mora.
 fn shim_bin_dir() -> Result<PathBuf, String> {
     #[cfg(windows)]
     {
@@ -65,14 +54,10 @@ fn shim_path() -> Result<PathBuf, String> {
     Ok(shim_bin_dir()?.join(SHIM_FILE_NAME))
 }
 
-/// Binário do Alethe que o shim deve chamar.
 fn current_binary() -> Result<PathBuf, String> {
     std::env::current_exe().map_err(|error| error.to_string())
 }
 
-/// Bundle `.app` que contém o binário (só macOS). Preferimos chamar `open -na`
-/// no bundle a executar o binário direto: o `open` volta na hora (não prende o
-/// terminal) e deixa o LaunchServices ativar a janela.
 #[cfg(target_os = "macos")]
 fn app_bundle(binary: &Path) -> Option<PathBuf> {
     binary
@@ -81,7 +66,6 @@ fn app_bundle(binary: &Path) -> Option<PathBuf> {
         .map(|bundle| bundle.to_path_buf())
 }
 
-/// `bin_dir` aparece no PATH do processo? Usado só pra avisar o usuário.
 fn dir_on_path(dir: &Path) -> bool {
     if let Some(path_var) = std::env::var_os("PATH") {
         if std::env::split_paths(&path_var).any(|entry| entry == dir) {
@@ -98,13 +82,11 @@ fn dir_on_path(dir: &Path) -> bool {
     false
 }
 
-/// Escapa um caminho pra dentro de aspas simples de `sh`.
 #[cfg(not(windows))]
 fn sh_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', r"'\''"))
 }
 
-/// Conteúdo do shim POSIX. `launch` é a linha que efetivamente sobe o app.
 #[cfg(not(windows))]
 fn unix_shim_script(target_marker: &str, launch: &str) -> String {
     format!(
@@ -138,11 +120,9 @@ target=$(cd "$target" && pwd)
     )
 }
 
-/// Gera o script/`.cmd` do shim pro binário informado.
 fn render_shim(binary: &Path) -> Result<String, String> {
     #[cfg(target_os = "macos")]
     {
-        // Bundle quando existe (build empacotado); binário direto em `tauri dev`.
         if let Some(bundle) = app_bundle(binary) {
             let quoted = sh_single_quote(&bundle.to_string_lossy());
             return Ok(unix_shim_script(
@@ -165,7 +145,6 @@ fn render_shim(binary: &Path) -> Result<String, String> {
         let quoted = sh_single_quote(&binary.to_string_lossy());
         return Ok(unix_shim_script(
             &binary.to_string_lossy(),
-            // Desanexado: sem isso, fechar o terminal derrubaria o app junto.
             &format!(
                 "nohup {quoted} --open-path \"$target\" >/dev/null 2>&1 &\n\
                  exit 0"
@@ -210,8 +189,6 @@ start "" "{binary}" --open-path "%target%"
     }
 }
 
-/// Marca `ALETHE_TARGET_BIN:` gravada no shim — é como detectamos shim obsoleto
-/// sem precisar reparsear o script inteiro.
 fn shim_targets_binary(contents: &str, binary: &Path) -> bool {
     let Some(line) = contents
         .lines()
@@ -269,8 +246,6 @@ pub fn cli_shim_install() -> Result<CliShimStatus, String> {
             .map_err(|error| error.to_string())?;
     }
 
-    // Só o Windows precisa de registro: `~/.local/bin` já é convenção no PATH
-    // das distros e do macOS, e editar rc de shell do usuário é invasivo demais.
     #[cfg(windows)]
     {
         windows_path::add_to_user_path(&bin_dir)?;
@@ -295,13 +270,10 @@ pub fn cli_shim_uninstall() -> Result<CliShimStatus, String> {
     build_status()
 }
 
-/// PATH do usuário no registro (`HKCU\Environment`).
 ///
-/// Cuidado central aqui: **preservar o tipo do valor**. Se o PATH do usuário é
+
 /// `REG_EXPAND_SZ` (comum, com entradas tipo `%USERPROFILE%\bin`) e a gente
-/// reescreve como `REG_SZ`, todas as variáveis param de expandir — PATH
-/// quebrado pro usuário inteiro. Por isso lemos o valor cru e devolvemos com o
-/// mesmo `vtype`.
+
 #[cfg(windows)]
 mod windows_path {
     use std::path::Path;
@@ -316,8 +288,6 @@ mod windows_path {
             .map_err(|error| error.to_string())
     }
 
-    /// Devolve o PATH atual **junto do seu `RegType`**, pra devolver do mesmo
-    /// jeito depois. `REG_EXPAND_SZ` é o default quando o valor nem existe.
     fn read_path(key: &RegKey) -> (String, RegType) {
         match key.get_raw_value("Path") {
             Ok(value) => {
@@ -420,8 +390,6 @@ mod windows_path {
         Ok(())
     }
 
-    /// Avisa o shell/Explorer que o ambiente mudou — sem isso, o usuário só vê
-    /// o comando aparecer depois de deslogar.
     fn broadcast_environment_change() {
         use windows_sys::Win32::Foundation::{HWND, LPARAM, WPARAM};
         use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -477,13 +445,11 @@ mod tests {
     fn shim_defaults_to_current_dir_and_is_a_posix_script() {
         let script = render_shim(Path::new("/opt/alethe/alethe")).expect("script");
         assert!(script.starts_with("#!/bin/sh"));
-        // `alethe` sem argumento tem que virar "." e depois virar caminho absoluto.
+
         assert!(script.contains("target=${1:-.}"));
         assert!(script.contains("--open-path"));
     }
 
-    /// O shim é código gerado: um erro de sintaxe só apareceria pro usuário na
-    /// hora de rodar `alethe`. `sh -n` faz o parse sem executar nada.
     #[cfg(not(windows))]
     #[test]
     fn generated_shim_is_valid_shell_syntax() {
@@ -522,7 +488,7 @@ mod tests {
     #[test]
     fn single_quotes_in_path_are_escaped() {
         let script = render_shim(Path::new("/opt/alethe's app/alethe")).expect("script");
-        // Sem escape, a aspa fecharia a string e o shim viraria sintaxe inválida.
+
         assert!(script.contains(r"'\''"));
     }
 }

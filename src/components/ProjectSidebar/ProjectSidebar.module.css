@@ -9,6 +9,14 @@
   overflow: hidden;
 }
 
+.sidebarFooter {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg);
+}
+
 .sidebarTabs {
   display: flex;
   align-items: center;
@@ -69,7 +77,30 @@
 .headerActions {
   display: inline-flex;
   align-items: center;
+  gap: 3px;
+}
+
+.createBtn {
+  min-width: 0;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   gap: 4px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  background: var(--bg-sunken);
+  font-size: 10px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.createBtn:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+  border-color: var(--border-strong);
 }
 
 .header,
@@ -179,19 +210,9 @@
 .projectActive:hover {
   background: var(--panel);
 }
-.projectDropTarget {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  background: var(--accent-soft);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
-}
-
 .dragSource {
-  opacity: 0.3;
-  transform: scale(0.985);
-  transition:
-    opacity 160ms ease,
-    transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  opacity: 0.45;
+  transition: opacity 120ms ease;
 }
 
 .dragOverlay {
@@ -202,11 +223,11 @@
   max-width: 260px;
   min-height: 34px;
   padding: 7px 10px;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   color: var(--fg);
-  background: var(--panel);
-  box-shadow: 0 10px 28px color-mix(in srgb, var(--bg) 70%, transparent);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-md);
   font-size: 12px;
   font-weight: 650;
   pointer-events: none;
@@ -214,14 +235,40 @@
 
 .dragOverlay span {
   overflow: hidden;
-  animation: sidebarEnter 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.dragOverlay {
-  transform: rotate(1.2deg) scale(1.03);
-  animation: dragOverlayIn 140ms cubic-bezier(0.16, 1, 0.3, 1) both;
+.dropBefore,
+.dropAfter {
+  position: relative;
+}
+
+.dropBefore::before,
+.dropAfter::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  left: 5px;
+  right: 5px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.dropBefore::before {
+  top: -2px;
+}
+
+.dropAfter::after {
+  bottom: -2px;
+}
+
+.dropInside {
+  background: var(--panel-hover);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  border-radius: var(--radius-sm);
 }
 
 .chevron {
@@ -243,7 +290,7 @@
   flex-shrink: 0;
 }
 
-/* Indicador de Projeto: quadradinho com cantos arredondados (■). */
+                                                                    
 .projectChip {
   width: 16px;
   height: 16px;
@@ -264,8 +311,11 @@
 /* ------------ Group ------------ */
 
 .groupBox {
-  margin: 5px 0 3px;
-  padding: 0;
+  margin: 6px 1px 7px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
   min-width: 0;
 }
 
@@ -274,8 +324,8 @@
   align-items: center;
   gap: 6px;
   width: 100%;
-  height: 28px;
-  padding: 0 5px;
+  height: 30px;
+  padding: 0 5px 0 3px;
   background: transparent;
   font-size: 10px;
   font-weight: 700;
@@ -305,13 +355,17 @@
   color: var(--fg);
 }
 
-/* Indicador de Grupo: bullet redondo (●) ou ícone de imagem. */
-.groupBullet {
-  width: 16px;
-  height: 16px;
+/* Groups use a folder marker; project identities remain monograms. */
+.groupBadge {
+  width: 18px;
+  height: 18px;
   display: grid;
   place-items: center;
   flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--group-badge-color, var(--fg-muted)) 42%, var(--border));
+  border-radius: 5px;
+  color: var(--group-badge-color, var(--fg-muted));
+  background: color-mix(in srgb, var(--group-badge-color, var(--fg-muted)) 13%, var(--bg-elevated));
 }
 
 .groupIcon {
@@ -336,9 +390,13 @@
   flex-direction: column;
   gap: 1px;
   margin-left: 11px;
-  padding: 1px 0 2px 5px;
-  border-left: 1px solid color-mix(in srgb, var(--group-color, var(--border)) 28%, var(--border));
+  padding: 2px 0 2px 7px;
+  border-left: 1px solid color-mix(in srgb, var(--group-color, var(--border)) 45%, var(--border));
   min-width: 0;
+}
+
+.groupBody .groupBox {
+  margin-right: 0;
 }
 
 .groupEmpty {
@@ -347,15 +405,17 @@
   color: var(--fg-faint);
 }
 
-/* Grupo colapsado — linha simples sem borda */
+                                               
 .groupCollapsed {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 4px 0 2px;
-  min-height: 28px;
-  padding: 4px 5px;
-  border-radius: var(--radius-sm);
+  margin: 5px 1px 4px;
+  min-height: 32px;
+  padding: 4px 7px 4px 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
   cursor: pointer;
   user-select: none;
   min-width: 0;
@@ -384,68 +444,41 @@
   flex-shrink: 0;
 }
 
-/* Projeto desabilitado — todos os terminais disabled */
-.projectDisabled {
-  opacity: 0.45;
+.groupKind {
+  padding: 1px 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-quaternary);
+  background: var(--bg-elevated);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 13px;
+  text-transform: uppercase;
+  flex-shrink: 0;
 }
-.projectDisabled .projectRow {
-  font-style: italic;
+
+                                                        
+.projectDisabled .projectName {
+  color: var(--text-tertiary);
+}
+.projectDisabled .projectFolderIcon,
+.projectDisabled .projectLogo {
+  filter: grayscale(1);
+  opacity: 0.6;
 }
 .projectPauseIcon {
   color: var(--fg-faint);
   flex-shrink: 0;
 }
 
-.groupSuspended {
-  opacity: 0.45;
-}
-.groupSuspended .groupTag {
-  font-style: italic;
+.groupSuspended .groupTagName {
+  color: var(--text-quaternary);
 }
 
 .groupSuspendedIcon {
   color: var(--fg-faint);
   flex-shrink: 0;
-}
-
-.groupDropTarget {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  background: color-mix(in srgb, var(--accent) 7%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
-  transition:
-    background-color 150ms ease,
-    box-shadow 180ms ease;
-}
-
-.groupDropHint,
-.dropAreaLabel {
-  min-height: 25px;
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 9%, transparent);
-  border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--border));
-  border-radius: var(--radius-sm);
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
-}
-
-.dropAreaActive {
-  margin-top: 6px;
-  padding: 4px;
-  border: 1px dashed color-mix(in srgb, var(--accent) 48%, var(--border));
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--accent) 5%, transparent);
-  animation: dropAreaIn 180ms ease-out both;
-}
-
-.dropAreaActive .dropAreaLabel {
-  justify-content: center;
-  border: 0;
-  background: transparent;
 }
 
 @keyframes sidebarEnter {
@@ -470,37 +503,21 @@
   }
 }
 
-@keyframes dragOverlayIn {
-  from {
-    opacity: 0;
-    transform: rotate(0deg) scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: rotate(1.2deg) scale(1.03);
-  }
-}
-
-@keyframes dropAreaIn {
-  from {
-    opacity: 0;
-    transform: translateY(-3px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Projetos sem grupo, exibidos diretamente na lista. */
+                                                        
 .ungroupedSection {
   margin-top: 2px;
   padding: 0;
 }
+.ungroupedEmptyDrop {
+  min-height: 24px;
+  display: grid;
+  place-items: center;
+  color: var(--fg-faint);
+  font-size: 10px;
+}
 .ungroupedBody {
   display: flex;
   flex-direction: column;
-  gap: 1px;
 }
 
 .projectName {
@@ -527,10 +544,6 @@
 }
 
 .terminals {
-  margin-left: 14px;
-  border-left: 1px solid var(--border);
-  padding-left: 4px;
-  margin-top: 2px;
   min-width: 0;
 }
 
@@ -551,19 +564,6 @@
   background: var(--panel-hover);
   color: var(--fg);
 }
-/* Visíveis no split = estado padrão (sem highlight). Apenas os ocultos
-   ganham estilo dimm pra destacar que NÃO aparecem no workspace. */
-.terminalHidden {
-  opacity: 0.45;
-}
-.terminalHidden .terminalName {
-  text-decoration: line-through;
-  text-decoration-color: var(--fg-faint);
-}
-.terminalDisabled {
-  opacity: 0.55;
-  font-style: italic;
-}
 .dragging {
   opacity: 0.4;
 }
@@ -571,20 +571,24 @@
 .agentStack {
   display: inline-flex;
   align-items: center;
-  flex-shrink: 0;
+  justify-content: flex-start;
+  min-width: 15px;
+  height: 15px;
+  flex: none;
 }
 
 .agentIcon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   position: relative;
 }
 
 .terminalName {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -593,10 +597,9 @@
 .terminalLoading {
   color: var(--status-working);
   flex: 0 0 auto;
-  margin-right: -2px;
 }
 
-/* ⋯ sempre visível e discreto (sem opacity:0 → sem "espaço fantasma"). */
+                                                                          
 .terminalMenuBtn {
   width: 20px;
   height: 20px;
@@ -619,7 +622,7 @@
   color: var(--fg);
 }
 
-/* ⋯ das linhas de projeto (roster + header do card ativo). */
+                                                              
 .rowMenuBtn {
   width: 22px;
   height: 22px;
@@ -638,7 +641,7 @@
   color: var(--fg);
 }
 
-/* Gutter de estado do terminal (loader / done / idle) — 16px, à esquerda. */
+                                                                             
 .terminalState {
   width: 16px;
   display: grid;
@@ -652,11 +655,9 @@
   box-shadow: 0 0 0 1.4px var(--text-quaternary) inset;
 }
 
-/* Terminal em FOCO: fundo + ring off-white + tag (nada de stripe colorida). */
 .terminalFocused {
   background: var(--panel-hover);
   color: var(--fg);
-  box-shadow: 0 0 0 1px var(--accent-border) inset;
 }
 .focusTag {
   font-family: var(--font-mono);
@@ -671,7 +672,7 @@
   flex: none;
 }
 
-/* Monograma do projeto/grupo (substitui o Folder genérico). */
+                                                               
 .monogram {
   display: grid;
   place-items: center;
@@ -827,20 +828,6 @@
   color: var(--fg-faint);
 }
 
-.doneBadge {
-  display: inline-grid;
-  place-items: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--status-working);
-  color: var(--accent-on);
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 1;
-  flex-shrink: 0;
-}
-
 /* Navigation Quick Items at Top */
 .quickNavList {
   display: flex;
@@ -881,12 +868,13 @@
 
 /* Card Style Active Project (Matches Reference Image) */
 .activeCard {
-  background: color-mix(in srgb, var(--panel) 92%, var(--fg) 5%);
-  border: 1px solid color-mix(in srgb, var(--border-strong) 80%, var(--fg) 10%);
-  border-radius: 12px;
-  padding: 10px 12px;
-  margin: 6px 2px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--project-color, var(--accent));
+  border-radius: var(--radius-md);
+  padding: 9px 9px 8px;
+  margin: 5px 2px 7px;
+  box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -923,14 +911,15 @@
 }
 
 .badgePrimary {
-  font-size: 10px;
-  font-weight: 500;
+  font-size: 8px;
+  font-weight: 700;
   color: var(--text-tertiary);
   background: color-mix(in srgb, var(--bg-elevated) 90%, var(--fg) 8%);
   border: 1px solid var(--border);
   padding: 1px 6px;
   border-radius: 4px;
-  text-transform: lowercase;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   flex-shrink: 0;
 }
 
@@ -940,6 +929,60 @@
   gap: 4px;
   margin-top: 0;
   padding-left: 0;
+}
+
+.activeCardAddArea {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 3px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+}
+
+.activeCardAddLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-tertiary);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.activeCardAddActions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+  gap: 5px;
+}
+
+.activeCardAddButton {
+  min-width: 0;
+  min-height: 31px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  background: var(--bg-sunken);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.activeCardAddButton:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+  border-color: var(--border-strong);
+}
+
+.activeCardAddButton:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .cardAgentRow {
@@ -1032,7 +1075,7 @@
   line-height: 1;
 }
 
-/* Gutter de estado (esquerda): loader dot-matrix quando há trabalho, senão o dot. */
+                                                                                     
 .stateGutter {
   width: 16px;
   display: grid;
@@ -1072,4 +1115,661 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Final minimal tree: toolbar → new agent → group label → project row → indented terminal row. */
+.newAgentButton {
+  width: calc(100% - 16px);
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 8px 0;
+  padding: 0 10px;
+  flex: none;
+  color: var(--fg);
+  background: transparent;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 400;
+  text-align: left;
+}
+
+.newAgentButton:hover,
+.newAgentButton:focus-visible {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.newAgentIcon {
+  flex: none;
+  color: var(--fg-faint);
+}
+
+.newAgentButton:hover .newAgentIcon,
+.newAgentButton:focus-visible .newAgentIcon {
+  color: var(--fg-muted);
+}
+
+.newAgentButton kbd {
+  margin-left: auto;
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 400;
+}
+
+.sidebarToolbar {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+
+.toolbarButton {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--fg-faint);
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.toolbarButton:hover,
+.toolbarButtonActive {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.toolbarDivider {
+  width: 1px;
+  height: 14px;
+  margin: 0 5px;
+  background: var(--border);
+}
+
+.toolbarSpacer {
+  flex: 1;
+}
+
+.toolbarCreateButton {
+  color: var(--accent);
+  background: transparent;
+}
+
+.toolbarCreateButton:hover {
+  color: var(--accent);
+  background: var(--panel-hover);
+}
+
+.list {
+  padding: 4px 8px 10px;
+}
+
+.groupBox {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+                                                                        
+.groupTag,
+.ungroupedHeader {
+  width: 100%;
+  height: 24px;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 22px 0 2px;
+  padding: 0 6px 0 10px;
+  color: var(--fg-faint);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+.groupTag:hover,
+.ungroupedHeader:hover {
+  color: var(--fg-muted);
+  background: var(--panel-hover);
+}
+
+.groupBox:first-child > .groupTag {
+  margin-top: 12px;
+}
+
+.groupRule {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.groupChevronBtn {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--fg-faint);
+}
+
+.groupChevronBtn:hover {
+  color: var(--fg);
+  background: transparent;
+}
+
+.groupTagName,
+.ungroupedHeader > span {
+  min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-overflow: ellipsis;
+  text-transform: inherit;
+  white-space: nowrap;
+}
+
+.groupAddButton {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--fg-muted);
+  border-radius: var(--radius-sm);
+  opacity: 0;
+}
+
+.groupTag:hover .groupAddButton,
+.ungroupedHeader:hover .groupAddButton,
+.groupAddButton:focus-visible {
+  opacity: 1;
+}
+
+.groupAddButton:hover {
+  color: var(--fg);
+  background: transparent;
+}
+
+                                                                                
+                                                           
+.groupBody {
+  margin: 0 0 0 3px;
+  padding: 0 0 0 7px;
+  border: 0;
+  border-left: 1px solid transparent;
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--border) 55%, transparent);
+  gap: 0;
+  transition: box-shadow 160ms ease;
+}
+
+.groupBox:hover .groupBody {
+  box-shadow: inset 1px 0 0
+    color-mix(in srgb, var(--group-color, var(--border)) 45%, var(--border));
+}
+
+.groupBody .groupBox {
+  margin-left: 0;
+}
+
+.groupEmpty {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.ungroupedSection {
+  margin: 0;
+  padding: 0;
+}
+
+.ungroupedEmptyDrop {
+  min-height: 22px;
+}
+
+.projectNode {
+  margin: 0;
+}
+
+.projectRow {
+  min-height: 28px;
+  height: 28px;
+  gap: 9px;
+  margin-top: 6px;
+  padding: 0 8px 0 10px;
+  border-radius: var(--radius-md);
+  color: var(--fg);
+}
+
+.projectRow:hover,
+.projectActive:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.projectActive {
+  color: var(--fg);
+  box-shadow: none;
+  background: transparent;
+}
+
+.projectActive:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.projectFolderIcon,
+.projectLogo {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+}
+
+.projectFolderIcon {
+  color: var(--fg-muted);
+  opacity: 1;
+}
+
+.projectLogo {
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+
+.projectName {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  flex: 1;
+  overflow: hidden;
+  color: inherit;
+  font-size: 12.5px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.projectNameText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projectBranch {
+  min-width: 0;
+  max-width: min(38%, 90px);
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.projectToolIcon {
+  flex: none;
+  color: var(--fg-faint);
+}
+
+.projectToolWorking {
+  color: var(--status-working);
+}
+
+.primaryTag,
+.focusTag {
+  flex: none;
+  padding: 1px 6px;
+  color: var(--text-tertiary);
+  background: var(--accent-faint);
+  border: 0;
+  border-radius: 4px;
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 16px;
+  text-transform: lowercase;
+}
+
+.count {
+  min-width: 8px;
+  padding: 0;
+  color: var(--fg-faint);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 400;
+  text-align: right;
+}
+
+.projectRow .rowMenuBtn,
+.projectAddTerminalButton {
+  position: static;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--fg-muted);
+  background: transparent;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+}
+
+.projectRow .rowMenuBtn:hover,
+.projectAddTerminalButton:hover,
+.projectAddTerminalButton:focus-visible {
+  color: var(--fg);
+  background: var(--bg-elevated);
+}
+
+.projectRow:hover .rowMenuBtn,
+.projectRow:focus-within .rowMenuBtn,
+.projectRow:hover .projectAddTerminalButton,
+.projectRow:focus-within .projectAddTerminalButton {
+  opacity: 1;
+}
+
+.projectAddTerminalButtonVisible {
+  opacity: 1;
+}
+
+.projectChevronBtn {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--fg-muted);
+  background: transparent;
+  border-radius: var(--radius-sm);
+}
+
+.projectChevronBtn:hover {
+  color: var(--fg);
+}
+
+.disclosureChevron {
+  transition: transform 160ms var(--ease-out-fluid);
+}
+
+.disclosureClosed {
+  transform: rotate(-90deg);
+}
+
+                                                                                    
+.terminals {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.terminalRow {
+  min-height: 28px;
+  height: 28px;
+  gap: 9px;
+  padding: 0 8px 0 26px;
+  border-radius: var(--radius-md);
+  color: var(--fg);
+  font-size: 12.5px;
+}
+
+.terminals .terminalRow,
+.terminals .terminalRow:hover,
+.terminals .terminalFocused {
+  border-radius: var(--radius-md);
+}
+
+.terminalRow:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.terminalFocused,
+.terminalFocused:hover {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--panel-hover) 82%, var(--fg) 12%);
+  box-shadow: none;
+}
+
+                                                                                    
+.terminalHidden .agentStack,
+.terminalDisabled .agentStack {
+  opacity: 0.6;
+  filter: grayscale(1);
+}
+
+.terminalHidden .terminalName {
+  color: var(--text-tertiary);
+}
+
+.terminalDisabled .terminalName {
+  color: var(--text-quaternary);
+}
+
+.terminalFocused .agentStack {
+  opacity: 1;
+  filter: none;
+}
+
+.focusTag {
+  display: none;
+}
+
+.tabCount {
+  display: inline-block;
+  flex: none;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--panel-hover) 60%, transparent);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.terminalMenuBtn {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  opacity: 0;
+}
+
+.terminalRow:hover .terminalMenuBtn,
+.terminalRow:focus-within .terminalMenuBtn {
+  opacity: 1;
+}
+
+.rowEndSlot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 0;
+  height: 20px;
+  flex: 0 0 auto;
+  transition: width 120ms ease;
+}
+
+.rowEndSlotActive {
+  width: 16px;
+}
+
+.projectRow:hover .rowEndSlot,
+.projectRow:focus-within .rowEndSlot,
+.terminalRow:hover .rowEndSlot,
+.terminalRow:focus-within .rowEndSlot {
+  width: 20px;
+}
+
+.rowStatusIndicator,
+.rowEndAction {
+  grid-area: 1 / 1;
+}
+
+.rowStatusIndicator {
+  opacity: 1;
+  transition: opacity 100ms ease;
+}
+
+.projectRow:hover .rowStatusIndicator,
+.projectRow:focus-within .rowStatusIndicator,
+.terminalRow:hover .rowStatusIndicator,
+.terminalRow:focus-within .rowStatusIndicator {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.rowEndSlot .rowEndAction {
+  flex: none;
+}
+
+/* Normal mode preserves the production sidebar's surfaced, color-bordered hierarchy. */
+:global([data-visual-style='normal']) .sidebarToolbar {
+  min-height: 34px;
+  gap: 4px;
+  padding: 4px 10px;
+}
+
+:global([data-visual-style='normal']) .toolbarButton {
+  width: 28px;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+}
+
+:global([data-visual-style='normal']) .toolbarButtonActive {
+  background: var(--panel-hover);
+  border-color: var(--border);
+}
+
+:global([data-visual-style='normal']) .list {
+  padding: 4px 5px 8px;
+}
+
+:global([data-visual-style='normal']) .groupBox {
+  margin: 6px 1px 7px;
+  padding: 3px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-top-color: color-mix(in srgb, var(--group-color) 70%, var(--border));
+  border-radius: var(--radius-md);
+}
+
+:global([data-visual-style='normal']) .groupTag,
+:global([data-visual-style='normal']) .groupCollapsed,
+:global([data-visual-style='normal']) .ungroupedHeader {
+  height: 30px;
+  min-height: 30px;
+  margin: 0;
+  padding: 0 6px;
+  color: var(--fg-muted);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+:global([data-visual-style='normal']) .ungroupedHeader {
+  margin: 6px 1px 2px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+}
+
+:global([data-visual-style='normal']) .groupBody {
+  margin-left: 9px;
+  padding: 1px 0 2px 8px;
+  border-left: 1px solid color-mix(in srgb, var(--group-color) 45%, var(--border));
+}
+
+:global([data-visual-style='normal']) .projectNode {
+  margin-bottom: 2px;
+}
+
+:global([data-visual-style='normal']) .projectRow {
+  height: 34px;
+  min-height: 34px;
+  padding: 0 7px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-left: 2px solid color-mix(in srgb, var(--project-color) 72%, var(--border));
+  border-radius: var(--radius-md);
+}
+
+:global([data-visual-style='normal']) .projectActive,
+:global([data-visual-style='normal']) .projectActive:hover {
+  background: var(--panel);
+  border-color: color-mix(in srgb, var(--project-color) 70%, var(--border));
+}
+
+:global([data-visual-style='normal']) .terminals {
+  margin: 2px 0 0 14px;
+  padding: 0 0 0 4px;
+  border-left: 1px solid var(--border);
+}
+
+:global([data-visual-style='normal']) .terminals .terminalRow,
+:global([data-visual-style='normal']) .terminals .terminalRow:hover,
+:global([data-visual-style='normal']) .terminals .terminalFocused {
+  min-height: 27px;
+  height: 27px;
+  padding: 3px 5px;
+  border-radius: var(--radius-sm);
+}
+
+.groupFolderIcon,
+.groupLogo {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.groupFolderIcon {
+  color: var(--fg-faint);
+}
+
+.groupLogo {
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+
+/* Keep Organization aligned with the 40 px profile and playback footer rows. */
+.layoutFooter {
+  min-height: 40px;
+  padding: 4px 10px;
+}
+
+.layoutSwitch {
+  gap: 1px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.layoutBtn {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
 }

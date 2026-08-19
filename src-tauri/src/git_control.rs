@@ -26,9 +26,6 @@ pub struct GitRepositoryStatus {
     conflicts: Vec<GitFileChange>,
 }
 
-/// Aplica CREATE_NO_WINDOW no Windows pra que `git.exe` NÃO abra uma janela de
-/// console a cada chamada. O GitControl faz polling de status a cada 3s (+ no
-/// focus), então sem isso o usuário vê um festival de "terminais" piscando —
 /// janelas de console abrindo e fechando sozinhas. No-op fora do Windows.
 #[cfg(windows)]
 pub(crate) fn hide_console(command: &mut Command) {
@@ -40,16 +37,8 @@ pub(crate) fn hide_console(command: &mut Command) {
 #[cfg(not(windows))]
 pub(crate) fn hide_console(_command: &mut Command) {}
 
-/// Delays de backoff incremental pro retry de `index.lock` transitório.
 const INDEX_LOCK_RETRY_DELAYS_MS: [u64; 3] = [200, 400, 800];
 
-/// Resolve o "diretório administrativo" do git para o checkout em `dir`:
-/// - Repo/clone normal (`.git` é DIRETÓRIO) ⇒ o próprio `.git` (nunca carrega o
-///   marcador `locked` de worktree secundária — lock check aqui sempre reporta
-///   "não travado").
-/// - Worktree (`.git` é ARQUIVO, contém `gitdir: <path>`) ⇒ o `<path>` apontado,
-///   que é `<repo-principal>/.git/worktrees/<id>` — é lá que vivem `locked` e
-///   `index.lock` desse worktree específico.
 fn git_admin_dir(dir: &Path) -> Option<PathBuf> {
     let dot_git = dir.join(".git");
     if dot_git.is_dir() {
@@ -65,9 +54,6 @@ fn git_admin_dir(dir: &Path) -> Option<PathBuf> {
     None
 }
 
-/// Lê o motivo do lock ADMINISTRATIVO (`git worktree lock`), se o checkout em
-/// `dir` estiver travado dessa forma. `None` = não travado administrativamente
-/// (pode ainda ter um `index.lock` transitório — ver `index_lock_present`).
 fn admin_lock_reason(dir: &Path) -> Option<String> {
     let locked_file = git_admin_dir(dir)?.join("locked");
     if !locked_file.is_file() {
@@ -88,21 +74,12 @@ fn index_lock_present(dir: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Prefixo de erro estruturado pra lock administrativo — o front (`mergeStore`,
-/// `projectsStore`) distingue isso de `git_command_failed:` pra não incrementar
-/// `retryCount` nem tratar como corrupção (`TerminalError`) por engano.
 pub(crate) fn admin_locked_error(reason: &str) -> String {
     format!("admin_locked:{reason}")
 }
 
-/// Camada de consciência de locks em cima de uma chamada git que já interpreta
-/// código de saída (`Result<T, String>`). Precedência ABSOLUTA: lock
-/// administrativo nunca tenta de novo — falha imediato com o motivo. Só
-/// `index.lock` (transitório) aciona o retry com backoff 200/400/800ms.
 ///
-/// `lock_target` é o checkout cujo estado de lock importa — nem sempre é o
-/// mesmo diretório onde o comando roda (ex.: remover um worktree a partir da
-/// raiz do repo principal, mas quem pode estar travado é o worktree-alvo).
+
 pub(crate) fn with_lock_awareness<T>(
     lock_target: &Path,
     mut run: impl FnMut() -> Result<T, String>,
@@ -115,8 +92,6 @@ pub(crate) fn with_lock_awareness<T>(
         match run() {
             Ok(value) => return Ok(value),
             Err(error) => {
-                // Corrida rara: o lock administrativo pode ter aparecido entre a
-                // checagem inicial e esta falha — reavalia antes de decidir retry.
                 if let Some(reason) = admin_lock_reason(lock_target) {
                     return Err(admin_locked_error(&reason));
                 }
@@ -240,14 +215,7 @@ pub(crate) fn repository_root(path: &str) -> Result<PathBuf, String> {
 }
 
 /// Como `repository_root`, mas resolve pro checkout PRINCIPAL compartilhado,
-/// não pro toplevel do checkout específico em `path`. Necessário porque
-/// `path` pode ser uma worktree já isolada: worktrees vinculadas não têm seu
-/// próprio `.git` real (é um arquivo apontando pro repo principal), mas
-/// `--show-toplevel` chamado nelas devolve a PRÓPRIA worktree, não o repo
-/// principal — usar isso como base pra criar uma worktree nova resultaria
-/// numa worktree aninhada dentro da outra. `--git-common-dir` sempre aponta
-/// pro `.git` do checkout principal, mesmo chamado de dentro de uma worktree
-/// vinculada; o pai desse diretório é a raiz principal real.
+
 pub(crate) fn main_repository_root(path: &str) -> Result<PathBuf, String> {
     let cwd = resolve_input_directory(path)?;
     let output = git_command(
@@ -433,15 +401,6 @@ fn branch_info(root: &Path) -> Result<(String, bool, u32, u32), String> {
     Ok((branch, detached, ahead, behind))
 }
 
-/// Diretórios/arquivos pesados ou gerados que nunca deveriam entrar no
-/// primeiro commit de um `git init` automático — mesma lista de propósito
-/// (embora não o mesmo array em memória) de `contract_check::SKIP_DIRS`.
-/// Sem isso, `git add -A` num projeto real (ex.: um app com
-/// `node_modules` de dependências) trava a UI por minutos escaneando e
-/// hasheando dezenas de milhares de arquivos que ninguém quer versionados —
-/// foi exatamente o que aconteceu testando num monorepo com >20k arquivos só
-/// em `node_modules`. `.alethe/` entra porque é onde as PRÓPRIAS worktrees de
-/// agente vão morar a partir de agora (não faz sentido commitar um checkout
 /// git dentro de outro).
 const GITIGNORE_SEED: &str = "\
 node_modules/
@@ -457,8 +416,6 @@ __pycache__/
 .env.local
 ";
 
-/// Só escreve o `.gitignore` semente se a pasta ainda não tiver um — nunca
-/// sobrescreve um `.gitignore` que o usuário já mantém.
 fn seed_gitignore_if_missing(dir: &Path) {
     let path = dir.join(".gitignore");
     if path.exists() {
@@ -467,13 +424,8 @@ fn seed_gitignore_if_missing(dir: &Path) {
     let _ = std::fs::write(&path, GITIGNORE_SEED);
 }
 
-/// Inicializa um repositório Git na pasta, com um commit inicial — `git
 /// worktree add`/`git clone --local` (isolamento por agente) exigem um HEAD
-/// válido pra funcionar, então só rodar `git init` não basta. Usado pela
-/// oferta "Inicializar Git" quando o modal de projeto detecta que a pasta
-/// ainda não é um repositório. Identidade do commit é fixa via `-c` (não
-/// depende de `user.name`/`user.email` global do usuário estarem configurados).
-/// Idempotente: se já for um repo, só devolve a raiz existente sem tocar em nada.
+
 fn git_init_inner(path: String) -> Result<String, String> {
     if let Ok(root) = repository_root(&path) {
         return Ok(root.to_string_lossy().into_owned());
@@ -490,8 +442,7 @@ fn git_init_inner(path: String) -> Result<String, String> {
     ];
     let mut commit_args: Vec<&str> = identity.to_vec();
     commit_args.extend(["commit", "-m", "Commit inicial (Alethe)"]);
-    // Pasta vazia (nada pra adicionar) faz o commit normal falhar por "nothing
-    // to commit" — cai pro --allow-empty só nesse caso, só pra garantir HEAD.
+
     if checked_output(&dir, &commit_args).is_err() {
         let mut empty_args: Vec<&str> = identity.to_vec();
         empty_args.extend(["commit", "--allow-empty", "-m", "Commit inicial (Alethe)"]);
@@ -500,11 +451,6 @@ fn git_init_inner(path: String) -> Result<String, String> {
     repository_root(&path).map(|root| root.to_string_lossy().into_owned())
 }
 
-/// `async` + `spawn_blocking` pra todos os comandos deste módulo abaixo:
-/// cada um faz shell-out bloqueante de `git` direto no corpo, e como `fn`
-/// síncrona isso travaria a thread de despacho de IPC do Tauri — mesmo bug
-/// já corrigido em `cli_resolver.rs`/`graphify.rs`. `git_status` em
-/// particular é chamado a cada 3s pelo polling do `GitControl.tsx`.
 #[tauri::command]
 pub fn git_diff(repo_root: String, path: String, staged: bool) -> Result<String, String> {
     let mut args = vec!["diff"];
@@ -629,10 +575,7 @@ pub async fn git_commit(repo_root: String, message: String) -> Result<String, St
 }
 
 /// Comando git que fala com o remoto (push/pull). `GIT_TERMINAL_PROMPT=0` faz o
-/// git FALHAR rápido em vez de TRAVAR esperando credenciais num prompt que não
-/// existe (sem TTY no PTY oculto) — usa o credential helper / SSH agent já
-/// configurados na máquina. stdout+stderr são combinados porque o git escreve o
-/// progresso de rede no stderr mesmo em sucesso.
+
 fn remote_command(root: &Path, args: &[&str]) -> Result<String, String> {
     with_lock_awareness(root, || {
         let mut command = Command::new("git");
@@ -664,8 +607,6 @@ fn remote_command(root: &Path, args: &[&str]) -> Result<String, String> {
 fn git_push_inner(repo_root: String) -> Result<String, String> {
     let root = validated_root(&repo_root)?;
     match remote_command(&root, &["push"]) {
-        // Branch sem upstream: publica em origin/<branch> (equivalente ao
-        // "Publish Branch" do VSCode). Falha se o remoto não se chamar 'origin'.
         Err(error) if error.contains("no upstream") || error.contains("has no upstream") => {
             remote_command(&root, &["push", "--set-upstream", "origin", "HEAD"])
         }
@@ -680,7 +621,6 @@ pub async fn git_push(repo_root: String) -> Result<String, String> {
         .map_err(|error| format!("git_push: falha na task bloqueante: {error}"))?
 }
 
-/// Lista os branches locais (nome curto). Usado pelo ciclo de merge (RFC-006)
 /// para escolher source/target.
 fn git_list_branches_inner(repo_root: String) -> Result<Vec<String>, String> {
     let root = repository_root(&repo_root)?;
@@ -707,25 +647,17 @@ pub struct DiffSummaryEntry {
     pub status: String,
 }
 
-/// Um path é infraestrutura do próprio Alethe, não trabalho real do usuário,
-/// se estiver em `.planning/` (estado do plugin GSD Sync) ou `.opencode/`/
 /// `opencode.json` (MCP do Graphify + plugin GSD, escritos automaticamente a
-/// cada spawn). Mesma exclusão já aplicada em `getChangedFiles` do plugin
-/// GSD (`alethe-gsd-state.ts`) — sem ela, o Briefing de Testes listava
+
 /// `.opencode/alethe-gsd-config.json`, `.planning/goal.md` etc. como se
-/// fossem "alterações" feitas pelo agente, quando na verdade é o próprio
+
 /// Alethe escrevendo essa infraestrutura na worktree.
 fn is_alethe_infra_path(path: &str) -> bool {
     path.starts_with(".planning/") || path.starts_with(".opencode/") || path == "opencode.json"
 }
 
-/// Lê o que ainda não foi commitado na PRÓPRIA worktree (`git status
 /// --porcelain`, working-tree aware — cobre staged/unstaged/untracked).
-/// Complementa o diff por range de commits abaixo: sem isso, um arquivo
-/// criado/editado na worktree e nunca commitado não aparece em nenhum commit
-/// de `source`, então some do resumo de alterações mesmo sendo trabalho real
-/// (foi exatamente o que o Gate de Verificação da Central de Merges reportava
-/// como "não há alterações de código" com um arquivo de verdade na worktree).
+
 fn uncommitted_entries(worktree_path: &Path) -> Vec<DiffSummaryEntry> {
     if !worktree_path.is_dir() {
         return Vec::new();
@@ -750,9 +682,9 @@ fn uncommitted_entries(worktree_path: &Path) -> Vec<DiffSummaryEntry> {
         let path = String::from_utf8_lossy(&field[3..]).into_owned();
         let renamed = matches!(x, 'R' | 'C') || matches!(y, 'R' | 'C');
         if renamed && i < fields.len() {
-            i += 1; // pula o nome antigo — só o path atual importa aqui
+            i += 1;
         }
-        // Reduz XY porcelain a uma letra representativa: prioriza o lado
+
         // "working tree" (y); untracked ("??") vira "A" (adicionado).
         let status = if x == '?' && y == '?' {
             'A'
@@ -769,12 +701,8 @@ fn uncommitted_entries(worktree_path: &Path) -> Vec<DiffSummaryEntry> {
     entries
 }
 
-/// Resumo real (arquivos alterados, não-conflito) do que `source` mudou em
-/// relação a `target` — alimenta o "Briefing de Testes" da Central de Merges
 /// com dado de verdade em vez de texto fixo. Three-dot (`target...source`,
-/// mesmo espírito do `git diff` que o Revisor de Branch já roda no prompt),
-/// **unido** com o estado não commitado da worktree (`uncommitted_entries`
-/// acima) — só o range de commits ignora trabalho real ainda não commitado.
+
 fn git_diff_summary_inner(
     repo_root: String,
     source: String,
@@ -785,9 +713,7 @@ fn git_diff_summary_inner(
     let range = format!("{target}...{source}");
     let output = checked_output(&root, &["diff", "--name-status", "-z", &range])?;
     let raw = String::from_utf8_lossy(&output.stdout);
-    // Saída "-z": campos separados por NUL. Cada entrada normal é
-    // "status\0path\0"; renomeações ("R100\0old\0new\0") têm um campo extra
-    // (o nome novo) que também vira `path` — o nome antigo é descartado.
+
     let fields: Vec<&str> = raw.split('\0').filter(|s| !s.is_empty()).collect();
     let mut entries = Vec::new();
     let mut i = 0;
@@ -1219,8 +1145,7 @@ pub async fn git_incoming_outgoing(repo: String) -> Result<IncomingOutgoing, Str
 
 fn git_pull_inner(repo_root: String) -> Result<String, String> {
     let root = validated_root(&repo_root)?;
-    // --ff-only evita merge commit/conflito surpresa: se a branch divergiu, erra
-    // limpo em vez de criar um merge automático.
+
     remote_command(&root, &["pull", "--ff-only"])
 }
 
@@ -1234,9 +1159,7 @@ pub async fn git_pull(repo_root: String) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // Testes chamam a lógica direto, fora de um runtime async — usam as
-    // versões `_inner` (síncronas) por trás dos wrappers `async fn` que os
-    // comandos IPC expõem, mesmo padrão de `worktrees.rs`/`graphify.rs`.
+
     use super::git_commit_inner as git_commit;
     use super::git_diff_summary_inner as git_diff_summary;
     use super::git_discard_inner as git_discard;
@@ -1302,7 +1225,7 @@ mod tests {
             "deve resolver a mesma raiz principal a partir de qualquer worktree"
         );
         // `repository_root` (--show-toplevel), em contraste, devolveria a
-        // PRÓPRIA worktree quando chamado de dentro dela — diferente da main.
+
         let toplevel_from_worktree = repository_root(&worktree.to_string_lossy()).unwrap();
         assert_ne!(from_worktree, toplevel_from_worktree);
 
@@ -1315,8 +1238,7 @@ mod tests {
         assert!(validate_paths(&["..\\secret".to_string()]).is_err());
         // Caminho absoluto Unix — rejeitado em qualquer plataforma.
         assert!(validate_paths(&["/etc/secret".to_string()]).is_err());
-        // O prefixo de drive do Windows só é reconhecido como `Component::Prefix`
-        // no próprio Windows; em Unix `C:\secret` é um nome relativo válido.
+
         #[cfg(windows)]
         assert!(validate_paths(&["C:\\secret".to_string()]).is_err());
         assert!(validate_paths(&["/secret".to_string()]).is_err());
@@ -1370,8 +1292,6 @@ mod tests {
         let reported_root = git_init(root_string.clone()).unwrap();
         assert_eq!(PathBuf::from(&reported_root), root.canonicalize().unwrap());
 
-        // O worktree/clone que consome isso precisa de um HEAD com os arquivos
-        // já commitados — não um repo vazio.
         let status = git_status(root_string).unwrap();
         assert!(
             status.staged.is_empty() && status.changes.is_empty() && status.untracked.is_empty()
@@ -1418,7 +1338,6 @@ mod tests {
         let root_string = root.to_string_lossy().into_owned();
         git_init(root_string.clone()).unwrap();
 
-        // Não deve ter criado um segundo commit nem tocado no repo existente.
         let log = checked_output(&root, &["log", "--oneline"]).unwrap();
         assert_eq!(String::from_utf8_lossy(&log.stdout).lines().count(), 1);
 
@@ -1464,11 +1383,6 @@ mod tests {
 
     #[test]
     fn git_diff_summary_includes_uncommitted_worktree_changes() {
-        // Reproduz o bug: um arquivo criado na worktree e NUNCA commitado não
-        // aparece em nenhum commit de "feature", então o diff por range de
-        // commits sozinho devolve lista vazia mesmo com trabalho real feito —
-        // exatamente o "não há alterações de código" que o Gate de
-        // Verificação da Central de Merges reportava incorretamente.
         let root = temp_dir("diff-summary-uncommitted");
         checked_output(&root, &["init", "-b", "main"]).unwrap();
         checked_output(&root, &["config", "user.name", "Alethe Test"]).unwrap();
@@ -1478,7 +1392,6 @@ mod tests {
         checked_output(&root, &["commit", "-m", "base"]).unwrap();
         checked_output(&root, &["checkout", "-b", "feature"]).unwrap();
 
-        // Sem worktree_path: comportamento antigo, cego a não commitado.
         let root_string = root.to_string_lossy().into_owned();
         let without_worktree = git_diff_summary(
             root_string.clone(),
@@ -1493,9 +1406,7 @@ mod tests {
         );
 
         fs::write(root.join("novo.txt"), "").unwrap();
-        // Infraestrutura escrita automaticamente pelo próprio Alethe (plugin
-        // GSD, MCP do Graphify) — nunca deve aparecer como "alteração" do
-        // agente, mesmo estando não commitada como qualquer outro arquivo.
+
         fs::create_dir_all(root.join(".planning")).unwrap();
         fs::write(root.join(".planning").join("goal.md"), "").unwrap();
         fs::create_dir_all(root.join(".opencode").join("plugins")).unwrap();
@@ -1539,16 +1450,13 @@ mod tests {
 
     #[test]
     fn admin_lock_takes_precedence_and_is_never_retried() {
-        // Repo comum (não-worktree): `.git` é diretório — o `locked` físico fica
-        // direto dentro dele, simulando o mesmo layout que `.git/worktrees/<id>/`
-        // teria para um worktree secundário.
         let root = temp_dir("adminlock");
         checked_output(&root, &["init"]).unwrap();
         fs::write(root.join(".git").join("locked"), "Aguardando homologacao\n").unwrap();
 
         let start = std::time::Instant::now();
         let error = checked_output(&root, &["status"]).unwrap_err();
-        // Sem retry: falha imediata, bem abaixo do menor delay de backoff (200ms).
+
         assert!(start.elapsed() < Duration::from_millis(150));
         assert_eq!(error, "admin_locked:Aguardando homologacao");
 
@@ -1563,16 +1471,13 @@ mod tests {
         fs::write(&lock_file, b"").unwrap();
 
         // Simula outro processo git segurando o index.lock brevemente — some
-        // antes do teto de 3 tentativas (200+400+800ms).
+
         let lock_file_clone = lock_file.clone();
         std::thread::spawn(move || {
             sleep(Duration::from_millis(250));
             let _ = fs::remove_file(&lock_file_clone);
         });
 
-        // git recusa operações com index.lock presente — a chamada real falha até
-        // o arquivo sumir; o retry do with_lock_awareness é o que faz isso
-        // eventualmente ter sucesso sem o chamador precisar saber disso.
         let result = checked_output(&root, &["status"]);
         assert!(
             result.is_ok(),

@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -24,15 +24,19 @@ pub struct ClaudeSessionSnapshot {
     pub size_bytes: u64,
 }
 
-/// Encode um cwd no formato que o Claude Code usa pra nomear o subdir em
-/// ~/.claude/projects/. Regra: trim de separators finais, depois substitui
-/// `:`, `\` e `/` por `-`. Preserva case.
+/// Mirrors how Claude names the directory it stores a project's sessions in.
+///
+/// The dot matters. Worktrees live under `<repo>/.alethe/worktrees/<id>`, and
+/// Claude folds the dot into a hyphen along with the separators, writing
+/// `-home-user-repo--alethe-worktrees-<id>`. Leaving it as `.alethe` produced a
+/// path that never exists, so no session was ever found for a pane running in a
+/// worktree.
 fn encode_cwd_for_claude(cwd: &str) -> String {
     let trimmed = cwd.trim_end_matches(|c: char| c == '\\' || c == '/');
     trimmed
         .chars()
         .map(|c| match c {
-            ':' | '\\' | '/' => '-',
+            ':' | '\\' | '/' | '.' => '-',
             _ => c,
         })
         .collect()
@@ -56,49 +60,109 @@ fn truncate_chars(s: &str, max_chars: usize) -> String {
     out
 }
 
+/// Session JSONL lines can be tens of MB (pasted files, image payloads, tool
+/// results). Reading one whole line into memory is what made a single scan
+/// allocate gigabytes and abort the process, so lines are capped here.
+const MAX_LINE_BYTES: usize = 2 * 1024 * 1024;
+
+/// Only the fields the sidebar and the history modal actually read. Deserializing
+/// into this instead of `serde_json::Value` avoids building a full node tree for
+/// every record — that tree, over a project's whole session history, is what made
+/// the scan allocate gigabytes.
+#[derive(Deserialize)]
+struct RecordHeader {
+    #[serde(rename = "type", default)]
+    entry_type: Option<String>,
+    #[serde(rename = "aiTitle", default)]
+    ai_title: Option<String>,
+}
+
+/// Reads one line, keeping at most `MAX_LINE_BYTES` and discarding the rest
+/// without buffering it. Returns false at EOF.
+fn read_capped_line(reader: &mut impl BufRead, buf: &mut Vec<u8>) -> std::io::Result<bool> {
+    buf.clear();
+    let mut consumed_any = false;
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            return Ok(consumed_any);
+        }
+        consumed_any = true;
+        let newline = available.iter().position(|byte| *byte == b'\n');
+        let chunk_len = newline.unwrap_or(available.len());
+        if buf.len() < MAX_LINE_BYTES {
+            let take = chunk_len.min(MAX_LINE_BYTES - buf.len());
+            buf.extend_from_slice(&available[..take]);
+        }
+        match newline {
+            Some(index) => {
+                reader.consume(index + 1);
+                return Ok(true);
+            }
+            None => {
+                let len = available.len();
+                reader.consume(len);
+            }
+        }
+    }
+}
+
+fn first_text_block(line: &str) -> Option<String> {
+    let value = serde_json::from_str::<serde_json::Value>(line).ok()?;
+    let content = value
+        .get("message")
+        .and_then(|message| message.get("content"))?;
+    match content {
+        serde_json::Value::String(text) => Some(text.clone()),
+        serde_json::Value::Array(blocks) => blocks.iter().find_map(|block| {
+            block
+                .get("text")
+                .and_then(|text| text.as_str())
+                .map(String::from)
+        }),
+        _ => None,
+    }
+}
+
 fn parse_session_file(
     id: String,
     path: PathBuf,
     metadata: &fs::Metadata,
 ) -> Option<ClaudeSessionMeta> {
     let file = fs::File::open(&path).ok()?;
-    let reader = BufReader::new(file);
+    let mut reader = BufReader::with_capacity(64 * 1024, file);
 
     let mut title: Option<String> = None;
     let mut first_user_prompt: Option<String> = None;
     let mut message_count: usize = 0;
+    let mut buf: Vec<u8> = Vec::with_capacity(8 * 1024);
 
-    for line in reader.lines().map_while(Result::ok) {
-        if line.is_empty() {
+    while read_capped_line(&mut reader, &mut buf).unwrap_or(false) {
+        if buf.is_empty() {
             continue;
         }
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(&line) else {
+        let Ok(line) = std::str::from_utf8(&buf) else {
             continue;
         };
-        let entry_type = value.get("type").and_then(|v| v.as_str()).unwrap_or("");
-
-        match entry_type {
+        let Ok(header) = serde_json::from_str::<RecordHeader>(line) else {
+            continue;
+        };
+        match header.entry_type.as_deref().unwrap_or("") {
             "ai-title" => {
                 if title.is_none() {
-                    title = value
-                        .get("aiTitle")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty());
+                    title = header
+                        .ai_title
+                        .map(|value| value.trim().to_string())
+                        .filter(|value| !value.is_empty());
                 }
             }
             "user" => {
                 message_count += 1;
+                // Only the first user record needs its payload, so this is the
+                // one line per file that still pays for a full value tree.
                 if first_user_prompt.is_none() {
-                    let content = value.get("message").and_then(|m| m.get("content"));
-                    let preview = match content {
-                        Some(serde_json::Value::String(s)) => Some(s.clone()),
-                        Some(serde_json::Value::Array(blocks)) => blocks
-                            .iter()
-                            .find_map(|b| b.get("text").and_then(|t| t.as_str()).map(String::from)),
-                        _ => None,
-                    };
-                    first_user_prompt = preview.map(|s| truncate_chars(s.trim(), 240));
+                    first_user_prompt =
+                        first_text_block(line).map(|s| truncate_chars(s.trim(), 240));
                 }
             }
             "assistant" => {
@@ -118,7 +182,6 @@ fn parse_session_file(
     })
 }
 
-/// Case-insensitive match de subdirs do projeto (Claude Code pode usar drive
 /// letter maiuscula ou minuscula).
 fn matching_project_dirs(root: &PathBuf, encoded: &str) -> Vec<PathBuf> {
     let direct = root.join(encoded);
@@ -158,10 +221,6 @@ pub(crate) fn project_dirs_for_cwd(cwd: &str) -> Result<Vec<PathBuf>, String> {
     Ok(matching_project_dirs(&root, &encoded))
 }
 
-/// `async` + `spawn_blocking`: varre diretórios de sessão no disco, mesma
-/// classe de I/O bloqueante já corrigida em `cli_resolver.rs`; chamado a
-/// cada spawn/validação de resumo de terminal (`XTermView`), então travar a
-/// thread de despacho do Tauri aqui trava outros comandos IPC concorrentes.
 #[tauri::command]
 pub async fn snapshot_claude_sessions(cwd: String) -> Result<Vec<ClaudeSessionSnapshot>, String> {
     tokio::task::spawn_blocking(move || snapshot_claude_sessions_inner(cwd))
@@ -206,8 +265,41 @@ fn snapshot_claude_sessions_inner(cwd: String) -> Result<Vec<ClaudeSessionSnapsh
     Ok(sessions)
 }
 
+/// `async` + `spawn_blocking` for the same reason as `snapshot_claude_sessions`:
+/// this walks every JSONL of the project, which on a busy machine is hundreds of
+/// MB. Running it on Tauri's dispatch thread froze the whole window.
 #[tauri::command]
-pub fn list_claude_sessions(cwd: String) -> Result<Vec<ClaudeSessionMeta>, String> {
+pub async fn list_claude_sessions(cwd: String) -> Result<Vec<ClaudeSessionMeta>, String> {
+    tokio::task::spawn_blocking(move || {
+        let started = std::time::Instant::now();
+        let result = list_claude_sessions_inner(cwd);
+        log_slow_scan(
+            "list_claude_sessions",
+            started,
+            result.as_ref().map(Vec::len).unwrap_or(0),
+        );
+        result
+    })
+    .await
+    .map_err(|error| format!("list_claude_sessions: falha na task bloqueante: {error}"))?
+}
+
+const SLOW_SCAN_MS: u128 = 250;
+
+/// Session scans are the historical cause of UI freezes here; log the slow ones
+/// so a regression shows up in app-events.log instead of only as a hang.
+fn log_slow_scan(command: &str, started: std::time::Instant, files: usize) {
+    let elapsed = started.elapsed().as_millis();
+    if elapsed < SLOW_SCAN_MS {
+        return;
+    }
+    let _ = crate::logging::record_app_event(
+        "sessions.slow_scan".to_string(),
+        format!("command={command} elapsed_ms={elapsed} files={files}"),
+    );
+}
+
+fn list_claude_sessions_inner(cwd: String) -> Result<Vec<ClaudeSessionMeta>, String> {
     let project_dirs = project_dirs_for_cwd(&cwd)?;
 
     if project_dirs.is_empty() {
@@ -246,22 +338,54 @@ pub fn list_claude_sessions(cwd: String) -> Result<Vec<ClaudeSessionMeta>, Strin
     Ok(sessions)
 }
 
+/// Sidebar rows only need the title of the session they are attached to.
+/// `list_claude_sessions` parses every JSONL of the project to answer that,
+/// so this opens the single matching file instead.
+#[tauri::command]
+pub async fn get_claude_session_title(
+    cwd: String,
+    session_id: String,
+) -> Result<Option<String>, String> {
+    tokio::task::spawn_blocking(move || {
+        let started = std::time::Instant::now();
+        let result = get_claude_session_title_inner(cwd, session_id);
+        log_slow_scan("get_claude_session_title", started, 1);
+        result
+    })
+    .await
+    .map_err(|error| format!("get_claude_session_title: falha na task bloqueante: {error}"))?
+}
+
+fn get_claude_session_title_inner(
+    cwd: String,
+    session_id: String,
+) -> Result<Option<String>, String> {
+    if session_id.is_empty() || session_id.contains(['/', '\\', '.']) {
+        return Ok(None);
+    }
+    for project_dir in project_dirs_for_cwd(&cwd)? {
+        let path = project_dir.join(format!("{session_id}.jsonl"));
+        let Ok(metadata) = fs::metadata(&path) else {
+            continue;
+        };
+        let Some(meta) = parse_session_file(session_id.clone(), path, &metadata) else {
+            continue;
+        };
+        return Ok(meta.title.or(meta.first_user_prompt));
+    }
+    Ok(None)
+}
+
 #[derive(Serialize)]
 pub struct ActivityDay {
     /// Data UTC no formato YYYY-MM-DD
     pub date: String,
-    /// Número de mensagens (user + assistant) registradas nesse dia
+
     pub count: usize,
 }
 
-/// Conta mensagens por dia em todos os JSONLs de ~/.claude/projects/.
-/// Retorna `days` dias contínuos terminando hoje (UTC), ordenados do mais
-/// antigo pro mais recente. Dias sem atividade têm count=0.
 #[tauri::command]
 pub async fn get_claude_activity(days: usize) -> Result<Vec<ActivityDay>, String> {
-    // Varredura pesada das sessões → roda em spawn_blocking pra NÃO travar a
-    // thread principal do Tauri (comando sync bloqueia a UI inteira enquanto lê
-    // os arquivos; com muitas sessões isso "congela" a Home ao abrir).
     tokio::task::spawn_blocking(move || get_claude_activity_inner(days))
         .await
         .map_err(|e| e.to_string())?
@@ -276,7 +400,6 @@ fn get_claude_activity_inner(days: usize) -> Result<Vec<ActivityDay>, String> {
         return Ok(empty_activity_window(days));
     }
 
-    // Limite inferior: arquivos modificados antes desse instante são ignorados
     let now = SystemTime::now();
     let window_start = now
         .checked_sub(Duration::from_secs(days as u64 * 86_400))
@@ -303,7 +426,7 @@ fn get_claude_activity_inner(days: usize) -> Result<Vec<ActivityDay>, String> {
             if path.extension().and_then(|s| s.to_str()) != Some("jsonl") {
                 continue;
             }
-            // Pula arquivos não tocados na janela
+
             if let Ok(metadata) = entry.metadata() {
                 if let Ok(modified) = metadata.modified() {
                     if modified < window_start {
@@ -342,7 +465,7 @@ fn count_messages_per_day(path: &PathBuf, counts: &mut HashMap<String, usize>) {
             continue;
         }
         let date = &timestamp[..10];
-        // Validação básica: posições 4 e 7 devem ser '-'
+
         if date.as_bytes().get(4) != Some(&b'-') || date.as_bytes().get(7) != Some(&b'-') {
             continue;
         }
@@ -350,12 +473,6 @@ fn count_messages_per_day(path: &PathBuf, counts: &mut HashMap<String, usize>) {
     }
 }
 
-/// Mesma janela do heatmap "atividade", mas somando Claude + Codex + OpenCode
-/// em vez de só Claude. Claude e OpenCode contam por MENSAGEM (granularidade
-/// real); Codex conta por ARQUIVO de sessão tocado no dia (mtime) — o formato
-/// exato de timestamp por linha do rollout do Codex não está confirmado, e
-/// contar por arquivo é uma aproximação honesta em vez de arriscar um nome de
-/// campo errado e ficar sempre zerado silenciosamente.
 #[tauri::command]
 pub async fn get_multi_agent_activity(days: usize) -> Result<Vec<ActivityDay>, String> {
     tokio::task::spawn_blocking(move || get_multi_agent_activity_inner(days))
@@ -376,7 +493,6 @@ fn get_multi_agent_activity_inner(days: usize) -> Result<Vec<ActivityDay>, Strin
 
     let mut counts: HashMap<String, usize> = HashMap::new();
 
-    // Claude: reaproveita a varredura já existente (mesma lógica de get_claude_activity).
     if let Some(root) = claude_projects_dir() {
         if root.is_dir() {
             if let Ok(project_entries) = fs::read_dir(&root) {
@@ -407,7 +523,6 @@ fn get_multi_agent_activity_inner(days: usize) -> Result<Vec<ActivityDay>, Strin
         }
     }
 
-    // Codex: 1 sessão tocada = +1 no dia do mtime do arquivo (ver nota acima).
     if let Some(root) = crate::codex_sessions::codex_sessions_dir() {
         if root.is_dir() {
             let mut files = Vec::new();
@@ -458,8 +573,6 @@ fn get_multi_agent_activity_inner(days: usize) -> Result<Vec<ActivityDay>, Strin
     Ok(build_activity_window(days, &counts))
 }
 
-/// Constrói a janela contígua dos últimos `days` dias até hoje (UTC),
-/// preenchendo zeros onde não houve atividade.
 fn build_activity_window(days: usize, counts: &HashMap<String, usize>) -> Vec<ActivityDay> {
     let mut out = Vec::with_capacity(days);
     let today = today_utc_ymd();
@@ -482,7 +595,6 @@ fn empty_activity_window(days: usize) -> Vec<ActivityDay> {
         .collect()
 }
 
-/// Hoje em UTC como tupla (year, month, day) — sem dependência de chrono.
 fn today_utc_ymd() -> (i64, u32, u32) {
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -492,7 +604,6 @@ fn today_utc_ymd() -> (i64, u32, u32) {
 }
 
 fn days_ago_ymd(today: &(i64, u32, u32), days: usize) -> String {
-    // Converte today pra epoch days, subtrai e reconverte
     let epoch_days = ymd_to_epoch_days(today.0, today.1, today.2);
     let target = epoch_days - days as i64;
     let (y, m, d) = epoch_days_to_ymd(target);
@@ -500,7 +611,7 @@ fn days_ago_ymd(today: &(i64, u32, u32), days: usize) -> String {
 }
 
 /// Converte segundos UNIX → (year, month, day) UTC. Algoritmo de Howard
-/// Hinnant (date.h), funciona pra qualquer ano civil proleptic Gregoriano.
+
 fn epoch_secs_to_ymd(secs: i64) -> (i64, u32, u32) {
     let days = secs.div_euclid(86_400);
     epoch_days_to_ymd(days)
@@ -529,4 +640,66 @@ fn ymd_to_epoch_days(y: i64, m: u32, d: u32) -> i64 {
     let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1; // [0, 365]
     let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy; // [0, 146096]
     era * 146_097 + doe as i64 - 719_468
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    fn read_all(input: &str) -> Vec<String> {
+        let mut reader = std::io::BufReader::new(Cursor::new(input.as_bytes().to_vec()));
+        let mut buf = Vec::new();
+        let mut lines = Vec::new();
+        while read_capped_line(&mut reader, &mut buf).unwrap() {
+            lines.push(String::from_utf8_lossy(&buf).to_string());
+        }
+        lines
+    }
+
+    #[test]
+    fn capped_line_reader_splits_on_newlines() {
+        assert_eq!(read_all("a\nbb\n"), vec!["a", "bb"]);
+        assert_eq!(read_all("a\nbb"), vec!["a", "bb"]);
+    }
+
+    #[test]
+    fn capped_line_reader_bounds_a_giant_line() {
+        let giant = "x".repeat(MAX_LINE_BYTES * 3);
+        let input = format!("{giant}\ntail\n");
+        let lines = read_all(&input);
+        assert_eq!(lines[0].len(), MAX_LINE_BYTES);
+        assert_eq!(lines[1], "tail");
+    }
+
+    #[test]
+    fn record_header_reads_only_the_top_level_type() {
+        let line = r#"{"parentUuid":null,"type":"user","message":{"content":[{"type":"text","text":"oi"}]}}"#;
+        let header = serde_json::from_str::<RecordHeader>(line).unwrap();
+        assert_eq!(header.entry_type.as_deref(), Some("user"));
+        assert_eq!(first_text_block(line).as_deref(), Some("oi"));
+    }
+}
+
+#[cfg(test)]
+mod encode_cwd_tests {
+    use super::encode_cwd_for_claude;
+
+    #[test]
+    fn folds_the_dot_of_a_worktree_path() {
+        assert_eq!(
+            encode_cwd_for_claude("/home/user/repo/.alethe/worktrees/cl-a1b2c3"),
+            "-home-user-repo--alethe-worktrees-cl-a1b2c3"
+        );
+    }
+
+    #[test]
+    fn a_path_without_a_dot_is_unaffected() {
+        assert_eq!(encode_cwd_for_claude("/home/user/repo"), "-home-user-repo");
+    }
+
+    #[test]
+    fn trailing_separator_is_dropped() {
+        assert_eq!(encode_cwd_for_claude("/tmp/x/"), "-tmp-x");
+    }
 }

@@ -10,6 +10,7 @@ describe('normalizeEnabledFeatures', () => {
       browser: true,
       graphify: true,
       aiMemory: false,
+      mcp: true,
     })
   })
 
@@ -20,6 +21,7 @@ describe('normalizeEnabledFeatures', () => {
       browser: true,
       graphify: true,
       aiMemory: false,
+      mcp: true,
     })
   })
 
@@ -30,13 +32,21 @@ describe('normalizeEnabledFeatures', () => {
       browser: true,
       graphify: true,
       aiMemory: false,
+      mcp: true,
     })
   })
 
   it('keeps AI Memory off unless explicitly enabled', () => {
     expect(
       normalizeEnabledFeatures({ enabledFeatures: { todos: true, git: true, aiMemory: true } }),
-    ).toEqual({ todos: true, git: true, browser: true, graphify: true, aiMemory: true })
+    ).toEqual({
+      todos: true,
+      git: true,
+      browser: true,
+      graphify: true,
+      aiMemory: true,
+      mcp: true,
+    })
   })
 
   it('preserves an explicit Graphify preference', () => {

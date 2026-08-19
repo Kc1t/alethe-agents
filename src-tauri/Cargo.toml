@@ -1,6 +1,6 @@
 [package]
 name = "alethe"
-version = "1.5.0"
+version = "1.6.0"
 description = "Alethe — terminal multiplexer GUI"
 authors = ["Kauã Miguel"]
 license = "AGPL-3.0-or-later"
@@ -35,8 +35,10 @@ cc = "1"
 nanoid = "0.4"
 portable-pty = "0.8"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tauri = { version = "2", features = [] }
+# preserve_order keeps a round-tripped Value in file order. Without it, rewriting one
+# key of ~/.claude.json would alphabetise its other 80+ top-level keys.
+serde_json = { version = "1", features = ["preserve_order"] }
+tauri = { version = "2", features = ["image-png", "unstable"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-process = "2"
@@ -70,6 +72,10 @@ discord-rich-presence = "1.1.0"
 notify = "6"
 rusqlite = { version = "0.31", features = ["bundled"] }
 regex = "1"
+# toml_edit, not toml: it preserves comments, key order and formatting, which is
+# required to change one `[mcp_servers.*]` table inside a user's ~/.codex/config.toml
+# without rewriting the credentials, hooks and project tables around it.
+toml_edit = "0.22"
 
 # Impede execuções paralelas do Alethe (pré-requisito da guarda de
 # monotonicidade de `save_projects` em projects.rs). Só compila em desktop —

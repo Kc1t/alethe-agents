@@ -203,8 +203,6 @@ fn publish_metrics(app: &AppHandle, metrics: &ResourceMetrics) {
     );
 }
 
-// ── Tick (chamado a cada POLL_INTERVAL_MS) ───────────────────────────────
-
 fn tick(app: &AppHandle) {
     let mem = stats::collect_memory_stats();
     let available_mb = mem.system_available_mb;
@@ -216,11 +214,10 @@ fn tick(app: &AppHandle) {
     } else {
         raw
     };
-    // Hysteresis: sobe imediatamente, desce só se o reset for mais baixo
+
     let new_pressure = if (candidate as u8) > (s.pressure as u8) {
         candidate
     } else if (candidate as u8) < (s.pressure as u8) {
-        // Tentou descer — só aceita se o raw também estiver abaixo do reset
         if (raw as u8) < (s.pressure as u8) {
             candidate
         } else {
@@ -243,7 +240,6 @@ fn tick(app: &AppHandle) {
         s.cooldowns
             .insert(new_pressure, now + cooldown_for(new_pressure));
 
-        // Ações por nível
         let handle = app.clone();
         match new_pressure {
             MemoryPressureLevel::Low => {

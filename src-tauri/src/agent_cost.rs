@@ -1,9 +1,5 @@
-// Custo real por sessão, parseado dos JSONL (modelo ccusage). Claude e Codex
-// já gravam tokens por mensagem nos arquivos de sessão; aqui somamos e
-// multiplicamos por uma tabela de preço por modelo. Diferente de
-// claude_usage.rs/codex_usage.rs, que só expõem utilização (%) da conta.
 //
-// Fluxo: o front resolve ptyId -> session_id (via snapshot_* pós-spawn) e chama
+
 // get_session_cost(agent, cwd, session_id) periodicamente pro Token HUD.
 
 use serde::Serialize;
@@ -11,8 +7,6 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 
-/// Preço por 1M de tokens (USD). Cache write 5m = 1.25× input, 1h = 2× input,
-/// cache read = 0.1× input — multiplicadores padrão do prompt caching da
 /// Anthropic. Validado via skill claude-api (tabela de modelos atual).
 struct Pricing {
     input: f64,
@@ -22,16 +16,8 @@ struct Pricing {
     cache_read: f64,
 }
 
-/// Banco SQLite do OpenCode CLI (tokens/custo por sessão).
 ///
-/// O OpenCode usa convenção XDG (`~/.local/share/opencode/opencode.db`) mesmo no
-/// Windows — não `%APPDATA%` (verificado rodando `opencode db path` de verdade
-/// nesta máquina: retornou `C:\Users\<user>\.local\share\opencode\opencode.db`,
-/// enquanto `dirs_next::data_dir()` aponta pra `%APPDATA%`, onde o arquivo nunca
-/// existe). Pergunta pro próprio binário primeiro (`db path`, fonte de verdade,
-/// resiliente a mudança futura de convenção); só cai pro palpite de
-/// `dirs_next` se o binário não for encontrado ou o subcomando não existir
-/// (versão antiga do OpenCode).
+
 pub(crate) fn opencode_db_path() -> Option<PathBuf> {
     if let Some(path) = opencode_db_path_from_cli() {
         return Some(path);
@@ -61,9 +47,6 @@ fn opencode_db_path_from_cli() -> Option<PathBuf> {
     }
 }
 
-/// Palpite antigo (pré-descoberta do path real via `opencode db path`) — mantido
-/// só como fallback quando o binário não está no PATH/foi desinstalado, mas o
-/// banco ainda existe de uma instalação anterior nesse layout.
 fn opencode_db_path_fallback_guess() -> Option<PathBuf> {
     #[cfg(target_os = "linux")]
     {
@@ -75,15 +58,8 @@ fn opencode_db_path_fallback_guess() -> Option<PathBuf> {
     }
 }
 
-/// Resolve o preço por prefixo do model id (ex.: "claude-opus-4-8",
-/// "claude-sonnet-4-6", "claude-haiku-4-5"). Codex usa modelos GPT, sem preço
-/// público estável aqui — retorna None (tokens ainda somam, custo fica null).
 ///
-/// Modelos OpenCode NÃO passam mais por aqui: `session.cost` no `opencode.db`
-/// já vem calculado pelo próprio CLI com pricing ao vivo (confirmado lendo o
-/// schema real — `cost real DEFAULT 0 NOT NULL`), então `get_session_cost_inner`
-/// usa esse valor direto em vez de manter uma tabela hardcoded que ficava
-/// incompleta a cada modelo novo lançado.
+
 fn pricing_for(model: &str) -> Option<Pricing> {
     let m = model.to_ascii_lowercase();
 
@@ -115,7 +91,7 @@ pub struct ModelCost {
     pub cache_read: u64,
     pub cache_write_5m: u64,
     pub cache_write_1h: u64,
-    /// Custo em USD desse modelo, ou None se o modelo não está na tabela.
+
     pub cost_usd: Option<f64>,
 }
 
@@ -129,7 +105,7 @@ pub struct SessionCost {
     pub cache_write_5m: u64,
     pub cache_write_1h: u64,
     pub total_tokens: u64,
-    /// Soma dos custos por modelo conhecidos. None se nenhum modelo tinha preço.
+
     pub cost_usd: Option<f64>,
     /// Modelo dominante (mais output) — pro HUD mostrar um label.
     pub model: Option<String>,
@@ -137,10 +113,6 @@ pub struct SessionCost {
 }
 
 impl ModelCost {
-    /// Preenche `cost_usd` pela tabela hardcoded — mas só se ainda não tiver um
-    /// valor (ex.: OpenCode já traz `cost_usd` direto do banco, calculado pelo
-    /// próprio CLI com pricing ao vivo; nunca sobrescrever isso com um palpite
-    /// pior da tabela estática).
     fn compute_cost(&mut self) {
         if self.cost_usd.is_some() {
             return;
@@ -156,7 +128,6 @@ impl ModelCost {
     }
 }
 
-/// Parser do JSONL do Claude: soma message.usage por linha assistant,
 /// agrupando por message.model.
 fn parse_claude_cost(path: &PathBuf) -> std::collections::HashMap<String, ModelCost> {
     let mut by_model: std::collections::HashMap<String, ModelCost> =
@@ -211,8 +182,6 @@ fn parse_claude_cost(path: &PathBuf) -> std::collections::HashMap<String, ModelC
     by_model
 }
 
-/// Parser do rollout JSONL do Codex: pega o ÚLTIMO event_msg token_count
-/// (info.total_token_usage é cumulativo).
 fn parse_codex_cost(path: &PathBuf) -> ModelCost {
     let mut cost = ModelCost {
         model: "codex".to_string(),
@@ -241,7 +210,7 @@ fn parse_codex_cost(path: &PathBuf) -> ModelCost {
             continue;
         };
         let u = |k: &str| total.get(k).and_then(|v| v.as_u64()).unwrap_or(0);
-        // total_* é cumulativo → sobrescreve (último vence).
+
         cost.input = u("input_tokens");
         cost.output = u("output_tokens");
         cost.cache_read = u("cached_input_tokens");
@@ -249,7 +218,6 @@ fn parse_codex_cost(path: &PathBuf) -> ModelCost {
     cost
 }
 
-/// Acha o arquivo de rollout do Codex cujo session_meta.id == session_id.
 fn find_codex_session_path(session_id: &str) -> Option<PathBuf> {
     let root = crate::codex_sessions::codex_sessions_dir()?;
     if !root.is_dir() {
@@ -273,8 +241,6 @@ pub async fn get_session_cost(
     cwd: String,
     session_id: String,
 ) -> Result<SessionCost, String> {
-    // Parse de JSONL é IO/CPU pesado e é pollado a cada 4s no canvas → spawn_blocking
-    // pra não bloquear a thread principal do Tauri (UI travaria).
     tokio::task::spawn_blocking(move || get_session_cost_inner(agent, cwd, session_id))
         .await
         .map_err(|e| e.to_string())?
@@ -321,11 +287,6 @@ fn get_session_cost_inner(
             )
             .map_err(|e| format!("falha ao abrir banco do OpenCode: {e}"))?;
 
-            // `session.id` é PRIMARY KEY (confirmado no schema real) — no máximo 1
-            // linha por sessão, então `rows.next()` uma vez é correto (não é bug de
-            // agregação). `session.cost` já vem calculado pelo próprio OpenCode com
-            // pricing ao vivo — muito mais confiável que a tabela hardcoded local
-            // (`pricing_for`), que só cobre um punhado de modelos.
             let mut stmt = conn
                 .prepare(
                     "SELECT model, tokens_input, tokens_output, tokens_cache_read, tokens_cache_write, cost FROM session WHERE id = ?1",
@@ -377,9 +338,6 @@ fn get_session_cost_inner(
     Ok(aggregate(agent, session_id, by_model))
 }
 
-/// Custo direto de um transcript JSONL do Claude por path absoluto — usado pelos
-/// nós do agent canvas (cada subagent/teammate tem `agent_transcript_path`).
-/// Mesmo formato/parses do Claude; só não precisa resolver cwd+session_id.
 #[tauri::command]
 pub async fn get_transcript_cost(path: String) -> Result<SessionCost, String> {
     tokio::task::spawn_blocking(move || get_transcript_cost_inner(path))
@@ -396,9 +354,8 @@ fn get_transcript_cost_inner(path: String) -> Result<SessionCost, String> {
     Ok(aggregate("claude".to_string(), path, by_model))
 }
 
-/// Soma o breakdown por modelo num total de sessão (computa custo, escolhe o
 /// modelo dominante por output). Compartilhado por get_session_cost e
-/// get_transcript_cost — fonte única da agregação e da tabela de preço.
+
 fn aggregate(agent: String, session_id: String, mut by_model: Vec<ModelCost>) -> SessionCost {
     for mc in &mut by_model {
         mc.compute_cost();
@@ -439,9 +396,6 @@ fn aggregate(agent: String, session_id: String, mut by_model: Vec<ModelCost>) ->
     total
 }
 
-/// Preço por 1M de tokens, por família de modelo — exposto pro front estimar a
-/// "economia por roteamento" (custo hipotético no modelo do lead vs. real). Mesma
-/// tabela de `pricing_for`, sem duplicar números.
 #[derive(Serialize)]
 pub struct ModelRate {
     pub family: String,
@@ -469,10 +423,6 @@ pub fn get_model_pricing() -> Vec<ModelRate> {
         .collect()
 }
 
-/// Resumo de custo/tokens do OpenCode nas últimas N horas — usado pelo
-/// OpenCodeCard (não existe conceito de "% de plano" pro OpenCode, é
-/// BYOK/multi-provider, então o card mostra custo/tokens acumulado em vez de
-/// uma barra de utilização).
 #[derive(Serialize, Default)]
 pub struct OpenCodeUsageSummary {
     pub cost_usd: f64,
@@ -493,8 +443,6 @@ fn get_opencode_usage_summary_inner(hours: u32) -> Result<OpenCodeUsageSummary, 
     let db_path = opencode_db_path()
         .ok_or_else(|| "caminho do banco do OpenCode não encontrado".to_string())?;
     if !db_path.is_file() {
-        // Banco ainda não existe (OpenCode nunca rodou nesta máquina) — resumo
-        // vazio, não é erro: o card mostra "sem dados" em vez de falhar.
         return Ok(OpenCodeUsageSummary::default());
     }
 
@@ -591,16 +539,14 @@ mod tests {
         assert!(pricing_for("claude-opus-4-8").is_some());
         assert!(pricing_for("claude-sonnet-4-6").is_some());
         assert!(pricing_for("claude-haiku-4-5").is_some());
-        // Modelo OpenCode não passa mais pela tabela hardcoded (removida —
-        // session.cost do opencode.db é a fonte agora).
+
         assert!(pricing_for("deepseek-v4-flash-free").is_none());
     }
 
     #[test]
     fn compute_cost_never_overwrites_a_pre_set_cost_from_the_opencode_db() {
         // Simula o que o branch "opencode" de get_session_cost_inner faz: seta
-        // cost_usd direto da coluna `session.cost` (fonte de verdade), e
-        // compute_cost() não pode substituir isso pela tabela hardcoded.
+
         let mut mc = ModelCost {
             model: "deepseek-v4-flash".to_string(),
             input: 1000,

@@ -1,19 +1,26 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
+import type { InstallToolchain } from '../agentInstall'
 import type { WorktreeMode } from './git'
 
 export type RemoteControlInfo = {
   enabled: boolean
   connected_devices: number
+  online_devices: number
   max_devices: number
   session_expiry_secs: number
+  read_only: boolean
+  allow_shell_input: boolean
+  pairing_open: boolean
+  pairing_expires_in: number
   devices: Array<{
     id: number
     name: string
     address: string
     connected_at: number
     expires_at: number
+    online: boolean
   }>
   pairing_url: string | null
   qr_svg: string | null
@@ -23,6 +30,10 @@ export type RemoteControlInfo = {
 
 export async function remoteControlInfo(): Promise<RemoteControlInfo> {
   return invoke<RemoteControlInfo>('remote_control_info')
+}
+
+export async function remoteControlConnectedDevices(): Promise<number> {
+  return invoke<number>('remote_control_connected_devices')
 }
 
 export async function remoteControlRevoke(): Promise<RemoteControlInfo> {
@@ -47,6 +58,35 @@ export async function revokeRemoteControlDevice(deviceId: number): Promise<Remot
   return invoke<RemoteControlInfo>('remote_control_revoke_device', { deviceId })
 }
 
+export type RemoteMessageEvent = {
+  ptyId: string
+  deviceId: number
+  deviceName: string
+  preview: string
+}
+
+export function listenRemoteMessages(
+  handler: (event: RemoteMessageEvent) => void,
+): Promise<UnlistenFn> {
+  return listen<RemoteMessageEvent>('remote://message', (event) => handler(event.payload))
+}
+
+export async function openRemoteControlPairing(): Promise<RemoteControlInfo> {
+  return invoke<RemoteControlInfo>('remote_control_open_pairing')
+}
+
+export async function closeRemoteControlPairing(): Promise<RemoteControlInfo> {
+  return invoke<RemoteControlInfo>('remote_control_close_pairing')
+}
+
+export async function setRemoteControlReadOnly(readOnly: boolean): Promise<RemoteControlInfo> {
+  return invoke<RemoteControlInfo>('remote_control_set_read_only', { readOnly })
+}
+
+export async function setRemoteControlShellInput(allowed: boolean): Promise<RemoteControlInfo> {
+  return invoke<RemoteControlInfo>('remote_control_set_shell_input', { allowed })
+}
+
 export async function loadProjectsFile(): Promise<string | null> {
   return invoke<string | null>('load_projects')
 }
@@ -55,7 +95,7 @@ export async function saveProjectsFile(content: string, sequence: number): Promi
   await invoke('save_projects', { content, sequence })
 }
 
-/** Persiste um erro do frontend no log de crash. Nunca lança (logging não pode quebrar o caller). */
+                                                                                                     
 export async function recordFrontendError(
   message: string,
   stack: string | null,
@@ -63,6 +103,15 @@ export async function recordFrontendError(
 ): Promise<void> {
   try {
     await invoke('record_frontend_error', { message, stack, kind })
+  } catch {
+    /* logging best-effort */
+  }
+}
+
+/** Records a non-sensitive lifecycle event for persistence diagnostics. */
+export async function recordAppEvent(kind: string, message: string): Promise<void> {
+  try {
+    await invoke('record_app_event', { kind, message })
   } catch {
     /* logging best-effort */
   }
@@ -82,6 +131,14 @@ export async function clearDiscordPresence(): Promise<void> {
 
 export async function findCliLauncher(agent: string): Promise<string | null> {
   return invoke<string | null>('find_cli_launcher', { agent })
+}
+
+export async function probeInstallToolchain(): Promise<InstallToolchain> {
+  return invoke<InstallToolchain>('probe_install_toolchain')
+}
+
+export async function agentCliVersion(agent: string): Promise<string | null> {
+  return invoke<string | null>('agent_cli_version', { agent })
 }
 
 export async function exportBackup(targetPath: string): Promise<void> {
@@ -184,38 +241,48 @@ export type PlanningStatus = {
   progress: number | null
   roadmapPendingCount: number | null
   roadmapTotalCount: number | null
-  /** Corpo de STATE.md após o front-matter — objetivo + procedimento de teste escritos pelo skill do plugin OpenCode. */
+                                                                                                                         
   notes: string | null
 }
 
-/** Lê `.planning/STATE.md`/`roadmap.md` da PRÓPRIA worktree — gate de conclusão de planejamento. */
+                                                                                                    
 export async function readPlanningStatus(repoPath: string): Promise<PlanningStatus> {
   return invoke<PlanningStatus>('read_planning_status', { repoPath })
 }
 
-/** Materializa o plugin OpenCode que mantém `.planning/` sincronizado sozinho (via todowrite + skill automático) nesta worktree/repo, e escreve a cadeia de fallback de modelos (preferência global) no sidecar de config que o plugin lê em runtime. Best-effort. */
+                                                                                                                                                                                                                                                                      
 export async function gsdOpenCodePluginWrite(repo: string, modelChain: string[]): Promise<void> {
   await invoke('gsd_opencode_plugin_write', { repo, modelChain })
 }
 
-/** Lê `.planning/.gsd-child-session` — id da sessão-filha isolada (se já existir) que o plugin OpenCode usa pra documentar goal.md/plan.md sem contaminar a sessão principal. */
+                                                                                                                                                                                 
 export async function readGsdChildSession(repoPath: string): Promise<string | null> {
   return invoke<string | null>('read_gsd_child_session', { repoPath })
 }
 
-/** Verifica `.planning/.gsd-child-busy` — true enquanto a sessão-filha está processando um ciclo de sincronização. */
+                                                                                                                      
 export async function readGsdChildBusy(repoPath: string): Promise<boolean> {
   return invoke<boolean>('read_gsd_child_busy', { repoPath })
 }
 
-/** Lê (e consome) `.planning/.gsd-child-error` — motivo curto quando TODA a cadeia de fallback de modelos da sessão-filha falhou. `null` = sem erro pendente. */
+                                                                                                                                                                 
 export async function readGsdChildError(repoPath: string): Promise<string | null> {
   return invoke<string | null>('read_gsd_child_error', { repoPath })
 }
 
+export type GsdChildState = {
+  sessionId: string | null
+  busy: boolean
+  error: string | null
+}
+
+export async function readGsdChildState(repoPath: string): Promise<GsdChildState> {
+  return invoke<GsdChildState>('read_gsd_child_state', { repoPath })
+}
+
 export type GsdProcedureStep = { description: string; category: string }
 
-/** Lê `.planning/procedure.json` — passos de teste estruturados registrados pela sessão-filha via tool dedicada (`gsd_record_step`), não texto solto de `plan.md`. Vira o checklist do "Briefing de Testes". */
+                                                                                                                                                                                                                
 export async function readGsdProcedure(repoPath: string): Promise<GsdProcedureStep[]> {
   return invoke<GsdProcedureStep[]>('read_gsd_procedure', { repoPath })
 }
@@ -230,7 +297,7 @@ export type SchedulerTask = {
   status: 'pending' | 'ready' | 'running' | 'completed' | 'failed' | 'blocked'
   assignedAgentId: string | null
   leaseResource: string | null
-  /** Caminho da worktree provisionada pra esta task, quando já rodando. */
+                                                                           
   worktreePath: string | null
   priority: number
 }

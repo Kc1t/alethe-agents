@@ -97,13 +97,12 @@ pub fn start_telemetry_watcher(app: AppHandle) {
                     // 3. Keep trace
                     add_trace(event);
                 }
-                // Canal (capacidade 1024) encheu antes deste receiver
+
                 // conseguir processar tudo — o `while let Ok(...)` original
-                // saía do loop PRA SEMPRE no primeiro Lagged, deixando
+
                 // Execution metrics/Recent event history (aba Multi-Agent &
-                // Telemetry) congelados pelo resto da vida do app mesmo com
+
                 // eventos reais continuando a acontecer. O receiver continua
-                // válido; só os eventos perdidos não entram na métrica/trace.
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                     eprintln!(
                         "[telemetry] receiver atrasado, {skipped} evento(s) perdido(s) — continuando"
@@ -169,7 +168,6 @@ mod tests {
         update_metrics(&payload2);
         add_trace(payload2.clone());
 
-        // Verifica métricas
         let metrics = get_telemetry_metrics().unwrap();
         assert_eq!(metrics.get("alethe_event_taskstarted").unwrap().count, 1);
         assert_eq!(metrics.get("alethe_event_taskfinished").unwrap().count, 1);

@@ -33,6 +33,19 @@ export async function writeTextFile(path: string, content: string): Promise<void
   await webApiFetch('/api/fs/write', { method: 'POST', body: JSON.stringify({ path, content }) })
 }
 
+export async function renameFilesystemEntry(path: string, newName: string): Promise<string> {
+  if (isTauriEnv()) return invoke<string>('rename_filesystem_entry', { path, newName })
+  return webApiFetch<string>('/api/fs/rename', {
+    method: 'POST',
+    body: JSON.stringify({ path, newName }),
+  })
+}
+
+export async function deleteFilesystemEntry(path: string): Promise<void> {
+  if (isTauriEnv()) return invoke('delete_filesystem_entry', { path })
+  await webApiFetch('/api/fs/delete', { method: 'POST', body: JSON.stringify({ path }) })
+}
+
 export async function ensureTodoTemplate(directory: string): Promise<string> {
   if (isTauriEnv()) return invoke<string>('ensure_todo_template', { directory })
   return webApiFetch<string>('/api/fs/todo_template', {

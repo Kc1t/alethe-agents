@@ -1,5 +1,8 @@
+import './bootstrap'
+
 import './styles/reset.css'
 import './styles/theme.css'
+import './styles/visual-clean.css'
 
 import React from 'react'
 import ReactDOM from 'react-dom/client'

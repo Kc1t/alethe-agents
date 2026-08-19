@@ -1,21 +1,14 @@
-//! RFC-004 — Graphify Integration (conhecimento do código).
 //!
-//! Três responsabilidades, todas tratando o Graphify como ferramenta EXTERNA
-//! (o Alethe gerencia/observa, não reimplementa):
+
 //!
-//! 1. **Integração MCP:** gera o arquivo de config MCP por projeto para injetar
-//!    o servidor do Graphify na sessão do agente (ver `graphify_mcp_config_path`
-//!    + a injeção `--mcp-config` no `buildAgentLaunch` do front).
-//! 2. **Leitura/normalização do grafo:** lê `graphify-out/graph.json` e o converte
+
 //!    para `{ nodes, edges }` prontos para o Cytoscape (parsing pesado no Rust,
-//!    com teto de nós para não matar a WebView).
+
 //! 3. **Versionamento + memory policy:** snapshot/list/diff/rollback de
 //!    `graphify-out/graph.json` em `<repo>/.alethe/graph-snapshots/`, e `prune`
-//!    (mantém os N mais novos / remove os mais velhos que X dias).
+
 //!
 //! O comando/args exatos do CLI do Graphify ainda dependem de pinar a fonte
-//! oficial (decisão em aberto no blueprint) — por isso ficam concentrados em
-//! `mcp_server_spec`, fáceis de ajustar.
 
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -28,11 +21,10 @@ use serde_json::Value;
 use crate::git_control::{hide_console, repository_root};
 use crate::provider_common::now_ms;
 
-/// Nome padrão do binário/skill do Graphify. Configurável a partir do front.
 const DEFAULT_COMMAND: &str = "graphify";
-/// Teto de nós enviados à viz — grafos enormes travam a WebView. Acima disso o
+
 /// resultado vem truncado (com a flag `truncated`), preservando os N primeiros
-/// nós e apenas as arestas cujos dois extremos sobreviveram.
+
 const MAX_VIZ_NODES: usize = 3000;
 
 const GRAPH_SUBDIR: &str = "graphify-out";
@@ -107,8 +99,6 @@ fn snapshots_dir(root: &Path) -> PathBuf {
     root.join(".alethe").join(SNAPSHOTS_SUBDIR)
 }
 
-/// Especificação do servidor MCP do Graphify. Ponto único a ajustar quando a
-/// fonte oficial for pinada (ver decisão em aberto no blueprint).
 fn mcp_server_spec(command: &str, root: &Path) -> Value {
     serde_json::json!({
         "command": command,
@@ -126,8 +116,6 @@ fn emit(event_type: &str, project_id: Option<String>, data: Value) {
     );
 }
 
-/// Repos com geração de grafo em andamento — trava o bootstrap para que só o
-/// PRIMEIRO terminal de agente dispare a geração; os demais só usam/adicionam.
 static GENERATING: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<PathBuf>>> =
     std::sync::OnceLock::new();
 
@@ -135,10 +123,6 @@ fn generating_set() -> &'static std::sync::Mutex<std::collections::HashSet<PathB
     GENERATING.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
 }
 
-/// Bootstrap único do grafo: se `graphify-out/graph.json` não existe, o primeiro
-/// chamador dispara a geração em background; chamadas concorrentes/subsequentes
-/// são no-op. Retornos: `exists` | `generating` | `started` | `unavailable`.
-// `repository_root`/`Command::new(...).output()` são chamadas de processo/SO
 // de verdade (git, probe do CLI do Graphify) — rodavam direto na thread de
 // despacho do Tauri, disparadas a CADA spawn de terminal claude/codex/opencode
 // em projetos com Graphify ligado (ver XTermView/index.tsx). Sob AV escaneando
@@ -221,7 +205,6 @@ pub async fn graphify_ensure_graph(
         .map_err(|error| format!("graphify_ensure_graph: falha na task bloqueante: {error}"))?
 }
 
-/// Detecta se o CLI do Graphify está disponível (`<cmd> --version`).
 fn graphify_detect_inner(command: Option<String>) -> Result<GraphifyStatus, String> {
     let cmd = command.unwrap_or_else(|| DEFAULT_COMMAND.to_string());
     let mut probe = Command::new(&cmd);
@@ -251,9 +234,6 @@ pub async fn graphify_detect(command: Option<String>) -> Result<GraphifyStatus, 
         .map_err(|error| format!("graphify_detect: falha na task bloqueante: {error}"))?
 }
 
-/// Escreve (idempotente por projeto) o `.mcp` que registra o servidor do
-/// Graphify e retorna o path. O front injeta via `--mcp-config <path>` no launch
-/// do agente, sem tocar no `.claude/` do repo do usuário.
 fn graphify_mcp_config_path_inner(repo: String, command: Option<String>) -> Result<String, String> {
     let root = repository_root(&repo)?;
     let cmd = command.unwrap_or_else(|| DEFAULT_COMMAND.to_string());
@@ -280,25 +260,14 @@ pub async fn graphify_mcp_config_path(
         .map_err(|error| format!("graphify_mcp_config_path: falha na task bloqueante: {error}"))?
 }
 
-/// Codex e OpenCode não têm um equivalente ao `--mcp-config <path>` do Claude —
-/// cada um lê MCP de um arquivo de config AMBIENTE no próprio diretório do
-/// projeto, então a "injeção" pra eles é escrever/mesclar esse arquivo antes do
-/// spawn, não passar uma flag. Fontes verificadas (não são um formato
-/// inventado): OpenCode usa `opencode.json` no root do projeto com um objeto
 /// `mcp` (schema em https://opencode.ai/docs/config/ e
 /// https://opencode.ai/docs/mcp-servers/); Codex usa `.codex/config.toml` no
-/// root do projeto (**só em "trusted projects"** — se o Codex nunca rodou
-/// nesse diretório e o usuário nunca confirmou confiança, pode ignorar esse
-/// arquivo; isso é uma limitação conhecida, não um bug daqui) com tabelas
+
 /// `[mcp_servers.<nome>]` (schema em
 /// https://developers.openai.com/codex/config-schema.json).
 
-/// Mescla (sem sobrescrever outras chaves) a entrada `mcp.graphify` em
-/// `<repo>/opencode.json`. Best-effort: chamado no spawn, nunca deve bloquear.
 ///
-/// Separado em `_inner` (síncrono) porque `projects.rs`/`worktrees.rs` chamam
-/// isso direto, de dentro do próprio `spawn_blocking` de quem está isolando o
-/// agente — nesse contexto não tem como (nem faz sentido) `.await` um segundo
+
 /// `spawn_blocking`.
 pub(crate) fn graphify_opencode_config_write_inner(
     repo: String,
@@ -356,12 +325,6 @@ pub async fn graphify_opencode_config_write(
         })?
 }
 
-/// Mescla (sem sobrescrever outras chaves) a tabela `[mcp_servers.graphify]`
-/// em `<repo>/.codex/config.toml`. Implementação manual de merge TOML (sem
-/// depender de reserializar o arquivo inteiro com uma crate de TOML, que
-/// perderia comentários/formatação do usuário): remove só o bloco
-/// `[mcp_servers.graphify]` pré-existente (se houver, delimitado até a
-/// próxima linha `[...]` ou EOF) e acrescenta o bloco atualizado no fim.
 fn graphify_codex_config_write_inner(repo: String, command: Option<String>) -> Result<(), String> {
     let root = repository_root(&repo)?;
     let cmd = command.unwrap_or_else(|| DEFAULT_COMMAND.to_string());
@@ -394,10 +357,7 @@ fn graphify_codex_config_write_inner(repo: String, command: Option<String>) -> R
     if !body.is_empty() && !body.ends_with('\n') {
         body.push('\n');
     }
-    // Escapa para string básica TOML: contrabarra e aspas (nessa ordem). Sem
-    // isso, um `command`/path do Windows (ex.: C:\Users\..\graphify.exe) vira
-    // escape TOML inválido (\U, \g) e corrompe TODO o config.toml do usuário —
-    // não só o bloco do graphify.
+
     let toml_escape = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
     let cmd_toml = toml_escape(&cmd);
     let args_toml = format!("\"{}\", \"--mcp\"", toml_escape(&root.to_string_lossy()));
@@ -433,8 +393,6 @@ fn first_str<'a>(obj: &'a serde_json::Map<String, Value>, keys: &[&str]) -> Opti
         .find_map(|k| obj.get(*k).and_then(|v| v.as_str()))
 }
 
-/// Lê e normaliza `graphify-out/graph.json`. Tolera formatos NetworkX
-/// (`nodes`/`links`) e variações (`edges`), inferindo label/kind/group de vários
 /// nomes de campo comuns.
 fn graphify_read_graph_inner(repo: String) -> Result<GraphData, String> {
     let root = repository_root(&repo)?;
@@ -495,8 +453,7 @@ fn graphify_read_graph_inner(repo: String) -> Result<GraphData, String> {
         ) else {
             continue;
         };
-        // Descarta arestas que apontam para nós truncados, senão o Cytoscape
-        // lança ("edge with nonexistant source/target").
+
         if !kept_ids.contains(&source) || !kept_ids.contains(&target) {
             continue;
         }
@@ -653,7 +610,6 @@ fn id_sets(
 }
 
 fn snapshot_file(root: &Path, id: &str) -> Result<PathBuf, String> {
-    // `id` vem do nome do snapshot (timestamp). Valida que é numérico para não
     // permitir path traversal via id forjado.
     if id.is_empty() || !id.chars().all(|c| c.is_ascii_digit()) {
         return Err("invalid_snapshot_id".to_string());
@@ -665,7 +621,6 @@ fn snapshot_file(root: &Path, id: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-/// Diff entre um snapshot e o grafo atual (default) ou outro snapshot.
 fn graphify_diff_snapshot_inner(
     repo: String,
     base_id: String,
@@ -730,9 +685,6 @@ pub async fn graphify_rollback(
         .map_err(|error| format!("graphify_rollback: falha na task bloqueante: {error}"))?
 }
 
-/// Memory policy: mantém os `keep_last` snapshots mais novos e remove os mais
-/// velhos que `max_age_days` (se informado). Evita o grafo/snapshots crescerem
-/// sem limite em projetos longos.
 fn graphify_prune_snapshots_inner(
     repo: String,
     keep_last: usize,
@@ -740,7 +692,7 @@ fn graphify_prune_snapshots_inner(
     project_id: Option<String>,
 ) -> Result<usize, String> {
     let root = repository_root(&repo)?;
-    let snapshots = read_snapshots(&root)?; // já ordenado do mais novo pro mais velho
+    let snapshots = read_snapshots(&root)?;
     let now = now_ms();
     let max_age_ms = max_age_days.map(|d| d.saturating_mul(24 * 60 * 60 * 1000));
     let mut removed = 0usize;
@@ -784,9 +736,7 @@ pub async fn graphify_prune_snapshots(
 #[cfg(test)]
 mod tests {
     use super::*;
-    // Testes chamam a lógica direto (síncrona), sem passar pelo wrapper
-    // `#[tauri::command] async fn` + `spawn_blocking` — mesmo padrão já usado
-    // em `worktrees.rs`/`conflict_resolution.rs`.
+
     use super::graphify_codex_config_write_inner as graphify_codex_config_write;
     use super::graphify_diff_snapshot_inner as graphify_diff_snapshot;
     use super::graphify_ensure_graph_inner as graphify_ensure_graph;
@@ -833,7 +783,7 @@ mod tests {
         assert_eq!(data.nodes.len(), 3);
         assert_eq!(data.edges.len(), 2);
         assert!(!data.truncated);
-        // label cai pro id quando não há label/name/title.
+
         let c = data.nodes.iter().find(|n| n.id == "c").unwrap();
         assert_eq!(c.label, "c");
         let a = data.nodes.iter().find(|n| n.id == "a").unwrap();
@@ -850,7 +800,6 @@ mod tests {
         assert!(snap.size_bytes > 0);
         assert_eq!(graphify_list_snapshots(root_str.clone()).unwrap().len(), 1);
 
-        // Altera o grafo atual (remove um nó) e confere o diff vs snapshot.
         let out = root.join(GRAPH_SUBDIR).join(GRAPH_FILE);
         let smaller = serde_json::json!({
             "nodes": [ { "id": "a" }, { "id": "b" } ],
@@ -861,7 +810,6 @@ mod tests {
         assert_eq!(diff.nodes_removed, 1); // 'c' sumiu
         assert_eq!(diff.edges_removed, 1);
 
-        // Rollback restaura o grafo de 3 nós.
         graphify_rollback(root_str.clone(), snap.id.clone(), None).unwrap();
         assert_eq!(graphify_read_graph(root_str.clone()).unwrap().node_count, 3);
 
@@ -875,13 +823,10 @@ mod tests {
 
     #[test]
     fn ensure_graph_bootstrap_states() {
-        // Com graph.json presente → "exists" (ninguém re-gera).
         let root = temp_repo_with_graph();
         let root_str = root.to_string_lossy().into_owned();
         assert_eq!(graphify_ensure_graph(root_str, None).unwrap(), "exists");
 
-        // Sem grafo + repo marcado como em geração → "generating" (lock vence
-        // antes do probe do CLI — segundo terminal nunca re-gera).
         let bare = std::env::temp_dir().join(format!("alethe-graphify-lock-{}", nanoid!(6)));
         fs::create_dir_all(&bare).unwrap();
         let run = |args: &[&str]| checked_output(&bare, args).unwrap();
@@ -895,7 +840,6 @@ mod tests {
         );
         generating_set().lock().unwrap().remove(&canon);
 
-        // Sem grafo, sem lock e sem CLI instalado → "unavailable" (no-op).
         let status = graphify_ensure_graph(
             bare_str,
             Some("alethe-nonexistent-graphify-cli".to_string()),
@@ -929,7 +873,6 @@ mod tests {
         assert_eq!(parsed["mcp"]["graphify"]["command"][0], "graphify");
         assert_eq!(parsed["mcp"]["graphify"]["enabled"], true);
 
-        // Config pré-existente com outras chaves do usuário — precisa sobreviver.
         fs::write(&path, r#"{"model": "anthropic/claude-sonnet-4-5", "mcp": {"other": {"type": "local", "command": ["x"]}}}"#).unwrap();
         graphify_opencode_config_write(root_str, None).unwrap();
         let merged: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
@@ -945,7 +888,6 @@ mod tests {
         let root = temp_repo_with_graph();
         let root_str = root.to_string_lossy().into_owned();
 
-        // Config pré-existente do usuário com outro servidor MCP e uma chave solta.
         let codex_dir = root.join(".codex");
         fs::create_dir_all(&codex_dir).unwrap();
         fs::write(
@@ -968,7 +910,6 @@ mod tests {
         assert!(body.contains("[mcp_servers.graphify]"));
         assert!(body.contains("command = \"graphify\""));
 
-        // Rodar de novo não deve duplicar o bloco graphify.
         graphify_codex_config_write(root_str, None).unwrap();
         let body2 = fs::read_to_string(codex_dir.join("config.toml")).unwrap();
         assert_eq!(body2.matches("[mcp_servers.graphify]").count(), 1);

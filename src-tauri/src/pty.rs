@@ -19,44 +19,23 @@ use crate::pty_sink::{PtyOutputSink, TauriSink};
 
 pub const SCROLLBACK_CAP_BYTES: usize = 4 * 1024 * 1024;
 pub const SCROLLBACK_FLUSH_INTERVAL_MS: u128 = 250;
-/// Acima disso o `.bin` (append-only) é compactado pra cauda de
+
 /// `SCROLLBACK_CAP_BYTES`. 2× o cap = ~2× de write-amplification amortizada
-/// sobre a saída real, e no máximo ~8 MB por terminal em disco.
+
 pub const SCROLLBACK_COMPACT_BYTES: u64 = SCROLLBACK_CAP_BYTES as u64 * 2;
-/// Cadência do canal `pty://activity/{id}` enquanto o painel está invisível —
-/// baixa o suficiente pra não pesar na main thread do webview, alta o
-/// suficiente pra `AgentCompletionMonitor` (RESPONSE_IDLE_MS=4500 no frontend)
-/// detectar "agente terminou" com folga mesmo em background.
+
 pub const PTY_ACTIVITY_EMIT_INTERVAL_MS: u128 = 450;
 const TEARDOWN_NORMAL: u8 = 0;
 const TEARDOWN_KILLED: u8 = 1;
 const TEARDOWN_SUSPENDED: u8 = 2;
 const TEARDOWN_RESTARTED: u8 = 3;
 
-/// RAM livre mínima (do SISTEMA, não só do que o Alethe gerencia) exigida
-/// antes de tentar o boot de um agente novo. Sem isso, um boot com o sistema
-/// já no limite deixa o PRÓPRIO processo do agente (Node/WebKit/etc.) nascer
-/// sem memória suficiente e se matar sozinho assim que tenta alocar (visto ao
-/// vivo: crash "MemoryExhaustion" do JavaScriptCore) — algo que o Alethe não
-/// tem como evitar DEPOIS que o processo já nasceu, porque não controla o
-/// alocador interno dele. O `ResourceSupervisor` (resources.rs) só enxerga a
-/// memória dos processos que o próprio Alethe já gerencia, não a RAM livre
-/// real do Windows — por isso esse gate é separado e roda sempre, mesmo com o
 /// supervisor no modo manual.
 const SPAWN_MIN_AVAILABLE_MB: f64 = 400.0;
 const SPAWN_MEMORY_WAIT_POLL_MS: u64 = 1_000;
-/// Teto de espera: depois disso tenta o boot mesmo sem folga confirmada — é
-/// melhor arriscar um crash raro do que travar o usuário pra sempre esperando
-/// uma liberação de RAM que pode nunca vir (ex.: outro processo com vazamento
-/// real, não uma pressão passageira).
+
 const SPAWN_MEMORY_WAIT_MAX_MS: u128 = 45_000;
 
-/// Espera a RAM livre do sistema ter uma folga mínima antes de deixar o
-/// chamador prosseguir com o boot real do processo. Depois que o agente já
-/// nasceu com folga, o consumo contínuo dele é responsabilidade do próprio
-/// provider (Claude/Codex/OpenCode já gerenciam sua própria memória em
-/// runtime) — este gate protege só o MOMENTO do boot, nunca o funcionamento
-/// depois.
 fn wait_for_spawnable_memory() {
     let started = Instant::now();
     loop {
@@ -71,21 +50,8 @@ fn wait_for_spawnable_memory() {
     }
 }
 
-// DESATIVADO (não removido, pra não perder o raciocínio): a ideia original
-// era um "colchão" de RAM que o Alethe ia comprometendo aos poucos em segundo
-// plano (só quando sobrava RAM FÍSICA livre) e soltava bem antes de cada
-// boot, pra aumentar a chance da memória recém-liberada ir pro processo
-// novo. Descartada depois de um crash real ao vivo: `sysinfo::available_memory()`
-// só enxerga RAM física livre, nunca o LIMITE DE COMMIT do Windows (RAM +
-// paginação somados) — e nesse teste o commit já estava em 39.7 de 45.5 GB
 // (~5.8 GB de folga) enquanto a RAM "livre" parecia OK. Comprometer de
-// propósito até 400 MB extras num sistema já perto do limite de commit é
-// exatamente o tipo de coisa que pode estourar esse limite e causar um crash
-// pior do que o que o mecanismo tentava evitar — o oposto da intenção. Uma
-// versão futura precisaria checar o commit real (`GetPerformanceInfo` do
-// Windows, via a crate `windows`) antes de comprometer qualquer coisa, não
-// só a RAM física. Até lá, `wait_for_spawnable_memory` sozinha é a escolha
-// seguro: só LÊ o estado, nunca aloca nada de propósito.
+
 fn prepare_memory_for_boot() {
     wait_for_spawnable_memory();
 }
@@ -95,9 +61,7 @@ pub struct ScrollbackBuffer {
     pub cursor: u64,
     pub last_flush: Instant,
     pub dirty: bool,
-    /// Bytes novos ainda não escritos em disco. O flush faz APPEND só disto —
-    /// não reescreve os 4 MB do anel. Sem isso, um spinner (poucos bytes/s)
-    /// forçava um rewrite de 4 MB a cada 250ms (~16 MB/s por terminal ativo).
+
     pub pending: Vec<u8>,
 }
 
@@ -114,9 +78,8 @@ impl ScrollbackBuffer {
     }
 }
 
-/// Quantos bytes do início de `buf` formam UTF-8 válido. O resto (0–3 bytes) é
 /// a cauda de um caractere multibyte que o `read()` do PTY partiu no limite do
-/// buffer — esses bytes esperam a próxima leitura pra não virarem `�`.
+
 fn valid_utf8_prefix_len(buf: &[u8]) -> usize {
     match std::str::from_utf8(buf) {
         Ok(s) => s.len(),
@@ -124,12 +87,6 @@ fn valid_utf8_prefix_len(buf: &[u8]) -> usize {
     }
 }
 
-/// Avança `start` até o próximo byte que inicia um caractere UTF-8 (ou até o
-/// fim do slice), evitando cortar no meio de uma sequência multibyte quando
-/// `start` foi escolhido só por contagem de bytes (ex.: truncar scrollback
-/// pelos últimos N bytes em `attach_pty`). Bytes de continuação UTF-8 sempre
-/// têm os dois bits mais altos como `10`; sem isso, um corte no meio de um
-/// acento (ex.: "ã" = 2 bytes) sobra um byte órfão que vira `U+FFFD` no
 /// `from_utf8_lossy` seguinte.
 pub(crate) fn align_to_char_boundary(slice: &[u8], start: usize) -> usize {
     let mut start = start.min(slice.len());
@@ -181,17 +138,11 @@ pub(crate) fn align_to_ansi_resync_point(slice: &[u8], start: usize) -> usize {
 
 /// `ALETHE_PTY_DEBUG=1` liga uma timeline de timestamps (spawn → primeiro
 /// output real → resize → nudge de redesenho) em `spawn.log`, pro
-/// procedimento de diagnóstico da área principal do OpenCode renderizando
-/// em branco (ver docs/CHANGELOG.md e o plano de investigação). Mesmo
-/// padrão de `ALETHE_E2E`/`ALETHE_GHOSTTY_PROBE` já usado no projeto — sem
-/// a variável, zero custo extra (só a checagem do env var).
+
 fn pty_debug_enabled() -> bool {
     std::env::var("ALETHE_PTY_DEBUG").as_deref() == Ok("1")
 }
 
-/// Decide se o canal `pty://activity/{id}` (painel invisível) já pode emitir
-/// de novo. `None` = nunca emitiu ainda (primeiro lote invisível passa na
-/// hora, sem esperar o intervalo).
 fn activity_emit_due(last_activity_emit: Option<Instant>, interval_ms: u128) -> bool {
     match last_activity_emit {
         None => true,
@@ -223,19 +174,14 @@ pub struct PtySession {
     pub writer: Arc<Mutex<Box<dyn Write + Send>>>,
     pub child: Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>,
     pub scrollback: Arc<Mutex<ScrollbackBuffer>>,
-    /// Sinaliza que o reader terminou de persistir a cauda final. Suspensão
-    /// espera esta barreira antes de permitir que o mesmo id seja retomado.
+
     pub reader_done: Arc<(Mutex<Option<bool>>, Condvar)>,
     /// Motivo do teardown. Kill/restart pulam o flush final; suspend espera o
-    /// flush final do reader antes de permitir a retomada do mesmo `ptyId`.
     pub teardown: Arc<AtomicU8>,
     pub command: Option<String>,
     pub cwd: Option<String>,
     pub read_active: Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>,
-    /// Visibilidade lógica do painel no frontend (aba/grupo ativo, não
-    /// colapsado). NÃO pausa a leitura do PTY (isso travaria o `write()` do
-    /// agente) — só decide se o coalescer manda o lote pro canal `data`
-    /// (render caro) ou pro `activity` (throttlado, só recordIo/completion).
+
     pub visible: Arc<AtomicBool>,
     /// Timestamp (ms) do último nudge de redesenho (Ctrl+L) mandado pro
     /// processo, disparado tanto no boot (primeiro output real do processo)
@@ -319,9 +265,6 @@ pub fn global_pty_sessions() -> &'static PtySessions {
 #[cfg(windows)]
 static PTY_JOB_HANDLE: OnceLock<isize> = OnceLock::new();
 
-/// Coordena somente spawns do MESMO id. O mutex de `PtySessions` não pode
-/// permanecer travado durante `openpty`/resolução/spawn do processo: isso
-/// serializava todos os terminais apesar da fila do frontend permitir paralelismo.
 static SPAWN_COORDINATOR: OnceLock<(Mutex<HashSet<String>>, Condvar)> = OnceLock::new();
 
 struct SpawnReservation {
@@ -784,9 +727,9 @@ pub async fn spawn_pty_core(
             const ACTIVITY_PENDING_CAP: usize = 256 * 1024;
 
             let mut emit_data_or_activity = |text: &str, cursor: u64| {
-                remote_hub.publish(
-                    serde_json::json!({ "type": "pty_output", "ptyId": &scrollback_id, "text": text }),
-                );
+                remote_hub.publish(&scrollback_id, || {
+                    serde_json::json!({ "type": "pty_output", "ptyId": &scrollback_id, "text": text })
+                });
                 if thread_visible.load(Ordering::Relaxed) {
                     if !activity_pending.is_empty() {
                         activity_pending.clear();
@@ -923,7 +866,9 @@ pub async fn spawn_pty_core(
             if !carry.is_empty() {
                 let lossy = String::from_utf8_lossy(&carry).into_owned();
                 thread_sink.emit_data(&scrollback_id, lossy.as_str(), last_cursor);
-                remote_hub.publish(serde_json::json!({ "type": "pty_output", "ptyId": &scrollback_id, "text": lossy }));
+                remote_hub.publish(&scrollback_id, || {
+                    serde_json::json!({ "type": "pty_output", "ptyId": &scrollback_id, "text": lossy })
+                });
             }
 
             let teardown_reason = thread_teardown.load(Ordering::SeqCst);
@@ -973,7 +918,9 @@ pub async fn spawn_pty_core(
                 _ => "exited",
             };
             thread_sink.emit_exit(&scrollback_id, &PtyExitPayload { code, reason });
-            remote_hub.publish(serde_json::json!({ "type": "pty_exit", "ptyId": &scrollback_id, "reason": reason }));
+            remote_hub.publish(&scrollback_id, || {
+                serde_json::json!({ "type": "pty_exit", "ptyId": &scrollback_id, "reason": reason })
+            });
 
             if let Some(pid) = child_pid {
                 if let Ok(mut sessions) = thread_sessions.lock() {
@@ -1274,6 +1221,51 @@ pub async fn attach_pty(
     let (profile_id, sb_path, _) = resolve_pty_profile_paths(&app, Some(&profile_id), &id)?;
     ensure_pty_owner(&sessions, &id, &profile_id, &sb_path)?;
     attach_pty_core(&sessions, &sb_path, &id, max_bytes.unwrap_or(512 * 1024)).await
+}
+
+#[tauri::command]
+pub async fn clear_pty_scrollback(
+    app: AppHandle,
+    sessions: State<'_, PtySessions>,
+    id: String,
+) -> Result<(), String> {
+    let (scrollback, sb_path) = {
+        let sessions = sessions
+            .lock()
+            .map_err(|_| "PTY sessions lock poisoned".to_string())?;
+        match sessions.get(&id) {
+            Some(session) => (
+                Arc::clone(&session.scrollback),
+                session.scrollback_path.clone(),
+            ),
+            None => return Ok(()),
+        }
+    };
+    let _ = &app;
+
+    tokio::task::spawn_blocking(move || {
+        let mut buffer = scrollback
+            .lock()
+            .map_err(|_| "PTY scrollback lock poisoned".to_string())?;
+        reset_scrollback_buffer(&mut buffer);
+        scrollback_writer()
+            .send(ScrollbackWrite::Overwrite {
+                path: sb_path,
+                bytes: Vec::new(),
+            })
+            .map_err(|_| "scrollback writer unavailable".to_string())?;
+        drop(buffer);
+        wait_for_scrollback_writer()
+    })
+    .await
+    .map_err(|error| format!("clear_pty_scrollback task failed: {error}"))?
+}
+
+fn reset_scrollback_buffer(buffer: &mut ScrollbackBuffer) {
+    buffer.data.clear();
+    buffer.pending.clear();
+    buffer.dirty = false;
+    buffer.last_flush = Instant::now();
 }
 
 pub async fn write_pty_core(
@@ -1878,21 +1870,14 @@ pub fn load_scrollback(path: &Path) -> Result<VecDeque<u8>, String> {
     Ok(data.into())
 }
 
-/// Writer global de scrollback: uma única thread em background recebe
-/// `(path, bytes)` e escreve. Evita spawnar uma thread a cada flush (250ms por
-/// PTY ativo). Vive pela vida do processo — sem teardown por PTY, sem vazar thread.
 enum ScrollbackWrite {
-    /// Anexa `bytes` ao fim do `.bin` (cria se não existir). Compacta pra cauda
-    /// de `SCROLLBACK_CAP_BYTES` se o arquivo passar de `SCROLLBACK_COMPACT_BYTES`.
     Append { path: PathBuf, bytes: Vec<u8> },
-    /// Reescreve o arquivo inteiro (usado no teardown do PTY, uma vez).
+
     Overwrite { path: PathBuf, bytes: Vec<u8> },
-    /// Confirma que todos os appends/overwrites anteriores já chegaram ao disco.
+
     Barrier(std::sync::mpsc::Sender<()>),
 }
 
-/// Anexa e, se o arquivo cresceu além do limite, compacta pra cauda do cap.
-/// Compactar é raro (a cada ~4 MB de saída), então o custo é amortizado.
 fn append_and_maybe_compact(path: &Path, bytes: &[u8]) {
     let mut file = match fs::OpenOptions::new().create(true).append(true).open(path) {
         Ok(file) => file,
@@ -1913,9 +1898,6 @@ fn append_and_maybe_compact(path: &Path, bytes: &[u8]) {
     }
 }
 
-/// Writer global de scrollback: uma única thread em background recebe comandos
-/// e escreve. Evita spawnar uma thread a cada flush (250ms por PTY ativo).
-/// Vive pela vida do processo — sem teardown por PTY, sem vazar thread.
 fn scrollback_writer() -> &'static std::sync::mpsc::Sender<ScrollbackWrite> {
     static WRITER: std::sync::OnceLock<std::sync::mpsc::Sender<ScrollbackWrite>> =
         std::sync::OnceLock::new();
@@ -1972,8 +1954,7 @@ pub fn push_scrollback(
         let excess = buffer.data.len() - SCROLLBACK_CAP_BYTES;
         buffer.data.drain(..excess);
     }
-    // Acumula SÓ os bytes novos pro append. O anel em memória (`data`) continua
-    // servindo o getScrollback; o disco recebe só o delta, não os 4 MB inteiros.
+
     buffer.pending.extend_from_slice(data);
     buffer.dirty = true;
 
@@ -2015,16 +1996,13 @@ pub fn flush_scrollback(
     if !buffer.dirty {
         return Ok(());
     }
-    // No teardown reescrevemos o anel inteiro (capado a 4 MB) — é a compactação
-    // final do arquivo. `data` já inclui o que estava em `pending`.
+
     let bytes = buffer.data.iter().copied().collect::<Vec<_>>();
     buffer.pending.clear();
     buffer.last_flush = Instant::now();
     buffer.dirty = false;
     drop(buffer);
 
-    // Via o writer global pra manter ordem FIFO com Appends ainda na fila —
-    // senão um Append pendente poderia sobrescrever este Overwrite e duplicar
     // a cauda no disco.
     let path_buf = path.to_path_buf();
     let _ = scrollback_writer().send(ScrollbackWrite::Overwrite {
@@ -2078,7 +2056,9 @@ pub fn cleanup_orphan_scrollback(app: &AppHandle) {
     cleanup_orphan_scrollback_dir(&dir, &projects_text);
 }
 
-pub fn kill_all_sessions(sessions: &PtySessions) {
+/// Removes every session from shared state immediately and terminates process trees off the event
+/// loop, so a slow Windows `taskkill` cannot make the application appear frozen while closing.
+pub fn kill_all_sessions_background(sessions: &PtySessions) {
     let drained = sessions
         .lock()
         .ok()
@@ -2090,35 +2070,46 @@ pub fn kill_all_sessions(sessions: &PtySessions) {
         })
         .unwrap_or_default();
 
+    if drained.is_empty() {
+        return;
+    }
+
+    let _ = std::thread::Builder::new()
+        .name("alethe-pty-shutdown".to_string())
+        .spawn(move || {
+            for session in drained {
+                terminate_session(session);
+            }
+        });
+}
+
+/// Synchronous variant for callers (e.g. the standalone `alethe-server`
+/// shutdown path) that need every session torn down before returning,
+/// rather than off-thread.
+pub fn kill_all_sessions(sessions: &PtySessions) {
+    let drained = sessions
+        .lock()
+        .ok()
+        .map(|mut sessions| {
+            sessions
+                .drain()
+                .map(|(_, session)| session)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     for session in drained {
         terminate_session(session);
     }
 }
 
-/// Resultado da instalação do Job Object — lido por `crash_watch.rs` (grava
-/// no heartbeat, pra ficar registrado se um crash acontecer depois) e por um
-/// comando Tauri de diagnóstico. Sem isso, uma falha de `install_kill_on_close_guard`
-/// era 100% silenciosa: ninguém saberia que a rede de segurança contra
-/// terminais órfãos estava inativa naquela sessão até órfãos aparecerem.
 static JOB_GUARD_ACTIVE: OnceLock<bool> = OnceLock::new();
 
-/// Status da rede de segurança (Job Object) desta sessão. `false` antes de
-/// `install_kill_on_close_guard` rodar (só acontece bem cedo no boot) ou em
-/// qualquer plataforma não-Windows.
 pub fn job_guard_active() -> bool {
     JOB_GUARD_ACTIVE.get().copied().unwrap_or(false)
 }
 
-/// Rede de segurança no Windows contra terminais órfãos. Cria um Job Object com
-/// KILL_ON_JOB_CLOSE e assigna o PRÓPRIO processo do app; todos os shells ConPTY
 /// e seus descendentes (node/claude/codex/MCP) herdam o job. Enquanto o app vive,
-/// o handle do job fica aberto; quando o app morre por QUALQUER via — fechar
-/// normal, crash ou kill forçado (onde `RunEvent::Exit` NÃO roda) — o SO fecha o
-/// handle e mata a árvore inteira. Complementa (não substitui) `kill_all_sessions`.
-/// Deve ser chamado bem cedo no boot, antes de qualquer spawn. Se o SO recusar
-/// em qualquer etapa, não há regressão (comportamento igual a antes desta rede
-/// existir) — mas agora fica registrado em `JOB_GUARD_ACTIVE`/stderr em vez de
-/// falhar 100% em silêncio.
+
 #[cfg(windows)]
 pub fn install_kill_on_close_guard() {
     use std::mem::{size_of, zeroed};
@@ -2131,9 +2122,6 @@ pub fn install_kill_on_close_guard() {
     use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
     let active = unsafe {
-        // `lpJobAttributes = null` já cria o handle como NÃO herdável por
-        // padrão (SECURITY_ATTRIBUTES.bInheritHandle implícito = FALSE) — não
-        // precisa de SetHandleInformation extra pra isso.
         let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
         if job.is_null() {
             eprintln!("[pty] install_kill_on_close_guard: CreateJobObjectW falhou (GetLastError não capturado)");
@@ -2152,15 +2140,11 @@ pub fn install_kill_on_close_guard() {
                 let _ = CloseHandle(job);
                 false
             } else if AssignProcessToJobObject(job, GetCurrentProcess()) != 0 {
-                // Mantém o handle num OnceLock estático. Além de documentar a
-                // posse do recurso, isso impede que uma refatoração futura
                 // feche o Job Object cedo demais e elimine os terminais
-                // enquanto o app ainda está vivo.
+
                 let _ = PTY_JOB_HANDLE.set(job as isize);
                 true
             } else {
-                // Se o Windows recusar a associação (por exemplo, uma
-                // política de jobs aninhados), não deixe um handle inválido
                 // vazando.
                 eprintln!(
                     "[pty] install_kill_on_close_guard: AssignProcessToJobObject falhou — \
@@ -2244,9 +2228,23 @@ mod tests {
     }
 
     #[test]
+    fn clearing_a_full_scrollback_releases_all_buffered_content() {
+        let initial = VecDeque::from(vec![b'x'; SCROLLBACK_CAP_BYTES]);
+        let mut buffer = ScrollbackBuffer::new(initial);
+        buffer.pending = vec![b'y'; 256 * 1024];
+        buffer.dirty = true;
+
+        reset_scrollback_buffer(&mut buffer);
+
+        assert!(buffer.data.is_empty());
+        assert!(buffer.pending.is_empty());
+        assert!(!buffer.dirty);
+    }
+
+    #[test]
     fn valid_utf8_prefix_passes_complete_ascii_and_multibyte() {
         assert_eq!(valid_utf8_prefix_len(b"hello"), 5);
-        // "café" — o "é" são 2 bytes (0xC3 0xA9), todos presentes.
+
         let cafe = "café".as_bytes();
         assert_eq!(valid_utf8_prefix_len(cafe), cafe.len());
         // Box-drawing "─" (3 bytes) completo.
@@ -2256,11 +2254,10 @@ mod tests {
 
     #[test]
     fn valid_utf8_prefix_stops_before_split_multibyte() {
-        // Primeiro byte de "é" sozinho (read partiu aqui) → 0 bytes válidos.
         assert_eq!(valid_utf8_prefix_len(&[0xC3]), 0);
-        // "a" + primeiro byte de "é" → só o "a" é válido.
+
         assert_eq!(valid_utf8_prefix_len(&[b'a', 0xC3]), 1);
-        // Emoji 😀 (4 bytes) com só os 2 primeiros → 0 válidos.
+
         let grin = "😀".as_bytes();
         assert_eq!(valid_utf8_prefix_len(&grin[..2]), 0);
     }
@@ -2324,7 +2321,6 @@ mod tests {
 
     #[test]
     fn valid_utf8_prefix_carry_reassembles_split_char() {
-        // Simula o split: "x" + "é" partido entre dois reads.
         let full = "xé".as_bytes(); // [b'x', 0xC3, 0xA9]
         let first = &full[..2]; // "x" + 0xC3
         let valid = valid_utf8_prefix_len(first);
@@ -2332,6 +2328,6 @@ mod tests {
                               // carry = [0xC3]; chega o resto do próximo read.
         let mut carry = first[valid..].to_vec();
         carry.extend_from_slice(&full[2..]); // + 0xA9
-        assert_eq!(valid_utf8_prefix_len(&carry), carry.len()); // "é" completo
+        assert_eq!(valid_utf8_prefix_len(&carry), carry.len());
     }
 }

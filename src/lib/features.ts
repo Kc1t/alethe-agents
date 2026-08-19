@@ -7,7 +7,7 @@ export type FeatureDefinition = {
   descriptionKey: MessageKey
 }
 
-/** Fonte única dos módulos expostos no onboarding e nas Preferências. */
+                                                                         
 export const FEATURES: readonly FeatureDefinition[] = [
   {
     id: 'todos',
@@ -29,6 +29,11 @@ export const FEATURES: readonly FeatureDefinition[] = [
     titleKey: 'features.graphify.title',
     descriptionKey: 'features.graphify.description',
   },
+  {
+    id: 'mcp',
+    titleKey: 'features.mcp.title',
+    descriptionKey: 'features.mcp.description',
+  },
 ]
 
 type StoredFeaturePreferences = {
@@ -36,7 +41,7 @@ type StoredFeaturePreferences = {
   showGitControl?: boolean
 }
 
-/** Defaults novos e compatibilidade com perfis criados antes do sistema modular. */
+                                                                                    
 export function normalizeEnabledFeatures(
   raw: StoredFeaturePreferences | undefined,
 ): Record<FeatureId, boolean> {
@@ -46,7 +51,8 @@ export function normalizeEnabledFeatures(
       git: raw.enabledFeatures.git ?? true,
       browser: raw.enabledFeatures.browser ?? true,
       graphify: raw.enabledFeatures.graphify ?? true,
-      // Opt-in explícito: nunca liga sem consentimento, mesmo em perfis já modulares.
+      mcp: raw.enabledFeatures.mcp ?? true,
+                                                                                      
       aiMemory: raw.enabledFeatures.aiMemory ?? false,
     }
   }
@@ -56,5 +62,6 @@ export function normalizeEnabledFeatures(
     browser: true,
     graphify: true,
     aiMemory: false,
+    mcp: true,
   }
 }

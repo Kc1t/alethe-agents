@@ -39,8 +39,8 @@ describe('planCliOpen', () => {
     })
   })
 
-  // Regressão do bug mais provável da feature: sem normalização, cada `alethe .`
-  // no Windows criaria um projeto novo pra mesma pasta.
+                                                                                 
+                                                        
   it('casa a pasta no Windows ignorando caixa e separador', () => {
     expect(planCliOpen('C:/Users/Example/App', [project('a', 'C:\\Users\\example\\app')])).toEqual({
       kind: 'existing',

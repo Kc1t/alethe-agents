@@ -1,27 +1,27 @@
 import { Bot, GitBranch, GitMerge, Palette } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { GROUP_COLORS, type AgentType } from '../../lib/types'
 import { useT } from '../../lib/i18n'
-import { getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
-import { useUiStore } from '../../stores/uiStore'
-import { useMergeStore } from '../../stores/mergeStore'
 import {
   detectProjectStack,
+  gitListBranches,
+  startGsdWatcher,
+  stopGsdWatcher,
   worktreeList,
   worktreeProvision,
   worktreeRemove,
-  startGsdWatcher,
-  stopGsdWatcher,
-  gitListBranches,
 } from '../../lib/tauri'
+import { type AgentType, GROUP_COLORS } from '../../lib/types'
+import { getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
+import { useMergeStore } from '../../stores/mergeStore'
+import { useUiStore } from '../../stores/uiStore'
+import { Dropdown } from '../ui/Dropdown'
 import { ColorPalettePopover } from './ColorPalettePopover'
+import controls from './controls.module.css'
 import { EditProjectAgentSettings } from './EditProjectAgentSettings'
+import styles from './EditProjectModal.module.css'
 import { ImageInput } from './ImageInput'
 import { Modal } from './Modal'
-import controls from './controls.module.css'
-import styles from './EditProjectModal.module.css'
-import { Dropdown } from '../ui/Dropdown'
 
 export function EditProjectModal() {
   const t = useT()
@@ -42,7 +42,6 @@ export function EditProjectModal() {
   const setConflictAgentModel = useProjectsStore((s) => s.setConflictAgentModel)
   const setGraphifyEnabled = useProjectsStore((s) => s.setGraphifyEnabled)
   const setAutoWorktree = useProjectsStore((s) => s.setAutoWorktree)
-  const setMergePostAction = useProjectsStore((s) => s.setMergePostAction)
   const cleanupOrphanWorktrees = useProjectsStore((s) => s.cleanupOrphanWorktrees)
   const isCleaningOrphans = useProjectsStore((s) => s.isCleaningOrphans)
   const merge = useMergeStore()
@@ -70,10 +69,10 @@ export function EditProjectModal() {
     'relocateToNewBranch' | 'relocateKeepSession' | 'closeTerminal'
   >('relocateToNewBranch')
   const [branches, setBranches] = useState<string[]>([])
-  const [newAgentName, setNewAgentName] = useState('')
-  const [creatingAgent, setCreatingAgent] = useState(false)
   const [mergeSource, setMergeSource] = useState('')
   const [mergeTarget, setMergeTarget] = useState('')
+  const [newAgentName, setNewAgentName] = useState('')
+  const [creatingAgent, setCreatingAgent] = useState(false)
   const [activeTab, setActiveTab] = useState<'focus' | 'agents' | 'worktrees' | 'merge'>('focus')
 
   const loadWorktrees = async (repoPath: string) => {
@@ -89,17 +88,17 @@ export function EditProjectModal() {
   }
 
   // `project` vem de um seletor Zustand (`s.projects.find(...)`) — troca de
-  // referência sempre que QUALQUER campo deste projeto muda no store, o que
-  // inclui atualizações de fundo alheias à edição (ex: atividade de agente,
-  // troca de ptyId, timestamps) enquanto o modal está aberto. Sem o guard
-  // abaixo, esse efeito reexecutava a cada uma dessas mutações e sobrescrevia
-  // o estado local com o valor ainda salvo em disco — apagando em silêncio
-  // qualquer edição pendente (ex: modelo do agente de conflito escolhido na
-  // busca) antes mesmo do clique em "Salvar", porque o guard de "mudou?" do
-  // `submit()` comparava contra um `conflictModel` que já tinha sido
+                                                                            
+                                                                            
+                                                                          
+                                                                              
+                                                                           
+                                                                            
+                                                                            
+                                                                     
   // resetado de volta ao valor antigo. `seededForRef` faz a semeadura valer
-  // só uma vez por "sessão de abertura" deste projeto (reseta ao fechar),
-  // não a cada troca de referência do objeto.
+                                                                          
+                                              
   const seededForRef = useRef<string | null>(null)
   useEffect(() => {
     if (!open || !project) {
@@ -122,7 +121,6 @@ export function EditProjectModal() {
     setConflictModelState(project.conflictAgentModel ?? '')
     setGraphifyEnabledState(project.graphifyEnabled ?? false)
     setAutoWorktreeState(project.autoWorktree ?? false)
-    setMergePostActionState(project.mergePostAction ?? 'relocateToNewBranch')
     setActiveTab('focus')
     setIsColorPopoverOpen(false)
 
@@ -160,7 +158,6 @@ export function EditProjectModal() {
       }
     } else {
       setWorktrees([])
-      setBranches([])
     }
   }, [open, project])
 
@@ -180,8 +177,8 @@ export function EditProjectModal() {
     }
   }
 
-  // 2.7 — gatilho MANUAL: provisiona worktree no modo do projeto e abre um
-  // terminal de agente dentro dela na hora, sem depender do GSD.
+                                                                           
+                                                                 
   const handleCreateAgentEnv = async () => {
     const repoPath = project?.terminals[0]?.cwd
     const name = newAgentName.trim().replace(/[^A-Za-z0-9_-]/g, '-')
@@ -264,10 +261,6 @@ export function EditProjectModal() {
 
     if (autoWorktree !== (project.autoWorktree ?? false)) {
       setAutoWorktree(project.id, autoWorktree)
-    }
-
-    if (mergePostAction !== project.mergePostAction) {
-      setMergePostAction(project.id, mergePostAction)
     }
 
     if (gsdWatcherEnabled !== project.gsdWatcherEnabled) {

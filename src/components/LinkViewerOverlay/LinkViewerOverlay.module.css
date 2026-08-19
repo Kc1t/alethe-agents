@@ -109,3 +109,18 @@
     opacity: 1;
   }
 }
+
+:global([data-visual-style='clean']) .backdrop {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: none;
+}
+
+:global([data-visual-style='clean']) .panel {
+  border-radius: var(--clean-modal-radius);
+  box-shadow: var(--clean-shadow);
+}
+
+:global([data-visual-style='clean']) .headBtn {
+  border-radius: var(--clean-control-radius);
+}

@@ -23,15 +23,21 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
-  min-width: 30px;
+  width: 28px;
+  min-width: 28px;
   height: 26px;
-  padding: 0 7px;
+  flex: 0 0 28px;
+  padding: 0;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   color: var(--fg-muted);
-  font-size: 10px;
+  font-size: 0;
   font-weight: 650;
   cursor: pointer;
+}
+
+.sidebarTab span {
+  display: none;
 }
 
 .sidebarTab:hover {
@@ -44,6 +50,35 @@
   background: var(--panel);
   border-color: var(--border-strong);
   box-shadow: var(--shadow-sm);
+}
+
+.toolbarSpacer {
+  display: block;
+  flex: 1;
+}
+
+.toolbarDivider {
+  width: 1px;
+  height: 14px;
+  display: block;
+  margin: 0 5px;
+  background: var(--border);
+}
+
+.toolbarUtility {
+  width: 28px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.toolbarUtility:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
 }
 
 .tabContent {
@@ -72,6 +107,32 @@
 
 .markdownPanel {
   position: relative;
+}
+
+.emptyMarkdown {
+  position: relative;
+}
+
+.markdownDropActive {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.markdownDropOverlay {
+  position: absolute;
+  inset: 8px;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--bg-elevated) 90%, var(--accent) 10%);
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  pointer-events: none;
 }
 
 .panelHeader {
@@ -367,20 +428,42 @@
 .readmeTab {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
   min-width: 0;
-  max-width: 150px;
-  padding: 5px 7px;
+  max-width: 180px;
+  padding: 0;
   border-bottom: 2px solid transparent;
   color: var(--fg-muted);
   font-size: 10px;
   white-space: nowrap;
+}
+
+.readmeTabSelect {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 4px 5px 7px;
+  color: inherit;
+  font-size: inherit;
   cursor: pointer;
 }
 
-.readmeTab span {
+.readmeTabSelect span {
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.readmeTabClose {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 6px 5px 3px;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.readmeTabClose:hover {
+  color: var(--danger);
 }
 
 .readmeTab:hover,
@@ -505,4 +588,108 @@
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+
+.cleanRedundantAction {
+  display: none;
+}
+
+/* Clean mode follows the shared compact sidebar standard. */
+:global([data-visual-style='clean']) .sidebarTabs {
+  gap: 1px;
+  min-height: 34px;
+  padding: 4px 6px;
+}
+
+:global([data-visual-style='clean']) :is(.sidebarTab, .toolbarUtility) {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 24px;
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  color: var(--fg-faint);
+  background: transparent;
+  font-size: 0;
+  cursor: pointer;
+}
+
+:global([data-visual-style='clean']) :is(.sidebarTab, .toolbarUtility):hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+:global([data-visual-style='clean']) .sidebarTabActive {
+  color: var(--fg);
+  background: var(--clean-active-bg);
+  box-shadow: none;
+}
+
+:global([data-visual-style='clean']) .toolbarSpacer {
+  display: block;
+  flex: 1;
+}
+
+:global([data-visual-style='clean']) .toolbarDivider {
+  width: 1px;
+  height: 14px;
+  display: block;
+  margin: 0 5px;
+  background: var(--border);
+}
+
+:global([data-visual-style='clean']) .cleanRedundantAction {
+  display: none;
+}
+
+:global([data-visual-style='clean']) .panelHeader,
+:global([data-visual-style='clean']) .header {
+  min-height: var(--clean-row-height);
+  height: var(--clean-row-height);
+  padding: 0 10px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+:global([data-visual-style='clean']) .headerAction {
+  width: 22px;
+  height: 22px;
+}
+
+:global([data-visual-style='clean']) .commentCard {
+  padding: 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+:global([data-visual-style='clean']) .commentCard + .commentCard {
+  border-top: var(--clean-border);
+}
+
+:global([data-visual-style='clean']) .readmeTabs {
+  gap: 0;
+  padding: 0 8px;
+}
+
+:global([data-visual-style='clean']) .readmeTab {
+  height: 28px;
+  padding: 0 7px;
+}
+
+:global([data-visual-style='clean']) :is(.commentsPanel, .content) {
+  background: var(--bg);
+}
+
+:global([data-visual-style='clean']) .commentPopover {
+  border-color: var(--border);
+  border-radius: var(--clean-popover-radius);
+  box-shadow: var(--clean-shadow);
+  transform-origin: top center;
+  animation: var(--clean-popover-animation);
 }

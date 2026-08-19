@@ -1,22 +1,35 @@
+import { useDroppable } from '@dnd-kit/core'
 import { Ungroup } from 'lucide-react'
+import { lazy, Suspense } from 'react'
 import { Panel, Separator } from 'react-resizable-panels'
 
-import { cellStyle, gridContainerStyle, reconcileGridLayout } from '../../lib/gridLayout'
+import {
+  autoGridLayout,
+  cellStyle,
+  freeCells,
+  gridContainerStyle,
+  reconcileGridLayout,
+} from '../../lib/gridLayout'
 import { useT } from '../../lib/i18n'
 import type { GridLayout, LayoutMode, Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { DiffPane } from '../DiffPane'
-import { GraphifyView } from '../GraphifyView'
-import { MarkdownPane } from '../MarkdownPane'
+import { GridCellHandles } from '../GridCellHandles'
 import { TerminalPane } from '../TerminalPane'
 import { VideoPane } from '../VideoPane'
 import { WebPane } from '../WebPane'
-import { SyncedPanelGroup } from './SyncedPanelGroup'
+import { PersistentPanelGroup as Group } from './PersistentPanelGroup'
 import styles from './WorkspaceView.module.css'
+
+const GraphifyView = lazy(() =>
+  import('../GraphifyView').then((m) => ({ default: m.GraphifyView })),
+)
+const MarkdownPane = lazy(() =>
+  import('../MarkdownPane').then((m) => ({ default: m.MarkdownPane })),
+)
 
 const EMPTY_PANE_GROUPS: { id: string; paneIds: string[] }[] = []
 
-/** Renderiza o pane certo conforme o tipo (terminal ou viewer de arquivo). */
 function Pane({
   projectId,
   terminal,
@@ -34,10 +47,18 @@ function Pane({
     : undefined
   if (group) return <PaneGroupView projectId={projectId} group={group} />
   if (terminal.kind === 'graphify') {
-    return <GraphifyView repo={terminal.cwd} projectId={projectId} terminalId={terminal.id} />
+    return (
+      <Suspense fallback={<div className={styles.paneLoading}>Loading graph...</div>}>
+        <GraphifyView repo={terminal.cwd} projectId={projectId} terminalId={terminal.id} />
+      </Suspense>
+    )
   }
   if (terminal.kind === 'markdown' || terminal.kind === 'file') {
-    return <MarkdownPane projectId={projectId} terminal={terminal} />
+    return (
+      <Suspense fallback={<div className={styles.paneLoading}>Loading markdown...</div>}>
+        <MarkdownPane projectId={projectId} terminal={terminal} />
+      </Suspense>
+    )
   }
   if (terminal.kind === 'web') {
     return <WebPane projectId={projectId} terminal={terminal} />
@@ -94,7 +115,7 @@ function PaneGroupView({
 
 export type PaneAreaProps = {
   projectId: string
-  /** Prefixo único pros Panel ids — vital quando vários containers coexistem. */
+
   idPrefix: string
   terminals: Terminal[]
   layoutMode: LayoutMode
@@ -133,34 +154,47 @@ function GridLayoutComponent({
   terminals: Terminal[]
 }) {
   const project = useProjectsStore((s) => s.projects.find((p) => p.id === projectId))
+  const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
   const layout: GridLayout | undefined = project?.gridLayout
   const ids = terminals.map((t) => t.id)
-  const reconciled = layout
-    ? reconcileGridLayout(layout, ids)
-    : { cols: 2, rows: Math.ceil(ids.length / 2), cells: {} as GridLayout['cells'] }
-  // se sem layout salvo, faz auto-fill posicional
-  if (!layout) {
-    ids.forEach((id, i) => {
-      reconciled.cells[id] = {
-        col: (i % reconciled.cols) + 1,
-        row: Math.floor(i / reconciled.cols) + 1,
-        colSpan: 1,
-        rowSpan: 1,
-      }
-    })
-  }
+  const reconciled = layout ? reconcileGridLayout(layout, ids) : autoGridLayout(ids, 2)
   return (
     <div style={gridContainerStyle(reconciled)}>
+      {freeCells(reconciled, ids).map((slot) => (
+        <EmptyGridSlot
+          key={`slot-${slot.col}-${slot.row}`}
+          dropId={`cell:pane:${projectId}:${slot.col}:${slot.row}`}
+          col={slot.col}
+          row={slot.row}
+        />
+      ))}
       {terminals.map((t) => {
         const cell = reconciled.cells[t.id]
         if (!cell) return null
         return (
           <div key={t.id} className={styles.gridCell} style={cellStyle(cell)}>
             <Pane projectId={projectId} terminal={t} />
+            <GridCellHandles
+              cellId={t.id}
+              childIds={ids}
+              layout={reconciled}
+              onUpdate={(next) => setProjectGridLayout(projectId, next)}
+            />
           </div>
         )
       })}
     </div>
+  )
+}
+
+function EmptyGridSlot({ dropId, col, row }: { dropId: string; col: number; row: number }) {
+  const { setNodeRef, isOver } = useDroppable({ id: dropId })
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${styles.emptySlot} ${isOver ? styles.emptySlotOver : ''}`}
+      style={{ gridColumn: col, gridRow: row }}
+    />
   )
 }
 
@@ -172,11 +206,13 @@ type LayoutProps = {
 
 function AutoLayout({ projectId, idPrefix, terminals }: LayoutProps) {
   if (terminals.length === 2) {
+    const panelIds = terminals.map((terminal) => `${idPrefix}-p-${terminal.id}`)
     return (
-      <SyncedPanelGroup
-        id={`${idPrefix}-auto-pair`}
+      <Group
         orientation="horizontal"
         className={styles.fullSize}
+        persistenceId={`pane-${idPrefix}-auto-columns`}
+        panelIds={panelIds}
       >
         <Panel id={`${idPrefix}-p-${terminals[0].id}`} minSize="15%">
           <Pane projectId={projectId} terminal={terminals[0]} />
@@ -185,15 +221,17 @@ function AutoLayout({ projectId, idPrefix, terminals }: LayoutProps) {
         <Panel id={`${idPrefix}-p-${terminals[1].id}`} minSize="15%">
           <Pane projectId={projectId} terminal={terminals[1]} />
         </Panel>
-      </SyncedPanelGroup>
+      </Group>
     )
   }
   const rows = chunkInto(terminals, 2)
+  const rowPanelIds = rows.map((_, rowIndex) => `${idPrefix}-row-${rowIndex}`)
   return (
-    <SyncedPanelGroup
-      id={`${idPrefix}-auto-rows`}
+    <Group
       orientation="vertical"
       className={styles.fullSize}
+      persistenceId={`pane-${idPrefix}-auto-rows`}
+      panelIds={rowPanelIds}
     >
       {rows.map((row, ri) => (
         <RowFragment
@@ -205,7 +243,7 @@ function AutoLayout({ projectId, idPrefix, terminals }: LayoutProps) {
           isLast={ri === rows.length - 1}
         />
       ))}
-    </SyncedPanelGroup>
+    </Group>
   )
 }
 
@@ -228,10 +266,11 @@ function RowFragment({
         {terminals.length === 1 ? (
           <Pane projectId={projectId} terminal={terminals[0]} />
         ) : (
-          <SyncedPanelGroup
-            id={`${rowId}-cols`}
+          <Group
             orientation="horizontal"
             className={styles.fullSize}
+            persistenceId={`pane-${idPrefix}-columns`}
+            panelIds={terminals.map((terminal) => `${idPrefix}-p-${terminal.id}`)}
           >
             {terminals.map((t, i) => (
               <FragmentCol
@@ -242,7 +281,7 @@ function RowFragment({
                 isLast={i === terminals.length - 1}
               />
             ))}
-          </SyncedPanelGroup>
+          </Group>
         )}
       </Panel>
       {isLast ? null : <Separator className={styles.sepV} />}
@@ -294,21 +333,25 @@ function FragmentRow({
 
 function SpotlightLayout({ projectId, idPrefix, terminals }: LayoutProps) {
   const [main, ...rest] = terminals
+  const mainPanelId = `${idPrefix}-spot-main-${main.id}`
+  const stackPanelId = `${idPrefix}-spot-stack`
   return (
-    <SyncedPanelGroup
-      id={`${idPrefix}-spot`}
+    <Group
       orientation="horizontal"
       className={styles.fullSize}
+      persistenceId={`pane-${idPrefix}-spotlight`}
+      panelIds={[mainPanelId, stackPanelId]}
     >
-      <Panel id={`${idPrefix}-spot-main-${main.id}`} defaultSize="65%" minSize="25%">
+      <Panel id={mainPanelId} defaultSize="65%" minSize="25%">
         <Pane projectId={projectId} terminal={main} />
       </Panel>
       <Separator className={styles.sepH} />
-      <Panel id={`${idPrefix}-spot-stack`} defaultSize="35%" minSize="15%">
-        <SyncedPanelGroup
-          id={`${idPrefix}-spot-stack-rows`}
+      <Panel id={stackPanelId} defaultSize="35%" minSize="15%">
+        <Group
           orientation="vertical"
           className={styles.fullSize}
+          persistenceId={`pane-${idPrefix}-spotlight-stack`}
+          panelIds={rest.map((terminal) => `${idPrefix}-p-${terminal.id}`)}
         >
           {rest.map((t, i) => (
             <FragmentRow
@@ -319,25 +362,29 @@ function SpotlightLayout({ projectId, idPrefix, terminals }: LayoutProps) {
               isLast={i === rest.length - 1}
             />
           ))}
-        </SyncedPanelGroup>
+        </Group>
       </Panel>
-    </SyncedPanelGroup>
+    </Group>
   )
 }
 
 function SidebarLayout({ projectId, idPrefix, terminals }: LayoutProps) {
   const [main, ...rest] = terminals
+  const listPanelId = `${idPrefix}-side-list`
+  const mainPanelId = `${idPrefix}-side-main-${main.id}`
   return (
-    <SyncedPanelGroup
-      id={`${idPrefix}-side`}
+    <Group
       orientation="horizontal"
       className={styles.fullSize}
+      persistenceId={`pane-${idPrefix}-sidebar`}
+      panelIds={[listPanelId, mainPanelId]}
     >
-      <Panel id={`${idPrefix}-side-list`} defaultSize="22%" minSize="15%">
-        <SyncedPanelGroup
-          id={`${idPrefix}-side-list-rows`}
+      <Panel id={listPanelId} defaultSize="22%" minSize="15%">
+        <Group
           orientation="vertical"
           className={styles.fullSize}
+          persistenceId={`pane-${idPrefix}-sidebar-list`}
+          panelIds={rest.map((terminal) => `${idPrefix}-p-${terminal.id}`)}
         >
           {rest.map((t, i) => (
             <FragmentRow
@@ -348,13 +395,13 @@ function SidebarLayout({ projectId, idPrefix, terminals }: LayoutProps) {
               isLast={i === rest.length - 1}
             />
           ))}
-        </SyncedPanelGroup>
+        </Group>
       </Panel>
       <Separator className={styles.sepH} />
-      <Panel id={`${idPrefix}-side-main-${main.id}`} defaultSize="78%" minSize="40%">
+      <Panel id={mainPanelId} defaultSize="78%" minSize="40%">
         <Pane projectId={projectId} terminal={main} />
       </Panel>
-    </SyncedPanelGroup>
+    </Group>
   )
 }
 

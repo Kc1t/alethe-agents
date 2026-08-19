@@ -10,7 +10,6 @@ use crate::codex_app_server::{
     CodexAppServerSink, CodexAppServerState,
 };
 use crate::economy_agents;
-use crate::plugins::{self, PluginKind, PluginManifest};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Extension, Path as AxumPath, Query};
 use axum::response::IntoResponse;
@@ -23,7 +22,6 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tokio::sync::broadcast;
 
-use super::profile_routes::active_profile_dir_at;
 use super::{AppError, AuthenticatedLocalSession, ServerRuntime};
 
 fn q(params: &HashMap<String, String>, key: &str) -> Result<String, AppError> {
@@ -44,9 +42,6 @@ pub fn router() -> Router {
         .route("/api/agents/install", post(install))
         .route("/api/agents/uninstall", post(uninstall))
         .route("/api/agents/models", get(models))
-        .route("/api/plugins/list", get(plugins_list))
-        .route("/api/plugins/install", post(plugin_install))
-        .route("/api/plugins/uninstall", post(plugin_uninstall))
         .route("/api/codex_app_server/start", post(codex_start))
         .route("/api/codex_app_server/send", post(codex_send))
         .route("/api/codex_app_server/stop", post(codex_stop))
@@ -121,53 +116,6 @@ async fn models(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
         Err(e) => return e.into_response(),
     };
     respond(cli_resolver::discover_provider_models(provider).await)
-}
-
-async fn plugins_list(
-    Extension(runtime): Extension<Arc<ServerRuntime>>,
-    Query(p): Query<HashMap<String, String>>,
-) -> impl IntoResponse {
-    let kind: Option<PluginKind> = p
-        .get("kind")
-        .and_then(|k| serde_json::from_value(serde_json::json!(k)).ok());
-    let root = match active_profile_dir_at(runtime.data_root()) {
-        Ok(root) => root.join("plugins"),
-        Err(error) => return AppError::from(error).into_response(),
-    };
-    respond(plugins::list_in(&root).map(|all| match kind {
-        Some(kind) => all.into_iter().filter(|m| m.kind == kind).collect(),
-        None => all,
-    }))
-}
-
-#[derive(Deserialize)]
-struct PluginInstallBody {
-    manifest: PluginManifest,
-}
-async fn plugin_install(
-    Extension(runtime): Extension<Arc<ServerRuntime>>,
-    Json(b): Json<PluginInstallBody>,
-) -> impl IntoResponse {
-    let root = match active_profile_dir_at(runtime.data_root()) {
-        Ok(root) => root.join("plugins"),
-        Err(error) => return AppError::from(error).into_response(),
-    };
-    respond(plugins::install_in(&root, &b.manifest))
-}
-
-#[derive(Deserialize)]
-struct PluginUninstallBody {
-    id: String,
-}
-async fn plugin_uninstall(
-    Extension(runtime): Extension<Arc<ServerRuntime>>,
-    Json(b): Json<PluginUninstallBody>,
-) -> impl IntoResponse {
-    let root = match active_profile_dir_at(runtime.data_root()) {
-        Ok(root) => root.join("plugins"),
-        Err(error) => return AppError::from(error).into_response(),
-    };
-    respond(plugins::uninstall_in(&root, &b.id))
 }
 
 fn respond<T: serde::Serialize>(result: Result<T, String>) -> axum::response::Response {

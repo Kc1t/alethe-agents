@@ -1,0 +1,772 @@
+.sidebar {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  /* Orca keeps the navigation one step above the workbench, without a loose accent block. */
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebarTabs {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  min-height: 34px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebarTab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  flex: 0 0 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  cursor: pointer;
+  background: transparent;
+}
+
+.sidebarTab span {
+  display: none;
+}
+.sidebarTab {
+  transition:
+    color 140ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.sidebarTab:hover {
+  background: var(--panel-hover);
+  color: var(--fg);
+  transform: translateY(-1px);
+}
+.sidebarTabActive {
+  border-color: var(--border);
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+  min-width: 0;
+}
+
+.headerActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.header,
+.explorerPanel,
+.list {
+  animation: sidebarPanelIn 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.explorerPanel {
+  flex: 1;
+  min-height: 0;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.explorerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.explorerLabel {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+}
+
+.explorerEmpty {
+  padding: 6px 0 0;
+}
+
+.title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+}
+
+.iconBtn {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+}
+.iconBtn:hover {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 8px 10px;
+  min-height: 0;
+  scrollbar-gutter: stable;
+}
+
+.emptyWrap {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 14px;
+}
+
+.projectNode {
+  min-width: 0;
+}
+
+                                                               
+.projectRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 28px;
+  margin-top: 6px;
+  padding: 0 8px 0 10px;
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+  color: var(--fg);
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  min-width: 0;
+}
+.projectRow:hover {
+  background: var(--panel-hover);
+}
+.projectRowActive .projectName {
+  font-weight: 500;
+}
+
+.projectLead {
+  width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 15px;
+}
+
+.projectFolderIcon {
+  color: var(--fg-muted);
+}
+.dragSource {
+  opacity: 0.45;
+  transition: opacity 120ms ease;
+}
+
+.dragOverlay {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 150px;
+  max-width: 260px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-md);
+  font-size: 12px;
+  font-weight: 650;
+  pointer-events: none;
+}
+
+.dragOverlay span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropBefore,
+.dropAfter {
+  position: relative;
+}
+
+.dropBefore::before,
+.dropAfter::after {
+  content: '';
+  position: absolute;
+  z-index: 2;
+  left: 5px;
+  right: 5px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.dropBefore::before {
+  top: -2px;
+}
+
+.dropAfter::after {
+  bottom: -2px;
+}
+
+.dropInside {
+  background: var(--panel-hover);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.projectIcon {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+                                                      
+.rowHoverBtn {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  opacity: 0;
+  cursor: pointer;
+}
+.projectRow:hover .rowHoverBtn,
+.projectRow:focus-within .rowHoverBtn,
+.terminalRow:hover .rowHoverBtn,
+.terminalRow:focus-within .rowHoverBtn {
+  opacity: 1;
+}
+
+.rowHoverBtnVisible {
+  opacity: 1;
+}
+.rowHoverBtn:hover {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.rowEndSlot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 0;
+  height: 20px;
+  flex: 0 0 auto;
+  overflow: visible;
+  transition: width 120ms ease;
+}
+
+.rowEndSlotActive {
+  width: 16px;
+}
+
+.projectRow:hover .rowEndSlot,
+.projectRow:focus-within .rowEndSlot,
+.terminalRow:hover .rowEndSlot,
+.terminalRow:focus-within .rowEndSlot {
+  width: 20px;
+}
+
+.rowStatusIndicator,
+.rowEndAction {
+  grid-area: 1 / 1;
+}
+
+.rowStatusIndicator {
+  opacity: 1;
+  transition: opacity 100ms ease;
+}
+
+.projectRow:hover .rowStatusIndicator,
+.projectRow:focus-within .rowStatusIndicator,
+.terminalRow:hover .rowStatusIndicator,
+.terminalRow:focus-within .rowStatusIndicator {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.rowChevronBtn {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.rowChevronBtn:hover {
+  color: var(--fg);
+}
+
+.disclosureChevron {
+  transition: transform 160ms var(--ease-out-fluid);
+}
+.disclosureClosed {
+  transform: rotate(-90deg);
+}
+
+/* ------------ Group ------------ */
+
+.groupBox {
+  padding: 0;
+  min-width: 0;
+}
+
+                                                                                
+.groupTag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 24px;
+  margin: 22px 0 2px;
+  padding: 0 6px 0 10px;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--fg-faint);
+  border-radius: 6px;
+  cursor: pointer;
+  max-width: 100%;
+}
+.list > .groupBox:first-child .groupTag {
+  margin-top: 12px;
+}
+.groupTag:hover {
+  color: var(--fg-muted);
+  background: var(--panel-hover);
+}
+
+.groupRule {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.groupAddBtn {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--fg-muted);
+  opacity: 0;
+  cursor: pointer;
+}
+.groupTag:hover .groupAddBtn,
+.groupTag:focus-within .groupAddBtn {
+  opacity: 1;
+}
+
+.groupChevronBtn {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--fg-faint);
+  cursor: pointer;
+}
+.groupChevronBtn:hover {
+  color: var(--fg);
+}
+
+.groupTagName {
+  flex: 0 1 auto;
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+                                                                                
+                                                           
+.groupBody {
+  display: flex;
+  flex-direction: column;
+  margin-left: 3px;
+  padding-left: 7px;
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--border) 55%, transparent);
+  min-width: 0;
+  transition: box-shadow 160ms ease;
+}
+
+.groupBox:hover .groupBody {
+  box-shadow: inset 1px 0 0
+    color-mix(in srgb, var(--group-color, var(--border)) 45%, var(--border));
+}
+
+.groupEmpty {
+  padding: 7px 10px;
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+
+                                                        
+.projectDisabled .projectName {
+  color: var(--text-tertiary);
+}
+.projectDisabled .projectFolderIcon,
+.projectDisabled .projectIcon {
+  filter: grayscale(1);
+  opacity: 0.6;
+}
+.projectPauseIcon {
+  color: var(--fg-faint);
+  flex-shrink: 0;
+}
+
+.groupSuspended .groupTagName {
+  color: var(--text-quaternary);
+}
+
+.groupSuspendedIcon {
+  color: var(--fg-faint);
+  flex-shrink: 0;
+}
+
+@keyframes sidebarEnter {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes sidebarPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+                                                        
+.ungroupedSection {
+  margin-top: 2px;
+  padding: 0;
+}
+.ungroupedEmptyDrop {
+  min-height: 24px;
+  display: grid;
+  place-items: center;
+  color: var(--fg-faint);
+  font-size: 10px;
+}
+.ungroupedBody {
+  display: flex;
+  flex-direction: column;
+}
+
+.projectName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+  font-size: 12.5px;
+}
+
+.terminalRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 28px;
+  padding: 0 8px 0 26px;
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+  color: var(--fg);
+  cursor: pointer;
+  user-select: none;
+  min-width: 0;
+}
+.terminalRow:hover {
+  background: var(--panel-hover);
+}
+                                                                              
+                                                       
+.terminalHidden .agentIcon,
+.terminalDisabled .agentIcon {
+  filter: grayscale(1);
+  opacity: 0.6;
+}
+.terminalHidden .terminalName {
+  color: var(--text-tertiary);
+}
+.terminalDisabled .terminalName {
+  color: var(--text-quaternary);
+}
+.dragging {
+  opacity: 0.4;
+}
+
+.agentStack {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.agentIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  position: relative;
+}
+
+.terminalName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.terminalLoading {
+  color: var(--status-working);
+  flex: 0 0 auto;
+}
+
+                                                                 
+.terminalFocused,
+.terminalFocused:hover {
+  background: color-mix(in srgb, var(--panel-hover) 82%, var(--fg) 12%);
+  color: var(--fg);
+}
+
+                                                               
+.monogram {
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 6px;
+  color: var(--accent-on);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  text-transform: lowercase;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+}
+
+.layoutFooter {
+  border-top: 1px solid var(--border);
+  padding: 8px 12px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.systemFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  padding: 5px 12px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.systemFooterLabel {
+  color: var(--fg-faint);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.systemFooterActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.systemFooterBtn {
+  width: 26px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  color: var(--fg-muted);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.systemFooterBtn:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+  border-color: var(--border-strong);
+}
+
+.layoutLabel {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--fg-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.layoutSwitch {
+  display: flex;
+  flex-shrink: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 2px;
+  gap: 2px;
+}
+
+@media (max-width: 900px) {
+  .layoutLabel {
+    display: none;
+  }
+}
+
+.layoutBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
+}
+.layoutBtn:hover {
+  color: var(--fg);
+}
+.layoutBtnActive {
+  background: var(--panel-hover);
+  color: var(--fg);
+  box-shadow: var(--shadow-sm);
+}
+
+.tabCount {
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--panel-hover) 60%, transparent);
+  color: var(--text-tertiary);
+  flex: none;
+}
+
+.doneBadge {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--status-working);
+  color: var(--accent-on);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* Navigation Quick Items at Top */
+.quickNavList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.quickNavItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.quickNavItem:hover {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.quickNavIcon {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.agentProjectIcon {
+  color: var(--agent-claude);
+  flex-shrink: 0;
+}
+
+.rosterLoading {
+  color: var(--status-working);
+}

@@ -1,7 +1,3 @@
-// Watcher de arquivos de sessão. Observa ~/.claude/projects e ~/.codex/sessions
-// e emite `session://new {agent}` quando um .jsonl é criado/modificado. É um
-// ACELERADOR: o front usa o hint pra acordar a detecção (snapshot+diff) na hora
-// em vez de esperar o próximo poll. Se o watcher falhar (dir inexistente etc), o
 // polling do XTermView continua resolvendo — nada quebra.
 
 use notify::{Config, EventKind, RecommendedWatcher, RecursiveMode, Watcher};

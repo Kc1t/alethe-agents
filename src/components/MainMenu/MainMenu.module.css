@@ -40,3 +40,16 @@
   background: var(--border);
   margin: 4px 2px;
 }
+
+:global([data-visual-style='clean']) .menu {
+  border-radius: var(--clean-popover-radius);
+  box-shadow: var(--clean-shadow);
+  transform-origin: top left;
+  animation: var(--clean-popover-animation);
+}
+
+:global([data-visual-style='clean']) .item {
+  min-height: var(--clean-row-height);
+  padding: 5px 9px;
+  border-radius: var(--clean-control-radius);
+}

@@ -26,8 +26,7 @@ pub struct Task {
     pub status: TaskStatus,
     pub assigned_agent_id: Option<String>,
     pub lease_resource: Option<String>,
-    /// Caminho da worktree provisionada pra esta task (populado quando o
-    /// provisionamento termina) — usado pra detectar Running -> Completed
+
     /// checando o `.planning/` real dessa worktree (ver `run_scheduler_tick`).
     pub worktree_path: Option<String>,
     pub priority: i32,
@@ -40,9 +39,8 @@ pub struct Scheduler {
 
 static SCHEDULER: OnceLock<Mutex<Scheduler>> = OnceLock::new();
 
-/// Modo de worktree por projeto (RFC-003/009). O backend não lê `projects.json`;
 /// o front informa o modo no `trigger_scheduler_tick` e o autotick (event-loop,
-/// sem acesso à config) reusa o último modo conhecido. Default: GitWorktree.
+
 static PROJECT_MODES: OnceLock<Mutex<HashMap<String, crate::worktrees::WorktreeMode>>> =
     OnceLock::new();
 
@@ -67,28 +65,21 @@ pub fn get_scheduler() -> &'static Mutex<Scheduler> {
     })
 }
 
-/// Id estável e namespaced por projeto pra um item do checklist real
 /// (`task.md`) — hash do texto do item. Namespacing por `project_id` corrige
-/// uma colisão de id entre projetos que existia no formato antigo (dois
-/// projetos com uma task chamada igual se sobrescreviam no mapa global).
+
 fn derive_item_task_id(project_id: &str, text: &str) -> String {
     let mut hasher = DefaultHasher::new();
     text.hash(&mut hasher);
     format!("{project_id}-gsd-{:x}", hasher.finish())
 }
 
-/// Lê o backlog real de `.planning/task.md` no REPO PRINCIPAL do projeto (não
-/// worktrees de agente — essas só ganham `.planning/` depois que o trabalho
-/// já começou, então nunca poderiam originar uma task genuinamente `Pending`)
-/// e sincroniza com o scheduler. Cada item do checklist vira uma task
-/// agendável; dependência é a cadeia sequencial pela ordem da lista — o
 /// formato real (escrito por `alethe-gsd-state.ts` a partir de `todowrite`)
-/// não tem grafo de dependência explícito.
+
 pub fn load_gsd_tasks(project_id: &str, repo_path: &str) -> Result<(), String> {
     let repo_root = crate::git_control::repository_root(repo_path)?;
     let task_md_path = repo_root.join(".planning").join("task.md");
     let Ok(content) = std::fs::read_to_string(&task_md_path) else {
-        return Ok(()); // sem backlog ainda — estado válido, não é erro
+        return Ok(());
     };
 
     let items = crate::planning_gate::parse_roadmap_items(&content);
@@ -97,7 +88,7 @@ pub fn load_gsd_tasks(project_id: &str, repo_path: &str) -> Result<(), String> {
     let mut prev_id: Option<String> = None;
     for item in &items {
         if item.text.is_empty() {
-            continue; // linha malformada (checkbox sem texto) — ignora
+            continue;
         }
         let id = derive_item_task_id(project_id, &item.text);
         fresh_ids.insert(id.clone());
@@ -123,10 +114,7 @@ pub fn load_gsd_tasks(project_id: &str, repo_path: &str) -> Result<(), String> {
     }
 
     let mut scheduler = get_scheduler().lock().unwrap();
-    // Tasks Running/Completed/Failed deste projeto sobrevivem mesmo se a
-    // linha correspondente sumir/mudar no task.md (não some o histórico de
-    // um agente no meio do trabalho); Pending que sumiu do texto é
-    // descartada, pra não acumular backlog fantasma.
+
     scheduler.tasks.retain(|id, task| {
         task.project_id != project_id
             || fresh_ids.contains(id)
@@ -157,7 +145,6 @@ pub fn load_gsd_tasks(project_id: &str, repo_path: &str) -> Result<(), String> {
 pub fn run_scheduler_tick(project_id: &str, repo_path: &str) -> Result<(), String> {
     let mut scheduler = get_scheduler().lock().unwrap();
 
-    // 1. Pending -> Ready se todas as dependências estão resolvidas
     let mut to_ready = Vec::new();
     for task in scheduler.tasks.values() {
         if task.project_id == project_id && task.status == TaskStatus::Pending {
@@ -243,9 +230,7 @@ pub fn run_scheduler_tick(project_id: &str, repo_path: &str) -> Result<(), Strin
                                 task.worktree_path = Some(info.path.clone());
                             }
                         }
-                        // O SPAWN do agente é do FRONT (humano-no-terminal): o
-                        // backend só pede — o front cria um Terminal visível no
-                        // projeto com cwd na worktree (padrão do mergeStore).
+
                         crate::event_bus::publish_event_simple(
                             "AgentSpawnRequested",
                             &format!("sched-{}", nanoid!()),
@@ -286,10 +271,6 @@ pub fn run_scheduler_tick(project_id: &str, repo_path: &str) -> Result<(), Strin
         }
     }
 
-    // 3. Running -> Completed se a própria worktree do agente reporta
-    // planejamento concluído — reusa `planning_gate::compute_planning_status`,
-    // a mesma checagem que já alimenta o Gate de Conclusão de Planejamento da
-    // Central de Merges, em vez de inventar um segundo critério de "pronto".
     let mut to_complete = Vec::new();
     for task in scheduler.tasks.values() {
         if task.project_id == project_id && task.status == TaskStatus::Running {
@@ -516,7 +497,6 @@ mod tests {
             task.worktree_path = Some("D:/fake/worktree".to_string());
         }
 
-        // Reescreve o task.md sem NENHUma das duas linhas originais.
         fs::write(root.join(".planning").join("task.md"), "- [ ] Item C\n").unwrap();
         load_gsd_tasks(&project_id, root.to_string_lossy().as_ref()).unwrap();
 

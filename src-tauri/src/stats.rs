@@ -40,9 +40,6 @@ pub fn collect_memory_stats() -> MemoryStats {
             continue;
         }
         for (other_pid, process) in sys.processes() {
-            // Threads de /proc/<pid>/task/<tid> aparecem como entradas próprias
-            // no sysinfo (thread_kind() == Some) — pular, senão cada thread
-            // reconta a memória inteira do processo pai.
             if process.thread_kind().is_some() {
                 continue;
             }
@@ -85,8 +82,6 @@ pub fn collect_memory_stats() -> MemoryStats {
     }
 }
 
-/// Cache curto (2s): o polling de RAM (a cada 5s) e chamadas próximas não
-/// refazem o `refresh_processes(All)`, que varre todos os processos (caro no
 /// Windows). O lock do cache serializa chamadas concorrentes.
 fn cached_memory_stats() -> MemoryStats {
     static CACHE: OnceLock<Mutex<Option<(Instant, MemoryStats)>>> = OnceLock::new();
@@ -109,8 +104,6 @@ pub fn get_memory_stats() -> MemoryStats {
     cached_memory_stats()
 }
 
-/// Mesmo sampling cacheado (2s) do comando, pro heartbeat do crash_watch reusar
-/// a varredura sem refazer o `refresh_processes(All)` quando o front acabou de pollar.
 pub fn memory_stats_cached() -> MemoryStats {
     cached_memory_stats()
 }

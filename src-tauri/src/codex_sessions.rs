@@ -56,8 +56,6 @@ fn parse_codex_session(path: &Path, metadata: &fs::Metadata) -> Option<CodexSess
     })
 }
 
-/// Lê só o session_meta.id da primeira linha do rollout (sem custo de parsear o
-/// arquivo inteiro). Usado pra mapear session_id -> path no agent_cost.
 pub(crate) fn session_meta_id(path: &Path) -> Option<String> {
     let file = fs::File::open(path).ok()?;
     let mut reader = BufReader::new(file);
@@ -74,10 +72,6 @@ pub(crate) fn session_meta_id(path: &Path) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-/// `async` + `spawn_blocking`: varre diretórios de sessão no disco, mesma
-/// classe de I/O bloqueante já corrigida em `cli_resolver.rs`; chamado a
-/// cada spawn/validação de resumo de terminal (`XTermView`), então travar a
-/// thread de despacho do Tauri aqui trava outros comandos IPC concorrentes.
 #[tauri::command]
 pub async fn snapshot_codex_sessions(cwd: String) -> Result<Vec<CodexSessionSnapshot>, String> {
     tokio::task::spawn_blocking(move || snapshot_codex_sessions_inner(cwd))

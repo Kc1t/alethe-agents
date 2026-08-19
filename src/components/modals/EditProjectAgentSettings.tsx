@@ -23,17 +23,17 @@ const ALL_AGENTS: { type: AgentType; label: string }[] = ALL_AGENT_TYPES.map((ty
 }))
 
 // Cache module-level (sobrevive a troca de aba/remount deste componente) —
-// evita rebater discoverProviderModels toda vez que o usuário volta pra essa aba.
+                                                                                  
 const globalModelsCache: Record<string, ModelOption[]> = {}
 
-/**
- * Seção "Multi-agent settings" do EditProjectModal (RFC-009): modo de worktree,
- * comandos de validação, provider+modelo de conflito e toggles (auto-worktree,
- * graphify, GSD watcher). Componente controlado — todo o estado de edição
- * pendente vive no modal pai; lê o store diretamente só pra dados derivados
- * (agentes habilitados, tema do terminal) e pra disparar a migração de
- * terminais existentes (ação própria, não faz parte do "salvar" do modal).
- */
+   
+                                                                                
+                                                                               
+                                                                          
+                                                                            
+                                                                       
+                                                                           
+   
 export function EditProjectAgentSettings({
   projectId,
   cwd,
@@ -94,10 +94,10 @@ export function EditProjectAgentSettings({
   const [loadingModels, setLoadingModels] = useState(false)
   const [migratingWorktrees, setMigratingWorktrees] = useState(false)
 
-  // Todas as opções desta aba (isolamento, worktrees, agente de conflito,
-  // GSD/.planning) exigem que `cwd` seja um repositório Git — nada aqui
-  // bloqueava isso antes, o único aviso era um toast reativo disparado só ao
-  // clicar em "Migrar terminais existentes". `null` = ainda checando/sem cwd.
+                                                                          
+                                                                        
+                                                                             
+                                                                              
   const [hasGit, setHasGit] = useState<boolean | null>(null)
   const [gitInitBusy, setGitInitBusy] = useState(false)
 

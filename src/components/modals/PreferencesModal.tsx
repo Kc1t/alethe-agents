@@ -119,8 +119,8 @@ export function PreferencesModal() {
       },
       {
         id: 'multiagent',
-        label: 'Multi-Agent & Telemetry',
-        description: 'Real-time metrics, event traces, and structured logs.',
+        label: t('prefs.categoryMultiagent'),
+        description: t('prefs.categoryMultiagentDesc'),
         Icon: Activity,
       },
       {

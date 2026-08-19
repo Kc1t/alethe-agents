@@ -2,12 +2,11 @@ import { ShieldCheck, Smartphone, Wifi, WifiOff } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 
 import {
+  closeRemoteControlPairing,
+  openRemoteControlPairing,
   remoteControlInfo,
   remoteControlRevoke,
   revokeRemoteControlDevice,
-  setRemoteControlEnabled,
-  setRemoteControlMaxDevices,
-  setRemoteControlSessionExpiry,
   type RemoteControlInfo,
 } from '../../../lib/tauri'
 import { useT } from '../../../lib/i18n'
@@ -35,25 +34,16 @@ export function RemoteControlPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const current = await remoteControlInfo()
-      const syncedMax =
-        current.max_devices === preferences.remoteMaxDevices
-          ? current
-          : await setRemoteControlMaxDevices(preferences.remoteMaxDevices)
-      const synced =
-        syncedMax.session_expiry_secs === preferences.remoteSessionExpirySecs
-          ? syncedMax
-          : await setRemoteControlSessionExpiry(preferences.remoteSessionExpirySecs)
-      setInfo(synced)
+      setInfo(await remoteControlInfo())
       setError(null)
     } catch (value) {
       setError(String(value))
     }
-  }, [preferences.remoteMaxDevices, preferences.remoteSessionExpirySecs])
+  }, [])
 
   useEffect(() => {
     void refresh()
-    const timer = window.setInterval(() => void refresh(), 2000)
+    const timer = window.setInterval(() => void refresh(), 1000)
     return () => window.clearInterval(timer)
   }, [refresh])
 
@@ -70,8 +60,9 @@ export function RemoteControlPage() {
   }
 
   const enabled = info?.enabled === true
-  const maxDevices = info?.max_devices ?? preferences.remoteMaxDevices
-  const expiry = info?.session_expiry_secs ?? preferences.remoteSessionExpirySecs
+  const pairingOpen = info?.pairing_open === true
+  const readOnly = preferences.remoteReadOnly
+  const allowShellInput = preferences.remoteAllowShellInput
 
   return (
     <>
@@ -97,13 +88,42 @@ export function RemoteControlPage() {
           <button
             type="button"
             className={`${controls.btn} ${enabled ? controls.btnDanger : controls.btnPrimary}`}
-            onClick={() => void update(() => setRemoteControlEnabled(!enabled))}
+            onClick={() => setPreferences({ remoteEnabled: !preferences.remoteEnabled })}
             disabled={busy}
           >
             {enabled ? t('remote.disable') : t('remote.enable')}
           </button>
         </div>
+        <p className={styles.startupNote}>{t('remote.startupNote')}</p>
       </SettingsSection>
+
+      {enabled ? (
+        <SettingsSection
+          id="remote-pairing"
+          title={t('remote.pairingTitle')}
+          description={t('remote.pairingDesc')}
+        >
+          <div className={styles.statusCard} data-enabled={pairingOpen}>
+            <span className={styles.statusIcon}><Smartphone size={18} /></span>
+            <div>
+              <strong>{pairingOpen ? t('remote.pairingOpen') : t('remote.pairingClosed')}</strong>
+              <p>
+                {pairingOpen
+                  ? t('remote.pairingCountdown', { seconds: String(info?.pairing_expires_in ?? 0) })
+                  : t('remote.pairingClosedHint')}
+              </p>
+            </div>
+            <button
+              type="button"
+              className={`${controls.btn} ${pairingOpen ? '' : controls.btnPrimary}`}
+              onClick={() => void update(pairingOpen ? closeRemoteControlPairing : openRemoteControlPairing)}
+              disabled={busy}
+            >
+              {pairingOpen ? t('remote.pairingClose') : t('remote.pairingOpenAction')}
+            </button>
+          </div>
+        </SettingsSection>
+      ) : null}
 
       <SettingsSection
         id="remote-security"
@@ -114,12 +134,8 @@ export function RemoteControlPage() {
           <label className={styles.setting}>
             <span>{t('remote.maxDevices')}</span>
             <Dropdown
-              value={String(maxDevices)}
-              onChange={(rawValue) => {
-                const value = Number(rawValue)
-                setPreferences({ remoteMaxDevices: value })
-                void update(() => setRemoteControlMaxDevices(value))
-              }}
+              value={String(preferences.remoteMaxDevices)}
+              onChange={(rawValue) => setPreferences({ remoteMaxDevices: Number(rawValue) })}
               disabled={busy}
               ariaLabel={t('remote.maxDevices')}
               options={[1, 2, 3, 4].map((value) => ({
@@ -131,18 +147,40 @@ export function RemoteControlPage() {
           <label className={styles.setting}>
             <span>{t('remote.sessionExpiry')}</span>
             <Dropdown
-              value={String(expiry)}
-              onChange={(rawValue) => {
-                const value = Number(rawValue)
-                setPreferences({ remoteSessionExpirySecs: value })
-                void update(() => setRemoteControlSessionExpiry(value))
-              }}
+              value={String(preferences.remoteSessionExpirySecs)}
+              onChange={(rawValue) => setPreferences({ remoteSessionExpirySecs: Number(rawValue) })}
               disabled={busy}
               ariaLabel={t('remote.sessionExpiry')}
               options={SESSION_OPTIONS.map((value) => ({
                 value: String(value),
                 label: sessionLabel(t, value),
               }))}
+            />
+          </label>
+          <label className={styles.setting}>
+            <span>{t('remote.readOnly')}</span>
+            <Dropdown
+              value={readOnly ? 'on' : 'off'}
+              onChange={(rawValue) => setPreferences({ remoteReadOnly: rawValue === 'on' })}
+              disabled={busy}
+              ariaLabel={t('remote.readOnly')}
+              options={[
+                { value: 'on', label: t('remote.readOnlyOn') },
+                { value: 'off', label: t('remote.readOnlyOff') },
+              ]}
+            />
+          </label>
+          <label className={styles.setting}>
+            <span>{t('remote.shellInput')}</span>
+            <Dropdown
+              value={allowShellInput ? 'on' : 'off'}
+              onChange={(rawValue) => setPreferences({ remoteAllowShellInput: rawValue === 'on' })}
+              disabled={busy || readOnly}
+              ariaLabel={t('remote.shellInput')}
+              options={[
+                { value: 'off', label: t('remote.shellInputOff') },
+                { value: 'on', label: t('remote.shellInputOn') },
+              ]}
             />
           </label>
         </div>
@@ -167,7 +205,11 @@ export function RemoteControlPage() {
                 <div className={styles.deviceCopy}>
                   <strong>{device.name}</strong>
                   <span>
-                    {device.address} · {new Date(device.connected_at * 1000).toLocaleTimeString()}
+                    {device.address} ·{' '}
+                    {device.online ? t('remote.deviceOnline') : t('remote.deviceOffline')} ·{' '}
+                    {t('remote.deviceExpiresAt', {
+                      time: new Date(device.expires_at * 1000).toLocaleTimeString(),
+                    })}
                   </span>
                 </div>
                 <button

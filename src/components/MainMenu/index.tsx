@@ -3,6 +3,7 @@ import {
   FileArchive,
   FileText,
   FolderOpen,
+  Globe2,
   Layers,
   Network,
   RefreshCw,
@@ -25,6 +26,7 @@ import {
   exportBackup,
   exportLogs,
   importBackup,
+  killPty,
   openDataFolder,
   openLogsFolder,
   openSpawnLog,
@@ -32,6 +34,7 @@ import {
   wipeAllAppData,
 } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
+import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
 import styles from './MainMenu.module.css'
 
@@ -42,7 +45,12 @@ export function MainMenu() {
   const setActiveView = useUiStore((s) => s.setActiveView)
   const openModal = useUiStore((s) => s.openModal_)
   const flat = useProjectsStore((s) => s.preferences.workspaceFlat)
+  const browserEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.browser)
+  const activeProjectId = useProjectsStore((s) => s.activeProjectId)
+  const projects = useProjectsStore((s) => s.projects)
+  const hydrate = useProjectsStore((s) => s.hydrate)
   const setFlat = useProjectsStore((s) => s.setWorkspaceFlat)
+  const resetTerminalRuntime = useTerminalsStore((s) => s.reset)
 
   const ref = useRef<HTMLDivElement>(null)
 
@@ -91,6 +99,18 @@ export function MainMenu() {
       >
         <Settings size={14} /> <span>{t('menu.preferences')}</span>
       </button>
+      {browserEnabled && activeProjectId ? (
+        <button
+          type="button"
+          className={styles.item}
+          onClick={() => {
+            openModal('addBrowser', { projectId: activeProjectId })
+            closeMainMenu()
+          }}
+        >
+          <Globe2 size={14} /> <span>{t('menu.addBrowser')}</span>
+        </button>
+      ) : null}
       {AGENT_SANDBOX_ENABLED ? (
         <button
           type="button"
@@ -216,7 +236,17 @@ export function MainMenu() {
             })
             if (!source) return
             if (!window.confirm(t('menu.confirmImport'))) return
+            const currentPtyIds = new Set(
+              projects.flatMap((project) =>
+                project.terminals.flatMap((terminal) =>
+                  terminal.tabs.flatMap((tab) => (tab.ptyId ? [tab.ptyId] : [])),
+                ),
+              ),
+            )
+            await Promise.allSettled([...currentPtyIds].map((ptyId) => killPty(ptyId)))
+            resetTerminalRuntime()
             await importBackup(source)
+            await hydrate()
             window.location.reload()
           })
         }

@@ -1,5 +1,10 @@
 import { create } from 'zustand'
 
+import {
+  addMarkdownSidebarHistoryEntry,
+  readMarkdownSidebarHistory,
+  writeMarkdownSidebarHistory,
+} from '../lib/markdownSidebarHistory'
 import { basename } from '../lib/paths'
 import type {
   AntigravityUsage,
@@ -20,6 +25,7 @@ type ModalKind =
   | 'editProject'
   | 'newTerminal'
   | 'addContent'
+  | 'addBrowser'
   | 'newSubTab'
   | 'preferences'
   | 'findJump'
@@ -40,10 +46,15 @@ type ModalKind =
   | 'confirmWorktreeCommit'
   | 'audit'
   | 'fsBrowser'
+  | 'recentChats'
+  | 'handoff'
+  | 'mcpManager'
+  | 'mcpIntro'
   | null
 
 export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox'
-export type RightSidebarMode = 'todo' | 'markdown' | 'git' | 'gsdSync'
+export type RightSidebarMode = 'todo' | 'markdown' | 'git' | 'gsdSync' | 'mcp'
+export type MarkdownSidebarTab = { path: string; title: string }
 
 export type MemorySample = MemoryStats & {
   ts: number
@@ -78,26 +89,37 @@ type UiState = {
   claudeUsage: ClaudeUsage | null
   codexUsage: CodexUsage | null
   antigravityUsage: AntigravityUsage | null
-  /** ID do terminal em focus mode (overlay fullscreen blur). null = sem focus. */
+                                                                                  
   focusedTerminalId: string | null
+  /**
+   * Panes of workspace tabs that stay mounted while hidden. They keep streaming so switching
+   * back to their tab needs no resync — see WorkspaceView's keep-alive.
+   */
+  keptAlivePaneIds: string[]
+  /**
+   * Panes of every mounted workspace tab, streaming or not. They are one switch away from being
+   * looked at, so the resource supervisor must not suspend them for being idle.
+   */
+  mountedPaneIds: string[]
   /** Pulse that requests focus for a specific pane. */
   focusRequest: { terminalId: string; ts: number } | null
   activeTerminal: { projectId: string; terminalId: string } | null
   selectedPanes: { projectId: string; terminalId: string }[]
   /** View principal sendo exibida no main. */
   activeView: ActiveView
-  /** Conteúdo contextual da sidebar direita. */
+                                                
   rightSidebarMode: RightSidebarMode
   rightSidebarMarkdown: { path: string; title: string } | null
-  /** POC do agent canvas: pasta escolhida + id do PTY do claude embutido. */
+  rightSidebarMarkdownTabs: MarkdownSidebarTab[]
+                                                                             
   agentCanvasSession: { folder: string; ptyId: string } | null
-  /** Teto de gasto (USD) da sessão do canvas. null = sem teto. */
+                                                                  
   agentCanvasBudgetUsd: number | null
   /** Ephemeral in-app notifications. */
   toasts: InAppToast[]
   /** Recent notification history used by Home. */
   notifications: InAppToast[]
-  /** Update disponível (checado em silêncio no boot). null = atualizado/sem info. */
+                                                                                     
   updateInfo: UpdateInfo | null
   /** URL aberta no visualizador in-app (overlay com iframe). null = fechado. */
   linkViewerUrl: string | null
@@ -109,6 +131,8 @@ type UiState = {
   closeModal: () => void
   closeMainMenu: () => void
   toggleMainMenu: () => void
+  setKeptAlivePanes: (ids: string[]) => void
+  setMountedPanes: (ids: string[]) => void
   setRamMb: (value: number | null) => void
   addMemorySample: (value: MemoryStats) => void
   setRuntimeSnapshot: (value: RuntimeSnapshot | null) => void
@@ -124,10 +148,13 @@ type UiState = {
   setActiveView: (v: ActiveView) => void
   toggleHome: () => void
   openMarkdownSidebar: (path: string, title?: string) => void
+  closeMarkdownSidebarTab: (path: string) => void
+  restoreMarkdownSidebarHistory: () => void
   showMarkdownSidebar: () => void
   showTodoSidebar: () => void
   showGitSidebar: () => void
   showGsdSyncSidebar: () => void
+  showMcpSidebar: () => void
   setAgentCanvasSession: (session: { folder: string; ptyId: string } | null) => void
   setAgentCanvasBudget: (usd: number | null) => void
   pushToast: (toast: {
@@ -159,12 +186,15 @@ export const useUiStore = create<UiState>((set) => ({
   codexUsage: null,
   antigravityUsage: null,
   focusedTerminalId: null,
+  keptAlivePaneIds: [],
+  mountedPaneIds: [],
   focusRequest: null,
   activeTerminal: null,
   selectedPanes: [],
   activeView: 'workspace',
   rightSidebarMode: 'todo',
   rightSidebarMarkdown: null,
+  rightSidebarMarkdownTabs: [],
   agentCanvasSession: null,
   agentCanvasBudgetUsd: null,
   toasts: [],
@@ -178,6 +208,20 @@ export const useUiStore = create<UiState>((set) => ({
   closeModal: () => set({ openModal: null, modalContext: null }),
   closeMainMenu: () => set({ showMainMenu: false }),
   toggleMainMenu: () => set((s) => ({ showMainMenu: !s.showMainMenu })),
+  setKeptAlivePanes: (ids) =>
+    set((state) => {
+      const unchanged =
+        state.keptAlivePaneIds.length === ids.length &&
+        state.keptAlivePaneIds.every((id, index) => id === ids[index])
+      return unchanged ? state : { keptAlivePaneIds: ids }
+    }),
+  setMountedPanes: (ids) =>
+    set((state) => {
+      const unchanged =
+        state.mountedPaneIds.length === ids.length &&
+        state.mountedPaneIds.every((id, index) => id === ids[index])
+      return unchanged ? state : { mountedPaneIds: ids }
+    }),
   setRamMb: (value) => set({ ramMb: value }),
   addMemorySample: (value) =>
     set((s) => ({
@@ -211,14 +255,47 @@ export const useUiStore = create<UiState>((set) => ({
   setActiveView: (v) => set((s) => (s.activeView === v ? s : { activeView: v })),
   toggleHome: () => set((s) => ({ activeView: s.activeView === 'home' ? 'workspace' : 'home' })),
   openMarkdownSidebar: (path, title) =>
-    set({
-      rightSidebarMode: 'markdown',
-      rightSidebarMarkdown: { path, title: title || basename(path) || path },
+    set((state) => {
+      const tab = { path, title: title || basename(path) || path }
+      const tabs = addMarkdownSidebarHistoryEntry(state.rightSidebarMarkdownTabs, tab)
+      if (tabs !== state.rightSidebarMarkdownTabs) {
+        writeMarkdownSidebarHistory(tabs, tab.path)
+      }
+      return {
+        rightSidebarMode: 'markdown',
+        rightSidebarMarkdown: tab,
+        rightSidebarMarkdownTabs: tabs,
+      }
+    }),
+  closeMarkdownSidebarTab: (path) =>
+    set((state) => {
+      const tabs = state.rightSidebarMarkdownTabs.filter((entry) => entry.path !== path)
+      if (state.rightSidebarMarkdown?.path !== path) {
+        writeMarkdownSidebarHistory(tabs, state.rightSidebarMarkdown?.path ?? null)
+        return { rightSidebarMarkdownTabs: tabs }
+      }
+      const next = tabs[tabs.length - 1] ?? null
+      writeMarkdownSidebarHistory(tabs, next?.path ?? null)
+      return {
+        rightSidebarMarkdownTabs: tabs,
+        rightSidebarMarkdown: next,
+        rightSidebarMode: next ? 'markdown' : 'todo',
+      }
+    }),
+  restoreMarkdownSidebarHistory: () =>
+    set(() => {
+      const history = readMarkdownSidebarHistory()
+      const active = history.tabs.find((tab) => tab.path === history.activePath) ?? null
+      return {
+        rightSidebarMarkdownTabs: history.tabs,
+        rightSidebarMarkdown: active,
+      }
     }),
   showMarkdownSidebar: () => set({ rightSidebarMode: 'markdown' }),
-  showTodoSidebar: () => set({ rightSidebarMode: 'todo', rightSidebarMarkdown: null }),
+  showTodoSidebar: () => set({ rightSidebarMode: 'todo' }),
   showGitSidebar: () => set({ rightSidebarMode: 'git' }),
   showGsdSyncSidebar: () => set({ rightSidebarMode: 'gsdSync' }),
+  showMcpSidebar: () => set({ rightSidebarMode: 'mcp' }),
   setAgentCanvasSession: (session) => set({ agentCanvasSession: session }),
   setAgentCanvasBudget: (usd) => set({ agentCanvasBudgetUsd: usd }),
   pushToast: ({ title, body, agent, silent }) =>

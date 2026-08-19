@@ -1,43 +1,17 @@
-//! Abertura do Alethe pelo terminal — `alethe`, `alethe .`, `alethe <path>`.
-//!
-//! O fluxo tem dois caminhos, porque o app é single-instance:
-//!
-//! - **Cold start** (Alethe fechado): o diretório resolvido de `argv` fica
-//!   guardado em [`PendingOpen`]. O frontend consome uma única vez no boot via
-//!   `cli_take_pending_open` — não dá pra emitir evento aqui, a webview ainda
-//!   não existe.
-//! - **App já aberto**: o callback do `tauri-plugin-single-instance` recebe o
-//!   `argv`/`cwd` da segunda instância (que morre em seguida) e emite
-//!   [`OPEN_PATH_EVENT`] pra webview viva.
-//!
-//! A resolução só acontece quando há um caminho **explícito** no `argv`. Isso é
-//! deliberado: abrir por ícone (Finder/Explorer/menu) não passa caminho nenhum,
-//! e cair no `cwd` nesse caso criaria projeto de `/` ou `C:\Windows\system32`. O
-//! shim gerado em `cli_shim.rs` é quem transforma `alethe` sem argumento no
-//! `--open-path <pwd>` que chega aqui.
-
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use tauri::{AppHandle, Emitter, Manager};
 
-/// Evento que carrega o diretório pedido pelo terminal até o frontend.
 pub const OPEN_PATH_EVENT: &str = "alethe://open-path";
 
-/// Flag que o shim sempre passa. Aceitamos também `--open-path=<dir>` e um
-/// posicional solto (pra quem chama o binário na mão, sem shim).
 const OPEN_PATH_FLAG: &str = "--open-path";
 
-/// Diretório pedido no cold start, antes de existir webview pra receber evento.
-/// Consumido uma única vez (`take`) — reabrir a janela não repete a ação.
 #[derive(Default)]
 pub struct PendingOpen(Mutex<Option<String>>);
 
-/// Extrai o caminho cru do `argv`, ignorando `argv[0]` e qualquer outra flag.
-///
-/// Ignorar flags desconhecidas importa de verdade: o macOS injeta `-psn_0_1234`
-/// quando o app sobe pelo LaunchServices, e `tauri dev` passa flags próprias.
-/// Sem esse filtro, `-psn_0_1234` viraria "caminho" e a resolução falharia.
+/// Unknown flags must be skipped rather than treated as the target: macOS injects
+/// `-psn_0_1234` when launching a bundled app from Finder.
 fn extract_path_arg(args: &[String]) -> Option<String> {
     let mut iter = args.iter().skip(1);
     while let Some(arg) = iter.next() {
@@ -55,16 +29,9 @@ fn extract_path_arg(args: &[String]) -> Option<String> {
     None
 }
 
-/// Remove o prefixo verbatim (`\\?\`) que o `canonicalize` do Windows devolve.
-///
-/// O frontend compara esse caminho com o `defaultCwd` salvo dos projetos, e
-/// `\\?\C:\dev\app` nunca casaria com `C:\dev\app` — o projeto existente seria
-/// duplicado a cada `alethe .`.
 fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
     let text = path.to_string_lossy();
-    // Pasta em rede vira `\\?\UNC\servidor\share`; tirar só o `\\?\` deixaria
-    // `UNC\servidor\share`, que não aponta pra lugar nenhum. O prefixo certo
-    // de volta é `\\`.
+
     if let Some(stripped) = text.strip_prefix(r"\\?\UNC\") {
         return PathBuf::from(format!(r"\\{stripped}"));
     }
@@ -74,10 +41,6 @@ fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
     }
 }
 
-/// Canonicaliza e garante que o alvo é um diretório existente.
-///
-/// Apontar pra um arquivo (`alethe README.md`) abre a pasta que o contém, que é
-/// o que o usuário quis dizer — projeto no Alethe é sempre um diretório.
 fn normalize_dir(candidate: &Path) -> Option<PathBuf> {
     let resolved = candidate
         .canonicalize()
@@ -93,8 +56,6 @@ fn normalize_dir(candidate: &Path) -> Option<PathBuf> {
     None
 }
 
-/// `argv` + `cwd` → diretório a abrir. `None` quando não há caminho explícito
-/// (abertura por ícone) ou quando o caminho passado não existe.
 pub fn resolve_target_dir(args: &[String], cwd: &Path) -> Option<PathBuf> {
     let raw = extract_path_arg(args)?;
     let trimmed = raw.trim();
@@ -106,15 +67,12 @@ pub fn resolve_target_dir(args: &[String], cwd: &Path) -> Option<PathBuf> {
     let candidate = if candidate.is_absolute() {
         candidate
     } else {
-        // `.`, `..` e relativos resolvem contra o cwd de QUEM chamou — no caso
-        // da segunda instância, o cwd vem do plugin, não do processo atual.
         cwd.join(candidate)
     };
 
     normalize_dir(&candidate)
 }
 
-/// Lê o `argv` do próprio processo no boot e guarda o alvo pro frontend puxar.
 pub fn capture_cold_start(app: &AppHandle) {
     let args: Vec<String> = std::env::args().collect();
     let Ok(cwd) = std::env::current_dir() else {
@@ -128,7 +86,6 @@ pub fn capture_cold_start(app: &AppHandle) {
     }
 }
 
-/// Callback da segunda instância: foca a janela viva e manda o diretório pra ela.
 pub fn handle_second_instance(app: &AppHandle, argv: Vec<String>, cwd: String) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -141,7 +98,6 @@ pub fn handle_second_instance(app: &AppHandle, argv: Vec<String>, cwd: String) {
     let _ = app.emit(OPEN_PATH_EVENT, target.to_string_lossy().to_string());
 }
 
-/// Consome (uma vez) o diretório pedido no cold start.
 #[tauri::command]
 pub fn cli_take_pending_open(state: tauri::State<'_, PendingOpen>) -> Option<String> {
     state.0.lock().ok().and_then(|mut pending| pending.take())
@@ -153,6 +109,10 @@ mod tests {
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|item| item.to_string()).collect()
+    }
+
+    fn temp_root() -> PathBuf {
+        strip_verbatim_prefix(std::env::temp_dir().canonicalize().expect("temp dir"))
     }
 
     #[test]
@@ -179,7 +139,6 @@ mod tests {
         );
     }
 
-    /// Regressão: o macOS injeta `-psn_0_1234` na abertura via LaunchServices.
     #[test]
     fn skips_unknown_flags_like_macos_psn() {
         assert_eq!(extract_path_arg(&args(&["alethe", "-psn_0_1234"])), None);
@@ -189,7 +148,6 @@ mod tests {
         );
     }
 
-    /// Abertura por ícone não passa caminho — não pode virar "abrir o cwd".
     #[test]
     fn no_args_means_no_target() {
         assert_eq!(extract_path_arg(&args(&["alethe"])), None);
@@ -198,19 +156,19 @@ mod tests {
 
     #[test]
     fn dot_resolves_against_caller_cwd() {
-        let cwd = strip_verbatim_prefix(std::env::temp_dir().canonicalize().expect("temp dir"));
-        let resolved = resolve_target_dir(&args(&["alethe", "."]), &cwd).expect("resolvido");
+        let cwd = temp_root();
+        let resolved = resolve_target_dir(&args(&["alethe", "."]), &cwd).expect("resolved");
         assert_eq!(resolved, cwd);
     }
 
     #[test]
     fn relative_path_resolves_against_caller_cwd() {
-        let base = strip_verbatim_prefix(std::env::temp_dir().canonicalize().expect("temp dir"));
+        let base = temp_root();
         let nested = base.join("alethe-cli-test-rel");
-        std::fs::create_dir_all(&nested).expect("criar dir");
+        std::fs::create_dir_all(&nested).expect("create dir");
 
-        let resolved = resolve_target_dir(&args(&["alethe", "alethe-cli-test-rel"]), &base)
-            .expect("resolvido");
+        let resolved =
+            resolve_target_dir(&args(&["alethe", "alethe-cli-test-rel"]), &base).expect("resolved");
         assert_eq!(resolved, nested);
 
         let _ = std::fs::remove_dir_all(&nested);
@@ -218,15 +176,15 @@ mod tests {
 
     #[test]
     fn file_target_falls_back_to_its_directory() {
-        let base = strip_verbatim_prefix(std::env::temp_dir().canonicalize().expect("temp dir"));
+        let base = temp_root();
         let dir = base.join("alethe-cli-test-file");
-        std::fs::create_dir_all(&dir).expect("criar dir");
+        std::fs::create_dir_all(&dir).expect("create dir");
         let file = dir.join("README.md");
-        std::fs::write(&file, b"x").expect("escrever arquivo");
+        std::fs::write(&file, b"x").expect("write file");
 
         let resolved =
             resolve_target_dir(&args(&["alethe", &file.to_string_lossy()]), Path::new("/"))
-                .expect("resolvido");
+                .expect("resolved");
         assert_eq!(resolved, dir);
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -257,7 +215,6 @@ mod tests {
         );
     }
 
-    /// Pasta em rede: `\\?\UNC\srv\share` tem que voltar pra `\\srv\share`.
     #[test]
     fn restores_unc_network_paths() {
         assert_eq!(

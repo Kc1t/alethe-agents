@@ -20,6 +20,7 @@ const META_STALE_MS: u64 = 30_000;
 // protective spawn-block/suspend logic below always reacts to the raw,
 // instantaneous level, never delayed.
 const PRESSURE_NOTIFY_DWELL_MS: u64 = 30_000;
+const RESOURCE_LOG_INTERVAL_MS: u64 = 60_000;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -159,6 +160,7 @@ struct ResourceState {
     /// `stable_level`, and when it was first observed.
     pending_level: &'static str,
     pending_since_ms: u64,
+    last_log_at_ms: u64,
 }
 
 pub struct ResourceSupervisor {
@@ -178,6 +180,7 @@ impl Default for ResourceSupervisor {
                 stable_level: "normal",
                 pending_level: "normal",
                 pending_since_ms: 0,
+                last_log_at_ms: 0,
             }),
             system: Mutex::new(System::new()),
         }
@@ -217,10 +220,6 @@ fn process_private_commit_bytes(pid: u32, fallback: u64) -> u64 {
     }
     #[cfg(target_os = "linux")]
     {
-        // smaps_rollup já vem agregado pelo kernel (rápido, sem parsear o
-        // /proc/<pid>/smaps inteiro). Private_Clean + Private_Dirty é a
-        // memória exclusiva do processo — soma entre processos sem contar
-        // páginas compartilhadas (libs, forks) mais de uma vez, ao contrário
         // do RSS bruto do sysinfo.
         if let Ok(content) = std::fs::read_to_string(format!("/proc/{pid}/smaps_rollup")) {
             let mut private_kb = 0_u64;
@@ -293,12 +292,6 @@ impl ResourceSupervisor {
 
         let mut children = HashMap::<u32, Vec<u32>>::new();
         for (pid, process) in system.processes() {
-            // No Linux, sysinfo lista as threads de /proc/<pid>/task/<tid> como
-            // entradas próprias no mesmo mapa de processos (cada uma com o pid
-            // real como "parent"). thread_kind() é Some(..) só pra essas —
-            // sem filtrar, cada thread reconta a memória inteira do processo
-            // (RSS/privada é por processo, compartilhada entre threads), o que
-            // infla processo e memória em várias vezes (WebKitWebProcess por
             // ex. roda ~30 threads).
             if process.thread_kind().is_some() {
                 continue;
@@ -438,7 +431,7 @@ impl ResourceSupervisor {
             pressure: PressureState {
                 level: "normal",
                 spawn_blocked: false,
-                automatic: true,
+                automatic: false,
                 candidate_count: 0,
                 last_suspended_id: None,
             },
@@ -500,6 +493,21 @@ fn eligible_candidates(
     candidates.into_iter().map(|entry| entry.0).collect()
 }
 
+fn pressure_level(memory: &MemoryStats, previous: &'static str) -> &'static str {
+    let total = memory.system_total_mb.max(1.0);
+    let available = memory.system_available_mb;
+    let critical_at = (total * 0.05).max(512.0);
+    let warning_at = (total * 0.10).max(1024.0);
+
+    if available <= critical_at || (previous == "critical" && available <= critical_at * 1.25) {
+        "critical"
+    } else if available <= warning_at || (previous == "warning" && available <= warning_at * 1.25) {
+        "warning"
+    } else {
+        "normal"
+    }
+}
+
 fn run_cycle(app: &AppHandle, sessions: &PtySessions, supervisor: &ResourceSupervisor) {
     let mut snapshot = supervisor.collect(sessions);
     let now = snapshot.sampled_at_ms;
@@ -511,6 +519,7 @@ fn run_cycle(app: &AppHandle, sessions: &PtySessions, supervisor: &ResourceSuper
         previous_stable_level,
         mut pending_level,
         mut pending_since_ms,
+        last_log_at_ms,
     ) = {
         let state = supervisor.state.lock().unwrap_or_else(|p| p.into_inner());
         (
@@ -521,6 +530,7 @@ fn run_cycle(app: &AppHandle, sessions: &PtySessions, supervisor: &ResourceSuper
             state.stable_level,
             state.pending_level,
             state.pending_since_ms,
+            state.last_log_at_ms,
         )
     };
     let automatic = policy.mode == "smart-lru";
@@ -584,6 +594,9 @@ fn run_cycle(app: &AppHandle, sessions: &PtySessions, supervisor: &ResourceSuper
         last_suspended_id: suspended_id.clone(),
     };
 
+    let should_log = previous_level != level
+        || suspended_id.is_some()
+        || now.saturating_sub(last_log_at_ms) >= RESOURCE_LOG_INTERVAL_MS;
     {
         let mut state = supervisor.state.lock().unwrap_or_else(|p| p.into_inner());
         state.pressure_active = pressure_active && level != "normal";
@@ -594,7 +607,24 @@ fn run_cycle(app: &AppHandle, sessions: &PtySessions, supervisor: &ResourceSuper
         if let Some(id) = &suspended_id {
             state.metas.remove(id);
         }
+        if should_log {
+            state.last_log_at_ms = now;
+        }
         state.latest = Some(snapshot.clone());
+    }
+
+    if should_log {
+        crate::logging::record_resource_snapshot(
+            app,
+            level,
+            &snapshot,
+            candidates.len(),
+            if suspended_id.is_some() {
+                "emergency-suspend"
+            } else {
+                "none"
+            },
+        );
     }
 
     if previous_stable_level != stable_level || suspended_id.is_some() {
@@ -604,7 +634,7 @@ fn run_cycle(app: &AppHandle, sessions: &PtySessions, supervisor: &ResourceSuper
                 level: stable_level,
                 total_mb: snapshot.effective_total_mb,
                 budget_mb: policy.memory_budget_mb,
-                spawn_blocked,
+                spawn_blocked: false,
                 candidate_count: candidates.len(),
                 suspended_id,
             },
@@ -634,9 +664,24 @@ pub fn set_resource_policy(
 
 #[tauri::command]
 pub fn update_pty_runtime_meta(
+    sessions: State<'_, PtySessions>,
     supervisor: State<'_, std::sync::Arc<ResourceSupervisor>>,
     metas: Vec<PtyRuntimeMeta>,
 ) {
+    // Visibility is reconciled from this report instead of relying only on set_pty_visible.
+    // That call is a no-op when it lands while the session is still spawning or restarting, and
+    // an output stream left switched off stays off — the pane accepts keystrokes and renders
+    // nothing until it is restarted. Re-asserting the flag every tick heals that within a sample.
+    if let Ok(sessions) = sessions.lock() {
+        for meta in &metas {
+            if let Some(session) = sessions.get(&meta.id) {
+                session
+                    .visible
+                    .store(meta.visible, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+    }
+
     let mut state = supervisor.state.lock().unwrap_or_else(|p| p.into_inner());
     let ids = metas
         .iter()
@@ -713,7 +758,7 @@ mod tests {
             pressure: PressureState {
                 level: "normal",
                 spawn_blocked: false,
-                automatic: true,
+                automatic: false,
                 candidate_count: 0,
                 last_suspended_id: None,
             },
@@ -767,7 +812,7 @@ mod tests {
     }
 
     #[test]
-    fn idle_shells_are_parked_before_agents() {
+    fn idle_shells_are_recommended_before_agents() {
         let policy = ResourcePolicy::default();
         let mut sample = snapshot("agent");
         let mut shell_stats = sample.ptys[0].clone();
@@ -783,5 +828,59 @@ mod tests {
             eligible_candidates(&sample, &metas, &policy, 2_000_000),
             vec!["shell".to_string(), "agent".to_string()]
         );
+    }
+
+    #[test]
+    fn pressure_uses_available_system_memory_not_app_usage() {
+        let sample = snapshot("a");
+        assert_eq!(pressure_level(&sample.memory, "normal"), "normal");
+    }
+
+    #[test]
+    fn pressure_warns_only_when_windows_memory_is_low() {
+        let mut sample = snapshot("a");
+        sample.memory.system_available_mb = 1200.0;
+        assert_eq!(pressure_level(&sample.memory, "normal"), "warning");
+        sample.memory.system_available_mb = 600.0;
+        assert_eq!(pressure_level(&sample.memory, "normal"), "critical");
+    }
+
+    #[test]
+    fn candidate_selection_handles_thousands_of_idle_runtimes() {
+        const RUNTIME_COUNT: usize = 5_000;
+        let policy = ResourcePolicy::default();
+        let mut sample = snapshot("seed");
+        sample.ptys.clear();
+        let mut metas = HashMap::with_capacity(RUNTIME_COUNT);
+
+        for index in 0..RUNTIME_COUNT {
+            let id = if index % 2 == 0 {
+                format!("shell-{index}")
+            } else {
+                format!("agent-{index}")
+            };
+            let mut runtime_meta = meta(&id);
+            runtime_meta.reported_at_ms = 2_000_000;
+            runtime_meta.kind = if index % 2 == 0 {
+                "shell".to_string()
+            } else {
+                "agent".to_string()
+            };
+            let mut stats = snapshot(&id).ptys.remove(0);
+            stats.id = id.clone();
+            stats.effective_memory_mb = 100.0 + (index % 100) as f64;
+            sample.ptys.push(stats);
+            metas.insert(id, runtime_meta);
+        }
+
+        let candidates = eligible_candidates(&sample, &metas, &policy, 2_000_000);
+
+        assert_eq!(candidates.len(), RUNTIME_COUNT);
+        assert!(candidates[..RUNTIME_COUNT / 2]
+            .iter()
+            .all(|id| id.starts_with("shell-")));
+        assert!(candidates[RUNTIME_COUNT / 2..]
+            .iter()
+            .all(|id| id.starts_with("agent-")));
     }
 }

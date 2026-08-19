@@ -16,6 +16,27 @@ function closeEvent(): CloseRequestEventLike & { prevented: number } {
 }
 
 describe('createCloseCoordinator', () => {
+  it('flushes persisted state and quits without destroying the window first', async () => {
+    const order: string[] = []
+    const coordinator = createCloseCoordinator({
+      confirmNative: async () => true,
+      confirmFallback: () => false,
+      beforeClose: async () => {
+        order.push('persist')
+      },
+      destroyWindow: async () => {
+        order.push('destroy')
+      },
+      quitApp: async () => {
+        order.push('quit')
+      },
+    })
+
+    await coordinator.handleCloseRequest(closeEvent())
+
+    expect(order).toEqual(['persist', 'quit'])
+  })
+
   it('cancel keeps the app open and always prevents the original close event', async () => {
     let destroyed = 0
     let quit = 0
@@ -40,34 +61,13 @@ describe('createCloseCoordinator', () => {
 
   it('native dialog failure uses the browser confirmation fallback', async () => {
     const failures: CloseFailureStage[] = []
-    let destroyed = 0
+    let quit = 0
     const coordinator = createCloseCoordinator({
       confirmNative: async () => {
         throw new Error('dialog unavailable')
       },
       confirmFallback: () => true,
-      destroyWindow: async () => {
-        destroyed += 1
-      },
-      quitApp: async () => {},
-      onFailure: (stage) => failures.push(stage),
-    })
-
-    await coordinator.handleCloseRequest(closeEvent())
-
-    expect(destroyed).toBe(1)
-    expect(failures).toEqual(['confirm'])
-  })
-
-  it('destroy failure falls back to the Rust quit command', async () => {
-    const failures: CloseFailureStage[] = []
-    let quit = 0
-    const coordinator = createCloseCoordinator({
-      confirmNative: async () => true,
-      confirmFallback: () => false,
-      destroyWindow: async () => {
-        throw new Error('destroy denied')
-      },
+      destroyWindow: async () => {},
       quitApp: async () => {
         quit += 1
       },
@@ -77,7 +77,61 @@ describe('createCloseCoordinator', () => {
     await coordinator.handleCloseRequest(closeEvent())
 
     expect(quit).toBe(1)
-    expect(failures).toEqual(['destroy'])
+    expect(failures).toEqual(['confirm'])
+  })
+
+  it('the window is never destroyed while the quit command succeeds', async () => {
+    let destroyed = 0
+    const coordinator = createCloseCoordinator({
+      confirmNative: async () => true,
+      confirmFallback: () => false,
+      destroyWindow: async () => {
+        destroyed += 1
+      },
+      quitApp: async () => {},
+    })
+
+    await coordinator.handleCloseRequest(closeEvent())
+
+    expect(destroyed).toBe(0)
+  })
+
+  it('quit failure falls back to destroying the window', async () => {
+    const failures: CloseFailureStage[] = []
+    let destroyed = 0
+    const coordinator = createCloseCoordinator({
+      confirmNative: async () => true,
+      confirmFallback: () => false,
+      destroyWindow: async () => {
+        destroyed += 1
+      },
+      quitApp: async () => {
+        throw new Error('quit denied')
+      },
+      onFailure: (stage) => failures.push(stage),
+    })
+
+    await coordinator.handleCloseRequest(closeEvent())
+
+    expect(destroyed).toBe(1)
+    expect(failures).toEqual(['quit'])
+  })
+
+  it('destroys the window when the native quit request never settles', async () => {
+    let destroyed = 0
+    const coordinator = createCloseCoordinator({
+      confirmNative: async () => true,
+      confirmFallback: () => false,
+      destroyWindow: async () => {
+        destroyed += 1
+      },
+      quitApp: () => new Promise(() => {}),
+      quitTimeoutMs: 1,
+    })
+
+    await coordinator.handleCloseRequest(closeEvent())
+
+    expect(destroyed).toBe(1)
   })
 
   it('concurrent close requests open only one confirmation dialog', async () => {
@@ -129,6 +183,6 @@ describe('createCloseCoordinator', () => {
     await coordinator.handleCloseRequest(closeEvent())
 
     expect(confirmCalls).toBe(2)
-    expect(failures).toEqual(['destroy', 'quit', 'destroy', 'quit'])
+    expect(failures).toEqual(['quit', 'destroy', 'quit', 'destroy'])
   })
 })

@@ -143,6 +143,17 @@ export async function getTranscriptCost(path: string): Promise<SessionCost> {
   return webApiFetch<SessionCost>(`/api/sessions/transcript_cost?path=${encodeURIComponent(path)}`)
 }
 
+export async function getClaudeSessionTitle(
+  cwd: string,
+  sessionId: string,
+): Promise<string | null> {
+  if (isTauriEnv())
+    return invoke<string | null>('get_claude_session_title', { cwd, sessionId })
+  return webApiFetch<string | null>(
+    `/api/sessions/claude/title?cwd=${encodeURIComponent(cwd)}&sessionId=${encodeURIComponent(sessionId)}`,
+  )
+}
+
 export async function snapshotClaudeSessions(cwd: string): Promise<ClaudeSessionSnapshot[]> {
   if (isTauriEnv()) return invoke<ClaudeSessionSnapshot[]>('snapshot_claude_sessions', { cwd })
   return webApiFetch<ClaudeSessionSnapshot[]>(

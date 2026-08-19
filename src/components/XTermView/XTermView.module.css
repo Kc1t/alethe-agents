@@ -6,15 +6,15 @@
   min-width: 0;
   min-height: 0;
   position: relative;
-  /* bg vem inline (cor do tema do xterm) pra a área de padding casar
-     com o fundo do terminal — sem isso o padding mostraria o chrome. */
+                                                                     
+                                                                        
   background: var(--bg-sunken);
   padding: 4px 6px 2px 8px;
   overflow: hidden;
   contain: size layout paint;
 }
 
-/* Realce quando um arquivo do SO está sendo arrastado sobre este pane. */
+                                                                          
 .dropActive {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
@@ -110,12 +110,7 @@
 }
 
 .bootSpinner {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--fg-muted) 20%, transparent);
-  border-top-color: var(--accent);
-  animation: bootSpin 700ms linear infinite;
+  color: var(--accent);
 }
 
 .bootLabel {
@@ -220,12 +215,6 @@
   flex: 0 0 auto;
 }
 
-@keyframes bootSpin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @keyframes linkMenuIn {
   from {
     opacity: 0;
@@ -235,4 +224,22 @@
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+
+:global([data-visual-style='clean']) .linkMenu {
+  border-color: var(--border);
+  border-radius: var(--clean-popover-radius);
+  box-shadow: var(--clean-shadow);
+  transform-origin: top center;
+  animation: var(--clean-popover-animation);
+}
+
+:global([data-visual-style='clean']) .linkMenuItem {
+  min-height: var(--clean-row-height);
+  border-radius: var(--clean-control-radius);
+}
+
+:global([data-visual-style='clean']) :is(.linkMenuItem:hover, .linkMenuItem:focus-visible) {
+  border-color: transparent;
+  background: var(--clean-hover-bg);
 }

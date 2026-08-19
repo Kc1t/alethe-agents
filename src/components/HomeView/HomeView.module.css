@@ -1,3 +1,5 @@
+/* Home renders inside a resizable pane, so its breakpoints have to measure the pane
+   and not the window — see the `@container home` block at the end of this file. */
 .home {
   flex: 1;
   min-height: 0;
@@ -10,6 +12,8 @@
   display: flex;
   flex-direction: column;
   gap: 22px;
+  container-type: inline-size;
+  container-name: home;
 }
 
 .home > :not(.asciiBackdrop):not(.homeBackdrop) {
@@ -105,31 +109,6 @@
 }
 
 /* ---------- now playing ---------- */
-
-.nowPlayingConnect {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 14px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  font-size: 12px;
-  color: #1db954;
-  cursor: pointer;
-  font-family: inherit;
-  transition:
-    background 0.15s,
-    border-color 0.15s;
-}
-.nowPlayingConnect:hover {
-  background: var(--panel);
-  border-color: var(--border-strong);
-}
-.nowPlayingConnect:disabled {
-  opacity: 0.6;
-  cursor: wait;
-}
 
 .nowPlaying {
   display: inline-flex;
@@ -382,7 +361,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
-@media (max-width: 900px) {
+@container home (max-width: 900px) {
   .projectGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -591,7 +570,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
-@media (max-width: 900px) {
+@container home (max-width: 900px) {
   .projectGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -819,7 +798,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
-@media (max-width: 900px) {
+@container home (max-width: 900px) {
   .projectGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -908,7 +887,7 @@
   transition: color 0.15s;
 }
 
-/* ---------- bottom grid (notificações + atalhos) ---------- */
+                                                                
 
 .bottomGrid {
   display: grid;
@@ -916,7 +895,7 @@
   gap: 22px;
   align-items: start;
 }
-@media (max-width: 900px) {
+@container home (max-width: 900px) {
   .bottomGrid {
     grid-template-columns: 1fr;
   }
@@ -1054,15 +1033,38 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-@media (max-width: 1100px) {
+@container home (max-width: 1100px) {
   .usageStrip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
-@media (max-width: 720px) {
-  .usageStrip {
-    grid-template-columns: 1fr;
-  }
+
+/* Clean keeps Home informative while removing card lift and heavy chrome. */
+:global([data-visual-style='clean']) :is(.quickLaunch, .timeAnalytics) {
+  border-radius: var(--clean-surface-radius);
+  box-shadow: var(--clean-shadow);
+}
+
+:global([data-visual-style='clean'])
+  :is(.usageCard, .projectCard, .actionCard, .nowPlaying, .homePlayerDock) {
+  border-radius: var(--clean-control-radius);
+  box-shadow: var(--clean-shadow);
+}
+
+:global([data-visual-style='clean'])
+  :is(.quickAgentOptions, .quickSelectOptions, .quickModeOptions) {
+  border-radius: var(--clean-popover-radius);
+  box-shadow: var(--clean-shadow);
+}
+
+:global([data-visual-style='clean'])
+  :is(.projectCard:hover, .actionCard:hover, .usageCard:hover, .footerLink:hover) {
+  transform: none;
+}
+
+:global([data-visual-style='clean'])
+  :is(.quickSend, .quickProject, .quickMode, .heroSecondaryAction, .sectionAction) {
+  border-radius: var(--clean-control-radius);
 }
 
 .usageCard {
@@ -1074,6 +1076,8 @@
   flex-direction: column;
   min-width: 0;
   min-height: 244px;
+  container-type: inline-size;
+  container-name: usagecard;
   transition:
     border-color 0.18s,
     background 0.18s;
@@ -1083,7 +1087,7 @@
   background: var(--bg-elevated);
 }
 
-/* ---- head: badge + nome + plan + live + refresh ---- */
+/* ---- head: badge + name + plan + live + refresh ---- */
 
 .cardHead {
   display: flex;
@@ -1128,9 +1132,14 @@
   font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--fg);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .plan {
+  flex-shrink: 0;
   margin-left: 2px;
   font-family: var(--font-mono);
   font-size: 9.5px;
@@ -1147,6 +1156,7 @@
   display: flex;
   align-items: center;
   gap: 9px;
+  flex-shrink: 0;
 }
 
 .live {
@@ -1198,6 +1208,7 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
 }
 .heroNumWrap {
@@ -1205,20 +1216,26 @@
   align-items: baseline;
   gap: 4px;
   min-width: 0;
+  flex: 1 1 auto;
 }
 .heroNum {
   font-family: var(--font-mono);
-  font-size: 28px;
+  font-size: clamp(20px, 11cqw, 28px);
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1;
   color: var(--fg);
+  white-space: nowrap;
 }
 .heroDen {
   font-family: var(--font-mono);
-  font-size: 16px;
+  font-size: clamp(11px, 6cqw, 16px);
   font-weight: 500;
   color: var(--text-quaternary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .timechip {
   font-family: var(--font-mono);
@@ -1254,7 +1271,7 @@
   color: var(--status-offline);
 }
 
-/* ---- lista de medidores (preenche o miolo) ---- */
+                                                     
 
 /* corpo distribui barras (topo) e grade de stats (base) preenchendo a altura */
 .cardBody {
@@ -1306,7 +1323,7 @@
   color: var(--status-offline);
 }
 
-/* ---- card-foot: bolinha + label + métrica ---- */
+                                                    
 
 .cardFoot {
   display: flex;
@@ -1340,7 +1357,7 @@
   flex-shrink: 0;
 }
 
-/* ---- estado vazio ---- */
+                            
 
 .usageEmpty {
   flex: 1;
@@ -1579,12 +1596,15 @@
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
+  min-width: 0;
   background: var(--bg-sunken);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   cursor: pointer;
   color: var(--fg);
   font-family: inherit;
+  container-type: inline-size;
+  container-name: actioncard;
   transition:
     border-color 0.15s,
     background 0.15s;
@@ -1605,6 +1625,10 @@
 .actionLabel {
   font-size: 12px;
   color: var(--fg);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .actionSpacer {
@@ -1619,6 +1643,14 @@
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text-tertiary);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+@container actioncard (max-width: 214px) {
+  .kbd {
+    display: none;
+  }
 }
 
 /* ---------- footer ---------- */
@@ -1837,7 +1869,7 @@
   font-size: 9px;
   text-align: right;
 }
-@media (max-width: 900px) {
+@container home (max-width: 900px) {
   .timeSummaryGrid {
     grid-template-columns: 1fr 1fr;
   }
@@ -1849,7 +1881,7 @@
 /* ---------- home composition ---------- */
 
 .home {
-  padding: 0 28px 18px;
+  padding: 0 clamp(16px, 3%, 28px) 18px;
   gap: 24px;
 }
 
@@ -1862,18 +1894,6 @@
   margin-inline: auto;
 }
 
-@media (max-width: 720px) {
-  .footer {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-  .footerShortcuts {
-    display: none;
-  }
-  .footerLinks {
-    flex-wrap: wrap;
-  }
-}
 
 .homeBackdrop {
   position: absolute;
@@ -2201,6 +2221,13 @@
   box-shadow: var(--shadow-md);
 }
 
+:global([data-visual-style='clean']) .quickAgentOptions {
+  border-radius: var(--clean-popover-radius);
+  box-shadow: var(--clean-shadow);
+  transform-origin: top left;
+  animation: var(--clean-popover-animation);
+}
+
 .quickAgentOptions button {
   width: 100%;
   height: 36px;
@@ -2493,92 +2520,6 @@
 .homePlayerDock .nowPlayingActive .nowPlayingCover::after {
   animation-delay: 1.1s;
 }
-.homePlayerDock .nowPlayingConnect {
-  width: auto;
-  min-width: 36px;
-  max-width: 176px;
-  height: 36px;
-  display: inline-flex;
-  align-items: center;
-  gap: 0;
-  overflow: visible;
-  padding: 2px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--bg) 72%, transparent);
-  backdrop-filter: blur(14px);
-  text-align: left;
-  transition:
-    gap 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    padding 180ms ease,
-    border-color 180ms ease,
-    background-color 180ms ease,
-    box-shadow 180ms ease,
-    transform 180ms ease;
-}
-.homePlayerDock .nowPlayingConnect:hover,
-.homePlayerDock:focus-within .nowPlayingConnect {
-  gap: 7px;
-  padding-right: 9px;
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--status-working) 42%, var(--border));
-  background: color-mix(in srgb, var(--bg-elevated) 90%, transparent);
-  box-shadow: 0 10px 28px color-mix(in srgb, var(--bg) 72%, transparent);
-}
-
-.spotifyMark {
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-  flex: 0 0 30px;
-  border-radius: 50%;
-  background: var(--status-working);
-  color: var(--bg);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--status-working) 12%, transparent);
-}
-
-.spotifyMark svg {
-  width: 18px;
-  height: 18px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-}
-
-.spotifyConnectInfo {
-  width: max-content;
-  max-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  overflow: hidden;
-  opacity: 0;
-  white-space: nowrap;
-  transform: translateX(-6px);
-  transition:
-    max-width 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    opacity 160ms ease,
-    transform 180ms ease;
-}
-
-.nowPlayingConnect:hover .spotifyConnectInfo,
-.nowPlayingConnect:focus-visible .spotifyConnectInfo {
-  max-width: 130px;
-  opacity: 1;
-  transform: translateX(0);
-}
-
-.spotifyConnectInfo strong {
-  color: var(--fg);
-  font-size: 10px;
-  font-weight: 650;
-}
-.spotifyConnectInfo small {
-  color: var(--fg-muted);
-  font-size: 9px;
-}
-
 @keyframes nowPlayingRing {
   0% {
     opacity: 0.72;
@@ -2668,7 +2609,7 @@
 
 .overviewGrid .actionList {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px;
 }
 
@@ -2676,11 +2617,7 @@
   grid-template-columns: 1fr;
 }
 
-@media (max-width: 900px) {
-  .home {
-    padding-inline: 18px;
-  }
-
+@container home (max-width: 900px) {
   .asciiBackdrop {
     height: 500px;
     opacity: 0.28;
@@ -2702,9 +2639,41 @@
   .heroFooter {
     gap: 8px;
   }
+
+  .usageStrip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bottomGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .timeSummaryGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .timeBreakdowns {
+    grid-template-columns: 1fr;
+  }
 }
 
-@media (max-width: 620px) {
+@container home (max-width: 720px) {
+  .footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .footerShortcuts {
+    display: none;
+  }
+  .footerLinks {
+    flex-wrap: wrap;
+  }
+  .usageStrip {
+    grid-template-columns: 1fr;
+  }
+}
+
+@container home (max-width: 620px) {
   .headerActions {
     width: 100%;
     justify-content: flex-end;
@@ -2722,11 +2691,11 @@
     padding-inline: 9px;
   }
 
-  .overviewGrid .projectGrid {
+  .timeSummaryGrid {
     grid-template-columns: 1fr;
   }
 
-  .overviewGrid .actionList {
+  .overviewGrid .projectGrid {
     grid-template-columns: 1fr;
   }
 
@@ -2741,6 +2710,15 @@
   }
   .quickSend {
     margin-left: auto;
+  }
+}
+
+@container usagecard (max-width: 216px) {
+  .plan {
+    display: none;
+  }
+  .live {
+    display: none;
   }
 }
 

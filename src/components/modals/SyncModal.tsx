@@ -22,8 +22,8 @@ const CREATE_TOKEN_URL =
 
 type Busy = null | 'connect' | 'push' | 'pull' | 'logout'
 
-// Códigos de erro que o backend (github_sync.rs) retorna e que têm tradução
-// dedicada; o resto cai no genérico com a mensagem crua.
+                                                                            
+                                                         
 const KNOWN_ERRORS = new Set([
   'empty_token',
   'invalid_token',
@@ -120,7 +120,7 @@ export function SyncModal() {
       const next = await githubSyncPull()
       setStatus(next)
       // Regrava projects.json/activity-stats.json em disco → re-hidrata o store
-      // pra refletir sem reiniciar o app.
+                                          
       await hydrate()
       setNotice(t('sync.github.pullDone'))
     } catch (e) {

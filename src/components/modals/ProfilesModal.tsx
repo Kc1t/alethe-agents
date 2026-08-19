@@ -13,7 +13,12 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { saveFile } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
-import { DEFAULT_PROFILE_IMAGE_URL, getProfileImageUrl, getProfileInitial } from '../../lib/profile'
+import {
+  DEFAULT_PROFILE_IMAGE_URL,
+  getProfileAccountName,
+  getProfileImageUrl,
+  getProfileInitial,
+} from '../../lib/profile'
 import {
   createProfile,
   deleteProfile,
@@ -111,7 +116,16 @@ export function ProfilesModal() {
       })),
     [activeProfileId, preferences.profileImageUrl, profiles, projects],
   )
-  const items = summaries.length > 0 ? summaries : fallbackSummaries
+  const sourceItems = summaries.length > 0 ? summaries : fallbackSummaries
+  const items = sourceItems.map((profile) => ({
+    ...profile,
+    name: getProfileAccountName({
+      profileId: profile.id,
+      profileName: profile.name,
+      activeProfileId,
+      displayName: preferences.displayName,
+    }),
+  }))
   const activeProfile =
     items.find((profile) => profile.is_active || profile.id === activeProfileId) ?? null
   const currentPtyIds = projects.flatMap((project) =>

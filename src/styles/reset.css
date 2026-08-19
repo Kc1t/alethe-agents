@@ -21,10 +21,10 @@ body {
   overflow: hidden;
 }
 
-/* macOS: a janela roda sem decorações e o backend (window_style.rs) recorta o
-   contentView com cornerRadius. Para os cantos recortados aparecerem, o DOM não
-   pode pintar um retângulo opaco por baixo — html/body ficam transparentes e o
-   --bg passa a viver no container raiz do app (.appRoot), que é arredondado. */
+                                                                              
+                                                                                
+                                                                               
+                                                                                
 [data-platform='macos'],
 [data-platform='macos'] body {
   background: transparent;
@@ -70,9 +70,9 @@ textarea {
   color: inherit;
 }
 
-/* WebKitGTK (Linux) ignora background/color de autor no <select> fechado e
-   desenha o widget nativo do GTK (fundo branco) por cima — appearance: none
-   força o motor a pintar com o CSS do componente em vez do skin nativo. */
+                                                                           
+                                                                            
+                                                                           
 select {
   appearance: none;
   -webkit-appearance: none;
@@ -110,10 +110,10 @@ select option {
   background: var(--bg-elevated);
 }
 
-/* Mesmo problema do <select> acima, mas pra checkbox/radio: sem appearance:
-   none, o WebKitGTK desenha com o tema nativo do GTK (GNOME/Adwaita etc.),
-   ignorando as cores do app inteiro — em vez de só ficar feio, quebra o
-   tema escuro pontualmente onde quer que apareça. */
+                                                                            
+                                                                           
+                                                                        
+                                                     
 input[type='checkbox'],
 input[type='radio'] {
   appearance: none;
@@ -169,9 +169,9 @@ input[type='radio']:disabled {
   color: var(--accent-on);
 }
 
-/* Scrollbar global — sutil, combina com tema. Track invisível, thumb com
-   cor derivada do --fg-muted. Width 10px default, classe .scroll-thin pra
-   listas densas. */
+                                                                         
+                                                                          
+                    
 *::-webkit-scrollbar {
   width: 10px;
   height: 10px;

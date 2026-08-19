@@ -3,14 +3,14 @@ import { writePty } from '../../lib/tauri'
 
 export const PROMPT_HISTORY_KEY = (id: string) => `prompt-history:${id}`
 
-// Constantes de tuning de escrita/colagem no PTY.
-export const PASTE_CHUNK_SIZE = 1024
-export const PASTE_CHUNK_DELAY_MS = 8
-// Espalha rajadas grandes de saída por frames pra terminal.write não travar a WebView.
-// 16 KiB (não 64 KiB): redraws densos de TUI (ex. OpenCode em alternate buffer,
+// Keep IPC payloads bounded without turning a large paste into thousands of calls.
+export const PASTE_CHUNK_SIZE = 64 * 1024
+export const PASTE_YIELD_EVERY_CHUNKS = 4
+export const MAX_TRACKED_PROMPT_LENGTH = 4 * 1024
+export const PTY_WRITE_TIMEOUT_MS = 5_000
+
 // muita cor/movimento) custam bem mais tempo de parse+render por byte do que
-// texto plano — um terminal.write() de 64 KiB desse tipo de conteúdo já foi
-// grande o bastante pra travar o frame por si só. Mais frames pro replay
+
 // terminar > qualquer frame individual travando por muito tempo.
 export const TERMINAL_WRITE_FRAME_BUDGET = 16 * 1024
 
@@ -21,29 +21,122 @@ export function loadPromptHistory(ptyId: string): string[] {
   return history
 }
 
-export async function writePtyChunked(
-  id: string,
-  text: string,
-  bracketed: boolean,
-  profileId: string,
-): Promise<void> {
-  // Bracketed paste (DECSET 2004): quando a app liga, envolvemos a colagem
-  // inteira nos marcadores 200~/201~ pra ela tratar como um bloco único. Sem
-  // isso, cada \r interno vira Enter e TUIs como o Claude submetem só a
-  // primeira linha — a colagem grande chegava cortada. Os marcadores ficam
-  // FORA do chunking pra nunca serem partidos no meio.
+export type PromptHistoryInputState = {
+  currentLine: string
+  overflow: boolean
+  history: string[]
+}
+
+/** Prevents one blocked ConPTY write from holding every subsequent keystroke forever. */
+export async function writePtyWithTimeout(id: string, data: string): Promise<void> {
+  let timeoutId: number | null = null
+  try {
+    await Promise.race([
+      writePty(id, data),
+      new Promise<never>((_, reject) => {
+        timeoutId = window.setTimeout(() => {
+          reject(new Error(`PTY write timed out after ${PTY_WRITE_TIMEOUT_MS} ms`))
+        }, PTY_WRITE_TIMEOUT_MS)
+      }),
+    ])
+  } finally {
+    if (timeoutId !== null) window.clearTimeout(timeoutId)
+  }
+}
+
+/** Updates lightweight command history without retaining or scanning large pasted documents. */
+export function applyPromptHistoryInput(
+  state: PromptHistoryInputState,
+  data: string,
+  onSubmit?: (line: string) => void,
+): boolean {
+  if (data.length > MAX_TRACKED_PROMPT_LENGTH) {
+    state.currentLine = ''
+    state.overflow = !data.endsWith('\r') && !data.endsWith('\n')
+    return false
+  }
+
+  let historyChanged = false
+  for (const character of data) {
+    if (character === '\r' || character === '\n') {
+      const line = state.overflow ? '' : state.currentLine.trim()
+      state.currentLine = ''
+      state.overflow = false
+      onSubmit?.(line)
+      if (line.length < 2 || state.history[state.history.length - 1] === line) continue
+      state.history.push(line)
+      if (state.history.length > 50) state.history.shift()
+      historyChanged = true
+    } else if (character === '\b' || character === '\x7f') {
+      if (!state.overflow) state.currentLine = state.currentLine.slice(0, -1)
+    } else if (character === '\x15') {
+      state.currentLine = ''
+      state.overflow = false
+    } else if (character >= ' ' && !state.overflow) {
+      if (state.currentLine.length < MAX_TRACKED_PROMPT_LENGTH) {
+        state.currentLine += character
+      } else {
+        state.currentLine = ''
+        state.overflow = true
+      }
+    }
+  }
+  return historyChanged
+}
+
+// Bracketed paste (DECSET 2004): quando a app liga, envolvemos a colagem
+// inteira nos marcadores 200~/201~ pra ela tratar como um bloco único. Sem
+// isso, cada \r interno vira Enter e TUIs como o Claude submetem só a
+// primeira linha — a colagem grande chegava cortada. Os marcadores ficam
+// FORA do chunking pra nunca serem partidos no meio.
+export async function writePtyChunked(id: string, text: string, bracketed: boolean): Promise<void> {
   const open = bracketed ? '\x1b[200~' : ''
   const close = bracketed ? '\x1b[201~' : ''
 
   if (text.length <= PASTE_CHUNK_SIZE) {
-    await writePty(id, `${open}${text}${close}`, profileId)
+    await writePtyWithTimeout(id, `${open}${text}${close}`)
     return
   }
 
-  if (open) await writePty(id, open, profileId)
-  for (let index = 0; index < text.length; index += PASTE_CHUNK_SIZE) {
-    await writePty(id, text.slice(index, index + PASTE_CHUNK_SIZE), profileId)
-    await new Promise((resolve) => window.setTimeout(resolve, PASTE_CHUNK_DELAY_MS))
+  let failure: unknown = null
+  let opened = false
+  try {
+    if (open) {
+      await writePtyWithTimeout(id, open)
+      opened = true
+    }
+    let index = 0
+    let chunkCount = 0
+    while (index < text.length) {
+      let end = Math.min(index + PASTE_CHUNK_SIZE, text.length)
+      // Never split a UTF-16 surrogate pair across IPC calls.
+      if (
+        end < text.length &&
+        text.charCodeAt(end - 1) >= 0xd800 &&
+        text.charCodeAt(end - 1) <= 0xdbff &&
+        text.charCodeAt(end) >= 0xdc00 &&
+        text.charCodeAt(end) <= 0xdfff
+      ) {
+        end -= 1
+      }
+      await writePtyWithTimeout(id, text.slice(index, end))
+      index = end
+      chunkCount += 1
+      if (index < text.length && chunkCount % PASTE_YIELD_EVERY_CHUNKS === 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, 0))
+      }
+    }
+  } catch (error) {
+    failure = error
   }
-  if (close) await writePty(id, close, profileId)
+
+  // A missing closing marker leaves Claude/Codex stuck in bracketed-paste mode.
+  if (opened && close) {
+    try {
+      await writePtyWithTimeout(id, close)
+    } catch (error) {
+      if (failure === null) failure = error
+    }
+  }
+  if (failure !== null) throw failure
 }

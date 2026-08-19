@@ -1,12 +1,12 @@
 # Changelog
 
-Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
-[Keep a Changelog](https://keepachangelog.com/pt-BR/); versionamento semântico
-([SemVer](https://semver.org/lang/pt-BR/)). Datas em UTC.
+Notable user-facing changes to **Alethe** are documented here. The format is based on
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project follows
+[Semantic Versioning](https://semver.org/). Dates use UTC.
 
-> **Regra:** toda adição, alteração ou remoção de feature entra aqui, sob
-> `[Não lançado]`, na mesma tarefa. Ao releasar, `[Não lançado]` vira a nova
-> versão com data e um novo `[Não lançado]` vazio é aberto no topo.
+> **Rule:** every feature addition, change, or removal must be recorded under
+> `[Unreleased]` in the same task. During a release, `[Unreleased]` becomes the new
+> dated version and a new empty `[Unreleased]` section is added at the top.
 
 ## [Não lançado]
 
@@ -197,257 +197,803 @@ Mudanças relevantes do **Alethe** para quem usa o app. Formato inspirado em
 
 ### Added
 
-- Agent Sandbox workers now expose stable job and thread identifiers, preserve working state until a Codex turn completes, and return structured spawn acknowledgements for reliable orchestration.
-- Agent Sandbox now draws parent-to-worker relationships independently from chat traffic, so the hierarchy remains visible before the first message is exchanged.
+- Added four UI themes built from the Elite Dev artwork — Elite Original, Elite Pure Black,
+  Elite Indigo and Elite Blush — each with a full token set, listed first under Preferences,
+  Appearance.
+- Added matching app-icon themes for the same four palettes, shown as a preview grid instead
+  of a dropdown.
+- Added an app-icon picker to the onboarding theme step, so the icon can be chosen on first run
+  instead of only from Preferences afterwards.
+- Added branded header and sidebar artwork to the Windows NSIS installer.
 
-- **LAN remote control:** open an authenticated mobile web view from the Alethe menu, browse existing agent chats across groups, watch terminal output live, and send one message at a time without changing the workspace.
-- **LAN remote control controls:** the feature can now be turned off, immediately disconnects paired devices, shows the active connection count, and supports regenerating the pairing token from a clearer status modal.
-- Agent Sandbox Codex workers now use a persistent app-server conversation: streamed replies appear in the terminal pane and follow-up messages continue the same thread instead of starting a disconnected one-shot process.
-- Codex app-server panes now identify their transport and become the selected message destination when clicked, reducing accidental follow-up messages sent to the Planner.
-- Agent Sandbox sessions now survive workspace tab changes, preserving live terminals, worker status, groups, and app-server threads until the session is explicitly stopped or its project changes.
-- Sandbox planners now avoid executing a worker's delegated follow-up themselves when a worker is already available, keeping responsibility in the selected worker terminal.
-- Agent Sandbox now relays completed Codex app-server replies back into the parent Claude Planner terminal, preserving a real bilateral delegation loop.
-- Agent Sandbox Codex protocol workers now render their streamed output in a clean terminal surface instead of injecting protocol chunks into a PowerShell shell.
-- Agent Sandbox orchestration workers now start in YOLO mode by default: Claude uses `--dangerously-skip-permissions` and Codex uses unrestricted, non-interactive approvals.
-- **Project sidebar drag state:** drop targets now appear only while DnD-kit has an active drag, preventing stale “move into this group” and “ungrouped” prompts after a drag ends.
-- **Top bar spacing:** controls, tabs, status pills, and window actions now follow a consistent spacing, height, and radius system in both top bar layouts.
-- **Top bar customization control:** the edit button no longer reserves empty space when hidden, while remaining available on hover and keyboard focus.
-- **Loading screen:** startup now uses the same Home ASCII treatment and background artwork, with a quieter console-style status panel.
-- **LAN remote security hardening:** remote WebSocket clients now authenticate before counting toward a four-device limit, listeners bind to the selected LAN address, remote messages strip control characters, and responses include restrictive security headers.
-- **Remote Control settings:** the modal now persists a configurable authenticated-device limit, defaults it to one device, and shows connected devices against the active limit.
-- **Consistent form controls:** dropdowns now use a compact 32px system-wide standard instead of inconsistent oversized modal and sidebar variants.
-- **Remote Control settings page:** security policy, session lifetime, LAN status, and individual device revocation now live in a dedicated Preferences category; the QR modal is focused on quick access.
-- **Remote device sessions:** connected devices now have names, connection metadata, a one-hour default expiry, and individual revocation support.
-- **Remote address privacy:** the UI keeps the active LAN address behind a generic placeholder until a device completes QR pairing; the QR payload remains functional.
-- Agent Sandbox projects can be created with a name and project folder, persist in the project sidebar, and open directly in the real multi-agent terminal workspace.
-- Project folder control now keeps the icon, path and browse action aligned in one consistent field.
-- Dev builds now use a separate Tauri identifier, while project terminals can be mirrored into the Agent Sandbox and grouped with Shift selection.
-- Agent Sandbox now starts only the planner; worker terminals are created on demand and remain visible for long-running tasks such as development servers.
-- Sandbox spawn bridge can now create a regular shell terminal, making long-running development servers visible without wrapping them in an agent.
-- Planner spawn instructions now use compact payloads so longer delegation prompts do not exceed the Windows terminal command parser limit.
-- Spawned agent tasks now use the terminal's readiness-aware initial input flow, preventing the first delegated prompt from being lost during CLI startup.
-- Sandbox planner and Claude workers now default to the lower-cost Haiku model, and delegated tasks are sent after the spawned PTY has finished booting.
-- Agent Sandbox restores the selected Sandbox project on app startup instead of showing an empty state when the active project has not loaded yet.
-- Agent Sandbox now automatically starts the selected project after reload and keeps its regular project terminals synchronized after the planner boots.
-- Switching between Sandbox projects now moves the live session to the newly selected project's working directory instead of keeping the previous project's agents.
-- Sandbox runs now invalidate in-flight spawns when stopped or switched, preventing orphan PTYs from surviving a project change.
-- Sandbox startup failures no longer permanently disable the project; the automatic start guard is released so the session can be retried.
-- Sandbox spawn requests now compare Windows working directories case-insensitively, so a path with different casing or trailing separators is not discarded.
-- Spawned Codex panes now show a working state while their delegated task is being submitted, with a safe Enter retry for TUI startup timing.
-- Delegated sandbox prompts now use the same delayed bracketed-paste and separate-submit flow as regular terminal prompts, so Codex and Claude actually start the received task after boot.
-- Initial prompts now have a timed fallback while a CLI is still producing bootstrap or MCP output, with a separate Enter retry so a busy Codex TUI cannot leave the task stuck at its first prompt.
-- Codex and Claude workers with delegated tasks now start from their supported prompt arguments (`codex exec` and Claude print mode), keeping the real terminal visible without depending on fragile TUI keystroke injection.
-- Automated Codex workers now skip the repository trust check for the explicitly selected Sandbox directory, and Sandbox spawn/PTY failures emit structured diagnostic logs without exposing the task text.
-- Automated workers now switch from Working to Done or Error based on their streamed completion/error output, even when the surrounding shell PTY remains open.
-- Sandbox prompts are cleared after successful submission, preventing HMR or pane remounts from executing the same delegated task twice.
-- Sandbox task delivery now waits for PTY output to settle, with a deadline fallback, and preserves each terminal's own working directory.
-- Codex resume now refuses session IDs already claimed by another live Alethe pane, avoiding active-writer bootstrap conflicts after reloads.
-- Codex active-writer errors are now detected from PTY output and automatically recover by opening a fresh session instead of leaving the chat stuck.
+### Removed
 
-### Alterado
+- Removed the previous app-icon themes; the icon picker now offers only the four Elite
+  marks. Preferences still pointing at a removed icon are migrated to Elite Original on
+  load. The UI themes they shared a name with are untouched.
 
-- **Ferramentas de desenvolvimento no menu hambúrguer:** Welcome, Theme Picker e Redo Onboarding agora aparecem somente em sessões de desenvolvimento.
+### Changed
 
-### Alterado
+- Elite Indigo is now the default UI theme and the default app icon for new installations. The
+  application icon, the installer icon and the installer artwork all use the same Indigo mark.
+- Replaced the home and loading backdrop artwork with the same monochrome portrait, so the
+  backdrop and the installer icon come from one mark.
+- Added an Animated/Reduced motion preference and lowered the home ASCII background's CPU cost by
+  caching image processing and pausing it while hidden, while preserving the creator's original 8px
+  ASCII design and 30 FPS animated cadence.
+- Hardened the production renderer with a defense-in-depth Content Security Policy and replaced its
+  broad core/plugin defaults with the audited permissions used by the main webview. Privileged custom
+  commands still depend on their own authorization and input-validation boundaries.
 
-- **Avatar padrão de novos usuários:** o perfil agora usa a nova ilustração roxa padrão quando nenhuma imagem personalizada é definida, inclusive na prévia do onboarding.
-- **Todo List com mais feedback visual:** tarefas agora têm animações de entrada, hover, arraste e destaque claro do destino durante a reorganização.
+### Fixed
 
-### Alterado
+- The embedded browser pane no longer escapes its cell on scaled displays. Its webview was
+  positioned with CSS-pixel coordinates while the window places child webviews in physical
+  pixels, so the two only lined up at a device pixel ratio of 1 — on a HiDPI screen the
+  browser was drawn oversized and offset, covering the rest of the layout.
+- Changing the terminal palette now repaints the rows already on screen. Only the option was
+  being swapped, so existing output kept the previous colours until the next redraw.
+- Terminal text no longer disappears on light themes. xterm's built-in ANSI palette assumes a
+  dark background, so anything an agent painted as white or bright white rendered white on a
+  light surface. Light themes now carry an ANSI palette that keeps every hue — so agent
+  branding survives — and re-points only the neutrals that would otherwise vanish.
+- Light-theme detection is now derived from each theme's own background luminance instead of
+  a hardcoded pair of theme names. The OpenCode icon and the Markdown pane were picking their
+  dark-theme variants on any light theme outside that pair, rendering a pale icon and dark
+  syntax highlighting on a light surface.
+- The terminal no longer falls back to the dark palette when the selected theme has no
+  terminal colours of its own. Orca had been silently rendering a dark terminal since it was
+  added, and every light theme showed the same mismatch. The resolver is now an exhaustive
+  map, so a theme without terminal colours fails the build instead of shipping wrong.
+- Windows updates no longer close the app without coming back. The update manifest pointed Windows
+  at the MSI, but the installer nearly everyone actually has is the NSIS `setup.exe` the download
+  page serves. An MSI applied over an NSIS install neither upgrades it nor restarts the app, so the
+  updater downloaded, closed Alethe, and left the old version behind. The generic Windows entry now
+  points at the NSIS installer; the `-msi` and `-nsis` entries are still published for anyone
+  pinning one deliberately. Existing installs that ended up with both an MSI and an NSIS entry
+  registered will settle onto NSIS after this update.
+- The **Continue in Claude Code** button in the agent handoff dialog was unreadable. It painted its
+  label with a colour token that does not exist anywhere in the app, so the text fell back to the
+  inherited foreground and sat light-on-accent.
 
-- **Comentários no visualizador Markdown desativados temporariamente:** removidos o popover de notas, o painel de comentários e o atalho relacionado enquanto o recurso é corrigido.
-- **Workspace vazio e arraste da sidebar:** o caminho padrão do projeto é preenchido automaticamente, o botão desabilitado mantém contraste legível e projetos arrastados agora acompanham o cursor com uma prévia visual.
-- **Sidebar com mais feedback visual:** abertura, troca de conteúdo, hover e arraste agora têm transições suaves, além de destaque mais claro para o destino do drop.
+## [1.6.0] — 2026-08-17
 
-- **Agent Sandbox experimental:** canvas temporário com agentes de demonstração apoiados por PTYs reais, cartões arrastáveis e conexões animadas para troca de mensagens estruturadas.
-- **Agent Sandbox em tela cheia:** canvas, controles e preview de terminal agora usam uma composição compacta e flutuante, alinhada ao design system.
-- **Terminais reais no Agent Sandbox:** cada agente agora é renderizado diretamente como um terminal Alethe dentro do canvas, usando a mesma área de conteúdo dos terminais normais.
-- **Layout do Agent Sandbox:** corrigida a largura colapsada que quebrava o título, escondia os agentes e cortava os controles no painel central.
-- **Panes do Agent Sandbox:** blocos agora usam o mesmo header, dimensões, fundo e área xterm dos terminais reais do workspace, sem card ou preview artificial.
-- **Resize e providers no Agent Sandbox:** panes podem ser redimensionados pelo canto e a demo abre Lead/QA com Claude Code, Backend com OpenCode e Frontend como shell real.
-- **Focus no Agent Sandbox:** novo modo organiza os terminais em uma grade preenchida dentro da área central, com transição animada e retorno ao layout anterior.
-- **POC real de comunicação entre agentes:** removida a sequência mockada; o Sandbox agora abre dois Claude Code independentes e envia mensagens reais para o PTY do agente destinatário.
-- **Relay do Agent Sandbox:** mensagens agora identificam o agente remetente pelo nome completo do pane, como `Lead Claude`, em vez do ID interno.
-- **Planner-to-worker real:** o Sandbox agora inicia Claude Code com Sonnet como planner e Codex como worker, aceita spawns reais pelo evento local `/spawn` e adiciona o novo terminal à sessão.
+### Added
+
+- Added Normal and Clean application-wide visual styles. Normal preserves the production UI with
+  colored borders and rounded surfaces, while Clean uses the new compact project tree, flat right
+  sidebar, square terminal containers, restrained hover states, and single-row profile footer.
+- Added shared Clean visual tokens for row and control heights, spacing, radii, borders, hover
+  surfaces, and transition behavior so the minimal language can be extended consistently.
+- The onboarding now asks which interface style to use (Normal or Clean) with a live preview of each
+  one, right after the theme step.
+- Claude Code and Codex conversations can now be continued in the other agent from the terminal
+  toolbar or Recent chats — so hitting a usage limit on one agent no longer ends the conversation,
+  you carry it into the other and keep working. Alethe builds an editable context packet, redacts
+  anything that looks like a secret, token, password, API key or credential before it leaves the
+  machine, opens the target agent in a new pane, keeps the source conversation available, and
+  removes the temporary packet after the first target turn or when its pane is closed.
+- The right sidebar now keeps a cumulative, per-profile history of up to 12 recently opened
+  Markdown files as switchable tabs, persisted across app launches. Markdown files can be sent
+  there from the Explorer or dropped from the desktop, history tabs can be closed individually,
+  and they remain available while visiting the Todos, Git, or MCP sidebar modes.
+- GitHub Copilot CLI is now available as an agent throughout onboarding, installation, quick launch,
+  terminal creation, sub-tabs, CLI path overrides and unrestricted mode.
+- New **Golden Premium** theme, with its own terminal palette.
+- New **MCP** tab in the right sidebar: a single place to see every MCP server configured on the
+  machine, grouped by server name and showing which agents have it. It reads Claude Code
+  (`~/.claude.json`, `.mcp.json`), Codex (`~/.codex/config.toml`), OpenCode (`opencode.json`) and
+  Antigravity (`~/.gemini/config/mcp_config.json`), with a Global/Project switch — so a server
+  present in Claude but missing in Codex is visible at a glance. At project scope it also reads the
+  servers `claude mcp add` writes by default, which Claude keeps inside `~/.claude.json` under the
+  project's entry rather than in the repo, and labels each row with the file it came from. Environment values are masked and
+  only leave the backend one key at a time, on an explicit click. A config that cannot be parsed is
+  reported as read-only and is never written to. Servers can be added, removed and enabled/disabled;
+  every write is preceded by a backup, validated by re-parsing the result and checking that no other
+  server changed, and committed atomically. A server can be **copied from one agent to another** in
+  one click, and adding a new one takes a form, a pasted JSON block in any of the shapes the agents'
+  own docs use, or a search of the official MCP registry — which turns a published package into a
+  ready-to-run command and pre-fills the variables it expects, marking the secret ones empty. The
+  last successful search of each term is kept on disk so the list still opens when the registry is
+  unreachable, labelled with the date it was captured. Alethe translates a server to each target's
+  format and refuses, rather than silently dropping, a field the target cannot express. A per-agent
+  **Check** button asks the agent itself whether it can actually reach each server — the one thing no
+  config file can answer. The first time the app opens with the feature on, a card shows what was
+  found and offers to align the agents in one click; it can be reopened at any time from
+  Preferences → Features, where the whole feature can also be turned off.
+- The MCP tab splits into **Servers** and **Skills**, each with its own search and an **Add more**
+  button that opens the manager straight on the registry search. Every row shows the icon of each
+  agent that has the entry, greyed out for the ones missing it, and a row of agent buttons filters
+  the list down to a single agent. A server or a skill can be removed from every agent at once
+  instead of one row at a time, and the add flow asks which agents get it before writing anything.
+  The registry search filters by whether a server runs locally or remotely.
+- A **Skills** tab in the same manager lists every skill installed for each agent, reading
+  `~/.claude/skills`, `~/.codex/skills` and the shared `~/.agents/skills` store. It resolves links
+  (including Windows junctions) so a skill shared between agents is shown once with its real
+  location, renders the SKILL.md frontmatter, folder structure and body, and surfaces where the
+  skill was installed from. Skills that ship with the agent are locked and cannot be deleted;
+  removing a linked skill unlinks it from that agent only and keeps the shared copy the other
+  agents point at.
+- Grid layouts are now edited directly on the grid. Every pane and every project container carries
+  resize edges: dragging against a neighbour resizes the tracks as before, but dragging towards an
+  empty cell stretches the pane over it, cell by cell. Double-clicking an edge — or the expand button
+  that appears on a pane with empty space next to it — makes that pane swallow all the free space
+  around it, so a lone pane on the bottom row can finally take the whole row without opening a
+  dialog. Empty cells also became drop targets: dragging a pane or a container onto one moves it
+  there instead of swapping with a neighbour.
+- The project container header has a **+** button that creates a new terminal in that project.
+- Agents that are not installed can now be installed from inside Alethe. The onboarding agent step
+  and the "not found" overlay of a terminal both offer an **Install** button that runs the official
+  installer in a real shell and streams its output, then confirms the CLI is reachable before
+  reporting success. Alethe probes the machine for Node, npm, WinGet, Scoop and Chocolatey and only
+  offers the methods that work there, preferring each vendor's official installer — which needs no
+  Node — and listing the alternatives under **Other ways**.
+- A **Recent chats** button on the terminal toolbar, next to Open in VS Code, lists the Claude and
+  Codex conversations of that pane's working directory and resumes any of them, either in a new pane
+  on the current grid or in the pane it was opened from. The panel opens on the tab matching the
+  pane's agent, and unrestricted mode is a checkbox applied to the resumed session.
+- **Ctrl+B** toggles the left sidebar open and closed. The topbar button now shows the shortcut in
+  its tooltip.
+- When an agent can only be installed through npm and Node.js is missing, its install dialog now says
+  so instead of dead-ending on "no automatic installer". It offers a one-click Node.js install
+  through WinGet, Scoop or Chocolatey when one of them is available, and a **Download Node.js**
+  button otherwise. Once Node lands, the agent's own installer appears without reopening the card.
+- Freebuff and Mimo can now be installed from inside Alethe like the other agents, with their
+  documentation links — until now they were the only agents with no installer at all.
+- Installed agents can be **uninstalled** from the onboarding agent step. Confirmation happens in a
+  dialog that shows the exact command about to run, and the agent is only reported as removed once
+  its CLI can no longer be found. Only one agent can be installed, updated or uninstalled at a time —
+  package managers share a single global directory and corrupt each other when run in parallel.
+  Agents whose only installer is a vendor script offer no uninstall, since none of them documents
+  one and guessing what to delete
+  would be worse than doing nothing.
+- Agents with a newer release published on npm can be updated in place from that table.
+- Right-clicking a terminal pane pastes the clipboard (text, images and files) when nothing is
+  selected; with a selection, the right click copies it and clears the highlight.
+- A URL printed in a terminal can now be opened as a browser pane in the grid, next to the existing
+  "open in app" and "open in browser" actions — the same one-click **Open in grid** that Markdown and
+  video links already had.
+- The Files sidebar now supports quick previews, adding or dragging files into the workspace grid,
+  revealing entries in File Explorer, renaming, and confirmed deletion. Git file rows can also open
+  the working file in the grid or reveal it alongside the existing stage, discard, commit, and sync actions.
+- Browser panes now offer app-first, balanced, and keep-alive resource modes. App-first is the default,
+  and every mode releases hidden native webviews when Alethe detects memory pressure.
+- The layout organizer now includes adaptive presets and keeps the eight most recently saved layouts
+  separately for each project, group, and workspace.
+- New **Ember** interface theme: cool charcoal surfaces, hairline dividers and a single ember-orange
+  accent for live state, with a matching terminal palette. Selectable in Preferences → Appearance and
+  as the terminal theme; it does not ship a native app icon variant.
+- Remote control now pairs through a **short-lived pairing window**. The QR code is valid for two
+  minutes and stops working as soon as one device pairs; a paired device receives its own session
+  token and can be revoked individually. Preferences → Remote control can reopen or close the window
+  at any time.
+- A message sent from a paired phone now raises a desktop notification naming the device and showing
+  what it sent, so remote input is never silently typed into a terminal.
+- Individual terminals can now be hidden from remote devices from the sidebar context menu. A hidden
+  terminal disappears from the phone's list and its output and input are refused server-side.
+- Remote control gained a **read-only mode** (on by default) and a separate switch that decides
+  whether plain shell terminals accept remote input. With both at their defaults a paired phone can
+  watch terminals but cannot type into them.
+- Session scans that take longer than 250 ms are now recorded in `logs/app-events.log`.
+- Restored browser panes in the workspace grid. **Add browser** is available from the app menu
+  and each project's three-dot menu, opens a dedicated URL and settings dialog, and runs every
+  page in a native incognito webview whose cookies, cache, autofill, and site storage are discarded
+  when the pane closes.
+- Added a live Remote Control device counter to the top bar with direct access to the connection
+  panel.
+- The project editor now warns when its folder is not a Git repository and offers initialization
+  without leaving the dialog.
+
+### Changed
+
+- The sidebar's **Organization** block is back to the 1.5.0 layout: the label with the four layout
+  modes, plus the workspace grid button — the reworked panel with stacked icon rows and a scope
+  switch in its header was reverted.
+- The right sidebar no longer depends on the Todos feature being enabled — it now appears whenever
+  Todos, MCP, or Git-on-the-right is active.
+- Installing an agent now happens in a dialog. It lists every method that works on this machine —
+  the vendor's own installer, npm, WinGet, Scoop, Chocolatey — with the exact command each one runs,
+  and you pick which to use instead of being given one button and a hidden "other ways" list.
+- The onboarding agent step was rebuilt as a table. Every agent is one row with its icon, the
+  resolved path of its CLI, the installed version, a status tag, and its actions — install, update
+  or uninstall — so all rows line up regardless of what each agent offers. Above it there is a
+  counter strip (enabled, up to date, with updates, installable), a search field that matches on name
+  or path, and All / Detected / Installable filters. A **Scan again** link re-runs detection without
+  leaving the step, for when an agent was installed outside Alethe.
+- GitHub Copilot is drawn with its official mark instead of the generic robot placeholder, so every
+  agent in the app now carries its own logo.
+- Setting MCP up is no longer a step of first-run onboarding. It is offered once as its own card
+  after the app opens, and stays available in Preferences → Features — onboarding goes back to five
+  steps.
+- The layout designer dialog now uses the same drag-and-drop engine as the rest of the app. Cards
+  follow the cursor without lag, only the cell under the pointer lights up, a plain click still just
+  selects, and cards are resized with the same edge handles as the real grid.
+- Switching workspace tabs no longer reloads them. Every tab in the tab bar — the same ones Ctrl+Tab
+  cycles through — stays mounted in the background instead of being torn down, so its terminals keep
+  their scrollback, their PTY attachment and their scroll position. Coming back to a tab no longer
+  shows a boot spinner and never restarts anything, however many projects you move between. The two
+  most recently used background tabs also keep receiving output, so returning to them costs nothing
+  at all; the rest pause their stream while hidden and redraw on return. None of them are suspended
+  for being idle while they stay mounted. A tab that produced no output while it was away skips the
+  redraw entirely and comes back untouched.
+- The terminal boot overlay uses the same dot-matrix loader as the sidebar instead of its own
+  spinner.
+- Terminals start faster. Resolving an agent's launcher scanned every directory in PATH on every
+  boot; successful lookups are now remembered and revalidated against the file itself, so installing
+  or removing a CLI is still picked up immediately.
+- Critical Windows memory pressure now suspends one eligible hidden idle runtime at a time, preserving
+  session scrollback while preventing system-wide stalls that can make even Alt+Tab stop responding.
+- High-volume terminal output now coalesces runtime activity timestamps, avoiding repeated global
+  state updates and skips remote-control serialization when no remote device is connected, without
+  delaying terminal rendering or process I/O.
+- Spotify playback widgets now share connection and track requests instead of polling the backend
+  independently.
+- The title bar now uses a lightweight connected-device count and pauses remote-control polling while
+  the app is inactive, avoiding repeated QR-code generation for a badge update.
+- Native browser panes now share one overlay observer instead of each watching the entire application
+  DOM independently.
+- Remote-control polling now reuses the pairing QR code until its URL or token changes.
+- GSD session watching now reads child state in one background command instead of launching three Git
+  root-resolution processes per watched item every five seconds.
+- Layout editing now provides a smoother drag preview, a clearer preset/history library, and reduced-
+  motion support. Sidebar activity indicators now share the trailing action slot with the three-dot
+  menu, while Todo edit and delete actions no longer reserve empty space before hover or keyboard focus.
+- Repository instructions now explicitly require English for source comments, JSDoc, internal logs,
+  documentation, changelog entries, and default user-facing strings.
+- Windows installers now include the official WebView2 bootstrapper and automatically install the
+  Evergreen Runtime when it is missing, instead of downloading the bootstrapper separately.
+- App icon choices now update the running native window and taskbar icon immediately.
+- Memory monitoring no longer parks runtimes, closes tabs, or blocks new sessions automatically.
+  Memory Analytics now bases its health alert on available Windows memory and keeps session closure
+  under explicit user control.
+- Resource health is recorded periodically in `logs/resource.log`, and failed `projects.json` saves
+  are logged and retried instead of being silently discarded.
+- Everything inside a group now sits indented under a barely-there rail that picks up the group's
+  color on hover, so a grouped project is distinguishable from a loose one without adding noise.
+- Groups and projects now expand and collapse with a short height-and-fade animation, and the
+  disclosure chevron rotates instead of swapping icons. Both respect reduced-motion.
+- Group headers now read as section labels — quiet 11px text and a rule line, with no folder mark —
+  so they are no longer mistaken for project rows, and project and session rows were tightened to a
+  28px scale so the group no longer competes with them.
+- Reworked both sidebar styles into a flat three-level list. Groups are now section dividers (label,
+  rule, add and collapse actions) instead of a tree level, every project renders as a single folder
+  row with its sessions underneath, and the boxed active-project card, its primary badge and its
+  separate new-terminal button are gone — the row's + creates a session and clicking a group header
+  only expands or collapses it.
+- Row actions (+ and the three-dot menu) now appear on hover, and the selected session is marked
+  only by a solid background.
+- Hidden and paused agents are now signalled only by a desaturated agent logo and a softer name —
+  the strikethrough and the italic "disabled" styling are gone.
+- The agent logo is now the leading element of every terminal row; the running indicator and the
+  response-ready badge moved to the right end of the row.
+- Standardized the entire changelog in English and made English the explicit default language for
+  versioned repository content and commit messages.
+- Simplified Clean sidebar selection with subtle background feedback and no side markers, preserved
+  animated running-state indicators, removed the Ungrouped heading and Primary badge, increased tree
+  spacing, and added a direct new-terminal action to every project.
+- The Clean sidebar footer now keeps the latest known Spotify track visible when playback is
+  inactive and stays hidden when no real track is available, without an empty connection prompt.
+- Clean mode now presents a dedicated New Agent action, folder-based project rows, one focused row at
+  a time, dimmed inactive agent icons, and matching flat selection feedback in the top bar.
+- Extended Clean styling across dialogs, dropdowns, context menus, workspace panes, browser/video/
+  Markdown surfaces, sub-tabs, Home cards, empty states, and floating inspectors with neutral focus,
+  flat hover feedback, reduced motion, and no heavy elevation shadows.
+- Tightened the Clean sidebar tree: New Agent moved below the toolbar and reads as a quiet row,
+  project rows dropped the branch label, agent counter and standalone AI icon, every project now
+  expands by default with its own chevron, and group, project and terminal rows were reduced in
+  height with clearer indentation between the three levels.
+- Removed finished-agent badges from Clean sidebar items while preserving the aligned state gutter
+  and animated working indicator for agents that are actively running.
+- Removed the workspace's animated gradient focus frame in both visual styles, increased the Clean
+  sidebar's separation between groups and projects, and added group logo selection to both group
+  creation and editing with a folder fallback.
+- Removed the space-consuming terminal header bar in both visual styles and kept its controls
+  available in a compact hover overlay that does not reduce terminal content height. The overlay
+  now also shows the active conversation's agent logo and name on the left.
+- Spotify now refreshes existing connections automatically and falls back to the most recently
+  played track when nothing is currently active, while connection prompts no longer appear in the
+  sidebar or Home dock.
+- Increased inactive Clean top-bar tab and logo contrast, aligned Spotify and profile footer rows to
+  the same proportions, and restyled the profile menu with the shared compact Clean popover metrics.
+- Matched the Clean right sidebar to the left sidebar's flat toolbar, controls, spacing, and list
+  treatment, and standardized every Clean menu and dropdown on the profile menu's smooth entrance
+  motion, including model, project, agent-usage, context, Home, and terminal-link selectors.
+- Project and group rows now prefer their configured logo over the folder fallback in Clean mode,
+  and the right sidebar mirrors the left toolbar's button sizing, spacing, utilities, and active states.
+- Claude rows in both sidebar styles now show the live conversation title, falling back to the first
+  user prompt and then the agent name, with long titles truncated without disturbing row actions.
+- Groups are always ordered above loose projects at every sidebar level, orphaned subgroups remain
+  visible at the root, and configurable group logos replace the folder fallback in both styles.
+- The Clean Organization layout strip now matches the 40 px footer rhythm with compact, flat controls.
+- Extended Clean mode to the remaining top-bar controls: flat icon buttons without scale-on-hover,
+  borderless usage, RAM, profile and sync pills, and a lighter usage popover.
+- Visible-pane calculations now run once per state update and are shared instead of running once per
+  open pane.
+- Off-screen terminal history loading is deferred until the pane becomes visible, and heavy TUI
+  writes are processed in 16 KB chunks instead of 64 KB chunks.
+
+### Removed
+
+- The Merge Center is **out of this version and will return in a later one**. Out for now: its
+  sidebar panel, the **Merge** tab of the project editor, the branch testing dialog, the merge store,
+  and the `merge_analyze` / `merge_prepare` / `merge_finalize` / `merge_abort` /
+  `merge_preflight_abort` / `merge_rebase_onto_target` / `merge_force_cleanup` backend commands,
+  along with the `merge_analyzer` and `conflict_resolution` modules behind them. Projects do not
+  carry a post-merge action setting in this version. Worktrees, the conflict-resolution agent
+  settings and GSD Sync are untouched — they only shared the `merge.` prefix.
+- Removed the optional GitHub repository clone field from the new-project dialog.
+- Removed the Infinite Rainbow project-color option, its animated styles, and its workspace focus
+  treatment. Existing invalid or retired accent values now fall back to a stable solid color.
+- Removed the unused WebGL terminal rendering path and dependency. Terminals continue to use the
+  Canvas 2D renderer without a behavior change.
+
+### Fixed
+
+- Panes running in a worktree now resume their conversation. A pane created with worktree isolation
+  came back as a fresh agent every time the app reopened, with its history gone and its sidebar title
+  never filled in, while panes in the repository root were unaffected. Claude folds a dot into a
+  hyphen when it names a project's session directory, and worktrees live under
+  `<repo>/.alethe/worktrees/<id>` — so the computed directory never existed, the pane never learned
+  its real session id, and each reopen saved an empty session over the pointer to the real one.
+- The left and right sidebars no longer come back collapsed. A collapsible panel closes itself
+  whenever the layout squeezes it under its minimum width — which is what minimizing the window, or
+  restoring it narrow, does to both sidebars at once — and nothing ever reopened them, so they stayed
+  shut even though the saved preference still said they were open. They are now reopened whenever the
+  window has room for them again.
+- The left and right sidebars no longer close on their own. Closing the app tears the window down and
+  the panel group reports one last zero-width layout on the way out, which was saved as if both
+  sidebars had been collapsed by hand — so the next launch opened with both closed. Layout changes
+  that arrive while the window is hidden are now ignored. Separately, dragging a separator until the
+  sidebar collapsed left its "the user is resizing" flag stuck on, because a collapsed separator
+  stops receiving pointer events and never saw its own release.
+- Picking a server in the MCP manager's list now switches the detail panel. Opening the manager from
+  a server row in the sidebar pinned the selection to that server: every click re-ran the effect that
+  applies the requested server and snapped the list straight back.
+- Continuing a Claude conversation in Codex no longer launches Codex with `--add-dir`, a Claude Code
+  flag that Codex rejects on startup.
+- A Codex pane that was not visible when it started now recovers from a busy session on its own. The
+  bootstrap error is written and the process exits before the stream listeners exist, and a hidden
+  pane never read the buffered output, so the retry that opens a fresh session never ran.
+- Home now adapts to the width of the pane it is in, not the width of the window. Its layout was
+  driven by window breakpoints, so opening Home in a narrow pane of a wide window kept the wide
+  layout: the shortcut pills spilled outside the "new terminal / new project / new group" cards and
+  the message count in the activity card ran over the word next to it. The sections now collapse on
+  the space they actually have, long labels truncate instead of overflowing, and the big activity
+  number scales with its card.
+- Two paths inside the same parentheses are no longer underlined as one link. A path opened right
+  after a bracket ran straight to the closing bracket, ignoring every space in between, so
+  `(/pt-br/vitrine-dupla/projetos e /en/double-showcase/projects)` came back as a single link. The
+  bracket now only caps the link instead of defining it, and each path is detected on its own.
+- An extensionless path in terminal output no longer swallows the rest of the sentence as a link:
+  `/pt-br/vitrine-dupla/trajetoria — 5 variações` used to underline the whole line. A space now ends
+  the link unless a file extension is waiting on the other side, which is what a path with spaces
+  actually looks like.
+- Invalid CLI overrides are rejected instead of being saved and launched. Existing invalid overrides
+  are cleared automatically, preventing the Antigravity desktop application from opening when Alethe
+  expects the `agy` command-line executable.
+- The agent update button in onboarding no longer fails silently. It decided success purely by
+  checking whether the CLI binary was still on PATH, which is true even when the update itself
+  failed (network error, permission denied, ...), since the previous binary is still there. The
+  installer's real exit code is now checked first, and a failed update shows a toast instead of
+  quietly leaving the CLI on its old version. It also now catches the case where the installer
+  genuinely succeeds but a second, unmanaged install of the same CLI earlier on PATH shadows the
+  one that was just updated: if the resolved binary's version hasn't moved, the update is reported
+  as failed and the toast names the shadowing binary's path instead of reporting a false success.
+- Antigravity no longer shows "Version unknown" forever in onboarding. Latest-version lookup only
+  ever checked the npm registry, and Antigravity ships through a native installer instead of npm,
+  so it never had a package to look up. It now falls back to the latest tag on its public GitHub
+  releases when an agent has no npm package.
+- A terminal that accepted keystrokes but rendered nothing — recoverable only by restarting it — now
+  recovers on its own. Output is gated per PTY by a visibility flag, and the call that switches it
+  back on was silently ignored whenever it landed while the session was spawning or restarting,
+  leaving the stream off with nothing to turn it back on. The resource sampler now re-asserts
+  visibility for every PTY on each pass, so a stuck stream clears within one sample instead of
+  lasting until the terminal is restarted.
+- An agent pane no longer loses the conversation it was resuming when you leave and come back to it
+  quickly. The saved session was being read destructively at launch, so a pane torn down mid-launch —
+  switching workspace tabs with Ctrl+Tab, for example — erased the only record of its conversation and
+  came back on a different chat. The record now survives until a new session actually replaces it.
+- The terminal "command not found" overlay was written in English regardless of the selected
+  language; its text now goes through the translation system like the rest of the app.
+- A pane no longer starts an empty chat when you come back to it after a long time away. The session
+  claim that prevents two panes from writing to the same conversation was tied to the PTY id, so a
+  PTY that ended on its own — parked by memory control, suspended, or killed — left the conversation
+  permanently marked as taken and the pane silently dropped its own session id.
+- Reopening a pane no longer replays its history line by line. The stored scrollback was fed to the
+  terminal in 16 KB slices, one rendered frame each, so a large buffer visibly scrolled from the top
+  down to the prompt and took seconds; it is now written in a single pass straight to the bottom.
+- Switching conversation from inside the CLI with `/new` or `/resume` now sticks. Alethe pinned the
+  session id given at launch and sent the old one back on the next restart, dragging the pane to the
+  previous chat.
+- Ctrl+Tab did nothing after coming back to the app from another window. Returning left the webview
+  with no focused element, and WebView2 then kept the key for its own focus traversal instead of
+  handing it to the app. Focus is now parked on the app shell whenever nothing else holds it, so
+  every shortcut keeps working. Ctrl+Tab also focuses the first terminal of the tab it switches to,
+  instead of switching with the keyboard pointed at nothing.
+- Agent CLIs installed through Homebrew were invisible on macOS. An `.app` launched from Finder does
+  not run as a login shell, so it inherits the minimal Launch Services PATH without `.zshrc` /
+  `.zprofile`. Launcher discovery and the PATH rebuilt for terminals now include the default Homebrew
+  prefixes (`/opt/homebrew/bin` and `sbin` on Apple Silicon, `/usr/local/bin` and `sbin` on Intel) as
+  a fixed fallback.
+- The Antigravity usage widget showed "—" on Linux. The OAuth token lookup used an explicit keyring
+  target required by the Windows Credential Manager, which prevented the Linux Secret Service (GNOME
+  Keyring / KWallet) from finding the entry written by the `agy` CLI. Credential discovery now
+  supports both layouts and also looks for the `agy` binary in `~/.local/bin` and `~/.cargo/bin` on
+  Linux and macOS.
+- Pasting an image or files into a terminal did nothing on Linux, silently. `read_clipboard_payload`
+  was implemented on Windows only and errored out everywhere else without falling back. A Linux/BSD
+  backend using `wl-paste` / `wl-copy` (Wayland) or `xclip` (X11) now handles screenshots, images
+  copied from the web (`image/png`) and files copied in a file manager (`text/uri-list`). macOS is
+  still unimplemented.
+- **Remote control is now off by default and stays off until you turn it on.** Alethe used to open a
+  LAN listener on every launch, and the on/off switch was lost when the app restarted. The setting is
+  now saved with your preferences and the listener only starts while it is enabled.
+- The remote pairing address and QR code are only shown while a pairing window is open, and the
+  address the phone uses is no longer carried in the page URL after pairing.
+- Remote control session lifetime, the device limit, and per-device revocation now apply to the whole
+  remote surface. They previously only guarded the live WebSocket, so an expired or revoked device
+  could still read terminal output and send messages over HTTP.
+- A paired phone now only receives output from the terminal it is watching. Every terminal's output
+  was previously broadcast to every connected device.
+- The remote workspace listing now sends only the fields the phone renders, instead of copying raw
+  workspace records.
+- Remote requests split across network packets are no longer truncated, oversized requests are
+  rejected, and a failed request always gets a response instead of leaving the phone waiting.
+- Remote connections now time out, are capped in number, must authenticate within ten seconds, and
+  repeated bad tokens temporarily block the offending address — a device on the same network can no
+  longer exhaust the app's connections.
+- Remote control now re-reads the machine's network address every time it is enabled, so the pairing
+  QR code stays valid after switching Wi-Fi networks.
+- The **App icon** setting in Preferences → Appearance now actually changes the taskbar and window
+  icon. It previously sent the bundled asset URL to the native window, which silently failed, so the
+  icon never left the default variant. Each icon now ships at 32, 48, and 64 pixels and the variant
+  matching the display scaling is used, so the taskbar no longer shows a blurry downscale.
+- Submitting `/new` in an agent terminal now clears both the visible conversation and its persisted
+  terminal scrollback, so the fresh session no longer inherits the previous conversation on screen.
+- Terminals now recover automatically when a native PTY write stalls instead of blocking every
+  later keystroke until a manual refresh, and use the stable xterm DOM renderer to avoid a renderer
+  transition race that could leave the terminal unable to accept input.
+- Large terminal pastes now use bounded high-throughput IPC chunks, preserve Unicode boundaries, share
+  the normal input queue, skip synchronous per-character prompt-history work, and always close
+  bracketed-paste mode after partial failures. This prevents Claude Code and Codex pastes from freezing
+  the app, interleaving with typing, or stopping halfway.
+- Native browser panes now remain hidden for the full lifetime of modal and menu overlays, including
+  closing animations, preventing them from flashing above or interfering with dialogs.
+- Opening a terminal's tabs lane now moves only its left floating identity to the right, while the
+  existing right-side actions remain anchored in place. The pane drag handle moves into the lane,
+  directly above its tab items, so it no longer covers terminal content.
+- Fixed the freezes and runaway memory growth introduced with the new sidebar. The conversation
+  title shown on each session row was rescanning and fully parsing every Claude session file of the
+  project — up to hundreds of MB — every 12 seconds, on the thread that serves the whole UI. Rows
+  now read only their own session file, off the main thread, and stop once the title is known.
+- Session scans no longer load a whole record into memory, so a single oversized message can no
+  longer abort the app with an out-of-memory error and take every open terminal down with it.
+- Closing the app no longer crashes or becomes unresponsive mid-shutdown. Process-tree cleanup now
+  runs outside the native event loop, while a frontend deadline destroys the window if the native
+  quit request does not settle, so slow Windows process termination cannot hold the interface open.
+- The corrected Windows installer now identifies itself as 1.5.1 so it reliably upgrades existing
+  1.5.0 installations instead of entering same-version maintenance mode.
+- Sidebar visibility and widths now change only after explicit user input, so startup and automatic
+  layout adjustments cannot close a sidebar or overwrite its saved size; pending workspace changes
+  are also flushed before the native window closes.
+- Prevented private browser panes from failing to start when development-mode effect remounts
+  briefly overlap while a previous native webview is closing.
+- Fixed the Git initialization button contrast across accent colors by using the theme's matching
+  foreground token.
+- Fixed project-name overflow so long paths use a clean ellipsis without colliding with status
+  badges in either visual style.
+- Fixed backup imports by excluding locked WebView runtime caches, ignoring those entries in legacy
+  archives, validating the archive before deleting local data, and closing active terminals before
+  restoration.
+- Clean sidebar group headers now only expand or collapse the tree instead of also adding every
+  project in the group to the workspace.
+- GitHub repository cloning no longer depends on a hardcoded `D:\Projects` directory. The selected
+  destination is now respected, with `~/Alethe/<repository>` as the cross-platform fallback.
+- Background agents now report completion through the lightweight off-screen activity channel.
+- Lightweight background output is accumulated between updates instead of being discarded, so
+  activity detection and Codex busy-session recovery remain reliable off screen.
+- Output written while an agent pane restores its history is replayed after the restore instead of
+  leaving a permanent gap.
+- Remote Control no longer drops accented characters when a UTF-8 sequence crosses a buffer cut.
+- Memory-pressure spawn blocking now queues every new request. The reduced concurrency ceiling only
+  controls how many existing waiters may be released.
+- Synchronized the bundled GSD plugin version with its actual v11 content so older worktrees receive
+  automatic updates.
+- Main terminals can no longer claim a GSD child conversation merely because GSD monitoring was
+  disabled after its sentinel file had been created.
+- New GSD plugin instances clear stale synchronization markers left by crashed or closed processes.
+- Terminal hover and click coordinates are remeasured after app zoom changes, keeping xterm.js link
+  detection aligned with the pointer.
+- Development builds on Linux now also apply the Alethe icon at runtime. Packaged builds remain the
+  reliable icon source for compositors that prefer desktop-file lookup.
+- Linux now sets `WEBKIT_DISABLE_DMABUF_RENDERER=1` before creating the webview, avoiding the known
+  WebKitGTK DMA-BUF animation and fractional-scaling issues documented by Tauri.
+- Linux animations now prefer compositable properties and avoid `transition: all` and animated width.
+- GSD child sessions are read-only across xterm input, paste, prompt history, and force-kill shortcuts.
+- OpenCode no longer emits unsupported OSC 66 width queries in xterm.js because spawns set the
+  documented `OPENTUI_FORCE_EXPLICIT_WIDTH=false` compatibility flag.
+- OpenCode redraw nudges after spawn and resize now share a 400 ms lock, preventing overlapping TUI
+  redraws.
+- The `windowsPty` xterm.js option is now enabled only on Windows, fixing dense TUI redraws on Linux
+  and macOS.
+- Scrollback resynchronization now cuts only at valid UTF-8 character boundaries.
+- Conflict-resolution model selections are no longer overwritten by background project updates while
+  the edit dialog is open.
+- The full project form now inherits a folder selected on the empty-workspace screen, and truncated
+  paths expose their complete value on hover.
+- Git initialization and refresh actions use consistent full-width stacking in narrow sidebars.
+- Windows orphan-process cleanup now logs Job Object failures, records root processes, and cleans
+  verified leftovers after an unclean shutdown.
+- Merge diff summaries and test briefings now include uncommitted worktree changes, not only commits
+  between branches.
+- GSD Sync sessions now appear in Tasks for OpenCode terminals even when worktree isolation is off.
+- GSD test procedures include files committed on the current worktree since it diverged from
+  `main` or `master`.
+- Provider model search no longer pollutes another provider's cache during rapid switching, preserves
+  one selection per provider, and accepts custom searched models with Enter.
+- Off-screen agent terminals no longer render full output continuously. They receive lightweight
+  activity updates and restore complete scrollback immediately when shown, without pausing agents.
+- Migrating existing terminals now restarts each live pane in its new worktree instead of leaving the
+  visible process in the old directory.
+- Worktree migration now reinstalls GSD monitoring and uses the latest unsaved project configuration.
+- Enabling GSD monitoring creates a missing `.planning/` directory instead of failing silently.
+- The **Open folder as project** button now uses a visible text color in every theme.
+- Terminal hover links now support mixed-case protocols such as `Https://` and bare deployment
+  domains such as `example.vercel.app`, while excluding file names and email addresses.
+- Workspace panel sizes now persist per profile and workspace screen for outer project containers and
+  nested terminal splits in Auto, Spotlight, and Sidebar layouts.
+- Sidebar drag-and-drop now keeps list geometry stable, separates reordering from group nesting, and
+  uses theme-native insertion lines and subtle neutral targets.
+- The topbar widgets no longer jump sideways when you hover them. The pencil button that opens the
+  widget settings used to expand from zero width on hover, pushing every pill 26px to the left —
+  enough for the pill you were reaching for to slide out from under the cursor, which dropped the
+  hover, collapsed the button and shifted everything back, flickering in place. Its slot is now
+  reserved at all times and only the button itself fades in.
+
+## [1.5.0] — 2026-08-09
+
+### Added
+
+- Added authenticated LAN Remote Control for browsing agent chats, watching live output, and sending
+  one message at a time from a mobile browser.
+- Added Remote Control enable and disable controls, device limits, token regeneration, named devices,
+  session metadata, one-hour default expiry, and individual revocation.
+- Added Agent Sandbox job and thread identifiers, structured spawn acknowledgements, persistent Codex
+  app-server threads, parent-to-worker relationships, and reply relay back to the Claude planner.
+- Added persistent Agent Sandbox projects with project folders, live session restoration, project
+  switching, on-demand workers, and regular project terminal synchronization.
+- Added regular shell workers to Agent Sandbox so long-running development servers remain visible as
+  plain terminal panes.
+- Added development and installer icon themes independent from the interface theme.
+- Added **Erase all data (fresh install)** after backup export for a complete local reset.
+
+### Changed
+
+- CLI detection during onboarding is time-boxed per provider so slow PATH entries cannot freeze setup.
+- New profiles reach onboarding cleanly, and parking terminals no longer blocks account switching.
+- The default profile image and generated app icons now use the dark Alethe artwork.
+- Agent Sandbox project creation entry points are hidden behind a build flag while the feature is
+  archived.
+- The startup screen now shares the Home background and ASCII-art treatment.
+- Profile export now includes the complete profile, including Todos, history, metrics, preferences,
+  tokens, scrollback, and all other stored data.
+- Account switching closes each pseudoconsole before waiting for its final scrollback flush and can
+  resume parked sessions without restarting the app.
+- The Accounts modal has clearer hierarchy, spacing, and profile creation controls.
+- Project dropdowns use the Todo List's viewport-safe portal behavior, path containment, truncation,
+  Escape handling, and consistent styling.
+- Concurrent panes cannot resume the same Codex conversation, and active-writer errors split across
+  output chunks recover reliably.
+- Agent Sandbox workers run unrestricted and non-interactively by default. Claude uses
+  `--dangerously-skip-permissions`; Codex uses unrestricted approvals.
+- Sandbox workers use readiness-aware prompt delivery, delayed bracketed paste, separate submission,
+  settle detection, deadline fallback, and supported prompt arguments.
+- Automated Claude and Codex workers default to Haiku where applicable, preserve their own working
+  directories, skip Codex trust checks for the selected Sandbox folder, and report structured errors
+  without exposing task text.
+- Automated workers move from Working to Done or Error based on streamed output, while submitted
+  prompts are cleared to prevent duplicate execution after HMR.
+- Sandbox stop and project-switch operations invalidate in-flight spawns, and startup failures release
+  the retry guard.
+- Windows Sandbox path comparison is case-insensitive and ignores trailing separators.
+- Agent Sandbox panes use the same terminal headers, dimensions, backgrounds, and xterm surface as
+  regular workspace terminals, with resize and Focus mode support.
+- The real planner-to-worker proof of concept replaces mocked communication: Claude plans, Codex works,
+  and `/spawn` creates a visible terminal in the session.
+- Development-only Welcome, Theme Picker, and Redo Onboarding actions are hidden in production.
+- New users receive the default purple avatar when they do not select a custom image.
+- Todo items now animate on entry, hover, drag, and reorder targeting.
+- Markdown viewer comments and their shortcut are temporarily disabled while the feature is repaired.
+- Empty-workspace defaults, disabled-button contrast, sidebar drag previews, and sidebar transitions
+  received clearer visual feedback.
+- Agent Sandbox evolved from a temporary draggable PTY demonstration into a full-screen, compact,
+  design-system-aligned terminal canvas with real providers and messaging.
+- Sidebar drop targets now exist only during an active DnD-kit drag.
+- Top bar controls, tabs, status pills, and window actions now share consistent spacing, height, and
+  radius values; the customization control no longer reserves space while hidden.
+- Remote WebSocket clients authenticate before counting toward limits, bind to the selected LAN
+  address, strip control characters, and receive restrictive security headers.
+- Remote addresses remain hidden behind a generic placeholder until QR pairing completes.
+- Form dropdowns now use the compact 32 px system-wide standard.
+- Remote security policy, session lifetime, LAN status, and device revocation moved to a dedicated
+  Preferences category, leaving the QR dialog focused on quick access.
 
 ## [1.4.1] — 2026-08-07
 
-### Corrigido
+### Fixed
 
-- **Notas de versão incorretas no modal "Novidades" e na release do GitHub.** O texto vinha de uma cópia solta e desatualizada de `CHANGELOG.md` fora deste repositório; passou a refletir este arquivo, a fonte real.
+- Corrected release notes in the **What's New** dialog and GitHub release so they use this repository's
+  `CHANGELOG.md` instead of a stale external copy.
 
 ## [1.4.0] — 2026-08-07
 
-Graphify vira recurso opcional, o comando `alethe` abre projetos direto do
-terminal, e uma leva grande de correções de estabilidade e segurança —
-listener HTTP do AgentCanvas, colar imagem nos agentes, retomada de sessão
-respeitando memória, e paridade Linux/macOS pro Antigravity e OpenCode.
+Graphify became optional, the `alethe` command gained direct project opening, and this release delivered
+a broad stability and security pass across AgentCanvas networking, image paste, session restoration,
+memory controls, and Linux/macOS parity for Antigravity and OpenCode.
 
-### Adicionado
+### Added
 
-- **Graphify como recurso opcional:** a visualização do grafo agora pode ser ativada ou desativada em Preferências, sem alterar a configuração MCP dos agentes.
-- **Abrir projeto pelo terminal:** o comando `alethe` abre a pasta atual como projeto no Alethe — `alethe`, `alethe .` ou `alethe ~/algum/projeto`. Se a pasta já for um projeto, ele só é trazido pro workspace (sem duplicar); se não for, o projeto é criado com um terminal já apontando pra ela. Com o app aberto, a janela existente é focada em vez de subir uma segunda instância. Instale o comando em **Configurações ▸ Integrações ▸ Comando de terminal**.
-- Padrões de código documentados (`docs/CODE_STANDARDS.md`) e tooling de lint/format: referência única de estilo, estrutura de componentes, TypeScript, IPC, reuso de helpers, uso de `useEffect`/Zustand, i18n e checklist de PR, mais os comandos `npm run lint`/`npm run format` (ESLint flat + Prettier).
-- **Abrir arquivos no File Explorer:** clique duas vezes em qualquer arquivo na aba "File Explorer" da sidebar para abri-lo como pane no workspace.
-- **Visualizar diffs no Git Control:** clique duas vezes em um arquivo na seção "Changes" ou "Staged" do Git Control para abrir um diff pane monoespaçado no workspace com as alterações.
-- Tela **"Sobre & Atualizações"** em Configurações: mostra a versão instalada do app, verifica atualizações sob demanda e instala a nova versão com barra de progresso e erros visíveis (em vez de a falha sumir sem aviso).
-- A **versão instalada** agora aparece sempre no rodapé da sidebar; clicar abre a tela "Sobre & Atualizações".
-- **Central de Merges: revisão real antes de aceitar.** Novo botão "Validar" roda os comandos de validação do projeto direto na worktree; novo botão "Revisar" abre um agente revisor dedicado (mesmo provider/modelo do resolvedor de conflitos por padrão) na worktree, e o feedback digitado na sidebar é enviado direto pro terminal dele. Após um merge bem-sucedido, um Verificador de Contrato de API (heurístico: compara chamadas `fetch`/`axios` do frontend com rotas Express/FastAPI/Axum do backend) avisa sobre possíveis endpoints desalinhados — nunca bloqueia o merge, só informa. Também disponíveis como blocos de construção para uso futuro: detecção leve de stack do projeto (web/CLI/desktop/full-stack, pré-preenche sugestão de comandos de validação) e um probe de saúde ao vivo (sobe o backend numa porta isolada e testa um endpoint, com kill garantido do processo de teste).
-- **Oferta de "Inicializar repositório Git"** no editor de projeto: quando a pasta do projeto ainda não é um repositório Git (isolamento de agentes, worktrees e merges exigem isso), um aviso aparece nas abas Multi-Agentes, Ambientes e Git & Merge com um botão que roda `git init` + commit inicial do que já está na pasta, sem precisar sair do app pra configurar isso na mão.
-- **Gate de Conclusão de Planejamento GSD na Central de Merges**: para projetos com "Monitoramento do Planejamento GSD" ligado, o card de um agente analisa o planejamento e prossegue para a verificação de diff e comandos de validação, garantindo que o card nunca fique preso ou escondido caso o agente não tenha finalizado formalmente o `.planning/` — a decisão de aceitar, revisar ou rejeitar o merge continua sempre disponível ao usuário humano. Se qualquer validação falhar, o card exibe o motivo real e o botão "Reavaliar". Projetos sem esse monitoramento ligado continuam vendo os cards imediatamente, como antes.
-- **`.planning/` agora se mantém sozinho pra agentes OpenCode, sem depender do modelo lembrar.** Com o Monitoramento GSD ligado, todo agente OpenCode isolado em worktree ganha automaticamente um plugin (`.opencode/plugins/alethe-gsd-state.ts`, instalado sem precisar de ação manual) que mantém 5 arquivos sempre com a mesma estrutura, não importa o tamanho da tarefa: `task.md`, `status.md` e `progress.md` são sincronizados deterministicamente (sem IA) a cada uso da lista de tarefas nativa do OpenCode; `goal.md` e `plan.md` (que inclui o procedimento de teste) são escritos pela IA, mas numa **sessão-filha isolada e dedicada** — nunca na conversa principal, então nada disso aparece no histórico do agente nem arrisca mudar seu tom/idioma. Essa sessão-filha fica acessível a qualquer momento pela gaveta "GSD Sync" na borda direita da janela. A IA nunca afirma que algo "funciona" ou "está correto" — isso é sempre decisão do usuário. O procedimento de `plan.md` aparece como um checklist real no "Briefing de Testes" (botão Testar): cada item pode ser marcado como passou/falhou, com anotação do que deu errado, e um botão manda esse resultado direto pro terminal do agente.
-- **Duplo clique no título de qualquer pane agora alterna Modo Foco** (a pane ocupa a tela inteira do app), sem precisar acertar o ícone pequeno de maximizar no canto do cabeçalho.
-- **Sessão-filha do GSD Sync agora tenta o modelo certo sozinha, com fallback automático.** Ela sempre usa primeiro o mesmo modelo que a conversa principal acabou de responder (garantido disponível, por ter acabado de funcionar ali); se isso falhar, tenta em ordem uma cadeia de modelos reserva configurável em Preferências → Multi-Agente ("Cadeia de fallback de modelos do GSD Sync", com o mesmo seletor pesquisável de modelos já usado no resolvedor de conflitos). A troca entre modelos é automática e silenciosa; só aparece um aviso se TODOS os modelos da cadeia falharem, sem travar a sincronização determinística de `task.md`/`status.md`/`progress.md`.
-- **Nova gaveta "GSD Sync" na borda direita da janela**, recolhida por padrão (só uma abinha com seta indicando que existe algo ali — a seta "pula" quando uma sessão-filha termina algo enquanto a gaveta está fechada, como aviso passivo sem toast). Expandida, lista as sessões GSD Sync do projeto **atualmente ativo** (nunca de todos os projetos ao mesmo tempo); clicar numa abre aquela sessão isolada dentro do mesmo fullscreen de container que já existia (mantém a Sidebar de Projetos visível e clicável, diferente do Modo Foco, que cobre o app inteiro). A partir de agora a pane "GSD Sync" nunca mais aparece sozinha misturada na grade normal do projeto, e some da árvore de terminais da Sidebar de Projetos (esquerda) — a sessão-filha é só leitura (não dá pra digitar nela, é a visão de subagente do próprio OpenCode), então não faz sentido misturada com terminais interativos; a gaveta é o único lugar onde ela aparece.
-- **Sessão-filha do GSD Sync agora relê o código de verdade antes de escrever o passo a passo de validação**, em vez de confiar só no resumo em prosa da conversa principal (que nunca tem detalhe exato o suficiente — mensagens de erro, saída de console, nomes de comando). A cada ciclo, o plugin agora também passa a lista real de arquivos alterados/criados (`git status`) pra sessão-filha, com instrução explícita pra reabrir cada um e copiar textos exatos de lá — nunca escrever de memória ou suposição.
-- **"Briefing de Testes" agora usa um procedimento de teste estruturado, registrado pela sessão-filha do GSD Sync via uma ferramenta dedicada** (`gsd_record_step`) em vez de escrever texto solto dentro de `plan.md` que depois era quebrado linha por linha — o que fazia títulos como "# Plano"/"## Tarefa 1" virarem itens marcáveis por engano. Cada passo agora chega com uma categoria própria (Preparação/Ação/Verificação, com ícone) e é sempre um item de verdade, nunca um título ou separador. `plan.md` continua existindo, mas só com o plano de implementação — o procedimento de teste vive separado, em `.planning/procedure.json`.
-- **GSD Sync deixava de sincronizar pedidos menores feitos depois do primeiro grande da sessão**: o gatilho dependia só do agente usar a lista de tarefas nativa (`todowrite`), que só costuma disparar pra tarefas que "merecem" uma lista — um pedido pequeno depois (ex.: "adiciona um `.env.example`") ia direto pra `write`/`edit`/`bash` sem lista nenhuma, e o ciclo de sincronização nunca disparava pra esse trabalho. Agora qualquer uma dessas tools também conta como atividade real, então a sincronização acompanha a sessão inteira, não só o pedido inicial.
-- **Boot de um agente novo agora confere folga de RAM antes de tentar nascer**, em vez de tentar na hora e arriscar o processo do próprio agente morrer sozinho por falta de memória (visto ao vivo: crash "MemoryExhaustion" do JavaScriptCore assim que um sub-processo do agente tentava alocar, com o sistema já no limite). Antes de criar o processo, verifica a RAM disponível real do Windows (não só o que o Alethe gerencia); se estiver abaixo de uma folga mínima, espera em passos de 1s até liberar (teto de 45s, pra nunca travar o boot pra sempre esperando uma liberação que talvez não venha). Depois que o agente nasce com folga, o consumo contínuo dele continua sendo gerenciado pelo próprio provider, como sempre. (Uma versão inicial tentava também pré-alocar um "colchão" de RAM pra soltar bem na hora do boot, mas foi desativada: ela só enxergava RAM física livre, nunca o limite de COMMIT do Windows — em sistemas já perto desse limite, comprometer RAM de propósito podia causar o próprio crash que o mecanismo tentava evitar.)
-- **Botão "Inicializar Repositório Git" no painel Git da Sidebar, em todas as abas de edição e auto-inicialização no spawn de terminais**: ao abrir uma pasta de projeto sem Git (incluindo pastas 100% vazias, como `D:\Projetos\testedework`), o painel de Git da Sidebar agora exibe o botão proeminente "Inicializar Repositório Git". O botão cria o repositório no ramo `main` com commit inicial (`--allow-empty` se a pasta não possuir arquivos) e atualiza a interface no mesmo instante. Além disso, ao abrir um novo terminal de agente em um projeto com **isolamento de worktrees ativo (`autoWorktree`)**, o Alethe agora auto-inicializa o repositório Git de forma transparente antes de criar a worktree, impedindo a exibição do erro `"O sistema de isolamento de worktree falhou: not_a_git_repository"`.
+- Added an optional Graphify preference without rewriting agent MCP configuration.
+- Added the `alethe` terminal command to open the current or selected directory in the existing app
+  window, creating a project only when necessary.
+- Added documented code standards and ESLint/Prettier commands.
+- Added double-click file opening from File Explorer and monospaced diff panes from Git Control.
+- Added **About & Updates** with installed-version details, update checks, download progress, visible
+  errors, and a sidebar version shortcut.
+- Added real Merge Center review: project validation commands, dedicated reviewer agents, direct
+  feedback delivery, heuristic API-contract checks, stack detection, and isolated live health probes.
+- Added in-app Git repository initialization with a safe initial commit for features that require Git.
+- Added a GSD Planning Completion Gate that always leaves accept, review, and reject decisions available
+  to the user and exposes real validation failures.
+- Added automatic OpenCode GSD state maintenance for `task.md`, `status.md`, and `progress.md`, plus an
+  isolated child session for `goal.md`, `plan.md`, and structured test procedures.
+- Added double-click Focus mode for every pane title.
+- Added configurable GSD Sync model fallback chains based first on the model that just succeeded in the
+  parent conversation.
+- Added a project-scoped, read-only GSD Sync viewer with passive completion indication; it was later
+  moved into the Tasks sidebar.
+- Added code-aware GSD validation planning based on the real changed-file list and structured
+  preparation, action, and verification steps in `.planning/procedure.json`.
+- Added broader GSD activity triggers so edits and shell work synchronize even without a native task
+  list update.
+- Added a pre-spawn system-memory headroom check with a 45-second upper bound.
+- Added prominent Git initialization to the sidebar and project editor, including empty-repository
+  commits and transparent initialization before isolated-agent worktree creation.
 
+### Changed
 
+- GSD Sync sessions moved from a separate right-side drawer into the existing Tasks sidebar.
+- Internal quality work moved project persistence off Tokio's blocking path, reduced Ghostty polling,
+  consolidated provider session and usage helpers, and standardized the Claude Code label.
+- Terminal themes moved from the Terminal settings page to Preferences → Appearance.
 
-### Alterado
+### Fixed
 
-- **Gaveta "GSD Sync" (borda direita) removida — as sessões agora aparecem como uma seção dentro da própria barra "Tarefas".** Mesmo poller único de sempre (`useGsdSyncSessions`), sem gaveta separada pra abrir/fechar: a seção só aparece quando o projeto ativo tem sessões GSD Sync, com o mesmo idioma visual da lista de tarefas pessoais.
-- **Passo de qualidade interna** (sem mudança visível de funcionalidade): salvar `projects.json` não bloqueia mais a thread do Tokio em disco lento; detecção de saída de terminais nativos (Ghostty) passou a checar a cada 2s em vez de 700ms; lógica repetida entre os módulos de sessão/uso por provedor (Claude/Codex/Antigravity) e os caches de uso de IA foi consolidada em helpers compartilhados; o rótulo do agente Claude Code ficou consistente em todos os seletores ("Claude Code", antes "Claude" em um deles).
-
-### Alterado
-
-- **Tema do terminal** saiu da aba Terminal e agora fica em Preferências ▸ Appearance, ao lado do tema da interface.
-
-### Corrigido
-
-- **Segurança — listener HTTP interno:** o endpoint local do AgentCanvas (`localhost:9123`) agora exige um token secreto gerado a cada inicialização do app (`X-Alethe-Token`). Requisições sem o token correto recebem 401 e são descartadas, impedindo que qualquer processo local injete tarefas ou spawne agentes sem autorização. O token é incluído automaticamente nos hooks do Claude Code via `agent_hooks_settings_path`.
-- **Segurança — DoS por body ilimitado:** a leitura do corpo HTTP agora é limitada a 1 MB (`take(BODY_LIMIT)`), impedindo que um payload gigante cause OOM no processo do Alethe.
-- **Controles da topbar ao fechar sidebars**: o espaço reservado agora permanece apenas na barra superior para os botões de controle; as sidebars fechadas não ocupam nenhuma largura no conteúdo principal.
-
-- **Loop infinito ao montar a área de panes**: o selector Zustand do `PaneArea` agora usa um fallback estável quando o projeto ainda está sendo hidratado, evitando o aviso `getSnapshot should be cached` e o React #185.
-
-- **Erro React #185 em terminais xterm.js**: o renderer WebGL instável no WebView Windows foi desativado; os terminais agora usam o renderer DOM, evitando a corrida de teardown que deixava `Viewport.syncScrollArea` sem dimensões.
-
-- **Loop de atualização ao redimensionar sidebars**: alterar a largura salva não força mais o painel redimensionável a reconstruir seu `defaultSize` durante o próprio evento de resize, evitando o erro React #185 (Maximum update depth exceeded).
-
-### Corrigido
-
-- **"Briefing de Testes" gerava procedimentos desproporcionais, testando partes do app que a mudança nem tocou.** Um pedido simples ("crie um README com 4 seções") produzia um checklist de 7 passos, dos quais só 1 era relevante — os outros inventavam testes de servidor (`npm run dev`), endpoint de health, lista de rotas de API e até o próprio plugin interno do GSD Sync, nada disso relacionado ao que foi de fato alterado. Causa: o prompt da sessão-filha do GSD Sync (`alethe-gsd-state.ts`) instruía a validar "TODO o trabalho desta worktree" sem nenhuma regra de escopo/proporcionalidade, mesmo já recebendo a lista real de arquivos alterados (`git status`). Corrigido: o procedimento agora cobre só os arquivos alterados nesta sessão, com complexidade proporcional à mudança real — uma alteração simples de documentação gera um procedimento simples (confirmar que o arquivo existe no lugar certo com a estrutura esperada), sem inventar testes de integração de funcionalidades não tocadas. Segunda rodada do mesmo fix: a lista de "arquivos alterados" que alimenta esse prompt também incluía `.opencode/`/`opencode.json` — infraestrutura que o próprio Alethe escreve a cada spawn (plugin GSD, MCP do Graphify), não trabalho do usuário — o que ainda gerava um passo final inventado ("abrir o opencode e conferir que o plugin carrega"). Agora excluídos da lista, junto com `.planning/` (que já era excluído).
-- **Nascer um terminal claude/codex/opencode em projeto com Graphify e/ou Monitoramento GSD ligados ainda travava o app inteiro**, mesmo depois do fix de `kill_pty`/`resize_pty`/etc. Causa: os comandos `graphify_ensure_graph`, `graphify_mcp_config_path`, `graphify_opencode_config_write`, `graphify_codex_config_write` (e os outros 6 comandos de `graphify.rs`) e `gsd_opencode_plugin_write` rodam de verdade `git rev-parse` (resolução da raiz do repo) e, no caso do Graphify, um probe do próprio CLI (`graphify --version`) — chamadas de processo/SO reais, síncronas, direto na thread de despacho do Tauri, disparadas a CADA spawn de terminal com essas integrações ligadas, mesmo pra terminais que nada tinham a ver com o novo. Sob AV escaneando o processo novo ou qualquer lentidão do SO, isso travava todo comando IPC atrás — inclusive terminais já abertos tentando escrever/redimensionar, que só pareciam "normalizar" depois de uma ação (como redimensionar o layout) coincidir com o fim do bloqueio. Corrigido isolando todos esses comandos em thread bloqueante dedicada (mesmo padrão do restante do app).
-- **Travamento total do app continuava acontecendo ao fechar/redimensionar um terminal, ou quando um terminal travava** — o fix anterior (nascer/reconectar) cobriu só uma parte do problema: `kill_pty`, `resize_pty`, `write_pty`, `suspend_pty` e a árvore de kill de processos (`kill_pty_tree`) ainda rodavam bloqueantes direto na thread de despacho do Tauri, e pior, `kill_pty`/`resize_pty` seguravam o mutex global de sessões durante essas operações lentas — travando TODOS os outros terminais, e como o mutex não é reentrante, até uma segunda tentativa de fechar o MESMO terminal travado ficava presa esperando o próprio lock que a primeira tentativa ainda segurava. Corrigido isolando todos esses comandos em thread bloqueante dedicada e reestruturando pra nunca segurar o lock de sessões durante trabalho bloqueante (mesmo padrão já usado em `write_pty`); matar um processo (`taskkill`/`kill`) agora tem um teto de 3s em vez de poder esperar indefinidamente.
-- **Gate de Conclusão de Planejamento GSD (Central de Merges) ficava preso em "agente(s) ainda finalizando o planejamento" pra sempre** quando o provider da worktree não era OpenCode (Claude Code/Codex nunca recebem o plugin GSD) ou quando o Monitoramento GSD era ligado depois do terminal já ter nascido — nos dois casos `.planning/` nunca chegava a existir e o card nunca aparecia. Também corrigida uma corrida onde o `todowrite` final de uma sessão (o que marcaria o planejamento como concluído em `status.md`) era descartado silenciosamente se chegasse enquanto um ciclo do GSD Sync ainda estava em andamento — sem retry, o planejamento ficava preso em "In Progress" pra sempre. Agora: agentes que não são OpenCode pulam a checagem de planejamento e vão direto pro diff real; ligar o Monitoramento GSD instala o plugin retroativamente em terminais de worktree já rodando; e um `todowrite` que chega no meio de um ciclo fica represado e roda assim que o ciclo libera.
-- **"Execution metrics"/"Recent event history" (Preferências → Multi-Agente) podiam ficar vazios pra sempre depois do primeiro pico de eventos**, mesmo com o app continuando a gerar eventos reais normalmente (merges, GSD Sync, heartbeat de recursos a cada 5s) — o observador de telemetria saía do loop de escuta pra sempre assim que perdia um evento por atraso (canal cheio). Corrigido pra continuar escutando depois de um atraso; uma falha real de carregamento agora aparece como aviso na tela em vez de ficar indistinguível de "sem eventos".
-- **Passo "Agentes" da configuração rápida (criação de perfil) podia ficar preso em "Verificando…" pra sempre**, com os 6 cards de agente travados sem nenhuma mensagem de erro — mesmo com a detecção real terminando certinha nos bastidores. Causa: em dev, o React remonta o efeito de detecção duas vezes de propósito (StrictMode); a função de limpeza da primeira montagem marcava o resultado como "cancelado" antes dele chegar, e como um guard já impedia uma segunda tentativa de rodar, o resultado real era descartado silenciosamente e a tela nunca saía do estado "detectando". Corrigido removendo essa cancelação órfã. De quebra, `find_cli_launcher` (usado tanto aqui quanto ao spawnar um terminal) e o novo `discover_provider_models` também foram isolados em thread bloqueante dedicada — mesma causa raiz do travamento ao nascer terminal (linha acima), evitando que uma checagem de CLI lenta (disco/antivírus) trave outras chamadas IPC — e o assistente ganhou um teto de 6s por agente como rede de segurança adicional.
-- **Aba "Multi-Agent & Telemetry" (Preferências) reconectada aos dados reais, com a seção morta removida e tudo traduzido.** "Scheduler & task queue" lia um formato de tarefa inventado que o fluxo real de GSD Sync nunca produz — sempre mostrava "nenhuma tarefa encontrada" mesmo com sessões ativas. Agora lê o backlog real de `.planning/task.md`: cada item do checklist vira uma tarefa agendável (dependência = ordem sequencial da lista), provisiona a worktree e pede o spawn do agente como antes, e marca a tarefa concluída automaticamente quando o `.planning/` da worktree correspondente reporta o planejamento como completo. A seção "Plugin manager" foi removida — nenhuma parte do app lia de volta um plugin instalado por ali, então instalar um não tinha efeito nenhum; vai voltar quando houver consumidores reais. Toda a aba (que estava inteiramente com texto hardcoded, boa parte em inglês, um pouco em português) agora passa pelo sistema de tradução.
-- **Painel "Central de Merges" na Sidebar de Projetos não tinha limite de altura**: com vários cards de merge pendentes ao mesmo tempo (ex.: duas worktrees em paralelo), o painel crescia sem limite e empurrava/cortava o resto da sidebar (lista de projetos perdia o próprio scroll). Corrigido dando ao painel uma altura máxima com scroll próprio, sem afetar o resto da sidebar.
-- **"Rejeitar" um agente na Central de Merges podia travar o app inteiro e depois falhar removendo a worktree** (`git_command_failed:error: failed to delete <pasta>`), reproduzido com duas worktrees paralelas. Duas causas: (1) os comandos de worktree/merge (`worktree_remove` e afins em `worktrees.rs`; `merge_prepare`/`merge_finalize`/`merge_abort` e afins em `conflict_resolution.rs`) rodavam `git`/IO de verdade direto na thread de despacho do Tauri — mesma classe de travamento já corrigida em `spawn_pty`/`attach_pty`, agora estendida a toda a superfície de merge/worktree; (2) "Rejeitar" tentava apagar a pasta da worktree ANTES de matar o processo do agente — no Windows, apagar uma pasta que ainda é o diretório de trabalho de um processo vivo falha exatamente com esse erro. Corrigido: os comandos de git agora rodam em `spawn_blocking`, e tanto "Rejeitar" quanto "Aceitar" (integração bem-sucedida) matam a árvore de processos do agente (aguardando de verdade) antes de tentar remover a worktree; se mesmo assim falhar, a worktree entra na lista de órfãs rastreadas (mesma rede de segurança que aborts já tinham) em vez de simplesmente sumir com um `console.warn`/toast. Confirmado ao vivo que esse era um bug real e não só teórico: uma worktree rejeitada antes desse fix ficou como pasta vazia órfã em disco, já desregistrada do git mas nunca apagada fisicamente.
-- **Duas sessões-filha do GSD Sync "brigavam" por uma única vaga na gaveta** quando duas worktrees novas terminavam de nascer ao mesmo tempo — uma linha piscava/sumia no lugar da outra. Causa: o poll de 5s recriava terminais/fechava panes conforme descobria cada sessão, e essas mesmas mutações derrubavam e reagendavam o próprio efeito que dispara o poll — dois polls sobrepostos acabavam se substituindo um ao outro no estado compartilhado da gaveta (cada um "esquecendo" a worktree que o outro estava processando). Corrigido: o poll agora só atualiza no estado as entradas que ele mesmo resolveu nesta rodada (nunca mais um substituição total), e o efeito não depende mais dos valores que o próprio poll muda.
-- **Nascer ou reconectar um agente podia travar TODOS os terminais do app inteiro, sem aviso nem erro** — ficavam presos em "Conectando ao terminal..." indefinidamente, incluindo terminais que não tinham nada a ver com o agente novo. Causa raiz: `spawn_pty` (criação real do processo/ConPTY) e o fallback de leitura de scrollback em disco de `attach_pty` rodavam direto na thread que o Tauri usa pra despachar comandos, em vez de numa thread bloqueante dedicada — se essa etapa demorasse mais que o normal (antivírus escaneando o processo novo, scrollback grande, ou uma trava ocasional do próprio ConPTY do Windows), todo comando IPC seguinte (spawn de outro terminal, escrita/leitura de PTYs já abertos, poll do GSD Sync) ficava esperando atrás dele — o app inteiro parecia travado, não só o terminal novo. Corrigido movendo as duas operações pra `spawn_blocking` (mesmo padrão já usado em todo outro comando pesado do backend), isolando-as numa thread dedicada que nunca disputa espaço com o resto da fila de comandos.
-- **Terminal "viewer" da gaveta GSD Sync vazava (PTY nunca morria) quando a worktree do agente era integrada, rejeitada ou abortada na Central de Merges**: cada um dos 5 caminhos de teardown de worktree (merge sem conflito, merge integrado após conflito, rejeição, abort, limpeza bruta de ambiente travado) só derrubava o terminal do agente em si; o terminal "viewer" da sessão-filha daquela mesma worktree (criado sob demanda pela gaveta, nunca em `paneIds`) ficava órfão pra sempre — sumia da lista vigiada (a chave usada pra vigiar é o terminal do agente, já deletado), então nunca mais aparecia em lugar nenhum da interface, mas se o usuário já tinha aberto essa pane ao menos uma vez, o PTY dela continuava rodando sem nenhum jeito de fechar, sobrando na memória até o app fechar. Corrigido na raiz, num lugar só: `deleteTerminal` agora sabe que apagar o terminal de um agente isolado (`worktreeAgentId`) é sempre teardown de worktree inteira, e arrasta junto qualquer terminal "viewer" da mesma worktree (casado por `cwd`), matando o PTY dele — cobre os 5 caminhos de uma vez, incluindo os que nunca passavam pela Central de Merges (ex.: "Rejeitar" chamava `deleteTerminal` direto, sem passar pelo motor de merge).
-- **Gaveta "GSD Sync" nunca listava nenhuma sessão, mesmo com uma ativa e completa**: a função que descobre a raiz do repositório (usada também pela Central de Merges e pelo isolamento automático) tratava o terminal "viewer" da própria gaveta como referência de raiz válida — ele tem `worktreeAgentId` vazio (não é um agente isolado formalmente, só um leitor secundário), mas o `cwd` dele já é a worktree. Isso fazia a raiz "descoberta" bater com o cwd do agente isolado do projeto, então nenhum terminal parecia estar numa worktree de verdade, e a gaveta nunca encontrava nada pra listar. Corrigido excluindo esse terminal viewer do cálculo de raiz.
-- **Pane "GSD Sync" reabria mostrando a tela inicial vazia do OpenCode**, mesmo a sessão já tendo conversa real gravada: `opencode session list` (usado pra validar se um `sessionId` salvo ainda é válido antes de resumir) nunca inclui sessões-filha — o próprio servidor do OpenCode as marca como vinculadas à sessão principal, e o CLI as esconde da listagem por design. A validação de "sessão órfã" do Alethe tratava isso como um ID inválido, descartava o resume e apagava o vínculo salvo, então a sessão-filha nunca resumia — sempre nascia do zero. Agora esse terminal "viewer" (só existe pela gaveta GSD Sync) pula essa validação e confia direto no `sessionId` que o Alethe mesmo rastreou.
-- **Central de Merges (e "Novo terminal" com Isolamento Automático) parava de funcionar assim que todos os terminais do projeto já estavam isolados**: a resolução da raiz do repositório só olhava terminais que ainda não tinham worktree própria; num projeto onde todo mundo já nasceu isolado (situação comum depois de um tempo de uso), ela ficava sem nenhuma referência — "Novo terminal" criava o agente novo direto na pasta/branch escolhida no modal em vez de isolar (inclusive a raiz principal, se essa pasta estivesse nas "Pastas recentes"), e a Central de Merges parava de listar qualquer card do projeto. Corrigido resolvendo a raiz de verdade a partir de qualquer worktree existente, sem precisar de um terminal "puro" como referência — o backend usa o `.git` compartilhado do repositório (`--git-common-dir`) para isso, então usar uma worktree como base não corre mais o risco de aninhar uma worktree dentro da outra.
-- **Central de Merges na sidebar era uma encenação desconectada do motor de merge real**: "Aceitar" e "Rejeitar" faziam literalmente a mesma coisa (só removiam a worktree, sem nenhum `git merge`), com um bug de parâmetro que fazia "Aceitar" sempre falhar, e o toast de sucesso mentia dizendo que as alterações tinham sido "unificadas na main". Agora "Aceitar" roda o ciclo de merge real (análise → preparo → resolução de conflito por agente efêmero, se necessário → validação → merge `--ff-only`), "Rejeitar" tem um caminho próprio e honesto (remove a worktree preservando a branch), o card mostra a fase real do merge em andamento em vez de um "Pronto" hardcoded, e um novo botão "Validar" roda de fato os comandos de validação configurados no projeto.
-- **Isolamento automático de agentes migrava terminais existentes em chamada duplicada e de forma destrutiva** toda vez que o projeto era salvo com a opção ligada: podia criar duas worktrees pro mesmo terminal, matava o PTY perdendo o scrollback, nunca preservava a sessão do agente (ao contrário do que o aviso dizia), podia perder trabalho não commitado, e falhas no meio da migração ficavam completamente silenciosas. Agora a opção só afeta agentes **novos** (como o texto sempre disse); migrar terminais já existentes é uma ação explícita separada ("Migrar terminais existentes agora"), que suspende o PTY em vez de matá-lo, verifica mudanças não commitadas antes de migrar, e sempre avisa o resultado real (sucesso, parcial ou falha).
-- **"Migrar terminais existentes agora" vazava erro cru quando o projeto não é um repositório Git**: a checagem de mudanças não commitadas engolia silenciosamente qualquer falha do `git status` (inclusive "isto não é um repo git") como se não houvesse nada pra perder, e só falhava depois, terminal por terminal, com o código de erro do Rust (`not_a_git_repository`) exposto cru no toast final. Agora essa checagem é o próprio teste de "isto é um repositório Git válido?" — se falhar, mostra o aviso claro e já existente de "Isolamento indisponível" antes de tentar migrar qualquer coisa.
-- **Botão "Inicializar repositório Git" travava o app em projetos reais**: fazia `git add -A` cego, então um projeto com `node_modules` real (dezenas de milhares de arquivos) deixava o Windows marcar o app como "Não está respondendo" por minutos. Agora semeia um `.gitignore` (só se ainda não existir um) excluindo `node_modules/`, `target/`, `dist/`, `build/`, `.next/`, `.venv/`, `venv/`, `__pycache__/`, `.alethe/` e `.env` antes de commitar.
-- **Agentes isolados em worktree nasciam com cwd quebrado**: o caminho devolvido pela criação/listagem de worktrees (e pelo ambiente efêmero do agente de resolução de conflito) vinha com o prefixo verbatim `\\?\` do Windows. `cmd.exe` recusa esse formato como diretório atual e caía silenciosamente para `C:\Windows` — o agente rodava fora do projeto, sem cor e sem contexto nenhum. Corrigido removendo o prefixo antes de devolver o caminho, em todos os pontos onde ele é gerado (worktrees, ambiente de merge) e como rede de segurança final no próprio spawn do PTY.
-- **Sessão do OpenCode/Codex/Antigravity nunca era retomada em agentes isolados em worktree**: a comparação de caminho usada pra "reconhecer" a sessão do agente não removia o mesmo prefixo `\\?\` acima, então o cwd salvo nunca batia com o `directory` que o próprio CLI reporta — a sessão nova nunca era persistida, e o agente sempre reabria do zero. Também corrigido um prazo fixo de 30s pra detectar a sessão recém-criada (contado a partir do spawn, não da conversa): com um modelo lento na primeira resposta, esse prazo estourava antes do arquivo de sessão existir. Agora a detecção continua tentando (com intervalo mais espaçado) enquanto o terminal continuar aberto.
-- **Isolamento automático de agentes parou de funcionar no botão "Novo terminal" (sidebar) e no prompt rápido da Home**: um redesign de UI anterior reintroduziu por acidente a criação de terminal "crua", sem passar pela função que provisiona a worktree — mesmo com a opção ligada, todo agente novo criado por esses dois caminhos nascia direto na pasta/branch principal do projeto, sem isolamento nenhum. Restaurado o fluxo correto nos dois lugares; falha real ao provisionar a worktree agora avisa com um toast visível em vez de falhar silenciosamente no console.
-- **Segundo agente isolado nascia com a worktree aninhada dentro da do primeiro** (`.alethe/worktrees/agente-1/.alethe/worktrees/agente-2`) em vez de irmã dela na raiz do repo: a função de isolamento usava o cwd do terminal usado mais recentemente pra decidir onde provisionar a worktree nova, e um terminal já isolado contava como "mais recente" assim que criado. Agora usa o mesmo helper que já ignora terminais já isolados (usado pela Central de Merges e pela migração), garantindo que todo agente novo isola sempre a partir da raiz real do repo.
-- **"Briefing de Testes" (botão Testar na Central de Merges) mostrava texto fabricado**: sempre exibia a mesma descrição genérica de alterações e o mesmo passo de teste fixo, para qualquer branch — nenhum dado real era coletado. Agora mostra o diff real de arquivos alterados na branch (`git diff --name-status`) e o resultado real dos comandos de validação do projeto (passou/falhou com stage e saída reais), com estado de carregamento enquanto os dois são buscados.
-- **Badge "Pronto para revisão" na Central de Merges prometia uma verificação que nunca rodou**: era o rótulo padrão mostrado pra todo card antes de qualquer análise real acontecer, mesmo parecendo dizer "já verifiquei e está limpo". Renomeado para "Aguardando ação".
-- **Colar imagem no terminal** (Ctrl+V ou atalho do agente) voltou a funcionar com OpenCode, Claude Code e Codex: screenshots (`Win+Shift+S`), imagens copiadas da web e arquivos de imagem copiados no Explorer agora são detectados no clipboard e colados como caminho de arquivo no PTY — antes, qualquer clipboard sem texto puro era descartado silenciosamente.
-- **Detecção do CLI do Antigravity no Linux/macOS**: o pré-check que decide se mostra "comando não encontrado" comparava o nome cru do agente (`antigravity`) em vez do binário real (`agy`). No Windows um remap interno mascarava o problema; no Linux/macOS o agente aparecia como não instalado mesmo com o `agy` presente no PATH.
-- **Processos órfãos ao fechar/reiniciar terminais no Linux/macOS**: a árvore de processos do agente (node/claude/codex e workers) só era derrubada por completo no Windows (`taskkill /F /T`); no Unix, a rotina de encerramento existia mas nunca era chamada, deixando descendentes vazando RAM a cada close/restart. Agora o encerramento por árvore roda em todas as plataformas.
-- **Comparação de cwd inconsistente entre 3 lugares do código** (rastreamento de atividade, retomada de sessão, canvas de agentes): uma das implementações forçava minúsculas e `\` mesmo em paths Linux/macOS (case-sensitive), o que podia confundir duas pastas com nomes diferentes só na caixa. Unificado numa única função que só normaliza separador/caixa quando o path é claramente do Windows.
-- **Atalhos de teclado exibidos com convenção errada por plataforma**: a Home sempre mostrava glifos de Mac (⌘T, ⌘⇧P) mesmo no Windows/Linux, e a barra lateral sempre mostrava "Ctrl+..." mesmo no macOS. Agora os dois usam a mesma detecção de plataforma já existente para escolher o formato certo.
-- **OpenCode não retomava a sessão certa ao reabrir o app**: o ID de sessão do OpenCode nunca era salvo no fluxo normal de spawn (ao contrário de Claude/Codex/Antigravity), então cada pane sempre nascia sem contexto — ou, se caísse no fallback `--continue`, arriscava pegar a conversa mais recente de OUTRO pane no mesmo diretório. Agora cada terminal reivindica e persiste sua própria conversa (ID salvo → conversa existente não reivindicada → nova conversa detectada após o spawn) e reabre sempre com `--session <id>` correto.
-- **Sessões do Antigravity ordenadas de forma arbitrária**: todas as conversas recebiam o mesmo timestamp (o do arquivo de cache inteiro), então "a mais recente" não era real — agora usa o horário de cada conversa individual.
-- **Match de pasta do Antigravity podia confundir projetos com nomes parecidos** (ex.: `Project` e `Project2`) por comparar prefixo de string sem checar a fronteira do separador de caminho.
-- **Comparação de cwd do OpenCode no Linux/macOS**: o backend forçava minúsculas incondicionalmente (só o Windows é case-insensitive), podendo confundir diretórios como `/home/u/Project` e `/home/u/project`.
-- **Texto desalinhado nos terminais** (mais visível no TUI do OpenCode, com emojis/símbolos na status bar): o xterm.js usava a tabela de largura Unicode antiga por padrão, calculando uma largura diferente da que os próprios CLIs assumem pra emojis e símbolos — desalinhava a linha inteira de forma permanente (nenhuma tecla ou redimensionamento corrigia). O addon `@xterm/addon-unicode11` já era uma dependência instalada mas nunca tinha sido ativado.
-- **"Retomar última sessão" podia reiniciar dezenas de agentes de uma vez sem nenhuma checagem de RAM**: a rotina reiniciava todo painel de agente vivo em qualquer projeto/grupo do workspace (não só o visível na tela) chamando o PTY diretamente, ignorando a fila de spawn e o supervisor de memória que protegem a abertura normal de terminais. Agora cada restart passa pela mesma fila (respeita o teto de concorrência e a pausa por pressão de memória), e o botão pede confirmação mostrando quantos painéis serão reiniciados quando forem mais de um.
-- **Card de uso do Antigravity no modal "Detalhes de uso de IA" estava implementado mas nunca aparecia**: o componente (cotas por bucket, % usado, tempo pra resetar, igual ao card do Claude Code) já existia por completo, só faltava desativar o gráfico de atividade no lugar dele dentro do modal. Agora aparece normalmente.
-- **Status do Antigravity sempre mostrava "sem login no agy" mesmo com o `agy` autenticado**: a busca da credencial no Windows Credential Manager tinha dois bugs — o alvo era montado como `"{usuário}.{serviço}"` pelo crate de keyring em vez do alvo real `gemini:antigravity` que o `agy` usa, e a leitura assumia blob UTF-16LE quando o `agy` (binário Go) grava UTF-8 puro. Corrigido para buscar pelo alvo exato e decodificar como UTF-8 — agora o card mostra as cotas reais.
-- **[Crítico] Containers de agente ficavam totalmente não-interativos (sem digitar, sem scrollar) depois de uma perda de contexto WebGL.** Ao trocar de renderer (WebGL → Canvas 2D, comum quando várias sessões pesadas nascem juntas e disputam orçamento de GPU), um re-fit/refresh agendado num frame seguinte rodava mesmo se o pane já tivesse sido desmontado nesse meio-tempo, e o próprio xterm.js lançava um erro não tratado (`Cannot read properties of undefined (reading 'dimensions')`) tentando sincronizar o scroll de um renderer morto. Sem guarda nenhuma, toda escrita seguinte da PTY (`terminal.write`) também lançava o mesmo erro sem parar — o pane ficava permanentemente quebrado, mesmo com o agente de verdade continuando a rodar por trás. Corrigido com guardas de desmontagem no reajuste pós-troca de renderer e no loop de escrita (que agora tolera uma falha pontual em vez de travar pro resto da vida do pane), mais scroll do mouse blindado contra o mesmo tipo de erro. De quebra, corrigida uma corrida relacionada no backend: suspender uma sessão (`suspend_session`) removia o PTY do mapa de sessões ANTES de avisar o frontend, então uma escrita que chegasse nessa janela batia em "PTY not found" sem nunca ter sido informada da suspensão — agora só remove depois de confirmar o encerramento e emitir o evento.
-- **Card de merge na barra "Central de Merges" (sidebar) com texto e botões cortados/estourando.** O badge de status (ex.: "Falhou verificação automática") não encolhia, então roubava o espaço do título até sobrar só "Op…"; a descrição do motivo de falha cortava no meio de uma palavra sem quebrar linha (o nome da branch, `alethe/agent-<uuid>`, não tem espaços); e a grade de botões (Integrar/Rejeitar/Validar/Testar/Revisar) não conseguia encolher abaixo do tamanho natural de cada botão, estourando a largura da sidebar (ex.: "Validar" cortado pra "Vali"). Corrigido aplicando o mesmo idioma de truncamento (`min-width: 0` + ellipsis) já usado em outros pontos da mesma sidebar.
-- **Sessão de agente (principalmente OpenCode) às vezes reabria do zero, mostrando a splash screen do CLI em vez de retomar a conversa real** — mesmo com estatísticas de CPU/RAM "vivas" sugerindo sessão ativa. Causa: `opencode session list` nunca inclui sessões com `parent_id` setado pelo próprio servidor (não exclusivo de sub-sessões explícitas), e o Alethe tratava "não encontrada na listagem" como prova de sessão órfã, descartando o resume silenciosamente (só um aviso no console, nunca visível). Agora esse caso é tratado como inconclusivo para o OpenCode, sem descartar o vínculo salvo.
-- **Efeito de "feixe de luz" na borda dos containers (cor de projeto/grupo "arco-íris") só aparecia nos cantos**, nunca ao longo das bordas retas. O anel era desenhado por fora da caixa real (que recorta o próprio conteúdo) com cantos arredondados que não batiam com os cantos quadrados de verdade do container — nas bordas retas ficava todo cortado; só a curva de cada canto entrava o suficiente na área visível pra aparecer. Corrigido desenhando o anel para dentro da caixa e casando seu raio com o raio real do elemento.
-- **Fechar a barra "Tarefas" (direita) podia encolher a sidebar esquerda ("Central de Merges") para um fiapo ilegível.** A biblioteca de painéis redistribuía o espaço liberado com o painel vizinho errado (a extinta gaveta GSD Sync, que tinha um salto grande entre colapsado/mínimo) em vez do painel central flexível, e esse desequilíbrio acabava sendo compensado às custas da sidebar esquerda. Resolvido como efeito colateral de remover a gaveta GSD Sync (item abaixo) — a barra "Tarefas" volta a ser vizinha direta do painel central.
-- **Varredura geral por falhas silenciosas** encontrou e corrigiu 11 pontos onde um erro real desaparecia sem nenhum aviso, sintoma idêntico ao bug do onboarding acima: `git_status`/`git_stage`/`git_commit` e outros 6 comandos de `git_control.rs` (chamado a cada 3s pelo painel de Git), mais as listagens de sessão de Claude/Codex/Antigravity/OpenCode, mais listar agents instalados e exportar/importar backup, todos rodavam bloqueante direto na thread de despacho do Tauri (mesma classe de trava já corrigida antes em outros comandos) — agora isolados em thread dedicada. Um arquivo de métricas de atividade corrompido era silenciosamente resetado E gravado de volta no disco, apagando o histórico pra sempre — agora falha em vez de destruir os dados. Restart de terminal, geração de hooks do Canvas de Agentes e leitura do modo economia falhavam sem nenhum feedback visível — agora mostram erro/permitem tentar de novo. E um loop de leitura do GSD Sync sem `catch` podia abortar o processamento do resto das sessões daquele ciclo se uma falhasse.
+- Secured the AgentCanvas local HTTP listener with a per-launch `X-Alethe-Token` and limited request
+  bodies to 1 MB.
+- Closed sidebars no longer reserve width in the main content area; only top-bar control space remains.
+- Stabilized the pane-area Zustand fallback to prevent React #185 during project hydration.
+- Disabled unstable xterm.js WebGL rendering in the Windows WebView to avoid teardown races.
+- Sidebar resize persistence no longer rebuilds `defaultSize` during the resize event.
+- GSD test briefings are scoped to the files changed in the current session and exclude Alethe-generated
+  `.opencode/`, `opencode.json`, and `.planning/` infrastructure.
+- Graphify and GSD setup commands now run on blocking worker threads instead of freezing Tauri IPC when
+  spawning agents.
+- PTY write, resize, suspend, kill, and process-tree termination no longer block the Tauri dispatcher or
+  hold the global session lock during slow work; process kills have a three-second timeout.
+- GSD planning gates skip unsupported providers, install monitoring retroactively for existing OpenCode
+  worktrees, and replay task updates queued during an active synchronization cycle.
+- Multi-Agent telemetry continues after receiver lag and displays real load failures.
+- Onboarding agent detection no longer gets stuck under React StrictMode, and CLI/model discovery runs
+  on blocking workers with a six-second per-agent safety limit.
+- The Multi-Agent & Telemetry page now reads real `.planning/task.md` data, removes the non-functional
+  plugin manager, and routes all visible text through localization.
+- The Merge Center has its own maximum height and scroll area so multiple cards cannot push the project
+  list out of view.
+- Rejecting or accepting worktrees now stops agent processes before deletion, runs Git operations on
+  blocking workers, and tracks cleanup failures as recoverable orphaned worktrees.
+- Concurrent GSD Sync polling merges only entries resolved by each poll instead of replacing shared
+  state, preventing child sessions from flickering or disappearing.
+- PTY spawn and scrollback attachment now run on blocking workers so one slow terminal cannot freeze all
+  app IPC.
+- Deleting a worktree agent also deletes its hidden GSD viewer terminal and PTY.
+- Repository-root discovery excludes GSD viewer panes and can resolve the shared Git root from any
+  existing worktree.
+- GSD viewer panes trust Alethe-tracked child session IDs that OpenCode intentionally omits from normal
+  session listings.
+- Merge Center **Accept** now performs the real analyze, prepare, resolve, validate, and fast-forward
+  merge flow; **Reject** removes the worktree while preserving its branch.
+- Automatic worktree isolation applies only to new agents. Existing terminal migration is explicit,
+  suspends the PTY, checks uncommitted changes, and reports complete, partial, or failed results.
+- Existing-terminal migration validates that the folder is a Git repository before doing any work and
+  shows the localized isolation warning instead of a raw Rust error.
+- Git initialization seeds a `.gitignore` for common generated and secret directories before staging,
+  preventing `node_modules` and similar trees from freezing the app.
+- Windows verbatim `\\?\` prefixes are removed from worktree and merge paths before they reach shells,
+  session matching, or PTY spawn.
+- Session detection for isolated OpenCode, Codex, and Antigravity agents keeps retrying while the
+  terminal remains open instead of expiring after 30 seconds.
+- New Terminal and Home quick-launch paths once again provision worktrees when automatic isolation is
+  enabled and surface provisioning failures in a toast.
+- New isolated worktrees always derive from the real repository root instead of nesting under the most
+  recently used worktree.
+- Test Briefing now shows the real branch file diff and actual validation command results.
+- The default Merge Center badge now says **Awaiting action** instead of claiming review readiness.
+- Image paste works again for OpenCode, Claude Code, and Codex from screenshots, web images, and Explorer
+  files by sending a file path to the PTY.
+- Antigravity CLI detection now checks the real `agy` binary on Linux and macOS.
+- Closing or restarting terminals now kills complete process trees on Linux and macOS as well as
+  Windows.
+- Working-directory comparison is centralized and only normalizes case and separators for Windows
+  paths.
+- Keyboard shortcut labels follow the active platform consistently across Home and the sidebar.
+- OpenCode panes claim, persist, and resume their own session IDs instead of falling back to another
+  pane's most recent conversation.
+- Antigravity sessions use each conversation's timestamp and compare directory boundaries correctly.
+- OpenCode directory matching remains case-sensitive on Linux and macOS.
+- Enabled `@xterm/addon-unicode11` so emoji and symbol widths match terminal applications.
+- **Resume last session** restarts agents through the normal spawn queue and memory supervisor, with
+  confirmation when multiple panes will restart.
+- The implemented Antigravity usage card now appears in AI Usage Details.
+- Antigravity credentials are read from the exact `gemini:antigravity` Windows Credential Manager target
+  as UTF-8, allowing real quota display.
+- Protected xterm.js renderer changes, writes, and scrolling against disposed-renderer races after
+  graphics context loss; PTY suspension now removes the session only after shutdown confirmation.
+- Merge Center cards now truncate long status, branch, and action text correctly in narrow sidebars.
+- Missing OpenCode sessions with a server-assigned `parent_id` are treated as inconclusive instead of
+  being discarded as orphaned.
+- Rainbow container borders now draw inside the box with the correct radius, showing the full edge
+  animation instead of only the corners.
+- Closing Tasks no longer collapses the left Merge Center sidebar after removal of the old GSD drawer.
+- A broad silent-failure audit moved Git/session/agent/backup operations off the Tauri dispatcher,
+  preserves corrupted metrics instead of overwriting them, exposes restart and hook failures, and keeps
+  GSD polling alive when one session fails.
 
 ## [1.3.0] — 2026-07-27
 
-Integra as contribuições de multi-provider/graphify e de macOS, além do redesign
-da Home, da tela de carregamento e da sidebar, e o suporte ao Antigravity.
+This release integrates multi-provider Graphify and macOS contributions, redesigns Home, loading, and
+the sidebar, and adds Antigravity support.
 
-### Adicionado
+### Added
 
-- **Graphify multi-provider (grafo de código como MCP).** Novo painel de
-  visualização do grafo por projeto (abre pelo menu ⋯ na sidebar) e a opção
-  "Graphify MCP" no editar-projeto. Com ela ligada, o grafo é entregue como
-  servidor MCP para os agentes dos **três** CLIs — Claude via `--mcp-config`,
-  Codex e OpenCode via merge não-destrutivo no config do próprio projeto
-  (`.codex/config.toml` / `opencode.json`). Inclui snapshots do grafo.
-- **Terminal nativo Ghostty (macOS).** Backend de terminal via libghostty
-  embutido numa NSView sobre a WebView, opt-in nas Preferências. Sem efeito em
-  Windows/Linux (segue no xterm.js).
-- **Cantos arredondados da janela no macOS**, recortados no nível do AppKit para
-  casar com a janela sem decoração nativa. No-op fora do macOS.
-- **Suporte ao provider Antigravity (`agy`).** Detecção do CLI, spawn/resume por
-  `--conversation`, descoberta de sessões e widget de uso próprio.
-- **Controle experimental de opacidade da janela**, para enxergar o desktop
-  através do Alethe.
+- Added multi-provider Graphify as an MCP server for Claude, Codex, and OpenCode, with a per-project
+  graph viewer, project configuration, non-destructive config merging, and graph snapshots.
+- Added an opt-in native Ghostty terminal backend on macOS through an NSView layered over the WebView.
+- Added AppKit-level rounded window corners on macOS.
+- Added Antigravity (`agy`) CLI detection, spawn and resume by conversation, session discovery, and a
+  dedicated usage widget.
+- Added experimental window opacity control.
 
-### Alterado
+### Changed
 
-- **Robustez do ciclo de merge/worktrees.** Escrita monotônica de `projects.json`
-  (mutex de sequência + instância única do app), classificação de locks do git
-  (administrativo vs. `index.lock` transitório com backoff), rastreamento e
-  limpeza em lote de worktrees órfãs, e máquina de estados do merge com
-  auto-finalização.
-- **Descoberta do token do Claude no macOS** via Keychain (backends de keyring
-  declarados por plataforma) e correção do vi-mode indesejado no terminal em dev
-  (o `EDITOR=vi` que o `npm run` injetava não vaza mais para os shells).
-- **Home redesenhada.** Arte de fundo com efeito ASCII interativo e transição
-  suave para a dashboard; lançador rápido em formato de mini-terminal com toolbar
-  de agente/projeto/pasta/modo; player do Spotify em dock discreto; painéis de
-  Usage & Activity e Time & Focus com composição e filtros mais claros; streak e
-  atividade reais; digitar no mini-terminal não rerenderiza mais os gráficos.
-- **Tela de carregamento refeita:** marca da Alethe em efeito ASCII animado, com
-  o nome, uma linha de console "Inicializando workspace" e uma trilha dot-matrix
-  de progresso.
-- **Sidebar de Projects reorganizada:** projeto ativo como card fixo no topo com
-  transição suave de expandir/recolher, lista plana dos demais, ícone de
-  monograma colorido, menu ⋯ sempre visível (sem recorte), indicador de trabalho
-  (dot-matrix) à esquerda e etiqueta "foco"; sem branch, contagem, caminho da
-  pasta nem cabeçalho de seção sem-grupo.
-- **Terminal:** links deixam o texto explicativo fora da área clicável; falhas de
-  digitação recuperam o PTY sozinhas; reiniciar um Codex preserva e retoma a
-  conversa; e o foco de entrada é recuperado após montagem/interação/perda de
-  contexto gráfico.
-- O **modo irrestrito** virou um controle destacado, acionável com um clique no
-  modal de adicionar IA.
-- O **gerenciamento de memória** passou a apenas monitorar por padrão; o LRU
-  inteligente exige ativação explícita nas Preferências.
-- O **modal de novo terminal** ganhou seleção em cards, pasta destacada e atalhos
-  de pastas recentes.
-- A **retomada automática** descarta IDs órfãos de conversas (Claude, Codex,
-  Antigravity) antes de iniciar o terminal.
+- Strengthened merge and worktree state with monotonic `projects.json` writes, Git-lock classification,
+  backoff, orphan tracking and cleanup, and an auto-finalizing merge state machine.
+- Added macOS Keychain discovery for Claude tokens and prevented `EDITOR=vi` from leaking from npm into
+  development shells.
+- Redesigned Home with interactive ASCII artwork, smooth dashboard transitions, a mini-terminal quick
+  launcher, a compact Spotify dock, clearer usage and focus panels, and real streak/activity data.
+- Rebuilt the loading screen with animated Alethe ASCII branding and dot-matrix progress.
+- Reorganized the Projects sidebar around a fixed active-project card, a flat project list, colored
+  monograms, always-visible menus, activity indicators, and reduced metadata clutter.
+- Terminal links now exclude explanatory text, input failures recover the PTY, Codex restart preserves
+  the conversation, and input focus recovers after mounting, interaction, or graphics loss.
+- Unrestricted mode became a prominent one-click control in the Add AI dialog.
+- Memory management now monitors by default; intelligent LRU behavior requires explicit opt-in.
+- The new-terminal dialog gained card selection, a prominent folder field, and recent-folder shortcuts.
+- Automatic resume removes orphaned Claude, Codex, and Antigravity conversation IDs before spawn.
 
-### Corrigido
+### Fixed
 
-- **Config do Codex corrompido no Windows:** o `command`/path agora é escapado
-  para string TOML em `graphify_codex_config_write` — um caminho com contrabarras
-  (`C:\...`) não quebra mais o `.codex/config.toml` inteiro.
-- **Loop infinito no merge:** o poll de fallback do `finalize` silencioso agora
-  encerra o watch ao cair em estado de falha, em vez de re-disparar a cada 7s.
+- Windows paths are escaped correctly as TOML strings in `graphify_codex_config_write`.
+- The merge finalization fallback stops polling after entering a failed state.
 
-### Removido
+### Removed
 
-- Rótulo de seção "Solto/Ungrouped" acima dos projetos sem grupo na sidebar.
-- Aviso textual de terminal estacionado no overlay (a ação de retomar continua).
+- Removed the **Loose/Ungrouped** section label above ungrouped sidebar projects.
+- Removed the parked-terminal text notice from the overlay; the resume action remains available.
 
-[Não lançado]: https://github.com/Kc1t/alethe-agents/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/Kc1t/alethe-agents/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/Kc1t/alethe-agents/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/Kc1t/alethe-agents/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/Kc1t/alethe-agents/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/Kc1t/alethe-agents/releases/tag/v1.3.0

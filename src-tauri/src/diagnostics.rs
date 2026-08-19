@@ -44,7 +44,6 @@ pub fn open_in_file_explorer(path: String) -> Result<(), String> {
         Command::new("open").arg(target.as_os_str()).spawn()
     };
 
-    // xdg-open não tem "revelar/selecionar": abre o diretório (pai, se for arquivo).
     #[cfg(all(unix, not(target_os = "macos")))]
     let result = {
         let dir = if target.is_file() {
@@ -158,9 +157,9 @@ pub fn read_clipboard_text() -> Result<String, String> {
     }
 }
 
-/// Payload unificado do clipboard: texto, paths de arquivo (CF_HDROP no Windows,
-/// text/uri-list no Linux) ou uma imagem crua (CF_DIB/PNG registrado no Windows,
-/// image/png no Linux) já salva num PNG temporário.
+/// Unified clipboard payload: text, file paths (CF_HDROP on Windows, text/uri-list
+/// on Linux) or a raw image (registered CF_DIB/PNG on Windows, image/png on Linux)
+/// already written to a temporary PNG.
 #[derive(serde::Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ClipboardPayload {
@@ -284,7 +283,7 @@ mod windows_clipboard {
     }
 
     /// Le CF_UNICODETEXT assumindo que o clipboard ja esta aberto e o formato
-    /// disponivel foi verificado pelo chamador.
+
     fn read_unicode_text_locked() -> Result<String, String> {
         let handle = unsafe { GetClipboardData(CF_UNICODETEXT_U32) };
         if handle.is_null() {
@@ -309,8 +308,7 @@ mod windows_clipboard {
     }
 
     /// Enumera os paths de CF_HDROP (arquivos copiados no Windows Explorer).
-    /// O handle de CF_HDROP e usado diretamente por DragQueryFileW — sem
-    /// GlobalLock/GlobalUnlock, diferente dos outros formatos deste modulo.
+
     fn read_hdrop_paths() -> Result<Vec<String>, String> {
         let handle = unsafe { GetClipboardData(CF_HDROP_U32) };
         if handle.is_null() {
@@ -364,8 +362,7 @@ mod windows_clipboard {
     }
 
     /// Se o clipboard tiver o formato registrado "PNG" (Chrome/Edge colocam
-    /// isso ao copiar uma imagem da web), os bytes ja sao um PNG valido —
-    /// grava direto em disco, sem recodificar.
+
     fn read_registered_png() -> Option<Result<String, String>> {
         let name: Vec<u16> = "PNG".encode_utf16().chain(std::iter::once(0)).collect();
         let format = unsafe { RegisterClipboardFormatW(name.as_ptr()) };
@@ -375,9 +372,8 @@ mod windows_clipboard {
         Some(read_format_bytes(format).and_then(|bytes| write_bytes_to_temp_png(&bytes)))
     }
 
-    /// CF_DIB devolve um BITMAPINFOHEADER + pixels, sem o BITMAPFILEHEADER de
     /// 14 bytes que um .bmp de verdade tem. Prepende esse header manualmente
-    /// pra poder decodificar com a crate `image` e reexportar como PNG.
+
     fn read_dib_as_png() -> Result<String, String> {
         let dib = read_format_bytes(CF_DIB_U32)?;
         if dib.len() < 40 {
@@ -758,8 +754,6 @@ pub fn open_spawn_log(app: AppHandle) -> Result<(), String> {
     result.map(|_| ()).map_err(|error| error.to_string())
 }
 
-/// Limpa todo o conteúdo de `%LOCALAPPDATA%\dev.alethe\` (projects.json,
-/// scrollback/, spawn.log). Itera em vez de remover o dir inteiro pra
 /// permitir que o app continue rodando.
 #[tauri::command]
 pub fn reset_app_data(app: AppHandle) -> Result<(), String> {
@@ -807,8 +801,6 @@ pub fn wipe_all_app_data(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// Abre a pasta de logs (raiz `app_local_data_dir()/logs`, compartilhada por
-/// todos os perfis) no explorer/Finder.
 #[tauri::command]
 pub fn open_logs_folder(app: AppHandle) -> Result<(), String> {
     let path = crate::logging::logs_dir(&app)?;
@@ -824,8 +816,6 @@ pub fn open_logs_folder(app: AppHandle) -> Result<(), String> {
     result.map(|_| ()).map_err(|error| error.to_string())
 }
 
-/// Empacota a pasta de logs num zip em `target_path` (pra anexar a um report de
-/// bug). Mesmo padrão de `backup::export_backup`.
 #[tauri::command]
 pub fn export_logs(app: AppHandle, target_path: String) -> Result<(), String> {
     use std::io::Write;
@@ -860,4 +850,52 @@ pub fn export_logs(app: AppHandle, target_path: String) -> Result<(), String> {
     }
     zip.finish().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+mod macos_clipboard {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+
+    use super::ClipboardPayload;
+
+    pub fn write_text(text: &str) -> Result<(), String> {
+        let mut child = Command::new("pbcopy")
+            .stdin(Stdio::piped())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(text.as_bytes())
+                .map_err(|e| e.to_string())?;
+        }
+
+        let status = child.wait().map_err(|e| e.to_string())?;
+        if status.success() {
+            Ok(())
+        } else {
+            Err("pbcopy falhou".to_string())
+        }
+    }
+
+    pub fn read_text() -> Result<String, String> {
+        let output = Command::new("pbpaste")
+            .output()
+            .map_err(|e| e.to_string())?;
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+        } else {
+            Err("pbpaste falhou".to_string())
+        }
+    }
+
+    pub fn read_payload() -> Result<ClipboardPayload, String> {
+        let text = read_text()?;
+        if text.trim().is_empty() {
+            Ok(ClipboardPayload::Empty)
+        } else {
+            Ok(ClipboardPayload::Text { text })
+        }
+    }
 }

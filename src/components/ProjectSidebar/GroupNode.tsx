@@ -1,12 +1,13 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { ChevronDown, ChevronRight, Pause, Plus } from 'lucide-react'
+import { ChevronDown, Pause, Plus } from 'lucide-react'
 
 import { useT } from '../../lib/i18n'
+import { type SidebarDragKind, type SidebarDropEdge } from '../../lib/sidebarDrag'
 import { type Group, type Project } from '../../lib/types'
-import { GroupBadge } from './sidebarPrimitives'
+import { Collapse } from '../ui/Collapse'
 import styles from './ProjectSidebar.module.css'
 
-/** Coleta IDs de todos os grupos descendantes de `rootId` (recursivo). */
+/** Collect all descendant group IDs below `rootId`. */
 export function collectDescendants(rootId: string, allGroups: Group[]): Set<string> {
   const result = new Set<string>()
   const queue = [rootId]
@@ -31,9 +32,9 @@ export type GroupNodeProps = {
   onMenu: (e: React.MouseEvent) => void
   onAddProject: () => void
   onToggle: () => void
-  onOpenAll: () => void
-  onOpenOnly: () => void
-  showDropHint?: boolean
+  dragKind: SidebarDragKind | null
+  reorderEdge: SidebarDropEdge | null
+  dropInside: boolean
 }
 
 export function GroupNode({
@@ -45,65 +46,39 @@ export function GroupNode({
   onMenu,
   onAddProject,
   onToggle,
-  onOpenAll,
-  onOpenOnly,
-  showDropHint = false,
+  dragKind,
+  reorderEdge,
+  dropInside,
 }: GroupNodeProps) {
   const t = useT()
-  const dropZone = useDroppable({ id: `group:${group.id}` })
+  const headerDropZone = useDroppable({
+    id: dragKind === 'group' ? `grp:${group.id}` : `group:${group.id}`,
+    disabled: dragKind !== 'group' && dragKind !== 'project',
+  })
+  const bodyDropZone = useDroppable({
+    id: dragKind === 'group' ? `group:${group.id}` : `group-body:${group.id}`,
+    disabled: dragKind !== 'group' || group.collapsed,
+  })
   const draggable = useDraggable({ id: `grp:${group.id}` })
   const isDragging = draggable.isDragging
-  const setRefs = (node: HTMLDivElement | null) => {
-    dropZone.setNodeRef(node)
+  const setCollapsedRefs = (node: HTMLDivElement | null) => {
+    headerDropZone.setNodeRef(node)
     draggable.setNodeRef(node)
   }
-  const isOver = dropZone.isOver
+  const reorderClass =
+    reorderEdge === 'before' ? styles.dropBefore : reorderEdge === 'after' ? styles.dropAfter : ''
 
-  // Click no nome do grupo (ou bullet) → onOpenAll. Não dispara em chevron/+.
+  // The group row only controls disclosure; workspace actions remain explicit.
   const onTagClick = (e: React.MouseEvent) => {
     const tgt = e.target as HTMLElement
-    if (tgt.closest('button')) return // chevron/+ tratam o próprio click
-    onOpenAll()
-  }
-
-  if (group.collapsed) {
-    return (
-      <div
-        ref={setRefs}
-        {...draggable.attributes}
-        {...draggable.listeners}
-        className={`${styles.groupCollapsed} ${isOver ? styles.groupDropTarget : ''} ${isDragging ? styles.dragSource : ''}`}
-        onClick={() => {
-          onToggle()
-          onOpenAll()
-        }}
-        onDoubleClick={(e) => {
-          e.stopPropagation()
-          onOpenOnly()
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault()
-          onMenu(e)
-        }}
-        title={t('ui.sidebar.openAllGroupProjects')}
-      >
-        <ChevronRight size={12} className={styles.groupChevron} />
-        <GroupBadge name={group.name} iconUrl={group.iconUrl} color={group.color} />
-        <span className={styles.groupName}>{group.name}</span>
-        {group.suspended && <Pause size={10} className={styles.groupSuspendedIcon} />}
-        <span className={styles.groupCount}>
-          {group.projectIds.length === 1
-            ? t('ui.sidebar.projectCountOne', { count: group.projectIds.length })
-            : t('ui.sidebar.projectCountOther', { count: group.projectIds.length })}
-        </span>
-      </div>
-    )
+    if (tgt.closest('button')) return
+    onToggle()
   }
 
   return (
     <div
-      ref={setRefs}
-      className={`${styles.groupBox} ${isOver ? styles.groupDropTarget : ''} ${isDragging ? styles.dragSource : ''} ${group.suspended ? styles.groupSuspended : ''}`}
+      ref={draggable.setNodeRef}
+      className={`${styles.groupBox} ${isDragging ? styles.dragSource : ''} ${group.suspended ? styles.groupSuspended : ''}`}
       onContextMenu={(e) => {
         e.preventDefault()
         onMenu(e)
@@ -111,12 +86,11 @@ export function GroupNode({
       style={{ ['--group-color' as string]: group.color }}
     >
       <div
-        className={styles.groupTag}
+        ref={group.collapsed ? setCollapsedRefs : headerDropZone.setNodeRef}
+        className={`${styles.groupTag} ${reorderClass} ${
+          dropInside && (group.collapsed || dragKind === 'project') ? styles.dropInside : ''
+        }`}
         onClick={onTagClick}
-        onDoubleClick={(e) => {
-          e.stopPropagation()
-          onOpenOnly()
-        }}
         title={
           group.suspended
             ? t('ui.sidebar.groupSuspendedHint')
@@ -125,6 +99,21 @@ export function GroupNode({
         {...draggable.attributes}
         {...draggable.listeners}
       >
+        <span className={styles.groupTagName}>{group.name}</span>
+        {group.suspended && <Pause size={10} className={styles.groupSuspendedIcon} />}
+        <span className={styles.groupRule} />
+        <button
+          type="button"
+          className={styles.groupAddButton}
+          onClick={(e) => {
+            e.stopPropagation()
+            onAddProject()
+          }}
+          title={t('ui.sidebar.newProjectInGroup')}
+          aria-label={t('ui.sidebar.newProjectInGroup')}
+        >
+          <Plus size={14} />
+        </button>
         <button
           type="button"
           className={styles.groupChevronBtn}
@@ -134,37 +123,25 @@ export function GroupNode({
           }}
           aria-label={t('ui.sidebar.collapse')}
         >
-          <ChevronDown size={11} />
+          <ChevronDown
+            size={14}
+            className={`${styles.disclosureChevron} ${group.collapsed ? styles.disclosureClosed : ''}`}
+          />
         </button>
-        <GroupBadge name={group.name} iconUrl={group.iconUrl} color={group.color} />
-        <span className={styles.groupTagName}>{group.name}</span>
-        {group.suspended && <Pause size={10} className={styles.groupSuspendedIcon} />}
-        <button
-          type="button"
-          className={styles.iconBtn}
-          onClick={(e) => {
-            e.stopPropagation()
-            onAddProject()
-          }}
-          title={t('ui.sidebar.newProjectInGroup')}
-          aria-label={t('ui.sidebar.newProjectInGroup')}
+      </div>
+      <Collapse open={!group.collapsed}>
+        <div
+          ref={bodyDropZone.setNodeRef}
+          className={`${styles.groupBody} ${dragKind === 'group' && dropInside ? styles.dropInside : ''}`}
         >
-          <Plus size={11} />
-        </button>
-      </div>
-      <div className={styles.groupBody}>
-        {showDropHint ? (
-          <div className={styles.groupDropHint}>
-            {isOver ? t('ui.sidebar.dropIntoGroup') : t('ui.sidebar.moveIntoGroup')}
-          </div>
-        ) : null}
-        {childGroups.map((cg) => renderChildGroup(cg))}
-        {projects.length === 0 && childGroups.length === 0 ? (
-          <div className={styles.groupEmpty}>{t('ui.sidebar.groupEmpty')}</div>
-        ) : (
-          projects.map((p) => renderProject(p))
-        )}
-      </div>
+          {childGroups.map((cg) => renderChildGroup(cg))}
+          {projects.length === 0 && childGroups.length === 0 ? (
+            <div className={styles.groupEmpty}>{t('ui.sidebar.groupEmpty')}</div>
+          ) : (
+            projects.map((p) => renderProject(p))
+          )}
+        </div>
+      </Collapse>
     </div>
   )
 }

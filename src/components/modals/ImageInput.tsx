@@ -52,14 +52,13 @@ export function ImageInput({
     onChange(dataUrl)
   }
 
-  const isRainbow = previewColor === 'rgb-rainbow'
   const initial = (projectName || 'P').trim().charAt(0).toUpperCase()
 
   return (
     <div className={controls.field}>
       <label className={controls.label}>{label}</label>
       <div className={controls.inputActionRow} style={{ alignItems: 'center' }}>
-        {/* Card de Preview Dedicado de Foto/Ícone (44x44px) */}
+        {                                                      }
         <div
           style={{
             width: 44,
@@ -71,13 +70,12 @@ export function ImageInput({
             alignItems: 'center',
             justifyContent: 'center',
             border: '1px solid var(--border-strong)',
-            background: isRainbow ? undefined : previewColor || 'var(--panel)',
+            background: previewColor || 'var(--panel)',
             boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
             color: '#fff',
             fontWeight: 700,
             fontSize: 18,
           }}
-          className={isRainbow ? 'swatch-rgb-rainbow' : undefined}
           title={value ? 'Preview da Foto/Ícone' : 'Foto Padrão'}
         >
           {value ? (

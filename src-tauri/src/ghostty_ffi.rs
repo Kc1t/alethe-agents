@@ -1,19 +1,14 @@
 //! FFI para o shim C do libghostty (`ghostty_shim.m`).
 //!
-//! Falamos com o shim, não com o libghostty cru — assim a ABI das structs
-//! grandes (passadas por valor) fica do lado C, onde o `ghostty.h` real a
-//! define. O Rust só vê ponteiros opacos e tipos primitivos.
+
 //!
-//! Só compila no macOS quando o build.rs detectou o libghostty (`ghostty_linked`).
+
 #![cfg(all(target_os = "macos", ghostty_linked))]
 
 use std::os::raw::{c_char, c_void};
 
 pub type AletheSurface = *mut c_void;
 
-// `ensure_app` é chamado internamente pelo shim em `surface_new`; `app_tick`
-// será usado pelo display link na fase de render contínuo. Exportados pra
-// quando precisarmos chamá-los direto do Rust.
 #[allow(dead_code)]
 extern "C" {
     pub fn alethe_ghostty_ensure_app() -> bool;

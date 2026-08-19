@@ -148,9 +148,9 @@ export function useGsdSyncSessionsWatcher(
   }, [watched])
 }
 
-/** Leitura reativa das sessões GSD Sync descobertas pelo watcher acima — sem
- *  poll próprio. Usado pela gaveta GSD Sync e por qualquer outro consumidor
- *  que só precise LER a lista, não descobrir/criar nada. */
+                                                                             
+                                                                            
+                                                            
 export function useGsdSyncSessions(): GsdSyncSession[] {
   return useGsdSyncSessionsStore((s) => s.sessions)
 }

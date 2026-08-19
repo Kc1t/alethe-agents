@@ -43,23 +43,23 @@ function stripAntigravitySessionArgs(args: string[]): string[] {
   )
 }
 
-/**
- * Produz os argumentos de sessão sem depender de "a conversa mais recente".
- * Claude permite escolher o UUID no nascimento; Codex/OpenCode só recebem um
- * argumento de resume quando o pane já possui um ID conhecido.
- */
+   
+                                                                            
+                                                                             
+                                                               
+   
 export function buildAgentLaunch(
   agent: AgentType,
   baseArgs: readonly string[] = [],
   sessionId?: string,
   createUuid: () => string = () => crypto.randomUUID(),
-  // Quando um servidor MCP gerenciado pelo Alethe está habilitado (Graphify e/ou
-  // ai-memory), geramos um arquivo `.mcp` por servidor (ver *McpConfigPath) e o
-  // injetamos aqui. Só o Claude Code usa flag de spawn (`--mcp-config`, aceita
-  // repetida — por isso é uma LISTA, para os servers coexistirem sem um
-  // sobrescrever o outro) — Codex e OpenCode leem MCP de um arquivo de config
-  // AMBIENTE no próprio projeto (`.codex/config.toml` / `opencode.json`), escrito
-  // ANTES do spawn (XTermView), não por flag aqui. Arquitetura correta dos 3 CLIs.
+                                                                                 
+                                                                                
+                                                                               
+                                                                        
+                                                                              
+                                                                                  
+                                                                                   
   mcpConfigPaths?: readonly string[],
 ): AgentLaunch {
   if (agent === 'shell') {
@@ -95,10 +95,10 @@ export function buildAgentLaunch(
 
   if (agent === 'opencode') {
     const clean = stripOpenCodeSessionArgs([...baseArgs])
-    // --session <id> explícito sempre — nunca --continue, que não é por
-    // terminal (pega "a última sessão do OpenCode" pro cwd inteiro e colide
-    // entre panes). O ID vem de sessionDiscovery.claimMostRecentSession,
-    // reivindicado antes do spawn.
+                                                                        
+                                                                            
+                                                                         
+                                   
     return {
       args: sessionId ? ['--session', sessionId, ...clean] : clean,
       sessionId,
@@ -115,8 +115,8 @@ export function buildAgentLaunch(
     }
   }
 
-  // freebuff/mimo (e qualquer agente sem sintaxe própria de resume): só executa o
-  // binário com os args base. freebuff não documenta flag de resume; o Mimo Code
-  // retoma a sessão automaticamente via memória persistente, sem flag.
+                                                                                  
+                                                                                 
+                                                                       
   return { args: [...baseArgs], sessionId: undefined, createdSession: false }
 }

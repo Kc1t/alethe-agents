@@ -1,11 +1,12 @@
 import { useState } from 'react'
 
-import { GROUP_COLORS } from '../../lib/types'
 import { useT } from '../../lib/i18n'
+import { GROUP_COLORS } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { Modal } from './Modal'
 import controls from './controls.module.css'
+import { ImageInput } from './ImageInput'
+import { Modal } from './Modal'
 
 export function NewGroupModal() {
   const t = useT()
@@ -17,19 +18,24 @@ export function NewGroupModal() {
   )
   const closeModal = useUiStore((s) => s.closeModal)
   const createGroup = useProjectsStore((s) => s.createGroup)
+  const setGroupIconUrl = useProjectsStore((s) => s.setGroupIconUrl)
 
   const [name, setName] = useState('')
   const [color, setColor] = useState<string>(GROUP_COLORS[0])
+  const [iconUrl, setIconUrl] = useState('')
 
   const reset = () => {
     setName('')
     setColor(GROUP_COLORS[0])
+    setIconUrl('')
   }
 
   const submit = () => {
     const trimmed = name.trim()
     if (!trimmed) return
-    createGroup(trimmed, color, parentGroupId)
+    const group = createGroup(trimmed, color, parentGroupId)
+    const trimmedIconUrl = iconUrl.trim()
+    if (trimmedIconUrl) setGroupIconUrl(group.id, trimmedIconUrl)
     reset()
     closeModal()
   }
@@ -94,6 +100,14 @@ export function NewGroupModal() {
           ))}
         </div>
       </div>
+
+      <ImageInput
+        label={t('crud.groupLogoLabel')}
+        value={iconUrl}
+        onChange={setIconUrl}
+        onEnter={submit}
+        hint={t('crud.groupIconHint')}
+      />
     </Modal>
   )
 }

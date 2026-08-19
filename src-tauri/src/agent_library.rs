@@ -18,7 +18,7 @@ fn agents_dir(folder: &str) -> PathBuf {
 }
 
 /// `async` + `spawn_blocking`: varredura de disco, mesma classe de I/O
-/// bloqueante já corrigida em `cli_resolver.rs` — sem isso trava a thread de
+
 /// despacho de IPC do Tauri.
 #[tauri::command]
 pub async fn list_installed_agents(folder: String) -> Vec<InstalledAgent> {

@@ -1,29 +1,27 @@
 // Bridge de sinal real de "working"/"idle" do OpenCode via plugin.
 //
 // A heuristica generica de PTY (agentCompletionMonitor.ts, frontend) nao funciona
-// bem pro OpenCode porque ele abre uma TUI de tela cheia com redraw constante —
+
 // o "salto de texto novo apos Enter" que a heuristica espera raramente acontece
-// do jeito que ela consegue detectar, entao "tempo e foco" fica sempre em zero
-// pro OpenCode mesmo em uso pesado.
+
 //
 // Este modulo escreve um plugin real do OpenCode (formato confirmado em
 // opencode.ai/docs/plugins/) num diretorio GLOBAL do usuario
-// (~/.config/opencode/plugin/alethe-bridge.js) — nao por projeto, pra valer pra
+
 // qualquer terminal opencode que o Alethe spawnar, nao so os com Graphify
 // habilitado. O plugin reporta session.idle/tool.execute.before de volta pro
 // Alethe via HTTP local, reaproveitando o listener ja existente em
-// agent_events.rs (mesmo endpoint que os hooks HTTP do Claude Code ja usam).
 
 use std::path::PathBuf;
 
 const PLUGIN_FILE_NAME: &str = "alethe-bridge.js";
 
-const PLUGIN_SOURCE: &str = r#"// Gerado automaticamente pelo Alethe - nao editar a mao (sobrescrito no proximo
+const PLUGIN_SOURCE: &str = r#"                                                                                
 // boot do app se o conteudo mudar).
 //
-// Reporta o estado real (working/idle) de sessoes OpenCode de volta pro Alethe,
+                                                                                
 // via o endpoint local passado em ALETHE_BRIDGE_ENDPOINT (injetado como env var
-// no spawn de cada terminal opencode). Best-effort: nunca deve travar nem
+                                                                          
 // quebrar a sessao do OpenCode se o Alethe nao estiver rodando ou a porta tiver
 // mudado.
 export const AletheBridgePlugin = async ({ directory }) => {
@@ -38,7 +36,7 @@ export const AletheBridgePlugin = async ({ directory }) => {
         body: JSON.stringify({ directory, state }),
       })
     } catch {
-      // best-effort - Alethe offline/porta fechada nao deve quebrar nada aqui
+                                                                              
     }
   }
 
@@ -62,10 +60,6 @@ fn plugin_dir() -> Option<PathBuf> {
     )
 }
 
-/// Escreve o plugin global (idempotente — só regrava se o conteúdo mudou, pra
-/// não bagunçar mtime/cache do OpenCode à toa). Best-effort por design: uma
-/// falha aqui nunca deve impedir o Alethe de subir — só cai pro fallback de
-/// heurística de PTY que já existia antes deste incremento.
 pub fn ensure_installed() {
     let Some(dir) = plugin_dir() else {
         eprintln!("[opencode_bridge] não foi possível resolver o diretório home");

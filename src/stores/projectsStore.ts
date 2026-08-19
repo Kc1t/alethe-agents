@@ -7,13 +7,18 @@ import {
   isTauriEnv,
   loadProjectsBootstrap,
   type ProfileMeta,
+  recordFrontendError,
+  saveProjectsFile,
   saveProjectsForProfile,
   writeProjectMarker,
 } from '../lib/tauri'
+import { recordAppEvent } from '../lib/tauri/misc'
 import { getProjectDefaultCwd, getProjectRepoRoot } from '../lib/terminalFactory'
 import {
+  type AgentHandoffBootstrap,
   type AgentRuntimeProfile,
   type AgentType,
+  type BrowserPaneOptions,
   EMPTY_PROJECTS_FILE,
   type GridLayout,
   type Group,
@@ -51,7 +56,7 @@ import {
 import { createContainersSlice, createTerminalsSlice } from './projectsStore.terminalSlices'
 import { createWorkspaceSlice } from './projectsStore.workspaceSlices'
 
-// Re-export da API pública deste módulo consumida por outros arquivos.
+                                                                       
 export { getProjectDefaultCwd, getProjectRepoRoot }
 export {
   MAX_RECENT_PROJECT_TABS,
@@ -70,23 +75,23 @@ export type ProjectsState = ProjectsFile & {
   hydrated: boolean
   hydrate: () => Promise<void>
   flushPersistence: (keepalive?: boolean) => Promise<void>
-  /** true durante uma passada de handleCleanupWorktrees — bloqueia cliques duplos. */
+  /** True while handleCleanupWorktrees is running, preventing duplicate clicks. */
   isCleaningOrphans: boolean
 
   // groups
   createGroup: (name: string, color?: string, parentGroupId?: string | null) => Group
-  moveGroupToParent: (groupId: string, parentGroupId: string | null) => void
+  moveGroupToParent: (groupId: string, parentGroupId: string | null, atIndex?: number) => void
   renameGroup: (id: string, name: string) => void
   setGroupColor: (id: string, color: string) => void
   setGroupIconUrl: (id: string, iconUrl: string | undefined) => void
   toggleGroupCollapsed: (id: string) => void
   archiveGroup: (id: string) => void
   unarchiveGroup: (id: string) => void
-  /** Suspende grupo: desabilita todos os terminais e fecha containers pra liberar RAM. */
+                                                                                          
   suspendGroup: (groupId: string) => void
-  /** Reativa grupo suspenso: reabilita terminais (PTYs são respawnados pelo XTermView). */
+                                                                                           
   resumeGroup: (groupId: string) => void
-  /** mode 'unassign' = projetos viram Solto; mode 'cascade' = apaga grupo + projetos. */
+                                                                                         
   deleteGroup: (id: string, mode: 'unassign' | 'cascade') => void
   reorderGroups: (fromIndex: number, toIndex: number) => void
   moveProjectToGroup: (projectId: string, groupId: string | null, atIndex?: number) => void
@@ -161,16 +166,16 @@ export type ProjectsState = ProjectsFile & {
     projectId: string,
     gsdWatcherEnabledOverride?: boolean,
   ) => Promise<void>
-  /** Upsert por `path` — sobrescreve a entrada existente (limpando `adminLockReason`
-   * obsoleto se a nova falha não for lock administrativo) ou adiciona uma nova. */
+                                                                                     
+                                                                                   
   addOrphanWorktree: (projectId: string, entry: OrphanWorktree) => void
   removeOrphanWorktree: (projectId: string, path: string) => void
   setCleaningOrphans: (value: boolean) => void
-  /** Processa `project.orphanWorktrees` sequencial-com-continuação: cada item
-   * falho não interrompe os demais. Aplica a transição requiresRawDeletion →
-   * pruneOnly, classifica lock administrativo vs falha de SO, e retorna a
-   * taxonomia quadridimensional (X limpos / Y parciais / W aguardando unlock /
-   * Z falhas) — a UI usa isso pro toast de resumo. */
+                                                                              
+                                                                             
+                                                                          
+                                                                               
+                                                      
   cleanupOrphanWorktrees: (projectId: string) => Promise<{
     cleaned: number
     partial: number
@@ -198,12 +203,12 @@ export type ProjectsState = ProjectsFile & {
   navigateWorkspaceHistory: (direction: -1 | 1) => void
   toggleProjectCollapsed: (id: string) => void
   setLayoutMode: (projectId: string, layout: LayoutMode) => void
-  setProjectGridLayout: (projectId: string, layout: GridLayout) => void
+  setProjectGridLayout: (projectId: string, layout: GridLayout, recordHistory?: boolean) => void
   setGroupLayoutMode: (groupId: string, mode: LayoutMode) => void
-  setGroupGridLayout: (groupId: string, layout: GridLayout) => void
-  setWorkspaceGridLayout: (layout: GridLayout | null) => void
+  setGroupGridLayout: (groupId: string, layout: GridLayout, recordHistory?: boolean) => void
+  setWorkspaceGridLayout: (layout: GridLayout | null, recordHistory?: boolean) => void
 
-  // todos globais
+                  
   createTodo: (title: string, tags?: string[], projectId?: string) => TodoItem | null
   renameTodo: (id: string, title: string) => void
   updateTodoTags: (id: string, tags: string[]) => void
@@ -224,6 +229,7 @@ export type ProjectsState = ProjectsFile & {
         cwd: string
         extraArgs?: string[]
         initialInput?: string
+        handoff?: AgentHandoffBootstrap
         runtimeProfile?: AgentRuntimeProfile
       }
       worktreeAgentId?: string
@@ -232,12 +238,12 @@ export type ProjectsState = ProjectsFile & {
       ephemeralUtility?: boolean
     },
   ) => Terminal
-  /**
-   * RFC-003 — como createTerminal, mas com isolamento automático: se o projeto
-   * tem `autoWorktree` e o agente não é shell, provisiona uma worktree e o
-   * terminal nasce dentro dela (com `worktreeAgentId` p/ o botão Integrar).
-   * Falha do provision NUNCA bloqueia: cai no terminal normal.
-   */
+     
+                                                                               
+                                                                           
+                                                                            
+                                                               
+     
   createAgentTerminal: (
     projectId: string,
     args: {
@@ -248,53 +254,56 @@ export type ProjectsState = ProjectsFile & {
         cwd: string
         extraArgs?: string[]
         initialInput?: string
+        handoff?: AgentHandoffBootstrap
         runtimeProfile?: AgentRuntimeProfile
       }
     },
   ) => Promise<Terminal>
-  /** Cria um pane viewer (markdown/arquivo) e adiciona ao grid do projeto. */
+                                                                              
   createFilePane: (projectId: string, args: { filePath: string; name?: string }) => Terminal
-  /** Cria um pane de diff (Git) e adiciona ao grid do projeto. */
+                                                                  
   createDiffPane: (
     projectId: string,
     args: { filePath: string; repoRoot: string; staged: boolean; name?: string },
   ) => Terminal
-  /** Cria um pane web persistente e adiciona ao grid do projeto. */
-  createWebPane: (projectId: string, args: { url: string; name?: string }) => Terminal
+                                                                    
+  createWebPane: (projectId: string, args: BrowserPaneOptions) => Terminal
   createGraphifyPane: (projectId: string, cwd: string) => Terminal
   renameTerminal: (projectId: string, terminalId: string, name: string) => void
-  /** Backfill: liga `Terminal.gsdSyncViewer` num terminal já existente (criado
-   *  antes desse campo existir) sem precisar de migração manual de dado. */
+                                                                               
+                                                                            
   markGsdSyncViewer: (projectId: string, terminalId: string) => void
   deleteTerminal: (projectId: string, terminalId: string) => void
-  /** Mesmo teardown de `deleteTerminal`, mas para terminais de agente isolado
-   *  (`worktreeAgentId`): mata a árvore de processo e remove a worktree em
-   *  disco ANTES de apagar a entrada do terminal. Terminais sem
-   *  `worktreeAgentId` caem direto no `deleteTerminal` normal. */
+                                                                              
+                                                                           
+                                                                
+                                                                  
   deleteTerminalWithWorktreeCleanup: (projectId: string, terminalId: string) => Promise<void>
-  /** Mata a árvore de processos do terminal + fecha o pane, mas MANTÉM o atalho na
-   *  sidebar (descarta sessão/scrollback). O atalho reabre do zero ao ser clicado. */
+                                                                                   
+                                                                                      
   killTerminal: (projectId: string, terminalId: string) => void
   moveTerminal: (fromProjectId: string, terminalId: string, toProjectId: string) => void
   setTerminalDisabled: (projectId: string, terminalId: string, disabled: boolean) => void
-  /** Desabilita/reabilita todos os terminais de um projeto e fecha/reabre o container. */
+                                                                                          
   setProjectDisabled: (projectId: string, disabled: boolean) => void
   setLaneVisible: (projectId: string, terminalId: string, visible: boolean | null) => void
-  /** Marca um terminal como recentemente usado (atualiza lastUsedAt). */
+  /** Hides a terminal from every paired remote device. */
+  setTerminalRemoteExcluded: (projectId: string, terminalId: string, excluded: boolean) => void
+                                                                         
   markTerminalUsed: (projectId: string, terminalId: string) => void
 
   // workspace containers (substituem activeTerminalIds)
-  /** Abre o container do projeto (cria se não existir) e adiciona pane se não estiver lá. */
+                                                                                             
   openPane: (projectId: string, terminalId: string) => void
-  /** Remove pane do container; se vazio, fecha o container inteiro. */
+                                                                       
   closePane: (projectId: string, terminalId: string) => void
-  /** Toggle: adiciona se não tem, remove se tem. */
+                                                    
   togglePane: (projectId: string, terminalId: string) => void
-  /** Garante que o container do projeto exista com TODOS os panes do projeto. */
+                                                                                 
   openContainerWithAllPanes: (projectId: string) => void
   /** Remove container inteiro da workspace. */
   closeContainer: (projectId: string) => void
-  /** Fecha todos os containers que NÃO são o projectId fornecido. */
+                                                                     
   closeOtherContainers: (keepProjectId: string) => void
   reorderContainers: (fromIndex: number, toIndex: number) => void
   reorderPaneInContainer: (projectId: string, fromIndex: number, toIndex: number) => void
@@ -315,6 +324,7 @@ export type ProjectsState = ProjectsFile & {
       cwd: string
       name?: string
       extraArgs?: string[]
+      handoff?: AgentHandoffBootstrap
       runtimeProfile?: AgentRuntimeProfile
     },
   ) => SubTab
@@ -351,6 +361,12 @@ export type ProjectsState = ProjectsFile & {
     tabId: string,
     skipSessionClaim: boolean,
   ) => void
+  setSubTabHandoff: (
+    projectId: string,
+    terminalId: string,
+    tabId: string,
+    handoff: AgentHandoffBootstrap | undefined,
+  ) => void
 
   // preferences / cli
   setLanguage: (language: Locale) => void
@@ -371,14 +387,21 @@ let saveQueue: Promise<void> = Promise.resolve()
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 let retryAttempt = 0
 const profileRevisions = new Map<string, string>()
+let lastSaveErrorLoggedAt = 0
+let lastWriteSequence = Date.now()
 
 function createEmptyProjectsFile(): ProjectsFile {
   return JSON.parse(JSON.stringify(EMPTY_PROJECTS_FILE)) as ProjectsFile
 }
 
+function nextWriteSequence(): number {
+  lastWriteSequence = Math.max(Date.now(), lastWriteSequence + 1)
+  return lastWriteSequence
+}
+
 function persistedDocument(state: ProjectsState): ProjectsFile {
   return {
-    version: 6,
+    version: 7,
     groups: state.groups,
     ungroupedOrder: state.ungroupedOrder,
     projects: state.projects,
@@ -495,6 +518,20 @@ function scheduleProjectMarkerWrite(projectId: string, getState: () => ProjectsS
   )
 }
 
+function projectsPayload(state: ProjectsState): ProjectsFile {
+  return {
+    version: 7,
+    groups: state.groups,
+    ungroupedOrder: state.ungroupedOrder,
+    projects: state.projects,
+    todos: state.todos,
+    activeProjectId: state.activeProjectId,
+    workspace: state.workspace,
+    preferences: state.preferences,
+    cliPaths: state.cliPaths,
+  }
+}
+
 function scheduleSave(getState: () => ProjectsState) {
   const initialState = getState()
   // Never bind an edit to a guessed namespace after bootstrap failed. A later
@@ -526,6 +563,11 @@ function scheduleSave(getState: () => ProjectsState) {
     }
     void enqueueProjectsSave(getState(), scheduledGeneration).catch((error) => {
       console.error('Failed to persist projects.json', error)
+      const now = Date.now()
+      if (now - lastSaveErrorLoggedAt >= 30_000) {
+        lastSaveErrorLoggedAt = now
+        void recordFrontendError(String(error), null, 'projects.save')
+      }
     })
   }, SAVE_DEBOUNCE_MS)
 }
@@ -558,12 +600,12 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
             preferences: nextState.preferences,
           })
           const now = Date.now()
-          // Só preserva/atualiza a identidade de GRUPO da aba ativa se o grupo
-          // vivo for o MESMO que ela já representa. Se o activeGroupId vivo for
-          // OUTRO grupo (ex.: abrir/juntar outro grupo — inclusive pela sidebar —
-          // enquanto esta aba está ativa), o conteúdo virou composição cross-grupo;
-          // NUNCA renomeia a aba pro outro grupo. Sem essa guarda, a aba do grupo A
-          // era reescrita como grupo B e clicar em "A" caía no "Y".
+                                                                               
+                                                                                
+                                                                                  
+                                                                                    
+                                                                                    
+                                                                    
           const liveGroupId = snapshot.activeGroupId
           const keepsGroupIdentity =
             !!liveGroupId && (activeTab.kind !== 'group' || activeTab.sourceId === liveGroupId)
@@ -685,7 +727,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
     let history = state.workspace.history
     let historyIndex = state.workspace.historyIndex
     if (tabs.length > MAX_WORKSPACE_TABS) {
-      // Nunca evicta tabs fixadas; só cai no fallback se TODAS forem fixadas.
+                                                                              
       const removable =
         tabs.find((item) => item.id !== tab.id && !item.pinned) ??
         tabs.find((item) => item.id !== tab.id)
@@ -790,9 +832,9 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
     }
   }
 
-  // Contexto injetado nas slices extraídas. Os 4 últimos (helpers de navegação)
-  // ficam no create() porque compartilham o flag `suppressNavigationSync` com
-  // `update`; só as AÇÕES de workspace foram pra slice, chamando-os via ctx.
+                                                                                
+                                                                              
+                                                                             
   const sliceCtx = {
     set,
     get,
@@ -854,6 +896,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
             persistenceDirty: false,
             persistenceError: null,
           })
+          void recordAppEvent('projects.hydrate', 'source=empty')
           return
         } catch (err) {
           const coreMismatch = String(err).includes(CORE_IDENTITY_MISMATCH)
@@ -928,9 +971,21 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
   }
 })
 
+/** Flushes the debounced document before the native window is destroyed. */
+export async function flushProjectsState(): Promise<void> {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+    saveTimer = null
+  }
+  pendingSave = false
+  const state = useProjectsStore.getState()
+  if (!state.hydrated) return
+  await saveProjectsFile(JSON.stringify(projectsPayload(state), null, 2), nextWriteSequence())
+}
+
 /* ------------ selectors ------------ */
 
-/** Map de project.id → Project. Ideal pra usar com useMemo ou como selector. */
+                                                                                
 export function selectProjectsById(state: ProjectsState): Map<string, Project> {
   return new Map(state.projects.map((p) => [p.id, p]))
 }
@@ -945,10 +1000,27 @@ export function selectActiveProject(state: ProjectsState): Project | null {
   return state.projects.find((p) => p.id === state.activeProjectId) ?? null
 }
 
-/** Container do projeto ativo, se existir. */
+                                              
 export function selectActiveContainer(state: ProjectsState): WorkspaceContainer | null {
   if (!state.activeProjectId) return null
   return state.workspace.containers.find((c) => c.projectId === state.activeProjectId) ?? null
+}
+
+export function selectFirstWorkspaceTerminal(
+  state: ProjectsState,
+): { projectId: string; terminalId: string } | null {
+  for (const container of state.workspace.containers) {
+    if (container.collapsed) continue
+    const project = state.projects.find((item) => item.id === container.projectId)
+    if (!project) continue
+    for (const paneId of container.paneIds) {
+      const terminal = project.terminals.find((item) => item.id === paneId)
+      if (!terminal || terminal.disabled) continue
+      if (terminal.kind && terminal.kind !== 'terminal') continue
+      return { projectId: project.id, terminalId: terminal.id }
+    }
+  }
+  return null
 }
 
 export type RecentTerminalEntry = {
@@ -959,10 +1031,10 @@ export type RecentTerminalEntry = {
   lastUsedAt: number
 }
 
-/**
- * Retorna os N terminais mais recentemente usados (cross-projeto), ordenados
- * por lastUsedAt descendente. Terminais sem lastUsedAt caem pro final.
- */
+   
+                                                                             
+                                                                       
+   
 export function selectRecentTerminals(n: number) {
   return (state: ProjectsState): RecentTerminalEntry[] => {
     const entries: RecentTerminalEntry[] = []

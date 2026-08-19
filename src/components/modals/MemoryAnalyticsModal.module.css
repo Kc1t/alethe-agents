@@ -47,11 +47,11 @@
 }
 
 .hot {
-  color: #ef4444 !important;
+  color: var(--status-offline);
 }
 
 .cool {
-  color: #22c55e !important;
+  color: var(--status-working);
 }
 
 .panel {
@@ -70,13 +70,40 @@
   margin-bottom: 10px;
 }
 
-/* Painel de saída suja (sessão anterior caiu/foi morta) — destaque de alerta. */
+                                                                                 
 .crashPanel {
   border-color: var(--status-offline);
   background: color-mix(in srgb, var(--status-offline) 8%, transparent);
 }
 
 .crashPanel svg {
+  color: var(--status-offline);
+}
+
+.healthPanel {
+  border-color: var(--status-online);
+  background: color-mix(in srgb, var(--status-online) 7%, transparent);
+}
+
+.healthPanel[data-level='warning'] {
+  border-color: var(--status-waiting);
+  background: color-mix(in srgb, var(--status-waiting) 8%, transparent);
+}
+
+.healthPanel[data-level='critical'] {
+  border-color: var(--status-offline);
+  background: color-mix(in srgb, var(--status-offline) 8%, transparent);
+}
+
+.healthPanel[data-level='normal'] svg {
+  color: var(--status-online);
+}
+
+.healthPanel[data-level='warning'] svg {
+  color: var(--status-waiting);
+}
+
+.healthPanel[data-level='critical'] svg {
   color: var(--status-offline);
 }
 

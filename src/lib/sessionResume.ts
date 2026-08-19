@@ -63,12 +63,21 @@ export function removeSession(ptyId: string): void {
   writeScopedStorage(STORAGE_KEY, JSON.stringify(current))
 }
 
+/**
+ * Reads and removes the saved session in one step — used where a resume attempt must consume
+ * its record so a retry never reuses a session another pane already claimed.
+ */
 export function consumeSession(ptyId: string): SavedSession | null {
-  const current = getActiveSessions()
-  const session = current[ptyId] ?? null
-  if (session) {
-    delete current[ptyId]
-    writeScopedStorage(STORAGE_KEY, JSON.stringify(current))
-  }
+  const session = peekSession(ptyId)
+  if (session) removeSession(ptyId)
   return session
+}
+
+/**
+ * Reads the saved session without dropping it. The record must survive a launch that never
+ * reaches `saveSession` — an aborted spawn would otherwise leave the pane with no conversation to
+ * resume. Callers that decide the resume is unusable remove it explicitly.
+ */
+export function peekSession(ptyId: string): SavedSession | null {
+  return getActiveSessions()[ptyId] ?? null
 }

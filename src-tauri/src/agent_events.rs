@@ -1,10 +1,6 @@
 // Listener da POC do canvas de subagents (Fase 1).
 //
 // O Claude Code dispara hooks `SubagentStart`/`SubagentStop` como POST HTTP
-// (hook type "http" no settings do projeto de teste). Este módulo sobe um
-// servidor mínimo em 127.0.0.1:9123, lê o JSON de cada POST e re-emite pro
-// frontend como evento Tauri `agent-hook`. Fluxo novo e isolado — não toca
-// em PTY, projects nem em nenhum fluxo existente.
 
 use std::io::Read;
 use std::sync::atomic::{AtomicU16, Ordering};
@@ -69,10 +65,6 @@ pub fn agent_hooks_token() -> String {
     init_token().to_string()
 }
 
-/// Escreve (idempotente) um settings JSON só com os hooks HTTP de subagent e
-/// retorna o path. O frontend injeta via `claude --settings <path>` no
-/// terminal do canvas — assim os hooks valem só pra ESSA sessão, sem tocar
-/// no `.claude/` da pasta que o usuário escolheu.
 #[tauri::command]
 pub fn agent_hooks_settings_path() -> Result<String, String> {
     let port = wait_for_listener_port()
@@ -89,18 +81,18 @@ pub fn agent_hooks_settings_path() -> Result<String, String> {
         } ] }
     ]);
     let settings = serde_json::json!({
-        // Fase 4: split-pane de teams não existe no Windows — in-process faz o
-        // canvas do Alethe ser a visualização do time.
+
+
         "teammateMode": "in-process",
         "hooks": {
             "SubagentStart": hook.clone(),
             "SubagentStop": hook.clone(),
             // Fase 2: tool calls em tempo real. PreToolUse dentro de subagent
-            // carrega agent_id (sessão principal não) — o store filtra por isso.
+
             "PreToolUse": hook.clone(),
             "PostToolUse": hook.clone(),
-            // Fase 4: eventos de Agent Teams (in-process roda na sessão do
-            // lead, então estes hooks via --settings pegam o time inteiro).
+
+
             "TeammateIdle": hook.clone(),
             "TaskCreated": hook.clone(),
             "TaskCompleted": hook
@@ -163,11 +155,10 @@ pub fn start_listener(app: AppHandle) {
                 continue;
             }
 
-            // Ponte de dispatch genérica: o control plane (lead) spawna um
             // processo real (claude/codex/opencode) via
             // `curl -X POST /spawn -d '{"agent":"codex","task":"...","mode":"exec"}'`.
             // O Alethe emite `agent-spawn`; o front sobe um PTY worker. Campos:
-            // agent (obrigatório), task, cwd?, mode? ("exec" default | "interactive").
+
             if url.starts_with("/spawn") {
                 match serde_json::from_str::<serde_json::Value>(&body) {
                     Ok(payload) => {
@@ -223,7 +214,7 @@ pub fn start_listener(app: AppHandle) {
             }
 
             // Alias legado: o control plane antigo despacha texto cru pro codex
-            // via `curl -X POST /codex -d '<tarefa>'`. Encaminha pro mesmo fluxo
+
             // emitindo agent-spawn com agent=codex.
             if url.starts_with("/codex") {
                 let task = body.trim().to_string();
@@ -238,7 +229,7 @@ pub fn start_listener(app: AppHandle) {
 
             // Bridge do plugin OpenCode (opencode_bridge.rs) — reporta
             // working/idle real de sessoes OpenCode. Campos: directory
-            // (cwd da sessao, usado pro front correlacionar com o ptyId certo),
+
             // state ("working" | "idle").
             if url.starts_with("/opencode-status") {
                 match serde_json::from_str::<serde_json::Value>(&body) {
@@ -266,8 +257,7 @@ pub fn start_listener(app: AppHandle) {
                         get("agent_id"),
                         get("agent_type"),
                     );
-                    // Dump truncado pra inspecionar campos reais do payload
-                    // durante a POC (Etapa 0 do plano).
+
                     let preview: String = body.chars().take(600).collect();
                     eprintln!("[agent_events] payload: {preview}");
                     if let Err(e) = app.emit("agent-hook", &payload) {

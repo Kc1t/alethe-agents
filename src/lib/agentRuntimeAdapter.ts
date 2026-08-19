@@ -10,11 +10,11 @@ export type AgentRuntimeAdapter = {
   agents: AgentType[]
 }
 
-/**
- * Contrato preparado para trocar transporte sem acoplar a UI ao PTY. Os dois
- * adapters nativos ficam explicitamente indisponíveis até terem lifecycle,
- * autenticação e streaming equivalentes ao caminho atual.
- */
+   
+                                                                             
+                                                                           
+                                                          
+   
 export const AGENT_RUNTIME_ADAPTERS: AgentRuntimeAdapter[] = [
   {
     id: 'pty',
@@ -69,8 +69,8 @@ export function preparePtyRuntimeLaunch(
   }
 
   if (agent === 'codex') {
-    // Evita o buffer alternativo pesado e mantém o histórico no host. O Codex
-    // ainda não oferece um safe-mode genérico equivalente ao do Claude.
+                                                                              
+                                                                        
     addArg(args, '--no-alt-screen')
   }
 

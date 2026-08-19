@@ -36,7 +36,7 @@ describe('shouldUseNativeBackend', () => {
   })
 
   it('nunca usa nativo fora do macOS, mesmo com flag ligada', () => {
-    // Garante que Windows/Linux NUNCA caem no caminho nativo — requisito central.
+                                                                                  
     expect(shouldUseNativeBackend(true, false)).toBe(false)
   })
 })
@@ -52,8 +52,8 @@ describe('normalizeCwd', () => {
   })
 
   it('preserva caixa e separador em paths Unix (case-sensitive)', () => {
-    // Sem letra de drive: não pode lowercasear, senão /home/user/Project e
-    // /home/user/project (diretórios DIFERENTES no Linux) colidiriam.
+                                                                           
+                                                                      
     expect(normalizeCwd('/home/user/Project')).toBe('/home/user/Project')
     expect(normalizeCwd('/home/user/project')).toBe('/home/user/project')
   })

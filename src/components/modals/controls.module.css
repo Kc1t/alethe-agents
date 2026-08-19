@@ -1,4 +1,4 @@
-/* controles compartilhados pelos modais (input, botões, pills) */
+                                                                  
 
 .field {
   display: flex;
@@ -195,6 +195,64 @@ select.input {
   border-color: color-mix(in srgb, var(--status-offline) 85%, #000);
 }
 
+.btnSm {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  border-radius: var(--radius-sm);
+}
+
+.btnSmDanger:hover:not(:disabled) {
+  background: var(--panel-hover);
+  border-color: var(--status-offline);
+  color: var(--status-offline);
+}
+
+.iconBtnSm {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+}
+
+.iconBtnSm:hover:not(:disabled) {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.iconBtnSm:disabled {
+  color: var(--fg-faint);
+  cursor: default;
+}
+
+.btnLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.btnLink:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.btnLink:disabled {
+  color: var(--fg-faint);
+  cursor: default;
+}
+
 .pillRow {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -323,7 +381,7 @@ select.input {
   line-height: 1.35;
 }
 
-/* --- Abas de Navegação em Modais --- */
+                                         
 .tabRow {
   display: flex;
   gap: 6px;
@@ -437,7 +495,7 @@ select.input {
   flex-shrink: 0;
 }
 
-/* --- Aviso "pasta ainda não é um repositório Git" (EditProjectModal) --- */
+                                                                             
 .gitInitBanner {
   display: flex;
   align-items: center;
@@ -487,4 +545,24 @@ select.input {
 .gitInitBannerBtn:disabled {
   cursor: default;
   opacity: 0.6;
+}
+
+:global([data-visual-style='clean'])
+  :is(.modeChoiceActive, .pillActive, .themeCardActive, .tabBtnActive, .agentCardActive) {
+  border-color: var(--border-strong);
+  background: var(--clean-active-bg);
+  box-shadow: none;
+}
+
+:global([data-visual-style='clean']) :is(.modeChoice, .pill, .themeCard, .agentCard) {
+  border-radius: var(--clean-control-radius);
+}
+
+:global([data-visual-style='clean']) .tabBtn {
+  min-height: var(--clean-control-height);
+  border-radius: var(--clean-control-radius);
+}
+
+:global([data-visual-style='clean']) .tabBtnActive {
+  font-weight: 500;
 }

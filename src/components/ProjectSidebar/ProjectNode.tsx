@@ -1,39 +1,36 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { FolderOpen, MoreHorizontal, Network, Pause, Plus } from 'lucide-react'
+import { ChevronDown, Folder, MoreHorizontal, Pause, Plus } from 'lucide-react'
 
 import { useT } from '../../lib/i18n'
+import { type SidebarDropEdge } from '../../lib/sidebarDrag'
 import { type Project, type Terminal } from '../../lib/types'
+import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { Collapse } from '../ui/Collapse'
 import { DotmCircular2 } from '../ui/dotm-circular-2'
-import { Monogram } from './sidebarPrimitives'
-import { TerminalNode } from './TerminalNode'
-import { useProjectBranch } from './useProjectBranch'
 import styles from './ProjectSidebar.module.css'
-
-/** cwd representativo do projeto = primeiro terminal com cwd (aba ativa preferida). */
-function projectRepresentativeCwd(project: Project): string | undefined {
-  for (const term of project.terminals) {
-    const tab = term.tabs.find((x) => x.id === term.activeTabId) ?? term.tabs[0]
-    const cwd = tab?.cwd || term.cwd
-    if (cwd) return cwd
-  }
-  return undefined
-}
+import { TerminalNode } from './TerminalNode'
 
 export type ProjectNodeProps = {
   project: Project
   isActive: boolean
   openPanes: Set<string> | undefined
   onActivate: () => void
-  onToggleCollapsed: () => void
-  onTerminalClick: (t: Terminal) => void
-  onTerminalDoubleClick: (t: Terminal) => void
-  onProjectMenu: (e: React.MouseEvent) => void
-  onTerminalMenu: (t: Terminal, e: React.MouseEvent) => void
+  onTerminalClick: (terminal: Terminal) => void
+  onTerminalDoubleClick: (terminal: Terminal) => void
   onAddTerminal: () => void
-  onQuickOpen: () => void
-  onToggleDisabled: () => void
+  onProjectMenu: (event: React.MouseEvent) => void
+  onTerminalMenu: (terminal: Terminal, event: React.MouseEvent) => void
+  dropEdge: SidebarDropEdge | null
+}
+
+function ProjectVisual({ project }: { project: Project }) {
+  return project.iconUrl ? (
+    <img className={styles.projectLogo} src={project.iconUrl} alt="" />
+  ) : (
+    <Folder size={13} className={styles.projectFolderIcon} aria-hidden />
+  )
 }
 
 export function ProjectNode({
@@ -41,197 +38,149 @@ export function ProjectNode({
   isActive,
   openPanes,
   onActivate,
-  onToggleCollapsed,
   onTerminalClick,
   onTerminalDoubleClick,
+  onAddTerminal,
   onProjectMenu,
   onTerminalMenu,
-  onAddTerminal,
-  onQuickOpen,
-  onToggleDisabled,
+  dropEdge,
 }: ProjectNodeProps) {
   const t = useT()
-  const { setNodeRef: dropRef, isOver } = useDroppable({ id: `proj:${project.id}` })
+  const { setNodeRef: dropRef } = useDroppable({ id: `proj:${project.id}` })
   const draggable = useDraggable({ id: `proj:${project.id}` })
-  const isDragging = draggable.isDragging
-  const setRefs = (node: HTMLDivElement | null) => {
-    dropRef(node)
-    draggable.setNodeRef(node)
-  }
-
-  // Terminal "viewer" da gaveta GSD Sync: só leitura (sem como digitar nele),
-  // não faz sentido misturado com os terminais normais/interativos aqui —
-  // fica escondido dessa árvore inteira (lista, contadores, "tudo pausado").
-  // Único jeito de vê-lo continua sendo a gaveta GSD Sync.
-  const visibleTerminals = project.terminals.filter((term) => !term.gsdSyncViewer)
-
+  const toggleCollapsed = useProjectsStore((state) => state.toggleProjectCollapsed)
+  const visibleTerminals = project.terminals.filter((terminal) => !terminal.gsdSyncViewer)
+  const isEmpty = visibleTerminals.length === 0
   const allDisabled = visibleTerminals.length > 0 && visibleTerminals.every((term) => term.disabled)
-  const branch = useProjectBranch(projectRepresentativeCwd(project))
   const runningCount = useTerminalsStore((state) =>
     visibleTerminals.reduce(
-      (n, term) =>
-        n +
-        (term.tabs.some((tab) => tab.ptyId && state.byPtyId[tab.ptyId]?.status === 'working')
+      (count, terminal) =>
+        count +
+        (terminal.tabs.some((tab) => tab.ptyId && state.byPtyId[tab.ptyId]?.status === 'working')
           ? 1
           : 0),
       0,
     ),
   )
-  const totalCount = visibleTerminals.length
-  const focusedTerminalId = useUiStore((s) =>
-    s.activeTerminal?.projectId === project.id ? s.activeTerminal?.terminalId : undefined,
+  const expanded = !project.collapsed
+  const focusedTerminalId = useUiStore((state) =>
+    state.activeTerminal?.projectId === project.id ? state.activeTerminal.terminalId : undefined,
   )
-  const countLabel = runningCount > 0 ? `${runningCount}/${totalCount}` : String(totalCount)
-  const countTitle = t('ui.sidebar.agentsRunningOf', { running: runningCount, total: totalCount })
+  const dropClass =
+    dropEdge === 'before'
+      ? styles.dropBefore
+      : dropEdge === 'after'
+        ? styles.dropAfter
+        : dropEdge === 'inside'
+          ? styles.dropInside
+          : ''
 
-  if (isActive) {
-    return (
+  return (
+    <div
+      ref={draggable.setNodeRef}
+      className={`${styles.projectNode} ${draggable.isDragging ? styles.dragSource : ''} ${
+        allDisabled ? styles.projectDisabled : ''
+      }`}
+      style={{ ['--project-color' as string]: project.color || 'var(--border-strong)' }}
+    >
       <div
-        ref={setRefs}
-        className={`${styles.activeCard} ${isOver ? styles.projectDropTarget : ''} ${isDragging ? styles.dragSource : ''} ${
-          allDisabled ? styles.projectDisabled : ''
-        }`}
-        onContextMenu={(e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          onProjectMenu(e)
+        ref={dropRef}
+        className={`${styles.projectRow} ${isActive ? styles.projectActive : ''} ${dropClass}`}
+        onClick={() => {
+          if (!isEmpty && !expanded) toggleCollapsed(project.id)
+          onActivate()
+        }}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          onProjectMenu(event)
         }}
         {...draggable.attributes}
         {...draggable.listeners}
       >
-        <div className={styles.activeCardHeader} onClick={onToggleCollapsed}>
-          <Monogram name={project.name} iconUrl={project.iconUrl} color={project.color} size={20} />
-          {project.mode === 'agentSandbox' ? (
-            <Network size={13} className={styles.agentProjectIcon} />
+        <ProjectVisual project={project} />
+        <span className={styles.projectName} title={project.name}>
+          <span className={styles.projectNameText}>{project.name}</span>
+        </span>
+        {allDisabled ? <Pause size={10} className={styles.projectPauseIcon} /> : null}
+        <button
+          type="button"
+          className={`${styles.projectAddTerminalButton} ${isEmpty ? styles.projectAddTerminalButtonVisible : ''}`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            onAddTerminal()
+          }}
+          title={t('ui.sidebar.newTerminalHere')}
+          aria-label={t('ui.sidebar.newTerminalHere')}
+        >
+          <Plus size={12} />
+        </button>
+        <span className={`${styles.rowEndSlot} ${runningCount > 0 ? styles.rowEndSlotActive : ''}`}>
+          {runningCount > 0 ? (
+            <DotmCircular2
+              size={13}
+              dotSize={2}
+              cellPadding={1}
+              speed={1.2}
+              bloom
+              ariaLabel={t('ui.terminal.working')}
+              className={`${styles.terminalLoading} ${styles.rowStatusIndicator}`}
+            />
           ) : null}
-          <span className={styles.activeCardTitle} title={project.name}>
-            {project.name}
-          </span>
-          <span className={styles.badgePrimary}>{t('ui.sidebar.primary')}</span>
           <button
             type="button"
-            className={styles.iconBtn}
-            onClick={(e) => {
-              e.stopPropagation()
-              onQuickOpen()
-            }}
-            title={t('ui.workspace.openIndividually')}
-          >
-            <FolderOpen size={12} />
-          </button>
-          <button
-            type="button"
-            className={styles.iconBtn}
-            onClick={(e) => {
-              e.stopPropagation()
-              onAddTerminal()
-            }}
-            title={t('ui.sidebar.newTerminal')}
-          >
-            <Plus size={12} />
-          </button>
-          <button
-            type="button"
-            className={styles.rowMenuBtn}
-            onClick={(e) => {
-              e.stopPropagation()
-              onProjectMenu(e)
+            className={`${styles.rowMenuBtn} ${styles.rowEndAction}`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              onProjectMenu(event)
             }}
             title={t('ui.sidebar.moreActions')}
             aria-label={t('ui.sidebar.moreActions')}
           >
-            <MoreHorizontal size={14} />
+            <MoreHorizontal size={13} />
           </button>
-        </div>
-
-        {!project.collapsed && visibleTerminals.length > 0 ? (
-          <div className={styles.activeCardAgentsList}>
-            {visibleTerminals.map((term) => (
-              <TerminalNode
-                key={term.id}
-                project={project}
-                terminal={term}
-                selected={openPanes?.has(term.id) ?? false}
-                focused={focusedTerminalId === term.id}
-                onClick={() => onTerminalClick(term)}
-                onDoubleClick={() => onTerminalDoubleClick(term)}
-                onMenu={(e) => onTerminalMenu(term, e)}
-              />
-            ))}
-          </div>
-        ) : null}
-      </div>
-    )
-  }
-
-  return (
-    <div
-      ref={setRefs}
-      className={`${styles.inactiveProjectNode} ${isDragging ? styles.dragSource : ''} ${allDisabled ? styles.projectDisabled : ''} ${
-        isOver ? styles.projectDropTarget : ''
-      }`}
-      onClick={onActivate}
-      onContextMenu={(e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        onProjectMenu(e)
-      }}
-      {...draggable.attributes}
-      {...draggable.listeners}
-    >
-      <span className={styles.stateGutter}>
-        {runningCount > 0 ? (
-          <DotmCircular2
-            size={14}
-            dotSize={2}
-            cellPadding={1}
-            speed={1.2}
-            bloom
-            ariaLabel={t('ui.terminal.working')}
-            className={styles.rosterLoading}
-          />
-        ) : (
-          <span
-            className={`${styles.inactiveDot} ${
-              visibleTerminals.some((term) => !term.disabled) ? styles.inactiveDotActive : ''
-            }`}
-            onClick={(e) => {
-              e.stopPropagation()
-              onToggleDisabled()
-            }}
-          />
-        )}
-      </span>
-      <Monogram name={project.name} iconUrl={project.iconUrl} color={project.color} size={18} />
-      <div className={styles.inactiveMain}>
-        <span className={styles.projectName} title={project.name}>
-          {project.name}
         </span>
-        {project.mode === 'agentSandbox' ? (
-          <span className={styles.agentProjectLabel}>Agent Sandbox</span>
-        ) : null}
-        {branch ? (
-          <span className={styles.inactiveBranch} title={branch}>
-            {branch}
-          </span>
+        {!isEmpty ? (
+          <button
+            type="button"
+            className={styles.projectChevronBtn}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              toggleCollapsed(project.id)
+            }}
+            title={expanded ? t('ui.sidebar.collapse') : t('ui.sidebar.expand')}
+            aria-label={expanded ? t('ui.sidebar.collapse') : t('ui.sidebar.expand')}
+            aria-expanded={expanded}
+          >
+            <ChevronDown
+              size={13}
+              className={`${styles.disclosureChevron} ${expanded ? '' : styles.disclosureClosed}`}
+            />
+          </button>
         ) : null}
       </div>
-      {allDisabled && <Pause size={10} className={styles.projectPauseIcon} />}
-      <span className={styles.count} title={countTitle}>
-        {countLabel}
-      </span>
-      <button
-        type="button"
-        className={styles.rowMenuBtn}
-        onClick={(e) => {
-          e.stopPropagation()
-          onProjectMenu(e)
-        }}
-        title={t('ui.sidebar.moreActions')}
-        aria-label={t('ui.sidebar.moreActions')}
-      >
-        <MoreHorizontal size={14} />
-      </button>
+
+      <Collapse open={expanded && visibleTerminals.length > 0}>
+        <div className={styles.terminals}>
+          {visibleTerminals.map((terminal) => (
+            <TerminalNode
+              key={terminal.id}
+              project={project}
+              terminal={terminal}
+              selected={openPanes?.has(terminal.id) ?? false}
+              focused={focusedTerminalId === terminal.id}
+              onClick={() => onTerminalClick(terminal)}
+              onDoubleClick={() => onTerminalDoubleClick(terminal)}
+              onMenu={(event) => onTerminalMenu(terminal, event)}
+            />
+          ))}
+        </div>
+      </Collapse>
     </div>
   )
 }

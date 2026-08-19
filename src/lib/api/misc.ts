@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
+import type { InstallToolchain } from '../agentInstall'
 import type { WorktreeMode } from './git'
 import type { ProfileMeta } from './profiles'
 import { canUseSharedCoreTransport, isTauriEnv, webApiFetch } from './transport'
@@ -8,14 +9,20 @@ import { canUseSharedCoreTransport, isTauriEnv, webApiFetch } from './transport'
 export type RemoteControlInfo = {
   enabled: boolean
   connected_devices: number
+  online_devices: number
   max_devices: number
   session_expiry_secs: number
+  read_only: boolean
+  allow_shell_input: boolean
+  pairing_open: boolean
+  pairing_expires_in: number
   devices: Array<{
     id: number
     name: string
     address: string
     connected_at: number
     expires_at: number
+    online: boolean
   }>
   pairing_url: string | null
   qr_svg: string | null
@@ -99,14 +106,67 @@ export async function remoteControlInfo(): Promise<RemoteControlInfo> {
   return {
     enabled: false,
     connected_devices: 0,
+    online_devices: 0,
     max_devices: 1,
     session_expiry_secs: 3600,
+    read_only: false,
+    allow_shell_input: true,
+    pairing_open: false,
+    pairing_expires_in: 0,
     devices: [],
     pairing_url: null,
     qr_svg: null,
     http_url: null,
     ws_url: null,
   }
+}
+
+export async function remoteControlConnectedDevices(): Promise<number> {
+  if (isTauriEnv()) return invoke<number>('remote_control_connected_devices')
+  const info = await remoteControlInfo()
+  return info.connected_devices
+}
+
+export type RemoteMessageEvent = {
+  ptyId: string
+  deviceId: number
+  deviceName: string
+  preview: string
+}
+
+export function listenRemoteMessages(
+  handler: (event: RemoteMessageEvent) => void,
+): Promise<UnlistenFn> {
+  if (isTauriEnv())
+    return listen<RemoteMessageEvent>('remote://message', (event) => handler(event.payload))
+  return Promise.resolve(() => {})
+}
+
+export async function openRemoteControlPairing(): Promise<RemoteControlInfo> {
+  if (isTauriEnv()) return invoke<RemoteControlInfo>('remote_control_open_pairing')
+  return webApiFetch<RemoteControlInfo>('/api/remote_control/open_pairing', { method: 'POST' })
+}
+
+export async function closeRemoteControlPairing(): Promise<RemoteControlInfo> {
+  if (isTauriEnv()) return invoke<RemoteControlInfo>('remote_control_close_pairing')
+  return webApiFetch<RemoteControlInfo>('/api/remote_control/close_pairing', { method: 'POST' })
+}
+
+export async function setRemoteControlReadOnly(readOnly: boolean): Promise<RemoteControlInfo> {
+  if (isTauriEnv()) return invoke<RemoteControlInfo>('remote_control_set_read_only', { readOnly })
+  return webApiFetch<RemoteControlInfo>('/api/remote_control/set_read_only', {
+    method: 'POST',
+    body: JSON.stringify({ readOnly }),
+  })
+}
+
+export async function setRemoteControlShellInput(allowed: boolean): Promise<RemoteControlInfo> {
+  if (isTauriEnv())
+    return invoke<RemoteControlInfo>('remote_control_set_shell_input', { allowed })
+  return webApiFetch<RemoteControlInfo>('/api/remote_control/set_shell_input', {
+    method: 'POST',
+    body: JSON.stringify({ allowed }),
+  })
 }
 
 export async function remoteControlRevoke(): Promise<RemoteControlInfo> {
@@ -240,6 +300,18 @@ export async function findCliLauncher(agent: string): Promise<string | null> {
   if (isTauriEnv()) return invoke<string | null>('find_cli_launcher', { agent })
   return webApiFetch<string | null>(
     `/api/cli/find_cli_launcher?agent=${encodeURIComponent(agent)}`,
+  ).catch(() => null)
+}
+
+export async function probeInstallToolchain(): Promise<InstallToolchain> {
+  if (isTauriEnv()) return invoke<InstallToolchain>('probe_install_toolchain')
+  return webApiFetch<InstallToolchain>('/api/cli/probe_install_toolchain')
+}
+
+export async function agentCliVersion(agent: string): Promise<string | null> {
+  if (isTauriEnv()) return invoke<string | null>('agent_cli_version', { agent })
+  return webApiFetch<string | null>(
+    `/api/cli/agent_cli_version?agent=${encodeURIComponent(agent)}`,
   ).catch(() => null)
 }
 

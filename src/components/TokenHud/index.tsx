@@ -12,12 +12,12 @@ import styles from './TokenHud.module.css'
 
 const POLL_MS = 4000
 
-/** Último segmento do cwd, pra rótulo curto. */
+                                                
 function shortCwd(cwd: string): string {
   return basename(cwd) || cwd
 }
 
-/** Faixa de gasto → classe de cor (tokens do tema, sem hardcode). */
+                                                                     
 function costClass(v: number): string {
   const level = costLevel(v)
   if (level === 'high') return styles.costHigh
@@ -33,7 +33,7 @@ export function TokenHud() {
   const [collapsed, setCollapsed] = useState(false)
   const timer = useRef<number | null>(null)
 
-  // Poll adaptativo: sempre roda; refresh() pula sozinho quando não há agente vivo.
+                                                                                    
   useEffect(() => {
     void refresh()
     timer.current = window.setInterval(() => {

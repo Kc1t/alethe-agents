@@ -12,11 +12,11 @@ import controls from '../controls.module.css'
 import styles from '../PreferencesModal.module.css'
 import { SettingsSection } from './primitives'
 
-/**
- * Instalação do comando `alethe` no PATH (ver `src-tauri/src/cli_shim.rs`).
- * Espelha o "Install 'code' command in PATH" do VS Code: instalar é sempre
- * ação explícita do usuário, nunca automática no boot.
- */
+   
+                                                                            
+                                                                           
+                                                       
+   
 function TerminalCommandSection() {
   const t = useT()
   const [status, setStatus] = useState<CliShimStatus | null>(null)

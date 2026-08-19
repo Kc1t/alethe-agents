@@ -12,20 +12,20 @@ import {
 } from '../lib/terminalFactory'
 import { cleanupPtys } from '../lib/terminalLifecycle'
 import { killPty, listenPtyData } from '../lib/tauri'
-import { GROUP_COLORS, type AgentType } from '../lib/types'
-import type { Group, Project } from '../lib/types'
+import type { Group, Project, AgentType } from '../lib/types'
+import { GROUP_COLORS } from '../lib/types'
 import { sanitizeWorkspaceSnapshot } from '../lib/workspaceNavigation'
-import { useUiStore } from './uiStore'
-import { collectGroupProjectIds } from './projectsStore.migrations'
 import type { ProjectsState } from './projectsStore'
+import { collectGroupProjectIds } from './projectsStore.migrations'
 import type { SliceCtx } from './projectsStore.slices'
+import { useUiStore } from './uiStore'
 
 function t(key: Parameters<typeof translate>[1], params?: Record<string, string | number>) {
   return translate(getLocale(), key, params)
 }
 
-/** Guarda de reentrância pra migrateProjectTerminalsToWorktrees — coordenação
- *  efêmera entre chamadas, não faz sentido persistir no estado do Zustand. */
+                                                                              
+                                                                              
 const migratingWorktreeProjectIds = new Set<string>()
 
 /**
@@ -125,20 +125,38 @@ export function createGroupsSlice({ update }: SliceCtx): GroupsSlice {
       return group
     },
 
-    moveGroupToParent: (groupId, parentGroupId) =>
+    moveGroupToParent: (groupId, parentGroupId, atIndex) =>
       update((state) => {
         if (groupId === parentGroupId) return
+        const source = state.groups.find((group) => group.id === groupId)
+        if (!source) return
+        if (source.parentGroupId === parentGroupId && atIndex === undefined) return
+
         // Prevent cycles: a group cannot become its descendant's child.
         if (parentGroupId !== null) {
           let cur: string | null = parentGroupId
           while (cur !== null) {
-            if (cur === groupId) return // ciclo detectado
+            if (cur === groupId) return
             const next: Group | undefined = state.groups.find((g) => g.id === cur)
             cur = next?.parentGroupId ?? null
           }
         }
+
+        const remaining = state.groups.filter((group) => group.id !== groupId)
+        const siblings = remaining.filter((group) => group.parentGroupId === parentGroupId)
+        const siblingIndex = Math.max(0, Math.min(atIndex ?? siblings.length, siblings.length))
+        const nextSibling = siblings[siblingIndex]
+        const previousSibling = siblings[siblingIndex - 1]
+        const globalIndex = nextSibling
+          ? remaining.findIndex((group) => group.id === nextSibling.id)
+          : previousSibling
+            ? remaining.findIndex((group) => group.id === previousSibling.id) + 1
+            : remaining.length
+
+        const nextGroups = [...remaining]
+        nextGroups.splice(globalIndex, 0, { ...source, parentGroupId })
         return {
-          groups: state.groups.map((g) => (g.id === groupId ? { ...g, parentGroupId } : g)),
+          groups: nextGroups,
         }
       }),
 
@@ -563,12 +581,12 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
     setGraphifyEnabled: (id, graphifyEnabled) =>
       updateProject(id, (p) => ({ ...p, graphifyEnabled })),
 
-    // Só liga/desliga a flag. NÃO migra terminais existentes como efeito
-    // colateral — autoWorktree é sobre agentes NOVOS (ver createAgentTerminal,
-    // que já cria a worktree corretamente no nascimento). Migrar terminais já
-    // vivos é destrutivo (mata/suspende PTY, perde continuidade de sessão) e
-    // precisa ser uma ação explícita e separada — ver migrateProjectTerminalsToWorktrees,
-    // chamada só pelo botão dedicado no EditProjectModal.
+                                                                         
+                                                                               
+                                                                              
+                                                                             
+                                                                                          
+                                                          
     setAutoWorktree: (id, autoWorktree) => updateProject(id, (p) => ({ ...p, autoWorktree })),
 
     setMergePostAction: (id, mergePostAction) =>
@@ -652,7 +670,7 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
     },
 
     migrateProjectTerminalsToWorktrees: async (projectId, gsdWatcherEnabledOverride) => {
-      if (migratingWorktreeProjectIds.has(projectId)) return // já em andamento — ignora clique duplicado
+      if (migratingWorktreeProjectIds.has(projectId)) return                                             
       const project = get().projects.find((p) => p.id === projectId)
       if (!project) return
       const repo = getProjectRepoRoot(project)
@@ -669,12 +687,12 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
         const { worktreeProvision, gitStatus, gsdOpenCodePluginWrite } =
           await import('../lib/tauri')
 
-        // git worktree add faz checkout do HEAD — qualquer mudança não commitada
-        // no repo compartilhado não é copiada pra worktree nova. Preferimos
-        // adiar a migração inteira a arriscar perder trabalho em progresso.
-        // gitStatus também é a checagem de "isso é mesmo um repo git" — se
-        // falhar, NÃO dá pra assumir "não sujo" e seguir em frente (bug real:
-        // fazia isso antes, e cada worktreeProvision subsequente falhava com
+                                                                                 
+                                                                            
+                                                                            
+                                                                           
+                                                                              
+                                                                             
         // o erro cru not_a_git_repository vazando pro toast final).
         let status: Awaited<ReturnType<typeof gitStatus>> | null = null
         try {
@@ -715,12 +733,12 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
             )
 
             // Terminal migrado com watcher GSD ligado e rodando OpenCode nunca
-            // recebe o plugin sozinho — ele só é instalado no caminho normal de
-            // spawn (XTermView), que este fluxo pula de propósito (restart em
-            // vez de respawn, ver comentário abaixo). Sem isso, `.opencode/` e
-            // `.planning/` nunca nasceriam na worktree nova. Precisa rodar
-            // ANTES do restart, pra o plugin já existir quando o OpenCode subir
-            // de novo lá dentro. Best-effort, idempotente.
+                                                                                
+                                                                              
+                                                                               
+                                                                           
+                                                                                
+                                                           
             const gsdWatcherEnabled = gsdWatcherEnabledOverride ?? project.gsdWatcherEnabled
             if (gsdWatcherEnabled && terminal.tabs.some((tab) => tab.type === 'opencode')) {
               const modelChain = get().preferences.gsdSyncModelChain ?? []
@@ -862,9 +880,9 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
         next[index] = {
           ...existing[index],
           ...entry,
-          // Sobrescreve incondicionalmente: se a nova falha não é lock
-          // administrativo, `entry.adminLockReason` é undefined e limpa o motivo
-          // obsoleto em vez de deixá-lo sobreviver a uma mudança de causa.
+                                                                       
+                                                                                 
+                                                                           
           adminLockReason: entry.adminLockReason,
         }
         return { ...p, orphanWorktrees: next }
@@ -888,12 +906,12 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
       const { worktreeCleanup, worktreeRemove } = await import('../lib/tauri')
       set({ isCleaningOrphans: true })
 
-      // Snapshot da lista no início — processa cada item uma vez, mesmo que a
-      // limpeza de um item anterior já tenha alterado `orphanWorktrees`.
+                                                                              
+                                                                         
       for (const orphan of orphans) {
         try {
           if (orphan.pruneOnly) {
-            // Pasta já não existe fisicamente — só falta destravar o registro
+                                                                              
             // fantasma do git.
             await worktreeCleanup(repoPath)
             get().removeOrphanWorktree(projectId, orphan.path)
@@ -902,18 +920,18 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
           }
 
           // requiresRawDeletion (ou nenhuma flag ainda — primeira tentativa):
-          // tenta a remoção completa (o backend já decide internamente entre
-          // `git worktree remove` e deleção crua conforme o estado da pasta).
+                                                                             
+                                                                              
           const agentId = orphan.path.split(/[\\/]/).filter(Boolean).pop() ?? ''
           await worktreeRemove(repoPath, agentId, true)
 
-          // Deleção física OK — confirma que o registro do git também sumiu.
+                                                                             
           try {
             await worktreeCleanup(repoPath)
             get().removeOrphanWorktree(projectId, orphan.path)
             summary.cleaned++
           } catch {
-            // Progresso real (pasta já foi embora) — reseta cleanAttempts.
+                                                                           
             get().addOrphanWorktree(projectId, {
               path: orphan.path,
               mode: orphan.mode,

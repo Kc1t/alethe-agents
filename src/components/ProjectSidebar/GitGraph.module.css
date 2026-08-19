@@ -3,6 +3,7 @@
 .group {
   border-top: 1px solid var(--border);
   padding-top: 8px;
+  user-select: none;
 }
 
 .groupHeader {

@@ -15,10 +15,6 @@ pub struct EventBusPayload {
 
 static EVENT_BUS_SENDER: OnceLock<broadcast::Sender<EventBusPayload>> = OnceLock::new();
 
-/// Handle salvo uma vez no `.setup()` do app (ver `lib.rs`) — permite que
-/// `publish()` também emita como evento Tauri de verdade pro frontend, sem
-/// precisar enfiar `AppHandle` como parâmetro em toda função que publica no
-/// bus (o que quebraria os testes unitários que chamam essas funções direto,
 /// fora de um runtime Tauri).
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 

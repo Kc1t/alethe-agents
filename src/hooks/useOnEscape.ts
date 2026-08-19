@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react'
 
-/**
- * Chama `handler` quando a tecla Escape é pressionada. `enabled: false` remove
- * o listener. `capture: true` escuta na fase de captura — pra overlays que
- * precisam interceptar o Escape ANTES de handlers mais internos (ex.: o
- * terminal). Centraliza o keydown+cleanup repetido em menus/overlays.
- */
+   
+                                                                               
+                                                                           
+                                                                        
+                                                                      
+   
 export function useOnEscape(
   handler: (event: KeyboardEvent) => void,
   enabled = true,

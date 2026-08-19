@@ -398,6 +398,10 @@ export function SidebarMergePanel() {
   const hasOtherProjectsPending = visiblePendingMerges.some(
     (item) => item.projectId !== activeProjectId,
   )
+  // Pedido explícito: a Central de Merges só ocupa espaço na sidebar quando o
+  // projeto ATIVO tem algo pendente — evita competir por altura com o Gráfico
+  // de commits (mesmo painel) quando o merge pendente é de outro projeto.
+  const hasActiveProjectMerges = pendingMerges.some((item) => item.projectId === activeProjectId)
 
   const isMergeBusy = MERGE_BUSY_PHASES.includes(mergePhase)
   const activeCard = pendingMerges.find(
@@ -743,71 +747,71 @@ export function SidebarMergePanel() {
 
   return (
     <>
-      <div
-        className={styles.container}
-        style={{
-          height: treeCollapsed ? HEADER_ONLY_HEIGHT : panelHeight,
-          transitionProperty: isResizingPanel ? 'none' : undefined,
-        }}
-      >
-        {/* Sempre montada, mesmo recolhido — arrastar pra cima a partir do
-            cabeçalho recolhido já reabre e retoma o resize (mesma lógica
-            reversível do onMove em handlePanelResizeStart). */}
+      {hasActiveProjectMerges ? (
         <div
-          className={styles.resizeHandle}
-          onPointerDown={handlePanelResizeStart}
-          role="separator"
-          aria-orientation="horizontal"
-          aria-label={t('merge.treeResizeHandle')}
-        />
-
-        <div
-          className={styles.header}
-          role="button"
-          tabIndex={0}
-          onClick={() => setTreeCollapsed((v) => !v)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault()
-              setTreeCollapsed((v) => !v)
-            }
+          className={styles.container}
+          style={{
+            height: treeCollapsed ? HEADER_ONLY_HEIGHT : panelHeight,
+            transitionProperty: isResizingPanel ? 'none' : undefined,
           }}
-          aria-expanded={!treeCollapsed}
         >
-          <div className={styles.title}>
-            <GitMerge size={14} color="var(--accent)" />
-            <span>{t('merge.panelTitle')}</span>
-          </div>
-          <div className={styles.headerRight}>
-            <span className={styles.badge}>{visiblePendingMerges.length}</span>
-            {treeCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-          </div>
-        </div>
+          {/* Sempre montada, mesmo recolhido — arrastar pra cima a partir do
+              cabeçalho recolhido já reabre e retoma o resize (mesma lógica
+              reversível do onMove em handlePanelResizeStart). */}
+          <div
+            className={styles.resizeHandle}
+            onPointerDown={handlePanelResizeStart}
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label={t('merge.treeResizeHandle')}
+          />
 
-        {/* Sempre montada (mesmo recolhido) — anima opacidade/deslocamento
-            junto com a altura do .container encolhendo, em vez de sumir
-            de golpe no unmount (mesmo espírito do .sidebarContent[data-hidden]
-            de App.module.css pro drawer direito). */}
-        <div className={styles.body} data-hidden={treeCollapsed}>
-          {pendingMerges.length === 0 ? (
-            <div className={styles.emptyState}>{t('merge.panelEmpty')}</div>
-          ) : visiblePendingMerges.length === 0 ? (
-            <div className={styles.emptyState}>
-              {t('merge.panelGatedHint', { count: pendingMerges.length })}
+          <div
+            className={styles.header}
+            role="button"
+            tabIndex={0}
+            onClick={() => setTreeCollapsed((v) => !v)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                setTreeCollapsed((v) => !v)
+              }
+            }}
+            aria-expanded={!treeCollapsed}
+          >
+            <div className={styles.title}>
+              <GitMerge size={14} color="var(--accent)" />
+              <span>{t('merge.panelTitle')}</span>
             </div>
-          ) : (
-            <MergeTree
-              items={treeItemsForActiveProject}
-              gateStatus={gateStatus}
-              mergePhase={mergePhase}
-              activeCardId={activeCard?.id ?? null}
-              terminalTheme={terminalTheme}
-              hasOtherProjectsPending={hasOtherProjectsPending}
-              onSelect={handleSelectCard}
-            />
-          )}
+            <div className={styles.headerRight}>
+              <span className={styles.badge}>{treeItemsForActiveProject.length}</span>
+              {treeCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+            </div>
+          </div>
+
+          {/* Sempre montada (mesmo recolhido) — anima opacidade/deslocamento
+              junto com a altura do .container encolhendo, em vez de sumir
+              de golpe no unmount (mesmo espírito do .sidebarContent[data-hidden]
+              de App.module.css pro drawer direito). */}
+          <div className={styles.body} data-hidden={treeCollapsed}>
+            {treeItemsForActiveProject.length === 0 ? (
+              <div className={styles.emptyState}>
+                {t('merge.panelGatedHint', { count: pendingMerges.length })}
+              </div>
+            ) : (
+              <MergeTree
+                items={treeItemsForActiveProject}
+                gateStatus={gateStatus}
+                mergePhase={mergePhase}
+                activeCardId={activeCard?.id ?? null}
+                terminalTheme={terminalTheme}
+                hasOtherProjectsPending={hasOtherProjectsPending}
+                onSelect={handleSelectCard}
+              />
+            )}
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {centerModalOpen ? (
         <MergeCenterModal

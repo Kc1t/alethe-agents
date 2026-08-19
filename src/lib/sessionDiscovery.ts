@@ -4,7 +4,7 @@ export type SessionSnapshot = {
 }
 
 const claimedIds = new Map<string, Set<string>>()
-/** ptyId → claims que ele fez, para eviction quando o PTY fecha (evita crescimento sem limite). */
+                                                                                                   
 const claimOwners = new Map<string, Array<{ key: string; sessionId: string }>>()
 
 function claimKey(agent: string, cwd: string): string {
@@ -14,6 +14,7 @@ function claimKey(agent: string, cwd: string): string {
 function trackOwner(ptyId: string | undefined, key: string, sessionId: string): void {
   if (!ptyId) return
   const list = claimOwners.get(ptyId) ?? []
+  if (list.some((claim) => claim.key === key && claim.sessionId === sessionId)) return
   list.push({ key, sessionId })
   claimOwners.set(ptyId, list)
 }
@@ -117,12 +118,12 @@ export function claimMostRecentSession(
   return candidate
 }
 
-/**
- * Libera os claims feitos por um pane quando seu PTY fecha. Sem isto, o
- * `claimedIds` cresceria monotonicamente (uma entrada por cwd já aberto + um id
- * por sessão já spawnada) pela vida inteira do app. Só remove os ids do próprio
- * ptyId, então não afeta o guard anti-duplo-claim de outros panes vivos.
- */
+   
+                                                                        
+                                                                                
+                                                                                
+                                                                         
+   
 export function releaseSessionClaim(ptyId: string): void {
   const owned = claimOwners.get(ptyId)
   if (!owned) return

@@ -10,7 +10,7 @@ import styles from './MarkdownPane.module.css'
 
 let mermaidTheme: 'dark' | 'default' | null = null
 
-/** Inicializa o mermaid uma vez (ou re-inicializa se o tema mudou). */
+                                                                       
 function ensureMermaid(dark: boolean) {
   const theme = dark ? 'dark' : 'default'
   if (mermaidTheme === theme) return
@@ -31,7 +31,7 @@ function MermaidDiagram({ code, dark }: { code: string; dark: boolean }) {
   useEffect(() => {
     let cancelled = false
     ensureMermaid(dark)
-    // id do mermaid não pode ter ':' (gerado pelo useId), então sanitiza.
+                                                                          
     const renderId = `mmd-${reactId.replace(/[^a-zA-Z0-9]/g, '')}`
     mermaid
       .render(renderId, code)

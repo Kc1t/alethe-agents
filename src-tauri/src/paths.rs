@@ -4,10 +4,6 @@ use tauri::AppHandle;
 const PROFILES_DIR_NAME: &str = "profiles";
 
 /// Diretório de dados do perfil ativo.
-///
-/// Garante o registro de perfis e a migração do layout legacy (raiz →
-/// `profiles/default`) — toda essa lógica vive em `crate::profiles`, para que
-/// haja uma única fonte de verdade.
 pub fn profile_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let root = crate::profiles::resolve_tauri_data_root(app)?;
     let index = crate::profiles::ensure_profiles_index_at(&root)?;

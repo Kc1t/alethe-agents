@@ -12,8 +12,8 @@ import {
   reorderTodoItems,
 } from '../lib/todos'
 import type { Project, SubTab, Terminal, TodoItem, WorkspaceContainer } from '../lib/types'
-import { clampUiZoom } from './projectsStore.constants'
 import type { ProjectsState } from './projectsStore'
+import { clampUiZoom } from './projectsStore.constants'
 
 /** Mutators do closure do store, injetados nas slices. */
 export type SliceCtx = {
@@ -129,6 +129,7 @@ type SubTabsSlice = Pick<
   | 'setSubTabSessionId'
   | 'setSubTabInitialInput'
   | 'setSubTabSkipSessionClaim'
+  | 'setSubTabHandoff'
 >
 
 export function createSubTabsSlice({ updateTerminal, updateSubTab }: SliceCtx): SubTabsSlice {
@@ -143,6 +144,7 @@ export function createSubTabsSlice({ updateTerminal, updateSubTab }: SliceCtx): 
         lastUsedAt: now,
         ptyId: null,
         extraArgs: args.extraArgs,
+        handoff: args.handoff,
         runtimeProfile: args.runtimeProfile,
         skipSessionClaim: true,
       }
@@ -214,6 +216,9 @@ export function createSubTabsSlice({ updateTerminal, updateSubTab }: SliceCtx): 
 
     setSubTabSkipSessionClaim: (projectId, terminalId, tabId, skipSessionClaim) =>
       updateSubTab(projectId, terminalId, tabId, (s) => ({ ...s, skipSessionClaim })),
+
+    setSubTabHandoff: (projectId, terminalId, tabId, handoff) =>
+      updateSubTab(projectId, terminalId, tabId, (s) => ({ ...s, handoff })),
   }
 }
 

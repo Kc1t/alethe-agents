@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 
-import { GROUP_COLORS } from '../../lib/types'
 import { useT } from '../../lib/i18n'
+import { GROUP_COLORS } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import controls from './controls.module.css'
 import { ImageInput } from './ImageInput'
 import { Modal } from './Modal'
-import controls from './controls.module.css'
 
 export function EditGroupModal() {
   const t = useT()
@@ -100,7 +100,7 @@ export function EditGroupModal() {
       </div>
 
       <ImageInput
-        label={t('crud.iconLabel')}
+        label={t('crud.groupLogoLabel')}
         value={iconUrl}
         onChange={setIconUrl}
         onEnter={submit}

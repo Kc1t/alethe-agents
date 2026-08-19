@@ -8,7 +8,7 @@ import styles from './AgentCanvasPOC.module.css'
 type TasksLayerProps = {
   tasks: TeamTask[]
   teamName: string | null
-  /** Mapa de refs compartilhado com o cálculo de arestas do canvas. */
+                                                                       
   taskRefs: MutableRefObject<Map<string, HTMLDivElement>>
 }
 

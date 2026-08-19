@@ -1,17 +1,20 @@
-import { BrainCircuit, GitBranch, Globe2, ListTodo, Network } from 'lucide-react'
+import { BrainCircuit, GitBranch, Globe2, ListTodo, Network, Plug } from 'lucide-react'
 
 import { FEATURES } from '../../../lib/features'
 import { useT } from '../../../lib/i18n'
 import { useProjectsStore } from '../../../stores/projectsStore'
+import { useUiStore } from '../../../stores/uiStore'
+import controls from '../controls.module.css'
 import styles from '../PreferencesModal.module.css'
 
-// Ícone por feature opcional. Mantido junto da página que o consome.
+                                                                     
 const FEATURE_ICONS = {
   todos: ListTodo,
   git: GitBranch,
   aiMemory: BrainCircuit,
   browser: Globe2,
   graphify: Network,
+  mcp: Plug,
 } as const
 
 export function FeaturesPage() {
@@ -58,6 +61,15 @@ export function FeaturesPage() {
           )
         })}
       </div>
+      {preferences.enabledFeatures.mcp ? (
+        <button
+          type="button"
+          className={controls.btnLink}
+          onClick={() => useUiStore.getState().openModal_('mcpIntro')}
+        >
+          {t('mcp.runSetup')}
+        </button>
+      ) : null}
     </div>
   )
 }
