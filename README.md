@@ -3,7 +3,7 @@
 <br />
 <div align="center">
   <a href="https://github.com/Kc1t/alethe-agents">
-    <img src="./src/assets/theme-icons/dark.png" alt="Alethe Logo" width="160">
+    <img src="./src/assets/theme-icons/elite-indigo.png" alt="Alethe Logo" width="160">
   </a>
 
   <h1 align="center">Alethe</h1>

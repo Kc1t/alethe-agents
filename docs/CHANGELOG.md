@@ -10,14 +10,53 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Added
+
+- Added four UI themes built from the Elite Dev artwork — Elite Original, Elite Pure Black,
+  Elite Indigo and Elite Blush — each with a full token set, listed first under Preferences,
+  Appearance.
+- Added matching app-icon themes for the same four palettes, shown as a preview grid instead
+  of a dropdown.
+- Added an app-icon picker to the onboarding theme step, so the icon can be chosen on first run
+  instead of only from Preferences afterwards.
+- Added branded header and sidebar artwork to the Windows NSIS installer.
+
+### Removed
+
+- Removed the previous app-icon themes; the icon picker now offers only the four Elite
+  marks. Preferences still pointing at a removed icon are migrated to Elite Original on
+  load. The UI themes they shared a name with are untouched.
+
 ### Changed
 
+- Elite Indigo is now the default UI theme and the default app icon for new installations. The
+  application icon, the installer icon and the installer artwork all use the same Indigo mark.
+- Replaced the home and loading backdrop artwork with the same monochrome portrait, so the
+  backdrop and the installer icon come from one mark.
 - Hardened the production renderer with a defense-in-depth Content Security Policy and replaced its
   broad core/plugin defaults with the audited permissions used by the main webview. Privileged custom
   commands still depend on their own authorization and input-validation boundaries.
 
 ### Fixed
 
+- The embedded browser pane no longer escapes its cell on scaled displays. Its webview was
+  positioned with CSS-pixel coordinates while the window places child webviews in physical
+  pixels, so the two only lined up at a device pixel ratio of 1 — on a HiDPI screen the
+  browser was drawn oversized and offset, covering the rest of the layout.
+- Changing the terminal palette now repaints the rows already on screen. Only the option was
+  being swapped, so existing output kept the previous colours until the next redraw.
+- Terminal text no longer disappears on light themes. xterm's built-in ANSI palette assumes a
+  dark background, so anything an agent painted as white or bright white rendered white on a
+  light surface. Light themes now carry an ANSI palette that keeps every hue — so agent
+  branding survives — and re-points only the neutrals that would otherwise vanish.
+- Light-theme detection is now derived from each theme's own background luminance instead of
+  a hardcoded pair of theme names. The OpenCode icon and the Markdown pane were picking their
+  dark-theme variants on any light theme outside that pair, rendering a pale icon and dark
+  syntax highlighting on a light surface.
+- The terminal no longer falls back to the dark palette when the selected theme has no
+  terminal colours of its own. Orca had been silently rendering a dark terminal since it was
+  added, and every light theme showed the same mismatch. The resolver is now an exhaustive
+  map, so a theme without terminal colours fails the build instead of shipping wrong.
 - Windows updates no longer close the app without coming back. The update manifest pointed Windows
   at the MSI, but the installer nearly everyone actually has is the NSIS `setup.exe` the download
   page serves. An MSI applied over an NSIS install neither upgrades it nor restarts the app, so the
