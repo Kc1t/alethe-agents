@@ -33,6 +33,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   application icon, the installer icon and the installer artwork all use the same Indigo mark.
 - Replaced the home and loading backdrop artwork with the same monochrome portrait, so the
   backdrop and the installer icon come from one mark.
+- Added an Animated/Reduced motion preference and lowered the home ASCII background's CPU cost by
+  caching image processing and pausing it while hidden, while preserving the creator's original 8px
+  ASCII design and 30 FPS animated cadence.
 - Hardened the production renderer with a defense-in-depth Content Security Policy and replaced its
   broad core/plugin defaults with the audited permissions used by the main webview. Privileged custom
   commands still depend on their own authorization and input-validation boundaries.

@@ -105,6 +105,7 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     rightSidebarWidth: Math.min(420, Math.max(260, Math.round(raw?.rightSidebarWidth ?? 300))),
     language: preferences.language === 'pt-BR' ? 'pt-BR' : 'en',
     visualStyle: raw?.visualStyle === 'clean' ? 'clean' : 'normal',
+    motionPreference: raw?.motionPreference === 'reduced' ? 'reduced' : 'animated',
     accountCreated: legacyAccountCreated,
     topbarStyle: preferences.topbarStyle === 'three-areas' ? 'three-areas' : 'classic',
     gitControlPlacement: preferences.gitControlPlacement === 'right' ? 'right' : 'left',

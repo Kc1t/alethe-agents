@@ -257,6 +257,7 @@ export function HomeView() {
           alt=""
           variant="flow"
           fontSize={8}
+          reducedMotion={preferences.motionPreference === 'reduced'}
           brightnessBoost={2.25}
           contrast={1.15}
           threshold={0.02}
