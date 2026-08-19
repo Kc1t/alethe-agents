@@ -356,6 +356,8 @@ export function XTermView({
     const terminal = terminalRef.current
     if (!terminal) return
     terminal.options.theme = getXtermTheme(terminalTheme)
+    // Swapping the palette alone leaves already-painted rows on the previous colours.
+    terminal.refresh(0, terminal.rows - 1)
   }, [terminalTheme])
 
   const configurePath = useCallback(
