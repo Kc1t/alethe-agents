@@ -31,9 +31,10 @@ import { useUiStore } from '../../stores/uiStore'
 import type { Terminal as TerminalEntry } from '../../lib/types'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import styles from './MarkdownPane.module.css'
+import { isLightTheme } from '../../lib/themes'
 
                                                                          
-const LIGHT_THEMES = new Set(['light', 'min-light'])
+
 const markdownPaneScrollPositions = new Map<string, number>()
 
 export type MarkdownPaneProps = {
@@ -61,7 +62,7 @@ export const MarkdownPane = memo(function MarkdownPane({
 
   const focusedTerminalId = useUiStore((s) => s.focusedTerminalId)
   const isFocusMode = inFocusOverlay || focusedTerminalId === terminal.id
-  const dark = useProjectsStore((s) => !LIGHT_THEMES.has(s.preferences.uiTheme))
+  const dark = useProjectsStore((s) => !isLightTheme(s.preferences.uiTheme))
 
   const deleteTerminal = useProjectsStore((s) => s.deleteTerminal)
   const setFocusedTerminal = useUiStore((s) => s.setFocusedTerminal)

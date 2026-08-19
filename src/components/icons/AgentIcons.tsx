@@ -4,6 +4,7 @@ import freebuffLogo from '../../assets/freebuff.png'
 import antigravityLogo from '../../assets/antigravity.png'
 import { iconMap } from '../../assets/icons'
 import type { AgentType, Theme } from '../../lib/types'
+import { isLightTheme } from '../../lib/themes'
 
 export function ShellIcon({ size = 16 }: { size?: number }) {
   return (
@@ -50,7 +51,7 @@ export function MimoIcon({ size = 16 }: { size?: number }) {
 }
 
 export function OpenCodeIcon({ size = 16, theme }: { size?: number; theme: Theme }) {
-  const lightIcon = theme === 'light' || theme === 'min-light'
+  const lightIcon = isLightTheme(theme)
   return (
     <img
       src={lightIcon ? iconMap.open : iconMap.openDark}
