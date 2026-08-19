@@ -42,6 +42,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- Switching the app icon had no effect in packaged builds. The icon bytes were loaded with
+  fetch, which answers to the Content Security Policy's connect-src, and the bundler inlines
+  the smaller icons as data URLs — a scheme connect-src does not allow. The picker still
+  rendered every option because images are governed by img-src instead, so the selection
+  moved while the window icon never changed. Inlined icons are now decoded directly.
 - The embedded browser pane no longer escapes its cell on scaled displays. Its webview was
   positioned with CSS-pixel coordinates while the window places child webviews in physical
   pixels, so the two only lined up at a device pixel ratio of 1 — on a HiDPI screen the
