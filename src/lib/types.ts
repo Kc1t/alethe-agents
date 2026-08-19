@@ -97,6 +97,8 @@ export type AppIconTheme =
 
 export type VisualStyle = 'normal' | 'clean'
 
+export type MotionPreference = 'animated' | 'reduced'
+
                                                                                   
 export type FeatureId = 'todos' | 'git' | 'browser' | 'graphify' | 'aiMemory' | 'mcp'
 
@@ -398,6 +400,8 @@ export type Preferences = {
   uiTheme: Theme
   /** Application-wide visual language. Normal preserves the production UI. */
   visualStyle: VisualStyle
+  /** Controls decorative motion while preserving static artwork. */
+  motionPreference: MotionPreference
   /** Native desktop icon theme. Defaults to Dark independently from the UI theme. */
   appIconTheme: AppIconTheme
   /** Zoom global da WebView. 1 = 100%. */
@@ -556,6 +560,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   language: 'en',
   uiTheme: 'dark',
   visualStyle: 'normal',
+  motionPreference: 'animated',
   appIconTheme: 'dark',
   uiZoom: 1,
   windowOpacity: 1,

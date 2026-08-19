@@ -52,6 +52,22 @@ describe('preference normalization', () => {
       }).discordRichPresenceEnabled,
     ).toBe(false)
   })
+
+  it('defaults motion to animated and preserves a reduced-motion choice', () => {
+    expect(normalizePreferences(undefined).motionPreference).toBe('animated')
+    expect(
+      normalizePreferences({
+        ...DEFAULT_PREFERENCES,
+        motionPreference: 'reduced',
+      }).motionPreference,
+    ).toBe('reduced')
+    expect(
+      normalizePreferences({
+        ...DEFAULT_PREFERENCES,
+        motionPreference: 'unsupported' as 'reduced',
+      }).motionPreference,
+    ).toBe('animated')
+  })
 })
 
 describe('projects file migration', () => {

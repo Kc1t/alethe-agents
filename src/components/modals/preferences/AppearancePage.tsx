@@ -1,8 +1,8 @@
-import { Check, Minus, Plus, RotateCcw } from 'lucide-react'
+import { Check, Minus, Pause, Plus, RotateCcw, Waves } from 'lucide-react'
 
 import { useT } from '../../../lib/i18n'
 import { THEME_OPTIONS, themeDescription, themeLabel } from '../../../lib/themes'
-import type { AppIconTheme, VisualStyle } from '../../../lib/types'
+import type { AppIconTheme, MotionPreference, VisualStyle } from '../../../lib/types'
 import { UI_ZOOM_LIMITS, useProjectsStore } from '../../../stores/projectsStore'
 import { Dropdown } from '../../ui/Dropdown'
 import styles from '../PreferencesModal.module.css'
@@ -65,6 +65,56 @@ export function AppearancePage() {
                       visualStyle === 'clean'
                         ? 'prefs.visualStyleCleanDesc'
                         : 'prefs.visualStyleNormalDesc',
+                    )}
+                  </small>
+                </span>
+                {active ? <Check size={15} /> : null}
+              </button>
+            )
+          })}
+        </div>
+      </SettingsSection>
+
+      <SettingsSection id="motion" title={t('prefs.motion')} description={t('prefs.motionDesc')}>
+        <div className={styles.visualStyleGrid}>
+          {(['animated', 'reduced'] as MotionPreference[]).map((motionPreference) => {
+            const active = preferences.motionPreference === motionPreference
+            return (
+              <button
+                key={motionPreference}
+                type="button"
+                className={`${styles.visualStyleOption} ${active ? styles.visualStyleActive : ''}`}
+                onClick={() => setPreferences({ motionPreference })}
+                aria-pressed={active}
+              >
+                <span
+                  className={`${styles.motionPreview} ${
+                    motionPreference === 'animated'
+                      ? styles.motionPreviewAnimated
+                      : styles.motionPreviewReduced
+                  }`}
+                  aria-hidden
+                >
+                  <span className={styles.motionPreviewLines}>
+                    <span>··::==++**##</span>
+                    <span>::--==++##%%</span>
+                    <span>..::--++**@@</span>
+                  </span>
+                  {motionPreference === 'animated' ? <Waves size={18} /> : <Pause size={18} />}
+                </span>
+                <span className={styles.visualStyleCopy}>
+                  <strong>
+                    {t(
+                      motionPreference === 'animated'
+                        ? 'prefs.motionAnimated'
+                        : 'prefs.motionReduced',
+                    )}
+                  </strong>
+                  <small>
+                    {t(
+                      motionPreference === 'animated'
+                        ? 'prefs.motionAnimatedDesc'
+                        : 'prefs.motionReducedDesc',
                     )}
                   </small>
                 </span>
