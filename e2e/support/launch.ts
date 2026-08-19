@@ -14,11 +14,26 @@ function realBinaryPath(): string {
 }
 
 /**
- * Isola o data dir do SO (HOME/XDG_DATA_HOME no Linux/macOS, APPDATA no
- * Windows) numa pasta temporária, pra garantir zero contato com
- * `%APPDATA%/Alethe` de verdade — sem precisar de nenhum código novo no lado
- * Rust (o data dir do Alethe vem de `app.path().app_local_data_dir()`, que
- * segue o padrão do SO).
+ * Isola o data dir numa pasta temporária, pra garantir ZERO contato com o
+ * perfil real do dono (`%LOCALAPPDATA%\Alethe` no Windows, `~/.local/share`
+ * no Linux, etc.).
+ *
+ * BUG REAL CONFIRMADO NESTA SESSÃO (achado pelo dono, rodando ao vivo): a
+ * versão anterior deste arquivo sobrescrevia `APPDATA` (pasta Roaming) no
+ * Windows, mas `app.path().app_local_data_dir()` do Tauri resolve por
+ * `%LOCALAPPDATA%` (pasta Local) — uma variável DIFERENTE, nunca tocada. O
+ * isolamento nunca funcionou de verdade no Windows: todo run de e2e abria
+ * contra o perfil real do dono, com projetos/repositórios reais. Confirmado
+ * empiricamente (`%APPDATA%\Alethe` nem existe; `%LOCALAPPDATA%\Alethe` é
+ * onde os dados de verdade ficam).
+ *
+ * Correção: usa `ALETHE_APP_DATA_DIR`, o override explícito que TANTO
+ * `resolve_tauri_data_root` (desktop) QUANTO `resolve_standalone_data_root`
+ * (`alethe-server`) checam ANTES de qualquer resolução por SO
+ * (`src-tauri/src/profiles.rs`) — não depende de adivinhar qual variável de
+ * ambiente o SO/Tauri realmente consulta em cada plataforma. Mantém
+ * `HOME`/`APPDATA`/`XDG_DATA_HOME` como isolamento de reforço (nunca fazem
+ * mal, só não são mais a proteção principal).
  *
  * O binário real é apontado direto em `application` (nunca um wrapper
  * `.cmd`/`.sh`): `@wdio/tauri-service` spawna com `child_process.spawn(path,
@@ -30,19 +45,23 @@ function realBinaryPath(): string {
  * chega intacta no spawn final — `mergeOptions` faz um spread simples, sem
  * whitelist), não via wrapper.
  */
-export function prepareIsolatedLaunch(): {
+export function prepareIsolatedLaunch(dataDir = mkdtempSync(join(tmpdir(), 'alethe-e2e-'))): {
   applicationPath: string
+  dataDir: string
   env: Record<string, string>
   cleanup: () => void
 } {
-  const dataDir = mkdtempSync(join(tmpdir(), 'alethe-e2e-'))
-  const env: Record<string, string> =
-    process.platform === 'win32'
-      ? { ALETHE_E2E: '1', APPDATA: dataDir }
-      : { ALETHE_E2E: '1', HOME: dataDir, XDG_DATA_HOME: join(dataDir, '.local', 'share') }
+  const env: Record<string, string> = {
+    ALETHE_E2E: '1',
+    ALETHE_APP_DATA_DIR: dataDir,
+    ...(process.platform === 'win32'
+      ? { APPDATA: dataDir, LOCALAPPDATA: dataDir }
+      : { HOME: dataDir, XDG_DATA_HOME: join(dataDir, '.local', 'share') }),
+  }
 
   return {
     applicationPath: realBinaryPath(),
+    dataDir,
     env,
     cleanup: () => {
       // Só apaga a pasta temporária. Matar o processo é responsabilidade do

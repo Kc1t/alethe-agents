@@ -48,14 +48,16 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: 24px;
-  padding: 0 4px;
+  gap: 8px;
+  /* Tem que bater com ROW_HEIGHT em GitGraphList.tsx — CSS não importa
+     constante de TS, os dois precisam ser trocados juntos. */
+  height: 34px;
+  padding: 0 6px;
   width: 100%;
   box-sizing: border-box;
   overflow: hidden;
   cursor: pointer;
-  border-radius: 2px;
+  border-radius: 4px;
   transition: background 0.15s ease;
 }
 
@@ -63,8 +65,11 @@
   background: var(--panel-hover);
 }
 
-.rowExpanded {
-  background: var(--accent-soft);
+/* Busca ativa: commits que não batem ficam esmaecidos, nunca removidos da
+   lista — removê-los cortaria o segmento de SVG deles e voltaria a quebrar a
+   continuidade visual do grafo (cada linha só desenha seu próprio trecho). */
+.rowDimmed {
+  opacity: 0.35;
 }
 
 .svg {
@@ -136,14 +141,8 @@
   margin-left: auto;
 }
 
-.filesPanel {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 4px 4px 8px 32px;
-}
-
 .filesLoading,
+.filesEmpty,
 .filesError {
   margin: 2px 0;
   font-size: 11px;
@@ -177,4 +176,85 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Tela de detalhe do commit — troca o CONTEÚDO do mesmo painel (sem modal,
+   sem view separada do app) no lugar da antiga expansão inline por linha. */
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 6px 10px;
+  max-height: 380px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.detailBack {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--fg-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+.detailBack:hover {
+  color: var(--fg);
+  border-color: var(--border-strong);
+  background: var(--panel-hover);
+}
+
+.detailHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.detailHash {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.detailMeta {
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+.detailMessage {
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.detailFilesTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.detailFiles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }

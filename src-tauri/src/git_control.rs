@@ -892,8 +892,22 @@ fn git_log_graph_inner(repo: String, max_count: u32) -> Result<Vec<GitCommitEntr
     // — ver worktrees.rs/conflict_resolution.rs), que não são branches de
     // verdade do ponto de vista do usuário e só poluíam o grafo com raias
     // isoladas sem nenhuma linha conectando.
+    //
+    // `--topo-order`: SEM isso, `git log` ordena por DATA de commit, não
+    // topologicamente — um commit pode aparecer na lista antes do próprio
+    // pai sempre que houver qualquer discrepância de timestamp entre eles
+    // (comum aqui: agentes de IA rodando em horários diferentes, rebase,
+    // relógio de máquina divergente). O algoritmo de raias do frontend
+    // (`buildGraphRows`, GitGraphList.tsx) assume que um commit SEMPRE
+    // aparece antes de qualquer um dos seus pais na lista — quando isso
+    // quebra, a raia daquele branch não encontra o pai ainda "pendente" e a
+    // linha simplesmente para, parecendo um coto isolado que "volta pra
+    // main" sem nunca ter se conectado de verdade. `--topo-order` garante
+    // essa invariante (filhos sempre antes dos pais), do mesmo jeito que
+    // GitLens/gitk fazem.
     let mut args = vec![
         "log",
+        "--topo-order",
         "--exclude=refs/heads/alethe/agent-*",
         "--exclude=refs/heads/alethe/merge-*",
         "--branches",
@@ -1053,6 +1067,24 @@ pub async fn git_show_commit_files(
     tokio::task::spawn_blocking(move || git_show_commit_files_inner(repo, hash))
         .await
         .map_err(|error| format!("git_show_commit_files: falha na task bloqueante: {error}"))?
+}
+
+/// Mensagem COMPLETA do commit (`%B` — subject + corpo), pra tela de detalhe
+/// do gráfico de commits (`git_log_graph` só devolve `%s`, uma linha só).
+fn git_show_commit_message_inner(repo_root: String, hash: String) -> Result<String, String> {
+    let root = repository_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    let output = checked_output(&root, &["show", "-s", "--format=%B", &hash])?;
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .trim_end()
+        .to_string())
+}
+
+#[tauri::command]
+pub async fn git_show_commit_message(repo: String, hash: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || git_show_commit_message_inner(repo, hash))
+        .await
+        .map_err(|error| format!("git_show_commit_message: falha na task bloqueante: {error}"))?
 }
 
 fn git_create_branch_from_commit_inner(

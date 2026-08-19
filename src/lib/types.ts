@@ -182,6 +182,19 @@ export type Terminal = {
    * que o agente efêmero era encerrado ao final do merge.
    */
   ephemeralConflictAgent?: boolean
+  /**
+   * Marca um terminal utilitário descartável (sessão de "Revisar"/"Testar" da
+   * Central de Merges — nasce, serve pra revisão manual, morre) que NUNCA
+   * deve ser tratado como candidato a "raiz pura do repositório" em
+   * `getProjectRepoRoot`. Bug real, confirmado ao vivo: esses terminais têm
+   * `cwd` = a worktree do agente sendo revisado, mas não tinham
+   * `worktreeAgentId`/`gsdSyncViewer` — a heurística de raiz os escolhia como
+   * referência por engano, contaminando `repo` com o path da worktree em vez
+   * da raiz de verdade, e o card do agente sumia da Central de Merges
+   * enquanto a sessão de revisão/teste estivesse aberta (mesma classe de bug
+   * já corrigida antes só para `gsdSyncViewer`).
+   */
+  ephemeralUtility?: boolean
 }
 
 /** Bloco visual persistente que reúne panes independentes dentro de um projeto. */
@@ -236,6 +249,12 @@ export type Project = {
   // --- RFC-009 / RFC-003 — Multi-Agent settings ---
   worktreeMode?: 'gitWorktree' | 'localCopy'
   validationCommands?: string[]
+  /** Comando que sobe o app pra probe de saúde ao vivo (Testar/Integrar). Deve
+   *  respeitar a variável de ambiente PORT (health_probe injeta uma porta
+   *  livre nela). Vazio/undefined = probe desabilitado. */
+  healthCheckCommand?: string
+  /** Caminho HTTP checado pelo probe (ex.: "/", "/health"). Default '/' quando vazio. */
+  healthCheckPath?: string
   gsdWatcherEnabled?: boolean
   /** RFC-007 — CLI que resolve conflitos de merge (provider-agnóstico). Default 'claude'. */
   conflictAgentProvider?: AgentType

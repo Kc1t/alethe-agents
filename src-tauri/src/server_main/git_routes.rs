@@ -46,6 +46,7 @@ pub fn router() -> Router {
         .route("/api/git/diff_summary", post(git_diff_summary))
         .route("/api/git/log_graph", get(git_log_graph))
         .route("/api/git/commit_files", get(git_commit_files))
+        .route("/api/git/commit_message", get(git_commit_message))
         .route("/api/git/create_branch", post(git_create_branch))
         .route("/api/git/cherry_pick", post(git_cherry_pick))
         .route("/api/git/revert", post(git_revert))
@@ -215,6 +216,21 @@ async fn git_commit_files(Query(p): Query<HashMap<String, String>>) -> impl Into
         Err(e) => return e.into_response(),
     };
     match git_control::git_show_commit_files(repo, hash).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => AppError::from(e).into_response(),
+    }
+}
+
+async fn git_commit_message(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
+    let repo = match q(&p, "repo") {
+        Ok(v) => v,
+        Err(e) => return e.into_response(),
+    };
+    let hash = match q(&p, "hash") {
+        Ok(v) => v,
+        Err(e) => return e.into_response(),
+    };
+    match git_control::git_show_commit_message(repo, hash).await {
         Ok(v) => Json(v).into_response(),
         Err(e) => AppError::from(e).into_response(),
     }
@@ -430,8 +446,30 @@ struct MergeValidateBody {
 async fn merge_validate(Json(b): Json<MergeValidateBody>) -> impl IntoResponse {
     respond(conflict_resolution::merge_validate(b.repo, b.env_id, b.validation_commands).await)
 }
-async fn merge_finalize(Json(b): Json<MergeValidateBody>) -> impl IntoResponse {
-    respond(conflict_resolution::merge_finalize(b.repo, b.env_id, b.validation_commands).await)
+
+#[derive(Deserialize)]
+struct MergeFinalizeBody {
+    repo: String,
+    #[serde(rename = "envId")]
+    env_id: String,
+    #[serde(rename = "validationCommands")]
+    validation_commands: Vec<String>,
+    #[serde(rename = "healthCheckCommand")]
+    health_check_command: Option<String>,
+    #[serde(rename = "healthCheckPath")]
+    health_check_path: Option<String>,
+}
+async fn merge_finalize(Json(b): Json<MergeFinalizeBody>) -> impl IntoResponse {
+    respond(
+        conflict_resolution::merge_finalize(
+            b.repo,
+            b.env_id,
+            b.validation_commands,
+            b.health_check_command,
+            b.health_check_path,
+        )
+        .await,
+    )
 }
 
 #[derive(Deserialize)]

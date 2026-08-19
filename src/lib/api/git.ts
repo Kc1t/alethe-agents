@@ -90,6 +90,10 @@ export type MergeOutcome = {
   stage: string
   output: string
   contractWarnings: ContractWarning[]
+  /** `false` quando o projeto não tinha `validationCommands` configurado — nada foi checado. */
+  validationRan: boolean
+  /** Camada 4 do Escudo (aviso, nunca bloqueia): só presente se `healthCheckCommand` estava configurado. */
+  healthProbe: HealthProbeResult | null
 }
 
 export type MergeForceCleanupResult = { deleted: boolean; pruned: boolean }
@@ -112,6 +116,8 @@ export type HealthProbeResult = {
   statusCode: number | null
   elapsedMs: number
   outputTail: string
+  /** `null` = não é um core do Alethe (nada de terminal pra verificar). */
+  terminalVerified: boolean | null
 }
 
 export async function gitStatus(path: string): Promise<GitRepositoryStatus> {
@@ -224,6 +230,15 @@ export async function gitShowCommitFiles(repo: string, hash: string): Promise<Gi
   if (isTauriEnv()) return invoke<GitFileChange[]>('git_show_commit_files', { repo, hash })
   return webApiFetch<GitFileChange[]>(
     `/api/git/commit_files?repo=${encodeURIComponent(repo)}&hash=${encodeURIComponent(hash)}`,
+  )
+}
+
+/** Mensagem COMPLETA do commit (subject + corpo) — `git_log_graph` só traz o
+ *  subject; alimenta a tela de detalhe do commit no gráfico. */
+export async function gitShowCommitMessage(repo: string, hash: string): Promise<string> {
+  if (isTauriEnv()) return invoke<string>('git_show_commit_message', { repo, hash })
+  return webApiFetch<string>(
+    `/api/git/commit_message?repo=${encodeURIComponent(repo)}&hash=${encodeURIComponent(hash)}`,
   )
 }
 
@@ -403,12 +418,20 @@ export async function mergeFinalize(
   repo: string,
   envId: string,
   validationCommands: string[],
+  healthCheckCommand?: string,
+  healthCheckPath?: string,
 ): Promise<MergeOutcome> {
   if (isTauriEnv())
-    return invoke<MergeOutcome>('merge_finalize', { repo, envId, validationCommands })
+    return invoke<MergeOutcome>('merge_finalize', {
+      repo,
+      envId,
+      validationCommands,
+      healthCheckCommand,
+      healthCheckPath,
+    })
   return webApiFetch<MergeOutcome>('/api/merge/finalize', {
     method: 'POST',
-    body: JSON.stringify({ repo, envId, validationCommands }),
+    body: JSON.stringify({ repo, envId, validationCommands, healthCheckCommand, healthCheckPath }),
   })
 }
 

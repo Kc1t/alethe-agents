@@ -3,7 +3,16 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* overflow-y:auto (não hidden) — sem scroll próprio, quando o conteúdo
+     (grupos de status + gráfico de commits) é mais alto que o espaço
+     sobrando na sidebar (ex.: Central de Merges ocupando sua parte da
+     altura fixa abaixo), o final do gráfico era cortado sem nenhuma
+     indicação visual bem na fronteira com o painel seguinte — parecia o
+     painel de baixo "cobrindo" o de cima, quando na verdade era conteúdo
+     truncado silenciosamente. Com scroll, o corte fica explícito (barra de
+     rolagem) em vez de um clip invisível. */
+  overflow-y: auto;
+  overflow-x: hidden;
   color: var(--fg);
 }
 .repoHeader {

@@ -213,7 +213,7 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
                 style={{
                   width: '100%',
                   background: 'var(--accent)',
-                  color: '#fff',
+                  color: 'var(--accent-on)',
                   borderColor: 'var(--accent)',
                   fontWeight: 600,
                 }}

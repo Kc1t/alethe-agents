@@ -187,9 +187,12 @@ pub fn run() {
 
     builder
         .setup(move |app| {
-            #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
+                #[cfg(debug_assertions)]
                 let _ = window.set_title("(DEV) Alethe");
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
             }
             // `tauri dev` no Linux não instala `.desktop` file nenhum (só um
             // build empacotado via .deb/AppImage faz isso), então KWin/GNOME
@@ -377,6 +380,7 @@ pub fn run() {
             git_control::git_diff_summary,
             git_control::git_log_graph,
             git_control::git_show_commit_files,
+            git_control::git_show_commit_message,
             git_control::git_create_branch_from_commit,
             git_control::git_cherry_pick_commit,
             git_control::git_revert_commit,
@@ -483,6 +487,7 @@ pub fn run() {
             opencode_sessions::snapshot_opencode_sessions,
             opencode_sessions::opencode_export_session,
             ping,
+            recorder_scratch_dir,
         ])
         .build(tauri::generate_context!())
         .expect("error while building alethe")
@@ -516,6 +521,21 @@ fn quit_app(app: tauri::AppHandle, sessions: tauri::State<'_, PtySessions>) {
 #[tauri::command]
 fn ping() -> &'static str {
     "pong"
+}
+
+/// Só usado pelo gravador de procedimentos e2e (`e2e/support/recorder.ts`,
+/// painel `RecorderHelper`) — atalho "pular criação de projeto" pra não
+/// obrigar o dono a digitar uma pasta real toda vez que só quer gravar um
+/// procedimento. Mesmo padrão de `std::env::temp_dir()` já usado em dezenas
+/// de outros pontos do backend (testes, `agent_events.rs`, `graphify.rs`
+/// etc.) — nunca exposto antes pro frontend porque nada até agora precisava.
+#[tauri::command]
+fn recorder_scratch_dir() -> Result<String, String> {
+    let dir = std::env::temp_dir()
+        .join("alethe-recorder")
+        .join(format!("rec-{}", nanoid::nanoid!(8)));
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.to_string_lossy().to_string())
 }
 
 #[cfg(test)]

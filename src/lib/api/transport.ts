@@ -123,10 +123,13 @@ export async function canUseSharedCoreTransport(): Promise<boolean> {
       }
       if (isAletheCore) {
         log(
-          'error',
+          'warn',
           'Core',
           `Refusing a core with a different storage identity (${runtime.appIdentifier ?? 'unknown'}, ${runtime.dataRootId ?? 'unknown'})`,
         )
+        if (isTauriEnv()) {
+          return false
+        }
         throw new Error(CORE_IDENTITY_MISMATCH)
       }
       return unavailableOrThrow()

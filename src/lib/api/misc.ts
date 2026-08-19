@@ -42,7 +42,13 @@ export type EventBusPayload = {
 }
 
 export type MetricData = { count: number; last_value: number; sum: number }
-export type ValidationResult = { success: boolean; stage: string; output: string }
+export type ValidationResult = {
+  success: boolean
+  stage: string
+  output: string
+  /** `false` quando não havia nenhum comando de validação configurado — nada foi executado. */
+  ranAnyCommand: boolean
+}
 
 export type PlanningStatus = {
   hasPlanning: boolean
@@ -456,4 +462,13 @@ export function spotifyStatus(): Promise<boolean> {
 export function spotifyGetCurrent(credentials: SpotifyCredentials): Promise<NowPlaying | null> {
   if (isTauriEnv()) return invoke<NowPlaying | null>('spotify_get_current', credentials)
   return Promise.resolve(null)
+}
+
+/** Só usado pelo painel `RecorderHelper` (gravador de procedimentos e2e) —
+ *  cria e devolve uma pasta temporária real, pra pular a digitação manual de
+ *  um caminho ao gravar um procedimento do zero. Sem equivalente web: o
+ *  gravador só roda contra o binário desktop Tauri. */
+export function recorderScratchDir(): Promise<string> {
+  if (isTauriEnv()) return invoke<string>('recorder_scratch_dir')
+  return Promise.reject(new Error('recorderScratchDir: disponível só no app desktop (Tauri)'))
 }

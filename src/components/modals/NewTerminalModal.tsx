@@ -33,6 +33,11 @@ export function NewTerminalModal() {
   const context = useUiStore((s) => s.modalContext) as { projectId?: string } | null
   const closeModal = useUiStore((s) => s.closeModal)
   const createAgentTerminal = useProjectsStore((s) => s.createAgentTerminal)
+  const setActiveProjectOnly = useProjectsStore((s) => s.setActiveProjectOnly)
+  const focusWorkspaceTerminal = useProjectsStore((s) => s.focusWorkspaceTerminal)
+  const setActiveView = useUiStore((s) => s.setActiveView)
+  const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
+  const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
   const alwaysStartUnrestricted = useProjectsStore((s) => s.preferences.alwaysStartUnrestricted)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const project = useProjectsStore((s) =>
@@ -133,11 +138,20 @@ export function NewTerminalModal() {
     const finalCwd = cwd.trim() || inheritedCwd
     const flag = UNRESTRICTED_FLAG[type]
     const extraArgs = unrestricted[type] && flag ? [flag] : undefined
-    await createAgentTerminal(context.projectId, {
+    const terminal = await createAgentTerminal(context.projectId, {
       name: finalName,
       cwd: finalCwd,
       firstTab: { type, cwd: finalCwd, extraArgs, runtimeProfile },
     })
+    // `createAgentTerminal` só cria o dado — sem isso, o terminal nascia sem
+    // nunca ser mostrado: a UI ficava presa na Home (bug real, visto ao vivo
+    // via e2e — `.xterm` nunca renderizava). Mesmo padrão de navegação que
+    // `HomeView.tsx`'s `submitQuickPrompt` já usa.
+    setActiveProjectOnly(context.projectId)
+    focusWorkspaceTerminal(context.projectId, terminal.id)
+    setActiveTerminal(context.projectId, terminal.id)
+    requestPaneFocus(terminal.id)
+    setActiveView('workspace')
     reset()
     closeModal()
   }

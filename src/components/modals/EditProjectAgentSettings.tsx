@@ -41,6 +41,10 @@ export function EditProjectAgentSettings({
   onWorktreeModeChange,
   validationCommandsStr,
   onValidationCommandsChange,
+  healthCheckCommand,
+  onHealthCheckCommandChange,
+  healthCheckPath,
+  onHealthCheckPathChange,
   conflictProvider,
   onConflictProviderChange,
   conflictModel,
@@ -58,6 +62,10 @@ export function EditProjectAgentSettings({
   onWorktreeModeChange: (mode: 'gitWorktree' | 'localCopy') => void
   validationCommandsStr: string
   onValidationCommandsChange: (value: string) => void
+  healthCheckCommand: string
+  onHealthCheckCommandChange: (value: string) => void
+  healthCheckPath: string
+  onHealthCheckPathChange: (value: string) => void
   conflictProvider: AgentType
   onConflictProviderChange: (provider: AgentType) => void
   conflictModel: string
@@ -228,6 +236,31 @@ export function EditProjectAgentSettings({
           onChange={(e) => onValidationCommandsChange(e.target.value)}
         />
       </div>
+
+      <div className={controls.field}>
+        <label className={controls.label}>{t('crud.editProjectHealthCheckCommand')}</label>
+        <input
+          type="text"
+          className={controls.input}
+          placeholder={t('crud.editProjectHealthCheckCommandPlaceholder')}
+          value={healthCheckCommand}
+          onChange={(e) => onHealthCheckCommandChange(e.target.value)}
+        />
+        <p className={controls.hint}>{t('crud.editProjectHealthCheckCommandHint')}</p>
+      </div>
+
+      {healthCheckCommand.trim() ? (
+        <div className={controls.field}>
+          <label className={controls.label}>{t('crud.editProjectHealthCheckPath')}</label>
+          <input
+            type="text"
+            className={controls.input}
+            placeholder={t('crud.editProjectHealthCheckPathPlaceholder')}
+            value={healthCheckPath}
+            onChange={(e) => onHealthCheckPathChange(e.target.value)}
+          />
+        </div>
+      ) : null}
 
       {/* SELETOR ESTRUTURADO DE AGENTE DE CONFLITOS (CARDS COM ÍCONES) */}
       <div className={controls.field}>

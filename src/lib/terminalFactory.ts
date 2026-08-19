@@ -68,6 +68,7 @@ export function makeDefaultTerminal(args: {
   worktreeAgentId?: string
   gsdSyncViewer?: boolean
   ephemeralConflictAgent?: boolean
+  ephemeralUtility?: boolean
 }): Terminal {
   const tabId = nanoid()
   const now = Date.now()
@@ -82,6 +83,7 @@ export function makeDefaultTerminal(args: {
     worktreeAgentId: args.worktreeAgentId,
     gsdSyncViewer: args.gsdSyncViewer,
     ephemeralConflictAgent: args.ephemeralConflictAgent,
+    ephemeralUtility: args.ephemeralUtility,
     tabs: [
       {
         id: tabId,
@@ -288,14 +290,24 @@ export function getProjectRepoRoot(project: Project | null | undefined): string 
   if (!project) return ''
   const sorted = [...project.terminals].sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))
 
-  // `gsdSyncViewer` nunca conta como "puro": o cwd dele É a worktree (só não
-  // tem `worktreeAgentId` porque não é o agente isolado em si, é só um
-  // viewer secundário) — sem essa exclusão ele era escolhido como referência
-  // de raiz, devolvendo o path da worktree em vez do repo de verdade, e
-  // quebrava a descoberta de sessões GSD Sync do próprio projeto (a raiz
-  // "descoberta" batia com o cwd do terminal isolado, então o filtro de
-  // `watched` nunca via nenhum terminal de worktree pra vigiar).
-  const pure = sorted.filter((terminal) => !terminal.worktreeAgentId && !terminal.gsdSyncViewer)
+  // `gsdSyncViewer`/`ephemeralConflictAgent`/`ephemeralUtility` nunca contam
+  // como "puro": o cwd deles É a worktree do agente (só não têm
+  // `worktreeAgentId` porque não são o agente isolado em si — são viewer
+  // secundário, agente efêmero de conflito, ou sessão de "Revisar"/"Testar")
+  // — sem essa exclusão qualquer um vira referência de raiz por engano,
+  // devolvendo o path da worktree em vez do repo de verdade. Já quebrou a
+  // descoberta de sessões GSD Sync (gsdSyncViewer) e, confirmado ao vivo
+  // nesta sessão, fazia o card do agente sumir da Central de Merges sempre
+  // que "Revisar"/"Testar" estava aberto (`pendingMerges` para de bater
+  // `term.cwd !== repo` pro terminal original assim que `repo` fica
+  // contaminado com o path da própria worktree).
+  const pure = sorted.filter(
+    (terminal) =>
+      !terminal.worktreeAgentId &&
+      !terminal.gsdSyncViewer &&
+      !terminal.ephemeralConflictAgent &&
+      !terminal.ephemeralUtility,
+  )
   for (const terminal of pure) {
     const cwd = resolveTerminalCwd(terminal)
     if (cwd) return cwd

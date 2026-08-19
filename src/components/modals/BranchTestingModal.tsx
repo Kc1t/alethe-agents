@@ -9,6 +9,8 @@ import {
   Layers,
   Wrench,
   ScanSearch,
+  Activity,
+  Loader2,
 } from 'lucide-react'
 
 import { useT, type MessageKey } from '../../lib/i18n'
@@ -42,6 +44,10 @@ export type BranchTestingModalProps = {
   branchName: string
   projectName: string
   changesSummary: string[]
+  /** Camada 4 do Escudo — 'idle' quando o projeto não tem `healthCheckCommand`
+   *  configurado (seção mostra só uma dica, nunca dispara sozinha). */
+  healthState: 'idle' | 'loading' | 'ok' | 'warn'
+  healthSummary: string[]
   testingItems: TestingItem[]
   onStartTesting: () => void
   /** Recebe o resumo já formatado (passou/falhou + notas) pra mandar ao agente — a confirmação de correção é sempre humana, nunca automática. */
@@ -54,6 +60,8 @@ export function BranchTestingModal({
   branchName,
   projectName,
   changesSummary,
+  healthState,
+  healthSummary,
   testingItems,
   onStartTesting,
   onSendFeedback,
@@ -181,6 +189,55 @@ export function BranchTestingModal({
             ) : (
               <li>{t('merge.testBriefingEmpty')}</li>
             )}
+          </ul>
+        </div>
+
+        {/* Camada 4 do Escudo — sobe o app de verdade num ambiente isolado
+            (Testar/Integrar) e mostra o resultado real, não uma promessa. */}
+        <div>
+          <h4
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: 'var(--fg)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              marginBottom: 8,
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
+            {healthState === 'loading' ? (
+              <Loader2 size={14} color="var(--fg-muted)" />
+            ) : (
+              <Activity
+                size={14}
+                color={
+                  healthState === 'ok'
+                    ? 'var(--status-working)'
+                    : healthState === 'warn'
+                      ? 'var(--status-offline)'
+                      : 'var(--fg-faint)'
+                }
+              />
+            )}
+            {t('merge.testHealthTitle')}
+          </h4>
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: 18,
+              fontSize: 12,
+              color: 'var(--fg-muted)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+            }}
+          >
+            {healthSummary.map((item, i) => (
+              <li key={i}>{item}</li>
+            ))}
           </ul>
         </div>
 

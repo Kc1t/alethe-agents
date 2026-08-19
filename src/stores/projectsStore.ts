@@ -123,6 +123,8 @@ export type ProjectsState = ProjectsFile & {
   removeMarkdownComment: (projectId: string, commentId: string) => void
   setWorktreeMode: (id: string, mode: 'gitWorktree' | 'localCopy') => void
   setValidationCommands: (id: string, commands: string[]) => void
+  setHealthCheckCommand: (id: string, command: string) => void
+  setHealthCheckPath: (id: string, path: string) => void
   setGsdWatcherEnabled: (id: string, enabled: boolean) => void
   setConflictAgentProvider: (id: string, provider: AgentType) => void
   setConflictAgentModel: (id: string, model: string) => void
@@ -227,6 +229,7 @@ export type ProjectsState = ProjectsFile & {
       worktreeAgentId?: string
       gsdSyncViewer?: boolean
       ephemeralConflictAgent?: boolean
+      ephemeralUtility?: boolean
     },
   ) => Terminal
   /**

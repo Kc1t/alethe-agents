@@ -414,6 +414,8 @@ type ProjectsSlice = Pick<
   | 'removeMarkdownComment'
   | 'setWorktreeMode'
   | 'setValidationCommands'
+  | 'setHealthCheckCommand'
+  | 'setHealthCheckPath'
   | 'setGsdWatcherEnabled'
   | 'setConflictAgentProvider'
   | 'setConflictAgentModel'
@@ -536,6 +538,12 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
 
     setValidationCommands: (id, validationCommands) =>
       updateProject(id, (p) => ({ ...p, validationCommands })),
+
+    setHealthCheckCommand: (id, healthCheckCommand) =>
+      updateProject(id, (p) => ({ ...p, healthCheckCommand })),
+
+    setHealthCheckPath: (id, healthCheckPath) =>
+      updateProject(id, (p) => ({ ...p, healthCheckPath })),
 
     setGsdWatcherEnabled: (id, gsdWatcherEnabled) =>
       updateProject(id, (p) => ({ ...p, gsdWatcherEnabled })),

@@ -37,6 +37,7 @@ import { UpdateModal } from './components/modals/UpdateModal'
 import { WelcomeModal } from './components/modals/WelcomeModal'
 import { WhatsNewModal } from './components/modals/WhatsNewModal'
 import { ProjectSidebar } from './components/ProjectSidebar'
+import { RecorderHelper } from './components/RecorderHelper/RecorderHelper'
 import { RightSidebar } from './components/RightSidebar'
 import { TitleBar } from './components/TitleBar'
 import { TokenHud } from './components/TokenHud'
@@ -48,6 +49,7 @@ import { useDiscordPresence } from './hooks/useDiscordPresence'
 import { useKeybindings } from './hooks/useKeybindings'
 import { useResourceSupervisor } from './hooks/useResourceSupervisor'
 import { startActivityTracker } from './lib/activityTracker'
+import { installE2eHooks } from './lib/e2eHooks'
 import { isTauriEnv } from './lib/api/transport'
 import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
 import { intlLocale, translate, useT } from './lib/i18n'
@@ -207,6 +209,10 @@ export default function App() {
   useCloseConfirmation()
   useResourceSupervisor(hydrated)
   useCliOpenRequests(hydrated)
+
+  useEffect(() => {
+    installE2eHooks()
+  }, [])
 
   useEffect(() => {
     void hydrate()
@@ -603,6 +609,7 @@ export default function App() {
       </ErrorBoundary>
       <InAppNotifications />
       {activeView === 'agentCanvas' ? <TokenHud /> : null}
+      <RecorderHelper />
     </>
   )
 }

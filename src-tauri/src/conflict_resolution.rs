@@ -62,6 +62,15 @@ pub struct MergeOutcome {
     /// efêmero. Best-effort — falha silenciosa não impede o merge.
     #[serde(default)]
     pub contract_warnings: Vec<crate::contract_check::ContractWarning>,
+    /// `false` quando o projeto não tinha `validationCommands` configurado —
+    /// distingue "validou e passou" de "nada foi checado", pra o frontend
+    /// nunca afirmar que uma integração foi verificada quando não foi.
+    #[serde(default)]
+    pub validation_ran: bool,
+    /// Camada 4 do Escudo (aviso, nunca bloqueia): resultado do boot real do
+    /// app no ambiente efêmero, se `healthCheckCommand` estava configurado.
+    #[serde(default)]
+    pub health_probe: Option<crate::health_probe::HealthProbeResult>,
 }
 
 fn validate_env_id(id: &str) -> Result<(), String> {
@@ -253,30 +262,48 @@ pub async fn merge_finalize(
     repo: String,
     env_id: String,
     validation_commands: Vec<String>,
+    health_check_command: Option<String>,
+    health_check_path: Option<String>,
 ) -> Result<MergeOutcome, String> {
-    tokio::task::spawn_blocking(move || merge_finalize_inner(repo, env_id, validation_commands))
-        .await
-        .map_err(|error| format!("merge_finalize: falha na task bloqueante: {error}"))?
+    tokio::task::spawn_blocking(move || {
+        merge_finalize_inner(
+            repo,
+            env_id,
+            validation_commands,
+            health_check_command,
+            health_check_path,
+        )
+    })
+    .await
+    .map_err(|error| format!("merge_finalize: falha na task bloqueante: {error}"))?
+}
+
+/// Resultado de `validate_and_stage`: ou está bloqueado (com um `MergeOutcome`
+/// já pronto pra devolver ao chamador), ou passou e está pronto pra commitar
+/// — carregando se algum comando de validação real chegou a rodar, pra quem
+/// chama poder propagar isso honestamente em vez de assumir "validado" quando
+/// na real nada foi checado.
+enum StageOutcome {
+    /// Bloqueado (marcadores, unmerged ou validação falhou) — nunca integra.
+    Blocked(MergeOutcome),
+    /// Validado e staged, pronto pra commitar.
+    Proceed { ran_any_command: bool },
 }
 
 /// Checa marcadores/unmerged, estagia (`add -A`) e roda a Validation Pipeline
 /// — SEM commitar nem integrar. Compartilhado por `merge_validate` (pára
 /// aqui, gate manual) e `merge_finalize` (continua pro commit só depois que
-/// isto retorna `Ok(None)`).
-///
-/// `Ok(Some(outcome))` = bloqueado (marcadores, unmerged ou validação falhou)
-/// — `outcome.merged` sempre `false`. `Ok(None)` = validado e staged, pronto
-/// pra commitar.
+/// isto retorna `Proceed`).
 fn validate_and_stage(
     env: &Path,
     meta: &MergeMeta,
     validation_commands: Vec<String>,
-) -> Result<Option<MergeOutcome>, String> {
+) -> Result<StageOutcome, String> {
     // Conflitos ainda não resolvidos (não-staged) contam como pendência.
     let pending = unmerged_files(env)?;
     let markers = leftover_markers(env, &meta.conflict_paths);
     if !markers.is_empty() {
-        return Ok(Some(MergeOutcome {
+        return Ok(StageOutcome::Blocked(MergeOutcome {
             merged: false,
             stage: "conflict_markers".to_string(),
             output: format!(
@@ -305,7 +332,7 @@ fn validate_and_stage(
         // add -A acabou de stagear; se ainda assim restar unmerged, algo está errado.
         let still = unmerged_files(env)?;
         if !still.is_empty() {
-            return Ok(Some(MergeOutcome {
+            return Ok(StageOutcome::Blocked(MergeOutcome {
                 merged: false,
                 stage: "unmerged".to_string(),
                 output: format!("Arquivos não resolvidos: {}", still.join(", ")),
@@ -323,7 +350,7 @@ fn validate_and_stage(
             meta,
             serde_json::json!({ "stage": validation.stage }),
         );
-        return Ok(Some(MergeOutcome {
+        return Ok(StageOutcome::Blocked(MergeOutcome {
             merged: false,
             stage: format!("validation:{}", validation.stage),
             output: validation.output,
@@ -331,7 +358,9 @@ fn validate_and_stage(
         }));
     }
     emit("MergeValidated", meta, serde_json::json!({}));
-    Ok(None)
+    Ok(StageOutcome::Proceed {
+        ran_any_command: validation.ran_any_command,
+    })
 }
 
 /// Só valida (marcadores + Validation Pipeline), sem commitar nem integrar —
@@ -366,11 +395,17 @@ pub(crate) fn merge_validate_inner(
     }
     let meta = read_meta(&root, &env_id)?;
     match validate_and_stage(&env, &meta, validation_commands)? {
-        Some(outcome) => Ok(outcome),
-        None => Ok(MergeOutcome {
+        StageOutcome::Blocked(outcome) => Ok(outcome),
+        StageOutcome::Proceed { ran_any_command } => Ok(MergeOutcome {
             merged: false,
             stage: "validated".to_string(),
-            output: "Validação passou — pronto para integrar.".to_string(),
+            output: if ran_any_command {
+                "Validação passou — pronto para integrar.".to_string()
+            } else {
+                "Nenhum comando de validação configurado — nada foi verificado (não é um bloqueio)."
+                    .to_string()
+            },
+            validation_ran: ran_any_command,
             ..Default::default()
         }),
     }
@@ -380,6 +415,8 @@ pub(crate) fn merge_finalize_inner(
     repo: String,
     env_id: String,
     validation_commands: Vec<String>,
+    health_check_command: Option<String>,
+    health_check_path: Option<String>,
 ) -> Result<MergeOutcome, String> {
     let root = repository_root(&repo)?;
     validate_env_id(&env_id)?;
@@ -392,15 +429,40 @@ pub(crate) fn merge_finalize_inner(
     // Revalida na hora do commit (idempotente e barato o bastante) — cobre o
     // caso do usuário ter clicado em "Integrar" sem passar por "Validar"
     // antes, ou de algo ter mudado no ambiente entre os dois cliques.
-    if let Some(outcome) = validate_and_stage(&env, &meta, validation_commands)? {
-        return Ok(outcome);
-    }
+    let ran_any_command = match validate_and_stage(&env, &meta, validation_commands)? {
+        StageOutcome::Blocked(outcome) => return Ok(outcome),
+        StageOutcome::Proceed { ran_any_command } => ran_any_command,
+    };
 
     // Camada 3 do Escudo — Verificador de Contrato de API (heurístico, best-effort).
     // Nunca falha o merge: erro na checagem só vira lista vazia de avisos.
     let contract_warnings =
         crate::contract_check::contract_check(env.to_string_lossy().into_owned())
             .unwrap_or_default();
+
+    // Camada 4 do Escudo — Health Probe (aviso, nunca bloqueia): sobe o
+    // comando de start do projeto no MESMO ambiente efêmero (nunca no
+    // worktree real do usuário) e confirma que o app realmente responde —
+    // e, se for um core do Alethe, que um terminal de verdade funciona
+    // (round-trip de escrita/leitura, não só "o processo existe").
+    // `block_on` é seguro aqui: esta função já roda dentro de um
+    // `spawn_blocking` (thread do pool bloqueante do tokio, não a thread
+    // do reator async), então bloquear não trava nada.
+    let health_probe_result = health_check_command
+        .filter(|cmd| !cmd.trim().is_empty())
+        .and_then(|cmd| {
+            let path = health_check_path
+                .filter(|p| !p.trim().is_empty())
+                .unwrap_or_else(|| "/".to_string());
+            tokio::runtime::Handle::current()
+                .block_on(crate::health_probe::health_probe(
+                    env.to_string_lossy().into_owned(),
+                    cmd,
+                    path,
+                    8000,
+                ))
+                .ok()
+        });
 
     let message = format!("merge(alethe): {} -> {}", meta.source, meta.target);
     // Depois de um merge_rebase_onto_target bem-sucedido, a reconciliação já
@@ -462,6 +524,33 @@ pub(crate) fn merge_finalize_inner(
         });
     }
     let branch = format!("alethe/merge-{env_id}");
+    // Bug real, confirmado ao vivo com um agente real (branch sem nenhum
+    // commit em relação ao alvo — nada foi commitado acima porque não havia
+    // mudança nenhuma): sem esta checagem, `git merge --ff-only` responde
+    // "Already up to date" com exit 0 (sucesso!) mesmo sem mover `main` NEM
+    // UM commit — e o código seguia até o fim devolvendo `merged: true`. A
+    // UI mostrava "Merge concluído" com um toast de verdade, o card virava
+    // "Integrado", mas `main` nunca avançava. Compara o HEAD da branch
+    // efêmera com o HEAD do alvo ANTES de tentar o fast-forward: se forem
+    // idênticos, não há nada de novo pra integrar — reporta honestamente em
+    // vez de fingir sucesso.
+    let branch_sha = git_command(&env, &["rev-parse", "HEAD"])
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    let target_sha = git_command(&root, &["rev-parse", "HEAD"])
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    if !branch_sha.is_empty() && branch_sha == target_sha {
+        return Ok(MergeOutcome {
+            merged: false,
+            stage: "nothing_to_integrate".to_string(),
+            output:
+                "Nada para integrar — a branch do agente não tem nenhuma mudança em relação à branch alvo."
+                    .to_string(),
+            validation_ran: ran_any_command,
+            ..Default::default()
+        });
+    }
     if let Err(error) = checked_output(&root, &["merge", "--ff-only", &branch]) {
         // Distingue "o alvo avançou desde o merge_prepare" (recuperável via
         // merge_rebase_onto_target) de um erro genérico/duro — git usa essa
@@ -507,6 +596,8 @@ pub(crate) fn merge_finalize_inner(
         stage: "merged".to_string(),
         output: message,
         contract_warnings,
+        validation_ran: ran_any_command,
+        health_probe: health_probe_result,
     })
 }
 
@@ -768,7 +859,7 @@ mod tests {
         assert!(conflicted.contains("<<<<<<<"));
 
         // Finalize ANTES de resolver → barra nos marcadores, ambiente preservado.
-        let blocked = merge_finalize(root_str.clone(), env.id.clone(), vec![]).unwrap();
+        let blocked = merge_finalize(root_str.clone(), env.id.clone(), vec![], None, None).unwrap();
         assert!(!blocked.merged);
         assert_eq!(blocked.stage, "conflict_markers");
         assert!(env_path.is_dir());
@@ -782,13 +873,14 @@ mod tests {
 
         // Validação que falha → merge barrado, ambiente preservado.
         let failed =
-            merge_finalize(root_str.clone(), env.id.clone(), vec!["exit 1".into()]).unwrap();
+            merge_finalize(root_str.clone(), env.id.clone(), vec!["exit 1".into()], None, None)
+                .unwrap();
         assert!(!failed.merged);
         assert!(failed.stage.starts_with("validation:"));
         assert!(env_path.is_dir());
 
         // Validação que passa → commit + ff no agent-a + teardown.
-        let ok = merge_finalize(root_str.clone(), env.id.clone(), vec!["echo ok".into()]).unwrap();
+        let ok = merge_finalize(root_str.clone(), env.id.clone(), vec!["echo ok".into()], None, None).unwrap();
         assert!(
             ok.merged,
             "esperava merge, veio: {} / {}",
@@ -820,7 +912,7 @@ mod tests {
         let env = merge_prepare(root_str.clone(), "agent-a".into(), "main".into(), None).unwrap();
         assert!(env.clean);
         assert!(env.prompt_path.is_none());
-        let ok = merge_finalize(root_str.clone(), env.id, vec!["echo ok".into()]).unwrap();
+        let ok = merge_finalize(root_str.clone(), env.id, vec!["echo ok".into()], None, None).unwrap();
         assert!(
             ok.merged,
             "esperava merge, veio: {} / {}",
@@ -828,6 +920,38 @@ mod tests {
         );
         let value = fs::read_to_string(root.join("shared.ts")).unwrap();
         assert!(value.contains("from-a"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    /// Bug real, confirmado ao vivo com um agente OpenCode real: uma branch
+    /// SEM nenhum commit em relação ao alvo (`git merge --ff-only` responde
+    /// "Already up to date", exit 0) fazia `merge_finalize_inner` devolver
+    /// `merged: true` do mesmo jeito — a UI mostrava "Merge concluído" sem
+    /// `main` avançar nem um commit sequer. Trava essa correção: uma branch
+    /// criada a partir de `main`, sem nenhuma mudança, precisa reportar
+    /// honestamente que não há nada pra integrar.
+    #[test]
+    fn finalize_reports_nothing_to_integrate_for_branch_without_changes() {
+        let (root, root_str) = conflicting_repo();
+        // Branch nova, criada em cima de `main`, sem nenhum commit próprio.
+        checked_output(&root, &["checkout", "-b", "agent-empty"]).unwrap();
+        checked_output(&root, &["checkout", "main"]).unwrap();
+
+        let env =
+            merge_prepare(root_str.clone(), "agent-empty".into(), "main".into(), None).unwrap();
+        assert!(env.clean);
+        let outcome =
+            merge_finalize(root_str.clone(), env.id, vec!["echo ok".into()], None, None).unwrap();
+        assert!(
+            !outcome.merged,
+            "não deveria reportar merge — nada mudou: {} / {}",
+            outcome.stage, outcome.output
+        );
+        assert_eq!(outcome.stage, "nothing_to_integrate");
+        // Ambiente efêmero preservado (mesma regra dos outros estágios
+        // bloqueados) — nada de teardown pra um "merge" que não aconteceu.
+        assert!(PathBuf::from(&env.path).is_dir());
+
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -869,7 +993,7 @@ mod tests {
 
         // Finalize agora falha por divergência, não por marcador/validação.
         let diverged =
-            merge_finalize(root_str.clone(), env.id.clone(), vec!["echo ok".into()]).unwrap();
+            merge_finalize(root_str.clone(), env.id.clone(), vec!["echo ok".into()], None, None).unwrap();
         assert!(!diverged.merged);
         assert_eq!(diverged.stage, "branch_diverged");
         assert!(env_path.is_dir(), "ambiente deve ser preservado pra retry");
@@ -882,7 +1006,7 @@ mod tests {
         assert_eq!(rebased.stage, "rebase_ok", "saída: {}", rebased.output);
 
         // Reintegra — agora o ff-only deve funcionar.
-        let ok = merge_finalize(root_str.clone(), env.id.clone(), vec!["echo ok".into()]).unwrap();
+        let ok = merge_finalize(root_str.clone(), env.id.clone(), vec!["echo ok".into()], None, None).unwrap();
         assert!(
             ok.merged,
             "esperava merge, veio: {} / {}",

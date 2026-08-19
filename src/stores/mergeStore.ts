@@ -441,7 +441,11 @@ export const useMergeStore = create<MergeState>((set, get) => ({
       const outcome = await mergeValidate(repo, env.id, commands)
       set({ outcome, isFinalizing: false })
       if (outcome.stage === 'validated') {
-        toast(t('merge.validationPassedTitle'), t('merge.validationPassedBody'))
+        if (outcome.validationRan) {
+          toast(t('merge.validationPassedTitle'), t('merge.validationPassedBody'))
+        } else {
+          toast(t('merge.validationUnverifiedTitle'), t('merge.validationUnverifiedBody'))
+        }
       } else {
         toast(t('merge.blockedTitle', { stage: outcome.stage }), outcome.output.slice(0, 300))
       }
@@ -481,7 +485,13 @@ export const useMergeStore = create<MergeState>((set, get) => ({
     try {
       const project = useProjectsStore.getState().projects.find((p) => p.id === projectId)
       const commands = project?.validationCommands ?? []
-      const outcome = await mergeFinalize(repo, env.id, commands)
+      const outcome = await mergeFinalize(
+        repo,
+        env.id,
+        commands,
+        project?.healthCheckCommand,
+        project?.healthCheckPath,
+      )
 
       if (outcome.merged) {
         stopResolvingWatch()
@@ -505,6 +515,30 @@ export const useMergeStore = create<MergeState>((set, get) => ({
           adminLockReason: null,
         })
         toast(t('merge.mergedTitle'), outcome.output)
+        // Honestidade pós-merge: o auto-merge de branches limpas continua
+        // automático (decisão deliberada), mas não pode fingir que checou
+        // algo que não checou — avisa quando integrou sem nenhum comando de
+        // validação configurado.
+        if (!outcome.validationRan) {
+          toast(t('merge.mergedUnverifiedTitle'), t('merge.mergedUnverifiedBody'))
+        }
+        // Camada 4 do Escudo (aviso, nunca bloqueou o merge acima) — só
+        // presente se o projeto tinha `healthCheckCommand` configurado.
+        if (outcome.healthProbe) {
+          const hp = outcome.healthProbe
+          toast(
+            hp.responded ? t('merge.healthProbePassedTitle') : t('merge.healthProbeFailedTitle'),
+            hp.responded
+              ? t('merge.healthProbePassedBody', {
+                  ms: hp.elapsedMs,
+                  status: String(hp.statusCode ?? '—'),
+                })
+              : t('merge.healthProbeFailedBody', {
+                  ms: hp.elapsedMs,
+                  output: hp.outputTail.slice(0, 240),
+                }),
+          )
+        }
         // Camada 3 do Escudo (aviso, nunca bloqueou o merge acima) — informa
         // depois de integrado, pra revisão posterior do usuário.
         if (outcome.contractWarnings.length > 0) {
@@ -515,6 +549,34 @@ export const useMergeStore = create<MergeState>((set, get) => ({
               .join('\n'),
           )
         }
+        return
+      }
+
+      if (outcome.stage === 'nothing_to_integrate') {
+        // Honesto em vez de fingir sucesso (bug real corrigido no backend,
+        // ver `conflict_resolution.rs`): a branch não tinha nenhuma mudança
+        // em relação ao alvo — nada foi commitado, `main` não avança. Não é
+        // um erro pra tentar de novo (não tem "retry" que resolva "nada pra
+        // fazer"), então não vira `phase: 'failed'` — só informa e limpa o
+        // agente efêmero de conflito (se for esse o caso). O worktree/
+        // terminal do agente REAL (fluxo `integrateWorktree`) fica intacto —
+        // `phase` não vira `'merged'`, então a limpeza de lá nem roda,
+        // deixando o usuário decidir (o card continua visível pra ele
+        // rejeitar/investigar).
+        stopResolvingWatch()
+        if (projectId && agentTerminalId) {
+          useProjectsStore.getState().deleteTerminal(projectId, agentTerminalId)
+        }
+        set({
+          phase: 'idle',
+          outcome,
+          env: null,
+          agentTerminalId: null,
+          isFinalizing: false,
+          retryCount: 0,
+          adminLockReason: null,
+        })
+        toast(t('merge.nothingToIntegrateTitle'), t('merge.nothingToIntegrateBody'))
         return
       }
 
@@ -643,16 +705,41 @@ export const useMergeStore = create<MergeState>((set, get) => ({
           // "worktree_not_found" = já tinha sido removida, inofensivo. Falha
           // real nunca pode sumir só num console.warn — vira órfã rastreada
           // (mesma rede de segurança do abort()/Rejeitar), senão a pasta
-          // fica presa em disco pra sempre, sem nenhum rastro na interface.
+          // fica presa em disco pra sempre, sem nenhum rastro na interface —
+          // e o toast "Merge concluído" já mostrado fica parecendo mentira
+          // pro usuário (bug real, confirmado ao vivo: worktree sobrevivia
+          // e nada avisava). Agora avisa também.
           if (!String(err).includes('worktree_not_found')) {
             useProjectsStore.getState().addOrphanWorktree(project.id, {
               path: terminal?.cwd ?? '',
               mode: 'gitWorktree',
             })
+            toast(t('merge.worktreeRemoveFailedTitle'), String(err).slice(0, 300))
           }
           console.warn('[mergeStore] worktree já removida?', err)
         }
-        useProjectsStore.getState().deleteTerminal(project.id, paneTerminalId)
+
+        // Ação pós-merge do agente (config do projeto) — bug real corrigido:
+        // `relocateMergeAgentTerminal` já existia pronta e testada, mas
+        // nunca era chamada; o terminal sempre era fechado incondicionalmente
+        // aqui, ignorando "Criar nova branch e manter chat ativo"/"...manter
+        // sessão" configurados pelo usuário.
+        const postAction = project.mergePostAction ?? 'closeTerminal'
+        if (postAction === 'closeTerminal') {
+          useProjectsStore.getState().deleteTerminal(project.id, paneTerminalId)
+        } else {
+          const relocated = await useProjectsStore
+            .getState()
+            .relocateMergeAgentTerminal(project.id, paneTerminalId, {
+              keepSession: postAction === 'relocateKeepSession',
+            })
+          if (!relocated.ok) {
+            // Não deixa o terminal preso apontando pra uma pasta que acabou
+            // de ser removida — cai pro fechamento como último recurso.
+            toast(t('merge.relocateFailedTitle'), relocated.error ?? '')
+            useProjectsStore.getState().deleteTerminal(project.id, paneTerminalId)
+          }
+        }
       }
       // Em conflito, o fluxo normal segue (agente efêmero + Finalizar); a
       // worktree/pane originais ficam intactos até o merge concluir.

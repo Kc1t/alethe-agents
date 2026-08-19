@@ -1,13 +1,16 @@
-import { Check, GitMerge, MessageSquare, Play, RefreshCw, ShieldCheck, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, GitMerge } from 'lucide-react'
+import type React from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useGsdSyncSessionsWatcher } from '../../hooks/useGsdSyncSessions'
-import { useT } from '../../lib/i18n'
+import { type MessageKey, useT } from '../../lib/i18n'
 import {
   type DiffSummaryEntry,
   gitDiffSummary,
   gitStatus,
   type GsdProcedureStep,
+  healthProbe,
+  type HealthProbeResult,
   killPtyTree,
   readGsdProcedure,
   readTextFile,
@@ -19,11 +22,14 @@ import {
   worktreeRemove,
   writePty,
 } from '../../lib/tauri'
+import type { AgentType } from '../../lib/types'
 import { MERGE_BUSY_PHASES, type MergePhase, useMergeStore } from '../../stores/mergeStore'
 import { getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { BranchTestingModal, type TestingItem } from '../modals/BranchTestingModal'
 import { ConfirmWorktreeCommitModal } from '../modals/ConfirmWorktreeCommitModal'
+import { MergeCenterModal } from '../modals/MergeCenterModal'
+import { MergeTree } from './MergeTree'
 import styles from './SidebarMergePanel.module.css'
 
 /** Prompt inicial do Revisor de Branch — agente-facing (aparece no terminal
@@ -41,7 +47,7 @@ function reviewPrompt(branch: string, target: string): string {
   )
 }
 
-type PendingMergeCard = {
+export type PendingMergeCard = {
   id: string
   projectId: string
   projectName: string
@@ -50,6 +56,9 @@ type PendingMergeCard = {
   branchName: string
   worktreePath: string
   agentName: string
+  /** Provider do agente rodando nessa worktree (tab ativa do terminal) — só
+   *  pra escolher o ícone certo (AgentIcon), sem efeito nenhum no gate. */
+  agentType: AgentType
   gsdWatcherEnabled: boolean
   /** false quando o provider desta worktree não é OpenCode — o plugin GSD
    *  (que escreve `.planning/status.md`) só é instalado em terminais
@@ -62,14 +71,16 @@ type PendingMergeCard = {
  *  `ready`/`failed`. `failed` significa "planejamento diz completo, mas a
  *  checagem automática (diff real ou validação) não confirmou" — mostrado,
  *  nunca escondido, porque esconder um problema real é pior que mostrá-lo. */
-type GateStage = 'hidden' | 'checking' | 'ready' | 'failed'
-type GateResult = { stage: GateStage; detail?: string }
+export type GateStage = 'hidden' | 'checking' | 'ready' | 'failed' | 'unverified'
+export type GateResult = { stage: GateStage; detail?: string }
 
 /** Deriva o rótulo/tom do card a partir da fase real do mergeStore — só o
  *  card cujo worktreeAgentId bate com o merge ativo mostra progresso; os
  *  demais ficam neutros ("pronto para revisão"), sem prometer validação
  *  nenhuma que ainda não rodou. */
-function statusInfo(phase: MergePhase, isActive: boolean) {
+type CardStatus = { key: MessageKey; tone: 'working' | 'waiting' | 'offline' | 'stopped' }
+
+export function statusInfo(phase: MergePhase, isActive: boolean): CardStatus {
   if (!isActive) return { key: 'merge.statusReady' as const, tone: 'stopped' as const }
   switch (phase) {
     case 'analyzing':
@@ -94,9 +105,28 @@ function statusInfo(phase: MergePhase, isActive: boolean) {
   }
 }
 
+/** Mesma decisão hoje calculada inline no `.map()` de render — extraída pra
+ *  ser reaproveitada tanto pela linha compacta da árvore (MergeTree) quanto
+ *  pela tag do popup de detalhe (MergeCenterModal), sem duplicar a lógica. */
+export function deriveCardStatus(
+  gate: GateResult | undefined,
+  isCardActive: boolean,
+  mergePhase: MergePhase,
+): CardStatus {
+  if (!isCardActive && gate?.stage === 'failed') {
+    return { key: 'merge.statusGateFailed', tone: 'offline' }
+  }
+  if (!isCardActive && gate?.stage === 'unverified') {
+    return { key: 'merge.statusUnverified', tone: 'waiting' }
+  }
+  return statusInfo(mergePhase, isCardActive)
+}
+
 export function SidebarMergePanel() {
   const t = useT()
   const projects = useProjectsStore((s) => s.projects)
+  const activeProjectId = useProjectsStore((s) => s.activeProjectId)
+  const terminalTheme = useProjectsStore((s) => s.preferences.terminalTheme ?? s.preferences.uiTheme)
   const pushToast = useUiStore((s) => s.pushToast)
   const createTerminal = useProjectsStore((s) => s.createTerminal)
   const deleteTerminal = useProjectsStore((s) => s.deleteTerminal)
@@ -128,6 +158,9 @@ export function SidebarMergePanel() {
      *  dedicada (`gsd_record_step`) — null = ainda carregando; [] = sem
      *  planejamento GSD nesse projeto (cai no fallback determinístico). */
     procedure: GsdProcedureStep[] | null
+    /** Camada 4 do Escudo — 'idle' quando não há `healthCheckCommand`
+     *  configurado nesse projeto (nunca dispara sozinho). */
+    health: 'idle' | 'loading' | HealthProbeResult
   } | null>(null)
   const [validatingId, setValidatingId] = useState<string | null>(null)
   const [reviewSessions, setReviewSessions] = useState<
@@ -137,6 +170,66 @@ export function SidebarMergePanel() {
   const [reviewFeedback, setReviewFeedback] = useState('')
   const [gateStatus, setGateStatus] = useState<Record<string, GateResult>>({})
   const probingRef = useRef<Set<string>>(new Set())
+  const [centerModalOpen, setCenterModalOpen] = useState(false)
+  const [centerModalIndex, setCenterModalIndex] = useState(0)
+  /** Painel some grande com muitas worktrees pendentes ao mesmo tempo — deixa
+   *  o usuário recolher a árvore (cabeçalho/badge continuam visíveis) sem
+   *  perder o sinal de que há merges pendentes. */
+  const [treeCollapsed, setTreeCollapsed] = useState(false)
+  /** Altura total do painel (cabeçalho + árvore) — arrasta a alça no TOPO do
+   *  painel pra empurrar a fronteira com a lista de projetos acima pra cima
+   *  ou pra baixo. A lista de projetos é `flex:1` (ProjectSidebar.module.css
+   *  `.list`), então crescer este painel automaticamente encolhe a lista —
+   *  nunca sobrepõe, só divide o espaço. */
+  const [panelHeight, setPanelHeight] = useState(220)
+  const MIN_PANEL_HEIGHT = 90
+  /** Altura só do cabeçalho+alça, quando recolhido — igual ao que o
+   *  separador da sidebar direita (react-resizable-panels, ver App.tsx
+   *  `collapsedSize="0px"`) faz ao recolher: some sempre é DE→PARA entre
+   *  dois números com `height` animável, nunca um pulo pra `auto`. */
+  const HEADER_ONLY_HEIGHT = 44
+  /** true só durante o arrasto ativo — desliga a transição CSS de `height`
+   *  pra ela seguir o ponteiro 1:1 (igual ao `:has([data-separator='active'])`
+   *  de App.module.css), e liga de novo no pointerup pra o "encaixe" final
+   *  (expandir/recolher) ficar suave em vez de instantâneo. */
+  const [isResizingPanel, setIsResizingPanel] = useState(false)
+
+  const handlePanelResizeStart = (e: React.PointerEvent) => {
+    e.preventDefault()
+    // Limita a no máximo metade da altura real da sidebar no momento do
+    // arrasto — garante que a lista de projetos acima (e o rodapé fixo
+    // abaixo) sempre sobrem com espaço, em vez de deixar esse painel comer
+    // a sidebar inteira.
+    const asideEl = (e.currentTarget as HTMLElement).closest('aside')
+    const maxHeight = asideEl
+      ? Math.max(MIN_PANEL_HEIGHT + 40, asideEl.getBoundingClientRect().height * 0.5)
+      : 480
+    const startY = e.clientY
+    const startHeight = treeCollapsed ? HEADER_ONLY_HEIGHT : panelHeight
+    setIsResizingPanel(true)
+    const onMove = (ev: PointerEvent) => {
+      // Arrastar a alça do TOPO pra CIMA (mouse sobe, deltaY negativo) deve
+      // AUMENTAR a altura do painel — por isso o sinal invertido aqui.
+      const raw = startHeight - (ev.clientY - startY)
+      // Arrastar além do limite mínimo recolhe de vez (mesmo estado do
+      // clique no cabeçalho), em vez de travar num sliver pequeno demais pra
+      // ser útil. Se o usuário voltar a arrastar pra cima sem soltar, reabre
+      // e retoma o resize normalmente — o gesto é reversível.
+      if (raw < MIN_PANEL_HEIGHT) {
+        setTreeCollapsed(true)
+        return
+      }
+      setTreeCollapsed(false)
+      setPanelHeight(Math.min(maxHeight, raw))
+    }
+    const onUp = () => {
+      setIsResizingPanel(false)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
 
   // Coleta todas as worktrees ativas dos projetos que possuem alterações/branches
   // pendentes. useMemo evita identidade nova de array a cada render — sem isso,
@@ -148,6 +241,7 @@ export function SidebarMergePanel() {
       if (!repo) continue
       for (const term of proj.terminals) {
         if (term.worktreeAgentId && term.cwd && term.cwd !== repo) {
+          const activeTab = term.tabs.find((tab) => tab.id === term.activeTabId) ?? term.tabs[0]
           result.push({
             id: `${proj.id}-${term.id}`,
             projectId: proj.id,
@@ -157,6 +251,7 @@ export function SidebarMergePanel() {
             branchName: `alethe/agent-${term.worktreeAgentId}`,
             worktreePath: term.cwd,
             agentName: term.name,
+            agentType: activeTab?.type ?? 'shell',
             gsdWatcherEnabled: Boolean(proj.gsdWatcherEnabled),
             gsdGateApplicable: term.tabs.some((tab) => tab.type === 'opencode'),
           })
@@ -214,7 +309,10 @@ export function SidebarMergePanel() {
 
       const commands = proj?.validationCommands ?? []
       if (commands.length === 0) {
-        setGateStatus((prev) => ({ ...prev, [item.id]: { stage: 'ready' } }))
+        // Sem comandos configurados, nada foi de fato checado — não pode
+        // virar o mesmo selo verde de "passou" (era exatamente isso que
+        // fazia o gate mentir que validou quando não validou nada).
+        setGateStatus((prev) => ({ ...prev, [item.id]: { stage: 'unverified' } }))
         return
       }
       try {
@@ -282,15 +380,51 @@ export function SidebarMergePanel() {
   const visiblePendingMerges = pendingMerges.filter((item) => {
     if (!item.gsdWatcherEnabled) return true
     const stage = gateStatus[item.id]?.stage
-    return stage === 'ready' || stage === 'failed' || !stage || stage === 'checking'
+    return (
+      stage === 'ready' ||
+      stage === 'failed' ||
+      stage === 'unverified' ||
+      !stage ||
+      stage === 'checking'
+    )
   })
+
+  // Recorte só pra árvore da sidebar — o popup de detalhe continua navegando
+  // por `visiblePendingMerges` inteiro (todos os projetos); só a árvore fica
+  // escopada ao projeto selecionado no momento.
+  const treeItemsForActiveProject = visiblePendingMerges.filter(
+    (item) => item.projectId === activeProjectId,
+  )
+  const hasOtherProjectsPending = visiblePendingMerges.some(
+    (item) => item.projectId !== activeProjectId,
+  )
 
   const isMergeBusy = MERGE_BUSY_PHASES.includes(mergePhase)
   const activeCard = pendingMerges.find(
     (m) => m.projectId === mergeProjectId && m.worktreeAgentId === mergeWorktreeAgentId,
   )
 
+  const handleSelectCard = (item: PendingMergeCard) => {
+    const idx = visiblePendingMerges.findIndex((i) => i.id === item.id)
+    if (idx === -1) return
+    setCenterModalIndex(idx)
+    setCenterModalOpen(true)
+  }
+
+  /** Reabre o popup de detalhe no MESMO item depois que um modal aninhado
+   *  (Testar / confirmação de commit) fecha — nunca empilha dois Dialog Radix
+   *  ao mesmo tempo, então o Center sempre fecha antes de abrir o outro. */
+  const reopenCenterModalFor = (item: PendingMergeCard) => {
+    const idx = visiblePendingMerges.findIndex((i) => i.id === item.id)
+    if (idx === -1) return
+    setCenterModalIndex(idx)
+    setCenterModalOpen(true)
+  }
+
   const handleAcceptMerge = async (item: PendingMergeCard) => {
+    // Clicar em Integrar sempre fecha o popup de detalhe — pedido explícito
+    // do dono, não fica esperando o usuário fechar na mão.
+    setCenterModalOpen(false)
     const proj = projects.find((p) => p.id === item.projectId)
     if (!proj) return
     const repo = getProjectRepoRoot(proj)
@@ -307,6 +441,9 @@ export function SidebarMergePanel() {
       const defaultMessage = await readTextFile(`${item.worktreePath}/.planning/goal.md`).catch(
         () => '',
       )
+      // Popup já fechado no topo da função — só empilha o modal de
+      // confirmação de commit (nunca dois Dialog Radix abertos ao mesmo
+      // tempo).
       setCommitConfirmTarget({ item, repo, pending, defaultMessage: defaultMessage.trim() })
       return
     }
@@ -317,6 +454,9 @@ export function SidebarMergePanel() {
     const target = commitConfirmTarget
     if (!target) return
     setCommitConfirmTarget(null)
+    // Confirmar o commit segue direto pro integrate de verdade — o popup de
+    // detalhe já estava fechado desde o clique em Integrar, e continua
+    // fechado (mesma regra: Integrar sempre fecha, não reabre sozinho).
     const proj = projects.find((p) => p.id === target.item.projectId)
     if (!proj) return
     await worktreeCommitWorktree(target.repo, target.item.worktreeAgentId, message).catch((err) => {
@@ -334,6 +474,8 @@ export function SidebarMergePanel() {
     const repo = getProjectRepoRoot(proj)
     if (!repo) return
     if (!confirm(t('merge.rejectConfirm', { branch: item.branchName }))) return
+    // Idem: fecha o popup de detalhe só depois do confirm nativo passar.
+    setCenterModalOpen(false)
 
     try {
       // Mata o processo/PTY do agente ANTES de remover a worktree — no Windows,
@@ -435,6 +577,7 @@ export function SidebarMergePanel() {
         initialInput: reviewPrompt(item.branchName, target),
         extraArgs: model ? ['--model', model] : undefined,
       },
+      ephemeralUtility: true,
     })
     const tabId = terminal.tabs[0]?.id
     if (!tabId) return
@@ -474,6 +617,7 @@ export function SidebarMergePanel() {
       name: `test-${item.agentName}`,
       cwd: item.worktreePath,
       firstTab: { type: 'shell', cwd: item.worktreePath },
+      ephemeralUtility: true,
     })
     pushToast({
       title: t('merge.testingStartedTitle'),
@@ -487,16 +631,45 @@ export function SidebarMergePanel() {
    *  atualização de estado confere `prev?.id === item.id` pra não pisar no
    *  resultado se o usuário trocar de card antes das respostas chegarem. */
   const handleOpenTestModal = (item: PendingMergeCard) => {
+    // Fecha o popup de detalhe antes de empilhar o Briefing de Testes — nunca
+    // dois Dialog Radix abertos ao mesmo tempo (ver reopenCenterModalFor).
+    setCenterModalOpen(false)
     setTestModalTarget(item)
     const proj = projects.find((p) => p.id === item.projectId)
     const commands = proj?.validationCommands ?? []
     const repo = proj ? getProjectRepoRoot(proj) : ''
+    const healthCommand = proj?.healthCheckCommand?.trim()
     setTestBriefing({
       id: item.id,
       diff: repo ? null : [],
       validation: commands.length > 0 ? 'loading' : 'idle',
       procedure: null,
+      health: healthCommand ? 'loading' : 'idle',
     })
+
+    if (healthCommand) {
+      healthProbe(item.worktreePath, healthCommand, proj?.healthCheckPath?.trim() || '/', 8000)
+        .then((result) =>
+          setTestBriefing((prev) => (prev?.id === item.id ? { ...prev, health: result } : prev)),
+        )
+        .catch((err) =>
+          setTestBriefing((prev) =>
+            prev?.id === item.id
+              ? {
+                  ...prev,
+                  health: {
+                    started: false,
+                    responded: false,
+                    statusCode: null,
+                    elapsedMs: 0,
+                    outputTail: String(err),
+                    terminalVerified: null,
+                  },
+                }
+              : prev,
+          ),
+        )
+    }
 
     if (repo) {
       void (async () => {
@@ -525,7 +698,10 @@ export function SidebarMergePanel() {
         .catch((err) =>
           setTestBriefing((prev) =>
             prev?.id === item.id
-              ? { ...prev, validation: { success: false, stage: 'run', output: String(err) } }
+              ? {
+                  ...prev,
+                  validation: { success: false, stage: 'run', output: String(err), ranAnyCommand: true },
+                }
               : prev,
           ),
         )
@@ -567,217 +743,113 @@ export function SidebarMergePanel() {
 
   return (
     <>
-      <div className={styles.container}>
-        <div className={styles.header}>
+      <div
+        className={styles.container}
+        style={{
+          height: treeCollapsed ? HEADER_ONLY_HEIGHT : panelHeight,
+          transitionProperty: isResizingPanel ? 'none' : undefined,
+        }}
+      >
+        {/* Sempre montada, mesmo recolhido — arrastar pra cima a partir do
+            cabeçalho recolhido já reabre e retoma o resize (mesma lógica
+            reversível do onMove em handlePanelResizeStart). */}
+        <div
+          className={styles.resizeHandle}
+          onPointerDown={handlePanelResizeStart}
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label={t('merge.treeResizeHandle')}
+        />
+
+        <div
+          className={styles.header}
+          role="button"
+          tabIndex={0}
+          onClick={() => setTreeCollapsed((v) => !v)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              setTreeCollapsed((v) => !v)
+            }
+          }}
+          aria-expanded={!treeCollapsed}
+        >
           <div className={styles.title}>
             <GitMerge size={14} color="var(--accent)" />
             <span>{t('merge.panelTitle')}</span>
           </div>
-          <span className={styles.badge}>{visiblePendingMerges.length}</span>
+          <div className={styles.headerRight}>
+            <span className={styles.badge}>{visiblePendingMerges.length}</span>
+            {treeCollapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+          </div>
         </div>
 
-        {pendingMerges.length === 0 ? (
-          <div className={styles.emptyState}>{t('merge.panelEmpty')}</div>
-        ) : visiblePendingMerges.length === 0 ? (
-          <div className={styles.emptyState}>
-            {t('merge.panelGatedHint', { count: pendingMerges.length })}
-          </div>
-        ) : (
-          visiblePendingMerges.map((item) => {
-            const isCardActive = activeCard?.id === item.id
-            const showStatusPanel = isCardActive && mergePhase !== 'idle'
-            const buttonsDisabled = !isCardActive && isMergeBusy
-            const gate = gateStatus[item.id]
-            const status =
-              !isCardActive && gate?.stage === 'failed'
-                ? { key: 'merge.statusGateFailed' as const, tone: 'offline' as const }
-                : statusInfo(mergePhase, isCardActive)
-            const statusToneClass =
-              status.tone === 'working'
-                ? styles.statusWorking
-                : status.tone === 'waiting'
-                  ? styles.statusWaiting
-                  : status.tone === 'offline'
-                    ? styles.statusOffline
-                    : styles.statusStopped
-
-            return (
-              <div key={item.id} className={styles.card}>
-                <div className={styles.branchHeader}>
-                  <span className={styles.branchName} title={item.branchName}>
-                    {item.agentName} ({item.projectName})
-                  </span>
-                  <span className={`${styles.statusTag} ${statusToneClass}`}>{t(status.key)}</span>
-                </div>
-
-                {!showStatusPanel && gate?.stage === 'failed' ? (
-                  <div className={styles.statusPanel}>
-                    {gate.detail ? <p className={styles.statusDetail}>{gate.detail}</p> : null}
-                    <button
-                      type="button"
-                      className={styles.actionBtn}
-                      onClick={() => void checkCard(item)}
-                    >
-                      <RefreshCw size={12} />
-                      {t('merge.gateRecheck')}
-                    </button>
-                  </div>
-                ) : null}
-
-                {showStatusPanel ? (
-                  <div className={styles.statusPanel}>
-                    {(mergePhase === 'failed' || mergePhase === 'terminal_error') &&
-                    (mergeError || mergeOutcome?.output) ? (
-                      <p className={styles.statusDetail}>
-                        {(mergeError ?? mergeOutcome?.output ?? '').slice(0, 240)}
-                      </p>
-                    ) : null}
-                    {mergePhase === 'resolving' ? (
-                      <p className={styles.statusDetail}>{t('merge.resolvingHint')}</p>
-                    ) : null}
-                    {mergePhase === 'awaiting_review' ? (
-                      <>
-                        <p className={styles.statusDetail}>{t('merge.awaitingReviewHint')}</p>
-                        {mergeOutcome && mergeOutcome.stage !== 'validated' ? (
-                          <p className={styles.statusDetail}>{mergeOutcome.output.slice(0, 240)}</p>
-                        ) : null}
-                        <div className={styles.actionsGrid}>
-                          <button
-                            type="button"
-                            className={`${styles.actionBtn} ${styles.btnValidate}`}
-                            disabled={mergeIsFinalizing}
-                            onClick={() => void validateResolution()}
-                          >
-                            <ShieldCheck size={12} />
-                            <span className={styles.actionBtnLabel}>
-                              {mergeIsFinalizing ? t('merge.validating') : t('merge.validate')}
-                            </span>
-                          </button>
-                          <button
-                            type="button"
-                            className={`${styles.actionBtn} ${styles.btnAccept}`}
-                            disabled={mergeIsFinalizing || mergeOutcome?.stage !== 'validated'}
-                            onClick={() => void finalizeResolution()}
-                            title={
-                              mergeOutcome?.stage !== 'validated'
-                                ? t('merge.validateBeforeIntegrateHint')
-                                : undefined
-                            }
-                          >
-                            <Check size={12} />
-                            <span className={styles.actionBtnLabel}>{t('merge.integrate')}</span>
-                          </button>
-                        </div>
-                      </>
-                    ) : null}
-                    {mergePhase !== 'merged' ? (
-                      <button
-                        type="button"
-                        className={`${styles.actionBtn} ${styles.btnAbort}`}
-                        onClick={() => void abortMerge()}
-                      >
-                        <X size={12} />
-                        {t('merge.abort')}
-                      </button>
-                    ) : null}
-                  </div>
-                ) : reviewInputId === item.id ? (
-                  <div className={styles.reviewBox}>
-                    <textarea
-                      className={styles.reviewTextarea}
-                      placeholder={t('merge.reviewFeedbackPlaceholder')}
-                      value={reviewFeedback}
-                      onChange={(e) => setReviewFeedback(e.target.value)}
-                    />
-                    <div className={styles.reviewActions}>
-                      <button
-                        type="button"
-                        className={styles.actionBtn}
-                        onClick={() => setReviewInputId(null)}
-                      >
-                        {t('merge.reviewFeedbackCancel')}
-                      </button>
-                      <button
-                        type="button"
-                        className={`${styles.actionBtn} ${styles.btnValidate}`}
-                        onClick={() => void handleSendReview(item)}
-                      >
-                        {t('merge.reviewFeedbackSend')}
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className={styles.actionsGrid}>
-                    <button
-                      type="button"
-                      className={`${styles.actionBtn} ${styles.btnAccept}`}
-                      disabled={buttonsDisabled}
-                      onClick={() => void handleAcceptMerge(item)}
-                      title={t('merge.integrateTooltip')}
-                    >
-                      <Check size={12} />
-                      <span className={styles.actionBtnLabel}>{t('merge.integrate')}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`${styles.actionBtn} ${styles.btnReject}`}
-                      disabled={buttonsDisabled}
-                      onClick={() => void handleRejectMerge(item)}
-                      title={t('merge.rejectTooltip')}
-                    >
-                      <X size={12} />
-                      <span className={styles.actionBtnLabel}>{t('merge.reject')}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`${styles.actionBtn} ${styles.btnValidate}`}
-                      disabled={buttonsDisabled || validatingId === item.id}
-                      onClick={() => void handleRunValidation(item)}
-                      title={t('merge.validateTooltip')}
-                    >
-                      <ShieldCheck size={12} />
-                      <span className={styles.actionBtnLabel}>
-                        {validatingId === item.id ? t('merge.validating') : t('merge.validate')}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`${styles.actionBtn} ${styles.btnTest}`}
-                      disabled={buttonsDisabled}
-                      onClick={() => handleOpenTestModal(item)}
-                      title={t('merge.testTooltip')}
-                    >
-                      <Play size={12} />
-                      <span className={styles.actionBtnLabel}>{t('merge.test')}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`${styles.actionBtn} ${styles.btnReview}`}
-                      disabled={buttonsDisabled}
-                      onClick={() => void handleToggleReview(item)}
-                      title={t('merge.reviewTooltip')}
-                    >
-                      <MessageSquare size={12} />
-                      <span className={styles.actionBtnLabel}>{t('merge.review')}</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            )
-          })
-        )}
+        {/* Sempre montada (mesmo recolhido) — anima opacidade/deslocamento
+            junto com a altura do .container encolhendo, em vez de sumir
+            de golpe no unmount (mesmo espírito do .sidebarContent[data-hidden]
+            de App.module.css pro drawer direito). */}
+        <div className={styles.body} data-hidden={treeCollapsed}>
+          {pendingMerges.length === 0 ? (
+            <div className={styles.emptyState}>{t('merge.panelEmpty')}</div>
+          ) : visiblePendingMerges.length === 0 ? (
+            <div className={styles.emptyState}>
+              {t('merge.panelGatedHint', { count: pendingMerges.length })}
+            </div>
+          ) : (
+            <MergeTree
+              items={treeItemsForActiveProject}
+              gateStatus={gateStatus}
+              mergePhase={mergePhase}
+              activeCardId={activeCard?.id ?? null}
+              terminalTheme={terminalTheme}
+              hasOtherProjectsPending={hasOtherProjectsPending}
+              onSelect={handleSelectCard}
+            />
+          )}
+        </div>
       </div>
+
+      {centerModalOpen ? (
+        <MergeCenterModal
+          open={centerModalOpen}
+          onClose={() => setCenterModalOpen(false)}
+          items={visiblePendingMerges}
+          initialIndex={centerModalIndex}
+          gateStatus={gateStatus}
+          terminalTheme={terminalTheme}
+          mergePhase={mergePhase}
+          mergeProjectId={mergeProjectId}
+          mergeWorktreeAgentId={mergeWorktreeAgentId}
+          mergeError={mergeError}
+          mergeOutcome={mergeOutcome}
+          mergeIsFinalizing={mergeIsFinalizing}
+          isMergeBusy={isMergeBusy}
+          onValidateResolution={() => void validateResolution()}
+          onFinalizeResolution={() => void finalizeResolution()}
+          onAbortMerge={() => void abortMerge()}
+          reviewInputId={reviewInputId}
+          reviewFeedback={reviewFeedback}
+          onReviewFeedbackChange={setReviewFeedback}
+          onCancelReview={() => setReviewInputId(null)}
+          onToggleReview={(item) => void handleToggleReview(item)}
+          onSendReview={(item) => void handleSendReview(item)}
+          onAccept={(item) => void handleAcceptMerge(item)}
+          onReject={(item) => void handleRejectMerge(item)}
+          onValidate={(item) => void handleRunValidation(item)}
+          validatingId={validatingId}
+          onOpenTest={handleOpenTestModal}
+          onRecheckGate={(item) => void checkCard(item)}
+        />
+      ) : null}
 
       {testModalTarget ? (
         <BranchTestingModal
           open={Boolean(testModalTarget)}
           onClose={() => {
+            const reopenItem = testModalTarget
             setTestModalTarget(null)
             setTestBriefing(null)
+            reopenCenterModalFor(reopenItem)
           }}
           branchName={testModalTarget.branchName}
           projectName={testModalTarget.projectName}
@@ -785,6 +857,39 @@ export function SidebarMergePanel() {
             testBriefing?.diff === null
               ? [t('merge.testBriefingLoadingDiff')]
               : (testBriefing?.diff ?? []).map((entry) => `${entry.status} ${entry.path}`)
+          }
+          healthState={
+            testBriefing?.health === 'idle' || testBriefing?.health === undefined
+              ? 'idle'
+              : testBriefing.health === 'loading'
+                ? 'loading'
+                : testBriefing.health.responded && testBriefing.health.terminalVerified !== false
+                  ? 'ok'
+                  : 'warn'
+          }
+          healthSummary={
+            testBriefing?.health === 'idle' || testBriefing?.health === undefined
+              ? [t('merge.testHealthNotConfigured')]
+              : testBriefing.health === 'loading'
+                ? [t('merge.testHealthLoading')]
+                : testBriefing.health.responded
+                  ? [
+                      t('merge.testHealthResponded', {
+                        ms: testBriefing.health.elapsedMs,
+                        status: String(testBriefing.health.statusCode ?? '—'),
+                      }),
+                      ...(testBriefing.health.terminalVerified === true
+                        ? [t('merge.testHealthTerminalVerified')]
+                        : testBriefing.health.terminalVerified === false
+                          ? [t('merge.testHealthTerminalFailed')]
+                          : []),
+                    ]
+                  : [
+                      t('merge.testHealthNoResponse', {
+                        ms: testBriefing.health.elapsedMs,
+                        output: testBriefing.health.outputTail.slice(0, 300),
+                      }),
+                    ]
           }
           testingItems={
             testBriefing?.procedure && testBriefing.procedure.length > 0
@@ -818,7 +923,11 @@ export function SidebarMergePanel() {
       {commitConfirmTarget ? (
         <ConfirmWorktreeCommitModal
           open={Boolean(commitConfirmTarget)}
-          onClose={() => setCommitConfirmTarget(null)}
+          onClose={() => {
+            const reopenItem = commitConfirmTarget.item
+            setCommitConfirmTarget(null)
+            reopenCenterModalFor(reopenItem)
+          }}
           branchName={commitConfirmTarget.item.branchName}
           pending={commitConfirmTarget.pending}
           defaultMessage={commitConfirmTarget.defaultMessage}

@@ -8,7 +8,7 @@
  * uma PTY existente (restart manual, migração pra worktree) sem precisar
  * remontar o componente XTermView — ver `agentPtyRestart.ts`.
  */
-import { claimDiscoveredSession, type SessionSnapshot } from './sessionDiscovery'
+import { claimDiscoveredSession, claimMostRecentSession, type SessionSnapshot } from './sessionDiscovery'
 import { saveSession } from './sessionResume'
 import { waitForSessionHint } from './sessionWatch'
 import {
@@ -24,6 +24,48 @@ async function snapshotFor(agent: AsyncResumableAgent, cwd: string): Promise<Ses
   if (agent === 'codex') return snapshotCodexSessions(cwd).catch(() => [])
   if (agent === 'antigravity') return snapshotAntigravitySessions(cwd).catch(() => [])
   return snapshotOpenCodeSessions(cwd).catch(() => [])
+}
+
+/**
+ * Checagem SÍNCRONA (uma tentativa só, sem polling) da sessão mais recente
+ * já existente em disco pra este (agent, cwd) — pra usar em momentos que não
+ * podem esperar `watchAndPersistDiscoveredSession` (que só tenta a cada 3s+
+ * em segundo plano). Bug real, confirmado ao vivo: mover um terminal pra
+ * worktree nova depois de um merge ("manter sessão") matava o processo e
+ * relia só no cache de `localStorage` (`getActiveSessions`/`saveSession`) —
+ * se o watcher ainda não tinha achado a sessão real do CLI (mínimo ~3s de
+ * atraso, e só depois do agente responder pelo menos uma vez), o cache
+ * nunca tinha nada, e a retomada sempre caía numa conversa vazia mesmo com
+ * uma sessão de verdade esperando em disco. Persiste no `saveSession` se
+ * achar algo, pra o resto do app (próximo boot, outras checagens) já ver a
+ * entrada certa também.
+ */
+export async function discoverActiveSessionNow(
+  agent: AsyncResumableAgent,
+  cwd: string,
+  ptyId?: string,
+  reservedIds?: ReadonlySet<string>,
+): Promise<string | undefined> {
+  const sessions = await snapshotFor(agent, cwd)
+  let filtered = sessions
+  if (agent === 'opencode') {
+    const gsdChildId = await readGsdChildSession(cwd).catch(() => null)
+    if (gsdChildId) filtered = sessions.filter((s) => s.id !== gsdChildId)
+  }
+  const claimed = claimMostRecentSession(agent, cwd, filtered, ptyId, reservedIds)
+  if (!claimed) return undefined
+  if (ptyId) {
+    saveSession(ptyId, {
+      sessionId: ptyId,
+      codexSessionId: agent === 'codex' ? claimed.id : undefined,
+      antigravitySessionId: agent === 'antigravity' ? claimed.id : undefined,
+      opencodeSessionId: agent === 'opencode' ? claimed.id : undefined,
+      cwd,
+      agent,
+      timestamp: Date.now(),
+    })
+  }
+  return claimed.id
 }
 
 export type WatchAndPersistDiscoveredSessionOpts = {

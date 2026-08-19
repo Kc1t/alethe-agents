@@ -9,6 +9,7 @@ import { useEffect, useRef } from 'react'
 
 import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
+import { deliverOpenCodePrompt } from '../../lib/agentPromptDelivery'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { watchAndPersistDiscoveredSession } from '../../lib/agentSessionDiscovery'
 import { isTauriEnv } from '../../lib/api/transport'
@@ -336,6 +337,16 @@ export function useXtermSession(params: {
   // scrollback (attachPty + reset) — chamado pelo efeito de visibilidade
   // abaixo quando o painel volta a ficar visível.
   const resyncTerminalRef = useRef<((reason?: PtyResyncReason) => Promise<void>) | null>(null)
+  // Referência viva do `CanvasAddon` (nunca guardada antes — bug real,
+  // confirmado ao vivo: com o app minimizado por muito tempo, o WebView2
+  // descarta o backing store 2D do canvas de páginas ocultas, mas o cache
+  // interno de glifos do addon (módulo-level, compartilhado entre painéis)
+  // continua achando que estão lá — texto volta com letras faltando/soltas
+  // ao restaurar a janela, e sobrevive até a um "Reiniciar" do terminal
+  // porque esta instância nunca é recriada nesse fluxo). Usada pelo efeito
+  // de visibilidade abaixo pra chamar `clearTextureAtlas()` + forçar redraw
+  // quando a janela volta a ficar visível.
+  const canvasAddonRef = useRef<CanvasAddon | null>(null)
   // Bounds automatic recovery when a replacement core no longer owns the PTY.
   const missingPtyRecoveryRef = useRef<{ id: string; attemptedAt: number } | null>(null)
   // Conta quantos auto-restarts por crash do Bun já foram tentados NESTE
@@ -481,7 +492,9 @@ export function useXtermSession(params: {
     terminal.loadAddon(new Unicode11Addon())
     terminal.unicode.activeVersion = '11'
     try {
-      terminal.loadAddon(new CanvasAddon())
+      const canvasAddon = new CanvasAddon()
+      terminal.loadAddon(canvasAddon)
+      canvasAddonRef.current = canvasAddon
     } catch {
       /* addon indisponivel — o xterm cai sozinho no renderer DOM */
     }
@@ -489,6 +502,22 @@ export function useXtermSession(params: {
     terminal.open(container)
     patchXtermViewportSyncGuard(terminal)
     terminalRef.current = terminal
+
+    // Hook de debug só pra e2e (Parte 5 — sincronização cross-client):
+    // expõe `cols`/`rows` renderizados de verdade por PTY, já que não há
+    // nenhum outro jeito de inspecionar a grade real do xterm.js de fora via
+    // WebDriver. Somente leitura, sem entrada não confiável — seguro deixar
+    // sempre presente (não é gateado por env var em runtime porque o build
+    // de e2e usa `vite build` normal, sem `import.meta.env.DEV`).
+    const syncDebugTerminalHook = () => {
+      const id = ptyIdRef.current
+      if (!id) return
+      const w = window as unknown as {
+        __ALETHE_DEBUG_TERMINALS__?: Record<string, { cols: number; rows: number }>
+      }
+      w.__ALETHE_DEBUG_TERMINALS__ ??= {}
+      w.__ALETHE_DEBUG_TERMINALS__[id] = { cols: terminal.cols, rows: terminal.rows }
+    }
 
     type XtermScaleInternals = {
       _renderService?: { dimensions?: { css?: { cell?: { width: number; height: number } } } }
@@ -583,6 +612,7 @@ export function useXtermSession(params: {
           terminal.resize(targetCols, targetRows)
         }
         if (wasAtBottom) terminal.scrollToBottom()
+        syncDebugTerminalHook()
       } catch {
         /* internals do xterm.js podem ter mudado de forma — sem escala, cai
            no comportamento cru (grade correta, sem ajuste de encaixe). */
@@ -727,10 +757,27 @@ export function useXtermSession(params: {
         try {
           terminal.write(output)
           clampHorizontalScroll()
-        } catch {
-          /* renderer quebrado (ex.: perda de contexto WebGL em andamento) —
-           * não deixa uma escrita falha travar o loop de flush pro resto da
-           * vida do pane; o próximo frame tenta de novo. */
+        } catch (error) {
+          // Bug real, confirmado ao vivo: com a janela minimizada por muito
+          // tempo, `pendingWrites` cresce sem teto (o rAF que drena isto não
+          // roda com a página oculta) — se passar dos 50MB internos do
+          // próprio xterm.js, `terminal.write()` LANÇA de propósito (flow
+          // control). `output` já tinha sido retirado de `pendingWrites`
+          // antes desta chamada — engolir o erro aqui perdia até
+          // `TERMINAL_WRITE_FRAME_BUDGET` bytes NO MEIO do stream pra
+          // sempre, cortando uma sequência CSI/OSC ao meio e desalinhando o
+          // parser dali em diante (a corrupção visual "letras soltas na
+          // tela" já vista ao vivo). Em vez de fingir que só esse pedaço
+          // sumiu e seguir escrevendo por cima de um parser já desalinhado,
+          // descarta o resto do backlog acumulado (não dá pra confiar na
+          // ordem/alinhamento dele de qualquer jeito) e força uma
+          // ressincronização de verdade (mesmo caminho usado num
+          // reconnect) — bounded e visível, em vez de silenciosa.
+          console.warn('[Alethe][xterm] terminal.write() falhou, ressincronizando', error)
+          pendingWrites = []
+          pendingWriteLength = 0
+          void resyncTerminalRef.current?.('reconnect').catch(() => {})
+          return
         }
       }
       if (pendingWriteLength > 0) {
@@ -913,6 +960,20 @@ export function useXtermSession(params: {
       if (document.visibilityState === 'hidden' || !container.matches(':hover')) return
       terminal.focus()
     }
+    // Corrige o atlas de glifos do `CanvasAddon` ao voltar a ficar visível
+    // (ex. restaurar a janela depois de minimizada por muito tempo) — sem
+    // gate de hover, ao contrário de `restoreHoveredFocus` acima: aqui não é
+    // sobre foco, é sobre corrigir pixels errados em QUALQUER painel que
+    // volte a ficar visível, hovered ou não. `clearTextureAtlas()` já
+    // dispara o redraw sozinho.
+    const clearCanvasAtlasOnRestore = () => {
+      if (document.visibilityState !== 'visible') return
+      try {
+        canvasAddonRef.current?.clearTextureAtlas()
+      } catch {
+        /* addon já disposed nesse meio-tempo — nada a fazer */
+      }
+    }
     const focusTerminal = () => {
       terminal.focus()
       if (isGridObserver && performance.now() - lastRemoteSyncAt > 300) {
@@ -935,6 +996,7 @@ export function useXtermSession(params: {
     container.addEventListener('click', focusTerminal)
     window.addEventListener('focus', onWindowFocus)
     document.addEventListener('visibilitychange', restoreHoveredFocus)
+    document.addEventListener('visibilitychange', clearCanvasAtlasOnRestore)
 
     const onPaste = (event: ClipboardEvent) => {
       const raw = event.clipboardData?.getData('text/plain') ?? ''
@@ -1125,6 +1187,7 @@ export function useXtermSession(params: {
       // O dono acabou de medir o próprio container via fitAddon.fit(), então
       // renderiza sempre na fonte nativa — sem escala de observador.
       restoreBaseFontSize()
+      syncDebugTerminalHook()
     }
     // Aplica um resize que outro cliente (Desktop ou Web) fez no MESMO PTY.
     // Sem isso, este cliente nunca sabia que a grade mudou — os bytes que
@@ -2215,7 +2278,11 @@ export function useXtermSession(params: {
                 // quebrava qualquer match de string), lê a TELA já
                 // renderizada pelo próprio xterm.js — o mesmo buffer que ele
                 // usa pra desenhar, já com todos os códigos ANSI aplicados e
-                // resolvidos em texto puro.
+                // resolvidos em texto puro. Lógica de digitação/confirmação
+                // em si mora em `agentPromptDelivery.ts` (extraída pra ser
+                // reaproveitada fora deste componente, ex. pela suíte e2e —
+                // ver `e2e/support/openCodePrompt.ts` — sem duplicar nem
+                // reinventar algo já testado ao vivo).
                 const readVisibleScreenText = (rows = 200): string => {
                   const buffer = terminal.buffer.active
                   const start = Math.max(0, buffer.length - rows)
@@ -2226,104 +2293,17 @@ export function useXtermSession(params: {
                   }
                   return lines.join('\n')
                 }
-                // Remove TUDO que não for letra/dígito — não só espaço.
-                // Confirmado ao vivo: a caixa de entrada do OpenCode tem uma
-                // borda decorativa (barra vertical) no início de cada linha
-                // desenhada; como não é espaço em branco, sobrava no meio
-                // do texto lido sempre que o prompt quebrava linha,
-                // quebrando qualquer comparação exata. Normalizando os dois
-                // lados (tela e prompt) do mesmo jeito, borda/pontuação/
-                // quebra de linha somem e só sobra o "esqueleto" de letras.
-                const normalizeForMatch = (text: string) =>
-                  text.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase()
-                // Usa o FINAL do prompt como impressão digital, não o
-                // começo: o prompt é longo o bastante pra ocupar a caixa de
-                // entrada inteira sozinho, e o começo pode já não estar mais
-                // visível (quebra de linha própria do OpenCode, ou scroll
-                // interno da caixa) na hora em que a digitação termina — o
-                // final é sempre onde o cursor acabou de escrever.
-                const promptFingerprint = normalizeForMatch(prompt).slice(-30)
-                // A tela de boas-vindas só mostra esse placeholder quando a
-                // caixa de entrada está vazia — usa isso pra saber se é
-                // SEGURO redigitar (nada a duplicar) ou não.
-                const PLACEHOLDER_FINGERPRINT = normalizeForMatch('Ask anything')
-                const boxLooksEmpty = () =>
-                  normalizeForMatch(readVisibleScreenText()).includes(PLACEHOLDER_FINGERPRINT)
-                // Confirmado ao vivo: digitar na mão (tecla por tecla) nesse
-                // MESMO terminal funciona normal, mas mandar o prompt inteiro
-                // numa escrita só nunca aparecia na tela — simula digitação
-                // de verdade, em pedaços pequenos com um respiro entre cada.
-                const TYPE_CHUNK_SIZE = 6
-                const TYPE_CHUNK_DELAY_MS = 30
-                const typePrompt = async () => {
-                  for (let index = 0; index < prompt.length; index += TYPE_CHUNK_SIZE) {
-                    await writePty(
-                      response.id,
-                      prompt.slice(index, index + TYPE_CHUNK_SIZE),
-                      activeProfileId,
-                    )
-                    await new Promise((resolve) => window.setTimeout(resolve, TYPE_CHUNK_DELAY_MS))
-                  }
-                }
-                // Cada rodada só redigita se a caixa ainda parecer vazia —
-                // testado ao vivo, Ctrl+U não limpa o editor multi-linha do
-                // OpenCode, então redigitar em cima de texto que já chegou
-                // (só não confirmado ainda) empilha cópias duplicadas na
-                // caixa (spam visível). Mas se o OpenCode simplesmente
-                // ignorou a digitação inteira (ainda não pronto pra
-                // receber input — visto ao vivo, caixa continua vazia até o
-                // prazo vencer), essa rodada seguinte tenta digitar de novo.
-                let confirmedOnScreen = false
-                let firstRound = true
-                for (
-                  let round = 0;
-                  !disposed && !confirmedOnScreen && Date.now() < deadline;
-                  round++
-                ) {
-                  if (firstRound || boxLooksEmpty()) {
-                    firstRound = false
-                    await typePrompt()
-                  }
-                  const roundDeadline = Math.min(deadline, Date.now() + 8_000)
-                  while (!disposed && Date.now() < roundDeadline) {
-                    if (normalizeForMatch(readVisibleScreenText()).includes(promptFingerprint)) {
-                      confirmedOnScreen = true
-                      break
-                    }
-                    await new Promise((resolve) => window.setTimeout(resolve, 700))
-                  }
-                }
-                if (!confirmedOnScreen) {
+                const delivered = await deliverOpenCodePrompt(prompt, deadline, {
+                  readScreenText: readVisibleScreenText,
+                  write: (data) => writePty(response.id, data, activeProfileId),
+                  sleep: (ms) => new Promise((resolve) => window.setTimeout(resolve, ms)),
+                  isCancelled: () => disposed,
+                })
+                if (!delivered) {
                   console.warn(
                     `[pty-launch] opencode não confirmou o texto digitado na tela antes do prazo id=${response.id}`,
                   )
                   return
-                }
-                // Confirmado ao vivo: o texto chega perfeito na caixa, mas
-                // um único Enter às vezes não dispara o envio sozinho.
-                // "A caixa esvaziou" não serve de critério de parada aqui —
-                // o rodapé "esc interrupt" já aparece só com texto parado
-                // na caixa, sem estar processando nada, então não dá pra
-                // confiar nele pra saber se o agente já começou a
-                // responder. Critério mais seguro: comparar a tela INTEIRA
-                // antes/depois — só reenvia Enter se a tela ficar
-                // EXATAMENTE igual (nada aconteceu, o Enter não registrou).
-                // Assim que a tela mudar de qualquer jeito — enviou, ou o
-                // agente já começou a escrever a resposta — para na hora e
-                // nunca mais reenvia.
-                await new Promise((resolve) => window.setTimeout(resolve, 150))
-                const MAX_ENTER_ATTEMPTS = 4
-                let previousScreen = readVisibleScreenText()
-                for (
-                  let attempt = 0;
-                  attempt < MAX_ENTER_ATTEMPTS && !disposed && Date.now() < deadline;
-                  attempt++
-                ) {
-                  await writePty(response.id, '\r', activeProfileId)
-                  await new Promise((resolve) => window.setTimeout(resolve, 1_500))
-                  const currentScreen = readVisibleScreenText()
-                  if (currentScreen !== previousScreen) break
-                  previousScreen = currentScreen
                 }
               } else {
                 // Bracketed paste (marcadores 200~/201~) só faz sentido se o
@@ -2387,6 +2367,7 @@ export function useXtermSession(params: {
       container.removeEventListener('contextmenu', onContextMenu)
       window.removeEventListener('focus', onWindowFocus)
       document.removeEventListener('visibilitychange', restoreHoveredFocus)
+      document.removeEventListener('visibilitychange', clearCanvasAtlasOnRestore)
       window.removeEventListener('alethe:zoom-changed', onZoomChanged)
       window.removeEventListener('alethe:terminal-resize-request', onResizeRequest)
       window.removeEventListener('alethe:pane-layout-synced', onPaneLayoutSynced)
@@ -2414,6 +2395,7 @@ export function useXtermSession(params: {
       if (terminalRef.current === terminal) terminalRef.current = null
       ptyIdRef.current = null
       if (resyncTerminalRef.current === doResync) resyncTerminalRef.current = null
+      canvasAddonRef.current = null
       terminal.dispose()
     }
     // A identidade estável da sub-tab evita remontar assim que o spawn troca o

@@ -139,6 +139,46 @@ pub(crate) fn align_to_char_boundary(slice: &[u8], start: usize) -> usize {
     start
 }
 
+/// Sequências de "reset visual completo" — cortar logo DEPOIS de uma delas
+/// garante que o replay começa numa tela conhecida, mesmo que o parser do
+/// cliente ainda carregue estado residual (SGR, alt-buffer, posição do
+/// cursor) de antes do corte.
+const SCREEN_RESET_SEQUENCES: &[&[u8]] = &[
+    b"\x1bc",      // RIS — reset completo do terminal
+    b"\x1b[2J",    // Apaga a tela inteira
+    b"\x1b[3J",    // Apaga a tela + scrollback
+    b"\x1b[?1049h", // Entra no alternate screen buffer (TUIs full-screen, ex. OpenCode)
+];
+
+/// A partir de um corte só alinhado a UTF-8 (`align_to_char_boundary`),
+/// procura pra TRÁS, numa janela limitada, a ÚLTIMA sequência de "reset
+/// visual completo" e corta logo depois dela em vez do ponto original.
+///
+/// Bug real, confirmado ao vivo: truncar scrollback só por contagem de
+/// bytes pode começar bem no meio de um repaint parcial de uma TUI em
+/// alternate buffer (ex. OpenCode, que só reescreve células alteradas) —
+/// sem o clear/reset que veio antes, o replay reproduz células soltas
+/// posicionadas em cima de nada: exatamente a corrupção visual já vista ao
+/// vivo (letras e palavras faltando na tela). Sem nenhum reset na janela de
+/// busca, mantém o corte original — melhor um scrollback truncado no meio
+/// (comportamento já existente) do que voltar bytes demais só pra "talvez"
+/// achar um reset mais cedo.
+pub(crate) fn align_to_ansi_resync_point(slice: &[u8], start: usize) -> usize {
+    const SEARCH_WINDOW: usize = 256 * 1024;
+    let search_start = start.saturating_sub(SEARCH_WINDOW);
+    let window = &slice[search_start..start];
+    SCREEN_RESET_SEQUENCES
+        .iter()
+        .filter_map(|needle| {
+            window
+                .windows(needle.len())
+                .rposition(|w| w == *needle)
+                .map(|pos| search_start + pos + needle.len())
+        })
+        .max()
+        .unwrap_or(start)
+}
+
 /// `ALETHE_PTY_DEBUG=1` liga uma timeline de timestamps (spawn → primeiro
 /// output real → resize → nudge de redesenho) em `spawn.log`, pro
 /// procedimento de diagnóstico da área principal do OpenCode renderizando
@@ -1187,6 +1227,7 @@ pub async fn attach_pty_snapshot_core(
                     let slice = buffer.data.make_contiguous();
                     let start =
                         align_to_char_boundary(slice, slice.len().saturating_sub(max_bytes));
+                    let start = align_to_ansi_resync_point(slice, start);
                     return Ok(PtyScrollbackSnapshot {
                         content: String::from_utf8_lossy(&slice[start..]).into_owned(),
                         cursor: buffer.cursor,
@@ -1201,6 +1242,7 @@ pub async fn attach_pty_snapshot_core(
         let disk = load_scrollback(session_path.as_deref().unwrap_or(&sb_path_buf))?;
         let bytes: Vec<u8> = disk.into_iter().collect();
         let start = align_to_char_boundary(&bytes, bytes.len().saturating_sub(max_bytes));
+        let start = align_to_ansi_resync_point(&bytes, start);
         Ok(PtyScrollbackSnapshot {
             content: String::from_utf8_lossy(&bytes[start..]).into_owned(),
             cursor: bytes.len() as u64,
@@ -2221,6 +2263,42 @@ mod tests {
         // Emoji 😀 (4 bytes) com só os 2 primeiros → 0 válidos.
         let grin = "😀".as_bytes();
         assert_eq!(valid_utf8_prefix_len(&grin[..2]), 0);
+    }
+
+    #[test]
+    fn ansi_resync_point_finds_last_screen_reset_in_window() {
+        // Repaint parcial de TUI (sem reset) seguido de um clear real, seguido
+        // de mais repaint parcial — o corte por byte cai no meio do segundo
+        // repaint; o resync deve mover pro início dele (logo após o clear).
+        let mut data = b"garbage before\x1b[5;10Hpartial repaint 1".to_vec();
+        let reset_at = data.len();
+        data.extend_from_slice(b"\x1b[2J");
+        let after_reset = data.len();
+        data.extend_from_slice(b"\x1b[1;1Hfresh screen content here");
+
+        let byte_start = data.len() - 10; // cai bem no meio de "content here"
+        let start = align_to_ansi_resync_point(&data, byte_start);
+        assert_eq!(start, after_reset, "deveria cortar logo após o \\x1b[2J");
+        assert!(start > reset_at);
+    }
+
+    #[test]
+    fn ansi_resync_point_falls_back_to_original_start_without_reset() {
+        let data = b"no reset sequence anywhere in this buffer at all".to_vec();
+        let start = align_to_ansi_resync_point(&data, 20);
+        assert_eq!(start, 20, "sem reset na janela, mantém o corte original");
+    }
+
+    #[test]
+    fn ansi_resync_point_ignores_reset_outside_search_window() {
+        // Reset bem no início, corte bem no fim, com espaço suficiente entre
+        // os dois pra ficar fora da janela de busca (256 KiB) — não deve
+        // "voltar" tanto assim.
+        let mut data = b"\x1b[2J".to_vec();
+        data.extend(std::iter::repeat(b'x').take(300 * 1024));
+        let byte_start = data.len() - 5;
+        let start = align_to_ansi_resync_point(&data, byte_start);
+        assert_eq!(start, byte_start, "reset fora da janela não deve ser usado");
     }
 
     #[test]
