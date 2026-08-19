@@ -96,8 +96,9 @@ jobs:
 
   # Windows primeiro por ser a plataforma prioritária do app (ver CONTRIBUTING.md);
   # roda a instância buildada em profile de teste isolado (nunca `tauri dev`
-  # interativo) via @wdio/tauri-service, provider embedded (msedgedriver
-  # auto-gerenciado no Windows, sem setup extra).
+  # interativo) via @wdio/tauri-service com o provider `tauri-driver` real
+  # (instalado explicitamente abaixo — o provider embedded caía num fallback
+  # silencioso pro Edge comum, ver comentário em e2e/wdio.conf.ts).
   e2e:
     name: E2E (Windows)
     runs-on: windows-latest
@@ -118,6 +119,12 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
+
+      # wdio.conf.ts força `driverProvider: 'tauri-driver'` (não o provider
+      # embedded/msedgedriver) para evitar o fallback silencioso pro Edge
+      # comum documentado ali — precisa do binário instalado antes do teste.
+      - name: Install tauri-driver
+        run: cargo install tauri-driver --locked
 
       - name: Install dependencies
         run: npm ci
