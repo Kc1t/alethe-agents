@@ -1,5 +1,5 @@
 import { isTauri } from '@tauri-apps/api/core'
-import { LogicalPosition, LogicalSize } from '@tauri-apps/api/dpi'
+import { PhysicalPosition, PhysicalSize } from '@tauri-apps/api/dpi'
 import { Webview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
@@ -88,7 +88,16 @@ export function PrivateBrowserSurface({
     const readRect = (): SurfaceRect | null => {
       const rect = node.getBoundingClientRect()
       if (rect.width < 2 || rect.height < 2) return null
-      return { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
+      // Child webviews are placed in physical pixels. getBoundingClientRect reports CSS
+      // pixels, and devicePixelRatio folds in both display scaling and webview zoom, so the
+      // two only coincide at ratio 1 — which is why this looked correct on unscaled displays.
+      const ratio = window.devicePixelRatio || 1
+      return {
+        x: Math.round(rect.left * ratio),
+        y: Math.round(rect.top * ratio),
+        width: Math.round(rect.width * ratio),
+        height: Math.round(rect.height * ratio),
+      }
     }
 
     const clearEvictionTimer = () => {
@@ -200,8 +209,8 @@ export function PrivateBrowserSurface({
       if (!rectsEqual(lastRect, rect)) {
         lastRect = rect
         await Promise.all([
-          webview.setPosition(new LogicalPosition(rect.x, rect.y)),
-          webview.setSize(new LogicalSize(rect.width, rect.height)),
+          webview.setPosition(new PhysicalPosition(rect.x, rect.y)),
+          webview.setSize(new PhysicalSize(rect.width, rect.height)),
         ]).catch(() => {})
       }
       if (shown !== true) {
