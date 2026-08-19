@@ -408,7 +408,12 @@ function GraphRowView({
         onOpenMenu(e.clientX, e.clientY)
       }}
     >
-      <svg className={styles.svg} width={laneCount * LANE_WIDTH} height={ROW_HEIGHT} aria-hidden="true">
+      <svg
+        className={styles.svg}
+        width={laneCount * LANE_WIDTH}
+        height={ROW_HEIGHT}
+        aria-hidden="true"
+      >
         {elements}
         {/* Ponto/Nó principal do commit — raia principal ganha um raio maior,
             mesma lógica de hierarquia visual do traço mais grosso. O
@@ -527,7 +532,10 @@ export function GitGraphList({
   }
 
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
-  const endIndex = Math.min(rows.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN)
+  const endIndex = Math.min(
+    rows.length,
+    Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN,
+  )
   const visibleRows = rows.slice(startIndex, endIndex)
   const noMatches = matchingHashes != null && matchingHashes.size === 0
 
@@ -544,7 +552,9 @@ export function GitGraphList({
                 t={t}
                 laneCount={laneCount}
                 dimmed={matchingHashes != null && !matchingHashes.has(row.commit.hash)}
-                onSelect={() => onSelectCommit(row.commit.hash, scrollRef.current?.scrollTop ?? scrollTop)}
+                onSelect={() =>
+                  onSelectCommit(row.commit.hash, scrollRef.current?.scrollTop ?? scrollTop)
+                }
                 onOpenMenu={(x, y) => onOpenMenu(x, y, row.commit.hash)}
               />
             ))}

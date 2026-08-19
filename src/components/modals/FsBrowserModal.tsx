@@ -218,8 +218,7 @@ export function FsBrowserModal() {
   if (!open) return null
 
   const titleText =
-    customTitle ||
-    (mode === 'folder' ? t('fsBrowser.titleFolder') : t('fsBrowser.titleFile'))
+    customTitle || (mode === 'folder' ? t('fsBrowser.titleFolder') : t('fsBrowser.titleFile'))
 
   return (
     <Modal
@@ -244,9 +243,7 @@ export function FsBrowserModal() {
             >
               <Check size={16} />
               <span>
-                {mode === 'folder'
-                  ? t('fsBrowser.selectCurrentFolder')
-                  : t('fsBrowser.selectFile')}
+                {mode === 'folder' ? t('fsBrowser.selectCurrentFolder') : t('fsBrowser.selectFile')}
               </span>
             </button>
           </div>
@@ -358,12 +355,7 @@ export function FsBrowserModal() {
         </div>
 
         {/* Folder Content List */}
-        <div
-          className={styles.listContainer}
-          ref={listContainerRef}
-          tabIndex={0}
-          autoFocus
-        >
+        <div className={styles.listContainer} ref={listContainerRef} tabIndex={0} autoFocus>
           {loading ? (
             <div className={styles.skeletonContainer}>
               <div className={styles.skeletonRow} />
@@ -393,7 +385,9 @@ export function FsBrowserModal() {
                     onClick={() => handleEntryClick(entry, index)}
                     onDoubleClick={() => handleEntryDoubleClick(entry)}
                   >
-                    <span className={`${styles.entryIcon} ${entry.is_dir ? styles.folderIcon : styles.fileIcon}`}>
+                    <span
+                      className={`${styles.entryIcon} ${entry.is_dir ? styles.folderIcon : styles.fileIcon}`}
+                    >
                       {entry.is_dir ? <Folder size={18} /> : <FileText size={18} />}
                     </span>
                     <span className={styles.entryName}>

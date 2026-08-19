@@ -558,10 +558,6 @@ export default function App() {
         if (!cancelled) useUiStore.getState().setUpdateInfo(info)
       })
       .catch((error) => {
-                                                                        
-                                                                            
-                                                                          
-                                                                          
         console.error('[update] checagem de fundo falhou:', error)
       })
     return () => {
@@ -732,8 +728,7 @@ export default function App() {
                 collapsible
                 groupResizeBehavior="preserve-pixel-size"
                 onResize={(size, _id, previous) => {
-                  const currentVisible =
-                    useProjectsStore.getState().preferences.rightSidebarVisible
+                  const currentVisible = useProjectsStore.getState().preferences.rightSidebarVisible
                   const nextVisible = visibilityFromPanelResize(
                     rightSidebarLayoutReadyRef.current,
                     rightSidebarResizeActiveRef.current,

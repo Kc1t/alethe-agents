@@ -114,7 +114,8 @@ export async function attachRecorder(): Promise<void> {
           return
         }
         const steps = w.__ALETHE_RECORDED_STEPS__!
-        const last = steps[steps.length - 1] as { action?: string; placeholder?: string } | undefined
+        const last = steps[steps.length - 1] as
+          { action?: string; placeholder?: string } | undefined
         if (last && last.action === 'type' && last.placeholder === placeholder) {
           ;(last as { value: string }).value = target.value
         } else {

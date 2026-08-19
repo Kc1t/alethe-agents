@@ -12,15 +12,7 @@ import {
   type ConflictEnv,
   type WorktreeInfo,
 } from './api/git'
-import {
-  attachPty,
-  getPtySize,
-  killPty,
-  ptyExists,
-  resizePty,
-  spawnPty,
-  writePty,
-} from './api/pty'
+import { attachPty, getPtySize, killPty, ptyExists, resizePty, spawnPty, writePty } from './api/pty'
 import { useProjectsStore } from '../stores/projectsStore'
 
 /**

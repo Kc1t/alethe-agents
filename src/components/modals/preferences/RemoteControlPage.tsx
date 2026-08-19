@@ -104,7 +104,9 @@ export function RemoteControlPage() {
           description={t('remote.pairingDesc')}
         >
           <div className={styles.statusCard} data-enabled={pairingOpen}>
-            <span className={styles.statusIcon}><Smartphone size={18} /></span>
+            <span className={styles.statusIcon}>
+              <Smartphone size={18} />
+            </span>
             <div>
               <strong>{pairingOpen ? t('remote.pairingOpen') : t('remote.pairingClosed')}</strong>
               <p>
@@ -116,7 +118,9 @@ export function RemoteControlPage() {
             <button
               type="button"
               className={`${controls.btn} ${pairingOpen ? '' : controls.btnPrimary}`}
-              onClick={() => void update(pairingOpen ? closeRemoteControlPairing : openRemoteControlPairing)}
+              onClick={() =>
+                void update(pairingOpen ? closeRemoteControlPairing : openRemoteControlPairing)
+              }
               disabled={busy}
             >
               {pairingOpen ? t('remote.pairingClose') : t('remote.pairingOpenAction')}

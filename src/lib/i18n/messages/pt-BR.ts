@@ -54,8 +54,7 @@ export const ptBR: Record<MessageKey, string> = {
   'onboarding.themeTitle': 'Escolha um tema',
   'onboarding.themeSubtitle': 'Escolha a paleta que combina com o ambiente. Dá pra trocar depois.',
   'onboarding.appIconTitle': 'Escolha o ícone do app',
-  'onboarding.appIconSubtitle':
-    'É o ícone da barra de tarefas e da janela. Dá pra trocar depois.',
+  'onboarding.appIconSubtitle': 'É o ícone da barra de tarefas e da janela. Dá pra trocar depois.',
   'onboarding.visualStyleTitle': 'Escolha o estilo da interface',
   'onboarding.visualStyleSubtitle':
     'O quanto as superfícies, bordas e painéis aparecem. Dá pra trocar depois.',
@@ -706,7 +705,8 @@ export const ptBR: Record<MessageKey, string> = {
   'theme.ember.desc':
     'Carvão frio, divisores de fio de cabelo e um acento laranja brasa no que está ativo.',
   'theme.golden-premium.label': 'Dourado Premium',
-  'theme.golden-premium.desc': 'Luxuoso marrom escuro e pretos profundos com elegantes detalhes dourados.',
+  'theme.golden-premium.desc':
+    'Luxuoso marrom escuro e pretos profundos com elegantes detalhes dourados.',
   'todo.tagsPlaceholder': 'Tags: docs, fix',
   'todo.linkProject': 'Vincular tarefa a um projeto',
   'todo.noProject': 'Nenhum projeto',
@@ -2028,8 +2028,7 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.healthProbePassedTitle': 'Boot do app verificado',
   'merge.healthProbePassedBody': 'Respondeu em {ms}ms (HTTP {status}) num ambiente isolado.',
   'merge.healthProbeFailedTitle': 'App não respondeu',
-  'merge.healthProbeFailedBody':
-    'O comando de saúde não respondeu em {ms}ms. {output}',
+  'merge.healthProbeFailedBody': 'O comando de saúde não respondeu em {ms}ms. {output}',
   'merge.blockedTitle': 'Merge barrado: {stage}',
   'merge.retry': 'Retentar ({count})',
   'merge.cleaningUp': 'Limpando…',
@@ -2135,7 +2134,8 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.reviewFeedbackSentTitle': 'Feedback enviado',
   'merge.reviewFeedbackSentBody': 'Sua mensagem foi enviada ao agente revisor no terminal dele.',
   'merge.treeMainNode': 'main',
-  'merge.treeEmptyForProject': 'Nenhum merge pendente neste projeto — há pendências em outros projetos.',
+  'merge.treeEmptyForProject':
+    'Nenhum merge pendente neste projeto — há pendências em outros projetos.',
   'merge.centerPagerLabel': '{index} de {total}',
   'merge.centerPrev': 'Merge anterior',
   'merge.centerNext': 'Próximo merge',
@@ -2227,7 +2227,8 @@ export const ptBR: Record<MessageKey, string> = {
   'mcp.errGeneric': 'A operação falhou.',
   'mcp.healthCheck': 'Testar',
   'mcp.healthChecking': 'Testando…',
-  'mcp.healthCheckHint': 'Pergunta ao agente se ele consegue mesmo alcançar os servidores. O Claude conecta em cada um, então leva alguns segundos.',
+  'mcp.healthCheckHint':
+    'Pergunta ao agente se ele consegue mesmo alcançar os servidores. O Claude conecta em cada um, então leva alguns segundos.',
   'mcp.health.connected': 'conectado',
   'mcp.health.failed': 'falhou',
   'mcp.health.needsAuth': 'precisa autenticar',

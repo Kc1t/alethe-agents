@@ -77,15 +77,12 @@ export async function readPtyScrollback(
 ): Promise<string> {
   const maxBytes = typeof maxBytesOrProfile === 'number' ? maxBytesOrProfile : 65536
   const profile =
-    typeof maxBytesOrProfile === 'string' ? maxBytesOrProfile : profileId ?? DEFAULT_PROFILE_ID
+    typeof maxBytesOrProfile === 'string' ? maxBytesOrProfile : (profileId ?? DEFAULT_PROFILE_ID)
   const result = await invokeTauri<string>('attach_pty', { id, maxBytes, profileId: profile })
   return result ?? ''
 }
 
-export async function ptyStillExists(
-  id: string,
-  profileId = DEFAULT_PROFILE_ID,
-): Promise<boolean> {
+export async function ptyStillExists(id: string, profileId = DEFAULT_PROFILE_ID): Promise<boolean> {
   return invokeTauri<boolean>('pty_exists', { id, profileId })
 }
 
@@ -140,8 +137,6 @@ export async function resizePty(
 export async function killPty(id: string, profileId = DEFAULT_PROFILE_ID): Promise<void> {
   await invokeTauri('kill_pty', { id, profileId }).catch(() => {})
 }
-
-
 
 /**
  * `write_pty` retorna sucesso assim que os bytes chegam no PTY — isso NÃO

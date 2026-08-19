@@ -23,17 +23,9 @@ const ALL_AGENTS: { type: AgentType; label: string }[] = ALL_AGENT_TYPES.map((ty
 }))
 
 // Cache module-level (sobrevive a troca de aba/remount deste componente) —
-                                                                                  
+
 const globalModelsCache: Record<string, ModelOption[]> = {}
 
-   
-                                                                                
-                                                                               
-                                                                          
-                                                                            
-                                                                       
-                                                                           
-   
 export function EditProjectAgentSettings({
   projectId,
   cwd,
@@ -94,10 +86,6 @@ export function EditProjectAgentSettings({
   const [loadingModels, setLoadingModels] = useState(false)
   const [migratingWorktrees, setMigratingWorktrees] = useState(false)
 
-                                                                          
-                                                                        
-                                                                             
-                                                                              
   const [hasGit, setHasGit] = useState<boolean | null>(null)
   const [gitInitBusy, setGitInitBusy] = useState(false)
 

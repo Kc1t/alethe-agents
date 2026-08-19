@@ -496,7 +496,11 @@ export function useXtermSession(params: {
       _renderService?: { dimensions?: { css?: { cell?: { width: number; height: number } } } }
       viewport?: { scrollBarWidth?: number }
     }
-    const readScaleInternals = (): { cellWidth: number; cellHeight: number; scrollBarWidth: number } | null => {
+    const readScaleInternals = (): {
+      cellWidth: number
+      cellHeight: number
+      scrollBarWidth: number
+    } | null => {
       const core = (terminal as unknown as { _core?: XtermScaleInternals })._core
       const cell = core?._renderService?.dimensions?.css?.cell
       if (!cell || cell.width <= 0 || cell.height <= 0) return null
@@ -1127,9 +1131,7 @@ export function useXtermSession(params: {
         }
         const base = observerBaseRect
         const moved =
-          !base ||
-          Math.abs(rect.width - base.width) > 6 ||
-          Math.abs(rect.height - base.height) > 6
+          !base || Math.abs(rect.width - base.width) > 6 || Math.abs(rect.height - base.height) > 6
         if (!moved) {
           applyFontScale(terminal.cols, terminal.rows)
           return
@@ -1763,9 +1765,7 @@ export function useXtermSession(params: {
           }
           if (!launcherOverride) {
             const auto = await findCliLauncher(agentCliCommand(command) ?? command)
-            console.info(
-              `[pty-launch] ${command} findCliLauncher → ${auto ?? 'null (NOT FOUND)'}`,
-            )
+            console.info(`[pty-launch] ${command} findCliLauncher → ${auto ?? 'null (NOT FOUND)'}`)
             if (!auto) {
               console.warn(
                 `[pty-launch] ${command} unresolved — showing the not-found overlay and staying offline`,
@@ -1778,9 +1778,7 @@ export function useXtermSession(params: {
         }
 
         const savedSession =
-          command && RESUMABLE_AGENTS.includes(command)
-            ? peekSession(sessionPersistenceKey)
-            : null
+          command && RESUMABLE_AGENTS.includes(command) ? peekSession(sessionPersistenceKey) : null
         const savedConversationId = savedConversationIdFor(savedSession, command, cwd)
         let resumeId = sessionId ?? savedConversationId
         // Confirmado ao vivo: um sentinel de sessão do GSD Sync
@@ -2458,7 +2456,8 @@ export function useXtermSession(params: {
       .catch(() => {})
       .then(() => {
         if (cancelled || !isPanelVisible || wasVisible) return
-        if (lastIoWhenHiddenRef.current !== null && ioAtNow() === lastIoWhenHiddenRef.current) return
+        if (lastIoWhenHiddenRef.current !== null && ioAtNow() === lastIoWhenHiddenRef.current)
+          return
         resyncTimer = window.setTimeout(() => {
           if (!cancelled) void resyncTerminalRef.current?.()
         }, PANEL_RESYNC_DEBOUNCE_MS)

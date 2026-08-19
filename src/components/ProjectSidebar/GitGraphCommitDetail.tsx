@@ -36,7 +36,10 @@ export function GitGraphCommitDetail({ repoRoot, commit, onBack }: GitGraphCommi
     setMessage(null)
     setFiles(null)
     setError(null)
-    Promise.all([gitShowCommitMessage(repoRoot, commit.hash), gitShowCommitFiles(repoRoot, commit.hash)])
+    Promise.all([
+      gitShowCommitMessage(repoRoot, commit.hash),
+      gitShowCommitFiles(repoRoot, commit.hash),
+    ])
       .then(([msg, changedFiles]) => {
         if (cancelled) return
         setMessage(msg)

@@ -88,17 +88,9 @@ export function EditProjectModal() {
   }
 
   // `project` vem de um seletor Zustand (`s.projects.find(...)`) — troca de
-                                                                            
-                                                                            
-                                                                          
-                                                                              
-                                                                           
-                                                                            
-                                                                            
-                                                                     
+
   // resetado de volta ao valor antigo. `seededForRef` faz a semeadura valer
-                                                                          
-                                              
+
   const seededForRef = useRef<string | null>(null)
   useEffect(() => {
     if (!open || !project) {
@@ -147,7 +139,10 @@ export function EditProjectModal() {
         const openedProjectId = project.id
         detectProjectStack(repoPath)
           .then((detection) => {
-            if (seededForRef.current !== openedProjectId || detection.suggestedCommands.length === 0) {
+            if (
+              seededForRef.current !== openedProjectId ||
+              detection.suggestedCommands.length === 0
+            ) {
               return
             }
             setValidationCommandsStr((prev) =>
@@ -177,8 +172,6 @@ export function EditProjectModal() {
     }
   }
 
-                                                                           
-                                                                 
   const handleCreateAgentEnv = async () => {
     const repoPath = project?.terminals[0]?.cwd
     const name = newAgentName.trim().replace(/[^A-Za-z0-9_-]/g, '-')

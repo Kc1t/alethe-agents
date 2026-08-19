@@ -106,17 +106,8 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
       const project = state.projects.find((p) => p.id === projectId)
       const wantsIsolation = Boolean(project?.autoWorktree) && args.firstTab.type !== 'shell'
       if (project && wantsIsolation) {
-                                                                            
-                                                                             
-                                                                           
-                                                                            
-                                                                     
         // worktree_provision resolve a raiz de verdade via `--git-common-dir`
-                                                                             
-                                                                             
-                                                                       
-                                                                         
-                                                                          
+
         const repo =
           getProjectRepoRoot(project) ||
           getProjectDefaultCwd(project, state.projects) ||
@@ -128,8 +119,7 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
           )
           try {
             const { worktreeProvision, gitInit } = await import('../lib/tauri')
-                                                                                 
-                                                                            
+
             try {
               await gitInit(repo)
             } catch (initErr) {
@@ -404,9 +394,7 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
       }
       const { killPtyTree, worktreeRemove } = await import('../lib/tauri')
       const ptyIds = collectTerminalPtyIds([terminal])
-                                                                            
-                                                                          
-                                                                       
+
       await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(() => [])))
       const repo = getProjectRepoRoot(project)
       if (repo) {
@@ -452,8 +440,7 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
           .find((p) => p.id === projectId)
           ?.terminals.find((t) => t.id === terminalId)
         if (terminal) cleanupPtys(collectTerminalPtyIds([terminal]))
-                                                                              
-                                                                       
+
         const projects = state.projects.map((p) =>
           p.id === projectId
             ? {
@@ -534,7 +521,6 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
           }
         })
         if (disabled) {
-                                              
           const containers = state.workspace.containers.filter((c) => c.projectId !== projectId)
           return { projects, workspace: { ...state.workspace, containers } }
         }

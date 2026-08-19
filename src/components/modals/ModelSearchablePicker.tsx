@@ -40,7 +40,6 @@ export function ModelSearchablePicker({
       opt.id.length >= 3,
   )
 
-                                                                                          
   const selected = value
     ? (cleanOptions.find((opt) => opt.id === value) ?? { id: value, label: value })
     : cleanOptions[0]
@@ -53,7 +52,6 @@ export function ModelSearchablePicker({
       opt.id.toLowerCase().includes(trimmedSearch.toLowerCase()),
   )
 
-                                                                         
   const hasExactMatch = cleanOptions.some(
     (opt) =>
       opt.id.toLowerCase() === trimmedSearch.toLowerCase() ||
@@ -81,7 +79,6 @@ export function ModelSearchablePicker({
     }
   }
 
-                                    
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -94,7 +91,7 @@ export function ModelSearchablePicker({
 
   return (
     <div className={styles.wrapper} ref={containerRef}>
-      {                             }
+      {}
       <button
         type="button"
         className={`${styles.trigger} ${open ? styles.triggerActive : ''}`}

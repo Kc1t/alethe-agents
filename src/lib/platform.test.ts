@@ -36,7 +36,6 @@ describe('shouldUseNativeBackend', () => {
   })
 
   it('nunca usa nativo fora do macOS, mesmo com flag ligada', () => {
-                                                                                  
     expect(shouldUseNativeBackend(true, false)).toBe(false)
   })
 })
@@ -52,8 +51,6 @@ describe('normalizeCwd', () => {
   })
 
   it('preserva caixa e separador em paths Unix (case-sensitive)', () => {
-                                                                           
-                                                                      
     expect(normalizeCwd('/home/user/Project')).toBe('/home/user/Project')
     expect(normalizeCwd('/home/user/project')).toBe('/home/user/project')
   })

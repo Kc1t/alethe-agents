@@ -126,7 +126,9 @@ export function SidebarMergePanel() {
   const t = useT()
   const projects = useProjectsStore((s) => s.projects)
   const activeProjectId = useProjectsStore((s) => s.activeProjectId)
-  const terminalTheme = useProjectsStore((s) => s.preferences.terminalTheme ?? s.preferences.uiTheme)
+  const terminalTheme = useProjectsStore(
+    (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,
+  )
   const pushToast = useUiStore((s) => s.pushToast)
   const createTerminal = useProjectsStore((s) => s.createTerminal)
   const deleteTerminal = useProjectsStore((s) => s.deleteTerminal)
@@ -704,7 +706,12 @@ export function SidebarMergePanel() {
             prev?.id === item.id
               ? {
                   ...prev,
-                  validation: { success: false, stage: 'run', output: String(err), ranAnyCommand: true },
+                  validation: {
+                    success: false,
+                    stage: 'run',
+                    output: String(err),
+                    ranAnyCommand: true,
+                  },
                 }
               : prev,
           ),

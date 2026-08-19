@@ -7,7 +7,6 @@ export type FeatureDefinition = {
   descriptionKey: MessageKey
 }
 
-                                                                         
 export const FEATURES: readonly FeatureDefinition[] = [
   {
     id: 'todos',
@@ -41,7 +40,6 @@ type StoredFeaturePreferences = {
   showGitControl?: boolean
 }
 
-                                                                                    
 export function normalizeEnabledFeatures(
   raw: StoredFeaturePreferences | undefined,
 ): Record<FeatureId, boolean> {
@@ -52,7 +50,7 @@ export function normalizeEnabledFeatures(
       browser: raw.enabledFeatures.browser ?? true,
       graphify: raw.enabledFeatures.graphify ?? true,
       mcp: raw.enabledFeatures.mcp ?? true,
-                                                                                      
+
       aiMemory: raw.enabledFeatures.aiMemory ?? false,
     }
   }

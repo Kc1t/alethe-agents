@@ -140,14 +140,10 @@ export function TitleBar() {
       window.dispatchEvent(new CustomEvent('alethe:agent-canvas-exit'))
       return
     }
-    void killPty(agentCanvasSession.ptyId).catch(() => {
-                                   
-    })
+    void killPty(agentCanvasSession.ptyId).catch(() => {})
     setAgentCanvasSession(null)
   }
 
-                                                                             
-                                                                        
   const activeRef = useRef(true)
 
   useEffect(() => {
@@ -174,7 +170,6 @@ export function TitleBar() {
     }
   }, [])
 
-                                                                            
   useEffect(() => {
     let cancelled = false
     let interval: number | null = null
@@ -189,8 +184,6 @@ export function TitleBar() {
           consecutiveFailures = 0
         }
       } catch {
-                                                                               
-                                                                                  
         consecutiveFailures += 1
         if (consecutiveFailures >= 3 && !cancelled) {
           setClaudeUsage(null)
@@ -208,8 +201,6 @@ export function TitleBar() {
     }
   }, [setClaudeUsage])
 
-                                                                                
-                                                                       
   useEffect(() => {
     let cancelled = false
     let interval: number | null = null
@@ -241,7 +232,6 @@ export function TitleBar() {
     }
   }, [setCodexUsage])
 
-                                                                                                     
   useEffect(() => {
     let cancelled = false
     let interval: number | null = null

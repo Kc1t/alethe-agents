@@ -85,7 +85,11 @@ export async function findLatestTerminal(
       }, projectId)) as unknown as { ptyId: string; worktreeAgentId: string | null } | null
       return result !== null
     },
-    { timeout: 15_000, interval: 500, timeoutMsg: `nenhum terminal apareceu pro projeto ${projectId}` },
+    {
+      timeout: 15_000,
+      interval: 500,
+      timeoutMsg: `nenhum terminal apareceu pro projeto ${projectId}`,
+    },
   )
   return result!
 }
@@ -184,16 +188,24 @@ async function clickAndAcceptConfirm(selector: string, shotLabel: string): Promi
     // Pedido explícito do dono: se algo ficar mais de 5s sem resolver,
     // captura o estado da tela ANTES de continuar — mesmo se a segunda
     // tentativa também falhar, sobra um print do instante exato do travamento.
-    await withIdleScreenshot(`${shotLabel}-esperando-confirm`, async () => {
-      const retryButton = await $(selector)
-      if (await retryButton.isExisting()) {
-        await markScreenshotAndClick(retryButton, nextShotName(`${shotLabel}-retry`))
-      }
-      alertAppeared = await browser.waitUntil(
-        async () => (await browser.getAlertText().catch(() => null)) !== null,
-        { timeout: 6_000, interval: 300, timeoutMsg: `confirm() nunca apareceu pra "${selector}" (2 tentativas)` },
-      )
-    }, 5_000)
+    await withIdleScreenshot(
+      `${shotLabel}-esperando-confirm`,
+      async () => {
+        const retryButton = await $(selector)
+        if (await retryButton.isExisting()) {
+          await markScreenshotAndClick(retryButton, nextShotName(`${shotLabel}-retry`))
+        }
+        alertAppeared = await browser.waitUntil(
+          async () => (await browser.getAlertText().catch(() => null)) !== null,
+          {
+            timeout: 6_000,
+            interval: 300,
+            timeoutMsg: `confirm() nunca apareceu pra "${selector}" (2 tentativas)`,
+          },
+        )
+      },
+      5_000,
+    )
   }
   await browser.acceptAlert()
 }
@@ -283,9 +295,8 @@ export async function selectConflictAgentAndAutoWorktreeViaUi(
   // assim (o comando `click()` do WebDriver faz sua própria checagem, às
   // vezes menos conservadora que o pré-check).
   const conflictAgentCard = await $(`button*=${conflictAgentLabel}`)
-  await withIdleScreenshot(
-    'aguardando-card-agente-conflito-clicavel',
-    () => conflictAgentCard.waitForClickable({ timeout: 10_000 }).catch(() => {}),
+  await withIdleScreenshot('aguardando-card-agente-conflito-clicavel', () =>
+    conflictAgentCard.waitForClickable({ timeout: 10_000 }).catch(() => {}),
   )
   // `waitForClickable` E o próprio `.click()` já deram falso negativo aqui
   // em execuções diferentes (confirmado ao vivo: mesmo clique passou limpo
@@ -410,7 +421,10 @@ export async function selectMergePostActionAndSaveViaUi(
 
   const postActionRadio = await $(`input[name="mergePostAction"][value="${postMergeAction}"]`)
   await postActionRadio.waitForDisplayed({ timeout: 5_000 })
-  await markScreenshotAndClick(postActionRadio, nextShotName(`selecionar-pos-merge-${postMergeAction}`))
+  await markScreenshotAndClick(
+    postActionRadio,
+    nextShotName(`selecionar-pos-merge-${postMergeAction}`),
+  )
   if (!(await postActionRadio.isSelected())) {
     throw new Error(
       `selectMergePostActionAndSaveViaUi: rádio de ação pós-merge "${postMergeAction}" não marcou depois do clique`,

@@ -73,7 +73,10 @@ export async function deliverOpenCodePrompt(
   const fingerprintEnd = normalizedPrompt.slice(-20)
   const boxLooksEmpty = async () => {
     const screenNorm = normalizeForMatch(await io.readScreenText())
-    return screenNorm.includes(PLACEHOLDER_FINGERPRINT) || (!screenNorm.includes(fingerprintStart) && !screenNorm.includes(fingerprintEnd))
+    return (
+      screenNorm.includes(PLACEHOLDER_FINGERPRINT) ||
+      (!screenNorm.includes(fingerprintStart) && !screenNorm.includes(fingerprintEnd))
+    )
   }
 
   const typePrompt = async () => {

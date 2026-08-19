@@ -1,15 +1,6 @@
 export type AgentType =
-  | 'shell'
-  | 'claude'
-  | 'codex'
-  | 'copilot'
-  | 'opencode'
-  | 'freebuff'
-  | 'mimo'
-  | 'antigravity'
+  'shell' | 'claude' | 'codex' | 'copilot' | 'opencode' | 'freebuff' | 'mimo' | 'antigravity'
 
-                                                                           
-                                                                                 
 export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
@@ -21,9 +12,6 @@ export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
   shell: 'Shell',
 }
 
-                                                                            
-                                                                       
-                                                          
 export const ALL_AGENT_TYPES: AgentType[] = [
   'claude',
   'codex',
@@ -35,19 +23,15 @@ export const ALL_AGENT_TYPES: AgentType[] = [
   'shell',
 ]
 
-                                                                            
-                                                      
 export function agentCliCommand(agent: AgentType): string | undefined {
   if (agent === 'shell') return undefined
   return agent === 'antigravity' ? 'agy' : agent
 }
 
-                                                    
 export type Locale = 'en' | 'pt-BR'
 
 export type LayoutMode = 'auto' | 'spotlight' | 'sidebar' | 'grid'
 
-                                                                                   
 export type GridCell = {
   col: number
   row: number
@@ -55,15 +39,14 @@ export type GridCell = {
   rowSpan: number
 }
 
-                                                                               
 export type GridLayout = {
   cols: number
   rows: number
-                                                                                        
+
   cells: Record<string, GridCell>
-                                                                                   
+
   colSizes?: number[]
-                                                                                 
+
   rowSizes?: number[]
 }
 
@@ -94,26 +77,20 @@ export type Theme =
   | 'elite-blush'
 
 /** Native desktop icon variants. The UI theme and app icon theme are independent. */
-export type AppIconTheme =
-  | 'elite-original'
-  | 'elite-pure-black'
-  | 'elite-indigo'
-  | 'elite-blush'
+export type AppIconTheme = 'elite-original' | 'elite-pure-black' | 'elite-indigo' | 'elite-blush'
 
 export type VisualStyle = 'normal' | 'clean'
 
 export type MotionPreference = 'animated' | 'reduced'
 
-                                                                                  
 export type FeatureId = 'todos' | 'git' | 'browser' | 'graphify' | 'aiMemory' | 'mcp'
 
-                                                                                       
 export type TodoItem = {
   id: string
   title: string
   completed: boolean
   tags: string[]
-                                                                   
+
   projectId?: string
 }
 
@@ -122,21 +99,21 @@ export type SubTab = {
   type: AgentType
   name: string
   cwd: string
-                                                                                    
+
   lastUsedAt?: number
-                                                                                              
+
   ptyId: string | null
-                                                                       
+
   completionUnread?: boolean
-                                                                      
+
   sessionId?: string
   /** Args extras passados pro launcher (ex: --dangerously-skip-permissions). */
   extraArgs?: string[]
-                                                                            
+
   initialInput?: string
   /** One-shot context packet used to bootstrap a cross-provider session. */
   handoff?: AgentHandoffBootstrap
-                                                                                      
+
   runtimeProfile?: AgentRuntimeProfile
   /**
    * `true` só na criação da tab, consumido (limpo) no primeiro spawn.
@@ -168,16 +145,12 @@ export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
   codex: '--dangerously-bypass-approvals-and-sandbox',
   copilot: '--allow-all',
   opencode: '--dangerously-skip-permissions',
-                                                                   
+
   freebuff: null,
   mimo: null,
   antigravity: '--dangerously-skip-permissions',
 }
 
-   
-                                                                  
-                                                                              
-   
 export type PaneKind =
   'terminal' | 'markdown' | 'file' | 'image' | 'video' | 'web' | 'graphify' | 'diff'
 
@@ -205,29 +178,21 @@ export type Terminal = {
   activeTabId: string
   disabled: boolean
   laneVisible: boolean | null
-                                                                                  
+
   lastUsedAt?: number
-                                                                                                   
+
   kind?: PaneKind
-                                                                                     
+
   filePath?: string
-                                                       
+
   url?: string
   /** Runtime settings for a private native browser pane. */
   browserConfig?: BrowserPaneConfig
-                                                                                    
+
   worktreeAgentId?: string
-                                                               
+
   staged?: boolean
-     
-                                                                             
-                                                                           
-                                                                            
-                                                                           
-                                                                        
-                                                                            
-                                                 
-     
+
   gsdSyncViewer?: boolean
   /**
    * Marca este terminal como o agente EFÊMERO de resolução de conflito
@@ -257,26 +222,19 @@ export type Terminal = {
   remoteExcluded?: boolean
 }
 
-                                                                                   
 export type PaneGroup = {
   id: string
   paneIds: string[]
 }
 
-   
-                                                                             
-                                                                          
-                                                                                   
-                                                            
-   
 export type OrphanWorktree = {
   path: string
   mode: 'gitWorktree' | 'localCopy'
-                                                                                     
+
   requiresRawDeletion?: boolean
-                                                                                     
+
   pruneOnly?: boolean
-                                                                                    
+
   cleanAttempts?: number
   /** Motivo do lock administrativo (`git worktree lock`), se for esse o bloqueio atual. */
   adminLockReason?: string
@@ -288,19 +246,19 @@ export type Project = {
   /** Determines which workspace opens when the project is selected. */
   mode?: 'standard' | 'agentSandbox'
   color?: string
-                                                                                     
+
   iconUrl?: string
-                                                   
+
   groupId: string | null
-                                                                   
+
   defaultCwd?: string
   terminals: Terminal[]
   /** Blocos visuais criados selecionando panes com Shift. */
   paneGroups?: PaneGroup[]
-                                                                                 
+
   markdownComments?: MarkdownComment[]
   layoutMode: LayoutMode
-                                                                                  
+
   gridLayout?: GridLayout
   /** Most recently saved custom layouts for this project. */
   gridLayoutHistory?: GridLayoutHistoryEntry[]
@@ -318,21 +276,21 @@ export type Project = {
   /** Caminho HTTP checado pelo probe (ex.: "/", "/health"). Default '/' quando vazio. */
   healthCheckPath?: string
   gsdWatcherEnabled?: boolean
-                                                                                             
+
   conflictAgentProvider?: AgentType
-                                                                   
+
   conflictAgentModel?: string
-                                                                                                         
+
   reviewAgentProvider?: AgentType
-                                                              
+
   reviewAgentModel?: string
-                                                                                     
+
   graphifyEnabled?: boolean
-                                                                            
+
   autoWorktree?: boolean
-                                                
+
   githubUrl?: string
-                                                                                        
+
   firstBootPending?: boolean
   /** Comportamento do terminal após aceitar o merge (relocalizar em nova branch ou fechar). */
   mergePostAction?: 'relocateToNewBranch' | 'relocateKeepSession' | 'closeTerminal'
@@ -354,34 +312,33 @@ export type Group = {
   id: string
   name: string
   color: string
-                                                                                        
+
   iconUrl?: string
   collapsed: boolean
-                                                   
+
   projectIds: string[]
-                                                                      
+
   parentGroupId: string | null
-                                                                                     
+
   layoutMode?: LayoutMode
-                                                        
+
   gridLayout?: GridLayout
   /** Most recently saved custom layouts for this group. */
   gridLayoutHistory?: GridLayoutHistoryEntry[]
-                                                                                                        
+
   suspended?: boolean
-                                                                                     
+
   archived?: boolean
   createdAt: number
 }
 
-                                                                                 
 export type WorkspaceContainer = {
   projectId: string
-                                                                               
+
   paneIds: string[]
-                                                                                           
+
   lastUsedAt?: number
-                                                                                             
+
   size: number
   internalLayout: LayoutMode
   collapsed: boolean
@@ -394,7 +351,6 @@ export type WorkspaceRecentTab = {
 
 export type WorkspaceTabKind = 'project' | 'group' | 'terminal' | 'composition'
 
-                                                                                   
 export type WorkspaceViewSnapshot = {
   containers: WorkspaceContainer[]
   activeProjectId: string | null
@@ -413,7 +369,7 @@ export type WorkspaceTab = {
   label: string
   color?: string
   iconUrl?: string
-                                                                         
+
   pinned?: boolean
   snapshot: WorkspaceViewSnapshot
   createdAt: number
@@ -451,40 +407,32 @@ export type Preferences = {
   appIconTheme: AppIconTheme
   /** Zoom global da WebView. 1 = 100%. */
   uiZoom: number
-                                                          
+
   windowOpacity: number
   terminalTheme: Theme | null
   enabledAgents: Record<AgentType, boolean>
   onboardingDone: boolean
-                                                                              
+
   workspaceFlat: boolean
-                                                                    
+
   fullscreenContainerId: string | null
-     
-                                                                           
-                                                                        
-                                                                       
-                                                                 
-                                                                           
-                                                                        
-                                       
-     
+
   isolatedPaneId: string | null
-                                                                                 
+
   firstLaunchAt: number | null
   /** Nome exibido no welcome modal. */
   displayName: string
   /** URL da foto de perfil escolhida no cadastro local. */
   profileImageUrl: string
-                                                              
+
   accountCreated: boolean
-                                                                             
+
   alwaysStartOnHome: boolean
-                                                                        
+
   alwaysStartUnrestricted: boolean
   /** Last terminal configuration submitted through the creation modal. */
   lastTerminalCreation: TerminalCreationPreset | null
-                                              
+
   topbarStyle: 'classic' | 'three-areas'
   /** Local do controle Git: sidebar esquerda ou direita. */
   gitControlPlacement: 'left' | 'right'
@@ -511,7 +459,7 @@ export type Preferences = {
   remoteReadOnly: boolean
   /** Allows remote input on plain shell tabs, not only agent tabs. Default false. */
   remoteAllowShellInput: boolean
-                                                        
+
   enabledFeatures: Record<FeatureId, boolean>
   /** Folder configured as the base location for the global Todo list. */
   todoStoragePath: string
@@ -519,7 +467,7 @@ export type Preferences = {
   mcpDefaultScope: McpScope
   /** True once the MCP setup prompt has been shown or dismissed. */
   mcpOnboardingSeen: boolean
-                                               
+
   leftSidebarVisible: boolean
   rightSidebarVisible: boolean
   leftSidebarWidth: number
@@ -537,30 +485,20 @@ export type Preferences = {
   dictationEnabled: boolean
   /** Quantos PTYs podem ser spawnados em paralelo (fila global). Default 3. */
   spawnConcurrency: number
-                                                                             
+
   resourcePolicy: ResourcePolicyPreferences
-                                                                      
+
   workspaceGridLayout?: GridLayout
   /** Most recently saved custom layouts for the workspace. */
   workspaceGridLayoutHistory?: GridLayoutHistoryEntry[]
-     
-                                                                     
-                                                                        
-                                                              
-     
+
   nativeTerminalMacos?: boolean
   /**
    * v3 — perfil de heap do Node.js para agentes (Claude, Codex, OpenCode).
    * Injeta --max-old-space-size e UV_THREADPOOL_SIZE no ambiente do PTY.
    */
   nodeHeapProfile?: 'conservative' | 'balanced' | 'performance'
-     
-                                                                           
-                                                                          
-                                                                    
-                                                                            
-                              
-     
+
   gsdSyncModelChain?: string[]
 }
 
@@ -581,22 +519,22 @@ export type ResourcePolicyPreferences = {
 export type ProjectsFile = {
   version: 7
   groups: Group[]
-                                                     
+
   ungroupedOrder: string[]
   projects: Project[]
-                                                             
+
   todos: TodoItem[]
   activeProjectId: string | null
-                                                                             
+
   workspace: {
     containers: WorkspaceContainer[]
-                                                                                               
+
     recentProjectIds: string[]
-                                                                            
+
     recentTabs: WorkspaceRecentTab[]
-                                          
+
     tabs: WorkspaceTab[]
-                                                                                  
+
     closedTabs?: WorkspaceTab[]
     activeTabId: string | null
     activeGroupId: string | null
@@ -708,10 +646,8 @@ export const EMPTY_PROJECTS_FILE: ProjectsFile = {
   cliPaths: {},
 }
 
-                                                 
 export type PtyStatus = 'working' | 'waiting' | 'stopped' | 'disabled' | 'offline'
 
-                                                
 export const GROUP_COLORS = [
   '#6ea8ff',
   '#22d3ee',
@@ -723,7 +659,6 @@ export const GROUP_COLORS = [
   '#10b981',
 ] as const
 
-                                                       
 export const PROVIDER_MODELS: Record<AgentType, { id: string; label: string }[]> = {
   claude: [
     { id: 'claude-3-7-sonnet', label: 'Claude 3.7 Sonnet (Padrão)' },

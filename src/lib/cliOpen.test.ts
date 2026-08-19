@@ -39,8 +39,6 @@ describe('planCliOpen', () => {
     })
   })
 
-                                                                                 
-                                                        
   it('casa a pasta no Windows ignorando caixa e separador', () => {
     expect(planCliOpen('C:/Users/Example/App', [project('a', 'C:\\Users\\example\\app')])).toEqual({
       kind: 'existing',

@@ -39,9 +39,6 @@ export function NewProjectModal() {
   const [isColorPopoverOpen, setIsColorPopoverOpen] = useState(false)
   const [detectedConfig, setDetectedConfig] = useState<Project | null>(null)
 
-                                                                        
-                                                                       
-                                        
   useEffect(() => {
     if (open && context?.defaultCwd) setDefaultCwd(context.defaultCwd)
   }, [open, context?.defaultCwd])

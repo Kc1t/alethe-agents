@@ -4,7 +4,7 @@ export type SessionSnapshot = {
 }
 
 const claimedIds = new Map<string, Set<string>>()
-                                                                                                   
+
 const claimOwners = new Map<string, Array<{ key: string; sessionId: string }>>()
 
 function claimKey(agent: string, cwd: string): string {
@@ -118,12 +118,6 @@ export function claimMostRecentSession(
   return candidate
 }
 
-   
-                                                                        
-                                                                                
-                                                                                
-                                                                         
-   
 export function releaseSessionClaim(ptyId: string): void {
   const owned = claimOwners.get(ptyId)
   if (!owned) return

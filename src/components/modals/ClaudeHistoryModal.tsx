@@ -77,7 +77,6 @@ export function ClaudeHistoryModal({
     if (!ptyId) return
     setBusyId(sessionId)
     try {
-                                                                        
       // remove --resume <id> antigo e adiciona o novo.
       const old = extraArgs ?? []
       const filtered: string[] = []
@@ -100,7 +99,6 @@ export function ClaudeHistoryModal({
       })
       window.dispatchEvent(new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId } }))
 
-                                                                                       
       useProjectsStore.getState().setSubTabSessionId(projectId, terminalId, tabId, sessionId)
 
       onClose()

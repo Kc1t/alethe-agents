@@ -51,15 +51,11 @@ async function ensureNotificationPermission(): Promise<boolean> {
 async function deliver(title: string, body: string, agent?: AgentType): Promise<void> {
   const pushToast = useUiStore.getState().pushToast
 
-                                                             
   if (await appInForeground()) {
     pushToast({ title, body, agent })
     return
   }
 
-                                                                        
-                                                                            
-                                              
   if (await ensureNotificationPermission()) {
     pushToast({ title, body, agent, silent: true })
     try {
@@ -80,7 +76,6 @@ export async function notifyAgentDone(
   return deliver(title, body, meta?.agent)
 }
 
-                                                                                     
 export async function notifyLimitReset(
   title: string,
   body: string,

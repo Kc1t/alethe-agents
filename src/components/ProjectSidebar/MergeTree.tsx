@@ -58,7 +58,12 @@ export function MergeTree({
       {items.map((item) => {
         const status = deriveCardStatus(gateStatus[item.id], item.id === activeCardId, mergePhase)
         return (
-          <button key={item.id} type="button" className={styles.node} onClick={() => onSelect(item)}>
+          <button
+            key={item.id}
+            type="button"
+            className={styles.node}
+            onClick={() => onSelect(item)}
+          >
             <span className={styles.connector} />
             <span className={`${styles.dot} ${TONE_CLASS[status.tone]}`} />
             <span className={styles.nodeContent}>

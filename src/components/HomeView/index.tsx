@@ -95,7 +95,7 @@ export function HomeView() {
       openContainerWithAllPanes: s.openContainerWithAllPanes,
       setActiveProjectOnly: s.setActiveProjectOnly,
       createAgentTerminal: s.createAgentTerminal,
-    }))
+    })),
   )
 
   const {
@@ -113,10 +113,9 @@ export function HomeView() {
       requestPaneFocus: s.requestPaneFocus,
       notifications: s.notifications,
       clearNotifications: s.clearNotifications,
-    }))
+    })),
   )
 
-                                                                                   
   const lastUsedByProject = useMemo(() => {
     const map = new Map<string, number>()
     for (const c of containers) {
@@ -192,8 +191,7 @@ export function HomeView() {
   const [quickUnrestricted, setQuickUnrestricted] = useState(false)
   const quickPromptRef = useRef<HTMLInputElement>(null)
   const [quickCwd, setQuickCwd] = useState('')
-                                                                                
-                                                                           
+
   const quickAgent = quickAgents.some((agent) => agent.type === quickAgentRaw)
     ? quickAgentRaw
     : (quickAgents[0]?.type ?? 'claude')

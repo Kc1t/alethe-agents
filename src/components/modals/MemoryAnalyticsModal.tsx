@@ -136,9 +136,6 @@ function buildDiagnostics(history: MemorySample[], t: TFunction): string[] {
 
 type ChartPoint = { x: number; y: number }
 
-                                                                          
-                                                                      
-                                              
 function smoothPath(points: ChartPoint[]): string {
   if (points.length < 2) return ''
   if (points.length === 2) {
@@ -278,7 +275,6 @@ export function MemoryAnalyticsModal() {
   const runtimeSnapshot = useUiStore((s) => s.runtimeSnapshot)
   const clearMemoryHistory = useUiStore((s) => s.clearMemoryHistory)
 
-                                                                      
   const [crash, setCrash] = useState<CrashReport | null>(null)
   useEffect(() => {
     void getLastCrashReport()
@@ -286,8 +282,6 @@ export function MemoryAnalyticsModal() {
       .catch(() => {})
   }, [])
 
-                                                                       
-                                                                             
   // saber de verdade.
   const [jobGuardActive, setJobGuardActive] = useState<boolean | null>(null)
   useEffect(() => {

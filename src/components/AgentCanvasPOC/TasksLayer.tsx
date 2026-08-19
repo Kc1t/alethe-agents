@@ -8,7 +8,7 @@ import styles from './AgentCanvasPOC.module.css'
 type TasksLayerProps = {
   tasks: TeamTask[]
   teamName: string | null
-                                                                       
+
   taskRefs: MutableRefObject<Map<string, HTMLDivElement>>
 }
 

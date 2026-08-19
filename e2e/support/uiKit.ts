@@ -149,7 +149,9 @@ export async function clickNearLabel(labelText: string, nth = 0): Promise<void> 
  * confirme lendo o componente se for um campo novo/desconhecido).
  */
 export async function typeIntoByPlaceholder(placeholder: string, value: string): Promise<void> {
-  const input = await $(`input[placeholder="${placeholder}"], textarea[placeholder="${placeholder}"]`)
+  const input = await $(
+    `input[placeholder="${placeholder}"], textarea[placeholder="${placeholder}"]`,
+  )
   await input.waitForDisplayed({ timeout: 10_000 })
   await input.setValue(value)
   const actual = await input.getValue()
@@ -161,7 +163,7 @@ export async function typeIntoByPlaceholder(placeholder: string, value: string):
 }
 
 export async function typeIntoBySelector(selector: string, value: string): Promise<void> {
-  const input = await $(selector);
+  const input = await $(selector)
   await input.waitForDisplayed({ timeout: 10_000 })
   await input.setValue(value)
 }
@@ -182,7 +184,7 @@ export async function typePath(placeholder: string, path: string): Promise<void>
 /** Espera um texto aparecer em qualquer lugar da tela — útil pra confirmar
  *  que uma ação surtiu efeito sem precisar saber o seletor exato. */
 export async function waitForText(text: string, timeout = 10_000): Promise<void> {
-  await browser.waitUntil(async () => (await $(`*=${text}`).isExisting()), {
+  await browser.waitUntil(async () => await $(`*=${text}`).isExisting(), {
     timeout,
     timeoutMsg: `texto "${text}" nunca apareceu na tela`,
   })

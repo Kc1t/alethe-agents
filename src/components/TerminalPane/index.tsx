@@ -19,7 +19,12 @@ import { buildGhosttyCommand } from '../../lib/ghosttyCommand'
 import { useT } from '../../lib/i18n'
 import { shouldUseNativeBackend } from '../../lib/platform'
 import { getActiveSessions, savedConversationIdFor } from '../../lib/sessionResume'
-import { completeAgentHandoff, getPtyCwd, openInVscode, snapshotCodexSessions } from '../../lib/tauri'
+import {
+  completeAgentHandoff,
+  getPtyCwd,
+  openInVscode,
+  snapshotCodexSessions,
+} from '../../lib/tauri'
 import {
   type AgentType,
   type SubTab,
@@ -419,9 +424,7 @@ export const TerminalPane = memo(function TerminalPane({
                     })
                   }
                   title={
-                    handoffSuggested
-                      ? t('ui.terminal.handoffSuggested')
-                      : t('ui.terminal.handoff')
+                    handoffSuggested ? t('ui.terminal.handoffSuggested') : t('ui.terminal.handoff')
                   }
                   aria-label={t('ui.terminal.handoff')}
                 >
@@ -573,9 +576,7 @@ export const TerminalPane = memo(function TerminalPane({
                     setSubTabCompletionUnread(projectId, terminal.id, activeTab.id, true)
                     if (!activeTab.handoff) return
                     void completeAgentHandoff(activeTab.handoff.id)
-                      .then(() =>
-                        setSubTabHandoff(projectId, terminal.id, activeTab.id, undefined),
-                      )
+                      .then(() => setSubTabHandoff(projectId, terminal.id, activeTab.id, undefined))
                       .catch((cause) =>
                         console.warn('[handoff] could not clean the completed packet:', cause),
                       )

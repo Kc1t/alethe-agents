@@ -148,9 +148,6 @@ export function useGsdSyncSessionsWatcher(
   }, [watched])
 }
 
-                                                                             
-                                                                            
-                                                            
 export function useGsdSyncSessions(): GsdSyncSession[] {
   return useGsdSyncSessionsStore((s) => s.sessions)
 }

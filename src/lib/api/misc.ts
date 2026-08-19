@@ -161,8 +161,7 @@ export async function setRemoteControlReadOnly(readOnly: boolean): Promise<Remot
 }
 
 export async function setRemoteControlShellInput(allowed: boolean): Promise<RemoteControlInfo> {
-  if (isTauriEnv())
-    return invoke<RemoteControlInfo>('remote_control_set_shell_input', { allowed })
+  if (isTauriEnv()) return invoke<RemoteControlInfo>('remote_control_set_shell_input', { allowed })
   return webApiFetch<RemoteControlInfo>('/api/remote_control/set_shell_input', {
     method: 'POST',
     body: JSON.stringify({ allowed }),

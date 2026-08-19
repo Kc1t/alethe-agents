@@ -50,7 +50,13 @@ export type ProcedureStep =
       repetitions?: number
       repetitionPauseMs?: number
     }
-  | { action: 'dragTo'; fromSelector: string; toSelector: string; steps?: number; stepDurationMs?: number }
+  | {
+      action: 'dragTo'
+      fromSelector: string
+      toSelector: string
+      steps?: number
+      stepDurationMs?: number
+    }
   | { action: 'scrollIntoView'; selector: string }
   | {
       action: 'scrollBy'

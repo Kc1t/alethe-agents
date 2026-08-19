@@ -167,11 +167,17 @@ export function GitGraph({ repoRoot, onMutated }: { repoRoot: string; onMutated?
           paddingRight: '4px',
         }}
       >
-        <button type="button" className={styles.groupHeader} onClick={() => setOpen((prev) => !prev)}>
+        <button
+          type="button"
+          className={styles.groupHeader}
+          onClick={() => setOpen((prev) => !prev)}
+        >
           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           <GitCommitHorizontal size={13} />
           <strong>{t('git.graph.title')}</strong>
-          {commits ? <span style={{ opacity: 0.6, fontSize: '11px' }}>({commits.length})</span> : null}
+          {commits ? (
+            <span style={{ opacity: 0.6, fontSize: '11px' }}>({commits.length})</span>
+          ) : null}
         </button>
         {open ? (
           <button

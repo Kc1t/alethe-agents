@@ -73,7 +73,11 @@ export async function verifyAgentSessionContinuity(
     async () => {
       if (existsSync(file1Path)) return true
       const screen = await readPtyScrollback(ptyId).catch(() => '')
-      if (/(allow|approve|permission|do you want to|trust|confirm|accept|\[y\/n\]|\[y\/N\]|\[Y\/n\])/i.test(screen)) {
+      if (
+        /(allow|approve|permission|do you want to|trust|confirm|accept|\[y\/n\]|\[y\/N\]|\[Y\/n\])/i.test(
+          screen,
+        )
+      ) {
         await sendPtyLine(ptyId, 'y')
       } else if (/(press enter|to continue)/i.test(screen)) {
         await sendPtyLine(ptyId, '')
@@ -89,7 +93,7 @@ export async function verifyAgentSessionContinuity(
   const prompt2 =
     `Now create a second file named "${file2Name}" in the current working directory, with exactly ` +
     '2 lines, following the EXACT SAME rule as the file you just created for me. Do not restate or ' +
-    "re-explain the rule back to me — you already know it from what you just did. Just apply it."
+    're-explain the rule back to me — you already know it from what you just did. Just apply it.'
   const delivered2 = await sendOpenCodePrompt(ptyId, prompt2, { timeoutMs })
   if (!delivered2) {
     throw new Error(
@@ -101,7 +105,11 @@ export async function verifyAgentSessionContinuity(
     async () => {
       if (existsSync(file2Path)) return true
       const screen = await readPtyScrollback(ptyId).catch(() => '')
-      if (/(allow|approve|permission|do you want to|trust|confirm|accept|\[y\/n\]|\[y\/N\]|\[Y\/n\])/i.test(screen)) {
+      if (
+        /(allow|approve|permission|do you want to|trust|confirm|accept|\[y\/n\]|\[y\/N\]|\[Y\/n\])/i.test(
+          screen,
+        )
+      ) {
         await sendPtyLine(ptyId, 'y')
       } else if (/(press enter|to continue)/i.test(screen)) {
         await sendPtyLine(ptyId, '')
@@ -122,7 +130,8 @@ export async function verifyAgentSessionContinuity(
         .map((line) => line.trim())
         .filter((line) => line.length > 0)
     : []
-  const file2FollowsRule = file2Lines.length > 0 && file2Lines.every((line) => line.startsWith(RULE_PREFIX))
+  const file2FollowsRule =
+    file2Lines.length > 0 && file2Lines.every((line) => line.startsWith(RULE_PREFIX))
 
   return {
     file1Path,

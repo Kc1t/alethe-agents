@@ -21,10 +21,6 @@ body {
   overflow: hidden;
 }
 
-                                                                              
-                                                                                
-                                                                               
-                                                                                
 [data-platform='macos'],
 [data-platform='macos'] body {
   background: transparent;
@@ -70,9 +66,6 @@ textarea {
   color: inherit;
 }
 
-                                                                           
-                                                                            
-                                                                           
 select {
   appearance: none;
   -webkit-appearance: none;
@@ -110,10 +103,6 @@ select option {
   background: var(--bg-elevated);
 }
 
-                                                                            
-                                                                           
-                                                                        
-                                                     
 input[type='checkbox'],
 input[type='radio'] {
   appearance: none;
@@ -169,9 +158,6 @@ input[type='radio']:disabled {
   color: var(--accent-on);
 }
 
-                                                                         
-                                                                          
-                    
 *::-webkit-scrollbar {
   width: 10px;
   height: 10px;

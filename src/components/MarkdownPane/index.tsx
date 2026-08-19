@@ -33,8 +33,6 @@ import { MarkdownRenderer } from './MarkdownRenderer'
 import styles from './MarkdownPane.module.css'
 import { isLightTheme } from '../../lib/themes'
 
-                                                                         
-
 const markdownPaneScrollPositions = new Map<string, number>()
 
 export type MarkdownPaneProps = {
@@ -126,7 +124,6 @@ export const MarkdownPane = memo(function MarkdownPane({
     }
   }
 
-                                                                         
   useEffect(() => {
     if (!filePath) return
     editingRef.current = false
@@ -158,7 +155,6 @@ export const MarkdownPane = memo(function MarkdownPane({
     paneRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
   }, [focusReq, terminal.id])
 
-                                                                              
   const onDelete = () => {
     if (window.confirm(t('ui.markdown.confirmClose', { name: terminal.name }))) {
       deleteTerminal(projectId, terminal.id)

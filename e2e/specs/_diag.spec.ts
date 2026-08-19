@@ -35,10 +35,18 @@ describe('diagnóstico: clique OpenCode não interativo', () => {
       else if (step.action === 'scrollBy')
         await browser
           .action('wheel')
-          .scroll({ x: step.originX ?? 400, y: step.originY ?? 400, deltaX: step.deltaX, deltaY: step.deltaY, duration: 200 })
+          .scroll({
+            x: step.originX ?? 400,
+            y: step.originY ?? 400,
+            deltaX: step.deltaX,
+            deltaY: step.deltaY,
+            duration: 200,
+          })
           .perform()
       else if (step.action === 'type') {
-        const input = await $(`input[placeholder="${step.placeholder}"], textarea[placeholder="${step.placeholder}"]`)
+        const input = await $(
+          `input[placeholder="${step.placeholder}"], textarea[placeholder="${step.placeholder}"]`,
+        )
         await input.setValue(step.value)
       }
     }
@@ -90,7 +98,12 @@ describe('diagnóstico: clique OpenCode não interativo', () => {
     )
 
     // eslint-disable-next-line no-console
-    console.log('\n>>> DIAGNÓSTICO elementFromPoint(%d, %d):\n%s\n', cx, cy, JSON.stringify(diag, null, 2))
+    console.log(
+      '\n>>> DIAGNÓSTICO elementFromPoint(%d, %d):\n%s\n',
+      cx,
+      cy,
+      JSON.stringify(diag, null, 2),
+    )
     await snapshot('diag-resultado')
   })
 })

@@ -52,7 +52,13 @@ describe('E2E: Conflito de merge e clique em Integrar na UI', function () {
 
     initRepoWithInitialCommit(repoPath)
     writeFileSync(join(repoPath, 'shared.txt'), 'linha base original\n')
-    commitFileOnBranch(repoPath, 'main', 'shared.txt', 'linha base original\n', 'initial shared.txt')
+    commitFileOnBranch(
+      repoPath,
+      'main',
+      'shared.txt',
+      'linha base original\n',
+      'initial shared.txt',
+    )
 
     await selectConflictAgentAndAutoWorktreeViaUi(projectId, 'OpenCode')
     await migrateExistingTerminalsViaUi()
@@ -98,7 +104,7 @@ describe('E2E: Conflito de merge e clique em Integrar na UI', function () {
   it('clica em Integrar na UI, detecta o conflito e abre o ambiente de resolução', async () => {
     // Abre a Central de Merges / clica no card da worktree pendente
     await snapshot('3-antes-de-clicar-integrar')
-    
+
     // Clica no card da worktree ou no botão Integrar
     await clickByText('Integrar')
     await snapshot('4-apos-clicar-integrar')
@@ -129,7 +135,9 @@ describe('E2E: Conflito de merge e clique em Integrar na UI', function () {
     await snapshot('5-aguardando-revisao-detectado')
 
     // Abre o modal de detalhe da Central de Merges clicando no card se necessário
-    const hasValidateBtn = await $('button=Validar').isDisplayed().catch(() => false)
+    const hasValidateBtn = await $('button=Validar')
+      .isDisplayed()
+      .catch(() => false)
     if (!hasValidateBtn) {
       await clickByText(projectName).catch(() => {})
     }

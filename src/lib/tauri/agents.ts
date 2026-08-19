@@ -1,9 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
-                                                                        
-                                                                        
-                                                 
 export async function agentHooksEndpoint(): Promise<string> {
   return invoke('agent_hooks_endpoint')
 }
@@ -42,23 +39,18 @@ export async function agentHooksSettingsPath(): Promise<string> {
 
 export type InstalledAgent = { name: string; from_alethe: boolean }
 
-                                                                      
 export async function listInstalledAgents(folder: string): Promise<InstalledAgent[]> {
   return invoke<InstalledAgent[]>('list_installed_agents', { folder })
 }
 
-                                                                          
 export async function economyAgentsEnabled(folder: string): Promise<boolean> {
   return invoke<boolean>('economy_agents_enabled', { folder })
 }
 
-                                                                 
 export async function setEconomyAgents(folder: string, enabled: boolean): Promise<string[]> {
   return invoke<string[]>('set_economy_agents', { folder, enabled })
 }
 
-                                                                        
-                                                                    
 export async function installAgent(args: {
   folder: string
   name: string
@@ -68,7 +60,6 @@ export async function installAgent(args: {
   return invoke<string>('install_agent', args)
 }
 
-                                      
 export async function uninstallAgent(folder: string, name: string, force = true): Promise<void> {
   await invoke('uninstall_agent', { folder, name, force })
 }
@@ -84,8 +75,6 @@ export type OpenCodeBridgeStatus = {
   state: 'working' | 'idle'
 }
 
-                                                                        
-                                                                  
 export function listenOpenCodeBridgeStatus(
   handler: (payload: OpenCodeBridgeStatus) => void,
 ): Promise<UnlistenFn> {

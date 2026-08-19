@@ -8,7 +8,11 @@
  * uma PTY existente (restart manual, migração pra worktree) sem precisar
  * remontar o componente XTermView — ver `agentPtyRestart.ts`.
  */
-import { claimDiscoveredSession, claimMostRecentSession, type SessionSnapshot } from './sessionDiscovery'
+import {
+  claimDiscoveredSession,
+  claimMostRecentSession,
+  type SessionSnapshot,
+} from './sessionDiscovery'
 import { saveSession } from './sessionResume'
 import { waitForSessionHint } from './sessionWatch'
 import {

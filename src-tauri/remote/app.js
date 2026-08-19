@@ -57,7 +57,11 @@ const readableTerminalText = (value) =>
 class SessionError extends Error {}
 
 const readError = async (response) => {
-  try { return (await response.json()).error || response.statusText } catch { return response.statusText }
+  try {
+    return (await response.json()).error || response.statusText
+  } catch {
+    return response.statusText
+  }
 }
 
 const api = async (path, options = {}) => {
@@ -65,7 +69,8 @@ const api = async (path, options = {}) => {
     ...options,
     headers: { ...(options.headers || {}), Authorization: `Bearer ${sessionToken}` },
   })
-  if (response.status === 401 || response.status === 429) throw new SessionError(await readError(response))
+  if (response.status === 401 || response.status === 429)
+    throw new SessionError(await readError(response))
   if (!response.ok) throw new Error(await readError(response))
   return response.status === 204 ? null : response.json()
 }
@@ -86,7 +91,11 @@ const pair = async () => {
 function dropSession() {
   sessionToken = ''
   sessionStorage.removeItem(SESSION_KEY)
-  if (socket) { socket.onclose = null; socket.close(); socket = null }
+  if (socket) {
+    socket.onclose = null
+    socket.close()
+    socket = null
+  }
 }
 
 function setConnectionState(next) {
@@ -164,15 +173,22 @@ function renderHome(filter = '') {
 }
 
 function composerMarkup() {
-  if (readOnly) return '<div class="notice">This device is paired in read-only mode. Sending messages is disabled in Alethe.</div>'
+  if (readOnly)
+    return '<div class="notice">This device is paired in read-only mode. Sending messages is disabled in Alethe.</div>'
   return '<div class="notice">Your message is sent to the selected PTY with Enter.</div><form class="composer" id="composer"><textarea id="message" rows="1" autocomplete="off" placeholder="Send a message…"></textarea><button class="send" type="submit" aria-label="Send message">↑</button></form>'
 }
 
 function renderChat() {
   const chat = findChat(selected)
   app.innerHTML = `<div class="app-frame"><header class="topbar chat-topbar"><button class="back" id="back" aria-label="Back">‹</button><div class="chat-topcopy"><span class="eyebrow">Agent conversation</span><h1>${escapeHtml(chat?.name || 'Agent chat')}</h1><p>${escapeHtml(chat?.projectName || '')} · ${escapeHtml(chat?.agent || 'Terminal')}</p></div>${agentBadge(chat?.agent)}</header><main class="scroll chat-content"><div class="context"><span>${escapeHtml(chat?.projectName || 'Workspace')}</span><span class="context-separator">/</span><span>${escapeHtml(chat?.agent || 'Terminal')}</span></div><section class="output-card"><div class="output-head"><span class="terminal-dot"></span><strong>Live terminal</strong><button id="latest" type="button">Jump to latest</button></div><pre class="terminal" id="terminal">${escapeHtml(output)}</pre></section>${composerMarkup()}</main></div>`
-  document.querySelector('#back').addEventListener('click', () => { selected = null; renderHome() })
-  document.querySelector('#latest').addEventListener('click', () => { const terminal = document.querySelector('#terminal'); if (terminal) terminal.scrollTop = terminal.scrollHeight })
+  document.querySelector('#back').addEventListener('click', () => {
+    selected = null
+    renderHome()
+  })
+  document.querySelector('#latest').addEventListener('click', () => {
+    const terminal = document.querySelector('#terminal')
+    if (terminal) terminal.scrollTop = terminal.scrollHeight
+  })
   if (readOnly) {
     const terminal = document.querySelector('#terminal')
     if (terminal) terminal.scrollTop = terminal.scrollHeight
@@ -195,9 +211,19 @@ function renderChat() {
     const text = input.value.trim()
     if (!text) return
     input.disabled = true
-    try { await api('/api/message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ptyId: selected, text }) }); input.value = ''; input.style.height = 'auto' }
-    catch (error) {
-      if (error instanceof SessionError) { renderSessionLost(error.message); return }
+    try {
+      await api('/api/message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ptyId: selected, text }),
+      })
+      input.value = ''
+      input.style.height = 'auto'
+    } catch (error) {
+      if (error instanceof SessionError) {
+        renderSessionLost(error.message)
+        return
+      }
       window.alert(error.message || error)
     }
     input.disabled = false
@@ -221,25 +247,45 @@ async function openChat(ptyId) {
       terminal.scrollTop = terminal.scrollHeight
     }
   } catch (error) {
-    if (error instanceof SessionError) { renderSessionLost(error.message); return }
+    if (error instanceof SessionError) {
+      renderSessionLost(error.message)
+      return
+    }
     output = `Unable to load terminal output.\n${error.message || error}`
     const terminal = document.querySelector('#terminal')
     if (terminal) terminal.textContent = output
   }
-  if (socket?.readyState === WebSocket.OPEN && socketAuthenticated) socket.send(JSON.stringify({ type: 'subscribe', sessionToken, ptyId }))
+  if (socket?.readyState === WebSocket.OPEN && socketAuthenticated)
+    socket.send(JSON.stringify({ type: 'subscribe', sessionToken, ptyId }))
 }
 
 function connectSocket() {
   if (!wsBase || !sessionToken) return
   setConnectionState('connecting')
   socket = new WebSocket(`${wsBase}/`)
-  socket.onopen = () => { setConnectionState('live'); socketAuthenticated = false; socket.send(JSON.stringify({ type: 'hello', sessionToken, deviceName })) }
+  socket.onopen = () => {
+    setConnectionState('live')
+    socketAuthenticated = false
+    socket.send(JSON.stringify({ type: 'hello', sessionToken, deviceName }))
+  }
   socket.onmessage = (event) => {
     let message
-    try { message = JSON.parse(event.data) } catch { return }
-    if (message.type === 'authenticated') { socketAuthenticated = true; if (selected) socket.send(JSON.stringify({ type: 'subscribe', sessionToken, ptyId: selected })); return }
+    try {
+      message = JSON.parse(event.data)
+    } catch {
+      return
+    }
+    if (message.type === 'authenticated') {
+      socketAuthenticated = true
+      if (selected)
+        socket.send(JSON.stringify({ type: 'subscribe', sessionToken, ptyId: selected }))
+      return
+    }
     if (message.type === 'error') {
-      if (message.reason === 'expired' || message.reason === 'unauthorized') { renderSessionLost(message.message); return }
+      if (message.reason === 'expired' || message.reason === 'unauthorized') {
+        renderSessionLost(message.message)
+        return
+      }
       setConnectionState('reconnecting')
       return
     }
@@ -270,12 +316,20 @@ function renderSessionLost(message) {
 }
 
 async function boot() {
-  app.innerHTML = '<div class="loading"><div class="loading-card"><span class="brand-mark">›_</span><strong>Connecting to Alethe</strong><p>Preparing your remote workspace…</p></div></div>'
+  app.innerHTML =
+    '<div class="loading"><div class="loading-card"><span class="brand-mark">›_</span><strong>Connecting to Alethe</strong><p>Preparing your remote workspace…</p></div></div>'
   if (pairingToken) {
-    try { await pair() }
-    catch (error) { renderPairingRequired(error.message); return }
+    try {
+      await pair()
+    } catch (error) {
+      renderPairingRequired(error.message)
+      return
+    }
   }
-  if (!sessionToken) { renderPairingRequired(); return }
+  if (!sessionToken) {
+    renderPairingRequired()
+    return
+  }
   try {
     const info = await api('/api/info')
     wsBase = info.wsUrl
@@ -284,7 +338,10 @@ async function boot() {
     renderHome()
     connectSocket()
   } catch (error) {
-    if (error instanceof SessionError) { renderSessionLost(error.message); return }
+    if (error instanceof SessionError) {
+      renderSessionLost(error.message)
+      return
+    }
     app.innerHTML = `<div class="fatal"><div class="fatal-card"><span class="brand-mark">!</span><strong>Connection unavailable</strong><p>${escapeHtml(error.message || error)}</p></div></div>`
   }
 }

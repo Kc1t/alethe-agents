@@ -56,7 +56,13 @@ describe('diagnóstico visual: gráfico de commits', function () {
     git(repoPath, ['add', 'main.txt'])
     git(repoPath, ['commit', '-m', 'main: segundo commit'])
 
-    git(repoPath, ['merge', '--no-ff', 'feature/graph-colors', '-m', "Merge branch 'feature/graph-colors'"])
+    git(repoPath, [
+      'merge',
+      '--no-ff',
+      'feature/graph-colors',
+      '-m',
+      "Merge branch 'feature/graph-colors'",
+    ])
 
     // Várias branches curtas (1 commit, merge imediato) em sequência — é
     // exatamente o padrão que expôs a colisão de cor `--agent-shell` ==

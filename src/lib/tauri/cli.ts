@@ -1,23 +1,16 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
-   
-                                                                              
-                                                                                
-   
-
-                                                                   
 const OPEN_PATH_EVENT = 'alethe://open-path'
 
 export type CliShimStatus = {
-                                                     
   supported: boolean
   installed: boolean
-                                                                              
+
   stale: boolean
   path: string | null
   binDir: string | null
-                                                                                   
+
   onPath: boolean
 }
 
@@ -42,10 +35,6 @@ function toCliShimStatus(raw: RawCliShimStatus): CliShimStatus {
   }
 }
 
-   
-                                                                              
-                                                                 
-   
 export async function cliTakePendingOpen(): Promise<string | null> {
   return invoke<string | null>('cli_take_pending_open')
 }

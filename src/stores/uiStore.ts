@@ -89,7 +89,7 @@ type UiState = {
   claudeUsage: ClaudeUsage | null
   codexUsage: CodexUsage | null
   antigravityUsage: AntigravityUsage | null
-                                                                                  
+
   focusedTerminalId: string | null
   /**
    * Panes of workspace tabs that stay mounted while hidden. They keep streaming so switching
@@ -107,19 +107,19 @@ type UiState = {
   selectedPanes: { projectId: string; terminalId: string }[]
   /** View principal sendo exibida no main. */
   activeView: ActiveView
-                                                
+
   rightSidebarMode: RightSidebarMode
   rightSidebarMarkdown: { path: string; title: string } | null
   rightSidebarMarkdownTabs: MarkdownSidebarTab[]
-                                                                             
+
   agentCanvasSession: { folder: string; ptyId: string } | null
-                                                                  
+
   agentCanvasBudgetUsd: number | null
   /** Ephemeral in-app notifications. */
   toasts: InAppToast[]
   /** Recent notification history used by Home. */
   notifications: InAppToast[]
-                                                                                     
+
   updateInfo: UpdateInfo | null
   /** URL aberta no visualizador in-app (overlay com iframe). null = fechado. */
   linkViewerUrl: string | null

@@ -11,7 +11,11 @@ import {
   type AgentRuntimeProfile,
   type AgentType,
 } from '../../lib/types'
-import { getProjectDefaultCwd, getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
+import {
+  getProjectDefaultCwd,
+  getProjectRepoRoot,
+  useProjectsStore,
+} from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AgentIcon } from '../icons/AgentIcons'
 import controls from './controls.module.css'

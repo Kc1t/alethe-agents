@@ -95,7 +95,6 @@ export async function saveProjectsFile(content: string, sequence: number): Promi
   await invoke('save_projects', { content, sequence })
 }
 
-                                                                                                     
 export async function recordFrontendError(
   message: string,
   stack: string | null,
@@ -241,31 +240,26 @@ export type PlanningStatus = {
   progress: number | null
   roadmapPendingCount: number | null
   roadmapTotalCount: number | null
-                                                                                                                         
+
   notes: string | null
 }
 
-                                                                                                    
 export async function readPlanningStatus(repoPath: string): Promise<PlanningStatus> {
   return invoke<PlanningStatus>('read_planning_status', { repoPath })
 }
 
-                                                                                                                                                                                                                                                                      
 export async function gsdOpenCodePluginWrite(repo: string, modelChain: string[]): Promise<void> {
   await invoke('gsd_opencode_plugin_write', { repo, modelChain })
 }
 
-                                                                                                                                                                                 
 export async function readGsdChildSession(repoPath: string): Promise<string | null> {
   return invoke<string | null>('read_gsd_child_session', { repoPath })
 }
 
-                                                                                                                      
 export async function readGsdChildBusy(repoPath: string): Promise<boolean> {
   return invoke<boolean>('read_gsd_child_busy', { repoPath })
 }
 
-                                                                                                                                                                 
 export async function readGsdChildError(repoPath: string): Promise<string | null> {
   return invoke<string | null>('read_gsd_child_error', { repoPath })
 }
@@ -282,7 +276,6 @@ export async function readGsdChildState(repoPath: string): Promise<GsdChildState
 
 export type GsdProcedureStep = { description: string; category: string }
 
-                                                                                                                                                                                                                
 export async function readGsdProcedure(repoPath: string): Promise<GsdProcedureStep[]> {
   return invoke<GsdProcedureStep[]>('read_gsd_procedure', { repoPath })
 }
@@ -297,7 +290,7 @@ export type SchedulerTask = {
   status: 'pending' | 'ready' | 'running' | 'completed' | 'failed' | 'blocked'
   assignedAgentId: string | null
   leaseResource: string | null
-                                                                           
+
   worktreePath: string | null
   priority: number
 }

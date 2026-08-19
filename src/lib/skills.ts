@@ -47,7 +47,6 @@ export function matchesSkillQuery(group: SkillGroup, query: string): boolean {
   const needle = query.trim().toLowerCase()
   if (!needle) return true
   return (
-    group.name.toLowerCase().includes(needle) ||
-    group.description.toLowerCase().includes(needle)
+    group.name.toLowerCase().includes(needle) || group.description.toLowerCase().includes(needle)
   )
 }

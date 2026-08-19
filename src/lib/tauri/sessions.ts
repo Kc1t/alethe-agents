@@ -12,7 +12,6 @@ export async function snapshotAntigravitySessions(
   return invoke<AntigravitySessionSnapshot[]>('snapshot_antigravity_sessions', { cwd })
 }
 
-                                                            
 export type ModelCost = {
   model: string
   input: number
@@ -20,11 +19,10 @@ export type ModelCost = {
   cache_read: number
   cache_write_5m: number
   cache_write_1h: number
-                                                                          
+
   cost_usd: number | null
 }
 
-                                                                  
 export type SessionCost = {
   session_id: string
   agent: string
@@ -47,7 +45,6 @@ export async function getSessionCost(
   return invoke<SessionCost>('get_session_cost', { agent, cwd, sessionId })
 }
 
-                                                                                  
 export async function getTranscriptCost(path: string): Promise<SessionCost> {
   return invoke<SessionCost>('get_transcript_cost', { path })
 }

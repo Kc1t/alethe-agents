@@ -129,215 +129,217 @@ export function TodoSidebar() {
   }) => {
     const collapsed = collapsedSections.has(key)
     return (
-    <section key={key} className={styles.section}>
-      <div className={styles.sectionHeader}>
-        <button
-          type="button"
-          className={styles.sectionToggle}
-          onClick={() => toggleSection(key)}
-          aria-expanded={!collapsed}
-        >
-          <ChevronDown
-            size={13}
-            className={`${styles.sectionChevron} ${collapsed ? styles.sectionChevronClosed : ''}`}
-          />
-          {iconUrl ? <img src={iconUrl} alt="" className={styles.sectionIcon} /> : null}
-          <span className={styles.sectionName}>{label}</span>
-          <span className={styles.sectionCount}>{items.length}</span>
-          <span className={styles.sectionRule} />
-        </button>
-        {!completedSection ? (
+      <section key={key} className={styles.section}>
+        <div className={styles.sectionHeader}>
           <button
             type="button"
-            className={styles.sectionAdd}
-            onClick={() => startProjectTodo(projectId)}
-            title={t('todo.add')}
-            aria-label={t('todo.add')}
+            className={styles.sectionToggle}
+            onClick={() => toggleSection(key)}
+            aria-expanded={!collapsed}
           >
-            <Plus size={13} />
+            <ChevronDown
+              size={13}
+              className={`${styles.sectionChevron} ${collapsed ? styles.sectionChevronClosed : ''}`}
+            />
+            {iconUrl ? <img src={iconUrl} alt="" className={styles.sectionIcon} /> : null}
+            <span className={styles.sectionName}>{label}</span>
+            <span className={styles.sectionCount}>{items.length}</span>
+            <span className={styles.sectionRule} />
           </button>
-        ) : null}
-      </div>
-      {!collapsed && items.length > 0 ? (
-        <div className={styles.list}>
-          {items.map((todo) => {
-            const editing = editingId === todo.id
-            return (
-              <div
-                key={todo.id}
-                className={[
-                  styles.todoRow,
-                  todo.completed ? styles.todoRowCompleted : '',
-                  draggedId === todo.id ? styles.todoRowDragging : '',
-                  dropTargetId === todo.id && draggedId !== todo.id ? styles.todoRowDropTarget : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                draggable={!editing}
-                onDragStart={(event) => {
-                  setDraggedId(todo.id)
-                  setDropTargetId(null)
-                  event.dataTransfer.effectAllowed = 'move'
-                  event.dataTransfer.setData('text/plain', todo.id)
-                }}
-                onDragEnd={() => {
-                  setDraggedId(null)
-                  setDropTargetId(null)
-                }}
-                onDragOver={(event) => {
-                  if (!draggedId) return
-                  const dragged = todos.find((item) => item.id === draggedId)
-                  if (dragged?.completed !== todo.completed) return
-                  event.preventDefault()
-                  event.dataTransfer.dropEffect = 'move'
-                  setDropTargetId(todo.id)
-                }}
-                onDragLeave={() => {
-                  if (dropTargetId === todo.id) setDropTargetId(null)
-                }}
-                onDrop={(event) => {
-                  event.preventDefault()
-                  if (draggedId) reorderTodo(draggedId, todo.id)
-                  setDraggedId(null)
-                  setDropTargetId(null)
-                }}
-              >
-                <button
-                  type="button"
-                  className={styles.dragHandle}
-                  title={t('todo.drag')}
-                  aria-label={t('todo.drag')}
-                  tabIndex={-1}
+          {!completedSection ? (
+            <button
+              type="button"
+              className={styles.sectionAdd}
+              onClick={() => startProjectTodo(projectId)}
+              title={t('todo.add')}
+              aria-label={t('todo.add')}
+            >
+              <Plus size={13} />
+            </button>
+          ) : null}
+        </div>
+        {!collapsed && items.length > 0 ? (
+          <div className={styles.list}>
+            {items.map((todo) => {
+              const editing = editingId === todo.id
+              return (
+                <div
+                  key={todo.id}
+                  className={[
+                    styles.todoRow,
+                    todo.completed ? styles.todoRowCompleted : '',
+                    draggedId === todo.id ? styles.todoRowDragging : '',
+                    dropTargetId === todo.id && draggedId !== todo.id
+                      ? styles.todoRowDropTarget
+                      : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  draggable={!editing}
+                  onDragStart={(event) => {
+                    setDraggedId(todo.id)
+                    setDropTargetId(null)
+                    event.dataTransfer.effectAllowed = 'move'
+                    event.dataTransfer.setData('text/plain', todo.id)
+                  }}
+                  onDragEnd={() => {
+                    setDraggedId(null)
+                    setDropTargetId(null)
+                  }}
+                  onDragOver={(event) => {
+                    if (!draggedId) return
+                    const dragged = todos.find((item) => item.id === draggedId)
+                    if (dragged?.completed !== todo.completed) return
+                    event.preventDefault()
+                    event.dataTransfer.dropEffect = 'move'
+                    setDropTargetId(todo.id)
+                  }}
+                  onDragLeave={() => {
+                    if (dropTargetId === todo.id) setDropTargetId(null)
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault()
+                    if (draggedId) reorderTodo(draggedId, todo.id)
+                    setDraggedId(null)
+                    setDropTargetId(null)
+                  }}
                 >
-                  <GripVertical size={13} />
-                </button>
-                <button
-                  type="button"
-                  className={styles.checkButton}
-                  onClick={() => toggleTodo(todo.id)}
-                  title={todo.completed ? t('todo.reopen') : t('todo.complete')}
-                  aria-label={todo.completed ? t('todo.reopen') : t('todo.complete')}
-                >
-                  {todo.completed ? <Check size={12} /> : null}
-                </button>
+                  <button
+                    type="button"
+                    className={styles.dragHandle}
+                    title={t('todo.drag')}
+                    aria-label={t('todo.drag')}
+                    tabIndex={-1}
+                  >
+                    <GripVertical size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.checkButton}
+                    onClick={() => toggleTodo(todo.id)}
+                    title={todo.completed ? t('todo.reopen') : t('todo.complete')}
+                    aria-label={todo.completed ? t('todo.reopen') : t('todo.complete')}
+                  >
+                    {todo.completed ? <Check size={12} /> : null}
+                  </button>
 
-                {editing ? (
-                  <input
-                    autoFocus
-                    className={styles.editInput}
-                    value={editTitle}
-                    maxLength={TODO_TITLE_MAX_LENGTH}
-                    onChange={(event) => setEditTitle(event.target.value)}
-                    onBlur={() => {
-                      setEditingId(null)
-                      setEditTitle('')
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') finishEditing()
-                      if (event.key === 'Escape') {
+                  {editing ? (
+                    <input
+                      autoFocus
+                      className={styles.editInput}
+                      value={editTitle}
+                      maxLength={TODO_TITLE_MAX_LENGTH}
+                      onChange={(event) => setEditTitle(event.target.value)}
+                      onBlur={() => {
                         setEditingId(null)
                         setEditTitle('')
-                      }
-                    }}
-                    aria-label={t('todo.edit')}
-                  />
-                ) : (
-                  <div className={styles.todoTitle}>
-                    <button
-                      type="button"
-                      className={styles.titleButton}
-                      onClick={() => startEditing(todo)}
-                      title={todo.title}
-                    >
-                      <span className={styles.todoTitleText}>{todo.title}</span>
-                    </button>
-                    {todo.tags.length > 0 ? (
-                      <span className={styles.tags}>
-                        {todo.tags.map((tag) => (
-                          <span key={tag} className={styles.tag}>
-                            #{tag}
-                          </span>
-                        ))}
-                      </span>
-                    ) : null}
-                    <ProjectPicker
-                      value={todo.projectId ?? ''}
-                      projects={projects}
-                      noProjectLabel={t('todo.noProject')}
-                      ariaLabel={t('todo.linkProject')}
-                      compact
-                      onChange={(projectId) => setTodoProject(todo.id, projectId || null)}
-                    />
-                  </div>
-                )}
-
-                <div className={styles.rowActions}>
-                  {editing ? (
-                    <>
-                      <button
-                        type="button"
-                        className={styles.rowAction}
-                        onClick={() => editTags(todo)}
-                        title={t('todo.editTags')}
-                        aria-label={t('todo.editTags')}
-                      >
-                        <Tag size={12} />
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.rowAction}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={finishEditing}
-                        title={t('todo.saveEdit')}
-                        aria-label={t('todo.saveEdit')}
-                      >
-                        <Check size={13} />
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.rowAction}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => {
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') finishEditing()
+                        if (event.key === 'Escape') {
                           setEditingId(null)
                           setEditTitle('')
-                        }}
-                        title={t('common.cancel')}
-                        aria-label={t('common.cancel')}
-                      >
-                        <X size={13} />
-                      </button>
-                    </>
+                        }
+                      }}
+                      aria-label={t('todo.edit')}
+                    />
                   ) : (
-                    <>
+                    <div className={styles.todoTitle}>
                       <button
                         type="button"
-                        className={styles.rowAction}
+                        className={styles.titleButton}
                         onClick={() => startEditing(todo)}
-                        title={t('todo.edit')}
-                        aria-label={t('todo.edit')}
+                        title={todo.title}
                       >
-                        <Pencil size={12} />
+                        <span className={styles.todoTitleText}>{todo.title}</span>
                       </button>
-                      <button
-                        type="button"
-                        className={`${styles.rowAction} ${styles.deleteAction}`}
-                        onClick={() => deleteTodo(todo.id)}
-                        title={t('todo.delete')}
-                        aria-label={t('todo.delete')}
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </>
+                      {todo.tags.length > 0 ? (
+                        <span className={styles.tags}>
+                          {todo.tags.map((tag) => (
+                            <span key={tag} className={styles.tag}>
+                              #{tag}
+                            </span>
+                          ))}
+                        </span>
+                      ) : null}
+                      <ProjectPicker
+                        value={todo.projectId ?? ''}
+                        projects={projects}
+                        noProjectLabel={t('todo.noProject')}
+                        ariaLabel={t('todo.linkProject')}
+                        compact
+                        onChange={(projectId) => setTodoProject(todo.id, projectId || null)}
+                      />
+                    </div>
                   )}
+
+                  <div className={styles.rowActions}>
+                    {editing ? (
+                      <>
+                        <button
+                          type="button"
+                          className={styles.rowAction}
+                          onClick={() => editTags(todo)}
+                          title={t('todo.editTags')}
+                          aria-label={t('todo.editTags')}
+                        >
+                          <Tag size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.rowAction}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={finishEditing}
+                          title={t('todo.saveEdit')}
+                          aria-label={t('todo.saveEdit')}
+                        >
+                          <Check size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.rowAction}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => {
+                            setEditingId(null)
+                            setEditTitle('')
+                          }}
+                          title={t('common.cancel')}
+                          aria-label={t('common.cancel')}
+                        >
+                          <X size={13} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className={styles.rowAction}
+                          onClick={() => startEditing(todo)}
+                          title={t('todo.edit')}
+                          aria-label={t('todo.edit')}
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          className={`${styles.rowAction} ${styles.deleteAction}`}
+                          onClick={() => deleteTodo(todo.id)}
+                          title={t('todo.delete')}
+                          aria-label={t('todo.delete')}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )
-          })}
-        </div>
-      ) : completedSection && todos.length > 0 ? (
-        <p className={styles.sectionEmpty}>{t('todo.emptyCompleted')}</p>
-      ) : null}
-    </section>
+              )
+            })}
+          </div>
+        ) : completedSection && todos.length > 0 ? (
+          <p className={styles.sectionEmpty}>{t('todo.emptyCompleted')}</p>
+        ) : null}
+      </section>
     )
   }
 

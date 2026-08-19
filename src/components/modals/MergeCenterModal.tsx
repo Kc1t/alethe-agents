@@ -1,4 +1,13 @@
-import { Check, ChevronLeft, ChevronRight, MessageSquare, Play, RefreshCw, ShieldCheck, X } from 'lucide-react'
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  MessageSquare,
+  Play,
+  RefreshCw,
+  ShieldCheck,
+  X,
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { useT } from '../../lib/i18n'

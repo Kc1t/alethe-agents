@@ -145,7 +145,8 @@ export async function getClaudeActivity(days = 91): Promise<ActivityDay[]> {
 }
 
 export async function getMultiAgentActivity(days: number): Promise<ActivityDay[]> {
-  if (isTauriEnv()) return invoke<ActivityDay[]>('get_multi_agent_activity', { days }).catch(() => [])
+  if (isTauriEnv())
+    return invoke<ActivityDay[]>('get_multi_agent_activity', { days }).catch(() => [])
   return webApiFetch<ActivityDay[]>(`/api/usage/multi_agent_activity?days=${days}`).catch(() => [])
 }
 

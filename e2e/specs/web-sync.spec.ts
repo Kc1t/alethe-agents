@@ -10,7 +10,9 @@ import { recordStep } from '../support/report'
  * script passado pra `execute()` roda no webview do Tauri.
  */
 type AletheE2EWindowHook = {
-  openShellTerminal: (cwd: string) => Promise<{ projectId: string; terminalId: string; ptyId: string }>
+  openShellTerminal: (
+    cwd: string,
+  ) => Promise<{ projectId: string; terminalId: string; ptyId: string }>
 }
 
 async function readDebugTerminal(ptyId: string): Promise<{ cols: number; rows: number } | null> {
@@ -49,8 +51,9 @@ describe('Sincronização cross-client: Desktop ↔ Web', () => {
 
   it('desktop cria um terminal; o cliente web enxerga o MESMO terminal via sync', async () => {
     const opened = (await browser.execute((cwd: string) => {
-      return (window as unknown as { __ALETHE_E2E__: AletheE2EWindowHook }).__ALETHE_E2E__
-        .openShellTerminal(cwd)
+      return (
+        window as unknown as { __ALETHE_E2E__: AletheE2EWindowHook }
+      ).__ALETHE_E2E__.openShellTerminal(cwd)
     }, fixture.path)) as unknown as { projectId: string; terminalId: string; ptyId: string }
     ptyId = opened.ptyId
     expect(ptyId).toBeTruthy()

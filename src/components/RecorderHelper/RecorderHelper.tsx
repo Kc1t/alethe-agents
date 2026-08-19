@@ -81,7 +81,12 @@ export function RecorderHelper() {
     <div className={styles.wrap}>
       {open ? (
         <div className={styles.popup} role="dialog" aria-label="Atalhos de gravação">
-          <button type="button" className={styles.action} disabled={busy} onClick={() => void createScratchProject()}>
+          <button
+            type="button"
+            className={styles.action}
+            disabled={busy}
+            onClick={() => void createScratchProject()}
+          >
             Criar projeto temporário (pasta nova)
           </button>
           {lastCreated ? <div className={styles.hint}>Criado: {lastCreated}</div> : null}

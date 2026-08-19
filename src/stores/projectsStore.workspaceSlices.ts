@@ -113,7 +113,7 @@ export function createWorkspaceSlice({
         const target = state.projects.find((p) => p.id === id)
         if (!target) return { activeProjectId: id }
         const now = Date.now()
-                                                                                       
+
         const existing = state.workspace.containers.find((c) => c.projectId === id)
         if (target.terminals.length === 0) {
           return {
@@ -310,9 +310,6 @@ export function createWorkspaceSlice({
     },
 
     openGroupWorkspace: (groupId, mode = 'append') => {
-                                                                      
-                                                                                
-                                                                 
       if (mode === 'append' && get().workspace.activeTabId) {
         navigationUpdate((state) => {
           const activeTab = state.workspace.tabs.find(
@@ -336,8 +333,7 @@ export function createWorkspaceSlice({
               )
             }
           }
-                                                                                
-                                                                                    
+
           const snapshot = makeSnapshot(state, containers, toAdd[0].id, null, null, {
             workspaceGridLayout: undefined,
             workspaceFlat: false,
@@ -581,7 +577,7 @@ export function createWorkspaceSlice({
         const tabs = state.workspace.tabs.map((tab) =>
           tab.id === tabId ? { ...tab, pinned: !tab.pinned, updatedAt: Date.now() } : tab,
         )
-                                                                        
+
         const ordered = [...tabs.filter((tab) => tab.pinned), ...tabs.filter((tab) => !tab.pinned)]
         return { workspace: { ...state.workspace, tabs: ordered } }
       }),
@@ -747,9 +743,6 @@ export function createWorkspaceSlice({
         const activeTab = state.workspace.tabs.find((tab) => tab.id === state.workspace.activeTabId)
         if (!activeTab) return { preferences }
 
-                                                                            
-                                                                                 
-                                                          
         const snapshot = captureWorkspaceSnapshot({
           containers: state.workspace.containers,
           activeProjectId: state.activeProjectId,

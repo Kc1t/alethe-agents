@@ -247,7 +247,7 @@ export const en = {
   'onboarding.agentsStatInstallable': 'installable',
   'onboarding.agentsNoMatch': 'No agent matches this filter.',
   'onboarding.agentsMissing':
-    "Alethe uses your own provider accounts and subscriptions. Missing a CLI or selected the wrong executable? Scan again or change it later in Preferences > Terminal > CLI paths.",
+    'Alethe uses your own provider accounts and subscriptions. Missing a CLI or selected the wrong executable? Scan again or change it later in Preferences > Terminal > CLI paths.',
   'onboarding.agentsRescan': 'Scan again',
   'agentInstall.needsNode':
     'This agent installs through npm, and Node.js was not found on this machine.',
@@ -2013,8 +2013,7 @@ export const en = {
   'merge.healthProbePassedTitle': 'App boot verified',
   'merge.healthProbePassedBody': 'Responded in {ms}ms (HTTP {status}) in an isolated environment.',
   'merge.healthProbeFailedTitle': 'App did not respond',
-  'merge.healthProbeFailedBody':
-    'The health check command did not respond within {ms}ms. {output}',
+  'merge.healthProbeFailedBody': 'The health check command did not respond within {ms}ms. {output}',
   'merge.blockedTitle': 'Merge blocked: {stage}',
   'merge.retry': 'Retry ({count})',
   'merge.cleaningUp': 'Cleaning up…',
@@ -2118,7 +2117,8 @@ export const en = {
   'merge.reviewFeedbackSentTitle': 'Feedback sent',
   'merge.reviewFeedbackSentBody': 'Your message was sent to the reviewer agent in its terminal.',
   'merge.treeMainNode': 'main',
-  'merge.treeEmptyForProject': 'No merges pending in this project — other projects have pending ones.',
+  'merge.treeEmptyForProject':
+    'No merges pending in this project — other projects have pending ones.',
   'merge.centerPagerLabel': '{index} of {total}',
   'merge.centerPrev': 'Previous merge',
   'merge.centerNext': 'Next merge',
@@ -2209,7 +2209,8 @@ export const en = {
   'mcp.errGeneric': 'The operation failed.',
   'mcp.healthCheck': 'Check',
   'mcp.healthChecking': 'Checking…',
-  'mcp.healthCheckHint': 'Ask the agent whether it can actually reach its servers. Claude connects to each one, so it takes a few seconds.',
+  'mcp.healthCheckHint':
+    'Ask the agent whether it can actually reach its servers. Claude connects to each one, so it takes a few seconds.',
   'mcp.health.connected': 'connected',
   'mcp.health.failed': 'failed',
   'mcp.health.needsAuth': 'needs auth',
@@ -2249,7 +2250,8 @@ export const en = {
   'mcp.registryCount': '{count} result(s)',
   'mcp.registryLoading': 'Searching the registry…',
   'mcp.registryNoResults': 'No server matched.',
-  'mcp.registryOffline': 'The registry could not be reached and nothing was cached for this search.',
+  'mcp.registryOffline':
+    'The registry could not be reached and nothing was cached for this search.',
   'mcp.registryStale': 'Registry unreachable — showing the copy saved on {date}.',
   'mcp.addWritten': '{count} server(s) added to {agents}',
   'mcp.fieldName': 'Name',
@@ -2289,7 +2291,8 @@ export const en = {
   'mcp.tabSkills': 'Skills',
   'skills.loading': 'Reading the skill folders…',
   'skills.emptyTitle': 'No skill installed',
-  'skills.emptyDescription': 'Alethe looks in the skills folder of each agent and in the shared store.',
+  'skills.emptyDescription':
+    'Alethe looks in the skills folder of each agent and in the shared store.',
   'skills.selectOne': 'Pick a skill to inspect it',
   'skills.sharedStore': 'Shared store',
   'skills.lockSource': 'source',

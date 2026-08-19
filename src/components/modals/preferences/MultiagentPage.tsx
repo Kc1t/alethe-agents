@@ -438,7 +438,9 @@ export function MultiagentPage() {
                     <span>{log.subject}</span>
                     <div style={{ color: 'var(--fg-muted)', fontSize: 9 }}>
                       {t('prefs.multiagentAuditAuthor', { author: log.author })}
-                      {log.agentId ? ` ${t('prefs.multiagentAuditAgent', { agentId: log.agentId })}` : ''}
+                      {log.agentId
+                        ? ` ${t('prefs.multiagentAuditAgent', { agentId: log.agentId })}`
+                        : ''}
                     </div>
                   </div>
                   <div

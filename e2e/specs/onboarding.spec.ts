@@ -131,10 +131,10 @@ describe('onboarding: criação do primeiro perfil', () => {
 
       // Prova real: o modal "Novo terminal" some — o terminal foi de fato
       // aberto, não travou esperando algo que o WebDriver não consegue clicar.
-      await browser.waitUntil(
-        async () => !(await $('button*=Abrir Shell').isExisting()),
-        { timeout: 15_000, timeoutMsg: 'modal "Novo terminal" nunca fechou depois de "Abrir Shell"' },
-      )
+      await browser.waitUntil(async () => !(await $('button*=Abrir Shell').isExisting()), {
+        timeout: 15_000,
+        timeoutMsg: 'modal "Novo terminal" nunca fechou depois de "Abrir Shell"',
+      })
 
       // O modal sumir NÃO prova que o terminal embaixo realmente renderizou
       // (é o mesmo tipo de falso positivo raso que motivou toda essa suíte)

@@ -8,17 +8,6 @@ export type PtyVisibilitySets = {
   focused: Set<string>
 }
 
-   
-                                                                    
-                                                                            
-                                                                    
-                                                                                    
-  
-                                                                         
-                                                                           
-                                                                          
-                             
-   
 export function computeVisibleFocusedPtyIds(): PtyVisibilitySets {
   const projectsState = useProjectsStore.getState()
   const ui = useUiStore.getState()
@@ -31,12 +20,6 @@ export function computeVisibleFocusedPtyIds(): PtyVisibilitySets {
     ),
   )
 
-                                                                       
-                                                                         
-                                                                             
-                                                                             
-                                                                        
-                                                                            
   // de verdade.
   const isolatedPaneId = projectsState.preferences.isolatedPaneId
 
@@ -87,11 +70,6 @@ function subscribePtyVisibility(callback: () => void): () => void {
   }
 }
 
-                                                                               
-                                                                              
-                                                                             
-                                                                               
-                                                 
 let cached: PtyVisibilitySets | null = null
 
 function visibilitySets(): PtyVisibilitySets {
@@ -99,13 +77,6 @@ function visibilitySets(): PtyVisibilitySets {
   return cached
 }
 
-   
-                                                                            
-                                                                            
-                                                                    
-                                                                         
-                                                                
-   
 export function usePtyPanelVisible(ptyId: string | undefined): boolean {
   return useSyncExternalStore(subscribePtyVisibility, () => {
     if (!ptyId) return false

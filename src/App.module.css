@@ -302,8 +302,6 @@
   }
 }
 
-                                                                          
-                         
 .toastStack {
   position: fixed;
   top: 14px;
@@ -315,10 +313,7 @@
   align-items: center;
   gap: 8px;
   width: auto;
-                                                                         
-                                                                           
-                                                                           
-                                               
+
   max-width: min(640px, calc(100vw - 32px));
   pointer-events: none;
 }

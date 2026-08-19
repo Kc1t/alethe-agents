@@ -134,7 +134,11 @@ describe('Central de Merges: pipeline de git completo', function () {
 
   it('FASE 1: seleciona o agente de resolução de conflitos + liga autoWorktree, e salva', async () => {
     await selectConflictAgentAndAutoWorktreeViaUi(projectId, AGENT_LABEL)
-    recordStep({ scenario: 'git-pipeline', step: 'fase1-agente-conflito-e-autoworktree', status: 'pass' })
+    recordStep({
+      scenario: 'git-pipeline',
+      step: 'fase1-agente-conflito-e-autoworktree',
+      status: 'pass',
+    })
   })
 
   it('FASE 2: reabre Configurações e migra o terminal existente pra uma worktree isolada', async () => {
@@ -148,10 +152,9 @@ describe('Central de Merges: pipeline de git completo', function () {
     agentAWorktreePath = join(repoPath, '.alethe', 'worktrees', agentAWorktreeId)
     if (!existsSync(agentAWorktreePath)) {
       // Fallback: confirma o path real via API caso a convenção de pasta mude.
-      const worktrees = await invokeTauri<{ path: string; agentId: string }[]>(
-        'worktree_list',
-        { repo: repoPath },
-      ).catch(() => [])
+      const worktrees = await invokeTauri<{ path: string; agentId: string }[]>('worktree_list', {
+        repo: repoPath,
+      }).catch(() => [])
       const match = worktrees.find((w) => w.agentId === agentAWorktreeId)
       if (match) agentAWorktreePath = match.path
     }
@@ -350,7 +353,8 @@ describe('Central de Merges: pipeline de git completo', function () {
     recordStep({
       scenario: 'git-pipeline',
       step: 'dois-terminais-concorrentes',
-      status: resultC1.sessionLikelyContinuous && resultC2.sessionLikelyContinuous ? 'pass' : 'fail',
+      status:
+        resultC1.sessionLikelyContinuous && resultC2.sessionLikelyContinuous ? 'pass' : 'fail',
       detail: JSON.stringify({ resultC1, resultC2 }),
     })
 

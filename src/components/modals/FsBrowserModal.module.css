@@ -336,7 +336,9 @@
   border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.03));
   cursor: pointer;
   user-select: none;
-  transition: background 0.12s ease, transform 0.12s ease;
+  transition:
+    background 0.12s ease,
+    transform 0.12s ease;
   min-height: 42px;
   position: relative;
   will-change: background, transform;
@@ -373,7 +375,9 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  transition: transform 0.15s ease, color 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    color 0.15s ease;
 }
 
 .folderIcon {

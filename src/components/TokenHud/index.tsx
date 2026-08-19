@@ -12,12 +12,10 @@ import styles from './TokenHud.module.css'
 
 const POLL_MS = 4000
 
-                                                
 function shortCwd(cwd: string): string {
   return basename(cwd) || cwd
 }
 
-                                                                     
 function costClass(v: number): string {
   const level = costLevel(v)
   if (level === 'high') return styles.costHigh
@@ -33,7 +31,6 @@ export function TokenHud() {
   const [collapsed, setCollapsed] = useState(false)
   const timer = useRef<number | null>(null)
 
-                                                                                    
   useEffect(() => {
     void refresh()
     timer.current = window.setInterval(() => {

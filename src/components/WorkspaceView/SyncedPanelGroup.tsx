@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Group as PanelGroup, type GroupProps,useGroupRef } from 'react-resizable-panels'
+import { Group as PanelGroup, type GroupProps, useGroupRef } from 'react-resizable-panels'
 
 import { useProjectsStore } from '../../stores/projectsStore'
 

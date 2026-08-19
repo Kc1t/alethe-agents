@@ -9,11 +9,7 @@ import { DEFAULT_PROFILE_IMAGE_URL, getProfileInitial } from '../../lib/profile'
 import { latestVersionFor } from '../../lib/agentVersions'
 import { agentCliVersion, findCliLauncher, renameProfile } from '../../lib/tauri'
 import { THEME_OPTIONS, themeDescription, themeLabel } from '../../lib/themes'
-import {
-  agentCliCommand,
-  type AgentType,
-  type VisualStyle,
-} from '../../lib/types'
+import { agentCliCommand, type AgentType, type VisualStyle } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { ImageInput } from './ImageInput'
@@ -435,9 +431,7 @@ export function OnboardingModal() {
 
                       <div className={styles.sectionIntro}>
                         <h2 className={styles.sectionTitle}>{t('onboarding.appIconTitle')}</h2>
-                        <p className={styles.sectionSubtitle}>
-                          {t('onboarding.appIconSubtitle')}
-                        </p>
+                        <p className={styles.sectionSubtitle}>{t('onboarding.appIconSubtitle')}</p>
                       </div>
 
                       <div className={styles.iconGrid}>
@@ -447,10 +441,7 @@ export function OnboardingModal() {
                             <button
                               key={icon.id}
                               type="button"
-                              className={[
-                                styles.iconOption,
-                                active ? styles.iconOptionActive : '',
-                              ]
+                              className={[styles.iconOption, active ? styles.iconOptionActive : '']
                                 .filter(Boolean)
                                 .join(' ')}
                               onClick={() => setPreferences({ appIconTheme: icon.id })}
