@@ -21,14 +21,7 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use super::AppError;
-
-fn q(params: &HashMap<String, String>, key: &str) -> Result<String, AppError> {
-    params
-        .get(key)
-        .cloned()
-        .ok_or_else(|| AppError::bad_request(format!("missing_query_param:{key}")))
-}
+use super::{query_param as q, respond, AppError};
 
 pub fn router() -> Router {
     Router::new()
@@ -489,13 +482,4 @@ async fn merge_rebase(Json(b): Json<RepoEnvBody>) -> impl IntoResponse {
 }
 async fn merge_force_cleanup(Json(b): Json<RepoEnvBody>) -> impl IntoResponse {
     respond(conflict_resolution::merge_force_cleanup(b.repo, b.env_id).await)
-}
-
-/// Convert the command-layer `Result<T, String>` into an HTTP response.
-/// Successful values become JSON and failures use the shared `AppError` mapping.
-fn respond<T: serde::Serialize>(result: Result<T, String>) -> axum::response::Response {
-    match result {
-        Ok(v) => Json(v).into_response(),
-        Err(e) => AppError::from(e).into_response(),
-    }
 }

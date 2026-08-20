@@ -11,7 +11,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 use super::profile_routes::active_profile_dir_at;
-use super::{AppError, ServerRuntime};
+use super::{respond, AppError, ServerRuntime};
 
 pub fn router() -> Router {
     Router::new()
@@ -65,11 +65,4 @@ async fn pull(Extension(runtime): Extension<Arc<ServerRuntime>>) -> impl IntoRes
         Err(error) => return AppError::from(error).into_response(),
     };
     respond(github_sync::github_sync_pull_core(&root).await)
-}
-
-fn respond<T: serde::Serialize>(result: Result<T, String>) -> axum::response::Response {
-    match result {
-        Ok(v) => Json(v).into_response(),
-        Err(e) => AppError::from(e).into_response(),
-    }
 }

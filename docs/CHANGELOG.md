@@ -10,6 +10,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Não lançado]
 
+### Fixed
+
+- Consolidated native/Web transport APIs, sidebar state/actions/drag behavior, terminal-node rendering, Remote Control polling/mutations, and HTTP route response/query helpers so Desktop, Web, and visual variants share tested behavior instead of maintaining parallel implementations.
+- Restored desktop startup by completing the backup-vault purge IPC contract and the Google account preference imports that previously stopped the frontend from mounting.
+
 ### Adicionado
 
 - **Árvore Interativa de Pastas com Filtros Checkbox & Presets (`ProjectFolderTreeModal.tsx`, `ProjectFolderTreeModal.module.css`)**: Modal dedicado para escaneamento de diretórios do projeto com seleção cirúrgica de pastas para sincronização P2P, pré-desmarcando pastas pesadas (`node_modules`, `target`, `dist`, `.env`) e exibindo avisos de isolamento de diretório raiz.

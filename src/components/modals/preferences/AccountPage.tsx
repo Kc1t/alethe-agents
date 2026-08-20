@@ -1,7 +1,15 @@
 import { Check, ChevronRight, UserRound } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import { LOCALES, useT } from '../../../lib/i18n'
+import {
+  disconnectGoogleSync,
+  getGoogleSyncStatus,
+  type GoogleSyncUser,
+  startGoogleSyncAuth,
+} from '../../../lib/tauri'
 import { useProjectsStore } from '../../../stores/projectsStore'
+import { useUiStore } from '../../../stores/uiStore'
 import { GoogleIcon } from '../../icons/AgentIcons'
 import { ImageInput } from '../ImageInput'
 import controls from '../controls.module.css'
@@ -31,7 +39,9 @@ export function AccountPage({
   const [loadingAuth, setLoadingAuth] = useState(false)
 
   useEffect(() => {
-    getGoogleSyncStatus().then(setGoogleUser).catch(() => {})
+    getGoogleSyncStatus()
+      .then(setGoogleUser)
+      .catch(() => {})
   }, [])
 
   const handleConnectGoogle = async () => {

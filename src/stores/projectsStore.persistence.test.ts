@@ -13,6 +13,7 @@ vi.mock('../lib/tauri', () => ({
   killPty: vi.fn(),
   listenPtyData: vi.fn(async () => () => undefined),
   loadProjectsBootstrap: api.loadProjectsBootstrap,
+  recordAppEvent: vi.fn(async () => undefined),
   saveProjectsForProfile: api.saveProjectsForProfile,
   writeProjectMarker: vi.fn(async () => undefined),
 }))

@@ -7,12 +7,12 @@ import {
   isTauriEnv,
   loadProjectsBootstrap,
   type ProfileMeta,
+  recordAppEvent,
   recordFrontendError,
   saveProjectsFile,
   saveProjectsForProfile,
   writeProjectMarker,
 } from '../lib/tauri'
-import { recordAppEvent } from '../lib/tauri/misc'
 import { getProjectDefaultCwd, getProjectRepoRoot } from '../lib/terminalFactory'
 import {
   type AgentHandoffBootstrap,

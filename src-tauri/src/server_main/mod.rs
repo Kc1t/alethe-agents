@@ -20,6 +20,7 @@ use axum::routing::get;
 use axum::{Extension, Json, Router};
 use serde::Serialize;
 use serde_json::json;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
@@ -297,6 +298,20 @@ impl ServerRuntime {
 }
 
 pub struct AppError(pub axum::http::StatusCode, pub String);
+
+pub(super) fn query_param(params: &HashMap<String, String>, key: &str) -> Result<String, AppError> {
+    params
+        .get(key)
+        .cloned()
+        .ok_or_else(|| AppError::bad_request(format!("missing_query_param:{key}")))
+}
+
+pub(super) fn respond<T: Serialize>(result: Result<T, String>) -> Response {
+    match result {
+        Ok(value) => Json(value).into_response(),
+        Err(error) => AppError::from(error).into_response(),
+    }
+}
 
 impl AppError {
     pub fn bad_request(message: impl Into<String>) -> Self {

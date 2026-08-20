@@ -23,21 +23,34 @@ export async function scanProjectFolderTree(projectPath: string): Promise<Folder
     return [
       { name: 'src', path: 'src', isDir: true, sizeBytes: 0, children: [], isHeavy: false },
       { name: 'docs', path: 'docs', isDir: true, sizeBytes: 0, children: [], isHeavy: false },
-      { name: 'node_modules', path: 'node_modules', isDir: true, sizeBytes: 0, children: [], isHeavy: true },
+      {
+        name: 'node_modules',
+        path: 'node_modules',
+        isDir: true,
+        sizeBytes: 0,
+        children: [],
+        isHeavy: true,
+      },
       { name: '.env', path: '.env', isDir: false, sizeBytes: 50, children: [], isHeavy: true },
     ]
   }
   return invoke<FolderTreeNode[]>('scan_project_folder_tree', { projectPath })
 }
 
-export async function setupProjectMeshIsolation(baseDir: string, projectName: string): Promise<string> {
+export async function setupProjectMeshIsolation(
+  baseDir: string,
+  projectName: string,
+): Promise<string> {
   if (!isTauriEnv()) {
     return `${baseDir}/${projectName}`
   }
   return invoke<string>('setup_project_mesh_isolation', { baseDir, projectName })
 }
 
-export async function triggerProjectArchiveBackup(projectPath: string, projectName: string): Promise<BackupArchiveEntry> {
+export async function triggerProjectArchiveBackup(
+  projectPath: string,
+  projectName: string,
+): Promise<BackupArchiveEntry> {
   if (!isTauriEnv()) {
     return {
       filename: `backup_${projectName}_${Date.now()}.bin`,
@@ -48,6 +61,21 @@ export async function triggerProjectArchiveBackup(projectPath: string, projectNa
     }
   }
   return invoke<BackupArchiveEntry>('trigger_project_archive_backup', { projectPath, projectName })
+}
+
+export async function purgeProjectBackupsSecured(
+  projectPath: string,
+  projectName: string,
+  confirmationName: string,
+): Promise<number> {
+  if (!isTauriEnv()) {
+    return 0
+  }
+  return invoke<number>('purge_project_backups_secured', {
+    projectPath,
+    projectName,
+    confirmationName,
+  })
 }
 
 export type GoogleSyncUser = {

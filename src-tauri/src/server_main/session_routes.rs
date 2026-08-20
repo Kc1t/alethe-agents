@@ -23,14 +23,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use super::profile_routes::active_profile_dir_at;
-use super::{AppError, ServerRuntime};
-
-fn q(params: &HashMap<String, String>, key: &str) -> Result<String, AppError> {
-    params
-        .get(key)
-        .cloned()
-        .ok_or_else(|| AppError::bad_request(format!("missing_query_param:{key}")))
-}
+use super::{query_param as q, respond, AppError, ServerRuntime};
 
 pub fn router() -> Router {
     Router::new()
@@ -197,11 +190,4 @@ async fn clear_stats(Extension(runtime): Extension<Arc<ServerRuntime>>) -> impl 
         }
     }
     Json(serde_json::json!({ "status": "cleared" })).into_response()
-}
-
-fn respond<T: serde::Serialize>(result: Result<T, String>) -> axum::response::Response {
-    match result {
-        Ok(v) => Json(v).into_response(),
-        Err(e) => AppError::from(e).into_response(),
-    }
 }

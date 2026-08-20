@@ -1,20 +1,18 @@
 import { ShieldCheck, Smartphone, Wifi, WifiOff } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
 
+import { useRemoteControl } from '../../../hooks/useRemoteControl'
+import { useT } from '../../../lib/i18n'
 import {
   closeRemoteControlPairing,
   openRemoteControlPairing,
-  remoteControlInfo,
   remoteControlRevoke,
   revokeRemoteControlDevice,
-  type RemoteControlInfo,
 } from '../../../lib/tauri'
-import { useT } from '../../../lib/i18n'
 import { useProjectsStore } from '../../../stores/projectsStore'
-import controls from '../controls.module.css'
-import styles from './RemoteControlPage.module.css'
-import { SettingsSection } from './primitives'
 import { Dropdown } from '../../ui/Dropdown'
+import controls from '../controls.module.css'
+import { SettingsSection } from './primitives'
+import styles from './RemoteControlPage.module.css'
 
 const SESSION_OPTIONS = [900, 3600, 86400]
 
@@ -28,39 +26,7 @@ export function RemoteControlPage() {
   const t = useT()
   const preferences = useProjectsStore((state) => state.preferences)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
-  const [info, setInfo] = useState<RemoteControlInfo | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  const refresh = useCallback(async () => {
-    try {
-      setInfo(await remoteControlInfo())
-      setError(null)
-    } catch (value) {
-      setError(String(value))
-    }
-  }, [])
-
-  useEffect(() => {
-    void refresh()
-    const timer = window.setInterval(() => void refresh(), 1000)
-    return () => window.clearInterval(timer)
-  }, [refresh])
-
-  const update = async (operation: () => Promise<RemoteControlInfo>) => {
-    setBusy(true)
-    try {
-      setInfo(await operation())
-      setError(null)
-    } catch (value) {
-      setError(String(value))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const enabled = info?.enabled === true
-  const pairingOpen = info?.pairing_open === true
+  const { busy, enabled, error, info, pairingOpen, run: update } = useRemoteControl()
   const readOnly = preferences.remoteReadOnly
   const allowShellInput = preferences.remoteAllowShellInput
 

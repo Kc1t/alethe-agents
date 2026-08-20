@@ -283,6 +283,16 @@ export async function recordFrontendError(
   }
 }
 
+/** Records a non-sensitive lifecycle event for persistence diagnostics. */
+export async function recordAppEvent(kind: string, message: string): Promise<void> {
+  if (!isTauriEnv()) return
+  try {
+    await invoke('record_app_event', { kind, message })
+  } catch {
+    /* best-effort */
+  }
+}
+
 export async function setDiscordPresence(
   details: string,
   state: string,
@@ -504,10 +514,7 @@ export type PlanItem = {
   content?: string | null
 }
 
-export async function listProjectPlans(
-  repoPath: string,
-  projectId: string,
-): Promise<PlanItem[]> {
+export async function listProjectPlans(repoPath: string, projectId: string): Promise<PlanItem[]> {
   if (isTauriEnv()) return invoke<PlanItem[]>('list_project_plans', { repoPath, projectId })
   return webApiFetch<PlanItem[]>(
     `/api/planning/list_plans?repoPath=${encodeURIComponent(repoPath)}&projectId=${encodeURIComponent(projectId)}`,

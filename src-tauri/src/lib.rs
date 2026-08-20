@@ -477,6 +477,7 @@ pub fn run() {
             sync_mesh::scan_project_folder_tree,
             sync_mesh::setup_project_mesh_isolation,
             sync_mesh::trigger_project_archive_backup,
+            sync_mesh::purge_project_backups_secured,
             sync_mesh::start_google_sync_auth,
             sync_mesh::get_google_sync_status,
             sync_mesh::disconnect_google_sync,

@@ -25,18 +25,11 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
 
-use super::{AppError, ServerRuntime};
+use super::{query_param as q, respond, AppError, ServerRuntime};
 
 fn planning_watchers() -> &'static PlanningWatchers {
     static WATCHERS: OnceLock<PlanningWatchers> = OnceLock::new();
     WATCHERS.get_or_init(PlanningWatchers::default)
-}
-
-fn q(params: &HashMap<String, String>, key: &str) -> Result<String, AppError> {
-    params
-        .get(key)
-        .cloned()
-        .ok_or_else(|| AppError::bad_request(format!("missing_query_param:{key}")))
 }
 
 pub fn router() -> Router {
@@ -322,11 +315,4 @@ async fn remote_set_enabled(
         b.enabled,
     );
     Ok(Json(info))
-}
-
-fn respond<T: serde::Serialize>(result: Result<T, String>) -> axum::response::Response {
-    match result {
-        Ok(v) => Json(v).into_response(),
-        Err(e) => AppError::from(e).into_response(),
-    }
 }

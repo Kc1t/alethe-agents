@@ -27,7 +27,11 @@ pub struct BackupArchiveEntry {
 }
 
 /// Escaneia recursivamente as pastas de um projeto para exibição na árvore de seleção com checkboxes
-pub fn scan_project_folder_tree_core(root: &Path, current: &Path, max_depth: usize) -> Vec<FolderTreeNode> {
+pub fn scan_project_folder_tree_core(
+    root: &Path,
+    current: &Path,
+    max_depth: usize,
+) -> Vec<FolderTreeNode> {
     if max_depth == 0 || !current.is_dir() {
         return Vec::new();
     }
@@ -122,11 +126,13 @@ pub fn ensure_hidden_folder_windows(path: &Path) -> Result<(), String> {
 /// Garante o isolamento estrito de subpasta para o projeto (Anti-Syncthing Root Overwrite)
 /// e inicializa a pasta `.alethe/` oculta com estrutura de sync
 pub fn init_project_sync_root(base_dir: &Path, project_name: &str) -> Result<PathBuf, String> {
-    let sanitized_name = project_name.replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "_");
+    let sanitized_name =
+        project_name.replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "_");
     let project_root = base_dir.join(&sanitized_name);
 
     if !project_root.is_dir() {
-        fs::create_dir_all(&project_root).map_err(|e| format!("Falha ao criar diretório raiz do projeto: {e}"))?;
+        fs::create_dir_all(&project_root)
+            .map_err(|e| format!("Falha ao criar diretório raiz do projeto: {e}"))?;
     }
 
     let alethe_dir = project_root.join(".alethe");
@@ -148,20 +154,31 @@ pub fn init_project_sync_root(base_dir: &Path, project_name: &str) -> Result<Pat
             "p2pEnabled": true,
             "version": 1
         });
-        let _ = fs::write(&sync_meta_file, serde_json::to_string_pretty(&meta).unwrap_or_default());
+        let _ = fs::write(
+            &sync_meta_file,
+            serde_json::to_string_pretty(&meta).unwrap_or_default(),
+        );
     }
 
     Ok(project_root)
 }
 
 /// Cria um backup compactado e definitivo (WORM) do projeto em `.alethe/backups/archive/`
-pub fn create_project_archive_backup(project_root: &Path, project_name: &str) -> Result<BackupArchiveEntry, String> {
+pub fn create_project_archive_backup(
+    project_root: &Path,
+    project_name: &str,
+) -> Result<BackupArchiveEntry, String> {
     let alethe_dir = project_root.join(".alethe");
     let archive_dir = alethe_dir.join("backups").join("archive");
-    fs::create_dir_all(&archive_dir).map_err(|e| format!("Falha ao criar pasta de arquivo: {e}"))?;
+    fs::create_dir_all(&archive_dir)
+        .map_err(|e| format!("Falha ao criar pasta de arquivo: {e}"))?;
 
-    let now_secs = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-    let sanitized_name = project_name.replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "_");
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let sanitized_name =
+        project_name.replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "_");
     let filename = format!("backup_{sanitized_name}_{now_secs}.bin");
     let backup_path = archive_dir.join(&filename);
 
@@ -171,8 +188,10 @@ pub fn create_project_archive_backup(project_root: &Path, project_name: &str) ->
     payload.extend_from_slice(format!("PROJECT:{project_name}\nTIMESTAMP:{now_secs}\n").as_bytes());
 
     // Escreve arquivo físico
-    let mut file = File::create(&backup_path).map_err(|e| format!("Falha ao criar arquivo de backup: {e}"))?;
-    file.write_all(&payload).map_err(|e| format!("Falha ao escrever backup: {e}"))?;
+    let mut file =
+        File::create(&backup_path).map_err(|e| format!("Falha ao criar arquivo de backup: {e}"))?;
+    file.write_all(&payload)
+        .map_err(|e| format!("Falha ao escrever backup: {e}"))?;
     file.flush().map_err(|e| e.to_string())?;
 
     let size_bytes = payload.len() as u64;
@@ -190,10 +209,17 @@ pub fn create_project_archive_backup(project_root: &Path, project_name: &str) ->
     })
 }
 
-/// Exclusão manual com proteção estrita: exige a confirmação do nome exato do projeto
-pub fn purge_project_backup_vault(project_root: &Path, expected_project_name: &str, confirmation_name: &str) -> Result<usize, String> {
+/// Manually deletes archived backups after confirming the exact project name.
+pub fn purge_project_backup_vault(
+    project_root: &Path,
+    expected_project_name: &str,
+    confirmation_name: &str,
+) -> Result<usize, String> {
     if expected_project_name.trim() != confirmation_name.trim() {
-        return Err("Aviso de Segurança: O nome de confirmação não confere com o nome do projeto.".to_string());
+        return Err(
+            "Aviso de Segurança: O nome de confirmação não confere com o nome do projeto."
+                .to_string(),
+        );
     }
 
     let archive_dir = project_root.join(".alethe").join("backups").join("archive");
@@ -226,16 +252,32 @@ pub fn scan_project_folder_tree(project_path: String) -> Result<Vec<FolderTreeNo
 }
 
 #[tauri::command]
-pub fn setup_project_mesh_isolation(base_dir: String, project_name: String) -> Result<String, String> {
+pub fn setup_project_mesh_isolation(
+    base_dir: String,
+    project_name: String,
+) -> Result<String, String> {
     let base = Path::new(&base_dir);
     let root = init_project_sync_root(base, &project_name)?;
     Ok(root.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
-pub fn trigger_project_archive_backup(project_path: String, project_name: String) -> Result<BackupArchiveEntry, String> {
+pub fn trigger_project_archive_backup(
+    project_path: String,
+    project_name: String,
+) -> Result<BackupArchiveEntry, String> {
     let root = Path::new(&project_path);
     create_project_archive_backup(root, &project_name)
+}
+
+#[tauri::command]
+pub fn purge_project_backups_secured(
+    project_path: String,
+    project_name: String,
+    confirmation_name: String,
+) -> Result<usize, String> {
+    let root = Path::new(&project_path);
+    purge_project_backup_vault(root, &project_name, &confirmation_name)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -256,12 +298,20 @@ pub fn start_google_sync_auth(app: tauri::AppHandle) -> Result<GoogleSyncUser, S
         name: "Miguelsp".to_string(),
         picture: None,
         connected: true,
-        last_sync_ms: Some(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64),
+        last_sync_ms: Some(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64,
+        ),
     };
 
     if let Ok(data_dir) = crate::paths::profile_data_dir(&app) {
         let auth_file = data_dir.join("google_auth.json");
-        let _ = fs::write(&auth_file, serde_json::to_string_pretty(&user).unwrap_or_default());
+        let _ = fs::write(
+            &auth_file,
+            serde_json::to_string_pretty(&user).unwrap_or_default(),
+        );
     }
 
     Ok(user)

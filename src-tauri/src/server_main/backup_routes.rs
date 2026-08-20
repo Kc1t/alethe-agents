@@ -12,7 +12,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 use super::profile_routes::{active_profile_dir_at, profile_dir_validated_at};
-use super::{AppError, ServerRuntime};
+use super::{respond, AppError, ServerRuntime};
 
 pub fn router() -> Router {
     Router::new()
@@ -87,11 +87,4 @@ async fn import(
         .map_err(|e| e.to_string())
         .and_then(|r| r),
     )
-}
-
-fn respond<T: serde::Serialize>(result: Result<T, String>) -> axum::response::Response {
-    match result {
-        Ok(v) => Json(v).into_response(),
-        Err(e) => AppError::from(e).into_response(),
-    }
 }
