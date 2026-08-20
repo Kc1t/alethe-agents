@@ -1,20 +1,24 @@
-   
-                                                                               
-                                                                             
-                                                                            
-                             
-  
-                                                                      
-                                                                        
-   
+const invalidators = new Set<() => void>()
 
-                                                                              
+/**
+ * Drops every memoised value so the next read refetches.
+ *
+ * These caches hold whatever the last poll returned for the lifetime of the app; under memory
+ * pressure that is dead weight the process can hand back immediately, unlike a terminal buffer.
+ */
+export function clearAllTtlCaches(): void {
+  for (const invalidate of invalidators) invalidate()
+}
+
 export function makeTtlCache<T>(
   fetcher: () => Promise<T>,
   ttlMs: number,
 ): (force?: boolean) => Promise<T> {
   let cached: { value: T; at: number } | null = null
   let inFlight: Promise<T> | null = null
+  invalidators.add(() => {
+    cached = null
+  })
 
   return (force = false) => {
     const now = Date.now()
@@ -36,17 +40,15 @@ export function makeTtlCache<T>(
   }
 }
 
-   
-                                                                              
-                                                                              
-                             
-   
 export function makeKeyedTtlCache<K, T>(
   fetcher: (key: K) => Promise<T>,
   ttlMs: number,
 ): (key: K, force?: boolean) => Promise<T> {
   let cached: { key: K; value: T; at: number } | null = null
   let inFlight: { key: K; promise: Promise<T> } | null = null
+  invalidators.add(() => {
+    cached = null
+  })
 
   return (key: K, force = false) => {
     const now = Date.now()

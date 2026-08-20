@@ -50,6 +50,7 @@ dependencies = [
  "dirs-next",
  "discord-rich-presence",
  "dotenvy",
+ "futures-util",
  "image",
  "keyring",
  "nanoid",
@@ -74,6 +75,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tiny_http",
  "tokio",
+ "tokio-tungstenite",
  "toml_edit 0.22.27",
  "tungstenite",
  "urlencoding",
@@ -5219,6 +5221,18 @@ checksum = "1729aa945f29d91ba541258c8df89027d5792d85a8841fb65e8bf0f4ede4ef61"
 dependencies = [
  "rustls",
  "tokio",
+]
+
+[[package]]
+name = "tokio-tungstenite"
+version = "0.26.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a9daff607c6d2bf6c16fd681ccb7eecc83e4e2cdc1ca067ffaadfca5de7f084"
+dependencies = [
+ "futures-util",
+ "log",
+ "tokio",
+ "tungstenite",
 ]
 
 [[package]]

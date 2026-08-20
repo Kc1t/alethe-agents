@@ -131,6 +131,7 @@ describe('production renderer security policy', () => {
       'core:webview:allow-set-webview-zoom',
       'dialog:allow-open',
       'dialog:allow-save',
+      'dialog:allow-confirm',
       'dialog:allow-message',
       'notification:allow-is-permission-granted',
       'notification:allow-request-permission',

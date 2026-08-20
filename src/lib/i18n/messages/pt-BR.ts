@@ -51,8 +51,7 @@ export const ptBR: Record<MessageKey, string> = {
   'onboarding.themeTitle': 'Escolha um tema',
   'onboarding.themeSubtitle': 'Escolha a paleta que combina com o ambiente. Dá pra trocar depois.',
   'onboarding.appIconTitle': 'Escolha o ícone do app',
-  'onboarding.appIconSubtitle':
-    'É o ícone da barra de tarefas e da janela. Dá pra trocar depois.',
+  'onboarding.appIconSubtitle': 'É o ícone da barra de tarefas e da janela. Dá pra trocar depois.',
   'onboarding.visualStyleTitle': 'Escolha o estilo da interface',
   'onboarding.visualStyleSubtitle':
     'O quanto as superfícies, bordas e painéis aparecem. Dá pra trocar depois.',
@@ -458,6 +457,20 @@ export const ptBR: Record<MessageKey, string> = {
   'features.browser.description': 'Abra sites dentro da workspace em panes de navegador.',
   'features.graphify.title': 'Graphify',
   'features.graphify.description': 'Visualize o grafo do código dentro da workspace.',
+  'resources.parkedTitle': 'Terminal estacionado para liberar memória',
+  'resources.parkedBody': '"{name}" foi parado porque a memória acabou. Reinicie para continuar de onde parou.',
+  'resources.criticalTitle': 'Memória em nível crítico',
+  'resources.criticalBody':
+    'Só {free} MB livres — os terminais estão segurando {ptys} MB. Feche um terminal de agente que você não esteja usando antes do app travar.',
+  'playwright.browserFailedTitle': 'O navegador do Playwright não subiu',
+  'playwright.browserFailedBody':
+    'Nenhum navegador baseado em Chromium foi encontrado, ou ele não abriu a porta de depuração. O Playwright vai subir o próprio.',
+  'features.playwright.title': 'Navegador Playwright',
+  'features.playwright.description':
+    'O Alethe sobe e controla um navegador para automação, e aponta o servidor MCP do Playwright para ele. O navegador fecha junto com o Alethe.',
+  'features.orchestrator.title': 'Orquestração de agentes',
+  'features.orchestrator.description':
+    'Dá ao Claude Code um conjunto de ferramentas do Alethe para repassar trabalho a workers Codex que rodam em paralelo. O Alethe é dono do sandbox, do limite de concorrência e dos workers, e consegue corrigir ou cancelar um deles no meio da execução.',
   'features.mcp.title': 'MCP e Skills',
   'features.mcp.description':
     'Inspecione e gerencie os servidores MCP e as skills de cada agente em um só painel.',
@@ -694,7 +707,8 @@ export const ptBR: Record<MessageKey, string> = {
   'theme.ember.desc':
     'Carvão frio, divisores de fio de cabelo e um acento laranja brasa no que está ativo.',
   'theme.golden-premium.label': 'Dourado Premium',
-  'theme.golden-premium.desc': 'Luxuoso marrom escuro e pretos profundos com elegantes detalhes dourados.',
+  'theme.golden-premium.desc':
+    'Luxuoso marrom escuro e pretos profundos com elegantes detalhes dourados.',
   'todo.tagsPlaceholder': 'Tags: docs, fix',
   'todo.linkProject': 'Vincular tarefa a um projeto',
   'todo.noProject': 'Nenhum projeto',
@@ -721,18 +735,30 @@ export const ptBR: Record<MessageKey, string> = {
   'whatsNew.close': 'Entendi',
   'whatsNew.update': 'Ver atualização',
   'whatsNew.releaseHeading': 'v{version} — {date}',
-  'whatsNew.v150.note1': 'O export de backup de perfil agora arquiva o perfil inteiro (todos, histórico, preferências, tokens, scrollback) em vez de uma lista curta fixa.',
-  'whatsNew.v150.note2': 'Nova ação de menu “Erase all data (fresh install)” apaga todos os perfis, contas, projetos, scrollback, configurações e logs.',
-  'whatsNew.v150.note3': 'Tela de carregamento inicial reformulada para compartilhar o fundo e o ASCII art da Home.',
-  'whatsNew.v150.note4': 'Corrigido o travamento ao trocar de conta em “PTY reader flush barrier timed out”, fechando os pseudoconsoles dos terminais estacionados antes da espera final.',
-  'whatsNew.v150.note5': 'Corrigida a criação de conta presa em loading quebrado, e detecção de CLI com timeout para o onboarding não congelar em “Detecting installed CLIs…”.',
-  'whatsNew.v150.note6': 'Controle remoto via LAN: visão web móvel autenticada para ver chats, acompanhar o terminal ao vivo e enviar uma mensagem por vez.',
-  'whatsNew.v141.note1': 'Corrigidas as notas de versão mostradas aqui e no GitHub — elas vinham de uma cópia solta e desatualizada do changelog.',
-  'whatsNew.v140.note1': 'Graphify agora é opcional: ligue ou desligue o painel de grafo em Preferências sem mexer na config MCP dos agentes.',
-  'whatsNew.v140.note2': 'O comando `alethe` no terminal abre a pasta atual como projeto — ou foca o app, se já estiver aberto.',
-  'whatsNew.v140.note3': 'File Explorer: duplo-clique em qualquer arquivo para abri-lo como pane no workspace.',
-  'whatsNew.v140.note4': 'Git Control: duplo-clique num arquivo em Changes ou Staged abre o diff como pane.',
-  'whatsNew.v140.note5': 'Nova tela "Sobre & Atualizações" nas Preferências, com progresso e erros visíveis ao atualizar.',
+  'whatsNew.v150.note1':
+    'O export de backup de perfil agora arquiva o perfil inteiro (todos, histórico, preferências, tokens, scrollback) em vez de uma lista curta fixa.',
+  'whatsNew.v150.note2':
+    'Nova ação de menu “Erase all data (fresh install)” apaga todos os perfis, contas, projetos, scrollback, configurações e logs.',
+  'whatsNew.v150.note3':
+    'Tela de carregamento inicial reformulada para compartilhar o fundo e o ASCII art da Home.',
+  'whatsNew.v150.note4':
+    'Corrigido o travamento ao trocar de conta em “PTY reader flush barrier timed out”, fechando os pseudoconsoles dos terminais estacionados antes da espera final.',
+  'whatsNew.v150.note5':
+    'Corrigida a criação de conta presa em loading quebrado, e detecção de CLI com timeout para o onboarding não congelar em “Detecting installed CLIs…”.',
+  'whatsNew.v150.note6':
+    'Controle remoto via LAN: visão web móvel autenticada para ver chats, acompanhar o terminal ao vivo e enviar uma mensagem por vez.',
+  'whatsNew.v141.note1':
+    'Corrigidas as notas de versão mostradas aqui e no GitHub — elas vinham de uma cópia solta e desatualizada do changelog.',
+  'whatsNew.v140.note1':
+    'Graphify agora é opcional: ligue ou desligue o painel de grafo em Preferências sem mexer na config MCP dos agentes.',
+  'whatsNew.v140.note2':
+    'O comando `alethe` no terminal abre a pasta atual como projeto — ou foca o app, se já estiver aberto.',
+  'whatsNew.v140.note3':
+    'File Explorer: duplo-clique em qualquer arquivo para abri-lo como pane no workspace.',
+  'whatsNew.v140.note4':
+    'Git Control: duplo-clique num arquivo em Changes ou Staged abre o diff como pane.',
+  'whatsNew.v140.note5':
+    'Nova tela "Sobre & Atualizações" nas Preferências, com progresso e erros visíveis ao atualizar.',
   'whatsNew.v140.note6': 'A versão instalada agora aparece sempre no rodapé da sidebar.',
   'whatsNew.v140.note7':
     'Segurança: o listener HTTP interno do AgentCanvas agora exige token secreto, e o corpo da requisição é limitado a 1 MB.',
@@ -1663,6 +1689,13 @@ export const ptBR: Record<MessageKey, string> = {
   'webPane.invalidUrl': 'O endereço deste site é inválido.',
   'webPane.privateStarting': 'Iniciando browser privado…',
   'webPane.privateStartFailed': 'Não foi possível iniciar o browser privado.',
+  'webPane.cdpCloseTab': 'Fechar aba',
+  'webPane.cdpTabs': 'Abas abertas',
+  'webPane.cdpLoading': 'Conectando ao navegador...',
+  'webPane.cdpFailed': 'Não foi possível renderizar a página neste painel.',
+  'webPane.cdpSurface': 'Página do navegador',
+  'webPane.engineCdpOn': 'Navegador embutido ligado — clique para voltar à janela nativa',
+  'webPane.engineCdpOff': 'Renderizar esta página dentro do painel (compartilhada com o agente)',
   'webPane.privateHint':
     'Sessão nativa privada · os dados de navegação são descartados ao fechar este pane.',
 
@@ -1947,7 +1980,8 @@ export const ptBR: Record<MessageKey, string> = {
   'mcp.errGeneric': 'A operação falhou.',
   'mcp.healthCheck': 'Testar',
   'mcp.healthChecking': 'Testando…',
-  'mcp.healthCheckHint': 'Pergunta ao agente se ele consegue mesmo alcançar os servidores. O Claude conecta em cada um, então leva alguns segundos.',
+  'mcp.healthCheckHint':
+    'Pergunta ao agente se ele consegue mesmo alcançar os servidores. O Claude conecta em cada um, então leva alguns segundos.',
   'mcp.health.connected': 'conectado',
   'mcp.health.failed': 'falhou',
   'mcp.health.needsAuth': 'precisa autenticar',
@@ -2048,5 +2082,4 @@ export const ptBR: Record<MessageKey, string> = {
   'skills.removedLinkOnly': 'A cópia compartilhada foi mantida em {path}',
   'skills.removeFailed': 'Não deu para remover a skill',
   'skills.errBundled': 'Essa skill vem com o agente e não pode ser removida pelo Alethe.',
-
 }

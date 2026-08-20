@@ -5,7 +5,6 @@ export async function setWindowOpacity(opacity: number): Promise<void> {
   await invoke('set_window_opacity', { opacity })
 }
 
-                                                                            
 export async function quitApp(): Promise<void> {
   await invoke('quit_app')
 }
@@ -146,13 +145,40 @@ export function listenResourcePressure(
   return listen<ResourcePressurePayload>('resource://pressure', (event) => handler(event.payload))
 }
 
+/**
+ * Relief requests the resource manager raises as free memory falls.
+ *
+ * `drop-caches` was emitted as `resource::drop-caches` and matched no listener, so the most severe
+ * level was the one that did nothing.
+ */
+export const MEMORY_RELIEF_EVENTS = {
+  low: 'resource://hibernate-idle',
+  medium: 'resource://webview-low-memory',
+  high: 'resource://reduce-pool',
+  critical: 'resource://drop-caches',
+} as const
+
+export type MemoryReliefLevel = keyof typeof MEMORY_RELIEF_EVENTS
+
+export async function listenMemoryRelief(
+  handler: (level: MemoryReliefLevel) => void,
+): Promise<UnlistenFn> {
+  const unlisteners = await Promise.all(
+    (Object.keys(MEMORY_RELIEF_EVENTS) as MemoryReliefLevel[]).map((level) =>
+      listen(MEMORY_RELIEF_EVENTS[level], () => handler(level)),
+    ),
+  )
+  return () => {
+    for (const unlisten of unlisteners) unlisten()
+  }
+}
+
 export function listenPtySuspended(
   handler: (payload: PtySuspendedPayload) => void,
 ): Promise<UnlistenFn> {
   return listen<PtySuspendedPayload>('resource://pty-suspended', (event) => handler(event.payload))
 }
 
-                                                                                  
 export type CrashSession = {
   started_at_ms: number
   clean_exit: boolean
@@ -162,26 +188,19 @@ export type CrashSession = {
   ptys_mb: number
   webview_mb: number
   process_count: number
-                                                                              
-                                                                  
+
   job_guard_active: boolean
 }
 
-                                                                       
-                                                                      
-                                                                         
 export type CrashReport = {
   session: CrashSession
   orphans_reaped: number
 }
 
-                                                                   
 export async function getLastCrashReport(): Promise<CrashReport | null> {
   return invoke<CrashReport | null>('get_last_crash_report')
 }
 
-                                                                             
-                                     
 export async function getJobGuardStatus(): Promise<boolean> {
   return invoke<boolean>('get_job_guard_status')
 }

@@ -1,20 +1,25 @@
 import { useEffect } from 'react'
 
+import { getLocale, translate } from '../lib/i18n'
 import { computeVisibleFocusedPtyIds } from '../lib/ptyVisibility'
 import {
   getMemoryStats,
   getRuntimeSnapshot,
+  listenMemoryRelief,
   listenPtySuspended,
+  type MemoryReliefLevel,
   type PtyRuntimeMeta,
   type ResourcePolicyInput,
   setResourcePolicy,
   updatePtyRuntimeMeta,
 } from '../lib/tauri'
+import { clearAllTtlCaches } from '../lib/ttlCache'
 import { useProjectsStore } from '../stores/projectsStore'
 import { useTerminalsStore } from '../stores/terminalsStore'
 import { useUiStore } from '../stores/uiStore'
 
 const SAMPLE_INTERVAL_MS = 5_000
+const MEMORY_WARNING_INTERVAL_MS = 120_000
 
 function currentPolicy(): ResourcePolicyInput {
   const policy = useProjectsStore.getState().preferences.resourcePolicy
@@ -27,6 +32,15 @@ function currentPolicy(): ResourcePolicyInput {
     hiddenShellIdleMinutes: policy.hiddenShellIdleMinutes,
     spawnGraceSeconds: policy.spawnGraceSeconds,
   }
+}
+
+function terminalNameForPty(ptyId: string): string {
+  for (const project of useProjectsStore.getState().projects) {
+    for (const terminal of project.terminals) {
+      if (terminal.tabs.some((tab) => tab.ptyId === ptyId)) return terminal.name
+    }
+  }
+  return ptyId
 }
 
 function collectRuntimeMetas(): PtyRuntimeMeta[] {
@@ -114,8 +128,16 @@ export function useResourceSupervisor(hydrated: boolean): void {
     let lastPolicy = ''
     const unlisteners: Array<() => void> = []
 
+    // Parking kills the process tree, so the pane simply falls silent. Without a word about it a
+    // terminal that stopped on its own is indistinguishable from one that froze, and the way back
+    // is a restart the reader has no reason to try.
     const onSuspended = (id: string) => {
       useTerminalsStore.getState().markSuspended(id)
+      const name = terminalNameForPty(id)
+      useUiStore.getState().pushToast({
+        title: translate(getLocale(), 'resources.parkedTitle'),
+        body: translate(getLocale(), 'resources.parkedBody', { name }),
+      })
     }
 
     const tick = async () => {
@@ -153,9 +175,35 @@ export function useResourceSupervisor(hydrated: boolean): void {
         useUiStore.getState().addMemorySample(stats)
         useUiStore.getState().setRamMb(stats.total_mb)
       } catch {
-                                                                          
+        // Sampling is best effort: a failed poll must not take the UI down with it.
       }
     }
+
+    // The resource manager raises these as free memory falls. Nothing listened to them, so every
+    // relief level was a no-op and the app watched the machine run out of RAM.
+    let lastWarnedAt = 0
+    const onRelief = (level: MemoryReliefLevel) => {
+      if (cancelled || level === 'low') return
+      clearAllTtlCaches()
+      if (level !== 'critical') return
+      // A freeze with no warning is the part that costs the user work; rate-limit but do tell them.
+      const now = Date.now()
+      if (now - lastWarnedAt < MEMORY_WARNING_INTERVAL_MS) return
+      lastWarnedAt = now
+      const stats = useUiStore.getState().runtimeSnapshot
+      useUiStore.getState().pushToast({
+        title: translate(getLocale(), 'resources.criticalTitle'),
+        body: translate(getLocale(), 'resources.criticalBody', {
+          free: String(stats?.memory.system_available_mb ?? 0),
+          ptys: String(stats?.memory.ptys_mb ?? 0),
+        }),
+      })
+    }
+
+    void listenMemoryRelief(onRelief).then((unlisten) => {
+      if (cancelled) unlisten()
+      else unlisteners.push(unlisten)
+    })
 
     void listenPtySuspended((payload) => {
       if (cancelled) return

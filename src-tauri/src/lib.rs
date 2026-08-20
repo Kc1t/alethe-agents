@@ -6,6 +6,9 @@ mod ai_memory;
 mod antigravity_sessions;
 mod antigravity_usage;
 mod backup;
+mod browser_session;
+mod browser_pane;
+mod cdp;
 mod claude_sessions;
 mod claude_usage;
 mod cli_launch;
@@ -37,6 +40,7 @@ mod mcp_model;
 mod mcp_store;
 mod opencode_bridge;
 mod opencode_gsd_plugin;
+mod orchestrator;
 mod opencode_sessions;
 mod paths;
 mod planning;
@@ -129,6 +133,8 @@ pub fn run() {
 
     pty::install_kill_on_close_guard();
     let sessions: PtySessions = Arc::new(Mutex::new(HashMap::<String, PtySession>::new()));
+    let browser_session_state = browser_session::BrowserSessionState::default();
+    let browser_pane_state = browser_pane::BrowserPaneState::default();
     let codex_app_server_state = codex_app_server::CodexAppServerState::default();
     let sessions_for_exit = Arc::clone(&sessions);
     let sessions_for_resources = Arc::clone(&sessions);
@@ -137,6 +143,8 @@ pub fn run() {
 
     let mut builder = tauri::Builder::default()
         .manage(sessions.clone())
+        .manage(browser_session_state)
+        .manage(browser_pane_state)
         .manage(codex_app_server_state)
         .manage(remote::hub())
         .manage(resource_supervisor)
@@ -145,6 +153,7 @@ pub fn run() {
         .manage(discord_presence::DiscordPresence::new())
         .manage(planning::PlanningWatchers::default())
         .manage(cli_launch::PendingOpen::default())
+        .manage(orchestrator::OrchestratorState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
@@ -219,6 +228,25 @@ pub fn run() {
             agent_events::agent_hooks_settings_path,
             agent_events::agent_hooks_endpoint,
             agent_events::agent_hooks_token,
+            orchestrator::orchestrator_mcp_config_path,
+            orchestrator::orchestrator_jobs,
+            orchestrator::orchestrator_set_concurrency,
+            browser_session::browser_session_start,
+            browser_session::browser_session_stop,
+            browser_session::browser_session_status,
+            browser_session::playwright_mcp_config_path,
+            browser_pane::browser_pane_open,
+            browser_pane::browser_pane_close,
+            browser_pane::browser_pane_navigate,
+            browser_pane::browser_pane_reload,
+            browser_pane::browser_pane_history,
+            browser_pane::browser_pane_resize,
+            browser_pane::browser_pane_set_streaming,
+            browser_pane::browser_pane_mouse,
+            browser_pane::browser_pane_key,
+            browser_pane::browser_pane_targets,
+            browser_pane::browser_pane_watch,
+            browser_pane::browser_pane_close_target,
             codex_app_server::codex_app_server_start,
             codex_app_server::codex_app_server_send,
             codex_app_server::codex_app_server_stop,
@@ -426,6 +454,7 @@ pub fn run() {
 
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 pty::kill_all_sessions_background(&sessions_for_exit);
+                browser_session::kill_running_session(&_app_handle.state::<browser_session::BrowserSessionState>());
             }
 
             if let tauri::RunEvent::Exit = event {

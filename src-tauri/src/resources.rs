@@ -381,6 +381,12 @@ impl RuntimeProcess {
     }
 }
 
+/// Whether this cycle is allowed to terminate a session. Manual mode means the app never does it
+/// on its own, at any pressure level; the warning is what it offers instead.
+fn may_suspend(level: &str, policy: &ResourcePolicy) -> bool {
+    level == "critical" && policy.mode != "manual"
+}
+
 fn eligible_candidates(
     snapshot: &RuntimeSnapshot,
     metas: &HashMap<String, PtyRuntimeMeta>,
@@ -458,11 +464,11 @@ fn run_cycle(app: &AppHandle, sessions: &PtySessions, supervisor: &ResourceSuper
     };
     let candidates = eligible_candidates(&snapshot, &metas, &policy, now);
     let level = pressure_level(&snapshot.memory, previous_level);
-    // Manual mode remains non-destructive during ordinary pressure. At critical
-    // Windows memory pressure, however, preserving an idle hidden session is
-    // less important than keeping the desktop responsive. Suspending one
-    // eligible runtime per cycle preserves its scrollback and resume identity.
-    let suspended_id = if level == "critical" {
+    // Suspending is not a pause: the process tree is killed and nothing ever brings it back, so a
+    // terminal loses its running agent until it is started again by hand. Doing that to someone who
+    // never asked for it is why manual mode has to be honoured even under critical pressure — the
+    // warning is what manual mode offers instead.
+    let suspended_id = if may_suspend(level, &policy) {
         candidates.first().and_then(|id| {
             match pty::suspend_session_with_reason(app, sessions, id, "memory-pressure") {
                 Ok(true) => Some(id.clone()),
@@ -629,6 +635,29 @@ mod tests {
                 last_suspended_id: None,
             },
         }
+    }
+
+    #[test]
+    fn manual_mode_never_terminates_a_session() {
+        let policy = ResourcePolicy::default();
+        assert_eq!(policy.mode, "manual", "manual is the shipped default");
+        for level in ["normal", "warning", "critical"] {
+            assert!(
+                !may_suspend(level, &policy),
+                "at {level} pressure manual mode must warn, never kill"
+            );
+        }
+    }
+
+    #[test]
+    fn opting_in_allows_termination_only_when_critical() {
+        let policy = ResourcePolicy {
+            mode: "smart-lru".to_string(),
+            ..ResourcePolicy::default()
+        };
+        assert!(!may_suspend("normal", &policy));
+        assert!(!may_suspend("warning", &policy));
+        assert!(may_suspend("critical", &policy));
     }
 
     fn meta(id: &str) -> PtyRuntimeMeta {

@@ -7,8 +7,8 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import { useEffect, useRef } from 'react'
 
 import { recordAgentActivityInput } from '../../lib/activityTracker'
-import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
 import { cliPathMatchesAgent } from '../../lib/agentCliPath'
+import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { getLocale, translate } from '../../lib/i18n'
 import { isWindows } from '../../lib/platform'
@@ -45,6 +45,8 @@ import {
   listenPtyActivity,
   listenPtyData,
   listenPtyExit,
+  orchestratorMcpConfigPath,
+  playwrightMcpConfigPath,
   ptyExists,
   readClipboardPayload,
   readGsdChildSession,
@@ -868,9 +870,7 @@ export function useXtermSession(params: {
           }
           if (!launcherOverride) {
             const auto = await findCliLauncher(agentCliCommand(command) ?? command)
-            console.info(
-              `[pty-launch] ${command} findCliLauncher → ${auto ?? 'null (NOT FOUND)'}`,
-            )
+            console.info(`[pty-launch] ${command} findCliLauncher → ${auto ?? 'null (NOT FOUND)'}`)
             if (!auto) {
               console.warn(
                 `[pty-launch] ${command} unresolved — showing the not-found overlay and staying offline`,
@@ -883,9 +883,7 @@ export function useXtermSession(params: {
         }
 
         const savedSession =
-          command && RESUMABLE_AGENTS.includes(command)
-            ? peekSession(sessionPersistenceKey)
-            : null
+          command && RESUMABLE_AGENTS.includes(command) ? peekSession(sessionPersistenceKey) : null
         const savedConversationId = savedConversationIdFor(savedSession, command, cwd)
         let resumeId = sessionId ?? savedConversationId
         // Fallback: se a tentativa anterior morreu no nascimento usando resume,
@@ -1010,6 +1008,27 @@ export function useXtermSession(params: {
               body: translate(getLocale(), 'aiMemory.notInstalledBody'),
             })
           }
+          if (disposed) return
+        }
+
+        // Claude only: it takes an ephemeral --mcp-config, so nothing is left behind pointing at a
+        // dead endpoint. Codex and OpenCode need in-repo config writes.
+        //
+        // This must never start a browser. The config points at the shared browser when one is
+        // already running and otherwise leaves Playwright on its default, which opens a browser
+        // only once the agent reaches for one.
+        const playwrightEnabled = useProjectsStore.getState().preferences.enabledFeatures.playwright
+        if (playwrightEnabled && command === 'claude') {
+          const p = await playwrightMcpConfigPath().catch(() => undefined)
+          if (p) mcpConfigPaths.push(p)
+          if (disposed) return
+        }
+
+        const orchestratorEnabled =
+          useProjectsStore.getState().preferences.enabledFeatures.orchestrator
+        if (orchestratorEnabled && command === 'claude') {
+          const p = await orchestratorMcpConfigPath().catch(() => undefined)
+          if (p) mcpConfigPaths.push(p)
           if (disposed) return
         }
 
@@ -1437,7 +1456,8 @@ export function useXtermSession(params: {
           )
         }
         if (cancelled || !isPanelVisible || wasVisible) return
-        if (lastIoWhenHiddenRef.current !== null && ioAtNow() === lastIoWhenHiddenRef.current) return
+        if (lastIoWhenHiddenRef.current !== null && ioAtNow() === lastIoWhenHiddenRef.current)
+          return
         resyncTimer = window.setTimeout(() => {
           if (!cancelled) void resyncTerminalRef.current?.()
         }, PANEL_RESYNC_DEBOUNCE_MS)

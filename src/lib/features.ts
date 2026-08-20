@@ -7,7 +7,6 @@ export type FeatureDefinition = {
   descriptionKey: MessageKey
 }
 
-                                                                         
 export const FEATURES: readonly FeatureDefinition[] = [
   {
     id: 'todos',
@@ -34,6 +33,16 @@ export const FEATURES: readonly FeatureDefinition[] = [
     titleKey: 'features.mcp.title',
     descriptionKey: 'features.mcp.description',
   },
+  {
+    id: 'playwright',
+    titleKey: 'features.playwright.title',
+    descriptionKey: 'features.playwright.description',
+  },
+  {
+    id: 'orchestrator',
+    titleKey: 'features.orchestrator.title',
+    descriptionKey: 'features.orchestrator.description',
+  },
 ]
 
 type StoredFeaturePreferences = {
@@ -41,7 +50,6 @@ type StoredFeaturePreferences = {
   showGitControl?: boolean
 }
 
-                                                                                    
 export function normalizeEnabledFeatures(
   raw: StoredFeaturePreferences | undefined,
 ): Record<FeatureId, boolean> {
@@ -52,8 +60,12 @@ export function normalizeEnabledFeatures(
       browser: raw.enabledFeatures.browser ?? true,
       graphify: raw.enabledFeatures.graphify ?? true,
       mcp: raw.enabledFeatures.mcp ?? true,
-                                                                                      
+
       aiMemory: raw.enabledFeatures.aiMemory ?? false,
+      // Opt-in: it launches a real browser process, so it must never start on its own.
+      playwright: raw.enabledFeatures.playwright ?? false,
+      // Opt-in: it lets the lead agent spawn worker agents that write to disk.
+      orchestrator: raw.enabledFeatures.orchestrator ?? false,
     }
   }
   return {
@@ -63,5 +75,7 @@ export function normalizeEnabledFeatures(
     graphify: true,
     aiMemory: false,
     mcp: true,
+    playwright: false,
+    orchestrator: false,
   }
 }

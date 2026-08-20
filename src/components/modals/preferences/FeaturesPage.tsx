@@ -1,4 +1,4 @@
-import { BrainCircuit, GitBranch, Globe2, ListTodo, Network, Plug } from 'lucide-react'
+import { Bot, BrainCircuit, GitBranch, Globe2, ListTodo, Network, Plug, Workflow } from 'lucide-react'
 
 import { FEATURES } from '../../../lib/features'
 import { useT } from '../../../lib/i18n'
@@ -7,7 +7,6 @@ import { useUiStore } from '../../../stores/uiStore'
 import controls from '../controls.module.css'
 import styles from '../PreferencesModal.module.css'
 
-                                                                     
 const FEATURE_ICONS = {
   todos: ListTodo,
   git: GitBranch,
@@ -15,6 +14,8 @@ const FEATURE_ICONS = {
   browser: Globe2,
   graphify: Network,
   mcp: Plug,
+  playwright: Bot,
+  orchestrator: Workflow,
 } as const
 
 export function FeaturesPage() {

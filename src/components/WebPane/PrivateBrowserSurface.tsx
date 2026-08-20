@@ -6,7 +6,15 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
 import { isOverlayPresent, subscribeOverlayPresence } from '../../lib/overlayPresence'
+import {
+  type SurfaceRect,
+  surfaceRectsEqual,
+  toPhysicalRect,
+  visibleRectOf,
+} from '../../lib/surfaceGeometry'
 import { recordFrontendError } from '../../lib/tauri'
+import { isSurfaceDebugEnabled, type SurfaceDebugInfo } from './surfaceDebug'
+import { SurfaceDebugPanel } from './SurfaceDebugPanel'
 import styles from './WebPane.module.css'
 
 type PrivateBrowserSurfaceProps = {
@@ -22,23 +30,6 @@ type PrivateBrowserSurfaceProps = {
 
 type SurfaceState = 'loading' | 'ready' | 'error'
 
-type SurfaceRect = {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
-function rectsEqual(left: SurfaceRect | null, right: SurfaceRect): boolean {
-  if (!left) return false
-  return (
-    Math.abs(left.x - right.x) < 0.5 &&
-    Math.abs(left.y - right.y) < 0.5 &&
-    Math.abs(left.width - right.width) < 0.5 &&
-    Math.abs(left.height - right.height) < 0.5
-  )
-}
-
 export function PrivateBrowserSurface({
   paneId,
   url,
@@ -50,13 +41,16 @@ export function PrivateBrowserSurface({
   visible,
 }: PrivateBrowserSurfaceProps) {
   const t = useT()
-  const privateStartFailed = t('webPane.privateStartFailed')
   const placeholderRef = useRef<HTMLDivElement | null>(null)
   const visibleRef = useRef(visible)
   const hiddenEvictionDelayRef = useRef(hiddenEvictionDelayMs)
   const reevaluateRef = useRef<(() => void) | null>(null)
+  // Read through a ref so changing the UI language does not tear down every native webview.
+  const startFailedRef = useRef(t('webPane.privateStartFailed'))
+  startFailedRef.current = t('webPane.privateStartFailed')
   const [surfaceState, setSurfaceState] = useState<SurfaceState>('loading')
   const [error, setError] = useState('')
+  const [debug, setDebug] = useState<SurfaceDebugInfo | null>(null)
 
   useLayoutEffect(() => {
     visibleRef.current = visible
@@ -72,6 +66,8 @@ export function PrivateBrowserSurface({
     const node = placeholderRef.current
     if (!node || !url || !isTauri()) return
 
+    const debugEnabled = isSurfaceDebugEnabled()
+
     let disposed = false
     let created = false
     let intersecting = true
@@ -80,24 +76,43 @@ export function PrivateBrowserSurface({
     let frame: number | null = null
     let evictionTimer: number | null = null
     let webview: Webview | null = null
+    let label = ''
+    let lastFailure = ''
     let unlistenCreated: (() => void) | null = null
     let unlistenError: (() => void) | null = null
+    let unlistenScale: (() => void) | null = null
     setSurfaceState('loading')
     setError('')
 
-    const readRect = (): SurfaceRect | null => {
-      const rect = node.getBoundingClientRect()
-      if (rect.width < 2 || rect.height < 2) return null
-      // Child webviews are placed in physical pixels. getBoundingClientRect reports CSS
-      // pixels, and devicePixelRatio folds in both display scaling and webview zoom, so the
-      // two only coincide at ratio 1 — which is why this looked correct on unscaled displays.
+    const reportFailure = (stage: string, cause: unknown) => {
+      const detail = `${stage}: ${cause instanceof Error ? cause.message : String(cause)}`
+      if (detail === lastFailure) return
+      lastFailure = detail
+      if (import.meta.env.DEV) console.error('[Alethe][private-browser]', detail)
+      void recordFrontendError(detail, null, 'private-browser.geometry')
+    }
+
+    const readRect = (): { css: SurfaceRect; physical: SurfaceRect; ratio: number } | null => {
+      const css = visibleRectOf(node)
+      if (!css) return null
       const ratio = window.devicePixelRatio || 1
-      return {
-        x: Math.round(rect.left * ratio),
-        y: Math.round(rect.top * ratio),
-        width: Math.round(rect.width * ratio),
-        height: Math.round(rect.height * ratio),
-      }
+      return { css, physical: toPhysicalRect(css, ratio), ratio }
+    }
+
+    const publishDebug = (state: Partial<SurfaceDebugInfo>) => {
+      if (!debugEnabled || disposed) return
+      setDebug((previous) => ({
+        css: null,
+        physical: null,
+        ratio: window.devicePixelRatio || 1,
+        visible: visibleRef.current,
+        intersecting,
+        occluded: isOverlayPresent(),
+        label,
+        failure: lastFailure,
+        ...previous,
+        ...state,
+      }))
     }
 
     const clearEvictionTimer = () => {
@@ -128,28 +143,28 @@ export function PrivateBrowserSurface({
       evictionTimer = window.setTimeout(closeWebview, delay)
     }
 
-    const startWebview = () => {
+    const startWebview = (initial: SurfaceRect) => {
       if (disposed || webview) return
-      const initialRect = readRect()
-      if (!initialRect) return
 
       // Every recreation gets a new label so a closing native surface cannot
       // collide with the replacement during StrictMode or rapid modal changes.
-      const label = `browser-${paneId}-${reloadKey}-${crypto.randomUUID()}`
+      label = `browser-${paneId}-${reloadKey}-${crypto.randomUUID()}`
 
       const instance = new Webview(getCurrentWindow(), label, {
         url,
-        x: initialRect.x,
-        y: initialRect.y,
-        width: initialRect.width,
-        height: initialRect.height,
+        x: initial.x,
+        y: initial.y,
+        width: initial.width,
+        height: initial.height,
         incognito: true,
         focus: false,
         javascriptDisabled: !javascriptEnabled,
+        // WebView2-only options; other platforms ignore them silently.
         generalAutofillEnabled: false,
         zoomHotkeysEnabled: false,
       })
       webview = instance
+      lastRect = initial
 
       void instance
         .once('tauri://created', () => {
@@ -171,7 +186,7 @@ export function PrivateBrowserSurface({
       void instance
         .once<string>('tauri://error', (event) => {
           if (disposed || webview !== instance) return
-          const detail = String(event.payload || privateStartFailed)
+          const detail = String(event.payload || startFailedRef.current)
           if (import.meta.env.DEV) console.error('[Alethe][private-browser]', detail)
           void recordFrontendError(detail, null, 'private-browser.create')
           setSurfaceState('error')
@@ -183,39 +198,69 @@ export function PrivateBrowserSurface({
         })
     }
 
+    /** Returns false when the move failed, so the caller keeps the surface hidden and retries. */
+    const applyRect = async (target: SurfaceRect, instance: Webview): Promise<boolean> => {
+      if (surfaceRectsEqual(lastRect, target)) return true
+      try {
+        await Promise.all([
+          instance.setPosition(new PhysicalPosition(target.x, target.y)),
+          instance.setSize(new PhysicalSize(target.width, target.height)),
+        ])
+        // Only latch after the move lands, otherwise a failure is remembered as applied and the
+        // surface stays wherever it was until the rect happens to change again.
+        lastRect = target
+        return true
+      } catch (cause) {
+        reportFailure('move', cause)
+        return false
+      }
+    }
+
     const sync = async () => {
       frame = null
       if (disposed) return
+
+      const measured = readRect()
+      const shouldShow =
+        visibleRef.current && intersecting && !isOverlayPresent() && measured !== null
+      publishDebug({ css: measured?.css ?? null, physical: measured?.physical ?? null })
+
       if (!webview) {
-        if (!visibleRef.current || !intersecting || isOverlayPresent()) return
-        startWebview()
+        if (shouldShow && measured) startWebview(measured.physical)
         return
       }
       if (!created) return
-      const shouldShow = visibleRef.current && intersecting && !isOverlayPresent()
+
       if (!shouldShow) {
         if (shown !== false) {
           shown = false
-          await webview.hide().catch(() => {})
+          // Forget the applied rect: the surface must be repositioned before it is shown again,
+          // otherwise it reappears wherever it was left.
+          lastRect = null
+          try {
+            await webview.hide()
+          } catch (cause) {
+            reportFailure('hide', cause)
+          }
         }
         scheduleEviction()
         return
       }
 
       clearEvictionTimer()
-
-      const rect = readRect()
-      if (!rect) return
-      if (!rectsEqual(lastRect, rect)) {
-        lastRect = rect
-        await Promise.all([
-          webview.setPosition(new PhysicalPosition(rect.x, rect.y)),
-          webview.setSize(new PhysicalSize(rect.width, rect.height)),
-        ]).catch(() => {})
+      if (!measured) return
+      if (!(await applyRect(measured.physical, webview))) {
+        scheduleSync()
+        return
       }
       if (shown !== true) {
         shown = true
-        await webview.show().catch(() => {})
+        try {
+          await webview.show()
+        } catch (cause) {
+          reportFailure('show', cause)
+          shown = false
+        }
       }
     }
 
@@ -242,6 +287,14 @@ export function PrivateBrowserSurface({
     window.addEventListener('resize', scheduleSync)
     window.addEventListener('scroll', scheduleSync, true)
     window.addEventListener('alethe:zoom-changed', scheduleSync)
+    // Moving to a monitor with a different scale changes physical pixels without moving the DOM.
+    void getCurrentWindow()
+      .onScaleChanged(scheduleSync)
+      .then((unlisten) => {
+        if (disposed) unlisten()
+        else unlistenScale = unlisten
+      })
+      .catch(() => {})
     scheduleSync()
 
     return () => {
@@ -257,9 +310,10 @@ export function PrivateBrowserSurface({
       if (frame !== null) window.cancelAnimationFrame(frame)
       unlistenCreated?.()
       unlistenError?.()
+      unlistenScale?.()
       closeWebview()
     }
-  }, [javascriptEnabled, paneId, privateStartFailed, reloadKey, url, zoom])
+  }, [javascriptEnabled, paneId, reloadKey, url, zoom])
 
   if (!isTauri()) {
     return (
@@ -284,6 +338,7 @@ export function PrivateBrowserSurface({
           {t('webPane.privateStartFailed')}
         </span>
       ) : null}
+      {debug ? <SurfaceDebugPanel info={debug} /> : null}
     </div>
   )
 }

@@ -12,14 +12,23 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
-- Added four UI themes built from the Elite Dev artwork — Elite Original, Elite Pure Black,
-  Elite Indigo and Elite Blush — each with a full token set, listed first under Preferences,
-  Appearance.
-- Added matching app-icon themes for the same four palettes, shown as a preview grid instead
-  of a dropdown.
-- Added an app-icon picker to the onboarding theme step, so the icon can be chosen on first run
-  instead of only from Preferences afterwards.
-- Added branded header and sidebar artwork to the Windows NSIS installer.
+- Agent orchestration, off by default under a new preference. When it is on, Claude Code terminals
+  get a set of Alethe tools for handing independent units of work to Codex workers that Alethe runs
+  in parallel, up to a concurrency limit it enforces itself. The lead gets job ids back immediately
+  and collects results as the workers settle, so it never reports an outcome it does not have.
+  Alethe pins each worker to the project directory with workspace-scoped writes, and can correct a
+  worker while it is still running or cancel it outright without losing its context. Worker status,
+  plan, elapsed time, token usage and unified diff are reported to the app as they change.
+
+- Tabs in a browser pane can be closed from the tab strip. An agent that navigates a lot leaves
+  tabs behind and nothing reaped them, so they piled up for as long as the browser lived.
+- Browser panes can now render inside the pane itself instead of in a native child webview.
+  Toggle it from the pane toolbar. The page is painted from CDP screencast frames onto a canvas,
+  which is ordinary DOM, so clipping, z-order and dragging behave like any other pane, and it
+  streams only while the pane is actually visible. Mouse, wheel and keyboard are forwarded back
+  to the page. The browser runs without a window of its own, so the pane is the only view, and a
+  tab strip appears when more than one page is open — including tabs an agent opened, so its
+  work can be watched live and taken over by hand.
 
 ### Removed
 
@@ -33,6 +42,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   application icon, the installer icon and the installer artwork all use the same Indigo mark.
 - Replaced the home and loading backdrop artwork with the same monochrome portrait, so the
   backdrop and the installer icon come from one mark.
+- Updated the Windows NSIS installer sidebar artwork from the Elite Dev source design, so the
+  Indigo portrait is framed as a face at 164x314 instead of being cropped to the edge of the
+  panel.
 - Added an Animated/Reduced motion preference and lowered the home ASCII background's CPU cost by
   caching image processing and pausing it while hidden, while preserving the creator's original 8px
   ASCII design and 30 FPS animated cadence.
@@ -42,6 +54,50 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- Parking a terminal to free memory now says so. It kills the process tree, so the pane simply
+  fell silent and was indistinguishable from a frozen one, and the restart that brings the
+  session back was not something a reader had any reason to try.
+- Confirmation dialogs work again. The permission for them was missing, so every confirm — including
+  the one guarding app close — was rejected before it could be shown, and the action behind it was
+  silently abandoned.
+- Two Alethe instances no longer redirect each other's agent events. The hook endpoint was written
+  to a single shared file, so whichever started last captured the events of both.
+- Terminals are no longer killed behind your back under memory pressure. At critical pressure
+  the app terminated one hidden, idle session every five seconds and never brought any of them
+  back, so a burst of memory use from anything on the machine left a row of dead terminals that
+  each had to be started again by hand. It did this even on the default policy, which promises
+  that a session is only ever terminated after you opt in. Manual mode is now honoured at every
+  pressure level and warns instead.
+- A browser pane showing a tab that was not in the foreground stayed blank forever. Chromium
+  reports a background tab as hidden and stops rendering it, so its screencast produced no
+  frames at all; the tab is now brought to the front before streaming starts. This is what made
+  a pane opened next to other tabs, or one watching a tab an agent had opened, never paint.
+- The embedded browser pane no longer hangs on "Connecting to the browser". It depended on the
+  translation function, which is rebuilt on every render, so each repaint tore the session down
+  and opened a new one and no first frame ever survived.
+- Starting an agent no longer opens a browser. Every Claude terminal used to launch one just to
+  fill in the Playwright endpoint, and because the check and the launch were not serialised,
+  terminals starting together each launched their own; restoring a workspace could therefore
+  open several browsers at once and exhaust memory. The shared browser is now started only when
+  something actually needs it, agents attach to it when it is already running, and Playwright
+  falls back to its own default otherwise.
+- The automation browser is now shut down with the app and any copy left by a previous run is
+  cleared on startup. Chromium deliberately detaches from the job object that ties every other
+  child process to Alethe, so it used to survive a crash and keep holding its profile.
+- Memory relief actually runs now. The resource manager raised one event per pressure level and
+  nothing on the frontend listened to any of them, so every level was a no-op — and the most
+  severe one was emitted as `resource::drop-caches`, a name no listener could match. Cached
+  polling results are dropped from medium pressure upward, and at critical pressure the app now
+  says how little memory is left and how much the terminals are holding, instead of freezing
+  without warning.
+- The embedded browser no longer escapes its pane. Its native surface is composited above the
+  page, so an ancestor's `overflow: hidden` never clipped it and the raw bounding box let it
+  overhang the layout; the surface is now measured against every clipping ancestor and the
+  viewport. A browser living in an inactive workspace tab stayed on screen over the active one,
+  because a hidden tab keeps its layout box. Re-showing a hidden surface could reveal it at its
+  previous position, and a move that failed was remembered as applied and never retried.
+- Dropdowns, confirmations, an in-flight pane drag and a display scale change now hide or
+  resync the native surfaces, which previously only reacted to dialogs and menus.
 - Switching the app icon had no effect in packaged builds. The icon bytes were loaded with
   fetch, which answers to the Content Security Policy's connect-src, and the bundler inlines
   the smaller icons as data URLs — a scheme connect-src does not allow. The picker still
