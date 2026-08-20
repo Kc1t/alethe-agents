@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 
+import { isTauriEnv } from '../lib/api/transport'
 import { computeVisibleFocusedPtyIds } from '../lib/ptyVisibility'
 import {
   getMemoryStats,
@@ -141,7 +142,16 @@ export function useResourceSupervisor(hydrated: boolean): void {
           return
         }
       } catch {
-        nativeAvailable = false
+        // O fallback abaixo (`getMemoryStats`) só existe pra cobrir uma
+        // instância antiga do backend Tauri sobrevivendo a HMR sem restart
+        // — um cenário específico do desktop via IPC legado. No navegador
+        // não existe esse conceito: a única via real é sempre o HTTP core
+        // compartilhado, e o stub de `getMemoryStats` ali é zerado. Travar
+        // `nativeAvailable` em `false` permanentemente faria uma única falha
+        // transitória de rede (ex. 503 enquanto o core sobe) degradar a UI
+        // web pro resto da sessão — então só fixa o fallback legado quando o
+        // ambiente é de fato o desktop; no web, tenta de novo no próximo tick.
+        if (isTauriEnv()) nativeAvailable = false
       } finally {
         running = false
       }
@@ -153,7 +163,7 @@ export function useResourceSupervisor(hydrated: boolean): void {
         useUiStore.getState().addMemorySample(stats)
         useUiStore.getState().setRamMb(stats.total_mb)
       } catch {
-                                                                          
+        // Falha transitória de leitura — o próximo ciclo de polling tenta de novo.
       }
     }
 

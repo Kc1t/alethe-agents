@@ -1,0 +1,369 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sunken);
+  margin-top: 8px;
+  margin-bottom: 8px;
+  /* A altura vem de style inline (arrastando .resizeHandle) — a lista de
+     projetos acima é flex:1 (ProjectSidebar.module.css .list), então
+     crescer este painel só encolhe a lista, nunca sobrepõe nada. Sempre um
+     número (nunca `auto`) pra "height" poder animar — mesma ideia do
+     drawer direito (App.module.css `[data-panel]`), que também transiciona
+     entre dois tamanhos numéricos ao recolher via react-resizable-panels. */
+  flex-shrink: 0;
+  min-height: 0;
+  overflow: hidden;
+  transition: height 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Cabeçalho fica FORA da área com scroll — clicar recolhe/expande a árvore,
+   e o botão continua visível/clicável mesmo com a lista rolada. */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 14px;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.header:hover {
+  background: var(--panel-hover);
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg-muted);
+}
+
+/* DEV-ONLY — botão de frasco pra ligar/desligar os cards sintéticos de
+   teste sem precisar editar código (ver mocksEnabled em SidebarMergePanel).
+   Some quando o dono decidir tirar os mocks de vez. */
+.mocksToggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-faint);
+  cursor: pointer;
+  transition:
+    color 100ms ease,
+    border-color 100ms ease,
+    background-color 100ms ease;
+}
+.mocksToggle:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+.mocksToggleActive {
+  color: var(--status-waiting);
+  border-color: var(--status-waiting);
+  background: var(--status-waiting-soft);
+}
+.mocksToggleActive:hover {
+  color: var(--status-waiting);
+  background: var(--status-waiting-soft);
+}
+
+/* Preenche o que sobrar da altura do .container depois do cabeçalho — cresce/
+   encolhe sozinho conforme a alça de arrasto muda a altura do .container.
+   Opacidade/deslocamento seguem o mesmo timing de .sidebarContent em
+   App.module.css (o fade do drawer direito ao recolher). */
+.body {
+  flex: 1;
+  min-height: 0;
+  padding: 0 14px 12px;
+  overflow-y: auto;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.body[data-hidden='true'] {
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+}
+
+/* Alça de arrasto no TOPO do painel — arrasta a fronteira com a lista de
+   projetos acima pra cima/baixo (ajusta .container via style inline). */
+.resizeHandle {
+  position: relative;
+  flex-shrink: 0;
+  height: 8px;
+  margin: 0 0 -4px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.resizeHandle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--border-strong);
+  transform: translate(-50%, -50%);
+  transition: background-color 100ms ease;
+}
+.resizeHandle:hover::after {
+  background: var(--accent);
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.badge {
+  background: var(--accent-faint);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.emptyState {
+  padding: 10px 12px;
+  font-size: 11px;
+  color: var(--fg-muted);
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  margin-bottom: 8px;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+.card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.branchHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.branchName {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statusTag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  min-width: 0;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statusWorking {
+  background: var(--status-working-soft);
+  color: var(--status-working);
+  border-color: var(--status-working);
+}
+
+.statusWaiting {
+  background: var(--status-waiting-soft);
+  color: var(--status-waiting);
+  border-color: var(--status-waiting);
+}
+
+.statusOffline {
+  background: var(--status-offline-soft);
+  color: var(--status-offline);
+  border-color: var(--status-offline);
+}
+
+.statusStopped {
+  background: var(--status-stopped-soft);
+  color: var(--status-stopped);
+  border-color: var(--status-stopped);
+}
+
+.statusPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.statusDetail {
+  font-size: 11px;
+  color: var(--fg-muted);
+  line-height: 1.35;
+  margin: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.actionsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.reviewBox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.reviewTextarea {
+  width: 100%;
+  height: 50px;
+  font-size: 11px;
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent-border);
+  background: var(--bg-sunken);
+  color: var(--fg);
+  resize: none;
+  font-family: inherit;
+}
+
+.reviewActions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.actionBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background-color 100ms ease,
+    border-color 100ms ease,
+    color 100ms ease,
+    opacity 100ms ease;
+}
+.actionBtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.actionBtnLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btnAccept {
+  background: var(--status-working-soft);
+  color: var(--status-working);
+  border-color: var(--status-working);
+}
+.btnAccept:hover:not(:disabled) {
+  background: var(--status-working);
+  color: var(--bg);
+}
+
+.btnReject {
+  background: var(--status-offline-soft);
+  color: var(--status-offline);
+  border-color: var(--status-offline);
+}
+.btnReject:hover:not(:disabled) {
+  background: var(--status-offline);
+  color: var(--bg);
+}
+
+.btnValidate {
+  background: var(--accent-faint);
+  color: var(--accent);
+  border-color: var(--accent-border);
+}
+.btnValidate:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.btnReview {
+  background: var(--status-stopped-soft);
+  color: var(--status-stopped);
+  border-color: var(--status-stopped);
+}
+.btnReview:hover:not(:disabled) {
+  background: var(--status-stopped);
+  color: var(--bg);
+}
+
+.btnTest {
+  background: var(--status-waiting-soft);
+  color: var(--status-waiting);
+  border-color: var(--status-waiting);
+}
+.btnTest:hover:not(:disabled) {
+  background: var(--status-waiting);
+  color: var(--bg);
+}
+
+.btnAbort {
+  background: var(--status-offline-soft);
+  color: var(--status-offline);
+  border-color: var(--status-offline);
+  align-self: flex-start;
+}
+.btnAbort:hover {
+  background: var(--status-offline);
+  color: var(--bg);
+}

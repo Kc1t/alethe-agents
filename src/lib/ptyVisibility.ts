@@ -8,17 +8,6 @@ export type PtyVisibilitySets = {
   focused: Set<string>
 }
 
-   
-                                                                    
-                                                                            
-                                                                    
-                                                                                    
-  
-                                                                         
-                                                                           
-                                                                          
-                             
-   
 export function computeVisibleFocusedPtyIds(): PtyVisibilitySets {
   const projectsState = useProjectsStore.getState()
   const ui = useUiStore.getState()
@@ -31,12 +20,6 @@ export function computeVisibleFocusedPtyIds(): PtyVisibilitySets {
     ),
   )
 
-                                                                       
-                                                                         
-                                                                             
-                                                                             
-                                                                        
-                                                                            
   // de verdade.
   const isolatedPaneId = projectsState.preferences.isolatedPaneId
 
@@ -51,9 +34,7 @@ export function computeVisibleFocusedPtyIds(): PtyVisibilitySets {
     for (const terminal of project.terminals) {
       const activeTab = terminal.tabs.find((tab) => tab.id === terminal.activeTabId)
       const inNormalGrid =
-        container &&
-        !container.collapsed &&
-        container.paneIds.includes(terminal.id)
+        container && !container.collapsed && container.paneIds.includes(terminal.id)
       const isIsolatedPane = terminal.id === isolatedPaneId
       const isKeptAlive = keptAlivePaneIds.has(terminal.id)
       if (activeTab?.ptyId && workspaceVisible && (inNormalGrid || isIsolatedPane || isKeptAlive)) {
@@ -89,11 +70,6 @@ function subscribePtyVisibility(callback: () => void): () => void {
   }
 }
 
-                                                                               
-                                                                              
-                                                                             
-                                                                               
-                                                 
 let cached: PtyVisibilitySets | null = null
 
 function visibilitySets(): PtyVisibilitySets {
@@ -101,13 +77,6 @@ function visibilitySets(): PtyVisibilitySets {
   return cached
 }
 
-   
-                                                                            
-                                                                            
-                                                                    
-                                                                         
-                                                                
-   
 export function usePtyPanelVisible(ptyId: string | undefined): boolean {
   return useSyncExternalStore(subscribePtyVisibility, () => {
     if (!ptyId) return false

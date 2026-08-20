@@ -13,21 +13,19 @@ import {
 } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 
-import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
+import { useGridResize } from '../../hooks/useGridResize'
+import { restartAgentPty } from '../../lib/agentPtyRestart'
 import { buildGhosttyCommand } from '../../lib/ghosttyCommand'
 import { useT } from '../../lib/i18n'
 import { shouldUseNativeBackend } from '../../lib/platform'
-import { buildAgentLaunch } from '../../lib/sessionLaunch'
-import { getActiveSessions, savedConversationIdFor, saveSession } from '../../lib/sessionResume'
+import { getActiveSessions, savedConversationIdFor } from '../../lib/sessionResume'
 import {
   completeAgentHandoff,
   getPtyCwd,
   openInVscode,
-  restartPty,
   snapshotCodexSessions,
 } from '../../lib/tauri'
 import {
-  agentCliCommand,
   type AgentType,
   type SubTab,
   type Terminal as TerminalEntry,
@@ -113,11 +111,13 @@ export const TerminalPane = memo(function TerminalPane({
   const setSubTabPtyId = useProjectsStore((s) => s.setSubTabPtyId)
   const setSubTabSessionId = useProjectsStore((s) => s.setSubTabSessionId)
   const setSubTabInitialInput = useProjectsStore((s) => s.setSubTabInitialInput)
+  const setSubTabSkipSessionClaim = useProjectsStore((s) => s.setSubTabSkipSessionClaim)
   const setSubTabHandoff = useProjectsStore((s) => s.setSubTabHandoff)
   const setSubTabCompletionUnread = useProjectsStore((s) => s.setSubTabCompletionUnread)
   const deleteTerminalWithWorktreeCleanup = useProjectsStore(
     (s) => s.deleteTerminalWithWorktreeCleanup,
   )
+  const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
   const openModal = useUiStore((s) => s.openModal_)
   const setFocusedTerminal = useUiStore((s) => s.setFocusedTerminal)
   const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
@@ -143,10 +143,27 @@ export const TerminalPane = memo(function TerminalPane({
   })
 
   // sozinho (ver XTermView, gatilho condicionado a command === 'opencode').
+  // NUNCA pro agente efêmero de resolução de conflito (`mergeStore.ts` —
+  // "nasce, resolve, morre") — confirmado ao vivo: sem essa exclusão, o
+  // plugin era instalado nele igual a qualquer worktree normal, criando uma
+  // sessão-filha de verdade que ficava órfã assim que o agente descartável
+  // era encerrado ao final do merge.
   const gsdWatcherEnabled = useProjectsStore((s) => {
+    if (terminal.ephemeralConflictAgent) return false
     const p = s.projects.find((p) => p.id === projectId)
     return Boolean(p?.gsdWatcherEnabled)
   })
+
+  // Resize de span no grid do PROJETO (quando project.layoutMode === 'grid').
+  const projectGrid = useProjectsStore((s) => {
+    const p = s.projects.find((p) => p.id === projectId)
+    if (!p || p.layoutMode !== 'grid' || !p.gridLayout) return null
+    return p.gridLayout
+  })
+  const showGridResize = Boolean(projectGrid) && !isFocusMode && !terminal.disabled && !preview
+  const startGridResize = useGridResize(terminal.id, projectGrid, (layout) =>
+    setProjectGridLayout(projectId, layout),
+  )
 
   const activeTab: SubTab | undefined = useMemo(
     () => terminal.tabs.find((tab) => tab.id === terminal.activeTabId) ?? terminal.tabs[0],
@@ -209,38 +226,33 @@ export const TerminalPane = memo(function TerminalPane({
     if (!resumeSessionId && activeTab.type === 'codex' && restartCwd) {
       resumeSessionId = (await snapshotCodexSessions(restartCwd).catch(() => []))[0]?.id
     }
-    const preparedRuntime = preparePtyRuntimeLaunch(
-      activeTab.type,
-      activeTab.runtimeProfile,
-      activeTab.extraArgs ?? [],
-    )
-    const launch = buildAgentLaunch(activeTab.type, preparedRuntime.args, resumeSessionId)
-    if (launch.sessionId && launch.sessionId !== activeTab.sessionId) {
-      setSubTabSessionId(projectId, terminal.id, activeTab.id, launch.sessionId)
-    }
-
-    useTerminalsStore.getState().beginRestart(ptyId)
-    try {
-      await restartPty({
-        id: ptyId,
-        cols: 80,
-        rows: 24,
-        command: agentCliCommand(activeTab.type),
-        cwd: restartCwd || undefined,
-        extraArgs: launch.args,
-        env: preparedRuntime.env,
-      })
-      if (launch.sessionId) {
-        saveSession(activeTab.id, {
-          sessionId: ptyId,
-          claudeSessionId: activeTab.type === 'claude' ? launch.sessionId : undefined,
-          codexSessionId: activeTab.type === 'codex' ? launch.sessionId : undefined,
-          antigravitySessionId: activeTab.type === 'antigravity' ? launch.sessionId : undefined,
-          cwd: restartCwd,
-          agent: activeTab.type,
-          timestamp: Date.now(),
-        })
+    const areaEl = paneRef.current?.querySelector<HTMLElement>(`.${styles.terminalArea}`)
+    let startCols: number | undefined
+    let startRows: number | undefined
+    if (areaEl) {
+      const rect = areaEl.getBoundingClientRect()
+      if (rect.width > 50 && rect.height > 30) {
+        startCols = Math.max(40, Math.floor((rect.width - 14) / 8.4))
+        startRows = Math.max(10, Math.floor((rect.height - 6) / 17))
       }
+    }
+    try {
+      // XTermView usa a identidade estável da sub-tab (`activeTab.id`) como
+      // chave de persistência; manter a mesma chave garante que remounts
+      // posteriores (reload do app) consumam a sessão salva aqui.
+      await restartAgentPty({
+        ptyId,
+        sessionPersistenceKey: activeTab.id,
+        agent: activeTab.type,
+        cwd: restartCwd,
+        runtimeProfile: activeTab.runtimeProfile,
+        extraArgs: activeTab.extraArgs ?? [],
+        resumeId: resumeSessionId,
+        cols: startCols,
+        rows: startRows,
+        onSessionId: (id) => setSubTabSessionId(projectId, terminal.id, activeTab.id, id),
+      })
+      setResumeNonce((value) => value + 1)
       window.dispatchEvent(new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId } }))
       requestPaneFocus(terminal.id)
       window.setTimeout(() => requestPaneFocus(terminal.id), 160)
@@ -412,9 +424,7 @@ export const TerminalPane = memo(function TerminalPane({
                     })
                   }
                   title={
-                    handoffSuggested
-                      ? t('ui.terminal.handoffSuggested')
-                      : t('ui.terminal.handoff')
+                    handoffSuggested ? t('ui.terminal.handoffSuggested') : t('ui.terminal.handoff')
                   }
                   aria-label={t('ui.terminal.handoff')}
                 >
@@ -533,6 +543,10 @@ export const TerminalPane = memo(function TerminalPane({
                   initialInput={activeTab.initialInput}
                   runtimeProfile={activeTab.runtimeProfile}
                   sessionId={activeTab.sessionId}
+                  skipSessionClaim={activeTab.skipSessionClaim}
+                  onSessionClaimSkipped={() =>
+                    setSubTabSkipSessionClaim(projectId, terminal.id, activeTab.id, false)
+                  }
                   graphifyRepo={graphifyRepo}
                   gsdWatcherEnabled={gsdWatcherEnabled}
                   trustSessionId={terminal.gsdSyncViewer}
@@ -562,9 +576,7 @@ export const TerminalPane = memo(function TerminalPane({
                     setSubTabCompletionUnread(projectId, terminal.id, activeTab.id, true)
                     if (!activeTab.handoff) return
                     void completeAgentHandoff(activeTab.handoff.id)
-                      .then(() =>
-                        setSubTabHandoff(projectId, terminal.id, activeTab.id, undefined),
-                      )
+                      .then(() => setSubTabHandoff(projectId, terminal.id, activeTab.id, undefined))
                       .catch((cause) =>
                         console.warn('[handoff] could not clean the completed packet:', cause),
                       )
@@ -601,6 +613,14 @@ export const TerminalPane = memo(function TerminalPane({
           )}
         </div>
       </div>
+
+      {showGridResize ? (
+        <div
+          className={styles.gridResize}
+          onPointerDown={startGridResize}
+          title={t('ui.terminal.dragToResizeSpan')}
+        />
+      ) : null}
     </div>
   )
 })

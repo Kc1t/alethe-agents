@@ -18,7 +18,9 @@
         "minWidth": 800,
         "minHeight": 500,
         "resizable": true,
-        "decorations": false
+        "decorations": false,
+        "visible": true,
+        "focus": true
       }
     ],
     "security": {
@@ -44,7 +46,8 @@
         "frame-src": ["asset:", "http://asset.localhost", "http:", "https:"]
       },
       "devCsp": null
-    }
+    },
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,

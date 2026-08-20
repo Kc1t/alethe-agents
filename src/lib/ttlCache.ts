@@ -1,14 +1,3 @@
-   
-                                                                               
-                                                                             
-                                                                            
-                             
-  
-                                                                      
-                                                                        
-   
-
-                                                                              
 export function makeTtlCache<T>(
   fetcher: () => Promise<T>,
   ttlMs: number,
@@ -36,11 +25,6 @@ export function makeTtlCache<T>(
   }
 }
 
-   
-                                                                              
-                                                                              
-                             
-   
 export function makeKeyedTtlCache<K, T>(
   fetcher: (key: K) => Promise<T>,
   ttlMs: number,

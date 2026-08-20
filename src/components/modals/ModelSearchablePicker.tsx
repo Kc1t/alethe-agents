@@ -40,9 +40,8 @@ export function ModelSearchablePicker({
       opt.id.length >= 3,
   )
 
-                                                                                          
   const selected = value
-    ? cleanOptions.find((opt) => opt.id === value) ?? { id: value, label: value }
+    ? (cleanOptions.find((opt) => opt.id === value) ?? { id: value, label: value })
     : cleanOptions[0]
 
   // Filtro de modelos por busca
@@ -53,7 +52,6 @@ export function ModelSearchablePicker({
       opt.id.toLowerCase().includes(trimmedSearch.toLowerCase()),
   )
 
-                                                                         
   const hasExactMatch = cleanOptions.some(
     (opt) =>
       opt.id.toLowerCase() === trimmedSearch.toLowerCase() ||
@@ -81,7 +79,6 @@ export function ModelSearchablePicker({
     }
   }
 
-                                    
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
@@ -94,7 +91,7 @@ export function ModelSearchablePicker({
 
   return (
     <div className={styles.wrapper} ref={containerRef}>
-      {                             }
+      {}
       <button
         type="button"
         className={`${styles.trigger} ${open ? styles.triggerActive : ''}`}
@@ -103,11 +100,11 @@ export function ModelSearchablePicker({
         <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
           <Sparkles size={14} color="var(--accent)" style={{ flexShrink: 0 }} />
           <span className={styles.triggerText}>
-            {loading
+            {loading && cleanOptions.length === 0
               ? 'Carregando modelos do CLI...'
               : selected
-              ? `${selected.label}`
-              : `Selecione um modelo (${providerName})`}
+                ? `${selected.label}`
+                : `Selecione um modelo (${providerName})`}
           </span>
         </span>
         <ChevronDown size={14} style={{ flexShrink: 0, opacity: 0.7 }} />

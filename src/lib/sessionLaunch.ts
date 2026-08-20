@@ -43,23 +43,12 @@ function stripAntigravitySessionArgs(args: string[]): string[] {
   )
 }
 
-   
-                                                                            
-                                                                             
-                                                               
-   
 export function buildAgentLaunch(
   agent: AgentType,
   baseArgs: readonly string[] = [],
   sessionId?: string,
   createUuid: () => string = () => crypto.randomUUID(),
-                                                                                 
-                                                                                
-                                                                               
-                                                                        
-                                                                              
-                                                                                  
-                                                                                   
+
   mcpConfigPaths?: readonly string[],
 ): AgentLaunch {
   if (agent === 'shell') {
@@ -95,10 +84,7 @@ export function buildAgentLaunch(
 
   if (agent === 'opencode') {
     const clean = stripOpenCodeSessionArgs([...baseArgs])
-                                                                        
-                                                                            
-                                                                         
-                                   
+
     return {
       args: sessionId ? ['--session', sessionId, ...clean] : clean,
       sessionId,
@@ -115,8 +101,5 @@ export function buildAgentLaunch(
     }
   }
 
-                                                                                  
-                                                                                 
-                                                                       
   return { args: [...baseArgs], sessionId: undefined, createdSession: false }
 }

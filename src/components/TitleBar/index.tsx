@@ -5,6 +5,7 @@ import {
   Maximize2,
   Menu,
   Minus,
+  Newspaper,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -12,7 +13,6 @@ import {
   Pencil,
   Pin,
   RefreshCw,
-  Newspaper,
   Smartphone,
   Users,
   Workflow,
@@ -20,19 +20,19 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { ContextMenu, type MenuItem } from '../ProjectSidebar/ContextMenu'
-import { AntigravityIcon, ClaudeIcon, CodexIcon } from '../icons/AgentIcons'
-
+import { requestAppClose } from '../../hooks/useCloseConfirmation'
+import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
+import { isTauriEnv } from '../../lib/api/transport'
 import { getCachedClaudeUsage } from '../../lib/claudeUsageCache'
 import { getCachedCodexUsage } from '../../lib/codexUsageCache'
-import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
-import { requestAppClose } from '../../hooks/useCloseConfirmation'
-import { observeClaudeReset, observeCodexReset } from '../../lib/limitResetWatch'
 import { useT } from '../../lib/i18n'
+import { observeClaudeReset, observeCodexReset } from '../../lib/limitResetWatch'
 import { formatShortcut } from '../../lib/platform'
 import { killPty, remoteControlConnectedDevices } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { AntigravityIcon, ClaudeIcon, CodexIcon } from '../icons/AgentIcons'
+import { ContextMenu, type MenuItem } from '../ProjectSidebar/ContextMenu'
 import styles from './TitleBar.module.css'
 
 const CLAUDE_POLL_INTERVAL_MS = 5 * 60_000
@@ -130,9 +130,7 @@ export function TitleBar() {
   const antigravityReady =
     antigravityUsage?.status === 'ready' && antigravityUsage.buckets.length > 0
   const remoteConnectedLabel = t(
-    remoteConnectedDevices === 1
-      ? 'remote.topbarDeviceConnected'
-      : 'remote.topbarDevicesConnected',
+    remoteConnectedDevices === 1 ? 'remote.topbarDeviceConnected' : 'remote.topbarDevicesConnected',
     { count: remoteConnectedDevices },
   )
 
@@ -142,14 +140,10 @@ export function TitleBar() {
       window.dispatchEvent(new CustomEvent('alethe:agent-canvas-exit'))
       return
     }
-    void killPty(agentCanvasSession.ptyId).catch(() => {
-                                   
-    })
+    void killPty(agentCanvasSession.ptyId).catch(() => {})
     setAgentCanvasSession(null)
   }
 
-                                                                             
-                                                                        
   const activeRef = useRef(true)
 
   useEffect(() => {
@@ -176,7 +170,6 @@ export function TitleBar() {
     }
   }, [])
 
-                                                                            
   useEffect(() => {
     let cancelled = false
     let interval: number | null = null
@@ -191,8 +184,6 @@ export function TitleBar() {
           consecutiveFailures = 0
         }
       } catch {
-                                                                               
-                                                                                  
         consecutiveFailures += 1
         if (consecutiveFailures >= 3 && !cancelled) {
           setClaudeUsage(null)
@@ -210,8 +201,6 @@ export function TitleBar() {
     }
   }, [setClaudeUsage])
 
-                                                                                
-                                                                       
   useEffect(() => {
     let cancelled = false
     let interval: number | null = null
@@ -243,7 +232,6 @@ export function TitleBar() {
     }
   }, [setCodexUsage])
 
-                                                                                                     
   useEffect(() => {
     let cancelled = false
     let interval: number | null = null
@@ -271,31 +259,49 @@ export function TitleBar() {
     }
   }, [setAntigravityUsage])
 
-  const win = getCurrentWindow()
-
-                                                                             
+  const win = isTauriEnv() ? getCurrentWindow() : null
+  // Rastreia foco/visibilidade da janela pra pausar o polling em background.
   useEffect(() => {
     const update = (focused: boolean) => {
       activeRef.current = focused && document.visibilityState === 'visible'
     }
     update(document.hasFocus())
     const onVisibility = () => update(document.hasFocus())
+    // `visibilitychange` só dispara quando a ABA é escondida/mostrada, não
+    // quando a janela perde o foco do SO pra outra janela (ex. o usuário
+    // clica na janela do app desktop enquanto o navegador do Servidor Web
+    // continua visível) — sem isso, uma aba web que nunca teve foco do SO no
+    // instante do mount ficava com `activeRef.current` travado em `false`
+    // pra sempre, e todo o polling de uso (Claude/Codex/Antigravity) parava
+    // de disparar qualquer chamada de rede. `onFocusChanged` do Tauri cobre
+    // o desktop; `focus`/`blur` do `window` cobre qualquer navegador comum
+    // (e não atrapalha o desktop — a webview do Tauri também os emite).
+    const onFocus = () => update(true)
+    const onBlur = () => update(false)
     document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('focus', onFocus)
+    window.addEventListener('blur', onBlur)
     let unlisten: (() => void) | undefined
-    void win
-      .onFocusChanged(({ payload }) => update(payload))
-      .then((fn) => {
-        unlisten = fn
-      })
+    if (win) {
+      void win
+        .onFocusChanged(({ payload }) => update(payload))
+        .then((fn) => {
+          unlisten = fn
+        })
+    }
     return () => {
       document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('blur', onBlur)
       unlisten?.()
     }
   }, [win])
 
   useEffect(() => {
     document.title = APP_TITLE
-    void win.setTitle(APP_TITLE)
+    if (win) {
+      void win.setTitle(APP_TITLE)
+    }
   }, [win])
 
   return (
@@ -315,6 +321,20 @@ export function TitleBar() {
       }
     >
       <div className={styles.barStart}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', paddingRight: '8px' }}>
+          <span
+            style={{
+              fontSize: '10px',
+              fontWeight: 600,
+              padding: '2px 6px',
+              borderRadius: '4px',
+              background: isTauriEnv() ? 'var(--agent-shell)' : 'var(--agent-antigravity)',
+              color: 'var(--bg)',
+            }}
+          >
+            {isTauriEnv() ? t('ui.titlebar.modeDesktop') : t('ui.titlebar.modeWebServer')}
+          </span>
+        </div>
         <button
           type="button"
           className={styles.iconBtn}
@@ -519,16 +539,18 @@ export function TitleBar() {
       <div className={styles.barEnd}>
         <div className={styles.widgets}>
           <div className={styles.utilityGroup}>
-            {!threeAreas ? <button
-              type="button"
-              className={`${styles.iconBtn} ${updateInfo ? styles.whatsNewPending : ''}`}
-              onClick={() => openModal('whatsNew')}
-              title={t('whatsNew.button')}
-              aria-label={t('whatsNew.button')}
-            >
-              <Newspaper size={13} />
-              {updateInfo ? <span className={styles.whatsNewDot} /> : null}
-            </button> : null}
+            {!threeAreas ? (
+              <button
+                type="button"
+                className={`${styles.iconBtn} ${updateInfo ? styles.whatsNewPending : ''}`}
+                onClick={() => openModal('whatsNew')}
+                title={t('whatsNew.button')}
+                aria-label={t('whatsNew.button')}
+              >
+                <Newspaper size={13} />
+                {updateInfo ? <span className={styles.whatsNewDot} /> : null}
+              </button>
+            ) : null}
             {!threeAreas && preferences.topbarShowSync ? (
               <button
                 type="button"
@@ -755,33 +777,37 @@ export function TitleBar() {
             )}
           </button>
         ) : null}
-        <button
-          type="button"
-          className={styles.windowBtn}
-          onClick={() => void win.minimize()}
-          title={t('ui.titlebar.minimize')}
-          aria-label={t('ui.titlebar.minimize')}
-        >
-          <Minus size={14} />
-        </button>
-        <button
-          type="button"
-          className={styles.windowBtn}
-          onClick={() => void win.toggleMaximize()}
-          title={t('ui.titlebar.maximize')}
-          aria-label={t('ui.titlebar.maximize')}
-        >
-          <Maximize2 size={12} />
-        </button>
-        <button
-          type="button"
-          className={`${styles.windowBtn} ${styles.close}`}
-          onClick={() => void requestAppClose()}
-          title={t('ui.titlebar.close')}
-          aria-label={t('ui.titlebar.close')}
-        >
-          <X size={14} />
-        </button>
+        {isTauriEnv() ? (
+          <>
+            <button
+              type="button"
+              className={styles.windowBtn}
+              onClick={() => void win?.minimize()}
+              title={t('ui.titlebar.minimize')}
+              aria-label={t('ui.titlebar.minimize')}
+            >
+              <Minus size={14} />
+            </button>
+            <button
+              type="button"
+              className={styles.windowBtn}
+              onClick={() => void win?.toggleMaximize()}
+              title={t('ui.titlebar.maximize')}
+              aria-label={t('ui.titlebar.maximize')}
+            >
+              <Maximize2 size={12} />
+            </button>
+            <button
+              type="button"
+              className={`${styles.windowBtn} ${styles.close}`}
+              onClick={() => void requestAppClose()}
+              title={t('ui.titlebar.close')}
+              aria-label={t('ui.titlebar.close')}
+            >
+              <X size={14} />
+            </button>
+          </>
+        ) : null}
       </div>
       {tabMenu ? (
         <ContextMenu

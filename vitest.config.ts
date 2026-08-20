@@ -8,5 +8,10 @@ export default defineConfig({
     globals: true,
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     setupFiles: ['./src/test/setup.ts'],
+    // Node 22+ ships its own experimental global `localStorage`, which shadows
+    // jsdom's implementation entirely (window.localStorage ends up undefined
+    // too) unless disabled. Without this, any test touching localStorage fails
+    // with "Cannot read properties of undefined".
+    env: { NODE_OPTIONS: '--no-experimental-webstorage' },
   },
 })

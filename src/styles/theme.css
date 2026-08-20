@@ -1,18 +1,61 @@
-                                                              
-                                                                     
-                                                                      
-                                                     
+/* Fonte do terminal embutida no app (não depende de fonte instalada no SO).
+   No Windows "Cascadia Mono" já vem instalada por padrão e cobre os glyphs
+   estilo Powerline/Nerd Font que TUIs modernas (ex. o `opentui` do
+   OpenCode) usam pra ícones/separadores decorativos — no Linux/macOS ela
+   normalmente NÃO existe, e o navegador cai pro fallback genérico do
+   sistema. Esse fallback cobre o alfabeto normal, mas não os glyphs
+   decorativos — então, só PRA ESSES caracteres específicos, o navegador
+   troca de fonte de novo, silenciosamente, pra uma terceira fonte com
+   métricas de largura diferentes. Como o renderer Canvas do xterm.js
+   desenha cada célula com um avanço de pixel FIXO (medido de uma fonte de
+   referência única), esse glyph "de fonte errada" não encaixa na grade —
+   o resultado visual é letras/símbolos se sobrepondo, pior quanto mais
+   compacto o painel (confirmado ao vivo, e via `fc-match` checando
+   cobertura de charset por fonte nesta máquina).
+   Fix: embutir "Caskaydia Cove Nerd Font Mono" (a variante Nerd Font da
+   própria Cascadia Code, cobertura de glyph completa, SIL OFL 1.1 — ver
+   src/assets/fonts/LICENSE-CascadiaCode.txt) como PRIMEIRA opção da
+   fonte do terminal — mesma família visual em todo SO, garantida, sem
+   depender de fallback nenhum. */
+@font-face {
+  font-family: 'Caskaydia Cove Nerd Font Mono';
+  src: url('../assets/fonts/CaskaydiaCoveNerdFontMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Caskaydia Cove Nerd Font Mono';
+  src: url('../assets/fonts/CaskaydiaCoveNerdFontMono-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Caskaydia Cove Nerd Font Mono';
+  src: url('../assets/fonts/CaskaydiaCoveNerdFontMono-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Caskaydia Cove Nerd Font Mono';
+  src: url('../assets/fonts/CaskaydiaCoveNerdFontMono-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+}
 
-                                                  
-                                                                             
-                                                                        
-                                                                        
-                                                                             
-                                                                          
-                                                                             
-                                                                             
-                                                                          
-                                 
+/* Transição suave ao trocar de tema (App.tsx seta
+   document.documentElement.dataset.theme = uiTheme, instantâneo por padrão).
+   Custom properties em si não são animáveis, mas as propriedades que as
+   CONSOMEM são — então transicionar essas é o que faz a troca de paleta
+   parecer suave. Curta (150ms) de propósito: rápida o bastante pra não virar
+   "delay perceptível" em feedback de hover/status que hoje é instantâneo;
+   seletores mais específicos (ex.: .activityCell:hover) continuam vencendo a
+   cascata com sua própria transição, então não é 100% universal, mas cobre a
+   grande maioria da UI sem tocar em cada componente. Desliga se o usuário
+   pediu menos animação no SO. */
 *,
 *::before,
 *::after {
@@ -29,7 +72,6 @@
 
 :root,
 [data-theme='dark'] {
-                                    
   --anim-instant: 80ms;
   --anim-fast: 140ms;
   --anim-normal: 220ms;
@@ -38,7 +80,6 @@
   --ease-out-fluid: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out-fluid: cubic-bezier(0.45, 0, 0.55, 1);
 
-                   
   --bg: #101114;
   --bg-elevated: #1f2125;
   --bg-sunken: #1a1c1f;
@@ -67,7 +108,6 @@
   --accent-bg-soft: rgba(243, 244, 246, 0.06);
   --accent-border-soft: rgba(243, 244, 246, 0.22);
 
-                                  
   --surface-modal: #1f2125;
   --surface-card-default: #2a2d33;
   --surface-card-default-strong: #34373e;
@@ -121,7 +161,7 @@
 
   --font-sans:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'Cascadia Mono', Consolas, 'Courier New', monospace;
+  --font-mono: 'Caskaydia Cove Nerd Font Mono', 'Cascadia Mono', Consolas, 'Courier New', monospace;
 }
 
 [data-theme='light'] {
@@ -628,9 +668,6 @@
   --shadow-lg: 0 12px 32px rgba(33, 33, 33, 0.18);
 }
 
-                                                                            
-                                                                          
-                           
 [data-theme='dark-lemon'] {
   --bg: #141414;
   --bg-elevated: #1e1e1e;
@@ -693,8 +730,6 @@
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.65);
 }
 
-                                                                     
-                                                         
 [data-theme='orca'] {
   --bg: #0b0b0b;
   --bg-elevated: #181818;
@@ -761,8 +796,121 @@
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.68);
 }
 
-                                                                             
-                                                               
+/* ==========================================================================
+   Arco-Íris Infinito (Infinite Rainbow RGB) & Borda Infinita de Container
+   ========================================================================== */
+/* `filter: hue-rotate()` foi removido de propósito: era redundante com o
+   `background-position` (o próprio gradiente já contém todas as cores, o
+   hue-rotate só duplicava o efeito de "cor girando" por cima) e é a
+   propriedade mais cara das duas — `filter` força repaint pixel a pixel do
+   elemento inteiro a cada frame, sem poder ficar só no compositor como
+   `transform`/`opacity`. Sem o `filter`, sobra só a animação do gradiente,
+   bem mais barato de manter fluido. */
+@keyframes rainbowInfinite {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Ângulo animável do gradiente cônico da borda do container — registrado via
+   `@property` pra dar pro navegador interpolar um <angle> suavemente entre
+   os keyframes (sem isso, `from <var>` não anima, só troca em degrau). Só
+   usado pela borda do CONTAINER (`.rainbow-container-border`), não pelos
+   swatches de cor (`.swatch-rgb-rainbow`), que continuam com o gradiente
+   linear original — mudar aqueles também mudaria a prévia de cor no
+   seletor de cor do projeto, fora do escopo deste fix. */
+@property --rainbow-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes rainbowRotate {
+  to {
+    --rainbow-angle: 360deg;
+  }
+}
+
+.swatch-rgb-rainbow,
+.project-theme-rainbow {
+  background: linear-gradient(
+    135deg,
+    #ff0055,
+    #ff8800,
+    #ffeb3b,
+    #00e676,
+    #00b0ff,
+    #651fff,
+    #d500f9,
+    #ff0055
+  ) !important;
+  background-size: 300% 300% !important;
+  animation: rainbowInfinite 6s linear infinite !important;
+  box-shadow: 0 0 10px rgba(255, 0, 128, 0.35);
+}
+
+.rainbow-container-border {
+  position: relative;
+  border-radius: 12px;
+}
+
+/* Tema de cor "arco-íris" escolhido pelo projeto — sempre visível/animando
+   enquanto essa cor estiver selecionada, independente de foco (não é um
+   indicador de foco; é uma opção de cor única, igual qualquer outra cor de
+   projeto, só que animada). Aplicada só quando `project.color ===
+   'rgb-rainbow'` (ver `isRainbow` em ProjectContainer.tsx). */
+.rainbow-container-border::before {
+  content: '';
+  position: absolute;
+  /* `inset: 0` (não -2px) + `border-radius: inherit`: o anel precisa nascer
+     DENTRO da caixa real (que tem `overflow: hidden` e cantos quadrados via
+     ProjectContainer.module.css), senão fica todo cortado nas bordas retas
+     e só a curva de um raio hardcoded aparece nos cantos. */
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  /* Cônico em vez de linear: um gradiente linear (mesmo diagonal) só varia
+     ao longo de UM eixo reto — cantos opostos do retângulo (ex.: superior-
+     esquerdo x inferior-direito) sempre mostram cores bem diferentes do
+     gradiente ao mesmo tempo, o que por trás do recorte em anel (mask xor
+     abaixo) parece uma cor "cortando" o contorno em vez de circular por
+     ele. Cônico centrado no meio do container faz a cor variar pelo ÂNGULO
+     a partir do centro — como o contorno de um retângulo é, ao redor de
+     todo o perímetro, uma sequência contínua de ângulos vistos desse
+     centro, a cor circula de verdade pela borda inteira, sem esse corte. */
+  background: conic-gradient(
+    from var(--rainbow-angle),
+    #ff0055,
+    #ff8800,
+    #ffeb3b,
+    #00e676,
+    #00b0ff,
+    #651fff,
+    #d500f9,
+    #ff0055
+  );
+  animation: rainbowRotate 6s linear infinite;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  /* Precisa ficar acima do anel de foco de qualquer pane dentro do
+     container (`.pane:focus-within`, z-index: 2 em TerminalPane.module.css)
+     — como os dois empatavam em z-index: 2, a pane focada (mais funda na
+     árvore, pintada depois) vencia o desempate por ordem de DOM e seu
+     box-shadow (que sangra 3px pra fora da própria borda) cobria justo o
+     trecho do anel arco-íris adjacente a ela, aparecendo como uma linha
+     azul cortando o anel só onde havia foco. */
+  z-index: 5;
+}
+
 [data-theme='ember'] {
   --bg: #0b0d0e;
   --bg-elevated: #191d21;

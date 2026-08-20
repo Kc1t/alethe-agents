@@ -68,6 +68,53 @@ Retention, export exclusions, plaintext credential storage, and deletion limits 
 [`PRIVACY.md`](PRIVACY.md); “local” does not mean every local artifact is automatically included in a
 profile backup or removed from external copies.
 
+Legacy root-level data is copied into a timestamped `.migration-backups/legacy-*`
+recovery directory before it is migrated into the default profile. The original
+entries are cleaned up only after the typed profile registry commits successfully.
+
+## Shared Local Core
+
+Desktop and browser clients use one local Alethe Core authority. The embedded
+Desktop server and the standalone `alethe-server` both bind to
+`127.0.0.1:1423`; the process that owns the endpoint owns the profile/project
+repositories and the live PTY registry. A runtime handshake verifies the app
+identifier, instance ID, and an opaque data-root fingerprint before a client
+uses that authority. Clients never infer a data root from the working directory
+or from whichever application folder already exists.
+
+Profile catalog changes, active-profile changes, and project revisions are sent
+through one authenticated WebSocket stream. Each connection starts with a full
+snapshot and receives another snapshot after reconnect or broadcast lag. Project
+saves carry an explicit profile ID and expected backend revision; stale writes
+are rejected and preserved as recovery copies instead of overwriting newer data.
+
+Every portable PTY is owned by an explicit profile ID and immutable scrollback
+path. Browser and Desktop viewers attach to the same live process, while output
+fan-out and cursor-based scrollback recovery cover reloads, disconnects, and
+stream gaps. A PTY remains alive while its owning core process remains alive.
+A normal authority shutdown, Ctrl+C, or Unix SIGTERM terminates registered child
+processes. Windows also uses a kill-on-close Job Object; Linux and macOS terminate
+the registered tree and PTY process group during managed shutdown. An uncatchable
+process kill cannot run application cleanup. Survival across a full core shutdown
+would require a separately installed per-user daemon and is not part of the current
+lifecycle contract; such a daemon needs an RFC covering singleton discovery,
+authentication, upgrades, data-root ownership, crash recovery, and shutdown on
+every supported OS. Native Ghostty surfaces remain a macOS Desktop capability;
+browser terminals use the portable PTY transport.
+
+Visibility and read-priority flags are currently session-wide. Multiple viewers
+remain data-safe through activity events and snapshot resync, but the last viewer
+to update visibility can affect delivery latency for the other viewers.
+
+The full local API is loopback-only and validates Host, Origin, runtime identity,
+and a rotating short-lived local session for HTTP and WebSocket operations. LAN
+access remains an explicit Remote Control capability with its own security model;
+it does not expose the local core API.
+
+Storage and portable PTY ownership are independent of the window compositor.
+Windows, macOS, and Linux use the same core contracts; X11 and Wayland affect the
+Linux WebView/display layer, not the profile namespace or PTY persistence model.
+
 ## Development
 
 ```sh

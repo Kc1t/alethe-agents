@@ -1,6 +1,28 @@
 import { open, save, type DialogFilter } from '@tauri-apps/plugin-dialog'
+import { isTauriEnv } from './api/transport'
+import { useUiStore } from '../stores/uiStore'
+
+export type FsBrowserCallback = (path: string | null) => void
+
+let pendingFsResolver: FsBrowserCallback | null = null
+
+export function resolvePendingFsBrowser(path: string | null) {
+  if (pendingFsResolver) {
+    pendingFsResolver(path)
+    pendingFsResolver = null
+  }
+}
 
 export async function pickDirectory(opts?: { defaultPath?: string }): Promise<string | null> {
+  if (!isTauriEnv()) {
+    return new Promise<string | null>((resolve) => {
+      pendingFsResolver = resolve
+      useUiStore.getState().openModal_('fsBrowser', {
+        mode: 'folder',
+        defaultPath: opts?.defaultPath,
+      })
+    })
+  }
   const result = await open({
     directory: true,
     multiple: false,
@@ -15,6 +37,16 @@ export async function pickFile(opts?: {
   filters?: DialogFilter[]
   defaultPath?: string
 }): Promise<string | null> {
+  if (!isTauriEnv()) {
+    return new Promise<string | null>((resolve) => {
+      pendingFsResolver = resolve
+      useUiStore.getState().openModal_('fsBrowser', {
+        mode: 'file',
+        title: opts?.title,
+        defaultPath: opts?.defaultPath,
+      })
+    })
+  }
   const result = await open({
     directory: false,
     multiple: false,
@@ -31,6 +63,16 @@ export async function saveFile(opts: {
   defaultPath?: string
   filters?: DialogFilter[]
 }): Promise<string | null> {
+  if (!isTauriEnv()) {
+    return new Promise<string | null>((resolve) => {
+      pendingFsResolver = resolve
+      useUiStore.getState().openModal_('fsBrowser', {
+        mode: 'file',
+        title: opts.title,
+        defaultPath: opts.defaultPath,
+      })
+    })
+  }
   const result = await save({
     title: opts.title,
     defaultPath: opts.defaultPath,

@@ -44,11 +44,12 @@ import { ContextMenu, type MenuItem } from './ContextMenu'
 import { FileExplorer } from './FileExplorer'
 import { GitControl } from './GitControl'
 import { GroupNode } from './GroupNode'
-import { NormalProjectSidebar } from './NormalProjectSidebar'
 import { LayoutFooter, WorkspaceLayoutFooter } from './LayoutFooter'
+import { NormalProjectSidebar } from './NormalProjectSidebar'
 import { ProjectNode } from './ProjectNode'
 import styles from './ProjectSidebar.module.css'
 import { createSidebarMenus } from './sidebarMenus'
+import { SidebarMergePanel } from './SidebarMergePanel'
 import { SidebarUpdate } from './SidebarUpdate'
 
 type ContextMenuState = { x: number; y: number; items: MenuItem[] } | null
@@ -112,7 +113,15 @@ export function ProjectSidebar() {
 function CleanProjectSidebar() {
   const t = useT()
   // --- data selectors (reactive) ---
-  const { projects, groups, ungroupedOrder, containers, activeProjectId, showGitControl, preferences } = useProjectsStore(
+  const {
+    projects,
+    groups,
+    ungroupedOrder,
+    containers,
+    activeProjectId,
+    showGitControl,
+    preferences,
+  } = useProjectsStore(
     useShallow((s) => ({
       projects: s.projects,
       groups: s.groups,
@@ -121,7 +130,7 @@ function CleanProjectSidebar() {
       activeProjectId: s.activeProjectId,
       showGitControl: s.preferences.enabledFeatures.git,
       preferences: s.preferences,
-    }))
+    })),
   )
 
   // --- action selectors (stable refs, grouped for readability) ---
@@ -185,7 +194,7 @@ function CleanProjectSidebar() {
       setActiveTerminal: s.setActiveTerminal,
       setFocusedTerminal: s.setFocusedTerminal,
       openMarkdownSidebar: s.openMarkdownSidebar,
-    }))
+    })),
   )
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const [menu, setMenu] = useState<ContextMenuState>(null)
@@ -197,7 +206,6 @@ function CleanProjectSidebar() {
     if (!showGitControl && sidebarTab === 'git') setSidebarTab('projects')
   }, [showGitControl, sidebarTab])
 
-                                                                         
   const openPaneSets = useMemo(() => {
     const map: Record<string, Set<string>> = {}
     for (const c of containers) map[c.projectId] = new Set(c.paneIds)
@@ -238,6 +246,13 @@ function CleanProjectSidebar() {
   const sidebarSubTab =
     sidebarTerminal?.tabs.find((tab) => tab.id === sidebarTerminal.activeTabId) ??
     sidebarTerminal?.tabs[0]
+  // Controle de Versão: prefere o cwd do terminal/sub-tab vivo (mais preciso
+  // — cobre worktree/subpasta), mas cai pra pasta padrão do projeto quando
+  // não há terminal aberto — o painel sempre deveria funcionar com o projeto
+  // SELECIONADO, não exigir um terminal aberto pra existir.
+  const gitCwd = sidebarSubTab?.cwd || sidebarTerminal?.cwd || activeProject?.defaultCwd
+  const gitPtyId = sidebarSubTab && sidebarTerminal ? sidebarSubTab.ptyId : null
+  const gitTerminalName = sidebarTerminal?.name ?? activeProject?.name ?? ''
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -262,7 +277,6 @@ function CleanProjectSidebar() {
     const target = String(over.id)
     if (dragged === target) return
 
-                                                                                        
     if (dragged.startsWith('term:') && target.startsWith('proj:')) {
       const [, fromProject, terminalId] = dragged.split(':')
       const [, toProject] = target.split(':')
@@ -270,8 +284,6 @@ function CleanProjectSidebar() {
       return
     }
 
-                                                                                
-                                                                              
     if (dragged.startsWith('proj:') && target.startsWith('proj:')) {
       const fromId = dragged.slice('proj:'.length)
       const toId = target.slice('proj:'.length)
@@ -314,7 +326,6 @@ function CleanProjectSidebar() {
       return
     }
 
-                                                                           
     if (dragged.startsWith('proj:') && target.startsWith('group:')) {
       const [, projectId] = dragged.split(':')
       const [, groupId] = target.split(':')
@@ -340,7 +351,6 @@ function CleanProjectSidebar() {
       return
     }
 
-                                                                        
     if (dragged.startsWith('grp:') && target.startsWith('group:')) {
       const [, srcGroupId] = dragged.split(':')
       const [, parentId] = target.split(':')
@@ -391,10 +401,6 @@ function CleanProjectSidebar() {
         activateProject(p)
       }}
       onTerminalClick={(t) => {
-                                                                             
-                                                                           
-                                                                           
-                                                               
         if (t.gsdSyncViewer) {
           actions.setFullscreenPane(t.id)
           setActiveView('workspace')
@@ -611,12 +617,12 @@ function CleanProjectSidebar() {
           <div className={styles.explorerHeader}>
             <span className={styles.explorerLabel}>{t('ui.sidebar.sourceControl')}</span>
           </div>
-          {sidebarTerminal && sidebarSubTab && activeProject ? (
+          {activeProject && gitCwd ? (
             <GitControl
               projectId={activeProject.id}
-              cwd={sidebarSubTab.cwd || sidebarTerminal.cwd}
-              ptyId={sidebarSubTab.ptyId}
-              terminalName={sidebarTerminal.name}
+              cwd={gitCwd}
+              ptyId={gitPtyId}
+              terminalName={gitTerminalName}
             />
           ) : (
             <div className={styles.explorerEmpty}>
@@ -685,6 +691,9 @@ function CleanProjectSidebar() {
           </DragOverlay>
         </DndContext>
       ) : null}
+
+      {/* PAINEL DE MERGES NA BARRA LATERAL */}
+      <SidebarMergePanel />
 
       {menu ? (
         <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />

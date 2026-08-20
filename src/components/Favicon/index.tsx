@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react'
 import styles from './Favicon.module.css'
 
 type FaviconProps = {
-                                                            
   url: string
   size?: number
   className?: string

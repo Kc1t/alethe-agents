@@ -10,6 +10,7 @@ import { AgentSandbox } from './components/AgentSandbox'
 import { DictationButton } from './components/DictationButton'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { FocusOverlay } from './components/FocusOverlay'
+import { GsdSyncActivityView } from './components/GsdSyncActivityView'
 import { AgentIcon } from './components/icons/AgentIcons'
 import { LinkViewerOverlay } from './components/LinkViewerOverlay'
 import { MainMenu } from './components/MainMenu'
@@ -19,6 +20,7 @@ import { AiUsageModal } from './components/modals/AiUsageModal'
 import { EditGroupModal } from './components/modals/EditGroupModal'
 import { EditProjectModal } from './components/modals/EditProjectModal'
 import { FindJumpModal } from './components/modals/FindJumpModal'
+import { FsBrowserModal } from './components/modals/FsBrowserModal'
 import { HandoffModal } from './components/modals/HandoffModal'
 import { McpIntroModal } from './components/modals/McpIntroModal'
 import { McpManagerModal } from './components/modals/McpManagerModal'
@@ -40,6 +42,7 @@ import { UpdateModal } from './components/modals/UpdateModal'
 import { WelcomeModal } from './components/modals/WelcomeModal'
 import { WhatsNewModal } from './components/modals/WhatsNewModal'
 import { ProjectSidebar } from './components/ProjectSidebar'
+import { RecorderHelper } from './components/RecorderHelper/RecorderHelper'
 import { RightSidebar } from './components/RightSidebar'
 import { TitleBar } from './components/TitleBar'
 import { TokenHud } from './components/TokenHud'
@@ -52,17 +55,20 @@ import { useKeybindings } from './hooks/useKeybindings'
 import { useMcpIntroPrompt } from './hooks/useMcpIntroPrompt'
 import { useRemoteControlService } from './hooks/useRemoteControlService'
 import { useResourceSupervisor } from './hooks/useResourceSupervisor'
+import { isTauriEnv } from './lib/api/transport'
 import { startActivityTracker } from './lib/activityTracker'
 import { APP_SHELL_ID } from './lib/appShell'
+import { installE2eHooks } from './lib/e2eHooks'
 import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
 import { intlLocale, translate, useT } from './lib/i18n'
 import { visibilityFromPanelResize, widthFromPanelResize } from './lib/sidebarPanelState'
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
-import { ghosttyKillAll, setWindowOpacity } from './lib/tauri'
+import { ghosttyKillAll, setWindowOpacity, subscribeCoreSyncEvents } from './lib/tauri'
 import { getLastCrashReport } from './lib/tauri'
 import { loadThemeIconBytes } from './lib/themeIcons'
 import { checkForUpdate } from './lib/updater'
 import { useProjectsStore } from './stores/projectsStore'
+import { useTerminalsStore } from './stores/terminalsStore'
 import { type InAppToast, useUiStore } from './stores/uiStore'
 
 const AgentCanvasPOC = lazy(() =>
@@ -194,8 +200,10 @@ export default function App() {
   const windowOpacity = useProjectsStore((s) => s.preferences.windowOpacity)
   const language = useProjectsStore((s) => s.preferences.language)
   const spawnConcurrency = useProjectsStore((s) => s.preferences.spawnConcurrency)
+  const persistenceError = useProjectsStore((s) => s.persistenceError)
   const activeView = useUiStore((s) => s.activeView)
   const openModal = useUiStore((s) => s.openModal)
+  const pushToast = useUiStore((s) => s.pushToast)
   const restoreMarkdownSidebarHistory = useUiStore((s) => s.restoreMarkdownSidebarHistory)
   const activeProfileId = useProjectsStore((s) => s.activeProfileId)
   const leftSidebarVisible = useProjectsStore((s) => s.preferences.leftSidebarVisible)
@@ -225,6 +233,7 @@ export default function App() {
   const windowHiddenRef = useRef(false)
   const leftPanelElementRef = useRef<HTMLDivElement>(null)
   const rightPanelElementRef = useRef<HTMLDivElement>(null)
+  const reportedPersistenceErrorRef = useRef<string | null>(null)
 
   // Hydration completes before the panels mount. Capture the persisted widths
   // on that render so their first layout does not fall back to store defaults.
@@ -243,8 +252,103 @@ export default function App() {
   useCliOpenRequests(hydrated)
 
   useEffect(() => {
+    installE2eHooks()
+  }, [])
+
+  useEffect(() => {
     void hydrate()
   }, [hydrate])
+
+  useEffect(() => {
+    const flushBeforeSuspension = () => {
+      void useProjectsStore
+        .getState()
+        .flushPersistence(true)
+        .catch(() => {
+          // The persistence status reports the failure if the page remains open.
+        })
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushBeforeSuspension()
+    }
+    window.addEventListener('beforeunload', flushBeforeSuspension)
+    window.addEventListener('pagehide', flushBeforeSuspension)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      window.removeEventListener('beforeunload', flushBeforeSuspension)
+      window.removeEventListener('pagehide', flushBeforeSuspension)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [])
+
+  // Keep the profile catalog and active document synchronized across clients.
+  useEffect(() => {
+    if (!hydrated) return
+    let applyQueue: Promise<void> = Promise.resolve()
+
+    return subscribeCoreSyncEvents((event) => {
+      applyQueue = applyQueue
+        .then(async () => {
+          let current = useProjectsStore.getState()
+          if (current.persistenceError === 'core-mismatch') {
+            useProjectsStore.setState({ persistenceError: null })
+            if (current.persistenceDirty) await useProjectsStore.getState().flushPersistence()
+            current = useProjectsStore.getState()
+          }
+
+          if (JSON.stringify(current.profiles) !== JSON.stringify(event.profiles)) {
+            useProjectsStore.setState({ profiles: event.profiles })
+          }
+
+          const activeProfileChanged = event.activeProfileId !== current.activeProfileId
+          const documentChanged = event.activeProjectsRevision !== current.projectsRevision
+          if (activeProfileChanged) {
+            if (current.persistenceDirty) await current.flushPersistence()
+            useTerminalsStore.getState().reset()
+            await hydrate()
+          } else if ((documentChanged || current.persistenceError) && !current.persistenceDirty) {
+            await hydrate()
+          }
+        })
+        .catch((error) => {
+          // Never let this disappear silently: hydrate() preserves the last
+          // known-good document on failure (it no longer wipes the store to
+          // empty for a transient error), and the server's periodic
+          // reconciliation snapshot (~15s) retries this same apply
+          // automatically, since the local revision stays stale until it
+          // succeeds.
+          console.error('[Alethe] Failed to apply a core sync event', error)
+        })
+      return applyQueue
+    })
+  }, [hydrated, hydrate])
+
+  useEffect(() => {
+    if (!persistenceError) {
+      reportedPersistenceErrorRef.current = null
+      return
+    }
+    if (reportedPersistenceErrorRef.current === persistenceError) return
+    reportedPersistenceErrorRef.current = persistenceError
+    pushToast({
+      title: translate(
+        language,
+        persistenceError === 'conflict'
+          ? 'persistence.conflictTitle'
+          : persistenceError === 'core-mismatch'
+            ? 'persistence.coreMismatchTitle'
+            : 'persistence.writeTitle',
+      ),
+      body: translate(
+        language,
+        persistenceError === 'conflict'
+          ? 'persistence.conflictBody'
+          : persistenceError === 'core-mismatch'
+            ? 'persistence.coreMismatchBody'
+            : 'persistence.writeBody',
+      ),
+    })
+  }, [language, persistenceError, pushToast])
 
   useEffect(() => {
     if (hydrated) restoreMarkdownSidebarHistory()
@@ -265,10 +369,11 @@ export default function App() {
   }, [visualStyle])
 
   useEffect(() => {
-    if (!hydrated) return
+    if (!hydrated || !isTauriEnv()) return
     void loadThemeIconBytes(appIconTheme)
       .then((bytes) => getCurrentWindow().setIcon(bytes))
       .catch((error) => {
+        // Browser/test environments do not expose the native window icon API.
         console.error('[app-icon] failed to apply window icon', error)
       })
   }, [appIconTheme, hydrated])
@@ -284,14 +389,18 @@ export default function App() {
   useEffect(() => {
     if (!hydrated) return
     document.documentElement.dataset.zoom = String(uiZoom)
-    void getCurrentWebview()
-      .setZoom(uiZoom)
-      .catch(() => {
-        /* Browser tests may not expose the Tauri permission. */
-      })
-      .finally(() => {
-        window.dispatchEvent(new CustomEvent('alethe:zoom-changed', { detail: { zoom: uiZoom } }))
-      })
+    if (isTauriEnv()) {
+      void getCurrentWebview()
+        .setZoom(uiZoom)
+        .catch(() => {
+          /* Browser tests may not expose the Tauri permission. */
+        })
+        .finally(() => {
+          window.dispatchEvent(new CustomEvent('alethe:zoom-changed', { detail: { zoom: uiZoom } }))
+        })
+    } else {
+      window.dispatchEvent(new CustomEvent('alethe:zoom-changed', { detail: { zoom: uiZoom } }))
+    }
   }, [hydrated, uiZoom])
 
   useEffect(() => {
@@ -442,17 +551,13 @@ export default function App() {
   )
 
   useEffect(() => {
-    if (!hydrated) return
+    if (!hydrated || !isTauriEnv()) return
     let cancelled = false
     void checkForUpdate()
       .then((info) => {
         if (!cancelled) useUiStore.getState().setUpdateInfo(info)
       })
       .catch((error) => {
-                                                                        
-                                                                            
-                                                                          
-                                                                          
         console.error('[update] checagem de fundo falhou:', error)
       })
     return () => {
@@ -623,8 +728,7 @@ export default function App() {
                 collapsible
                 groupResizeBehavior="preserve-pixel-size"
                 onResize={(size, _id, previous) => {
-                  const currentVisible =
-                    useProjectsStore.getState().preferences.rightSidebarVisible
+                  const currentVisible = useProjectsStore.getState().preferences.rightSidebarVisible
                   const nextVisible = visibilityFromPanelResize(
                     rightSidebarLayoutReadyRef.current,
                     rightSidebarResizeActiveRef.current,
@@ -663,6 +767,7 @@ export default function App() {
         </PanelGroup>
       </div>
       <FocusOverlay />
+      <GsdSyncActivityView />
       <LinkViewerOverlay />
       <DictationButton />
       <MainMenu />
@@ -677,6 +782,7 @@ export default function App() {
         <NewSubTabModal />
         <PreferencesModal />
         <ProfilesModal />
+        <FsBrowserModal />
         <SyncModal />
         <FindJumpModal />
         <OnboardingModal />
@@ -706,6 +812,7 @@ export default function App() {
       </ErrorBoundary>
       <InAppNotifications />
       {activeView === 'agentCanvas' ? <TokenHud /> : null}
+      <RecorderHelper />
     </>
   )
 }

@@ -1,5 +1,6 @@
 import {
   Archive,
+  Download,
   FileText,
   FolderOpen,
   Globe2,
@@ -12,12 +13,21 @@ import {
   Smartphone,
   SmartphoneNfc,
   Trash2,
+  Upload,
 } from 'lucide-react'
 
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
+import { pickFile, saveFile } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
-import { getPtyCwd, openInFileExplorer, openInVscode, restartPty } from '../../lib/tauri'
+import {
+  getPtyCwd,
+  openInFileExplorer,
+  openInVscode,
+  readTextFile,
+  restartPty,
+  writeTextFile,
+} from '../../lib/tauri'
 import { agentCliCommand, type Group, type Project, type Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
@@ -28,7 +38,6 @@ import { collectDescendants } from './GroupNode'
 type ProjectsState = ReturnType<typeof useProjectsStore.getState>
 type UiState = ReturnType<typeof useUiStore.getState>
 
-                                                                                
 type MenuActions = Pick<
   ProjectsState,
   | 'openProjectWorkspace'
@@ -75,12 +84,10 @@ export type SidebarMenuDeps = {
   openMarkdownSidebar: UiState['openMarkdownSidebar']
 }
 
-                                                                                        
 function visibleProjectTerminals(project: Project): Terminal[] {
   return project.terminals.filter((term) => !term.gsdSyncViewer)
 }
 
-                                                                         
 export function createSidebarMenus(deps: SidebarMenuDeps) {
   const {
     t,
@@ -119,9 +126,57 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
     { kind: 'separator' },
     {
       kind: 'item',
-      label: t('ui.sidebar.editNameColor'),
+      label: t('ui.sidebar.projectSettings'),
       icon: <Pencil size={14} />,
       onClick: () => openModal('editProject', { projectId: project.id }),
+    },
+    {
+      kind: 'item',
+      label: t('ui.sidebar.exportProjectConfig'),
+      icon: <Download size={14} />,
+      onClick: () =>
+        void (async () => {
+          const target = await saveFile({
+            title: t('ui.sidebar.exportProjectConfigTitle'),
+            defaultPath: `${project.name.replace(/[^A-Za-z0-9_-]/g, '-')}.alethe-project.json`,
+            filters: [{ name: t('ui.sidebar.projectConfigFilter'), extensions: ['json'] }],
+          })
+          if (!target) return
+          await writeTextFile(target, JSON.stringify(project, null, 2))
+          useUiStore
+            .getState()
+            .pushToast({ title: t('ui.sidebar.exportProjectConfigDone'), body: '' })
+        })(),
+    },
+    {
+      kind: 'item',
+      label: t('ui.sidebar.importProjectConfig'),
+      icon: <Upload size={14} />,
+      onClick: () =>
+        void (async () => {
+          const source = await pickFile({
+            title: t('ui.sidebar.importProjectConfigTitle'),
+            filters: [{ name: t('ui.sidebar.projectConfigFilter'), extensions: ['json'] }],
+          })
+          if (!source) return
+          try {
+            const raw = await readTextFile(source)
+            const data = JSON.parse(raw) as Partial<Project>
+            if (!data || typeof data.name !== 'string' || !Array.isArray(data.terminals)) {
+              throw new Error('invalid_project_config')
+            }
+            useProjectsStore.getState().importProjectFromFile(data as Project, project.groupId)
+            useUiStore
+              .getState()
+              .pushToast({ title: t('ui.sidebar.importProjectConfigDone'), body: '' })
+          } catch (error) {
+            console.error('[sidebarMenus] falha importando configuração de projeto:', error)
+            useUiStore.getState().pushToast({
+              title: t('ui.sidebar.importProjectConfigFailed'),
+              body: String(error),
+            })
+          }
+        })(),
     },
     {
       kind: 'item',

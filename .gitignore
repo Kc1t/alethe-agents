@@ -19,7 +19,16 @@ Thumbs.db
 
 # Tauri
 src-tauri/target/
+# Build isolada do harness de E2E — nunca compartilha target/ com o `tauri dev`
+# interativo (lock e binário de saída próprios).
+src-tauri/target-e2e/
 src-tauri/gen/
+
+# Artefatos gerados a cada rodada do suite E2E (screenshots/relatórios de
+# falha) — mesmos paths que o step "Upload screenshots + reports on failure"
+# do CI usa, nunca conteúdo versionado.
+e2e/__reports__/
+e2e/__screenshots__/
 
 # libghostty pré-buildado — não versionado (binário ~39MB). Reconstruído por
 # src-tauri/vendor/fetch-ghostty.sh (URL + checksum pinados).
@@ -44,3 +53,16 @@ pnpm-debug.log*
 
 # Graphify — grafo gerado (cache/AST/graph.json ~80MB). Sempre reconstruível.
 graphify-out/
+
+# Prints/vídeos de evidência de bugs, usados só localmente durante testes ao
+# vivo (PR/issues) — nunca deve ir pro histórico do repo.
+imagem/
+
+# Estado/runtime local do Claude Code — nunca versionado (.claude/skills/ É
+# versionado de propósito, fica de fora daqui).
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+.claude/worktrees/
+
+# Build do harness E2E gerada na raiz (nunca compartilha com src-tauri/target-e2e/)
+/target-e2e/

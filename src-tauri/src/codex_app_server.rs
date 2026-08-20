@@ -57,10 +57,21 @@ fn stop_process(
     Ok(())
 }
 
-#[tauri::command]
-pub fn codex_app_server_start(
-    app: AppHandle,
-    state: State<'_, CodexAppServerState>,
+pub trait CodexAppServerSink: Send + Sync {
+    fn emit_event(&self, id: &str, payload: Value);
+}
+
+pub struct TauriCodexSink(pub AppHandle);
+
+impl CodexAppServerSink for TauriCodexSink {
+    fn emit_event(&self, id: &str, payload: Value) {
+        let _ = self.0.emit(&event_name(id), payload);
+    }
+}
+
+pub fn codex_app_server_start_core(
+    sink: Arc<dyn CodexAppServerSink>,
+    state: &CodexAppServerState,
     id: String,
     cwd: String,
 ) -> Result<(), String> {
@@ -110,38 +121,37 @@ pub fn codex_app_server_start(
         );
     }
 
-    let event = event_name(&id);
-    let reader_app = app.clone();
-    let reader_event = event.clone();
+    let reader_sink = Arc::clone(&sink);
+    let reader_id = id.clone();
     thread::spawn(move || {
         for line in BufReader::new(stdout).lines() {
             match line {
                 Ok(line) if !line.trim().is_empty() => {
                     let payload = serde_json::from_str::<Value>(&line)
                         .unwrap_or_else(|_| json!({ "type": "raw", "data": line }));
-                    let _ = reader_app.emit(&reader_event, payload);
+                    reader_sink.emit_event(&reader_id, payload);
                 }
                 Ok(_) => {}
                 Err(error) => {
-                    let _ = reader_app.emit(
-                        &reader_event,
+                    reader_sink.emit_event(
+                        &reader_id,
                         json!({ "type": "transport_error", "message": error.to_string() }),
                     );
                     break;
                 }
             }
         }
-        let _ = reader_app.emit(&reader_event, json!({ "type": "transport_closed" }));
+        reader_sink.emit_event(&reader_id, json!({ "type": "transport_closed" }));
     });
 
     if let Some(stderr) = stderr {
-        let stderr_app = app.clone();
-        let stderr_event = event.clone();
+        let stderr_sink = Arc::clone(&sink);
+        let stderr_id = id.clone();
         thread::spawn(move || {
             for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                 if !line.trim().is_empty() {
-                    let _ = stderr_app
-                        .emit(&stderr_event, json!({ "type": "stderr", "message": line }));
+                    stderr_sink
+                        .emit_event(&stderr_id, json!({ "type": "stderr", "message": line }));
                 }
             }
         });
@@ -165,8 +175,17 @@ pub fn codex_app_server_start(
 }
 
 #[tauri::command]
-pub fn codex_app_server_send(
+pub fn codex_app_server_start(
+    app: AppHandle,
     state: State<'_, CodexAppServerState>,
+    id: String,
+    cwd: String,
+) -> Result<(), String> {
+    codex_app_server_start_core(Arc::new(TauriCodexSink(app)), &state, id, cwd)
+}
+
+pub fn codex_app_server_send_core(
+    state: &CodexAppServerState,
     id: String,
     request: Value,
 ) -> Result<(), String> {
@@ -181,9 +200,22 @@ pub fn codex_app_server_send(
 }
 
 #[tauri::command]
+pub fn codex_app_server_send(
+    state: State<'_, CodexAppServerState>,
+    id: String,
+    request: Value,
+) -> Result<(), String> {
+    codex_app_server_send_core(&state, id, request)
+}
+
+pub fn codex_app_server_stop_core(state: &CodexAppServerState, id: String) -> Result<(), String> {
+    stop_process(&state.sessions, &id)
+}
+
+#[tauri::command]
 pub fn codex_app_server_stop(
     state: State<'_, CodexAppServerState>,
     id: String,
 ) -> Result<(), String> {
-    stop_process(&state.sessions, &id)
+    codex_app_server_stop_core(&state, id)
 }

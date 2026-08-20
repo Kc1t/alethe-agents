@@ -1,0 +1,448 @@
+{
+  "openProjectSettingsAgentsTab": [
+    {
+      "action": "click",
+      "text": "Mais ações"
+    },
+    {
+      "action": "click",
+      "text": "Configurações"
+    },
+    {
+      "action": "click",
+      "text": "Agentes"
+    }
+  ],
+  "openProjectSettingsMergeTab": [
+    {
+      "action": "click",
+      "text": "Mais ações"
+    },
+    {
+      "action": "click",
+      "text": "Configurações"
+    },
+    {
+      "action": "click",
+      "text": "Merge"
+    }
+  ],
+  "closeProjectSettings": [
+    {
+      "action": "click",
+      "text": "Fechar"
+    },
+    {
+      "action": "waitTextGone",
+      "text": "Editar projeto"
+    }
+  ],
+  "openGitControlTab": [
+    {
+      "action": "click",
+      "text": "Controle Git"
+    }
+  ],
+  "setGitControlPlacementRight": [
+    {
+      "action": "click",
+      "text": "Perfil"
+    },
+    {
+      "action": "click",
+      "text": "Preferências"
+    },
+    {
+      "action": "click",
+      "text": "Aparência"
+    },
+    {
+      "action": "click",
+      "text": "Local do Controle Git"
+    },
+    {
+      "action": "click",
+      "text": "Sidebar direita"
+    }
+  ],
+  "nomeDoProcedimento": [
+    {
+      "action": "click",
+      "text": "Atalhos de gravação"
+    },
+    {
+      "action": "click",
+      "text": "Criar projeto temporário (pasta nova)"
+    },
+    {
+      "action": "click",
+      "text": "Mais ações"
+    },
+    {
+      "action": "click",
+      "text": "Configurações…"
+    },
+    {
+      "action": "click",
+      "text": "Agentes"
+    },
+    {
+      "action": "click",
+      "text": "Inicializar repositório Git"
+    },
+    {
+      "action": "click",
+      "text": "OpenCode"
+    },
+    {
+      "action": "click",
+      "text": "DeepSeek R1 (Raciocínio)"
+    },
+    {
+      "action": "type",
+      "placeholder": "Pesquisar entre 4 modelos de OPENCODE...",
+      "value": "deepseek"
+    },
+    {
+      "action": "click",
+      "text": "DeepSeek R1 (Raciocínio)deepseek/deepseek-r1"
+    },
+    {
+      "action": "click",
+      "text": "DeepSeek R1 (Raciocínio)"
+    },
+    {
+      "action": "click",
+      "text": "DeepSeek R1 (Raciocínio)"
+    },
+    {
+      "action": "type",
+      "placeholder": "Pesquisar entre 4 modelos de OPENCODE...",
+      "value": "deep"
+    },
+    {
+      "action": "click",
+      "text": "opencode/deepseek-v4-flash-free (OpenCode CLI)"
+    },
+    {
+      "action": "click",
+      "text": "Monitorar arquivos de planejamento GSD (.planning/)"
+    },
+    {
+      "action": "click",
+      "text": "Salvar"
+    },
+    {
+      "action": "click",
+      "text": "Mais ações"
+    },
+    {
+      "action": "click",
+      "text": "Configurações…"
+    },
+    {
+      "action": "click",
+      "text": "Agentes"
+    },
+    {
+      "action": "click",
+      "text": "Merge"
+    },
+    {
+      "action": "click",
+      "text": "Worktrees"
+    },
+    {
+      "action": "click",
+      "text": "Fechar"
+    },
+    {
+      "action": "click",
+      "text": "Novo terminal"
+    },
+    {
+      "action": "click",
+      "text": "OpenCode"
+    },
+    {
+      "action": "click",
+      "text": "Abrir OpenCode"
+    },
+    {
+      "action": "click",
+      "text": "Mais ações"
+    },
+    {
+      "action": "click",
+      "text": "Configurações…"
+    },
+    {
+      "action": "click",
+      "text": "Merge"
+    },
+    {
+      "action": "click",
+      "text": "Salvar"
+    },
+    {
+      "action": "click",
+      "text": "OpenCodeFalhou verificação automática"
+    },
+    {
+      "action": "click",
+      "text": "Faz merge do trabalho deste agente no branch principal e remove o ambiente"
+    },
+    {
+      "action": "click",
+      "text": "Commitar e integrar"
+    }
+  ],
+  "test2": [
+    {
+      "action": "click",
+      "text": "Cancelar"
+    },
+    {
+      "action": "click",
+      "text": "Atalhos de gravação"
+    },
+    {
+      "action": "click",
+      "text": "Criar projeto temporário (pasta nova)"
+    },
+    {
+      "action": "click",
+      "text": "Mais ações"
+    },
+    {
+      "action": "click",
+      "text": "Configurações…"
+    },
+    {
+      "action": "click",
+      "text": "Agentes"
+    },
+    {
+      "action": "click",
+      "text": "Inicializar repositório Git"
+    },
+    {
+      "action": "click",
+      "text": "OpenCode"
+    },
+    {
+      "action": "click",
+      "text": "DeepSeek R1 (Raciocínio)"
+    },
+    {
+      "action": "type",
+      "placeholder": "Pesquisar entre 579 modelos de OPENCODE...",
+      "value": "dee"
+    },
+    {
+      "action": "click",
+      "text": "opencode/deepseek-v4-flash-free (OpenCode CLI)"
+    },
+    {
+      "action": "click",
+      "text": "Salvar"
+    },
+    {
+      "action": "click",
+      "text": "Mais ações"
+    },
+    {
+      "action": "click",
+      "text": "Configurações…"
+    },
+    {
+      "action": "click",
+      "text": "Agentes"
+    },
+    {
+      "action": "click",
+      "text": "Merge"
+    },
+    {
+      "action": "click",
+      "text": "Fechar"
+    },
+    {
+      "action": "click",
+      "text": "Novo terminal"
+    },
+    {
+      "action": "click",
+      "text": "OpenCode"
+    },
+    {
+      "action": "click",
+      "text": "Abrir OpenCode"
+    },
+    {
+      "action": "click",
+      "text": "Mais ações"
+    },
+    {
+      "action": "click",
+      "text": "Configurações…"
+    },
+    {
+      "action": "click",
+      "text": "Merge"
+    },
+    {
+      "action": "click",
+      "text": "Criar nova branch e manter sessão"
+    },
+    {
+      "action": "click",
+      "text": "Salvar"
+    },
+    {
+      "action": "click",
+      "text": "Mais ações"
+    },
+    {
+      "action": "click",
+      "text": "Configurações…"
+    },
+    {
+      "action": "click",
+      "text": "Worktrees"
+    },
+    {
+      "action": "click",
+      "text": "Merge"
+    },
+    {
+      "action": "click",
+      "text": "Fechar"
+    },
+    {
+      "action": "click",
+      "text": "OpenCodeFalhou verificação automática"
+    },
+    {
+      "action": "click",
+      "text": "Faz merge do trabalho deste agente no branch principal e remove o ambiente"
+    },
+    {
+      "action": "click",
+      "text": "Commitar e integrar"
+    }
+  ],
+  "test3": [
+    {
+      "action": "click",
+      "text": "Cancelar"
+    },
+    {
+      "action": "click",
+      "text": "Atalhos de gravação"
+    },
+    {
+      "action": "click",
+      "text": "Criar projeto temporário (pasta nova)"
+    },
+    {
+      "action": "click",
+      "text": "Mais ações"
+    },
+    {
+      "action": "click",
+      "text": "Configurações…"
+    },
+    {
+      "action": "click",
+      "text": "Worktrees"
+    },
+    {
+      "action": "click",
+      "text": "Agentes"
+    },
+    {
+      "action": "click",
+      "text": "Inicializar repositório Git"
+    },
+    {
+      "action": "scrollBy",
+      "deltaX": 0,
+      "deltaY": 200,
+      "originX": 901,
+      "originY": 340
+    },
+    {
+      "action": "click",
+      "text": "OpenCode"
+    },
+    {
+      "action": "scrollBy",
+      "deltaX": 0,
+      "deltaY": 100,
+      "originX": 759,
+      "originY": 537
+    },
+    {
+      "action": "clickNearLabel",
+      "labelText": "Modelo do agente (OPENCODE)"
+    },
+    {
+      "action": "type",
+      "placeholder": "Pesquisar entre 579 modelos de OPENCODE...",
+      "value": "dee"
+    },
+    {
+      "action": "click",
+      "text": "opencode/deepseek-v4-flash-free (OpenCode CLI)"
+    },
+    {
+      "action": "click",
+      "text": "Isolamento automático de agentes (todo agente novo ganha wor"
+    },
+    {
+      "action": "click",
+      "text": "Salvar"
+    },
+    {
+      "action": "click",
+      "text": "Novo terminal"
+    },
+    {
+      "action": "click",
+      "text": "OpenCode"
+    },
+    {
+      "action": "click",
+      "text": "Abrir OpenCode"
+    },
+    {
+      "action": "click",
+      "text": "Mais ações"
+    },
+    {
+      "action": "click",
+      "text": "Configurações…"
+    },
+    {
+      "action": "click",
+      "text": "Merge"
+    },
+    {
+      "action": "click",
+      "text": "Salvar"
+    },
+    {
+      "action": "click",
+      "text": "OpenCode"
+    },
+    {
+      "action": "click",
+      "text": "Faz merge do trabalho deste agente no branch principal e remove o ambiente"
+    },
+    {
+      "action": "snapshot",
+      "label": "apos-integrar"
+    }
+  ]
+}

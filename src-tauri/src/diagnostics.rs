@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -641,9 +642,60 @@ mod unix_clipboard {
     }
 }
 
-pub fn append_spawn_log(app: &AppHandle, message: &str) -> Result<(), String> {
+/// Backend de clipboard pra macOS via `arboard` (evita depender de ferramentas
+/// de linha de comando externas, ao contrário do `unix_clipboard` de
+/// Linux/BSD acima). Cobre texto e imagem — paths de arquivo (equivalente ao
+/// CF_HDROP do Windows / text/uri-list do Linux) não têm API estável no
+/// arboard, então esse payload cai pra `Empty` em vez de tentar adivinhar um
+/// formato.
+#[cfg(target_os = "macos")]
+mod macos_clipboard {
+    use super::ClipboardPayload;
+
+    fn open() -> Result<arboard::Clipboard, String> {
+        arboard::Clipboard::new().map_err(|e| e.to_string())
+    }
+
+    pub fn write_text(text: &str) -> Result<(), String> {
+        open()?.set_text(text).map_err(|e| e.to_string())
+    }
+
+    pub fn read_text() -> Result<String, String> {
+        open()?.get_text().map_err(|e| e.to_string())
+    }
+
+    fn image_to_temp_png(image: arboard::ImageData) -> Result<String, String> {
+        let width = image.width as u32;
+        let height = image.height as u32;
+        let buffer = image::RgbaImage::from_raw(width, height, image.bytes.into_owned())
+            .ok_or_else(|| "dados de imagem do clipboard invalidos".to_string())?;
+        let path =
+            std::env::temp_dir().join(format!("alethe-clipboard-img-{}.png", nanoid::nanoid!(8)));
+        buffer
+            .save_with_format(&path, image::ImageFormat::Png)
+            .map_err(|e| e.to_string())?;
+        Ok(path.to_string_lossy().into_owned())
+    }
+
+    pub fn read_payload() -> Result<ClipboardPayload, String> {
+        let mut clipboard = open()?;
+
+        if let Ok(text) = clipboard.get_text() {
+            if !text.is_empty() {
+                return Ok(ClipboardPayload::Text { text });
+            }
+        }
+
+        if let Ok(image) = clipboard.get_image() {
+            return image_to_temp_png(image).map(|path| ClipboardPayload::Image { path });
+        }
+
+        Ok(ClipboardPayload::Empty)
+    }
+}
+
+pub fn append_spawn_log_path(path: &Path, message: &str) -> Result<(), String> {
     use std::io::Write;
-    let path = spawn_log_path(app)?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
@@ -653,6 +705,11 @@ pub fn append_spawn_log(app: &AppHandle, message: &str) -> Result<(), String> {
         .open(path)
         .map_err(|error| error.to_string())?;
     writeln!(file, "[{}] {message}", timestamp_ms()).map_err(|error| error.to_string())
+}
+
+pub fn append_spawn_log(app: &AppHandle, message: &str) -> Result<(), String> {
+    let path = spawn_log_path(app)?;
+    append_spawn_log_path(&path, message)
 }
 
 pub fn timestamp_ms() -> String {
@@ -793,52 +850,4 @@ pub fn export_logs(app: AppHandle, target_path: String) -> Result<(), String> {
     }
     zip.finish().map_err(|e| e.to_string())?;
     Ok(())
-}
-
-#[cfg(target_os = "macos")]
-mod macos_clipboard {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
-
-    use super::ClipboardPayload;
-
-    pub fn write_text(text: &str) -> Result<(), String> {
-        let mut child = Command::new("pbcopy")
-            .stdin(Stdio::piped())
-            .spawn()
-            .map_err(|e| e.to_string())?;
-
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin
-                .write_all(text.as_bytes())
-                .map_err(|e| e.to_string())?;
-        }
-
-        let status = child.wait().map_err(|e| e.to_string())?;
-        if status.success() {
-            Ok(())
-        } else {
-            Err("pbcopy falhou".to_string())
-        }
-    }
-
-    pub fn read_text() -> Result<String, String> {
-        let output = Command::new("pbpaste")
-            .output()
-            .map_err(|e| e.to_string())?;
-        if output.status.success() {
-            Ok(String::from_utf8_lossy(&output.stdout).to_string())
-        } else {
-            Err("pbpaste falhou".to_string())
-        }
-    }
-
-    pub fn read_payload() -> Result<ClipboardPayload, String> {
-        let text = read_text()?;
-        if text.trim().is_empty() {
-            Ok(ClipboardPayload::Empty)
-        } else {
-            Ok(ClipboardPayload::Text { text })
-        }
-    }
 }

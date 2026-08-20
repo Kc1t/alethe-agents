@@ -4,8 +4,18 @@ import { useEffect, useMemo, useState } from 'react'
 import { pickDirectory } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import { basename } from '../../lib/paths'
-import { AGENT_TYPE_LABELS, type AgentRuntimeProfile, type AgentType,ALL_AGENT_TYPES, UNRESTRICTED_FLAG } from '../../lib/types'
-import { getProjectDefaultCwd, useProjectsStore } from '../../stores/projectsStore'
+import {
+  AGENT_TYPE_LABELS,
+  ALL_AGENT_TYPES,
+  UNRESTRICTED_FLAG,
+  type AgentRuntimeProfile,
+  type AgentType,
+} from '../../lib/types'
+import {
+  getProjectDefaultCwd,
+  getProjectRepoRoot,
+  useProjectsStore,
+} from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AgentIcon } from '../icons/AgentIcons'
 import controls from './controls.module.css'
@@ -23,6 +33,11 @@ export function NewTerminalModal() {
   const context = useUiStore((s) => s.modalContext) as { projectId?: string } | null
   const closeModal = useUiStore((s) => s.closeModal)
   const createAgentTerminal = useProjectsStore((s) => s.createAgentTerminal)
+  const setActiveProjectOnly = useProjectsStore((s) => s.setActiveProjectOnly)
+  const focusWorkspaceTerminal = useProjectsStore((s) => s.focusWorkspaceTerminal)
+  const setActiveView = useUiStore((s) => s.setActiveView)
+  const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
+  const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
   const alwaysStartUnrestricted = useProjectsStore((s) => s.preferences.alwaysStartUnrestricted)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const project = useProjectsStore((s) =>
@@ -54,11 +69,24 @@ export function NewTerminalModal() {
     visibleAgents[0]?.type ??
     'shell'
   const selectedAgent = AGENTS.find((agent) => agent.type === type) ?? AGENTS[0]
-  const inheritedCwd = useMemo(() => getProjectDefaultCwd(project, projects), [project, projects])
+  // getProjectRepoRoot primeiro: getProjectDefaultCwd sozinho pega o cwd do
+  // terminal mais recentemente usado, mesmo que seja uma worktree isolada de
+  // agente — sugerindo `.alethe/worktrees/<id>` como pasta padrão pra um
+  // terminal novo (bug real, visto ao vivo). Mesma ordem de fallback já usada
+  // em createAgentTerminal (projectsStore.terminalSlices.ts).
+  const inheritedCwd = useMemo(
+    () => getProjectRepoRoot(project) || getProjectDefaultCwd(project, projects),
+    [project, projects],
+  )
   const recentFolders = useMemo(() => {
     const folders = new Map<string, { path: string; lastUsedAt: number }>()
     for (const candidate of projects) {
+      // Mesmo filtro de "pura" de getProjectRepoRoot: pasta de worktree
+      // isolada de agente não é um bom atalho pra recomeçar um terminal novo
+      // (bug real, visto ao vivo — a worktree mais recente dominava a lista e
+      // escondia as pastas principais de projeto).
       for (const terminal of candidate.terminals) {
+        if (terminal.worktreeAgentId || terminal.gsdSyncViewer) continue
         const paths = [terminal.cwd, ...terminal.tabs.map((tab) => tab.cwd)]
         for (const path of paths) {
           const trimmed = path?.trim()
@@ -118,8 +146,17 @@ export function NewTerminalModal() {
       cwd: finalCwd,
       firstTab: { type, cwd: finalCwd, extraArgs, runtimeProfile },
     }
-    await createAgentTerminal(context.projectId, creation)
+    const terminal = await createAgentTerminal(context.projectId, creation)
     setPreferences({ lastTerminalCreation: creation })
+    // `createAgentTerminal` só cria o dado — sem isso, o terminal nascia sem
+    // nunca ser mostrado: a UI ficava presa na Home (bug real, visto ao vivo
+    // via e2e — `.xterm` nunca renderizava). Mesmo padrão de navegação que
+    // `HomeView.tsx`'s `submitQuickPrompt` já usa.
+    setActiveProjectOnly(context.projectId)
+    focusWorkspaceTerminal(context.projectId, terminal.id)
+    setActiveTerminal(context.projectId, terminal.id)
+    requestPaneFocus(terminal.id)
+    setActiveView('workspace')
     reset()
     closeModal()
   }

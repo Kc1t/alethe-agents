@@ -21,9 +21,9 @@ import {
 import { cleanupPtys } from '../lib/terminalLifecycle'
 import type { Terminal } from '../lib/types'
 import { sanitizeWorkspaceSnapshot } from '../lib/workspaceNavigation'
-import { useUiStore } from './uiStore'
 import type { ProjectsState } from './projectsStore'
 import type { SliceCtx } from './projectsStore.slices'
+import { useUiStore } from './uiStore'
 
 function t(key: Parameters<typeof translate>[1], params?: Record<string, string | number>) {
   return translate(getLocale(), key, params)
@@ -106,19 +106,12 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
       const project = state.projects.find((p) => p.id === projectId)
       const wantsIsolation = Boolean(project?.autoWorktree) && args.firstTab.type !== 'shell'
       if (project && wantsIsolation) {
-                                                                            
-                                                                             
-                                                                           
-                                                                            
-                                                                     
         // worktree_provision resolve a raiz de verdade via `--git-common-dir`
-                                                                             
-                                                                             
-                                                                       
-                                                                         
-                                                                          
+
         const repo =
-          getProjectRepoRoot(project) || getProjectDefaultCwd(project, state.projects) || args.cwd.trim()
+          getProjectRepoRoot(project) ||
+          getProjectDefaultCwd(project, state.projects) ||
+          args.cwd.trim()
         if (repo) {
           const agentId = `${args.firstTab.type.slice(0, 2)}-${nanoid(6)}`.replace(
             /[^A-Za-z0-9_-]/g,
@@ -126,8 +119,7 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
           )
           try {
             const { worktreeProvision, gitInit } = await import('../lib/tauri')
-                                                                                 
-                                                                            
+
             try {
               await gitInit(repo)
             } catch (initErr) {
@@ -305,23 +297,29 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
       updateTerminal(projectId, terminalId, (t) => ({ ...t, name })),
 
     markGsdSyncViewer: (projectId, terminalId) =>
-      updateTerminal(projectId, terminalId, (t) => (t.gsdSyncViewer ? t : { ...t, gsdSyncViewer: true })),
+      updateTerminal(projectId, terminalId, (t) =>
+        t.gsdSyncViewer ? t : { ...t, gsdSyncViewer: true },
+      ),
 
     deleteTerminal: (projectId, terminalId) =>
       update((state) => {
         const project = state.projects.find((p) => p.id === projectId)
         const terminal = project?.terminals.find((t) => t.id === terminalId)
-                                                                               
-        // teardown da worktree inteira — arrasta junto o terminal "viewer" GSD
-                                                                            
-                                                                           
-                                                                            
-                                                                               
-                                                                              
-                                                                            
-                                                                       
+        // Deletar QUALQUER terminal com cwd arrasta junto o terminal "viewer"
+        // GSD Sync da mesma pasta (casado por `cwd`, já que o viewer não tem
+        // `worktreeAgentId` próprio). Sem isso, o PTY do viewer (se já foi
+        // aberto ao menos uma vez pela gaveta) vaza pra sempre: assim que o
+        // terminal pai morre, o viewer some da lista vigiada e nunca mais
+        // aparece em lugar nenhum da interface pra ser fechado manualmente.
+        // Centralizado aqui (em vez de em cada chamador) pra cobrir TODOS os
+        // caminhos de teardown — merge integrado, abort, rejeição — de uma vez
+        // só. Antes só disparava com `worktreeAgentId` setado, o que excluía
+        // justamente o agente EFÊMERO de resolução de conflito (nunca tem
+        // esse campo) — confirmado ao vivo: o terminal efêmero morria e o
+        // viewer da sessão-filha dele ficava órfão pra sempre, apontando pra
+        // uma pasta já apagada ("Invalid session ID").
         const idsToRemove = new Set([terminalId])
-        if (terminal?.worktreeAgentId && terminal.cwd) {
+        if (terminal?.cwd) {
           for (const sibling of project?.terminals ?? []) {
             if (sibling.gsdSyncViewer && sibling.cwd === terminal.cwd) idsToRemove.add(sibling.id)
           }
@@ -396,9 +394,7 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
       }
       const { killPtyTree, worktreeRemove } = await import('../lib/tauri')
       const ptyIds = collectTerminalPtyIds([terminal])
-                                                                            
-                                                                          
-                                                                       
+
       await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(() => [])))
       const repo = getProjectRepoRoot(project)
       if (repo) {
@@ -406,28 +402,31 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
           await worktreeRemove(repo, terminal.worktreeAgentId, true)
         } catch (firstErr) {
           if (String(firstErr).includes('worktree_not_found')) {
-                                                                 
+            // já tinha sido removida, inofensivo — nada a fazer.
           } else {
-                                                                            
-                                                                           
-                                                                          
-                                                                             
-                                                              
+            // No Windows o handle da pasta pode não ter sido liberado ainda
+            // no instante em que killPtyTree retornou (lag do SO/antivírus
+            // entre o processo morrer de verdade e o handle soltar) — uma
+            // segunda tentativa depois de um respiro curto resolve a maioria
+            // dos casos sem precisar cair pra órfã rastreada.
             await new Promise((resolve) => setTimeout(resolve, 400))
             try {
               await worktreeRemove(repo, terminal.worktreeAgentId, true)
             } catch (secondErr) {
-                                                                           
-                                                                        
-                                                                           
-                               
+              // Falha real (persistiu no retry) vira órfã rastreada (mesma
+              // rede de segurança do fluxo de merge) — sem isso a pasta
+              // ficava perdida em disco sem nenhum rastro na interface pra
+              // limpar depois.
               if (!String(secondErr).includes('worktree_not_found')) {
                 get().addOrphanWorktree(projectId, {
                   path: terminal.cwd ?? '',
                   mode: 'gitWorktree',
                 })
               }
-              console.warn('[projectsStore] falha removendo worktree ao deletar terminal:', secondErr)
+              console.warn(
+                '[projectsStore] falha removendo worktree ao deletar terminal:',
+                secondErr,
+              )
             }
           }
         }
@@ -441,8 +440,7 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
           .find((p) => p.id === projectId)
           ?.terminals.find((t) => t.id === terminalId)
         if (terminal) cleanupPtys(collectTerminalPtyIds([terminal]))
-                                                                              
-                                                                       
+
         const projects = state.projects.map((p) =>
           p.id === projectId
             ? {
@@ -523,7 +521,6 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
           }
         })
         if (disabled) {
-                                              
           const containers = state.workspace.containers.filter((c) => c.projectId !== projectId)
           return { projects, workspace: { ...state.workspace, containers } }
         }
@@ -827,20 +824,32 @@ export function createContainersSlice({ get, update, updateContainer }: SliceCtx
 
     setFullscreenContainer: (projectId) =>
       update((state) => ({
-        preferences: { ...state.preferences, fullscreenContainerId: projectId, isolatedPaneId: null },
+        preferences: {
+          ...state.preferences,
+          fullscreenContainerId: projectId,
+          isolatedPaneId: null,
+        },
       })),
 
     setFullscreenPane: (terminalId) =>
       update((state) => {
         if (!terminalId) {
           return {
-            preferences: { ...state.preferences, fullscreenContainerId: null, isolatedPaneId: null },
+            preferences: {
+              ...state.preferences,
+              fullscreenContainerId: null,
+              isolatedPaneId: null,
+            },
           }
         }
         const owner = state.projects.find((p) => p.terminals.some((term) => term.id === terminalId))
         if (!owner) return
         return {
-          preferences: { ...state.preferences, fullscreenContainerId: owner.id, isolatedPaneId: terminalId },
+          preferences: {
+            ...state.preferences,
+            fullscreenContainerId: owner.id,
+            isolatedPaneId: terminalId,
+          },
         }
       }),
 

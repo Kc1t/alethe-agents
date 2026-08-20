@@ -8,7 +8,7 @@ import styles from './Modal.module.css'
 type Props = {
   open: boolean
   onClose: () => void
-  title: string
+  title: ReactNode
   children: ReactNode
   footer?: ReactNode
   width?: number

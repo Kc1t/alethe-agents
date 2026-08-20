@@ -12,11 +12,6 @@ import controls from '../controls.module.css'
 import styles from '../PreferencesModal.module.css'
 import { SettingsSection } from './primitives'
 
-   
-                                                                            
-                                                                           
-                                                       
-   
 function TerminalCommandSection() {
   const t = useT()
   const [status, setStatus] = useState<CliShimStatus | null>(null)

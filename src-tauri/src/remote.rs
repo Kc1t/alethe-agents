@@ -14,11 +14,12 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{IpAddr, TcpListener, TcpStream, UdpSocket};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tungstenite::{accept_hdr, Message};
 
@@ -492,7 +493,7 @@ pub fn hub() -> Arc<RemoteHub> {
     HUB.get_or_init(|| Arc::new(RemoteHub::new())).clone()
 }
 
-pub fn start(app: AppHandle, sessions: PtySessions) {
+pub fn start_core(projects_path: PathBuf, sessions: PtySessions) {
     let hub = hub();
     if hub.running.swap(true, Ordering::SeqCst) {
         return;
@@ -501,12 +502,18 @@ pub fn start(app: AppHandle, sessions: PtySessions) {
     let generation = hub.generation.fetch_add(1, Ordering::SeqCst) + 1;
     let http_hub = Arc::clone(&hub);
     let http_sessions = Arc::clone(&sessions);
-    let http_app = app.clone();
-    thread::spawn(move || run_http(http_app, http_hub, http_sessions, generation));
+    let http_projects_path = projects_path;
+    thread::spawn(move || run_http(http_projects_path, http_hub, http_sessions, generation));
 
     let ws_hub = Arc::clone(&hub);
     let ws_sessions = Arc::clone(&sessions);
     thread::spawn(move || run_websocket(ws_hub, ws_sessions, generation));
+}
+
+pub fn start(app: AppHandle, sessions: PtySessions) {
+    if let Ok(projects_path) = projects_file_path(&app) {
+        start_core(projects_path, sessions);
+    }
 }
 
 pub fn stop() {
@@ -595,15 +602,14 @@ pub fn remote_control_revoke_device(device_id: usize) -> RemoteInfo {
     remote.info()
 }
 
-#[tauri::command]
-pub fn remote_control_set_enabled(
-    app: AppHandle,
-    sessions: tauri::State<'_, PtySessions>,
+pub fn remote_control_set_enabled_core(
+    projects_path: &Path,
+    sessions: &PtySessions,
     enabled: bool,
 ) -> RemoteInfo {
     let remote = hub();
     if enabled {
-        start(app, Arc::clone(sessions.inner()));
+        start_core(projects_path.to_path_buf(), sessions.clone());
     } else {
         stop();
     }
@@ -629,7 +635,21 @@ impl Drop for ConnectionGuard {
     }
 }
 
-fn run_http(app: AppHandle, hub: Arc<RemoteHub>, sessions: PtySessions, generation: u64) {
+#[tauri::command]
+pub fn remote_control_set_enabled(
+    app: AppHandle,
+    sessions: tauri::State<'_, PtySessions>,
+    enabled: bool,
+) -> Result<RemoteInfo, String> {
+    let projects_path = projects_file_path(&app)?;
+    Ok(remote_control_set_enabled_core(
+        &projects_path,
+        sessions.inner(),
+        enabled,
+    ))
+}
+
+fn run_http(projects_path: PathBuf, hub: Arc<RemoteHub>, sessions: PtySessions, generation: u64) {
     let host = hub.host();
     let Some(listener) = bind_listener(&host, HTTP_START, HTTP_END) else {
         eprintln!("[remote] unable to bind LAN HTTP listener");
@@ -658,10 +678,10 @@ fn run_http(app: AppHandle, hub: Arc<RemoteHub>, sessions: PtySessions, generati
         let _ = stream.set_write_timeout(Some(SOCKET_TIMEOUT));
         let hub = Arc::clone(&hub);
         let sessions = Arc::clone(&sessions);
-        let app = app.clone();
+        let projects_path = projects_path.clone();
         thread::spawn(move || {
             let _guard = guard;
-            if let Err(error) = handle_http(&mut stream, &app, &hub, &sessions) {
+            if let Err(error) = handle_http(&mut stream, &projects_path, &hub, &sessions) {
                 eprintln!("[remote] HTTP request failed: {error}");
                 let _ = respond(
                     &mut stream,
@@ -908,7 +928,7 @@ fn bearer_token(head: &str) -> String {
 
 fn handle_http(
     stream: &mut TcpStream,
-    app: &AppHandle,
+    projects_path: &Path,
     hub: &Arc<RemoteHub>,
     sessions: &PtySessions,
 ) -> Result<(), String> {
@@ -983,7 +1003,14 @@ fn handle_http(
         };
         hub.clear_auth_failures(&address);
         return handle_api(
-            stream, app, hub, sessions, session_id, method, target, &body,
+            stream,
+            projects_path,
+            hub,
+            sessions,
+            session_id,
+            method,
+            target,
+            &body,
         );
     }
 
@@ -1018,7 +1045,7 @@ fn handle_http(
 
 fn handle_api(
     stream: &mut TcpStream,
-    app: &AppHandle,
+    projects_path: &Path,
     hub: &Arc<RemoteHub>,
     sessions: &PtySessions,
     session_id: usize,
@@ -1047,12 +1074,12 @@ fn handle_api(
             stream,
             200,
             "application/json",
-            &workspace_snapshot(app)?.to_string(),
+            &workspace_snapshot(projects_path)?.to_string(),
         );
     }
     if path == "/api/scrollback" {
         let id = query_value(target, "id").ok_or_else(|| "Missing PTY id".to_string())?;
-        if !pty_is_shared(app, &id) {
+        if !pty_is_shared(projects_path, &id) {
             return respond(
                 stream,
                 403,
@@ -1089,7 +1116,7 @@ fn handle_api(
                 r#"{"error":"Message is empty or too large"}"#,
             );
         }
-        let agent = pty_agent(app, &payload.pty_id);
+        let agent = pty_agent(projects_path, &payload.pty_id);
         let Some(agent) = agent else {
             return respond(
                 stream,
@@ -1113,8 +1140,11 @@ fn handle_api(
             text.len(),
             payload.pty_id
         );
-        let _ = app.emit(
+        crate::event_bus::publish_event_simple(
             "remote://message",
+            &nanoid::nanoid!(8),
+            None,
+            None,
             json!({
                 "ptyId": payload.pty_id,
                 "deviceId": session_id,
@@ -1141,11 +1171,8 @@ struct RemoteMessage {
     text: String,
 }
 
-fn projects_document(app: &AppHandle) -> Value {
-    let Ok(path) = projects_file_path(app) else {
-        return json!({});
-    };
-    std::fs::read_to_string(path)
+fn projects_document(projects_path: &Path) -> Value {
+    std::fs::read_to_string(projects_path)
         .ok()
         .and_then(|content| serde_json::from_str::<Value>(&content).ok())
         .unwrap_or_else(|| json!({}))
@@ -1155,8 +1182,8 @@ fn tab_is_shared(terminal: &Value) -> bool {
     terminal.get("remoteExcluded").and_then(Value::as_bool) != Some(true)
 }
 
-fn shared_tabs(app: &AppHandle) -> Vec<(String, String)> {
-    let document = projects_document(app);
+fn shared_tabs(projects_path: &Path) -> Vec<(String, String)> {
+    let document = projects_document(projects_path);
     let mut tabs = Vec::new();
     for project in document
         .get("projects")
@@ -1194,19 +1221,19 @@ fn shared_tabs(app: &AppHandle) -> Vec<(String, String)> {
     tabs
 }
 
-fn pty_agent(app: &AppHandle, pty_id: &str) -> Option<String> {
-    shared_tabs(app)
+fn pty_agent(projects_path: &Path, pty_id: &str) -> Option<String> {
+    shared_tabs(projects_path)
         .into_iter()
         .find(|(id, _)| id == pty_id)
         .map(|(_, agent)| agent)
 }
 
-fn pty_is_shared(app: &AppHandle, pty_id: &str) -> bool {
-    shared_tabs(app).iter().any(|(id, _)| id == pty_id)
+fn pty_is_shared(projects_path: &Path, pty_id: &str) -> bool {
+    shared_tabs(projects_path).iter().any(|(id, _)| id == pty_id)
 }
 
-fn workspace_snapshot(app: &AppHandle) -> Result<Value, String> {
-    let document = projects_document(app);
+fn workspace_snapshot(projects_path: &Path) -> Result<Value, String> {
+    let document = projects_document(projects_path);
     let groups: Vec<Value> = document
         .get("groups")
         .and_then(Value::as_array)

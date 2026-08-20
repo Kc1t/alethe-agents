@@ -39,6 +39,7 @@ import { EmptyState } from '../EmptyState'
 import { SidebarNowPlaying } from '../SidebarNowPlaying'
 import { UserProfile } from '../UserProfile'
 import { ContextMenu, type MenuItem } from './ContextMenu'
+import { SidebarMergePanel } from './SidebarMergePanel'
 import { FileExplorer } from './FileExplorer'
 import { GitControl } from './GitControl'
 import { NormalGroupNode as GroupNode } from './NormalGroupNode'
@@ -173,7 +174,6 @@ export function NormalProjectSidebar() {
     if (!showGitControl && sidebarTab === 'git') setSidebarTab('projects')
   }, [showGitControl, sidebarTab])
 
-                                                                         
   const openPaneSets = useMemo(() => {
     const map: Record<string, Set<string>> = {}
     for (const c of containers) map[c.projectId] = new Set(c.paneIds)
@@ -238,7 +238,6 @@ export function NormalProjectSidebar() {
     const target = String(over.id)
     if (dragged === target) return
 
-                                                                                        
     if (dragged.startsWith('term:') && target.startsWith('proj:')) {
       const [, fromProject, terminalId] = dragged.split(':')
       const [, toProject] = target.split(':')
@@ -246,8 +245,6 @@ export function NormalProjectSidebar() {
       return
     }
 
-                                                                                
-                                                                              
     if (dragged.startsWith('proj:') && target.startsWith('proj:')) {
       const fromId = dragged.slice('proj:'.length)
       const toId = target.slice('proj:'.length)
@@ -290,7 +287,6 @@ export function NormalProjectSidebar() {
       return
     }
 
-                                                                           
     if (dragged.startsWith('proj:') && target.startsWith('group:')) {
       const [, projectId] = dragged.split(':')
       const [, groupId] = target.split(':')
@@ -316,7 +312,6 @@ export function NormalProjectSidebar() {
       return
     }
 
-                                                                        
     if (dragged.startsWith('grp:') && target.startsWith('group:')) {
       const [, srcGroupId] = dragged.split(':')
       const [, parentId] = target.split(':')
@@ -368,10 +363,6 @@ export function NormalProjectSidebar() {
       }}
       onToggleCollapsed={() => actions.toggleProjectCollapsed(p.id)}
       onTerminalClick={(t) => {
-                                                                             
-                                                                           
-                                                                           
-                                                               
         if (t.gsdSyncViewer) {
           actions.setFullscreenPane(t.id)
           setActiveView('workspace')
@@ -680,6 +671,9 @@ export function NormalProjectSidebar() {
           </DragOverlay>
         </DndContext>
       ) : null}
+
+      {/* PAINEL DE MERGES NA BARRA LATERAL */}
+      <SidebarMergePanel />
 
       {menu ? (
         <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />

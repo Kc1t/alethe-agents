@@ -1,72 +1,74 @@
-mod activity_stats;
-mod agent_cost;
-mod agent_events;
-mod agent_library;
-mod ai_memory;
-mod antigravity_sessions;
-mod antigravity_usage;
-mod backup;
-mod claude_sessions;
-mod claude_usage;
-mod cli_launch;
-mod cli_resolver;
-mod cli_shim;
-mod codex_app_server;
-mod codex_sessions;
-mod codex_usage;
-mod contract_check;
-mod crash_watch;
-mod diagnostics;
-mod discord_presence;
-mod economy_agents;
-mod event_bus;
-mod filesystem;
-mod ghostty_bridge;
+pub mod activity_stats;
+pub mod agent_cost;
+pub mod agent_events;
+pub mod agent_library;
+pub mod ai_memory;
+pub mod antigravity_sessions;
+pub mod antigravity_usage;
+pub mod backup;
+pub mod claude_sessions;
+pub mod claude_usage;
+pub mod cli_launch;
+pub mod cli_resolver;
+pub mod cli_shim;
+pub mod codex_app_server;
+pub mod codex_sessions;
+pub mod codex_usage;
+pub mod conflict_resolution;
+pub mod contract_check;
+pub mod crash_watch;
+pub mod diagnostics;
+pub mod discord_presence;
+pub mod economy_agents;
+pub mod event_bus;
+pub mod filesystem;
+pub mod ghostty_bridge;
 #[cfg(all(target_os = "macos", ghostty_linked))]
-mod ghostty_ffi;
-mod git_control;
-mod github_sync;
-mod graphify;
-mod handoff;
-mod health_probe;
-mod logging;
-mod mcp_agents;
-mod mcp_catalog;
-mod mcp_health;
-mod mcp_model;
-mod mcp_store;
-mod opencode_bridge;
-mod opencode_gsd_plugin;
-mod opencode_sessions;
-mod paths;
-mod planning;
-mod planning_gate;
-mod plugins;
-mod process_tree;
-mod profiles;
-mod project_detector;
-mod projects;
-mod provider_common;
-mod pty;
-mod remote;
-mod resource_manager;
-mod resources;
-mod scheduler;
-mod session_watcher;
-mod skills;
-mod spotify;
-mod stats;
-mod supervisor;
-mod telemetry;
-mod validation;
-mod window_style;
+pub mod ghostty_ffi;
+pub mod git_control;
+pub mod github_sync;
+pub mod graphify;
+pub mod handoff;
+pub mod health_probe;
+pub mod logging;
+pub mod mcp_agents;
+pub mod mcp_catalog;
+pub mod mcp_health;
+pub mod mcp_model;
+pub mod mcp_store;
+pub mod merge_analyzer;
+pub mod opencode_bridge;
+pub mod opencode_gsd_plugin;
+pub mod opencode_sessions;
+pub mod paths;
+pub mod planning;
+pub mod planning_gate;
+pub mod process_tree;
+pub mod profiles;
+pub mod project_detector;
+pub mod projects;
+pub mod provider_common;
+pub mod pty;
+pub mod pty_sink;
+pub mod remote;
+pub mod resource_manager;
+pub mod resources;
+pub mod scheduler;
+pub mod server_main;
+pub mod session_watcher;
+pub mod skills;
+pub mod spotify;
+pub mod stats;
+pub mod supervisor;
+pub mod telemetry;
+pub mod validation;
+pub mod window_style;
 #[cfg(windows)]
-mod windows_webview;
-mod worktrees;
+pub mod windows_webview;
+pub mod worktrees;
 
-use crate::pty::{PtySession, PtySessions};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use crate::pty::PtySessions;
+use std::sync::Arc;
 
 #[cfg(windows)]
 #[tauri::command]
@@ -128,7 +130,7 @@ pub fn run() {
     logging::install_panic_hook();
 
     pty::install_kill_on_close_guard();
-    let sessions: PtySessions = Arc::new(Mutex::new(HashMap::<String, PtySession>::new()));
+    let sessions: PtySessions = pty::global_pty_sessions().clone();
     let codex_app_server_state = codex_app_server::CodexAppServerState::default();
     let sessions_for_exit = Arc::clone(&sessions);
     let sessions_for_resources = Arc::clone(&sessions);
@@ -150,18 +152,48 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build());
 
+    // Impede execuções paralelas do Alethe — pré-requisito real da guarda de
+    // monotonicidade de `save_projects` (projects.rs): duas instâncias teriam
+    // cada uma seu próprio LAST_WRITE_SEQUENCE em memória, e a garantia de
+    // last-write-wins deixaria de valer entre processos. Segunda instância só
+    // foca a janela existente em vez de abrir outra — e, quando veio de
+    // `alethe <path>` no terminal, entrega o diretório pedido pra ela (ver
+    // cli_launch.rs) antes de morrer.
+    // A guarda de instância única é por `identifier` do app (D-Bus/named pipe),
+    // não por data dir — uma instância de E2E (mesmo identifier, data dir
+    // isolado por env var) seria detectada como "segunda instância" de um
+    // `tauri dev` interativo já aberto e sairia na hora (code=0) sem nunca
+    // subir. Sob `ALETHE_E2E=1` a instância de teste já é isolada por conta
+    // própria, então esse guard não é necessário nem desejável.
     #[cfg(desktop)]
-    {
+    if std::env::var_os("ALETHE_E2E").is_none() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             cli_launch::handle_second_instance(app, argv, cwd);
         }));
     }
 
+    // Automação WebDriver (harness de E2E) — nunca compilada em release
+    // (`debug_assertions`) e, mesmo em debug, só ativa com `ALETHE_E2E=1` no
+    // ambiente. Sem a variável, uma sessão normal de `tauri dev` do dia a dia
+    // não expõe superfície de automação nenhuma.
+    #[cfg(debug_assertions)]
+    if std::env::var_os("ALETHE_E2E").is_some() {
+        // `-webdriver` sobe o servidor WebDriver embarcado em si; o outro dá
+        // acesso à API `browser.tauri.execute()` e mocking de invoke a partir
+        // dos specs. As duas peças são independentes no ecossistema wdio-tauri.
+        builder = builder
+            .plugin(tauri_plugin_wdio_webdriver::init())
+            .plugin(tauri_plugin_wdio::init());
+    }
+
     builder
         .setup(move |app| {
-            #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
+                #[cfg(debug_assertions)]
                 let _ = window.set_title("(DEV) Alethe");
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
             }
 
             #[cfg(target_os = "linux")]
@@ -179,6 +211,35 @@ pub fn run() {
                 }
             }
             logging::set_logs_dir(app.handle());
+            let data_root = profiles::resolve_tauri_data_root(app.handle())
+                .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error))?;
+            let runtime = server_main::ServerRuntime::embedded(
+                app.config().identifier.clone(),
+                data_root,
+                app.handle().clone(),
+            );
+            tauri::async_runtime::spawn(async move {
+                let listener =
+                    match tokio::net::TcpListener::bind(server_main::SERVER_BIND_ADDRESS).await {
+                        Ok(listener) => listener,
+                        Err(error) => {
+                            eprintln!(
+                                "[Alethe Embedded Server] Failed to bind http://{}; another core may already own this data root: {error}",
+                                server_main::SERVER_BIND_ADDRESS
+                            );
+                            return;
+                        }
+                    };
+                println!(
+                    "[Alethe Embedded Server] Listening on http://{} (instance {}).",
+                    server_main::SERVER_BIND_ADDRESS,
+                    runtime.instance_id()
+                );
+                let router = server_main::build_router(runtime);
+                if let Err(error) = axum::serve(listener, router).await {
+                    eprintln!("[Alethe Embedded Server] Server stopped with an error: {error}");
+                }
+            });
             // Keep the terminal launcher available after installation.
             #[cfg(not(debug_assertions))]
             let _ = cli_shim::cli_shim_install();
@@ -233,6 +294,8 @@ pub fn run() {
             filesystem::list_directory,
             filesystem::read_text_file,
             filesystem::write_text_file,
+            filesystem::write_project_marker,
+            filesystem::read_project_marker,
             filesystem::rename_filesystem_entry,
             filesystem::delete_filesystem_entry,
             filesystem::ensure_todo_template,
@@ -259,6 +322,7 @@ pub fn run() {
             pty::kill_pty,
             pty::suspend_pty,
             pty::get_pty_cwd,
+            pty::get_pty_size,
             pty::set_pty_read_state,
             pty::set_pty_visible,
             pty::set_pty_priority,
@@ -273,10 +337,13 @@ pub fn run() {
             process_tree::get_pty_tree_info,
             process_tree::kill_pty_tree_cmd,
             projects::load_projects,
+            projects::load_projects_bootstrap,
             projects::save_projects,
+            projects::save_projects_for_profile,
             projects::clone_github_repo,
             cli_resolver::discover_provider_models,
             profiles::list_profiles,
+            profiles::get_core_storage_identity,
             profiles::list_profile_summaries,
             profiles::get_active_profile,
             profiles::set_active_profile,
@@ -309,6 +376,14 @@ pub fn run() {
             git_control::git_pull,
             git_control::git_list_branches,
             git_control::git_diff_summary,
+            git_control::git_log_graph,
+            git_control::git_show_commit_files,
+            git_control::git_show_commit_message,
+            git_control::git_create_branch_from_commit,
+            git_control::git_cherry_pick_commit,
+            git_control::git_revert_commit,
+            git_control::git_reset_to_commit,
+            git_control::git_incoming_outgoing,
             diagnostics::open_data_folder,
             diagnostics::open_spawn_log,
             diagnostics::open_in_file_explorer,
@@ -360,6 +435,9 @@ pub fn run() {
             worktrees::worktree_remove,
             worktrees::worktree_cleanup,
             worktrees::worktree_fetch_branch,
+            worktrees::worktree_commit_pending,
+            worktrees::worktree_pending_changes,
+            worktrees::worktree_commit_worktree,
             worktrees::worktree_lock,
             worktrees::worktree_unlock,
             event_bus::publish_event,
@@ -382,6 +460,14 @@ pub fn run() {
             scheduler::get_scheduler_tasks,
             scheduler::trigger_scheduler_tick,
             scheduler::cancel_task,
+            merge_analyzer::merge_analyze,
+            conflict_resolution::merge_prepare,
+            conflict_resolution::merge_validate,
+            conflict_resolution::merge_finalize,
+            conflict_resolution::merge_abort,
+            conflict_resolution::merge_preflight_abort,
+            conflict_resolution::merge_rebase_onto_target,
+            conflict_resolution::merge_force_cleanup,
             project_detector::detect_project_stack,
             contract_check::contract_check,
             health_probe::health_probe,
@@ -400,9 +486,6 @@ pub fn run() {
             ai_memory::ai_memory_mcp_config_path,
             ai_memory::ai_memory_opencode_config_write,
             ai_memory::ai_memory_codex_config_write,
-            plugins::plugins_list,
-            plugins::plugin_install,
-            plugins::plugin_uninstall,
             mcp_store::mcp_scan,
             mcp_store::mcp_config_paths,
             mcp_store::mcp_capabilities,
@@ -417,7 +500,9 @@ pub fn run() {
             skills::skills_detail,
             skills::skills_uninstall,
             opencode_sessions::snapshot_opencode_sessions,
+            opencode_sessions::opencode_export_session,
             ping,
+            recorder_scratch_dir,
         ])
         .build(tauri::generate_context!())
         .expect("error while building alethe")
@@ -446,6 +531,21 @@ fn quit_app(app: tauri::AppHandle, sessions: tauri::State<'_, PtySessions>) {
 #[tauri::command]
 fn ping() -> &'static str {
     "pong"
+}
+
+/// Só usado pelo gravador de procedimentos e2e (`e2e/support/recorder.ts`,
+/// painel `RecorderHelper`) — atalho "pular criação de projeto" pra não
+/// obrigar o dono a digitar uma pasta real toda vez que só quer gravar um
+/// procedimento. Mesmo padrão de `std::env::temp_dir()` já usado em dezenas
+/// de outros pontos do backend (testes, `agent_events.rs`, `graphify.rs`
+/// etc.) — nunca exposto antes pro frontend porque nada até agora precisava.
+#[tauri::command]
+fn recorder_scratch_dir() -> Result<String, String> {
+    let dir = std::env::temp_dir()
+        .join("alethe-recorder")
+        .join(format!("rec-{}", nanoid::nanoid!(8)));
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.to_string_lossy().to_string())
 }
 
 #[cfg(test)]

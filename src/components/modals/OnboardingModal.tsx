@@ -7,13 +7,9 @@ import { FEATURES } from '../../lib/features'
 import { LOCALES, useT } from '../../lib/i18n'
 import { DEFAULT_PROFILE_IMAGE_URL, getProfileInitial } from '../../lib/profile'
 import { latestVersionFor } from '../../lib/agentVersions'
-import { agentCliVersion, findCliLauncher } from '../../lib/tauri'
+import { agentCliVersion, findCliLauncher, renameProfile } from '../../lib/tauri'
 import { THEME_OPTIONS, themeDescription, themeLabel } from '../../lib/themes'
-import {
-  agentCliCommand,
-  type AgentType,
-  type VisualStyle,
-} from '../../lib/types'
+import { agentCliCommand, type AgentType, type VisualStyle } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { ImageInput } from './ImageInput'
@@ -72,7 +68,11 @@ export function OnboardingModal() {
   const setLanguage = useProjectsStore((s) => s.setLanguage)
   const setAgentEnabled = useProjectsStore((s) => s.setAgentEnabled)
   const setUiTheme = useProjectsStore((s) => s.setUiTheme)
+  const activeProfileId = useProjectsStore((s) => s.activeProfileId)
+  const profiles = useProjectsStore((s) => s.profiles)
+  const flushPersistence = useProjectsStore((s) => s.flushPersistence)
   const openModal = useUiStore((s) => s.openModal_)
+  const pushToast = useUiStore((s) => s.pushToast)
 
   const [step, setStep] = useState(0)
   const [name, setName] = useState(preferences.displayName)
@@ -83,6 +83,7 @@ export function OnboardingModal() {
     {},
   )
   const [detectingAgents, setDetectingAgents] = useState(true)
+  const [finishing, setFinishing] = useState(false)
   const [agentVersions, setAgentVersions] = useState<Partial<Record<CodingAgent, string>>>({})
   const [agentLatest, setAgentLatest] = useState<Partial<Record<CodingAgent, string>>>({})
   const [agentPaths, setAgentPaths] = useState<Partial<Record<CodingAgent, string>>>({})
@@ -174,15 +175,33 @@ export function OnboardingModal() {
 
   const canProceed = step === 0 ? trimmedName.length > 0 : true
 
-  const finish = () => {
+  const finish = async () => {
     if (!canProceed || trimmedName.length === 0) return
+    setFinishing(true)
+    try {
+      const activeProfile = profiles.find((profile) => profile.id === activeProfileId)
+      if (activeProfileId === 'default' && activeProfile?.name === 'Default') {
+        await renameProfile(activeProfileId, trimmedName)
+      }
+    } catch (error) {
+      setFinishing(false)
+      pushToast({
+        title: t('onboarding.profileSaveErrorTitle'),
+        body: t('onboarding.profileSaveErrorBody', { error: String(error) }),
+      })
+      return
+    }
     setPreferences({
       accountCreated: true,
       onboardingDone: true,
       displayName: trimmedName,
       profileImageUrl: trimmedPhotoUrl,
     })
-
+    await flushPersistence().catch(() => {
+      // The global persistence status retains and retries this local state.
+    })
+    // The first useful screen after onboarding is Home. Project creation
+    // opens over it without exposing an empty workspace in between.
     useUiStore.getState().setActiveView('home')
     window.setTimeout(() => {
       openModal('newProject')
@@ -191,7 +210,7 @@ export function OnboardingModal() {
 
   const next = () => {
     if (!canProceed) return
-    if (isLast) finish()
+    if (isLast) void finish()
     else setStep((value) => value + 1)
   }
 
@@ -412,9 +431,7 @@ export function OnboardingModal() {
 
                       <div className={styles.sectionIntro}>
                         <h2 className={styles.sectionTitle}>{t('onboarding.appIconTitle')}</h2>
-                        <p className={styles.sectionSubtitle}>
-                          {t('onboarding.appIconSubtitle')}
-                        </p>
+                        <p className={styles.sectionSubtitle}>{t('onboarding.appIconSubtitle')}</p>
                       </div>
 
                       <div className={styles.iconGrid}>
@@ -424,10 +441,7 @@ export function OnboardingModal() {
                             <button
                               key={icon.id}
                               type="button"
-                              className={[
-                                styles.iconOption,
-                                active ? styles.iconOptionActive : '',
-                              ]
+                              className={[styles.iconOption, active ? styles.iconOptionActive : '']
                                 .filter(Boolean)
                                 .join(' ')}
                               onClick={() => setPreferences({ appIconTheme: icon.id })}
@@ -607,7 +621,7 @@ export function OnboardingModal() {
                     type="button"
                     className={`${styles.button} ${styles.buttonPrimary}`}
                     onClick={next}
-                    disabled={!canProceed}
+                    disabled={!canProceed || finishing}
                   >
                     {isLast ? t('onboarding.finish') : t('common.next')}
                   </button>

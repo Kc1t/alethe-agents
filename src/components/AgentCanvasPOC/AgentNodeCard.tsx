@@ -13,7 +13,7 @@ type AgentNodeCardProps = {
   node: AgentNode
   cost: SessionCost | undefined
   onSelect: (id: string) => void
-                                                                       
+
   cardRefs: MutableRefObject<Map<string, HTMLDivElement>>
 }
 

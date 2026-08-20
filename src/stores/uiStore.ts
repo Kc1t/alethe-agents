@@ -43,6 +43,9 @@ type ModalKind =
   | 'updateAvailable'
   | 'whatsNew'
   | 'remoteControl'
+  | 'confirmWorktreeCommit'
+  | 'audit'
+  | 'fsBrowser'
   | 'recentChats'
   | 'handoff'
   | 'mcpManager'
@@ -50,7 +53,7 @@ type ModalKind =
   | null
 
 export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox'
-export type RightSidebarMode = 'todo' | 'markdown' | 'git' | 'mcp'
+export type RightSidebarMode = 'todo' | 'markdown' | 'git' | 'gsdSync' | 'mcp'
 export type MarkdownSidebarTab = { path: string; title: string }
 
 export type MemorySample = MemoryStats & {
@@ -69,6 +72,11 @@ export type InAppToast = {
 const MAX_MEMORY_HISTORY = 720
 const MAX_TOASTS = 4
 const MAX_NOTIFICATIONS = 12
+// Defense in depth against any upstream source re-firing the same
+// notification in a tight loop — the backend debounces this for memory
+// pressure already, but a duplicate title+body within this window is never
+// worth showing twice.
+const DUPLICATE_TOAST_WINDOW_MS = 5_000
 
 type UiState = {
   openModal: ModalKind
@@ -81,7 +89,7 @@ type UiState = {
   claudeUsage: ClaudeUsage | null
   codexUsage: CodexUsage | null
   antigravityUsage: AntigravityUsage | null
-                                                                                  
+
   focusedTerminalId: string | null
   /**
    * Panes of workspace tabs that stay mounted while hidden. They keep streaming so switching
@@ -99,22 +107,25 @@ type UiState = {
   selectedPanes: { projectId: string; terminalId: string }[]
   /** View principal sendo exibida no main. */
   activeView: ActiveView
-                                                
+
   rightSidebarMode: RightSidebarMode
   rightSidebarMarkdown: { path: string; title: string } | null
   rightSidebarMarkdownTabs: MarkdownSidebarTab[]
-                                                                             
+
   agentCanvasSession: { folder: string; ptyId: string } | null
-                                                                  
+
   agentCanvasBudgetUsd: number | null
   /** Ephemeral in-app notifications. */
   toasts: InAppToast[]
   /** Recent notification history used by Home. */
   notifications: InAppToast[]
-                                                                                     
+
   updateInfo: UpdateInfo | null
   /** URL aberta no visualizador in-app (overlay com iframe). null = fechado. */
   linkViewerUrl: string | null
+  /** Sessão-filha do GSD Sync aberta no feed de atividade somente-leitura
+   *  (overlay próprio, sem terminal PTY nenhum). null = fechado. */
+  gsdSyncActivityView: { worktreePath: string; sessionId: string; title: string } | null
 
   openModal_: (kind: Exclude<ModalKind, null>, context?: Record<string, unknown>) => void
   closeModal: () => void
@@ -142,6 +153,7 @@ type UiState = {
   showMarkdownSidebar: () => void
   showTodoSidebar: () => void
   showGitSidebar: () => void
+  showGsdSyncSidebar: () => void
   showMcpSidebar: () => void
   setAgentCanvasSession: (session: { folder: string; ptyId: string } | null) => void
   setAgentCanvasBudget: (usd: number | null) => void
@@ -157,6 +169,9 @@ type UiState = {
   setUpdateInfo: (info: UpdateInfo | null) => void
   openLinkViewer: (url: string) => void
   closeLinkViewer: () => void
+  setGsdSyncActivityView: (
+    view: { worktreePath: string; sessionId: string; title: string } | null,
+  ) => void
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -186,6 +201,7 @@ export const useUiStore = create<UiState>((set) => ({
   notifications: [],
   updateInfo: null,
   linkViewerUrl: null,
+  gsdSyncActivityView: null,
 
   openModal_: (kind, context) =>
     set({ openModal: kind, modalContext: context ?? null, showMainMenu: false }),
@@ -278,16 +294,27 @@ export const useUiStore = create<UiState>((set) => ({
   showMarkdownSidebar: () => set({ rightSidebarMode: 'markdown' }),
   showTodoSidebar: () => set({ rightSidebarMode: 'todo' }),
   showGitSidebar: () => set({ rightSidebarMode: 'git' }),
+  showGsdSyncSidebar: () => set({ rightSidebarMode: 'gsdSync' }),
   showMcpSidebar: () => set({ rightSidebarMode: 'mcp' }),
   setAgentCanvasSession: (session) => set({ agentCanvasSession: session }),
   setAgentCanvasBudget: (usd) => set({ agentCanvasBudgetUsd: usd }),
   pushToast: ({ title, body, agent, silent }) =>
     set((s) => {
+      const now = Date.now()
+      const last = s.notifications[0]
+      if (
+        last &&
+        last.title === title &&
+        last.body === body &&
+        now - last.createdAt < DUPLICATE_TOAST_WINDOW_MS
+      ) {
+        return s
+      }
       const entry: InAppToast = {
-        id: `${Date.now()}:${Math.random().toString(36).slice(2)}`,
+        id: `${now}:${Math.random().toString(36).slice(2)}`,
         title,
         body,
-        createdAt: Date.now(),
+        createdAt: now,
         agent,
       }
       const notifications = [entry, ...s.notifications].slice(0, MAX_NOTIFICATIONS)
@@ -300,4 +327,5 @@ export const useUiStore = create<UiState>((set) => ({
   setUpdateInfo: (info) => set({ updateInfo: info }),
   openLinkViewer: (url) => set({ linkViewerUrl: url }),
   closeLinkViewer: () => set({ linkViewerUrl: null }),
+  setGsdSyncActivityView: (view) => set({ gsdSyncActivityView: view }),
 }))

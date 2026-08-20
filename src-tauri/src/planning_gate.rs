@@ -129,6 +129,8 @@ pub(crate) fn compute_planning_status(worktree_root: &Path) -> PlanningStatus {
         .filter(|c| !c.is_empty());
 
     let Some(status_content) = status_content.filter(|c| !c.trim().is_empty()) else {
+        // Sem status.md: fallback pro task.md — 0 pendentes entre pelo menos
+        // uma checkbox conta como completo pra quem não quer manter status.md.
         let reported_complete =
             roadmap_total_count.unwrap_or(0) > 0 && roadmap_pending_count == Some(0);
         return PlanningStatus {
@@ -495,7 +497,7 @@ mod tests {
             read_gsd_child_error(root.to_string_lossy().into_owned()).unwrap(),
             Some("todos os modelos falharam".to_string())
         );
-
+        // consumido — segunda leitura já não acha mais nada.
         assert_eq!(
             read_gsd_child_error(root.to_string_lossy().into_owned()).unwrap(),
             None

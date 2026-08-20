@@ -10,46 +10,21 @@ import {
 } from '../../lib/tauri'
 import { webRectsEqual } from '../../lib/webRect'
 
-                                                                             
-                                                                             
-                                                                 
 const EXIT_POLL_MS = 2500
 
 export type GhosttySurfaceProps = {
-                                                                               
   surfaceId: string
-                                                        
+
   cwd?: string
-                                                                          
+
   command?: string
-     
-                                                                        
-                                                                               
-                                                                             
-                                                                            
-     
+
   active?: boolean
   onSpawned?: (id: string) => void
-                                                                                 
+
   onExit?: () => void
 }
 
-   
-                                                                                 
-                                                                           
-                                                                    
-  
-                                                                               
-                                                                         
-                                                                     
-  
-                                                                                
-                                                                              
-                                                                          
-                                                                             
-                                                                           
-                                      
-   
 export function GhosttySurface({
   surfaceId,
   cwd,
@@ -63,11 +38,8 @@ export function GhosttySurface({
   const rafRef = useRef<number | null>(null)
   const spawnedRef = useRef(false)
 
-                                                                                 
   const spawnArgsRef = useRef({ cwd, command })
 
-                                                                               
-                                                                                
   // a surface seria morta e recriada (e o terminal piscaria/reiniciaria).
   const onSpawnedRef = useRef(onSpawned)
   const onExitRef = useRef(onExit)
@@ -76,17 +48,13 @@ export function GhosttySurface({
     onExitRef.current = onExit
   })
 
-                                                                            
-                                                                        
   const activeRef = useRef(active)
-                                                                          
-                                                                                 
+
   const reevaluateVisibilityRef = useRef<(() => void) | null>(null)
   // scheduleFrame vive no efeito de ciclo de vida; exposto p/ o efeito de
-                                                               
+
   const scheduleFrameRef = useRef<(() => void) | null>(null)
-                                                                             
-                                                                      
+
   const pushFrameNowRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
@@ -95,14 +63,11 @@ export function GhosttySurface({
 
     let disposed = false
 
-                                                                             
-                                                                  
     const pushFrame = () => {
       rafRef.current = null
       if (disposed) return
       const r = node.getBoundingClientRect()
-                                                                               
-                                                                              
+
       if (r.width < 1 || r.height < 1) return
       const rect: WebRect = { x: r.left, y: r.top, width: r.width, height: r.height }
       if (webRectsEqual(lastRectRef.current, rect)) return
@@ -116,11 +81,6 @@ export function GhosttySurface({
     }
     scheduleFrameRef.current = scheduleFrame
 
-                                                                                  
-                                                                                   
-                                                                                  
-                                                                                
-                                                      
     const pushFrameNow = () => {
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current)
@@ -137,8 +97,7 @@ export function GhosttySurface({
         if (disposed) return
         spawnedRef.current = true
         onSpawnedRef.current?.(res.id)
-                                                                                 
-                                                                            
+
         pushFrameNow()
         window.setTimeout(() => pushFrameNow(), 50)
       } catch (err) {
@@ -147,12 +106,10 @@ export function GhosttySurface({
     }
     void start()
 
-                                                                     
-                                                                     
     const ro = new ResizeObserver(scheduleFrame)
     ro.observe(node)
     window.addEventListener('resize', scheduleFrame)
-                                                               
+
     window.addEventListener('scroll', scheduleFrame, true)
 
     return () => {
@@ -163,24 +120,18 @@ export function GhosttySurface({
       scheduleFrameRef.current = null
       pushFrameNowRef.current = null
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
-                                                                                 
-                                                                                  
+
       // exatamente o bug "o terminal reseta ao voltar". A surface segue viva no
-                                                                        
-                                                                                 
-                                                                           
+
       void ghosttySetHidden(surfaceId, true)
     }
   }, [surfaceId])
 
-                                                                                
-                                                                           
   // explicitamente em dois casos:
   //   1. o placeholder saiu do viewport (scroll / troca de aba) — IntersectionObserver;
-                                                                                
-                                                                                
+
   //      qualquer Radix Dialog aberto ([role="dialog"][data-state="open"]), o que
-                                                                                
+
   useEffect(() => {
     const node = placeholderRef.current
     if (!node) return
@@ -192,20 +143,14 @@ export function GhosttySurface({
     const anyModalOpen = () => document.querySelector('[role="dialog"][data-state="open"]') !== null
 
     const applyHidden = () => {
-                                                                          
       const hidden = !activeRef.current || !intersecting || anyModalOpen()
-                                                                           
+
       if (hidden !== lastHidden) {
-                                                                               
-                                                                               
-                                                                                   
-                                                                               
         if (!hidden) pushFrameNowRef.current?.()
         lastHidden = hidden
         void ghosttySetHidden(surfaceId, hidden)
       }
-                                                                           
-                                                                                
+
       const focused = !hidden
       if (focused !== lastFocused) {
         lastFocused = focused
@@ -223,7 +168,6 @@ export function GhosttySurface({
     )
     io.observe(node)
 
-                                                                            
     const mo = new MutationObserver(applyHidden)
     mo.observe(document.body, {
       childList: true,
@@ -239,22 +183,16 @@ export function GhosttySurface({
     }
   }, [surfaceId])
 
-                                                                           
-                                                                           
   useEffect(() => {
     activeRef.current = active
     reevaluateVisibilityRef.current?.()
   }, [active])
 
-                                                                                
-                                                                                  
-                                                                             
-                                                                  
   useEffect(() => {
     let stopped = false
     const iv = window.setInterval(async () => {
       if (stopped) return
-                                                                                 
+
       // backend e o comando reportaria "saiu" (ausente), fechando o pane novo.
       if (!spawnedRef.current) return
       try {
@@ -265,7 +203,7 @@ export function GhosttySurface({
           onExitRef.current?.()
         }
       } catch {
-                                              
+        /* erro transitório — tenta de novo */
       }
     }, EXIT_POLL_MS)
     return () => {
@@ -274,12 +212,6 @@ export function GhosttySurface({
     }
   }, [surfaceId])
 
-                                                                                 
-                                                                               
-                                                                                 
-                                                                            
-                                                                                 
-                                                                                  
   return (
     <div
       ref={placeholderRef}

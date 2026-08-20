@@ -8,16 +8,12 @@ import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { VideoPreview } from '../VideoPreview'
 
-const MarkdownRenderer = lazy(() => import('../MarkdownPane/MarkdownRenderer').then(m => ({ default: m.MarkdownRenderer })))
+const MarkdownRenderer = lazy(() =>
+  import('../MarkdownPane/MarkdownRenderer').then((m) => ({ default: m.MarkdownRenderer })),
+)
 import { isMarkdownFilePath, isVideoFilePath } from '../XTermView/terminalLinks'
 import styles from './LinkViewerOverlay.module.css'
 
-   
-                                                                          
-                                                                                
-                                                                          
-                                                                            
-   
 export function LinkViewerOverlay() {
   const t = useT()
   const url = useUiStore((s) => s.linkViewerUrl)

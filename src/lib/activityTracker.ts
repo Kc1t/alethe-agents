@@ -39,10 +39,6 @@ let started = false
 let lastInteractionAt = Date.now()
 let lastSampleAt = Date.now()
 
-                                                                          
-                                                          
-                                                                           
-                                                       
 const bridgeActivePtyIds = new Set<string>()
 
 function applyOpenCodeBridgeStatus({ directory, state }: OpenCodeBridgeStatus): void {
@@ -109,8 +105,6 @@ function syncTrackedAgents(): void {
       cwd: meta.cwd,
       notifyOnComplete: false,
       onStatusChange: (status) => {
-                                                                              
-                                            
         if (bridgeActivePtyIds.has(ptyId)) return
         useTerminalsStore.getState().setStatus(ptyId, status)
       },
@@ -123,9 +117,8 @@ function syncTrackedAgents(): void {
         else entry.unlisten = unlisten
       })
       .catch(() => tracked.delete(ptyId))
-    // O backend para de emitir `pty:                                         
-                                                                            
-                                                                             
+    // O backend para de emitir `pty:
+
     void listenPtyActivity(ptyId, (chunk) => monitor.handleOutput(chunk))
       .then((unlisten) => {
         if (tracked.get(ptyId) !== entry) unlisten()
@@ -144,9 +137,6 @@ function syncTrackedAgents(): void {
   }
 }
 
-                                                                                 
-                                                                            
-                                                                               
 let syncDebounceTimer: number | null = null
 function scheduleSyncTrackedAgents(): void {
   if (syncDebounceTimer !== null) return
@@ -251,9 +241,7 @@ export function startActivityTracker(): () => void {
       if (bridgeDisposed) unlisten()
       else unlistenBridge = unlisten
     })
-    .catch(() => {
-                                                                          
-    })
+    .catch(() => {})
 
   const flushOnHide = () => {
     sample()

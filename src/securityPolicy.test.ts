@@ -129,15 +129,20 @@ describe('production renderer security policy', () => {
       'core:webview:allow-set-webview-position',
       'core:webview:allow-set-webview-size',
       'core:webview:allow-set-webview-zoom',
+      'dialog:default',
+      'dialog:allow-confirm',
       'dialog:allow-open',
       'dialog:allow-save',
       'dialog:allow-message',
+      'notification:default',
       'notification:allow-is-permission-granted',
       'notification:allow-request-permission',
       'notification:allow-notify',
+      'updater:default',
       'updater:allow-check',
       'updater:allow-download-and-install',
       'process:allow-restart',
+      'wdio:default',
     ])
     expect(capability.permissions).not.toContain('core:default')
     expect(capability.permissions).not.toContain('core:event:allow-emit')

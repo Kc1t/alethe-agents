@@ -38,6 +38,9 @@ export const en = {
   'onboarding.profileSubtitle':
     'Set the language, then give the app a name and an avatar if you want one.',
   'onboarding.profilePreviewHint': 'This is how your profile will show up in the app.',
+  'onboarding.profileSaveErrorTitle': 'Profile setup was not saved',
+  'onboarding.profileSaveErrorBody':
+    'Alethe kept the setup open so you can try again. Details: {error}',
   'onboarding.name': 'Name',
   'onboarding.namePlaceholder': 'Your name',
   'onboarding.nameHint': 'Keep it short and recognizable.',
@@ -244,7 +247,7 @@ export const en = {
   'onboarding.agentsStatInstallable': 'installable',
   'onboarding.agentsNoMatch': 'No agent matches this filter.',
   'onboarding.agentsMissing':
-    "Alethe uses your own provider accounts and subscriptions. Missing a CLI or selected the wrong executable? Scan again or change it later in Preferences > Terminal > CLI paths.",
+    'Alethe uses your own provider accounts and subscriptions. Missing a CLI or selected the wrong executable? Scan again or change it later in Preferences > Terminal > CLI paths.',
   'onboarding.agentsRescan': 'Scan again',
   'agentInstall.needsNode':
     'This agent installs through npm, and Node.js was not found on this machine.',
@@ -497,6 +500,14 @@ export const en = {
   'todo.gsdIdle': 'Idle',
   'todo.gsdError': 'Error',
   'todo.gsdProgress': '{done}/{total} tasks',
+
+  /* ---- GSD Sync activity feed (read-only "subagent" view) ---- */
+  'gsdActivity.loading': 'Loading activity…',
+  'gsdActivity.tokens': '{count} tokens',
+  'gsdActivity.roleUser': 'Instruction',
+  'gsdActivity.roleAssistant': 'Agent',
+  'gsdActivity.instructionHint': 'sent to the agent — click to expand',
+  'gsdActivity.patchApplied': 'File change applied.',
   'prefs.limitResetNotify': 'Limit reset alerts',
   'prefs.limitResetNotifyDesc':
     'Notify when a Claude or Codex usage window resets, showing which one.',
@@ -578,6 +589,7 @@ export const en = {
   'prefs.multiagentAuditDesc':
     'Monitors changes in `.planning/` and configures automatic audit commits.',
   'prefs.multiagentAutocommitLabel': 'Enable audit autocommit (opt-in)',
+  'prefs.multiagentAutocommitError': 'Error changing autocommit: {error}',
   'prefs.multiagentLoadingAudit': 'Loading audit logs...',
   'prefs.multiagentNoAuditLogs': 'No changes recorded in `.planning/` through Git.',
   'prefs.multiagentAuditAuthor': 'Author: {author}',
@@ -711,18 +723,30 @@ export const en = {
   'whatsNew.close': 'Got it',
   'whatsNew.update': 'View update',
   'whatsNew.releaseHeading': 'v{version} — {date}',
-  'whatsNew.v150.note1': 'Full-profile backup export now archives the entire profile (todos, history, preferences, tokens, scrollback) instead of a fixed short list.',
-  'whatsNew.v150.note2': 'New “Erase all data (fresh install)” menu action wipes every profile, account, project, scrollback, setting and log.',
-  'whatsNew.v150.note3': 'Reworked startup loading screen to share Home’s background and ASCII-art treatment.',
-  'whatsNew.v150.note4': 'Fixed account switching hanging on “PTY reader flush barrier timed out” by closing parked terminals’ pseudoconsoles before the final flush wait.',
-  'whatsNew.v150.note5': 'Fixed creating a new account getting stuck on a broken loading state, and time-boxed CLI detection so onboarding can’t freeze on “Detecting installed CLIs…”.',
-  'whatsNew.v150.note6': 'LAN remote control: authenticated mobile web view to browse chats, watch terminal output live and send one message at a time.',
-  'whatsNew.v141.note1': 'Fixed the release notes shown here and on GitHub — they were pulling from a stray, outdated copy of the changelog.',
-  'whatsNew.v140.note1': 'Graphify is now optional: turn the code graph panel on or off from Preferences without touching the agents’ MCP config.',
-  'whatsNew.v140.note2': 'The `alethe` terminal command opens the current folder as a project — or focuses the app if it is already open.',
-  'whatsNew.v140.note3': 'File Explorer: double-click any file to open it as a pane in the workspace.',
-  'whatsNew.v140.note4': 'Git Control: double-click a file under Changes or Staged to open its diff as a pane.',
-  'whatsNew.v140.note5': 'New "About & Updates" screen in Preferences, with visible progress and errors while updating.',
+  'whatsNew.v150.note1':
+    'Full-profile backup export now archives the entire profile (todos, history, preferences, tokens, scrollback) instead of a fixed short list.',
+  'whatsNew.v150.note2':
+    'New “Erase all data (fresh install)” menu action wipes every profile, account, project, scrollback, setting and log.',
+  'whatsNew.v150.note3':
+    'Reworked startup loading screen to share Home’s background and ASCII-art treatment.',
+  'whatsNew.v150.note4':
+    'Fixed account switching hanging on “PTY reader flush barrier timed out” by closing parked terminals’ pseudoconsoles before the final flush wait.',
+  'whatsNew.v150.note5':
+    'Fixed creating a new account getting stuck on a broken loading state, and time-boxed CLI detection so onboarding can’t freeze on “Detecting installed CLIs…”.',
+  'whatsNew.v150.note6':
+    'LAN remote control: authenticated mobile web view to browse chats, watch terminal output live and send one message at a time.',
+  'whatsNew.v141.note1':
+    'Fixed the release notes shown here and on GitHub — they were pulling from a stray, outdated copy of the changelog.',
+  'whatsNew.v140.note1':
+    'Graphify is now optional: turn the code graph panel on or off from Preferences without touching the agents’ MCP config.',
+  'whatsNew.v140.note2':
+    'The `alethe` terminal command opens the current folder as a project — or focuses the app if it is already open.',
+  'whatsNew.v140.note3':
+    'File Explorer: double-click any file to open it as a pane in the workspace.',
+  'whatsNew.v140.note4':
+    'Git Control: double-click a file under Changes or Staged to open its diff as a pane.',
+  'whatsNew.v140.note5':
+    'New "About & Updates" screen in Preferences, with visible progress and errors while updating.',
   'whatsNew.v140.note6': 'The installed version is now always visible in the sidebar footer.',
   'whatsNew.v140.note7':
     'Security: the AgentCanvas internal HTTP listener now requires a secret token, and its request body is capped at 1 MB.',
@@ -756,6 +780,10 @@ export const en = {
   'rightSidebar.navigation': 'Right sidebar navigation',
   'rightSidebar.todoTab': 'Todo',
   'rightSidebar.markdownTab': 'Markdown',
+  'rightSidebar.gsdSyncTab': 'GSD Sync',
+  'rightSidebar.gsdSyncEmptyTitle': 'No active GSD Sync session',
+  'rightSidebar.gsdSyncEmptyDesc':
+    'Turn on GSD monitoring for a project to see its child sessions here.',
   'rightSidebar.markdownEmptyTitle': 'No Markdown selected',
   'rightSidebar.markdownEmptyDesc':
     'Open a Markdown file from the project sidebar to preview it here.',
@@ -933,6 +961,8 @@ export const en = {
   'crud.projectPathLabel': 'Project folder',
   'crud.projectPathPlaceholder': 'Choose the project folder',
   'crud.projectPathHint': 'New terminals will start in this folder.',
+  'crud.detectedConfigFound': 'Existing Alethe config detected for "{name}"',
+  'crud.detectedConfigRestore': 'Restore',
   'crud.groupLabel': 'Group',
   'crud.noGroup': 'Loose (no group)',
   'crud.colorLabel': 'Color',
@@ -959,6 +989,7 @@ export const en = {
   'merge.modelLabel': 'Agent model ({provider})',
   'merge.gsdSyncPaneName': 'GSD Sync',
   'crud.editProjectWorktrees': 'Worktrees',
+  'crud.editProjectMerge': 'Merge',
   'crud.editProjectAgentSettings': 'Agent settings',
   'crud.editProjectAgentSettingsDesc':
     'Configure how this project creates and validates agent worktrees.',
@@ -967,6 +998,12 @@ export const en = {
   'crud.editProjectLocalCopy': 'Local copy (slower)',
   'crud.editProjectValidationCommands': 'Validation commands, one per line',
   'crud.editProjectValidationPlaceholder': 'Example: npm run build\nnpm test',
+  'crud.editProjectHealthCheckCommand': 'Health check command (optional)',
+  'crud.editProjectHealthCheckCommandPlaceholder': 'Example: npm run dev',
+  'crud.editProjectHealthCheckCommandHint':
+    'Boots the app in an isolated environment and confirms it actually responds before Test/Merge. The command must listen on the port given by the %PORT%/$PORT environment variable.',
+  'crud.editProjectHealthCheckPath': 'Health check path',
+  'crud.editProjectHealthCheckPathPlaceholder': '/ (default)',
   'crud.editProjectGsdWatcher': 'Watch the GSD planning files (.planning/)',
   'crud.projectColorLabel': 'Color (container border)',
   'crud.projectIconEditHint':
@@ -1186,6 +1223,14 @@ export const en = {
   'ui.titlebar.itemSync': 'Cloud sync',
   'ui.titlebar.itemProfile': 'Local profile',
   'ui.titlebar.itemMemory': 'Memory usage',
+  // Este foi feito para adicionar as chaves de tradução do i18n da barra de navegação Web e badges de conexão
+  'ui.titlebar.navWorkspace': 'Workspace',
+  'ui.titlebar.navAgents': 'Agents',
+  'ui.titlebar.navGit': 'Git',
+  'ui.titlebar.navSessions': 'Sessions',
+  'ui.titlebar.navSettings': 'Settings',
+  'ui.titlebar.modeDesktop': 'Desktop',
+  'ui.titlebar.modeWebServer': 'Web Server',
   'sleepy.title': 'Sleepy Features',
   'sleepy.description':
     "Prepare or run a project batch while you are away. Prompts point the agent to this project's persistent nightly queue.",
@@ -1340,6 +1385,40 @@ export const en = {
   'git.empty.noFolderDesc': 'The selected terminal does not have a working directory yet.',
   'git.empty.noTerminal': 'No terminal selected',
   'git.empty.noTerminalDesc': 'Open a project terminal to inspect its Git repository.',
+  'git.graph.title': 'Commit graph',
+  'git.graph.loading': 'Loading history…',
+  'git.graph.empty': 'No commits yet.',
+  'git.graph.timeNow': 'just now',
+  'git.graph.timeMinutes': '{count}m ago',
+  'git.graph.timeHours': '{count}h ago',
+  'git.graph.timeDays': '{count}d ago',
+  'git.graph.filesLoading': 'Loading changed files…',
+  'git.graph.filesEmpty': 'No file changes (empty or merge commit).',
+  'git.graph.detail.loadingMessage': 'Loading commit message…',
+  'git.graph.detail.filesTitle': 'Changed files',
+  'git.graph.menu.copyHash': 'Copy commit hash',
+  'git.graph.menu.createBranch': 'Create branch here',
+  'git.graph.menu.createBranchPrompt': 'New branch name',
+  'git.graph.menu.branchCreated': 'Branch created',
+  'git.graph.menu.cherryPick': 'Cherry-pick this commit',
+  'git.graph.menu.cherryPicked': 'Commit cherry-picked',
+  'git.graph.menu.revert': 'Revert this commit',
+  'git.graph.menu.reverted': 'Commit reverted',
+  'git.graph.menu.resetSoft': 'Reset branch here (soft)',
+  'git.graph.menu.resetMixed': 'Reset branch here (mixed)',
+  'git.graph.menu.resetHard': 'Reset branch here (hard)',
+  'git.graph.menu.resetHardConfirm':
+    'Hard reset will discard ALL unstaged and staged changes in your workspace. Continue?',
+  'git.graph.menu.resetDone': 'Branch reset',
+  // Este foi feito para adicionar as chaves de busca e atualização do Grafo de Git no i18n em inglês
+  'git.graph.searchPlaceholder': 'Filter commits by subject, hash, author, or ref…',
+  'git.graph.noSearchResults': 'No commits match your filter.',
+  'git.graph.refresh': 'Refresh graph',
+  'git.incomingOutgoing.title': 'Incoming / Outgoing changes',
+  'git.incomingOutgoing.loading': 'Loading…',
+  'git.incomingOutgoing.empty': 'Nothing to sync.',
+  'git.incomingOutgoing.incoming': 'Incoming ({count})',
+  'git.incomingOutgoing.outgoing': 'Outgoing ({count})',
   'git.error.notFound': 'Git was not found',
   'git.error.notRepository': 'This folder is not a Git repository',
   'git.error.directory': 'The active folder is unavailable',
@@ -1365,6 +1444,15 @@ export const en = {
   'ui.sidebar.emptyTitle': 'No projects yet',
   'ui.sidebar.emptyDesc': 'Create the first project here and start building your workspace.',
   'ui.sidebar.emptyAction': 'Create project',
+  'ui.sidebar.projectSettings': 'Settings…',
+  'ui.sidebar.exportProjectConfig': 'Export project config…',
+  'ui.sidebar.exportProjectConfigTitle': 'Export project config',
+  'ui.sidebar.exportProjectConfigDone': 'Project config exported',
+  'ui.sidebar.importProjectConfig': 'Import project config…',
+  'ui.sidebar.importProjectConfigTitle': 'Import project config',
+  'ui.sidebar.importProjectConfigDone': 'Project imported as a new project',
+  'ui.sidebar.importProjectConfigFailed': 'Could not import this file',
+  'ui.sidebar.projectConfigFilter': 'Alethe project config',
   'ui.sidebar.editNameColor': 'Edit (name and color)…',
   'ui.sidebar.quickRename': 'Quick rename',
   'ui.sidebar.newNamePrompt': 'New name:',
@@ -1862,6 +1950,14 @@ export const en = {
     'Administratively locked: {reason}. Run "git worktree unlock" to release it.',
   'multiAgent.orphanManualRemoval':
     'Automatic cleanup has failed repeatedly. Manual removal is recommended.',
+  'merge.integrate': 'Integrate',
+  'merge.integrateTooltip':
+    'Merge this agent’s work into the main branch and remove the environment',
+  'merge.busyTitle': 'Integration in progress',
+  'merge.busy': 'Another integration is running — try again in a moment.',
+  'merge.abortBusyTitle': 'Check in progress',
+  'merge.abortBusy':
+    'An automatic check for this merge is running right now — try aborting again in a moment.',
 
   /* ---- pool / hibernation ---- */
   'ui.terminal.suspended': 'Suspended',
@@ -1869,6 +1965,188 @@ export const en = {
   'ui.terminal.clickToReactivate': 'Click to reactivate',
 
   /* ---- RFC-006/007/008 — safe merge cycle ---- */
+  'merge.sectionTitle': 'Merge cycle',
+  'merge.needBranches': 'This repo needs at least two local branches to merge.',
+  'merge.postActionLabel': 'Agent post-merge action',
+  'merge.postActionRelocateChat': 'Create new branch and keep chat active',
+  'merge.postActionRelocateSession': 'Create new branch and keep session (Beta)',
+  'merge.postActionClose': 'Close agent terminal',
+  'merge.postActionHint':
+    '"Keep chat" reopens the panel on the new branch with a fresh conversation. "Keep session" would try to resume the exact same conversation there.',
+  'merge.postActionRelocateSessionDisabledHint':
+    'Disabled for now — resuming a session from a different directory hangs indefinitely on every agent CLI tested so far (confirmed with OpenCode; root cause is upstream, outside Alethe’s control). Selecting this option silently falls back to a fresh conversation until an upstream fix lands.',
+  'merge.commitConfirmTitle': 'Commit pending work — {branch}',
+  'merge.commitConfirmDescription':
+    'This worktree has changes that were never committed. Merge only moves commits — review what will be committed and write a description before integrating.',
+  'merge.commitConfirmMessageLabel': 'Commit message',
+  'merge.commitConfirmMessagePlaceholder': 'What did the agent implement in this worktree?',
+  'merge.commitConfirmAction': 'Commit and integrate',
+  'merge.sourceLabel': 'Source branch',
+  'merge.targetLabel': 'Target branch',
+  'merge.analyze': 'Analyze',
+  'merge.analyzing': 'Analyzing…',
+  'merge.start': 'Start merge',
+  'merge.finalize': 'Finalize merge',
+  'merge.finalizing': 'Finalizing…',
+  'merge.abort': 'Abort',
+  'merge.analysisClean':
+    'No git conflicts detected — this only checks for merge conflicts, not whether the code actually works. Validation and health check (if configured) still run when you click Merge.',
+  'merge.analysisConflicts': '{count} file(s) in conflict:',
+  'merge.resolvingHint':
+    'Conflict agent is running in a project terminal. When it finishes, click "Finalize merge".',
+  'merge.awaitingReviewHint':
+    'The agent says it is done. Nothing was validated or merged automatically — review its changes, then click "Validate" and "Integrate".',
+  'merge.validateBeforeIntegrateHint': 'Run "Validate" first.',
+  'merge.conflictTitle': 'Merge conflict',
+  'merge.conflictBody':
+    '{count} file(s) in conflict. An ephemeral agent was spawned to resolve them.',
+  'merge.mergedTitle': 'Merge completed',
+  'merge.mergedUnverifiedTitle': 'Merged without verification',
+  'merge.mergedUnverifiedBody':
+    'This project has no validation commands configured — the merge went through without any automatic build/test check.',
+  'merge.nothingToIntegrateTitle': 'Nothing to integrate',
+  'merge.nothingToIntegrateBody':
+    'The agent branch has no changes compared to the target branch — nothing was committed or merged.',
+  'merge.worktreeRemoveFailedTitle': 'Could not remove the worktree',
+  'merge.relocateFailedTitle': 'Could not relocate the terminal',
+  'merge.contractWarningsTitle': '{count} possible API disconnect(s) detected',
+  'merge.healthProbePassedTitle': 'App boot verified',
+  'merge.healthProbePassedBody': 'Responded in {ms}ms (HTTP {status}) in an isolated environment.',
+  'merge.healthProbeFailedTitle': 'App did not respond',
+  'merge.healthProbeFailedBody': 'The health check command did not respond within {ms}ms. {output}',
+  'merge.blockedTitle': 'Merge blocked: {stage}',
+  'merge.retry': 'Retry ({count})',
+  'merge.cleaningUp': 'Cleaning up…',
+  'merge.forceCleanup': 'Force cleanup',
+  'merge.terminalErrorHint':
+    'The merge environment could not be recovered automatically. Force cleanup will delete the temporary environment.',
+  'merge.adminLockedReason':
+    'This worktree is administratively locked: {reason}. Run "git worktree unlock" to release it.',
+
+  /* ---- SidebarMergePanel — Merge Center ---- */
+  'merge.panelTitle': 'Merge Center',
+  'merge.panelEmpty': 'No merges pending review.',
+  'merge.panelGatedHint': '{count} agent(s) still finishing planning',
+  'merge.gsdChildErrorTitle': 'GSD Sync could not update goal/plan',
+  'merge.gsdChildErrorBody': '{error}',
+  'merge.statusReady': 'Awaiting action',
+  'merge.statusPreparing': 'Analyzing…',
+  'merge.statusResolving': 'Resolving conflict',
+  'merge.statusAwaitingReview': 'Awaiting your review',
+  'merge.statusFinalizing': 'Finalizing…',
+  'merge.statusRebasing': 'Rebasing…',
+  'merge.statusMerged': 'Merged',
+  'merge.statusBlocked': 'Blocked',
+  'merge.statusGateFailed': 'Failed automatic check',
+  'merge.statusUnverified': 'No automatic check',
+  'merge.gateFailedDiffEmpty':
+    'Planning marked as complete, but there are no code changes between {branch} and {target}.',
+  'merge.gateFailedValidation': 'Planning complete, but validation failed at "{stage}": {output}',
+  'merge.gateUnverifiedHint':
+    'This project has no validation commands configured, so nothing was actually checked. Configure them in the Multi-Agent & MCP tab.',
+  'merge.gateRecheck': 'Recheck',
+  'merge.noRepoTitle': 'Repository not found',
+  'merge.noRepoBody': 'Could not locate this project’s repository root.',
+  'merge.reject': 'Reject',
+  'merge.rejectTooltip': 'Removes the worktree without merging (the branch is preserved)',
+  'merge.rejectConfirm':
+    'Remove the worktree for "{branch}"? The branch is preserved — no merge is performed.',
+  'merge.rejectedTitle': 'Worktree removed',
+  'merge.rejectedBody':
+    'The worktree for "{branch}" was removed. The branch still exists (git branch -D to delete it for good).',
+  'merge.rejectFailedTitle': 'Failed to remove worktree',
+  'merge.validate': 'Validate',
+  'merge.validating': 'Validating…',
+  'merge.validateTooltip': 'Runs the project’s validation commands in this worktree',
+  'merge.noValidationCommandsTitle': 'No validation commands',
+  'merge.noValidationCommandsBody':
+    'Configure validation commands in the project’s Multi-Agent & MCP tab.',
+  'merge.validationPassedTitle': 'Validation passed',
+  'merge.validationPassedBody': 'All validation commands ran successfully in this worktree.',
+  'merge.validationUnverifiedTitle': 'Not verified',
+  'merge.validationUnverifiedBody':
+    'No validation commands configured for this project — nothing was actually checked (this is not a failure).',
+  'merge.validationFailedTitle': 'Validation failed',
+  'merge.test': 'Test',
+  'merge.testTooltip': 'Opens a terminal in the worktree folder to test manually',
+  'merge.testingStartedTitle': 'Test terminal opened',
+  'merge.testingStartedBody': 'Terminal opened in the {branch} branch folder.',
+  'merge.testModalTitle': 'Test Briefing: {branch}',
+  'merge.testModalClose': 'Close',
+  'merge.testModalStart': 'Start App on this Branch',
+  'merge.testModalProjectLabel': 'Project:',
+  'merge.testModalBranchLabel': 'Branch:',
+  'merge.testModalChangesTitle': 'Changes & Fixes Made',
+  'merge.testModalStepsTitle': 'Recommended Test Procedure',
+  'merge.testBriefingLoadingDiff': 'Loading changed files…',
+  'merge.testBriefingEmpty': 'No changes detected.',
+  'merge.testBriefingNoCommands': 'No validation commands configured for this project.',
+  'merge.testBriefingRunning': 'Running: {cmd}',
+  'merge.testBriefingValidationPassed': 'All validation commands passed.',
+  'merge.testBriefingValidationFailed': 'Failed at "{stage}": {output}',
+  'merge.testHealthTitle': 'Server Health',
+  'merge.testHealthNotConfigured':
+    'No health check command configured — configure one in the Multi-Agent & MCP tab to have this section boot the app for real.',
+  'merge.testHealthLoading': 'Booting the app in an isolated environment…',
+  'merge.testHealthResponded': 'Responded in {ms}ms (HTTP {status}).',
+  'merge.testHealthNoResponse': 'Did not respond after {ms}ms. {output}',
+  'merge.testHealthTerminalVerified': 'A real terminal was opened and confirmed working.',
+  'merge.testHealthTerminalFailed':
+    'The app responded, but opening a real terminal against it failed.',
+  'merge.testCategorySetup': 'Setup — preparation needed before testing',
+  'merge.testCategoryAction': 'Action — the test step itself',
+  'merge.testCategoryVerify': 'Verify — what to check in the result',
+  'merge.testItemPass': 'Passed',
+  'merge.testItemFail': 'Failed',
+  'merge.testItemNotePlaceholder': 'What went wrong? (optional, sent to the agent)',
+  'merge.testSendFeedback': 'Send feedback to agent',
+  'merge.testSendFeedbackTooltip': "Sends what passed/failed straight to the agent's terminal",
+  'merge.testFeedbackSentTitle': 'Feedback sent',
+  'merge.testFeedbackSentBody': 'The test checklist result was sent to the agent.',
+  'merge.review': 'Review',
+  'merge.reviewTooltip':
+    'Opens (or reopens the feedback box for) a dedicated reviewer agent in this worktree',
+  'merge.reviewStartedTitle': 'Reviewer started',
+  'merge.reviewStartedBody': 'A reviewer agent was opened in a terminal for this worktree.',
+  'merge.reviewFeedbackPlaceholder': 'What does the agent need to fix, check, or explain?',
+  'merge.reviewFeedbackCancel': 'Cancel',
+  'merge.reviewFeedbackSend': 'Send to reviewer',
+  'merge.reviewNotReadyTitle': 'Reviewer isn’t ready yet',
+  'merge.reviewNotReadyBody':
+    'The reviewer’s terminal is still starting up — try again in a moment.',
+  'merge.reviewFeedbackSentTitle': 'Feedback sent',
+  'merge.reviewFeedbackSentBody': 'Your message was sent to the reviewer agent in its terminal.',
+  'merge.treeMainNode': 'main',
+  'merge.treeEmptyForProject':
+    'No merges pending in this project — other projects have pending ones.',
+  'merge.centerPagerLabel': '{index} of {total}',
+  'merge.centerPrev': 'Previous merge',
+  'merge.centerNext': 'Next merge',
+  'merge.treeResizeHandle': 'Drag to resize the merge list',
+
+  /* ---- fsBrowser ---- */
+  'fsBrowser.titleFolder': 'Select Folder',
+  'fsBrowser.titleFile': 'Select File',
+  'fsBrowser.home': 'Home',
+  'fsBrowser.drives': 'Drives',
+  'fsBrowser.up': 'Up',
+  'fsBrowser.searchPlaceholder': 'Search folders and files...',
+  'fsBrowser.pathInputPlaceholder': 'Enter path manually...',
+  'fsBrowser.selectCurrentFolder': 'Select this folder',
+  'fsBrowser.selectFile': 'Select file',
+  'fsBrowser.empty': 'This folder is empty',
+  'fsBrowser.itemsCount': '{count} items',
+
+  /* ---- persistence ---- */
+  'persistence.conflictTitle': 'Newer data is available',
+  'persistence.conflictBody':
+    'Your local changes did not overwrite the newer profile data. A recovery copy was saved; reload Alethe to use the latest version.',
+  'persistence.coreMismatchTitle': 'Another Alethe core is running',
+  'persistence.coreMismatchBody':
+    'The local server belongs to a different app data folder. Alethe blocked synchronization to prevent profiles from being mixed. Close the other core and reopen Alethe.',
+  'persistence.writeTitle': 'Changes are not saved yet',
+  'persistence.writeBody':
+    'Alethe could not reach local storage. Keep the app open while the connection recovers.',
 
   /* ---- MCP & Skills ---- */
   'mcp.tab': 'MCP',
@@ -1931,7 +2209,8 @@ export const en = {
   'mcp.errGeneric': 'The operation failed.',
   'mcp.healthCheck': 'Check',
   'mcp.healthChecking': 'Checking…',
-  'mcp.healthCheckHint': 'Ask the agent whether it can actually reach its servers. Claude connects to each one, so it takes a few seconds.',
+  'mcp.healthCheckHint':
+    'Ask the agent whether it can actually reach its servers. Claude connects to each one, so it takes a few seconds.',
   'mcp.health.connected': 'connected',
   'mcp.health.failed': 'failed',
   'mcp.health.needsAuth': 'needs auth',
@@ -1971,7 +2250,8 @@ export const en = {
   'mcp.registryCount': '{count} result(s)',
   'mcp.registryLoading': 'Searching the registry…',
   'mcp.registryNoResults': 'No server matched.',
-  'mcp.registryOffline': 'The registry could not be reached and nothing was cached for this search.',
+  'mcp.registryOffline':
+    'The registry could not be reached and nothing was cached for this search.',
   'mcp.registryStale': 'Registry unreachable — showing the copy saved on {date}.',
   'mcp.addWritten': '{count} server(s) added to {agents}',
   'mcp.fieldName': 'Name',
@@ -2011,7 +2291,8 @@ export const en = {
   'mcp.tabSkills': 'Skills',
   'skills.loading': 'Reading the skill folders…',
   'skills.emptyTitle': 'No skill installed',
-  'skills.emptyDescription': 'Alethe looks in the skills folder of each agent and in the shared store.',
+  'skills.emptyDescription':
+    'Alethe looks in the skills folder of each agent and in the shared store.',
   'skills.selectOne': 'Pick a skill to inspect it',
   'skills.sharedStore': 'Shared store',
   'skills.lockSource': 'source',
@@ -2031,7 +2312,6 @@ export const en = {
   'skills.removedLinkOnly': 'The shared copy was kept at {path}',
   'skills.removeFailed': 'Could not remove the skill',
   'skills.errBundled': 'This skill ships with the agent and cannot be removed from Alethe.',
-
 } as const
 
 export type MessageKey = keyof typeof en

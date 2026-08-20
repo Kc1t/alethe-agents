@@ -1,15 +1,6 @@
 export type AgentType =
-  | 'shell'
-  | 'claude'
-  | 'codex'
-  | 'copilot'
-  | 'opencode'
-  | 'freebuff'
-  | 'mimo'
-  | 'antigravity'
+  'shell' | 'claude' | 'codex' | 'copilot' | 'opencode' | 'freebuff' | 'mimo' | 'antigravity'
 
-                                                                           
-                                                                                 
 export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
@@ -21,9 +12,6 @@ export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
   shell: 'Shell',
 }
 
-                                                                            
-                                                                       
-                                                          
 export const ALL_AGENT_TYPES: AgentType[] = [
   'claude',
   'codex',
@@ -35,19 +23,15 @@ export const ALL_AGENT_TYPES: AgentType[] = [
   'shell',
 ]
 
-                                                                            
-                                                      
 export function agentCliCommand(agent: AgentType): string | undefined {
   if (agent === 'shell') return undefined
   return agent === 'antigravity' ? 'agy' : agent
 }
 
-                                                    
 export type Locale = 'en' | 'pt-BR'
 
 export type LayoutMode = 'auto' | 'spotlight' | 'sidebar' | 'grid'
 
-                                                                                   
 export type GridCell = {
   col: number
   row: number
@@ -55,15 +39,14 @@ export type GridCell = {
   rowSpan: number
 }
 
-                                                                               
 export type GridLayout = {
   cols: number
   rows: number
-                                                                                        
+
   cells: Record<string, GridCell>
-                                                                                   
+
   colSizes?: number[]
-                                                                                 
+
   rowSizes?: number[]
 }
 
@@ -94,26 +77,20 @@ export type Theme =
   | 'elite-blush'
 
 /** Native desktop icon variants. The UI theme and app icon theme are independent. */
-export type AppIconTheme =
-  | 'elite-original'
-  | 'elite-pure-black'
-  | 'elite-indigo'
-  | 'elite-blush'
+export type AppIconTheme = 'elite-original' | 'elite-pure-black' | 'elite-indigo' | 'elite-blush'
 
 export type VisualStyle = 'normal' | 'clean'
 
 export type MotionPreference = 'animated' | 'reduced'
 
-                                                                                  
 export type FeatureId = 'todos' | 'git' | 'browser' | 'graphify' | 'aiMemory' | 'mcp'
 
-                                                                                       
 export type TodoItem = {
   id: string
   title: string
   completed: boolean
   tags: string[]
-                                                                   
+
   projectId?: string
 }
 
@@ -122,22 +99,31 @@ export type SubTab = {
   type: AgentType
   name: string
   cwd: string
-                                                                                    
+
   lastUsedAt?: number
-                                                                                              
+
   ptyId: string | null
-                                                                       
+
   completionUnread?: boolean
-                                                                      
+
   sessionId?: string
   /** Args extras passados pro launcher (ex: --dangerously-skip-permissions). */
   extraArgs?: string[]
-                                                                            
+
   initialInput?: string
   /** One-shot context packet used to bootstrap a cross-provider session. */
   handoff?: AgentHandoffBootstrap
-                                                                                      
+
   runtimeProfile?: AgentRuntimeProfile
+  /**
+   * `true` só na criação da tab, consumido (limpo) no primeiro spawn.
+   * Impede o fallback de "reivindicar a conversa OpenCode mais recente
+   * ainda não pega nesse cwd" (pensado pra recuperar depois de reiniciar o
+   * app, quando o localStorage se perde) de herdar sem querer uma sessão
+   * antiga de OUTRO projeto/uso anterior da mesma pasta, num terminal
+   * genuinamente novo que nunca rodou antes.
+   */
+  skipSessionClaim?: boolean
 }
 
 export type AgentHandoffBootstrap = {
@@ -159,16 +145,12 @@ export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
   codex: '--dangerously-bypass-approvals-and-sandbox',
   copilot: '--allow-all',
   opencode: '--dangerously-skip-permissions',
-                                                                   
+
   freebuff: null,
   mimo: null,
   antigravity: '--dangerously-skip-permissions',
 }
 
-   
-                                                                  
-                                                                              
-   
 export type PaneKind =
   'terminal' | 'markdown' | 'file' | 'image' | 'video' | 'web' | 'graphify' | 'diff'
 
@@ -196,54 +178,63 @@ export type Terminal = {
   activeTabId: string
   disabled: boolean
   laneVisible: boolean | null
-                                                                                  
+
   lastUsedAt?: number
-                                                                                                   
+
   kind?: PaneKind
-                                                                                     
+
   filePath?: string
-                                                       
+
   url?: string
   /** Runtime settings for a private native browser pane. */
   browserConfig?: BrowserPaneConfig
-                                                                                    
+
   worktreeAgentId?: string
-                                                               
+
   staged?: boolean
-     
-                                                                             
-                                                                           
-                                                                            
-                                                                           
-                                                                        
-                                                                            
-                                                 
-     
+
   gsdSyncViewer?: boolean
+  /**
+   * Marca este terminal como o agente EFÊMERO de resolução de conflito
+   * (`mergeStore.ts` — "nasce, resolve, morre"). Nunca deve ser tratado como
+   * um worktree de agente rastreável: exclui do watcher/plugin GSD Sync
+   * (`useGsdSyncSessionsWatcher`/`gsdOpenCodePluginWrite`) — confirmado ao
+   * vivo que, sem essa exclusão, o plugin GSD era instalado nesse terminal
+   * descartável igual a qualquer worktree normal, criando uma sessão-filha
+   * de verdade que ficava órfã (apontando pra uma pasta já apagada) assim
+   * que o agente efêmero era encerrado ao final do merge.
+   */
+  ephemeralConflictAgent?: boolean
+  /**
+   * Marca um terminal utilitário descartável (sessão de "Revisar"/"Testar" da
+   * Central de Merges — nasce, serve pra revisão manual, morre) que NUNCA
+   * deve ser tratado como candidato a "raiz pura do repositório" em
+   * `getProjectRepoRoot`. Bug real, confirmado ao vivo: esses terminais têm
+   * `cwd` = a worktree do agente sendo revisado, mas não tinham
+   * `worktreeAgentId`/`gsdSyncViewer` — a heurística de raiz os escolhia como
+   * referência por engano, contaminando `repo` com o path da worktree em vez
+   * da raiz de verdade, e o card do agente sumia da Central de Merges
+   * enquanto a sessão de revisão/teste estivesse aberta (mesma classe de bug
+   * já corrigida antes só para `gsdSyncViewer`).
+   */
+  ephemeralUtility?: boolean
   /** Hides this terminal and its output from every paired remote device. */
   remoteExcluded?: boolean
 }
 
-                                                                                   
 export type PaneGroup = {
   id: string
   paneIds: string[]
 }
 
-   
-                                                                             
-                                                                          
-                                                                                   
-                                                            
-   
 export type OrphanWorktree = {
   path: string
   mode: 'gitWorktree' | 'localCopy'
-                                                                                     
+
   requiresRawDeletion?: boolean
-                                                                                     
+
   pruneOnly?: boolean
-                                                                                    
+
   cleanAttempts?: number
   /** Motivo do lock administrativo (`git worktree lock`), se for esse o bloqueio atual. */
   adminLockReason?: string
@@ -255,19 +246,19 @@ export type Project = {
   /** Determines which workspace opens when the project is selected. */
   mode?: 'standard' | 'agentSandbox'
   color?: string
-                                                                                     
+
   iconUrl?: string
-                                                   
+
   groupId: string | null
-                                                                   
+
   defaultCwd?: string
   terminals: Terminal[]
   /** Blocos visuais criados selecionando panes com Shift. */
   paneGroups?: PaneGroup[]
-                                                                                 
+
   markdownComments?: MarkdownComment[]
   layoutMode: LayoutMode
-                                                                                  
+
   gridLayout?: GridLayout
   /** Most recently saved custom layouts for this project. */
   gridLayoutHistory?: GridLayoutHistoryEntry[]
@@ -278,25 +269,32 @@ export type Project = {
   // --- RFC-009 / RFC-003 — Multi-Agent settings ---
   worktreeMode?: 'gitWorktree' | 'localCopy'
   validationCommands?: string[]
+  /** Comando que sobe o app pra probe de saúde ao vivo (Testar/Integrar). Deve
+   *  respeitar a variável de ambiente PORT (health_probe injeta uma porta
+   *  livre nela). Vazio/undefined = probe desabilitado. */
+  healthCheckCommand?: string
+  /** Caminho HTTP checado pelo probe (ex.: "/", "/health"). Default '/' quando vazio. */
+  healthCheckPath?: string
   gsdWatcherEnabled?: boolean
-                                                                                             
+
   conflictAgentProvider?: AgentType
-                                                                   
+
   conflictAgentModel?: string
-                                                                                                         
+
   reviewAgentProvider?: AgentType
-                                                              
+
   reviewAgentModel?: string
-                                                                                     
+
   graphifyEnabled?: boolean
-                                                                            
+
   autoWorktree?: boolean
-                                                
+
   githubUrl?: string
-                                                                                        
+
   firstBootPending?: boolean
-                                                                                               
-                                                                              
+  /** Comportamento do terminal após aceitar o merge (relocalizar em nova branch ou fechar). */
+  mergePostAction?: 'relocateToNewBranch' | 'relocateKeepSession' | 'closeTerminal'
+  /** Worktrees com limpeza inacabada (deleção física ou `prune` falhados). */
   orphanWorktrees?: OrphanWorktree[]
 }
 
@@ -314,34 +312,33 @@ export type Group = {
   id: string
   name: string
   color: string
-                                                                                        
+
   iconUrl?: string
   collapsed: boolean
-                                                   
+
   projectIds: string[]
-                                                                      
+
   parentGroupId: string | null
-                                                                                     
+
   layoutMode?: LayoutMode
-                                                        
+
   gridLayout?: GridLayout
   /** Most recently saved custom layouts for this group. */
   gridLayoutHistory?: GridLayoutHistoryEntry[]
-                                                                                                        
+
   suspended?: boolean
-                                                                                     
+
   archived?: boolean
   createdAt: number
 }
 
-                                                                                 
 export type WorkspaceContainer = {
   projectId: string
-                                                                               
+
   paneIds: string[]
-                                                                                           
+
   lastUsedAt?: number
-                                                                                             
+
   size: number
   internalLayout: LayoutMode
   collapsed: boolean
@@ -354,7 +351,6 @@ export type WorkspaceRecentTab = {
 
 export type WorkspaceTabKind = 'project' | 'group' | 'terminal' | 'composition'
 
-                                                                                   
 export type WorkspaceViewSnapshot = {
   containers: WorkspaceContainer[]
   activeProjectId: string | null
@@ -373,7 +369,7 @@ export type WorkspaceTab = {
   label: string
   color?: string
   iconUrl?: string
-                                                                         
+
   pinned?: boolean
   snapshot: WorkspaceViewSnapshot
   createdAt: number
@@ -411,40 +407,32 @@ export type Preferences = {
   appIconTheme: AppIconTheme
   /** Zoom global da WebView. 1 = 100%. */
   uiZoom: number
-                                                          
+
   windowOpacity: number
   terminalTheme: Theme | null
   enabledAgents: Record<AgentType, boolean>
   onboardingDone: boolean
-                                                                              
+
   workspaceFlat: boolean
-                                                                    
+
   fullscreenContainerId: string | null
-     
-                                                                           
-                                                                        
-                                                                       
-                                                                 
-                                                                           
-                                                                        
-                                       
-     
+
   isolatedPaneId: string | null
-                                                                                 
+
   firstLaunchAt: number | null
   /** Nome exibido no welcome modal. */
   displayName: string
   /** URL da foto de perfil escolhida no cadastro local. */
   profileImageUrl: string
-                                                              
+
   accountCreated: boolean
-                                                                             
+
   alwaysStartOnHome: boolean
-                                                                        
+
   alwaysStartUnrestricted: boolean
   /** Last terminal configuration submitted through the creation modal. */
   lastTerminalCreation: TerminalCreationPreset | null
-                                              
+
   topbarStyle: 'classic' | 'three-areas'
   /** Local do controle Git: sidebar esquerda ou direita. */
   gitControlPlacement: 'left' | 'right'
@@ -471,7 +459,7 @@ export type Preferences = {
   remoteReadOnly: boolean
   /** Allows remote input on plain shell tabs, not only agent tabs. Default false. */
   remoteAllowShellInput: boolean
-                                                        
+
   enabledFeatures: Record<FeatureId, boolean>
   /** Folder configured as the base location for the global Todo list. */
   todoStoragePath: string
@@ -479,41 +467,38 @@ export type Preferences = {
   mcpDefaultScope: McpScope
   /** True once the MCP setup prompt has been shown or dismissed. */
   mcpOnboardingSeen: boolean
-                                               
+
   leftSidebarVisible: boolean
   rightSidebarVisible: boolean
   leftSidebarWidth: number
   rightSidebarWidth: number
-                                                                                                
+  /**
+   * Posição das barras divisórias entre painéis, por grupo de painéis
+   * (`groupId` → `panelId` → porcentagem 0..100). Guardado em proporção, não em
+   * pixels, pra fazer sentido em janelas de tamanhos diferentes — é o que
+   * permite o Desktop e o Web mostrarem o mesmo arranjo de painéis.
+   */
+  paneLayouts?: Record<string, Record<string, number>>
+  /** Notifica quando uma janela de uso do Claude/Codex reseta, indicando qual. Default true. */
   notifyOnLimitReset: boolean
   /** Ditado por voz (speech-to-text) escreve no terminal ativo. Default false. */
   dictationEnabled: boolean
   /** Quantos PTYs podem ser spawnados em paralelo (fila global). Default 3. */
   spawnConcurrency: number
-                                                                             
+
   resourcePolicy: ResourcePolicyPreferences
-                                                                      
+
   workspaceGridLayout?: GridLayout
   /** Most recently saved custom layouts for the workspace. */
   workspaceGridLayoutHistory?: GridLayoutHistoryEntry[]
-     
-                                                                     
-                                                                        
-                                                              
-     
+
   nativeTerminalMacos?: boolean
   /**
    * v3 — perfil de heap do Node.js para agentes (Claude, Codex, OpenCode).
    * Injeta --max-old-space-size e UV_THREADPOOL_SIZE no ambiente do PTY.
    */
   nodeHeapProfile?: 'conservative' | 'balanced' | 'performance'
-     
-                                                                           
-                                                                          
-                                                                    
-                                                                            
-                              
-     
+
   gsdSyncModelChain?: string[]
 }
 
@@ -534,22 +519,22 @@ export type ResourcePolicyPreferences = {
 export type ProjectsFile = {
   version: 7
   groups: Group[]
-                                                     
+
   ungroupedOrder: string[]
   projects: Project[]
-                                                             
+
   todos: TodoItem[]
   activeProjectId: string | null
-                                                                             
+
   workspace: {
     containers: WorkspaceContainer[]
-                                                                                               
+
     recentProjectIds: string[]
-                                                                            
+
     recentTabs: WorkspaceRecentTab[]
-                                          
+
     tabs: WorkspaceTab[]
-                                                                                  
+
     closedTabs?: WorkspaceTab[]
     activeTabId: string | null
     activeGroupId: string | null
@@ -661,10 +646,8 @@ export const EMPTY_PROJECTS_FILE: ProjectsFile = {
   cliPaths: {},
 }
 
-                                                 
 export type PtyStatus = 'working' | 'waiting' | 'stopped' | 'disabled' | 'offline'
 
-                                                
 export const GROUP_COLORS = [
   '#6ea8ff',
   '#22d3ee',
@@ -676,7 +659,6 @@ export const GROUP_COLORS = [
   '#10b981',
 ] as const
 
-                                                       
 export const PROVIDER_MODELS: Record<AgentType, { id: string; label: string }[]> = {
   claude: [
     { id: 'claude-3-7-sonnet', label: 'Claude 3.7 Sonnet (Padrão)' },

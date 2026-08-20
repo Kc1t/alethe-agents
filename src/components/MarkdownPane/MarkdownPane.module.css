@@ -247,7 +247,6 @@
   overflow: auto;
 }
 
-                                                                               
 .textView {
   margin: 0;
   padding: 14px 16px;
@@ -272,7 +271,6 @@
   tab-size: 2;
 }
 
-                                                                   
 .markdownBody {
   padding: 20px 24px;
   color: var(--fg);

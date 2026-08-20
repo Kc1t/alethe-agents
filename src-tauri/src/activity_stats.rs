@@ -267,7 +267,7 @@ pub async fn get_activity_summary(
         .map_err(|e| e.to_string())?
 }
 
-fn get_activity_summary_inner(
+pub fn get_activity_summary_inner(
     path: PathBuf,
     dates: Vec<String>,
 ) -> Result<ActivitySummary, String> {

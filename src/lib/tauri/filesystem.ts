@@ -5,11 +5,19 @@ export type DirectoryEntry = {
   name: string
   path: string
   is_dir: boolean
-  size: number | null
+  size_bytes?: number | null
 }
 
-export async function listDirectory(path: string): Promise<DirectoryEntry[]> {
-  return invoke<DirectoryEntry[]>('list_directory', { path })
+export type DirectoryListing = {
+  current_path: string
+  parent_path: string | null
+  home_path: string
+  system_roots: string[]
+  entries: DirectoryEntry[]
+}
+
+export async function listDirectory(path: string): Promise<DirectoryListing> {
+  return invoke<DirectoryListing>('list_directory', { path })
 }
 
 export async function readTextFile(path: string): Promise<string> {
@@ -32,6 +40,14 @@ export async function ensureTodoTemplate(directory: string): Promise<string> {
   return invoke<string>('ensure_todo_template', { directory })
 }
 
+export async function writeProjectMarker(projectDir: string, content: string): Promise<void> {
+  await invoke('write_project_marker', { projectDir, content })
+}
+
+export async function readProjectMarker(projectDir: string): Promise<string | null> {
+  return invoke<string | null>('read_project_marker', { projectDir })
+}
+
 export async function watchFile(path: string): Promise<void> {
   await invoke('watch_file', { path })
 }
@@ -40,7 +56,6 @@ export async function unwatchFile(path: string): Promise<void> {
   await invoke('unwatch_file', { path })
 }
 
-                                                                        
 export function listenFileChanged(handler: (path: string) => void): Promise<UnlistenFn> {
   return listen<{ path: string }>('md://changed', (event) => handler(event.payload.path))
 }

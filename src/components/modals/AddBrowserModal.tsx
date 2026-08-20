@@ -172,7 +172,9 @@ export function AddBrowserModal() {
           <option value="balanced">{t('browser.resourceModeBalanced')}</option>
           <option value="keep-alive">{t('browser.resourceModeKeepAlive')}</option>
         </select>
-        <span className={controls.hint}>{t(`browser.resourceModeDescription.${resourceMode}`)}</span>
+        <span className={controls.hint}>
+          {t(`browser.resourceModeDescription.${resourceMode}`)}
+        </span>
       </div>
 
       {project ? (

@@ -124,15 +124,20 @@ fn generating_set() -> &'static std::sync::Mutex<std::collections::HashSet<PathB
 }
 
 // de verdade (git, probe do CLI do Graphify) — rodavam direto na thread de
-
+// despacho do Tauri, disparadas a CADA spawn de terminal claude/codex/opencode
 // em projetos com Graphify ligado (ver XTermView/index.tsx). Sob AV escaneando
-
+// o novo processo ou qualquer lentidão do SO, isso travava TODO comando IPC
+// atrás dele — o app inteiro (inclusive terminais já abertos, tentando
+// escrever/redimensionar) parecia travado até a chamada terminar. Mesma
+// classe de bug já corrigida em `pty.rs`/`worktrees.rs`; todo comando deste
+// arquivo agora roda em `spawn_blocking`.
 fn graphify_ensure_graph_inner(repo: String, command: Option<String>) -> Result<String, String> {
     let root = repository_root(&repo)?;
     if graph_path(&root).is_file() {
         return Ok("exists".to_string());
     }
 
+    // Lock primeiro: geração em andamento dispensa até o probe do CLI.
     if generating_set()
         .lock()
         .map_err(|e| e.to_string())?
@@ -142,7 +147,8 @@ fn graphify_ensure_graph_inner(repo: String, command: Option<String>) -> Result<
     }
 
     let cmd = command.unwrap_or_else(|| DEFAULT_COMMAND.to_string());
-
+    // CLI ausente → no-op silencioso (o MCP é injetado igual; sem grafo o
+    // servidor simplesmente não tem dados até o usuário instalar o Graphify).
     let available = {
         let mut probe = Command::new(&cmd);
         probe.arg("--version");
@@ -275,7 +281,9 @@ pub(crate) fn graphify_opencode_config_write_inner(
         let raw = std::fs::read_to_string(&path).map_err(|e| format!("read_failed:{e}"))?;
         match serde_json::from_str::<Value>(&raw) {
             Ok(Value::Object(map)) => map,
-
+            // Arquivo existe mas não é o esperado (JSONC com comentários, ou
+            // corrompido) — não arrisca sobrescrever config do usuário às
+            // cegas; só desiste (best-effort).
             _ => return Ok(()),
         }
     } else {
@@ -479,7 +487,9 @@ pub async fn graphify_read_graph(repo: String) -> Result<GraphData, String> {
 }
 
 /// Copia o `graph.json` atual para `.alethe/graph-snapshots/<ts>.json`.
-
+// Separado em `_inner` (síncrono) porque `conflict_resolution.rs` chama isso
+// direto, de dentro do próprio `spawn_blocking` do merge — nesse contexto
+// não tem como (nem faz sentido) `.await` um segundo `spawn_blocking`.
 pub(crate) fn graphify_snapshot_inner(
     repo: String,
     project_id: Option<String>,

@@ -7,7 +7,6 @@ import { useUiStore } from '../../../stores/uiStore'
 import controls from '../controls.module.css'
 import styles from '../PreferencesModal.module.css'
 
-                                                                     
 const FEATURE_ICONS = {
   todos: ListTodo,
   git: GitBranch,

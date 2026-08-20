@@ -36,7 +36,6 @@ describe('shouldUseNativeBackend', () => {
   })
 
   it('nunca usa nativo fora do macOS, mesmo com flag ligada', () => {
-                                                                                  
     expect(shouldUseNativeBackend(true, false)).toBe(false)
   })
 })
@@ -47,20 +46,18 @@ describe('normalizeCwd', () => {
   })
 
   it('uniformiza separador e caixa só quando o path tem letra de drive (Windows)', () => {
-    expect(normalizeCwd('C:/Users/Miguel/Project/')).toBe('c:\\users\\miguel\\project')
-    expect(normalizeCwd('C:\\Users\\Miguel\\Project')).toBe('c:\\users\\miguel\\project')
+    expect(normalizeCwd('X:/Users/Example/Project/')).toBe('x:\\users\\example\\project')
+    expect(normalizeCwd('X:\\Users\\Example\\Project')).toBe('x:\\users\\example\\project')
   })
 
   it('preserva caixa e separador em paths Unix (case-sensitive)', () => {
-                                                                           
-                                                                      
     expect(normalizeCwd('/home/user/Project')).toBe('/home/user/Project')
     expect(normalizeCwd('/home/user/project')).toBe('/home/user/project')
   })
 
   it('remove o prefixo verbatim \\\\?\\ antes de comparar, senão worktrees nunca batem com o path real', () => {
-    expect(normalizeCwd('\\\\?\\D:\\Projetos\\PICLESV2\\.alethe\\worktrees\\opencode-x')).toBe(
-      normalizeCwd('D:\\Projetos\\PICLESV2\\.alethe\\worktrees\\opencode-x'),
+    expect(normalizeCwd('\\\\?\\X:\\example\\repo\\.alethe\\worktrees\\opencode-x')).toBe(
+      normalizeCwd('X:\\example\\repo\\.alethe\\worktrees\\opencode-x'),
     )
   })
 

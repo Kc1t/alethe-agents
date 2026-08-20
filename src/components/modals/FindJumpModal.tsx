@@ -43,7 +43,7 @@ export function FindJumpModal() {
     if (open) {
       setQuery('')
       setCursor(0)
-                                             
+
       setTimeout(() => inputRef.current?.focus(), 50)
     }
   }, [open])

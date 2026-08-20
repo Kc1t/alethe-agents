@@ -18,8 +18,8 @@
   --clean-popover-radius: 4px;
   --clean-popover-duration: 180ms;
   --clean-popover-ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --clean-popover-animation: cleanPopoverIn var(--clean-popover-duration)
-    var(--clean-popover-ease) both;
+  --clean-popover-animation: cleanPopoverIn var(--clean-popover-duration) var(--clean-popover-ease)
+    both;
   --clean-modal-radius: 4px;
   --clean-border: 1px solid var(--border);
   --clean-hover-bg: var(--panel-hover);

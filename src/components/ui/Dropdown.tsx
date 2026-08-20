@@ -1,5 +1,12 @@
 import { ChevronDown } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react'
 import { createPortal } from 'react-dom'
 import styles from './Dropdown.module.css'
 
@@ -42,22 +49,35 @@ export function Dropdown({
     const updatePosition = () => {
       const rect = triggerRef.current?.getBoundingClientRect()
       if (!rect) return
-      const width = Math.min(320, Math.max(220, rect.width), window.innerWidth - 16)
+      // `window.innerWidth`/`innerHeight` divergem de onde o clique real
+      // aterrissa quando o zoom nativo do WebView2 (`getCurrentWebview()
+      // .setZoom()`, `App.tsx`) ou o escalonamento de DPI do Windows não é
+      // exatamente 1:1 — bug real confirmado ao vivo (dono não conseguia
+      // clicar na opção do menu de jeito nenhum, sempre interceptado por
+      // outro elemento no mesmo ponto). `visualViewport` é a API feita
+      // exatamente pra refletir o viewport que o navegador realmente usa
+      // pra entrega de eventos de ponteiro nesses casos — cai pro `window`
+      // só se `visualViewport` não existir (ambientes muito antigos).
+      const viewportWidth = window.visualViewport?.width ?? window.innerWidth
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight
+      const width = Math.min(320, Math.max(220, rect.width), viewportWidth - 16)
       const estimatedHeight = Math.min(240, Math.max(40, options.length * 32 + 8))
-      const spaceBelow = window.innerHeight - rect.bottom - 8
+      const spaceBelow = viewportHeight - rect.bottom - 8
       const spaceAbove = rect.top - 8
       const opensBelow = spaceBelow >= Math.min(estimatedHeight, 180) || spaceBelow >= spaceAbove
       const maxHeight = Math.max(96, Math.min(240, opensBelow ? spaceBelow : spaceAbove))
       const top = opensBelow ? rect.bottom + 5 : rect.top - maxHeight - 5
-      const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))
+      const left = Math.max(8, Math.min(rect.left, viewportWidth - width - 8))
       setPosition({ left, top: Math.max(8, top), width, maxHeight })
     }
     updatePosition()
     window.addEventListener('resize', updatePosition)
     window.addEventListener('scroll', updatePosition, true)
+    window.visualViewport?.addEventListener('resize', updatePosition)
     return () => {
       window.removeEventListener('resize', updatePosition)
       window.removeEventListener('scroll', updatePosition, true)
+      window.visualViewport?.removeEventListener('resize', updatePosition)
     }
   }, [open, options.length])
 
@@ -65,7 +85,8 @@ export function Dropdown({
     if (!open) return
     const closeOnOutsideClick = (event: MouseEvent) => {
       const target = event.target as Node
-      if (!triggerRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false)
+      if (!triggerRef.current?.contains(target) && !menuRef.current?.contains(target))
+        setOpen(false)
     }
     const closeOnEscape = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -126,7 +147,12 @@ export function Dropdown({
               className={styles.menu}
               role="listbox"
               aria-label={ariaLabel}
-              style={{ left: position.left, top: position.top, width: position.width, maxHeight: position.maxHeight }}
+              style={{
+                left: position.left,
+                top: position.top,
+                width: position.width,
+                maxHeight: position.maxHeight,
+              }}
               onPointerDown={(event) => event.stopPropagation()}
               onMouseDown={(event) => event.stopPropagation()}
             >

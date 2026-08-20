@@ -39,6 +39,9 @@ export const ptBR: Record<MessageKey, string> = {
   'onboarding.profileTitle': 'Perfil',
   'onboarding.profileSubtitle': 'Defina o idioma e dê um nome e um avatar, se quiser.',
   'onboarding.profilePreviewHint': 'É assim que seu perfil vai aparecer no app.',
+  'onboarding.profileSaveErrorTitle': 'A configuração do perfil não foi salva',
+  'onboarding.profileSaveErrorBody':
+    'O Alethe manteve a configuração aberta para você tentar novamente. Detalhes: {error}',
   'onboarding.name': 'Nome',
   'onboarding.namePlaceholder': 'Seu nome',
   'onboarding.nameHint': 'Curto e fácil de reconhecer.',
@@ -51,8 +54,7 @@ export const ptBR: Record<MessageKey, string> = {
   'onboarding.themeTitle': 'Escolha um tema',
   'onboarding.themeSubtitle': 'Escolha a paleta que combina com o ambiente. Dá pra trocar depois.',
   'onboarding.appIconTitle': 'Escolha o ícone do app',
-  'onboarding.appIconSubtitle':
-    'É o ícone da barra de tarefas e da janela. Dá pra trocar depois.',
+  'onboarding.appIconSubtitle': 'É o ícone da barra de tarefas e da janela. Dá pra trocar depois.',
   'onboarding.visualStyleTitle': 'Escolha o estilo da interface',
   'onboarding.visualStyleSubtitle':
     'O quanto as superfícies, bordas e painéis aparecem. Dá pra trocar depois.',
@@ -500,6 +502,14 @@ export const ptBR: Record<MessageKey, string> = {
   'todo.gsdIdle': 'Ociosa',
   'todo.gsdError': 'Erro',
   'todo.gsdProgress': '{done}/{total} tarefas',
+
+  /* ---- Feed de atividade do GSD Sync (visão "subagente" somente leitura) ---- */
+  'gsdActivity.loading': 'Carregando atividade…',
+  'gsdActivity.tokens': '{count} tokens',
+  'gsdActivity.roleUser': 'Instrução',
+  'gsdActivity.roleAssistant': 'Agente',
+  'gsdActivity.instructionHint': 'enviado pro agente — clique pra expandir',
+  'gsdActivity.patchApplied': 'Alteração de arquivo aplicada.',
   'prefs.limitResetNotify': 'Avisos de reset de limite',
   'prefs.limitResetNotifyDesc':
     'Notifica quando uma janela de uso do Claude ou Codex reseta, mostrando qual.',
@@ -584,6 +594,7 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.multiagentAuditDesc':
     'Acompanha mudanças em `.planning/` e configura commits automáticos de auditoria.',
   'prefs.multiagentAutocommitLabel': 'Ativar auto-commit de auditoria (opt-in)',
+  'prefs.multiagentAutocommitError': 'Erro ao alterar autocommit: {error}',
   'prefs.multiagentLoadingAudit': 'Carregando logs de auditoria...',
   'prefs.multiagentNoAuditLogs': 'Nenhuma mudança registrada em `.planning/` via Git.',
   'prefs.multiagentAuditAuthor': 'Autor: {author}',
@@ -694,7 +705,8 @@ export const ptBR: Record<MessageKey, string> = {
   'theme.ember.desc':
     'Carvão frio, divisores de fio de cabelo e um acento laranja brasa no que está ativo.',
   'theme.golden-premium.label': 'Dourado Premium',
-  'theme.golden-premium.desc': 'Luxuoso marrom escuro e pretos profundos com elegantes detalhes dourados.',
+  'theme.golden-premium.desc':
+    'Luxuoso marrom escuro e pretos profundos com elegantes detalhes dourados.',
   'todo.tagsPlaceholder': 'Tags: docs, fix',
   'todo.linkProject': 'Vincular tarefa a um projeto',
   'todo.noProject': 'Nenhum projeto',
@@ -721,18 +733,30 @@ export const ptBR: Record<MessageKey, string> = {
   'whatsNew.close': 'Entendi',
   'whatsNew.update': 'Ver atualização',
   'whatsNew.releaseHeading': 'v{version} — {date}',
-  'whatsNew.v150.note1': 'O export de backup de perfil agora arquiva o perfil inteiro (todos, histórico, preferências, tokens, scrollback) em vez de uma lista curta fixa.',
-  'whatsNew.v150.note2': 'Nova ação de menu “Erase all data (fresh install)” apaga todos os perfis, contas, projetos, scrollback, configurações e logs.',
-  'whatsNew.v150.note3': 'Tela de carregamento inicial reformulada para compartilhar o fundo e o ASCII art da Home.',
-  'whatsNew.v150.note4': 'Corrigido o travamento ao trocar de conta em “PTY reader flush barrier timed out”, fechando os pseudoconsoles dos terminais estacionados antes da espera final.',
-  'whatsNew.v150.note5': 'Corrigida a criação de conta presa em loading quebrado, e detecção de CLI com timeout para o onboarding não congelar em “Detecting installed CLIs…”.',
-  'whatsNew.v150.note6': 'Controle remoto via LAN: visão web móvel autenticada para ver chats, acompanhar o terminal ao vivo e enviar uma mensagem por vez.',
-  'whatsNew.v141.note1': 'Corrigidas as notas de versão mostradas aqui e no GitHub — elas vinham de uma cópia solta e desatualizada do changelog.',
-  'whatsNew.v140.note1': 'Graphify agora é opcional: ligue ou desligue o painel de grafo em Preferências sem mexer na config MCP dos agentes.',
-  'whatsNew.v140.note2': 'O comando `alethe` no terminal abre a pasta atual como projeto — ou foca o app, se já estiver aberto.',
-  'whatsNew.v140.note3': 'File Explorer: duplo-clique em qualquer arquivo para abri-lo como pane no workspace.',
-  'whatsNew.v140.note4': 'Git Control: duplo-clique num arquivo em Changes ou Staged abre o diff como pane.',
-  'whatsNew.v140.note5': 'Nova tela "Sobre & Atualizações" nas Preferências, com progresso e erros visíveis ao atualizar.',
+  'whatsNew.v150.note1':
+    'O export de backup de perfil agora arquiva o perfil inteiro (todos, histórico, preferências, tokens, scrollback) em vez de uma lista curta fixa.',
+  'whatsNew.v150.note2':
+    'Nova ação de menu “Erase all data (fresh install)” apaga todos os perfis, contas, projetos, scrollback, configurações e logs.',
+  'whatsNew.v150.note3':
+    'Tela de carregamento inicial reformulada para compartilhar o fundo e o ASCII art da Home.',
+  'whatsNew.v150.note4':
+    'Corrigido o travamento ao trocar de conta em “PTY reader flush barrier timed out”, fechando os pseudoconsoles dos terminais estacionados antes da espera final.',
+  'whatsNew.v150.note5':
+    'Corrigida a criação de conta presa em loading quebrado, e detecção de CLI com timeout para o onboarding não congelar em “Detecting installed CLIs…”.',
+  'whatsNew.v150.note6':
+    'Controle remoto via LAN: visão web móvel autenticada para ver chats, acompanhar o terminal ao vivo e enviar uma mensagem por vez.',
+  'whatsNew.v141.note1':
+    'Corrigidas as notas de versão mostradas aqui e no GitHub — elas vinham de uma cópia solta e desatualizada do changelog.',
+  'whatsNew.v140.note1':
+    'Graphify agora é opcional: ligue ou desligue o painel de grafo em Preferências sem mexer na config MCP dos agentes.',
+  'whatsNew.v140.note2':
+    'O comando `alethe` no terminal abre a pasta atual como projeto — ou foca o app, se já estiver aberto.',
+  'whatsNew.v140.note3':
+    'File Explorer: duplo-clique em qualquer arquivo para abri-lo como pane no workspace.',
+  'whatsNew.v140.note4':
+    'Git Control: duplo-clique num arquivo em Changes ou Staged abre o diff como pane.',
+  'whatsNew.v140.note5':
+    'Nova tela "Sobre & Atualizações" nas Preferências, com progresso e erros visíveis ao atualizar.',
   'whatsNew.v140.note6': 'A versão instalada agora aparece sempre no rodapé da sidebar.',
   'whatsNew.v140.note7':
     'Segurança: o listener HTTP interno do AgentCanvas agora exige token secreto, e o corpo da requisição é limitado a 1 MB.',
@@ -766,6 +790,10 @@ export const ptBR: Record<MessageKey, string> = {
   'rightSidebar.navigation': 'Navegação da sidebar direita',
   'rightSidebar.todoTab': 'Todo',
   'rightSidebar.markdownTab': 'Markdown',
+  'rightSidebar.gsdSyncTab': 'GSD Sync',
+  'rightSidebar.gsdSyncEmptyTitle': 'Nenhuma sessão GSD Sync ativa',
+  'rightSidebar.gsdSyncEmptyDesc':
+    'Ligue o monitoramento GSD de um projeto pra ver as sessões-filha aqui.',
   'rightSidebar.markdownEmptyTitle': 'Nenhum Markdown selecionado',
   'rightSidebar.markdownEmptyDesc':
     'Abra um arquivo Markdown na sidebar de projetos para visualizá-lo aqui.',
@@ -943,6 +971,8 @@ export const ptBR: Record<MessageKey, string> = {
   'crud.projectPathLabel': 'Pasta do projeto',
   'crud.projectPathPlaceholder': 'Escolha a pasta do projeto',
   'crud.projectPathHint': 'Novos terminais começarão nesta pasta.',
+  'crud.detectedConfigFound': 'Configuração existente do Alethe detectada pra "{name}"',
+  'crud.detectedConfigRestore': 'Restaurar',
   'crud.groupLabel': 'Grupo',
   'crud.noGroup': 'Solto (sem grupo)',
   'crud.colorLabel': 'Cor',
@@ -969,6 +999,7 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.modelLabel': 'Modelo do agente ({provider})',
   'merge.gsdSyncPaneName': 'GSD Sync',
   'crud.editProjectWorktrees': 'Worktrees',
+  'crud.editProjectMerge': 'Merge',
   'crud.editProjectAgentSettings': 'Configurações dos agentes',
   'crud.editProjectAgentSettingsDesc':
     'Defina como este projeto cria e valida worktrees de agentes.',
@@ -977,6 +1008,12 @@ export const ptBR: Record<MessageKey, string> = {
   'crud.editProjectLocalCopy': 'Cópia local (mais lenta)',
   'crud.editProjectValidationCommands': 'Comandos de validação, um por linha',
   'crud.editProjectValidationPlaceholder': 'Exemplo: npm run build\nnpm test',
+  'crud.editProjectHealthCheckCommand': 'Comando de saúde (opcional)',
+  'crud.editProjectHealthCheckCommandPlaceholder': 'Exemplo: npm run dev',
+  'crud.editProjectHealthCheckCommandHint':
+    'Sobe o app num ambiente isolado e confirma que ele responde de verdade antes de Testar/Integrar. O comando precisa escutar na porta indicada pela variável de ambiente %PORT%/$PORT.',
+  'crud.editProjectHealthCheckPath': 'Caminho verificado',
+  'crud.editProjectHealthCheckPathPlaceholder': '/ (padrão)',
   'crud.editProjectGsdWatcher': 'Monitorar arquivos de planejamento GSD (.planning/)',
   'crud.projectColorLabel': 'Cor (borda do container)',
   'crud.projectIconEditHint':
@@ -1200,6 +1237,14 @@ export const ptBR: Record<MessageKey, string> = {
   'ui.titlebar.itemSync': 'Sincronização na nuvem',
   'ui.titlebar.itemProfile': 'Perfil local',
   'ui.titlebar.itemMemory': 'Uso de memória',
+  // Este foi feito para adicionar as traduções em pt-BR da barra de navegação Web e badges de conexão
+  'ui.titlebar.navWorkspace': 'Workspace',
+  'ui.titlebar.navAgents': 'Agentes',
+  'ui.titlebar.navGit': 'Git',
+  'ui.titlebar.navSessions': 'Sessões',
+  'ui.titlebar.navSettings': 'Configurações',
+  'ui.titlebar.modeDesktop': 'Desktop',
+  'ui.titlebar.modeWebServer': 'Servidor Web',
   'sleepy.title': 'Sleepy Features',
   'sleepy.description':
     'Prepare ou rode um lote de tarefas do projeto enquanto você estiver ausente. Os prompts apontam o agente para a fila noturna persistente deste projeto.',
@@ -1357,6 +1402,40 @@ export const ptBR: Record<MessageKey, string> = {
   'git.empty.noFolderDesc': 'O terminal selecionado ainda não possui um diretório de trabalho.',
   'git.empty.noTerminal': 'Nenhum terminal selecionado',
   'git.empty.noTerminalDesc': 'Abra um terminal de projeto para inspecionar seu repositório Git.',
+  'git.graph.title': 'Gráfico de commits',
+  'git.graph.loading': 'Carregando histórico…',
+  'git.graph.empty': 'Nenhum commit ainda.',
+  'git.graph.timeNow': 'agora mesmo',
+  'git.graph.timeMinutes': 'há {count}min',
+  'git.graph.timeHours': 'há {count}h',
+  'git.graph.timeDays': 'há {count}d',
+  'git.graph.filesLoading': 'Carregando arquivos alterados…',
+  'git.graph.filesEmpty': 'Nenhum arquivo alterado (commit vazio ou de merge).',
+  'git.graph.detail.loadingMessage': 'Carregando mensagem do commit…',
+  'git.graph.detail.filesTitle': 'Arquivos alterados',
+  'git.graph.menu.copyHash': 'Copiar hash do commit',
+  'git.graph.menu.createBranch': 'Criar branch aqui',
+  'git.graph.menu.createBranchPrompt': 'Nome da nova branch',
+  'git.graph.menu.branchCreated': 'Branch criada',
+  'git.graph.menu.cherryPick': 'Cherry-pick deste commit',
+  'git.graph.menu.cherryPicked': 'Cherry-pick aplicado',
+  'git.graph.menu.revert': 'Reverter este commit',
+  'git.graph.menu.reverted': 'Commit revertido',
+  'git.graph.menu.resetSoft': 'Resetar branch aqui (soft)',
+  'git.graph.menu.resetMixed': 'Resetar branch aqui (mixed)',
+  'git.graph.menu.resetHard': 'Resetar branch aqui (hard)',
+  'git.graph.menu.resetHardConfirm':
+    'O reset hard descartará TODAS as alterações não salvas da workspace. Continuar?',
+  'git.graph.menu.resetDone': 'Branch resetada',
+  // Este foi feito para adicionar as chaves de busca e atualização do Grafo de Git no i18n em português
+  'git.graph.searchPlaceholder': 'Filtrar commits por mensagem, hash, autor ou ref…',
+  'git.graph.noSearchResults': 'Nenhum commit atende ao filtro de busca.',
+  'git.graph.refresh': 'Atualizar gráfico',
+  'git.incomingOutgoing.title': 'Alterações a receber / enviar',
+  'git.incomingOutgoing.loading': 'Carregando…',
+  'git.incomingOutgoing.empty': 'Nada pra sincronizar.',
+  'git.incomingOutgoing.incoming': 'A receber ({count})',
+  'git.incomingOutgoing.outgoing': 'A enviar ({count})',
   'git.error.notFound': 'Git não foi encontrado',
   'git.error.notRepository': 'Esta pasta não é um repositório Git',
   'git.error.directory': 'A pasta ativa não está disponível',
@@ -1382,6 +1461,15 @@ export const ptBR: Record<MessageKey, string> = {
   'ui.sidebar.emptyTitle': 'Nenhum projeto ainda',
   'ui.sidebar.emptyDesc': 'Crie o primeiro projeto aqui e comece a montar sua workspace.',
   'ui.sidebar.emptyAction': 'Criar projeto',
+  'ui.sidebar.projectSettings': 'Configurações…',
+  'ui.sidebar.exportProjectConfig': 'Exportar configuração…',
+  'ui.sidebar.exportProjectConfigTitle': 'Exportar configuração do projeto',
+  'ui.sidebar.exportProjectConfigDone': 'Configuração do projeto exportada',
+  'ui.sidebar.importProjectConfig': 'Importar configuração…',
+  'ui.sidebar.importProjectConfigTitle': 'Importar configuração de projeto',
+  'ui.sidebar.importProjectConfigDone': 'Projeto importado como um novo projeto',
+  'ui.sidebar.importProjectConfigFailed': 'Não foi possível importar este arquivo',
+  'ui.sidebar.projectConfigFilter': 'Configuração de projeto Alethe',
   'ui.sidebar.editNameColor': 'Editar (nome e cor)…',
   'ui.sidebar.quickRename': 'Renomear rápido',
   'ui.sidebar.newNamePrompt': 'Novo nome:',
@@ -1878,12 +1966,204 @@ export const ptBR: Record<MessageKey, string> = {
     'Travada administrativamente pelo motivo: {reason}. Execute "git worktree unlock" para liberar.',
   'multiAgent.orphanManualRemoval':
     'A limpeza automática falhou repetidamente. Recomenda-se remoção manual.',
+  'merge.integrate': 'Integrar',
+  'merge.integrateTooltip':
+    'Faz merge do trabalho deste agente no branch principal e remove o ambiente',
+  'merge.busyTitle': 'Integração em andamento',
+  'merge.busy': 'Outra integração está rodando — tente novamente em instantes.',
+  'merge.abortBusyTitle': 'Verificação em andamento',
+  'merge.abortBusy':
+    'Uma checagem automática deste merge está rodando agora — tente abortar de novo em um instante.',
 
   'ui.terminal.suspended': 'Suspenso',
   'ui.terminal.suspendedTooltip': 'Terminal suspenso — clique para reativar',
   'ui.terminal.clickToReactivate': 'Clique para reativar',
 
   /* ---- RFC-006/007/008 — ciclo de merge seguro ---- */
+  'merge.sectionTitle': 'Ciclo de merge',
+  'merge.needBranches': 'Este repo precisa de ao menos dois branches locais para merge.',
+  'merge.postActionLabel': 'Ação pós-merge do agente',
+  'merge.postActionRelocateChat': 'Criar nova branch e manter chat ativo',
+  'merge.postActionRelocateSession': 'Criar nova branch e manter sessão (Beta)',
+  'merge.postActionClose': 'Encerrar terminal do agente',
+  'merge.postActionHint':
+    '"Manter chat" reabre o painel na branch nova com uma conversa zerada. "Manter sessão" tentaria retomar exatamente a mesma conversa lá.',
+  'merge.postActionRelocateSessionDisabledHint':
+    'Desativado por enquanto — retomar uma sessão a partir de outro diretório trava indefinidamente em todo CLI de agente já testado (confirmado com o OpenCode; a causa raiz é upstream, fora do controle da Alethe). Selecionar essa opção hoje cai silenciosamente numa conversa nova, até que uma correção upstream apareça.',
+  'merge.commitConfirmTitle': 'Commitar trabalho pendente — {branch}',
+  'merge.commitConfirmDescription':
+    'Esta worktree tem mudanças que nunca foram commitadas. O merge só move commits — revise o que vai ser commitado e escreva uma descrição antes de integrar.',
+  'merge.commitConfirmMessageLabel': 'Mensagem do commit',
+  'merge.commitConfirmMessagePlaceholder': 'O que o agente implementou nesta worktree?',
+  'merge.commitConfirmAction': 'Commitar e integrar',
+  'merge.sourceLabel': 'Branch de origem',
+  'merge.targetLabel': 'Branch de destino',
+  'merge.analyze': 'Analisar',
+  'merge.analyzing': 'Analisando…',
+  'merge.start': 'Iniciar merge',
+  'merge.finalize': 'Finalizar merge',
+  'merge.finalizing': 'Finalizando…',
+  'merge.abort': 'Abortar',
+  'merge.analysisClean':
+    'Sem conflitos de git — isso só checa conflito de merge, não se o código funciona. A validação e o health check (se configurados) ainda rodam quando você clicar em Integrar.',
+  'merge.analysisConflicts': '{count} arquivo(s) em conflito:',
+  'merge.resolvingHint':
+    'O agente de conflito está rodando num terminal do projeto. Quando ele terminar, clique em "Finalizar merge".',
+  'merge.awaitingReviewHint':
+    'O agente disse que terminou. Nada foi validado nem integrado automaticamente — revise as alterações dele e depois clique em "Validar" e "Integrar".',
+  'merge.validateBeforeIntegrateHint': 'Rode "Validar" primeiro.',
+  'merge.conflictTitle': 'Conflito de merge',
+  'merge.conflictBody':
+    '{count} arquivo(s) em conflito. Um agente efêmero foi spawnado para resolver.',
+  'merge.mergedTitle': 'Merge concluído',
+  'merge.mergedUnverifiedTitle': 'Integrado sem verificação',
+  'merge.mergedUnverifiedBody':
+    'Este projeto não tem comandos de validação configurados — a integração seguiu sem checagem automática de build/testes.',
+  'merge.nothingToIntegrateTitle': 'Nada para integrar',
+  'merge.nothingToIntegrateBody':
+    'A branch do agente não tem nenhuma mudança em relação à branch alvo — nada foi commitado ou integrado.',
+  'merge.worktreeRemoveFailedTitle': 'Não foi possível remover a worktree',
+  'merge.relocateFailedTitle': 'Não foi possível realocar o terminal',
+  'merge.contractWarningsTitle': '{count} possível(is) desconexão(ões) de API detectada(s)',
+  'merge.healthProbePassedTitle': 'Boot do app verificado',
+  'merge.healthProbePassedBody': 'Respondeu em {ms}ms (HTTP {status}) num ambiente isolado.',
+  'merge.healthProbeFailedTitle': 'App não respondeu',
+  'merge.healthProbeFailedBody': 'O comando de saúde não respondeu em {ms}ms. {output}',
+  'merge.blockedTitle': 'Merge barrado: {stage}',
+  'merge.retry': 'Retentar ({count})',
+  'merge.cleaningUp': 'Limpando…',
+  'merge.forceCleanup': 'Limpeza forçada',
+  'merge.terminalErrorHint':
+    'O ambiente de merge não pôde ser recuperado automaticamente. A limpeza forçada vai apagar o ambiente temporário.',
+  'merge.adminLockedReason':
+    'Esta worktree está travada administrativamente pelo motivo: {reason}. Execute "git worktree unlock" para liberar.',
+
+  /* ---- SidebarMergePanel — Central de Merges ---- */
+  'merge.panelTitle': 'Central de Merges',
+  'merge.panelEmpty': 'Nenhum merge pendente de revisão.',
+  'merge.panelGatedHint': '{count} agente(s) ainda finalizando o planejamento',
+  'merge.gsdChildErrorTitle': 'GSD Sync não conseguiu atualizar goal/plan',
+  'merge.gsdChildErrorBody': '{error}',
+  'merge.statusReady': 'Aguardando ação',
+  'merge.statusPreparing': 'Analisando…',
+  'merge.statusResolving': 'Resolvendo conflito',
+  'merge.statusAwaitingReview': 'Aguardando sua revisão',
+  'merge.statusFinalizing': 'Finalizando…',
+  'merge.statusRebasing': 'Rebase…',
+  'merge.statusMerged': 'Integrado',
+  'merge.statusBlocked': 'Bloqueado',
+  'merge.statusGateFailed': 'Falhou verificação automática',
+  'merge.statusUnverified': 'Sem verificação automática',
+  'merge.gateFailedDiffEmpty':
+    'Planejamento marcado como completo, mas não há alterações de código entre {branch} e {target}.',
+  'merge.gateFailedValidation':
+    'Planejamento completo, mas a validação falhou em "{stage}": {output}',
+  'merge.gateUnverifiedHint':
+    'Este projeto não tem comandos de validação configurados, então nada foi checado de verdade. Configure na aba Multi-Agentes & MCP.',
+  'merge.gateRecheck': 'Reavaliar',
+  'merge.noRepoTitle': 'Repositório não encontrado',
+  'merge.noRepoBody': 'Não foi possível localizar a raiz do repositório deste projeto.',
+  'merge.reject': 'Rejeitar',
+  'merge.rejectTooltip': 'Remove a worktree sem fazer merge (a branch é preservada)',
+  'merge.rejectConfirm':
+    'Remover a worktree de "{branch}"? A branch é preservada — nenhum merge é feito.',
+  'merge.rejectedTitle': 'Worktree removida',
+  'merge.rejectedBody':
+    'A worktree de "{branch}" foi removida. A branch continua existindo (git branch -D pra apagar de vez).',
+  'merge.rejectFailedTitle': 'Falha ao remover worktree',
+  'merge.validate': 'Validar',
+  'merge.validating': 'Validando…',
+  'merge.validateTooltip': 'Roda os comandos de validação do projeto nesta worktree',
+  'merge.noValidationCommandsTitle': 'Sem comandos de validação',
+  'merge.noValidationCommandsBody':
+    'Configure comandos de validação na aba Multi-Agentes & MCP do projeto.',
+  'merge.validationPassedTitle': 'Validação passou',
+  'merge.validationPassedBody':
+    'Todos os comandos de validação rodaram com sucesso nesta worktree.',
+  'merge.validationUnverifiedTitle': 'Não verificado',
+  'merge.validationUnverifiedBody':
+    'Nenhum comando de validação configurado para este projeto — nada foi checado de verdade (isso não é uma falha).',
+  'merge.validationFailedTitle': 'Validação falhou',
+  'merge.test': 'Testar',
+  'merge.testTooltip': 'Abre um terminal na pasta da worktree pra testar manualmente',
+  'merge.testingStartedTitle': 'Terminal de teste aberto',
+  'merge.testingStartedBody': 'Terminal aberto na pasta da branch {branch}.',
+  'merge.testModalTitle': 'Briefing de Testes: {branch}',
+  'merge.testModalClose': 'Fechar',
+  'merge.testModalStart': 'Iniciar App nesta Branch',
+  'merge.testModalProjectLabel': 'Projeto:',
+  'merge.testModalBranchLabel': 'Ramo:',
+  'merge.testModalChangesTitle': 'Alterações & Correções Realizadas',
+  'merge.testModalStepsTitle': 'Procedimento Recomendado para Testar',
+  'merge.testBriefingLoadingDiff': 'Carregando arquivos alterados…',
+  'merge.testBriefingEmpty': 'Nenhuma alteração detectada.',
+  'merge.testBriefingNoCommands': 'Nenhum comando de validação configurado para este projeto.',
+  'merge.testBriefingRunning': 'Executando: {cmd}',
+  'merge.testBriefingValidationPassed': 'Todos os comandos de validação passaram.',
+  'merge.testBriefingValidationFailed': 'Falhou em "{stage}": {output}',
+  'merge.testHealthTitle': 'Saúde do Servidor',
+  'merge.testHealthNotConfigured':
+    'Nenhum comando de saúde configurado — configure um na aba Multi-Agentes & MCP pra essa seção subir o app de verdade.',
+  'merge.testHealthLoading': 'Subindo o app num ambiente isolado…',
+  'merge.testHealthResponded': 'Respondeu em {ms}ms (HTTP {status}).',
+  'merge.testHealthNoResponse': 'Não respondeu após {ms}ms. {output}',
+  'merge.testHealthTerminalVerified': 'Um terminal de verdade foi aberto e confirmado funcionando.',
+  'merge.testHealthTerminalFailed':
+    'O app respondeu, mas abrir um terminal de verdade contra ele falhou.',
+  'merge.testCategorySetup': 'Preparação — necessária antes de testar',
+  'merge.testCategoryAction': 'Ação — o próprio passo de teste',
+  'merge.testCategoryVerify': 'Verificação — o que checar no resultado',
+  'merge.testItemPass': 'Passou',
+  'merge.testItemFail': 'Falhou',
+  'merge.testItemNotePlaceholder': 'O que deu errado? (opcional, enviado ao agente)',
+  'merge.testSendFeedback': 'Enviar feedback ao agente',
+  'merge.testSendFeedbackTooltip': 'Manda o que passou/falhou direto pro terminal do agente',
+  'merge.testFeedbackSentTitle': 'Feedback enviado',
+  'merge.testFeedbackSentBody': 'O resultado do checklist de teste foi enviado ao agente.',
+  'merge.review': 'Revisar',
+  'merge.reviewTooltip':
+    'Abre (ou reabre a caixa de feedback de) um agente revisor dedicado nesta worktree',
+  'merge.reviewStartedTitle': 'Revisor iniciado',
+  'merge.reviewStartedBody': 'Um agente revisor foi aberto num terminal desta worktree.',
+  'merge.reviewFeedbackPlaceholder': 'O que o agente precisa corrigir, checar ou explicar?',
+  'merge.reviewFeedbackCancel': 'Cancelar',
+  'merge.reviewFeedbackSend': 'Enviar ao revisor',
+  'merge.reviewNotReadyTitle': 'Revisor ainda não está pronto',
+  'merge.reviewNotReadyBody':
+    'O terminal do revisor ainda está iniciando — tente de novo em instantes.',
+  'merge.reviewFeedbackSentTitle': 'Feedback enviado',
+  'merge.reviewFeedbackSentBody': 'Sua mensagem foi enviada ao agente revisor no terminal dele.',
+  'merge.treeMainNode': 'main',
+  'merge.treeEmptyForProject':
+    'Nenhum merge pendente neste projeto — há pendências em outros projetos.',
+  'merge.centerPagerLabel': '{index} de {total}',
+  'merge.centerPrev': 'Merge anterior',
+  'merge.centerNext': 'Próximo merge',
+  'merge.treeResizeHandle': 'Arraste pra redimensionar a lista de merges',
+
+  /* ---- fsBrowser ---- */
+  'fsBrowser.titleFolder': 'Selecionar Pasta',
+  'fsBrowser.titleFile': 'Selecionar Arquivo',
+  'fsBrowser.home': 'Início',
+  'fsBrowser.drives': 'Unidades',
+  'fsBrowser.up': 'Acima',
+  'fsBrowser.searchPlaceholder': 'Buscar pastas e arquivos...',
+  'fsBrowser.pathInputPlaceholder': 'Digite o caminho manualmente...',
+  'fsBrowser.selectCurrentFolder': 'Selecionar esta pasta',
+  'fsBrowser.selectFile': 'Selecionar arquivo',
+  'fsBrowser.empty': 'Esta pasta está vazia',
+  'fsBrowser.itemsCount': '{count} itens',
+
+  /* ---- persistence ---- */
+  'persistence.conflictTitle': 'Há dados mais recentes disponíveis',
+  'persistence.conflictBody':
+    'Suas alterações locais não sobrescreveram os dados mais recentes do perfil. Uma cópia de recuperação foi salva; recarregue o Alethe para usar a versão mais recente.',
+  'persistence.coreMismatchTitle': 'Outro núcleo do Alethe está em execução',
+  'persistence.coreMismatchBody':
+    'O servidor local pertence a outra pasta de dados do app. O Alethe bloqueou a sincronização para não misturar perfis. Feche o outro núcleo e reabra o Alethe.',
+  'persistence.writeTitle': 'As alterações ainda não foram salvas',
+  'persistence.writeBody':
+    'O Alethe não conseguiu acessar o armazenamento local. Mantenha o app aberto enquanto a conexão é recuperada.',
 
   /* ---- MCP e Skills ---- */
   'mcp.tab': 'MCP',
@@ -1947,7 +2227,8 @@ export const ptBR: Record<MessageKey, string> = {
   'mcp.errGeneric': 'A operação falhou.',
   'mcp.healthCheck': 'Testar',
   'mcp.healthChecking': 'Testando…',
-  'mcp.healthCheckHint': 'Pergunta ao agente se ele consegue mesmo alcançar os servidores. O Claude conecta em cada um, então leva alguns segundos.',
+  'mcp.healthCheckHint':
+    'Pergunta ao agente se ele consegue mesmo alcançar os servidores. O Claude conecta em cada um, então leva alguns segundos.',
   'mcp.health.connected': 'conectado',
   'mcp.health.failed': 'falhou',
   'mcp.health.needsAuth': 'precisa autenticar',
@@ -2048,5 +2329,4 @@ export const ptBR: Record<MessageKey, string> = {
   'skills.removedLinkOnly': 'A cópia compartilhada foi mantida em {path}',
   'skills.removeFailed': 'Não deu para remover a skill',
   'skills.errBundled': 'Essa skill vem com o agente e não pode ser removida pelo Alethe.',
-
 }

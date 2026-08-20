@@ -14,11 +14,6 @@ import {
 
 type Session = { folder: string; ptyId: string }
 
-   
-                                                                 
-                                                                     
-                                                         
-   
 export function useInstalledAgents(session: Session | null) {
   const t = useT()
   const [installed, setInstalled] = useState<InstalledAgent[]>([])
@@ -39,7 +34,6 @@ export function useInstalledAgents(session: Session | null) {
       .catch((err) => console.error('[AgentCanvasPOC] falha listando agents:', err))
   }, [session])
 
-                                                                
   useEffect(() => {
     if (!session) return
     economyAgentsEnabled(session.folder)
@@ -48,10 +42,6 @@ export function useInstalledAgents(session: Session | null) {
     refreshInstalled()
   }, [session, refreshInstalled])
 
-                                                                               
-                                                                                  
-                                                                                  
-                                                                                  
   useEffect(() => {
     if (!session) return
     setCoreAgentsReady(false)

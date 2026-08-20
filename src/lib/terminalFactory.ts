@@ -1,9 +1,3 @@
-   
-                                                                             
-                                                                        
-                                                      
-   
-
 import { nanoid } from 'nanoid'
 
 import { MAX_RECENT_PROJECT_TABS } from '../stores/projectsStore.constants'
@@ -21,7 +15,6 @@ import type {
   WorkspaceRecentTab,
 } from './types'
 
-                                                
 export function newContainer(
   projectId: string,
   paneIds: string[],
@@ -70,6 +63,8 @@ export function makeDefaultTerminal(args: {
   }
   worktreeAgentId?: string
   gsdSyncViewer?: boolean
+  ephemeralConflictAgent?: boolean
+  ephemeralUtility?: boolean
 }): Terminal {
   const tabId = nanoid()
   const now = Date.now()
@@ -83,6 +78,8 @@ export function makeDefaultTerminal(args: {
     lastUsedAt: now,
     worktreeAgentId: args.worktreeAgentId,
     gsdSyncViewer: args.gsdSyncViewer,
+    ephemeralConflictAgent: args.ephemeralConflictAgent,
+    ephemeralUtility: args.ephemeralUtility,
     tabs: [
       {
         id: tabId,
@@ -95,6 +92,7 @@ export function makeDefaultTerminal(args: {
         initialInput: args.firstTab.initialInput,
         handoff: args.firstTab.handoff,
         runtimeProfile: args.firstTab.runtimeProfile,
+        skipSessionClaim: true,
       },
     ],
   }
@@ -103,15 +101,12 @@ export function makeDefaultTerminal(args: {
 const MARKDOWN_FILE_PATTERN = /\.(md|markdown|mdx)$/i
 const VIDEO_FILE_PATTERN = /\.(mp4|m4v|mov|avi|mkv|webm|ogv)$/i
 
-                                                                                         
 function classifyPaneKind(filePath: string): 'markdown' | 'video' | 'file' {
   if (VIDEO_FILE_PATTERN.test(filePath)) return 'video'
   return MARKDOWN_FILE_PATTERN.test(filePath) ? 'markdown' : 'file'
 }
 
 export function makeFilePane(args: { filePath: string; name?: string }): Terminal {
-                                                                              
-                                               
   const filePath = args.filePath.trim().replace(/:\d+(?::\d+)?$/, '')
   return {
     id: nanoid(),
@@ -215,9 +210,6 @@ export function clearTerminalPtyIds(terminal: Terminal): Terminal {
   }
 }
 
-                                                                                    
-                                                                                
-                                                                                     
 export function resetTerminalRuntime(terminal: Terminal): Terminal {
   if (terminal.tabs.length === 0) return terminal
   return {
@@ -236,7 +228,18 @@ export function getProjectDefaultCwd(
   projects: Project[] = [],
 ): string {
   if (!project) return ''
-  if (project.defaultCwd?.trim()) return project.defaultCwd.trim()
+  const stored = project.defaultCwd?.trim()
+  if (stored) {
+    // Ao contrário de `getProjectRepoRoot`, este era confiado direto sem
+    // nenhum filtro — se o projeto ficar sem nenhum terminal "puro" pra
+    // referenciar (todos isolados, ou todos apagados), `defaultCwd` pode
+    // ter sido gravado com um caminho de worktree/ambiente efêmero de uma
+    // sessão anterior. Confirmado ao vivo: modal "Adicionar terminal"
+    // sugerindo `.alethe\worktrees\<id>` como pasta padrão. Deriva a raiz
+    // real quando o valor guardado bate com esse padrão, em vez de expor
+    // o caminho efêmero direto na UI.
+    return deriveRepoRootFromWorktreeCwd(stored) || stored
+  }
   const candidates = [project]
   if (project.groupId) {
     candidates.push(...projects.filter((p) => p.id !== project.id && p.groupId === project.groupId))
@@ -254,47 +257,53 @@ export function getProjectDefaultCwd(
   return ''
 }
 
-/** Casa o segmento `.alethe/worktrees/` (Windows ou POSIX) em qualquer ponto
- *  do caminho — inclusive worktrees aninhadas, onde o match mais à esquerda
- *  ainda aponta pro segmento mais externo (a raiz real). */
-const ALETHE_WORKTREES_SEGMENT = /[\\/]\.alethe[\\/]worktrees[\\/]/i
+/** Casa o segmento `.alethe/worktrees/` OU `.alethe/merge-envs/` (Windows ou
+ *  POSIX) em qualquer ponto do caminho — inclusive worktrees aninhadas, onde
+ *  o match mais à esquerda ainda aponta pro segmento mais externo (a raiz
+ *  real). `merge-envs` é o ambiente EFÊMERO do agente de resolução de
+ *  conflito (`conflict_resolution.rs`) — mesma classe de "caminho isolado
+ *  sem representar a pasta principal do projeto" das worktrees normais. */
+const ALETHE_WORKTREES_SEGMENT = /[\\/]\.alethe[\\/](?:worktrees|merge-envs)[\\/]/i
 
-                                                                           
-                                                                             
-                                                                           
-                                                                    
+/** Deriva a raiz do repo a partir do cwd de uma worktree/ambiente efêmero
+ *  isolado, sem git: o próprio Alethe sempre cria worktrees em
+ *  `<raiz>/.alethe/worktrees/<id>` (ver `worktrees_base` em `worktrees.rs`)
+ *  e ambientes de merge em `<raiz>/.alethe/merge-envs/<id>` (ver
+ *  `merge_envs_dir` em `merge_analyzer.rs`) — cortar nesse ponto devolve a
+ *  raiz original, mesmo que o cwd seja de uma worktree aninhada. */
 function deriveRepoRootFromWorktreeCwd(cwd: string): string {
   const match = cwd.match(ALETHE_WORKTREES_SEGMENT)
   if (!match || match.index === undefined) return ''
   return cwd.slice(0, match.index)
 }
 
-   
-                                                                       
-                                                                           
-                                                              
-   
 export function getProjectRepoRoot(project: Project | null | undefined): string {
   if (!project) return ''
   const sorted = [...project.terminals].sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))
 
-                                                                             
-                                                                       
-                                                                             
-  // de raiz, devolvendo o path da worktree em vez do repo de verdade, e
-                                                                         
-                                                                        
-                                                                 
-  const pure = sorted.filter((terminal) => !terminal.worktreeAgentId && !terminal.gsdSyncViewer)
+  // `gsdSyncViewer`/`ephemeralConflictAgent`/`ephemeralUtility` nunca contam
+  // como "puro": o cwd deles É a worktree do agente (só não têm
+  // `worktreeAgentId` porque não são o agente isolado em si — são viewer
+  // secundário, agente efêmero de conflito, ou sessão de "Revisar"/"Testar")
+  // — sem essa exclusão qualquer um vira referência de raiz por engano,
+  // devolvendo o path da worktree em vez do repo de verdade. Já quebrou a
+  // descoberta de sessões GSD Sync (gsdSyncViewer) e, confirmado ao vivo
+  // nesta sessão, fazia o card do agente sumir da Central de Merges sempre
+  // que "Revisar"/"Testar" estava aberto (`pendingMerges` para de bater
+  // `term.cwd !== repo` pro terminal original assim que `repo` fica
+  // contaminado com o path da própria worktree).
+  const pure = sorted.filter(
+    (terminal) =>
+      !terminal.worktreeAgentId &&
+      !terminal.gsdSyncViewer &&
+      !terminal.ephemeralConflictAgent &&
+      !terminal.ephemeralUtility,
+  )
   for (const terminal of pure) {
     const cwd = resolveTerminalCwd(terminal)
     if (cwd) return cwd
   }
 
-                                                                          
-                                                                        
-                                                                        
-                                                       
   for (const terminal of sorted) {
     const cwd = resolveTerminalCwd(terminal)
     const derived = cwd && deriveRepoRootFromWorktreeCwd(cwd)

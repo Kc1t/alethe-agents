@@ -84,6 +84,11 @@ export function applyPromptHistoryInput(
   return historyChanged
 }
 
+// Bracketed paste (DECSET 2004): quando a app liga, envolvemos a colagem
+// inteira nos marcadores 200~/201~ pra ela tratar como um bloco único. Sem
+// isso, cada \r interno vira Enter e TUIs como o Claude submetem só a
+// primeira linha — a colagem grande chegava cortada. Os marcadores ficam
+// FORA do chunking pra nunca serem partidos no meio.
 export async function writePtyChunked(id: string, text: string, bracketed: boolean): Promise<void> {
   const open = bracketed ? '\x1b[200~' : ''
   const close = bracketed ? '\x1b[201~' : ''
