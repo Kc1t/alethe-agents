@@ -425,10 +425,12 @@ pub fn run() {
             // emitir `Exit`; esperar esse evento deixa shells/agentes vivos
 
             if let tauri::RunEvent::ExitRequested { .. } = event {
+                agent_events::cleanup_settings_file();
                 pty::kill_all_sessions_background(&sessions_for_exit);
             }
 
             if let tauri::RunEvent::Exit = event {
+                agent_events::cleanup_settings_file();
                 crash_watch::mark_clean_exit();
             }
         });
