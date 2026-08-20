@@ -362,7 +362,6 @@ export function NormalProjectSidebar() {
           })
         }
         onToggle={() => actions.toggleGroupCollapsed(g.id)}
-        onOpenAll={() => onGroupOpenAll(g)}
         onOpenOnly={() => onGroupOpenAll(g, 'only')}
         dragKind={draggingKind}
         reorderEdge={dropIndicator?.id === `grp:${g.id}` ? dropIndicator.edge : null}

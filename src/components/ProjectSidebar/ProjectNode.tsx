@@ -5,11 +5,10 @@ import { useT } from '../../lib/i18n'
 import { type SidebarDropEdge } from '../../lib/sidebarDrag'
 import { type Project, type Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
-import { useTerminalsStore } from '../../stores/terminalsStore'
-import { useUiStore } from '../../stores/uiStore'
 import { Collapse } from '../ui/Collapse'
 import { DotmCircular2 } from '../ui/dotm-circular-2'
 import styles from './ProjectSidebar.module.css'
+import { useProjectNodeState } from './sidebarController'
 import { TerminalNode } from './TerminalNode'
 
 export type ProjectNodeProps = {
@@ -49,23 +48,8 @@ export function ProjectNode({
   const { setNodeRef: dropRef } = useDroppable({ id: `proj:${project.id}` })
   const draggable = useDraggable({ id: `proj:${project.id}` })
   const toggleCollapsed = useProjectsStore((state) => state.toggleProjectCollapsed)
-  const visibleTerminals = project.terminals.filter((terminal) => !terminal.gsdSyncViewer)
-  const isEmpty = visibleTerminals.length === 0
-  const allDisabled = visibleTerminals.length > 0 && visibleTerminals.every((term) => term.disabled)
-  const runningCount = useTerminalsStore((state) =>
-    visibleTerminals.reduce(
-      (count, terminal) =>
-        count +
-        (terminal.tabs.some((tab) => tab.ptyId && state.byPtyId[tab.ptyId]?.status === 'working')
-          ? 1
-          : 0),
-      0,
-    ),
-  )
-  const expanded = !project.collapsed
-  const focusedTerminalId = useUiStore((state) =>
-    state.activeTerminal?.projectId === project.id ? state.activeTerminal.terminalId : undefined,
-  )
+  const { allDisabled, expanded, focusedTerminalId, isEmpty, runningCount, visibleTerminals } =
+    useProjectNodeState(project)
   const dropClass =
     dropEdge === 'before'
       ? styles.dropBefore

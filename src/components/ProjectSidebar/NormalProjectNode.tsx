@@ -4,12 +4,11 @@ import { ChevronDown, Folder, MoreHorizontal, Network, Pause, Plus } from 'lucid
 import { useT } from '../../lib/i18n'
 import { type SidebarDropEdge } from '../../lib/sidebarDrag'
 import { type Project, type Terminal } from '../../lib/types'
-import { useTerminalsStore } from '../../stores/terminalsStore'
-import { useUiStore } from '../../stores/uiStore'
 import { Collapse } from '../ui/Collapse'
 import { DotmCircular2 } from '../ui/dotm-circular-2'
 import styles from './NormalProjectSidebar.module.css'
 import { NormalTerminalNode } from './NormalTerminalNode'
+import { useProjectNodeState } from './sidebarController'
 
 export type NormalProjectNodeProps = {
   project: Project
@@ -57,23 +56,8 @@ export function NormalProjectNode({
           ? styles.dropInside
           : ''
 
-  const visibleTerminals = project.terminals.filter((term) => !term.gsdSyncViewer)
-  const isEmpty = visibleTerminals.length === 0
-
-  const allDisabled = visibleTerminals.length > 0 && visibleTerminals.every((term) => term.disabled)
-  const runningCount = useTerminalsStore((state) =>
-    visibleTerminals.reduce(
-      (n, term) =>
-        n +
-        (term.tabs.some((tab) => tab.ptyId && state.byPtyId[tab.ptyId]?.status === 'working')
-          ? 1
-          : 0),
-      0,
-    ),
-  )
-  const focusedTerminalId = useUiStore((s) =>
-    s.activeTerminal?.projectId === project.id ? s.activeTerminal?.terminalId : undefined,
-  )
+  const { allDisabled, focusedTerminalId, isEmpty, runningCount, visibleTerminals } =
+    useProjectNodeState(project)
 
   return (
     <div className={`${styles.projectNode} ${allDisabled ? styles.projectDisabled : ''}`}>

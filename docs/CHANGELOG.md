@@ -12,6 +12,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- Clean and Normal sidebar variants now share project state derivation and group-tree rendering, including cycle-safe descendant traversal for malformed persisted group data.
 - Consolidated native/Web transport APIs, sidebar state/actions/drag behavior, terminal-node rendering, Remote Control polling/mutations, and HTTP route response/query helpers so Desktop, Web, and visual variants share tested behavior instead of maintaining parallel implementations.
 - Restored desktop startup by completing the backup-vault purge IPC contract and the Google account preference imports that previously stopped the frontend from mounting.
 

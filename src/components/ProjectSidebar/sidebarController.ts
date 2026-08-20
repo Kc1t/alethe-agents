@@ -1,7 +1,36 @@
 import { useShallow } from 'zustand/react/shallow'
 
+import type { Project } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
+import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
+
+export function useProjectNodeState(project: Project) {
+  const visibleTerminals = project.terminals.filter((terminal) => !terminal.gsdSyncViewer)
+  const runningCount = useTerminalsStore((state) =>
+    visibleTerminals.reduce(
+      (count, terminal) =>
+        count +
+        (terminal.tabs.some((tab) => tab.ptyId && state.byPtyId[tab.ptyId]?.status === 'working')
+          ? 1
+          : 0),
+      0,
+    ),
+  )
+  const focusedTerminalId = useUiStore((state) =>
+    state.activeTerminal?.projectId === project.id ? state.activeTerminal.terminalId : undefined,
+  )
+
+  return {
+    allDisabled:
+      visibleTerminals.length > 0 && visibleTerminals.every((terminal) => terminal.disabled),
+    expanded: !project.collapsed,
+    focusedTerminalId,
+    isEmpty: visibleTerminals.length === 0,
+    runningCount,
+    visibleTerminals,
+  }
+}
 
 export function useSidebarData() {
   return useProjectsStore(

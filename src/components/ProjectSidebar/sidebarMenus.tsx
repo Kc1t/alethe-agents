@@ -20,6 +20,7 @@ import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { pickFile, saveFile } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
+import { collectDescendants } from '../../lib/sidebarTree'
 import {
   getPtyCwd,
   openInFileExplorer,
@@ -33,7 +34,6 @@ import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { type MenuItem } from './ContextMenu'
-import { collectDescendants } from './GroupNode'
 
 type ProjectsState = ReturnType<typeof useProjectsStore.getState>
 type UiState = ReturnType<typeof useUiStore.getState>
