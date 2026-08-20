@@ -1,26 +1,20 @@
 import { Folder, FolderCheck, Zap } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-import { useUiStore } from '../../stores/uiStore'
-import { useProjectsStore } from '../../stores/projectsStore'
+import {
+  createUnrestrictedAgentState,
+  SHELL_FIRST_AGENT_OPTIONS,
+  unrestrictedArgsForAgent,
+} from '../../lib/agentCreation'
 import { pickDirectory } from '../../lib/dialog'
-import { UNRESTRICTED_FLAG, type AgentRuntimeProfile, type AgentType } from '../../lib/types'
-import { AgentIcon } from '../icons/AgentIcons'
 import { useT } from '../../lib/i18n'
-import { Modal } from './Modal'
-import controls from './controls.module.css'
+import { type AgentRuntimeProfile, type AgentType, UNRESTRICTED_FLAG } from '../../lib/types'
+import { useProjectsStore } from '../../stores/projectsStore'
+import { useUiStore } from '../../stores/uiStore'
+import { AgentIcon } from '../icons/AgentIcons'
 import picker from './agentPicker.module.css'
-
-const AGENTS: { type: AgentType; label: string }[] = [
-  { type: 'shell', label: 'Shell' },
-  { type: 'claude', label: 'Claude' },
-  { type: 'codex', label: 'Codex' },
-  { type: 'copilot', label: 'GitHub Copilot' },
-  { type: 'antigravity', label: 'Antigravity' },
-  { type: 'opencode', label: 'OpenCode' },
-  { type: 'freebuff', label: 'Freebuff' },
-  { type: 'mimo', label: 'Mimo' },
-]
+import controls from './controls.module.css'
+import { Modal } from './Modal'
 
 export function NewSubTabModal() {
   const t = useT()
@@ -44,18 +38,9 @@ export function NewSubTabModal() {
   const [type, setType] = useState<AgentType>('shell')
   const [runtimeProfile, setRuntimeProfile] = useState<AgentRuntimeProfile>('lean')
   const [cwd, setCwd] = useState('')
-  const [unrestricted, setUnrestricted] = useState<Record<AgentType, boolean>>({
-    shell: false,
-    claude: false,
-    codex: false,
-    copilot: false,
-    antigravity: false,
-    opencode: false,
-    freebuff: false,
-    mimo: false,
-  })
+  const [unrestricted, setUnrestricted] = useState(createUnrestrictedAgentState)
 
-  const visibleAgents = AGENTS.filter((a) => enabled[a.type])
+  const visibleAgents = SHELL_FIRST_AGENT_OPTIONS.filter((agent) => enabled[agent.type])
   const inheritedCwd = useMemo(() => {
     const activeTab =
       terminal?.tabs.find((item) => item.id === terminal.activeTabId) ?? terminal?.tabs[0]
@@ -71,22 +56,12 @@ export function NewSubTabModal() {
     setType('shell')
     setRuntimeProfile('lean')
     setCwd('')
-    setUnrestricted({
-      shell: false,
-      claude: false,
-      codex: false,
-      copilot: false,
-      antigravity: false,
-      opencode: false,
-      freebuff: false,
-      mimo: false,
-    })
+    setUnrestricted(createUnrestrictedAgentState())
   }
 
   const submit = () => {
     if (!context?.projectId || !context?.terminalId) return
-    const flag = UNRESTRICTED_FLAG[type]
-    const extraArgs = unrestricted[type] && flag ? [flag] : undefined
+    const extraArgs = unrestrictedArgsForAgent(type, unrestricted)
     createSubTab(context.projectId, context.terminalId, {
       type,
       cwd: cwd.trim() || inheritedCwd,
