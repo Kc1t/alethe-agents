@@ -15,6 +15,7 @@ import { writeClipboardText } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
+import { GoogleIcon } from '../icons/AgentIcons'
 import styles from './MeshSidebarView.module.css'
 
 export function MeshSidebarView() {
@@ -52,6 +53,7 @@ export function MeshSidebarView() {
             className={styles.loginGoogleBtn}
             onClick={() => openModal('sync')}
           >
+            <GoogleIcon size={14} />
             <span>Conectar Google / Email</span>
           </button>
         </div>

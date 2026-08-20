@@ -50,9 +50,40 @@ export async function triggerProjectArchiveBackup(projectPath: string, projectNa
   return invoke<BackupArchiveEntry>('trigger_project_archive_backup', { projectPath, projectName })
 }
 
-export async function purgeProjectBackupsSecured(projectPath: string, expectedName: string, confirmationName: string): Promise<number> {
+export type GoogleSyncUser = {
+  email: string
+  name: string
+  picture?: string
+  connected: boolean
+  lastSyncMs?: number
+}
+
+export async function startGoogleSyncAuth(): Promise<GoogleSyncUser> {
   if (!isTauriEnv()) {
-    return 1
+    return {
+      email: 'miguel@alethe.dev',
+      name: 'Miguelsp',
+      connected: true,
+      lastSyncMs: Date.now(),
+    }
   }
-  return invoke<number>('purge_project_backups_secured', { projectPath, expectedName, confirmationName })
+  return invoke<GoogleSyncUser>('start_google_sync_auth')
+}
+
+export async function getGoogleSyncStatus(): Promise<GoogleSyncUser> {
+  if (!isTauriEnv()) {
+    return {
+      email: '',
+      name: '',
+      connected: false,
+    }
+  }
+  return invoke<GoogleSyncUser>('get_google_sync_status')
+}
+
+export async function disconnectGoogleSync(): Promise<boolean> {
+  if (!isTauriEnv()) {
+    return true
+  }
+  return invoke<boolean>('disconnect_google_sync')
 }

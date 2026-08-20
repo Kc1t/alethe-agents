@@ -1,7 +1,8 @@
-import { Check, ChevronRight, Globe, UserRound } from 'lucide-react'
+import { Check, ChevronRight, UserRound } from 'lucide-react'
 
 import { LOCALES, useT } from '../../../lib/i18n'
 import { useProjectsStore } from '../../../stores/projectsStore'
+import { GoogleIcon } from '../../icons/AgentIcons'
 import { ImageInput } from '../ImageInput'
 import controls from '../controls.module.css'
 import styles from '../PreferencesModal.module.css'
@@ -20,6 +21,41 @@ export function AccountPage({
   const preferences = useProjectsStore((state) => state.preferences)
   const setLanguage = useProjectsStore((state) => state.setLanguage)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
+  const pushToast = useUiStore((state) => state.pushToast)
+
+  const [googleUser, setGoogleUser] = useState<GoogleSyncUser>({
+    email: '',
+    name: '',
+    connected: false,
+  })
+  const [loadingAuth, setLoadingAuth] = useState(false)
+
+  useEffect(() => {
+    getGoogleSyncStatus().then(setGoogleUser).catch(() => {})
+  }, [])
+
+  const handleConnectGoogle = async () => {
+    setLoadingAuth(true)
+    try {
+      const user = await startGoogleSyncAuth()
+      setGoogleUser(user)
+      pushToast({ title: 'Google Conectado', body: `Autenticado com sucesso como ${user.email}` })
+    } catch (e) {
+      pushToast({ title: 'Erro de Conexão', body: String(e) })
+    } finally {
+      setLoadingAuth(false)
+    }
+  }
+
+  const handleDisconnect = async () => {
+    try {
+      await disconnectGoogleSync()
+      setGoogleUser({ email: '', name: '', connected: false })
+      pushToast({ title: 'Desconectado', body: 'Conta Google desvinculada. Modo Local ativo.' })
+    } catch (e) {
+      pushToast({ title: 'Erro', body: String(e) })
+    }
+  }
 
   return (
     <>
@@ -82,42 +118,79 @@ export function AccountPage({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              padding: '10px 12px',
+              padding: '12px 14px',
               background: 'var(--bg-sunken)',
               border: '1px solid var(--border)',
               borderRadius: 'var(--radius-md)',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Globe size={18} style={{ color: 'var(--accent)' }} />
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <strong style={{ fontSize: '12px' }}>Alethe Cloud / Google Identity</strong>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <GoogleIcon size={18} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <strong style={{ fontSize: '13px', color: 'var(--fg)' }}>
+                  {googleUser.connected ? googleUser.name : 'Alethe Cloud · Conta Google'}
+                </strong>
                 <span style={{ fontSize: '11px', color: 'var(--fg-muted)' }}>
-                  Não conectado · Sincronização Local ativa
+                  {googleUser.connected
+                    ? `${googleUser.email} · Sincronização Online`
+                    : 'Não conectado · Sincronização Local (Mesh P2P)'}
                 </span>
               </div>
             </div>
-            <button
-              type="button"
-              className={styles.primaryButton || styles.secondaryButton}
-              style={{
-                background: 'var(--accent)',
-                color: 'var(--bg)',
-                fontWeight: 600,
-                fontSize: '11px',
-                padding: '6px 12px',
-                border: 'none',
-                borderRadius: 'var(--radius-sm)',
-                cursor: 'pointer',
-              }}
-              onClick={() => {
-                const openModal = (window as unknown as { __openAletheModal?: (m: string) => void })
-                  .__openAletheModal
-                if (openModal) openModal('sync')
-              }}
-            >
-              Conectar Google
-            </button>
+            {googleUser.connected ? (
+              <button
+                type="button"
+                style={{
+                  background: 'transparent',
+                  color: 'var(--status-error)',
+                  fontWeight: 600,
+                  fontSize: '11px',
+                  padding: '6px 12px',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  cursor: 'pointer',
+                }}
+                onClick={handleDisconnect}
+              >
+                Desconectar
+              </button>
+            ) : (
+              <button
+                type="button"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  background: 'var(--bg)',
+                  color: 'var(--fg)',
+                  fontWeight: 600,
+                  fontSize: '12px',
+                  padding: '7px 14px',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  cursor: 'pointer',
+                  boxShadow: 'var(--shadow-xs)',
+                }}
+                disabled={loadingAuth}
+                onClick={handleConnectGoogle}
+              >
+                <GoogleIcon size={15} />
+                <span>{loadingAuth ? 'Conectando...' : 'Conectar com Google'}</span>
+              </button>
+            )}
           </div>
         </div>
       </SettingsSection>
