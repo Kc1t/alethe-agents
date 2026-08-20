@@ -1,20 +1,18 @@
 import { Folder, FolderCheck, Zap } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-import {
-  createUnrestrictedAgentState,
-  SHELL_FIRST_AGENT_OPTIONS,
-  unrestrictedArgsForAgent,
-} from '../../lib/agentCreation'
+import { useAgentCreationForm } from '../../hooks/useAgentCreationForm'
+import { SHELL_FIRST_AGENT_OPTIONS, unrestrictedArgsForAgent } from '../../lib/agentCreation'
 import { pickDirectory } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
-import { type AgentRuntimeProfile, type AgentType, UNRESTRICTED_FLAG } from '../../lib/types'
+import { UNRESTRICTED_FLAG } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AgentIcon } from '../icons/AgentIcons'
 import picker from './agentPicker.module.css'
 import controls from './controls.module.css'
 import { Modal } from './Modal'
+import { RuntimeProfileField } from './RuntimeProfileField'
 
 export function NewSubTabModal() {
   const t = useT()
@@ -35,10 +33,16 @@ export function NewSubTabModal() {
     return project?.terminals.find((item) => item.id === context.terminalId) ?? null
   })
 
-  const [type, setType] = useState<AgentType>('shell')
-  const [runtimeProfile, setRuntimeProfile] = useState<AgentRuntimeProfile>('lean')
   const [cwd, setCwd] = useState('')
-  const [unrestricted, setUnrestricted] = useState(createUnrestrictedAgentState)
+  const {
+    resetAgentCreation,
+    runtimeProfile,
+    setRuntimeProfile,
+    setType,
+    toggleUnrestricted,
+    type,
+    unrestricted,
+  } = useAgentCreationForm('shell')
 
   const visibleAgents = SHELL_FIRST_AGENT_OPTIONS.filter((agent) => enabled[agent.type])
   const inheritedCwd = useMemo(() => {
@@ -53,10 +57,8 @@ export function NewSubTabModal() {
   }, [open, context?.projectId, context?.terminalId, inheritedCwd])
 
   const reset = () => {
-    setType('shell')
-    setRuntimeProfile('lean')
     setCwd('')
-    setUnrestricted(createUnrestrictedAgentState())
+    resetAgentCreation()
   }
 
   const submit = () => {
@@ -125,7 +127,7 @@ export function NewSubTabModal() {
                       onClick={(e) => {
                         e.stopPropagation()
                         setType(a.type)
-                        setUnrestricted((u) => ({ ...u, [a.type]: !u[a.type] }))
+                        toggleUnrestricted(a.type)
                       }}
                       title={
                         unrestricted[a.type]
@@ -162,29 +164,12 @@ export function NewSubTabModal() {
           })}
         </div>
       </div>
-      {type !== 'shell' ? (
-        <div className={controls.field}>
-          <label className={controls.label}>{t('term.runtimeProfile')}</label>
-          <div className={controls.pillRow}>
-            {(['full', 'lean', 'diagnostic'] as const).map((profile) => (
-              <button
-                key={profile}
-                type="button"
-                className={`${controls.pill} ${runtimeProfile === profile ? controls.pillActive : ''}`}
-                onClick={() => setRuntimeProfile(profile)}
-                title={t(`term.runtimeProfile.${profile}.desc`)}
-              >
-                {t(`term.runtimeProfile.${profile}`)}
-              </button>
-            ))}
-          </div>
-          <span className={controls.hint}>
-            {type === 'opencode'
-              ? t('term.runtimeProfile.opencodeNote')
-              : t(`term.runtimeProfile.${runtimeProfile}.desc`)}
-          </span>
-        </div>
-      ) : null}
+      <RuntimeProfileField
+        agentType={type}
+        value={runtimeProfile}
+        onChange={setRuntimeProfile}
+        showOpenCodeNote
+      />
       <div className={controls.field}>
         <label className={controls.label}>{t('term.folderCwd')}</label>
         <div className={controls.cwdRow}>

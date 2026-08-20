@@ -12,6 +12,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- Terminal and sub-tab dialogs now use one tested creation-state controller and one runtime-profile field, preventing their reset, permission, and runtime behavior from drifting apart.
 - Group create/edit dialogs now share one token-based field implementation, while terminal and sub-tab creation share the same tested agent, permission, and launch-argument contract.
 - Clean and Normal sidebar variants now share project state derivation and group-tree rendering, including cycle-safe descendant traversal for malformed persisted group data.
 - Consolidated native/Web transport APIs, sidebar state/actions/drag behavior, terminal-node rendering, Remote Control polling/mutations, and HTTP route response/query helpers so Desktop, Web, and visual variants share tested behavior instead of maintaining parallel implementations.

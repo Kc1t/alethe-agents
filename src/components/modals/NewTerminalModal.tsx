@@ -1,15 +1,12 @@
 import { CircleCheck, Folder, Info, Zap } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-import {
-  AGENT_OPTIONS,
-  createUnrestrictedAgentState,
-  unrestrictedArgsForAgent,
-} from '../../lib/agentCreation'
+import { useAgentCreationForm } from '../../hooks/useAgentCreationForm'
+import { AGENT_OPTIONS, unrestrictedArgsForAgent } from '../../lib/agentCreation'
 import { pickDirectory } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import { basename } from '../../lib/paths'
-import { type AgentRuntimeProfile, type AgentType, UNRESTRICTED_FLAG } from '../../lib/types'
+import { UNRESTRICTED_FLAG } from '../../lib/types'
 import {
   getProjectDefaultCwd,
   getProjectRepoRoot,
@@ -20,6 +17,7 @@ import { AgentIcon } from '../icons/AgentIcons'
 import controls from './controls.module.css'
 import { Modal } from './Modal'
 import styles from './NewTerminalModal.module.css'
+import { RuntimeProfileField } from './RuntimeProfileField'
 
 export function NewTerminalModal() {
   const t = useT()
@@ -43,10 +41,16 @@ export function NewTerminalModal() {
     (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,
   )
 
-  const [type, setType] = useState<AgentType>('claude')
-  const [runtimeProfile, setRuntimeProfile] = useState<AgentRuntimeProfile>('lean')
   const [cwd, setCwd] = useState('')
-  const [unrestricted, setUnrestricted] = useState(createUnrestrictedAgentState)
+  const {
+    resetAgentCreation,
+    runtimeProfile,
+    setRuntimeProfile,
+    setType,
+    toggleUnrestricted,
+    type,
+    unrestricted,
+  } = useAgentCreationForm('claude')
 
   const visibleAgents = AGENT_OPTIONS.filter((agent) => enabled[agent.type])
   const defaultType =
@@ -85,15 +89,19 @@ export function NewTerminalModal() {
   useEffect(() => {
     if (!open) return
     setCwd(inheritedCwd)
-    setType(defaultType)
-    setUnrestricted(createUnrestrictedAgentState(alwaysStartUnrestricted))
-  }, [open, context?.projectId, inheritedCwd, defaultType, alwaysStartUnrestricted])
+    resetAgentCreation(defaultType, alwaysStartUnrestricted)
+  }, [
+    open,
+    context?.projectId,
+    inheritedCwd,
+    defaultType,
+    alwaysStartUnrestricted,
+    resetAgentCreation,
+  ])
 
   const reset = () => {
-    setType(defaultType)
-    setRuntimeProfile('lean')
     setCwd('')
-    setUnrestricted(createUnrestrictedAgentState())
+    resetAgentCreation(defaultType)
   }
 
   const submit = async () => {
@@ -176,7 +184,7 @@ export function NewTerminalModal() {
           <button
             type="button"
             className={`${styles.permissionToggle} ${unrestricted[type] ? styles.permissionToggleActive : ''}`}
-            onClick={() => setUnrestricted((value) => ({ ...value, [type]: !value[type] }))}
+            onClick={() => toggleUnrestricted(type)}
             aria-pressed={unrestricted[type]}
           >
             <span className={styles.permissionToggleIcon}>
@@ -254,25 +262,11 @@ export function NewTerminalModal() {
         <details className={styles.advanced}>
           <summary>{t('term.advancedOptions')}</summary>
           <div className={styles.advancedBody}>
-            <div className={controls.field}>
-              <label className={controls.label}>{t('term.runtimeProfile')}</label>
-              <div className={controls.pillRow}>
-                {(['full', 'lean', 'diagnostic'] as const).map((profile) => (
-                  <button
-                    key={profile}
-                    type="button"
-                    className={`${controls.pill} ${runtimeProfile === profile ? controls.pillActive : ''}`}
-                    onClick={() => setRuntimeProfile(profile)}
-                    title={t(`term.runtimeProfile.${profile}.desc`)}
-                  >
-                    {t(`term.runtimeProfile.${profile}`)}
-                  </button>
-                ))}
-              </div>
-              <span className={controls.hint}>
-                {t(`term.runtimeProfile.${runtimeProfile}.desc`)}
-              </span>
-            </div>
+            <RuntimeProfileField
+              agentType={type}
+              value={runtimeProfile}
+              onChange={setRuntimeProfile}
+            />
           </div>
         </details>
       ) : null}
