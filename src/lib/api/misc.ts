@@ -492,6 +492,83 @@ export async function planningAuditRecord(
   })
 }
 
+export type PlanItem = {
+  id: string
+  projectId: string
+  terminalId?: string | null
+  title: string
+  filePath: string
+  relativePath: string
+  createdAtMs: number
+  modifiedAtMs: number
+  content?: string | null
+}
+
+export async function listProjectPlans(
+  repoPath: string,
+  projectId: string,
+): Promise<PlanItem[]> {
+  if (isTauriEnv()) return invoke<PlanItem[]>('list_project_plans', { repoPath, projectId })
+  return webApiFetch<PlanItem[]>(
+    `/api/planning/list_plans?repoPath=${encodeURIComponent(repoPath)}&projectId=${encodeURIComponent(projectId)}`,
+  )
+}
+
+export async function saveProjectPlan(
+  repoPath: string,
+  projectId: string,
+  terminalId: string | null | undefined,
+  filename: string,
+  content: string,
+): Promise<PlanItem> {
+  if (isTauriEnv())
+    return invoke<PlanItem>('save_project_plan', {
+      repoPath,
+      projectId,
+      terminalId,
+      filename,
+      content,
+    })
+  return webApiFetch<PlanItem>('/api/planning/save_plan', {
+    method: 'POST',
+    body: JSON.stringify({ repoPath, projectId, terminalId, filename, content }),
+  })
+}
+
+export async function patchProjectPlan(
+  filePath: string,
+  targetContent: string,
+  replacementContent: string,
+): Promise<PlanItem> {
+  if (isTauriEnv())
+    return invoke<PlanItem>('patch_project_plan', {
+      filePath,
+      targetContent,
+      replacementContent,
+    })
+  return webApiFetch<PlanItem>('/api/planning/patch_plan', {
+    method: 'POST',
+    body: JSON.stringify({ filePath, targetContent, replacementContent }),
+  })
+}
+
+export async function appendPlanDiagram(
+  filePath: string,
+  title: string,
+  mermaidCode: string,
+): Promise<PlanItem> {
+  if (isTauriEnv())
+    return invoke<PlanItem>('append_plan_diagram', {
+      filePath,
+      title,
+      mermaidCode,
+    })
+  return webApiFetch<PlanItem>('/api/planning/append_diagram', {
+    method: 'POST',
+    body: JSON.stringify({ filePath, title, mermaidCode }),
+  })
+}
+
 export async function planningAuditHistory(
   repoPath: string,
   limit?: number,

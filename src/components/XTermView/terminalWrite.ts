@@ -14,6 +14,52 @@ export const PTY_WRITE_TIMEOUT_MS = 5_000
 // terminar > qualquer frame individual travando por muito tempo.
 export const TERMINAL_WRITE_FRAME_BUDGET = 16 * 1024
 
+/**
+ * Encontra um ponto de corte seguro para o frame budget do terminal:
+ * 1. Não divide pares substitutos UTF-16 (surrogate pairs / emojis / caracteres CJK/Unicode).
+ * 2. Não corta no meio de sequências de escape ANSI (CSI '\x1b[...', OSC '\x1b]...', DCS, ST).
+ */
+export function findSafeChunkBoundary(text: string, maxTake: number): number {
+  if (maxTake >= text.length) return text.length
+  let take = maxTake
+
+  // 1. Evita partir par substituto UTF-16
+  if (
+    take > 0 &&
+    take < text.length &&
+    text.charCodeAt(take - 1) >= 0xd800 &&
+    text.charCodeAt(take - 1) <= 0xdbff &&
+    text.charCodeAt(take) >= 0xdc00 &&
+    text.charCodeAt(take) <= 0xdfff
+  ) {
+    take -= 1
+  }
+
+  // 2. Evita partir sequência ANSI escape (\x1b...)
+  // Procura para trás pelo último caractere ESC ('\x1b') nos últimos 64 caracteres
+  const lastEsc = text.lastIndexOf('\x1b', take - 1)
+  if (lastEsc !== -1 && take - lastEsc < 64) {
+    // Verifica se a sequência iniciada em lastEsc já foi finalizada antes de take
+    let isTerminated = false
+    for (let i = lastEsc + 1; i < take; i++) {
+      const ch = text.charCodeAt(i)
+      // Caracteres finais padrão ANSI (A-Z, a-z, ~, @) ou ST (\x07 / \x1b\\)
+      if ((ch >= 0x40 && ch <= 0x7e) || ch === 0x07) {
+        isTerminated = true
+        break
+      }
+    }
+    if (!isTerminated) {
+      // Se não terminou antes de take, corta exatamente antes do ESC para não partir a sequência
+      if (lastEsc > 0) {
+        take = lastEsc
+      }
+    }
+  }
+
+  return take > 0 ? take : maxTake
+}
+
 export function loadPromptHistory(ptyId: string): string[] {
   const raw = readScopedStorage(PROMPT_HISTORY_KEY(ptyId), true)
   if (!raw) return []

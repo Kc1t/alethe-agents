@@ -15,6 +15,7 @@ import {
   Folder,
   FolderPlus,
   GitBranch,
+  Globe,
   Home,
   MoreHorizontal,
   Plus,
@@ -38,6 +39,7 @@ import { type Group, type Project } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
+import { MeshSidebarView } from './MeshSidebarView'
 import { SidebarNowPlaying } from '../SidebarNowPlaying'
 import { UserProfile } from '../UserProfile'
 import { ContextMenu, type MenuItem } from './ContextMenu'
@@ -200,7 +202,7 @@ function CleanProjectSidebar() {
   const [menu, setMenu] = useState<ContextMenuState>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropIndicator, setDropIndicator] = useState<SidebarDropIndicator | null>(null)
-  const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects'>('projects')
+  const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects' | 'mesh'>('projects')
 
   useEffect(() => {
     if (!showGitControl && sidebarTab === 'git') setSidebarTab('projects')
@@ -536,6 +538,18 @@ function CleanProjectSidebar() {
             <GitBranch size={14} />
           </button>
         ) : null}
+        <button
+          type="button"
+          aria-label={t('mesh.title') || 'Conexão & Sincronização'}
+          title={t('mesh.title') || 'Conexão & Sincronização'}
+          className={`${styles.toolbarButton} ${activeView !== 'home' && sidebarTab === 'mesh' ? styles.toolbarButtonActive : ''}`}
+          onClick={() => {
+            setSidebarTab('mesh')
+            setActiveView('workspace')
+          }}
+        >
+          <Globe size={14} />
+        </button>
         <span className={styles.toolbarSpacer} />
         <button
           type="button"
@@ -641,6 +655,8 @@ function CleanProjectSidebar() {
         </section>
       ) : null}
 
+      {sidebarTab === 'mesh' ? <MeshSidebarView /> : null}
+
       {sidebarTab === 'projects' ? (
         <DndContext
           sensors={sensors}
@@ -693,7 +709,7 @@ function CleanProjectSidebar() {
       ) : null}
 
       {/* PAINEL DE MERGES NA BARRA LATERAL */}
-      <SidebarMergePanel />
+      {sidebarTab === 'projects' && activeView !== 'home' ? <SidebarMergePanel /> : null}
 
       {menu ? (
         <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />

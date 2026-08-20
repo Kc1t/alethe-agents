@@ -14,6 +14,7 @@ import {
   Folder,
   FolderPlus,
   GitBranch,
+  Globe,
   Grid3x3,
   Home,
   MoreHorizontal,
@@ -36,6 +37,7 @@ import { type Group, type Project } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
+import { MeshSidebarView } from './MeshSidebarView'
 import { SidebarNowPlaying } from '../SidebarNowPlaying'
 import { UserProfile } from '../UserProfile'
 import { ContextMenu, type MenuItem } from './ContextMenu'
@@ -167,7 +169,7 @@ export function NormalProjectSidebar() {
   const [menu, setMenu] = useState<ContextMenuState>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropIndicator, setDropIndicator] = useState<SidebarDropIndicator | null>(null)
-  const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects'>('projects')
+  const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects' | 'mesh'>('projects')
   const keepHome = activeView === 'home'
 
   useEffect(() => {
@@ -522,6 +524,21 @@ export function NormalProjectSidebar() {
             <span>{t('ui.sidebar.git')}</span>
           </button>
         ) : null}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={sidebarTab === 'mesh'}
+          aria-label={t('mesh.title') || 'Conexão & Sincronização'}
+          title={t('mesh.title') || 'Conexão & Sincronização'}
+          className={`${styles.sidebarTab} ${sidebarTab === 'mesh' ? styles.sidebarTabActive : ''}`}
+          onClick={() => {
+            setSidebarTab('mesh')
+            if (!keepHome) setActiveView('workspace')
+          }}
+        >
+          <Globe size={14} />
+          <span>{t('mesh.title') || 'Conexão'}</span>
+        </button>
       </div>
 
       <div className={styles.quickNavList}>
@@ -621,6 +638,8 @@ export function NormalProjectSidebar() {
         </section>
       ) : null}
 
+      {sidebarTab === 'mesh' ? <MeshSidebarView /> : null}
+
       {sidebarTab === 'projects' ? (
         <DndContext
           sensors={sensors}
@@ -673,7 +692,7 @@ export function NormalProjectSidebar() {
       ) : null}
 
       {/* PAINEL DE MERGES NA BARRA LATERAL */}
-      <SidebarMergePanel />
+      {sidebarTab === 'projects' && !keepHome ? <SidebarMergePanel /> : null}
 
       {menu ? (
         <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />

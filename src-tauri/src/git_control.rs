@@ -645,6 +645,8 @@ pub struct DiffSummaryEntry {
     pub path: String,
     /// Primeira letra do `--name-status` do git: A(dded)/M(odified)/D(eleted)/R(enamed)/...
     pub status: String,
+    pub additions: Option<usize>,
+    pub deletions: Option<usize>,
 }
 
 /// `opencode.json` (MCP do Graphify + plugin GSD, escritos automaticamente a
@@ -696,12 +698,12 @@ fn uncommitted_entries(worktree_path: &Path) -> Vec<DiffSummaryEntry> {
         entries.push(DiffSummaryEntry {
             path,
             status: status.to_string(),
+            additions: None,
+            deletions: None,
         });
     }
     entries
 }
-
-/// com dado de verdade em vez de texto fixo. Three-dot (`target...source`,
 
 fn git_diff_summary_inner(
     repo_root: String,
@@ -713,6 +715,31 @@ fn git_diff_summary_inner(
     let range = format!("{target}...{source}");
     let output = checked_output(&root, &["diff", "--name-status", "-z", &range])?;
     let raw = String::from_utf8_lossy(&output.stdout);
+
+    // Coleta numstat para contagem exata de linhas adicionadas e removidas
+    let mut numstat_map: std::collections::HashMap<String, (usize, usize)> = std::collections::HashMap::new();
+    if let Ok(numstat_output) = checked_output(&root, &["diff", "--numstat", "-z", &range]) {
+        let numstat_raw = String::from_utf8_lossy(&numstat_output.stdout);
+        let parts: Vec<&str> = numstat_raw.split('\0').filter(|s| !s.is_empty()).collect();
+        let mut idx = 0;
+        while idx < parts.len() {
+            let line = parts[idx];
+            idx += 1;
+            let tokens: Vec<&str> = line.split_whitespace().collect();
+            if tokens.len() >= 3 {
+                let adds = tokens[0].parse::<usize>().unwrap_or(0);
+                let dels = tokens[1].parse::<usize>().unwrap_or(0);
+                let file_path = tokens[2..].join(" ");
+                numstat_map.insert(file_path, (adds, dels));
+            } else if tokens.len() == 2 && idx < parts.len() {
+                let adds = tokens[0].parse::<usize>().unwrap_or(0);
+                let dels = tokens[1].parse::<usize>().unwrap_or(0);
+                let file_path = parts[idx].to_string();
+                idx += 1;
+                numstat_map.insert(file_path, (adds, dels));
+            }
+        }
+    }
 
     let fields: Vec<&str> = raw.split('\0').filter(|s| !s.is_empty()).collect();
     let mut entries = Vec::new();
@@ -732,7 +759,16 @@ fn git_diff_summary_inner(
             path = fields[i].to_string();
             i += 1;
         }
-        entries.push(DiffSummaryEntry { path, status });
+        let (additions, deletions) = numstat_map
+            .get(&path)
+            .map(|(a, d)| (Some(*a), Some(*d)))
+            .unwrap_or((None, None));
+        entries.push(DiffSummaryEntry {
+            path,
+            status,
+            additions,
+            deletions,
+        });
     }
 
     if let Some(worktree) = worktree_path {

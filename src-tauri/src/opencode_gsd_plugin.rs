@@ -105,6 +105,34 @@ fn write_opencode_plugin_entry(root: &std::path::Path) -> Result<(), String> {
         }
     }
 
+    // Configuração de permissões cirúrgicas para o agente 'plan':
+    // Permite criar e editar planos em .alethe/plans/** e .planning/** sem travar no terminal
+    let agents_map = config
+        .entry("agent".to_string())
+        .or_insert_with(|| Value::Object(serde_json::Map::new()));
+    if let Value::Object(agents) = agents_map {
+        let plan_entry = agents
+            .entry("plan".to_string())
+            .or_insert_with(|| Value::Object(serde_json::Map::new()));
+        if let Value::Object(plan_obj) = plan_entry {
+            let mut perm_map = serde_json::Map::new();
+            
+            let mut edit_map = serde_json::Map::new();
+            edit_map.insert(".alethe/plans/**".to_string(), Value::String("allow".to_string()));
+            edit_map.insert(".planning/**".to_string(), Value::String("allow".to_string()));
+            edit_map.insert("*".to_string(), Value::String("deny".to_string()));
+
+            let mut write_map = serde_json::Map::new();
+            write_map.insert(".alethe/plans/**".to_string(), Value::String("allow".to_string()));
+            write_map.insert(".planning/**".to_string(), Value::String("allow".to_string()));
+            write_map.insert("*".to_string(), Value::String("deny".to_string()));
+
+            perm_map.insert("edit".to_string(), Value::Object(edit_map));
+            perm_map.insert("write".to_string(), Value::Object(write_map));
+            plan_obj.insert("permission".to_string(), Value::Object(perm_map));
+        }
+    }
+
     let body = serde_json::to_string_pretty(&Value::Object(config)).map_err(|e| e.to_string())?;
     std::fs::write(&path, body).map_err(|e| format!("write_failed:{e}"))
 }

@@ -56,17 +56,18 @@ describe('shouldScrollHostScrollback', () => {
 })
 
 describe('formatDroppedPaths', () => {
-  it('leaves space-free paths unquoted with a trailing space', () => {
-    expect(formatDroppedPaths(['C:\\a\\b.txt'])).toBe('C:\\a\\b.txt ')
-  })
-
-  it('quotes paths containing whitespace', () => {
+  it('quotes paths containing backslashes or whitespace', () => {
+    expect(formatDroppedPaths(['C:\\a\\b.txt'])).toBe('"C:\\a\\b.txt" ')
     expect(formatDroppedPaths(['C:\\meu path\\f.txt'])).toBe('"C:\\meu path\\f.txt" ')
   })
 
-  it('joins multiple paths, quoting only those with spaces', () => {
-    expect(formatDroppedPaths(['C:\\a.txt', 'C:\\my dir\\b.txt'])).toBe(
-      'C:\\a.txt "C:\\my dir\\b.txt" ',
+  it('leaves simple slash-free paths unquoted with trailing space', () => {
+    expect(formatDroppedPaths(['file.txt'])).toBe('file.txt ')
+  })
+
+  it('joins multiple paths, quoting those with backslashes or spaces', () => {
+    expect(formatDroppedPaths(['a.txt', 'C:\\my dir\\b.txt'])).toBe(
+      'a.txt "C:\\my dir\\b.txt" ',
     )
   })
 

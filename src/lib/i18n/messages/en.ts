@@ -15,6 +15,18 @@ export const en = {
   'common.followUi': 'Follow UI',
   'common.errorPrefix': 'Error: {message}',
 
+  /* ---- mesh sync ---- */
+  'mesh.title': 'Mesh Sync',
+  'mesh.thisDevice': 'This Computer',
+  'mesh.projectSync': 'Project Synchronization',
+  'mesh.inviteFriend': 'Invite Friend',
+  'mesh.vault': 'Vault & Folders',
+  'mesh.noProject': 'No active project',
+  'mesh.noProjectDesc': 'Select a project to synchronize.',
+  'mesh.security': 'Security & Backups',
+  'prefs.googleSyncTitle': 'Google & Email Account Synchronization',
+  'prefs.googleSyncDesc': 'Connect your Google or Email account to synchronize projects across devices and receive invites.',
+
   /* ---- language ---- */
   'language.title': 'Language',
   'language.subtitle': 'Choose the interface language. You can change it later in Preferences.',
@@ -2312,6 +2324,13 @@ export const en = {
   'skills.removedLinkOnly': 'The shared copy was kept at {path}',
   'skills.removeFailed': 'Could not remove the skill',
   'skills.errBundled': 'This skill ships with the agent and cannot be removed from Alethe.',
+
+  /* ---- plans ---- */
+  'plans.tab': 'Plans',
+  'plans.title': 'Project Plans',
+  'plans.selectProject': 'Select a project to view its plans',
+  'plans.noPlans': 'No plans found',
+  'plans.noPlansDesc': 'Plans created by agents will appear here in .alethe/plans/.',
 } as const
 
 export type MessageKey = keyof typeof en

@@ -20,7 +20,12 @@ export type GitRepositoryStatus = {
   conflicts: GitFileChange[]
 }
 
-export type DiffSummaryEntry = { path: string; status: string }
+export type DiffSummaryEntry = {
+  path: string
+  status: string
+  additions?: number
+  deletions?: number
+}
 
 export type GitCommitEntry = {
   hash: string

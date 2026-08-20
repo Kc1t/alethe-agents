@@ -41,6 +41,7 @@ import { TopbarSettingsModal } from './components/modals/TopbarSettingsModal'
 import { UpdateModal } from './components/modals/UpdateModal'
 import { WelcomeModal } from './components/modals/WelcomeModal'
 import { WhatsNewModal } from './components/modals/WhatsNewModal'
+import { ProjectFolderTreeModal } from './components/ProjectSidebar/ProjectFolderTreeModal'
 import { ProjectSidebar } from './components/ProjectSidebar'
 import { RecorderHelper } from './components/RecorderHelper/RecorderHelper'
 import { RightSidebar } from './components/RightSidebar'
@@ -809,6 +810,7 @@ export default function App() {
         <McpManagerModal />
         <McpIntroModal />
         <RemoteControlModal />
+        {openModal === 'meshFolderTree' ? <ProjectFolderTreeModal /> : null}
       </ErrorBoundary>
       <InAppNotifications />
       {activeView === 'agentCanvas' ? <TokenHud /> : null}

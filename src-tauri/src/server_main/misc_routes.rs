@@ -54,6 +54,10 @@ pub fn router() -> Router {
         .route("/api/scheduler/cancel_task", post(scheduler_cancel))
         .route("/api/planning/audit_record", post(audit_record))
         .route("/api/planning/audit_history", get(audit_history))
+        .route("/api/planning/list_plans", get(list_plans))
+        .route("/api/planning/save_plan", post(save_plan))
+        .route("/api/planning/patch_plan", post(patch_plan))
+        .route("/api/planning/append_diagram", post(append_diagram))
         .route("/api/planning/set_autocommit", post(set_autocommit))
         .route("/api/planning/autocommit", get(get_autocommit))
         .route("/api/validation/run", post(validation_run))
@@ -230,6 +234,75 @@ async fn telemetry_metrics() -> impl IntoResponse {
 async fn telemetry_traces(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
     respond(telemetry::get_telemetry_traces(
         p.get("correlationId").cloned(),
+    ))
+}
+
+async fn list_plans(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
+    let repo_path = match q(&p, "repoPath") {
+        Ok(v) => v,
+        Err(e) => return e.into_response(),
+    };
+    let project_id = match q(&p, "projectId") {
+        Ok(v) => v,
+        Err(e) => return e.into_response(),
+    };
+    respond(planning::list_project_plans_core(&repo_path, &project_id))
+}
+
+#[derive(Deserialize)]
+struct SavePlanBody {
+    #[serde(rename = "repoPath")]
+    repo_path: String,
+    #[serde(rename = "projectId")]
+    project_id: String,
+    #[serde(rename = "terminalId")]
+    terminal_id: Option<String>,
+    filename: String,
+    content: String,
+}
+
+async fn save_plan(Json(b): Json<SavePlanBody>) -> impl IntoResponse {
+    respond(planning::save_project_plan(
+        b.repo_path,
+        b.project_id,
+        b.terminal_id,
+        b.filename,
+        b.content,
+    ))
+}
+
+#[derive(Deserialize)]
+struct PatchPlanBody {
+    #[serde(rename = "filePath")]
+    file_path: String,
+    #[serde(rename = "targetContent")]
+    target_content: String,
+    #[serde(rename = "replacementContent")]
+    replacement_content: String,
+}
+
+async fn patch_plan(Json(b): Json<PatchPlanBody>) -> impl IntoResponse {
+    respond(planning::patch_project_plan(
+        b.file_path,
+        b.target_content,
+        b.replacement_content,
+    ))
+}
+
+#[derive(Deserialize)]
+struct AppendDiagramBody {
+    #[serde(rename = "filePath")]
+    file_path: String,
+    title: String,
+    #[serde(rename = "mermaidCode")]
+    mermaid_code: String,
+}
+
+async fn append_diagram(Json(b): Json<AppendDiagramBody>) -> impl IntoResponse {
+    respond(planning::append_plan_diagram(
+        b.file_path,
+        b.title,
+        b.mermaid_code,
     ))
 }
 

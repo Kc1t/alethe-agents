@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useGsdSyncSessionsWatcher } from '../../hooks/useGsdSyncSessions'
 import { type MessageKey, useT } from '../../lib/i18n'
 import {
+  detectProjectStack,
   type DiffSummaryEntry,
   gitDiffSummary,
   gitStatus,
@@ -618,13 +619,52 @@ export function SidebarMergePanel() {
     }
   }
 
-  const handleStartTesting = (item: PendingMergeCard) => {
+  const handleStartTesting = async (item: PendingMergeCard) => {
+    const proj = projects.find((p) => p.id === item.projectId)
+
+    // 1. Procura comandos explícitos de ação/execução no procedimento registrado pelo GSD
+    let runCommand = testBriefing?.procedure
+      ?.map((step) => {
+        const match = /["'`](.+?)["'`]/.exec(step.description)
+        return match ? match[1].trim() : null
+      })
+      .find((cmd): cmd is string => Boolean(cmd) && (cmd!.startsWith('go run') || cmd!.startsWith('npm') || cmd!.startsWith('cargo run') || cmd!.startsWith('python') || cmd!.startsWith('make') || cmd!.startsWith('go build')))
+
+    if (runCommand && runCommand.startsWith('go build')) {
+      // Se for "go build ./cmd/animego", encadeia a execução do binário gerado na sequência
+      const binName = runCommand.split('/').pop() || 'app'
+      runCommand = `${runCommand} && .\\${binName}.exe`
+    }
+
+    // 2. Se não houver no procedimento, procura em healthCheck / validationCommands
+    if (!runCommand) {
+      runCommand = proj?.healthCheckCommand?.trim() || proj?.validationCommands?.[0]?.trim()
+    }
+
+    let initialInput: string | undefined = runCommand ? `${runCommand}\r` : undefined
+
+    if (!initialInput) {
+      try {
+        const detection = await detectProjectStack(item.worktreePath)
+        if (detection.suggestedCommands.length > 0) {
+          initialInput = `${detection.suggestedCommands[0]}\r`
+        }
+      } catch {
+        // fallback
+      }
+    }
+
     createTerminal(item.projectId, {
       name: `test-${item.agentName}`,
       cwd: item.worktreePath,
-      firstTab: { type: 'shell', cwd: item.worktreePath },
+      firstTab: {
+        type: 'shell',
+        cwd: item.worktreePath,
+        initialInput,
+      },
       ephemeralUtility: true,
     })
+
     pushToast({
       title: t('merge.testingStartedTitle'),
       body: t('merge.testingStartedBody', { branch: item.branchName }),
@@ -867,7 +907,7 @@ export function SidebarMergePanel() {
           changesSummary={
             testBriefing?.diff === null
               ? [t('merge.testBriefingLoadingDiff')]
-              : (testBriefing?.diff ?? []).map((entry) => `${entry.status} ${entry.path}`)
+              : (testBriefing?.diff ?? [])
           }
           healthState={
             testBriefing?.health === 'idle' || testBriefing?.health === undefined

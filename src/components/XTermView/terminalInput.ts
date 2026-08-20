@@ -32,7 +32,7 @@ export function normalizePastedText(text: string): string {
 export function formatDroppedPaths(paths: string[]): string {
   const formatted = paths
     .filter(Boolean)
-    .map((p) => (/\s/.test(p) ? `"${p}"` : p))
+    .map((p) => (/\s|\\/.test(p) && !p.startsWith('"') ? `"${p}"` : p))
     .join(' ')
   return formatted ? `${formatted} ` : ''
 }

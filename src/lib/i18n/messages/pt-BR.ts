@@ -17,6 +17,18 @@ export const ptBR: Record<MessageKey, string> = {
   'common.followUi': 'Seguir UI',
   'common.errorPrefix': 'Erro: {message}',
 
+  /* ---- mesh sync ---- */
+  'mesh.title': 'Conexão & Sincronização',
+  'mesh.thisDevice': 'Este Computador',
+  'mesh.projectSync': 'Sincronização do Projeto',
+  'mesh.inviteFriend': 'Convidar Amigo',
+  'mesh.vault': 'Cofre & Pastas',
+  'mesh.noProject': 'Nenhum projeto ativo',
+  'mesh.noProjectDesc': 'Selecione um projeto para sincronizar.',
+  'mesh.security': 'Segurança & Backups',
+  'prefs.googleSyncTitle': 'Sincronização com Conta Google & Email',
+  'prefs.googleSyncDesc': 'Conecte seu email ou Google para sincronizar projetos entre seus computadores e receber convites.',
+
   /* ---- language ---- */
   'language.title': 'Idioma',
   'language.subtitle': 'Escolha o idioma da interface. Você pode mudar depois nas Preferências.',
@@ -2329,4 +2341,11 @@ export const ptBR: Record<MessageKey, string> = {
   'skills.removedLinkOnly': 'A cópia compartilhada foi mantida em {path}',
   'skills.removeFailed': 'Não deu para remover a skill',
   'skills.errBundled': 'Essa skill vem com o agente e não pode ser removida pelo Alethe.',
+
+  /* ---- plans ---- */
+  'plans.tab': 'Planos',
+  'plans.title': 'Planos do Projeto',
+  'plans.selectProject': 'Selecione um projeto para ver seus planos',
+  'plans.noPlans': 'Nenhum plano encontrado',
+  'plans.noPlansDesc': 'Os planos criados pelos agentes aparecerão aqui em .alethe/plans/.',
 }

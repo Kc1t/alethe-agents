@@ -471,6 +471,8 @@ fn cors_layer() -> CorsLayer {
         .allow_headers([header::ACCEPT, header::AUTHORIZATION, header::CONTENT_TYPE])
 }
 
+use tower_http::catch_panic::CatchPanicLayer;
+
 pub fn build_router(runtime: ServerRuntime) -> Router {
     Router::new()
         .route("/api/health", get(health))
@@ -492,7 +494,28 @@ pub fn build_router(runtime: ServerRuntime) -> Router {
         .layer(middleware::from_fn(authenticate_request))
         .layer(middleware::from_fn(validate_request_origin))
         .layer(cors_layer())
+        .layer(CatchPanicLayer::custom(handle_panic))
         .layer(Extension(Arc::new(runtime)))
+}
+
+fn handle_panic(err: Box<dyn std::any::Any + Send + 'static>) -> Response {
+    let details = if let Some(s) = err.downcast_ref::<String>() {
+        s.clone()
+    } else if let Some(s) = err.downcast_ref::<&str>() {
+        s.to_string()
+    } else {
+        "Unknown panic".to_string()
+    };
+    eprintln!("[Alethe Web Server] Recovered from panic: {details}");
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({
+            "error": "internal_server_error",
+            "message": "The server encountered an unhandled internal error and recovered gracefully.",
+            "details": details
+        })),
+    )
+        .into_response()
 }
 
 async fn standalone_shutdown_signal() {

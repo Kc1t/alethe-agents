@@ -50,10 +50,11 @@ type ModalKind =
   | 'handoff'
   | 'mcpManager'
   | 'mcpIntro'
+  | 'meshFolderTree'
   | null
 
 export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox'
-export type RightSidebarMode = 'todo' | 'markdown' | 'git' | 'gsdSync' | 'mcp'
+export type RightSidebarMode = 'todo' | 'markdown' | 'git' | 'gsdSync' | 'mcp' | 'plans'
 export type MarkdownSidebarTab = { path: string; title: string }
 
 export type MemorySample = MemoryStats & {
@@ -155,6 +156,7 @@ type UiState = {
   showGitSidebar: () => void
   showGsdSyncSidebar: () => void
   showMcpSidebar: () => void
+  showPlansSidebar: () => void
   setAgentCanvasSession: (session: { folder: string; ptyId: string } | null) => void
   setAgentCanvasBudget: (usd: number | null) => void
   pushToast: (toast: {
@@ -296,6 +298,7 @@ export const useUiStore = create<UiState>((set) => ({
   showGitSidebar: () => set({ rightSidebarMode: 'git' }),
   showGsdSyncSidebar: () => set({ rightSidebarMode: 'gsdSync' }),
   showMcpSidebar: () => set({ rightSidebarMode: 'mcp' }),
+  showPlansSidebar: () => set({ rightSidebarMode: 'plans' }),
   setAgentCanvasSession: (session) => set({ agentCanvasSession: session }),
   setAgentCanvasBudget: (usd) => set({ agentCanvasBudgetUsd: usd }),
   pushToast: ({ title, body, agent, silent }) =>

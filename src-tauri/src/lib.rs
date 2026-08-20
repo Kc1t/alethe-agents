@@ -60,6 +60,7 @@ pub mod skills;
 pub mod spotify;
 pub mod stats;
 pub mod supervisor;
+pub mod sync_mesh;
 pub mod telemetry;
 pub mod validation;
 pub mod window_style;
@@ -448,6 +449,10 @@ pub fn run() {
             planning::stop_gsd_watcher,
             planning::planning_audit_record,
             planning::planning_audit_history,
+            planning::list_project_plans,
+            planning::save_project_plan,
+            planning::patch_project_plan,
+            planning::append_plan_diagram,
             planning::set_planning_autocommit,
             planning::get_planning_autocommit,
             planning_gate::read_planning_status,
@@ -469,6 +474,10 @@ pub fn run() {
             conflict_resolution::merge_rebase_onto_target,
             conflict_resolution::merge_force_cleanup,
             project_detector::detect_project_stack,
+            sync_mesh::scan_project_folder_tree,
+            sync_mesh::setup_project_mesh_isolation,
+            sync_mesh::trigger_project_archive_backup,
+            sync_mesh::purge_project_backups_secured,
             contract_check::contract_check,
             health_probe::health_probe,
             graphify::graphify_ensure_graph,

@@ -88,7 +88,12 @@ import {
   getLogicalTerminalLine,
   makeXtermLink,
 } from './terminalLinks'
-import { TERMINAL_WRITE_FRAME_BUDGET, writePtyChunked, writePtyWithTimeout } from './terminalWrite'
+import {
+  findSafeChunkBoundary,
+  TERMINAL_WRITE_FRAME_BUDGET,
+  writePtyChunked,
+  writePtyWithTimeout,
+} from './terminalWrite'
 import { getXtermTheme, type LinkActionState } from './xtermThemes'
 
 /**
@@ -420,6 +425,14 @@ export function useXtermSession(params: {
     // processo recém-nascido e perde a sessão que ele tinha acabado de
     // começar, sem chance de resume (ainda não tinha sessionId nenhum).
     let initialInputInFlight = false
+    let lastPasteBlock = ''
+    let currentLineBuffer = ''
+    // These agent CLIs read the OS clipboard themselves on Ctrl+V and render
+    // their own compact placeholder (e.g. "[image 1]") for pasted images.
+    // Intercepting the keystroke here would force us to fake that rendering
+    // locally while the CLI's own redraw shows the real bytes it received,
+    // producing a mismatched/garbled display.
+    const NATIVE_CLIPBOARD_IMAGE_AGENTS = new Set(['opencode', 'claude', 'codex', 'antigravity'])
 
     const resourcePolicy = useProjectsStore.getState().preferences.resourcePolicy
     const terminal = new Terminal({
@@ -718,7 +731,8 @@ export function useXtermSession(params: {
       while (budget > 0 && pendingWrites.length > 0) {
         if (output && isBrowserInputPending()) break
         const head = pendingWrites[0]
-        const take = Math.min(budget, head.length)
+        const rawTake = Math.min(budget, head.length)
+        const take = findSafeChunkBoundary(head, rawTake)
         output += head.slice(0, take)
         budget -= take
         pendingWriteLength -= take
@@ -769,8 +783,19 @@ export function useXtermSession(params: {
       }
     }
 
+    const MAX_PENDING_WRITE_BYTES = 2 * 1024 * 1024
+
     const queueTerminalWrite = (chunk: string) => {
       if (!chunk) return
+      // Proteção de segurança contra acúmulo infinito em background:
+      // Se a fila passar de 2MB (ex: janela minimizada por muito tempo),
+      // purga o backlog e força um resync limpo ao reativar para não estourar o parser do xterm.
+      if (pendingWriteLength + chunk.length > MAX_PENDING_WRITE_BYTES) {
+        pendingWrites = []
+        pendingWriteLength = 0
+        void resyncTerminalRef.current?.('reconnect').catch(() => {})
+        return
+      }
       pendingWrites.push(chunk)
       pendingWriteLength += chunk.length
       if (writeFrame !== null) return
@@ -857,17 +882,16 @@ export function useXtermSession(params: {
         const id = ptyIdRef.current
         if (!id) return
         const text = normalizePastedText(raw)
+        currentLineBuffer += text
+        lastPasteBlock = text
         useTerminalsStore.getState().recordIo(id)
         recordPromptInput(text)
-        inputWriteChain = inputWriteChain
-          .then(() => writePtyChunked(id, text, terminal.modes.bracketedPasteMode))
-          .catch((error) => requestWriteRecovery(id, 'paste', error))
+        terminal.write(text)
+        queueInput(id, text)
       } catch (err) {
         console.warn('[pty-paste] ignored invalid clipboard payload:', err)
       }
     }
-
-    // texto puro; arquivos do Explorer (CF_HDROP) e imagens cruas (CF_DIB /
 
     const resolveClipboardPaste = async (): Promise<string> => {
       const payload = await readClipboardPayload()
@@ -877,7 +901,7 @@ export function useXtermSession(params: {
         case 'paths':
           return formatDroppedPaths(payload.paths)
         case 'image':
-          return formatDroppedPaths([payload.path])
+          return `${formatDroppedPaths([payload.path]).trim()} `
         case 'empty':
           return ''
       }
@@ -961,7 +985,33 @@ export function useXtermSession(params: {
         lastCtrlCRef.current = now
       }
 
+      if (event.key === 'Backspace' && !readOnly) {
+        if (currentLineBuffer.length > 0) {
+          if (lastPasteBlock && currentLineBuffer.endsWith(lastPasteBlock)) {
+            event.preventDefault()
+            const deleteCount = lastPasteBlock.length
+            currentLineBuffer = currentLineBuffer.slice(0, -deleteCount)
+            lastPasteBlock = ''
+            // Send backspace sequence for each deleted character
+            const backspaces = '\b \b'.repeat(deleteCount)
+            terminal.write(backspaces)
+            const id = ptyIdRef.current
+            if (id) {
+              inputWriteChain = inputWriteChain.then(() =>
+                writePtyChunked(id, '\x7f'.repeat(deleteCount), false),
+              )
+            }
+            return false
+          }
+          currentLineBuffer = currentLineBuffer.slice(0, -1)
+          lastPasteBlock = ''
+        }
+      }
+
       if (key === 'v' && !readOnly) {
+        if (!!command && NATIVE_CLIPBOARD_IMAGE_AGENTS.has(command)) {
+          return true
+        }
         event.preventDefault()
         void resolveClipboardPaste()
           .catch(() => navigator.clipboard?.readText() ?? '')
@@ -1047,12 +1097,27 @@ export function useXtermSession(params: {
     window.addEventListener('focus', restoreLastTerminalFocus)
     document.addEventListener('visibilitychange', restoreHoveredFocus)
     document.addEventListener('visibilitychange', clearCanvasAtlasOnRestore)
-    document.addEventListener('visibilitychange', restoreLastTerminalFocus)
-
     const onPaste = (event: ClipboardEvent) => {
-      const raw = event.clipboardData?.getData('text/plain') ?? ''
+      if (!!command && NATIVE_CLIPBOARD_IMAGE_AGENTS.has(command)) {
+        return
+      }
       event.preventDefault()
       event.stopPropagation()
+      const raw = event.clipboardData?.getData('text/plain') ?? ''
+      const hasImageOrFile = Array.from(event.clipboardData?.items ?? []).some(
+        (item) => item.type.startsWith('image/') || item.kind === 'file',
+      )
+
+      if (hasImageOrFile) {
+        void resolveClipboardPaste()
+          .catch(() => raw)
+          .then(pasteText)
+          .catch(() => {
+            terminal.focus()
+          })
+        return
+      }
+
       if (raw) {
         pasteText(raw)
         return
@@ -1095,6 +1160,7 @@ export function useXtermSession(params: {
       if (!id) return
       const chunk = queuedInput
       queuedInput = ''
+
       inputWriteChain = inputWriteChain
         .then(() => writePtyWithTimeout(id, chunk))
         .catch((error) => requestWriteRecovery(id, 'input', error))
@@ -1398,6 +1464,20 @@ export function useXtermSession(params: {
         }
       })
     }
+    // Proteção contra MemReduct e limpezas externas de memória RAM do sistema:
+    // Quando a memória do sistema é liberada bruscamente, o canvas atlas do xterm.js
+    // pode ser descartado pelo SO. Disparamos um refresh determinístico para
+    // reconstruir o buffer e manter o terminal íntegro sem perda de dados.
+    const onMemoryPressureRecover = () => {
+      try {
+        canvasAddonRef.current?.clearTextureAtlas?.()
+        terminal.refresh(0, Math.max(0, terminal.rows - 1))
+      } catch {
+        /* se o canvas falhar, cai no refresh seguro */
+        terminal.refresh(0, Math.max(0, terminal.rows - 1))
+      }
+    }
+    window.addEventListener('alethe:memory-pressure-recover', onMemoryPressureRecover)
     window.addEventListener('alethe:zoom-changed', onZoomChanged)
     window.addEventListener('alethe:terminal-resize-request', onResizeRequest)
     window.addEventListener('alethe:pane-layout-synced', onPaneLayoutSynced)
@@ -1699,8 +1779,16 @@ export function useXtermSession(params: {
       completionMonitor?.handleInput(data)
       const trackedPtyId = ptyIdRef.current
       if (trackedPtyId) recordAgentActivityInput(trackedPtyId, data)
-      if (container.scrollWidth > container.clientWidth + 2) scheduleResize(true)
-      clampHorizontalScroll()
+      if (data === '\r' || data === '\n') {
+        currentLineBuffer = ''
+        lastPasteBlock = ''
+      } else if (data === '\x7f' || data === '\b') {
+        currentLineBuffer = currentLineBuffer.slice(0, -1)
+        lastPasteBlock = ''
+      } else if (data.length === 1 && data >= ' ') {
+        currentLineBuffer += data
+        lastPasteBlock = ''
+      }
       queueInput(id, data)
       if (startsNewSession && command && command !== 'shell') {
         if (writeFrame !== null) {
@@ -2398,6 +2486,7 @@ export function useXtermSession(params: {
       window.removeEventListener('focus', onWindowFocus)
       document.removeEventListener('visibilitychange', restoreHoveredFocus)
       document.removeEventListener('visibilitychange', clearCanvasAtlasOnRestore)
+      window.removeEventListener('alethe:memory-pressure-recover', onMemoryPressureRecover)
       window.removeEventListener('alethe:zoom-changed', onZoomChanged)
       window.removeEventListener('alethe:terminal-resize-request', onResizeRequest)
       window.removeEventListener('alethe:pane-layout-synced', onPaneLayoutSynced)
