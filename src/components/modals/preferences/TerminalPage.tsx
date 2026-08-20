@@ -17,6 +17,7 @@ const AGENTS: { id: AgentType; label: string }[] = [
   { id: 'shell', label: 'Shell' },
   { id: 'claude', label: 'Claude Code' },
   { id: 'codex', label: 'Codex' },
+  { id: 'hermes', label: 'Hermes Agent' },
   { id: 'copilot', label: 'GitHub Copilot' },
   { id: 'antigravity', label: 'Antigravity' },
   { id: 'opencode', label: 'OpenCode' },
@@ -145,7 +146,7 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
 
       <SettingsSection
         id="agents"
-        title={t('prefs.enabledAgents', { count: enabledCount })}
+        title={t('prefs.enabledAgents', { count: enabledCount, total: AGENTS.length })}
         description={t('prefs.agentsDesc')}
       >
         <div className={styles.agentList}>

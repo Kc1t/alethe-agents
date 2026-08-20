@@ -37,6 +37,24 @@ function stripOpenCodeSessionArgs(args: string[]): string[] {
   )
 }
 
+export function stripHermesSessionArgs(args: string[]): string[] {
+  const clean: string[] = []
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]
+    if (arg.startsWith('--resume=') || arg.startsWith('--continue=')) continue
+    if (arg === '--resume' || arg === '-r') {
+      index++
+      continue
+    }
+    if (arg === '--continue' || arg === '-c') {
+      if (args[index + 1] && !args[index + 1].startsWith('-')) index++
+      continue
+    }
+    clean.push(arg)
+  }
+  return clean
+}
+
 function stripAntigravitySessionArgs(args: string[]): string[] {
   return stripFlagWithValue(args, new Set(['--conversation'])).filter(
     (arg) => arg !== '--continue' && arg !== '-c',
@@ -101,6 +119,19 @@ export function buildAgentLaunch(
                                    
     return {
       args: sessionId ? ['--session', sessionId, ...clean] : clean,
+      sessionId,
+      createdSession: false,
+    }
+  }
+
+  if (agent === 'hermes') {
+    // Alethe hosts Hermes in a resizable PTY, so always select Hermes' official
+    // modern TUI without changing the user's shared Hermes configuration.
+    const clean = stripHermesSessionArgs([...baseArgs]).filter(
+      (arg) => arg !== '--tui' && arg !== '--cli',
+    )
+    return {
+      args: sessionId ? ['--tui', '--resume', sessionId, ...clean] : ['--tui', ...clean],
       sessionId,
       createdSession: false,
     }

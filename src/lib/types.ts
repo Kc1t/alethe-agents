@@ -2,6 +2,7 @@ export type AgentType =
   | 'shell'
   | 'claude'
   | 'codex'
+  | 'hermes'
   | 'copilot'
   | 'opencode'
   | 'freebuff'
@@ -13,6 +14,7 @@ export type AgentType =
 export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
+  hermes: 'Hermes Agent',
   copilot: 'GitHub Copilot',
   antigravity: 'Antigravity',
   opencode: 'OpenCode',
@@ -27,6 +29,7 @@ export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
 export const ALL_AGENT_TYPES: AgentType[] = [
   'claude',
   'codex',
+  'hermes',
   'copilot',
   'antigravity',
   'opencode',
@@ -157,6 +160,7 @@ export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
   shell: null,
   claude: '--dangerously-skip-permissions',
   codex: '--dangerously-bypass-approvals-and-sandbox',
+  hermes: '--yolo',
   copilot: '--allow-all',
   opencode: '--dangerously-skip-permissions',
                                                                    
@@ -574,6 +578,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
     shell: true,
     claude: true,
     codex: true,
+    hermes: true,
     copilot: true,
     antigravity: true,
     opencode: true,
@@ -690,6 +695,7 @@ export const PROVIDER_MODELS: Record<AgentType, { id: string; label: string }[]>
     { id: 'o1', label: 'o1 (Avançado)' },
     { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
   ],
+  hermes: [],
   copilot: [],
   opencode: [
     { id: 'deepseek/deepseek-r1', label: 'DeepSeek R1 (Raciocínio)' },

@@ -49,6 +49,7 @@ type CodingAgent = Exclude<AgentType, 'shell'>
 const AGENTS: { id: CodingAgent; label: string }[] = [
   { id: 'claude', label: 'Claude' },
   { id: 'codex', label: 'Codex' },
+  { id: 'hermes', label: 'Hermes Agent' },
   { id: 'copilot', label: 'GitHub Copilot' },
   { id: 'antigravity', label: 'Antigravity' },
   { id: 'opencode', label: 'OpenCode' },

@@ -1,12 +1,15 @@
 import { getLocale, translate } from './i18n'
-import type { AgentType } from './types'
 import { notifyAgentDone } from './notifications'
 import { pathSegments } from './paths'
+import { AGENT_TYPE_LABELS, type AgentType } from './types'
 
 const RESPONSE_IDLE_MS = 4500
 const MIN_RESPONSE_MS = 700
 const ECHO_GRACE_MS = 350
 const MIN_OUTPUT_CHARS_AFTER_ECHO = 12
+const TERMINAL_TITLE_BUFFER_LIMIT = 2048
+
+type HermesTerminalTitleMarker = 'attention' | 'busy' | 'ready'
 
 type MonitorState = 'idle' | 'armed' | 'working'
 
@@ -17,7 +20,7 @@ export type AgentCompletionMonitorOptions = {
   cwd?: string | null
   onStatusChange?: (status: 'working' | 'waiting') => void
   onComplete?: () => void
-                                                                                    
+
   notifyOnComplete?: boolean
 }
 
@@ -28,6 +31,7 @@ export class AgentCompletionMonitor {
   private submittedAt = 0
   private outputChars = 0
   private idleTimer: number | null = null
+  private terminalTitleBuffer = ''
   private disposed = false
 
   constructor(private readonly options: AgentCompletionMonitorOptions) {}
@@ -49,6 +53,20 @@ export class AgentCompletionMonitor {
 
   handleOutput(chunk: string): void {
     if (this.disposed || this.state === 'idle') return
+
+    if (this.options.agent === 'hermes') {
+      const markers = this.consumeHermesTerminalTitleMarkers(chunk)
+      const latestMarker = markers[markers.length - 1]
+      if (latestMarker === 'ready' || latestMarker === 'attention') {
+        this.complete()
+        return
+      }
+      if (latestMarker === 'busy') {
+        this.clearIdleTimer()
+        this.state = 'working'
+        return
+      }
+    }
 
     const text = stripTerminalControls(chunk).trim()
     if (!text) return
@@ -75,7 +93,53 @@ export class AgentCompletionMonitor {
     this.submittedPrompt = prompt
     this.submittedAt = Date.now()
     this.outputChars = 0
+    this.terminalTitleBuffer = ''
     this.options.onStatusChange?.('working')
+  }
+
+  private consumeHermesTerminalTitleMarkers(chunk: string): HermesTerminalTitleMarker[] {
+    const input = `${this.terminalTitleBuffer}${chunk}`
+    const markers: HermesTerminalTitleMarker[] = []
+    let cursor = 0
+    let incompleteStart = -1
+
+    while (cursor < input.length) {
+      const start = input.indexOf('\x1b]', cursor)
+      if (start < 0) break
+
+      const code = input[start + 2]
+      if ((code !== '0' && code !== '1' && code !== '2') || input[start + 3] !== ';') {
+        cursor = start + 2
+        continue
+      }
+
+      const payloadStart = start + 4
+      const bel = input.indexOf('\x07', payloadStart)
+      const stringTerminator = input.indexOf('\x1b\\', payloadStart)
+      const end =
+        bel < 0 ? stringTerminator : stringTerminator < 0 ? bel : Math.min(bel, stringTerminator)
+      if (end < 0) {
+        incompleteStart = start
+        break
+      }
+
+      const title = input.slice(payloadStart, end)
+      if (title.startsWith('⏳')) markers.push('busy')
+      else if (title.startsWith('✓')) markers.push('ready')
+      else if (title.startsWith('⚠')) markers.push('attention')
+
+      cursor = end + (end === stringTerminator ? 2 : 1)
+    }
+
+    if (incompleteStart >= 0) {
+      this.terminalTitleBuffer = input.slice(incompleteStart).slice(-TERMINAL_TITLE_BUFFER_LIMIT)
+    } else {
+      this.terminalTitleBuffer =
+        ['\x1b]0', '\x1b]1', '\x1b]2', '\x1b]', '\x1b'].find((prefix) => input.endsWith(prefix)) ??
+        ''
+    }
+
+    return markers
   }
 
   private isLikelyImmediateEcho(text: string): boolean {
@@ -90,17 +154,23 @@ export class AgentCompletionMonitor {
       if (this.disposed || this.state !== 'working') return
       if (Date.now() - this.submittedAt < MIN_RESPONSE_MS) return
 
-      this.state = 'idle'
-      this.options.onStatusChange?.('waiting')
-      this.options.onComplete?.()
-      if (this.options.notifyOnComplete !== false) {
-        void notifyAgentDone(
-          translate(getLocale(), 'notif.agentDoneTitle', { agent: agentLabel(this.options.agent) }),
-          buildNotificationBody(this.options),
-          { agent: this.options.agent },
-        )
-      }
+      this.complete()
     }, RESPONSE_IDLE_MS)
+  }
+
+  private complete(): void {
+    if (this.disposed || this.state === 'idle') return
+    this.clearIdleTimer()
+    this.state = 'idle'
+    this.options.onStatusChange?.('waiting')
+    this.options.onComplete?.()
+    if (this.options.notifyOnComplete !== false) {
+      void notifyAgentDone(
+        translate(getLocale(), 'notif.agentDoneTitle', { agent: agentLabel(this.options.agent) }),
+        buildNotificationBody(this.options),
+        { agent: this.options.agent },
+      )
+    }
   }
 
   private clearIdleTimer(): void {
@@ -122,9 +192,7 @@ function buildNotificationBody(options: AgentCompletionMonitorOptions): string {
 }
 
 function agentLabel(agent: Exclude<AgentType, 'shell'>): string {
-  if (agent === 'claude') return 'Claude'
-  if (agent === 'codex') return 'Codex'
-  return 'OpenCode'
+  return AGENT_TYPE_LABELS[agent]
 }
 
 function shortPath(path: string): string {
