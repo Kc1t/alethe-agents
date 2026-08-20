@@ -15,6 +15,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - Added Hermes Agent as a built-in terminal agent. Alethe detects an existing `hermes` CLI,
   exposes it in onboarding, terminal creation and Preferences, and launches the official modern
   TUI. Normal approval behavior is preserved; unrestricted mode adds `--yolo` only when selected.
+- Added durable per-pane Hermes session continuity. Alethe persists the exact durable session ID,
+  restores it after pane or app restarts, tracks `/new` and `/resume` transitions from private child
+  metadata on Linux, and uses read-only workspace history only when a new session is unambiguous.
 - Added four UI themes built from the Elite Dev artwork — Elite Original, Elite Pure Black,
   Elite Indigo and Elite Blush — each with a full token set, listed first under Preferences,
   Appearance.

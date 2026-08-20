@@ -67,6 +67,9 @@ toml_edit = "0.22"
 [target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = "2"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # Dependências só-macOS para o bridge nativo do Ghostty (embutir surfaces de
 # terminal numa NSView sobre a WebView do Tauri). Versões alinhadas com as que
 # o Tauri 2.11 já traz na árvore, pra não duplicar.

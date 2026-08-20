@@ -5,8 +5,21 @@
 
 import { normalizeCwd } from './platform'
 import { readScopedStorage, writeScopedStorage } from './storageNamespace'
+import type { AgentType } from './types'
 
 const STORAGE_KEY = 'active-sessions'
+
+export const RESUMABLE_AGENTS = [
+  'claude',
+  'codex',
+  'hermes',
+  'opencode',
+  'antigravity',
+] as const satisfies readonly AgentType[]
+
+export function isResumableAgent(agent: AgentType): boolean {
+  return (RESUMABLE_AGENTS as readonly AgentType[]).includes(agent)
+}
 
 export type SavedSession = {
   sessionId: string
@@ -16,6 +29,8 @@ export type SavedSession = {
   codexSessionId?: string
   /** OpenCode session ID (ses_... do opencode session list). */
   opencodeSessionId?: string
+  /** Durable Hermes session ID from the profile's state.db. */
+  hermesSessionId?: string
   /** Antigravity conversation ID (conversation_metadata.json). */
   antigravitySessionId?: string
   cwd: string
@@ -37,6 +52,7 @@ export function savedConversationIdFor(
   if (agent === 'codex') return session.codexSessionId
   if (agent === 'antigravity') return session.antigravitySessionId
   if (agent === 'opencode') return session.opencodeSessionId
+  if (agent === 'hermes') return session.hermesSessionId
   return undefined
 }
 

@@ -52,6 +52,7 @@ dependencies = [
  "dotenvy",
  "image",
  "keyring",
+ "libc",
  "nanoid",
  "notify",
  "objc2",
