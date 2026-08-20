@@ -1069,6 +1069,11 @@ mod tests {
         root
     }
 
+    fn configure_test_git_identity(root: &Path) {
+        checked_output(root, &["config", "user.name", "Alethe Test"]).unwrap();
+        checked_output(root, &["config", "user.email", "alethe@example.invalid"]).unwrap();
+    }
+
     #[test]
     fn admin_lock_takes_precedence_and_is_never_retried() {
         let root = temp_dir("adminlock");
@@ -1113,6 +1118,7 @@ mod tests {
         let root = temp_dir("diff-unstaged");
         let root_string = root.to_string_lossy().into_owned();
         checked_output(&root, &["init"]).unwrap();
+        configure_test_git_identity(&root);
         fs::write(root.join("file.txt"), "line1\n").unwrap();
         checked_output(&root, &["add", "file.txt"]).unwrap();
         checked_output(&root, &["commit", "-m", "initial"]).unwrap();
@@ -1129,6 +1135,7 @@ mod tests {
         let root = temp_dir("diff-staged");
         let root_string = root.to_string_lossy().into_owned();
         checked_output(&root, &["init"]).unwrap();
+        configure_test_git_identity(&root);
         fs::write(root.join("file.txt"), "line1\n").unwrap();
         checked_output(&root, &["add", "file.txt"]).unwrap();
         checked_output(&root, &["commit", "-m", "initial"]).unwrap();
@@ -1149,6 +1156,7 @@ mod tests {
         let root = temp_dir("diff-binary");
         let root_string = root.to_string_lossy().into_owned();
         checked_output(&root, &["init"]).unwrap();
+        configure_test_git_identity(&root);
         fs::write(root.join("bin.dat"), &0u8.to_le_bytes()).unwrap();
         checked_output(&root, &["add", "bin.dat"]).unwrap();
         checked_output(&root, &["commit", "-m", "initial"]).unwrap();
