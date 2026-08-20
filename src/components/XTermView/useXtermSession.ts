@@ -762,6 +762,7 @@ export function useXtermSession(params: {
       onSessionIdRef.current?.(observed)
     }
     let hermesActiveSessionWatcherStarted = false
+    let startHermesCreatedSessionDetection: (() => void) | null = null
     let hermesDatabaseDiscoveryRequested = false
     let lastHermesChildLiveHandle: string | null = null
     let lastHermesChildChangeAtMs: number | null = null
@@ -1257,8 +1258,6 @@ export function useXtermSession(params: {
             timestamp: Date.now(),
           })
 
-          startHermesActiveSessionWatcher(response.id)
-
           if (
             (command === 'codex' ||
               command === 'antigravity' ||
@@ -1355,7 +1354,11 @@ export function useXtermSession(params: {
                 attempt += 1
               }
             }
-            void detectCreatedSession()
+            if (command === 'hermes') {
+              startHermesCreatedSessionDetection = () => void detectCreatedSession()
+            } else {
+              void detectCreatedSession()
+            }
           }
         }
 
@@ -1481,6 +1484,21 @@ export function useXtermSession(params: {
           return
         }
         unlistenExit = exitUnlisten
+
+        if (command === 'hermes') {
+          // A short-lived PTY can exit while replay/listeners are being prepared, before the
+          // frontend subscribes to its exit event. Never start identity watchers for a process
+          // the backend already considers dead; otherwise they could poll forever and attribute a
+          // later same-workspace session to this dead pane.
+          const hermesPtyAlive = await ptyExists(response.id).catch(() => false)
+          if (disposed) return
+          if (hermesPtyAlive) {
+            startHermesActiveSessionWatcher(response.id)
+            startHermesCreatedSessionDetection?.()
+          } else {
+            hermesActiveSessionWatcherStopped = true
+          }
+        }
 
         const prompt = initialInput?.trim()
         if (prompt) {
