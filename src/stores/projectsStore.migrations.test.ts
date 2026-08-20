@@ -4,6 +4,18 @@ import { DEFAULT_PREFERENCES, EMPTY_PROJECTS_FILE } from '../lib/types'
 import { migrate, normalizePreferences } from './projectsStore.migrations'
 
 describe('preference normalization', () => {
+  it('enables newly supported Hermes for existing preference files', () => {
+    const legacyEnabled = { ...DEFAULT_PREFERENCES.enabledAgents } as Record<string, boolean>
+    delete legacyEnabled.hermes
+
+    const preferences = normalizePreferences({
+      ...DEFAULT_PREFERENCES,
+      enabledAgents: legacyEnabled,
+    })
+
+    expect(preferences.enabledAgents.hermes).toBe(true)
+  })
+
   it('preserves persisted sidebar visibility and widths', () => {
     const preferences = normalizePreferences({
       ...DEFAULT_PREFERENCES,

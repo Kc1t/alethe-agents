@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { savedConversationIdFor, type SavedSession } from './sessionResume'
+import { RESUMABLE_AGENTS, savedConversationIdFor, type SavedSession } from './sessionResume'
 
 const baseSession: SavedSession = {
   sessionId: 'pty-1',
@@ -13,6 +13,10 @@ const baseSession: SavedSession = {
 }
 
 describe('savedConversationIdFor', () => {
+  it('keeps Hermes in the shared resumable-agent registry', () => {
+    expect(RESUMABLE_AGENTS).toContain('hermes')
+  })
+
   it('returns the saved Claude id when agent and cwd match', () => {
     expect(savedConversationIdFor(baseSession, 'claude', 'D:/Work/Project/')).toBe('claude-chat')
   })
@@ -43,5 +47,15 @@ describe('savedConversationIdFor', () => {
         'D:/Work/Project',
       ),
     ).toBe('opencode-chat')
+  })
+
+  it('returns the saved Hermes session id for the matching workspace', () => {
+    expect(
+      savedConversationIdFor(
+        { ...baseSession, agent: 'hermes', hermesSessionId: '20260820_010203_abc123' },
+        'hermes',
+        'D:/Work/Project',
+      ),
+    ).toBe('20260820_010203_abc123')
   })
 })

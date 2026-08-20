@@ -12,6 +12,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- Added Hermes Agent as a built-in terminal agent. Alethe detects an existing `hermes` CLI,
+  exposes it in onboarding, terminal creation and Preferences, and launches the official modern
+  TUI. Normal approval behavior is preserved; unrestricted mode adds `--yolo` only when selected.
+- Added durable per-pane Hermes session continuity. Alethe persists the exact durable session ID,
+  restores it after pane or app restarts, tracks `/new` and `/resume` transitions from private child
+  metadata on Linux, and uses read-only workspace history only when a new session is unambiguous.
 - Added four UI themes built from the Elite Dev artwork — Elite Original, Elite Pure Black,
   Elite Indigo and Elite Blush — each with a full token set, listed first under Preferences,
   Appearance.
@@ -42,6 +48,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- Hermes panes now stop Alethe's working indicator as soon as the TUI reports that it is ready or
+  waiting for user input. The existing terminal-silence detector remains as a fallback for older
+  Hermes versions that do not emit the recognized terminal-title markers.
 - The embedded browser pane no longer escapes its cell on scaled displays. Its webview was
   positioned with CSS-pixel coordinates while the window places child webviews in physical
   pixels, so the two only lined up at a device pixel ratio of 1 — on a HiDPI screen the

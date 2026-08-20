@@ -52,6 +52,10 @@ export const AGENT_INSTALL_CATALOG: Partial<Record<AgentType, AgentInstallCatalo
       { id: 'npm', command: 'npm install -g @openai/codex', requires: 'npm' },
     ],
   },
+  hermes: {
+    docsUrl: 'https://hermes-agent.nousresearch.com/docs/getting-started/installation',
+    methods: [],
+  },
   copilot: {
     docsUrl: 'https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started',
     methods: [

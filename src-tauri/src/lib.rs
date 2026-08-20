@@ -29,6 +29,7 @@ mod github_sync;
 mod graphify;
 mod handoff;
 mod health_probe;
+mod hermes_sessions;
 mod logging;
 mod mcp_agents;
 mod mcp_catalog;
@@ -340,6 +341,8 @@ pub fn run() {
             claude_sessions::get_claude_activity,
             claude_sessions::get_multi_agent_activity,
             codex_sessions::snapshot_codex_sessions,
+            hermes_sessions::snapshot_hermes_sessions,
+            hermes_sessions::read_hermes_child_active_session,
             handoff::prepare_agent_handoff,
             handoff::materialize_agent_handoff,
             handoff::complete_agent_handoff,

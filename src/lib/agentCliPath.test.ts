@@ -11,4 +11,9 @@ describe('cliPathMatchesAgent', () => {
   it('accepts Windows launcher extensions for GitHub Copilot', () => {
     expect(cliPathMatchesAgent('copilot', String.raw`C:\npm\copilot.cmd`)).toBe(true)
   })
+
+  it('accepts the existing Hermes launcher and rejects a different Python executable', () => {
+    expect(cliPathMatchesAgent('hermes', '/home/user/.local/bin/hermes')).toBe(true)
+    expect(cliPathMatchesAgent('hermes', '/home/user/.hermes/venv/bin/python3')).toBe(false)
+  })
 })

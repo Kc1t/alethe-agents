@@ -18,9 +18,15 @@ import {
   claimMostRecentSession,
   isSessionClaimed,
   registerSessionClaim,
+  releaseSessionClaim,
 } from '../../lib/sessionDiscovery'
+import {
+  decideHermesChildSessionObservation,
+  hermesSessionsNearTransition,
+} from '../../lib/hermesSessionAuthority'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import {
+  isResumableAgent,
   peekSession,
   removeSession,
   savedConversationIdFor,
@@ -47,12 +53,14 @@ import {
   listenPtyExit,
   ptyExists,
   readClipboardPayload,
+  readHermesChildActiveSession,
   readGsdChildSession,
   resizePty,
   setPtyVisible,
   snapshotAntigravitySessions,
   snapshotClaudeSessions,
   snapshotCodexSessions,
+  snapshotHermesSessions,
   snapshotOpenCodeSessions,
   spawnPty,
   writeClipboardText,
@@ -221,6 +229,7 @@ export function useXtermSession(params: {
     let pendingWriteLength = 0
     let pendingWriteDrainResolvers: Array<() => void> = []
     let resumeErrorBuffer = ''
+    let hermesActiveSessionWatcherStopped = false
 
     let resyncCaptureRef: string[] | null = null
     let lastCols = 0
@@ -735,15 +744,128 @@ export function useXtermSession(params: {
       return true
     }
 
+    let observedHermesSessionId = sessionId
+    const adoptHermesSession = (id: string, observed: string | null | undefined) => {
+      if (command !== 'hermes' || !cwd || !observed || observed === observedHermesSessionId) return
+      observedHermesSessionId = observed
+      releaseSessionClaim(sessionPersistenceKey)
+      if (id !== sessionPersistenceKey) releaseSessionClaim(id)
+      registerSessionClaim(command, cwd, observed, sessionPersistenceKey)
+      registerSessionClaim(command, cwd, observed, id)
+      saveSession(sessionPersistenceKey, {
+        sessionId: id,
+        hermesSessionId: observed,
+        cwd,
+        agent: command,
+        timestamp: Date.now(),
+      })
+      onSessionIdRef.current?.(observed)
+    }
+    let hermesActiveSessionWatcherStarted = false
+    let startHermesCreatedSessionDetection: (() => void) | null = null
+    let hermesDatabaseDiscoveryRequested = false
+    let lastHermesChildLiveHandle: string | null = null
+    let lastHermesChildChangeAtMs: number | null = null
+    const observeHermesActiveSession = async (id: string) => {
+      if (command !== 'hermes') return
+      const childObservation = await readHermesChildActiveSession(id).catch(() => null)
+      if (!childObservation || disposed || hermesActiveSessionWatcherStopped) return
+      const decision = decideHermesChildSessionObservation(
+        lastHermesChildLiveHandle,
+        childObservation,
+      )
+      lastHermesChildLiveHandle = decision.nextLiveHandle
+      if (childObservation.kind === 'live' && childObservation.changed_at_ms > 0) {
+        lastHermesChildChangeAtMs = childObservation.changed_at_ms
+      }
+      if (decision.durableSessionId) {
+        hermesDatabaseDiscoveryRequested = false
+        adoptHermesSession(id, decision.durableSessionId)
+      } else if (decision.requestDatabase) {
+        hermesDatabaseDiscoveryRequested = true
+      }
+    }
+    const startHermesActiveSessionWatcher = (id: string) => {
+      if (command !== 'hermes' || hermesActiveSessionWatcherStarted) return
+      hermesActiveSessionWatcherStarted = true
+      void (async () => {
+        let attempt = 0
+        while (!disposed && !hermesActiveSessionWatcherStopped) {
+          await observeHermesActiveSession(id)
+          if (disposed || hermesActiveSessionWatcherStopped) return
+          await new Promise((resolve) => setTimeout(resolve, attempt < 10 ? 500 : 3000))
+          attempt += 1
+        }
+      })()
+    }
+    const startAttachedHermesDatabaseWatcher = (id: string) => {
+      if (command !== 'hermes' || !cwd) return
+      void (async () => {
+        const initialSessions = await snapshotHermesSessions(cwd, env?.HERMES_HOME).catch(() => [])
+        const transitionCandidates = new Set(
+          hermesSessionsNearTransition(initialSessions, lastHermesChildChangeAtMs).map(
+            (session) => session.id,
+          ),
+        )
+        const before = new Set(
+          initialSessions
+            .filter((session) => !transitionCandidates.has(session.id))
+            .map((session) => session.id),
+        )
+        if (observedHermesSessionId) before.add(observedHermesSessionId)
+
+        let attempt = 0
+        while (!disposed && !hermesActiveSessionWatcherStopped) {
+          const delayMs = attempt < 10 ? 3000 : 15000
+          await new Promise((resolve) => setTimeout(resolve, delayMs))
+          if (disposed || hermesActiveSessionWatcherStopped) return
+          if (!hermesDatabaseDiscoveryRequested) {
+            attempt += 1
+            continue
+          }
+
+          const sessions = hermesSessionsNearTransition(
+            await snapshotHermesSessions(cwd, env?.HERMES_HOME).catch(() => []),
+            lastHermesChildChangeAtMs,
+          )
+          if (!hermesDatabaseDiscoveryRequested) continue
+          const discovered = claimDiscoveredSession(
+            command,
+            cwd,
+            before,
+            sessions,
+            sessionPersistenceKey,
+          )
+          if (!discovered) {
+            attempt += 1
+            continue
+          }
+
+          adoptHermesSession(id, discovered.id)
+          before.add(discovered.id)
+          hermesDatabaseDiscoveryRequested = false
+          attempt = 0
+        }
+      })()
+    }
+
     const attachExistingPty = async (existingId: string) => {
       setBootPhase('attaching')
       ptyIdRef.current = existingId
       useTerminalsStore.getState().registerPty(existingId)
       onSpawnedRef.current?.(existingId)
 
+      await observeHermesActiveSession(existingId)
+      if (disposed) return
+
       void setPtyVisible(existingId, isPanelVisibleRef.current).catch(() => {})
 
-      if (command === 'claude' || command === 'codex' || command === 'opencode') {
+      if (
+        command === 'claude' ||
+        command === 'codex' ||
+        command === 'hermes' ||
+        command === 'opencode'
+      ) {
         completionMonitor = new AgentCompletionMonitor({
           ptyId: existingId,
           agent: command,
@@ -766,6 +888,7 @@ export function useXtermSession(params: {
       if (!(await registerPtyStreamListeners(existingId))) return
 
       const exitUnlisten = await listenPtyExit(existingId, (payload) => {
+        hermesActiveSessionWatcherStopped = true
         console.info(
           `[pty-launch] ${command ?? 'shell'} EXIT (attach) id=${existingId} code=${payload.code ?? '—'} reason=${payload.reason ?? '—'}`,
         )
@@ -791,6 +914,8 @@ export function useXtermSession(params: {
       }
       unlistenExit = exitUnlisten
 
+      startAttachedHermesDatabaseWatcher(existingId)
+      startHermesActiveSessionWatcher(existingId)
       scheduleResize()
       if (!disposed) setBootPhase('ready')
     }
@@ -825,8 +950,6 @@ export function useXtermSession(params: {
         })
       }
     })
-
-    const RESUMABLE_AGENTS = ['claude', 'codex', 'opencode', 'antigravity']
 
     async function start() {
       try {
@@ -883,9 +1006,7 @@ export function useXtermSession(params: {
         }
 
         const savedSession =
-          command && RESUMABLE_AGENTS.includes(command)
-            ? peekSession(sessionPersistenceKey)
-            : null
+          command && isResumableAgent(command) ? peekSession(sessionPersistenceKey) : null
         const savedConversationId = savedConversationIdFor(savedSession, command, cwd)
         let resumeId = sessionId ?? savedConversationId
         // Fallback: se a tentativa anterior morreu no nascimento usando resume,
@@ -1042,17 +1163,26 @@ export function useXtermSession(params: {
         // typed inside the CLI move it to another conversation. Baselining the
         // directory here lets the watcher below adopt whatever it moves to.
         const discoveredSessionsBeforePromise =
-          cwd && (!launch.sessionId || command === 'claude')
+          cwd && (!launch.sessionId || command === 'claude' || command === 'hermes')
             ? command === 'codex'
               ? snapshotCodexSessions(cwd).catch(() => [])
               : command === 'antigravity'
                 ? snapshotAntigravitySessions(cwd).catch(() => [])
                 : command === 'opencode'
                   ? snapshotOpenCodeSessions(cwd).catch(() => [])
-                  : command === 'claude'
-                    ? snapshotClaudeSessions(cwd).catch(() => [])
-                    : null
+                  : command === 'hermes'
+                    ? snapshotHermesSessions(cwd, preparedRuntime.env?.HERMES_HOME).catch(() => [])
+                    : command === 'claude'
+                      ? snapshotClaudeSessions(cwd).catch(() => [])
+                      : null
             : null
+
+        // Hermes writes its session row immediately at startup. Finish the baseline before
+        // spawning so the new row cannot race into the "before" snapshot and become invisible.
+        if (command === 'hermes' && discoveredSessionsBeforePromise) {
+          await discoveredSessionsBeforePromise
+          if (disposed) return
+        }
 
         // Too many parallel PTY spawns can stall the app.
         setBootPhase('queued')
@@ -1098,7 +1228,12 @@ export function useXtermSession(params: {
           registerSessionClaim(command, cwd, launch.sessionId, response.id)
         }
 
-        if (command === 'claude' || command === 'codex' || command === 'opencode') {
+        if (
+          command === 'claude' ||
+          command === 'codex' ||
+          command === 'hermes' ||
+          command === 'opencode'
+        ) {
           completionMonitor = new AgentCompletionMonitor({
             ptyId: response.id,
             agent: command,
@@ -1110,11 +1245,12 @@ export function useXtermSession(params: {
         }
 
         // spawn vai consumir essa entrada e injetar o resume adequado da CLI.
-        if (command && RESUMABLE_AGENTS.includes(command)) {
+        if (command && isResumableAgent(command)) {
           saveSession(sessionPersistenceKey, {
             sessionId: response.id,
             claudeSessionId: command === 'claude' ? launch.sessionId : undefined,
             codexSessionId: command === 'codex' ? launch.sessionId : undefined,
+            hermesSessionId: command === 'hermes' ? launch.sessionId : undefined,
             opencodeSessionId: command === 'opencode' ? launch.sessionId : undefined,
             antigravitySessionId: command === 'antigravity' ? launch.sessionId : undefined,
             cwd: cwd ?? '',
@@ -1126,6 +1262,7 @@ export function useXtermSession(params: {
             (command === 'codex' ||
               command === 'antigravity' ||
               command === 'opencode' ||
+              command === 'hermes' ||
               command === 'claude') &&
             cwd &&
             discoveredSessionsBeforePromise
@@ -1138,6 +1275,13 @@ export function useXtermSession(params: {
 
               let attempt = 0
               while (!disposed) {
+                if (command === 'hermes' && !hermesDatabaseDiscoveryRequested) {
+                  const idleDelayMs = attempt < 10 ? 3000 : 15000
+                  await new Promise((resolve) => setTimeout(resolve, idleDelayMs))
+                  if (disposed) return
+                  attempt += 1
+                  continue
+                }
                 const delayMs = attempt < 10 ? 3000 : 15000
                 if (command === 'codex' || command === 'claude') {
                   await Promise.race([
@@ -1153,15 +1297,27 @@ export function useXtermSession(params: {
                     ? await snapshotCodexSessions(cwd).catch(() => [])
                     : command === 'antigravity'
                       ? await snapshotAntigravitySessions(cwd).catch(() => [])
-                      : command === 'claude'
-                        ? await snapshotClaudeSessions(cwd).catch(() => [])
-                        : await snapshotOpenCodeSessions(cwd).catch(() => [])
+                      : command === 'hermes'
+                        ? hermesSessionsNearTransition(
+                            await snapshotHermesSessions(
+                              cwd,
+                              preparedRuntime.env?.HERMES_HOME,
+                            ).catch(() => []),
+                            lastHermesChildChangeAtMs,
+                          )
+                        : command === 'claude'
+                          ? await snapshotClaudeSessions(cwd).catch(() => [])
+                          : await snapshotOpenCodeSessions(cwd).catch(() => [])
 
                 // equivalente no bloco de resume acima.
                 let filteredSessions = sessions
                 if (command === 'opencode') {
                   const gsdChildId = await readGsdChildSession(cwd).catch(() => null)
                   if (gsdChildId) filteredSessions = sessions.filter((s) => s.id !== gsdChildId)
+                }
+                if (command === 'hermes' && !hermesDatabaseDiscoveryRequested) {
+                  attempt += 1
+                  continue
                 }
                 const newSession = claimDiscoveredSession(
                   command,
@@ -1175,6 +1331,7 @@ export function useXtermSession(params: {
                     sessionId: response.id,
                     claudeSessionId: command === 'claude' ? newSession.id : undefined,
                     codexSessionId: command === 'codex' ? newSession.id : undefined,
+                    hermesSessionId: command === 'hermes' ? newSession.id : undefined,
                     antigravitySessionId: command === 'antigravity' ? newSession.id : undefined,
                     opencodeSessionId: command === 'opencode' ? newSession.id : undefined,
                     cwd: cwd ?? '',
@@ -1182,8 +1339,13 @@ export function useXtermSession(params: {
                     timestamp: Date.now(),
                   })
                   onSessionIdRef.current?.(newSession.id)
-                  if (command !== 'claude') return
-                  // Claude can switch conversation again through /new or /resume,
+                  if (command === 'hermes') {
+                    observedHermesSessionId = newSession.id
+                    // Exact child metadata signals subsequent Linux transitions.
+                    hermesDatabaseDiscoveryRequested = false
+                  }
+                  if (command !== 'claude' && command !== 'hermes') return
+                  // Claude and Hermes can switch conversations again through /new or /resume,
                   // so the watcher stays alive for the life of the pane.
                   before.add(newSession.id)
                   attempt = 0
@@ -1192,7 +1354,11 @@ export function useXtermSession(params: {
                 attempt += 1
               }
             }
-            void detectCreatedSession()
+            if (command === 'hermes') {
+              startHermesCreatedSessionDetection = () => void detectCreatedSession()
+            } else {
+              void detectCreatedSession()
+            }
           }
         }
 
@@ -1239,7 +1405,6 @@ export function useXtermSession(params: {
           if (replay) await queueTerminalWriteAndWait(replay)
           if (disposed) return
         }
-
         const inspectResumeConflict = (chunk: string) => {
           if (command !== 'codex' || !usedResumeRef.current || resumeConflictHandled) return
           // PTY events can split the bootstrap error between chunks, so keep
@@ -1253,6 +1418,7 @@ export function useXtermSession(params: {
 
         const exitUnlisten = await listenPtyExit(response.id, (payload) => {
           if (disposed) return
+          hermesActiveSessionWatcherStopped = true
           console.info(
             `[pty-launch] ${command ?? 'shell'} EXIT id=${response.id} code=${payload.code ?? '—'} reason=${payload.reason ?? '—'}`,
           )
@@ -1269,6 +1435,7 @@ export function useXtermSession(params: {
           const isAgent =
             command === 'claude' ||
             command === 'codex' ||
+            command === 'hermes' ||
             command === 'opencode' ||
             command === 'antigravity'
           const elapsed = Date.now() - spawnedAtRef.current
@@ -1317,6 +1484,21 @@ export function useXtermSession(params: {
           return
         }
         unlistenExit = exitUnlisten
+
+        if (command === 'hermes') {
+          // A short-lived PTY can exit while replay/listeners are being prepared, before the
+          // frontend subscribes to its exit event. Never start identity watchers for a process
+          // the backend already considers dead; otherwise they could poll forever and attribute a
+          // later same-workspace session to this dead pane.
+          const hermesPtyAlive = await ptyExists(response.id).catch(() => false)
+          if (disposed) return
+          if (hermesPtyAlive) {
+            startHermesActiveSessionWatcher(response.id)
+            startHermesCreatedSessionDetection?.()
+          } else {
+            hermesActiveSessionWatcherStopped = true
+          }
+        }
 
         const prompt = initialInput?.trim()
         if (prompt) {
@@ -1369,6 +1551,7 @@ export function useXtermSession(params: {
         })
       }
       disposed = true
+      hermesActiveSessionWatcherStopped = true
       spawnQueueAbort.abort()
       container.removeEventListener('wheel', onWheel, true)
       container.removeEventListener('pointerdown', focusTerminal, true)

@@ -235,6 +235,7 @@ export const TerminalPane = memo(function TerminalPane({
           sessionId: ptyId,
           claudeSessionId: activeTab.type === 'claude' ? launch.sessionId : undefined,
           codexSessionId: activeTab.type === 'codex' ? launch.sessionId : undefined,
+          hermesSessionId: activeTab.type === 'hermes' ? launch.sessionId : undefined,
           antigravitySessionId: activeTab.type === 'antigravity' ? launch.sessionId : undefined,
           cwd: restartCwd,
           agent: activeTab.type,
