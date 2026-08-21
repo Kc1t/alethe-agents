@@ -308,6 +308,79 @@ Replace the current mixed prototype with a state-driven flow:
 
 ---
 
+## 7A. Project collaboration: chat, shared tasks, and developer artifacts
+
+### Domain and security boundaries
+
+- [ ] Treat collaboration as a separate versioned event domain. Chat and task events must not be encoded as project filesystem changes or terminal scrollback.
+- [ ] Share terminal output, agent conversations, prompts, clipboard data, local paths, diagnostics, and logs only through an explicit user action and a review screen. Never publish them automatically.
+- [ ] Define **project public** as visible to authorized members of that project, not public on the internet. Internet-public publishing requires a separate future threat model and product flow.
+- [ ] Reauthorize every collaboration request against the current project grant, channel membership, device trust, and resource permission. A cached UI role is never authorization.
+- [ ] Encrypt message, task, and attachment content in transit and at rest. Evaluate end-to-end encryption with per-project/channel keys, device-key rotation, member removal, recovery, and forward-access limits before claiming E2EE.
+- [ ] Minimize relay metadata and document which identifiers, timestamps, sizes, delivery states, and membership facts the service can observe.
+- [ ] Keep human chat distinct from agent conversation history. Users may share an explicitly selected snapshot or excerpt, but joining a project must not expose prior or live agent sessions.
+
+### Shared task model
+
+- [ ] Give every task a stable opaque ID, project ID, creator, status, priority, assignees, watchers, due date, labels, dependencies, attachments, version, and audit history.
+- [ ] Support `personal`, `restricted`, and `project` visibility. Personal tasks are visible only to the creator; restricted tasks name users/roles; project tasks are visible to authorized project members.
+- [ ] Define independent permissions for `task:view`, `task:create`, `task:edit`, `task:assign`, `task:comment`, and `task:manage_visibility` rather than deriving them from one broad project role.
+- [ ] Do not leak the title, count, assignees, notification text, attachment names, search matches, or activity metadata of a private/restricted task to unauthorized users.
+- [ ] Require confirmation and an attachment/mention review when changing a task from private/restricted to project visibility.
+- [ ] Model task mutations as idempotent versioned events. Concurrent offline edits must merge through a documented deterministic strategy or surface a conflict; never silently accept last-write-wins data loss.
+- [ ] Allow a received project task to be followed, muted, or declined without automatically creating local files or subscribing the user to every update.
+
+### Chat, direct messages, channels, and groups
+
+- [ ] Support direct messages, project channels, private group conversations, categories, and message threads. Categories organize the UI but never grant access.
+- [ ] Bind project channels to an opaque project ID and explicit membership. Moving or renaming a category must not change authorization.
+- [ ] Support typed messages for text/Markdown, images, attachments, code snippets, command cards, test reports, bug reports, task references, code references, and security/audit events.
+- [ ] Add replies, edits, deletion policy, reactions, mentions, pins, unread/read state, search, notification controls, retention, export, and account-deletion behavior as explicit contracts.
+- [ ] Give groups owner/moderator/member roles with invite, remove, leave, block, report, and rate-limit behavior. Removing a member must rotate applicable keys and stop future delivery immediately.
+- [ ] Use an encrypted store-and-forward relay for reliable offline delivery. P2P may accelerate online attachment transfer, but chat correctness cannot depend on both peers being online simultaneously.
+- [ ] Track `queued`, `sent`, `delivered`, `read`, and `failed` states without presenting transport delivery as proof that a human read or accepted content.
+
+### Safe developer-oriented sharing
+
+- [ ] Represent a shared command as a structured card containing command text, shell, supported operating systems, optional non-sensitive working-directory label, author, and warning level.
+- [ ] Provide **Copy** and **Open in terminal for review** actions. Never execute a received command automatically; require a deliberate second action and warn for destructive/elevated commands.
+- [ ] Preserve terminal `Ctrl+L` behavior. Add **Share selection** to the terminal context menu and command palette, with a configurable default shortcut such as `Ctrl+Shift+L`; only a user-defined mapping may reuse `Ctrl+L` outside terminal focus.
+- [ ] Redact likely secrets before previewing shared commands, output, diagnostics, or environment data, and require explicit acknowledgement to override a warning.
+- [ ] Represent test reports with command, exit status, duration, summary, sanitized output, and selected artifact references. Do not attach complete logs by default.
+- [ ] Provide a bug-report card with reproduction steps, expected/actual behavior, environment, relevant version/commit, explicitly selected diagnostics, screenshots, and linked tasks.
+- [ ] Encode code references as project ID, commit/revision, relative path, and line range. Never transmit an absolute local path; show a stale-reference state when the target revision changed.
+- [ ] Validate attachment type and size, strip image metadata where practical, decode images in a constrained path, reject path traversal, apply quotas, and document malware-scanning limitations.
+
+### Offline transport, storage, and performance
+
+- [ ] Assign each collaboration event an idempotency key, author/device signature, logical resource version, and authoritative ordered sequence/cursor.
+- [ ] Store the offline queue and local collaboration cache encrypted, bounded, profile-scoped, and recoverable after interruption without duplicating messages or task mutations.
+- [ ] Paginate history and search; use bounded attachment sizes, resumable uploads, content-hash deduplication, cancellation, and explicit retry.
+- [ ] On sequence gaps, membership/key changes, or Core restart, pause optimistic publication, fetch an authorized snapshot, and rebase pending events.
+- [ ] Separate file-sync bandwidth and collaboration priority so a large project transfer cannot starve messages, revocations, or task updates.
+
+### Collaboration interface
+
+- [ ] Add **Chat** beside **Tasks** in the right sidebar, backed by the same Core contracts in Desktop and Web.
+- [ ] Give Chat an inbox for direct messages, mentions, project channels, private groups, categories, unread state, and failed/offline delivery.
+- [ ] Extend Tasks with **Mine**, **Assigned**, **Project**, **Private**, and status filters while keeping visibility and effective permissions clear on every item.
+- [ ] Keep collaboration notifications distinct from the security invitation center, but allow an accepted project invitation to lead into its channels and task board.
+- [ ] Add member/profile inspection and effective permission controls from both a project collaboration header and the central access screen.
+- [ ] Render no sample people, messages, tasks, delivery checks, unread counts, or online indicators in production.
+
+### Collaboration verification
+
+- [ ] Add authorization-matrix tests for every task visibility, channel type, role, removed member, revoked device, cross-project reference, history page, search result, notification, and attachment download.
+- [ ] Prove private-resource metadata does not leak through counts, errors, timing-sensitive list behavior, search, notifications, or caches.
+- [ ] Run real multi-user E2E scenarios across Desktop, Web, and two accounts/devices, including offline delivery, concurrent task edits, reconnect, member removal, and key rotation.
+- [ ] Test that received commands never execute automatically and that destructive commands, secrets, malicious Markdown, unsafe links, malformed images, oversized files, and traversal filenames fail safely.
+- [ ] Test notification privacy on locked OS screens and browsers: private message/task content must follow an explicit preview preference and safe default.
+- [ ] Stress long histories, rapid message bursts, large task boards, attachment cancellation, slow networks, relay outages, and storage pressure against documented budgets.
+
+**Collaboration acceptance gate:** Two independently authenticated users can exchange authorized project messages and task changes online and offline, with no cross-project/private metadata leak, deterministic convergence, revocation enforcement, and no received command or artifact capable of automatic execution.
+
+---
+
 ## 8. Linux application identity and notifications
 
 ### Alt+Tab/task-switcher icon
@@ -708,6 +781,11 @@ Security-sensitive slices additionally require fuzz/property suites, dependency 
 - Project grants, single-use link/QR/short-code invitations, invitation center, profile/device access inspector, permission presets and path scopes, revoke/audit flows.
 - **Go condition:** Replay and cross-project escalation tests pass.
 
+### Phase 3A — Project collaboration contracts
+
+- Versioned chat/task event service, project channels, direct/private groups, granular task visibility, encrypted offline queues, developer artifact cards, relay delivery, and authorization/non-leak test matrices.
+- **Go condition:** Two-user Desktop/Web tests converge online and offline; revoked members receive no future content, private metadata remains undiscoverable, and shared commands cannot execute automatically.
+
 ### Phase 4 — Safe sync engine
 
 - Grant/subscription separation, recipient-consent state machine, destination validation, receive/save wizard, manifest, existing-copy comparison, path sandbox, staging, chunks, verification, atomic commit, direction controls, conflict/recovery.
@@ -720,7 +798,7 @@ Security-sensitive slices additionally require fuzz/property suites, dependency 
 
 ### Phase 6 — UI restructuring
 
-- State-driven screens, i18n, accessibility, component tests, user validation script.
+- State-driven synchronization screens, Chat and Tasks collaboration surfaces, inbox/notification integration, i18n, accessibility, component tests, and user validation script.
 - **Go condition:** Representative users complete the key flows and all UI states have automated coverage.
 
 ### Phase 7 — Linux packaging and notifications
@@ -740,10 +818,14 @@ Security-sensitive slices additionally require fuzz/property suites, dependency 
 - [ ] No placeholder or simulated state is reachable in production builds.
 - [ ] Security labels reflect verified backend facts.
 - [ ] Identity, device trust, invitations, grants, sync manifests, conflicts, backups, and notifications have explicit versioned contracts.
+- [ ] Chat, direct/group membership, task visibility, collaboration events, developer artifact cards, delivery states, and retention have explicit versioned contracts.
 - [ ] Secrets are protected by the OS credential store and absent from logs/plaintext documents.
 - [ ] Project data cannot escape the selected root or include denied paths through traversal, links, case tricks, or archive extraction.
 - [ ] Interrupted sync and restore operations are atomic and recoverable.
 - [ ] Revocation and replay protections are verified end to end.
+- [ ] Joining a project never automatically shares terminal output, agent conversations, prompts, logs, clipboard data, absolute paths, or existing private tasks/messages.
+- [ ] Received commands and code/test/bug artifacts require review and can never execute automatically.
+- [ ] Private and restricted collaboration resources leak no content or metadata through lists, counts, search, notifications, caches, attachments, or error behavior.
 - [ ] All visible UI is localized in English and Brazilian Portuguese and follows the design system.
 - [ ] Unit, property, integration, contract, desktop E2E, two-machine, accessibility, and real-platform acceptance tests pass.
 - [ ] Linux packaged builds pass icon and notification checks on KDE/Wayland and GNOME/Wayland; X11 fallback behavior is documented and tested.
