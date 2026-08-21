@@ -71,6 +71,7 @@ export type ProjectsState = ProjectsFile & {
   projectsRevision: string
   persistenceDirty: boolean
   persistenceError: 'conflict' | 'core-mismatch' | 'write' | null
+  bootstrapStatus: 'idle' | 'connecting' | 'starting' | 'ready' | 'unavailable' | 'incompatible'
   hydrated: boolean
   hydrate: () => Promise<void>
   flushPersistence: (keepalive?: boolean) => Promise<void>
@@ -830,12 +831,14 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
     projectsRevision: 'missing',
     persistenceDirty: false,
     persistenceError: null,
+    bootstrapStatus: 'idle',
     hydrated: false,
     isCleaningOrphans: false,
 
     hydrate: async () => {
       const generation = ++hydrationGeneration
       const wasHydrated = get().hydrated
+      if (!wasHydrated) set({ bootstrapStatus: 'connecting' })
       saveGeneration += 1
       // A profile switch replaces the in-memory document. Never let a delayed
       // save from the previous profile write into the newly selected namespace.
@@ -849,7 +852,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
       }
       retryAttempt = 0
       pendingSave = false
-      const maxRetries = isTauriEnv() ? 1 : 60
+      const maxRetries = isTauriEnv() ? 1 : 6
 
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
@@ -869,18 +872,22 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
             projectsRevision: bootstrap.revision,
             persistenceDirty: false,
             persistenceError: null,
+            bootstrapStatus: 'ready',
           })
           void recordAppEvent('projects.hydrate', 'source=empty')
           return
         } catch (err) {
           const coreMismatch = String(err).includes(CORE_IDENTITY_MISMATCH)
           if (attempt < maxRetries && !coreMismatch) {
+            if (!wasHydrated) set({ bootstrapStatus: 'starting' })
             if (attempt === 1 || attempt % 10 === 0) {
               console.log(
-                `[Alethe] Aguardando servidor Web iniciar (tentativa ${attempt}/${maxRetries})...`,
+                `[Alethe] Waiting for the Web server (attempt ${attempt}/${maxRetries})...`,
               )
             }
-            await new Promise((r) => setTimeout(r, 1500))
+            await new Promise((resolve) =>
+              setTimeout(resolve, Math.min(500 * 1.5 ** (attempt - 1), 2000)),
+            )
           } else {
             if (generation !== hydrationGeneration) return
             console.error('Failed to load the profile bootstrap', err)
@@ -895,12 +902,13 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
               setStorageNamespace('default')
               set({
                 ...createEmptyProjectsFile(),
-                hydrated: true,
+                hydrated: false,
                 activeProfileId: 'default',
                 profiles: [],
                 projectsRevision: 'missing',
                 persistenceDirty: false,
                 persistenceError: coreMismatch ? 'core-mismatch' : 'write',
+                bootstrapStatus: coreMismatch ? 'incompatible' : 'unavailable',
               })
             }
             return

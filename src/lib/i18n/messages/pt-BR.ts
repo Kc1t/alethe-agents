@@ -3,6 +3,15 @@ import type { MessageKey } from './en'
 export const ptBR: Record<MessageKey, string> = {
   /* ---- loading ---- */
   'loading.initializing': 'Inicializando workspace',
+  'loading.connectingCore': 'Conectando ao Alethe Core',
+  'loading.startingCore': 'Iniciando o Alethe Core local',
+  'loading.coreUnavailable': 'O Alethe Core está indisponível',
+  'loading.coreUnavailableHint':
+    'O serviço local não respondeu dentro do prazo de inicialização. Verifique o launcher Web e tente novamente.',
+  'loading.coreIncompatible': 'O Alethe Core é incompatível',
+  'loading.coreIncompatibleHint':
+    'O serviço na porta local pertence a outra versão ou diretório de dados. O Alethe recusou a conexão para proteger seus dados.',
+  'loading.retry': 'Tentar novamente',
 
   /* ---- common ---- */
   'common.back': 'Voltar',

@@ -1,6 +1,6 @@
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Bell, X } from 'lucide-react'
+import { Bell, RefreshCw, X } from 'lucide-react'
 import { type CSSProperties, lazy, Suspense, useEffect, useRef } from 'react'
 import { Group as PanelGroup, Panel, Separator, usePanelRef } from 'react-resizable-panels'
 
@@ -68,7 +68,7 @@ import { ghosttyKillAll, setWindowOpacity, subscribeCoreSyncEvents } from './lib
 import { getLastCrashReport } from './lib/tauri'
 import { loadThemeIconBytes } from './lib/themeIcons'
 import { checkForUpdate } from './lib/updater'
-import { useProjectsStore } from './stores/projectsStore'
+import { type ProjectsState, useProjectsStore } from './stores/projectsStore'
 import { useTerminalsStore } from './stores/terminalsStore'
 import { type InAppToast, useUiStore } from './stores/uiStore'
 
@@ -95,10 +95,33 @@ const RIGHT_SIDEBAR_MIN_PX = 260
 const RIGHT_SIDEBAR_MAX_PX = 420
 const WORKSPACE_MIN_PX = 240
 
-function LoadingScreen({ reducedMotion = false }: { reducedMotion?: boolean }) {
+type BootstrapStatus = ProjectsState['bootstrapStatus']
+
+function LoadingScreen({
+  reducedMotion = false,
+  status = 'connecting',
+  onRetry,
+}: {
+  reducedMotion?: boolean
+  status?: BootstrapStatus
+  onRetry?: () => void
+}) {
   const t = useT()
+  const failed = status === 'unavailable' || status === 'incompatible'
+  const statusKey =
+    status === 'starting'
+      ? 'loading.startingCore'
+      : status === 'unavailable'
+        ? 'loading.coreUnavailable'
+        : status === 'incompatible'
+          ? 'loading.coreIncompatible'
+          : 'loading.connectingCore'
   return (
-    <div className={styles.loadingScreen} role="status" aria-label={t('loading.initializing')}>
+    <div
+      className={styles.loadingScreen}
+      role={failed ? 'alert' : 'status'}
+      aria-label={t(statusKey)}
+    >
       <div className={styles.loadingBackdrop} aria-hidden="true">
         <AsciiEffect
           imageSrc={homeBackground}
@@ -119,20 +142,36 @@ function LoadingScreen({ reducedMotion = false }: { reducedMotion?: boolean }) {
           backgroundColor="transparent"
         />
       </div>
-      <div className={styles.loadingInner}>
+      <div className={`${styles.loadingInner} ${failed ? styles.loadingFailure : ''}`}>
         <div className={styles.loadingWordmark}>Alethe</div>
         <div className={styles.loadingConsole}>
           <span className={styles.loadingPrompt} aria-hidden="true">
             ›
           </span>
-          <span>{t('loading.initializing')}</span>
-          <span className={styles.loadingCursor} aria-hidden="true" />
+          <span>{t(statusKey)}</span>
+          {!failed && <span className={styles.loadingCursor} aria-hidden="true" />}
         </div>
-        <div className={styles.loadingRail} aria-hidden="true">
-          {Array.from({ length: 12 }, (_, index) => (
-            <span key={index} />
-          ))}
-        </div>
+        {failed ? (
+          <>
+            <p className={styles.loadingHint}>
+              {t(
+                status === 'incompatible'
+                  ? 'loading.coreIncompatibleHint'
+                  : 'loading.coreUnavailableHint',
+              )}
+            </p>
+            <button type="button" className={styles.loadingRetry} onClick={onRetry}>
+              <RefreshCw size={13} />
+              {t('loading.retry')}
+            </button>
+          </>
+        ) : (
+          <div className={styles.loadingRail} aria-hidden="true">
+            {Array.from({ length: 12 }, (_, index) => (
+              <span key={index} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -193,6 +232,7 @@ function InAppNotifications() {
 export default function App() {
   const hydrate = useProjectsStore((s) => s.hydrate)
   const hydrated = useProjectsStore((s) => s.hydrated)
+  const bootstrapStatus = useProjectsStore((s) => s.bootstrapStatus)
   const uiTheme = useProjectsStore((s) => s.preferences.uiTheme)
   const visualStyle = useProjectsStore((s) => s.preferences.visualStyle ?? 'normal')
   const motionPreference = useProjectsStore((s) => s.preferences.motionPreference)
@@ -590,7 +630,7 @@ export default function App() {
 
   if (!hydrated) {
     // Persisted preferences are not known yet, so keep startup decorative motion static.
-    return <LoadingScreen reducedMotion />
+    return <LoadingScreen reducedMotion status={bootstrapStatus} onRetry={() => void hydrate()} />
   }
 
   return (

@@ -12,6 +12,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- Web startup now has bounded, localized connecting/starting/unavailable/incompatible states and an explicit retry action; an initial Core failure can no longer release an empty workspace as if hydration had succeeded, while reconnect failures still preserve the last valid document.
 - `npm run web` now probes and verifies an existing Desktop Core before starting Rust, attaches immediately when the service/API/application/storage identity is compatible, rejects incompatible listeners, and stops only a standalone Core owned by its launcher.
 - Repeated terminal resizes now keep the configured font scale unchanged, rebuild the canvas atlas at the acknowledged PTY grid, and wait for OpenTUI's Linux `SIGWINCH` reflow before requesting a full repaint, preventing compressed or single-line OpenCode layouts after consecutive resizes.
 - Linux agent panes now keep a stable logical PTY grid for the lifetime of the session and use a horizontal viewport when compressed, eliminating crash-prone `SIGWINCH` and local alternate-screen reflow sequences while preserving the original font scale and any number of adjacent terminal panes.

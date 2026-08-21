@@ -56,6 +56,7 @@ beforeEach(() => {
     projectsRevision: 'missing',
     persistenceDirty: false,
     persistenceError: null,
+    bootstrapStatus: 'idle',
     hydrated: false,
   })
 })
@@ -125,8 +126,34 @@ describe('projectsStore persistence', () => {
     useProjectsStore.getState().setPreferences({ displayName: 'Temporary edit' })
 
     expect(useProjectsStore.getState().persistenceError).toBe('write')
+    expect(useProjectsStore.getState().bootstrapStatus).toBe('unavailable')
+    expect(useProjectsStore.getState().hydrated).toBe(false)
     expect(useProjectsStore.getState().persistenceDirty).toBe(false)
     expect(api.saveProjectsForProfile).not.toHaveBeenCalled()
+  })
+
+  it('marks an identity mismatch as incompatible without releasing an empty workspace', async () => {
+    api.loadProjectsBootstrap.mockRejectedValue(new Error('alethe_core_identity_mismatch'))
+
+    await useProjectsStore.getState().hydrate()
+
+    expect(useProjectsStore.getState().bootstrapStatus).toBe('incompatible')
+    expect(useProjectsStore.getState().hydrated).toBe(false)
+    expect(useProjectsStore.getState().persistenceError).toBe('core-mismatch')
+  })
+
+  it('returns to ready after retrying a failed initial bootstrap', async () => {
+    api.loadProjectsBootstrap
+      .mockRejectedValueOnce(new Error('core unavailable'))
+      .mockResolvedValueOnce(bootstrap('profile-recovered', 'Recovered'))
+
+    await useProjectsStore.getState().hydrate()
+    expect(useProjectsStore.getState().bootstrapStatus).toBe('unavailable')
+
+    await useProjectsStore.getState().hydrate()
+    expect(useProjectsStore.getState().bootstrapStatus).toBe('ready')
+    expect(useProjectsStore.getState().hydrated).toBe(true)
+    expect(useProjectsStore.getState().preferences.displayName).toBe('Recovered')
   })
 
   it('captures the originating profile for an in-flight save', async () => {

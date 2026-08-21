@@ -1,6 +1,15 @@
 export const en = {
   /* ---- loading ---- */
   'loading.initializing': 'Initializing workspace',
+  'loading.connectingCore': 'Connecting to Alethe Core',
+  'loading.startingCore': 'Starting local Alethe Core',
+  'loading.coreUnavailable': 'Alethe Core is unavailable',
+  'loading.coreUnavailableHint':
+    'The local service did not answer within the startup deadline. Check the Web launcher and try again.',
+  'loading.coreIncompatible': 'Alethe Core is incompatible',
+  'loading.coreIncompatibleHint':
+    'The service on the local port belongs to another version or storage directory. Alethe refused the connection to protect your data.',
+  'loading.retry': 'Try again',
 
   /* ---- common ---- */
   'common.back': 'Back',

@@ -172,6 +172,37 @@
   animation: loadingEnter 360ms ease-out both;
 }
 
+.loadingFailure {
+  pointer-events: auto;
+}
+
+.loadingHint {
+  max-width: 360px;
+  margin: 2px 0 4px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.loadingRetry {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  color: var(--fg);
+  font: 600 11px var(--font-ui);
+  cursor: pointer;
+}
+
+.loadingRetry:hover {
+  border-color: var(--accent);
+}
+
 .loadingWordmark {
   font-family: var(--font-mono);
   font-size: 12px;
