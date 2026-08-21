@@ -62,6 +62,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   happen, with search/filter and one-click copy or JSON export of the full report.
 - The Markdown sidebar now lists a project's planning docs (`.alethe/plans/`) as quick-open tabs
   when no document is selected.
+- An in-app folder/file browser (breadcrumbs, search, drive quick-jump) is available as an
+  alternative to the OS file picker for any environment that can't show a native dialog.
+- Duplicate in-app notifications (same title and body within 5 seconds) are now collapsed into
+  one instead of stacking.
 
 ### Removed
 

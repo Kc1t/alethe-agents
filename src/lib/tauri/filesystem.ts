@@ -12,6 +12,25 @@ export async function listDirectory(path: string): Promise<DirectoryEntry[]> {
   return invoke<DirectoryEntry[]>('list_directory', { path })
 }
 
+export type BrowseDirectoryEntry = {
+  name: string
+  path: string
+  isDir: boolean
+  sizeBytes: number | null
+}
+
+export type DirectoryListing = {
+  currentPath: string
+  parentPath: string | null
+  homePath: string
+  systemRoots: string[]
+  entries: BrowseDirectoryEntry[]
+}
+
+export async function browseDirectory(path: string): Promise<DirectoryListing> {
+  return invoke<DirectoryListing>('browse_directory', { path })
+}
+
 export async function readTextFile(path: string): Promise<string> {
   return invoke<string>('read_text_file', { path })
 }
