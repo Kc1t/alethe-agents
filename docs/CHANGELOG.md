@@ -84,6 +84,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Testes (novo)
 
+- Identity groundwork now includes short-lived Google OAuth PKCE attempts with loopback-only callbacks, strict state/route/expiry/replay validation, and terminal device-revocation state transitions.
 - Web startup now records content-free browser performance marks for bundle evaluation, bootstrap request, verified Core identity, and usable UI, with executable budgets for warm attach and compiled standalone startup.
 - The shared-Core E2E now drives a real Tauri Desktop client and a separate headless Firefox Web client concurrently, creates projects through real UI actions in both directions, and verifies that stable project identities converge without action hooks.
 - Nova suíte e2e `test:e2e:git-pipeline` que exercita o pipeline de git da Central de Merges de ponta a ponta contra um projeto-fixture criado do zero a cada execução (sem `.git`): detecção de "não é repo", `git init`, provisionamento de worktree, um agente OpenCode real mantendo contexto entre dois prompts (1 terminal e depois 2 simultâneos), um conflito de merge determinístico, resolução + integração, e uma verificação **independente** (via `git log`/`git show` crus, fora de qualquer API do Alethe) de que o commit realmente chegou na branch alvo — em vez de confiar no que a UI relata. Também confirma que um terminal novo sobe limpo depois da integração.
