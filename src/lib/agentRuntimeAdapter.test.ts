@@ -24,6 +24,11 @@ describe('preparePtyRuntimeLaunch', () => {
 })
 
 describe('AGENT_RUNTIME_ADAPTERS', () => {
+  it('runs Hermes through the stable PTY adapter', () => {
+    const pty = AGENT_RUNTIME_ADAPTERS.find((adapter) => adapter.id === 'pty')
+    expect(pty?.agents).toContain('hermes')
+  })
+
   it('native adapters stay explicitly experimental and unavailable', () => {
     const native = AGENT_RUNTIME_ADAPTERS.filter((adapter) => adapter.id !== 'pty')
     expect(native.every((adapter) => adapter.experimental && !adapter.available)).toBe(true)

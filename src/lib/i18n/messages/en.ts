@@ -81,6 +81,7 @@ export const en = {
   'agent.shell.desc': 'PowerShell · cmd',
   'agent.claude.desc': 'Anthropic CLI',
   'agent.codex.desc': 'OpenAI CLI',
+  'agent.hermes.desc': 'Nous Research CLI',
   'agent.copilot.desc': 'GitHub CLI agent',
   'agent.opencode.desc': 'Open source',
   'agent.freebuff.desc': 'Free coding agent',
@@ -596,7 +597,7 @@ export const en = {
   'prefs.cliPathMismatch': 'That does not look like the CLI',
   'prefs.cliPathMismatchBody':
     'The {agent} command line tool is called "{command}". The file you picked has another name, so it may open the desktop app instead of running in a terminal.',
-  'prefs.enabledAgents': 'Enabled agents ({count}/4)',
+  'prefs.enabledAgents': 'Enabled agents ({count}/{total})',
   'prefs.resetSession': 'Reset last session',
   'prefs.resetSessionDesc':
     'If reopening the app did not resume your agents, this finds each open agent’s most recent conversation and restarts it with resume.',

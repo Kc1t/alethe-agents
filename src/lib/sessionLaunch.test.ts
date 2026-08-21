@@ -51,6 +51,25 @@ describe('buildAgentLaunch', () => {
     ).toEqual(['--session', 'open-pane', '--model', 'x'])
   })
 
+  it('Hermes starts clean and resumes with its native session flag', () => {
+    expect(
+      buildAgentLaunch('hermes', [
+        '-c',
+        'stale-name',
+        '--resume=stale-id',
+        '--cli',
+        '--yolo',
+      ]).args,
+    ).toEqual(['--tui', '--yolo'])
+    expect(
+      buildAgentLaunch(
+        'hermes',
+        ['--continue', 'old-name', '--resume', 'stale-id', '--tui', '--yolo'],
+        'hermes-pane',
+      ).args,
+    ).toEqual(['--tui', '--resume', 'hermes-pane', '--yolo'])
+  })
+
   it('Antigravity keeps agy flags and uses its pane-specific conversation', () => {
     expect(
       buildAgentLaunch(

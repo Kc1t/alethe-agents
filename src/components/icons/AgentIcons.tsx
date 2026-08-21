@@ -2,6 +2,7 @@ import claudeLogo from '../../assets/claude-code.png'
 import codexLogo from '../../assets/codex.png'
 import freebuffLogo from '../../assets/freebuff.png'
 import antigravityLogo from '../../assets/antigravity.png'
+import hermesLogo from '../../assets/hermes.png'
 import { iconMap } from '../../assets/icons'
 import type { AgentType, Theme } from '../../lib/types'
 import { isLightTheme } from '../../lib/themes'
@@ -28,6 +29,11 @@ export function ClaudeIcon({ size = 16 }: { size?: number }) {
 
 export function CodexIcon({ size = 16 }: { size?: number }) {
   return <img src={codexLogo} alt="" width={size} height={size} draggable={false} />
+}
+
+// Official Hermes app icon, Copyright (c) 2025 Nous Research, MIT licensed.
+export function HermesIcon({ size = 16 }: { size?: number }) {
+  return <img src={hermesLogo} alt="" width={size} height={size} draggable={false} />
 }
 
 export function FreebuffIcon({ size = 16 }: { size?: number }) {
@@ -99,6 +105,7 @@ export function AgentIcon({
   if (type === 'shell') return <ShellIcon size={size} />
   if (type === 'claude') return <ClaudeIcon size={size} />
   if (type === 'codex') return <CodexIcon size={size} />
+  if (type === 'hermes') return <HermesIcon size={size} />
   if (type === 'copilot') return <CopilotIcon size={size} />
   if (type === 'freebuff') return <FreebuffIcon size={size} />
   if (type === 'mimo') return <MimoIcon size={size} />

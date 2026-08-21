@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  installDocsUrl,
   installMethodsFor,
   installShellLine,
   type InstallToolchain,
@@ -66,6 +67,13 @@ describe('installMethodsFor', () => {
       'npm install -g freebuff',
     )
     expect(installMethodsFor('mimo', BARE).map((method) => method.id)).toEqual(['native'])
+  })
+
+  it('links to official Hermes install docs without running an automatic shell installer', () => {
+    expect(installDocsUrl('hermes')).toBe(
+      'https://hermes-agent.nousresearch.com/docs/getting-started/installation',
+    )
+    expect(installMethodsFor('hermes', BARE)).toEqual([])
   })
 })
 

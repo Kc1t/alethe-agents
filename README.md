@@ -11,7 +11,7 @@
   <p align="center">
     <b>The multi-agent coding workspace.</b>
     <br />
-    Run Claude Code, Codex, Copilot and your shells side by side — in one local-first desktop app.
+    Run Claude Code, Codex, Hermes Agent, Copilot and your shells side by side — in one local-first desktop app.
   </p>
 
   <p align="center">
@@ -96,6 +96,7 @@ Cross-platform (Windows, macOS, Linux), local-first, built with Tauri, Rust, Rea
 |---|---|---|
 | **Claude Code** | `claude` | Session resume, usage cards, local history |
 | **Codex** | `codex` | Session resume, usage cards |
+| **Hermes Agent** | `hermes` | Modern TUI, user-controlled approval mode |
 | **GitHub Copilot CLI** | `copilot` | |
 | **Antigravity** | `agy` | Usage cards |
 | **OpenCode** | `opencode` | Session resume |
@@ -103,10 +104,11 @@ Cross-platform (Windows, macOS, Linux), local-first, built with Tauri, Rust, Rea
 | **Freebuff** | `freebuff` | |
 | **Shell** | pwsh / bash / zsh | The plain terminal, same pane model |
 
-Missing CLIs can be installed, updated, and uninstalled from inside Alethe — it probes the machine
-for Node, npm, WinGet, Scoop, and Chocolatey and offers only the methods that actually work there,
-preferring each vendor's official installer. Already-installed CLIs are discovered across PATH,
-registry, npm/pnpm/Volta/fnm/nvm/Bun/Cargo/Scoop/Chocolatey, and can be pointed at a custom path.
+Missing CLIs can be installed, updated, and uninstalled from inside Alethe when a reviewed automatic
+method is available; otherwise Alethe links to the vendor's official installation guide. It probes
+the machine for Node, npm, WinGet, Scoop, and Chocolatey and offers only methods that work there.
+Already-installed CLIs are discovered across PATH, registry, npm/pnpm/Volta/fnm/nvm/Bun/Cargo/
+Scoop/Chocolatey, and can be pointed at a custom path.
 
 ## What It Does
 

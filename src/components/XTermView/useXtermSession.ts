@@ -743,7 +743,12 @@ export function useXtermSession(params: {
 
       void setPtyVisible(existingId, isPanelVisibleRef.current).catch(() => {})
 
-      if (command === 'claude' || command === 'codex' || command === 'opencode') {
+      if (
+        command === 'claude' ||
+        command === 'codex' ||
+        command === 'hermes' ||
+        command === 'opencode'
+      ) {
         completionMonitor = new AgentCompletionMonitor({
           ptyId: existingId,
           agent: command,
@@ -1098,7 +1103,12 @@ export function useXtermSession(params: {
           registerSessionClaim(command, cwd, launch.sessionId, response.id)
         }
 
-        if (command === 'claude' || command === 'codex' || command === 'opencode') {
+        if (
+          command === 'claude' ||
+          command === 'codex' ||
+          command === 'hermes' ||
+          command === 'opencode'
+        ) {
           completionMonitor = new AgentCompletionMonitor({
             ptyId: response.id,
             agent: command,
@@ -1269,6 +1279,7 @@ export function useXtermSession(params: {
           const isAgent =
             command === 'claude' ||
             command === 'codex' ||
+            command === 'hermes' ||
             command === 'opencode' ||
             command === 'antigravity'
           const elapsed = Date.now() - spawnedAtRef.current
