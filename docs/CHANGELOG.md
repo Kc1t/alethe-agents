@@ -84,6 +84,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Testes (novo)
 
+- Project authorization now has executable deny-by-default decisions for project/account/device identity, expiry, revocation, explicit operations, path traversal, and deny-first path scopes, plus hashed single-use invitation tokens and tested replay/audience enforcement.
 - Identity groundwork now includes short-lived Google OAuth PKCE attempts with loopback-only callbacks, strict state/route/expiry/replay validation, and terminal device-revocation state transitions.
 - Web startup now records content-free browser performance marks for bundle evaluation, bootstrap request, verified Core identity, and usable UI, with executable budgets for warm attach and compiled standalone startup.
 - The shared-Core E2E now drives a real Tauri Desktop client and a separate headless Firefox Web client concurrently, creates projects through real UI actions in both directions, and verifies that stable project identities converge without action hooks.

@@ -8,7 +8,8 @@ export type ProjectSyncId = Brand<string, 'ProjectSyncId'>
 export type InvitationId = Brand<string, 'InvitationId'>
 export type GrantId = Brand<string, 'GrantId'>
 
-export type SyncPermission = 'read' | 'export' | 'write' | 'upload' | 'delete' | 'manage'
+export type SyncPermission =
+  'read' | 'export' | 'write' | 'upload' | 'delete' | 'invite' | 'admin' | 'manage'
 export type CapabilityState = 'unavailable' | 'experimental' | 'available'
 
 export type ProjectSyncCapabilities = {
@@ -112,7 +113,7 @@ export function normalizePermissions(permissions: readonly SyncPermission[]): Sy
   if (normalized.has('export') || normalized.has('write') || normalized.has('delete')) {
     normalized.add('read')
   }
-  if (normalized.has('manage')) {
+  if (normalized.has('invite') || normalized.has('admin') || normalized.has('manage')) {
     normalized.add('read')
   }
   return [...normalized]

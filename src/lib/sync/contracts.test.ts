@@ -36,14 +36,10 @@ describe('parseProjectSyncCapabilities', () => {
 })
 
 describe('normalizePermissions', () => {
-  it('makes read implications explicit for export, write, delete, and manage', () => {
-    expect(normalizePermissions(['export', 'write', 'delete', 'manage'])).toEqual([
-      'export',
-      'write',
-      'delete',
-      'manage',
-      'read',
-    ])
+  it('makes read implications explicit for export, write, delete, invite, admin, and manage', () => {
+    expect(
+      normalizePermissions(['export', 'write', 'delete', 'invite', 'admin', 'manage']),
+    ).toEqual(['export', 'write', 'delete', 'invite', 'admin', 'manage', 'read'])
   })
 
   it('keeps upload as an isolated write-only inbox capability', () => {
