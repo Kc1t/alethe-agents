@@ -1,0 +1,161 @@
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modeGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.modeButton {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 76px;
+  padding: 12px;
+  color: var(--fg-muted);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  text-align: left;
+}
+
+.modeButton strong {
+  color: var(--fg);
+}
+
+.modeActive {
+  color: var(--fg);
+  background: var(--bg);
+  border-color: var(--accent);
+}
+
+.notice,
+.statusRow {
+  padding: 12px 14px;
+  color: var(--fg-muted);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.notice ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.statusRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.statusRow strong {
+  color: var(--fg);
+}
+
+.endpoint {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.error {
+  color: var(--status-error);
+}
+
+.accessCenter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.accessHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.accessHeading span,
+.accessActions,
+.statusRow span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.accessHeading small,
+.accessCopy span,
+.accessEmpty {
+  color: var(--fg-muted);
+}
+
+.accessList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.accessItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.accessUnread {
+  border-color: var(--accent);
+}
+
+.accessCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.accessActions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.accessEmpty {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+@media (max-width: 760px) {
+  .modeGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .accessHeading,
+  .accessItem {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .accessActions {
+    justify-content: flex-start;
+  }
+}

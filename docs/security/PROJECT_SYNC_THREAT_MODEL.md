@@ -86,6 +86,14 @@ OS notifications hide project and sender details on locked screens by default. P
 - [RFC 9420: Messaging Layer Security](https://www.rfc-editor.org/rfc/rfc9420) is the baseline candidate for authenticated group key establishment for future project chat; selecting an implementation requires a separate review.
 - [WebRTC 1.0](https://www.w3.org/TR/webrtc/) defines the browser peer-connection surface. It does not replace application authorization or the E2EE content protocol.
 
+## Accepted rendezvous decision
+
+Cloudflare Workers with SQLite-backed Durable Objects is the reference rendezvous provider for the first online-collaboration implementation. It is deliberately scheduled for Phase 10, after the Phase 3 security gate and the provider-independent collaboration systems in Phases 4 through 9. It is an optional control-plane component operated by Alethe or by an advanced self-hosting administrator. Ordinary users do not provide Cloudflare accounts or credentials. The provider boundary, activation model, invitation flow, and capability gating are defined in `docs/adr/ADR-0002-optional-cloudflare-rendezvous.md`.
+
+This decision does not select a project-data relay and does not relax any data-minimization requirement in this threat model. The unresolved account-routing proof must bind an opaque identifier to locally verified Google identity without sending Google tokens to the rendezvous service.
+
+Implementation must follow the phase-specific controls, state machines, failure behavior, and evidence requirements in `docs/superpowers/plans/2026-08-21-collaboration-implementation-blueprint.md`. Each phase re-runs the relevant threat analysis before its capability can advance from unavailable.
+
 ## Open security decisions
 
-Before network implementation begins, owners must select and review the identity backend, credential-store behavior per OS, device-signature and key-agreement libraries, encrypted state format, relay retention policy, group-chat key management implementation, and recovery/key-loss UX.
+Before network implementation begins, owners must review the identity backend, credential-store behavior per OS, device-signature and key-agreement libraries, encrypted state format, opaque Google-account routing proof, relay technology and retention policy, group-chat key management implementation, and recovery/key-loss UX.

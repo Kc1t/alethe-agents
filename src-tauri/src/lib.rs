@@ -60,8 +60,20 @@ pub mod skills;
 pub mod spotify;
 pub mod stats;
 pub mod supervisor;
+pub mod sync_activation;
+pub mod sync_access;
+pub mod sync_chat;
+pub mod sync_crypto;
+pub mod sync_engine;
+pub mod sync_manifest;
 pub mod sync_mesh;
+pub mod sync_protocol;
+pub mod sync_rendezvous;
 pub mod sync_security;
+pub mod sync_staging;
+pub mod sync_subscription;
+pub mod sync_tasks;
+pub mod sync_transport;
 pub mod telemetry;
 pub mod validation;
 pub mod window_style;
@@ -149,6 +161,7 @@ pub fn run() {
         .manage(discord_presence::DiscordPresence::new())
         .manage(planning::PlanningWatchers::default())
         .manage(cli_launch::PendingOpen::default())
+        .manage(std::sync::Arc::new(sync_rendezvous::RendezvousRuntime::default()))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
@@ -493,6 +506,51 @@ pub fn run() {
             sync_security::sync_revoke_invitation,
             sync_security::sync_redeem_invitation,
             sync_security::sync_revoke_grant,
+            sync_security::sync_resolve_capabilities,
+            sync_subscription::sync_list_subscriptions,
+            sync_subscription::sync_offer_subscription,
+            sync_subscription::sync_configure_subscription_destination,
+            sync_subscription::sync_select_subscription_mode,
+            sync_subscription::sync_confirm_subscription,
+            sync_subscription::sync_defer_subscription,
+            sync_subscription::sync_decline_subscription,
+            sync_staging::sync_begin_staging,
+            sync_staging::sync_receive_chunk,
+            sync_staging::sync_verify_staged,
+            sync_staging::sync_publish_staging,
+            sync_staging::sync_load_staging,
+            sync_engine::sync_engine_pause,
+            sync_engine::sync_engine_resume,
+            sync_engine::sync_engine_mark_needs_rescan,
+            sync_engine::sync_engine_load,
+            sync_engine::sync_engine_resolve_conflict,
+            sync_engine::sync_engine_apply_local,
+            sync_tasks::sync_create_task,
+            sync_tasks::sync_list_visible_tasks,
+            sync_tasks::sync_get_task,
+            sync_tasks::sync_complete_task,
+            sync_tasks::sync_add_task_comment,
+            sync_chat::sync_create_conversation,
+            sync_chat::sync_get_conversation,
+            sync_chat::sync_add_conversation_member,
+            sync_chat::sync_remove_conversation_member,
+            sync_chat::sync_list_messages,
+            sync_chat::sync_react_to_message,
+            sync_chat::sync_mark_conversation_read,
+            sync_activation::sync_get_activation_settings,
+            sync_activation::sync_set_activation_mode,
+            sync_activation::sync_enable_activation,
+            sync_activation::sync_disable_activation,
+            sync_activation::sync_resolve_activation_state,
+            sync_access::sync_access_list,
+            sync_access::sync_access_update,
+            sync_access::sync_access_resolve_action,
+            sync_rendezvous::sync_rendezvous_connect,
+            sync_rendezvous::sync_rendezvous_status,
+            sync_rendezvous::sync_rendezvous_disconnect,
+            sync_rendezvous::sync_rendezvous_send,
+            sync_rendezvous::sync_rendezvous_drain_events,
+            sync_rendezvous::sync_rendezvous_validate_endpoint,
             contract_check::contract_check,
             health_probe::health_probe,
             graphify::graphify_ensure_graph,

@@ -1,6 +1,10 @@
 import { invoke } from '@tauri-apps/api/core'
 
-import type { SyncPermission } from '../sync/contracts'
+import {
+  parseProjectSyncCapabilities,
+  type ProjectSyncCapabilities,
+  type SyncPermission,
+} from '../sync/contracts'
 import { isTauriEnv, webApiFetch } from './transport'
 
 export type SyncSecuritySnapshot = {
@@ -170,6 +174,19 @@ export async function syncRedeemInvitation(
     method: 'POST',
     body: JSON.stringify({ invitationId, bearerToken }),
   })
+}
+
+/**
+ * Fetches the backend-derived capability state (Phase 3 Step 3.7). Always parsed through
+ * `parseProjectSyncCapabilities`, which fails closed to fully unavailable on any malformed,
+ * missing, or unexpected response — the frontend can never promote a capability by mishandling
+ * this call.
+ */
+export async function syncResolveCapabilities(): Promise<ProjectSyncCapabilities> {
+  const raw = isTauriEnv()
+    ? await invoke('sync_resolve_capabilities')
+    : await webApiFetch('/api/sync/security/capabilities')
+  return parseProjectSyncCapabilities(raw)
 }
 
 export async function syncRevokeGrant(grantId: string): Promise<SyncGrantRecord> {

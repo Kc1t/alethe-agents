@@ -20,6 +20,7 @@ pub fn router() -> Router {
         .route("/api/sync/security/invitations/revoke", post(revoke_invitation))
         .route("/api/sync/security/invitations/redeem", post(redeem_invitation))
         .route("/api/sync/security/grants/revoke", post(revoke_grant))
+        .route("/api/sync/security/capabilities", get(capabilities))
 }
 
 async fn snapshot(Extension(runtime): Extension<Arc<ServerRuntime>>) -> Response {
@@ -29,6 +30,12 @@ async fn snapshot(Extension(runtime): Extension<Arc<ServerRuntime>>) -> Response
             AppError(axum::http::StatusCode::INTERNAL_SERVER_ERROR, error).into_response()
         }
     }
+}
+
+async fn capabilities(Extension(runtime): Extension<Arc<ServerRuntime>>) -> Response {
+    respond(crate::sync_security::resolve_capabilities_at(
+        runtime.data_root(),
+    ))
 }
 
 fn now_ms() -> u64 {

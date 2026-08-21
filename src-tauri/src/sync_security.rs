@@ -45,6 +45,16 @@ pub struct DeviceRecord {
     pub registered_at_ms: u64,
     pub last_verified_at_ms: Option<u64>,
     pub revoked_at_ms: Option<u64>,
+    /// X25519 key-agreement public key, bound to `public_key` (ADR-0003). Absent only for
+    /// device records persisted before this binding existed.
+    #[serde(default)]
+    pub agreement_public_key: Option<String>,
+    #[serde(default)]
+    pub agreement_key_bound_at_ms: Option<u64>,
+    /// Ed25519 signature (by `public_key`) over the agreement-key binding, proving the two keys
+    /// belong to the same device. See `sync_crypto::verify_key_binding`.
+    #[serde(default)]
+    pub agreement_key_binding_signature: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -158,6 +168,88 @@ pub struct SyncSecuritySnapshot {
     pub audit: Vec<SecurityAuditEvent>,
 }
 
+/// Truthful, backend-derived capability state (Phase 3 Step 3.7). The frontend may present
+/// reasons for an unavailable capability but can never promote one by changing local
+/// preferences — every value here is recomputed from real persisted state on every call.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CapabilityState {
+    Unavailable,
+    Experimental,
+    Available,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncCapabilities {
+    pub protocol_version: u32,
+    /// A Google account has been verified locally (real OAuth + ID token validation).
+    pub identity: CapabilityState,
+    /// This specific device is `Trusted` for the verified account.
+    pub device_trust: CapabilityState,
+    /// Local invitation issue/list/revoke is real and tested, but delivery between physical
+    /// machines does not exist yet (Phase 10), so this never reports `available`.
+    pub invitations: CapabilityState,
+    pub project_transfer: CapabilityState,
+    pub shared_tasks: CapabilityState,
+    pub project_chat: CapabilityState,
+    /// Whether an authenticated, cryptographically verified peer transport is active. Always
+    /// `false` until Phase 4 exists — never inferred from key presence alone.
+    pub verified_encryption: bool,
+}
+
+fn unavailable_capabilities() -> SyncCapabilities {
+    SyncCapabilities {
+        protocol_version: crate::sync_protocol::PROTOCOL_VERSION,
+        identity: CapabilityState::Unavailable,
+        device_trust: CapabilityState::Unavailable,
+        invitations: CapabilityState::Unavailable,
+        project_transfer: CapabilityState::Unavailable,
+        shared_tasks: CapabilityState::Unavailable,
+        project_chat: CapabilityState::Unavailable,
+        verified_encryption: false,
+    }
+}
+
+/// Derives every collaboration capability from real persisted state. Never returns `available`
+/// for a capability whose backend implementation does not exist yet.
+pub fn resolve_capabilities_at(data_root: &Path) -> Result<SyncCapabilities, String> {
+    let document = load_at(data_root)?;
+    let Some(_account) = document.account.as_ref() else {
+        return Ok(unavailable_capabilities());
+    };
+    let local_device = document
+        .local_device_id
+        .as_ref()
+        .and_then(|id| document.devices.iter().find(|device| &device.device_id == id));
+    let is_trusted = local_device.is_some_and(|device| device.trust == DeviceTrust::Trusted);
+
+    Ok(SyncCapabilities {
+        protocol_version: crate::sync_protocol::PROTOCOL_VERSION,
+        identity: CapabilityState::Available,
+        device_trust: if is_trusted {
+            CapabilityState::Available
+        } else {
+            CapabilityState::Unavailable
+        },
+        invitations: if is_trusted {
+            CapabilityState::Experimental
+        } else {
+            CapabilityState::Unavailable
+        },
+        project_transfer: CapabilityState::Unavailable,
+        shared_tasks: CapabilityState::Unavailable,
+        project_chat: CapabilityState::Unavailable,
+        verified_encryption: false,
+    })
+}
+
+#[tauri::command]
+pub fn sync_resolve_capabilities(app: tauri::AppHandle) -> Result<SyncCapabilities, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    resolve_capabilities_at(&data_root)
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncSecurityDocument {
@@ -194,7 +286,28 @@ pub trait DeviceSecretStore {
     fn delete(&self, device_id: &str) -> Result<(), String>;
 }
 
+/// Credential-store entry name for a device's X25519 agreement private key, kept distinct from
+/// the Ed25519 identity entry (`device_id`) but deleted alongside it on every revocation path.
+pub fn agreement_secret_entry_id(device_id: &str) -> String {
+    format!("{device_id}#agree")
+}
+
 pub struct PlatformDeviceSecretStore;
+
+/// Loads the local Ed25519 device identity only into process memory for an authenticated
+/// operation. The raw key is never serialized, logged, or returned through IPC.
+pub fn load_device_signing_key(device_id: &str) -> Result<SigningKey, String> {
+    let entry = keyring::Entry::new(DEVICE_KEY_SERVICE, device_id)
+        .map_err(|_| "credential_store_unavailable".to_string())?;
+    let secret = entry
+        .get_secret()
+        .map_err(|_| "credential_store_read_failed".to_string())?;
+    let bytes: [u8; 32] = secret
+        .as_slice()
+        .try_into()
+        .map_err(|_| "device_private_key_invalid".to_string())?;
+    Ok(SigningKey::from_bytes(&bytes))
+}
 
 impl DeviceSecretStore for PlatformDeviceSecretStore {
     fn set(&self, device_id: &str, secret: &[u8]) -> Result<(), String> {
@@ -916,6 +1029,15 @@ pub(crate) fn complete_verified_identity<S: DeviceSecretStore>(
     let verifying_key = signing_key.verifying_key();
     let device_id = format!("dev_{}", nanoid::nanoid!(24));
     secret_store.set(&device_id, &signing_key.to_bytes())?;
+    let (agreement_secret, key_binding) =
+        crate::sync_crypto::generate_bound_key_agreement(&device_id, &signing_key, now_ms);
+    if let Err(error) = secret_store.set(
+        &agreement_secret_entry_id(&device_id),
+        &agreement_secret.to_bytes(),
+    ) {
+        let _ = secret_store.delete(&device_id);
+        return Err(error);
+    }
     let device = DeviceRecord {
         device_id: device_id.clone(),
         account_id: account.account_id.clone(),
@@ -930,6 +1052,9 @@ pub(crate) fn complete_verified_identity<S: DeviceSecretStore>(
             None
         },
         revoked_at_ms: None,
+        agreement_public_key: Some(URL_SAFE_NO_PAD.encode(&key_binding.x25519_public_key)),
+        agreement_key_bound_at_ms: Some(key_binding.bound_at_ms),
+        agreement_key_binding_signature: Some(URL_SAFE_NO_PAD.encode(&key_binding.signature)),
     };
     document.account = Some(account);
     document.local_device_id = Some(device_id.clone());
@@ -947,6 +1072,7 @@ pub(crate) fn complete_verified_identity<S: DeviceSecretStore>(
     );
     if let Err(error) = save_at(data_root, &document) {
         let _ = secret_store.delete(&device.device_id);
+        let _ = secret_store.delete(&agreement_secret_entry_id(&device.device_id));
         return Err(error);
     }
     Ok(device)
@@ -959,6 +1085,7 @@ pub(crate) fn disconnect_identity_at<S: DeviceSecretStore>(
     let document = load_at(data_root)?;
     for device in &document.devices {
         secret_store.delete(&device.device_id)?;
+        secret_store.delete(&agreement_secret_entry_id(&device.device_id))?;
     }
     let path = security_document_path(data_root);
     if path.exists() {
@@ -1048,7 +1175,8 @@ pub(crate) fn reject_device_at<S: DeviceSecretStore>(
         Some(target_device_id.to_string()),
     );
     save_at(data_root, &document)?;
-    secret_store.delete(target_device_id)
+    secret_store.delete(target_device_id)?;
+    secret_store.delete(&agreement_secret_entry_id(target_device_id))
 }
 
 /// Renames a device. Only the device itself may rename its own record.
@@ -1137,6 +1265,7 @@ pub(crate) fn revoke_device_at<S: DeviceSecretStore>(
     );
     save_at(data_root, &document)?;
     secret_store.delete(target_device_id)?;
+    secret_store.delete(&agreement_secret_entry_id(target_device_id))?;
     Ok(updated)
 }
 
@@ -1242,6 +1371,60 @@ mod tests {
     }
 
     #[test]
+    fn registration_creates_a_verifiable_agreement_key_binding_with_its_own_secret() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let device =
+            complete_verified_identity(&root, &secrets, account("acct-a"), "Laptop", 1_000)
+                .unwrap();
+
+        let agreement_secret = secrets
+            .0
+            .lock()
+            .unwrap()
+            .get(&agreement_secret_entry_id(&device.device_id))
+            .unwrap()
+            .clone();
+        assert_eq!(agreement_secret.len(), 32);
+
+        let binding = crate::sync_crypto::DeviceKeyBinding {
+            device_id: device.device_id.clone(),
+            ed25519_public_key: URL_SAFE_NO_PAD.decode(&device.public_key).unwrap(),
+            x25519_public_key: URL_SAFE_NO_PAD
+                .decode(device.agreement_public_key.as_ref().unwrap())
+                .unwrap(),
+            bound_at_ms: device.agreement_key_bound_at_ms.unwrap(),
+            signature: URL_SAFE_NO_PAD
+                .decode(device.agreement_key_binding_signature.as_ref().unwrap())
+                .unwrap(),
+        };
+        assert!(crate::sync_crypto::verify_key_binding(&binding).is_ok());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn revoking_a_device_deletes_both_its_identity_and_agreement_secrets() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let first =
+            complete_verified_identity(&root, &secrets, account("acct-a"), "Laptop", 1_000)
+                .unwrap();
+        let second =
+            complete_verified_identity(&root, &secrets, account("acct-a"), "Desktop", 2_000)
+                .unwrap();
+        approve_device_at(&root, &first.device_id, &second.device_id, 3_000).unwrap();
+
+        revoke_device_at(&root, &secrets, &first.device_id, &second.device_id, 4_000).unwrap();
+
+        let store = secrets.0.lock().unwrap();
+        assert!(store.get(&second.device_id).is_none());
+        assert!(store
+            .get(&agreement_secret_entry_id(&second.device_id))
+            .is_none());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn disconnect_removes_device_secrets_and_identity_document() {
         let root = temp_root();
         let secrets = MemorySecrets::default();
@@ -1287,6 +1470,9 @@ mod tests {
                 registered_at_ms: 1,
                 last_verified_at_ms: None,
                 revoked_at_ms: None,
+                agreement_public_key: None,
+                agreement_key_bound_at_ms: None,
+                agreement_key_binding_signature: None,
             }],
             invitations: vec![],
             grants: vec![],
@@ -1697,5 +1883,117 @@ mod tests {
             normalize_permissions(vec![SyncPermission::Read, SyncPermission::Read]),
             vec![SyncPermission::Read]
         );
+    }
+
+    #[test]
+    fn capabilities_are_unavailable_before_any_account_is_verified() {
+        let root = temp_root();
+        let capabilities = resolve_capabilities_at(&root).unwrap();
+        assert_eq!(capabilities.identity, CapabilityState::Unavailable);
+        assert_eq!(capabilities.device_trust, CapabilityState::Unavailable);
+        assert_eq!(capabilities.invitations, CapabilityState::Unavailable);
+        assert_eq!(capabilities.project_transfer, CapabilityState::Unavailable);
+        assert_eq!(capabilities.shared_tasks, CapabilityState::Unavailable);
+        assert_eq!(capabilities.project_chat, CapabilityState::Unavailable);
+        assert!(!capabilities.verified_encryption);
+    }
+
+    #[test]
+    fn capabilities_reflect_this_devices_real_trust_state_not_the_accounts() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        complete_verified_identity(&root, &secrets, account("acct-a"), "Laptop", 1_000).unwrap();
+        let first_device_capabilities = resolve_capabilities_at(&root).unwrap();
+        assert_eq!(first_device_capabilities.identity, CapabilityState::Available);
+        assert_eq!(first_device_capabilities.device_trust, CapabilityState::Available);
+        assert_eq!(first_device_capabilities.invitations, CapabilityState::Experimental);
+
+        // A second registration in the same document simulates what a second, still-pending
+        // device would see as `local_device_id` if it queried its own capabilities: identity is
+        // available (the account is verified), but this specific device is not yet trusted, so
+        // it cannot invite.
+        let second_device_id =
+            complete_verified_identity(&root, &secrets, account("acct-a"), "Desktop", 2_000)
+                .unwrap()
+                .device_id;
+        let mut document = load_at(&root).unwrap();
+        document.local_device_id = Some(second_device_id);
+        save_at(&root, &document).unwrap();
+
+        let second_device_capabilities = resolve_capabilities_at(&root).unwrap();
+        assert_eq!(second_device_capabilities.identity, CapabilityState::Available);
+        assert_eq!(second_device_capabilities.device_trust, CapabilityState::Unavailable);
+        assert_eq!(second_device_capabilities.invitations, CapabilityState::Unavailable);
+
+        // Every capability that has no real backend implementation yet must never report
+        // anything but unavailable, regardless of identity/device state.
+        assert_eq!(first_device_capabilities.project_transfer, CapabilityState::Unavailable);
+        assert_eq!(first_device_capabilities.shared_tasks, CapabilityState::Unavailable);
+        assert_eq!(first_device_capabilities.project_chat, CapabilityState::Unavailable);
+        assert!(!first_device_capabilities.verified_encryption);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    /// Forbidden-sentinel test (Phase 3 Step 3.8): a serialized public snapshot, a capability
+    /// response, and every stable error code emitted by this module must never contain a bearer
+    /// token, a private key, or any raw secret material — only opaque IDs, hashes, and enum-like
+    /// error codes.
+    #[test]
+    fn public_snapshot_and_error_codes_never_leak_secret_material() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let issuer =
+            complete_verified_identity(&root, &secrets, account("acct-owner"), "Owner", 1_000)
+                .unwrap();
+        let issued = issue_invitation(
+            &root,
+            &issuer.device_id,
+            "project-a",
+            "acct-recipient",
+            None,
+            vec![SyncPermission::Read],
+            vec![],
+            2_000,
+            10_000,
+        )
+        .unwrap();
+
+        let snapshot = snapshot_at(&root).unwrap();
+        let serialized = serde_json::to_string(&snapshot).unwrap();
+        assert!(!serialized.contains(&issued.bearer_token));
+
+        let raw_private_key = secrets
+            .0
+            .lock()
+            .unwrap()
+            .get(&issuer.device_id)
+            .unwrap()
+            .clone();
+        let private_key_b64 = URL_SAFE_NO_PAD.encode(&raw_private_key);
+        assert!(!serialized.contains(&private_key_b64));
+
+        let capabilities = resolve_capabilities_at(&root).unwrap();
+        let capabilities_json = serde_json::to_string(&capabilities).unwrap();
+        assert!(!capabilities_json.contains(&issued.bearer_token));
+        assert!(!capabilities_json.contains(&private_key_b64));
+
+        // Every stable error code this module returns must be a short machine-readable
+        // identifier, never an interpolated value that could carry a secret.
+        let sample_errors = [
+            complete_verified_identity(&root, &secrets, account("acct-owner"), "", 1_000)
+                .unwrap_err(),
+            redeem_invitation(&root, "unknown-invitation", "wrong-token", "acct-x", "dev-x", 3_000)
+                .unwrap_err(),
+            approve_device_at(&root, "unknown-device", "unknown-device", 4_000).unwrap_err(),
+        ];
+        for error in sample_errors {
+            assert!(!error.contains(&issued.bearer_token));
+            assert!(error.len() < 64, "error code should be short and stable: {error}");
+            assert!(
+                error.chars().all(|c| c.is_ascii_lowercase() || c == '_'),
+                "error code should be a stable snake_case identifier: {error}"
+            );
+        }
+        fs::remove_dir_all(root).unwrap();
     }
 }

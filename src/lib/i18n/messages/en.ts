@@ -2402,6 +2402,60 @@ export const en = {
   'plans.selectProject': 'Select a project to view its plans',
   'plans.noPlans': 'No plans found',
   'plans.noPlansDesc': 'Plans created by agents will appear here in .alethe/plans/.',
+
+  /* ---- optional collaboration service ---- */
+  'collaboration.settingsTitle': 'Project collaboration',
+  'collaboration.settingsDescription':
+    'Choose whether Alethe may use a rendezvous service for remote discovery, invitations, and P2P negotiation.',
+  'collaboration.mode.local_only.title': 'Local only',
+  'collaboration.mode.local_only.description': 'Never connects to a rendezvous provider.',
+  'collaboration.mode.alethe_managed.title': 'Alethe service',
+  'collaboration.mode.alethe_managed.description': 'Uses the official endpoint when available.',
+  'collaboration.mode.advanced_custom.title': 'Custom provider',
+  'collaboration.mode.advanced_custom.description': 'Uses a compatible endpoint you operate.',
+  'collaboration.customEndpoint': 'Rendezvous endpoint',
+  'collaboration.privacyTitle': 'Provider privacy boundary',
+  'collaboration.privacyVisible':
+    'The provider sees opaque device IDs, public keys, presence, time, and ciphertext size.',
+  'collaboration.privacyHidden':
+    'OAuth credentials, private keys, paths, names, project data, tasks, and chat plaintext never go to the provider.',
+  'collaboration.noCloudflareAccount':
+    'Ordinary users do not need a Cloudflare account or deployment credentials.',
+  'collaboration.statusLabel': 'Connection state',
+  'collaboration.state.disabled': 'Disabled',
+  'collaboration.state.identity_required': 'Google identity required',
+  'collaboration.state.ready': 'Ready to connect',
+  'collaboration.state.connecting': 'Connecting',
+  'collaboration.state.online': 'Online',
+  'collaboration.state.retrying': 'Retrying safely',
+  'collaboration.state.direct_only': 'Direct connection only',
+  'collaboration.state.needs_attention': 'Needs attention',
+  'collaboration.managedEndpointUnavailable':
+    'This build has no official rendezvous endpoint configured. Local Alethe remains available.',
+  'collaboration.connectionError': 'The collaboration service could not complete this operation.',
+  'collaboration.enable': 'Enable collaboration',
+  'collaboration.disable': 'Disable collaboration',
+  'collaboration.notification.invitationTitle': 'Project invitation received',
+  'collaboration.notification.invitationBody': 'Open Alethe to review the invitation securely.',
+  'collaboration.notification.securityTitle': 'Collaboration access changed',
+  'collaboration.notification.revocationBody': 'Open Alethe to review the current access state.',
+  'collaboration.notification.connectionTitle': 'A device is ready to connect',
+  'collaboration.notification.connectionBody': 'Open Alethe to continue the secure connection.',
+  'collaboration.notification.providerTitle': 'Collaboration service needs attention',
+  'collaboration.notification.providerBody':
+    'Local work remains available. Open Alethe for details.',
+  'collaboration.access.title': 'Access center',
+  'collaboration.access.description': 'Security and collaboration events without private content.',
+  'collaboration.access.empty': 'No access events need your attention.',
+  'collaboration.access.category.security': 'Security',
+  'collaboration.access.category.collaboration': 'Collaboration',
+  'collaboration.access.kind.remote_invitation': 'Project invitation received',
+  'collaboration.access.kind.connection_candidate': 'Device ready to connect',
+  'collaboration.access.kind.revocation': 'Collaboration access changed',
+  'collaboration.access.kind.provider_attention': 'Connection needs attention',
+  'collaboration.access.read': 'Mark as read',
+  'collaboration.access.later': 'Later',
+  'collaboration.access.dismiss': 'Dismiss',
 } as const
 
 export type MessageKey = keyof typeof en

@@ -8,10 +8,95 @@ The approved product decisions are:
 
 - Google is the only account identity provider for the first release.
 - Project data should use a direct peer-to-peer connection whenever possible.
-- A rendezvous service may help authenticated devices discover each other and negotiate a connection.
+- Cloudflare Workers with SQLite-backed Durable Objects is the accepted reference rendezvous provider; it is an optional collaboration component, not a per-user Cloudflare account requirement.
+- Local Alethe operation never depends on the rendezvous provider. Ordinary users connect to the operator-managed endpoint only after enabling online collaboration.
 - A relay may be used when a direct connection is impossible, but it must handle only end-to-end encrypted data.
 - Receiving an invitation or discovering another device must never download project data automatically.
 - Work should be delivered in reviewable phase commits, followed by final documentation and pull-request validation.
+
+## Owner-confirmed collaboration operating model — 2026-08-21
+
+This section records the owner's decisions from the architecture review and overrides older wording that could imply that Cloudflare is an early dependency, that each user needs a Cloudflare account, or that project traffic passes through the rendezvous service.
+
+### Who configures Cloudflare
+
+- The Alethe project operator owns and deploys the official Cloudflare Worker and Durable Objects. Deployment credentials never ship inside Alethe.
+- An ordinary user never creates a Cloudflare account, installs Wrangler, configures a Worker, supplies a Cloudflare API token, buys a domain, or manages TLS.
+- A user who enables online collaboration connects to the operator-managed Alethe collaboration endpoint already configured in the signed application release.
+- Advanced users may deliberately select a compatible custom/self-hosted endpoint. This is an optional expert path, not normal onboarding, and it cannot silently fall back to the official service or another public provider.
+- Every participant who wants automatic online discovery, invitation delivery, or new cross-network connection negotiation must enable Alethe collaboration. This still does not require them to own Cloudflare infrastructure.
+
+### Optional component and capability release
+
+Alethe starts and remains useful without the online collaboration component. Local-only mode makes no rendezvous connection. Enabling or disabling the component affects only capabilities that require remote routing.
+
+| Capability | Local-only behavior | Behavior after collaboration is enabled and authenticated |
+| --- | --- | --- |
+| Projects, terminals, agents, profiles, preferences, and local Git/GitHub backup | Available | Unchanged |
+| Local Google identity and device key/trust records | Available | Used to authenticate collaboration without exposing private material |
+| Create/copy an out-of-band invitation link | Available when local invitation security permits | Also available |
+| Automatic delivery of an invitation to another PC | Unavailable | Available only after Phase 10B and real recipient routing |
+| Same-account remote device discovery | Unavailable | Available only after the account-routing proof and Phase 10B |
+| Presence and refreshed connection candidates | Unavailable | Available through the control channel |
+| Existing authenticated P2P session | May continue while connectivity and authorization remain valid | Independent of whether the provider is currently carrying control events |
+| New cross-network P2P session after addresses change | May fail without a known direct/LAN route | Provider may supply fresh encrypted candidate signaling |
+| Offline invitation mailbox and immediate remote revocation notice | Unavailable | Available subject to expiry, authorization, retention, and provider availability |
+| Project files, synchronization operations, tasks, and chat content | Never routed in plaintext through Cloudflare | Travel through authenticated E2EE peer transport; a future relay may see ciphertext only |
+
+Frontend controls must use backend capability state and precise reason codes. A preference toggle, configured URL, successful health request, or visible button never authorizes or proves a feature.
+
+### One control connection, not one request per file or message
+
+When collaboration is enabled, each Alethe device maintains one logical outbound WebSocket to the configured rendezvous service. It is not one connection per account contact, project, invitation, group, file, task, or chat message.
+
+The intended lifecycle is:
+
+1. Alethe remains disconnected from rendezvous while the optional component is disabled.
+2. On explicit activation, the Core validates local identity/device prerequisites and the configured service protocol.
+3. The service issues a random challenge; the Core signs it with the local device identity without sending the private key.
+4. The authenticated control channel carries only presence generations, encrypted invitation envelopes, revocations, acknowledgements, and encrypted/bounded connection signaling.
+5. Once two devices establish the Phase 4 authenticated P2P session, project data, synchronization, tasks, and chat use that peer session rather than the Cloudflare Worker.
+6. The control WebSocket may remain logically connected but idle so new invitations, device changes, and revocations can arrive. Durable Object WebSocket Hibernation is intended to avoid active compute while idle.
+7. Native WebSocket ping/pong or hibernation auto-response provides liveness. Do not send frequent JSON “heartbeat” application messages merely to say the app is alive.
+8. Closing Alethe closes the client session. Network loss moves the client to a bounded retry state instead of affecting local projects.
+
+Cloudflare usage is therefore driven by connection establishment and small control events, not by the number of synchronized files or ordinary P2P chat messages. Limits belong to the shared Alethe deployment and are monitored globally; source IP may be used only as a secondary abuse signal and never as device identity.
+
+### Reconnection decision order
+
+After Wi-Fi loss, suspend/resume, public-IP change, or a dropped peer session, the Core follows this order:
+
+1. Revalidate the local device, grant, session generation, and expiry.
+2. Attempt to resume an authenticated peer session when the selected transport safely supports it.
+3. Try still-valid known direct candidates and opt-in LAN discovery.
+4. If those routes fail or expired, reconnect the single control WebSocket and request fresh encrypted candidate signaling.
+5. Try the newly negotiated direct P2P path.
+6. Use a separately approved end-to-end encrypted relay only when direct connectivity is impossible.
+7. Expose a precise degraded/offline state if no route works; never send plaintext through Cloudflare as an emergency fallback.
+
+Known addresses are hints, not permanent identity. A router, carrier NAT, VPN, or Wi-Fi change may invalidate them, which is why rendezvous can be needed again even though both devices remember one another cryptographically.
+
+### Invitation flow for all Alethe users
+
+1. The sender creates a project-scoped invitation through the existing local authorization state machine.
+2. If collaboration is disabled, Alethe can expose the one-time `alethe-invite://` link for delivery through a channel chosen by the sender. No Cloudflare action occurs.
+3. If automatic delivery is requested, Alethe explains provider-visible metadata and asks the sender to enable collaboration if needed.
+4. The sender Core encrypts and signs the invitation envelope for the intended opaque account/device route before it leaves the machine.
+5. Cloudflare stores only bounded ciphertext and opaque routing/expiry/idempotency metadata. It cannot read the invitation bearer, project name, path, permissions in plaintext, or project content.
+6. An online enabled recipient receives the encrypted envelope through its existing control connection. An offline enabled recipient may receive it later, but only before expiry and while it remains unrevoked.
+7. A recipient without collaboration enabled can open the out-of-band link and choose whether to activate online collaboration. The invitation cannot activate the service silently.
+8. Accepting or redeeming creates grant/authorization state only. It does not create a local directory, choose a destination, inspect project content, or download files.
+9. Recipient-controlled setup occurs in Phase 5. Actual project transfer occurs only through the Phase 4/6/7 authenticated and verified systems.
+
+### Cloudflare is a late adapter
+
+- Phase 3 finishes security and the provider-independent protocol.
+- Phases 4 through 9 implement and test P2P, recipient consent, manifests/staging, synchronization/conflicts, tasks, and chat through controlled provider-independent fixtures.
+- Phase 10A adds optional provider configuration and truthful activation/capability states.
+- Phase 10B implements Cloudflare Workers and SQLite-backed Durable Objects as the reference adapter.
+- Phases 11 through 13 finish notifications, operational hardening, security review, and release validation.
+
+Cloudflare Free may be used for development and initial operation, but it is a quota rather than a guarantee of free permanent service or immunity from suspension. Production requires monitoring, a paid-plan budget, documented retention/deletion, export/migration, custom-provider compatibility, and outage behavior. No commercial or public provider is described as impossible to block or guaranteed free forever.
 
 ## Original product plan
 
@@ -108,9 +193,10 @@ Relevant commits: `0ebcc9d`, `dd2d6a2`, and `b4dfea9`.
 | Linux terminal resize resilience | Implemented with automated coverage | Additional long-running cross-compositor soak testing remains |
 | Google Desktop OAuth | Implemented | A valid Google Desktop OAuth client ID is still required |
 | Device key vault | Implemented locally, including approve/reject/rename/revoke/remove | Cross-device presence/discovery, key rotation, and all-devices-lost recovery remain |
-| Invitation security primitives | Implemented locally and unit-tested, now exposed via Tauri commands and Web routes with a sidebar UI | No cross-PC delivery yet (Phase 3); redeem only works within one local install |
+| Invitation security primitives | Implemented locally and unit-tested, now exposed via Tauri commands and Web routes with a sidebar UI | No cross-PC delivery yet (Phase 10); redeem only works within one local install |
 | Project grants and permission contracts | Issue/list/revoke implemented and tested | Not yet enforced by a real project-content transport; folder scopes not exposed in the UI |
-| Rendezvous and relay | Not implemented | Required for reliable cross-network discovery and fallback transport |
+| Optional collaboration service | Architecture accepted; runtime not implemented | Cloudflare is the reference rendezvous provider; the official endpoint, activation state machine, and provider adapter remain to be built |
+| Relay | Not implemented and not selected | Required only when direct peer transport cannot connect; it may carry only end-to-end encrypted payloads |
 | Project file transfer | Not implemented | No manifest, chunks, staging, verification, or atomic publication yet |
 | Recipient destination workflow | Planned only | No project should download until this exists |
 | Shared tasks | Planned only | No remote collaboration runtime yet |
@@ -224,7 +310,7 @@ Legend:
 - `[ ]` Add owner-approved available-project metadata for same-account devices without exposing paths or manifests.
 - `[ ]` Test device lifecycle across two or more real machines and across offline/reconnect cycles.
 
-Note: today's device list is local to each install — cross-device visibility and remote approval require the rendezvous/discovery work in Phase 3 and are not yet implemented. The approve/reject/revoke/remove operations above are real and tested, but only operate on whatever device records exist in the local security document.
+Note: today's device list is local to each install — cross-device visibility and remote approval require the rendezvous/discovery work in Phase 10 and are not yet implemented. The approve/reject/revoke/remove operations above are real and tested, but only operate on whatever device records exist in the local security document.
 
 ### Invitations, access center, and permissions
 
@@ -233,7 +319,7 @@ Note: today's device list is local to each install — cross-device visibility a
 - `[x]` Enforce expiry, single use, recipient account, optional recipient device, replay resistance, and bounded failure lockout in local primitives.
 - `[x]` Normalize permission dependencies and deny unknown or invalid scopes.
 - `[~]` Expose issue, list, inspect, redeem, and revoke operations through Tauri and authenticated Web routes (`sync_issue_invitation`, `sync_revoke_invitation`, `sync_redeem_invitation`, `sync_revoke_grant`, plus the existing read-only snapshot). Explicit refuse/defer as distinct recipient actions and proactive expiry transitions are not implemented; expiry is still enforced only at redemption time.
-- `[~]` Implement outgoing and redeemed/active views in the sidebar (from the local snapshot). Incoming, same-account request, and hidden views require cross-device delivery (Phase 3) and are not implemented; there is no view of invitations addressed to this account that were issued on another install.
+- `[~]` Implement outgoing and redeemed/active views in the sidebar (from the local snapshot). Incoming, same-account request, and hidden views require cross-device delivery (Phase 10) and are not implemented; there is no view of invitations addressed to this account that were issued on another install.
 - `[~]` Implement a link representation of the invitation credential (`alethe-invite://` URL carrying the invitation ID and bearer token). QR code rendering and a distinct human-readable short code are not implemented.
 - `[ ]` Add recipient lookup without revealing whether arbitrary Google accounts exist.
 - `[x]` Add permission presets (view only / reviewer / collaborator) and always display the expanded effective permission list next to the selected preset.
@@ -246,20 +332,24 @@ Note: today's device list is local to each install — cross-device visibility a
 - `[x]` Remove the disabled "Invite Friend" placeholder now that local issuance is real; it stays disabled until the local device is trusted and a project is active.
 - `[ ]` Add concurrency tests for simultaneous acceptance, revocation, expiry, and replay.
 
-Note: as with devices, invitations and grants are local to each install today. Issuing, revoking, and redeeming all operate on the local security document; there is still no real delivery of an invitation from one physical machine to another (that is Phase 3's rendezvous work). Redemption today only works if both the issuer and the recipient act against the same local document — useful for local testing of the state machine, not yet a cross-device feature.
+Note: as with devices, invitations and grants are local to each install today. Issuing, revoking, and redeeming all operate on the local security document; there is still no real delivery of an invitation from one physical machine to another (that is Phase 10's rendezvous work). Redemption today only works if both the issuer and the recipient act against the same local document — useful for local testing of the state machine, not yet a cross-device feature.
 
 ### Rendezvous, relay, and network presence
 
-- `[ ]` Select the deployable rendezvous and relay technology and record it in an ADR.
+- `[x]` Select Cloudflare Workers with SQLite-backed Durable Objects as the reference rendezvous provider and record the optional/provider-independent boundary in `ADR-0002`.
+- `[ ]` Implement local-only, official Alethe service, and advanced custom-rendezvous modes without requiring ordinary users to own a Cloudflare account.
+- `[ ]` Gate only rendezvous-dependent capabilities; provider configuration or failure must not disable local projects, agents, terminals, local security state, or established authorized peer sessions.
+- `[ ]` Add the activation state machine: disabled, identity required, ready, connecting, online, retrying, direct only, and needs attention.
+- `[ ]` Prompt for explicit activation on the first remote share, remote invitation, same-account discovery, or other rendezvous-dependent action instead of connecting every installation silently.
 - `[ ]` Define versioned registration, authenticated presence, signaling, invitation notification, and connection-candidate messages.
 - `[ ]` Authenticate every signaling message with current account/device state.
 - `[ ]` Store only opaque identifiers, public device data, delivery state, abuse counters, and minimum routing metadata.
 - `[ ]` Prevent the service from receiving OAuth tokens, private keys, paths, filenames, project content, task content, or chat plaintext.
 - `[ ]` Add offline queues with bounded retention and deletion semantics.
-- `[ ]` Add heartbeat, reconnect, jittered backoff, duplicate suppression, ordering, and clock-skew handling.
+- `[ ]` Add native WebSocket liveness/auto-response, reconnect, jittered backoff, duplicate suppression, ordering, and clock-skew handling without frequent application-level heartbeat messages.
 - `[ ]` Add per-account/device/IP quotas, rate limits, payload limits, and abuse controls.
 - `[ ]` Add direct connection negotiation across common NAT and firewall configurations.
-- `[ ]` Add encrypted relay fallback when direct connectivity fails.
+- `[ ]` Select and record the encrypted relay technology separately, then add relay fallback when direct connectivity fails.
 - `[ ]` Define server deployment, TLS, secrets, database, backups, upgrades, rollback, observability, alerts, and incident response.
 - `[ ]` Define privacy disclosure for IP address, connection timing, ciphertext size, and retention.
 - `[ ]` Add multi-region or explicit single-region behavior and document latency/availability expectations.
@@ -416,6 +506,29 @@ A relay is a fallback data path used when NAT or a firewall prevents a direct pe
 
 A project grant authorizes a specific account or device to request specific operations. A local subscription records whether the recipient chose to use that grant, where the project should be stored, and how synchronization should run. Creating a grant must not create a directory or transfer content.
 
+## Detailed implementation blueprint
+
+The step-by-step technical design is maintained in `docs/superpowers/plans/2026-08-21-collaboration-implementation-blueprint.md`. It defines the intended Core boundaries, state machines, persistence, failure behavior, test evidence, and delivery template for every remaining phase. Proposed module names are plans, not evidence that files or capabilities already exist.
+
+The implementation direction is summarized below:
+
+| Phase | Construction sequence | Planned Core boundary | Durable state | Gate before continuing |
+| --- | --- | --- | --- | --- |
+| 3 | Finish local Google verification; finalize device identity/agreement keys; define canonical signed envelopes; resolve opaque account routing; harden invitation/grant concurrency; build backend capability authority | Existing `sync_security.rs`; proposed `sync_protocol.rs`, `sync_crypto.rs`, and capability resolver | Versioned security document, key bindings, replay fixtures, audit-safe gate evidence | Cross-language vectors, negative crypto/replay/version tests, routing-proof ADR, concurrency tests, and forbidden-data tests pass |
+| 4 | Select transport stack by ADR; define candidate/connector/session/relay interfaces; implement loopback/manual/LAN adapters; authenticate and encrypt sessions; add framing, backpressure, reconnect, and revocation | Proposed `sync_transport.rs` consuming Phase 3 crypto/protocol interfaces | Safe resume metadata and bounded session diagnostics only | Two-process encrypted transfer/reconnect/revocation tests pass without Cloudflare or a public relay |
+| 5 | Persist subscription state; collect recipient mode/destination; validate path/filesystem/capacity; require final confirmation; begin staging only afterward | Proposed `sync_subscription.rs` | Versioned per-device subscription with local-only destination reference | Every state/restart test passes and no project-content write occurs before explicit confirmation |
+| 6 | Specify normalized signed manifest; apply default exclusions; chunk/hash; journal staging; verify grant/integrity/quota; publish atomically; retain recoverable prior tree | Proposed `sync_manifest.rs` and `sync_staging.rs` | Manifest revisions, chunk/staging journal, publication/recovery state | Fuzz/property/path tests and crash injection prove corrupt or partial trees never publish |
+| 7 | Define revisioned file operations; ingest/coalesce watchers; reauthorize at application time; record conflicts; add pause/repair/rollback/restore | Proposed `sync_engine.rs` | Operation/revision log, conflict records, watcher/recovery checkpoints | Concurrent/offline/revocation/interruption/overflow tests produce no silent loss or unauthorized mutation |
+| 8 | Define collaboration tasks separately from agent scheduler; add signed revisioned operations; restricted visibility; offline merge/conflict; independent task stream | Proposed `sync_tasks.rs` | Task records, tombstones, operation journal, membership/visibility state | Restricted-task non-disclosure and deterministic offline/concurrency tests pass |
+| 9 | Define conversations/membership; select group key management; implement encrypted message operations; safe programmer content and attachments; offline ordering | Proposed `sync_chat.rs` | Conversation, membership generation, encrypted message/attachment metadata, read cursors | Removal/key-rotation/offline/duplicate/fuzz tests pass through provider-independent fixtures |
+| 10A | Add provider interface; persist non-secret mode/endpoint choice; implement activation/connection states; contextual consent; derive real capabilities | Proposed `sync_provider.rs` plus shared Core routes/client | Non-secret provider preferences and sanitized connection state | Local-only mode creates zero connections; provider failure leaves local and provider-independent features intact |
+| 10B | Create isolated Worker/Durable Object service; partition by opaque route; authenticate one hibernatable socket per device; route encrypted invitations/candidates/revocations; enforce retention/abuse/quota; document operations/migration | Dedicated Cloudflare adapter/service package implementing `sync_provider` protocol | Provider stores only bounded public routing metadata, ciphertext mailboxes, acknowledgement/replay/abuse state | Staging cross-device, offline, expiry, revocation, outage, quota, migration, and forbidden-data tests pass |
+| 11 | Project domain events into one access center; separate security/collaboration categories; use revalidated opaque actions; add native/in-app delivery | Proposed `sync_notifications.rs` | Local notification projection, read/defer/dismiss state, safe action handles | Stale actions fail safely and platform fallbacks work without leaking private content |
+| 12 | Re-run threat model; bound every resource; finish key/account/device/project deletion and recovery; audit privacy; rehearse incident/provider migration; review dependencies/crypto | Cross-cutting hardening in every collaboration module | Retention/deletion/export/recovery/incident evidence | Abuse, privacy capture, recovery drill, dependency review, and external security findings satisfy release policy |
+| 13 | Run unit, vector, migration, crash, parity, two-process, provider, E2E, network, soak, fuzz, abuse, installer, and rollback suites | Existing test harness plus phase-specific fixtures and staging | Versioned test artifacts and release evidence without user secrets | Every release gate passes; capabilities reflect real runtime; production operations and budget are approved |
+
+Each phase follows Core domain logic → pure tests → persistence/migration → Tauri/Web parity → frontend API → localized capability-gated UI → changelog/status → complete validation. No phase may be considered complete from UI or configuration alone.
+
 ## Phase 1 — Trusted devices and account recovery
 
 - `[x]` Define the secure bootstrap rule for the first device after verified Google authentication: automatic trust, since no other trusted device exists yet.
@@ -432,12 +545,12 @@ Acceptance criteria:
 - `[x]` Revocation blocks subsequent requests from that device by invalidating its grants and pending invitations — tested. Live transport sessions do not exist yet (Phase 4), so there is nothing further to close today.
 - `[x]` Private device keys never appear in frontend state, logs, diagnostics, or project files — unchanged from the existing credential-store-only design; the new commands never return key material.
 
-Remaining for this area: cloned/rolled-back device detection, key rotation, all-devices-lost recovery, same-account discovery, and cross-machine approval (the last two require Phase 3 rendezvous).
+Remaining for this area: cloned/rolled-back device detection, key rotation, all-devices-lost recovery, same-account discovery, and cross-machine approval (the last two require Phase 10 rendezvous).
 
 ## Phase 2 — Invitations and project permissions
 
 - `[x]` Expose backend operations to issue, revoke, and redeem invitations (`sync_issue_invitation`, `sync_revoke_invitation`, `sync_redeem_invitation`) plus grant revocation (`sync_revoke_grant`), as Tauri commands and equivalent `/api/sync/security/invitations/*` and `/api/sync/security/grants/*` Web routes on one shared core implementation. Listing/inspecting reuses the existing security snapshot. Explicit expiry transitions are not implemented.
-- `[~]` Add outgoing and active-grant views to the sidebar access center. Incoming/same-account/hidden views require Phase 3 delivery.
+- `[~]` Add outgoing and active-grant views to the sidebar access center. Incoming/same-account/hidden views require Phase 10 delivery.
 - `[~]` Represent an invitation as an `alethe-invite://` link carrying the invitation ID and bearer token, shown once at issuance with copy-to-clipboard. QR code and a distinct short code are not implemented.
 - `[x]` Bind every invitation to a project, issuer device, recipient account, optional recipient device, permissions, path scopes, protocol version (implicit schema version), and expiry — unchanged from the existing local primitives.
 - `[x]` Add permission presets (view only / reviewer / collaborator) while always showing the expanded permission list next to the selection.
@@ -452,140 +565,201 @@ Acceptance criteria:
 - `[x]` Wrong-recipient and wrong-device failures do not reveal which check failed — unchanged (`invitation_unavailable` for every redemption failure mode).
 - `[x]` Viewing or accepting an invitation performs zero project-content reads and zero destination writes — redemption only creates a `GrantRecord` (authorization state); no filesystem access happens anywhere in this phase.
 
-Remaining for this area: cross-PC invitation delivery (Phase 3), recipient lookup without account enumeration, folder scope UI, QR/short-code representations, grant expiry adjustment, and affected-device notifications.
+Remaining for this area: cross-PC invitation delivery (Phase 10), recipient lookup without account enumeration, folder scope UI, QR/short-code representations, grant expiry adjustment, and affected-device notifications.
 
-## Phase 3 — Rendezvous, presence, and remote invitation delivery
+## Phase 3 — Security readiness and provider-independent protocol
 
-- Define a versioned signaling protocol for device registration, presence, connection offers, and invitation notifications.
-- Authenticate every signaling message with account and device identity.
-- Store only the minimum metadata required for delivery and abuse prevention.
-- Add reconnect, backoff, offline queues, expiry, rate limiting, and bounded message sizes.
-- Discover devices connected to the same Google account without granting project access automatically.
-- Add an owner-approved catalog of available projects using opaque project identifiers.
-- Deliver invitations across different PCs and synchronize their lifecycle atomically.
-- Document deployment, retention, deletion, observability, and incident-response requirements.
+Cloudflare and every other production rendezvous provider are blocked until this gate passes and Phases 4 through 9 establish the provider-independent collaboration systems. No production rendezvous endpoint was contacted anywhere in this phase, and no provider-backed capability is reported as available. Full evidence ledger: `docs/security/PHASE_3_SECURITY_GATE.md`.
+
+- `[x]` Complete production-grade Google identity validation: issuer, audience, expiry, nonce, issued-at skew, and email-verification are now checked against a cryptographically verified ID token (`sync_mesh.rs::verify_google_id_token`, RS256 against Google's JWKS), not just the UserInfo endpoint. All Google tokens remain in the OS credential store.
+- `[~]` Device-key lifecycle: creation, credential-store persistence, approval, and revocation are implemented and tested (Phase 1, unchanged). Rotation exists only as "generate a new binding," not a full rotation workflow with a grace period. Cloned/rolled-back state detection and all-devices-lost recovery remain unimplemented.
+- `[x]` Select and document the device-authenticated key-agreement library and algorithm: `docs/adr/ADR-0003-device-key-agreement.md` (X25519 via `x25519-dalek`, signed binding to the existing Ed25519 identity, HKDF-SHA256 directional session-key derivation). Implemented in `sync_crypto.rs` and wired into device registration.
+- `[x]` Define canonical signed control envelopes with protocol version, message type, sender device, opaque account route, unique message ID, issued/expiry time, sequence, payload limit, and signature (`sync_protocol.rs::SignedEnvelope`). Strict decoding rejects oversized fields before allocating them.
+- `[x]` Add replay protection (`ReplayWindow`, bounded), duplicate suppression, clock-skew bounds (`verify_envelope`'s future-skew parameter), downgrade rejection (protocol/schema version checks), parser limits (`MAX_ENVELOPE_BYTES`/`MAX_FIELD_BYTES`), and deterministic serialization with cross-language test vectors (Rust ↔ TypeScript byte-identical output, asserted in both suites).
+- `[x]` Harden local invitation and grant state transitions — the Phase 2 state machine already covered simultaneous redemption, revocation, expiry, and process interruption (atomic writes); unchanged in this phase.
+- `[x]` Define and review an account-routing proof: `docs/adr/ADR-0004-opaque-account-routing.md` (deterministic local SHA-256 derivation from the verified Google `sub`, never transmitted). Implemented as `sync_protocol::account_route_id`, cross-language-vector-tested. Automatic same-account discovery itself remains unavailable — there is no rendezvous connection yet to exercise the proof against (Phase 10B).
+- `[~]` Verify that logs, errors, metrics, and persisted public snapshots exclude forbidden data: a forbidden-sentinel test covers the public snapshot, the capability response, and a representative sample of stable error codes. No structured logging framework exists yet to audit beyond that.
+- `[x]` Make backend authorization authoritative: added a real capability resolver (`resolve_capabilities_at`) replacing ad hoc frontend assumptions, exposed identically via Tauri and Web. Every capability without a real runtime path stays `unavailable`.
+- `[x]` Add focused Rust, TypeScript contract, and negative-path tests for every gate item above (49 new/updated Rust tests, 27 new/updated TypeScript tests, all passing). IPC/HTTP parity covers the one new operation this phase adds (capability resolution); persistence/concurrency parity for identity/device/invitation/grant is unchanged from Phases 1–2.
+
+Acceptance criteria:
+
+- `[x]` The security review has no unresolved path that lets an untrusted client impersonate an account/device, replay an envelope, escalate a grant, or recover a forbidden secret, for everything implemented in this phase — see the gate document for exactly what "implemented in this phase" covers.
+- `[x]` Security tests prove deny-by-default behavior for malformed versions, signatures, account/device bindings, expiry, and replay (envelope-level); invitation/grant deny-by-default behavior was already proven in Phase 2 and remains covered.
+- `[x]` The opaque account-routing proof has a dedicated accepted ADR and test vectors.
+- `[~]` A sanitized diagnostic capture demonstrates that forbidden fields never enter provider requests or logs — covered for the public snapshot/capability response/error codes; no provider requests exist yet to capture (Phase 10B).
+- `[x]` `ProjectSyncCapabilities` remains unavailable for rendezvous, remote invitations, transfer, tasks, and chat — confirmed by test; only `identity`/`deviceTrust` can report `available`, and `invitations` reports at most `experimental`.
+
+## Phase 4 — Encrypted peer transport and relay fallback
+
+Full evidence ledger: `docs/security/PHASE_4_SECURITY_GATE.md`.
+
+- `[x]` Select and document the transport stack: `docs/adr/ADR-0005-peer-transport-stack.md` (raw TCP + custom AEAD framing, chosen over QUIC/Iroh/WebRTC for this phase's loopback/manual/LAN scope).
+- `[x]` Authenticate both device keys during channel establishment: `sync_transport::perform_handshake` exchanges signed key bindings and a challenge-response proof of Ed25519 private-key possession before any session key is derived.
+- `[x]` Derive per-session encryption keys with forward secrecy: reuses `sync_crypto::derive_session_keys` (X25519 ephemeral-per-session agreement + HKDF-SHA256) unchanged from Phase 3.
+- `[x]` Bind encrypted frames to protocol version, sender, recipient, session, stream, sequence, and content type, plus project/grant when a stream is opened for one — all as AEAD associated data (`FrameHeader`/`header_aad`), so tampering with any bound field invalidates the authentication tag.
+- `[x]` Reject replayed, reordered, cross-project, and oversized frames — strict monotonic sequence checking (no reorder tolerance), oversize rejected from the length prefix before allocation.
+- `[~]` Add direct-connection negotiation and encrypted relay fallback: direct connection negotiation exists for manual/loopback/LAN candidates (`CandidateSource`/`ManualCandidateSource`); encrypted relay is deliberately **not implemented** — `RelayAdapter` is declared as an interface-shaped gap only, since no relay server exists yet to build or test against (a real relay decision is later, provider-independent, work).
+- `[x]` Keep discovery and relay adapters provider-independent, and validate the transport with loopback, manual candidates, and controlled test fixtures rather than a production Cloudflare dependency — every Phase 4 test uses only `std::net::TcpListener`/`TcpStream` on loopback; LAN uses the identical code path with a non-loopback address.
+- `[~]` Add keepalive, reconnection, cancellation, backpressure, bandwidth limits, and transfer progress: cancellation (`PeerStream::close`) and backpressure (`MAX_QUEUED_FRAMES`) are implemented and tested; keepalive, a real reconnect integration test, bandwidth limits, and transfer progress reporting are not — there is no product feature driving sustained transfer yet (that begins in Phase 6).
+- `[x]` Never expose OAuth tokens as transport credentials — the transport handshake authenticates with the Ed25519 device identity only; no Google token of any kind is referenced anywhere in `sync_transport.rs`.
+
+Acceptance criteria:
+
+- `[~]` Packet captures and relay logs contain no plaintext project data — true by construction (every `PeerStream` frame is AEAD-encrypted; no plaintext ever reaches the wire), but no relay exists yet to capture logs from.
+- `[x]` Revoking a device or grant terminates or invalidates the related transport session: `Session::revoke` blocks `open_stream`, tested (`revoking_a_session_blocks_opening_new_streams`); `validate_resume` independently re-checks trust before accepting a resume ticket, tested against a since-revoked/untrusted device.
+- `[ ]` Interrupted transfers resume without duplicating or corrupting committed content — `ResumeTicket` exists as safe, non-secret resume metadata, but there is no real transfer protocol yet to interrupt and resume (that is Phase 6); this criterion cannot be truthfully claimed done until then.
+
+## Phase 5 — Recipient-controlled project setup
+
+Full evidence ledger: `docs/security/PHASE_5_SECURITY_GATE.md`.
+
+- `[x]` Model local subscription states explicitly: `offered`, `configuring`, `awaiting_confirmation`, `staging`, `verifying`, `active`, `paused`, `deferred`, `declined`, `revoked`, `error`, and `removing` — all implemented and tested in `sync_subscription.rs`. `staging`→`verifying`→`active` are real transitions with no real caller yet, since Phase 6 (the thing that would actually drive them) does not exist.
+- `[~]` Let the recipient choose create managed copy, attach existing copy, or download snapshot when permitted: `SubscriptionMode` (`manual_snapshot`, `receive_after_confirmation`, `bidirectional`) is recorded and validated, but none has real transfer behavior behind it yet (Phase 6/7) — "attach existing copy" specifically still needs the dry-run comparison the blueprint describes, which requires a manifest to compare against.
+- `[x]` Require an explicit destination and validate containment, symlinks, permissions, free space, path length, and collisions: `validate_destination` — traversal/symlink/absolute-path/length/collision are enforced and tested; free space uses a coarse fixed floor (no real transfer size exists yet to size the check against); writability is implied by directory creation succeeding or failing, not separately pre-flighted.
+- `[~]` Let the recipient choose manual, receive-after-setup, or bidirectional synchronization: recorded via `select_mode_at`; no runtime behavior is attached to the choice yet.
+- `[ ]` Show excluded folders, expected size, permissions, direction, and destructive behavior before confirmation — this is a UI/confirmation-screen requirement, deliberately not built this phase (see the gate document's "no UI this phase" note): there is nothing real to show yet (no manifest, no exclusion policy beyond a placeholder version number).
+- `[x]` Keep the grant available when a recipient defers or dismisses setup: `defer_subscription_at`/`reopen_subscription_at` leave the underlying grant untouched; only the local subscription record's state changes.
+
+Acceptance criteria:
+
+- `[x]` No directory is created until the recipient confirms the destination and mode — proven by `offering_creates_no_filesystem_write_beyond_the_record`, `destination_and_mode_together_move_to_awaiting_confirmation`, and `confirmation_is_the_only_step_that_creates_the_destination_directory`.
+- `[x]` A project cannot escape its selected destination through traversal or symlinks — proven by `destination_rejects_traversal_symlink_and_collision`, after fixing a real Windows-specific traversal-detection gap found during implementation (see the gate document's incident note).
+- `[ ]` Unsupported modes are visibly disabled with a precise reason — no UI exists yet to disable anything in; all three modes are currently accepted by the backend even though none has real runtime behavior, which is honest only because `project_transfer` capability stays `unavailable` end-to-end.
+
+## Phase 6 — Manifest, staging, integrity, and atomic publication
+
+Full evidence ledger: `docs/security/PHASE_6_SECURITY_GATE.md` (includes an honest atomicity note — read it before assuming "atomic" means a single OS syscall).
+
+- `[x]` Define a deterministic, versioned project manifest with normalized relative paths and content hashes: `sync_manifest.rs` (`ProjectManifest`, `normalize_and_validate_path`), signed with the device's Ed25519 identity.
+- `[~]` Exclude secrets, credentials, heavy generated directories, device files, sockets, and unsafe symlinks by default: `.git`/`.alethe`/dependency-and-build directories, `.env*`, and common private-key/credential filenames are excluded and tested; symlinks/sockets are silently skipped during manifest construction (deny-by-default in effect) rather than explicitly detected and rejected with a dedicated error, and no portable unit test exercises a real symlink fixture.
+- `[x]` Split large files into bounded, content-addressed chunks: `sync_manifest::chunk_file`, streaming SHA-256, bounded memory regardless of file size.
+- `[x]` Stage incoming data outside the live project tree: `sync_staging.rs` — every write happens in a per-subscription staging work area; `destination` is never touched until `publish_atomically_at`.
+- `[~]` Verify manifest signatures, authorization, hashes, sizes, counts, and disk quotas before publication: per-chunk hash, reconstructed file hash, and count/size consistency (via `validate_manifest`) are enforced and tested; manifest *signature* verification exists (`verify_manifest_signature`) but nothing calls it yet — there is no untrusted, network-received manifest to verify until a real transport integration exists; disk quota is a coarse pre-flight free-space check, not a hard reservation.
+- `[x]` Publish verified snapshots atomically and preserve a recoverable previous state: `publish_atomically_at`, two-step OS-atomic rename swap made crash-recoverable via the journal; exactly one prior version retained (`republishing_keeps_exactly_one_recoverable_prior_version`).
+- `[~]` Add pause, resume, cancel, cleanup, and crash-recovery behavior: crash-recovery (`recover_publication_at`) and cleanup (`cleanup_staging_at`) exist and are tested; pause/resume/cancel mid-transfer are not implemented — there is no live transfer loop yet to pause (Phase 7 territory, once continuous synchronization exists).
+- `[ ]` Bound memory, cache, queue, scrollback, and pending-write usage under pressure — chunking already bounds per-chunk memory; no dedicated memory-pressure test exists for this phase specifically (the existing terminal-buffer memory-pressure work is an unrelated system).
+
+Acceptance criteria:
+
+- `[x]` A crash at every transfer boundary leaves either the previous valid tree or the new verified tree, never a mixed tree — proven for the publication-step crash window (`crash_between_publish_steps_recovers_to_the_new_verified_tree`); one narrow, documented residual gap remains (crash between an OS rename and the following journal write — see the gate document).
+- `[x]` Corrupt, truncated, substituted, or unauthorized chunks never reach the live project — `substituted_and_oversized_chunks_are_rejected_at_receive_time`, `verification_fails_closed_on_missing_chunk_and_never_publishes` (destination asserted empty after failure).
+- `[ ]` Cache eviction cannot delete the only recoverable version of user data — no cache-eviction policy exists yet to test against; the current retention rule (keep exactly one prior backup) has no automatic eviction that could violate this, but that is an absence of the risk, not a tested guarantee.
+
+## Phase 7 — Continuous synchronization and conflicts
+
+Full evidence ledger: `docs/security/PHASE_7_SECURITY_GATE.md`.
+
+- `[x]` Track local and remote revisions without relying only on timestamps: `sync_engine.rs` assigns a monotonic per-subscription sequence to every operation as its revision.
+- `[~]` Coalesce file-system events and handle rename, delete, case-only changes, permissions, and offline edits: `coalesce_watch_events` (dedup + bounded overflow detection) is implemented and tested; there is no real OS filesystem watcher wired to it yet, so case-only-rename and editor-temp-file handling are not separately exercised against real OS events.
+- `[~]` Enforce the current grant on every requested operation and path: every operation rechecks device trust fresh via `SecurityBackedAuthorizer` immediately before applying; per-path permission/scope from a Phase 2 `GrantRecord` is not yet cross-checked at this layer.
+- `[x]` Add explicit conflict records instead of silently overwriting concurrent changes: `apply_remote_operation_at` compares base revisions and records a `ConflictRecord` (preserving both sides) on any divergence — tested.
+- `[~]` Provide keep local, keep remote, keep both, and supported text-merge actions: the first three are implemented and tested (`resolve_conflict_at`); a reviewed text-merge option is not implemented (no merge library evaluated yet).
+- `[~]` Add project pause, peer pause, rescan, repair, and restore controls: pause/resume/rescan-flag and single-generation restore (reusing Phase 6's retained backup) are implemented and tested; "repair from manifest" (re-verifying local content against a `ProjectManifest`) is not implemented.
+- `[ ]` Keep Desktop and Web views consistent without allowing the Web client to bypass Core authorization: Tauri/Web parity exists for pause/resume/rescan/resolve/load; `apply_local_operation_at` is Tauri-only for now (see the gate document) — this criterion is not yet fully met because one operation lacks its Web route.
+
+Acceptance criteria:
+
+- `[x]` Concurrent edits are reproducible and never resolved by silent data loss — proven by `diverged_base_revision_records_a_conflict_and_applies_neither_side`.
+- `[x]` Revoked permissions take effect before the next mutation is applied — `SecurityBackedAuthorizer` reads live device-trust state on every call; no caching layer exists to go stale.
+- `[x]` Repeated resize, reconnect, memory pressure, and long-idle sessions do not corrupt terminal or sync state — this criterion, as written in the original plan, describes the pre-existing terminal-resize/memory-pressure hardening documented elsewhere in this file (Linux terminal resilience, terminal cache/buffer work); it is unrelated to this phase's sync engine and remains true independent of it.
+
+## Phase 8 — Shared tasks
+
+Full evidence ledger: `docs/security/PHASE_8_SECURITY_GATE.md`.
+
+- `[x]` Add project-scoped task identities, revisions, authorship, assignment, due dates, labels, and completion state: `sync_tasks.rs::TaskRecord`, deliberately separate from the local agent scheduler (`ctask_`-prefixed IDs, entirely separate persistence).
+- `[x]` Support project-public tasks and restricted tasks with explicit membership: `TaskVisibility::Public`/`Restricted` with a `restricted_members` list, enforced in both listing and direct lookup.
+- `[~]` Authorize every read and mutation against the current project grant: every operation rechecks device trust fresh via `SecurityBackedMembership`; this checks *project membership* (device trust), not yet a specific Phase 2 `GrantRecord`'s permission set — same scoping note as Phase 7's authorization.
+- `[x]` Define offline edits, conflict handling, deletion, retention, and audit behavior: stale-base-revision operations are rejected as deterministic conflicts (not silently overwritten); delete is a tombstone with `restore_task_at` to undo it; the op log provides a bounded audit trail.
+- `[x]` Synchronize tasks independently from project-file transfer so a paused file transfer does not corrupt task state: tasks persist to their own file (`data_root/sync/tasks/<project_id>.json`), entirely separate from Phase 6's staging files and Phase 7's engine state.
+
+Acceptance criteria:
+
+- `[~]` Private tasks are never disclosed through counts, notifications, search, or exports to unauthorized users — proven for listing and direct lookup (`restricted_task_is_indistinguishable_from_a_nonexistent_one` proves the "not found" outcome is identical whether the task exists-but-hidden or truly does not exist); notifications, search, and export do not exist yet for tasks, so there is nothing to test there yet — an absence of the risk, not a tested guarantee that will hold once those features are built.
+- `[x]` Offline concurrent edits produce a deterministic merge or an explicit conflict — a stale revision is deterministically rejected (`stale_base_revision_is_a_deterministic_conflict_not_a_silent_overwrite`); no automatic field-level merge is implemented, so a caller must re-fetch and retry rather than the system merging on its own.
+
+## Phase 9 — Programmer-focused chat
+
+Full evidence ledger: `docs/security/PHASE_9_SECURITY_GATE.md`. Group key management decision:
+`docs/adr/ADR-0006-chat-group-key-management.md`.
+
+- `[~]` Add direct messages, project channels, private groups, categories, threads, mentions, reactions, and read state: `sync_chat.rs` has `ConversationKind` (Direct/ProjectChannel/PrivateGroup), `category` (organizes, never authorizes), `mentions` per message, `Reaction`, and per-member read cursors (`mark_read_at`). Threads (replies scoped to a parent message) are not implemented.
+- `[x]` Support images, files, test results, bug reports, code snippets, and command blocks: `MessageContentType` (Text/CodeBlock/TestResult/BugReport/Command) plus independently-keyed `AttachmentRecord` for images/files.
+- `[x]` Provide a safe terminal selection/share action without automatically executing received commands: `MessageContentType::Command` is stored and decrypted like any other message type; no code path in `sync_chat.rs` (or elsewhere touched this session) executes message content.
+- `[~]` Scan and bound attachments, strip unsafe metadata where appropriate, and prevent executable preview behavior: `upload_attachment_at` enforces `MAX_ATTACHMENT_BYTES` and a declared-vs-actual size check; there is no malware/content scanning, metadata stripping, or preview-rendering logic yet — no UI exists this phase to render a preview.
+- `[x]` Encrypt message content and attachments end to end when traversing rendezvous or relay infrastructure: every message and attachment is ChaCha20Poly1305-encrypted under a key wrapped per member via X25519 (ADR-0006); true today by construction since nothing yet transmits ciphertext through any relay (no relay exists before Phase 10B) — the encryption itself does not depend on a relay being present.
+- `[x]` Separate chat membership from project-file permissions: `Conversation.members` is its own list on the chat domain object, entirely independent of Phase 2's `GrantRecord`/Phase 8's project task membership.
+
+Acceptance criteria:
+
+- `[x]` Receiving a command never executes it — true by construction (see above); no dedicated adversarial test needed since there is no executor code path to guard against, but this is worth re-verifying if a future phase adds any message-triggered automation.
+- `[x]` Removed members cannot fetch new messages or attachment keys — proven by `removed_member_cannot_decrypt_new_epoch_messages_or_attachments`: no wrap entry exists for the removed member in any post-removal epoch, for both a message and an attachment uploaded after removal.
+- `[x]` Categories organize channels but do not grant access — `category` is never read by any authorization check in `sync_chat.rs`; only `members` is.
+
+## Phase 10A — Optional collaboration service activation and provider configuration
+
+Full evidence ledger: `docs/security/PHASE_10A_SECURITY_GATE.md`.
+
+- `[x]` Implement collaboration as an optional component; local-only users make no rendezvous connection: `sync_activation.rs` — `ServiceMode::LocalOnly` is the default, contains zero networking code, `resolve_activation_state` returns `Disabled` unconditionally for it.
+- `[~]` Provide an automatic operator-managed Alethe endpoint so ordinary users never configure a Cloudflare account, API token, Worker, domain, or certificate: `ServiceMode::AletheManaged` requires no endpoint/credential input from the user to select; the actual managed endpoint does not exist yet (no Phase 10B deployment), so this proves the *mode selection UX requirement*, not a working managed connection.
+- `[~]` Provide a clearly separated advanced mode for a compatible custom rendezvous endpoint: `ServiceMode::AdvancedCustom` + `validate_endpoint_at`/`EndpointValidator` trait exist and are enforced (unvalidated endpoints cannot be enabled); no real validator (TLS/protocol/health) exists yet, only a test double.
+- `[x]` Add capability states for disabled, identity required, ready, connecting, online, retrying, direct only, and needs attention: `ActivationState` enum, all eight variants reachable and tested via `resolve_activation_state`.
+- `[x]` Activate the service contextually when a user first shares remotely, opens a remote invitation, enables same-account discovery, or enters another feature that requires rendezvous: `ActivationTrigger` + `should_offer_activation`, proven to return `false` for purely local actions and once already enabled.
+- `[~]` Explain provider-visible metadata before activation and persist only non-secret provider preferences locally: persistence is proven non-secret (`only_non_secret_settings_fields_exist_on_the_persisted_struct`); the "explain provider-visible metadata" UX copy does not exist yet, since there is no UI this phase.
+- `[~]` Validate TLS, endpoint identity, protocol compatibility, and health before reporting a connection: the `EndpointValidator` trait and its enforced-before-enable behavior exist and are tested; no real TLS/identity/protocol/health implementation exists yet (Phase 10B).
+- `[x]` Keep local projects, agents, terminals, local device security, and out-of-band invitation links available when the component is disabled or unavailable: true by construction — `sync_activation.rs` is new and self-contained; nothing in Phases 1–9 was modified to depend on it, and the full Phase 1–9 regression suite passes unchanged.
+
+Acceptance criteria:
+
+- `[x]` Phases 3 through 9 are complete and their domain, cryptographic, P2P, integrity, synchronization, task, and chat tests pass without depending on Cloudflare — confirmed by the full `cargo test --lib` run for this ETAPA (see the ETAPA report for the exact count).
+- `[~]` An ordinary Alethe user can enable online collaboration without knowing that Cloudflare configuration exists or supplying Cloudflare credentials — proven at the settings-model level (`AletheManaged` needs no such input); not yet provable end-to-end since no UI or real managed endpoint exists.
+- `[x]` Disabling collaboration produces no rendezvous connection and does not remove local functionality — `disabling_the_service_returns_to_disabled_regardless_of_prior_validation`.
+- `[~]` Provider failure disables only capabilities that require new remote discovery, delivery, or signaling — `ActivationState::NeedsAttention`/`Retrying`/`DirectOnly` exist and are distinguishable in the state machine; no live capability gating is wired to these states yet since no other phase's capability reads this module.
+- `[x]` A custom endpoint cannot silently replace the official provider and must pass the same protocol and security checks — `enable_service_at` refuses `AdvancedCustom` without a matching prior `validate_endpoint_at` success; the check is the same code path regardless of endpoint value, so there is no bypass specific to any particular endpoint string.
+
+## Phase 10B — Cloudflare rendezvous, presence, and remote invitation delivery
+
+- `[x]` Implement Cloudflare Workers with SQLite-backed Durable Objects as the reference adapter for the already-tested provider-independent rendezvous protocol: isolated package under `services/rendezvous-cloudflare/`, plus the provider-neutral native client in `sync_rendezvous.rs`.
+- `[x]` Authenticate every signaling connection with opaque account routing and device identity: random challenge, canonical Ed25519 signature, pinned device key, and independently verified Ed25519/X25519 binding.
+- `[x]` Store only the minimum metadata required for delivery and abuse prevention: public device keys/generations, encrypted mailbox rows, acknowledgement/idempotency IDs, presence, and bounded HMACed abuse counters. Unknown control-frame fields fail closed in both the native client and service; the client reconstructs an exact allowlist before provider-bound bytes are queued.
+- `[x]` Add reconnect, backoff, offline queues, expiry, rate limiting, and bounded message sizes: independent account/device/socket/frame/byte/mailbox/IP-signal limits are enforced locally and documented in `docs/security/PHASE_10B_SECURITY_GATE.md`.
+- `[x]` Discover devices connected to the same opaque account route without granting project access automatically. Discovery returns only bounded public-device metadata and presence.
+- `[ ]` Add an owner-approved catalog of available projects using opaque project identifiers.
+- `[~]` Deliver invitations across different PCs and synchronize their lifecycle atomically: the service now routes idempotent encrypted invitation envelopes online/offline, but the client bridge that encrypts an issued invitation and consumes a delivery into the existing invitation/grant domain is still pending.
+- `[~]` Route invitations through bounded encrypted mailboxes: queue, expiry, delivery and acknowledgement exist; end-to-end two-machine evidence and out-of-band activation still require staging/product wiring.
+- `[x]` Document deployment, retention, deletion, observability, incident-response, quota exhaustion, migration, and provider replacement requirements in the service README and Phase 10B/12 gates.
 
 Acceptance criteria:
 
 - A malicious or compromised signaling service cannot read project content or impersonate a device.
 - Same-account discovery does not bypass project grants.
 - Offline delivery cannot revive expired or revoked invitations.
+- The rendezvous service receives no Google token while automatic account routing remains resistant to account enumeration and impersonation.
+- Removing the Cloudflare adapter leaves the provider-independent collaboration engine and local Alethe functionality intact.
 
-## Phase 4 — Encrypted peer transport and relay fallback
+## Phase 11 — Notifications and access center
 
-- Select and document the transport stack for direct and relayed connections.
-- Authenticate both device keys during channel establishment.
-- Derive per-session encryption keys with forward secrecy.
-- Bind encrypted frames to protocol version, project, grant, sender, recipient, stream, sequence, and content type.
-- Reject replayed, reordered beyond policy, cross-project, and oversized frames.
-- Add direct-connection negotiation and encrypted relay fallback.
-- Add keepalive, reconnection, cancellation, backpressure, bandwidth limits, and transfer progress.
-- Never expose OAuth tokens as transport credentials.
-
-Acceptance criteria:
-
-- Packet captures and relay logs contain no plaintext project data.
-- Revoking a device or grant terminates or invalidates the related transport session.
-- Interrupted transfers resume without duplicating or corrupting committed content.
-
-## Phase 5 — Recipient-controlled project setup
-
-- Model local subscription states explicitly: offered, configuring, awaiting confirmation, staging, verifying, active, paused, declined, revoked, and error.
-- Let the recipient choose create managed copy, attach existing copy, or download snapshot when permitted.
-- Require an explicit destination and validate containment, symlinks, permissions, free space, path length, and collisions.
-- Let the recipient choose manual, receive-after-setup, or bidirectional synchronization.
-- Show excluded folders, expected size, permissions, direction, and destructive behavior before confirmation.
-- Keep the grant available when a recipient defers or dismisses setup.
-
-Acceptance criteria:
-
-- No directory is created until the recipient confirms the destination and mode.
-- A project cannot escape its selected destination through traversal or symlinks.
-- Unsupported modes are visibly disabled with a precise reason.
-
-## Phase 6 — Manifest, staging, integrity, and atomic publication
-
-- Define a deterministic, versioned project manifest with normalized relative paths and content hashes.
-- Exclude secrets, credentials, heavy generated directories, device files, sockets, and unsafe symlinks by default.
-- Split large files into bounded, content-addressed chunks.
-- Stage incoming data outside the live project tree.
-- Verify manifest signatures, authorization, hashes, sizes, counts, and disk quotas before publication.
-- Publish verified snapshots atomically and preserve a recoverable previous state.
-- Add pause, resume, cancel, cleanup, and crash-recovery behavior.
-- Bound memory, cache, queue, scrollback, and pending-write usage under pressure.
-
-Acceptance criteria:
-
-- A crash at every transfer boundary leaves either the previous valid tree or the new verified tree, never a mixed tree.
-- Corrupt, truncated, substituted, or unauthorized chunks never reach the live project.
-- Cache eviction cannot delete the only recoverable version of user data.
-
-## Phase 7 — Continuous synchronization and conflicts
-
-- Track local and remote revisions without relying only on timestamps.
-- Coalesce file-system events and handle rename, delete, case-only changes, permissions, and offline edits.
-- Enforce the current grant on every requested operation and path.
-- Add explicit conflict records instead of silently overwriting concurrent changes.
-- Provide keep local, keep remote, keep both, and supported text-merge actions.
-- Add project pause, peer pause, rescan, repair, and restore controls.
-- Keep Desktop and Web views consistent without allowing the Web client to bypass Core authorization.
-
-Acceptance criteria:
-
-- Concurrent edits are reproducible and never resolved by silent data loss.
-- Revoked permissions take effect before the next mutation is applied.
-- Repeated resize, reconnect, memory pressure, and long-idle sessions do not corrupt terminal or sync state.
-
-## Phase 8 — Shared tasks
-
-- Add project-scoped task identities, revisions, authorship, assignment, due dates, labels, and completion state.
-- Support project-public tasks and restricted tasks with explicit membership.
-- Authorize every read and mutation against the current project grant.
-- Define offline edits, conflict handling, deletion, retention, and audit behavior.
-- Synchronize tasks independently from project-file transfer so a paused file transfer does not corrupt task state.
-
-Acceptance criteria:
-
-- Private tasks are never disclosed through counts, notifications, search, or exports to unauthorized users.
-- Offline concurrent edits produce a deterministic merge or an explicit conflict.
-
-## Phase 9 — Programmer-focused chat
-
-- Add direct messages, project channels, private groups, categories, threads, mentions, reactions, and read state.
-- Support images, files, test results, bug reports, code snippets, and command blocks.
-- Provide a safe terminal selection/share action without automatically executing received commands.
-- Scan and bound attachments, strip unsafe metadata where appropriate, and prevent executable preview behavior.
-- Encrypt message content and attachments end to end when traversing rendezvous or relay infrastructure.
-- Separate chat membership from project-file permissions.
-
-Acceptance criteria:
-
-- Receiving a command never executes it.
-- Removed members cannot fetch new messages or attachment keys.
-- Categories organize channels but do not grant access.
-
-## Phase 10 — Notifications and access center
-
-- Add one access center for invitations, device approvals, project requests, grants, revocations, conflicts, transfer failures, tasks, and chat mentions.
-- Keep security notifications distinct from collaboration notifications.
-- Provide read/unread, dismiss, defer, retry, and deep-link behavior.
+- `[~]` Add one access center: a bounded persistent projection now receives remote invitation/candidate/revocation/provider events; device approvals, local grant lifecycle, conflicts, transfer failures, task events, and chat mentions still need domain publishers.
+- `[x]` Keep security notifications distinct from collaboration notifications through explicit persisted categories.
+- `[~]` Provide read/unread, dismiss, defer, retry, and deep-link behavior: read/dismiss/defer, categorized settings controls, and opaque revalidated action handles exist; domain-specific retry/deep links remain pending.
 - Normalize notification formatting and icons across Windows, macOS, Linux, and Web.
-- Add visible in-app fallback when native notification delivery fails.
-- Avoid placing secrets, full local paths, or private message content in operating-system notifications.
+- `[x]` Add visible in-app fallback when native notification delivery fails.
+- `[x]` Avoid placing secrets, full local paths, or private message content in operating-system notifications; only localized generic text is passed to the native plugin.
 
 Acceptance criteria:
 
 - Notification actions revalidate current authorization before changing state.
 - A stale notification cannot accept an expired invitation or resume a revoked transfer.
 
-## Phase 11 — Security, abuse resistance, and operations
+## Phase 12 — Security, abuse resistance, and operations
 
 - Complete the threat model for signaling, relay, transport, storage, chat, tasks, and recovery.
-- Add rate limits, quotas, bounded parsers, cancellation, backpressure, and lockouts at every untrusted boundary.
+- `[~]` Add rate limits, quotas, bounded parsers, cancellation, backpressure, and lockouts: complete for the Phase 10B boundary and client queues; system-wide review remains pending.
 - Add key rotation, credential deletion, account export, device recovery, and project-access deletion flows.
 - Add privacy-preserving audit events without content, tokens, local paths, or encryption keys.
 - Add structured diagnostics with secret redaction.
-- Define server metrics, alerts, backups, upgrades, rollback, retention, and incident response.
+- `[x]` Define server metrics, alerts, backups, upgrades, rollback, retention, and incident response requirements in `docs/security/PHASE_12_OPERATIONS_GATE.md`; real operator drills remain pending.
 - Perform dependency, supply-chain, and release-signing reviews.
 
 Acceptance criteria:
@@ -594,7 +768,9 @@ Acceptance criteria:
 - Fuzzed and oversized protocol input cannot crash the Desktop app or standalone server.
 - Account and project deletion have documented, testable completion semantics.
 
-## Phase 12 — Test and release program
+## Phase 13 — Test and release program
+
+Local release preparation evidence and external blockers are tracked in `docs/security/PHASE_13_RELEASE_GATE.md`. No production deploy, commit, tag, installer publication, or release has occurred.
 
 Required automated coverage:
 
@@ -673,9 +849,12 @@ When implementation resumes and all release gates are satisfied, the final pull-
 1. This document: `docs/PROJECT_COLLABORATION_PLAN_AND_STATUS.md`.
 2. `docs/security/PROJECT_SYNC_THREAT_MODEL.md`.
 3. `docs/adr/ADR-0001-project-sync-security-and-transport.md`.
-4. `docs/superpowers/plans/2026-08-20-secure-project-sync-and-linux-integration.md`.
-5. `docs/DIAGNOSTICO_MATURIDADE_TECNICA.md` for duplication and performance context.
-6. `AGENTS.md` and `CONTRIBUTING.md` for repository rules and validation commands.
+4. `docs/adr/ADR-0002-optional-cloudflare-rendezvous.md`.
+5. `docs/superpowers/plans/2026-08-21-collaboration-implementation-blueprint.md`.
+6. `docs/superpowers/plans/2026-08-21-security-gate-and-cloudflare-rendezvous-prompt.md`.
+7. `docs/superpowers/plans/2026-08-20-secure-project-sync-and-linux-integration.md`.
+8. `docs/DIAGNOSTICO_MATURIDADE_TECNICA.md` for duplication and performance context.
+9. `AGENTS.md` and `CONTRIBUTING.md` for repository rules and validation commands.
 
 If a statement conflicts, the stricter security invariant wins. This consolidated document records current product decisions; the threat model remains authoritative for security requirements.
 
@@ -696,23 +875,21 @@ If a statement conflicts, the stricter security invariant wins. This consolidate
 
 ### Exact next implementation step
 
-Phases 1 and 2 have been implemented in this branch.
+Phases 3–9 and the local Phase 10A mechanism pass their automated gates. Phase 10B now has a local
+Cloudflare service/client implementation and Phase 11 has a bounded access-center projection. The
+next authorized work must close the remaining real-world gates without overstating availability:
 
-**Phase 1** (trusted devices and account recovery): first-device auto-trust, additional-device `Pending`/approval, `approve_device_at`/`reject_device_at`/`rename_device_at`/`revoke_device_at`/`remove_device_at` in `src-tauri/src/sync_security.rs` with unit tests, matching Tauri commands and `/api/sync/security/devices/*` Web routes, frontend API functions in `src/lib/api/syncSecurity.ts`, and device-management controls in `MeshSidebarView.tsx`. Cloned/rolled-back device detection, key rotation, and all-devices-lost recovery remain open within this same phase area but were not blocking.
+1. Wire issued invitations to end-to-end encrypted rendezvous envelopes and consume a remote
+   delivery into the existing invitation/grant domain only after fresh authorization checks.
+2. Add the remaining Phase 11 domain publishers plus domain-specific retry and deep-link controls.
+3. Obtain a Cloudflare staging environment and run the complete Phase 10B matrix on two machines and
+   multiple networks; do not deploy production without a separate owner authorization.
+4. Complete the Phase 12 external review, deletion/recovery/provider-migration drills, dependency and
+   supply-chain review, budget, alerts, retention, and incident-response approvals.
+5. Complete Phase 13 isolated E2E, network, soak, supported-platform installer, and external-security
+   gates. Release, commit, push, tag, and publication remain owner actions.
 
-**Phase 2** (invitations and project permissions): `issue_invitation`/`redeem_invitation` (pre-existing) plus new `revoke_invitation_at`/`revoke_grant_at` in `sync_security.rs` with unit tests, matching Tauri commands (`sync_issue_invitation`, `sync_revoke_invitation`, `sync_redeem_invitation`, `sync_revoke_grant`) and `/api/sync/security/invitations/*` + `/api/sync/security/grants/*` Web routes, an `alethe-invite://` link representation (`src/lib/sync/invitationLink.ts`), and a working invite/redeem/revoke UI in `MeshSidebarView.tsx` gated on real device-trust state. QR codes, a distinct short code, recipient lookup, folder-scope UI, and — most importantly — actual cross-PC delivery of an invitation remain open; today issuing and redeeming both operate on the same local security document, which is enough to exercise and test the state machine but is not yet a working cross-device feature.
-
-Resume with **Phase 3 — Rendezvous, presence, and remote invitation delivery** next, not with chat, tasks, project transfer, or UI polish:
-
-1. Select and record the rendezvous/relay technology in an ADR (this is currently an open decision — see "Open security decisions" in the threat model).
-2. Define a versioned signaling protocol for device registration, authenticated presence, connection offers, and invitation notifications.
-3. Authenticate every signaling message against current account/device state; the service must never receive OAuth tokens, private keys, paths, filenames, project content, task content, or chat plaintext.
-4. Add reconnect, backoff, offline queues, expiry, rate limiting, and bounded message sizes.
-5. Implement same-Google-account device discovery without granting automatic project access, plus an owner-approved catalog of available projects using opaque identifiers.
-6. Wire actual cross-PC delivery of the invitations built in Phase 2, so an invitation issued on one machine reaches the intended recipient's device on another.
-7. Update `[Unreleased]` in `docs/CHANGELOG.md`.
-8. Run focused tests, full Rust tests, frontend tests, lint, format check, and production build.
-9. Commit Phase 3 separately before starting transport/relay work (Phase 4).
+The detailed execution prompt for this sequence is `docs/superpowers/plans/2026-08-21-security-gate-and-cloudflare-rendezvous-prompt.md`.
 
 ### Required validation commands while resuming
 

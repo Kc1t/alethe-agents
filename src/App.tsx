@@ -41,8 +41,8 @@ import { TopbarSettingsModal } from './components/modals/TopbarSettingsModal'
 import { UpdateModal } from './components/modals/UpdateModal'
 import { WelcomeModal } from './components/modals/WelcomeModal'
 import { WhatsNewModal } from './components/modals/WhatsNewModal'
-import { ProjectFolderTreeModal } from './components/ProjectSidebar/ProjectFolderTreeModal'
 import { ProjectSidebar } from './components/ProjectSidebar'
+import { ProjectFolderTreeModal } from './components/ProjectSidebar/ProjectFolderTreeModal'
 import { RecorderHelper } from './components/RecorderHelper/RecorderHelper'
 import { RightSidebar } from './components/RightSidebar'
 import { TitleBar } from './components/TitleBar'
@@ -51,13 +51,14 @@ import { AsciiEffect } from './components/ui/ascii-effect'
 import { WorkspaceView } from './components/WorkspaceView'
 import { useCliOpenRequests } from './hooks/useCliOpenRequests'
 import { useCloseConfirmation } from './hooks/useCloseConfirmation'
+import { useCollaborationAccess } from './hooks/useCollaborationAccess'
 import { useDiscordPresence } from './hooks/useDiscordPresence'
 import { useKeybindings } from './hooks/useKeybindings'
 import { useMcpIntroPrompt } from './hooks/useMcpIntroPrompt'
 import { useRemoteControlService } from './hooks/useRemoteControlService'
 import { useResourceSupervisor } from './hooks/useResourceSupervisor'
-import { isTauriEnv } from './lib/api/transport'
 import { startActivityTracker } from './lib/activityTracker'
+import { isTauriEnv } from './lib/api/transport'
 import { APP_SHELL_ID } from './lib/appShell'
 import { installE2eHooks } from './lib/e2eHooks'
 import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
@@ -289,6 +290,7 @@ export default function App() {
   useMcpIntroPrompt()
   useRemoteControlService()
   useCloseConfirmation()
+  useCollaborationAccess()
   useResourceSupervisor(hydrated)
   useCliOpenRequests(hydrated)
 

@@ -66,8 +66,19 @@ chrono = { version = "0.4", default-features = false, features = ["std"] }
 dirs-next = "2"
 base64 = "0.22"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
+# Key-agreement keypair for encrypted peer sessions (ADR-0003); shares curve25519-dalek
+# with ed25519-dalek above so no duplicate curve implementation is pulled in.
+x25519-dalek = { version = "2", features = ["static_secrets"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 sha2 = "0.10"
+# RS256 verification of Google ID tokens against Google's published JWKS (ADR account
+# routing depends on a locally verified `sub` claim; see sync_mesh.rs).
+jsonwebtoken = "9"
+# HKDF-SHA256 session-key derivation from the X25519 shared secret (ADR-0003).
+hkdf = "0.12"
+# AEAD frame encryption for the peer transport (ADR-0005).
+chacha20poly1305 = "0.10"
+tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
 image = { version = "0.25", default-features = false, features = ["png", "bmp"] }
 urlencoding = "2"
 url = "2"

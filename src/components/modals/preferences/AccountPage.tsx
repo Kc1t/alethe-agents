@@ -13,6 +13,7 @@ import { GoogleIcon } from '../../icons/AgentIcons'
 import controls from '../controls.module.css'
 import { ImageInput } from '../ImageInput'
 import styles from '../PreferencesModal.module.css'
+import { CollaborationSettings } from './CollaborationSettings'
 import { Avatar, SettingsSection } from './primitives'
 
 export function AccountPage({
@@ -101,6 +102,8 @@ export function AccountPage({
           </div>
         </div>
       </SettingsSection>
+
+      <CollaborationSettings />
 
       <SettingsSection
         id="language"

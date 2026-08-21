@@ -6,17 +6,15 @@ import {
 } from '@tauri-apps/plugin-notification'
 
 import { useUiStore } from '../stores/uiStore'
+import { isTauriEnv } from './api/transport'
 import type { AgentType } from './types'
 
 let permissionPromise: Promise<boolean> | null = null
 
 /**
- * App "na frente" = janela focada e não minimizada. Quando true mostramos o
- * banner in-app; quando false (alt-tab, minimizado, atrás de outra janela)
- * disparamos a notificação do SO. Nunca os dois — evita aviso duplicado.
+ * Foreground means focused and not minimized. Show the in-app banner while foregrounded and use
+ * the operating-system notification while backgrounded, never both.
  */
-import { isTauriEnv } from './api/transport'
-
 async function appInForeground(): Promise<boolean> {
   if (!isTauriEnv()) {
     try {
@@ -85,4 +83,10 @@ export async function notifyLimitReset(
   agent?: AgentType,
 ): Promise<void> {
   return deliver(title, body, agent)
+}
+
+/** Minimal collaboration notification. Callers provide localized generic text only; project,
+ * path, task, chat, bearer, or ciphertext values must never be included. */
+export async function notifyCollaborationEvent(title: string, body: string): Promise<void> {
+  return deliver(title, body)
 }

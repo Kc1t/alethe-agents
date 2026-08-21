@@ -276,6 +276,7 @@ mod tests {
                 "com.kc1t.alethe.dev".to_string(),
                 self.0.clone(),
                 Arc::new(crate::pty_sink::WebSocketSink),
+                Arc::new(crate::sync_rendezvous::RendezvousRuntime::default()),
             ))
         }
     }

@@ -360,6 +360,7 @@ struct GoogleTokenResponse {
     expires_in: u64,
     scope: Option<String>,
     token_type: String,
+    id_token: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -369,6 +370,113 @@ struct GoogleUserInfo {
     email: Option<String>,
     email_verified: Option<bool>,
     picture: Option<String>,
+}
+
+const GOOGLE_JWKS_URL: &str = "https://www.googleapis.com/oauth2/v3/certs";
+const GOOGLE_ISSUERS: &[&str] = &["https://accounts.google.com", "accounts.google.com"];
+/// How far into the future an `iat` claim may reasonably sit to account for clock skew between
+/// this machine and Google's token servers. Anything further out than this is rejected rather
+/// than silently trusted.
+const ID_TOKEN_MAX_ISSUED_AT_SKEW_SECS: i64 = 300;
+
+#[derive(Debug, Deserialize)]
+struct GoogleJwks {
+    keys: Vec<GoogleJwk>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GoogleJwk {
+    kid: String,
+    n: String,
+    e: String,
+    #[serde(default)]
+    alg: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Deserialize)]
+struct GoogleIdTokenClaims {
+    // `iss`/`aud` are never read directly after decoding: jsonwebtoken's `Validation` checks
+    // them against `validation.set_issuer`/`set_audience` during `decode`, which requires them
+    // to be present on the deserialized claims type.
+    #[allow(dead_code)]
+    iss: String,
+    #[allow(dead_code)]
+    aud: String,
+    sub: String,
+    exp: i64,
+    iat: i64,
+    nonce: Option<String>,
+    email: Option<String>,
+    email_verified: Option<bool>,
+}
+
+async fn fetch_google_jwks() -> Result<GoogleJwks, String> {
+    let response = reqwest::Client::new()
+        .get(GOOGLE_JWKS_URL)
+        .send()
+        .await
+        .map_err(|_| "google_jwks_fetch_failed".to_string())?;
+    if !response.status().is_success() {
+        return Err("google_jwks_fetch_failed".to_string());
+    }
+    response
+        .json::<GoogleJwks>()
+        .await
+        .map_err(|_| "google_jwks_fetch_failed".to_string())
+}
+
+/// Verifies a Google ID token's RS256 signature against the supplied JWKS and validates issuer,
+/// audience, expiry, issued-at skew, and nonce. Pure and network-free so it can be unit tested
+/// with a locally generated RSA keypair standing in for Google's signing key.
+fn verify_google_id_token(
+    id_token: &str,
+    jwks: &GoogleJwks,
+    expected_client_id: &str,
+    expected_nonce: &str,
+    now_secs: i64,
+) -> Result<GoogleIdTokenClaims, String> {
+    use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
+
+    let header = decode_header(id_token).map_err(|_| "google_id_token_invalid".to_string())?;
+    let kid = header.kid.ok_or_else(|| "google_id_token_invalid".to_string())?;
+    let jwk = jwks
+        .keys
+        .iter()
+        .find(|key| key.kid == kid)
+        .ok_or_else(|| "google_id_token_key_unknown".to_string())?;
+    if jwk.alg.as_deref().is_some_and(|alg| alg != "RS256") {
+        return Err("google_id_token_invalid".to_string());
+    }
+    let decoding_key = DecodingKey::from_rsa_components(&jwk.n, &jwk.e)
+        .map_err(|_| "google_id_token_key_invalid".to_string())?;
+
+    let mut validation = Validation::new(Algorithm::RS256);
+    validation.set_audience(&[expected_client_id]);
+    validation.set_issuer(GOOGLE_ISSUERS);
+    validation.leeway = 0;
+    // Expiry/issued-at are re-validated below against the caller-supplied `now_secs` rather than
+    // jsonwebtoken's own wall-clock read, so the whole function stays deterministic and testable
+    // the same way the rest of this codebase threads an explicit `now_ms` instead of reading
+    // `SystemTime::now()` deep inside a library call.
+    validation.validate_exp = false;
+
+    let decoded = decode::<GoogleIdTokenClaims>(id_token, &decoding_key, &validation)
+        .map_err(|_| "google_id_token_invalid".to_string())?;
+    let claims = decoded.claims;
+
+    if claims.exp < now_secs {
+        return Err("google_id_token_expired".to_string());
+    }
+    if claims.iat > now_secs + ID_TOKEN_MAX_ISSUED_AT_SKEW_SECS {
+        return Err("google_id_token_issued_in_future".to_string());
+    }
+    if claims.nonce.as_deref() != Some(expected_nonce) {
+        return Err("google_id_token_nonce_mismatch".to_string());
+    }
+    if claims.email_verified != Some(true) {
+        return Err("google_identity_unverified".to_string());
+    }
+    Ok(claims)
 }
 
 fn random_base64_url(bytes: usize) -> String {
@@ -555,6 +663,24 @@ pub async fn start_google_sync_auth(app: tauri::AppHandle) -> Result<GoogleSyncU
     if user.sub.is_empty() || user.name.is_empty() || user.email_verified != Some(true) {
         return Err("google_identity_unverified".to_string());
     }
+
+    // The UserInfo endpoint alone does not prove issuer/audience/nonce; the ID token is the
+    // signed, verifiable identity assertion. Google always returns one for an `openid`-scoped
+    // authorization_code exchange.
+    let id_token = tokens
+        .id_token
+        .as_deref()
+        .ok_or_else(|| "google_id_token_missing".to_string())?;
+    let jwks = fetch_google_jwks().await?;
+    let now_secs = (crate::provider_common::now_ms() / 1000) as i64;
+    let claims = verify_google_id_token(id_token, &jwks, &client_id, &nonce, now_secs)?;
+    if claims.sub != user.sub {
+        return Err("google_identity_unverified".to_string());
+    }
+    if claims.email.as_deref() != user.email.as_deref() {
+        return Err("google_identity_unverified".to_string());
+    }
+
     store_google_tokens(&user.sub, &tokens)?;
     let device_name = std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))
@@ -783,5 +909,176 @@ mod tests {
         assert!(!Path::new(&backup.path).exists());
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    // Test-only RSA keypair standing in for Google's rotating JWKS signing key. Never used for
+    // anything but signing/verifying fixture ID tokens in this test module.
+    const TEST_RSA_PRIVATE_KEY_PEM: &str = include_str!("../tests/fixtures/test_rsa_private.pem");
+    const TEST_RSA_N: &str = "rOQDhhgmin3WLxGu1YdEYENKbFkjNQ1N86K_eFmdskAyD-gX1vvjX1Qp8GelClMSvGJcOkifHcgOz9nYp0e3nyi98i4MV2znOQRBcZnff0e_WkaMVyb6Y-_dnTA62wNDSnN_6_A-Mtnh3O4kqUqbMghhYVCzvz7GNmU3gSxb_iq6r9FJb1g-7CKa1AmoEcq6c7QDNbp_ihXSQlkx2W_eoNqijbkvhDlBt5LXE75la1P-_8a_UDtCg613XqiRrp8_csyQLoaiS_VBEuBwHnHkvxYybC4hqUR3fNncul8S6X37DWe0Z010G3PXiwA9duLsUp1X6OPS-71CPkCZAfmDVw";
+    const TEST_RSA_E: &str = "AQAB";
+
+    #[derive(serde::Serialize, Clone)]
+    struct TestClaims<'a> {
+        iss: &'a str,
+        aud: &'a str,
+        sub: &'a str,
+        exp: i64,
+        iat: i64,
+        nonce: &'a str,
+        email: &'a str,
+        email_verified: bool,
+    }
+
+    fn sign_test_id_token(claims: &TestClaims) -> String {
+        use jsonwebtoken::{encode, EncodingKey, Header};
+        let mut header = Header::new(jsonwebtoken::Algorithm::RS256);
+        header.kid = Some("test-key".to_string());
+        let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY_PEM.as_bytes()).unwrap();
+        encode(&header, claims, &key).unwrap()
+    }
+
+    fn test_jwks() -> GoogleJwks {
+        GoogleJwks {
+            keys: vec![GoogleJwk {
+                kid: "test-key".to_string(),
+                n: TEST_RSA_N.to_string(),
+                e: TEST_RSA_E.to_string(),
+                alg: Some("RS256".to_string()),
+            }],
+        }
+    }
+
+    #[test]
+    fn verify_google_id_token_accepts_a_valid_token() {
+        let now = 1_000_000_i64;
+        let token = sign_test_id_token(&TestClaims {
+            iss: "https://accounts.google.com",
+            aud: "client.apps.googleusercontent.com",
+            sub: "sub-123",
+            exp: now + 3_600,
+            iat: now,
+            nonce: "nonce-abc",
+            email: "person@example.com",
+            email_verified: true,
+        });
+        let claims = verify_google_id_token(
+            &token,
+            &test_jwks(),
+            "client.apps.googleusercontent.com",
+            "nonce-abc",
+            now,
+        )
+        .unwrap();
+        assert_eq!(claims.sub, "sub-123");
+    }
+
+    #[test]
+    fn verify_google_id_token_rejects_wrong_audience_issuer_nonce_and_expiry() {
+        let now = 1_000_000_i64;
+        let base = TestClaims {
+            iss: "https://accounts.google.com",
+            aud: "client.apps.googleusercontent.com",
+            sub: "sub-123",
+            exp: now + 3_600,
+            iat: now,
+            nonce: "nonce-abc",
+            email: "person@example.com",
+            email_verified: true,
+        };
+
+        let wrong_audience = sign_test_id_token(&TestClaims {
+            aud: "someone-elses-client.apps.googleusercontent.com",
+            ..base.clone()
+        });
+        assert!(verify_google_id_token(
+            &wrong_audience,
+            &test_jwks(),
+            "client.apps.googleusercontent.com",
+            "nonce-abc",
+            now
+        )
+        .is_err());
+
+        let wrong_issuer = sign_test_id_token(&TestClaims {
+            iss: "https://evil.example.com",
+            ..base.clone()
+        });
+        assert!(verify_google_id_token(
+            &wrong_issuer,
+            &test_jwks(),
+            "client.apps.googleusercontent.com",
+            "nonce-abc",
+            now
+        )
+        .is_err());
+
+        let wrong_nonce = sign_test_id_token(&TestClaims {
+            nonce: "different-nonce",
+            ..base.clone()
+        });
+        assert_eq!(
+            verify_google_id_token(
+                &wrong_nonce,
+                &test_jwks(),
+                "client.apps.googleusercontent.com",
+                "nonce-abc",
+                now
+            ),
+            Err("google_id_token_nonce_mismatch".to_string())
+        );
+
+        let expired = sign_test_id_token(&TestClaims {
+            exp: now - 10,
+            ..base.clone()
+        });
+        assert!(verify_google_id_token(
+            &expired,
+            &test_jwks(),
+            "client.apps.googleusercontent.com",
+            "nonce-abc",
+            now
+        )
+        .is_err());
+
+        let unverified_email = sign_test_id_token(&TestClaims {
+            email_verified: false,
+            ..base.clone()
+        });
+        assert_eq!(
+            verify_google_id_token(
+                &unverified_email,
+                &test_jwks(),
+                "client.apps.googleusercontent.com",
+                "nonce-abc",
+                now
+            ),
+            Err("google_identity_unverified".to_string())
+        );
+    }
+
+    #[test]
+    fn verify_google_id_token_rejects_an_unknown_signing_key() {
+        let now = 1_000_000_i64;
+        let token = sign_test_id_token(&TestClaims {
+            iss: "https://accounts.google.com",
+            aud: "client.apps.googleusercontent.com",
+            sub: "sub-123",
+            exp: now + 3_600,
+            iat: now,
+            nonce: "nonce-abc",
+            email: "person@example.com",
+            email_verified: true,
+        });
+        let empty_jwks = GoogleJwks { keys: vec![] };
+        assert_eq!(
+            verify_google_id_token(
+                &token,
+                &empty_jwks,
+                "client.apps.googleusercontent.com",
+                "nonce-abc",
+                now
+            ),
+            Err("google_id_token_key_unknown".to_string())
+        );
     }
 }

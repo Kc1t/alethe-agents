@@ -9,7 +9,15 @@ pub mod misc_routes;
 pub mod profile_routes;
 pub mod pty_routes;
 pub mod session_routes;
+pub mod sync_activation_routes;
+pub mod sync_access_routes;
+pub mod sync_rendezvous_routes;
+pub mod sync_chat_routes;
+pub mod sync_engine_routes;
 pub mod sync_security_routes;
+pub mod sync_staging_routes;
+pub mod sync_subscription_routes;
+pub mod sync_tasks_routes;
 pub mod window_routes;
 
 use crate::pty_sink::PtyOutputSink;
@@ -25,6 +33,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
+use tauri::Manager;
 use tower_http::cors::CorsLayer;
 
 pub const SERVER_BIND_ADDRESS: &str = "127.0.0.1:1423";
@@ -153,6 +162,7 @@ pub struct ServerRuntime {
     // started later can never have its snapshot overwritten on the wire by
     // one that started earlier but is slower to read from disk.
     sync_publish: Arc<Mutex<u64>>,
+    rendezvous_runtime: Arc<crate::sync_rendezvous::RendezvousRuntime>,
 }
 
 impl ServerRuntime {
@@ -164,10 +174,15 @@ impl ServerRuntime {
             app_identifier,
             data_root,
             Arc::new(crate::pty_sink::WebSocketSink),
+            Arc::new(crate::sync_rendezvous::RendezvousRuntime::default()),
         ))
     }
 
     pub fn embedded(app_identifier: String, data_root: PathBuf, app: tauri::AppHandle) -> Self {
+        let rendezvous_runtime = app
+            .state::<Arc<crate::sync_rendezvous::RendezvousRuntime>>()
+            .inner()
+            .clone();
         Self::new(
             "embedded",
             app_identifier,
@@ -176,6 +191,7 @@ impl ServerRuntime {
                 crate::pty_sink::TauriSink(app),
                 crate::pty_sink::WebSocketSink,
             )),
+            rendezvous_runtime,
         )
     }
 
@@ -184,6 +200,7 @@ impl ServerRuntime {
         app_identifier: String,
         data_root: PathBuf,
         pty_sink: Arc<dyn PtyOutputSink>,
+        rendezvous_runtime: Arc<crate::sync_rendezvous::RendezvousRuntime>,
     ) -> Self {
         let data_root_id = crate::profiles::data_root_fingerprint(&data_root);
         let (sync_events, _) = broadcast::channel(CORE_EVENT_CHANNEL_CAPACITY);
@@ -200,6 +217,7 @@ impl ServerRuntime {
             ))),
             sync_events,
             sync_publish: Arc::new(Mutex::new(0)),
+            rendezvous_runtime,
         }
     }
 
@@ -217,6 +235,10 @@ impl ServerRuntime {
 
     pub fn pty_sink(&self) -> Arc<dyn PtyOutputSink> {
         Arc::clone(&self.pty_sink)
+    }
+
+    pub fn rendezvous_runtime(&self) -> Arc<crate::sync_rendezvous::RendezvousRuntime> {
+        Arc::clone(&self.rendezvous_runtime)
     }
 
     fn session_credentials(&self) -> LocalSessionCredentials {
@@ -507,6 +529,14 @@ pub fn build_router(runtime: ServerRuntime) -> Router {
         .merge(window_routes::router())
         .merge(pty_routes::router())
         .merge(sync_security_routes::router())
+        .merge(sync_subscription_routes::router())
+        .merge(sync_staging_routes::router())
+        .merge(sync_engine_routes::router())
+        .merge(sync_tasks_routes::router())
+        .merge(sync_chat_routes::router())
+        .merge(sync_activation_routes::router())
+        .merge(sync_access_routes::router())
+        .merge(sync_rendezvous_routes::router())
         .fallback(not_implemented)
         .layer(middleware::from_fn(authenticate_request))
         .layer(middleware::from_fn(validate_request_origin))
@@ -645,6 +675,7 @@ mod security_tests {
             "com.kc1t.alethe.test".to_string(),
             root.clone(),
             Arc::new(crate::pty_sink::WebSocketSink),
+            Arc::new(crate::sync_rendezvous::RendezvousRuntime::default()),
         ));
         let mut receiver = runtime.subscribe_sync_events();
 

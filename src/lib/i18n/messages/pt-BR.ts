@@ -2419,4 +2419,60 @@ export const ptBR: Record<MessageKey, string> = {
   'plans.selectProject': 'Selecione um projeto para ver seus planos',
   'plans.noPlans': 'Nenhum plano encontrado',
   'plans.noPlansDesc': 'Os planos criados pelos agentes aparecerão aqui em .alethe/plans/.',
+
+  /* ---- optional collaboration service ---- */
+  'collaboration.settingsTitle': 'Colaboração em projetos',
+  'collaboration.settingsDescription':
+    'Escolha se o Alethe pode usar um serviço de encontro para descoberta remota, convites e negociação P2P.',
+  'collaboration.mode.local_only.title': 'Somente local',
+  'collaboration.mode.local_only.description': 'Nunca se conecta a um provedor de encontro.',
+  'collaboration.mode.alethe_managed.title': 'Serviço Alethe',
+  'collaboration.mode.alethe_managed.description': 'Usa o endpoint oficial quando disponível.',
+  'collaboration.mode.advanced_custom.title': 'Provedor próprio',
+  'collaboration.mode.advanced_custom.description': 'Usa um endpoint compatível operado por você.',
+  'collaboration.customEndpoint': 'Endpoint de encontro',
+  'collaboration.privacyTitle': 'Limite de privacidade do provedor',
+  'collaboration.privacyVisible':
+    'O provedor vê IDs opacos de dispositivos, chaves públicas, presença, horário e tamanho das cifras.',
+  'collaboration.privacyHidden':
+    'Credenciais OAuth, chaves privadas, caminhos, nomes, dados de projetos, tarefas e chat em texto puro nunca vão ao provedor.',
+  'collaboration.noCloudflareAccount':
+    'Usuários comuns não precisam de conta Cloudflare nem credenciais de deploy.',
+  'collaboration.statusLabel': 'Estado da conexão',
+  'collaboration.state.disabled': 'Desativado',
+  'collaboration.state.identity_required': 'Identidade Google necessária',
+  'collaboration.state.ready': 'Pronto para conectar',
+  'collaboration.state.connecting': 'Conectando',
+  'collaboration.state.online': 'Online',
+  'collaboration.state.retrying': 'Tentando novamente com segurança',
+  'collaboration.state.direct_only': 'Somente conexão direta',
+  'collaboration.state.needs_attention': 'Precisa de atenção',
+  'collaboration.managedEndpointUnavailable':
+    'Esta versão não tem um endpoint oficial configurado. O Alethe local continua disponível.',
+  'collaboration.connectionError': 'O serviço de colaboração não conseguiu concluir esta operação.',
+  'collaboration.enable': 'Ativar colaboração',
+  'collaboration.disable': 'Desativar colaboração',
+  'collaboration.notification.invitationTitle': 'Convite de projeto recebido',
+  'collaboration.notification.invitationBody':
+    'Abra o Alethe para revisar o convite com segurança.',
+  'collaboration.notification.securityTitle': 'O acesso de colaboração mudou',
+  'collaboration.notification.revocationBody':
+    'Abra o Alethe para revisar o estado atual do acesso.',
+  'collaboration.notification.connectionTitle': 'Um dispositivo está pronto para conectar',
+  'collaboration.notification.connectionBody': 'Abra o Alethe para continuar a conexão segura.',
+  'collaboration.notification.providerTitle': 'O serviço de colaboração precisa de atenção',
+  'collaboration.notification.providerBody':
+    'O trabalho local continua disponível. Abra o Alethe para ver detalhes.',
+  'collaboration.access.title': 'Central de acesso',
+  'collaboration.access.description': 'Eventos de segurança e colaboração sem conteúdo privado.',
+  'collaboration.access.empty': 'Nenhum evento de acesso precisa da sua atenção.',
+  'collaboration.access.category.security': 'Segurança',
+  'collaboration.access.category.collaboration': 'Colaboração',
+  'collaboration.access.kind.remote_invitation': 'Convite de projeto recebido',
+  'collaboration.access.kind.connection_candidate': 'Dispositivo pronto para conectar',
+  'collaboration.access.kind.revocation': 'O acesso de colaboração mudou',
+  'collaboration.access.kind.provider_attention': 'A conexão precisa de atenção',
+  'collaboration.access.read': 'Marcar como lido',
+  'collaboration.access.later': 'Ver depois',
+  'collaboration.access.dismiss': 'Dispensar',
 }
