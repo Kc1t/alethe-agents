@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 
 import { log } from '../logger'
+import { markCoreIdentityVerified } from '../startupPerformance'
 
 /**
  * Detect whether the frontend is running inside a Tauri webview.
@@ -108,6 +109,7 @@ export async function canUseSharedCoreTransport(): Promise<boolean> {
         ? matchesCoreIdentity(localIdentity, payload)
         : payload.status === 'ok' && isAletheCore && runtime.appIdentifier === expectedIdentifier
       if (identityMatches) {
+        markCoreIdentityVerified()
         if (
           verifiedCoreInstanceId &&
           runtime.instanceId &&

@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid'
 import { create } from 'zustand'
 
+import { markStartup, markUiUsable, STARTUP_MARKS } from '../lib/startupPerformance'
 import { setStorageNamespace } from '../lib/storageNamespace'
 import {
   CORE_IDENTITY_MISMATCH,
@@ -836,6 +837,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
     isCleaningOrphans: false,
 
     hydrate: async () => {
+      markStartup(STARTUP_MARKS.bootstrapRequested)
       const generation = ++hydrationGeneration
       const wasHydrated = get().hydrated
       if (!wasHydrated) set({ bootstrapStatus: 'connecting' })
@@ -874,6 +876,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
             persistenceError: null,
             bootstrapStatus: 'ready',
           })
+          markUiUsable()
           void recordAppEvent('projects.hydrate', 'source=empty')
           return
         } catch (err) {

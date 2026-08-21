@@ -1,3 +1,7 @@
+import { markStartup, STARTUP_MARKS } from './lib/startupPerformance'
+
+markStartup(STARTUP_MARKS.bundleEvaluating)
+
 if (import.meta.env.DEV) {
   document.title = '(DEV) Alethe'
 }
