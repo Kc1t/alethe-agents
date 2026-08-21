@@ -6,34 +6,22 @@ import { fileURLToPath } from 'node:url'
 const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 
 /**
- * Identifier fixo do binário Tauri de e2e: `test:e2e:build` roda
- * `tauri build --debug --no-bundle` SEM `--config tauri.dev.json`, então usa
- * o `identifier` de `src-tauri/tauri.conf.json` tal como está — nunca o
- * sufixo `.dev` que o `alethe-server` resolveria sozinho em build debug.
- * Precisa bater EXATO com o `appIdentifier` que o app desktop reporta em
- * `/api/health`, senão `matchesCoreIdentity` recusa o core compartilhado
- * (ver `src/lib/api/transport.ts`) e as duas sessões nunca compartilham PTY.
+ * The E2E binary uses the identifier from `tauri.conf.json`, without the
+ * development suffix. It must exactly match the standalone Core identity.
  */
 const SHARED_APP_IDENTIFIER = 'com.kc1t.alethe'
 
 function tauriBinaryPath(): string {
   const name = process.platform === 'win32' ? 'alethe.exe' : 'alethe'
-  return join(ROOT, 'src-tauri', 'target-e2e', 'debug', name)
+  return join(ROOT, 'target-e2e', 'debug', name)
 }
 
 function aletheServerBinaryPath(): string {
   const name = process.platform === 'win32' ? 'alethe-server.exe' : 'alethe-server'
-  return join(ROOT, 'src-tauri', 'target-e2e', 'debug', name)
+  return join(ROOT, 'target-e2e', 'debug', name)
 }
 
-/**
- * Isola os dois processos (app Tauri de e2e + `alethe-server`) do
- * `%APPDATA%/Alethe` real E garante que os dois apontem pro MESMO data root
- * — condição pra `canUseSharedCoreTransport()` aceitar o core do outro
- * processo como o mesmo core (`matchesCoreIdentity` compara
- * `appIdentifier`+`dataRootId`; `dataRootId` é derivado do caminho real do
- * data root, então bastam os dois processos apontarem pra pasta idêntica).
- */
+/** Isolates both E2E processes while giving them the same temporary data root. */
 export function prepareSharedCoreLaunch(): {
   tauriApplicationPath: string
   tauriEnv: Record<string, string>
@@ -57,7 +45,7 @@ export function prepareSharedCoreLaunch(): {
   }
 }
 
-/** Faz polling de `/api/health` até responder `status: "ok"` ou estourar o timeout. */
+/** Polls `/api/health` until it reports `status: "ok"` or times out. */
 export async function waitForCoreHealth(baseUrl: string, timeoutMs = 20_000): Promise<void> {
   const deadline = Date.now() + timeoutMs
   let lastError: unknown = null
@@ -74,7 +62,7 @@ export async function waitForCoreHealth(baseUrl: string, timeoutMs = 20_000): Pr
     await new Promise((resolve) => setTimeout(resolve, 400))
   }
   throw new Error(
-    `waitForCoreHealth: ${baseUrl}/api/health não respondeu "ok" em ${timeoutMs}ms` +
-      (lastError ? ` (último erro: ${String(lastError)})` : ''),
+    `waitForCoreHealth: ${baseUrl}/api/health did not report "ok" within ${timeoutMs}ms` +
+      (lastError ? ` (last error: ${String(lastError)})` : ''),
   )
 }

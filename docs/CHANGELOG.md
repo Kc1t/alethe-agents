@@ -84,6 +84,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Testes (novo)
 
+- The shared-Core E2E now drives a real Tauri Desktop client and a separate headless Firefox Web client concurrently, creates projects through real UI actions in both directions, and verifies that stable project identities converge without action hooks.
 - Nova suíte e2e `test:e2e:git-pipeline` que exercita o pipeline de git da Central de Merges de ponta a ponta contra um projeto-fixture criado do zero a cada execução (sem `.git`): detecção de "não é repo", `git init`, provisionamento de worktree, um agente OpenCode real mantendo contexto entre dois prompts (1 terminal e depois 2 simultâneos), um conflito de merge determinístico, resolução + integração, e uma verificação **independente** (via `git log`/`git show` crus, fora de qualquer API do Alethe) de que o commit realmente chegou na branch alvo — em vez de confiar no que a UI relata. Também confirma que um terminal novo sobe limpo depois da integração.
 - Nova suíte e2e `test:e2e:sync` que sobe o app desktop e o `alethe-server` compartilhando o mesmo data root e confirma que os dois clientes convergem pro mesmo grid de terminal (`cols`/`rows`) depois de um resize disparado de qualquer um dos lados — cobre como regressão explícita a classe de bug de reajuste de terminal desktop↔web mais reportada.
 

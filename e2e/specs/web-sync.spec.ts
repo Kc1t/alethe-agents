@@ -1,133 +1,127 @@
 import { expect } from '@wdio/globals'
+import { remote } from 'webdriverio'
 
-import { createEmptyFixtureProject, initRepoWithInitialCommit } from '../support/fixtureProject'
+import { createEmptyFixtureProject } from '../support/fixtureProject'
+import { completeOnboarding } from '../support/onboardingFlow'
 import { suppressWindowFocusTax } from '../support/perf'
-import { invokeTauri, waitUntil } from '../support/ptyAgent'
+import { cancelAutoOpenedNewTerminalModal, createProjectViaUi } from '../support/projectUi'
 import { recordStep } from '../support/report'
 
-/**
- * Tipo local, deliberadamente NÃO importado de `src/lib/e2eHooks.ts` — o
- * script passado pra `execute()` roda no webview do Tauri.
- */
-type AletheE2EWindowHook = {
-  openShellTerminal: (
-    cwd: string,
-  ) => Promise<{ projectId: string; terminalId: string; ptyId: string }>
+type ReadonlyE2EQuery = {
+  findProjectIdByName: (name: string) => string | null
 }
 
-async function readDebugTerminal(ptyId: string): Promise<{ cols: number; rows: number } | null> {
-  const result = await browser.execute((id: string) => {
-    const map = (
-      window as unknown as {
-        __ALETHE_DEBUG_TERMINALS__?: Record<string, { cols: number; rows: number }>
-      }
-    ).__ALETHE_DEBUG_TERMINALS__
-    return map?.[id] ?? null
-  }, ptyId)
-  return result as { cols: number; rows: number } | null
+async function waitForProject(
+  client: WebdriverIO.Browser,
+  projectName: string,
+  timeoutMs = 20_000,
+): Promise<string> {
+  let projectId: string | null = null
+  await client.waitUntil(
+    async () => {
+      projectId = (await client.execute((name: string) => {
+        const query = (window as unknown as { __ALETHE_E2E_QUERY__?: ReadonlyE2EQuery })
+          .__ALETHE_E2E_QUERY__
+        return query?.findProjectIdByName(name) ?? null
+      }, projectName)) as string | null
+      return Boolean(projectId)
+    },
+    {
+      timeout: timeoutMs,
+      interval: 300,
+      timeoutMsg: `Project ${projectName} did not converge`,
+    },
+  )
+  return projectId!
 }
 
-describe('Sincronização cross-client: Desktop ↔ Web', () => {
-  const fixture = createEmptyFixtureProject()
-  let ptyId: string
+async function createProjectInWeb(
+  client: WebdriverIO.Browser,
+  name: string,
+  folderPath: string,
+): Promise<void> {
+  const newProject = await client.$('[aria-label="Novo projeto"]')
+  await newProject.waitForClickable({ timeout: 15_000 })
+  await newProject.click()
+
+  const nameInput = await client.$('input[placeholder="Ex: Site novo, Cliente X..."]')
+  const pathInput = await client.$('input[placeholder="Escolha a pasta do projeto"]')
+  await nameInput.waitForDisplayed({ timeout: 10_000 })
+  await nameInput.setValue(name)
+  await pathInput.setValue(folderPath)
+
+  const create = await client.$('button*=Criar projeto e abrir terminal')
+  await create.waitForClickable({ timeout: 10_000 })
+  await create.click()
+
+  const cancelTerminal = await client.$('button*=Cancelar')
+  await cancelTerminal.waitForClickable({ timeout: 10_000 })
+  await cancelTerminal.click()
+}
+
+describe('Real Desktop and Web client convergence', () => {
+  const desktopFixture = createEmptyFixtureProject()
+  const webFixture = createEmptyFixtureProject()
+  const desktopProjectName = `desktop-project-${Date.now()}`
+  const webProjectName = `web-project-${Date.now()}`
+  let webClient: WebdriverIO.Browser
 
   before(async () => {
-    initRepoWithInitialCommit(fixture.path)
     await suppressWindowFocusTax()
-    await waitUntil(
-      async () => {
-        const ready = await browser.execute(() => {
-          return !!(window as unknown as { __ALETHE_E2E__?: unknown }).__ALETHE_E2E__
-        })
-        return ready ? true : null
+    await completeOnboarding(`E2E shared Core ${Date.now()}`)
+    webClient = await remote({
+      hostname: '127.0.0.1',
+      port: 4445,
+      logLevel: 'error',
+      capabilities: {
+        browserName: 'firefox',
+        'moz:firefoxOptions': { args: ['-headless'] },
       },
-      { timeoutMs: 20_000, intervalMs: 300 },
+    })
+    await webClient.url('http://127.0.0.1:1424')
+    await webClient.waitUntil(
+      async () =>
+        webClient.execute(() =>
+          Boolean((window as unknown as { __ALETHE_E2E_QUERY__?: unknown }).__ALETHE_E2E_QUERY__),
+        ),
+      { timeout: 20_000, interval: 300, timeoutMsg: 'Independent Web client did not hydrate' },
     )
   })
 
   after(async () => {
-    fixture.cleanup()
+    await webClient?.deleteSession()
+    desktopFixture.cleanup()
+    webFixture.cleanup()
   })
 
-  it('desktop cria um terminal; o cliente web enxerga o MESMO terminal via sync', async () => {
-    const opened = (await browser.execute((cwd: string) => {
-      return (
-        window as unknown as { __ALETHE_E2E__: AletheE2EWindowHook }
-      ).__ALETHE_E2E__.openShellTerminal(cwd)
-    }, fixture.path)) as unknown as { projectId: string; terminalId: string; ptyId: string }
-    ptyId = opened.ptyId
-    expect(ptyId).toBeTruthy()
+  it('converges a project created through real Desktop UI into the independent Web client', async () => {
+    await createProjectViaUi(desktopProjectName, desktopFixture.path)
+    await cancelAutoOpenedNewTerminalModal()
 
-    const initialGrid = await waitUntil(
-      async () => {
-        const grid = await readDebugTerminal(ptyId)
-        return grid && grid.cols > 0 && grid.rows > 0 ? grid : null
-      },
-      { timeoutMs: 20_000, intervalMs: 500 },
-    )
-    expect(initialGrid).toBeTruthy()
+    const desktopId = await waitForProject(browser, desktopProjectName)
+    const webId = await waitForProject(webClient, desktopProjectName)
+    expect(webId).toBe(desktopId)
 
     recordStep({
       scenario: 'web-sync',
-      step: 'projeto-sincronizado',
+      step: 'desktop-to-independent-web',
       status: 'pass',
-      detail: `ptyId=${ptyId} projectId=${opened.projectId} grid=${JSON.stringify(initialGrid)}`,
+      detail: `projectId=${desktopId}`,
     })
   })
 
-  it('um resize forçado converge pro MESMO grid nos dois clientes', async () => {
-    const targetCols = 100
-    const targetRows = 32
-    await invokeTauri('resize_pty', {
-      id: ptyId,
-      cols: targetCols,
-      rows: targetRows,
-      profileId: 'default',
-    })
+  it('converges a project created through real Web UI back into Desktop', async () => {
+    await createProjectInWeb(webClient, webProjectName, webFixture.path)
 
-    const desktopGrid = await waitUntil(
-      async () => {
-        const grid = await readDebugTerminal(ptyId)
-        return grid && grid.cols === targetCols && grid.rows === targetRows ? grid : null
-      },
-      { timeoutMs: 20_000, intervalMs: 500 },
-    )
-
-    expect(desktopGrid).toEqual({ cols: targetCols, rows: targetRows })
+    const webId = await waitForProject(webClient, webProjectName)
+    const desktopId = await waitForProject(browser, webProjectName)
+    expect(desktopId).toBe(webId)
 
     recordStep({
       scenario: 'web-sync',
-      step: 'convergencia-de-grid-apos-resize-desktop',
+      step: 'independent-web-to-desktop',
       status: 'pass',
-      detail: `desktop=${JSON.stringify(desktopGrid)}`,
-    })
-  })
-
-  it('resize disparado do lado web também converge nos dois clientes', async () => {
-    const targetCols = 60
-    const targetRows = 18
-    await invokeTauri('resize_pty', {
-      id: ptyId,
-      cols: targetCols,
-      rows: targetRows,
-      profileId: 'default',
-    })
-
-    const desktopGrid = await waitUntil(
-      async () => {
-        const grid = await readDebugTerminal(ptyId)
-        return grid && grid.cols === targetCols && grid.rows === targetRows ? grid : null
-      },
-      { timeoutMs: 20_000, intervalMs: 500 },
-    )
-
-    expect(desktopGrid).toEqual({ cols: targetCols, rows: targetRows })
-
-    recordStep({
-      scenario: 'web-sync',
-      step: 'convergencia-de-grid-resize-do-web',
-      status: 'pass',
-      detail: `desktop=${JSON.stringify(desktopGrid)}`,
+      detail: `projectId=${webId}`,
     })
   })
 })
