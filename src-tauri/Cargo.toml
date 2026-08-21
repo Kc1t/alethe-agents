@@ -65,6 +65,9 @@ keyring = { version = "3", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 dirs-next = "2"
 base64 = "0.22"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+sha2 = "0.10"
 image = { version = "0.25", default-features = false, features = ["png", "bmp"] }
 urlencoding = "2"
 dotenvy = "0.15"

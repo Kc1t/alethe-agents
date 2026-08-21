@@ -84,6 +84,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Testes (novo)
 
+- The Rust sync-security vault now persists only versioned account/device metadata through an fsynced atomic replacement, generates per-device Ed25519 keys, stores private key bytes exclusively in the operating-system credential store, and records bounded content-free audit events.
 - Project authorization now has executable deny-by-default decisions for project/account/device identity, expiry, revocation, explicit operations, path traversal, and deny-first path scopes, plus hashed single-use invitation tokens and tested replay/audience enforcement.
 - Identity groundwork now includes short-lived Google OAuth PKCE attempts with loopback-only callbacks, strict state/route/expiry/replay validation, and terminal device-revocation state transitions.
 - Web startup now records content-free browser performance marks for bundle evaluation, bootstrap request, verified Core identity, and usable UI, with executable budgets for warm attach and compiled standalone startup.

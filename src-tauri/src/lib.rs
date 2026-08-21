@@ -61,6 +61,7 @@ pub mod spotify;
 pub mod stats;
 pub mod supervisor;
 pub mod sync_mesh;
+pub mod sync_security;
 pub mod telemetry;
 pub mod validation;
 pub mod window_style;
