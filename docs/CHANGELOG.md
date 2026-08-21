@@ -84,6 +84,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Testes (novo)
 
+- The Mesh sidebar now renders the real sanitized security snapshot for account, device trust, pending invitations, and active grants across Desktop and Web while keeping unfinished login, invitation, and transfer actions disabled.
 - Desktop and Web now share one authenticated read-only sync-security snapshot route; invitation bearer hashes and throttling internals are deliberately omitted from the public response.
 - The backend security vault now owns invitation issuance and redemption: 256-bit bearer secrets are persisted only as SHA-256 hashes, grants are bound to an exact project/account/device, repeated failures are throttled with generic responses, and redemption is atomic and single-use.
 - The Rust sync-security vault now persists only versioned account/device metadata through an fsynced atomic replacement, generates per-device Ed25519 keys, stores private key bytes exclusively in the operating-system credential store, and records bounded content-free audit events.

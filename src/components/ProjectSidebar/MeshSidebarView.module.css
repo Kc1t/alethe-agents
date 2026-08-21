@@ -154,6 +154,59 @@
   letter-spacing: 0.05em;
 }
 
+.deviceTrust {
+  font-size: 10px;
+  color: var(--fg-muted);
+}
+
+.deviceTrust[data-trust='trusted'] {
+  color: var(--status-working);
+}
+
+.deviceTrust[data-trust='revoked'] {
+  color: var(--status-offline);
+}
+
+.accessGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.accessMetric {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  font-size: 9px;
+}
+
+.accessMetric span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.accessMetric strong {
+  color: var(--fg);
+  font-size: 11px;
+}
+
+.spin {
+  animation: mesh-spin 0.8s linear infinite;
+}
+
+@keyframes mesh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .copyBtn {
   background: transparent;
   border: none;

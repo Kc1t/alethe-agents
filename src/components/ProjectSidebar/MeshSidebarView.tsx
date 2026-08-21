@@ -1,7 +1,19 @@
-import { Archive, FolderSync, Globe, Laptop, Share2, ShieldAlert } from 'lucide-react'
+import {
+  Archive,
+  FolderSync,
+  Globe,
+  Inbox,
+  Laptop,
+  Loader2,
+  Share2,
+  ShieldAlert,
+  Users,
+} from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
 import { PROJECT_SYNC_CAPABILITIES } from '../../lib/sync/contracts'
+import { type SyncSecuritySnapshot, syncSecuritySnapshot } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { EmptyState } from '../EmptyState'
 import { GoogleIcon } from '../icons/AgentIcons'
@@ -15,6 +27,31 @@ export function MeshSidebarView() {
   const canAuthenticate = PROJECT_SYNC_CAPABILITIES.identity === 'available'
   const canInvite = PROJECT_SYNC_CAPABILITIES.invitations === 'available'
   const canTransfer = PROJECT_SYNC_CAPABILITIES.projectTransfer === 'available'
+  const [security, setSecurity] = useState<SyncSecuritySnapshot | null>(null)
+  const [securityError, setSecurityError] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    syncSecuritySnapshot()
+      .then((snapshot) => {
+        if (!active) return
+        setSecurity(snapshot)
+        setSecurityError(false)
+      })
+      .catch(() => {
+        if (!active) return
+        setSecurity(null)
+        setSecurityError(true)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const account = security?.account ?? null
+  const thisDevice = security?.devices[0] ?? null
+  const pendingInvitations = security?.invitations.filter((item) => item.state === 'created') ?? []
+  const activeGrants = security?.grants.filter((grant) => !grant.revokedAtMs) ?? []
 
   return (
     <div className={styles.container}>
@@ -30,7 +67,13 @@ export function MeshSidebarView() {
         <div className={styles.authCard}>
           <div className={styles.authInfo}>
             <span className={styles.authLabel}>{t('mesh.syncAccount')}</span>
-            <span className={styles.authStatus}>{t('mesh.identityUnavailable')}</span>
+            <span className={styles.authStatus}>
+              {securityError
+                ? t('mesh.securityLoadFailed')
+                : account
+                  ? t('mesh.connectedAccount', { name: account.displayName })
+                  : t('mesh.identityUnavailable')}
+            </span>
           </div>
           <button
             type="button"
@@ -51,7 +94,36 @@ export function MeshSidebarView() {
             <span>{t('mesh.thisDevice')}</span>
           </div>
           <div className={styles.deviceIdRow}>
-            <code className={styles.deviceId}>{t('mesh.deviceNotRegistered')}</code>
+            {!security && !securityError ? (
+              <Loader2 size={13} className={styles.spin} />
+            ) : (
+              <code className={styles.deviceId}>
+                {thisDevice?.deviceId ?? t('mesh.deviceNotRegistered')}
+              </code>
+            )}
+          </div>
+          {thisDevice ? (
+            <span className={styles.deviceTrust} data-trust={thisDevice.trust}>
+              {t(`mesh.deviceTrust.${thisDevice.trust}`)}
+            </span>
+          ) : null}
+        </div>
+      </section>
+
+      <section className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <span className={styles.sectionTitle}>{t('mesh.accessCenter')}</span>
+        </div>
+        <div className={styles.accessGrid}>
+          <div className={styles.accessMetric}>
+            <Inbox size={14} />
+            <span>{t('mesh.pendingInvitations')}</span>
+            <strong>{pendingInvitations.length}</strong>
+          </div>
+          <div className={styles.accessMetric}>
+            <Users size={14} />
+            <span>{t('mesh.activeGrants')}</span>
+            <strong>{activeGrants.length}</strong>
           </div>
         </div>
       </section>
