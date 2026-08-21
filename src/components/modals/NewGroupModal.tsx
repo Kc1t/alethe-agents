@@ -5,7 +5,7 @@ import { GROUP_COLORS } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import controls from './controls.module.css'
-import { ImageInput } from './ImageInput'
+import { GroupFields } from './GroupFields'
 import { Modal } from './Modal'
 
 export function NewGroupModal() {
@@ -68,45 +68,20 @@ export function NewGroupModal() {
         </>
       }
     >
-      <div className={controls.field}>
-        <label className={controls.label}>{t('crud.nameLabel')}</label>
-        <input
-          className={controls.input}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-          placeholder={t('crud.groupNamePlaceholder')}
-        />
-      </div>
-
-      <div className={controls.field}>
-        <label className={controls.label}>{t('crud.groupColorLabel')}</label>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {GROUP_COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setColor(c)}
-              aria-label={t('crud.colorSwatch', { color: c })}
-              style={{
-                width: 24,
-                height: 24,
-                borderRadius: '50%',
-                background: c,
-                border: color === c ? '2px solid var(--fg)' : '2px solid transparent',
-                cursor: 'pointer',
-              }}
-            />
-          ))}
-        </div>
-      </div>
-
-      <ImageInput
-        label={t('crud.groupLogoLabel')}
-        value={iconUrl}
-        onChange={setIconUrl}
-        onEnter={submit}
-        hint={t('crud.groupIconHint')}
+      <GroupFields
+        name={name}
+        color={color}
+        iconUrl={iconUrl}
+        onNameChange={setName}
+        onColorChange={setColor}
+        onIconUrlChange={setIconUrl}
+        onSubmit={submit}
+        nameLabel={t('crud.nameLabel')}
+        namePlaceholder={t('crud.groupNamePlaceholder')}
+        colorLabel={t('crud.groupColorLabel')}
+        colorSwatchLabel={(candidate) => t('crud.colorSwatch', { color: candidate })}
+        iconLabel={t('crud.groupLogoLabel')}
+        iconHint={t('crud.groupIconHint')}
       />
     </Modal>
   )

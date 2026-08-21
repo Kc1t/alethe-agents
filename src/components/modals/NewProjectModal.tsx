@@ -1,10 +1,11 @@
-import { Folder, Network, Palette, Terminal } from 'lucide-react'
+import { Folder, GitBranch, Network, Palette, Terminal } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { pickDirectory } from '../../lib/dialog'
 import { AGENT_SANDBOX_ENABLED } from '../../lib/featureFlags'
 import { useT } from '../../lib/i18n'
-import { GROUP_COLORS } from '../../lib/types'
+import { cloneGithubRepo, readProjectMarker } from '../../lib/tauri'
+import { GROUP_COLORS, type Project } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { Dropdown } from '../ui/Dropdown'
@@ -25,19 +26,19 @@ export function NewProjectModal() {
   const setActiveProject = useProjectsStore((s) => s.setActiveProject)
   const openModal = useUiStore((s) => s.openModal_)
   const setActiveView = useUiStore((s) => s.setActiveView)
+  const pushToast = useUiStore((s) => s.pushToast)
   const groups = useProjectsStore((s) => s.groups)
 
   const [name, setName] = useState('')
   const [color, setColor] = useState<string>(GROUP_COLORS[0])
   const [iconUrl, setIconUrl] = useState('')
   const [defaultCwd, setDefaultCwd] = useState('')
+  const [githubUrl, setGithubUrl] = useState('')
   const [mode, setMode] = useState<'standard' | 'agentSandbox'>('standard')
   const [groupId, setGroupId] = useState<string | null>(context?.groupId ?? null)
   const [isColorPopoverOpen, setIsColorPopoverOpen] = useState(false)
+  const [detectedConfig, setDetectedConfig] = useState<Project | null>(null)
 
-                                                                        
-                                                                       
-                                        
   useEffect(() => {
     if (open && context?.defaultCwd) setDefaultCwd(context.defaultCwd)
   }, [open, context?.defaultCwd])
@@ -47,30 +48,88 @@ export function NewProjectModal() {
     setColor(GROUP_COLORS[0])
     setIconUrl('')
     setDefaultCwd('')
+    setGithubUrl('')
     setMode('standard')
     setGroupId(context?.groupId ?? null)
     setIsColorPopoverOpen(false)
+    setDetectedConfig(null)
+  }
+
+  const checkForDetectedConfig = async (directory: string) => {
+    setDetectedConfig(null)
+    try {
+      const raw = await readProjectMarker(directory)
+      if (!raw) return
+      const parsed = JSON.parse(raw) as Partial<Project>
+      if (parsed && typeof parsed.name === 'string' && Array.isArray(parsed.terminals)) {
+        setDetectedConfig(parsed as Project)
+      }
+    } catch {
+      /* marker missing/corrupted — falls back to the normal creation flow */
+    }
   }
 
   const browse = async () => {
     const directory = await pickDirectory({ defaultPath: defaultCwd || undefined })
-    if (directory) setDefaultCwd(directory)
+    if (!directory) return
+    setDefaultCwd(directory)
+    void checkForDetectedConfig(directory)
+  }
+
+  const restoreDetected = () => {
+    if (!detectedConfig) return
+    const project = useProjectsStore.getState().importProjectFromFile(detectedConfig, groupId)
+    setActiveProject(project.id)
+    closeModal()
+    reset()
   }
 
   const submit = async () => {
     const trimmed = name.trim()
     if (!trimmed) return
     if (mode === 'agentSandbox' && !defaultCwd.trim()) return
+    const trimmedGithub = mode === 'agentSandbox' ? '' : githubUrl.trim()
     const project = createProject({
       name: trimmed,
       mode,
       color,
       iconUrl: iconUrl.trim() || undefined,
       groupId,
-      defaultCwd: defaultCwd.trim() || undefined,
+      // Cloning dictates the project's folder — ignores the manually chosen path.
+      defaultCwd: trimmedGithub ? undefined : defaultCwd.trim() || undefined,
+      githubUrl: trimmedGithub || undefined,
+      firstBootPending: Boolean(trimmedGithub),
     })
     reset()
     setActiveProject(project.id)
+
+    if (trimmedGithub) {
+      closeModal()
+      pushToast({
+        title: t('crud.cloningRepoTitle'),
+        body: t('crud.cloningRepoBody', { url: trimmedGithub }),
+        agent: 'claude',
+      })
+      try {
+        // The chosen folder (if any) becomes the clone's parent; an empty
+        // string lets the backend resolve the default. The folder name comes
+        // from the repo URL.
+        await cloneGithubRepo(trimmedGithub, defaultCwd.trim())
+        pushToast({
+          title: t('crud.repoClonedTitle'),
+          body: t('crud.repoClonedBody'),
+          agent: 'claude',
+        })
+      } catch (err) {
+        console.error('[NewProjectModal] failed cloning GitHub repo:', err)
+        pushToast({
+          title: t('crud.cloneErrorTitle'),
+          body: String(err),
+          agent: 'claude',
+        })
+      }
+      return
+    }
 
     if (mode === 'agentSandbox') {
       setActiveView('agentSandbox')
@@ -100,7 +159,9 @@ export function NewProjectModal() {
             disabled={!name.trim() || (mode === 'agentSandbox' && !defaultCwd.trim())}
             onClick={() => void submit()}
           >
-            {mode === 'agentSandbox' ? t('crud.createAgentSandboxProject') : t('crud.create')}
+            {mode === 'agentSandbox'
+              ? t('crud.createAgentSandboxProject')
+              : t('crud.createProjectAndOpenTerminal')}
           </button>
         </>
       }
@@ -191,7 +252,47 @@ export function NewProjectModal() {
           </button>
         </div>
         <span className={controls.hint}>{t('crud.projectPathHint')}</span>
+        {detectedConfig ? (
+          <div
+            style={{
+              marginTop: 8,
+              padding: '8px 10px',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--accent)',
+              background: 'var(--accent-faint)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              fontSize: 11,
+            }}
+          >
+            <span>{t('crud.detectedConfigFound', { name: detectedConfig.name })}</span>
+            <button type="button" className={controls.btn} onClick={restoreDetected}>
+              {t('crud.detectedConfigRestore')}
+            </button>
+          </div>
+        ) : null}
       </div>
+
+      {mode === 'agentSandbox' ? null : (
+        <div className={controls.field}>
+          <label
+            className={controls.label}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <GitBranch size={12} />
+            <span>{t('crud.githubUrlLabel')}</span>
+          </label>
+          <input
+            className={controls.input}
+            value={githubUrl}
+            onChange={(e) => setGithubUrl(e.target.value)}
+            placeholder="https://github.com/user/repository"
+          />
+          <span className={controls.hint}>{t('crud.githubUrlHint')}</span>
+        </div>
+      )}
 
       <div className={controls.field}>
         <label className={controls.label}>{t('crud.colorLabel')}</label>
@@ -231,7 +332,7 @@ export function NewProjectModal() {
             />
           )}
 
-          {/* Botão de Paleta Completa / Mais Cores */}
+          {/* Full Palette / More Colors button */}
           <button
             type="button"
             onClick={() => setIsColorPopoverOpen(true)}

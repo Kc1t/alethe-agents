@@ -66,6 +66,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   alternative to the OS file picker for any environment that can't show a native dialog.
 - Duplicate in-app notifications (same title and body within 5 seconds) are now collapsed into
   one instead of stacking.
+- New projects can now be created directly from a GitHub URL — Alethe clones the repo and injects
+  an AI context briefing into AGENTS.md/CLAUDE.md. Pointing a new project at a folder that already
+  has an exported Alethe config (`.alethe/project.json`) now offers to restore it instead of
+  starting from scratch.
+- Project configs can be exported to a file and re-imported as a new project from the sidebar's
+  project menu, for sharing a project's setup or moving it to a new machine.
 
 ### Removed
 

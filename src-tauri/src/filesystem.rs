@@ -271,6 +271,34 @@ pub fn write_text_file(path: String, content: String) -> Result<(), String> {
     fs::write(&file, content).map_err(|error| error.to_string())
 }
 
+/// Writes the `.alethe/project.json` mirror inside the project's own folder
+/// (not app data) — creates `.alethe/` if it doesn't exist yet. Unlike
+/// `write_text_file`, this command can create the file from scratch (doesn't
+/// require it to already exist), because the whole point is to initialize
+/// the mirror the first time the project is saved.
+#[tauri::command]
+pub fn write_project_marker(project_dir: String, content: String) -> Result<(), String> {
+    let dir = PathBuf::from(project_dir.trim());
+    if !dir.is_dir() {
+        return Err("directory not found".to_string());
+    }
+    let marker_dir = dir.join(".alethe");
+    fs::create_dir_all(&marker_dir).map_err(|error| error.to_string())?;
+    fs::write(marker_dir.join("project.json"), content).map_err(|error| error.to_string())
+}
+
+/// Reads a folder's `.alethe/project.json`, if it exists — used to detect an
+/// "already-configured project" when pointing a new project at that folder.
+/// `None` (not an error) when the marker simply doesn't exist yet, which is
+/// the normal case for any folder new to / never used by Alethe.
+#[tauri::command]
+pub fn read_project_marker(project_dir: String) -> Option<String> {
+    let marker = PathBuf::from(project_dir.trim())
+        .join(".alethe")
+        .join("project.json");
+    fs::read_to_string(marker).ok()
+}
+
 #[tauri::command]
 pub fn ensure_todo_template(directory: String) -> Result<String, String> {
     let dir = PathBuf::from(directory.trim());
