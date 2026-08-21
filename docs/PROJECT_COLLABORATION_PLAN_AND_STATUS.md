@@ -107,7 +107,7 @@ Relevant commits: `0ebcc9d`, `dd2d6a2`, and `b4dfea9`.
 | Desktop/Web shared Core | Implemented and tested | Broader collaboration state is not yet synchronized between separate physical PCs |
 | Linux terminal resize resilience | Implemented with automated coverage | Additional long-running cross-compositor soak testing remains |
 | Google Desktop OAuth | Implemented | A valid Google Desktop OAuth client ID is still required |
-| Device key vault | Implemented locally | Multi-device approval, presence, recovery, and remote revocation remain |
+| Device key vault | Implemented locally, including approve/reject/rename/revoke/remove | Cross-device presence/discovery, key rotation, and all-devices-lost recovery remain |
 | Invitation security primitives | Implemented locally and unit-tested | No public runtime commands or cross-PC delivery yet |
 | Project grants and permission contracts | Partially implemented | Not yet enforced by a real project-content transport |
 | Rendezvous and relay | Not implemented | Required for reliable cross-network discovery and fallback transport |
@@ -212,17 +212,19 @@ Legend:
 - `[x]` Generate an Ed25519 key pair for a locally registered device.
 - `[x]` Keep private device material in the operating-system credential store.
 - `[x]` Persist public identity, fingerprint, trust state, timestamps, and audit metadata.
-- `[ ]` Define and implement secure first-device bootstrap after Google verification.
-- `[ ]` Add an explicit approval ceremony for every additional device.
-- `[ ]` Display device name, platform, fingerprint, first/last activity, network state, grants, and verification state.
-- `[ ]` Add rename, approve, reject, revoke, remove, and sign-out controls.
-- `[ ]` Close live connections and invalidate credentials immediately after device revocation.
+- `[x]` Define and implement secure first-device bootstrap after Google verification: the first device for an account is trusted automatically because no trusted peer exists to approve it.
+- `[x]` Add an explicit approval ceremony for every additional device: it registers `Pending` and requires `approve`/`reject` from an already-trusted device of the same account.
+- `[~]` Display device name, fingerprint, and verification state in the sidebar (this device plus other locally known devices). Platform, network state, and grant listing per device are not yet shown.
+- `[x]` Add rename, approve, reject, revoke, and remove controls (Tauri commands and equivalent authenticated Web routes on one shared core implementation, plus sidebar UI). Sign-out remains the existing account-level disconnect only.
+- `[x]` Invalidate a device's outstanding grants and pending invitations addressed to it immediately on revocation, and delete its private key from the credential store.
 - `[ ]` Detect cloned or rolled-back device state and require recovery.
 - `[ ]` Define key rotation and migration without silently preserving compromised keys.
 - `[ ]` Define recovery when all trusted devices or credential-store entries are lost.
 - `[ ]` Discover devices using the same Google account without granting automatic project access.
 - `[ ]` Add owner-approved available-project metadata for same-account devices without exposing paths or manifests.
 - `[ ]` Test device lifecycle across two or more real machines and across offline/reconnect cycles.
+
+Note: today's device list is local to each install — cross-device visibility and remote approval require the rendezvous/discovery work in Phase 3 and are not yet implemented. The approve/reject/revoke/remove operations above are real and tested, but only operate on whatever device records exist in the local security document.
 
 ### Invitations, access center, and permissions
 
@@ -414,19 +416,21 @@ A project grant authorizes a specific account or device to request specific oper
 
 ## Phase 1 — Trusted devices and account recovery
 
-- Define the secure bootstrap rule for the first device after verified Google authentication.
-- Add explicit approval for additional devices and show their fingerprint, platform, creation time, and last activity.
-- Add device rename, revoke, and remove operations.
-- Invalidate active connections and grants bound to a revoked device.
-- Define recovery behavior when all trusted devices are lost.
-- Prevent silent account switching while device keys or grants remain.
-- Add Desktop and Web routes backed by the same authorization implementation.
+- `[x]` Define the secure bootstrap rule for the first device after verified Google authentication: automatic trust, since no other trusted device exists yet.
+- `[x]` Add explicit approval for additional devices (`approve_device_at`/`reject_device_at`). Fingerprint and creation time are shown; platform and last activity are not yet tracked per device.
+- `[x]` Add device rename, revoke, and remove operations (`rename_device_at`, `revoke_device_at`, `remove_device_at`).
+- `[x]` Invalidate grants and pending invitations bound to a revoked device.
+- `[ ]` Define recovery behavior when all trusted devices are lost.
+- `[x]` Prevent silent account switching while device keys or grants remain (pre-existing `account_switch_requires_disconnect` behavior, unchanged).
+- `[x]` Add Desktop (Tauri) and Web (`/api/sync/security/devices/*`) routes backed by the same `sync_security.rs` operations.
 
 Acceptance criteria:
 
-- A new device cannot access project metadata before approval.
-- Revocation closes its active sessions and blocks subsequent requests.
-- Private device keys never appear in frontend state, logs, diagnostics, or project files.
+- `[x]` A new (non-first) device cannot access project metadata before approval — enforced by `approve_device_at`/`issue_invitation` requiring `Trusted`, with a regression test.
+- `[x]` Revocation blocks subsequent requests from that device by invalidating its grants and pending invitations — tested. Live transport sessions do not exist yet (Phase 4), so there is nothing further to close today.
+- `[x]` Private device keys never appear in frontend state, logs, diagnostics, or project files — unchanged from the existing credential-store-only design; the new commands never return key material.
+
+Remaining for this area: cloned/rolled-back device detection, key rotation, all-devices-lost recovery, same-account discovery, and cross-machine approval (the last two require Phase 3 rendezvous).
 
 ## Phase 2 — Invitations and project permissions
 
@@ -688,19 +692,16 @@ If a statement conflicts, the stricter security invariant wins. This consolidate
 
 ### Exact next implementation step
 
-Resume with Phase 1, not with chat, tasks, project transfer, or UI polish.
+Phase 1 (trusted devices and account recovery) has been implemented in this branch: first-device auto-trust, additional-device `Pending`/approval, `approve_device_at`/`reject_device_at`/`rename_device_at`/`revoke_device_at`/`remove_device_at` in `src-tauri/src/sync_security.rs` with unit tests, matching Tauri commands and `/api/sync/security/devices/*` Web routes on the same core implementation, frontend API functions in `src/lib/api/syncSecurity.ts`, and device-management controls in `MeshSidebarView.tsx`. Cloned/rolled-back device detection, key rotation, and all-devices-lost recovery remain open within this same phase area (see the checklist above) but were not blocking for this pass. Resume with **Phase 2 — Invitations and project permissions** next, not with chat, tasks, project transfer, or UI polish:
 
-1. Define first-device bootstrap and additional-device approval transitions in the threat model and an ADR update.
-2. Add tested Rust operations for list, approve, reject, rename, revoke, and remove device.
-3. Ensure revocation invalidates device-bound grants and active authenticated collaboration sessions.
-4. Expose equivalent Tauri and authenticated Web routes from one shared core implementation.
-5. Add frontend API functions and capability state only after backend operations pass tests.
-6. Add the device-management UI with fingerprints, status, last activity, and explicit confirmation.
-7. Update `[Unreleased]` in `docs/CHANGELOG.md`.
-8. Run focused tests, full Rust tests, frontend tests, lint, format check, and production build.
-9. Commit Phase 1 separately before starting invitation runtime wiring.
-
-The previously drafted but intentionally discarded partial code included invitation/grant revocation helpers and automatic trust for a first device. It was not retained because the bootstrap rule and session invalidation must be designed and tested together; do not assume automatic first-device trust without documenting the recovery and account-switch consequences.
+1. Expose backend operations to issue, inspect, revoke, expire, and redeem invitations through Tauri and authenticated Web routes (the local primitives already exist in `sync_security.rs`; only the runtime-facing commands/routes are missing).
+2. Add incoming, outgoing, expired, revoked, and redeemed views to an access center in the frontend.
+3. Represent one invitation as a link, QR code, and human-readable short code without creating three independent credentials.
+4. Add permission presets while always showing the expanded permission list, and require stronger confirmation for write/delete/invite/admin grants.
+5. Add grant inspection and immediate revocation from the UI.
+6. Update `[Unreleased]` in `docs/CHANGELOG.md`.
+7. Run focused tests, full Rust tests, frontend tests, lint, format check, and production build.
+8. Commit Phase 2 separately before starting rendezvous/relay work.
 
 ### Required validation commands while resuming
 

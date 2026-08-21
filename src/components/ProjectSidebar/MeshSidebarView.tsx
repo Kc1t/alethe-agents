@@ -1,13 +1,17 @@
 import {
   Archive,
+  Check,
   FolderSync,
   Globe,
   Inbox,
   Laptop,
   Loader2,
+  Pencil,
   Share2,
   ShieldAlert,
+  Trash2,
   Users,
+  X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -18,6 +22,12 @@ import {
   getGoogleSyncStatus,
   type GoogleSyncUser,
   startGoogleSyncAuth,
+  syncApproveDevice,
+  type SyncDeviceRecord,
+  syncRejectDevice,
+  syncRemoveDevice,
+  syncRenameDevice,
+  syncRevokeDevice,
   type SyncSecuritySnapshot,
   syncSecuritySnapshot,
 } from '../../lib/tauri'
@@ -40,6 +50,23 @@ export function MeshSidebarView() {
   const [authBusy, setAuthBusy] = useState(false)
   const [showGoogleSetup, setShowGoogleSetup] = useState(false)
   const [googleClientId, setGoogleClientId] = useState('')
+  const [renamingDevice, setRenamingDevice] = useState(false)
+  const [deviceNameDraft, setDeviceNameDraft] = useState('')
+  const [deviceActionBusy, setDeviceActionBusy] = useState<string | null>(null)
+  const [deviceActionError, setDeviceActionError] = useState(false)
+
+  const refreshSecurity = () =>
+    syncSecuritySnapshot()
+      .then((snapshot) => {
+        setSecurity(snapshot)
+        setSecurityError(false)
+        return snapshot
+      })
+      .catch(() => {
+        setSecurity(null)
+        setSecurityError(true)
+        return null
+      })
 
   useEffect(() => {
     let active = true
@@ -61,9 +88,42 @@ export function MeshSidebarView() {
   }, [])
 
   const account = security?.account ?? null
-  const thisDevice = security?.devices[0] ?? null
+  const devices = security?.devices ?? []
+  const thisDevice = devices.find((device) => device.deviceId === security?.localDeviceId) ?? null
+  const otherDevices = devices.filter((device) => device.deviceId !== security?.localDeviceId)
   const pendingInvitations = security?.invitations.filter((item) => item.state === 'created') ?? []
   const activeGrants = security?.grants.filter((grant) => !grant.revokedAtMs) ?? []
+
+  const runDeviceAction = async (deviceId: string, action: () => Promise<unknown>) => {
+    setDeviceActionBusy(deviceId)
+    setDeviceActionError(false)
+    try {
+      await action()
+      await refreshSecurity()
+    } catch {
+      setDeviceActionError(true)
+    } finally {
+      setDeviceActionBusy(null)
+    }
+  }
+
+  const startRenameDevice = () => {
+    setDeviceNameDraft(thisDevice?.displayName ?? '')
+    setRenamingDevice(true)
+  }
+
+  const submitRenameDevice = async () => {
+    const name = deviceNameDraft.trim()
+    if (!name || !thisDevice) {
+      setRenamingDevice(false)
+      return
+    }
+    await runDeviceAction(thisDevice.deviceId, () => syncRenameDevice(name))
+    setRenamingDevice(false)
+  }
+
+  const deviceLabel = (device: SyncDeviceRecord) =>
+    device.displayName.trim() || device.publicKeyFingerprint.slice(0, 12)
 
   const connectGoogle = async () => {
     setAuthBusy(true)
@@ -183,11 +243,136 @@ export function MeshSidebarView() {
             )}
           </div>
           {thisDevice ? (
-            <span className={styles.deviceTrust} data-trust={thisDevice.trust}>
-              {t(`mesh.deviceTrust.${thisDevice.trust}`)}
-            </span>
+            <>
+              <span className={styles.deviceTrust} data-trust={thisDevice.trust}>
+                {t(`mesh.deviceTrust.${thisDevice.trust}`)}
+              </span>
+              {renamingDevice ? (
+                <div className={styles.deviceRenameRow}>
+                  <input
+                    autoFocus
+                    value={deviceNameDraft}
+                    maxLength={64}
+                    onChange={(event) => setDeviceNameDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') void submitRenameDevice()
+                      if (event.key === 'Escape') setRenamingDevice(false)
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className={styles.deviceActionBtn}
+                    disabled={deviceActionBusy === thisDevice.deviceId}
+                    onClick={() => void submitRenameDevice()}
+                    title={t('mesh.deviceSaveName')}
+                  >
+                    <Check size={12} />
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.deviceActionBtn}
+                    onClick={() => setRenamingDevice(false)}
+                    title={t('mesh.deviceCancel')}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ) : (
+                <div className={styles.deviceNameRow}>
+                  <span className={styles.deviceName}>{deviceLabel(thisDevice)}</span>
+                  <button
+                    type="button"
+                    className={styles.deviceActionBtn}
+                    onClick={startRenameDevice}
+                    title={t('mesh.deviceRename')}
+                  >
+                    <Pencil size={12} />
+                  </button>
+                </div>
+              )}
+            </>
           ) : null}
         </div>
+
+        {otherDevices.length > 0 ? (
+          <ul className={styles.deviceList}>
+            {otherDevices.map((device) => (
+              <li key={device.deviceId} className={styles.deviceListItem}>
+                <div className={styles.deviceListInfo}>
+                  <span className={styles.deviceListName}>{deviceLabel(device)}</span>
+                  <span className={styles.deviceTrust} data-trust={device.trust}>
+                    {t(`mesh.deviceTrust.${device.trust}`)}
+                  </span>
+                </div>
+                <div className={styles.deviceListActions}>
+                  {device.trust === 'pending' ? (
+                    <>
+                      <button
+                        type="button"
+                        className={styles.deviceActionBtn}
+                        disabled={deviceActionBusy === device.deviceId}
+                        title={t('mesh.deviceApprove')}
+                        onClick={() =>
+                          void runDeviceAction(device.deviceId, () =>
+                            syncApproveDevice(device.deviceId),
+                          )
+                        }
+                      >
+                        <Check size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.deviceActionBtn}
+                        disabled={deviceActionBusy === device.deviceId}
+                        title={t('mesh.deviceReject')}
+                        onClick={() =>
+                          void runDeviceAction(device.deviceId, () =>
+                            syncRejectDevice(device.deviceId),
+                          )
+                        }
+                      >
+                        <X size={12} />
+                      </button>
+                    </>
+                  ) : null}
+                  {device.trust === 'trusted' ? (
+                    <button
+                      type="button"
+                      className={styles.deviceActionBtn}
+                      disabled={deviceActionBusy === device.deviceId}
+                      title={t('mesh.deviceRevoke')}
+                      onClick={() =>
+                        void runDeviceAction(device.deviceId, () =>
+                          syncRevokeDevice(device.deviceId),
+                        )
+                      }
+                    >
+                      <ShieldAlert size={12} />
+                    </button>
+                  ) : null}
+                  {device.trust === 'revoked' ? (
+                    <button
+                      type="button"
+                      className={styles.deviceActionBtn}
+                      disabled={deviceActionBusy === device.deviceId}
+                      title={t('mesh.deviceRemove')}
+                      onClick={() =>
+                        void runDeviceAction(device.deviceId, () =>
+                          syncRemoveDevice(device.deviceId),
+                        )
+                      }
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {deviceActionError ? (
+          <span className={styles.deviceActionError}>{t('mesh.deviceActionFailed')}</span>
+        ) : null}
       </section>
 
       <section className={styles.section}>

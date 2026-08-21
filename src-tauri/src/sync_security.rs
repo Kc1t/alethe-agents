@@ -152,6 +152,7 @@ pub struct SyncSecuritySnapshot {
     pub schema_version: u32,
     pub account: Option<VerifiedAccount>,
     pub devices: Vec<DeviceRecord>,
+    pub local_device_id: Option<String>,
     pub invitations: Vec<InvitationSummary>,
     pub grants: Vec<GrantRecord>,
     pub audit: Vec<SecurityAuditEvent>,
@@ -163,6 +164,10 @@ pub struct SyncSecurityDocument {
     pub schema_version: u32,
     pub account: Option<VerifiedAccount>,
     pub devices: Vec<DeviceRecord>,
+    /// The device record created by this install, used to resolve the acting device for
+    /// every device-management operation. Never inferred from frontend-supplied input.
+    #[serde(default)]
+    pub local_device_id: Option<String>,
     #[serde(default)]
     pub invitations: Vec<InvitationRecord>,
     #[serde(default)]
@@ -176,6 +181,7 @@ impl Default for SyncSecurityDocument {
             schema_version: SECURITY_SCHEMA_VERSION,
             account: None,
             devices: Vec::new(),
+            local_device_id: None,
             invitations: Vec::new(),
             grants: Vec::new(),
             audit: Vec::new(),
@@ -231,6 +237,7 @@ pub fn snapshot_at(data_root: &Path) -> Result<SyncSecuritySnapshot, String> {
         schema_version: document.schema_version,
         account: document.account,
         devices: document.devices,
+        local_device_id: document.local_device_id,
         invitations: document
             .invitations
             .into_iter()
@@ -258,6 +265,75 @@ pub fn snapshot_at(data_root: &Path) -> Result<SyncSecuritySnapshot, String> {
 pub fn sync_security_snapshot(app: tauri::AppHandle) -> Result<SyncSecuritySnapshot, String> {
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     snapshot_at(&data_root)
+}
+
+fn local_device_id_at(data_root: &Path) -> Result<String, String> {
+    load_at(data_root)?
+        .local_device_id
+        .ok_or_else(|| "local_device_unknown".to_string())
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+pub fn sync_approve_device(
+    app: tauri::AppHandle,
+    target_device_id: String,
+) -> Result<DeviceRecord, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let actor = local_device_id_at(&data_root)?;
+    approve_device_at(&data_root, &actor, &target_device_id, now_ms())
+}
+
+#[tauri::command]
+pub fn sync_reject_device(app: tauri::AppHandle, target_device_id: String) -> Result<(), String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let actor = local_device_id_at(&data_root)?;
+    reject_device_at(
+        &data_root,
+        &PlatformDeviceSecretStore,
+        &actor,
+        &target_device_id,
+        now_ms(),
+    )
+}
+
+#[tauri::command]
+pub fn sync_rename_device(
+    app: tauri::AppHandle,
+    display_name: String,
+) -> Result<DeviceRecord, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let actor = local_device_id_at(&data_root)?;
+    rename_device_at(&data_root, &actor, &display_name, now_ms())
+}
+
+#[tauri::command]
+pub fn sync_revoke_device(
+    app: tauri::AppHandle,
+    target_device_id: String,
+) -> Result<DeviceRecord, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let actor = local_device_id_at(&data_root)?;
+    revoke_device_at(
+        &data_root,
+        &PlatformDeviceSecretStore,
+        &actor,
+        &target_device_id,
+        now_ms(),
+    )
+}
+
+#[tauri::command]
+pub fn sync_remove_device(app: tauri::AppHandle, target_device_id: String) -> Result<(), String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let actor = local_device_id_at(&data_root)?;
+    remove_device_at(&data_root, &actor, &target_device_id, now_ms())
 }
 
 fn validate_document(document: &SyncSecurityDocument) -> Result<(), String> {
@@ -608,6 +684,19 @@ pub(crate) fn complete_verified_identity<S: DeviceSecretStore>(
         return Err("account_switch_requires_disconnect".to_string());
     }
 
+    // The first device registered for an account has no trusted peer available to approve
+    // it, so it is trusted automatically. Every device after that requires explicit approval
+    // from an already-trusted device (SYNC-INV-003).
+    let is_first_device_for_account = document
+        .devices
+        .iter()
+        .all(|device| device.account_id != account.account_id);
+    let trust = if is_first_device_for_account {
+        DeviceTrust::Trusted
+    } else {
+        DeviceTrust::Pending
+    };
+
     let signing_key = SigningKey::generate(&mut OsRng);
     let verifying_key = signing_key.verifying_key();
     let device_id = format!("dev_{}", nanoid::nanoid!(24));
@@ -618,17 +707,26 @@ pub(crate) fn complete_verified_identity<S: DeviceSecretStore>(
         display_name: device_name.trim().to_string(),
         public_key: URL_SAFE_NO_PAD.encode(verifying_key.as_bytes()),
         public_key_fingerprint: public_key_fingerprint(&verifying_key),
-        trust: DeviceTrust::Pending,
+        trust: trust.clone(),
         registered_at_ms: now_ms,
-        last_verified_at_ms: None,
+        last_verified_at_ms: if is_first_device_for_account {
+            Some(now_ms)
+        } else {
+            None
+        },
         revoked_at_ms: None,
     };
     document.account = Some(account);
+    document.local_device_id = Some(device_id.clone());
     document.devices.push(device.clone());
     append_audit(
         &mut document,
         now_ms,
-        "device.registered",
+        if is_first_device_for_account {
+            "device.registered_first_device_trusted"
+        } else {
+            "device.registered"
+        },
         Some(device_id),
         None,
     );
@@ -652,6 +750,212 @@ pub(crate) fn disconnect_identity_at<S: DeviceSecretStore>(
         fs::remove_file(path).map_err(|_| "security_document_delete_failed".to_string())?;
     }
     Ok(())
+}
+
+fn find_trusted_actor<'a>(
+    document: &'a SyncSecurityDocument,
+    actor_device_id: &str,
+) -> Result<&'a DeviceRecord, String> {
+    let actor = document
+        .devices
+        .iter()
+        .find(|device| device.device_id == actor_device_id)
+        .ok_or_else(|| "actor_device_unknown".to_string())?;
+    if actor.trust != DeviceTrust::Trusted {
+        return Err("actor_device_not_trusted".to_string());
+    }
+    Ok(actor)
+}
+
+/// Approves a pending device. The actor must already be a trusted device on the same account.
+pub(crate) fn approve_device_at(
+    data_root: &Path,
+    actor_device_id: &str,
+    target_device_id: &str,
+    now_ms: u64,
+) -> Result<DeviceRecord, String> {
+    let mut document = load_at(data_root)?;
+    let actor_account_id = find_trusted_actor(&document, actor_device_id)?.account_id.clone();
+    let target = document
+        .devices
+        .iter_mut()
+        .find(|device| device.device_id == target_device_id)
+        .ok_or_else(|| "target_device_unknown".to_string())?;
+    if target.account_id != actor_account_id {
+        return Err("target_device_unknown".to_string());
+    }
+    if target.trust != DeviceTrust::Pending {
+        return Err("target_device_not_pending".to_string());
+    }
+    target.trust = DeviceTrust::Trusted;
+    target.last_verified_at_ms = Some(now_ms);
+    let updated = target.clone();
+    append_audit(
+        &mut document,
+        now_ms,
+        "device.approved",
+        Some(actor_device_id.to_string()),
+        Some(target_device_id.to_string()),
+    );
+    save_at(data_root, &document)?;
+    Ok(updated)
+}
+
+/// Rejects and permanently removes a device that never reached `Trusted`.
+pub(crate) fn reject_device_at<S: DeviceSecretStore>(
+    data_root: &Path,
+    secret_store: &S,
+    actor_device_id: &str,
+    target_device_id: &str,
+    now_ms: u64,
+) -> Result<(), String> {
+    let mut document = load_at(data_root)?;
+    let actor_account_id = find_trusted_actor(&document, actor_device_id)?.account_id.clone();
+    let target = document
+        .devices
+        .iter()
+        .find(|device| device.device_id == target_device_id)
+        .ok_or_else(|| "target_device_unknown".to_string())?;
+    if target.account_id != actor_account_id {
+        return Err("target_device_unknown".to_string());
+    }
+    if target.trust != DeviceTrust::Pending {
+        return Err("target_device_not_pending".to_string());
+    }
+    document
+        .devices
+        .retain(|device| device.device_id != target_device_id);
+    append_audit(
+        &mut document,
+        now_ms,
+        "device.rejected",
+        Some(actor_device_id.to_string()),
+        Some(target_device_id.to_string()),
+    );
+    save_at(data_root, &document)?;
+    secret_store.delete(target_device_id)
+}
+
+/// Renames a device. Only the device itself may rename its own record.
+pub(crate) fn rename_device_at(
+    data_root: &Path,
+    actor_device_id: &str,
+    new_display_name: &str,
+    now_ms: u64,
+) -> Result<DeviceRecord, String> {
+    let name = new_display_name.trim();
+    if name.is_empty() {
+        return Err("device_name_invalid".to_string());
+    }
+    let mut document = load_at(data_root)?;
+    let device = document
+        .devices
+        .iter_mut()
+        .find(|device| device.device_id == actor_device_id)
+        .ok_or_else(|| "target_device_unknown".to_string())?;
+    if device.trust == DeviceTrust::Revoked {
+        return Err("target_device_revoked".to_string());
+    }
+    device.display_name = name.to_string();
+    let updated = device.clone();
+    append_audit(
+        &mut document,
+        now_ms,
+        "device.renamed",
+        Some(actor_device_id.to_string()),
+        Some(actor_device_id.to_string()),
+    );
+    save_at(data_root, &document)?;
+    Ok(updated)
+}
+
+/// Revokes a device: blocks it from future operations, deletes its private key from the
+/// credential store, and invalidates every grant issued to it (SYNC-INV-008).
+pub(crate) fn revoke_device_at<S: DeviceSecretStore>(
+    data_root: &Path,
+    secret_store: &S,
+    actor_device_id: &str,
+    target_device_id: &str,
+    now_ms: u64,
+) -> Result<DeviceRecord, String> {
+    let mut document = load_at(data_root)?;
+    let actor_account_id = find_trusted_actor(&document, actor_device_id)?.account_id.clone();
+    let target = document
+        .devices
+        .iter_mut()
+        .find(|device| device.device_id == target_device_id)
+        .ok_or_else(|| "target_device_unknown".to_string())?;
+    if target.account_id != actor_account_id {
+        return Err("target_device_unknown".to_string());
+    }
+    if target.trust == DeviceTrust::Revoked {
+        return Err("target_device_already_revoked".to_string());
+    }
+    target.trust = DeviceTrust::Revoked;
+    target.revoked_at_ms = Some(now_ms);
+    let updated = target.clone();
+
+    for grant in document
+        .grants
+        .iter_mut()
+        .filter(|grant| grant.device_id == target_device_id && grant.revoked_at_ms.is_none())
+    {
+        grant.revoked_at_ms = Some(now_ms);
+    }
+    for invitation in document.invitations.iter_mut().filter(|invitation| {
+        invitation.state == InvitationState::Created
+            && invitation
+                .recipient_device_id
+                .as_deref()
+                .is_some_and(|device_id| device_id == target_device_id)
+    }) {
+        invitation.state = InvitationState::Revoked;
+        invitation.revoked_at_ms = Some(now_ms);
+    }
+
+    append_audit(
+        &mut document,
+        now_ms,
+        "device.revoked",
+        Some(actor_device_id.to_string()),
+        Some(target_device_id.to_string()),
+    );
+    save_at(data_root, &document)?;
+    secret_store.delete(target_device_id)?;
+    Ok(updated)
+}
+
+/// Permanently removes a device record that has already been revoked.
+pub(crate) fn remove_device_at(
+    data_root: &Path,
+    actor_device_id: &str,
+    target_device_id: &str,
+    now_ms: u64,
+) -> Result<(), String> {
+    let mut document = load_at(data_root)?;
+    let actor_account_id = find_trusted_actor(&document, actor_device_id)?.account_id.clone();
+    let target = document
+        .devices
+        .iter()
+        .find(|device| device.device_id == target_device_id)
+        .ok_or_else(|| "target_device_unknown".to_string())?;
+    if target.account_id != actor_account_id {
+        return Err("target_device_unknown".to_string());
+    }
+    if target.trust != DeviceTrust::Revoked {
+        return Err("target_device_not_revoked".to_string());
+    }
+    document
+        .devices
+        .retain(|device| device.device_id != target_device_id);
+    append_audit(
+        &mut document,
+        now_ms,
+        "device.removed",
+        Some(actor_device_id.to_string()),
+        Some(target_device_id.to_string()),
+    );
+    save_at(data_root, &document)
 }
 
 #[cfg(test)]
@@ -717,7 +1021,8 @@ mod tests {
         assert!(persisted.contains(&device.public_key_fingerprint));
         let loaded = load_at(&root).unwrap();
         assert_eq!(loaded.devices.len(), 2);
-        assert_eq!(loaded.audit[0].kind, "device.registered");
+        assert_eq!(loaded.audit[0].kind, "device.registered_first_device_trusted");
+        assert_eq!(loaded.audit[1].kind, "device.registered");
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -756,6 +1061,7 @@ mod tests {
         let document = SyncSecurityDocument {
             schema_version: SECURITY_SCHEMA_VERSION,
             account: Some(account("acct-a")),
+            local_device_id: Some("device-a".to_string()),
             devices: vec![DeviceRecord {
                 device_id: "device-a".to_string(),
                 account_id: "acct-b".to_string(),
@@ -901,5 +1207,172 @@ mod tests {
             }]),
             Err("path_scope_invalid".to_string())
         );
+    }
+
+    #[test]
+    fn first_device_is_trusted_automatically_and_later_devices_are_not() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let first =
+            complete_verified_identity(&root, &secrets, account("acct-a"), "Laptop", 1_000)
+                .unwrap();
+        let second =
+            complete_verified_identity(&root, &secrets, account("acct-a"), "Desktop", 2_000)
+                .unwrap();
+        assert_eq!(first.trust, DeviceTrust::Trusted);
+        assert_eq!(second.trust, DeviceTrust::Pending);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn pending_device_cannot_act_before_approval_and_approval_requires_trusted_actor() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let first =
+            complete_verified_identity(&root, &secrets, account("acct-a"), "Laptop", 1_000)
+                .unwrap();
+        let second =
+            complete_verified_identity(&root, &secrets, account("acct-a"), "Desktop", 2_000)
+                .unwrap();
+
+        assert_eq!(
+            approve_device_at(&root, &second.device_id, &first.device_id, 3_000),
+            Err("actor_device_not_trusted".to_string())
+        );
+        assert_eq!(
+            issue_invitation(
+                &root,
+                &second.device_id,
+                "project-a",
+                "acct-recipient",
+                None,
+                vec![SyncPermission::Read],
+                vec![],
+                3_000,
+                10_000,
+            ),
+            Err("issuer_device_not_trusted".to_string())
+        );
+
+        let approved = approve_device_at(&root, &first.device_id, &second.device_id, 4_000).unwrap();
+        assert_eq!(approved.trust, DeviceTrust::Trusted);
+        assert_eq!(approved.last_verified_at_ms, Some(4_000));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn reject_removes_a_pending_device_and_its_secret_without_ever_trusting_it() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let first =
+            complete_verified_identity(&root, &secrets, account("acct-a"), "Laptop", 1_000)
+                .unwrap();
+        let second =
+            complete_verified_identity(&root, &secrets, account("acct-a"), "Desktop", 2_000)
+                .unwrap();
+
+        reject_device_at(&root, &secrets, &first.device_id, &second.device_id, 3_000).unwrap();
+
+        assert!(secrets.0.lock().unwrap().get(&second.device_id).is_none());
+        assert!(load_at(&root)
+            .unwrap()
+            .devices
+            .iter()
+            .all(|device| device.device_id != second.device_id));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rename_device_updates_only_its_own_record() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let first =
+            complete_verified_identity(&root, &secrets, account("acct-a"), "Laptop", 1_000)
+                .unwrap();
+
+        let renamed = rename_device_at(&root, &first.device_id, "  Miguel's Laptop  ", 2_000).unwrap();
+        assert_eq!(renamed.display_name, "Miguel's Laptop");
+        assert_eq!(
+            rename_device_at(&root, &first.device_id, "   ", 3_000),
+            Err("device_name_invalid".to_string())
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn revoke_deletes_the_secret_and_invalidates_grants_bound_to_the_device() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let issuer =
+            complete_verified_identity(&root, &secrets, account("acct-owner"), "Owner", 1_000)
+                .unwrap();
+        let recipient =
+            complete_verified_identity(&root, &secrets, account("acct-owner"), "Phone", 1_500)
+                .unwrap();
+        approve_device_at(&root, &issuer.device_id, &recipient.device_id, 1_600).unwrap();
+
+        let issued = issue_invitation(
+            &root,
+            &issuer.device_id,
+            "project-a",
+            "acct-owner",
+            Some(recipient.device_id.clone()),
+            vec![SyncPermission::Read],
+            vec![],
+            2_000,
+            10_000,
+        )
+        .unwrap();
+        let grant = redeem_invitation(
+            &root,
+            &issued.invitation.invitation_id,
+            &issued.bearer_token,
+            "acct-owner",
+            &recipient.device_id,
+            3_000,
+        )
+        .unwrap();
+        assert!(grant.revoked_at_ms.is_none());
+
+        let revoked =
+            revoke_device_at(&root, &secrets, &issuer.device_id, &recipient.device_id, 4_000)
+                .unwrap();
+        assert_eq!(revoked.trust, DeviceTrust::Revoked);
+        assert!(secrets.0.lock().unwrap().get(&recipient.device_id).is_none());
+        let document = load_at(&root).unwrap();
+        assert!(document
+            .grants
+            .iter()
+            .find(|g| g.grant_id == grant.grant_id)
+            .unwrap()
+            .revoked_at_ms
+            .is_some());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn remove_device_requires_prior_revocation() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let first =
+            complete_verified_identity(&root, &secrets, account("acct-a"), "Laptop", 1_000)
+                .unwrap();
+        let second =
+            complete_verified_identity(&root, &secrets, account("acct-a"), "Desktop", 2_000)
+                .unwrap();
+        approve_device_at(&root, &first.device_id, &second.device_id, 3_000).unwrap();
+
+        assert_eq!(
+            remove_device_at(&root, &first.device_id, &second.device_id, 4_000),
+            Err("target_device_not_revoked".to_string())
+        );
+        revoke_device_at(&root, &secrets, &first.device_id, &second.device_id, 5_000).unwrap();
+        remove_device_at(&root, &first.device_id, &second.device_id, 6_000).unwrap();
+        assert!(load_at(&root)
+            .unwrap()
+            .devices
+            .iter()
+            .all(|device| device.device_id != second.device_id));
+        fs::remove_dir_all(root).unwrap();
     }
 }

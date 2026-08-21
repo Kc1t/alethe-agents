@@ -224,6 +224,115 @@
   color: var(--status-offline);
 }
 
+.deviceNameRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.deviceName {
+  font-size: 11px;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deviceRenameRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.deviceRenameRow input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 11px;
+}
+
+.deviceRenameRow input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.deviceActionBtn {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.deviceActionBtn:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.deviceActionBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.deviceList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.deviceListItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+}
+
+.deviceListInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.deviceListName {
+  font-size: 11px;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deviceListActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.deviceActionError {
+  font-size: 10px;
+  color: var(--status-offline);
+}
+
 .accessGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
