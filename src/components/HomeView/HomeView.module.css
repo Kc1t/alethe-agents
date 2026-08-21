@@ -345,156 +345,6 @@
   color: var(--fg-muted);
 }
 
-/* ---------- learning videos ---------- */
-
-.learningSection {
-  gap: 10px;
-}
-
-.learningHeading {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.learningDescription {
-  max-width: 62ch;
-  margin: 6px 0 0;
-  color: var(--text-quaternary);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.videoTable {
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-sunken);
-}
-
-.videoTableRow + .videoTableRow {
-  border-top: 1px solid var(--border-subtle);
-}
-
-.videoResource {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 138px minmax(0, 1fr) 112px 84px;
-  align-items: center;
-  gap: 16px;
-  padding: 10px;
-  border: 0;
-  background: transparent;
-  color: var(--fg);
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color 160ms ease;
-}
-
-.videoResource:hover {
-  background: var(--bg-elevated);
-}
-
-.videoResource:focus-visible {
-  position: relative;
-  z-index: 1;
-  outline: 1px solid var(--accent);
-  outline-offset: -2px;
-}
-
-.videoThumbnail {
-  position: relative;
-  display: block;
-  aspect-ratio: 16 / 9;
-  overflow: hidden;
-  border-radius: var(--radius-sm);
-  background: var(--bg);
-}
-
-.videoThumbnail img {
-  width: 100%;
-  height: 100%;
-  display: block;
-  object-fit: cover;
-  filter: saturate(0.82) contrast(0.96);
-  transition:
-    filter 180ms ease,
-    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.videoResource:hover .videoThumbnail img {
-  filter: saturate(1) contrast(1);
-  transform: scale(1.025);
-}
-
-.videoPlay {
-  position: absolute;
-  inset: 50% auto auto 50%;
-  width: 30px;
-  height: 30px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-on);
-  transform: translate(-50%, -50%);
-  transition: transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-.videoResource:hover .videoPlay {
-  transform: translate(-50%, -50%) scale(1.08);
-}
-
-.videoCopy {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.videoCopy strong {
-  overflow: hidden;
-  color: var(--fg);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.videoCopy > span {
-  overflow: hidden;
-  color: var(--text-quaternary);
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.videoKind {
-  color: var(--text-tertiary);
-  font-size: 10px;
-}
-
-.videoAction {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 7px;
-  color: var(--fg-muted);
-  font-size: 10px;
-  font-weight: 500;
-}
-
-.videoAction svg {
-  transition: transform 160ms ease;
-}
-
-.videoResource:hover .videoAction svg {
-  transform: translateX(2px);
-}
-
 .emptyState {
   border: 1px dashed var(--border);
   border-radius: var(--radius-md);
@@ -2821,14 +2671,6 @@
   .usageStrip {
     grid-template-columns: 1fr;
   }
-  .videoResource {
-    grid-template-columns: 118px minmax(0, 1fr) 24px;
-    gap: 12px;
-  }
-  .videoKind,
-  .videoActionText {
-    display: none;
-  }
 }
 
 @container home (max-width: 620px) {
@@ -2868,18 +2710,6 @@
   }
   .quickSend {
     margin-left: auto;
-  }
-  .videoResource {
-    grid-template-columns: 96px minmax(0, 1fr) 20px;
-    gap: 10px;
-    padding: 8px;
-  }
-  .videoCopy strong {
-    font-size: 11px;
-    white-space: normal;
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
   }
 }
 

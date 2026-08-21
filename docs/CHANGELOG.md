@@ -12,8 +12,6 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
-- Home now includes a compact learning-video table with Alethe guides and real community workflows.
-
 - When an agent opens a page in the shared browser, Alethe asks where it should go. The browser
   itself has no window, which is right most of the time — an agent reading a page needs no
   interface at all — so the question only comes up when a page actually appears. All three

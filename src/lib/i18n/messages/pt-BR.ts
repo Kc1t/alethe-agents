@@ -883,18 +883,6 @@ export const ptBR: Record<MessageKey, string> = {
   'home.agentHeroSub': 'orquestre subagents num canvas dedicado',
   'home.agentHeroCta': 'começar',
   'home.recentProjects': 'projetos recentes',
-  'home.learningVideos': 'aprenda com a Alethe',
-  'home.learningVideosDescription':
-    'Guias e fluxos reais para aproveitar melhor seus agentes e seu workspace.',
-  'home.learningVideoOrchestrateTitle':
-    'Pare de Usar 1 Agente de IA Por Vez: Orquestre Agentes de IA',
-  'home.learningVideoOrchestrateCreator': 'Kauã Miguel - Dev',
-  'home.learningVideoDevlogTitle': 'Dia a dia como um Desenvolvedor de Software — Devlog 1',
-  'home.learningVideoDevlogCreator': 'Guilherme Dev',
-  'home.learningVideoGuide': 'Guia da Alethe',
-  'home.learningVideoWorkflow': 'Fluxo real',
-  'home.learningWatch': 'Assistir',
-  'home.learningWatchVideo': 'Assistir {title} no YouTube',
   'home.noProjects': 'nenhum projeto ainda — crie um pra começar',
   'home.projectsEmptyTitle': 'Nenhum projeto ainda',
   'home.projectsEmptyDesc': 'Crie seu primeiro projeto e comece a organizar os terminais agora.',

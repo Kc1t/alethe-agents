@@ -870,18 +870,6 @@ export const en = {
   'home.agentHeroSub': 'orchestrate subagents in a dedicated canvas',
   'home.agentHeroCta': 'start',
   'home.recentProjects': 'recent projects',
-  'home.learningVideos': 'learn with Alethe',
-  'home.learningVideosDescription':
-    'Guides and real workflows for getting more from your agents and workspace.',
-  'home.learningVideoOrchestrateTitle':
-    'Stop Using One AI Agent at a Time: Orchestrate AI Agents',
-  'home.learningVideoOrchestrateCreator': 'Kauã Miguel - Dev',
-  'home.learningVideoDevlogTitle': 'A Day in the Life of a Software Developer — Devlog 1',
-  'home.learningVideoDevlogCreator': 'Guilherme Dev',
-  'home.learningVideoGuide': 'Alethe guide',
-  'home.learningVideoWorkflow': 'Real workflow',
-  'home.learningWatch': 'Watch',
-  'home.learningWatchVideo': 'Watch {title} on YouTube',
   'home.noProjects': 'no projects yet — create one to get started',
   'home.projectsEmptyTitle': 'No projects yet',
   'home.projectsEmptyDesc': 'Create your first project and start organizing terminals right away.',
