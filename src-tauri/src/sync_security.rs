@@ -11,6 +11,9 @@ use std::path::{Path, PathBuf};
 const SECURITY_SCHEMA_VERSION: u32 = 1;
 const DEVICE_KEY_SERVICE: &str = "com.kc1t.alethe.sync-device";
 const MAX_AUDIT_EVENTS: usize = 2_000;
+const INVITATION_TOKEN_BYTES: usize = 32;
+const MAX_INVITATION_FAILURES: u32 = 5;
+const INVITATION_LOCKOUT_MS: u64 = 60_000;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,11 +58,87 @@ pub struct SecurityAuditEvent {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncPermission {
+    Read,
+    Export,
+    Write,
+    Upload,
+    Delete,
+    Invite,
+    Admin,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ScopeEffect {
+    Allow,
+    Deny,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PathScope {
+    pub effect: ScopeEffect,
+    pub pattern: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InvitationState {
+    Created,
+    Redeemed,
+    Expired,
+    Revoked,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvitationRecord {
+    pub invitation_id: String,
+    pub project_id: String,
+    pub issuer_device_id: String,
+    pub recipient_account_id: String,
+    pub recipient_device_id: Option<String>,
+    pub permissions: Vec<SyncPermission>,
+    pub path_scopes: Vec<PathScope>,
+    pub token_hash: String,
+    pub state: InvitationState,
+    pub created_at_ms: u64,
+    pub expires_at_ms: u64,
+    pub redeemed_at_ms: Option<u64>,
+    pub revoked_at_ms: Option<u64>,
+    #[serde(default)]
+    pub failed_attempts: u32,
+    #[serde(default)]
+    pub blocked_until_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GrantRecord {
+    pub grant_id: String,
+    pub invitation_id: String,
+    pub project_id: String,
+    pub account_id: String,
+    pub device_id: String,
+    pub permissions: Vec<SyncPermission>,
+    pub path_scopes: Vec<PathScope>,
+    pub issued_at_ms: u64,
+    pub expires_at_ms: Option<u64>,
+    pub revoked_at_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncSecurityDocument {
     pub schema_version: u32,
     pub account: Option<VerifiedAccount>,
     pub devices: Vec<DeviceRecord>,
+    #[serde(default)]
+    pub invitations: Vec<InvitationRecord>,
+    #[serde(default)]
+    pub grants: Vec<GrantRecord>,
     pub audit: Vec<SecurityAuditEvent>,
 }
 
@@ -69,6 +148,8 @@ impl Default for SyncSecurityDocument {
             schema_version: SECURITY_SCHEMA_VERSION,
             account: None,
             devices: Vec::new(),
+            invitations: Vec::new(),
+            grants: Vec::new(),
             audit: Vec::new(),
         }
     }
@@ -134,6 +215,58 @@ fn validate_document(document: &SyncSecurityDocument) -> Result<(), String> {
                 .is_none_or(|account| account.account_id != device.account_id)
         {
             return Err("security_device_invalid".to_string());
+        }
+    }
+    for invitation in &document.invitations {
+        if invitation.invitation_id.trim().is_empty()
+            || invitation.project_id.trim().is_empty()
+            || invitation.recipient_account_id.trim().is_empty()
+            || invitation.token_hash.len() != 64
+            || validate_permissions(&invitation.permissions).is_err()
+            || validate_scopes(&invitation.path_scopes).is_err()
+        {
+            return Err("security_invitation_invalid".to_string());
+        }
+    }
+    for grant in &document.grants {
+        if grant.grant_id.trim().is_empty()
+            || grant.project_id.trim().is_empty()
+            || grant.account_id.trim().is_empty()
+            || grant.device_id.trim().is_empty()
+            || validate_permissions(&grant.permissions).is_err()
+            || validate_scopes(&grant.path_scopes).is_err()
+        {
+            return Err("security_grant_invalid".to_string());
+        }
+    }
+    Ok(())
+}
+
+fn validate_permissions(permissions: &[SyncPermission]) -> Result<(), String> {
+    if permissions.is_empty() {
+        return Err("permission_set_empty".to_string());
+    }
+    let has_read = permissions.contains(&SyncPermission::Read);
+    if (permissions.contains(&SyncPermission::Export)
+        || permissions.contains(&SyncPermission::Write))
+        && !has_read
+    {
+        return Err("permission_dependency_missing".to_string());
+    }
+    Ok(())
+}
+
+fn validate_scopes(scopes: &[PathScope]) -> Result<(), String> {
+    for scope in scopes {
+        let path = scope.pattern.strip_suffix("/**").unwrap_or(&scope.pattern);
+        if path.is_empty()
+            || path.starts_with('/')
+            || path.contains('\\')
+            || path
+                .split('/')
+                .any(|component| component.is_empty() || component == "." || component == "..")
+        {
+            return Err("path_scope_invalid".to_string());
         }
     }
     Ok(())
@@ -232,6 +365,162 @@ fn public_key_fingerprint(key: &VerifyingKey) -> String {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
+}
+
+fn token_hash(token: &[u8]) -> String {
+    Sha256::digest(token)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn hashes_equal(left: &str, right: &str) -> bool {
+    let mut difference = left.len() ^ right.len();
+    for index in 0..left.len().max(right.len()) {
+        difference |= usize::from(
+            left.as_bytes().get(index).copied().unwrap_or_default()
+                ^ right.as_bytes().get(index).copied().unwrap_or_default(),
+        );
+    }
+    difference == 0
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IssuedInvitation {
+    pub invitation: InvitationRecord,
+    pub bearer_token: String,
+}
+
+pub(crate) fn issue_invitation(
+    data_root: &Path,
+    issuer_device_id: &str,
+    project_id: &str,
+    recipient_account_id: &str,
+    recipient_device_id: Option<String>,
+    permissions: Vec<SyncPermission>,
+    path_scopes: Vec<PathScope>,
+    now_ms: u64,
+    expires_at_ms: u64,
+) -> Result<IssuedInvitation, String> {
+    if project_id.trim().is_empty()
+        || recipient_account_id.trim().is_empty()
+        || expires_at_ms <= now_ms
+    {
+        return Err("invitation_request_invalid".to_string());
+    }
+    validate_permissions(&permissions)?;
+    validate_scopes(&path_scopes)?;
+    let mut document = load_at(data_root)?;
+    let issuer = document
+        .devices
+        .iter()
+        .find(|device| device.device_id == issuer_device_id)
+        .ok_or_else(|| "issuer_device_unknown".to_string())?;
+    if issuer.trust != DeviceTrust::Trusted {
+        return Err("issuer_device_not_trusted".to_string());
+    }
+
+    let mut secret = [0_u8; INVITATION_TOKEN_BYTES];
+    use rand_core::RngCore;
+    OsRng.fill_bytes(&mut secret);
+    let bearer_token = URL_SAFE_NO_PAD.encode(secret);
+    let invitation = InvitationRecord {
+        invitation_id: format!("inv_{}", nanoid::nanoid!(24)),
+        project_id: project_id.to_string(),
+        issuer_device_id: issuer_device_id.to_string(),
+        recipient_account_id: recipient_account_id.to_string(),
+        recipient_device_id,
+        permissions,
+        path_scopes,
+        token_hash: token_hash(bearer_token.as_bytes()),
+        state: InvitationState::Created,
+        created_at_ms: now_ms,
+        expires_at_ms,
+        redeemed_at_ms: None,
+        revoked_at_ms: None,
+        failed_attempts: 0,
+        blocked_until_ms: None,
+    };
+    document.invitations.push(invitation.clone());
+    append_audit(
+        &mut document,
+        now_ms,
+        "invitation.issued",
+        Some(issuer_device_id.to_string()),
+        Some(invitation.invitation_id.clone()),
+    );
+    save_at(data_root, &document)?;
+    Ok(IssuedInvitation {
+        invitation,
+        bearer_token,
+    })
+}
+
+pub(crate) fn redeem_invitation(
+    data_root: &Path,
+    invitation_id: &str,
+    bearer_token: &str,
+    recipient_account_id: &str,
+    recipient_device_id: &str,
+    now_ms: u64,
+) -> Result<GrantRecord, String> {
+    let mut document = load_at(data_root)?;
+    let index = document
+        .invitations
+        .iter()
+        .position(|invitation| invitation.invitation_id == invitation_id)
+        .ok_or_else(|| "invitation_unavailable".to_string())?;
+    let invitation = &mut document.invitations[index];
+    if invitation.state != InvitationState::Created
+        || invitation.expires_at_ms < now_ms
+        || invitation
+            .blocked_until_ms
+            .is_some_and(|blocked_until| blocked_until > now_ms)
+    {
+        return Err("invitation_unavailable".to_string());
+    }
+    let audience_matches = invitation.recipient_account_id == recipient_account_id
+        && invitation
+            .recipient_device_id
+            .as_ref()
+            .is_none_or(|device| device == recipient_device_id);
+    let token_matches = hashes_equal(&invitation.token_hash, &token_hash(bearer_token.as_bytes()));
+    if !audience_matches || !token_matches {
+        invitation.failed_attempts = invitation.failed_attempts.saturating_add(1);
+        if invitation.failed_attempts >= MAX_INVITATION_FAILURES {
+            invitation.blocked_until_ms = Some(now_ms.saturating_add(INVITATION_LOCKOUT_MS));
+            invitation.failed_attempts = 0;
+        }
+        save_at(data_root, &document)?;
+        return Err("invitation_unavailable".to_string());
+    }
+
+    invitation.state = InvitationState::Redeemed;
+    invitation.redeemed_at_ms = Some(now_ms);
+    invitation.failed_attempts = 0;
+    invitation.blocked_until_ms = None;
+    let grant = GrantRecord {
+        grant_id: format!("grant_{}", nanoid::nanoid!(24)),
+        invitation_id: invitation.invitation_id.clone(),
+        project_id: invitation.project_id.clone(),
+        account_id: recipient_account_id.to_string(),
+        device_id: recipient_device_id.to_string(),
+        permissions: invitation.permissions.clone(),
+        path_scopes: invitation.path_scopes.clone(),
+        issued_at_ms: now_ms,
+        expires_at_ms: Some(invitation.expires_at_ms),
+        revoked_at_ms: None,
+    };
+    document.grants.push(grant.clone());
+    append_audit(
+        &mut document,
+        now_ms,
+        "invitation.redeemed",
+        Some(recipient_device_id.to_string()),
+        Some(invitation_id.to_string()),
+    );
+    save_at(data_root, &document)?;
+    Ok(grant)
 }
 
 /// Completes identity only after the OAuth backend has verified the provider response.
@@ -385,11 +674,135 @@ mod tests {
                 last_verified_at_ms: None,
                 revoked_at_ms: None,
             }],
+            invitations: vec![],
+            grants: vec![],
             audit: vec![],
         };
         assert_eq!(
             validate_document(&document),
             Err("security_device_invalid".to_string())
+        );
+    }
+
+    #[test]
+    fn invitation_is_single_use_and_creates_one_bound_grant() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let issuer =
+            complete_verified_identity(&root, &secrets, account("acct-owner"), "Owner", 1_000)
+                .unwrap();
+        let mut document = load_at(&root).unwrap();
+        document.devices[0].trust = DeviceTrust::Trusted;
+        document.devices[0].last_verified_at_ms = Some(1_500);
+        save_at(&root, &document).unwrap();
+
+        let issued = issue_invitation(
+            &root,
+            &issuer.device_id,
+            "project-a",
+            "acct-recipient",
+            Some("device-recipient".to_string()),
+            vec![SyncPermission::Read, SyncPermission::Write],
+            vec![PathScope {
+                effect: ScopeEffect::Allow,
+                pattern: "src/**".to_string(),
+            }],
+            2_000,
+            10_000,
+        )
+        .unwrap();
+        let persisted = fs::read_to_string(security_document_path(&root)).unwrap();
+        assert!(!persisted.contains(&issued.bearer_token));
+
+        let grant = redeem_invitation(
+            &root,
+            &issued.invitation.invitation_id,
+            &issued.bearer_token,
+            "acct-recipient",
+            "device-recipient",
+            3_000,
+        )
+        .unwrap();
+        assert_eq!(grant.project_id, "project-a");
+        assert_eq!(grant.device_id, "device-recipient");
+        assert_eq!(
+            redeem_invitation(
+                &root,
+                &issued.invitation.invitation_id,
+                &issued.bearer_token,
+                "acct-recipient",
+                "device-recipient",
+                3_001,
+            ),
+            Err("invitation_unavailable".to_string())
+        );
+        assert_eq!(load_at(&root).unwrap().grants.len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn invitation_failures_are_generic_rate_limited_and_fail_closed() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let issuer =
+            complete_verified_identity(&root, &secrets, account("acct-owner"), "Owner", 1_000)
+                .unwrap();
+        let mut document = load_at(&root).unwrap();
+        document.devices[0].trust = DeviceTrust::Trusted;
+        save_at(&root, &document).unwrap();
+        let issued = issue_invitation(
+            &root,
+            &issuer.device_id,
+            "project-a",
+            "acct-recipient",
+            None,
+            vec![SyncPermission::Read],
+            vec![],
+            2_000,
+            100_000,
+        )
+        .unwrap();
+
+        for attempt in 0..MAX_INVITATION_FAILURES {
+            assert_eq!(
+                redeem_invitation(
+                    &root,
+                    &issued.invitation.invitation_id,
+                    "wrong",
+                    "acct-recipient",
+                    "device-recipient",
+                    3_000 + u64::from(attempt),
+                ),
+                Err("invitation_unavailable".to_string())
+            );
+        }
+        assert_eq!(
+            redeem_invitation(
+                &root,
+                &issued.invitation.invitation_id,
+                &issued.bearer_token,
+                "acct-recipient",
+                "device-recipient",
+                4_000,
+            ),
+            Err("invitation_unavailable".to_string())
+        );
+        assert!(load_at(&root).unwrap().grants.is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn invalid_permissions_and_scopes_never_persist() {
+        assert_eq!(
+            validate_permissions(&[SyncPermission::Write]),
+            Err("permission_dependency_missing".to_string())
+        );
+        assert_eq!(
+            validate_scopes(&[PathScope {
+                effect: ScopeEffect::Deny,
+                pattern: "../secret/**".to_string(),
+            }]),
+            Err("path_scope_invalid".to_string())
         );
     }
 }
