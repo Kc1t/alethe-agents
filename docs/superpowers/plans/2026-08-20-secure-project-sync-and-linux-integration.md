@@ -116,6 +116,17 @@ Mandatory invariants:
 - [ ] Require explicit account confirmation when registering a new device and show device name, platform, first/last seen, fingerprint, and revocation state.
 - [ ] Support key rotation and safe recovery without silently inheriting another profile's trust.
 
+### Same-account device discovery
+
+- [ ] After login, register each installation as a separate device under the account; the provider account proves account membership, while the device key proves which computer is connecting.
+- [ ] Discover online and previously registered devices belonging to the same account through minimal relay metadata. Never publish local paths, project contents, account tokens, or device private keys during discovery.
+- [ ] Treat same-account discovery as an invitation shortcut, not blanket authorization. A newly discovered computer may request a project, but the source device must explicitly approve the project, permissions, manifest, and destination operation unless a prior device-scoped grant already exists.
+- [ ] Show the source computer, destination computer, public-key fingerprint, platform, last seen time, and revocation state before establishing trust.
+- [ ] Allow an owner to mark a device as trusted for selected projects and bounded permission presets. Do not silently expose every project merely because two installations use the same Google account.
+- [ ] On the receiving computer, require an explicit destination directory, disk-space review, exclusion review, and final confirmation before downloading. Default to a new empty folder and refuse to overwrite an unrelated directory.
+- [ ] Support an owner-only **available projects** catalog containing opaque project IDs and user-approved display metadata. Project paths and file manifests remain hidden until the receiving device has a project grant.
+- [ ] Handle offline devices, duplicate machine names, reinstalled devices, cloned profiles, account switching, and revoked devices without merging their identities.
+
 ### Tests
 
 - [ ] Rust unit tests for state/nonce/PKCE validation, claim validation, expiration, refresh rotation, corrupted storage, logout, and cross-profile isolation.
@@ -143,13 +154,43 @@ Mandatory invariants:
 - [ ] Provide list/revoke/expire flows for pending invitations and active grants.
 - [ ] Keep discovery/relay metadata minimal; never embed account tokens, local paths, or project contents in invitation URLs.
 
+### Connection codes, links, and QR flow
+
+- [ ] Offer a QR code, shareable link, and human-readable short code as representations of the same server-issued invitation. The short code is not a Device ID and cannot be reused as a permanent password.
+- [ ] Put only an invitation identifier, protocol version, relay/discovery locator, and random single-use bearer secret in the encoded payload. Never include account tokens, local IP assumptions, project paths, or device private keys.
+- [ ] Use at least 128 bits of cryptographic randomness for the underlying secret. A short human code must be backed by an online rate-limited exchange and enough entropy for its validity window; it must not be validated through unrestricted offline guessing.
+- [ ] Expire codes quickly, store only their hashes, consume them atomically, bind them to the intended account when known, and invalidate them after acceptance, rejection, revocation, or permission changes.
+- [ ] Resolve connectivity through an authenticated rendezvous service with direct peer connectivity when available and an end-to-end-encrypted relay fallback when NAT/firewalls prevent it. Google login provides identity only; it is not the P2P transport.
+- [ ] Allow LAN discovery only as an explicit optimization. A LAN advertisement cannot grant access and must still complete device authentication and project authorization.
+
+### Invitation and access center
+
+- [ ] Add a global notification/inbox center with tabs for incoming invitations, outgoing invitations, same-account device requests, active grants, revoked/expired items, and security events.
+- [ ] Display unread counts in the sidebar/title bar and deliver an OS notification without leaking project names on a locked screen unless the user explicitly enables detailed notifications.
+- [ ] Every incoming card shows verified sender account, device fingerprint, project display name, requested permissions, expiry, manifest summary, estimated size, and risk warnings.
+- [ ] Accept, reject, block sender, report suspicious request, and inspect details from the inbox. Acceptance always opens the destination and permission review; it never begins transfer immediately.
+- [ ] Keep invitation state synchronized across the recipient's registered devices while ensuring that acceptance is atomic and only one device consumes a single-device invitation.
+- [ ] Provide outgoing status for delivered, viewed, accepted, rejected, expired, and revoked without exposing recipient activity beyond the documented privacy policy.
+
 ### Permission model
 
 - `read`: receive project data without publishing local changes.
-- `write`: publish new or modified files.
+- `export`: save or copy received files outside the managed replica. This implies `read`; a client cannot truthfully copy content it is forbidden to read.
+- `write`: publish new or modified files. Collaborative editing normally requires `read + write` so the editor has a valid base revision.
+- `upload`: contribute new files to a controlled inbox without reading the existing project; this is the safe write-only/drop-box capability and does not permit overwriting arbitrary paths.
 - `delete`: propagate deletions only when explicitly granted.
 - `invite`: invite another collaborator; off by default.
 - `admin`: change grants or project policy; never implied by write access.
+
+Permission invariants and presets:
+
+- [ ] Enforce permission dependencies server-side: `export` requires `read`; ordinary `write` requires `read`; `delete`, `invite`, and `admin` are independent high-risk grants and remain off unless explicitly selected.
+- [ ] Provide understandable presets backed by explicit bits: **View only** (`read`), **View and copy** (`read + export`), **Collaborate** (`read + write`), **Upload only** (`upload`), and **Full project control** (`read + export + write + delete + invite + admin`).
+- [ ] Show the expanded permission list before grant and acceptance. Preset labels never replace the versioned permission payload.
+- [ ] Allow permissions to be scoped to selected manifest paths and operations. A collaborator may edit `src/**` while only reading `docs/**`, but deny rules and secret exclusions always take precedence.
+- [ ] Compare local profile, remote account, remote device, project role, effective permissions, path scopes, expiry, and last verified session in one access-inspector screen.
+- [ ] Support permission narrowing immediately. Permission expansion requires a new explicit confirmation by the owner and recipient; it cannot be smuggled into a routine sync response.
+- [ ] Re-evaluate authorization for every manifest, chunk, deletion, export, invite, and administrative request instead of trusting a permission cached only in the frontend.
 
 ### Tests
 
@@ -177,6 +218,16 @@ Create separate modules for manifest policy, scanning, transfer planning, transp
 - [ ] Preserve both versions on conflict and expose a clear resolution UI. High-risk deletions require a recovery checkpoint.
 - [ ] Protect against sync loops and distinguish local, remote, ignored, conflicted, pending-delete, and recovered states.
 - [ ] Add an append-only, privacy-conscious audit log for grants and sync decisions without recording file content or secrets.
+
+### Receiving and saving a shared project
+
+- [ ] Present a receive wizard with source identity, project identity, branch/revision summary, manifest paths, exclusions, estimated transfer size, effective permissions, and destination requirements.
+- [ ] Let the recipient choose **Create managed copy**, **Attach existing copy**, or **Download snapshot** only when the grant permits the corresponding operation. Disable unsupported choices with an explanation.
+- [ ] For a managed copy, create a new destination directory, persist its opaque project identity and grant, stage the initial transfer outside the live tree, verify it, then atomically publish it.
+- [ ] Attaching an existing copy requires a dry-run comparison with same/different/missing files, case collisions, local-only files, conflicts, and deletion candidates. Never infer equivalence from the folder or project name.
+- [ ] Show a final transfer plan before applying changes and require separate confirmation for overwrite or deletion impact. Preserve local-only and conflicting files in a recovery area by default.
+- [ ] After connection, expose per-project controls for direction (`receive`, `publish`, `bidirectional`), automatic/manual sync, pause, bandwidth, exclusions, conflict policy, and disconnect while keeping the last local copy.
+- [ ] Make project availability explicit on each trusted device. An owner chooses which projects are advertised to another same-account device; the destination chooses which advertised projects to save locally.
 
 ### Two-machine test matrix
 
@@ -214,6 +265,8 @@ Replace the current mixed prototype with a state-driven flow:
 3. **Folders and exclusions:** persisted manifest, default exclusions, secret warnings, estimated size, and change preview.
 4. **Conflicts and activity:** queued transfers, conflicts, deletions, retries, and history.
 5. **Backups and recovery:** verified restore points and restore workflow, clearly separated from live sync.
+6. **Invitations:** incoming/outgoing requests, same-account device requests, unread status, acceptance review, expiry, and revocation.
+7. **Devices and access:** account devices, collaborator profiles, fingerprints, effective project permissions, path scopes, and security history.
 
 ### UI rules
 
@@ -632,17 +685,17 @@ Security-sensitive slices additionally require fuzz/property suites, dependency 
 
 ### Phase 2 — Identity and device trust
 
-- Dedicated login UI/routing, OAuth/PKCE callback handling, encrypted local state, credential storage, device keys, device management, and negative tests.
+- Dedicated login UI/routing, OAuth/PKCE callback handling, encrypted local state, credential storage, device keys, same-account discovery, available-project catalog, device management, and negative tests.
 - **Go condition:** Identity and device tests pass; no secret is stored or logged outside the credential store.
 
 ### Phase 3 — Invitations and authorization
 
-- Project grants, single-use invitations, permissions, revoke/audit flows.
+- Project grants, single-use link/QR/short-code invitations, invitation center, profile/device access inspector, permission presets and path scopes, revoke/audit flows.
 - **Go condition:** Replay and cross-project escalation tests pass.
 
 ### Phase 4 — Safe sync engine
 
-- Manifest, path sandbox, staging, chunks, verification, atomic commit, conflict/recovery.
+- Manifest, receive/save wizard, existing-copy comparison, path sandbox, staging, chunks, verification, atomic commit, direction controls, conflict/recovery.
 - **Go condition:** Two-machine hostile/interruption matrix passes without root escape or silent data loss.
 
 ### Phase 5 — Real backup and restore
