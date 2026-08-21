@@ -63,9 +63,10 @@
 }
 
 .authInfo {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  display: grid;
+  grid-template-columns: minmax(64px, auto) minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
   font-size: 11px;
 }
 
@@ -75,8 +76,11 @@
 }
 
 .authStatus {
+  min-width: 0;
   color: var(--fg-muted);
   font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .loginGoogleBtn {
@@ -139,15 +143,16 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--accent);
-  color: var(--accent-fg);
+  color: var(--accent-on);
   cursor: pointer;
   font-size: 10px;
   font-weight: 600;
 }
 
 .saveOAuthBtn:disabled {
+  background: var(--bg);
+  color: var(--fg-muted);
   cursor: default;
-  opacity: 0.55;
 }
 
 .section {

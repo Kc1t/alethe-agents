@@ -63,6 +63,7 @@ export const en = {
   'prefs.googleSyncProvider': 'Alethe Account · Google / Email',
   'prefs.googleSyncUnavailableStatus': 'Not connected · Secure identity unavailable',
   'prefs.googleSyncComingSoon': 'Secure login coming later',
+  'prefs.googleSyncReadyStatus': 'Ready to connect securely',
 
   /* ---- language ---- */
   'language.title': 'Language',

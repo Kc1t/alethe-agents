@@ -148,7 +148,7 @@ export function MeshSidebarView() {
               <input
                 id="google-oauth-client-id"
                 value={googleClientId}
-                placeholder="000000000000-example.apps.googleusercontent.com"
+                placeholder="123…apps.googleusercontent.com"
                 spellCheck={false}
                 autoComplete="off"
                 onChange={(event) => setGoogleClientId(event.target.value)}

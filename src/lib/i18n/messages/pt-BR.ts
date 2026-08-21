@@ -65,6 +65,7 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.googleSyncProvider': 'Conta Alethe · Google / Email',
   'prefs.googleSyncUnavailableStatus': 'Não conectado · Identidade segura indisponível',
   'prefs.googleSyncComingSoon': 'Login seguro em desenvolvimento',
+  'prefs.googleSyncReadyStatus': 'Pronto para conectar com segurança',
 
   /* ---- language ---- */
   'language.title': 'Idioma',

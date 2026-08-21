@@ -1,6 +1,13 @@
-import { Check, ChevronRight, UserRound } from 'lucide-react'
+import { Check, ChevronRight, Loader2, UserRound } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import { LOCALES, useT } from '../../../lib/i18n'
+import {
+  configureGoogleSync,
+  getGoogleSyncStatus,
+  type GoogleSyncUser,
+  startGoogleSyncAuth,
+} from '../../../lib/tauri'
 import { useProjectsStore } from '../../../stores/projectsStore'
 import { GoogleIcon } from '../../icons/AgentIcons'
 import controls from '../controls.module.css'
@@ -21,6 +28,52 @@ export function AccountPage({
   const preferences = useProjectsStore((state) => state.preferences)
   const setLanguage = useProjectsStore((state) => state.setLanguage)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
+  const [google, setGoogle] = useState<GoogleSyncUser | null>(null)
+  const [googleBusy, setGoogleBusy] = useState(false)
+  const [googleError, setGoogleError] = useState(false)
+  const [showGoogleSetup, setShowGoogleSetup] = useState(false)
+  const [googleClientId, setGoogleClientId] = useState('')
+
+  useEffect(() => {
+    let active = true
+    void getGoogleSyncStatus()
+      .then((status) => {
+        if (active) setGoogle(status)
+      })
+      .catch(() => {
+        if (active) setGoogleError(true)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const runGoogleLogin = async () => {
+    setGoogleBusy(true)
+    setGoogleError(false)
+    try {
+      setGoogle(await startGoogleSyncAuth())
+    } catch {
+      setGoogleError(true)
+    } finally {
+      setGoogleBusy(false)
+    }
+  }
+
+  const saveGoogleConfiguration = async () => {
+    setGoogleBusy(true)
+    setGoogleError(false)
+    try {
+      await configureGoogleSync(googleClientId)
+      setGoogle(await getGoogleSyncStatus())
+      setShowGoogleSetup(false)
+      setGoogleClientId('')
+    } catch {
+      setGoogleError(true)
+    } finally {
+      setGoogleBusy(false)
+    }
+  }
 
   return (
     <>
@@ -72,7 +125,7 @@ export function AccountPage({
       <SettingsSection
         id="google-sync"
         title={t('prefs.googleSyncTitle')}
-        description={t('prefs.googleSyncUnavailableDesc')}
+        description={t('prefs.googleSyncDesc')}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <div
@@ -106,7 +159,13 @@ export function AccountPage({
                   {t('prefs.googleSyncProvider')}
                 </strong>
                 <span style={{ fontSize: '11px', color: 'var(--fg-muted)' }}>
-                  {t('prefs.googleSyncUnavailableStatus')}
+                  {googleError
+                    ? t('mesh.oauthFailed')
+                    : google?.connected
+                      ? t('mesh.connectedAccount', { name: google.name })
+                      : google?.configured
+                        ? t('prefs.googleSyncReadyStatus')
+                        : t('mesh.oauthNotConfigured')}
                 </span>
               </div>
             </div>
@@ -117,22 +176,55 @@ export function AccountPage({
                 alignItems: 'center',
                 gap: '8px',
                 background: 'var(--bg)',
-                color: 'var(--fg-muted)',
+                color: 'var(--fg)',
                 fontWeight: 600,
                 fontSize: '12px',
                 padding: '7px 14px',
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-sm)',
-                cursor: 'not-allowed',
+                cursor: googleBusy || google?.connected ? 'default' : 'pointer',
                 boxShadow: 'var(--shadow-xs)',
               }}
-              disabled
-              title={t('mesh.unavailableHint')}
+              disabled={googleBusy || google?.connected}
+              onClick={() => {
+                if (google?.configured) void runGoogleLogin()
+                else setShowGoogleSetup((visible) => !visible)
+              }}
             >
-              <GoogleIcon size={15} />
-              <span>{t('prefs.googleSyncComingSoon')}</span>
+              {googleBusy ? <Loader2 size={15} /> : <GoogleIcon size={15} />}
+              <span>
+                {googleBusy
+                  ? t('mesh.authenticating')
+                  : google?.configured
+                    ? t('mesh.connectAccount')
+                    : t('mesh.configureGoogle')}
+              </span>
             </button>
           </div>
+          {showGoogleSetup && !google?.configured ? (
+            <div className={styles.integrationFields}>
+              <label>
+                <span>{t('mesh.googleClientId')}</span>
+                <input
+                  className={controls.input}
+                  value={googleClientId}
+                  placeholder="000000000000-example.apps.googleusercontent.com"
+                  spellCheck={false}
+                  autoComplete="off"
+                  onChange={(event) => setGoogleClientId(event.target.value)}
+                />
+              </label>
+              <p>{t('mesh.googleClientIdHint')}</p>
+              <button
+                type="button"
+                className={`${controls.btn} ${controls.btnPrimary}`}
+                disabled={googleBusy || !googleClientId.trim()}
+                onClick={() => void saveGoogleConfiguration()}
+              >
+                {t('mesh.saveConfiguration')}
+              </button>
+            </div>
+          ) : null}
         </div>
       </SettingsSection>
 
