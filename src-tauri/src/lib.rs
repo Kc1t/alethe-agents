@@ -482,6 +482,7 @@ pub fn run() {
             sync_mesh::start_google_sync_auth,
             sync_mesh::get_google_sync_status,
             sync_mesh::disconnect_google_sync,
+            sync_security::sync_security_snapshot,
             contract_check::contract_check,
             health_probe::health_probe,
             graphify::graphify_ensure_graph,

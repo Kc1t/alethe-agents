@@ -129,6 +129,34 @@ pub struct GrantRecord {
     pub revoked_at_ms: Option<u64>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvitationSummary {
+    pub invitation_id: String,
+    pub project_id: String,
+    pub issuer_device_id: String,
+    pub recipient_account_id: String,
+    pub recipient_device_id: Option<String>,
+    pub permissions: Vec<SyncPermission>,
+    pub path_scopes: Vec<PathScope>,
+    pub state: InvitationState,
+    pub created_at_ms: u64,
+    pub expires_at_ms: u64,
+    pub redeemed_at_ms: Option<u64>,
+    pub revoked_at_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncSecuritySnapshot {
+    pub schema_version: u32,
+    pub account: Option<VerifiedAccount>,
+    pub devices: Vec<DeviceRecord>,
+    pub invitations: Vec<InvitationSummary>,
+    pub grants: Vec<GrantRecord>,
+    pub audit: Vec<SecurityAuditEvent>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncSecurityDocument {
@@ -195,6 +223,41 @@ pub fn load_at(data_root: &Path) -> Result<SyncSecurityDocument, String> {
         serde_json::from_slice(&bytes).map_err(|_| "security_document_invalid".to_string())?;
     validate_document(&document)?;
     Ok(document)
+}
+
+pub fn snapshot_at(data_root: &Path) -> Result<SyncSecuritySnapshot, String> {
+    let document = load_at(data_root)?;
+    Ok(SyncSecuritySnapshot {
+        schema_version: document.schema_version,
+        account: document.account,
+        devices: document.devices,
+        invitations: document
+            .invitations
+            .into_iter()
+            .map(|invitation| InvitationSummary {
+                invitation_id: invitation.invitation_id,
+                project_id: invitation.project_id,
+                issuer_device_id: invitation.issuer_device_id,
+                recipient_account_id: invitation.recipient_account_id,
+                recipient_device_id: invitation.recipient_device_id,
+                permissions: invitation.permissions,
+                path_scopes: invitation.path_scopes,
+                state: invitation.state,
+                created_at_ms: invitation.created_at_ms,
+                expires_at_ms: invitation.expires_at_ms,
+                redeemed_at_ms: invitation.redeemed_at_ms,
+                revoked_at_ms: invitation.revoked_at_ms,
+            })
+            .collect(),
+        grants: document.grants,
+        audit: document.audit,
+    })
+}
+
+#[tauri::command]
+pub fn sync_security_snapshot(app: tauri::AppHandle) -> Result<SyncSecuritySnapshot, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    snapshot_at(&data_root)
 }
 
 fn validate_document(document: &SyncSecurityDocument) -> Result<(), String> {
@@ -737,6 +800,10 @@ mod tests {
             Err("invitation_unavailable".to_string())
         );
         assert_eq!(load_at(&root).unwrap().grants.len(), 1);
+        let public = snapshot_at(&root).unwrap();
+        assert!(!serde_json::to_string(&public)
+            .unwrap()
+            .contains(&issued.invitation.token_hash));
         fs::remove_dir_all(root).unwrap();
     }
 

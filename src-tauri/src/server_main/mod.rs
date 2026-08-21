@@ -9,6 +9,7 @@ pub mod misc_routes;
 pub mod profile_routes;
 pub mod pty_routes;
 pub mod session_routes;
+pub mod sync_security_routes;
 pub mod window_routes;
 
 use crate::pty_sink::PtyOutputSink;
@@ -505,6 +506,7 @@ pub fn build_router(runtime: ServerRuntime) -> Router {
         .merge(github_sync_routes::router())
         .merge(window_routes::router())
         .merge(pty_routes::router())
+        .merge(sync_security_routes::router())
         .fallback(not_implemented)
         .layer(middleware::from_fn(authenticate_request))
         .layer(middleware::from_fn(validate_request_origin))
