@@ -13,7 +13,13 @@ import { useEffect, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
 import { PROJECT_SYNC_CAPABILITIES } from '../../lib/sync/contracts'
-import { type SyncSecuritySnapshot, syncSecuritySnapshot } from '../../lib/tauri'
+import {
+  getGoogleSyncStatus,
+  type GoogleSyncUser,
+  startGoogleSyncAuth,
+  type SyncSecuritySnapshot,
+  syncSecuritySnapshot,
+} from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { EmptyState } from '../EmptyState'
 import { GoogleIcon } from '../icons/AgentIcons'
@@ -24,18 +30,21 @@ export function MeshSidebarView() {
   const projects = useProjectsStore((s) => s.projects)
   const activeProjectId = useProjectsStore((s) => s.activeProjectId)
   const activeProject = projects.find((p) => p.id === activeProjectId) ?? projects[0]
-  const canAuthenticate = PROJECT_SYNC_CAPABILITIES.identity === 'available'
   const canInvite = PROJECT_SYNC_CAPABILITIES.invitations === 'available'
   const canTransfer = PROJECT_SYNC_CAPABILITIES.projectTransfer === 'available'
   const [security, setSecurity] = useState<SyncSecuritySnapshot | null>(null)
+  const [google, setGoogle] = useState<GoogleSyncUser | null>(null)
   const [securityError, setSecurityError] = useState(false)
+  const [authError, setAuthError] = useState(false)
+  const [authBusy, setAuthBusy] = useState(false)
 
   useEffect(() => {
     let active = true
-    syncSecuritySnapshot()
-      .then((snapshot) => {
+    Promise.all([syncSecuritySnapshot(), getGoogleSyncStatus()])
+      .then(([snapshot, status]) => {
         if (!active) return
         setSecurity(snapshot)
+        setGoogle(status)
         setSecurityError(false)
       })
       .catch(() => {
@@ -49,9 +58,26 @@ export function MeshSidebarView() {
   }, [])
 
   const account = security?.account ?? null
+  const canAuthenticate = google?.configured === true && !account && !authBusy
   const thisDevice = security?.devices[0] ?? null
   const pendingInvitations = security?.invitations.filter((item) => item.state === 'created') ?? []
   const activeGrants = security?.grants.filter((grant) => !grant.revokedAtMs) ?? []
+
+  const connectGoogle = async () => {
+    setAuthBusy(true)
+    setAuthError(false)
+    try {
+      const status = await startGoogleSyncAuth()
+      const snapshot = await syncSecuritySnapshot()
+      setGoogle(status)
+      setSecurity(snapshot)
+      setSecurityError(false)
+    } catch {
+      setAuthError(true)
+    } finally {
+      setAuthBusy(false)
+    }
+  }
 
   return (
     <div className={styles.container}>
@@ -70,19 +96,24 @@ export function MeshSidebarView() {
             <span className={styles.authStatus}>
               {securityError
                 ? t('mesh.securityLoadFailed')
-                : account
-                  ? t('mesh.connectedAccount', { name: account.displayName })
-                  : t('mesh.identityUnavailable')}
+                : authError
+                  ? t('mesh.oauthFailed')
+                  : account
+                    ? t('mesh.connectedAccount', { name: account.displayName })
+                    : google && !google.configured
+                      ? t('mesh.oauthNotConfigured')
+                      : t('mesh.identityUnavailable')}
             </span>
           </div>
           <button
             type="button"
             className={styles.loginGoogleBtn}
             disabled={!canAuthenticate}
-            title={t('mesh.unavailableHint')}
+            title={google?.configured ? undefined : t('mesh.oauthNotConfigured')}
+            onClick={() => void connectGoogle()}
           >
-            <GoogleIcon size={14} />
-            <span>{t('mesh.connectAccount')}</span>
+            {authBusy ? <Loader2 size={14} className={styles.spin} /> : <GoogleIcon size={14} />}
+            <span>{authBusy ? t('mesh.authenticating') : t('mesh.connectAccount')}</span>
           </button>
         </div>
       </section>

@@ -85,6 +85,7 @@ dependencies = [
  "toml_edit 0.22.27",
  "tower-http 0.5.2",
  "tungstenite 0.26.2",
+ "url",
  "urlencoding",
  "which",
  "windows-sys 0.61.2",

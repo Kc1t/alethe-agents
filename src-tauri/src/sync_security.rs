@@ -639,6 +639,21 @@ pub(crate) fn complete_verified_identity<S: DeviceSecretStore>(
     Ok(device)
 }
 
+pub(crate) fn disconnect_identity_at<S: DeviceSecretStore>(
+    data_root: &Path,
+    secret_store: &S,
+) -> Result<(), String> {
+    let document = load_at(data_root)?;
+    for device in &document.devices {
+        secret_store.delete(&device.device_id)?;
+    }
+    let path = security_document_path(data_root);
+    if path.exists() {
+        fs::remove_file(path).map_err(|_| "security_document_delete_failed".to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -703,6 +718,21 @@ mod tests {
         let loaded = load_at(&root).unwrap();
         assert_eq!(loaded.devices.len(), 2);
         assert_eq!(loaded.audit[0].kind, "device.registered");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn disconnect_removes_device_secrets_and_identity_document() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        complete_verified_identity(&root, &secrets, account("acct-a"), "Linux PC", 2_000).unwrap();
+        complete_verified_identity(&root, &secrets, account("acct-a"), "Windows PC", 3_000)
+            .unwrap();
+
+        disconnect_identity_at(&root, &secrets).unwrap();
+
+        assert!(secrets.0.lock().unwrap().is_empty());
+        assert!(!security_document_path(&root).exists());
         fs::remove_dir_all(root).unwrap();
     }
 

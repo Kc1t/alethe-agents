@@ -66,6 +66,7 @@ export type GoogleSyncUser = {
   name: string
   picture?: string
   connected: boolean
+  configured: boolean
   lastSyncMs?: number
 }
 
@@ -82,6 +83,7 @@ export async function getGoogleSyncStatus(): Promise<GoogleSyncUser> {
       email: '',
       name: '',
       connected: false,
+      configured: false,
     }
   }
   return invoke<GoogleSyncUser>('get_google_sync_status')

@@ -5,6 +5,8 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::time::{timeout, Duration};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -284,21 +286,276 @@ pub struct GoogleSyncUser {
     pub name: String,
     pub picture: Option<String>,
     pub connected: bool,
+    pub configured: bool,
     pub last_sync_ms: Option<u64>,
 }
 
-#[tauri::command]
-pub fn start_google_sync_auth() -> Result<GoogleSyncUser, String> {
-    Err("identity_provider_unavailable".to_string())
+fn google_oauth_configured() -> bool {
+    std::env::var("ALETHE_GOOGLE_CLIENT_ID").is_ok_and(|value| !value.trim().is_empty())
+}
+
+const GOOGLE_AUTHORIZE_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
+const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
+const GOOGLE_USERINFO_URL: &str = "https://openidconnect.googleapis.com/v1/userinfo";
+const GOOGLE_TOKEN_SERVICE: &str = "com.kc1t.alethe.google-oauth";
+
+#[derive(Debug, Deserialize)]
+struct GoogleTokenResponse {
+    access_token: String,
+    refresh_token: Option<String>,
+    expires_in: u64,
+    scope: Option<String>,
+    token_type: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GoogleUserInfo {
+    sub: String,
+    name: String,
+    email: Option<String>,
+    email_verified: Option<bool>,
+    picture: Option<String>,
+}
+
+fn random_base64_url(bytes: usize) -> String {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine;
+    use rand_core::RngCore;
+    let mut value = vec![0_u8; bytes];
+    rand_core::OsRng.fill_bytes(&mut value);
+    URL_SAFE_NO_PAD.encode(value)
+}
+
+fn pkce_challenge(verifier: &str) -> String {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use base64::Engine;
+    URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+}
+
+fn google_authorization_url(
+    client_id: &str,
+    redirect_uri: &str,
+    state: &str,
+    nonce: &str,
+    challenge: &str,
+) -> Result<String, String> {
+    let mut url = url::Url::parse(GOOGLE_AUTHORIZE_URL)
+        .map_err(|_| "google_oauth_configuration_invalid".to_string())?;
+    url.query_pairs_mut()
+        .append_pair("client_id", client_id)
+        .append_pair("redirect_uri", redirect_uri)
+        .append_pair("response_type", "code")
+        .append_pair("scope", "openid email profile")
+        .append_pair("state", state)
+        .append_pair("nonce", nonce)
+        .append_pair("code_challenge", challenge)
+        .append_pair("code_challenge_method", "S256")
+        .append_pair("access_type", "offline")
+        .append_pair("prompt", "consent");
+    Ok(url.into())
+}
+
+fn parse_oauth_callback(target: &str, expected_state: &str) -> Result<String, String> {
+    let url = url::Url::parse(&format!("http://127.0.0.1{target}"))
+        .map_err(|_| "google_oauth_callback_invalid".to_string())?;
+    if url.path() != "/oauth/callback" {
+        return Err("google_oauth_callback_invalid".to_string());
+    }
+    if url.query_pairs().any(|(key, _)| key == "error") {
+        return Err("google_oauth_denied".to_string());
+    }
+    let states: Vec<_> = url
+        .query_pairs()
+        .filter(|(key, _)| key == "state")
+        .map(|(_, value)| value.into_owned())
+        .collect();
+    let codes: Vec<_> = url
+        .query_pairs()
+        .filter(|(key, _)| key == "code")
+        .map(|(_, value)| value.into_owned())
+        .collect();
+    if states.as_slice() != [expected_state] || codes.len() != 1 || codes[0].is_empty() {
+        return Err("google_oauth_callback_invalid".to_string());
+    }
+    Ok(codes[0].clone())
+}
+
+fn email_hint(email: Option<&str>) -> Option<String> {
+    let email = email?;
+    let (local, domain) = email.split_once('@')?;
+    let first = local.chars().next()?;
+    Some(format!("{first}***@{domain}"))
+}
+
+fn store_google_tokens(account_id: &str, tokens: &GoogleTokenResponse) -> Result<(), String> {
+    let entry = keyring::Entry::new(GOOGLE_TOKEN_SERVICE, account_id)
+        .map_err(|_| "credential_store_unavailable".to_string())?;
+    let payload = serde_json::json!({
+        "accessToken": tokens.access_token,
+        "refreshToken": tokens.refresh_token,
+        "expiresIn": tokens.expires_in,
+        "scope": tokens.scope,
+        "tokenType": tokens.token_type,
+    });
+    entry
+        .set_password(&payload.to_string())
+        .map_err(|_| "credential_store_write_failed".to_string())
 }
 
 #[tauri::command]
-pub fn get_google_sync_status() -> Result<GoogleSyncUser, String> {
+pub async fn start_google_sync_auth(app: tauri::AppHandle) -> Result<GoogleSyncUser, String> {
+    let current = get_google_sync_status(app.clone())?;
+    if current.connected {
+        return Ok(current);
+    }
+    let client_id = std::env::var("ALETHE_GOOGLE_CLIENT_ID")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "google_oauth_client_not_configured".to_string())?;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .map_err(|_| "google_oauth_loopback_unavailable".to_string())?;
+    let port = listener
+        .local_addr()
+        .map_err(|_| "google_oauth_loopback_unavailable".to_string())?
+        .port();
+    let redirect_uri = format!("http://127.0.0.1:{port}/oauth/callback");
+    let state = random_base64_url(32);
+    let nonce = random_base64_url(32);
+    let verifier = random_base64_url(64);
+    let authorize_url = google_authorization_url(
+        &client_id,
+        &redirect_uri,
+        &state,
+        &nonce,
+        &pkce_challenge(&verifier),
+    )?;
+    crate::diagnostics::open_in_browser(authorize_url)?;
+
+    let (mut stream, _) = timeout(Duration::from_secs(180), listener.accept())
+        .await
+        .map_err(|_| "google_oauth_timeout".to_string())?
+        .map_err(|_| "google_oauth_callback_failed".to_string())?;
+    let mut request = vec![0_u8; 8_192];
+    let read = timeout(Duration::from_secs(5), stream.read(&mut request))
+        .await
+        .map_err(|_| "google_oauth_callback_failed".to_string())?
+        .map_err(|_| "google_oauth_callback_failed".to_string())?;
+    let first_line = std::str::from_utf8(&request[..read])
+        .ok()
+        .and_then(|value| value.lines().next())
+        .ok_or_else(|| "google_oauth_callback_invalid".to_string())?;
+    let mut parts = first_line.split_whitespace();
+    if parts.next() != Some("GET") {
+        return Err("google_oauth_callback_invalid".to_string());
+    }
+    let code = parse_oauth_callback(
+        parts
+            .next()
+            .ok_or_else(|| "google_oauth_callback_invalid".to_string())?,
+        &state,
+    );
+    let body = "<!doctype html><title>Alethe</title><script>window.close()</script><p>Alethe</p>";
+    let response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    let _ = stream.write_all(response.as_bytes()).await;
+    let code = code?;
+
+    let client = reqwest::Client::new();
+    let tokens = client
+        .post(GOOGLE_TOKEN_URL)
+        .form(&[
+            ("client_id", client_id.as_str()),
+            ("code", code.as_str()),
+            ("code_verifier", verifier.as_str()),
+            ("grant_type", "authorization_code"),
+            ("redirect_uri", redirect_uri.as_str()),
+        ])
+        .send()
+        .await
+        .map_err(|_| "google_oauth_exchange_failed".to_string())?;
+    if !tokens.status().is_success() {
+        return Err("google_oauth_exchange_failed".to_string());
+    }
+    let tokens: GoogleTokenResponse = tokens
+        .json()
+        .await
+        .map_err(|_| "google_oauth_exchange_failed".to_string())?;
+    if !tokens.token_type.eq_ignore_ascii_case("bearer") || tokens.access_token.is_empty() {
+        return Err("google_oauth_exchange_failed".to_string());
+    }
+    let user = client
+        .get(GOOGLE_USERINFO_URL)
+        .bearer_auth(&tokens.access_token)
+        .send()
+        .await
+        .map_err(|_| "google_userinfo_failed".to_string())?;
+    if !user.status().is_success() {
+        return Err("google_userinfo_failed".to_string());
+    }
+    let user: GoogleUserInfo = user
+        .json()
+        .await
+        .map_err(|_| "google_userinfo_failed".to_string())?;
+    if user.sub.is_empty() || user.name.is_empty() || user.email_verified != Some(true) {
+        return Err("google_identity_unverified".to_string());
+    }
+    store_google_tokens(&user.sub, &tokens)?;
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let device_name = std::env::var("COMPUTERNAME")
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .unwrap_or_else(|_| "Alethe device".to_string());
+    let now_ms = crate::provider_common::now_ms();
+    if let Err(error) = crate::sync_security::complete_verified_identity(
+        &data_root,
+        &crate::sync_security::PlatformDeviceSecretStore,
+        crate::sync_security::VerifiedAccount {
+            account_id: user.sub.clone(),
+            provider: "google".to_string(),
+            display_name: user.name.clone(),
+            email_hint: email_hint(user.email.as_deref()),
+            connected_at_ms: now_ms,
+        },
+        &device_name,
+        now_ms,
+    ) {
+        if let Ok(entry) = keyring::Entry::new(GOOGLE_TOKEN_SERVICE, &user.sub) {
+            let _ = entry.delete_credential();
+        }
+        return Err(error);
+    }
     Ok(GoogleSyncUser {
-        email: String::new(),
-        name: String::new(),
+        email: email_hint(user.email.as_deref()).unwrap_or_default(),
+        name: user.name,
+        picture: user.picture,
+        connected: true,
+        configured: true,
+        last_sync_ms: None,
+    })
+}
+
+#[tauri::command]
+pub fn get_google_sync_status(app: tauri::AppHandle) -> Result<GoogleSyncUser, String> {
+    let root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let snapshot = crate::sync_security::snapshot_at(&root)?;
+    let Some(account) = snapshot.account else {
+        return Ok(GoogleSyncUser {
+            email: String::new(),
+            name: String::new(),
+            picture: None,
+            connected: false,
+            configured: google_oauth_configured(),
+            last_sync_ms: None,
+        });
+    };
+    Ok(GoogleSyncUser {
+        email: account.email_hint.unwrap_or_default(),
+        name: account.display_name,
         picture: None,
-        connected: false,
+        connected: true,
+        configured: true,
         last_sync_ms: None,
     })
 }
@@ -310,6 +567,20 @@ pub fn disconnect_google_sync(app: tauri::AppHandle) -> Result<bool, String> {
         let auth_file = data_dir.join("google_auth.json");
         let _ = fs::remove_file(&auth_file);
     }
+    let root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let snapshot = crate::sync_security::snapshot_at(&root)?;
+    if let Some(account) = snapshot.account {
+        let entry = keyring::Entry::new(GOOGLE_TOKEN_SERVICE, &account.account_id)
+            .map_err(|_| "credential_store_unavailable".to_string())?;
+        match entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => {}
+            Err(_) => return Err("credential_store_delete_failed".to_string()),
+        }
+    }
+    crate::sync_security::disconnect_identity_at(
+        &root,
+        &crate::sync_security::PlatformDeviceSecretStore,
+    )?;
     Ok(true)
 }
 
@@ -318,15 +589,52 @@ mod tests {
     use super::*;
 
     #[test]
-    fn prototype_identity_cannot_report_an_authenticated_user() {
+    fn oauth_authorization_uses_pkce_loopback_and_minimal_scopes() {
+        let url = google_authorization_url(
+            "client.apps.googleusercontent.com",
+            "http://127.0.0.1:49152/oauth/callback",
+            "state-a",
+            "nonce-a",
+            "challenge-a",
+        )
+        .unwrap();
+        let url = url::Url::parse(&url).unwrap();
+        let query: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+        assert_eq!(query.get("response_type").map(String::as_str), Some("code"));
         assert_eq!(
-            start_google_sync_auth().unwrap_err(),
-            "identity_provider_unavailable"
+            query.get("scope").map(String::as_str),
+            Some("openid email profile")
         );
-        let status = get_google_sync_status().unwrap();
-        assert!(!status.connected);
-        assert!(status.email.is_empty());
-        assert!(status.name.is_empty());
+        assert_eq!(
+            query.get("code_challenge_method").map(String::as_str),
+            Some("S256")
+        );
+        assert_eq!(query.get("state").map(String::as_str), Some("state-a"));
+    }
+
+    #[test]
+    fn oauth_callback_rejects_wrong_state_errors_duplicates_and_routes() {
+        assert_eq!(
+            parse_oauth_callback("/oauth/callback?code=ok&state=expected", "expected"),
+            Ok("ok".to_string())
+        );
+        for target in [
+            "/oauth/callback?code=ok&state=wrong",
+            "/oauth/callback?error=access_denied&state=expected",
+            "/oauth/callback?code=a&code=b&state=expected",
+            "/wrong?code=ok&state=expected",
+        ] {
+            assert!(parse_oauth_callback(target, "expected").is_err());
+        }
+    }
+
+    #[test]
+    fn identity_metadata_masks_email_addresses() {
+        assert_eq!(
+            email_hint(Some("person@example.com")),
+            Some("p***@example.com".to_string())
+        );
+        assert_eq!(email_hint(Some("invalid")), None);
     }
 
     fn temp_test_dir(name: &str) -> PathBuf {
