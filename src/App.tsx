@@ -10,12 +10,14 @@ import { AgentSandbox } from './components/AgentSandbox'
 import { DictationButton } from './components/DictationButton'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { FocusOverlay } from './components/FocusOverlay'
+import { GsdSyncActivityView } from './components/GsdSyncActivityView'
 import { AgentIcon } from './components/icons/AgentIcons'
 import { LinkViewerOverlay } from './components/LinkViewerOverlay'
 import { MainMenu } from './components/MainMenu'
 import { AddBrowserModal } from './components/modals/AddBrowserModal'
 import { AddContentModal } from './components/modals/AddContentModal'
 import { AiUsageModal } from './components/modals/AiUsageModal'
+import { AuditModal } from './components/modals/AuditModal'
 import { EditGroupModal } from './components/modals/EditGroupModal'
 import { EditProjectModal } from './components/modals/EditProjectModal'
 import { FindJumpModal } from './components/modals/FindJumpModal'
@@ -163,11 +165,17 @@ function ToastItem({ toast }: { toast: InAppToast }) {
         <span title={toast.body}>{toast.body}</span>
         {toast.actions?.length ? (
           <div className={styles.toastActions}>
-            {toast.actions.map((action) => (
+            {toast.actions.map((action, index) => (
               <button
                 key={action.label}
                 type="button"
-                className={action.quiet ? styles.toastActionQuiet : styles.toastAction}
+                className={
+                  action.quiet
+                    ? styles.toastActionQuiet
+                    : index === 0
+                      ? styles.toastAction
+                      : styles.toastActionSecondary
+                }
                 onClick={() => {
                   action.run()
                   dismissToast(toast.id)
@@ -682,6 +690,7 @@ export default function App() {
         </PanelGroup>
       </div>
       <FocusOverlay />
+      <GsdSyncActivityView />
       <LinkViewerOverlay />
       <DictationButton />
       <MainMenu />
@@ -722,6 +731,7 @@ export default function App() {
         <McpManagerModal />
         <McpIntroModal />
         <RemoteControlModal />
+        <AuditModal />
       </ErrorBoundary>
       <InAppNotifications />
       {activeView === 'agentCanvas' ? <TokenHud /> : null}

@@ -63,6 +63,8 @@ export function makeDefaultTerminal(args: {
   }
   worktreeAgentId?: string
   gsdSyncViewer?: boolean
+  ephemeralConflictAgent?: boolean
+  ephemeralUtility?: boolean
 }): Terminal {
   const tabId = nanoid()
   const now = Date.now()
@@ -76,6 +78,8 @@ export function makeDefaultTerminal(args: {
     lastUsedAt: now,
     worktreeAgentId: args.worktreeAgentId,
     gsdSyncViewer: args.gsdSyncViewer,
+    ephemeralConflictAgent: args.ephemeralConflictAgent,
+    ephemeralUtility: args.ephemeralUtility,
     tabs: [
       {
         id: tabId,
@@ -243,10 +247,13 @@ export function getProjectDefaultCwd(
   return ''
 }
 
-/** Casa o segmento `.alethe/worktrees/` (Windows ou POSIX) em qualquer ponto
- *  do caminho — inclusive worktrees aninhadas, onde o match mais à esquerda
- *  ainda aponta pro segmento mais externo (a raiz real). */
-const ALETHE_WORKTREES_SEGMENT = /[\\/]\.alethe[\\/]worktrees[\\/]/i
+/** Matches the `.alethe/worktrees/` OR `.alethe/merge-envs/` segment (Windows or
+ *  POSIX) anywhere in the path — including nested worktrees, where the
+ *  leftmost match still points at the outermost segment (the real root).
+ *  `merge-envs` is the conflict-resolution agent's ephemeral environment
+ *  (`conflict_resolution.rs`) — same class of "isolated path that doesn't
+ *  represent the project's main folder" as regular worktrees. */
+const ALETHE_WORKTREES_SEGMENT = /[\\/]\.alethe[\\/](?:worktrees|merge-envs)[\\/]/i
 
 function deriveRepoRootFromWorktreeCwd(cwd: string): string {
   const match = cwd.match(ALETHE_WORKTREES_SEGMENT)
@@ -258,9 +265,19 @@ export function getProjectRepoRoot(project: Project | null | undefined): string 
   if (!project) return ''
   const sorted = [...project.terminals].sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))
 
-  // de raiz, devolvendo o path da worktree em vez do repo de verdade, e
-
-  const pure = sorted.filter((terminal) => !terminal.worktreeAgentId && !terminal.gsdSyncViewer)
+  // `gsdSyncViewer`/`ephemeralConflictAgent`/`ephemeralUtility` never count as
+  // "pure": their cwd IS the agent's worktree (they just lack
+  // `worktreeAgentId` because they aren't the isolated agent itself — they're
+  // a secondary viewer, the ephemeral conflict agent, or a "Review"/"Test"
+  // session). Without this exclusion any of them can become the root
+  // reference by mistake, returning the worktree path instead of the real repo.
+  const pure = sorted.filter(
+    (terminal) =>
+      !terminal.worktreeAgentId &&
+      !terminal.gsdSyncViewer &&
+      !terminal.ephemeralConflictAgent &&
+      !terminal.ephemeralUtility,
+  )
   for (const terminal of pure) {
     const cwd = resolveTerminalCwd(terminal)
     if (cwd) return cwd

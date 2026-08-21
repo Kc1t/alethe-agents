@@ -3,8 +3,16 @@
   "short_name": "Alethe",
   "description": "Alethe LAN remote workspace",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#0e1014",
-  "theme_color": "#0e1014",
-  "icons": []
+  "background_color": "#0c0c0c",
+  "theme_color": "#0c0c0c",
+  "icons": [
+    {
+      "src": "/brand-icon.png",
+      "sizes": "220x220",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
 }

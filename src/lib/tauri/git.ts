@@ -127,6 +127,196 @@ export async function worktreeUnlock(repo: string, agentId: string): Promise<voi
   await invoke('worktree_unlock', { repo, agentId })
 }
 
+export type WorktreePendingChange = { path: string; status: string }
+
+export async function worktreeCommitPending(repo: string, agentId: string): Promise<boolean> {
+  return invoke<boolean>('worktree_commit_pending', { repo, agentId })
+}
+
+export async function worktreePendingChanges(
+  repo: string,
+  agentId: string,
+): Promise<WorktreePendingChange[]> {
+  return invoke<WorktreePendingChange[]>('worktree_pending_changes', { repo, agentId })
+}
+
+export async function worktreeCommitWorktree(
+  repo: string,
+  agentId: string,
+  message: string,
+): Promise<boolean> {
+  return invoke<boolean>('worktree_commit_worktree', { repo, agentId, message })
+}
+
+// --- Git graph ---
+
+export type GitCommitEntry = {
+  hash: string
+  parents: string[]
+  authorName: string
+  authorEmail: string
+  timestamp: number
+  subject: string
+  refs: string[]
+}
+
+export type GitResetMode = 'soft' | 'mixed' | 'hard'
+
+export type IncomingOutgoing = {
+  incoming: GitFileChange[]
+  outgoing: GitFileChange[]
+  hasUpstream: boolean
+}
+
+export async function gitLogGraph(repo: string, maxCount: number): Promise<GitCommitEntry[]> {
+  return invoke<GitCommitEntry[]>('git_log_graph', { repo, maxCount })
+}
+
+export async function gitShowCommitFiles(repo: string, hash: string): Promise<GitFileChange[]> {
+  return invoke<GitFileChange[]>('git_show_commit_files', { repo, hash })
+}
+
+export async function gitShowCommitMessage(repo: string, hash: string): Promise<string> {
+  return invoke<string>('git_show_commit_message', { repo, hash })
+}
+
+export async function gitCreateBranchFromCommit(
+  repo: string,
+  hash: string,
+  branchName: string,
+): Promise<void> {
+  await invoke('git_create_branch_from_commit', { repo, hash, branchName })
+}
+
+export async function gitCherryPickCommit(repo: string, hash: string): Promise<string> {
+  return invoke<string>('git_cherry_pick_commit', { repo, hash })
+}
+
+export async function gitRevertCommit(repo: string, hash: string): Promise<string> {
+  return invoke<string>('git_revert_commit', { repo, hash })
+}
+
+export async function gitResetToCommit(
+  repo: string,
+  hash: string,
+  mode: GitResetMode,
+): Promise<void> {
+  await invoke('git_reset_to_commit', { repo, hash, mode })
+}
+
+export async function gitIncomingOutgoing(repo: string): Promise<IncomingOutgoing> {
+  return invoke<IncomingOutgoing>('git_incoming_outgoing', { repo })
+}
+
+// --- Merge / conflict resolution ---
+
+export type ConflictClass =
+  | 'rust'
+  | 'typeScript'
+  | 'ui'
+  | 'cargo'
+  | 'package'
+  | 'json'
+  | 'config'
+  | 'asset'
+  | 'planning'
+  | 'sentinel'
+  | 'graph'
+  | 'other'
+
+export type ConflictFile = { path: string; class: ConflictClass }
+
+export type MergeAnalysis = {
+  clean: boolean
+  source: string
+  target: string
+  conflicts: ConflictFile[]
+  classes: ConflictClass[]
+}
+
+export type ConflictEnv = {
+  id: string
+  path: string
+  branch: string
+  clean: boolean
+  conflicts: ConflictFile[]
+  promptPath?: string
+}
+
+export type MergeOutcome = {
+  merged: boolean
+  stage: string
+  output: string
+  contractWarnings: ContractWarning[]
+  /** `false` when the project had no `validationCommands` configured — nothing was checked. */
+  validationRan: boolean
+  /** Shield layer 4 (a warning, never blocking) — only present if `healthCheckCommand` was configured. */
+  healthProbe: HealthProbeResult | null
+}
+
+export type MergeForceCleanupResult = { deleted: boolean; pruned: boolean }
+
+export async function mergeAnalyze(
+  repo: string,
+  source: string,
+  target: string,
+  projectId?: string,
+): Promise<MergeAnalysis> {
+  return invoke<MergeAnalysis>('merge_analyze', { repo, source, target, projectId })
+}
+
+export async function mergePrepare(
+  repo: string,
+  source: string,
+  target: string,
+  projectId?: string,
+): Promise<ConflictEnv> {
+  return invoke<ConflictEnv>('merge_prepare', { repo, source, target, projectId })
+}
+
+export async function mergeValidate(
+  repo: string,
+  envId: string,
+  validationCommands: string[],
+): Promise<MergeOutcome> {
+  return invoke<MergeOutcome>('merge_validate', { repo, envId, validationCommands })
+}
+
+export async function mergeFinalize(
+  repo: string,
+  envId: string,
+  validationCommands: string[],
+  healthCheckCommand?: string,
+  healthCheckPath?: string,
+): Promise<MergeOutcome> {
+  return invoke<MergeOutcome>('merge_finalize', {
+    repo,
+    envId,
+    validationCommands,
+    healthCheckCommand,
+    healthCheckPath,
+  })
+}
+
+export async function mergeAbort(repo: string, envId: string): Promise<void> {
+  await invoke('merge_abort', { repo, envId })
+}
+
+export async function mergePreflightAbort(repo: string, envId: string): Promise<void> {
+  await invoke('merge_preflight_abort', { repo, envId })
+}
+
+export async function mergeRebaseOntoTarget(repo: string, envId: string): Promise<MergeOutcome> {
+  return invoke<MergeOutcome>('merge_rebase_onto_target', { repo, envId })
+}
+
+export async function mergeForceCleanup(
+  repo: string,
+  envId: string,
+): Promise<MergeForceCleanupResult> {
+  return invoke<MergeForceCleanupResult>('merge_force_cleanup', { repo, envId })
+}
+
 
 export type ProjectStack = 'web' | 'cli' | 'desktop' | 'fullstack' | 'unknown'
 
@@ -169,6 +359,7 @@ export type HealthProbeResult = {
   statusCode: number | null
   elapsedMs: number
   outputTail: string
+  terminalVerified: boolean | null
 }
 
                                                                              

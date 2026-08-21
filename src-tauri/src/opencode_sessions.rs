@@ -85,3 +85,57 @@ fn snapshot_opencode_sessions_inner(cwd: String) -> Result<Vec<OpenCodeSessionSn
     sessions.sort_by(|a, b| b.modified_at_ms.cmp(&a.modified_at_ms));
     Ok(sessions)
 }
+
+/// Exports a session's structured history (messages, tool calls, file
+/// patches) via `opencode export <sessionID>` — returned as opaque JSON for
+/// the frontend to interpret, without trying to model every possible `part`
+/// in Rust (the schema currently has several `type`s — `text`, `reasoning`,
+/// `tool`, `patch`, `step-start`, `step-finish` — and will likely gain more
+/// over time; a passthrough tolerates that without breaking).
+///
+/// Used to render the GSD Sync child session as a read-only activity feed
+/// (no PTY terminal in the path) — see `useGsdSyncSessionsWatcher` in the
+/// frontend.
+///
+/// `async` + `spawn_blocking`: same reason as `snapshot_opencode_sessions`
+/// (a real subprocess, can't run on Tauri's dispatch thread).
+#[tauri::command]
+pub async fn opencode_export_session(
+    cwd: String,
+    session_id: String,
+) -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(move || opencode_export_session_inner(cwd, session_id))
+        .await
+        .map_err(|error| format!("opencode_export_session: blocking task failed: {error}"))?
+}
+
+fn opencode_export_session_inner(
+    cwd: String,
+    session_id: String,
+) -> Result<serde_json::Value, String> {
+    if session_id.is_empty() {
+        return Err("session_id empty".to_string());
+    }
+    let mut command = Command::new("opencode");
+    command.args(["export", &session_id]);
+    if !cwd.is_empty() && Path::new(&cwd).is_dir() {
+        command.current_dir(crate::worktrees::git_arg(Path::new(&cwd)));
+    }
+    let output = command
+        .output()
+        .map_err(|e| format!("failed to run opencode: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("opencode export failed: {stderr}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // The CLI prints a status line ("Exporting session: <id>") BEFORE the
+    // actual JSON on stdout — confirmed live by running the command. Skip to
+    // the first `{` instead of assuming the whole stdout is JSON.
+    let json_start = stdout
+        .find('{')
+        .ok_or_else(|| "opencode export did not return JSON".to_string())?;
+    serde_json::from_str(&stdout[json_start..]).map_err(|e| format!("falha ao parsear JSON: {e}"))
+}

@@ -6,8 +6,8 @@ mod ai_memory;
 mod antigravity_sessions;
 mod antigravity_usage;
 mod backup;
-mod browser_session;
 mod browser_pane;
+mod browser_session;
 mod cdp;
 mod claude_sessions;
 mod claude_usage;
@@ -17,6 +17,7 @@ mod cli_shim;
 mod codex_app_server;
 mod codex_sessions;
 mod codex_usage;
+mod conflict_resolution;
 mod contract_check;
 mod crash_watch;
 mod diagnostics;
@@ -38,10 +39,12 @@ mod mcp_catalog;
 mod mcp_health;
 mod mcp_model;
 mod mcp_store;
+mod merge_analyzer;
 mod opencode_bridge;
 mod opencode_gsd_plugin;
-mod orchestrator;
 mod opencode_sessions;
+pub mod orchestrator;
+pub mod orchestrator_core;
 mod paths;
 mod planning;
 mod planning_gate;
@@ -338,6 +341,14 @@ pub fn run() {
             git_control::git_pull,
             git_control::git_list_branches,
             git_control::git_diff_summary,
+            git_control::git_log_graph,
+            git_control::git_show_commit_files,
+            git_control::git_show_commit_message,
+            git_control::git_create_branch_from_commit,
+            git_control::git_cherry_pick_commit,
+            git_control::git_revert_commit,
+            git_control::git_reset_to_commit,
+            git_control::git_incoming_outgoing,
             diagnostics::open_data_folder,
             diagnostics::open_spawn_log,
             diagnostics::open_in_file_explorer,
@@ -391,6 +402,17 @@ pub fn run() {
             worktrees::worktree_fetch_branch,
             worktrees::worktree_lock,
             worktrees::worktree_unlock,
+            worktrees::worktree_commit_pending,
+            worktrees::worktree_pending_changes,
+            worktrees::worktree_commit_worktree,
+            merge_analyzer::merge_analyze,
+            conflict_resolution::merge_prepare,
+            conflict_resolution::merge_validate,
+            conflict_resolution::merge_finalize,
+            conflict_resolution::merge_abort,
+            conflict_resolution::merge_preflight_abort,
+            conflict_resolution::merge_rebase_onto_target,
+            conflict_resolution::merge_force_cleanup,
             event_bus::publish_event,
             telemetry::get_telemetry_metrics,
             telemetry::get_telemetry_traces,
@@ -401,6 +423,7 @@ pub fn run() {
             planning::planning_audit_history,
             planning::set_planning_autocommit,
             planning::get_planning_autocommit,
+            planning::list_project_plans,
             planning_gate::read_planning_status,
             planning_gate::read_gsd_child_session,
             planning_gate::read_gsd_child_state,
@@ -446,6 +469,7 @@ pub fn run() {
             skills::skills_detail,
             skills::skills_uninstall,
             opencode_sessions::snapshot_opencode_sessions,
+            opencode_sessions::opencode_export_session,
             ping,
         ])
         .build(tauri::generate_context!())
@@ -455,7 +479,9 @@ pub fn run() {
 
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 pty::kill_all_sessions_background(&sessions_for_exit);
-                browser_session::kill_running_session(&_app_handle.state::<browser_session::BrowserSessionState>());
+                browser_session::kill_running_session(
+                    &_app_handle.state::<browser_session::BrowserSessionState>(),
+                );
             }
 
             if let tauri::RunEvent::Exit = event {

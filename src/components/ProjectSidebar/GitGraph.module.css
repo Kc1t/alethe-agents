@@ -1,0 +1,261 @@
+/* Este foi feito para limitar estritamente a largura da linha e dos badges no Grafo de Git, impedindo que textos ou badges vazem para a direita fora do painel da interface. */
+
+.group {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  user-select: none;
+}
+
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 2px;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.groupHeader:hover {
+  color: var(--fg);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0 8px;
+  gap: 0;
+  max-height: 380px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+}
+
+.loading,
+.empty,
+.error {
+  margin: 4px 2px;
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+
+.error {
+  color: var(--status-offline);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Must match ROW_HEIGHT in GitGraphList.tsx — CSS can't import a TS
+     constant, so the two must be changed together. */
+  height: 34px;
+  padding: 0 6px;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+.row:hover {
+  background: var(--panel-hover);
+}
+
+/* Active search: non-matching commits are dimmed, never removed from the
+   list — removing them would cut their SVG segment and break the graph's
+   visual continuity again (each row only draws its own stretch). */
+.rowDimmed {
+  opacity: 0.35;
+}
+
+.svg {
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+
+.info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  flex: 1;
+}
+
+.subject {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.refs {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  max-width: 160px;
+  overflow: hidden;
+}
+
+.refBadge {
+  font-size: 9.5px;
+  line-height: 1.1;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  white-space: nowrap;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.refBadgeCount {
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.1;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--accent-border);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.meta {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--fg-faint);
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+.filesLoading,
+.filesEmpty,
+.filesError {
+  margin: 2px 0;
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+
+.filesError {
+  color: var(--status-offline);
+}
+
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.fileStatus {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--fg-faint);
+}
+
+.fileName {
+  color: var(--fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Commit detail screen — swaps the CONTENT of the same panel (no modal, no
+   separate app view) in place of the old inline per-row expansion. */
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 6px 10px;
+  max-height: 380px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.detailBack {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--fg-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+.detailBack:hover {
+  color: var(--fg);
+  border-color: var(--border-strong);
+  background: var(--panel-hover);
+}
+
+.detailHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.detailHash {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.detailMeta {
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+.detailMessage {
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.detailFilesTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.detailFiles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}

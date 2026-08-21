@@ -74,19 +74,23 @@ export const ProjectContainer = memo(function ProjectContainer({
 
   const storedAccent = project.color || group?.color
   const accent = storedAccent && CSS.supports('color', storedAccent) ? storedAccent : '#6ea8ff'
+  const isRainbow = accent === 'rgb-rainbow'
 
   if (container.collapsed) {
     return (
       <div
-        className={styles.collapsed}
-        style={{ ['--container-accent' as string]: accent }}
+        className={`${styles.collapsed} ${isRainbow ? 'rainbow-container-border' : ''}`}
+        style={{ ['--container-accent' as string]: isRainbow ? undefined : accent }}
         onClick={() => setCollapsed(project.id, false)}
         title={`${group ? group.name + ' · ' : ''}${t('ws.containerExpandHint', { name: project.name })}`}
       >
         {project.iconUrl ? (
           <img src={project.iconUrl} alt="" className={styles.projectIcon} />
         ) : (
-          <span className={styles.bullet} style={{ background: accent }} />
+          <span
+            className={`${styles.bullet} ${isRainbow ? 'swatch-rgb-rainbow' : ''}`}
+            style={isRainbow ? undefined : { background: accent }}
+          />
         )}
         <span className={styles.collapsedName}>{project.name}</span>
         <span className={styles.collapsedCount}>{container.paneIds.length}</span>
@@ -98,7 +102,7 @@ export const ProjectContainer = memo(function ProjectContainer({
     <div
       ref={setRefs}
       data-pane-box="1"
-      className={`${styles.box} ${draggable.isDragging ? styles.boxDragging : ''} ${
+      className={`${styles.box} ${isRainbow ? 'rainbow-container-border' : ''} ${draggable.isDragging ? styles.boxDragging : ''} ${
         isDropTarget ? styles.boxDropTarget : ''
       }`}
       style={{ ['--container-accent' as string]: accent }}

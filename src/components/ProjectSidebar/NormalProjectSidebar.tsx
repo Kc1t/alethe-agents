@@ -46,6 +46,7 @@ import { LayoutFooter, WorkspaceLayoutFooter } from './LayoutFooter'
 import { NormalProjectNode as ProjectNode } from './NormalProjectNode'
 import styles from './NormalProjectSidebar.module.css'
 import { createSidebarMenus } from './sidebarMenus'
+import { SidebarMergePanel } from './SidebarMergePanel'
 import { SidebarUpdate } from './SidebarUpdate'
 
 type ContextMenuState = { x: number; y: number; items: MenuItem[] } | null
@@ -680,6 +681,8 @@ export function NormalProjectSidebar() {
           </DragOverlay>
         </DndContext>
       ) : null}
+
+      {sidebarTab === 'projects' && !keepHome ? <SidebarMergePanel /> : null}
 
       {menu ? (
         <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />

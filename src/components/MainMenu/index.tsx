@@ -9,6 +9,7 @@ import {
   RefreshCw,
   ScrollText,
   Settings,
+  ShieldAlert,
   Sparkles,
   Sun,
   Trash2,
@@ -131,6 +132,16 @@ export function MainMenu() {
         }}
       >
         <Network size={14} /> <span>{t('menu.remoteControl')}</span>
+      </button>
+      <button
+        type="button"
+        className={styles.item}
+        onClick={() => {
+          openModal('audit')
+          closeMainMenu()
+        }}
+      >
+        <ShieldAlert size={14} /> <span>{t('menu.audit')}</span>
       </button>
       {import.meta.env.DEV ? (
         <>

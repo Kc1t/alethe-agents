@@ -248,6 +248,22 @@ export async function readPlanningStatus(repoPath: string): Promise<PlanningStat
   return invoke<PlanningStatus>('read_planning_status', { repoPath })
 }
 
+export type PlanItem = {
+  id: string
+  projectId: string
+  terminalId: string | null
+  title: string
+  filePath: string
+  relativePath: string
+  createdAtMs: number
+  modifiedAtMs: number
+  content?: string
+}
+
+export async function listProjectPlans(repoPath: string, projectId: string): Promise<PlanItem[]> {
+  return invoke<PlanItem[]>('list_project_plans', { repoPath, projectId })
+}
+
                                                                                                                                                                                                                                                                       
 export async function gsdOpenCodePluginWrite(repo: string, modelChain: string[]): Promise<void> {
   await invoke('gsd_opencode_plugin_write', { repo, modelChain })

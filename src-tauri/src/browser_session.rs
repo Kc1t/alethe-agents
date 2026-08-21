@@ -274,10 +274,14 @@ pub fn kill_stale_sessions(profile_dir: &std::path::Path) {
 /// Matching on the command line alone would also match a shell, an editor or an agent that merely
 /// mentions the profile path, and killing those would be catastrophic.
 fn is_browser_executable(name: &std::ffi::OsStr) -> bool {
+    // Matched loosely on purpose: the same browser ships as chrome.exe, google-chrome,
+    // google-chrome-stable, chromium-browser and microsoft-edge depending on the platform, and a
+    // prefix match would recognise only the Windows spelling. Pairing this with the profile path
+    // the caller already requires is what keeps it from reaching anything else.
     let name = name.to_string_lossy().to_lowercase();
-    ["chrome", "msedge", "chromium", "brave"]
+    ["chrome", "chromium", "edge", "brave"]
         .iter()
-        .any(|candidate| name.starts_with(candidate))
+        .any(|candidate| name.contains(candidate))
 }
 
 #[tauri::command]
@@ -411,9 +415,23 @@ mod tests {
     #[test]
     fn only_browsers_are_ever_reaped() {
         use std::ffi::OsStr;
-        assert!(is_browser_executable(OsStr::new("chrome.exe")));
-        assert!(is_browser_executable(OsStr::new("msedge.exe")));
-        assert!(is_browser_executable(OsStr::new("chromium")));
+        // Every spelling the same browser ships under. A prefix match recognised only the first
+        // three, so on Linux a leftover browser was never cleared and kept its profile locked.
+        for browser in [
+            "chrome.exe",
+            "msedge.exe",
+            "chromium",
+            "google-chrome",
+            "google-chrome-stable",
+            "chromium-browser",
+            "microsoft-edge",
+            "brave-browser",
+        ] {
+            assert!(
+                is_browser_executable(OsStr::new(browser)),
+                "{browser} is a browser and has to be reapable"
+            );
+        }
         // A shell or an agent can carry the profile path in its command line; killing one because
         // of that would take a terminal, or the app itself, down with it.
         for innocent in [

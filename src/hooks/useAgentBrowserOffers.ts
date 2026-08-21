@@ -1,7 +1,12 @@
 import { useEffect } from 'react'
 
 import { getLocale, translate } from '../lib/i18n'
-import { browserPaneObserve, listenBrowserTargetOpened, type OpenedPage } from '../lib/tauri'
+import {
+  browserPaneObserve,
+  listenBrowserTargetOpened,
+  type OpenedPage,
+  openInBrowser,
+} from '../lib/tauri'
 import { useProjectsStore } from '../stores/projectsStore'
 import { useUiStore } from '../stores/uiStore'
 
@@ -15,9 +20,10 @@ function labelFor(page: OpenedPage): string {
 }
 
 /**
- * A page an agent opens is invisible until someone goes looking for it. This offers to show it in a
- * pane rather than opening one unasked, since a page appearing on its own is rarely what the reader
- * was in the middle of.
+ * The shared browser has no window, so a page an agent opens is invisible until someone goes looking
+ * for it. Much of the time that is right — an agent reading a page needs no UI at all. When it does,
+ * the reader picks where it goes, since a page appearing on its own is rarely what they were in the
+ * middle of.
  */
 export function useAgentBrowserOffers(enabled: boolean): void {
   useEffect(() => {
@@ -49,6 +55,14 @@ export function useAgentBrowserOffers(enabled: boolean): void {
                 engine: 'cdp',
                 watchTargetId: page.targetId,
               })
+            },
+          },
+          {
+            label: translate(getLocale(), 'webPane.agentOpenedOutside'),
+            run: () => {
+              // A copy in the reader's own browser, not the agent's tab: nothing can drive a page
+              // in someone else's browser, so this shows the page but not the work happening on it.
+              void openInBrowser(page.url).catch(() => {})
             },
           },
           {

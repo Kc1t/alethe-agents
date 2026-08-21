@@ -1,0 +1,153 @@
+.tree {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Decorative trunk — every row (including "main") has its own curve
+   (.connector) bridging to the dot, so none of them end up misaligned
+   with the trunk regardless of row height. */
+.trunk {
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 9px;
+  width: 2px;
+  /* --border (opaque), not --border-strong (translucent rgba) — each row's
+     curve (.connector) draws over the top half of the trunk; with a
+     translucent color the two layers would sum opacity and that stretch
+     would read visibly lighter than the rest of the line. Opaque doesn't
+     have that problem (the top layer simply replaces the one underneath). */
+  background: var(--border);
+}
+
+.node {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 8px 3px 24px;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The hover background lives only here (not on the whole .node) — .node
+   covers the full row width, including the trunk/curve strip on the left;
+   if hover painted the whole .node, it would cover the trunk drawn behind it. */
+.nodeContent {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  border-radius: var(--radius-sm);
+  transition: background-color 100ms ease;
+}
+.node:hover .nodeContent {
+  background: var(--panel-hover);
+}
+
+.connector {
+  position: absolute;
+  left: 9px;
+  top: 0;
+  width: 13px;
+  height: 50%;
+  border-left: 2px solid var(--border);
+  border-bottom: 2px solid var(--border);
+  border-bottom-left-radius: 8px;
+}
+
+.dot {
+  position: relative;
+  z-index: 1;
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--status-stopped);
+}
+.toneWorking {
+  background: var(--status-working);
+}
+.toneWaiting {
+  background: var(--status-waiting);
+}
+.toneOffline {
+  background: var(--status-offline);
+}
+.toneStopped {
+  background: var(--status-stopped);
+}
+
+.nodeIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.nodeText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.nodeName {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nodeStatus {
+  font-size: 10px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* No interaction at all (not a button, opens nothing) — so unlike .node, the
+   dot doesn't "branch off" with an outward curve: it stays centered right
+   over the trunk, as if the line simply ends there. */
+.mainNode {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px 0 24px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.mainDot {
+  position: absolute;
+  left: 5.5px;
+  top: 50%;
+  z-index: 1;
+  width: 9px;
+  height: 9px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.emptyState {
+  padding: 10px 12px;
+  font-size: 11px;
+  color: var(--fg-muted);
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}

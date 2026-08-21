@@ -1,0 +1,57 @@
+.footerRow {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.pagerLabel {
+  min-width: 56px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  text-align: center;
+}
+
+.standaloneTag {
+  display: inline-flex;
+  margin-bottom: 10px;
+}
+
+.titleRow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.secondaryGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.recheckBtn {
+  display: flex;
+  align-self: center;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    color 100ms ease,
+    border-color 100ms ease,
+    background-color 100ms ease;
+}
+.recheckBtn:hover {
+  color: var(--fg);
+  border-color: var(--accent-border);
+  background: var(--panel-hover);
+}

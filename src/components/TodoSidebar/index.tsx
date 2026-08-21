@@ -42,14 +42,14 @@ function GsdSyncSection() {
       </div>
       <div className={styles.list}>
         {projectSessions.map((session) => {
-          const terminal = activeProject.terminals.find((term) => term.id === session.terminalId)
+          const terminal = activeProject.terminals.find((term) => term.cwd === session.worktreePath)
           if (!terminal) return null
           return (
             <GsdSyncRow
               key={session.id}
               terminal={terminal}
               session={session}
-              onOpen={() => setFullscreenPane(session.terminalId)}
+              onOpen={() => setFullscreenPane(terminal.id)}
             />
           )
         })}

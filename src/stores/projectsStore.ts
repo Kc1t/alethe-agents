@@ -116,6 +116,8 @@ export type ProjectsState = ProjectsFile & {
   removeMarkdownComment: (projectId: string, commentId: string) => void
   setWorktreeMode: (id: string, mode: 'gitWorktree' | 'localCopy') => void
   setValidationCommands: (id: string, commands: string[]) => void
+  setHealthCheckCommand: (id: string, command: string) => void
+  setHealthCheckPath: (id: string, path: string) => void
   setGsdWatcherEnabled: (id: string, enabled: boolean) => void
   setConflictAgentProvider: (id: string, provider: AgentType) => void
   setConflictAgentModel: (id: string, model: string) => void
@@ -123,6 +125,15 @@ export type ProjectsState = ProjectsFile & {
   setReviewAgentModel: (id: string, model: string) => void
   setGraphifyEnabled: (id: string, enabled: boolean) => void
   setAutoWorktree: (id: string, enabled: boolean) => void
+  setMergePostAction: (
+    id: string,
+    action: 'relocateToNewBranch' | 'relocateKeepSession' | 'closeTerminal',
+  ) => void
+  relocateMergeAgentTerminal: (
+    projectId: string,
+    terminalId: string,
+    opts: { keepSession: boolean },
+  ) => Promise<{ ok: boolean; error?: string }>
 
   migrateProjectTerminalsToWorktrees: (
     projectId: string,
@@ -190,6 +201,8 @@ export type ProjectsState = ProjectsFile & {
       }
       worktreeAgentId?: string
       gsdSyncViewer?: boolean
+      ephemeralConflictAgent?: boolean
+      ephemeralUtility?: boolean
     },
   ) => Terminal
 

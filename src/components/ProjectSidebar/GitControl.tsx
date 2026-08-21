@@ -34,6 +34,8 @@ import {
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import styles from './GitControl.module.css'
+import { GitGraph } from './GitGraph'
+import { IncomingOutgoing } from './IncomingOutgoing'
 
 type GitControlProps = {
   projectId: string
@@ -374,6 +376,9 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
           </div>
         ) : null}
       </div>
+
+      <IncomingOutgoing repoRoot={status.repoRoot} ahead={status.ahead} behind={status.behind} />
+      <GitGraph repoRoot={status.repoRoot} onMutated={() => void refresh(true)} />
     </div>
   )
 }

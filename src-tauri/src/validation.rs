@@ -5,10 +5,18 @@ use std::process::Command;
 use crate::git_control::hide_console;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ValidationResult {
     pub success: bool,
     pub stage: String,
     pub output: String,
+    /// `false` when `commands` was empty (or only blank lines) and no real
+    /// command actually ran — distinguishes "validated and passed" from
+    /// "nothing was configured to validate", which used to be indistinguishable
+    /// (`success: true` in both cases), making the gate claim "passed" for
+    /// projects that never ran anything real.
+    #[serde(default)]
+    pub ran_any_command: bool,
 }
 
 #[tauri::command]
@@ -18,11 +26,14 @@ pub fn run_validation(cwd: String, commands: Vec<String>) -> Result<ValidationRe
         return Err("directory_not_found".to_string());
     }
 
+    let mut ran_any_command = false;
+
     for cmd_str in commands {
         let trimmed = cmd_str.trim();
         if trimmed.is_empty() {
             continue;
         }
+        ran_any_command = true;
 
         let mut command = if cfg!(windows) {
             let mut c = Command::new("cmd");
@@ -46,6 +57,7 @@ pub fn run_validation(cwd: String, commands: Vec<String>) -> Result<ValidationRe
                         success: false,
                         stage: trimmed.to_string(),
                         output: format!("Stdout:\n{}\nStderr:\n{}", stdout, stderr),
+                        ran_any_command,
                     });
                 }
             }
@@ -53,7 +65,8 @@ pub fn run_validation(cwd: String, commands: Vec<String>) -> Result<ValidationRe
                 return Ok(ValidationResult {
                     success: false,
                     stage: trimmed.to_string(),
-                    output: format!("Falha ao iniciar comando: {}", e),
+                    output: format!("Failed to start command: {}", e),
+                    ran_any_command,
                 });
             }
         }
@@ -61,8 +74,17 @@ pub fn run_validation(cwd: String, commands: Vec<String>) -> Result<ValidationRe
 
     Ok(ValidationResult {
         success: true,
-        stage: "All".to_string(),
-        output: "Todas as validações passaram com sucesso!".to_string(),
+        stage: if ran_any_command {
+            "All".to_string()
+        } else {
+            "None".to_string()
+        },
+        output: if ran_any_command {
+            "All validations passed successfully!".to_string()
+        } else {
+            "No validation command configured — nothing was run.".to_string()
+        },
+        ran_any_command,
     })
 }
 
@@ -86,5 +108,24 @@ mod tests {
         let res = run_validation(dir.to_string_lossy().to_string(), vec![cmd.to_string()]).unwrap();
         assert!(!res.success);
         assert_eq!(res.stage, cmd);
+        assert!(res.ran_any_command);
+    }
+
+    #[test]
+    fn test_validation_pipeline_empty_commands_is_unverified() {
+        let dir = std::env::current_dir().unwrap();
+        let res = run_validation(dir.to_string_lossy().to_string(), vec![]).unwrap();
+        assert!(res.success);
+        assert!(!res.ran_any_command);
+        assert_eq!(res.stage, "None");
+
+        let res_blank_only = run_validation(
+            dir.to_string_lossy().to_string(),
+            vec!["   ".to_string(), "".to_string()],
+        )
+        .unwrap();
+        assert!(res_blank_only.success);
+        assert!(!res_blank_only.ran_any_command);
+        assert_eq!(res_blank_only.stage, "None");
     }
 }

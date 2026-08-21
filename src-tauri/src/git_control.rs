@@ -645,6 +645,8 @@ pub struct DiffSummaryEntry {
     pub path: String,
     /// Primeira letra do `--name-status` do git: A(dded)/M(odified)/D(eleted)/R(enamed)/...
     pub status: String,
+    pub additions: Option<usize>,
+    pub deletions: Option<usize>,
 }
 
 /// `opencode.json` (MCP do Graphify + plugin GSD, escritos automaticamente a
@@ -696,12 +698,12 @@ fn uncommitted_entries(worktree_path: &Path) -> Vec<DiffSummaryEntry> {
         entries.push(DiffSummaryEntry {
             path,
             status: status.to_string(),
+            additions: None,
+            deletions: None,
         });
     }
     entries
 }
-
-/// com dado de verdade em vez de texto fixo. Three-dot (`target...source`,
 
 fn git_diff_summary_inner(
     repo_root: String,
@@ -713,6 +715,32 @@ fn git_diff_summary_inner(
     let range = format!("{target}...{source}");
     let output = checked_output(&root, &["diff", "--name-status", "-z", &range])?;
     let raw = String::from_utf8_lossy(&output.stdout);
+
+    // Coleta numstat para contagem exata de linhas adicionadas e removidas
+    let mut numstat_map: std::collections::HashMap<String, (usize, usize)> =
+        std::collections::HashMap::new();
+    if let Ok(numstat_output) = checked_output(&root, &["diff", "--numstat", "-z", &range]) {
+        let numstat_raw = String::from_utf8_lossy(&numstat_output.stdout);
+        let parts: Vec<&str> = numstat_raw.split('\0').filter(|s| !s.is_empty()).collect();
+        let mut idx = 0;
+        while idx < parts.len() {
+            let line = parts[idx];
+            idx += 1;
+            let tokens: Vec<&str> = line.split_whitespace().collect();
+            if tokens.len() >= 3 {
+                let adds = tokens[0].parse::<usize>().unwrap_or(0);
+                let dels = tokens[1].parse::<usize>().unwrap_or(0);
+                let file_path = tokens[2..].join(" ");
+                numstat_map.insert(file_path, (adds, dels));
+            } else if tokens.len() == 2 && idx < parts.len() {
+                let adds = tokens[0].parse::<usize>().unwrap_or(0);
+                let dels = tokens[1].parse::<usize>().unwrap_or(0);
+                let file_path = parts[idx].to_string();
+                idx += 1;
+                numstat_map.insert(file_path, (adds, dels));
+            }
+        }
+    }
 
     let fields: Vec<&str> = raw.split('\0').filter(|s| !s.is_empty()).collect();
     let mut entries = Vec::new();
@@ -732,7 +760,16 @@ fn git_diff_summary_inner(
             path = fields[i].to_string();
             i += 1;
         }
-        entries.push(DiffSummaryEntry { path, status });
+        let (additions, deletions) = numstat_map
+            .get(&path)
+            .map(|(a, d)| (Some(*a), Some(*d)))
+            .unwrap_or((None, None));
+        entries.push(DiffSummaryEntry {
+            path,
+            status,
+            additions,
+            deletions,
+        });
     }
 
     if let Some(worktree) = worktree_path {
@@ -761,7 +798,387 @@ pub async fn git_diff_summary(
         git_diff_summary_inner(repo_root, source, target, worktree_path)
     })
     .await
-    .map_err(|error| format!("git_diff_summary: falha na task bloqueante: {error}"))?
+    .map_err(|error| format!("git_diff_summary: blocking task failed: {error}"))?
+}
+
+/// A commit from history, for the commit graph on the Version Control panel
+/// — the lane/column calculation is always client-side (`git log` itself
+/// doesn't return ready-made graph coordinates; VSCode/gitk do the same
+/// calculation on the client from hash→parents), so here we just return the
+/// raw data.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitEntry {
+    pub hash: String,
+    pub parents: Vec<String>,
+    pub author_name: String,
+    pub author_email: String,
+    /// Seconds since epoch (`%at`, the same format `git log` uses).
+    pub timestamp: i64,
+    pub subject: String,
+    /// Branches/tags pointing at this commit (`%D`), empty when none.
+    pub refs: Vec<String>,
+}
+
+/// Field separator unlikely to appear in a commit's name/e-mail/subject —
+/// same problem as the `-z` on `git diff --name-status` above, except here
+/// `-z` would also replace the separator BETWEEN commits, and `%s` (subject)
+/// is already guaranteed to be a single line by git's own convention, so a
+/// plain (non-NUL) field separator combined with a normal newline between
+/// commits already resolves this without ambiguity.
+const LOG_GRAPH_FIELD_SEP: char = '\u{1f}';
+
+/// Recognizes `alethe/agent-<id>` and `alethe/merge-<id>` (with or without a
+/// decoration prefix like `HEAD -> `/`tag: `/`origin/`) — the ephemeral
+/// branches that Alethe itself creates and deletes in worktree/merge flows,
+/// never real branches from the user's point of view.
+fn is_ephemeral_ref(raw: &str) -> bool {
+    let name = raw
+        .strip_prefix("HEAD -> ")
+        .or_else(|| raw.strip_prefix("tag: "))
+        .unwrap_or(raw);
+    let name = name.strip_prefix("origin/").unwrap_or(name);
+    name.starts_with("alethe/agent-") || name.starts_with("alethe/merge-")
+}
+
+fn git_log_graph_inner(repo: String, max_count: u32) -> Result<Vec<GitCommitEntry>, String> {
+    let root = repository_root(&repo)?;
+    let format_arg = format!(
+        "--format=%H{sep}%P{sep}%an{sep}%ae{sep}%at{sep}%s{sep}%D",
+        sep = LOG_GRAPH_FIELD_SEP
+    );
+    // `--branches --tags` (not `--all`): shows the user's real branches/tags
+    // in the graph — without this, the log falls back to just HEAD's history
+    // and any other branch simply disappears from the UI. The `--exclude`
+    // flags strip out only the EPHEMERAL branches that Alethe itself creates
+    // and discards for worktree/merge flows (`alethe/agent-<id>`,
+    // `alethe/merge-<id>` — see worktrees.rs/conflict_resolution.rs), which
+    // aren't real branches from the user's point of view and would only
+    // pollute the graph with isolated lanes with no connecting line.
+    //
+    // `--topo-order`: WITHOUT this, `git log` orders by commit DATE, not
+    // topologically — a commit can appear in the list before its own parent
+    // whenever there's any timestamp discrepancy between them (common here:
+    // AI agents running at different times, rebases, diverging machine
+    // clocks). The frontend's lane algorithm (`buildGraphRows`,
+    // GitGraphList.tsx) assumes a commit ALWAYS appears before any of its
+    // parents in the list — when that breaks, that branch's lane never finds
+    // its still-"pending" parent and the line simply stops, looking like an
+    // isolated stub that "goes back to main" without ever truly connecting.
+    // `--topo-order` guarantees that invariant (children always before
+    // parents), the same way GitLens/gitk do.
+    let mut args = vec![
+        "log",
+        "--topo-order",
+        "--exclude=refs/heads/alethe/agent-*",
+        "--exclude=refs/heads/alethe/merge-*",
+        "--branches",
+        "--tags",
+        &format_arg,
+    ];
+    let max_count_str;
+    if max_count > 0 {
+        max_count_str = format!("--max-count={max_count}");
+        args.push(&max_count_str);
+    }
+    let output = checked_output(&root, &args)?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    let entries = stdout
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(|line| {
+            let mut fields = line.split(LOG_GRAPH_FIELD_SEP);
+            let hash = fields.next()?.to_string();
+            let parents = fields
+                .next()?
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect();
+            let author_name = fields.next()?.to_string();
+            let author_email = fields.next()?.to_string();
+            let timestamp = fields.next()?.trim().parse().ok()?;
+            let subject = fields.next()?.to_string();
+            let refs_raw = fields.next().unwrap_or("").trim();
+            // `--exclude` only affects which commits `log` TRAVERSES, not the
+            // decoration (`%D`) of a commit that's still reachable through
+            // another included ref — if an ephemeral Alethe branch points at
+            // the SAME commit that's already on `main` (common after a
+            // --ff-only merge, where no new commit is created), its name
+            // still shows up as a badge even though it was excluded from the
+            // traversal. Filter it out again here, on the decoration itself.
+            let refs = if refs_raw.is_empty() {
+                Vec::new()
+            } else {
+                refs_raw
+                    .split(", ")
+                    .map(|s| s.trim().to_string())
+                    .filter(|r| !is_ephemeral_ref(r))
+                    .collect()
+            };
+            Some(GitCommitEntry {
+                hash,
+                parents,
+                author_name,
+                author_email,
+                timestamp,
+                subject,
+                refs,
+            })
+        })
+        .collect();
+
+    Ok(entries)
+}
+
+#[tauri::command]
+pub async fn git_log_graph(repo: String, max_count: u32) -> Result<Vec<GitCommitEntry>, String> {
+    tokio::task::spawn_blocking(move || git_log_graph_inner(repo, max_count))
+        .await
+        .map_err(|error| format!("git_log_graph: blocking task failed: {error}"))?
+}
+
+// --- Per-commit actions from the graph (context menu) ---
+
+/// Only accepts a hexadecimal hash — rejects anything that looks like a flag
+/// (`-...`) or an arbitrary ref, since this value should always come from a
+/// `hash` WE generate via `git log` (git_log_graph), never typed freely by
+/// the user. Defense in depth against argument injection in the commands
+/// below (some of which are destructive: reset --hard).
+fn validate_commit_hash(hash: &str) -> Result<(), String> {
+    if hash.is_empty() || hash.len() > 40 || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("invalid_commit_hash".to_string());
+    }
+    Ok(())
+}
+
+/// Rejects an empty branch name, one that looks like a flag, or one with a
+/// whitespace/control character — same defense-in-depth as the hash above.
+fn validate_branch_name(name: &str) -> Result<(), String> {
+    if name.is_empty()
+        || name.starts_with('-')
+        || name.chars().any(|c| c.is_whitespace() || c.is_control())
+    {
+        return Err("invalid_branch_name".to_string());
+    }
+    Ok(())
+}
+
+/// Parses the output of `--name-status -z` (git diff/diff-tree) into
+/// `GitFileChange` — the same format used by `git_status`/`git_diff_summary`,
+/// extracted here to be reused by the 3 new functions below (files of a
+/// commit, incoming, outgoing) without duplicating the parsing.
+fn parse_name_status_z(raw: &[u8]) -> Vec<GitFileChange> {
+    let text = String::from_utf8_lossy(raw);
+    let fields: Vec<&str> = text.split('\0').filter(|s| !s.is_empty()).collect();
+    let mut entries = Vec::new();
+    let mut i = 0;
+    while i < fields.len() {
+        let status = fields[i].chars().next().unwrap_or('M').to_string();
+        i += 1;
+        if i >= fields.len() {
+            break;
+        }
+        let mut path = fields[i].to_string();
+        i += 1;
+        let mut original_path = None;
+        if status.starts_with('R') || status.starts_with('C') {
+            if i >= fields.len() {
+                break;
+            }
+            original_path = Some(path.clone());
+            path = fields[i].to_string();
+            i += 1;
+        }
+        entries.push(GitFileChange {
+            path,
+            original_path,
+            status,
+        });
+    }
+    entries
+}
+
+fn git_show_commit_files_inner(
+    repo_root: String,
+    hash: String,
+) -> Result<Vec<GitFileChange>, String> {
+    let root = repository_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    // `--root` covers the root commit (no parent), which `diff-tree` alone
+    // ignores.
+    let output = checked_output(
+        &root,
+        &[
+            "diff-tree",
+            "--no-commit-id",
+            "--name-status",
+            "-r",
+            "--root",
+            "-z",
+            &hash,
+        ],
+    )?;
+    Ok(parse_name_status_z(&output.stdout))
+}
+
+#[tauri::command]
+pub async fn git_show_commit_files(
+    repo: String,
+    hash: String,
+) -> Result<Vec<GitFileChange>, String> {
+    tokio::task::spawn_blocking(move || git_show_commit_files_inner(repo, hash))
+        .await
+        .map_err(|error| format!("git_show_commit_files: blocking task failed: {error}"))?
+}
+
+/// The FULL commit message (`%B` — subject + body), for the commit detail
+/// screen (`git_log_graph` only returns `%s`, a single line).
+fn git_show_commit_message_inner(repo_root: String, hash: String) -> Result<String, String> {
+    let root = repository_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    let output = checked_output(&root, &["show", "-s", "--format=%B", &hash])?;
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .trim_end()
+        .to_string())
+}
+
+#[tauri::command]
+pub async fn git_show_commit_message(repo: String, hash: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || git_show_commit_message_inner(repo, hash))
+        .await
+        .map_err(|error| format!("git_show_commit_message: blocking task failed: {error}"))?
+}
+
+fn git_create_branch_from_commit_inner(
+    repo_root: String,
+    hash: String,
+    branch_name: String,
+) -> Result<(), String> {
+    let root = validated_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    validate_branch_name(&branch_name)?;
+    checked_output(&root, &["branch", &branch_name, &hash])?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn git_create_branch_from_commit(
+    repo: String,
+    hash: String,
+    branch_name: String,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        git_create_branch_from_commit_inner(repo, hash, branch_name)
+    })
+    .await
+    .map_err(|error| format!("git_create_branch_from_commit: blocking task failed: {error}"))?
+}
+
+fn git_cherry_pick_commit_inner(repo_root: String, hash: String) -> Result<String, String> {
+    let root = validated_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    let output = checked_output(&root, &["cherry-pick", &hash])?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[tauri::command]
+pub async fn git_cherry_pick_commit(repo: String, hash: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || git_cherry_pick_commit_inner(repo, hash))
+        .await
+        .map_err(|error| format!("git_cherry_pick_commit: blocking task failed: {error}"))?
+}
+
+fn git_revert_commit_inner(repo_root: String, hash: String) -> Result<String, String> {
+    let root = validated_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    let output = checked_output(&root, &["revert", "--no-edit", &hash])?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[tauri::command]
+pub async fn git_revert_commit(repo: String, hash: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || git_revert_commit_inner(repo, hash))
+        .await
+        .map_err(|error| format!("git_revert_commit: blocking task failed: {error}"))?
+}
+
+fn git_reset_to_commit_inner(repo_root: String, hash: String, mode: String) -> Result<(), String> {
+    let root = validated_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    let flag = match mode.as_str() {
+        "soft" => "--soft",
+        "mixed" => "--mixed",
+        "hard" => "--hard",
+        _ => return Err("invalid_reset_mode".to_string()),
+    };
+    checked_output(&root, &["reset", flag, &hash])?;
+    Ok(())
+}
+
+/// `mode`: "soft" (keeps changes staged), "mixed" (keeps changes in the
+/// working tree, unstaged), or "hard" (discards everything — destructive,
+/// the UI confirms before calling).
+#[tauri::command]
+pub async fn git_reset_to_commit(repo: String, hash: String, mode: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || git_reset_to_commit_inner(repo, hash, mode))
+        .await
+        .map_err(|error| format!("git_reset_to_commit: blocking task failed: {error}"))?
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IncomingOutgoing {
+    /// Files that change in the working tree when pulling in `@{upstream}` (pull).
+    pub incoming: Vec<GitFileChange>,
+    /// Files that change on the remote when sending HEAD there (push).
+    pub outgoing: Vec<GitFileChange>,
+    /// `false` when the current branch has no upstream configured — in that
+    /// case `incoming`/`outgoing` come back empty (not an error, it's normal
+    /// for a local branch that was never published).
+    pub has_upstream: bool,
+}
+
+fn git_incoming_outgoing_inner(repo_root: String) -> Result<IncomingOutgoing, String> {
+    let root = repository_root(&repo_root)?;
+    let has_upstream = git_command(
+        &root,
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ],
+    )
+    .map(|output| output.status.success())
+    .unwrap_or(false);
+    if !has_upstream {
+        return Ok(IncomingOutgoing {
+            incoming: Vec::new(),
+            outgoing: Vec::new(),
+            has_upstream: false,
+        });
+    }
+    let incoming_output = checked_output(
+        &root,
+        &["diff", "--name-status", "-z", "HEAD", "@{upstream}"],
+    )?;
+    let outgoing_output = checked_output(
+        &root,
+        &["diff", "--name-status", "-z", "@{upstream}", "HEAD"],
+    )?;
+    Ok(IncomingOutgoing {
+        incoming: parse_name_status_z(&incoming_output.stdout),
+        outgoing: parse_name_status_z(&outgoing_output.stdout),
+        has_upstream: true,
+    })
+}
+
+#[tauri::command]
+pub async fn git_incoming_outgoing(repo: String) -> Result<IncomingOutgoing, String> {
+    tokio::task::spawn_blocking(move || git_incoming_outgoing_inner(repo))
+        .await
+        .map_err(|error| format!("git_incoming_outgoing: blocking task failed: {error}"))?
 }
 
 fn git_pull_inner(repo_root: String) -> Result<String, String> {
@@ -992,11 +1409,11 @@ mod tests {
         assert!(find("new.txt").is_some_and(|e| e.status == "A"));
         assert!(
             find("new-name.txt").is_some(),
-            "rename deveria aparecer com o nome novo: {entries:?}"
+            "rename should show up under the new name: {entries:?}"
         );
         assert!(
             find("old-name.txt").is_none(),
-            "rename não deveria duplicar o nome antigo: {entries:?}"
+            "rename should not duplicate the old name: {entries:?}"
         );
 
         fs::remove_dir_all(root).unwrap();
@@ -1023,7 +1440,7 @@ mod tests {
         .unwrap();
         assert!(
             without_worktree.is_empty(),
-            "sem worktree_path, diff de commits deve ficar vazio"
+            "without worktree_path, the commit diff should be empty"
         );
 
         fs::write(root.join("novo.txt"), "").unwrap();
@@ -1049,11 +1466,11 @@ mod tests {
         .unwrap();
         assert!(
             with_worktree.iter().any(|e| e.path == "novo.txt"),
-            "com worktree_path, arquivo não commitado deve aparecer: {with_worktree:?}"
+            "with worktree_path, an uncommitted file should show up: {with_worktree:?}"
         );
         assert!(
             with_worktree.iter().all(|e| !e.path.starts_with(".planning/") && !e.path.starts_with(".opencode/") && e.path != "opencode.json"),
-            "infraestrutura do Alethe (.planning/, .opencode/, opencode.json) nunca deve aparecer: {with_worktree:?}"
+            "Alethe infrastructure (.planning/, .opencode/, opencode.json) should never show up: {with_worktree:?}"
         );
 
         fs::remove_dir_all(root).unwrap();
@@ -1091,7 +1508,7 @@ mod tests {
         let lock_file = root.join(".git").join("index.lock");
         fs::write(&lock_file, b"").unwrap();
 
-        // Simula outro processo git segurando o index.lock brevemente — some
+        // Simulates another git process briefly holding index.lock — it goes away
 
         let lock_file_clone = lock_file.clone();
         std::thread::spawn(move || {
@@ -1102,7 +1519,7 @@ mod tests {
         let result = checked_output(&root, &["status"]);
         assert!(
             result.is_ok(),
-            "esperava sucesso após o lock transitório sumir: {result:?}"
+            "expected success after the transient lock disappears: {result:?}"
         );
 
         fs::remove_dir_all(root).unwrap();
@@ -1113,6 +1530,8 @@ mod tests {
         let root = temp_dir("diff-unstaged");
         let root_string = root.to_string_lossy().into_owned();
         checked_output(&root, &["init"]).unwrap();
+        checked_output(&root, &["config", "user.name", "Alethe Test"]).unwrap();
+        checked_output(&root, &["config", "user.email", "alethe@example.invalid"]).unwrap();
         fs::write(root.join("file.txt"), "line1\n").unwrap();
         checked_output(&root, &["add", "file.txt"]).unwrap();
         checked_output(&root, &["commit", "-m", "initial"]).unwrap();
@@ -1129,6 +1548,8 @@ mod tests {
         let root = temp_dir("diff-staged");
         let root_string = root.to_string_lossy().into_owned();
         checked_output(&root, &["init"]).unwrap();
+        checked_output(&root, &["config", "user.name", "Alethe Test"]).unwrap();
+        checked_output(&root, &["config", "user.email", "alethe@example.invalid"]).unwrap();
         fs::write(root.join("file.txt"), "line1\n").unwrap();
         checked_output(&root, &["add", "file.txt"]).unwrap();
         checked_output(&root, &["commit", "-m", "initial"]).unwrap();
@@ -1149,6 +1570,8 @@ mod tests {
         let root = temp_dir("diff-binary");
         let root_string = root.to_string_lossy().into_owned();
         checked_output(&root, &["init"]).unwrap();
+        checked_output(&root, &["config", "user.name", "Alethe Test"]).unwrap();
+        checked_output(&root, &["config", "user.email", "alethe@example.invalid"]).unwrap();
         fs::write(root.join("bin.dat"), &0u8.to_le_bytes()).unwrap();
         checked_output(&root, &["add", "bin.dat"]).unwrap();
         checked_output(&root, &["commit", "-m", "initial"]).unwrap();

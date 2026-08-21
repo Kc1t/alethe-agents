@@ -369,6 +369,8 @@ type ProjectsSlice = Pick<
   | 'removeMarkdownComment'
   | 'setWorktreeMode'
   | 'setValidationCommands'
+  | 'setHealthCheckCommand'
+  | 'setHealthCheckPath'
   | 'setGsdWatcherEnabled'
   | 'setConflictAgentProvider'
   | 'setConflictAgentModel'
@@ -376,6 +378,8 @@ type ProjectsSlice = Pick<
   | 'setReviewAgentModel'
   | 'setGraphifyEnabled'
   | 'setAutoWorktree'
+  | 'setMergePostAction'
+  | 'relocateMergeAgentTerminal'
   | 'migrateProjectTerminalsToWorktrees'
   | 'addOrphanWorktree'
   | 'removeOrphanWorktree'
@@ -460,6 +464,12 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
     setValidationCommands: (id, validationCommands) =>
       updateProject(id, (p) => ({ ...p, validationCommands })),
 
+    setHealthCheckCommand: (id, healthCheckCommand) =>
+      updateProject(id, (p) => ({ ...p, healthCheckCommand })),
+
+    setHealthCheckPath: (id, healthCheckPath) =>
+      updateProject(id, (p) => ({ ...p, healthCheckPath })),
+
     setGsdWatcherEnabled: (id, gsdWatcherEnabled) =>
       updateProject(id, (p) => ({ ...p, gsdWatcherEnabled })),
 
@@ -485,6 +495,71 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
                                                                                           
                                                           
     setAutoWorktree: (id, autoWorktree) => updateProject(id, (p) => ({ ...p, autoWorktree })),
+
+    setMergePostAction: (id, mergePostAction) =>
+      updateProject(id, (p) => ({ ...p, mergePostAction })),
+
+    relocateMergeAgentTerminal: async (projectId, terminalId, _opts) => {
+      // `keepSession` is disabled in the UI (resuming a session from a different
+      // directory hangs indefinitely on every agent CLI tested so far) — every
+      // relocation currently starts a fresh conversation, same as
+      // migrateProjectTerminalsToWorktrees.
+      const project = get().projects.find((p) => p.id === projectId)
+      const terminal = project?.terminals.find((t) => t.id === terminalId)
+      if (!project || !terminal) return { ok: false, error: 'terminal_not_found' }
+
+      const repo = getProjectRepoRoot(project)
+      if (!repo) return { ok: false, error: 'no_repo' }
+
+      try {
+        const { worktreeProvision, restartPty } = await import('../lib/tauri')
+        const agentId = `merge-${nanoid(6)}`
+        const info = await worktreeProvision(repo, agentId, project.worktreeMode ?? 'gitWorktree')
+
+        for (const tab of terminal.tabs) {
+          if (!tab.ptyId) continue
+          const runtime = preparePtyRuntimeLaunch(tab.type, tab.runtimeProfile, tab.extraArgs ?? [])
+          const launch = buildAgentLaunch(tab.type, runtime.args)
+          useTerminalsStore.getState().beginRestart(tab.ptyId)
+          try {
+            await restartPty({
+              id: tab.ptyId,
+              cols: 80,
+              rows: 24,
+              command: agentCliCommand(tab.type),
+              cwd: info.path,
+              extraArgs: launch.args,
+              env: runtime.env,
+            })
+            window.dispatchEvent(
+              new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: tab.ptyId } }),
+            )
+          } catch (restartErr) {
+            console.warn(
+              `[projectsStore] failed restarting the merge terminal on the new worktree:`,
+              restartErr,
+            )
+          }
+        }
+
+        updateProject(projectId, (p) => ({
+          ...p,
+          terminals: p.terminals.map((t) => {
+            if (t.id !== terminalId) return t
+            return {
+              ...t,
+              cwd: info.path,
+              worktreeAgentId: agentId,
+              tabs: t.tabs.map((tab) => ({ ...tab, cwd: info.path, sessionId: undefined })),
+            }
+          }),
+        }))
+
+        return { ok: true }
+      } catch (err) {
+        return { ok: false, error: String(err) }
+      }
+    },
 
     migrateProjectTerminalsToWorktrees: async (projectId, gsdWatcherEnabledOverride) => {
       if (migratingWorktreeProjectIds.has(projectId)) return                                             

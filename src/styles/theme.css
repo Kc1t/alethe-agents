@@ -1,18 +1,60 @@
-                                                              
-                                                                     
-                                                                      
-                                                     
+/* Terminal font embedded in the app (doesn't depend on an OS-installed font).
+   On Windows "Cascadia Mono" ships installed by default and covers the
+   Powerline/Nerd Font-style glyphs that modern TUIs (e.g. OpenCode's
+   `opentui`) use for decorative icons/separators — on Linux/macOS it
+   normally does NOT exist, and the browser falls back to the system's
+   generic fallback. That fallback covers the normal alphabet but not the
+   decorative glyphs — so, only for THOSE specific characters, the browser
+   silently switches fonts again, to a third font with different width
+   metrics. Since xterm.js's Canvas renderer draws every cell with a FIXED
+   pixel advance (measured from a single reference font), that "wrong-font"
+   glyph doesn't fit the grid — the visual result is letters/symbols
+   overlapping, worse the more compact the pane (confirmed live, and via
+   `fc-match` checking per-font charset coverage on this machine).
+   Fix: embed "Caskaydia Cove Nerd Font Mono" (the Nerd Font variant of
+   Cascadia Code itself, full glyph coverage, SIL OFL 1.1 — see
+   src/assets/fonts/LICENSE-CascadiaCode.txt) as the FIRST option for the
+   terminal font — the same visual family on every OS, guaranteed, with no
+   dependency on any fallback. */
+@font-face {
+  font-family: 'Caskaydia Cove Nerd Font Mono';
+  src: url('../assets/fonts/CaskaydiaCoveNerdFontMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Caskaydia Cove Nerd Font Mono';
+  src: url('../assets/fonts/CaskaydiaCoveNerdFontMono-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Caskaydia Cove Nerd Font Mono';
+  src: url('../assets/fonts/CaskaydiaCoveNerdFontMono-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Caskaydia Cove Nerd Font Mono';
+  src: url('../assets/fonts/CaskaydiaCoveNerdFontMono-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+}
 
-                                                  
-                                                                             
-                                                                        
-                                                                        
-                                                                             
-                                                                          
-                                                                             
-                                                                             
-                                                                          
-                                 
+/* Smooth transition when switching theme (App.tsx sets
+   document.documentElement.dataset.theme = uiTheme, instant by default).
+   Custom properties themselves aren't animatable, but the properties that
+   CONSUME them are — so transitioning those is what makes the palette swap
+   look smooth. Short (150ms) on purpose: fast enough to not become a
+   "perceptible delay" on hover/status feedback that's instant today; more
+   specific selectors (e.g. .activityCell:hover) still win the cascade with
+   their own transition, so it's not 100% universal, but it covers most of
+   the UI without touching every component. Turns off if the user asked for
+   less animation at the OS level. */
 *,
 *::before,
 *::after {
@@ -29,7 +71,6 @@
 
 :root,
 [data-theme='dark'] {
-                                    
   --anim-instant: 80ms;
   --anim-fast: 140ms;
   --anim-normal: 220ms;
@@ -38,7 +79,6 @@
   --ease-out-fluid: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out-fluid: cubic-bezier(0.45, 0, 0.55, 1);
 
-                   
   --bg: #101114;
   --bg-elevated: #1f2125;
   --bg-sunken: #1a1c1f;
@@ -67,7 +107,6 @@
   --accent-bg-soft: rgba(243, 244, 246, 0.06);
   --accent-border-soft: rgba(243, 244, 246, 0.22);
 
-                                  
   --surface-modal: #1f2125;
   --surface-card-default: #2a2d33;
   --surface-card-default-strong: #34373e;
@@ -104,6 +143,17 @@
   --agent-mimo-soft: rgba(255, 122, 26, 0.15);
   --agent-antigravity-soft: rgba(66, 133, 244, 0.15);
 
+  --project-orange: #f97316;
+  --project-pink: #ec4899;
+  --project-purple: #8b5cf6;
+  --project-blue: #0ea5e9;
+  --project-teal: #14b8a6;
+  --project-green: #84cc16;
+  --project-yellow: #eab308;
+  --project-red: #ef4444;
+  --project-gray: #64748b;
+  --project-black: #0a0a0a;
+
   /* foco dotted (Alethe focus mode) */
   --focus-ring: #38bdf8;
 
@@ -121,7 +171,7 @@
 
   --font-sans:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'Cascadia Mono', Consolas, 'Courier New', monospace;
+  --font-mono: 'Caskaydia Cove Nerd Font Mono', 'Cascadia Mono', Consolas, 'Courier New', monospace;
 }
 
 [data-theme='light'] {
@@ -628,9 +678,6 @@
   --shadow-lg: 0 12px 32px rgba(33, 33, 33, 0.18);
 }
 
-                                                                            
-                                                                          
-                           
 [data-theme='dark-lemon'] {
   --bg: #141414;
   --bg-elevated: #1e1e1e;
@@ -693,8 +740,6 @@
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.65);
 }
 
-                                                                     
-                                                         
 [data-theme='orca'] {
   --bg: #0b0b0b;
   --bg-elevated: #181818;
@@ -761,8 +806,123 @@
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.68);
 }
 
-                                                                             
-                                                               
+/* ==========================================================================
+   Infinite Rainbow RGB & Infinite Container Border
+   ========================================================================== */
+/* `filter: hue-rotate()` was removed on purpose: it was redundant with
+   `background-position` (the gradient itself already contains every color,
+   hue-rotate just duplicated the "color spinning" effect on top) and is the
+   more expensive property of the two — `filter` forces a pixel-by-pixel
+   repaint of the whole element every frame, unable to stay compositor-only
+   like `transform`/`opacity`. Without `filter`, only the gradient animation
+   is left, much cheaper to keep smooth. */
+@keyframes rainbowInfinite {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Animatable angle for the container border's conic gradient — registered via
+   `@property` so the browser can smoothly interpolate an <angle> between
+   keyframes (without this, `from <var>` doesn't animate, it just steps).
+   Only used by the CONTAINER border (`.rainbow-container-border`), not the
+   color swatches (`.swatch-rgb-rainbow`), which keep the original linear
+   gradient — changing those too would also change the color preview in the
+   project color picker, out of scope for this fix. */
+@property --rainbow-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes rainbowRotate {
+  to {
+    --rainbow-angle: 360deg;
+  }
+}
+
+.swatch-rgb-rainbow,
+.project-theme-rainbow {
+  background: linear-gradient(
+    135deg,
+    #ff0055,
+    #ff8800,
+    #ffeb3b,
+    #00e676,
+    #00b0ff,
+    #651fff,
+    #d500f9,
+    #ff0055
+  ) !important;
+  background-size: 300% 300% !important;
+  animation: rainbowInfinite 6s linear infinite !important;
+  box-shadow: 0 0 10px rgba(255, 0, 128, 0.35);
+}
+
+.rainbow-container-border {
+  position: relative;
+  border-radius: 12px;
+}
+
+/* Project-chosen "rainbow" color theme — always visible/animating while this
+   color is selected, regardless of focus (it's not a focus indicator; it's a
+   single color option, like any other project color, just animated). Applied
+   only when `project.color === 'rgb-rainbow'` (see `isRainbow` in
+   ProjectContainer.tsx). */
+.rainbow-container-border::before {
+  content: '';
+  position: absolute;
+  /* `inset: 0` (not -2px) + `border-radius: inherit`: the ring needs to be
+     born INSIDE the real box (which has `overflow: hidden` and square
+     corners via ProjectContainer.module.css), otherwise it gets clipped at
+     the straight edges and only the curve of a hardcoded radius shows at
+     the corners. */
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  /* Conic instead of linear: a linear gradient (even diagonal) only varies
+     along ONE straight axis — opposite corners of the rectangle (e.g.
+     top-left vs bottom-right) always show very different colors from the
+     gradient at the same time, which behind the ring cutout (mask xor
+     below) looks like a color "cutting" the outline instead of circling
+     it. Conic centered on the container's middle makes the color vary by
+     ANGLE from the center — since a rectangle's outline is, all the way
+     around its perimeter, a continuous sequence of angles seen from that
+     center, the color genuinely circles the whole border, without that
+     cut. */
+  background: conic-gradient(
+    from var(--rainbow-angle),
+    #ff0055,
+    #ff8800,
+    #ffeb3b,
+    #00e676,
+    #00b0ff,
+    #651fff,
+    #d500f9,
+    #ff0055
+  );
+  animation: rainbowRotate 6s linear infinite;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  /* Needs to sit above the focus ring of any pane inside the container
+     (`.pane:focus-within`, z-index: 2 in TerminalPane.module.css) — since
+     both tied at z-index: 2, the focused pane (deeper in the tree, painted
+     later) won DOM-order tiebreaking and its box-shadow (which bleeds 3px
+     outside its own border) covered exactly the stretch of the rainbow ring
+     adjacent to it, showing up as a blue line cutting the ring only where
+     there was focus. */
+  z-index: 5;
+}
+
 [data-theme='ember'] {
   --bg: #0b0d0e;
   --bg-elevated: #191d21;

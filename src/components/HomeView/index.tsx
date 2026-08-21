@@ -10,6 +10,7 @@ import {
   Github,
   Layers,
   PackageOpen,
+  Play,
   Send,
   TerminalSquare,
 } from 'lucide-react'
@@ -43,6 +44,24 @@ const NOTIFICATIONS_LIMIT = 5
 const REPOSITORY_URL = 'https://github.com/Kc1t/agent-canva'
 const ISSUES_URL = `${REPOSITORY_URL}/issues`
 const RELEASES_URL = `${REPOSITORY_URL}/releases`
+const LEARNING_VIDEOS = [
+  {
+    id: 'orchestrate-agents',
+    url: 'https://www.youtube.com/watch?v=8jvrucR7QCU&t=54s',
+    thumbnail: 'https://i.ytimg.com/vi/8jvrucR7QCU/hqdefault.jpg',
+    titleKey: 'home.learningVideoOrchestrateTitle' as const,
+    creatorKey: 'home.learningVideoOrchestrateCreator' as const,
+    kindKey: 'home.learningVideoGuide' as const,
+  },
+  {
+    id: 'developer-devlog',
+    url: 'https://www.youtube.com/watch?v=reUN7CkMbgM&t=100s',
+    thumbnail: 'https://i.ytimg.com/vi/reUN7CkMbgM/hqdefault.jpg',
+    titleKey: 'home.learningVideoDevlogTitle' as const,
+    creatorKey: 'home.learningVideoDevlogCreator' as const,
+    kindKey: 'home.learningVideoWorkflow' as const,
+  },
+] as const
 const QUICK_AGENTS: Array<{ type: AgentType; label: string }> = [
   { type: 'claude', label: 'Claude' },
   { type: 'codex', label: 'Codex' },
@@ -509,6 +528,55 @@ export function HomeView() {
           </div>
         </section>
       </div>
+
+      <section className={`${styles.section} ${styles.learningSection}`}>
+        <div className={styles.learningHeading}>
+          <div>
+            <div className={styles.sectionHeader}>
+              {t('home.learningVideos')}
+              <span className={styles.sectionCount}>{LEARNING_VIDEOS.length}</span>
+            </div>
+            <p className={styles.learningDescription}>{t('home.learningVideosDescription')}</p>
+          </div>
+        </div>
+        <div className={styles.videoTable} role="list">
+          {LEARNING_VIDEOS.map((video) => {
+            const title = t(video.titleKey)
+            return (
+              <div key={video.id} className={styles.videoTableRow} role="listitem">
+                <button
+                  type="button"
+                  className={styles.videoResource}
+                  aria-label={t('home.learningWatchVideo', { title })}
+                  onClick={() => void openInBrowser(video.url)}
+                >
+                  <span className={styles.videoThumbnail}>
+                    <img
+                      src={video.thumbnail}
+                      alt=""
+                      loading="lazy"
+                      draggable={false}
+                      referrerPolicy="no-referrer"
+                    />
+                    <span className={styles.videoPlay} aria-hidden="true">
+                      <Play size={14} fill="currentColor" />
+                    </span>
+                  </span>
+                  <span className={styles.videoCopy}>
+                    <strong>{title}</strong>
+                    <span>{t(video.creatorKey)}</span>
+                  </span>
+                  <span className={styles.videoKind}>{t(video.kindKey)}</span>
+                  <span className={styles.videoAction}>
+                    <span className={styles.videoActionText}>{t('home.learningWatch')}</span>
+                    <ArrowRight size={14} />
+                  </span>
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      </section>
 
       <section className={styles.section}>
         <div className={styles.sectionHeader}>{t('home.usageActivity')}</div>

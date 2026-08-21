@@ -264,12 +264,17 @@ fn spawn_frame_pump(
     client: Arc<CdpClient>,
     panes: Arc<Mutex<HashMap<String, PaneAttachment>>>,
 ) {
+    let offered: Arc<Mutex<std::collections::HashSet<String>>> = Arc::default();
     let mut events = client.subscribe();
     tauri::async_runtime::spawn(async move {
         while let Ok(event) = events.recv().await {
-            if event.method == "Target.targetCreated" {
+            // A page is worth offering when it first shows a real address. That is usually not when
+            // the tab is created: an agent attaching over CDP navigates the blank tab already there,
+            // which arrives as targetInfoChanged rather than targetCreated.
+            if event.method == "Target.targetCreated" || event.method == "Target.targetInfoChanged"
+            {
                 if let Some(opened) = opened_page_from(&event.params) {
-                    let known = panes
+                    let owned = panes
                         .lock()
                         .map(|panes| {
                             panes
@@ -277,8 +282,23 @@ fn spawn_frame_pump(
                                 .any(|pane| pane.target_id == opened.target_id)
                         })
                         .unwrap_or(false);
-                    if !known {
+                    // Offering the same tab again on every navigation would bury the reader in
+                    // notifications about a page they already answered for.
+                    let first_time = offered
+                        .lock()
+                        .map(|mut seen| seen.insert(opened.target_id.clone()))
+                        .unwrap_or(false);
+                    if !owned && first_time {
                         let _ = app.emit(TARGET_OPENED_EVENT, opened);
+                    }
+                }
+                continue;
+            }
+
+            if event.method == "Target.targetDestroyed" {
+                if let Some(id) = event.params.get("targetId").and_then(Value::as_str) {
+                    if let Ok(mut seen) = offered.lock() {
+                        seen.remove(id);
                     }
                 }
                 continue;
@@ -690,6 +710,18 @@ mod tests {
             delta_y: None,
             modifiers: None,
         }
+    }
+
+    #[test]
+    fn a_blank_tab_navigating_somewhere_real_is_the_common_case() {
+        // An agent attaching over CDP navigates the blank tab that is already there instead of
+        // opening a new one, so the page arrives as a change to an existing target.
+        let params = json!({
+            "targetInfo": { "targetId": "T5", "type": "page", "url": "http://localhost:8787/x", "title": "X" }
+        });
+        let page = opened_page_from(&params).expect("a navigated tab is still a page to offer");
+        assert_eq!(page.target_id, "T5");
+        assert_eq!(page.url, "http://localhost:8787/x");
     }
 
     #[test]

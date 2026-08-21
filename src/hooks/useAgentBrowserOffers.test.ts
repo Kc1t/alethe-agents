@@ -6,8 +6,11 @@ const pushToast = vi.fn()
 let emit: ((page: unknown) => void) | null = null
 const unlisten = vi.fn()
 
+const openInBrowser = vi.fn(async () => {})
+
 vi.mock('../lib/tauri', () => ({
   browserPaneObserve: vi.fn(async () => {}),
+  openInBrowser: (...args: unknown[]) => openInBrowser(...(args as [])),
   listenBrowserTargetOpened: vi.fn(async (handler: (page: unknown) => void) => {
     emit = handler
     return unlisten
@@ -35,6 +38,7 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 beforeEach(() => {
   createWebPane.mockClear()
+  openInBrowser.mockClear()
   pushToast.mockClear()
   unlisten.mockClear()
   emit = null
@@ -76,15 +80,35 @@ describe('useAgentBrowserOffers', () => {
     expect(pushToast.mock.calls[0]![0].body).toContain('example.test')
   })
 
+  it('offers inside, outside and background as three spelled-out answers', async () => {
+    renderHook(() => useAgentBrowserOffers(true))
+    await flush()
+    emit?.(page)
+
+    const actions = pushToast.mock.calls[0]![0].actions
+    expect(actions, 'the reader chooses where the page goes, including nowhere').toHaveLength(3)
+  })
+
+  it('sends the page to the reader own browser when asked to', async () => {
+    renderHook(() => useAgentBrowserOffers(true))
+    await flush()
+    emit?.(page)
+
+    pushToast.mock.calls[0]![0].actions[1].run()
+
+    expect(openInBrowser).toHaveBeenCalledWith('https://example.test/docs')
+    expect(createWebPane, 'opening outside must not also take grid space').not.toHaveBeenCalled()
+  })
+
   it('offers leaving it in the background as a real choice', async () => {
     renderHook(() => useAgentBrowserOffers(true))
     await flush()
     emit?.(page)
 
     const actions = pushToast.mock.calls[0]![0].actions
-    expect(actions, 'the reader must be able to say no without ignoring the toast').toHaveLength(2)
-    actions[1].run()
+    actions[actions.length - 1].run()
     expect(createWebPane, 'declining must not create anything').not.toHaveBeenCalled()
+    expect(openInBrowser, 'declining must not open anything either').not.toHaveBeenCalled()
   })
 
   it('stays silent while the feature is off', async () => {

@@ -12,11 +12,15 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
-- When an agent opens a page in the shared browser, Alethe offers to show it in a pane instead of
-  leaving it invisible. The notification spells out both answers — show it here, or leave it in
-  the background — so declining is a choice rather than a failure to react, and nothing takes
-  over the layout on its own. Accepting attaches the pane to the agent's own tab rather than
-  opening a copy, so its work can be watched and taken over by hand.
+- Home now includes a compact learning-video table with Alethe guides and real community workflows.
+
+- When an agent opens a page in the shared browser, Alethe asks where it should go. The browser
+  itself has no window, which is right most of the time — an agent reading a page needs no
+  interface at all — so the question only comes up when a page actually appears. All three
+  answers are spelled out: show it in a pane, open it in your own browser, or leave it running
+  out of sight. Nothing takes over the layout on its own. A pane attaches to the agent's own
+  tab rather than opening a copy, so its work can be watched and taken over by hand; your own
+  browser gets a copy instead, since no page in it can be driven from here.
 
 - Tabs in a browser pane can be closed from the tab strip. An agent that navigates a lot leaves
   tabs behind and nothing reaped them, so they piled up for as long as the browser lived.
@@ -28,6 +32,23 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   tab strip appears when more than one page is open — including tabs an agent opened, so its
   work can be watched live and taken over by hand.
 
+- A commit graph, cherry-pick, revert, reset-to-commit, and branch-from-commit now live in the
+  Git panel, alongside an incoming/outgoing changes view against the remote.
+- Agent worktrees can now be integrated through a full merge cycle: analyze for conflicts,
+  auto-commit pending work before integrating, spawn an ephemeral conflict-resolution agent when
+  needed, validate with the project's configured commands, and finalize with an optional health
+  check that boots the app in an isolated environment. The Merge Center in the sidebar tracks
+  every worktree pending review, with reject/validate/test/review actions per agent.
+- An end-to-end test harness (WebdriverIO) covering onboarding, the git pipeline, the commit
+  graph, and conflict/merge UI flows.
+- Projects can now be given an animated rainbow color, both as the sidebar swatch and as the
+  project container's border.
+- The embedded terminal font now bundles "Caskaydia Cove Nerd Font Mono" so Powerline/Nerd Font
+  glyphs (icons and separators used by TUIs like OpenCode's `opentui`) render correctly on every
+  OS instead of falling back to a mismatched system font.
+- A new "GSD Sync" tab in the right sidebar shows a read-only activity feed for each project's GSD
+  Sync child sessions — no PTY terminal involved, reads straight from `opencode export`.
+
 ### Removed
 
 - Removed the previous app-icon themes; the icon picker now offers only the four Elite
@@ -36,6 +57,13 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Changed
 
+- Alethe Remote now mirrors the selected desktop theme, app icon, motion preference, and language
+  while it is open. Its splash, workspace, terminal view, connection feedback, empty states, and
+  recovery screens now use the same Alethe design tokens and official branding.
+- Notifications that ask something now read as one line rather than a block. The choices sit
+  inline as chips after the message, separated by a hairline, with a single filled chip for the
+  answer most people want and a plain one for declining. Stacking buttons underneath had broken
+  the single shape the notification has.
 - Standardized modal dropdowns on the Todo List picker pattern, including consistent portal-based
   menus, searchable model selection, keyboard handling, long-list scrolling, and reliable clicks
   inside modal focus traps.
@@ -55,6 +83,29 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- The Source Control panel in the right sidebar no longer stays empty for a selected project that
+  has no open terminal — it now falls back to the project's default working directory.
+- Closing the app now actually stops the agents it started. Shutdown handed the work to a
+  detached thread that killed sessions one after another, each waiting on `taskkill`, and the
+  process exited before it got through them — so terminals were left running with nothing to
+  attach them to. Reopening then failed to resume those sessions, because the abandoned process
+  was still holding them. The kills now run in parallel and shutdown waits for them, up to four
+  seconds.
+- Terminals stop refusing keystrokes while a session is being killed. Killing one runs `taskkill`
+  and waits for it — under load that takes seconds — and it did so holding a lock that the
+  process snapshot needs, which in turn holds the lock every keystroke goes through. One slow
+  kill therefore stopped every terminal in the app from accepting input, while output, which
+  never takes that lock, kept arriving: panes that could be read but not typed into. The pid is
+  now read and the lock released before the kill, and the snapshot never waits on a session it
+  only wants to report on.
+- On Linux a browser left behind by a previous run was never cleared, so it kept the profile
+  locked and the next session could not start. The check recognised only the Windows spellings;
+  google-chrome, chromium-browser and microsoft-edge all went unmatched.
+- The offer to show an agent's page now appears in the case that actually happens. It was raised
+  only when a tab was created, but an agent attaching over the debugging protocol navigates the
+  blank tab already open rather than making a new one, so the page arrived as a change to an
+  existing tab and went unannounced. Each tab is still offered only once, however far it
+  navigates afterwards.
 - A terminal printing fast no longer stalls the whole window. A PTY hands over up to 64 KB every
   16 ms while a frame draws 16 KB, so a noisy command outran the terminal four to one and the
   queue grew without limit: the pane kept drawing output from minutes earlier and asked for a

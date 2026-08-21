@@ -165,13 +165,11 @@ pub fn start_listener(app: AppHandle) {
                 let app = app.clone();
                 std::thread::spawn(move || {
                     let state = app.state::<crate::orchestrator::OrchestratorState>();
-                    match crate::orchestrator::handle_mcp_body(&app, &state, &body) {
+                    match crate::orchestrator::handle_mcp_body(Some(&app), &state, &body) {
                         Some(payload) => {
-                            let header = tiny_http::Header::from_bytes(
-                                "Content-Type",
-                                "application/json",
-                            )
-                            .expect("static header");
+                            let header =
+                                tiny_http::Header::from_bytes("Content-Type", "application/json")
+                                    .expect("static header");
                             let _ = request.respond(
                                 tiny_http::Response::from_string(payload).with_header(header),
                             );

@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { create } from 'zustand'
 
-import { useT } from '../lib/i18n'
-import { readGsdChildState } from '../lib/tauri'
+import { readGsdChildBusy, readGsdChildError, readGsdChildSession } from '../lib/tauri'
 import { useProjectsStore } from '../stores/projectsStore'
 
 export type GsdSyncSession = {
   id: string
   projectId: string
-                                                                                          
-  terminalId: string
+  /** Worktree folder the child session runs in — used directly as the data
+   *  source (`opencode export`), with no PTY terminal in between. */
+  worktreePath: string
   childId: string
   busy: boolean
   hasError: boolean
@@ -21,64 +21,44 @@ type WatchedItem = {
   worktreePath: string
 }
 
-                                                                      
-                                                                             
-                                                                            
-// "achar-ou-criar terminal viewer" correriam em paralelo — a mesma corrida de
-                                                                             
-                                          
+// Tiny store, just to have exactly ONE real poll across the whole app
+// (SidebarMergePanel AND the GSD Sync drawer show the same data). Without it,
+// each `useEffect` calling the hook would run its own 5s poll.
 const useGsdSyncSessionsStore = create<{ sessions: GsdSyncSession[] }>(() => ({ sessions: [] }))
 
-   
-                                                            
-                                                                            
-                                                                             
-                                                                            
-                                                                          
-                                                                              
-                                                                               
-                        
-   
+/**
+ * The sole owner of the real poll (reading `.planning/.gsd-child-session` /
+ * `.gsd-child-busy` / `.gsd-child-error` every 5s). Must be called from
+ * exactly ONE place that's always mounted (today: `SidebarMergePanel`,
+ * mounted unconditionally in the Project Sidebar).
+ *
+ * Creates no terminal/PTY — the child session runs inside the MAIN
+ * terminal's OpenCode process (OpenCode's own internal multi-session
+ * mechanism, via the `alethe-gsd-state.ts` plugin), so it doesn't depend on
+ * any "viewer" terminal existing. The view (GSD Sync drawer) reads the
+ * content directly via `opencode export <childId>` (`GsdSyncActivityView`) —
+ * a read-only HTML `<div>`, with no PTY terminal in the path.
+ */
 export function useGsdSyncSessionsWatcher(
-  onChildError?: (session: { projectId: string; terminalId: string }, message: string) => void,
+  onChildError?: (session: { projectId: string; worktreePath: string }, message: string) => void,
 ): void {
-  const t = useT()
   const projects = useProjectsStore((s) => s.projects)
-  const createTerminal = useProjectsStore((s) => s.createTerminal)
-  const setSubTabSessionId = useProjectsStore((s) => s.setSubTabSessionId)
-  const closePane = useProjectsStore((s) => s.closePane)
-  const markGsdSyncViewer = useProjectsStore((s) => s.markGsdSyncViewer)
 
   const pollingRef = useRef<Set<string>>(new Set())
   const onChildErrorRef = useRef(onChildError)
   onChildErrorRef.current = onChildError
-                                                                            
-                                                                             
-                                                                    
-  const tRef = useRef(t)
-  tRef.current = t
 
-                                                                              
-                                                                            
-                                                                             
-                                                                            
-                                                                           
-                                                                       
-  //
-                                                                            
-                                                                           
-                                                                      
-                                                                        
-                                                                        
-                                                                           
-                                                                         
-                                                                         
+  // Same criterion `XTermView` uses to write the GSD plugin (opencode command
+  // + cwd + watcher enabled on the project) — no worktree isolation required.
   const watched: WatchedItem[] = useMemo(() => {
     const result: WatchedItem[] = []
     for (const proj of projects) {
       if (!proj.gsdWatcherEnabled) continue
       for (const term of proj.terminals) {
-        if (!term.gsdSyncViewer && term.cwd && term.tabs.some((tab) => tab.type === 'opencode')) {
+        // The ephemeral conflict-resolution agent is never trackable here —
+        // the GSD plugin isn't even installed on it (see TerminalPane).
+        if (term.ephemeralConflictAgent) continue
+        if (term.cwd && term.tabs.some((tab) => tab.type === 'opencode')) {
           result.push({ id: `${proj.id}-${term.id}`, projectId: proj.id, worktreePath: term.cwd })
         }
       }
@@ -93,127 +73,63 @@ export function useGsdSyncSessionsWatcher(
     }
 
     const poll = async () => {
-                                                                             
-      // corpo do poll muda `projects`/`containers` (createTerminal/closePane/
-                                                                           
-                                                                            
-      // na hora) ENQUANTO o poll anterior ainda estava no meio do `await` de
-                                                                             
-                                                                          
-                                                                          
-                                                                  
-      const { projects, workspace } = useProjectsStore.getState()
-      const containers = workspace.containers
-      const t = tRef.current
+      // Read fresh on every tick (not as an effect dependency) for the usual
+      // reason: avoid rescheduling the poll on every state mutation.
+      const { projects } = useProjectsStore.getState()
       const next: GsdSyncSession[] = []
-                                                                 
-                                                                            
-                                                                             
-                                                                         
-                                    
+      // Ids this poll actually resolved (session found OR confirmed absent) —
+      // used to decide what to remove from the shared store without wiping
+      // entries for items an overlapping poll is still processing.
       const resolvedIds = new Set<string>()
       for (const item of watched) {
-                                                                            
-                                                                           
-                                                                             
+        // Synchronous guard before any await — avoids reentrancy when two
+        // `poll()` calls overlap.
         if (pollingRef.current.has(item.id)) continue
         pollingRef.current.add(item.id)
         try {
-          const childState = await readGsdChildState(item.worktreePath).catch(() => null)
-          const childId = childState?.sessionId ?? null
+          const childId = await readGsdChildSession(item.worktreePath).catch(() => null)
           if (!childId) {
             resolvedIds.add(item.id)
             continue
           }
-
           const proj = projects.find((p) => p.id === item.projectId)
           if (!proj) {
             resolvedIds.add(item.id)
             continue
           }
-          let terminalId: string | null = null
-          for (const term of proj.terminals) {
-            if (term.tabs.some((tab) => tab.sessionId === childId)) {
-              terminalId = term.id
-              break
-            }
-          }
-          if (!terminalId) {
-            const created = await createTerminal(item.projectId, {
-              name: t('merge.gsdSyncPaneName'),
-              cwd: item.worktreePath,
-              firstTab: { type: 'opencode', cwd: item.worktreePath },
-              gsdSyncViewer: true,
-            })
-            setSubTabSessionId(item.projectId, created.id, created.activeTabId, childId)
-                                                                          
-            // (comportamento certo pros outros ~15 call sites que usam ela,
-                                                                           
-                                                                             
-                                                                            
-                                                             
-            closePane(item.projectId, created.id)
-            terminalId = created.id
-          } else {
-                                                                         
-                                                                       
-            // comportamento existir, ou algum outro caminho) estar aberto na
-                                                                            
-                                                                          
-            const container = containers.find((c) => c.projectId === item.projectId)
-            if (container?.paneIds.includes(terminalId)) closePane(item.projectId, terminalId)
-                                                                              
-                                                                             
-                                                                        
-            const termRecord = proj.terminals.find((term) => term.id === terminalId)
-            if (termRecord && !termRecord.gsdSyncViewer) markGsdSyncViewer(item.projectId, terminalId)
-          }
 
-                                                                              
-          // o `sessionId` da tab gravado (leftover de testes anteriores a essa
-                                                                            
-                                                                             
-                                                                          
-          // exceto o que acabou de ser resolvido como o "viewer" de verdade.
-          const gsdPaneName = t('merge.gsdSyncPaneName')
-          const container = containers.find((c) => c.projectId === item.projectId)
-          if (container) {
-            for (const term of proj.terminals) {
-              if (term.id !== terminalId && term.name === gsdPaneName && container.paneIds.includes(term.id)) {
-                closePane(item.projectId, term.id)
-              }
-            }
+          const busy = await readGsdChildBusy(item.worktreePath).catch(() => false)
+          const childError = await readGsdChildError(item.worktreePath).catch(() => null)
+          if (childError) {
+            onChildErrorRef.current?.(
+              { projectId: item.projectId, worktreePath: item.worktreePath },
+              childError,
+            )
           }
-
-          const busy = childState?.busy ?? false
-          const childError = childState?.error ?? null
-          if (childError) onChildErrorRef.current?.({ projectId: item.projectId, terminalId }, childError)
 
           resolvedIds.add(item.id)
           next.push({
             id: item.id,
             projectId: item.projectId,
-            terminalId,
+            worktreePath: item.worktreePath,
             childId,
             busy,
             hasError: Boolean(childError),
           })
         } catch (error) {
-                                                                            
-                                                                            
-                                                                            
-                                                                        
-          console.error(`[gsd-sync] falha processando ${item.id}:`, error)
+          // Without this, a failure escaped the whole loop as an unhandled
+          // rejection — aborting the rest of `watched` for THIS tick, not
+          // just this item. Doesn't mark `resolvedIds` for this item: retries
+          // on its own on the next 5s tick.
+          console.error(`[gsd-sync] failed processing ${item.id}:`, error)
         } finally {
           pollingRef.current.delete(item.id)
         }
       }
-                                                                              
-                                                                              
-                                                                        
-                                                                          
-      // mais em `watched` (merge integrado/rejeitado/abortado nesse meio
-      // tempo).
+      // Merge by id instead of full replacement: preserves entries for items
+      // an OVERLAPPING poll is still processing, updates/removes only what
+      // this poll actually resolved, and drops any entry whose worktree no
+      // longer exists in `watched`.
       useGsdSyncSessionsStore.setState((state) => {
         const byId = new Map(state.sessions.map((session) => [session.id, session]))
         for (const session of next) byId.set(session.id, session)
@@ -228,12 +144,9 @@ export function useGsdSyncSessionsWatcher(
     void poll()
     const interval = setInterval(poll, 5000)
     return () => clearInterval(interval)
-  }, [watched, createTerminal, setSubTabSessionId, closePane, markGsdSyncViewer])
+  }, [watched])
 }
 
-                                                                             
-                                                                            
-                                                            
 export function useGsdSyncSessions(): GsdSyncSession[] {
   return useGsdSyncSessionsStore((s) => s.sessions)
 }

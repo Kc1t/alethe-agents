@@ -248,11 +248,13 @@ impl ResourceSupervisor {
                     .map(|(id, session)| {
                         (
                             id.clone(),
+                            // try_lock: taken while the global session lock is held, and that
+                            // lock is what every keystroke goes through.
                             session
                                 .child
-                                .lock()
+                                .try_lock()
                                 .ok()
-                                .and_then(|child| child.process_id()),
+                                .and_then(|mut child| child.process_id()),
                             session.command.clone(),
                             session.cwd.clone(),
                         )
@@ -563,9 +565,20 @@ pub fn update_pty_runtime_meta(
     if let Ok(sessions) = sessions.lock() {
         for meta in &metas {
             if let Some(session) = sessions.get(&meta.id) {
-                session
+                // A silenced pane is indistinguishable from a frozen one, so every flip is
+                // recorded: it is the only trace left when a terminal stops showing output.
+                let was = session
                     .visible
-                    .store(meta.visible, std::sync::atomic::Ordering::Relaxed);
+                    .swap(meta.visible, std::sync::atomic::Ordering::Relaxed);
+                if was != meta.visible {
+                    let _ = crate::logging::record_app_event(
+                        "pty.visibility".to_string(),
+                        format!(
+                            "id={} visible={} focused={} status={}",
+                            meta.id, meta.visible, meta.focused, meta.status
+                        ),
+                    );
+                }
             }
         }
     }
