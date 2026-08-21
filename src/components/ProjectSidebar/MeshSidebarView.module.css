@@ -268,6 +268,13 @@
   background: var(--panel-hover);
 }
 
+.loginGoogleBtn:disabled,
+.primaryAction:disabled,
+.secondaryAction:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .securityPill {
   display: flex;
   align-items: center;

@@ -24,8 +24,21 @@ export const en = {
   'mesh.noProject': 'No active project',
   'mesh.noProjectDesc': 'Select a project to synchronize.',
   'mesh.security': 'Security & Backups',
+  'mesh.prototype': 'Prototype',
+  'mesh.syncAccount': 'Synchronization account',
+  'mesh.identityUnavailable': 'Account authentication is not available yet',
+  'mesh.connectAccount': 'Connect Google / Email',
+  'mesh.deviceNotRegistered': 'Device not registered',
+  'mesh.unavailableHint': 'Unavailable until secure identity and authorization are implemented',
+  'mesh.securityUnavailable': 'Encrypted project sync and immutable backups are not active',
   'prefs.googleSyncTitle': 'Google & Email Account Synchronization',
-  'prefs.googleSyncDesc': 'Connect your Google or Email account to synchronize projects across devices and receive invites.',
+  'prefs.googleSyncDesc':
+    'Connect your Google or Email account to synchronize projects across devices and receive invites.',
+  'prefs.googleSyncUnavailableDesc':
+    'Account and device synchronization remains unavailable until the reviewed OAuth and authorization flow is implemented.',
+  'prefs.googleSyncProvider': 'Alethe Account · Google / Email',
+  'prefs.googleSyncUnavailableStatus': 'Not connected · Secure identity unavailable',
+  'prefs.googleSyncComingSoon': 'Secure login coming later',
 
   /* ---- language ---- */
   'language.title': 'Language',

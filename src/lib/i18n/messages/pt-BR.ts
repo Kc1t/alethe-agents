@@ -26,8 +26,21 @@ export const ptBR: Record<MessageKey, string> = {
   'mesh.noProject': 'Nenhum projeto ativo',
   'mesh.noProjectDesc': 'Selecione um projeto para sincronizar.',
   'mesh.security': 'Segurança & Backups',
+  'mesh.prototype': 'Protótipo',
+  'mesh.syncAccount': 'Conta de sincronização',
+  'mesh.identityUnavailable': 'A autenticação da conta ainda não está disponível',
+  'mesh.connectAccount': 'Conectar Google / Email',
+  'mesh.deviceNotRegistered': 'Dispositivo não registrado',
+  'mesh.unavailableHint': 'Indisponível até a implementação segura de identidade e autorização',
+  'mesh.securityUnavailable': 'Sincronização criptografada e backups imutáveis não estão ativos',
   'prefs.googleSyncTitle': 'Sincronização com Conta Google & Email',
-  'prefs.googleSyncDesc': 'Conecte seu email ou Google para sincronizar projetos entre seus computadores e receber convites.',
+  'prefs.googleSyncDesc':
+    'Conecte seu email ou Google para sincronizar projetos entre seus computadores e receber convites.',
+  'prefs.googleSyncUnavailableDesc':
+    'A sincronização de contas e dispositivos permanecerá indisponível até a implementação revisada do fluxo OAuth e de autorização.',
+  'prefs.googleSyncProvider': 'Conta Alethe · Google / Email',
+  'prefs.googleSyncUnavailableStatus': 'Não conectado · Identidade segura indisponível',
+  'prefs.googleSyncComingSoon': 'Login seguro em desenvolvimento',
 
   /* ---- language ---- */
   'language.title': 'Idioma',

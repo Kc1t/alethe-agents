@@ -1,18 +1,10 @@
 import { Check, ChevronRight, UserRound } from 'lucide-react'
-import { useEffect, useState } from 'react'
 
 import { LOCALES, useT } from '../../../lib/i18n'
-import {
-  disconnectGoogleSync,
-  getGoogleSyncStatus,
-  type GoogleSyncUser,
-  startGoogleSyncAuth,
-} from '../../../lib/tauri'
 import { useProjectsStore } from '../../../stores/projectsStore'
-import { useUiStore } from '../../../stores/uiStore'
 import { GoogleIcon } from '../../icons/AgentIcons'
-import { ImageInput } from '../ImageInput'
 import controls from '../controls.module.css'
+import { ImageInput } from '../ImageInput'
 import styles from '../PreferencesModal.module.css'
 import { Avatar, SettingsSection } from './primitives'
 
@@ -29,43 +21,6 @@ export function AccountPage({
   const preferences = useProjectsStore((state) => state.preferences)
   const setLanguage = useProjectsStore((state) => state.setLanguage)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
-  const pushToast = useUiStore((state) => state.pushToast)
-
-  const [googleUser, setGoogleUser] = useState<GoogleSyncUser>({
-    email: '',
-    name: '',
-    connected: false,
-  })
-  const [loadingAuth, setLoadingAuth] = useState(false)
-
-  useEffect(() => {
-    getGoogleSyncStatus()
-      .then(setGoogleUser)
-      .catch(() => {})
-  }, [])
-
-  const handleConnectGoogle = async () => {
-    setLoadingAuth(true)
-    try {
-      const user = await startGoogleSyncAuth()
-      setGoogleUser(user)
-      pushToast({ title: 'Google Conectado', body: `Autenticado com sucesso como ${user.email}` })
-    } catch (e) {
-      pushToast({ title: 'Erro de Conexão', body: String(e) })
-    } finally {
-      setLoadingAuth(false)
-    }
-  }
-
-  const handleDisconnect = async () => {
-    try {
-      await disconnectGoogleSync()
-      setGoogleUser({ email: '', name: '', connected: false })
-      pushToast({ title: 'Desconectado', body: 'Conta Google desvinculada. Modo Local ativo.' })
-    } catch (e) {
-      pushToast({ title: 'Erro', body: String(e) })
-    }
-  }
 
   return (
     <>
@@ -116,11 +71,8 @@ export function AccountPage({
 
       <SettingsSection
         id="google-sync"
-        title={t('prefs.googleSyncTitle') || 'Sincronização com Conta Google & Email'}
-        description={
-          t('prefs.googleSyncDesc') ||
-          'Conecte seu email ou Google para sincronizar projetos entre seus computadores e receber convites.'
-        }
+        title={t('prefs.googleSyncTitle')}
+        description={t('prefs.googleSyncUnavailableDesc')}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <div
@@ -151,56 +103,35 @@ export function AccountPage({
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                 <strong style={{ fontSize: '13px', color: 'var(--fg)' }}>
-                  {googleUser.connected ? googleUser.name : 'Alethe Cloud · Conta Google'}
+                  {t('prefs.googleSyncProvider')}
                 </strong>
                 <span style={{ fontSize: '11px', color: 'var(--fg-muted)' }}>
-                  {googleUser.connected
-                    ? `${googleUser.email} · Sincronização Online`
-                    : 'Não conectado · Sincronização Local (Mesh P2P)'}
+                  {t('prefs.googleSyncUnavailableStatus')}
                 </span>
               </div>
             </div>
-            {googleUser.connected ? (
-              <button
-                type="button"
-                style={{
-                  background: 'transparent',
-                  color: 'var(--status-error)',
-                  fontWeight: 600,
-                  fontSize: '11px',
-                  padding: '6px 12px',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm)',
-                  cursor: 'pointer',
-                }}
-                onClick={handleDisconnect}
-              >
-                Desconectar
-              </button>
-            ) : (
-              <button
-                type="button"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  background: 'var(--bg)',
-                  color: 'var(--fg)',
-                  fontWeight: 600,
-                  fontSize: '12px',
-                  padding: '7px 14px',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm)',
-                  cursor: 'pointer',
-                  boxShadow: 'var(--shadow-xs)',
-                }}
-                disabled={loadingAuth}
-                onClick={handleConnectGoogle}
-              >
-                <GoogleIcon size={15} />
-                <span>{loadingAuth ? 'Conectando...' : 'Conectar com Google'}</span>
-              </button>
-            )}
+            <button
+              type="button"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: 'var(--bg)',
+                color: 'var(--fg-muted)',
+                fontWeight: 600,
+                fontSize: '12px',
+                padding: '7px 14px',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)',
+                cursor: 'not-allowed',
+                boxShadow: 'var(--shadow-xs)',
+              }}
+              disabled
+              title={t('mesh.unavailableHint')}
+            >
+              <GoogleIcon size={15} />
+              <span>{t('prefs.googleSyncComingSoon')}</span>
+            </button>
           </div>
         </div>
       </SettingsSection>

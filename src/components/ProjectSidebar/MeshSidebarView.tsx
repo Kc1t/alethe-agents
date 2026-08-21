@@ -1,19 +1,7 @@
-import {
-  Archive,
-  CheckCircle2,
-  Copy,
-  FolderSync,
-  Globe,
-  Laptop,
-  Share2,
-  ShieldCheck,
-} from 'lucide-react'
-import { useState } from 'react'
+import { Archive, FolderSync, Globe, Laptop, Share2, ShieldAlert } from 'lucide-react'
 
 import { useT } from '../../lib/i18n'
-import { writeClipboardText } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
-import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
 import { GoogleIcon } from '../icons/AgentIcons'
 import styles from './MeshSidebarView.module.css'
@@ -23,38 +11,31 @@ export function MeshSidebarView() {
   const projects = useProjectsStore((s) => s.projects)
   const activeProjectId = useProjectsStore((s) => s.activeProjectId)
   const activeProject = projects.find((p) => p.id === activeProjectId) ?? projects[0]
-  const openModal = useUiStore((s) => s.openModal_)
-  const [copied, setCopied] = useState(false)
-
-  const copyDeviceId = () => {
-    void writeClipboardText('ALETHE-7X9K-2M4P-8Q1V-99ZZ')
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
 
   return (
     <div className={styles.container}>
       <header className={styles.header}>
         <div className={styles.titleRow}>
           <Globe size={15} className={styles.headerIcon} />
-          <strong className={styles.title}>{t('mesh.title') || 'Conexão & Malha P2P'}</strong>
+          <strong className={styles.title}>{t('mesh.title')}</strong>
         </div>
-        <span className={styles.badgeLocal}>Modo Local</span>
+        <span className={styles.badgeLocal}>{t('mesh.prototype')}</span>
       </header>
 
       <section className={styles.section}>
         <div className={styles.authCard}>
           <div className={styles.authInfo}>
-            <span className={styles.authLabel}>Conta de Sincronização</span>
-            <span className={styles.authStatus}>Não conectado (Opcional)</span>
+            <span className={styles.authLabel}>{t('mesh.syncAccount')}</span>
+            <span className={styles.authStatus}>{t('mesh.identityUnavailable')}</span>
           </div>
           <button
             type="button"
             className={styles.loginGoogleBtn}
-            onClick={() => openModal('sync')}
+            disabled
+            title={t('mesh.unavailableHint')}
           >
             <GoogleIcon size={14} />
-            <span>Conectar Google / Email</span>
+            <span>{t('mesh.connectAccount')}</span>
           </button>
         </div>
       </section>
@@ -63,25 +44,17 @@ export function MeshSidebarView() {
         <div className={styles.deviceCard}>
           <div className={styles.deviceHeader}>
             <Laptop size={14} />
-            <span>{t('mesh.thisDevice') || 'Este Computador (ID Local)'}</span>
+            <span>{t('mesh.thisDevice')}</span>
           </div>
           <div className={styles.deviceIdRow}>
-            <code className={styles.deviceId}>ALETHE-7X9K-2M4P-8Q1V-99ZZ</code>
-            <button
-              type="button"
-              className={styles.copyBtn}
-              onClick={copyDeviceId}
-              title="Copiar Device ID"
-            >
-              {copied ? <CheckCircle2 size={13} className={styles.successIcon} /> : <Copy size={13} />}
-            </button>
+            <code className={styles.deviceId}>{t('mesh.deviceNotRegistered')}</code>
           </div>
         </div>
       </section>
 
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
-          <span className={styles.sectionTitle}>{t('mesh.projectSync') || 'Sincronização do Projeto'}</span>
+          <span className={styles.sectionTitle}>{t('mesh.projectSync')}</span>
         </div>
 
         {activeProject ? (
@@ -98,19 +71,20 @@ export function MeshSidebarView() {
               <button
                 type="button"
                 className={styles.primaryAction}
-                onClick={() => openModal('sync')}
+                disabled
+                title={t('mesh.unavailableHint')}
               >
                 <Share2 size={13} />
-                <span>{t('mesh.inviteFriend') || 'Convidar Amigo'}</span>
+                <span>{t('mesh.inviteFriend')}</span>
               </button>
               <button
                 type="button"
                 className={styles.secondaryAction}
-                onClick={() => openModal('meshFolderTree')}
-                title="Configurar Pastas & Backups"
+                disabled
+                title={t('mesh.unavailableHint')}
               >
                 <Archive size={13} />
-                <span>{t('mesh.vault') || 'Cofre & Pastas'}</span>
+                <span>{t('mesh.vault')}</span>
               </button>
             </div>
           </div>
@@ -118,19 +92,19 @@ export function MeshSidebarView() {
           <EmptyState
             compact
             icon={<FolderSync size={18} />}
-            title={t('mesh.noProject') || 'Nenhum projeto ativo'}
-            description={t('mesh.noProjectDesc') || 'Selecione um projeto para sincronizar.'}
+            title={t('mesh.noProject')}
+            description={t('mesh.noProjectDesc')}
           />
         )}
       </section>
 
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
-          <span className={styles.sectionTitle}>{t('mesh.security') || 'Segurança & Backups'}</span>
+          <span className={styles.sectionTitle}>{t('mesh.security')}</span>
         </div>
         <div className={styles.securityPill}>
-          <ShieldCheck size={14} className={styles.shieldIcon} />
-          <span>mTLS 1.3 · Delta Sync 128KB · .alethe Oculto</span>
+          <ShieldAlert size={14} className={styles.shieldIcon} />
+          <span>{t('mesh.securityUnavailable')}</span>
         </div>
       </section>
     </div>

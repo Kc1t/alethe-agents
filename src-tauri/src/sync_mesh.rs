@@ -291,43 +291,12 @@ pub struct GoogleSyncUser {
 }
 
 #[tauri::command]
-pub fn start_google_sync_auth(app: tauri::AppHandle) -> Result<GoogleSyncUser, String> {
-    // Registra conexão autenticada do usuário
-    let user = GoogleSyncUser {
-        email: "miguel@alethe.dev".to_string(),
-        name: "Miguelsp".to_string(),
-        picture: None,
-        connected: true,
-        last_sync_ms: Some(
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis() as u64,
-        ),
-    };
-
-    if let Ok(data_dir) = crate::paths::profile_data_dir(&app) {
-        let auth_file = data_dir.join("google_auth.json");
-        let _ = fs::write(
-            &auth_file,
-            serde_json::to_string_pretty(&user).unwrap_or_default(),
-        );
-    }
-
-    Ok(user)
+pub fn start_google_sync_auth() -> Result<GoogleSyncUser, String> {
+    Err("identity_provider_unavailable".to_string())
 }
 
 #[tauri::command]
-pub fn get_google_sync_status(app: tauri::AppHandle) -> Result<GoogleSyncUser, String> {
-    if let Ok(data_dir) = crate::paths::profile_data_dir(&app) {
-        let auth_file = data_dir.join("google_auth.json");
-        if let Ok(content) = fs::read_to_string(&auth_file) {
-            if let Ok(user) = serde_json::from_str::<GoogleSyncUser>(&content) {
-                return Ok(user);
-            }
-        }
-    }
-
+pub fn get_google_sync_status() -> Result<GoogleSyncUser, String> {
     Ok(GoogleSyncUser {
         email: String::new(),
         name: String::new(),
@@ -339,6 +308,7 @@ pub fn get_google_sync_status(app: tauri::AppHandle) -> Result<GoogleSyncUser, S
 
 #[tauri::command]
 pub fn disconnect_google_sync(app: tauri::AppHandle) -> Result<bool, String> {
+    // Remove plaintext state written by prototype builds. It is never trusted as identity.
     if let Ok(data_dir) = crate::paths::profile_data_dir(&app) {
         let auth_file = data_dir.join("google_auth.json");
         let _ = fs::remove_file(&auth_file);
@@ -349,6 +319,18 @@ pub fn disconnect_google_sync(app: tauri::AppHandle) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prototype_identity_cannot_report_an_authenticated_user() {
+        assert_eq!(
+            start_google_sync_auth().unwrap_err(),
+            "identity_provider_unavailable"
+        );
+        let status = get_google_sync_status().unwrap();
+        assert!(!status.connected);
+        assert!(status.email.is_empty());
+        assert!(status.name.is_empty());
+    }
 
     fn temp_test_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("alethe-mesh-{name}-{}", nanoid::nanoid!(6)));

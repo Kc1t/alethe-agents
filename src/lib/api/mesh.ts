@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+
 import { isTauriEnv } from './transport'
 
 export type FolderTreeNode = {
@@ -20,19 +21,7 @@ export type BackupArchiveEntry = {
 
 export async function scanProjectFolderTree(projectPath: string): Promise<FolderTreeNode[]> {
   if (!isTauriEnv()) {
-    return [
-      { name: 'src', path: 'src', isDir: true, sizeBytes: 0, children: [], isHeavy: false },
-      { name: 'docs', path: 'docs', isDir: true, sizeBytes: 0, children: [], isHeavy: false },
-      {
-        name: 'node_modules',
-        path: 'node_modules',
-        isDir: true,
-        sizeBytes: 0,
-        children: [],
-        isHeavy: true,
-      },
-      { name: '.env', path: '.env', isDir: false, sizeBytes: 50, children: [], isHeavy: true },
-    ]
+    throw new Error('mesh_unavailable_in_browser')
   }
   return invoke<FolderTreeNode[]>('scan_project_folder_tree', { projectPath })
 }
@@ -42,7 +31,7 @@ export async function setupProjectMeshIsolation(
   projectName: string,
 ): Promise<string> {
   if (!isTauriEnv()) {
-    return `${baseDir}/${projectName}`
+    throw new Error('mesh_unavailable_in_browser')
   }
   return invoke<string>('setup_project_mesh_isolation', { baseDir, projectName })
 }
@@ -52,13 +41,7 @@ export async function triggerProjectArchiveBackup(
   projectName: string,
 ): Promise<BackupArchiveEntry> {
   if (!isTauriEnv()) {
-    return {
-      filename: `backup_${projectName}_${Date.now()}.bin`,
-      path: `${projectPath}/.alethe/backups/archive/backup.bin`,
-      createdAt: Math.floor(Date.now() / 1000),
-      sizeBytes: 1024,
-      sha256: 'mock-sha256',
-    }
+    throw new Error('mesh_unavailable_in_browser')
   }
   return invoke<BackupArchiveEntry>('trigger_project_archive_backup', { projectPath, projectName })
 }
@@ -69,7 +52,7 @@ export async function purgeProjectBackupsSecured(
   confirmationName: string,
 ): Promise<number> {
   if (!isTauriEnv()) {
-    return 0
+    throw new Error('mesh_unavailable_in_browser')
   }
   return invoke<number>('purge_project_backups_secured', {
     projectPath,
@@ -88,12 +71,7 @@ export type GoogleSyncUser = {
 
 export async function startGoogleSyncAuth(): Promise<GoogleSyncUser> {
   if (!isTauriEnv()) {
-    return {
-      email: 'miguel@alethe.dev',
-      name: 'Miguelsp',
-      connected: true,
-      lastSyncMs: Date.now(),
-    }
+    throw new Error('identity_provider_unavailable')
   }
   return invoke<GoogleSyncUser>('start_google_sync_auth')
 }
