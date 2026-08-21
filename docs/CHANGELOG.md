@@ -13,6 +13,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 ### Fixed
 
 - Repeated terminal resizes now keep the configured font scale unchanged, rebuild the canvas atlas at the acknowledged PTY grid, and wait for OpenTUI's Linux `SIGWINCH` reflow before requesting a full repaint, preventing compressed or single-line OpenCode layouts after consecutive resizes.
+- Linux agent panes now keep a stable logical PTY grid for the lifetime of the session and use a horizontal viewport when compressed, eliminating crash-prone `SIGWINCH` and local alternate-screen reflow sequences while preserving the original font scale and any number of adjacent terminal panes.
 - Linux/Wayland terminal divider drags now claim the local xterm grid from the drag itself instead of relying on transient document focus, preventing stale wide grids from being clipped inside compressed OpenCode and agent panes.
 - Web terminal startup now retries temporary Core/HTTP failures and only shows an agent as not installed after a successful resolver response confirms that the CLI is absent.
 - Experimental project synchronization can no longer report a fabricated account, device ID, encrypted channel, immutable backup, or successful browser operation; unavailable identity, invitations, vault, and transfer actions now fail closed and are labeled as prototypes.

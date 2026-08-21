@@ -15,8 +15,9 @@ import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { watchAndPersistDiscoveredSession } from '../../lib/agentSessionDiscovery'
 import { isTauriEnv } from '../../lib/api/transport'
 import { getLocale, translate } from '../../lib/i18n'
-import { isWindows } from '../../lib/platform'
+import { isLinux, isWindows } from '../../lib/platform'
 import { usePtyPanelVisible } from '../../lib/ptyVisibility'
+import { createTerminalResizePolicy } from '../../lib/terminalResizePolicy'
 import {
   claimMostRecentSession,
   isSessionClaimed,
@@ -391,6 +392,8 @@ export function useXtermSession(params: {
     let bunCrashDetected = false
     let lastCols = 0
     let lastRows = 0
+    const usesPinnedLinuxAgentGrid = isLinux() && Boolean(command && command !== 'shell')
+    const resizePolicy = createTerminalResizePolicy(command, usesPinnedLinuxAgentGrid)
     let forceNextResize = false
     // true quando este mount se tornou "observador" da grade compartilhada —
     // adota o `cols x rows` vigente sem reivindicar uma grade nova. Vale pra
@@ -505,13 +508,23 @@ export function useXtermSession(params: {
       terminal.options.fontSize = BASE_FONT_SIZE
     }
 
+    const setHorizontalViewport = (enabled: boolean) => {
+      container.toggleAttribute('data-horizontal-terminal-viewport', enabled)
+    }
+
+    const resolveStableGrid = (cols: number, rows: number, adopt = false) => {
+      return resizePolicy.resolve(cols, rows, adopt)
+    }
+
     const applyGridAtBaseScale = (targetCols: number, targetRows: number) => {
       if (targetCols <= 0 || targetRows <= 0) return
+      const stableGrid = resolveStableGrid(targetCols, targetRows)
       const buffer = terminal.buffer.active
       const wasAtBottom = buffer.viewportY >= buffer.baseY
       restoreBaseFontSize()
-      if (terminal.cols !== targetCols || terminal.rows !== targetRows) {
-        terminal.resize(targetCols, targetRows)
+      setHorizontalViewport(stableGrid.horizontalViewport)
+      if (terminal.cols !== stableGrid.cols || terminal.rows !== stableGrid.rows) {
+        terminal.resize(stableGrid.cols, stableGrid.rows)
       }
       try {
         canvasAddonRef.current?.clearTextureAtlas?.()
@@ -524,6 +537,7 @@ export function useXtermSession(params: {
     }
 
     const clampHorizontalScroll = () => {
+      if (container.hasAttribute('data-horizontal-terminal-viewport')) return
       container.scrollLeft = 0
       const xterm = container.querySelector<HTMLElement>('.xterm')
       const viewport = container.querySelector<HTMLElement>('.xterm-viewport')
@@ -531,6 +545,24 @@ export function useXtermSession(params: {
       if (xterm) xterm.scrollLeft = 0
       if (viewport) viewport.scrollLeft = 0
       if (screen) screen.style.maxWidth = '100%'
+    }
+
+    const fitStableGrid = () => {
+      // `fit()` mutates the xterm buffer immediately. On Linux agent TUIs that
+      // temporary mutation can corrupt the alternate screen even if
+      // we restore the pinned grid in the same task. Measure without applying
+      // first, then resize at most once to the resolved stable grid.
+      const proposed = usesPinnedLinuxAgentGrid ? fitAddon.proposeDimensions() : undefined
+      if (!usesPinnedLinuxAgentGrid) fitAddon.fit()
+      const stableGrid = resolveStableGrid(
+        proposed?.cols ?? terminal.cols,
+        proposed?.rows ?? terminal.rows,
+      )
+      setHorizontalViewport(stableGrid.horizontalViewport)
+      if (terminal.cols !== stableGrid.cols || terminal.rows !== stableGrid.rows) {
+        terminal.resize(stableGrid.cols, stableGrid.rows)
+      }
+      return stableGrid
     }
 
     linkProviderDisposable = terminal.registerLinkProvider({
@@ -610,7 +642,7 @@ export function useXtermSession(params: {
           // no-op de verdade.
           // eslint-disable-next-line no-self-assign
           terminal.options.fontFamily = terminal.options.fontFamily
-          fitAddon.fit()
+          fitStableGrid()
           terminal.refresh(0, Math.max(0, terminal.rows - 1))
         } catch {
           /* renderer ainda não pronto neste frame — o initialFitTimer (150ms)
@@ -1134,7 +1166,7 @@ export function useXtermSession(params: {
         // `fit()` normal — mais barato, e o patch do Viewport já neutraliza
         // com segurança qualquer `syncScrollArea` que falhe de qualquer
         // jeito.
-        fitAddon.fit()
+        fitStableGrid()
       } catch (error) {
         if (import.meta.env.DEV) console.error('[Alethe][xterm] fit failed', error)
 
@@ -1195,7 +1227,8 @@ export function useXtermSession(params: {
       lastCommitAt = performance.now()
       const id = ptyIdRef.current
       if (!id) return
-      void resizePty(id, cols, rows, activeProfileId).catch(() => {})
+      const stableGrid = resolveStableGrid(cols, rows)
+      void resizePty(id, stableGrid.cols, stableGrid.rows, activeProfileId).catch(() => {})
       // O dono acabou de medir o próprio container via fitAddon.fit(), então
       // renderiza sempre na fonte nativa — sem escala de observador.
       restoreBaseFontSize()
@@ -1208,6 +1241,7 @@ export function useXtermSession(params: {
     // corrompendo TUIs multi-painel (OpenCode/Antigravity).
     const applyRemoteResize = (cols: number, rows: number) => {
       if (disposed || cols <= 0 || rows <= 0) return
+      const stableGrid = resolveStableGrid(cols, rows, true)
       // Eco do próprio resize voltando (o cliente que iniciou também recebe
       // o broadcast) — já está neste tamanho e na fonte nativa, no-op.
       const isOurRecentCommit =
@@ -1239,14 +1273,14 @@ export function useXtermSession(params: {
       // propósito — `fit()` mede o container LOCAL e sobrescreveria o
       // tamanho remoto de volta pro tamanho natural deste cliente,
       // anulando o propósito.
-      lastCols = cols
-      lastRows = rows
+      lastCols = stableGrid.cols
+      lastRows = stableGrid.rows
     }
     const checkSettled = () => {
       settleTimer = null
       if (disposed) return
       try {
-        fitAddon.fit()
+        fitStableGrid()
       } catch {
         return
       }
@@ -1730,7 +1764,7 @@ export function useXtermSession(params: {
         // Skip zero-sized panes; the observer retries after layout settles.
         try {
           const rect = container?.getBoundingClientRect()
-          if (rect && rect.width >= 50 && rect.height >= 30) fitAddon.fit()
+          if (rect && rect.width >= 50 && rect.height >= 30) fitStableGrid()
         } catch {
           // Renderer ainda não montou — o próximo resize tenta de novo.
         }
@@ -2022,6 +2056,12 @@ export function useXtermSession(params: {
         } finally {
           releaseSpawnSlot()
         }
+        // The spawned PTY already owns this exact grid. Baseline it here so
+        // the first ResizeObserver tick does not emit a redundant SIGWINCH —
+        // especially important for Linux agent sessions whose grid stays
+        // pinned for their lifetime.
+        lastCols = terminal.cols
+        lastRows = terminal.rows
         console.info(`[pty-launch] ${command ?? 'shell'} spawn OK id=${response.id}`)
         spawnedAtRef.current = Date.now()
         usedResumeRef.current = Boolean(resumeId)

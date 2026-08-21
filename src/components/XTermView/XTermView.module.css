@@ -44,6 +44,26 @@
   background-color: transparent;
 }
 
+/* Linux agent TUIs can corrupt their alternate screen during resize bursts.
+   The pane may still shrink freely; it becomes a horizontal viewport over
+   the stable logical grid without changing the configured font scale. */
+.host[data-horizontal-terminal-viewport] {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
+}
+
+.host[data-horizontal-terminal-viewport] :global(.xterm),
+.host[data-horizontal-terminal-viewport] :global(.xterm-screen),
+.host[data-horizontal-terminal-viewport] :global(.xterm-rows),
+.host[data-horizontal-terminal-viewport] :global(.xterm-helpers),
+.host[data-horizontal-terminal-viewport] :global(.xterm-text-layer),
+.host[data-horizontal-terminal-viewport] :global(.xterm-link-layer),
+.host[data-horizontal-terminal-viewport] :global(.xterm-cursor-layer) {
+  max-width: none !important;
+  overflow: visible;
+}
+
 .host :global(.xterm .xterm-viewport::-webkit-scrollbar) {
   width: 10px;
 }
