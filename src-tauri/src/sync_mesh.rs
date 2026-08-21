@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::Write;
@@ -26,7 +27,7 @@ pub struct BackupArchiveEntry {
     pub sha256: String,
 }
 
-/// Escaneia recursivamente as pastas de um projeto para exibição na árvore de seleção com checkboxes
+/// Scans project folders for the explicit selection UI.
 pub fn scan_project_folder_tree_core(
     root: &Path,
     current: &Path,
@@ -69,7 +70,7 @@ pub fn scan_project_folder_tree_core(
             .replace('\\', "/");
 
         let mut children = Vec::new();
-        // Não aprofunda em pastas extremamente pesadas como node_modules para performance
+        // Heavy generated directories are represented but never traversed.
         if is_dir && !is_heavy && max_depth > 1 {
             children = scan_project_folder_tree_core(root, &path, max_depth - 1);
         }
@@ -97,10 +98,10 @@ pub fn scan_project_folder_tree_core(
     nodes
 }
 
-/// Aplica o atributo de arquivo oculto no Windows (FILE_ATTRIBUTE_HIDDEN)
+/// Applies the hidden-file attribute on Windows.
 pub fn ensure_hidden_folder_windows(path: &Path) -> Result<(), String> {
     if !path.exists() {
-        fs::create_dir_all(path).map_err(|e| format!("Falha ao criar pasta: {e}"))?;
+        fs::create_dir_all(path).map_err(|e| format!("Failed to create folder: {e}"))?;
     }
 
     #[cfg(windows)]
@@ -123,8 +124,7 @@ pub fn ensure_hidden_folder_windows(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Garante o isolamento estrito de subpasta para o projeto (Anti-Syncthing Root Overwrite)
-/// e inicializa a pasta `.alethe/` oculta com estrutura de sync
+/// Creates an isolated project subfolder and local metadata directories.
 pub fn init_project_sync_root(base_dir: &Path, project_name: &str) -> Result<PathBuf, String> {
     let sanitized_name =
         project_name.replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "_");
@@ -132,7 +132,7 @@ pub fn init_project_sync_root(base_dir: &Path, project_name: &str) -> Result<Pat
 
     if !project_root.is_dir() {
         fs::create_dir_all(&project_root)
-            .map_err(|e| format!("Falha ao criar diretório raiz do projeto: {e}"))?;
+            .map_err(|e| format!("Failed to create the isolated project directory: {e}"))?;
     }
 
     let alethe_dir = project_root.join(".alethe");
@@ -151,7 +151,8 @@ pub fn init_project_sync_root(base_dir: &Path, project_name: &str) -> Result<Pat
         let meta = serde_json::json!({
             "projectName": project_name,
             "createdAt": SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs(),
-            "p2pEnabled": true,
+            "p2pEnabled": false,
+            "syncCapability": "unavailable",
             "version": 1
         });
         let _ = fs::write(
@@ -163,7 +164,7 @@ pub fn init_project_sync_root(base_dir: &Path, project_name: &str) -> Result<Pat
     Ok(project_root)
 }
 
-/// Cria um backup compactado e definitivo (WORM) do projeto em `.alethe/backups/archive/`
+/// Creates a local metadata checkpoint, not a project-content or WORM backup.
 pub fn create_project_archive_backup(
     project_root: &Path,
     project_name: &str,
@@ -171,7 +172,7 @@ pub fn create_project_archive_backup(
     let alethe_dir = project_root.join(".alethe");
     let archive_dir = alethe_dir.join("backups").join("archive");
     fs::create_dir_all(&archive_dir)
-        .map_err(|e| format!("Falha ao criar pasta de arquivo: {e}"))?;
+        .map_err(|e| format!("Failed to create checkpoint folder: {e}"))?;
 
     let now_secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -179,26 +180,25 @@ pub fn create_project_archive_backup(
         .as_secs();
     let sanitized_name =
         project_name.replace(|c: char| !c.is_alphanumeric() && c != '-' && c != '_', "_");
-    let filename = format!("backup_{sanitized_name}_{now_secs}.bin");
+    let filename = format!("checkpoint_{sanitized_name}_{now_secs}.bin");
     let backup_path = archive_dir.join(&filename);
 
-    // Salva arquivo de snapshot com verificação de integridade
+    // The legacy checkpoint contains metadata only; it never captures project content.
     let mut payload = Vec::new();
-    payload.extend_from_slice(b"ALETHE_IMMUTABLE_SNAPSHOT_V1\n");
+    payload.extend_from_slice(b"ALETHE_METADATA_CHECKPOINT_V1\n");
     payload.extend_from_slice(format!("PROJECT:{project_name}\nTIMESTAMP:{now_secs}\n").as_bytes());
 
-    // Escreve arquivo físico
     let mut file =
-        File::create(&backup_path).map_err(|e| format!("Falha ao criar arquivo de backup: {e}"))?;
+        File::create(&backup_path).map_err(|e| format!("Failed to create checkpoint: {e}"))?;
     file.write_all(&payload)
-        .map_err(|e| format!("Falha ao escrever backup: {e}"))?;
+        .map_err(|e| format!("Failed to write checkpoint: {e}"))?;
     file.flush().map_err(|e| e.to_string())?;
 
     let size_bytes = payload.len() as u64;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    payload.hash(&mut hasher);
-    let sha256 = format!("{:x}", hasher.finish());
+    let sha256 = Sha256::digest(&payload)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
 
     Ok(BackupArchiveEntry {
         filename,
@@ -216,10 +216,7 @@ pub fn purge_project_backup_vault(
     confirmation_name: &str,
 ) -> Result<usize, String> {
     if expected_project_name.trim() != confirmation_name.trim() {
-        return Err(
-            "Aviso de Segurança: O nome de confirmação não confere com o nome do projeto."
-                .to_string(),
-        );
+        return Err("security_confirmation_name_mismatch".to_string());
     }
 
     let archive_dir = project_root.join(".alethe").join("backups").join("archive");
@@ -246,7 +243,7 @@ pub fn purge_project_backup_vault(
 pub fn scan_project_folder_tree(project_path: String) -> Result<Vec<FolderTreeNode>, String> {
     let root = Path::new(&project_path);
     if !root.is_dir() {
-        return Err("Caminho do projeto não encontrado".to_string());
+        return Err("project_path_not_found".to_string());
     }
     Ok(scan_project_folder_tree_core(root, root, 4))
 }
@@ -353,6 +350,10 @@ mod tests {
         assert!(alethe.join("versions").is_dir());
         assert!(alethe.join("backups").join("archive").is_dir());
         assert!(alethe.join("sync.json").is_file());
+        let metadata: serde_json::Value =
+            serde_json::from_slice(&fs::read(alethe.join("sync.json")).unwrap()).unwrap();
+        assert_eq!(metadata["p2pEnabled"], false);
+        assert_eq!(metadata["syncCapability"], "unavailable");
 
         let _ = fs::remove_dir_all(base);
     }
@@ -386,14 +387,15 @@ mod tests {
 
         let backup = create_project_archive_backup(&root, project_name).unwrap();
         assert!(Path::new(&backup.path).is_file());
-        assert!(backup.filename.starts_with("backup_animego_"));
+        assert!(backup.filename.starts_with("checkpoint_animego_"));
+        assert_eq!(backup.sha256.len(), 64);
 
-        // Tentativa com nome incorreto deve ser bloqueada
+        // An incorrect confirmation must not remove the checkpoint.
         let err = purge_project_backup_vault(&root, project_name, "wrong_name");
         assert!(err.is_err());
         assert!(Path::new(&backup.path).is_file());
 
-        // Confirmação correta purga com sucesso
+        // The exact confirmation removes it.
         let deleted = purge_project_backup_vault(&root, project_name, project_name).unwrap();
         assert_eq!(deleted, 1);
         assert!(!Path::new(&backup.path).exists());
