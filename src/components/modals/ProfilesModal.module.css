@@ -62,6 +62,9 @@
   color: var(--accent);
   background: var(--accent-faint);
 }
+.createIcon svg {
+  display: block;
+}
 .createCopy {
   min-width: 0;
 }
@@ -169,6 +172,20 @@
 }
 .renameRow {
   flex: 1;
+}
+.createRow button,
+.actions button,
+.renameRow button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.createRow button svg,
+.actions button svg,
+.renameRow button svg {
+  display: block;
+  flex: 0 0 auto;
 }
 .renameRow input {
   min-width: 160px;
