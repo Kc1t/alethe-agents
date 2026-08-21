@@ -221,13 +221,28 @@ Create separate modules for manifest policy, scanning, transfer planning, transp
 
 ### Receiving and saving a shared project
 
+- [ ] Separate the remote **project grant** from the recipient's local **subscription**. A grant means the account/device may request authorized data; it never means that a destination exists or that downloading has started.
+- [ ] Model the recipient lifecycle explicitly: `offered`, `granted_unsubscribed`, `configuring`, `awaiting_confirmation`, `staging`, `verifying`, `active`, `paused`, `declined`, `revoked`, and `error`. Only the recipient can move a grant from `granted_unsubscribed` into local configuration.
+- [ ] Guarantee that receiving a grant, invitation, same-account project advertisement, push notification, or online-presence event performs zero project filesystem writes and transfers zero project-content bytes.
 - [ ] Present a receive wizard with source identity, project identity, branch/revision summary, manifest paths, exclusions, estimated transfer size, effective permissions, and destination requirements.
 - [ ] Let the recipient choose **Create managed copy**, **Attach existing copy**, or **Download snapshot** only when the grant permits the corresponding operation. Disable unsupported choices with an explanation.
+- [ ] Let the recipient browse or type an explicit destination and show the final normalized path before confirmation. Persist that path only in the recipient's local profile; never reveal it to the sender or relay.
+- [ ] Validate the destination server-side for existence policy, writability, free space, filesystem type, path length, reserved names, symlinks, case sensitivity, and overlap with another managed project.
+- [ ] Require the recipient to choose the initial transfer mode (`manual download`, `receive automatically after setup`, or `bidirectional after setup`) and show which choices the grant permits. Default to manual when no prior local preference exists.
 - [ ] For a managed copy, create a new destination directory, persist its opaque project identity and grant, stage the initial transfer outside the live tree, verify it, then atomically publish it.
 - [ ] Attaching an existing copy requires a dry-run comparison with same/different/missing files, case collisions, local-only files, conflicts, and deletion candidates. Never infer equivalence from the folder or project name.
 - [ ] Show a final transfer plan before applying changes and require separate confirmation for overwrite or deletion impact. Preserve local-only and conflicting files in a recovery area by default.
+- [ ] Allow the recipient to decline, defer, or dismiss a project without revoking the owner's grant. A dismissed grant remains available in the access center unless the recipient hides it or the owner revokes it.
+- [ ] Cancellation before final confirmation removes temporary metadata and staging artifacts without creating a project entry. Cancellation during transfer preserves only resumable encrypted staging data according to the documented retention policy.
 - [ ] After connection, expose per-project controls for direction (`receive`, `publish`, `bidirectional`), automatic/manual sync, pause, bandwidth, exclusions, conflict policy, and disconnect while keeping the last local copy.
 - [ ] Make project availability explicit on each trusted device. An owner chooses which projects are advertised to another same-account device; the destination chooses which advertised projects to save locally.
+
+Recipient-consent tests:
+
+- [ ] Assert zero destination directories, project entries, manifests, chunks, and content requests after grant creation, notification delivery, inbox viewing, or device discovery.
+- [ ] Assert that destination selection does not transfer content before final confirmation and that a forged frontend state cannot skip backend destination validation.
+- [ ] Test decline, defer, dismiss, cancel before transfer, cancel during staging, resume, destination permission loss, destination removal, and choosing a different destination after failure.
+- [ ] Test two recipient devices under one account choosing different destinations and sync modes without leaking or overwriting each other's local subscription state.
 
 ### Two-machine test matrix
 
@@ -695,7 +710,7 @@ Security-sensitive slices additionally require fuzz/property suites, dependency 
 
 ### Phase 4 — Safe sync engine
 
-- Manifest, receive/save wizard, existing-copy comparison, path sandbox, staging, chunks, verification, atomic commit, direction controls, conflict/recovery.
+- Grant/subscription separation, recipient-consent state machine, destination validation, receive/save wizard, manifest, existing-copy comparison, path sandbox, staging, chunks, verification, atomic commit, direction controls, conflict/recovery.
 - **Go condition:** Two-machine hostile/interruption matrix passes without root escape or silent data loss.
 
 ### Phase 5 — Real backup and restore
