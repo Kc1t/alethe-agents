@@ -101,9 +101,9 @@ pub(crate) fn align_to_char_boundary(slice: &[u8], start: usize) -> usize {
 /// cliente ainda carregue estado residual (SGR, alt-buffer, posição do
 /// cursor) de antes do corte.
 const SCREEN_RESET_SEQUENCES: &[&[u8]] = &[
-    b"\x1bc",      // RIS — reset completo do terminal
-    b"\x1b[2J",    // Apaga a tela inteira
-    b"\x1b[3J",    // Apaga a tela + scrollback
+    b"\x1bc",       // RIS — reset completo do terminal
+    b"\x1b[2J",     // Apaga a tela inteira
+    b"\x1b[3J",     // Apaga a tela + scrollback
     b"\x1b[?1049h", // Entra no alternate screen buffer (TUIs full-screen, ex. OpenCode)
 ];
 
@@ -201,6 +201,14 @@ pub struct PtySession {
 }
 
 const REDRAW_NUDGE_COOLDOWN_MS: u64 = 400;
+
+// OpenTUI handles SIGWINCH asynchronously on Linux. Sending Ctrl+L in the
+// same render window can repaint from the half-updated tree and preserve the
+// compressed layout. ConPTY settles sooner, so retain its existing timing.
+#[cfg(target_os = "linux")]
+const RESIZE_REDRAW_NUDGE_DELAY_MS: u64 = 180;
+#[cfg(not(target_os = "linux"))]
+const RESIZE_REDRAW_NUDGE_DELAY_MS: u64 = 50;
 
 /// CAS simples: só concede o nudge se a última tentativa (de QUALQUER
 /// gatilho) foi há mais de `REDRAW_NUDGE_COOLDOWN_MS`. `Ordering::SeqCst`
@@ -1405,18 +1413,20 @@ pub async fn resize_pty_core(
         sink.emit_resized(&pty_id, cols.max(1), rows.max(1));
 
         if wants_resize_nudge {
-            std::thread::sleep(std::time::Duration::from_millis(50));
+            std::thread::sleep(std::time::Duration::from_millis(
+                RESIZE_REDRAW_NUDGE_DELAY_MS,
+            ));
             let claimed = try_claim_redraw_nudge(&nudge_lock);
             if pty_debug_enabled() {
                 if let Some(ref path) = log_path_buf {
-                    let _ =
-                        append_spawn_log_path(
-                            path,
-                            &format!(
-                            "[pty-debug] {pty_id}: nudge de resize {} (50ms após master.resize)",
-                            if claimed { "ENVIADO" } else { "pulado (perdeu a trava)" }
+                    let _ = append_spawn_log_path(
+                        path,
+                        &format!(
+                            "[pty-debug] {pty_id}: resize redraw nudge {} ({}ms after master.resize)",
+                            if claimed { "sent" } else { "skipped (cooldown)" },
+                            RESIZE_REDRAW_NUDGE_DELAY_MS
                         ),
-                        );
+                    );
                 }
             }
             if claimed {

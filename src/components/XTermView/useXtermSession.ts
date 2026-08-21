@@ -198,10 +198,6 @@ type BootPhase = 'preparing' | 'queued' | 'spawning' | 'attaching' | 'ready'
 
 /** Tamanho de fonte de quem é dono da grade — renderiza sempre nativo, sem escala. */
 const BASE_FONT_SIZE = 14
-// Limites da fonte escalada de um observador. No piso, um painel absurdamente
-// pequeno pode cortar conteúdo — o `overflow: hidden` do `.host` contém isso.
-const MIN_SCALED_FONT_SIZE = 6
-const MAX_SCALED_FONT_SIZE = 40
 
 /**
  * Sessão do terminal xterm + PTY. É o coração do XTermView: cria o terminal,
@@ -397,8 +393,7 @@ export function useXtermSession(params: {
     let lastRows = 0
     let forceNextResize = false
     // true quando este mount se tornou "observador" da grade compartilhada —
-    // adota o `cols x rows` vigente e adapta o próprio `fontSize` pra caber
-    // (ver applyFontScale), em vez de reivindicar uma grade nova. Vale pra
+    // adota o `cols x rows` vigente sem reivindicar uma grade nova. Vale pra
     // QUALQUER cliente que anexa a uma sessão existente, desktop ou web: a
     // regra é "quem cria a sessão é dono da grade", sem privilegiar nenhum dos
     // dois lados. Um observador volta a ser dono assim que o próprio container
@@ -505,113 +500,27 @@ export function useXtermSession(params: {
       w.__ALETHE_DEBUG_TERMINALS__[id] = { cols: terminal.cols, rows: terminal.rows }
     }
 
-    type XtermScaleInternals = {
-      _renderService?: { dimensions?: { css?: { cell?: { width: number; height: number } } } }
-      viewport?: { scrollBarWidth?: number }
-    }
-    const readScaleInternals = (): {
-      cellWidth: number
-      cellHeight: number
-      scrollBarWidth: number
-    } | null => {
-      const core = (terminal as unknown as { _core?: XtermScaleInternals })._core
-      const cell = core?._renderService?.dimensions?.css?.cell
-      if (!cell || cell.width <= 0 || cell.height <= 0) return null
-      return {
-        cellWidth: cell.width,
-        cellHeight: cell.height,
-        scrollBarWidth: core?.viewport?.scrollBarWidth ?? 0,
-      }
-    }
-
-    /**
-     * Ajusta o `fontSize` deste cliente até que o container comporte
-     * naturalmente a grade compartilhada `targetCols x targetRows` — em vez de
-     * forçar a grade de outro cliente dentro de um espaço de tamanho diferente.
-     * É o equivalente a "mesma tela, resolução menor": mesmo layout, células
-     * proporcionalmente menores/maiores, texto renderizado de verdade (não um
-     * bitmap esticado por `transform: scale()`, que borra e não cresce).
-     *
-     * Nada aqui é fixo: `rect` é o espaço real medido agora, e a razão
-     * célula/fonte (`kw`/`kh`) é lida do render atual — então funciona em
-     * qualquer resolução, proporção ou nível de zoom/DPI (a conta é toda em px
-     * CSS, que já absorvem o devicePixelRatio).
-     */
-    const applyFontScale = (targetCols: number, targetRows: number) => {
-      if (targetCols <= 0 || targetRows <= 0) return
-      try {
-        const rect = container.getBoundingClientRect()
-        if (rect.width < 50 || rect.height < 30) return
-        // Mudar `fontSize`/`cols`/`rows` muda a altura em pixel de cada linha,
-        // e o scroll do `.xterm-viewport` é medido em pixel — sem recapturar
-        // isso depois, um terminal que estava acompanhando o final do output
-        // (o caso comum, um agente rodando) ficava "flutuando" alguns pixels
-        // acima ou abaixo do fim de verdade a cada reajuste, na direção
-        // oposta dependendo de qual lado cresceu/encolheu a fonte. Reancorar
-        // no final quando já estava lá evita esse deslocamento.
-        const buffer = terminal.buffer.active
-        const wasAtBottom = buffer.viewportY >= buffer.baseY
-        const computed = window.getComputedStyle(container)
-        const padX =
-          (parseFloat(computed.paddingLeft) || 0) + (parseFloat(computed.paddingRight) || 0)
-        const padY =
-          (parseFloat(computed.paddingTop) || 0) + (parseFloat(computed.paddingBottom) || 0)
-        // 8px de margem de segurança vertical para garantir que a última linha / status bar
-        // do OpenCode/TUI nunca seja cortada no rodapé.
-        const scrollBarWidth = 10
-        const availW = Math.max(10, rect.width - padX - scrollBarWidth)
-        const availH = Math.max(10, rect.height - padY - 8)
-
-        for (let pass = 0; pass < 3; pass += 1) {
-          const metrics = readScaleInternals()
-          const base = terminal.options.fontSize || BASE_FONT_SIZE
-          const kw = metrics && metrics.cellWidth > 0 ? metrics.cellWidth / base : 0.6
-          const kh = metrics && metrics.cellHeight > 0 ? metrics.cellHeight / base : 1.25
-          const byWidth = availW / (targetCols * kw)
-          const byHeight = availH / (targetRows * kh)
-          const target = Math.max(
-            MIN_SCALED_FONT_SIZE,
-            Math.min(MAX_SCALED_FONT_SIZE, Math.min(byWidth, byHeight)),
-          )
-          // Sempre arredonda para baixo em múltiplos de 0.5 para não estourar em altura
-          const next = Math.floor(target * 2) / 2
-          if (Math.abs(next - base) < 0.25 && pass > 0) break
-          terminal.options.fontSize = next
-        }
-
-        // Validação final estrita contra métricas reais da célula
-        for (let guard = 0; guard < 4; guard += 1) {
-          const metrics = readScaleInternals()
-          if (!metrics) break
-          const overflowsH = metrics.cellHeight * targetRows > availH
-          const overflowsW = metrics.cellWidth * targetCols > availW
-          if (
-            (overflowsH || overflowsW) &&
-            (terminal.options.fontSize ?? 14) > MIN_SCALED_FONT_SIZE
-          ) {
-            terminal.options.fontSize = Math.max(
-              MIN_SCALED_FONT_SIZE,
-              (terminal.options.fontSize ?? 14) - 0.5,
-            )
-          } else {
-            break
-          }
-        }
-
-        if (terminal.cols !== targetCols || terminal.rows !== targetRows) {
-          terminal.resize(targetCols, targetRows)
-        }
-        if (wasAtBottom) terminal.scrollToBottom()
-        syncDebugTerminalHook()
-      } catch {
-        /* internals do xterm.js podem ter mudado de forma — sem escala, cai
-           no comportamento cru (grade correta, sem ajuste de encaixe). */
-      }
-    }
-
     const restoreBaseFontSize = () => {
       if (terminal.options.fontSize === BASE_FONT_SIZE) return
       terminal.options.fontSize = BASE_FONT_SIZE
+    }
+
+    const applyGridAtBaseScale = (targetCols: number, targetRows: number) => {
+      if (targetCols <= 0 || targetRows <= 0) return
+      const buffer = terminal.buffer.active
+      const wasAtBottom = buffer.viewportY >= buffer.baseY
+      restoreBaseFontSize()
+      if (terminal.cols !== targetCols || terminal.rows !== targetRows) {
+        terminal.resize(targetCols, targetRows)
+      }
+      try {
+        canvasAddonRef.current?.clearTextureAtlas?.()
+        terminal.refresh(0, Math.max(0, terminal.rows - 1))
+      } catch {
+        /* renderer may be between canvas generations; the next frame retries */
+      }
+      if (wasAtBottom) terminal.scrollToBottom()
+      syncDebugTerminalHook()
     }
 
     const clampHorizontalScroll = () => {
@@ -1192,14 +1101,14 @@ export function useXtermSession(params: {
         const isRemoteSyncPeriod = performance.now() - lastRemoteSyncAt < 800
         if (isRemoteSyncPeriod || !document.hasFocus()) {
           observerBaseRect = { width: rect.width, height: rect.height }
-          applyFontScale(terminal.cols, terminal.rows)
+          applyGridAtBaseScale(terminal.cols, terminal.rows)
           return
         }
         const base = observerBaseRect
         const moved =
           !base || Math.abs(rect.width - base.width) > 6 || Math.abs(rect.height - base.height) > 6
         if (!moved) {
-          applyFontScale(terminal.cols, terminal.rows)
+          applyGridAtBaseScale(terminal.cols, terminal.rows)
           return
         }
         isGridObserver = false
@@ -1313,7 +1222,7 @@ export function useXtermSession(params: {
         isGridObserver = true
         const rect = container.getBoundingClientRect()
         observerBaseRect = { width: rect.width, height: rect.height }
-        applyFontScale(cols, rows)
+        applyGridAtBaseScale(cols, rows)
       } catch {
         return
       }
@@ -1465,7 +1374,7 @@ export function useXtermSession(params: {
         if (rect.width < 50 || rect.height < 30) return
         observerBaseRect = { width: rect.width, height: rect.height }
         if (isGridObserver) {
-          applyFontScale(terminal.cols, terminal.rows)
+          applyGridAtBaseScale(terminal.cols, terminal.rows)
         }
       })
     }
@@ -1741,7 +1650,7 @@ export function useXtermSession(params: {
       unlistenExit = exitUnlisten
 
       // Adota a grade vigente do PTY compartilhado, adaptando a fonte local a
-      // ela (applyRemoteResize → applyFontScale). Sem commit: anexar nunca
+      // ela (applyRemoteResize → applyGridAtBaseScale). Sem commit: anexar nunca
       // reivindica a grade, só um resize genuíno deste cliente faz isso.
       try {
         const { cols, rows } = await getPtySize(existingId, activeProfileId)
