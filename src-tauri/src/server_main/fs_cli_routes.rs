@@ -1,5 +1,5 @@
-// Filesystem (arquivos/pastas de projeto) + CLI shim — tudo função pura,
-// sem `AppHandle`.
+// Project filesystem operations and the CLI shim are pure functions without
+// an `AppHandle` dependency.
 
 use crate::cli_shim;
 use crate::filesystem;
@@ -17,6 +17,8 @@ pub fn router() -> Router {
         .route("/api/fs/list", get(list))
         .route("/api/fs/read", get(read))
         .route("/api/fs/write", post(write))
+        .route("/api/fs/rename", post(rename))
+        .route("/api/fs/delete", post(delete))
         .route("/api/fs/todo_template", post(todo_template))
         .route("/api/fs/write_marker", post(write_marker))
         .route("/api/fs/read_marker", get(read_marker))
@@ -24,10 +26,24 @@ pub fn router() -> Router {
         .route("/api/cli/shim_install", post(shim_install))
         .route("/api/cli/shim_uninstall", post(shim_uninstall))
         .route("/api/cli/find_cli_launcher", get(find_cli_launcher_route))
+        .route("/api/cli/probe_install_toolchain", get(probe_install_toolchain))
+        .route("/api/cli/agent_cli_version", get(agent_cli_version))
         .route(
             "/api/agents/find_cli_launcher",
             get(find_cli_launcher_route),
         )
+}
+
+async fn probe_install_toolchain() -> impl IntoResponse {
+    Json(crate::cli_resolver::probe_install_toolchain().await)
+}
+
+async fn agent_cli_version(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
+    let agent = match q(&p, "agent") {
+        Ok(value) => value,
+        Err(error) => return error.into_response(),
+    };
+    Json(crate::cli_resolver::agent_cli_version(agent).await).into_response()
 }
 
 async fn find_cli_launcher_route(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
@@ -61,6 +77,24 @@ struct WriteBody {
 }
 async fn write(Json(b): Json<WriteBody>) -> impl IntoResponse {
     respond(filesystem::write_text_file(b.path, b.content))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RenameBody {
+    path: String,
+    new_name: String,
+}
+async fn rename(Json(body): Json<RenameBody>) -> impl IntoResponse {
+    respond(filesystem::rename_filesystem_entry(body.path, body.new_name))
+}
+
+#[derive(Deserialize)]
+struct DeleteBody {
+    path: String,
+}
+async fn delete(Json(body): Json<DeleteBody>) -> impl IntoResponse {
+    respond(filesystem::delete_filesystem_entry(body.path))
 }
 
 #[derive(Deserialize)]

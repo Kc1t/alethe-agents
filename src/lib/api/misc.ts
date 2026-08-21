@@ -103,22 +103,7 @@ export type SpotifyCredentials = { clientId?: string; clientSecret?: string }
 
 export async function remoteControlInfo(): Promise<RemoteControlInfo> {
   if (isTauriEnv()) return invoke<RemoteControlInfo>('remote_control_info')
-  return {
-    enabled: false,
-    connected_devices: 0,
-    online_devices: 0,
-    max_devices: 1,
-    session_expiry_secs: 3600,
-    read_only: false,
-    allow_shell_input: true,
-    pairing_open: false,
-    pairing_expires_in: 0,
-    devices: [],
-    pairing_url: null,
-    qr_svg: null,
-    http_url: null,
-    ws_url: null,
-  }
+  return webApiFetch<RemoteControlInfo>('/api/remote_control/info')
 }
 
 export async function remoteControlConnectedDevices(): Promise<number> {

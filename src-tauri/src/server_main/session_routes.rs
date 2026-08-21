@@ -1,9 +1,6 @@
-// Sessões (Claude/Codex/OpenCode/Antigravity) e uso/custo — quase tudo aqui é
-// leitura de arquivo local (histórico de sessão de cada CLI), sem
-// `tauri::AppHandle` nenhum, então reaproveita direto. Só
-// `get_activity_summary`/`clear_activity_stats` (Time Analytics) precisam de
-// `app_data_dir()` — resolvido à mão, igual `profile_routes.rs`, já que
-// moram no MESMO diretório de perfil (`profiles/<id>/activity-stats.json`).
+// Agent sessions, usage, and cost mostly read local CLI history and do not
+// need an `AppHandle`. Time Analytics resolves the active profile directory
+// through the shared Core runtime.
 
 use crate::activity_stats;
 use crate::agent_cost;
@@ -34,6 +31,7 @@ pub fn router() -> Router {
         .route("/api/sessions/cost", get(session_cost))
         .route("/api/sessions/transcript_cost", get(transcript_cost))
         .route("/api/sessions/claude/snapshot", get(claude_snapshot))
+        .route("/api/sessions/claude/title", get(claude_title))
         .route("/api/sessions/codex/snapshot", get(codex_snapshot))
         .route("/api/sessions/claude/list", get(claude_list))
         .route("/api/sessions/opencode/snapshot", get(opencode_snapshot))
@@ -47,6 +45,18 @@ pub fn router() -> Router {
         .route("/api/usage/multi_agent_activity", get(multi_agent_activity))
         .route("/api/usage/summary", post(activity_summary))
         .route("/api/usage/clear_stats", post(clear_stats))
+}
+
+async fn claude_title(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
+    let cwd = match q(&p, "cwd") {
+        Ok(value) => value,
+        Err(error) => return error.into_response(),
+    };
+    let session_id = match q(&p, "sessionId") {
+        Ok(value) => value,
+        Err(error) => return error.into_response(),
+    };
+    respond(claude_sessions::get_claude_session_title(cwd, session_id).await)
 }
 
 async fn antigravity_snapshot(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {

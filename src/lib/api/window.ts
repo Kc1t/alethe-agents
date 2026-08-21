@@ -129,12 +129,12 @@ export async function quitApp(): Promise<void> {
 
 export async function resetAppData(): Promise<void> {
   if (isTauriEnv()) return invoke('reset_app_data')
-  await webApiFetch('/api/window/reset_app_data', { method: 'POST' })
+  throw new Error('desktop_capability_required')
 }
 
 export async function wipeAllAppData(): Promise<void> {
   if (isTauriEnv()) return invoke('wipe_all_app_data')
-  await webApiFetch('/api/window/wipe_all_app_data', { method: 'POST' })
+  throw new Error('desktop_capability_required')
 }
 
 export async function getResourceMetrics(): Promise<ResourceMetrics> {

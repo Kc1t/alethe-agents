@@ -1,13 +1,9 @@
-// GSD (watchers + leitura de sentinelas), Planning (status/auditoria/
-// autocommit), Scheduler (tarefas), Validation Pipeline, Event Bus e
-// Telemetria — todos livres de `AppHandle`.
+// GSD watchers and sentinel reads, Planning, Scheduler, Validation, Event Bus,
+// and Telemetry are independent of `AppHandle`.
 //
-// `start_gsd_watcher`/`stop_gsd_watcher` usavam `tauri::State<PlanningWatchers>`
-// (registro de `notify::Watcher` por projeto) — o `_app: AppHandle` do
-// comando original nunca era usado dentro da função mesmo no Tauri, então o
-// núcleo (`*_core`, ver `planning.rs`) já era livre de `AppHandle`. Só falta
-// um `PlanningWatchers` PRÓPRIO pro `alethe-server` (`OnceLock` estático em
-// vez do gerenciado pelo Tauri) — mesmo tipo, só uma instância paralela.
+// The Tauri watcher commands use managed `PlanningWatchers`, but their core
+// functions never need the app handle. The standalone Core owns a separate
+// static registry of the same type.
 
 use crate::event_bus::{self, EventBusPayload};
 use crate::opencode_gsd_plugin;
@@ -59,6 +55,80 @@ pub fn router() -> Router {
         .route("/api/telemetry/traces", get(telemetry_traces))
         .route("/api/remote/set_enabled", post(remote_set_enabled))
         .route("/api/remote_control/set_enabled", post(remote_set_enabled))
+        .route("/api/remote_control/info", get(remote_info))
+        .route("/api/remote_control/open_pairing", post(remote_open_pairing))
+        .route("/api/remote_control/close_pairing", post(remote_close_pairing))
+        .route("/api/remote_control/revoke", post(remote_revoke))
+        .route("/api/remote_control/set_read_only", post(remote_set_read_only))
+        .route("/api/remote_control/set_shell_input", post(remote_set_shell_input))
+        .route("/api/remote_control/set_max_devices", post(remote_set_max_devices))
+        .route(
+            "/api/remote_control/set_session_expiry",
+            post(remote_set_session_expiry),
+        )
+        .route("/api/remote_control/revoke_device", post(remote_revoke_device))
+}
+
+async fn remote_info() -> impl IntoResponse {
+    Json(crate::remote::remote_control_info())
+}
+
+async fn remote_open_pairing() -> impl IntoResponse {
+    Json(crate::remote::remote_control_open_pairing())
+}
+
+async fn remote_close_pairing() -> impl IntoResponse {
+    Json(crate::remote::remote_control_close_pairing())
+}
+
+async fn remote_revoke() -> impl IntoResponse {
+    Json(crate::remote::remote_control_revoke())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RemoteReadOnlyBody {
+    read_only: bool,
+}
+async fn remote_set_read_only(Json(body): Json<RemoteReadOnlyBody>) -> impl IntoResponse {
+    Json(crate::remote::remote_control_set_read_only(body.read_only))
+}
+
+#[derive(Deserialize)]
+struct RemoteShellInputBody {
+    allowed: bool,
+}
+async fn remote_set_shell_input(Json(body): Json<RemoteShellInputBody>) -> impl IntoResponse {
+    Json(crate::remote::remote_control_set_shell_input(body.allowed))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RemoteMaxDevicesBody {
+    max_devices: usize,
+}
+async fn remote_set_max_devices(Json(body): Json<RemoteMaxDevicesBody>) -> impl IntoResponse {
+    Json(crate::remote::remote_control_set_max_devices(body.max_devices))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RemoteSessionExpiryBody {
+    session_expiry_secs: u64,
+}
+async fn remote_set_session_expiry(Json(body): Json<RemoteSessionExpiryBody>) -> impl IntoResponse {
+    Json(crate::remote::remote_control_set_session_expiry(
+        body.session_expiry_secs,
+    ))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RemoteDeviceBody {
+    device_id: usize,
+}
+async fn remote_revoke_device(Json(body): Json<RemoteDeviceBody>) -> impl IntoResponse {
+    Json(crate::remote::remote_control_revoke_device(body.device_id))
 }
 
 async fn planning_status(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
