@@ -1,9 +1,3 @@
-   
-                                                                             
-                                                                        
-                                                      
-   
-
 import { nanoid } from 'nanoid'
 
 import { MAX_RECENT_PROJECT_TABS } from '../stores/projectsStore.constants'
@@ -21,7 +15,6 @@ import type {
   WorkspaceRecentTab,
 } from './types'
 
-                                                
 export function newContainer(
   projectId: string,
   paneIds: string[],
@@ -103,15 +96,12 @@ export function makeDefaultTerminal(args: {
 const MARKDOWN_FILE_PATTERN = /\.(md|markdown|mdx)$/i
 const VIDEO_FILE_PATTERN = /\.(mp4|m4v|mov|avi|mkv|webm|ogv)$/i
 
-                                                                                         
 function classifyPaneKind(filePath: string): 'markdown' | 'video' | 'file' {
   if (VIDEO_FILE_PATTERN.test(filePath)) return 'video'
   return MARKDOWN_FILE_PATTERN.test(filePath) ? 'markdown' : 'file'
 }
 
 export function makeFilePane(args: { filePath: string; name?: string }): Terminal {
-                                                                              
-                                               
   const filePath = args.filePath.trim().replace(/:\d+(?::\d+)?$/, '')
   return {
     id: nanoid(),
@@ -172,6 +162,8 @@ export function makeWebPane(args: BrowserPaneOptions): Terminal {
       javascriptEnabled: args.javascriptEnabled ?? true,
       zoom: args.zoom ?? 1,
       resourceMode: args.resourceMode ?? 'app-first',
+      ...(args.engine ? { engine: args.engine } : {}),
+      ...(args.watchTargetId ? { watchTargetId: args.watchTargetId } : {}),
     },
   }
 }
@@ -215,9 +207,6 @@ export function clearTerminalPtyIds(terminal: Terminal): Terminal {
   }
 }
 
-                                                                                    
-                                                                                
-                                                                                     
 export function resetTerminalRuntime(terminal: Terminal): Terminal {
   if (terminal.tabs.length === 0) return terminal
   return {
@@ -259,42 +248,24 @@ export function getProjectDefaultCwd(
  *  ainda aponta pro segmento mais externo (a raiz real). */
 const ALETHE_WORKTREES_SEGMENT = /[\\/]\.alethe[\\/]worktrees[\\/]/i
 
-                                                                           
-                                                                             
-                                                                           
-                                                                    
 function deriveRepoRootFromWorktreeCwd(cwd: string): string {
   const match = cwd.match(ALETHE_WORKTREES_SEGMENT)
   if (!match || match.index === undefined) return ''
   return cwd.slice(0, match.index)
 }
 
-   
-                                                                       
-                                                                           
-                                                              
-   
 export function getProjectRepoRoot(project: Project | null | undefined): string {
   if (!project) return ''
   const sorted = [...project.terminals].sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))
 
-                                                                             
-                                                                       
-                                                                             
   // de raiz, devolvendo o path da worktree em vez do repo de verdade, e
-                                                                         
-                                                                        
-                                                                 
+
   const pure = sorted.filter((terminal) => !terminal.worktreeAgentId && !terminal.gsdSyncViewer)
   for (const terminal of pure) {
     const cwd = resolveTerminalCwd(terminal)
     if (cwd) return cwd
   }
 
-                                                                          
-                                                                        
-                                                                        
-                                                       
   for (const terminal of sorted) {
     const cwd = resolveTerminalCwd(terminal)
     const derived = cwd && deriveRepoRootFromWorktreeCwd(cwd)

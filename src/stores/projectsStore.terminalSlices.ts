@@ -47,6 +47,7 @@ type TerminalsSlice = Pick<
   | 'setTerminalDisabled'
   | 'setProjectDisabled'
   | 'setLaneVisible'
+  | 'setTerminalTopbarPinned'
   | 'setTerminalRemoteExcluded'
   | 'markTerminalUsed'
 >
@@ -516,6 +517,9 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
 
     setLaneVisible: (projectId, terminalId, visible) =>
       updateTerminal(projectId, terminalId, (t) => ({ ...t, laneVisible: visible })),
+
+    setTerminalTopbarPinned: (projectId, terminalId, pinned) =>
+      updateTerminal(projectId, terminalId, (t) => ({ ...t, topbarPinned: pinned })),
 
     setTerminalRemoteExcluded: (projectId, terminalId, excluded) =>
       updateTerminal(projectId, terminalId, (t) => ({ ...t, remoteExcluded: excluded })),

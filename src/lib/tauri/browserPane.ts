@@ -112,6 +112,24 @@ export async function browserPaneCloseTarget(targetId: string): Promise<void> {
   await invoke('browser_pane_close_target', { targetId })
 }
 
+/** Connects the app to the shared browser so pages an agent opens are noticed. */
+export async function browserPaneObserve(): Promise<void> {
+  await invoke('browser_pane_observe')
+}
+
+export type OpenedPage = {
+  targetId: string
+  url: string
+  title: string
+}
+
+/** Fires when a page appears in the shared browser that no pane is showing — typically an agent's. */
+export async function listenBrowserTargetOpened(
+  handler: (page: OpenedPage) => void,
+): Promise<UnlistenFn> {
+  return listen<OpenedPage>('browser-cdp://target-opened', (event) => handler(event.payload))
+}
+
 export function browserPaneFrameEvent(paneId: string): string {
   return `browser-cdp://frame/${paneId}`
 }

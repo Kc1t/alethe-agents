@@ -78,6 +78,38 @@ pub struct KeyInput {
     pub modifiers: Option<u32>,
 }
 
+pub const TARGET_OPENED_EVENT: &str = "browser-cdp://target-opened";
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenedPage {
+    pub target_id: String,
+    pub url: String,
+    pub title: String,
+}
+
+/// A page worth offering to show. Blank tabs carry nothing to look at, and a target that is not a
+/// page cannot be rendered at all.
+pub fn opened_page_from(params: &Value) -> Option<OpenedPage> {
+    let info = params.get("targetInfo")?;
+    if info.get("type").and_then(Value::as_str)? != "page" {
+        return None;
+    }
+    let url = info.get("url").and_then(Value::as_str).unwrap_or_default();
+    if url.is_empty() || url == "about:blank" {
+        return None;
+    }
+    Some(OpenedPage {
+        target_id: info.get("targetId").and_then(Value::as_str)?.to_string(),
+        url: url.to_string(),
+        title: info
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+    })
+}
+
 pub fn frame_event_name(pane_id: &str) -> String {
     format!("browser-cdp://frame/{pane_id}")
 }
@@ -214,6 +246,15 @@ async fn ensure_client(
     let client = CdpClient::connect(&ws).await?;
 
     spawn_frame_pump(app.clone(), Arc::clone(&client), Arc::clone(&state.panes));
+    // Without discovery the client never hears about tabs it did not open itself, which is exactly
+    // the case that matters: a page an agent just opened.
+    let _ = client
+        .call(
+            "Target.setDiscoverTargets",
+            json!({ "discover": true }),
+            None,
+        )
+        .await;
     *guard = Some(Arc::clone(&client));
     Ok(client)
 }
@@ -226,6 +267,22 @@ fn spawn_frame_pump(
     let mut events = client.subscribe();
     tauri::async_runtime::spawn(async move {
         while let Ok(event) = events.recv().await {
+            if event.method == "Target.targetCreated" {
+                if let Some(opened) = opened_page_from(&event.params) {
+                    let known = panes
+                        .lock()
+                        .map(|panes| {
+                            panes
+                                .values()
+                                .any(|pane| pane.target_id == opened.target_id)
+                        })
+                        .unwrap_or(false);
+                    if !known {
+                        let _ = app.emit(TARGET_OPENED_EVENT, opened);
+                    }
+                }
+                continue;
+            }
             if event.method != "Page.screencastFrame" {
                 continue;
             }
@@ -348,6 +405,18 @@ pub async fn browser_pane_close(
     Ok(())
 }
 
+/// Connects to the shared browser so the app can see what happens inside it. Nothing else does
+/// this on its own: a pane connects only when it opens, so without this a page an agent opened
+/// would go unnoticed until someone happened to open a pane by hand.
+#[tauri::command]
+pub async fn browser_pane_observe(
+    app: AppHandle,
+    state: State<'_, BrowserPaneState>,
+) -> Result<(), String> {
+    ensure_client(&app, &state).await?;
+    Ok(())
+}
+
 /// Every page open in the shared browser, including the ones an agent opened.
 #[tauri::command]
 pub async fn browser_pane_targets(
@@ -462,8 +531,14 @@ pub async fn browser_pane_reload(
 ) -> Result<(), String> {
     let pane = attachment(&state.panes, &pane_id)?;
     let client = ensure_client(&app, &state).await?;
+    // A plain reload re-serves whatever the cache holds, which is the opposite of what someone
+    // pressing reload on a page they are actively editing wants.
     client
-        .call("Page.reload", Value::Null, Some(&pane.session_id))
+        .call(
+            "Page.reload",
+            json!({ "ignoreCache": true }),
+            Some(&pane.session_id),
+        )
         .await?;
     Ok(())
 }
@@ -615,6 +690,44 @@ mod tests {
             delta_y: None,
             modifiers: None,
         }
+    }
+
+    #[test]
+    fn a_page_an_agent_opened_is_offered() {
+        let page = opened_page_from(&json!({
+            "targetInfo": { "targetId": "T9", "type": "page", "url": "https://a.test/x", "title": "Alfa" }
+        }))
+        .expect("page");
+        assert_eq!(page.target_id, "T9");
+        assert_eq!(page.url, "https://a.test/x");
+        assert_eq!(page.title, "Alfa");
+    }
+
+    #[test]
+    fn nothing_worth_looking_at_is_offered() {
+        // A blank tab has nothing to show, and only a page can be rendered at all.
+        assert!(opened_page_from(&json!({
+            "targetInfo": { "targetId": "T1", "type": "page", "url": "about:blank" }
+        }))
+        .is_none());
+        assert!(opened_page_from(&json!({
+            "targetInfo": { "targetId": "T2", "type": "page", "url": "" }
+        }))
+        .is_none());
+        assert!(opened_page_from(&json!({
+            "targetInfo": { "targetId": "T3", "type": "service_worker", "url": "https://a.test" }
+        }))
+        .is_none());
+        assert!(opened_page_from(&json!({})).is_none());
+    }
+
+    #[test]
+    fn a_page_without_a_title_is_still_offered() {
+        let page = opened_page_from(&json!({
+            "targetInfo": { "targetId": "T4", "type": "page", "url": "https://a.test" }
+        }))
+        .expect("page");
+        assert_eq!(page.title, "", "a missing title must not drop the offer");
     }
 
     #[test]

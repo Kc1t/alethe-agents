@@ -45,18 +45,62 @@
 .chevron {
   flex: 0 0 auto;
   color: var(--fg-faint);
+  transition: transform 120ms ease;
+}
+
+.trigger[aria-expanded='true'] .chevron {
+  transform: rotate(180deg);
 }
 
 .menu {
   position: fixed;
   z-index: 10000;
-  overflow-y: auto;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 4px;
   padding: 4px;
-  background: var(--bg-elevated, var(--bg-sunken));
-  border: 1px solid var(--border-strong, var(--border));
-  border-radius: var(--radius-sm);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.42);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--bg) 60%, transparent);
   overscroll-behavior: contain;
+  pointer-events: auto;
+}
+
+.searchBox {
+  display: flex;
+  min-height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  color: var(--fg-faint);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.searchInput {
+  width: 100%;
+  min-width: 0;
+  color: var(--fg);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: 11px var(--font-sans);
+}
+
+.searchInput::placeholder {
+  color: var(--fg-faint);
+}
+
+.options {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 1px;
+  overflow-y: auto;
 }
 
 .option {
@@ -64,12 +108,14 @@
   width: 100%;
   min-height: 30px;
   align-items: center;
-  padding: 6px 9px;
+  flex: 0 0 auto;
+  padding: 0 8px;
   overflow: hidden;
   color: var(--fg-muted);
   background: transparent;
   border: 0;
   border-radius: 4px;
+  font-size: 11px;
   text-align: left;
   cursor: pointer;
 }
@@ -86,6 +132,24 @@
 .optionSelected {
   color: var(--fg);
   background: var(--panel-hover, rgba(255, 255, 255, 0.08));
+}
+
+.optionSelected {
+  color: var(--accent);
+}
+
+.customOption {
+  margin-top: 3px;
+  color: var(--accent);
+  border-top: 1px solid var(--border);
+}
+
+.empty {
+  padding: 12px 8px;
+  color: var(--fg-faint);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
 }
 
 .option:disabled {
@@ -113,4 +177,8 @@
 :global([data-visual-style='clean']) .option {
   min-height: var(--clean-row-height);
   border-radius: var(--clean-control-radius);
+}
+
+:global([data-visual-style='clean']) .optionSelected {
+  color: var(--fg);
 }

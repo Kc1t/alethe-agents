@@ -12,13 +12,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
-- Agent orchestration, off by default under a new preference. When it is on, Claude Code terminals
-  get a set of Alethe tools for handing independent units of work to Codex workers that Alethe runs
-  in parallel, up to a concurrency limit it enforces itself. The lead gets job ids back immediately
-  and collects results as the workers settle, so it never reports an outcome it does not have.
-  Alethe pins each worker to the project directory with workspace-scoped writes, and can correct a
-  worker while it is still running or cancel it outright without losing its context. Worker status,
-  plan, elapsed time, token usage and unified diff are reported to the app as they change.
+- When an agent opens a page in the shared browser, Alethe offers to show it in a pane instead of
+  leaving it invisible. The notification spells out both answers — show it here, or leave it in
+  the background — so declining is a choice rather than a failure to react, and nothing takes
+  over the layout on its own. Accepting attaches the pane to the agent's own tab rather than
+  opening a copy, so its work can be watched and taken over by hand.
 
 - Tabs in a browser pane can be closed from the tab strip. An agent that navigates a lot leaves
   tabs behind and nothing reaped them, so they piled up for as long as the browser lived.
@@ -38,6 +36,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Changed
 
+- Standardized modal dropdowns on the Todo List picker pattern, including consistent portal-based
+  menus, searchable model selection, keyboard handling, long-list scrolling, and reliable clicks
+  inside modal focus traps.
 - Elite Indigo is now the default UI theme and the default app icon for new installations. The
   application icon, the installer icon and the installer artwork all use the same Indigo mark.
 - Replaced the home and loading backdrop artwork with the same monochrome portrait, so the
@@ -54,6 +55,20 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- A terminal printing fast no longer stalls the whole window. A PTY hands over up to 64 KB every
+  16 ms while a frame draws 16 KB, so a noisy command outran the terminal four to one and the
+  queue grew without limit: the pane kept drawing output from minutes earlier and asked for a
+  frame every 16 ms indefinitely, which starved every other pane, since they all draw on the
+  same thread. The backlog is now capped and the oldest output is dropped, so a terminal under
+  a flood shows what is happening now instead of replaying what already scrolled past.
+- Reloading a browser pane now actually refetches the page. It discarded the tab and opened a new
+  one, which landed on the same cached copy, so an edited page kept showing its old version. The
+  tab is kept and reloaded without its cache instead.
+- Reloading a browser pane now bypasses the cache and keeps the tab it is showing. It used to
+  discard the tab and open a new one, which landed on the same cached copy, so a page being
+  edited kept coming back unchanged no matter how many times it was reloaded.
+- The topbar customization pencil no longer reserves empty space while hidden and expands only
+  when the status area is hovered or the control receives keyboard focus.
 - Parking a terminal to free memory now says so. It kills the process tree, so the pane simply
   fell silent and was indistinguishable from a frozen one, and the restart that brings the
   session back was not something a reader had any reason to try.

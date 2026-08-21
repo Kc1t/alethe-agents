@@ -7,6 +7,8 @@ import {
   Minimize2,
   PanelLeftClose,
   PanelLeftOpen,
+  Pin,
+  PinOff,
   RefreshCw,
   Trash2,
   X,
@@ -108,6 +110,7 @@ export const TerminalPane = memo(function TerminalPane({
   const setActiveTab = useProjectsStore((s) => s.setActiveTab)
   const closeSubTab = useProjectsStore((s) => s.closeSubTab)
   const setLaneVisible = useProjectsStore((s) => s.setLaneVisible)
+  const setTerminalTopbarPinned = useProjectsStore((s) => s.setTerminalTopbarPinned)
   const setTerminalDisabled = useProjectsStore((s) => s.setTerminalDisabled)
   const markTerminalUsed = useProjectsStore((s) => s.markTerminalUsed)
   const setSubTabPtyId = useProjectsStore((s) => s.setSubTabPtyId)
@@ -162,8 +165,9 @@ export const TerminalPane = memo(function TerminalPane({
   }, [activeTab?.extraArgs, activeTab?.handoff, activeTab?.type])
 
   const effectiveLaneVisible = terminal.tabs.length > 1 ? true : terminal.laneVisible === true
+  const topbarPinned = terminal.topbarPinned === true
   const isShell = activeTab?.type === 'shell'
-  const showFloatingIdentity = Boolean(activeTab && !isShell)
+  const showFloatingIdentity = Boolean(activeTab && (!isShell || topbarPinned))
   const showLeftFloating = showFloatingIdentity || (canDragPane && !isShell)
 
   const ptyRuntime = useTerminalsStore((s) =>
@@ -288,6 +292,10 @@ export const TerminalPane = memo(function TerminalPane({
     setLaneVisible(projectId, terminal.id, !effectiveLaneVisible)
   }
 
+  const onToggleTopbarPinned = () => {
+    setTerminalTopbarPinned(projectId, terminal.id, !topbarPinned)
+  }
+
   const cwd = activeTab?.cwd?.trim() || terminal.cwd?.trim() || ''
 
   const dropTarget = canDragPane && droppable.isOver
@@ -316,7 +324,9 @@ export const TerminalPane = memo(function TerminalPane({
       }}
       className={`${styles.pane} ${isFocusMode ? styles.paneFocus : ''} ${terminal.disabled ? styles.disabled : ''} ${dragging ? styles.dragging : ''} ${dropTarget ? styles.dropTarget : ''}`}
     >
-      <header className={`${styles.header} ${effectiveLaneVisible ? styles.headerWithLane : ''}`}>
+      <header
+        className={`${styles.header} ${topbarPinned ? styles.headerPinned : ''} ${effectiveLaneVisible ? styles.headerWithLane : ''}`}
+      >
         {showLeftFloating ? (
           <div
             className={`${styles.headLeft} ${showFloatingIdentity ? '' : styles.headLeftControlsOnly}`}
@@ -325,7 +335,7 @@ export const TerminalPane = memo(function TerminalPane({
               isFocusMode ? t('ui.terminal.exitFocusModeEsc') : t('ui.terminal.focusModeFullscreen')
             }
           >
-            {canDragPane && !isShell && !effectiveLaneVisible ? (
+            {canDragPane && (!isShell || topbarPinned) && !effectiveLaneVisible ? (
               <button
                 type="button"
                 className={`${styles.action} ${styles.gripBtn}`}
@@ -355,7 +365,7 @@ export const TerminalPane = memo(function TerminalPane({
         {!preview ? (
           <div className={styles.headRight}>
             <div className={styles.actions}>
-              {canDragPane && isShell && !effectiveLaneVisible ? (
+              {canDragPane && isShell && !topbarPinned && !effectiveLaneVisible ? (
                 <button
                   type="button"
                   className={`${styles.action} ${styles.gripBtn}`}
@@ -367,6 +377,18 @@ export const TerminalPane = memo(function TerminalPane({
                   <GripVertical size={12} />
                 </button>
               ) : null}
+              <button
+                type="button"
+                className={`${styles.action} ${topbarPinned ? styles.actionActive : ''}`}
+                onClick={onToggleTopbarPinned}
+                title={topbarPinned ? t('ui.terminal.unpinTopbar') : t('ui.terminal.pinTopbar')}
+                aria-label={
+                  topbarPinned ? t('ui.terminal.unpinTopbar') : t('ui.terminal.pinTopbar')
+                }
+                aria-pressed={topbarPinned}
+              >
+                {topbarPinned ? <PinOff size={12} /> : <Pin size={12} />}
+              </button>
               <button
                 type="button"
                 className={styles.action}
@@ -412,9 +434,7 @@ export const TerminalPane = memo(function TerminalPane({
                     })
                   }
                   title={
-                    handoffSuggested
-                      ? t('ui.terminal.handoffSuggested')
-                      : t('ui.terminal.handoff')
+                    handoffSuggested ? t('ui.terminal.handoffSuggested') : t('ui.terminal.handoff')
                   }
                   aria-label={t('ui.terminal.handoff')}
                 >
@@ -562,9 +582,7 @@ export const TerminalPane = memo(function TerminalPane({
                     setSubTabCompletionUnread(projectId, terminal.id, activeTab.id, true)
                     if (!activeTab.handoff) return
                     void completeAgentHandoff(activeTab.handoff.id)
-                      .then(() =>
-                        setSubTabHandoff(projectId, terminal.id, activeTab.id, undefined),
-                      )
+                      .then(() => setSubTabHandoff(projectId, terminal.id, activeTab.id, undefined))
                       .catch((cause) =>
                         console.warn('[handoff] could not clean the completed packet:', cause),
                       )

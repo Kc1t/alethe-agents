@@ -232,6 +232,7 @@ export type ProjectsState = ProjectsFile & {
 
   setProjectDisabled: (projectId: string, disabled: boolean) => void
   setLaneVisible: (projectId: string, terminalId: string, visible: boolean | null) => void
+  setTerminalTopbarPinned: (projectId: string, terminalId: string, pinned: boolean) => void
   /** Hides a terminal from every paired remote device. */
   setTerminalRemoteExcluded: (projectId: string, terminalId: string, excluded: boolean) => void
 

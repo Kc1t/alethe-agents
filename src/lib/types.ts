@@ -170,6 +170,11 @@ export type BrowserPaneConfig = {
   resourceMode?: BrowserResourceMode
   /** Which surface renders the page. Defaults to native. */
   engine?: BrowserEngine
+  /**
+   * Attach to this tab in the shared browser instead of opening a new one. Set when a pane is
+   * created to watch a page an agent opened, so the pane shows that page rather than a copy.
+   */
+  watchTargetId?: string
 }
 
 export type BrowserPaneOptions = BrowserPaneConfig & {
@@ -185,6 +190,8 @@ export type Terminal = {
   activeTabId: string
   disabled: boolean
   laneVisible: boolean | null
+  /** Keeps terminal controls in a fixed topbar instead of revealing them on hover. */
+  topbarPinned?: boolean
 
   lastUsedAt?: number
 

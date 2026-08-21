@@ -396,3 +396,40 @@
     transform: translateY(0) scale(1);
   }
 }
+
+.toastActions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.toastAction {
+  padding: 3px 10px;
+  border: 1px solid var(--toast-accent);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--toast-accent);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.toastAction:hover {
+  background: var(--toast-accent);
+  color: var(--bg);
+}
+
+.toastActionQuiet {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-faint);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.toastActionQuiet:hover {
+  color: var(--fg);
+}

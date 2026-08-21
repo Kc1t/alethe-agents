@@ -10,6 +10,7 @@ import {
   browserPaneKey,
   browserPaneMouse,
   browserPaneOpen,
+  browserPaneReload,
   browserPaneResize,
   browserPaneSetStreaming,
   browserPaneTargets,
@@ -26,6 +27,8 @@ type CdpBrowserSurfaceProps = {
   url: string
   reloadKey: number
   visible: boolean
+  /** Attach to this existing tab instead of opening a new one. */
+  watchTargetId?: string
 }
 
 const RESIZE_DEBOUNCE_MS = 180
@@ -40,7 +43,13 @@ function decodeJpeg(base64: string): Blob {
   return new Blob([bytes], { type: 'image/jpeg' })
 }
 
-export function CdpBrowserSurface({ paneId, url, reloadKey, visible }: CdpBrowserSurfaceProps) {
+export function CdpBrowserSurface({
+  paneId,
+  url,
+  reloadKey,
+  visible,
+  watchTargetId,
+}: CdpBrowserSurfaceProps) {
   const t = useT()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const hostRef = useRef<HTMLDivElement | null>(null)
@@ -129,10 +138,17 @@ export function CdpBrowserSurface({ paneId, url, reloadKey, visible }: CdpBrowse
           unlisten = null
           return
         }
-        const info = await browserPaneOpen(paneId, url, size.width, size.height)
-        if (disposed) return
-        readyRef.current = true
-        setActiveTarget(info.targetId)
+        if (watchTargetId) {
+          await browserPaneWatch(paneId, watchTargetId, size.width, size.height)
+          if (disposed) return
+          readyRef.current = true
+          setActiveTarget(watchTargetId)
+        } else {
+          const info = await browserPaneOpen(paneId, url, size.width, size.height)
+          if (disposed) return
+          readyRef.current = true
+          setActiveTarget(info.targetId)
+        }
       } catch (cause) {
         fail('open', cause)
       }
@@ -146,7 +162,17 @@ export function CdpBrowserSurface({ paneId, url, reloadKey, visible }: CdpBrowse
       unlisten?.()
       void browserPaneClose(paneId).catch(() => {})
     }
-  }, [paneId, url, reloadKey, measure])
+  }, [paneId, url, watchTargetId, measure])
+
+  // Reload keeps the tab and asks the page to come back without its cache. Tearing the pane down
+  // and opening a new tab would land on the same cached copy, which is what reload is meant to escape.
+  const appliedReloadRef = useRef(reloadKey)
+  useEffect(() => {
+    if (appliedReloadRef.current === reloadKey) return
+    appliedReloadRef.current = reloadKey
+    if (!readyRef.current || !isTauri()) return
+    void browserPaneReload(paneId).catch(() => {})
+  }, [paneId, reloadKey])
 
   useEffect(() => {
     const host = hostRef.current

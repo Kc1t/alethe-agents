@@ -45,6 +45,7 @@ import { TitleBar } from './components/TitleBar'
 import { TokenHud } from './components/TokenHud'
 import { AsciiEffect } from './components/ui/ascii-effect'
 import { WorkspaceView } from './components/WorkspaceView'
+import { useAgentBrowserOffers } from './hooks/useAgentBrowserOffers'
 import { useCliOpenRequests } from './hooks/useCliOpenRequests'
 import { useCloseConfirmation } from './hooks/useCloseConfirmation'
 import { useDiscordPresence } from './hooks/useDiscordPresence'
@@ -136,9 +137,13 @@ function ToastItem({ toast }: { toast: InAppToast }) {
   const uiTheme = useProjectsStore((s) => s.preferences.uiTheme)
 
   useEffect(() => {
-    const timer = window.setTimeout(() => dismissToast(toast.id), 6500)
+    // A toast that asks something has to outlive a glance, or the offer is gone before it is read.
+    const timer = window.setTimeout(
+      () => dismissToast(toast.id),
+      toast.actions?.length ? 20000 : 6500,
+    )
     return () => window.clearTimeout(timer)
-  }, [dismissToast, toast.id])
+  }, [dismissToast, toast.id, toast.actions])
 
   const accentStyle = {
     '--toast-accent': toast.agent ? `var(--agent-${toast.agent})` : 'var(--accent)',
@@ -156,6 +161,23 @@ function ToastItem({ toast }: { toast: InAppToast }) {
       <div className={styles.toastText}>
         <strong>{toast.title}</strong>
         <span title={toast.body}>{toast.body}</span>
+        {toast.actions?.length ? (
+          <div className={styles.toastActions}>
+            {toast.actions.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                className={action.quiet ? styles.toastActionQuiet : styles.toastAction}
+                onClick={() => {
+                  action.run()
+                  dismissToast(toast.id)
+                }}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
       <button
         type="button"
@@ -203,6 +225,7 @@ export default function App() {
   const leftSidebarWidth = useProjectsStore((s) => s.preferences.leftSidebarWidth)
   const rightSidebarWidth = useProjectsStore((s) => s.preferences.rightSidebarWidth)
   const todosEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.todos)
+  const playwrightEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.playwright)
   const gitEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.git)
   const mcpEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.mcp)
   const gitControlPlacement = useProjectsStore((s) => s.preferences.gitControlPlacement)
@@ -240,6 +263,7 @@ export default function App() {
   useRemoteControlService()
   useCloseConfirmation()
   useResourceSupervisor(hydrated)
+  useAgentBrowserOffers(playwrightEnabled)
   useCliOpenRequests(hydrated)
 
   useEffect(() => {
@@ -449,10 +473,6 @@ export default function App() {
         if (!cancelled) useUiStore.getState().setUpdateInfo(info)
       })
       .catch((error) => {
-                                                                        
-                                                                            
-                                                                          
-                                                                          
         console.error('[update] checagem de fundo falhou:', error)
       })
     return () => {
@@ -623,8 +643,7 @@ export default function App() {
                 collapsible
                 groupResizeBehavior="preserve-pixel-size"
                 onResize={(size, _id, previous) => {
-                  const currentVisible =
-                    useProjectsStore.getState().preferences.rightSidebarVisible
+                  const currentVisible = useProjectsStore.getState().preferences.rightSidebarVisible
                   const nextVisible = visibilityFromPanelResize(
                     rightSidebarLayoutReadyRef.current,
                     rightSidebarResizeActiveRef.current,

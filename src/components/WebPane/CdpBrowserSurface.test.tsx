@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const browserPaneOpen = vi.fn(async () => ({ paneId: 'p1', targetId: 'T1' }))
 const browserPaneClose = vi.fn(async () => {})
 const browserPaneTargets = vi.fn(async () => [])
+const browserPaneReload = vi.fn(async () => {})
 let frameHandler: ((frame: unknown) => void) | null = null
 
 vi.mock('@tauri-apps/api/core', () => ({ isTauri: () => true }))
@@ -13,6 +14,7 @@ vi.mock('../../lib/tauri', () => ({
   browserPaneClose: (...args: unknown[]) => browserPaneClose(...(args as [])),
   browserPaneCloseTarget: vi.fn(async () => {}),
   browserPaneKey: vi.fn(async () => {}),
+  browserPaneReload: (...args: unknown[]) => browserPaneReload(...(args as [])),
   browserPaneMouse: vi.fn(async () => {}),
   browserPaneResize: vi.fn(async () => {}),
   browserPaneSetStreaming: vi.fn(async () => {}),
@@ -37,6 +39,7 @@ beforeEach(() => {
   browserPaneOpen.mockClear()
   browserPaneClose.mockClear()
   browserPaneTargets.mockClear()
+  browserPaneReload.mockClear()
   frameHandler = null
   vi.stubGlobal(
     'ResizeObserver',
@@ -110,6 +113,22 @@ describe('CdpBrowserSurface', () => {
 
     view.rerender(<CdpBrowserSurface {...props} url="http://localhost/y" reloadKey={1} />)
     await flush()
-    expect(browserPaneOpen, 'a reload has to restart the page').toHaveBeenCalledTimes(3)
+    expect(
+      browserPaneOpen,
+      'a reload must not open a second tab; the point is to reload the one already there',
+    ).toHaveBeenCalledTimes(2)
+    expect(browserPaneReload, 'the reload has to reach the page').toHaveBeenCalledTimes(1)
+  })
+
+  it('reloads without cache rather than opening a fresh tab', async () => {
+    const props = { paneId: 'p1', url: 'http://localhost/x', reloadKey: 0, visible: true }
+    const view = render(<CdpBrowserSurface {...props} />)
+    await flush()
+    expect(browserPaneReload, 'mounting is not a reload').not.toHaveBeenCalled()
+
+    view.rerender(<CdpBrowserSurface {...props} reloadKey={1} />)
+    await flush()
+    expect(browserPaneReload).toHaveBeenCalledTimes(1)
+    expect(browserPaneOpen, 'the tab stays put across a reload').toHaveBeenCalledTimes(1)
   })
 })

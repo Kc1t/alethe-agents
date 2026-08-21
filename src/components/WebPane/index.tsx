@@ -198,6 +198,7 @@ export const WebPane = memo(function WebPane({
               url={url}
               reloadKey={reloadKey}
               visible={browserVisible}
+              watchTargetId={terminal.browserConfig?.watchTargetId}
             />
           ) : (
             <PrivateBrowserSurface

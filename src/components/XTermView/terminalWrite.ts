@@ -14,6 +14,33 @@ export const PTY_WRITE_TIMEOUT_MS = 5_000
 // terminar > qualquer frame individual travando por muito tempo.
 export const TERMINAL_WRITE_FRAME_BUDGET = 16 * 1024
 
+/**
+ * A PTY can hand over 64 KB every 16 ms while a frame drains 16 KB, so a command that prints fast
+ * outruns the terminal four to one. Left unbounded the queue keeps growing, the pane renders output
+ * from minutes ago, and the frame it asks for every 16 ms never stops arriving — which stalls every
+ * other pane, since they all draw on the same thread.
+ */
+export const MAX_PENDING_WRITE_BYTES = 512 * 1024
+
+/**
+ * Drops the oldest queued output so the terminal shows what is happening now instead of replaying a
+ * backlog. Whole chunks go at a time: slicing one in half would cut an escape sequence.
+ */
+export function trimPendingWrites(
+  pending: string[],
+  length: number,
+  cap = MAX_PENDING_WRITE_BYTES,
+): { length: number; dropped: number } {
+  let dropped = 0
+  while (length > cap && pending.length > 1) {
+    const head = pending.shift()
+    if (head === undefined) break
+    length -= head.length
+    dropped += head.length
+  }
+  return { length, dropped }
+}
+
 export function loadPromptHistory(ptyId: string): string[] {
   const raw = readScopedStorage(PROMPT_HISTORY_KEY(ptyId), true)
   if (!raw) return []

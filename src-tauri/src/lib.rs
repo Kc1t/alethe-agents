@@ -244,6 +244,7 @@ pub fn run() {
             browser_pane::browser_pane_set_streaming,
             browser_pane::browser_pane_mouse,
             browser_pane::browser_pane_key,
+            browser_pane::browser_pane_observe,
             browser_pane::browser_pane_targets,
             browser_pane::browser_pane_watch,
             browser_pane::browser_pane_close_target,

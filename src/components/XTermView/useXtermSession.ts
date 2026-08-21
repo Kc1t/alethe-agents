@@ -82,7 +82,12 @@ import {
   getLogicalTerminalLine,
   makeXtermLink,
 } from './terminalLinks'
-import { TERMINAL_WRITE_FRAME_BUDGET, writePtyChunked, writePtyWithTimeout } from './terminalWrite'
+import {
+  TERMINAL_WRITE_FRAME_BUDGET,
+  trimPendingWrites,
+  writePtyChunked,
+  writePtyWithTimeout,
+} from './terminalWrite'
 import { getXtermTheme, type LinkActionState } from './xtermThemes'
 
 // Early exits trigger a single fresh-session retry.
@@ -340,6 +345,7 @@ export function useXtermSession(params: {
       if (!chunk) return
       pendingWrites.push(chunk)
       pendingWriteLength += chunk.length
+      pendingWriteLength = trimPendingWrites(pendingWrites, pendingWriteLength).length
       if (writeFrame !== null) return
       writeFrame = window.requestAnimationFrame(flushPendingWrite)
     }
