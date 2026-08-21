@@ -9,6 +9,7 @@ import { useEffect, useRef } from 'react'
 import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { cliPathMatchesAgent } from '../../lib/agentCliPath'
 import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
+import { deliverOpenCodePrompt } from '../../lib/agentPromptDelivery'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { getLocale, translate } from '../../lib/i18n'
 import { isWindows } from '../../lib/platform'
@@ -240,6 +241,13 @@ export function useXtermSession(params: {
     let queuedInput = ''
     let inputFlushScheduled = false
     let inputWriteChain = Promise.resolve()
+    // True while `sendInitialInput` is typing/confirming/sending Enter for
+    // the initial prompt (see `start()` below). Confirmed live: ANY write
+    // failure during that window triggered the automatic recovery below
+    // (`flushInput`), which restarts the PTY — and restarting right in the
+    // middle of delivering the initial prompt kills the just-born process
+    // and loses the session it had just started.
+    let initialInputInFlight = false
 
     const resourcePolicy = useProjectsStore.getState().preferences.resourcePolicy
     const terminal = new Terminal({
@@ -399,6 +407,16 @@ export function useXtermSession(params: {
 
     const requestWriteRecovery = (id: string, source: 'input' | 'paste', error: unknown) => {
       console.warn(`[pty-${source}] write failed for ${id}; requesting recovery`, error)
+      if (source === 'input' && initialInputInFlight) {
+        // Restarting now would kill the process right in the middle of
+        // delivering the initial prompt, losing the session with no chance
+        // to resume — let `sendInitialInput` handle the failure itself
+        // (logs and gives up) instead of triggering this destructive recovery.
+        console.warn(
+          `[pty-input] automatic recovery SUPPRESSED on ${id}: initial prompt delivery still in progress`,
+        )
+        return
+      }
       if (disposed || writeRecoveryPending || id !== ptyIdRef.current) return
       writeRecoveryPending = true
       window.dispatchEvent(
@@ -1346,38 +1364,103 @@ export function useXtermSession(params: {
         const prompt = initialInput?.trim()
         if (prompt) {
           const sendInitialInput = async () => {
-            const earliestSendAt = Date.now() + 1_500
+            // "Quiet output for 700ms" is the WRONG signal for OpenCode —
+            // confirmed live, repeatedly: it goes quiet as soon as the
+            // welcome screen finishes drawing, well before it's done
+            // connecting to MCP servers (the footer shows "4 MCP" — likely
+            // that connection, not the UI, is what actually takes a while).
+            // A fixed minimum wait didn't fix it either (confirmed live: it
+            // sent early and the screen stayed empty). For OpenCode,
+            // "readiness" is now checked a different way — by reading the
+            // actually-rendered screen (see the isOpencode block below)
+            // instead of guessing by time — just a short wait here so it
+            // doesn't type over the very first paint. Other providers keep
+            // the old criterion, which never had this problem.
+            const isOpencode = command === 'opencode'
+            const earliestSendAt = Date.now() + (isOpencode ? 4_000 : 1_500)
             const timedSendAt = Date.now() + 4_000
-            const deadline = Date.now() + 10_000
+            // Deadline much larger than the minimum, as a safety net: with a
+            // heavy panel (another TUI terminal) open alongside, the
+            // WebView's main thread can get congested enough to delay even
+            // this loop's own setTimeouts — tested live, only a much larger
+            // ceiling (2min) guarantees enough wall-clock time even with
+            // delayed ticks.
+            const deadline = Date.now() + 120_000
+            let readyToSend = false
             while (!disposed && Date.now() < deadline) {
               await new Promise((resolve) => window.setTimeout(resolve, 250))
               const runtime = useTerminalsStore.getState().byPtyId[response.id]
               const quietFor = runtime ? Date.now() - runtime.lastIoAt : 0
-              if (
-                Date.now() >= earliestSendAt &&
-                runtime?.alive &&
-                (quietFor >= 700 || Date.now() >= timedSendAt)
-              )
+              // OpenCode: only the fixed minimum wait matters (earliestSendAt
+              // already covers it). Other providers: keep the old "quiet
+              // output" criterion, which never had this problem.
+              const settled = isOpencode || quietFor >= 700 || Date.now() >= timedSendAt
+              if (Date.now() >= earliestSendAt && runtime?.alive && settled) {
+                readyToSend = true
                 break
+              }
             }
-            if (disposed) return
+            if (disposed || !readyToSend) return
             try {
-              await writePtyChunked(response.id, prompt, true)
-              await new Promise((resolve) => window.setTimeout(resolve, 150))
-              await writePty(response.id, '\r')
-              window.setTimeout(() => void writePty(response.id, '\r').catch(() => {}), 1_200)
+              try {
+                terminal.focus()
+              } catch {
+                /* pane may already be unmounting — ignore */
+              }
+              if (isOpencode) {
+                // Instead of guessing "readiness" by time or scanning the
+                // raw byte stream (interleaved \x1b escape codes broke any
+                // string match), reads the screen already RENDERED by
+                // xterm.js itself — the same buffer it uses to draw, with
+                // every ANSI code already applied and resolved to plain
+                // text. The typing/confirmation logic itself lives in
+                // `agentPromptDelivery.ts` (extracted to be reusable outside
+                // this component, e.g. by the e2e suite — see
+                // `e2e/support/openCodePrompt.ts` — without duplicating or
+                // reinventing something already tested live).
+                const readVisibleScreenText = (rows = 200): string => {
+                  const buffer = terminal.buffer.active
+                  const start = Math.max(0, buffer.length - rows)
+                  const lines: string[] = []
+                  for (let y = start; y < buffer.length; y++) {
+                    const line = buffer.getLine(y)
+                    if (line) lines.push(line.translateToString(true))
+                  }
+                  return lines.join('\n')
+                }
+                const delivered = await deliverOpenCodePrompt(prompt, deadline, {
+                  readScreenText: readVisibleScreenText,
+                  write: (data) => writePty(response.id, data),
+                  sleep: (ms) => new Promise((resolve) => window.setTimeout(resolve, ms)),
+                  isCancelled: () => disposed,
+                })
+                if (!delivered) {
+                  console.warn(
+                    `[pty-launch] opencode did not confirm the typed text on screen before the deadline id=${response.id}`,
+                  )
+                  return
+                }
+              } else {
+                await writePtyChunked(response.id, prompt, terminal.modes.bracketedPasteMode)
+                await new Promise((resolve) => window.setTimeout(resolve, 150))
+                await writePty(response.id, '\r')
+                window.setTimeout(() => void writePty(response.id, '\r').catch(() => {}), 1_200)
+              }
               onInitialInputSentRef.current?.()
             } catch (error) {
-              console.warn('[pty-launch] não foi possível enviar o prompt inicial:', error)
+              console.warn('[pty-launch] could not send the initial prompt:', error)
             }
           }
-          void sendInitialInput()
+          initialInputInFlight = true
+          void sendInitialInput().finally(() => {
+            initialInputInFlight = false
+          })
         }
 
         scheduleResize()
         if (!disposed) setBootPhase('ready')
       } catch (err) {
-        console.error(`[pty-launch] ${command ?? 'shell'} FALHOU ao iniciar PTY:`, err)
+        console.error(`[pty-launch] ${command ?? 'shell'} FAILED to start:`, err)
         onLaunchErrorRef.current?.(err)
         if (!disposed) terminal.writeln(`Failed to start PTY: ${String(err)}`)
         if (!disposed) setBootPhase('ready')
