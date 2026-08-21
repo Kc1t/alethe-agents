@@ -199,16 +199,16 @@ pub fn run() {
 
             #[cfg(target_os = "linux")]
             if let Some(window) = app.get_webview_window("main") {
-                match image::load_from_memory(include_bytes!("../icons/128x128.png")) {
+                match image::load_from_memory(include_bytes!("../icons/128x128@2x.png")) {
                     Ok(decoded) => {
                         let rgba = decoded.to_rgba8();
                         let (width, height) = rgba.dimensions();
                         let icon = tauri::image::Image::new_owned(rgba.into_raw(), width, height);
                         if let Err(error) = window.set_icon(icon) {
-                            eprintln!("[icon] falha ao aplicar ícone da janela: {error}");
+                            eprintln!("[icon] failed to apply the Linux window icon: {error}");
                         }
                     }
-                    Err(error) => eprintln!("[icon] falha ao decodificar ícone embutido: {error}"),
+                    Err(error) => eprintln!("[icon] failed to decode the embedded icon: {error}"),
                 }
             }
             logging::set_logs_dir(app.handle());

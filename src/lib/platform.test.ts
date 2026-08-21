@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { formatShortcut, isMacOS, normalizeCwd, shouldUseNativeBackend } from './platform'
+import { formatShortcut, isLinux, isMacOS, normalizeCwd, shouldUseNativeBackend } from './platform'
 
 function setUserAgent(ua: string) {
   vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(ua)
@@ -22,6 +22,17 @@ describe('isMacOS', () => {
   it('é false no Linux', () => {
     setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36')
     expect(isMacOS()).toBe(false)
+  })
+})
+
+describe('isLinux', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('detects Linux webviews without matching Windows', () => {
+    setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36')
+    expect(isLinux()).toBe(true)
+    setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+    expect(isLinux()).toBe(false)
   })
 })
 

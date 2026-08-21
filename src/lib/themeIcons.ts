@@ -1,3 +1,4 @@
+import { isLinux } from './platform'
 import type { AppIconTheme } from './types'
 
 // Windows renders the taskbar button from the window icon at 32px scaled by the
@@ -6,11 +7,14 @@ import type { AppIconTheme } from './types'
 // 220px masters in this folder.
 const ICON_SIZES = [32, 48, 64] as const
 
-const ICON_URLS = import.meta.glob('../assets/theme-icons/*/*.png', {
-  eager: true,
-  query: '?url',
-  import: 'default',
-}) as Record<string, string>
+const ICON_URLS = import.meta.glob(
+  ['../assets/theme-icons/*.png', '../assets/theme-icons/*/*.png'],
+  {
+    eager: true,
+    query: '?url',
+    import: 'default',
+  },
+) as Record<string, string>
 
 const ICON_FILES: Record<AppIconTheme, string> = {
   'elite-original': 'elite-original.png',
@@ -35,9 +39,12 @@ function preferredSize(): number {
   return ICON_SIZES.find((size) => size >= target) ?? ICON_SIZES[ICON_SIZES.length - 1]
 }
 
-export function getThemeIcon(theme: AppIconTheme, size = preferredSize()): string {
+export function getThemeIcon(theme: AppIconTheme, size?: number): string {
   const file = ICON_FILES[theme] ?? ICON_FILES['elite-indigo']
-  return ICON_URLS[`../assets/theme-icons/${size}/${file}`] ?? ''
+  if (size === undefined && isLinux()) {
+    return ICON_URLS[`../assets/theme-icons/${file}`] ?? ''
+  }
+  return ICON_URLS[`../assets/theme-icons/${size ?? preferredSize()}/${file}`] ?? ''
 }
 
 const iconBytesCache = new Map<string, number[]>()

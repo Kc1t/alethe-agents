@@ -45,7 +45,9 @@ async function ensureNotificationPermission(): Promise<boolean> {
       }
     })()
   }
-  return permissionPromise
+  const granted = await permissionPromise
+  if (!granted) permissionPromise = null
+  return granted
 }
 
 async function deliver(title: string, body: string, agent?: AgentType): Promise<void> {
@@ -57,11 +59,12 @@ async function deliver(title: string, body: string, agent?: AgentType): Promise<
   }
 
   if (await ensureNotificationPermission()) {
-    pushToast({ title, body, agent, silent: true })
     try {
-      sendNotification({ title, body })
+      await sendNotification({ title, body })
+      pushToast({ title, body, agent, silent: true })
     } catch {
-      /* Notification failures should not affect the terminal session. */
+      // Keep an in-app notification visible when native delivery fails asynchronously.
+      pushToast({ title, body, agent })
     }
   } else {
     pushToast({ title, body, agent })

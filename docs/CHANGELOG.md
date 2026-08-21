@@ -12,6 +12,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- Linux windows and bundles now use high-resolution application icons for task switching, and native notification delivery is awaited with a visible fallback when the desktop service rejects it.
 - Terminal and sub-tab dialogs now use one tested creation-state controller and one runtime-profile field, preventing their reset, permission, and runtime behavior from drifting apart.
 - Group create/edit dialogs now share one token-based field implementation, while terminal and sub-tab creation share the same tested agent, permission, and launch-argument contract.
 - Clean and Normal sidebar variants now share project state derivation and group-tree rendering, including cycle-safe descendant traversal for malformed persisted group data.
