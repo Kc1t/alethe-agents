@@ -40,7 +40,7 @@ import styles from './HomeView.module.css'
 
 const RECENT_PROJECTS_LIMIT = 6
 const NOTIFICATIONS_LIMIT = 5
-const REPOSITORY_URL = 'https://github.com/Kc1t/agent-canva'
+const REPOSITORY_URL = 'https://github.com/Kc1t/alethe-agents'
 const ISSUES_URL = `${REPOSITORY_URL}/issues`
 const RELEASES_URL = `${REPOSITORY_URL}/releases`
 const QUICK_AGENTS: Array<{ type: AgentType; label: string }> = [
