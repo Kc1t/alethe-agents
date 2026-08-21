@@ -108,8 +108,8 @@ Relevant commits: `0ebcc9d`, `dd2d6a2`, and `b4dfea9`.
 | Linux terminal resize resilience | Implemented with automated coverage | Additional long-running cross-compositor soak testing remains |
 | Google Desktop OAuth | Implemented | A valid Google Desktop OAuth client ID is still required |
 | Device key vault | Implemented locally, including approve/reject/rename/revoke/remove | Cross-device presence/discovery, key rotation, and all-devices-lost recovery remain |
-| Invitation security primitives | Implemented locally and unit-tested | No public runtime commands or cross-PC delivery yet |
-| Project grants and permission contracts | Partially implemented | Not yet enforced by a real project-content transport |
+| Invitation security primitives | Implemented locally and unit-tested, now exposed via Tauri commands and Web routes with a sidebar UI | No cross-PC delivery yet (Phase 3); redeem only works within one local install |
+| Project grants and permission contracts | Issue/list/revoke implemented and tested | Not yet enforced by a real project-content transport; folder scopes not exposed in the UI |
 | Rendezvous and relay | Not implemented | Required for reliable cross-network discovery and fallback transport |
 | Project file transfer | Not implemented | No manifest, chunks, staging, verification, or atomic publication yet |
 | Recipient destination workflow | Planned only | No project should download until this exists |
@@ -232,19 +232,21 @@ Note: today's device list is local to each install — cross-device visibility a
 - `[x]` Generate random invitation bearer tokens and persist only their hashes.
 - `[x]` Enforce expiry, single use, recipient account, optional recipient device, replay resistance, and bounded failure lockout in local primitives.
 - `[x]` Normalize permission dependencies and deny unknown or invalid scopes.
-- `[ ]` Expose issue, list, inspect, redeem, refuse, defer, expire, and revoke operations through Tauri and authenticated Web routes.
-- `[ ]` Implement incoming, outgoing, same-account request, redeemed, expired, revoked, and hidden views.
-- `[ ]` Implement link, QR, and short-code representations of the same invitation credential.
+- `[~]` Expose issue, list, inspect, redeem, and revoke operations through Tauri and authenticated Web routes (`sync_issue_invitation`, `sync_revoke_invitation`, `sync_redeem_invitation`, `sync_revoke_grant`, plus the existing read-only snapshot). Explicit refuse/defer as distinct recipient actions and proactive expiry transitions are not implemented; expiry is still enforced only at redemption time.
+- `[~]` Implement outgoing and redeemed/active views in the sidebar (from the local snapshot). Incoming, same-account request, and hidden views require cross-device delivery (Phase 3) and are not implemented; there is no view of invitations addressed to this account that were issued on another install.
+- `[~]` Implement a link representation of the invitation credential (`alethe-invite://` URL carrying the invitation ID and bearer token). QR code rendering and a distinct human-readable short code are not implemented.
 - `[ ]` Add recipient lookup without revealing whether arbitrary Google accounts exist.
-- `[ ]` Add permission presets and always display the expanded effective permission list.
-- `[ ]` Add separate read, export/copy, write, upload, delete, invite, and admin controls.
-- `[ ]` Add allow/deny folder scopes with deny precedence and traversal-safe normalization.
-- `[ ]` Require stronger confirmation for write, delete, invite, and admin grants.
-- `[ ]` Add active-grant inspection, expiry adjustment, narrowing, and immediate revocation.
-- `[ ]` Notify all affected devices when invitation or grant state changes.
-- `[ ]` Ensure a stale UI or cached permission never authorizes a backend operation.
-- `[ ]` Remove the current disabled “Invite Friend” placeholder only after the runtime capability is real.
+- `[x]` Add permission presets (view only / reviewer / collaborator) and always display the expanded effective permission list next to the selected preset.
+- `[x]` Permissions are enforced as separate backend values (`read`/`export`/`write`/`upload`/`delete`/`invite`/`admin`); the UI currently exposes them only through presets, not individual toggles.
+- `[ ]` Add allow/deny folder scopes with deny precedence and traversal-safe normalization in the UI (the backend contract already supports `pathScopes`; the sidebar always issues an empty scope for now).
+- `[x]` Require stronger confirmation before issuing an invitation with `write`, `delete`, `invite`, or `admin` permissions (a second explicit click).
+- `[x]` Add active-grant inspection (list) and immediate revocation (`revoke_grant_at`, callable by any trusted device on the issuing account). Expiry adjustment and narrowing an existing grant are not implemented.
+- `[ ]` Notify all affected devices when invitation or grant state changes — there is no cross-device delivery yet, so nothing to notify.
+- `[x]` Ensure a stale UI or cached permission never authorizes a backend operation (every operation re-checks device trust and account ownership server-side; unit-tested).
+- `[x]` Remove the disabled "Invite Friend" placeholder now that local issuance is real; it stays disabled until the local device is trusted and a project is active.
 - `[ ]` Add concurrency tests for simultaneous acceptance, revocation, expiry, and replay.
+
+Note: as with devices, invitations and grants are local to each install today. Issuing, revoking, and redeeming all operate on the local security document; there is still no real delivery of an invitation from one physical machine to another (that is Phase 3's rendezvous work). Redemption today only works if both the issuer and the recipient act against the same local document — useful for local testing of the state machine, not yet a cross-device feature.
 
 ### Rendezvous, relay, and network presence
 
@@ -434,21 +436,23 @@ Remaining for this area: cloned/rolled-back device detection, key rotation, all-
 
 ## Phase 2 — Invitations and project permissions
 
-- Expose backend operations to issue, inspect, revoke, expire, and redeem invitations.
-- Add incoming, outgoing, expired, revoked, and redeemed views to an access center.
-- Represent one invitation as a link, QR code, and human-readable short code without creating three independent credentials.
-- Bind every invitation to a project, issuer device, recipient account, optional recipient device, permissions, path scopes, protocol version, and expiry.
-- Add permission presets while always showing the expanded permission list.
-- Support `read`, `export`, `write`, `upload`, `delete`, `invite`, and `admin` as separate backend-enforced permissions.
-- Require stronger confirmation for write, delete, invite, and admin grants.
-- Add grant inspection and immediate revocation.
-- Keep bearer secrets out of persisted invitation records and audit events.
+- `[x]` Expose backend operations to issue, revoke, and redeem invitations (`sync_issue_invitation`, `sync_revoke_invitation`, `sync_redeem_invitation`) plus grant revocation (`sync_revoke_grant`), as Tauri commands and equivalent `/api/sync/security/invitations/*` and `/api/sync/security/grants/*` Web routes on one shared core implementation. Listing/inspecting reuses the existing security snapshot. Explicit expiry transitions are not implemented.
+- `[~]` Add outgoing and active-grant views to the sidebar access center. Incoming/same-account/hidden views require Phase 3 delivery.
+- `[~]` Represent an invitation as an `alethe-invite://` link carrying the invitation ID and bearer token, shown once at issuance with copy-to-clipboard. QR code and a distinct short code are not implemented.
+- `[x]` Bind every invitation to a project, issuer device, recipient account, optional recipient device, permissions, path scopes, protocol version (implicit schema version), and expiry — unchanged from the existing local primitives.
+- `[x]` Add permission presets (view only / reviewer / collaborator) while always showing the expanded permission list next to the selection.
+- `[x]` Support `read`, `export`, `write`, `upload`, `delete`, `invite`, and `admin` as separate backend-enforced permissions (pre-existing; now reachable from the UI through presets).
+- `[x]` Require stronger confirmation (a second explicit click) for invitations carrying `write`, `delete`, `invite`, or `admin`.
+- `[x]` Add grant inspection (list) and immediate revocation, callable by any trusted device on the account that issued the underlying invitation.
+- `[x]` Keep bearer secrets out of persisted invitation records and audit events — unchanged; only the hash is ever persisted, and the plaintext token is returned exactly once at issuance.
 
 Acceptance criteria:
 
-- Tokens are random, short-lived, single-use, audience-bound, and replay-resistant.
-- Wrong-recipient and wrong-device failures do not reveal which check failed.
-- Viewing or accepting an invitation performs zero project-content reads and zero destination writes.
+- `[x]` Tokens are random, short-lived, single-use, audience-bound, and replay-resistant — unchanged, pre-existing behavior, still covered by tests.
+- `[x]` Wrong-recipient and wrong-device failures do not reveal which check failed — unchanged (`invitation_unavailable` for every redemption failure mode).
+- `[x]` Viewing or accepting an invitation performs zero project-content reads and zero destination writes — redemption only creates a `GrantRecord` (authorization state); no filesystem access happens anywhere in this phase.
+
+Remaining for this area: cross-PC invitation delivery (Phase 3), recipient lookup without account enumeration, folder scope UI, QR/short-code representations, grant expiry adjustment, and affected-device notifications.
 
 ## Phase 3 — Rendezvous, presence, and remote invitation delivery
 
@@ -692,16 +696,23 @@ If a statement conflicts, the stricter security invariant wins. This consolidate
 
 ### Exact next implementation step
 
-Phase 1 (trusted devices and account recovery) has been implemented in this branch: first-device auto-trust, additional-device `Pending`/approval, `approve_device_at`/`reject_device_at`/`rename_device_at`/`revoke_device_at`/`remove_device_at` in `src-tauri/src/sync_security.rs` with unit tests, matching Tauri commands and `/api/sync/security/devices/*` Web routes on the same core implementation, frontend API functions in `src/lib/api/syncSecurity.ts`, and device-management controls in `MeshSidebarView.tsx`. Cloned/rolled-back device detection, key rotation, and all-devices-lost recovery remain open within this same phase area (see the checklist above) but were not blocking for this pass. Resume with **Phase 2 — Invitations and project permissions** next, not with chat, tasks, project transfer, or UI polish:
+Phases 1 and 2 have been implemented in this branch.
 
-1. Expose backend operations to issue, inspect, revoke, expire, and redeem invitations through Tauri and authenticated Web routes (the local primitives already exist in `sync_security.rs`; only the runtime-facing commands/routes are missing).
-2. Add incoming, outgoing, expired, revoked, and redeemed views to an access center in the frontend.
-3. Represent one invitation as a link, QR code, and human-readable short code without creating three independent credentials.
-4. Add permission presets while always showing the expanded permission list, and require stronger confirmation for write/delete/invite/admin grants.
-5. Add grant inspection and immediate revocation from the UI.
-6. Update `[Unreleased]` in `docs/CHANGELOG.md`.
-7. Run focused tests, full Rust tests, frontend tests, lint, format check, and production build.
-8. Commit Phase 2 separately before starting rendezvous/relay work.
+**Phase 1** (trusted devices and account recovery): first-device auto-trust, additional-device `Pending`/approval, `approve_device_at`/`reject_device_at`/`rename_device_at`/`revoke_device_at`/`remove_device_at` in `src-tauri/src/sync_security.rs` with unit tests, matching Tauri commands and `/api/sync/security/devices/*` Web routes, frontend API functions in `src/lib/api/syncSecurity.ts`, and device-management controls in `MeshSidebarView.tsx`. Cloned/rolled-back device detection, key rotation, and all-devices-lost recovery remain open within this same phase area but were not blocking.
+
+**Phase 2** (invitations and project permissions): `issue_invitation`/`redeem_invitation` (pre-existing) plus new `revoke_invitation_at`/`revoke_grant_at` in `sync_security.rs` with unit tests, matching Tauri commands (`sync_issue_invitation`, `sync_revoke_invitation`, `sync_redeem_invitation`, `sync_revoke_grant`) and `/api/sync/security/invitations/*` + `/api/sync/security/grants/*` Web routes, an `alethe-invite://` link representation (`src/lib/sync/invitationLink.ts`), and a working invite/redeem/revoke UI in `MeshSidebarView.tsx` gated on real device-trust state. QR codes, a distinct short code, recipient lookup, folder-scope UI, and — most importantly — actual cross-PC delivery of an invitation remain open; today issuing and redeeming both operate on the same local security document, which is enough to exercise and test the state machine but is not yet a working cross-device feature.
+
+Resume with **Phase 3 — Rendezvous, presence, and remote invitation delivery** next, not with chat, tasks, project transfer, or UI polish:
+
+1. Select and record the rendezvous/relay technology in an ADR (this is currently an open decision — see "Open security decisions" in the threat model).
+2. Define a versioned signaling protocol for device registration, authenticated presence, connection offers, and invitation notifications.
+3. Authenticate every signaling message against current account/device state; the service must never receive OAuth tokens, private keys, paths, filenames, project content, task content, or chat plaintext.
+4. Add reconnect, backoff, offline queues, expiry, rate limiting, and bounded message sizes.
+5. Implement same-Google-account device discovery without granting automatic project access, plus an owner-approved catalog of available projects using opaque identifiers.
+6. Wire actual cross-PC delivery of the invitations built in Phase 2, so an invitation issued on one machine reaches the intended recipient's device on another.
+7. Update `[Unreleased]` in `docs/CHANGELOG.md`.
+8. Run focused tests, full Rust tests, frontend tests, lint, format check, and production build.
+9. Commit Phase 3 separately before starting transport/relay work (Phase 4).
 
 ### Required validation commands while resuming
 

@@ -117,3 +117,67 @@ export async function syncRemoveDevice(targetDeviceId: string): Promise<void> {
     body: JSON.stringify({ targetDeviceId }),
   })
 }
+
+export type SyncInvitationSummary = SyncSecuritySnapshot['invitations'][number]
+export type SyncGrantRecord = SyncSecuritySnapshot['grants'][number]
+
+export type IssueInvitationRequest = {
+  projectId: string
+  recipientAccountId: string
+  recipientDeviceId?: string
+  permissions: SyncPermission[]
+  pathScopes: Array<{ effect: 'allow' | 'deny'; pattern: string }>
+  expiresAtMs: number
+}
+
+export type IssuedInvitationResponse = {
+  invitation: SyncInvitationSummary
+  bearerToken: string
+}
+
+export async function syncIssueInvitation(
+  request: IssueInvitationRequest,
+): Promise<IssuedInvitationResponse> {
+  if (isTauriEnv()) {
+    return invoke<IssuedInvitationResponse>('sync_issue_invitation', { request })
+  }
+  return webApiFetch<IssuedInvitationResponse>('/api/sync/security/invitations/issue', {
+    method: 'POST',
+    body: JSON.stringify(request),
+  })
+}
+
+export async function syncRevokeInvitation(invitationId: string): Promise<SyncInvitationSummary> {
+  if (isTauriEnv()) {
+    return invoke<SyncInvitationSummary>('sync_revoke_invitation', { invitationId })
+  }
+  return webApiFetch<SyncInvitationSummary>('/api/sync/security/invitations/revoke', {
+    method: 'POST',
+    body: JSON.stringify({ invitationId }),
+  })
+}
+
+export async function syncRedeemInvitation(
+  invitationId: string,
+  bearerToken: string,
+): Promise<SyncGrantRecord> {
+  if (isTauriEnv()) {
+    return invoke<SyncGrantRecord>('sync_redeem_invitation', {
+      request: { invitationId, bearerToken },
+    })
+  }
+  return webApiFetch<SyncGrantRecord>('/api/sync/security/invitations/redeem', {
+    method: 'POST',
+    body: JSON.stringify({ invitationId, bearerToken }),
+  })
+}
+
+export async function syncRevokeGrant(grantId: string): Promise<SyncGrantRecord> {
+  if (isTauriEnv()) {
+    return invoke<SyncGrantRecord>('sync_revoke_grant', { grantId })
+  }
+  return webApiFetch<SyncGrantRecord>('/api/sync/security/grants/revoke', {
+    method: 'POST',
+    body: JSON.stringify({ grantId }),
+  })
+}

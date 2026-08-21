@@ -381,6 +381,19 @@ fn validate_document(document: &SyncSecurityDocument) -> Result<(), String> {
     Ok(())
 }
 
+pub(crate) fn normalize_permissions(permissions: Vec<SyncPermission>) -> Vec<SyncPermission> {
+    let mut normalized = permissions;
+    let needs_read = normalized
+        .iter()
+        .any(|permission| matches!(permission, SyncPermission::Export | SyncPermission::Write));
+    if needs_read && !normalized.contains(&SyncPermission::Read) {
+        normalized.push(SyncPermission::Read);
+    }
+    normalized.sort_by_key(|permission| format!("{permission:?}"));
+    normalized.dedup();
+    normalized
+}
+
 fn validate_permissions(permissions: &[SyncPermission]) -> Result<(), String> {
     if permissions.is_empty() {
         return Err("permission_set_empty".to_string());
@@ -660,6 +673,208 @@ pub(crate) fn redeem_invitation(
     );
     save_at(data_root, &document)?;
     Ok(grant)
+}
+
+/// Revokes an invitation before it is redeemed. Only a trusted device on the issuing
+/// account may revoke it; it can no longer be redeemed once revoked.
+pub(crate) fn revoke_invitation_at(
+    data_root: &Path,
+    actor_device_id: &str,
+    invitation_id: &str,
+    now_ms: u64,
+) -> Result<InvitationRecord, String> {
+    let mut document = load_at(data_root)?;
+    let actor_account_id = find_trusted_actor(&document, actor_device_id)?.account_id.clone();
+    let issuer_device_id = document
+        .invitations
+        .iter()
+        .find(|invitation| invitation.invitation_id == invitation_id)
+        .ok_or_else(|| "invitation_unavailable".to_string())?
+        .issuer_device_id
+        .clone();
+    let issuer_account_matches = document
+        .devices
+        .iter()
+        .find(|device| device.device_id == issuer_device_id)
+        .is_some_and(|issuer| issuer.account_id == actor_account_id);
+    if !issuer_account_matches {
+        return Err("invitation_unavailable".to_string());
+    }
+    let invitation = document
+        .invitations
+        .iter_mut()
+        .find(|invitation| invitation.invitation_id == invitation_id)
+        .ok_or_else(|| "invitation_unavailable".to_string())?;
+    if invitation.state != InvitationState::Created {
+        return Err("invitation_not_revocable".to_string());
+    }
+    invitation.state = InvitationState::Revoked;
+    invitation.revoked_at_ms = Some(now_ms);
+    let updated = invitation.clone();
+    append_audit(
+        &mut document,
+        now_ms,
+        "invitation.revoked",
+        Some(actor_device_id.to_string()),
+        Some(invitation_id.to_string()),
+    );
+    save_at(data_root, &document)?;
+    Ok(updated)
+}
+
+/// Revokes an active grant. Only a trusted device on the account that issued the
+/// underlying invitation may revoke it.
+pub(crate) fn revoke_grant_at(
+    data_root: &Path,
+    actor_device_id: &str,
+    grant_id: &str,
+    now_ms: u64,
+) -> Result<GrantRecord, String> {
+    let mut document = load_at(data_root)?;
+    let actor = find_trusted_actor(&document, actor_device_id)?.clone();
+    let grant_project_id = document
+        .grants
+        .iter()
+        .find(|grant| grant.grant_id == grant_id)
+        .ok_or_else(|| "grant_unavailable".to_string())?
+        .project_id
+        .clone();
+    let issuer_owns_project = document.invitations.iter().any(|invitation| {
+        invitation.project_id == grant_project_id
+            && document
+                .devices
+                .iter()
+                .any(|device| device.device_id == invitation.issuer_device_id && device.account_id == actor.account_id)
+    });
+    if !issuer_owns_project {
+        return Err("grant_unavailable".to_string());
+    }
+    let grant = document
+        .grants
+        .iter_mut()
+        .find(|grant| grant.grant_id == grant_id)
+        .ok_or_else(|| "grant_unavailable".to_string())?;
+    if grant.revoked_at_ms.is_some() {
+        return Err("grant_already_revoked".to_string());
+    }
+    grant.revoked_at_ms = Some(now_ms);
+    let updated = grant.clone();
+    append_audit(
+        &mut document,
+        now_ms,
+        "grant.revoked",
+        Some(actor_device_id.to_string()),
+        Some(grant_id.to_string()),
+    );
+    save_at(data_root, &document)?;
+    Ok(updated)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueInvitationRequest {
+    pub project_id: String,
+    pub recipient_account_id: String,
+    pub recipient_device_id: Option<String>,
+    pub permissions: Vec<SyncPermission>,
+    pub path_scopes: Vec<PathScope>,
+    pub expires_at_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IssuedInvitationResponse {
+    pub invitation: InvitationSummary,
+    pub bearer_token: String,
+}
+
+fn to_summary(invitation: InvitationRecord) -> InvitationSummary {
+    InvitationSummary {
+        invitation_id: invitation.invitation_id,
+        project_id: invitation.project_id,
+        issuer_device_id: invitation.issuer_device_id,
+        recipient_account_id: invitation.recipient_account_id,
+        recipient_device_id: invitation.recipient_device_id,
+        permissions: invitation.permissions,
+        path_scopes: invitation.path_scopes,
+        state: invitation.state,
+        created_at_ms: invitation.created_at_ms,
+        expires_at_ms: invitation.expires_at_ms,
+        redeemed_at_ms: invitation.redeemed_at_ms,
+        revoked_at_ms: invitation.revoked_at_ms,
+    }
+}
+
+#[tauri::command]
+pub fn sync_issue_invitation(
+    app: tauri::AppHandle,
+    request: IssueInvitationRequest,
+) -> Result<IssuedInvitationResponse, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let issuer = local_device_id_at(&data_root)?;
+    let issued = issue_invitation(
+        &data_root,
+        &issuer,
+        &request.project_id,
+        &request.recipient_account_id,
+        request.recipient_device_id,
+        normalize_permissions(request.permissions),
+        request.path_scopes,
+        now_ms(),
+        request.expires_at_ms,
+    )?;
+    Ok(IssuedInvitationResponse {
+        invitation: to_summary(issued.invitation),
+        bearer_token: issued.bearer_token,
+    })
+}
+
+#[tauri::command]
+pub fn sync_revoke_invitation(
+    app: tauri::AppHandle,
+    invitation_id: String,
+) -> Result<InvitationSummary, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let actor = local_device_id_at(&data_root)?;
+    revoke_invitation_at(&data_root, &actor, &invitation_id, now_ms()).map(to_summary)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RedeemInvitationRequest {
+    pub invitation_id: String,
+    pub bearer_token: String,
+}
+
+#[tauri::command]
+pub fn sync_redeem_invitation(
+    app: tauri::AppHandle,
+    request: RedeemInvitationRequest,
+) -> Result<GrantRecord, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let document = load_at(&data_root)?;
+    let account_id = document
+        .account
+        .ok_or_else(|| "security_account_invalid".to_string())?
+        .account_id;
+    let recipient_device_id = document
+        .local_device_id
+        .ok_or_else(|| "local_device_unknown".to_string())?;
+    redeem_invitation(
+        &data_root,
+        &request.invitation_id,
+        &request.bearer_token,
+        &account_id,
+        &recipient_device_id,
+        now_ms(),
+    )
+}
+
+#[tauri::command]
+pub fn sync_revoke_grant(app: tauri::AppHandle, grant_id: String) -> Result<GrantRecord, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let actor = local_device_id_at(&data_root)?;
+    revoke_grant_at(&data_root, &actor, &grant_id, now_ms())
 }
 
 /// Completes identity only after the OAuth backend has verified the provider response.
@@ -1374,5 +1589,113 @@ mod tests {
             .iter()
             .all(|device| device.device_id != second.device_id));
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn revoke_invitation_blocks_future_redemption_and_requires_issuer_account() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let issuer =
+            complete_verified_identity(&root, &secrets, account("acct-owner"), "Owner", 1_000)
+                .unwrap();
+        let issued = issue_invitation(
+            &root,
+            &issuer.device_id,
+            "project-a",
+            "acct-recipient",
+            None,
+            vec![SyncPermission::Read],
+            vec![],
+            2_000,
+            10_000,
+        )
+        .unwrap();
+
+        assert_eq!(
+            revoke_invitation_at(&root, "device-unknown", &issued.invitation.invitation_id, 2_500),
+            Err("actor_device_unknown".to_string())
+        );
+
+        let revoked =
+            revoke_invitation_at(&root, &issuer.device_id, &issued.invitation.invitation_id, 3_000)
+                .unwrap();
+        assert_eq!(revoked.state, InvitationState::Revoked);
+        assert_eq!(
+            redeem_invitation(
+                &root,
+                &issued.invitation.invitation_id,
+                &issued.bearer_token,
+                "acct-recipient",
+                "device-recipient",
+                3_500,
+            ),
+            Err("invitation_unavailable".to_string())
+        );
+        assert_eq!(
+            revoke_invitation_at(&root, &issuer.device_id, &issued.invitation.invitation_id, 4_000),
+            Err("invitation_not_revocable".to_string())
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn revoke_grant_is_idempotent_safe_and_scoped_to_the_issuing_account() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let issuer =
+            complete_verified_identity(&root, &secrets, account("acct-owner"), "Owner", 1_000)
+                .unwrap();
+        let co_owner =
+            complete_verified_identity(&root, &secrets, account("acct-owner"), "Phone", 1_200)
+                .unwrap();
+        approve_device_at(&root, &issuer.device_id, &co_owner.device_id, 1_300).unwrap();
+        let issued = issue_invitation(
+            &root,
+            &issuer.device_id,
+            "project-a",
+            "acct-recipient",
+            Some("device-recipient".to_string()),
+            vec![SyncPermission::Read],
+            vec![],
+            2_000,
+            10_000,
+        )
+        .unwrap();
+        let grant = redeem_invitation(
+            &root,
+            &issued.invitation.invitation_id,
+            &issued.bearer_token,
+            "acct-recipient",
+            "device-recipient",
+            3_000,
+        )
+        .unwrap();
+
+        assert_eq!(
+            revoke_grant_at(&root, "device-unknown", &grant.grant_id, 3_500),
+            Err("actor_device_unknown".to_string())
+        );
+
+        // Any trusted device on the account that issued the invitation may revoke the grant,
+        // not only the exact device that issued it.
+        let revoked = revoke_grant_at(&root, &co_owner.device_id, &grant.grant_id, 4_000).unwrap();
+        assert!(revoked.revoked_at_ms.is_some());
+        assert_eq!(
+            revoke_grant_at(&root, &issuer.device_id, &grant.grant_id, 5_000),
+            Err("grant_already_revoked".to_string())
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn normalize_permissions_adds_read_when_required_and_dedups() {
+        assert_eq!(
+            normalize_permissions(vec![SyncPermission::Write]),
+            vec![SyncPermission::Read, SyncPermission::Write]
+        );
+        assert_eq!(
+            normalize_permissions(vec![SyncPermission::Read, SyncPermission::Read]),
+            vec![SyncPermission::Read]
+        );
     }
 }

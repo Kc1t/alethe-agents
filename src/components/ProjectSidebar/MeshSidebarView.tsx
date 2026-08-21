@@ -1,6 +1,7 @@
 import {
   Archive,
   Check,
+  Copy,
   FolderSync,
   Globe,
   Inbox,
@@ -16,7 +17,8 @@ import {
 import { useEffect, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
-import { PROJECT_SYNC_CAPABILITIES } from '../../lib/sync/contracts'
+import { PROJECT_SYNC_CAPABILITIES, type SyncPermission } from '../../lib/sync/contracts'
+import { buildInvitationLink, parseInvitationLink } from '../../lib/sync/invitationLink'
 import {
   configureGoogleSync,
   getGoogleSyncStatus,
@@ -24,10 +26,14 @@ import {
   startGoogleSyncAuth,
   syncApproveDevice,
   type SyncDeviceRecord,
+  syncIssueInvitation,
+  syncRedeemInvitation,
   syncRejectDevice,
   syncRemoveDevice,
   syncRenameDevice,
   syncRevokeDevice,
+  syncRevokeGrant,
+  syncRevokeInvitation,
   type SyncSecuritySnapshot,
   syncSecuritySnapshot,
 } from '../../lib/tauri'
@@ -36,12 +42,25 @@ import { EmptyState } from '../EmptyState'
 import { GoogleIcon } from '../icons/AgentIcons'
 import styles from './MeshSidebarView.module.css'
 
+const INVITATION_PERMISSION_PRESETS = [
+  { id: 'viewOnly', permissions: ['read'] as SyncPermission[] },
+  { id: 'reviewer', permissions: ['read', 'export'] as SyncPermission[] },
+  { id: 'collaborator', permissions: ['read', 'write'] as SyncPermission[] },
+] as const
+
+const INVITATION_EXPIRY_CHOICES_MS = [
+  { id: '1h', ms: 60 * 60 * 1000 },
+  { id: '24h', ms: 24 * 60 * 60 * 1000 },
+  { id: '7d', ms: 7 * 24 * 60 * 60 * 1000 },
+] as const
+
+const SENSITIVE_PERMISSIONS: SyncPermission[] = ['write', 'delete', 'invite', 'admin']
+
 export function MeshSidebarView() {
   const t = useT()
   const projects = useProjectsStore((s) => s.projects)
   const activeProjectId = useProjectsStore((s) => s.activeProjectId)
   const activeProject = projects.find((p) => p.id === activeProjectId) ?? projects[0]
-  const canInvite = PROJECT_SYNC_CAPABILITIES.invitations === 'available'
   const canTransfer = PROJECT_SYNC_CAPABILITIES.projectTransfer === 'available'
   const [security, setSecurity] = useState<SyncSecuritySnapshot | null>(null)
   const [google, setGoogle] = useState<GoogleSyncUser | null>(null)
@@ -54,6 +73,23 @@ export function MeshSidebarView() {
   const [deviceNameDraft, setDeviceNameDraft] = useState('')
   const [deviceActionBusy, setDeviceActionBusy] = useState<string | null>(null)
   const [deviceActionError, setDeviceActionError] = useState(false)
+  const [showInvitePanel, setShowInvitePanel] = useState(false)
+  const [recipientAccountId, setRecipientAccountId] = useState('')
+  const [invitePresetId, setInvitePresetId] = useState<
+    (typeof INVITATION_PERMISSION_PRESETS)[number]['id']
+  >(INVITATION_PERMISSION_PRESETS[0].id)
+  const [inviteExpiryId, setInviteExpiryId] =
+    useState<(typeof INVITATION_EXPIRY_CHOICES_MS)[number]['id']>('24h')
+  const [inviteConfirming, setInviteConfirming] = useState(false)
+  const [inviteBusy, setInviteBusy] = useState(false)
+  const [inviteError, setInviteError] = useState(false)
+  const [issuedLink, setIssuedLink] = useState<string | null>(null)
+  const [linkCopied, setLinkCopied] = useState(false)
+  const [invitationActionBusy, setInvitationActionBusy] = useState<string | null>(null)
+  const [grantActionBusy, setGrantActionBusy] = useState<string | null>(null)
+  const [redeemInput, setRedeemInput] = useState('')
+  const [redeemBusy, setRedeemBusy] = useState(false)
+  const [redeemError, setRedeemError] = useState<string | null>(null)
 
   const refreshSecurity = () =>
     syncSecuritySnapshot()
@@ -124,6 +160,110 @@ export function MeshSidebarView() {
 
   const deviceLabel = (device: SyncDeviceRecord) =>
     device.displayName.trim() || device.publicKeyFingerprint.slice(0, 12)
+
+  const canInviteNow = thisDevice?.trust === 'trusted' && Boolean(activeProject)
+  const outgoingInvitations =
+    security?.invitations.filter((item) => item.issuerDeviceId === thisDevice?.deviceId) ?? []
+  const selectedPreset =
+    INVITATION_PERMISSION_PRESETS.find((preset) => preset.id === invitePresetId) ??
+    INVITATION_PERMISSION_PRESETS[0]
+  const selectedPermissions = selectedPreset.permissions
+  const requiresConfirmation = selectedPermissions.some((permission) =>
+    SENSITIVE_PERMISSIONS.includes(permission),
+  )
+
+  const resetInvitePanel = () => {
+    setShowInvitePanel(false)
+    setRecipientAccountId('')
+    setInvitePresetId(INVITATION_PERMISSION_PRESETS[0].id)
+    setInviteExpiryId('24h')
+    setInviteConfirming(false)
+    setInviteError(false)
+    setIssuedLink(null)
+    setLinkCopied(false)
+  }
+
+  const submitInvite = async () => {
+    if (!activeProject || !recipientAccountId.trim()) return
+    if (requiresConfirmation && !inviteConfirming) {
+      setInviteConfirming(true)
+      return
+    }
+    setInviteBusy(true)
+    setInviteError(false)
+    try {
+      const expiryMs =
+        INVITATION_EXPIRY_CHOICES_MS.find((choice) => choice.id === inviteExpiryId)?.ms ??
+        INVITATION_EXPIRY_CHOICES_MS[0].ms
+      const issued = await syncIssueInvitation({
+        projectId: activeProject.id,
+        recipientAccountId: recipientAccountId.trim(),
+        permissions: selectedPermissions,
+        pathScopes: [],
+        expiresAtMs: Date.now() + expiryMs,
+      })
+      setIssuedLink(buildInvitationLink(issued.invitation.invitationId, issued.bearerToken))
+      setInviteConfirming(false)
+      await refreshSecurity()
+    } catch {
+      setInviteError(true)
+    } finally {
+      setInviteBusy(false)
+    }
+  }
+
+  const copyIssuedLink = async () => {
+    if (!issuedLink) return
+    try {
+      await navigator.clipboard.writeText(issuedLink)
+      setLinkCopied(true)
+    } catch {
+      setLinkCopied(false)
+    }
+  }
+
+  const revokeInvitation = async (invitationId: string) => {
+    setInvitationActionBusy(invitationId)
+    try {
+      await syncRevokeInvitation(invitationId)
+      await refreshSecurity()
+    } catch {
+      setDeviceActionError(true)
+    } finally {
+      setInvitationActionBusy(null)
+    }
+  }
+
+  const revokeGrant = async (grantId: string) => {
+    setGrantActionBusy(grantId)
+    try {
+      await syncRevokeGrant(grantId)
+      await refreshSecurity()
+    } catch {
+      setDeviceActionError(true)
+    } finally {
+      setGrantActionBusy(null)
+    }
+  }
+
+  const submitRedeem = async () => {
+    const parsed = parseInvitationLink(redeemInput.trim())
+    if (!parsed) {
+      setRedeemError(t('mesh.redeemInvalidLink'))
+      return
+    }
+    setRedeemBusy(true)
+    setRedeemError(null)
+    try {
+      await syncRedeemInvitation(parsed.invitationId, parsed.bearerToken)
+      setRedeemInput('')
+      await refreshSecurity()
+    } catch {
+      setRedeemError(t('mesh.redeemFailed'))
+    } finally {
+      setRedeemBusy(false)
+    }
+  }
 
   const connectGoogle = async () => {
     setAuthBusy(true)
@@ -391,6 +531,81 @@ export function MeshSidebarView() {
             <strong>{activeGrants.length}</strong>
           </div>
         </div>
+
+        {outgoingInvitations.length > 0 ? (
+          <ul className={styles.deviceList}>
+            {outgoingInvitations.map((invitation) => (
+              <li key={invitation.invitationId} className={styles.deviceListItem}>
+                <div className={styles.deviceListInfo}>
+                  <span className={styles.deviceListName}>{invitation.recipientAccountId}</span>
+                  <span className={styles.deviceTrust} data-trust={invitation.state}>
+                    {t(`mesh.invitationState.${invitation.state}`)}
+                  </span>
+                </div>
+                {invitation.state === 'created' ? (
+                  <div className={styles.deviceListActions}>
+                    <button
+                      type="button"
+                      className={styles.deviceActionBtn}
+                      disabled={invitationActionBusy === invitation.invitationId}
+                      title={t('mesh.revokeInvitation')}
+                      onClick={() => void revokeInvitation(invitation.invitationId)}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        {activeGrants.length > 0 ? (
+          <ul className={styles.deviceList}>
+            {activeGrants.map((grant) => (
+              <li key={grant.grantId} className={styles.deviceListItem}>
+                <div className={styles.deviceListInfo}>
+                  <span className={styles.deviceListName}>{grant.accountId}</span>
+                  <span className={styles.deviceTrust}>{grant.permissions.join(', ')}</span>
+                </div>
+                <div className={styles.deviceListActions}>
+                  <button
+                    type="button"
+                    className={styles.deviceActionBtn}
+                    disabled={grantActionBusy === grant.grantId}
+                    title={t('mesh.revokeGrant')}
+                    onClick={() => void revokeGrant(grant.grantId)}
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        <div className={styles.deviceRenameRow}>
+          <input
+            value={redeemInput}
+            placeholder={t('mesh.redeemPlaceholder')}
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(event) => {
+              setRedeemInput(event.target.value)
+              setRedeemError(null)
+            }}
+          />
+          <button
+            type="button"
+            className={styles.deviceActionBtn}
+            disabled={redeemBusy || !redeemInput.trim()}
+            title={t('mesh.redeemInvitation')}
+            onClick={() => void submitRedeem()}
+          >
+            {redeemBusy ? <Loader2 size={12} className={styles.spin} /> : <Check size={12} />}
+          </button>
+        </div>
+        {redeemError ? <span className={styles.deviceActionError}>{redeemError}</span> : null}
       </section>
 
       <section className={styles.section}>
@@ -412,8 +627,9 @@ export function MeshSidebarView() {
               <button
                 type="button"
                 className={styles.primaryAction}
-                disabled={!canInvite}
-                title={t('mesh.unavailableHint')}
+                disabled={!canInviteNow}
+                title={canInviteNow ? undefined : t('mesh.inviteUnavailableHint')}
+                onClick={() => setShowInvitePanel((visible) => !visible)}
               >
                 <Share2 size={13} />
                 <span>{t('mesh.inviteFriend')}</span>
@@ -428,6 +644,102 @@ export function MeshSidebarView() {
                 <span>{t('mesh.vault')}</span>
               </button>
             </div>
+
+            {showInvitePanel ? (
+              <div className={styles.oauthSetup}>
+                {issuedLink ? (
+                  <>
+                    <span>{t('mesh.invitationIssuedOnce')}</span>
+                    <div className={styles.deviceRenameRow}>
+                      <code className={styles.deviceId}>{issuedLink}</code>
+                      <button
+                        type="button"
+                        className={styles.deviceActionBtn}
+                        onClick={() => void copyIssuedLink()}
+                        title={t('mesh.copyLink')}
+                      >
+                        {linkCopied ? (
+                          <Check size={12} className={styles.successIcon} />
+                        ) : (
+                          <Copy size={12} />
+                        )}
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.saveOAuthBtn}
+                      onClick={resetInvitePanel}
+                    >
+                      {t('mesh.deviceCancel')}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <label htmlFor="invite-recipient-account">{t('mesh.recipientAccount')}</label>
+                    <input
+                      id="invite-recipient-account"
+                      value={recipientAccountId}
+                      placeholder="recipient@example.com"
+                      spellCheck={false}
+                      autoComplete="off"
+                      onChange={(event) => {
+                        setRecipientAccountId(event.target.value)
+                        setInviteConfirming(false)
+                      }}
+                    />
+                    <label htmlFor="invite-permission-preset">{t('mesh.permissionPreset')}</label>
+                    <select
+                      id="invite-permission-preset"
+                      value={invitePresetId}
+                      onChange={(event) => {
+                        setInvitePresetId(
+                          event.target
+                            .value as (typeof INVITATION_PERMISSION_PRESETS)[number]['id'],
+                        )
+                        setInviteConfirming(false)
+                      }}
+                    >
+                      {INVITATION_PERMISSION_PRESETS.map((preset) => (
+                        <option key={preset.id} value={preset.id}>
+                          {t(`mesh.permissionPreset.${preset.id}`)}
+                        </option>
+                      ))}
+                    </select>
+                    <span>{selectedPermissions.join(', ')}</span>
+                    <label htmlFor="invite-expiry">{t('mesh.invitationExpiry')}</label>
+                    <select
+                      id="invite-expiry"
+                      value={inviteExpiryId}
+                      onChange={(event) => {
+                        setInviteExpiryId(
+                          event.target.value as (typeof INVITATION_EXPIRY_CHOICES_MS)[number]['id'],
+                        )
+                        setInviteConfirming(false)
+                      }}
+                    >
+                      {INVITATION_EXPIRY_CHOICES_MS.map((choice) => (
+                        <option key={choice.id} value={choice.id}>
+                          {t(`mesh.invitationExpiry.${choice.id}`)}
+                        </option>
+                      ))}
+                    </select>
+                    {inviteError ? (
+                      <span className={styles.deviceActionError}>{t('mesh.inviteFailed')}</span>
+                    ) : null}
+                    <button
+                      type="button"
+                      className={styles.saveOAuthBtn}
+                      disabled={inviteBusy || !recipientAccountId.trim()}
+                      onClick={() => void submitInvite()}
+                    >
+                      {inviteConfirming
+                        ? t('mesh.confirmSensitiveInvite')
+                        : t('mesh.sendInvitation')}
+                    </button>
+                  </>
+                )}
+              </div>
+            ) : null}
           </div>
         ) : (
           <EmptyState
