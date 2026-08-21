@@ -1424,16 +1424,21 @@ export function useXtermSession(params: {
       dragObserver = new MutationObserver(() => {
         const wasDragging = dragActive
         dragActive = isDragActive()
+        if (!wasDragging && dragActive) {
+          // An active divider is stronger evidence of a local resize than
+          // document.hasFocus(), which can flicker or remain false while a
+          // Wayland compositor transfers pointer/keyboard focus. Claim the
+          // grid immediately and measure with the native font throughout the
+          // drag; the settle guard still prevents intermediate SIGWINCH calls.
+          isGridObserver = false
+          observerBaseRect = null
+          restoreBaseFontSize()
+          scheduleResize(true)
+        }
         if (wasDragging && !dragActive) {
-          // Divisor acabou de ser solto — dispara uma checagem final pro
-          // tamanho de verdade (o settle-check natural já teria descartado
-          // qualquer commit enquanto `dragActive` estava true).
-          try {
-            fitAddon.fit()
-          } catch {
-            return
-          }
-          scheduleSettleCheck(terminal.cols, terminal.rows)
+          // Re-measure after release. Intermediate measurements were local
+          // previews only; this schedules the single settled PTY resize.
+          scheduleResize(true)
         }
       })
       dragObserver.observe(panelGroupEl, {

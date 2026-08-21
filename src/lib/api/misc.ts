@@ -307,9 +307,19 @@ export async function clearDiscordPresence(): Promise<void> {
 
 export async function findCliLauncher(agent: string): Promise<string | null> {
   if (isTauriEnv()) return invoke<string | null>('find_cli_launcher', { agent })
-  return webApiFetch<string | null>(
-    `/api/cli/find_cli_launcher?agent=${encodeURIComponent(agent)}`,
-  ).catch(() => null)
+  const path = `/api/cli/find_cli_launcher?agent=${encodeURIComponent(agent)}`
+  let lastError: unknown
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await webApiFetch<string | null>(path)
+    } catch (error) {
+      lastError = error
+      if (attempt < 2) {
+        await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)))
+      }
+    }
+  }
+  throw lastError
 }
 
 export async function probeInstallToolchain(): Promise<InstallToolchain> {

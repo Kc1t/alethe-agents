@@ -12,6 +12,8 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- Linux/Wayland terminal divider drags now claim the local xterm grid from the drag itself instead of relying on transient document focus, preventing stale wide grids from being clipped inside compressed OpenCode and agent panes.
+- Web terminal startup now retries temporary Core/HTTP failures and only shows an agent as not installed after a successful resolver response confirms that the CLI is absent.
 - Experimental project synchronization can no longer report a fabricated account, device ID, encrypted channel, immutable backup, or successful browser operation; unavailable identity, invitations, vault, and transfer actions now fail closed and are labeled as prototypes.
 - Linux windows and bundles now use high-resolution application icons for task switching, and native notification delivery is awaited with a visible fallback when the desktop service rejects it.
 - Terminal and sub-tab dialogs now use one tested creation-state controller and one runtime-profile field, preventing their reset, permission, and runtime behavior from drifting apart.
