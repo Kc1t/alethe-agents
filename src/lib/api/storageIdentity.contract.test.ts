@@ -19,14 +19,16 @@ describe('shared core storage identity configuration', () => {
     expect(development.identifier).toBe('com.kc1t.alethe.dev')
   })
 
-  it('starts both Web processes with the same development identifier', () => {
+  it('starts the attach-first Web launcher with the development identifier', () => {
     const packageJson = readJson('../../../package.json')
     const scripts = packageJson.scripts as Record<string, string>
 
     expect(scripts.web).toContain('ALETHE_APP_IDENTIFIER=com.kc1t.alethe.dev')
     expect(scripts.web).toContain('VITE_ALETHE_APP_IDENTIFIER=com.kc1t.alethe.dev')
-    expect(scripts.web).toContain('npm run web:server')
-    expect(scripts.web).toContain('vite --port 1424')
+    expect(scripts.web).toContain('node scripts/web-launcher.mjs')
+    expect(scripts['web:ui']).toBe('vite --port 1424')
+    expect(scripts['web:core']).toContain('--bin alethe-server')
+    expect(scripts['web:diagnose']).toContain('scripts/web-launcher.mjs --diagnose')
   })
 
   it('routes both Vite entry ports to the single loopback authority', () => {
