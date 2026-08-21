@@ -290,14 +290,68 @@ pub struct GoogleSyncUser {
     pub last_sync_ms: Option<u64>,
 }
 
-fn google_oauth_configured() -> bool {
-    std::env::var("ALETHE_GOOGLE_CLIENT_ID").is_ok_and(|value| !value.trim().is_empty())
-}
-
 const GOOGLE_AUTHORIZE_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL: &str = "https://openidconnect.googleapis.com/v1/userinfo";
 const GOOGLE_TOKEN_SERVICE: &str = "com.kc1t.alethe.google-oauth";
+const GOOGLE_CONFIG_FILE: &str = "google-oauth.json";
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GoogleOAuthConfig {
+    client_id: String,
+}
+
+fn google_config_path(data_root: &Path) -> PathBuf {
+    data_root.join("sync-security").join(GOOGLE_CONFIG_FILE)
+}
+
+fn valid_google_client_id(value: &str) -> bool {
+    value.len() <= 512
+        && value.ends_with(".apps.googleusercontent.com")
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+}
+
+fn google_client_id(data_root: &Path) -> Option<String> {
+    if let Ok(value) = std::env::var("ALETHE_GOOGLE_CLIENT_ID") {
+        let value = value.trim();
+        if valid_google_client_id(value) {
+            return Some(value.to_string());
+        }
+    }
+    let bytes = fs::read(google_config_path(data_root)).ok()?;
+    let config: GoogleOAuthConfig = serde_json::from_slice(&bytes).ok()?;
+    valid_google_client_id(&config.client_id).then_some(config.client_id)
+}
+
+#[tauri::command]
+pub fn configure_google_sync(app: tauri::AppHandle, client_id: String) -> Result<bool, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    persist_google_config_at(&data_root, &client_id)?;
+    Ok(true)
+}
+
+fn persist_google_config_at(data_root: &Path, client_id: &str) -> Result<(), String> {
+    let client_id = client_id.trim();
+    if !valid_google_client_id(client_id) {
+        return Err("google_oauth_client_invalid".to_string());
+    }
+    let path = google_config_path(data_root);
+    let parent = path
+        .parent()
+        .ok_or_else(|| "google_oauth_configuration_failed".to_string())?;
+    fs::create_dir_all(parent).map_err(|_| "google_oauth_configuration_failed".to_string())?;
+    let temporary = path.with_extension("json.tmp");
+    let payload = serde_json::to_vec_pretty(&GoogleOAuthConfig {
+        client_id: client_id.to_string(),
+    })
+    .map_err(|_| "google_oauth_configuration_failed".to_string())?;
+    fs::write(&temporary, payload).map_err(|_| "google_oauth_configuration_failed".to_string())?;
+    fs::rename(temporary, path).map_err(|_| "google_oauth_configuration_failed".to_string())?;
+    Ok(())
+}
 
 #[derive(Debug, Deserialize)]
 struct GoogleTokenResponse {
@@ -408,9 +462,8 @@ pub async fn start_google_sync_auth(app: tauri::AppHandle) -> Result<GoogleSyncU
     if current.connected {
         return Ok(current);
     }
-    let client_id = std::env::var("ALETHE_GOOGLE_CLIENT_ID")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let client_id = google_client_id(&data_root)
         .ok_or_else(|| "google_oauth_client_not_configured".to_string())?;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -503,7 +556,6 @@ pub async fn start_google_sync_auth(app: tauri::AppHandle) -> Result<GoogleSyncU
         return Err("google_identity_unverified".to_string());
     }
     store_google_tokens(&user.sub, &tokens)?;
-    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     let device_name = std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))
         .unwrap_or_else(|_| "Alethe device".to_string());
@@ -546,7 +598,7 @@ pub fn get_google_sync_status(app: tauri::AppHandle) -> Result<GoogleSyncUser, S
             name: String::new(),
             picture: None,
             connected: false,
-            configured: google_oauth_configured(),
+            configured: google_client_id(&root).is_some(),
             last_sync_ms: None,
         });
     };
@@ -635,6 +687,28 @@ mod tests {
             Some("p***@example.com".to_string())
         );
         assert_eq!(email_hint(Some("invalid")), None);
+    }
+
+    #[test]
+    fn google_client_configuration_accepts_only_desktop_client_ids() {
+        for invalid in [
+            "",
+            "client-secret",
+            "https://example.apps.googleusercontent.com",
+            "example.apps.googleusercontent.com/extra",
+        ] {
+            assert!(!valid_google_client_id(invalid));
+        }
+        assert!(valid_google_client_id(
+            "123-example.apps.googleusercontent.com"
+        ));
+
+        let root = temp_test_dir("google-config");
+        persist_google_config_at(&root, "123-example.apps.googleusercontent.com").unwrap();
+        let stored: GoogleOAuthConfig =
+            serde_json::from_slice(&fs::read(google_config_path(&root)).unwrap()).unwrap();
+        assert_eq!(stored.client_id, "123-example.apps.googleusercontent.com");
+        fs::remove_dir_all(root).unwrap();
     }
 
     fn temp_test_dir(name: &str) -> PathBuf {

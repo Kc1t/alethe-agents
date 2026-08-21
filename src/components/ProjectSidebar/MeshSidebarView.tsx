@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react'
 import { useT } from '../../lib/i18n'
 import { PROJECT_SYNC_CAPABILITIES } from '../../lib/sync/contracts'
 import {
+  configureGoogleSync,
   getGoogleSyncStatus,
   type GoogleSyncUser,
   startGoogleSyncAuth,
@@ -37,6 +38,8 @@ export function MeshSidebarView() {
   const [securityError, setSecurityError] = useState(false)
   const [authError, setAuthError] = useState(false)
   const [authBusy, setAuthBusy] = useState(false)
+  const [showGoogleSetup, setShowGoogleSetup] = useState(false)
+  const [googleClientId, setGoogleClientId] = useState('')
 
   useEffect(() => {
     let active = true
@@ -58,7 +61,6 @@ export function MeshSidebarView() {
   }, [])
 
   const account = security?.account ?? null
-  const canAuthenticate = google?.configured === true && !account && !authBusy
   const thisDevice = security?.devices[0] ?? null
   const pendingInvitations = security?.invitations.filter((item) => item.state === 'created') ?? []
   const activeGrants = security?.grants.filter((grant) => !grant.revokedAtMs) ?? []
@@ -72,6 +74,22 @@ export function MeshSidebarView() {
       setGoogle(status)
       setSecurity(snapshot)
       setSecurityError(false)
+    } catch {
+      setAuthError(true)
+    } finally {
+      setAuthBusy(false)
+    }
+  }
+
+  const saveGoogleConfiguration = async () => {
+    setAuthBusy(true)
+    setAuthError(false)
+    try {
+      await configureGoogleSync(googleClientId)
+      const status = await getGoogleSyncStatus()
+      setGoogle(status)
+      setShowGoogleSetup(false)
+      setGoogleClientId('')
     } catch {
       setAuthError(true)
     } finally {
@@ -108,13 +126,44 @@ export function MeshSidebarView() {
           <button
             type="button"
             className={styles.loginGoogleBtn}
-            disabled={!canAuthenticate}
+            disabled={authBusy || Boolean(account)}
             title={google?.configured ? undefined : t('mesh.oauthNotConfigured')}
-            onClick={() => void connectGoogle()}
+            onClick={() => {
+              if (google?.configured) void connectGoogle()
+              else setShowGoogleSetup((visible) => !visible)
+            }}
           >
             {authBusy ? <Loader2 size={14} className={styles.spin} /> : <GoogleIcon size={14} />}
-            <span>{authBusy ? t('mesh.authenticating') : t('mesh.connectAccount')}</span>
+            <span>
+              {authBusy
+                ? t('mesh.authenticating')
+                : google?.configured
+                  ? t('mesh.connectAccount')
+                  : t('mesh.configureGoogle')}
+            </span>
           </button>
+          {showGoogleSetup && !google?.configured ? (
+            <div className={styles.oauthSetup}>
+              <label htmlFor="google-oauth-client-id">{t('mesh.googleClientId')}</label>
+              <input
+                id="google-oauth-client-id"
+                value={googleClientId}
+                placeholder="000000000000-example.apps.googleusercontent.com"
+                spellCheck={false}
+                autoComplete="off"
+                onChange={(event) => setGoogleClientId(event.target.value)}
+              />
+              <span>{t('mesh.googleClientIdHint')}</span>
+              <button
+                type="button"
+                className={styles.saveOAuthBtn}
+                disabled={authBusy || !googleClientId.trim()}
+                onClick={() => void saveGoogleConfiguration()}
+              >
+                {t('mesh.saveConfiguration')}
+              </button>
+            </div>
+          ) : null}
         </div>
       </section>
 

@@ -112,6 +112,8 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Alterado
 
+- Google login can now be configured from the synchronization sidebar without editing environment files or restarting the application; only validated public desktop client IDs are persisted.
+
 - Added a live Remote Control device counter to the topbar, with direct access to the connection panel.
 - **A borda arco-íris agora é o indicador de foco de qualquer container da workspace, não só um efeito de cor de projeto.** Antes, só containers com a cor "arco-íris" escolhida no projeto mostravam o anel animado, sempre visível independente de foco. Agora qualquer container mostra a borda arco-íris enquanto estiver em foco (um terminal dele com o cursor/digitação ativa); sem foco, volta à borda normal por cor de projeto.
 - **Editar Projeto virou uma central de configurações com navegação vertical** (mesmo estilo da Central de Preferências), no lugar das abas horizontais antigas — Foco/Agentes/Worktrees/Merge agora são categorias numa barra lateral. O item de menu que abre esse modal foi renomeado de "Editar (nome e cor)…" pra "Configurações…", já que agora cobre bem mais que nome e cor.

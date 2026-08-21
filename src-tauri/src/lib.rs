@@ -480,6 +480,7 @@ pub fn run() {
             sync_mesh::trigger_project_archive_backup,
             sync_mesh::purge_project_backups_secured,
             sync_mesh::start_google_sync_auth,
+            sync_mesh::configure_google_sync,
             sync_mesh::get_google_sync_status,
             sync_mesh::disconnect_google_sync,
             sync_security::sync_security_snapshot,

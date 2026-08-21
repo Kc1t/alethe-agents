@@ -77,6 +77,13 @@ export async function startGoogleSyncAuth(): Promise<GoogleSyncUser> {
   return invoke<GoogleSyncUser>('start_google_sync_auth')
 }
 
+export async function configureGoogleSync(clientId: string): Promise<boolean> {
+  if (!isTauriEnv()) {
+    throw new Error('identity_provider_unavailable')
+  }
+  return invoke<boolean>('configure_google_sync', { clientId })
+}
+
 export async function getGoogleSyncStatus(): Promise<GoogleSyncUser> {
   if (!isTauriEnv()) {
     return {

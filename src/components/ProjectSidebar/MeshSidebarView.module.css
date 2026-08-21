@@ -98,6 +98,58 @@
   background: var(--panel-hover);
 }
 
+.oauthSetup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.oauthSetup label {
+  color: var(--fg);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.oauthSetup input {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.oauthSetup input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.oauthSetup span {
+  color: var(--fg-muted);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.saveOAuthBtn {
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-fg);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.saveOAuthBtn:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .section {
   display: flex;
   flex-direction: column;
