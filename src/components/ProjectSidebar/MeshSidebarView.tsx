@@ -1,6 +1,7 @@
 import { Archive, FolderSync, Globe, Laptop, Share2, ShieldAlert } from 'lucide-react'
 
 import { useT } from '../../lib/i18n'
+import { PROJECT_SYNC_CAPABILITIES } from '../../lib/sync/contracts'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { EmptyState } from '../EmptyState'
 import { GoogleIcon } from '../icons/AgentIcons'
@@ -11,6 +12,9 @@ export function MeshSidebarView() {
   const projects = useProjectsStore((s) => s.projects)
   const activeProjectId = useProjectsStore((s) => s.activeProjectId)
   const activeProject = projects.find((p) => p.id === activeProjectId) ?? projects[0]
+  const canAuthenticate = PROJECT_SYNC_CAPABILITIES.identity === 'available'
+  const canInvite = PROJECT_SYNC_CAPABILITIES.invitations === 'available'
+  const canTransfer = PROJECT_SYNC_CAPABILITIES.projectTransfer === 'available'
 
   return (
     <div className={styles.container}>
@@ -31,7 +35,7 @@ export function MeshSidebarView() {
           <button
             type="button"
             className={styles.loginGoogleBtn}
-            disabled
+            disabled={!canAuthenticate}
             title={t('mesh.unavailableHint')}
           >
             <GoogleIcon size={14} />
@@ -71,7 +75,7 @@ export function MeshSidebarView() {
               <button
                 type="button"
                 className={styles.primaryAction}
-                disabled
+                disabled={!canInvite}
                 title={t('mesh.unavailableHint')}
               >
                 <Share2 size={13} />
@@ -80,7 +84,7 @@ export function MeshSidebarView() {
               <button
                 type="button"
                 className={styles.secondaryAction}
-                disabled
+                disabled={!canTransfer}
                 title={t('mesh.unavailableHint')}
               >
                 <Archive size={13} />
