@@ -99,10 +99,40 @@ struct PersistedRoot {
     start_time: u64,
 }
 
-/// Caminho fixo, independente de perfil/`AppHandle` — `register_pty_root`/
+/// The instance that wrote the file, so a reader can tell a dead session's leftovers from the live
+/// terminals of an instance that is still running.
+#[derive(Serialize, Deserialize)]
+struct PersistedRoots {
+    owner: PersistedRoot,
+    roots: Vec<PersistedRoot>,
+}
+
+static ROOTS_FILE: OnceLock<PathBuf> = OnceLock::new();
+
+/// Scopes the file to one instance's data directory. A dev build and an installed build must never
+/// share it: the sweep kills whole process trees, so reading another live instance's file wipes out
+/// its terminals. Until this is set there is no path, and both the write and the sweep are skipped.
+pub fn set_roots_file_dir(dir: PathBuf) {
+    let _ = ROOTS_FILE.set(dir.join("pty_roots.json"));
+}
 
 fn roots_file_path() -> Option<PathBuf> {
-    dirs_next::data_local_dir().map(|d| d.join("Alethe").join("pty_roots.json"))
+    ROOTS_FILE.get().cloned()
+}
+
+fn identify(sys: &System, pid: u32) -> Option<PersistedRoot> {
+    sys.process(Pid::from_u32(pid)).map(|process| PersistedRoot {
+        pid,
+        name: process.name().to_string_lossy().into_owned(),
+        start_time: process.start_time(),
+    })
+}
+
+/// PIDs are recycled, so identity is the triple, never the number alone.
+fn still_running(sys: &System, recorded: &PersistedRoot) -> bool {
+    identify(sys, recorded.pid)
+        .map(|live| live.name == recorded.name && live.start_time == recorded.start_time)
+        .unwrap_or(false)
 }
 
 /// Job Object (`pty::install_kill_on_close_guard`) tenha falhado silenciosamente
@@ -111,20 +141,20 @@ fn persist_roots() {
     let Some(path) = roots_file_path() else {
         return;
     };
-    let snapshot: Vec<PersistedRoot> = {
+    let snapshot = {
         let Ok(guard) = roots().lock() else { return };
         let mut sys = System::new();
         sys.refresh_processes(ProcessesToUpdate::All);
-        guard
-            .values()
-            .filter_map(|&pid| {
-                sys.process(Pid::from_u32(pid)).map(|p| PersistedRoot {
-                    pid,
-                    name: p.name().to_string_lossy().into_owned(),
-                    start_time: p.start_time(),
-                })
-            })
-            .collect()
+        let Some(owner) = identify(&sys, std::process::id()) else {
+            return;
+        };
+        PersistedRoots {
+            owner,
+            roots: guard
+                .values()
+                .filter_map(|&pid| identify(&sys, pid))
+                .collect(),
+        }
     };
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -149,23 +179,31 @@ pub fn sweep_orphans_from_previous_session() -> usize {
     let Ok(bytes) = std::fs::read(&path) else {
         return 0;
     };
-    let _ = std::fs::remove_file(&path);
-    let Ok(persisted) = serde_json::from_slice::<Vec<PersistedRoot>>(&bytes) else {
+    // A file this build cannot parse says nothing about who owns the processes in it, and the sweep
+    // kills whole trees — so it is discarded rather than acted on.
+    let Ok(persisted) = serde_json::from_slice::<PersistedRoots>(&bytes) else {
+        let _ = std::fs::remove_file(&path);
         return 0;
     };
-    if persisted.is_empty() {
-        return 0;
-    }
 
     let mut sys = System::new();
     sys.refresh_processes(ProcessesToUpdate::All);
+
+    // Nothing here is an orphan while the instance that registered it is still running: these are
+    // its live terminals, and the file is still in use, so it must not be removed either.
+    if still_running(&sys, &persisted.owner) {
+        return 0;
+    }
+
+    let _ = std::fs::remove_file(&path);
+    if persisted.roots.is_empty() {
+        return 0;
+    }
+
     let parent_map = get_parent_map();
     let mut killed_roots = 0;
-    for root in persisted {
-        let Some(proc) = sys.process(Pid::from_u32(root.pid)) else {
-            continue;
-        };
-        if proc.name().to_string_lossy() != root.name || proc.start_time() != root.start_time {
+    for root in persisted.roots {
+        if !still_running(&sys, &root) {
             continue;
         }
         let mut all = collect_descendants(root.pid, &parent_map);

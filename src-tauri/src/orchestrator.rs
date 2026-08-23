@@ -45,9 +45,25 @@ fn prepare(app: &AppHandle, state: &OrchestratorState) {
         #[cfg(windows)]
         launcher
             .env
-            .push(("Path".to_string(), cli_resolver::rebuilt_path()));
+            .push(("Path".to_string(), worker_path(&cli_resolver::rebuilt_path())));
         core.set_launcher(launcher);
     }
+}
+
+/// A worker runs its commands inside Codex's sandbox, which uses a lowered token that cannot start
+/// anything installed from the Microsoft Store: the launch fails with access denied before the
+/// command runs, so the worker can write files but never run a build or a test. Dropping the Store
+/// aliases from its PATH leaves it on the system shell, which the sandbox can start. This narrows
+/// only what the worker sees, and changes nothing about what it is allowed to touch.
+#[cfg(windows)]
+fn worker_path(path: &str) -> String {
+    let kept: Vec<&str> = path
+        .split(';')
+        .filter(|entry| {
+            !entry.is_empty() && !entry.to_ascii_lowercase().contains("\\windowsapps")
+        })
+        .collect();
+    kept.join(";")
 }
 
 pub fn handle_mcp_body(app: Option<&AppHandle>, state: &OrchestratorState, body: &str) -> Option<String> {
@@ -85,4 +101,20 @@ pub fn orchestrator_jobs(state: tauri::State<'_, OrchestratorState>) -> Value {
 #[tauri::command]
 pub fn orchestrator_set_concurrency(state: tauri::State<'_, OrchestratorState>, limit: usize) {
     state.core.set_concurrency_limit(limit);
+}
+
+/// Lets the pane talk to one worker without going through the lead. A worker mid-turn is steered so
+/// the correction lands on what it is doing now; an idle one gets the message as a new turn.
+#[tauri::command]
+pub fn orchestrator_message(
+    state: tauri::State<'_, OrchestratorState>,
+    job_id: String,
+    message: String,
+    steer: bool,
+) -> Result<Value, String> {
+    let mut arguments = serde_json::Map::new();
+    arguments.insert("jobId".into(), Value::String(job_id));
+    arguments.insert("message".into(), Value::String(message));
+    let tool = if steer { "alethe_steer" } else { "alethe_send" };
+    crate::orchestrator_core::call_tool(&state.core, tool, &arguments)
 }

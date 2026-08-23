@@ -46,7 +46,7 @@ pub(crate) fn claude_projects_dir() -> Option<PathBuf> {
     provider_home_dir(&[".claude", "projects"])
 }
 
-fn truncate_chars(s: &str, max_chars: usize) -> String {
+pub(crate) fn truncate_chars(s: &str, max_chars: usize) -> String {
     let mut out = String::new();
     let mut count = 0;
     for c in s.chars() {
@@ -63,7 +63,7 @@ fn truncate_chars(s: &str, max_chars: usize) -> String {
 /// Session JSONL lines can be tens of MB (pasted files, image payloads, tool
 /// results). Reading one whole line into memory is what made a single scan
 /// allocate gigabytes and abort the process, so lines are capped here.
-const MAX_LINE_BYTES: usize = 2 * 1024 * 1024;
+pub(crate) const MAX_LINE_BYTES: usize = 2 * 1024 * 1024;
 
 /// Only the fields the sidebar and the history modal actually read. Deserializing
 /// into this instead of `serde_json::Value` avoids building a full node tree for
@@ -79,7 +79,7 @@ struct RecordHeader {
 
 /// Reads one line, keeping at most `MAX_LINE_BYTES` and discarding the rest
 /// without buffering it. Returns false at EOF.
-fn read_capped_line(reader: &mut impl BufRead, buf: &mut Vec<u8>) -> std::io::Result<bool> {
+pub(crate) fn read_capped_line(reader: &mut impl BufRead, buf: &mut Vec<u8>) -> std::io::Result<bool> {
     buf.clear();
     let mut consumed_any = false;
     loop {

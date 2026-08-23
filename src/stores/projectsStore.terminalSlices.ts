@@ -37,6 +37,7 @@ type TerminalsSlice = Pick<
   | 'createDiffPane'
   | 'createWebPane'
   | 'createGraphifyPane'
+  | 'createOrchestratorPane'
   | 'renameTerminal'
   | 'setBrowserEngine'
   | 'markGsdSyncViewer'
@@ -236,6 +237,48 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
                     lastUsedAt: Date.now(),
                   }
                 : container,
+            )
+          : [...state.workspace.containers, newContainer(projectId, [pane.id], layout)]
+        return {
+          projects,
+          workspace: {
+            ...state.workspace,
+            containers,
+            recentProjectIds: rememberProjectTab(state.workspace.recentProjectIds, projectId),
+            recentTabs: rememberWorkspaceTab(state.workspace.recentTabs, {
+              kind: 'project',
+              id: projectId,
+            }),
+          },
+        }
+      })
+      return pane
+    },
+
+    createOrchestratorPane: (projectId, cwd) => {
+      const pane: Terminal = {
+        id: `orchestrator-${nanoid()}`,
+        name: 'Orchestration',
+        cwd,
+        tabs: [],
+        activeTabId: '',
+        disabled: false,
+        laneVisible: true,
+        lastUsedAt: Date.now(),
+        kind: 'orchestrator',
+      }
+      update((state) => {
+        const projects = state.projects.map((p) =>
+          p.id === projectId ? { ...p, terminals: [...p.terminals, pane] } : p,
+        )
+        const project = projects.find((p) => p.id === projectId)
+        const layout = project?.layoutMode ?? 'auto'
+        const existing = state.workspace.containers.find((c) => c.projectId === projectId)
+        const containers = existing
+          ? state.workspace.containers.map((c) =>
+              c.projectId === projectId
+                ? { ...c, paneIds: [...c.paneIds, pane.id], lastUsedAt: Date.now() }
+                : c,
             )
           : [...state.workspace.containers, newContainer(projectId, [pane.id], layout)]
         return {

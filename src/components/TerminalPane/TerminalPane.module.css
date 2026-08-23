@@ -283,6 +283,19 @@
   text-overflow: ellipsis;
 }
 
+.nameInput {
+  font: 500 12px var(--font-sans);
+  color: var(--fg);
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 1px 4px;
+  min-width: 0;
+  width: 160px;
+  max-width: 100%;
+  outline: none;
+}
+
 .cwdPill {
   font: 500 10px var(--font-mono);
   color: var(--fg-faint);

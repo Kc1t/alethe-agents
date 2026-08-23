@@ -311,3 +311,140 @@ fn the_queue_never_breaches_the_concurrency_limit() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A worker that starts, holds its pipes open and never speaks the protocol. It exercises the
+/// watchdog without spending a real Codex turn.
+fn silent_launcher() -> Launcher {
+    Launcher {
+        program: PathBuf::from("cmd"),
+        args: vec![
+            "/c".into(),
+            "ping".into(),
+            "-n".into(),
+            "60".into(),
+            "127.0.0.1".into(),
+        ],
+        env: Vec::new(),
+    }
+}
+
+#[test]
+fn a_worker_that_never_finishes_is_stopped_by_its_budget() {
+    let core = Core::default();
+    core.set_launcher(silent_launcher());
+    let dir = workspace("timeout");
+
+    let delegated = call(
+        &core,
+        "alethe_delegate",
+        json!({
+            "cwd": dir.to_string_lossy(),
+            "tasks": ["hang forever"],
+            "timeoutSeconds": 2
+        }),
+    );
+    assert_eq!(delegated["accepted"], json!(1), "{delegated}");
+    assert_eq!(delegated["timeoutSeconds"], json!(2), "{delegated}");
+
+    let checked = call(
+        &core,
+        "alethe_check",
+        json!({ "wait": true, "timeoutMs": 30000 }),
+    );
+    let deliveries = checked["deliveries"].as_array().expect("deliveries");
+    assert_eq!(deliveries.len(), 1, "{checked}");
+    assert_eq!(deliveries[0]["outcome"], json!("timeout"), "{checked}");
+    assert_eq!(
+        checked["workersStillBusy"],
+        json!(0),
+        "the slot must be freed: {checked}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn isolating_outside_a_repository_says_so() {
+    let core = Core::default();
+    core.set_launcher(silent_launcher());
+    let dir = workspace("norepo");
+
+    let result = call(
+        &core,
+        "alethe_delegate",
+        json!({ "cwd": dir.to_string_lossy(), "tasks": ["anything"], "isolate": true }),
+    );
+    assert!(
+        result["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("git repository"),
+        "{result}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn isolating_gives_each_worker_its_own_worktree() {
+    let core = Core::default();
+    core.set_launcher(silent_launcher());
+    let dir = workspace("isolate");
+
+    for args in [
+        vec!["init", "-q"],
+        vec!["config", "user.email", "lab@example.com"],
+        vec!["config", "user.name", "lab"],
+    ] {
+        let status = Command::new("git")
+            .args(&args)
+            .current_dir(&dir)
+            .status()
+            .expect("git");
+        assert!(status.success(), "git {args:?} failed");
+    }
+    std::fs::write(dir.join("seed.txt"), "seed").expect("seed");
+    for args in [vec!["add", "-A"], vec!["commit", "-qm", "seed"]] {
+        let status = Command::new("git")
+            .args(&args)
+            .current_dir(&dir)
+            .status()
+            .expect("git");
+        assert!(status.success(), "git {args:?} failed");
+    }
+
+    let delegated = call(
+        &core,
+        "alethe_delegate",
+        json!({
+            "cwd": dir.to_string_lossy(),
+            "tasks": ["one", "two"],
+            "isolate": true,
+            "timeoutSeconds": 2
+        }),
+    );
+    assert_eq!(delegated["accepted"], json!(2), "{delegated}");
+    assert_eq!(delegated["isolated"], json!(true), "{delegated}");
+
+    let jobs = delegated["jobs"].as_array().expect("jobs");
+    let mut paths = Vec::new();
+    for job in jobs {
+        let path = job["worktree"].as_str().expect("a worktree path").to_string();
+        let seeded = PathBuf::from(&path).join("seed.txt");
+        assert!(seeded.exists(), "worktree was not checked out at {path}");
+        paths.push(path);
+    }
+    assert_ne!(paths[0], paths[1], "both workers landed in the same directory");
+
+    let _ = call(&core, "alethe_check", json!({ "wait": true, "timeoutMs": 30000 }));
+    for path in &paths {
+        let _ = Command::new("git")
+            .args(["worktree", "remove", "--force", path])
+            .current_dir(&dir)
+            .status();
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+    if let Some(parent) = dir.parent() {
+        let _ = std::fs::remove_dir_all(parent.join(".alethe-worktrees"));
+    }
+}

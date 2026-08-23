@@ -1068,6 +1068,24 @@ fn handle_http(
             "application/manifest+json",
             include_str!("../remote/manifest.webmanifest"),
         ),
+        "/assets/agents/claude.png" => respond_asset_bytes(
+            stream,
+            200,
+            "image/png",
+            include_bytes!("../../src/assets/claude-code.png"),
+        ),
+        "/assets/agents/codex.png" => respond_asset_bytes(
+            stream,
+            200,
+            "image/png",
+            include_bytes!("../../src/assets/codex.png"),
+        ),
+        "/assets/agents/opencode.png" => respond_asset_bytes(
+            stream,
+            200,
+            "image/png",
+            include_bytes!("../../src/assets/open-white.png"),
+        ),
         _ => respond(stream, 404, "text/plain", "Not found"),
     }
 }
@@ -1414,6 +1432,7 @@ fn workspace_snapshot(app: &AppHandle) -> Result<Value, String> {
             "id": project.get("id"),
             "name": project.get("name"),
             "groupId": project.get("groupId"),
+            "color": project.get("color"),
             "chats": chats,
         }));
     }

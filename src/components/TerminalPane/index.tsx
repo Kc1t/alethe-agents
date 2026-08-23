@@ -23,6 +23,8 @@ import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import { getActiveSessions, savedConversationIdFor, saveSession } from '../../lib/sessionResume'
 import {
   completeAgentHandoff,
+  getClaudeSessionTitle,
+  getCodexSessionTitle,
   getPtyCwd,
   openInVscode,
   restartPty,
@@ -298,6 +300,73 @@ export const TerminalPane = memo(function TerminalPane({
 
   const cwd = activeTab?.cwd?.trim() || terminal.cwd?.trim() || ''
 
+  const sessionTitleAgentType =
+    activeTab?.type === 'claude' || activeTab?.type === 'codex' ? activeTab.type : null
+  const sessionTitleId = sessionTitleAgentType ? activeTab?.sessionId : undefined
+
+  const [sessionTitle, setSessionTitle] = useState<string | null>(null)
+  useEffect(() => {
+    setSessionTitle(null)
+    if (!sessionTitleAgentType || !sessionTitleId) return
+    if (sessionTitleAgentType === 'claude' && !cwd) return
+    const agentType = sessionTitleAgentType
+    const sessionId = sessionTitleId
+    let cancelled = false
+    let intervalId: number | undefined
+    const fetchTitle = () => {
+      const request =
+        agentType === 'claude' ? getClaudeSessionTitle(cwd, sessionId) : getCodexSessionTitle(sessionId)
+      request
+        .then((title) => {
+          if (cancelled || !title) return
+          setSessionTitle(title)
+          if (intervalId !== undefined) window.clearInterval(intervalId)
+        })
+        .catch(() => {})
+    }
+    fetchTitle()
+    intervalId = window.setInterval(fetchTitle, 6000)
+    return () => {
+      cancelled = true
+      if (intervalId !== undefined) window.clearInterval(intervalId)
+    }
+  }, [sessionTitleAgentType, sessionTitleId, cwd])
+
+  const hasCustomTabName = Boolean(activeTab && activeTab.name !== activeTab.type)
+  const displayName = activeTab
+    ? hasCustomTabName
+      ? activeTab.name
+      : (sessionTitle ?? activeTab.name)
+    : terminal.name
+
+  const setSubTabName = useProjectsStore((s) => s.setSubTabName)
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [renameDraft, setRenameDraft] = useState('')
+  const renameInputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    setIsRenaming(false)
+  }, [activeTab?.id])
+
+  useEffect(() => {
+    if (!isRenaming) return
+    renameInputRef.current?.focus()
+    renameInputRef.current?.select()
+  }, [isRenaming])
+
+  const startRename = () => {
+    if (!activeTab) return
+    setRenameDraft(displayName || '')
+    setIsRenaming(true)
+  }
+
+  const commitRename = () => {
+    if (activeTab) setSubTabName(projectId, terminal.id, activeTab.id, renameDraft)
+    setIsRenaming(false)
+  }
+
+  const cancelRename = () => setIsRenaming(false)
+
   const dropTarget = canDragPane && droppable.isOver
   const dragging = canDragPane && draggable.isDragging
 
@@ -353,9 +422,38 @@ export const TerminalPane = memo(function TerminalPane({
                   <AgentIcon type={activeTab.type} size={16} theme={terminalTheme} />
                 </span>
                 <div className={styles.identity}>
-                  <span className={styles.name} title={activeTab.name || terminal.name}>
-                    {activeTab.name || terminal.name}
-                  </span>
+                  {isRenaming ? (
+                    <input
+                      ref={renameInputRef}
+                      type="text"
+                      className={styles.nameInput}
+                      value={renameDraft}
+                      onChange={(event) => setRenameDraft(event.target.value)}
+                      onClick={(event) => event.stopPropagation()}
+                      onDoubleClick={(event) => event.stopPropagation()}
+                      onBlur={commitRename}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          commitRename()
+                        } else if (event.key === 'Escape') {
+                          event.preventDefault()
+                          cancelRename()
+                        }
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className={styles.name}
+                      title={displayName || terminal.name}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation()
+                        startRename()
+                      }}
+                    >
+                      {displayName || terminal.name}
+                    </span>
+                  )}
                 </div>
               </>
             ) : null}

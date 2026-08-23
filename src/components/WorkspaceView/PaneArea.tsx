@@ -13,6 +13,7 @@ import { useT } from '../../lib/i18n'
 import type { GridLayout, LayoutMode, Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { DiffPane } from '../DiffPane'
+import { OrchestratorPane } from '../OrchestratorPane'
 import { lazy, Suspense } from 'react'
 
 import { GridCellHandles } from '../GridCellHandles'
@@ -65,6 +66,9 @@ function Pane({
   }
   if (terminal.kind === 'diff') {
     return <DiffPane projectId={projectId} terminal={terminal} />
+  }
+  if (terminal.kind === 'orchestrator') {
+    return <OrchestratorPane projectId={projectId} terminal={terminal} />
   }
   return (
     <TerminalPane projectId={projectId} terminal={terminal} paneDragEnabled={paneDragEnabled} />

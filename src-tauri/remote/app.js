@@ -118,6 +118,8 @@ const icons = {
     '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m0 0 6-6m-6 6-6-6"/></svg>',
   arrowLeft: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>',
   chevronRight: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>',
+  folder:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
   info: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></svg>',
   refresh:
     '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg>',
@@ -148,19 +150,12 @@ const agentLabels = {
   freebuff: 'Freebuff',
   mimo: 'Mimo',
 }
-const knownAgents = new Set(Object.keys(agentLetters))
-const groupColorNames = {
-  '#f97316': 'orange',
-  '#ec4899': 'pink',
-  '#8b5cf6': 'purple',
-  '#0ea5e9': 'blue',
-  '#14b8a6': 'teal',
-  '#84cc16': 'green',
-  '#eab308': 'yellow',
-  '#ef4444': 'red',
-  '#64748b': 'gray',
-  '#0a0a0a': 'black',
+const agentIconAssets = {
+  claude: '/assets/agents/claude.png',
+  codex: '/assets/agents/codex.png',
+  opencode: '/assets/agents/opencode.png',
 }
+const knownAgents = new Set(Object.keys(agentLetters))
 
 let sessionToken = sessionStorage.getItem(SESSION_KEY) || ''
 let wsBase = null
@@ -173,6 +168,7 @@ let socketAuthenticated = false
 let reconnectTimer = null
 let connectionState = 'connecting'
 let currentFilter = ''
+const openProjects = new Set()
 let stateView = null
 let appearanceSyncing = false
 let rendered = false
@@ -189,14 +185,6 @@ const escapeHtml = (value) =>
     /[&<>"']/g,
     (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[char],
   )
-const initials = (value) =>
-  String(value || 'A')
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase()
 const readableTerminalText = (value) =>
   String(value ?? '')
     .replace(/\u001b(?:\][^\u0007]*(?:\u0007|\u001b\\)|\[[0-?]*[ -/]*[@-~]|[@-_])/g, '')
@@ -227,10 +215,6 @@ function normalizedAgent(agent) {
 function agentName(agent) {
   const type = normalizedAgent(agent)
   return agentLabels[type]
-}
-
-function groupColor(color) {
-  return groupColorNames[String(color || '').toLowerCase()] || 'accent'
 }
 
 class SessionError extends Error {}
@@ -360,6 +344,13 @@ function agentBadge(agent) {
   return `<span class="agent-badge" data-agent="${type}" aria-hidden="true">${escapeHtml(agentLetters[type])}</span>`
 }
 
+function agentIconMarkup(agent) {
+  const type = normalizedAgent(agent)
+  const asset = agentIconAssets[type]
+  if (!asset) return agentBadge(agent)
+  return `<img class="terminal-icon" src="${asset}" alt="" loading="lazy">`
+}
+
 function findChat(ptyId) {
   return state.projects
     .flatMap((project) =>
@@ -399,32 +390,40 @@ function workspaceSections(filter) {
     if (!byGroup.has(key)) byGroup.set(key, [])
     byGroup.get(key).push(project)
   }
+  const hasQuery = Boolean(query)
 
   return [...byGroup.entries()]
     .map(([groupId, groupProjects]) => {
       const group = groups.get(groupId)
-      const projectCount = groupProjects.length
-      return `<section class="group-section" data-color="${groupColor(group?.color)}">
-      <header class="group-heading"><span class="group-dot"></span><h2>${escapeHtml(group?.name || t('home.ungrouped'))}</h2><span>${plural('home.projectCount', 'home.projectCountPlural', projectCount)}</span></header>
-      <div class="project-list">${groupProjects
-        .map(
-          (project) => `<article class="project">
-        <header class="project-heading"><span class="project-avatar">${escapeHtml(initials(project.name))}</span><h3>${escapeHtml(project.name)}</h3><span>${plural('home.chatCount', 'home.chatCountPlural', project.chats.length)}</span></header>
-        <div class="chat-list">${project.chats
-          .map(
-            (
-              chat,
-            ) => `<button class="chat-row" type="button" data-chat="${escapeHtml(chat.ptyId)}" aria-label="${escapeHtml(t('home.openChat', { name: chat.name }))}">
-          ${agentBadge(chat.agent)}<span class="chat-copy"><strong>${escapeHtml(chat.name)}</strong><span>${escapeHtml(agentName(chat.agent))} · ${t('home.remoteAccess')}</span></span><span class="row-icon">${icons.chevronRight}</span>
-        </button>`,
-          )
-          .join('')}</div>
-      </article>`,
-        )
-        .join('')}</div>
+      return `<section class="group-block">
+      <div class="group-tag"><span>${escapeHtml(group?.name || t('home.ungrouped'))}</span><span class="group-rule"></span></div>
+      <div class="group-body">${groupProjects.map((project) => projectBlockMarkup(project, hasQuery)).join('')}</div>
     </section>`
     })
     .join('')
+}
+
+function projectBlockMarkup(project, forceOpen) {
+  const collapsible = project.chats.length > 1
+  const isOpen = !collapsible || forceOpen || openProjects.has(project.id)
+  const leadStyle = project.color ? ` style="color:${escapeHtml(project.color)}"` : ''
+  return `<div class="project-block">
+    <div class="project-row${isOpen ? ' is-open' : ''}"${collapsible ? ` data-toggle="${escapeHtml(project.id)}"` : ''}>
+      <span class="project-lead"${leadStyle}>${icons.folder}</span>
+      <span class="project-name">${escapeHtml(project.name)}</span>
+      <span class="project-meta">${!isOpen ? `<span class="meta-text">${plural('home.chatCount', 'home.chatCountPlural', project.chats.length)}</span>` : ''}${collapsible ? `<span class="chevron">${icons.chevronRight}</span>` : ''}</span>
+    </div>
+    <div class="terminal-list"${isOpen ? '' : ' hidden'}>${project.chats.map((chat) => terminalRowMarkup(chat)).join('')}</div>
+  </div>`
+}
+
+function terminalRowMarkup(chat) {
+  return `<button class="terminal-row" type="button" data-chat="${escapeHtml(chat.ptyId)}" aria-label="${escapeHtml(t('home.openChat', { name: chat.name }))}">
+    <span class="terminal-lead">${agentIconMarkup(chat.agent)}</span>
+    <span class="terminal-name">${escapeHtml(chat.name)}</span>
+    <span class="terminal-tag">${escapeHtml(agentName(chat.agent))}</span>
+    <span class="row-icon">${icons.chevronRight}</span>
+  </button>`
 }
 
 function renderWorkspaceList(filter) {
@@ -435,6 +434,14 @@ function renderWorkspaceList(filter) {
   list
     .querySelectorAll('[data-chat]')
     .forEach((button) => button.addEventListener('click', () => void openChat(button.dataset.chat)))
+  list.querySelectorAll('[data-toggle]').forEach((row) =>
+    row.addEventListener('click', () => {
+      const id = row.dataset.toggle
+      if (openProjects.has(id)) openProjects.delete(id)
+      else openProjects.add(id)
+      renderWorkspaceList(currentFilter)
+    }),
+  )
 }
 
 function renderHome(filter = currentFilter) {

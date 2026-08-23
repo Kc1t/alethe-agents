@@ -127,6 +127,7 @@ type SubTabsSlice = Pick<
   | 'setSubTabCwd'
   | 'setSubTabCompletionUnread'
   | 'setSubTabSessionId'
+  | 'setSubTabName'
   | 'setSubTabInitialInput'
   | 'setSubTabHandoff'
 >
@@ -208,6 +209,12 @@ export function createSubTabsSlice({ updateTerminal, updateSubTab }: SliceCtx): 
 
     setSubTabSessionId: (projectId, terminalId, tabId, sessionId) =>
       updateSubTab(projectId, terminalId, tabId, (s) => ({ ...s, sessionId })),
+
+    setSubTabName: (projectId, terminalId, tabId, name) =>
+      updateSubTab(projectId, terminalId, tabId, (s) => ({
+        ...s,
+        name: name.trim() || s.type,
+      })),
 
     setSubTabInitialInput: (projectId, terminalId, tabId, initialInput) =>
       updateSubTab(projectId, terminalId, tabId, (s) => ({ ...s, initialInput })),

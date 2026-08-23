@@ -84,6 +84,7 @@ import {
   makeXtermLink,
 } from './terminalLinks'
 import {
+  TERMINAL_WRITE_FALLBACK_MS,
   TERMINAL_WRITE_FRAME_BUDGET,
   trimPendingWrites,
   writePtyChunked,
@@ -225,6 +226,7 @@ export function useXtermSession(params: {
     let unlistenDragDrop: (() => void) | null = null
     let resizeTimer: number | null = null
     let writeFrame: number | null = null
+    let writeFallback: number | null = null
     let pendingWrites: string[] = []
     let pendingWriteLength = 0
     let pendingWriteDrainResolvers: Array<() => void> = []
@@ -309,8 +311,15 @@ export function useXtermSession(params: {
 
     terminal.focus()
 
-    const flushPendingWrite = () => {
+    const cancelScheduledFlush = () => {
+      if (writeFrame !== null) window.cancelAnimationFrame(writeFrame)
+      if (writeFallback !== null) window.clearTimeout(writeFallback)
       writeFrame = null
+      writeFallback = null
+    }
+
+    const flushPendingWrite = () => {
+      cancelScheduledFlush()
       if (disposed) return
       if (pendingWriteLength === 0) return
 
@@ -335,6 +344,7 @@ export function useXtermSession(params: {
             isLastQueuedWrite
               ? () => {
                   if (disposed || pendingWriteLength > 0 || writeFrame !== null) return
+                  if (writeFallback !== null) return
                   const resolvers = pendingWriteDrainResolvers
                   pendingWriteDrainResolvers = []
                   resolvers.forEach((resolve) => resolve())
@@ -344,8 +354,13 @@ export function useXtermSession(params: {
           clampHorizontalScroll()
         } catch {}
       }
-      if (pendingWriteLength > 0) {
-        writeFrame = window.requestAnimationFrame(flushPendingWrite)
+      if (pendingWriteLength > 0) scheduleFlush()
+    }
+
+    const scheduleFlush = () => {
+      if (writeFrame === null) writeFrame = window.requestAnimationFrame(flushPendingWrite)
+      if (writeFallback === null) {
+        writeFallback = window.setTimeout(flushPendingWrite, TERMINAL_WRITE_FALLBACK_MS)
       }
     }
 
@@ -354,8 +369,7 @@ export function useXtermSession(params: {
       pendingWrites.push(chunk)
       pendingWriteLength += chunk.length
       pendingWriteLength = trimPendingWrites(pendingWrites, pendingWriteLength).length
-      if (writeFrame !== null) return
-      writeFrame = window.requestAnimationFrame(flushPendingWrite)
+      scheduleFlush()
     }
 
     const queueTerminalWriteAndWait = (chunk: string): Promise<void> => {
@@ -715,10 +729,7 @@ export function useXtermSession(params: {
         terminal.reset()
         pendingWrites = []
         pendingWriteLength = 0
-        if (writeFrame !== null) {
-          window.cancelAnimationFrame(writeFrame)
-          writeFrame = null
-        }
+        cancelScheduledFlush()
         if (replay) void writeReplayAtOnce(replay)
         for (const chunk of arrivedDuringFetch) queueTerminalWrite(chunk)
       } catch {
@@ -834,10 +845,7 @@ export function useXtermSession(params: {
       clampHorizontalScroll()
       queueInput(id, data)
       if (startsNewSession && command && command !== 'shell') {
-        if (writeFrame !== null) {
-          window.cancelAnimationFrame(writeFrame)
-          writeFrame = null
-        }
+        cancelScheduledFlush()
         pendingWrites = []
         pendingWriteLength = 0
         terminal.clear()
@@ -1492,7 +1500,7 @@ export function useXtermSession(params: {
       window.removeEventListener('alethe:terminal-resize-request', onResizeRequest)
       ro.disconnect()
       if (resizeTimer !== null) window.clearTimeout(resizeTimer)
-      if (writeFrame !== null) window.cancelAnimationFrame(writeFrame)
+      cancelScheduledFlush()
       pendingWrites = []
       pendingWriteLength = 0
       pendingWriteDrainResolvers = []

@@ -9,6 +9,7 @@
 //!   ALETHE_MAX_WORKERS  how many workers may run at once, default 4
 
 #[path = "../orchestrator_core.rs"]
+#[allow(dead_code)]
 mod orchestrator_core;
 
 use std::io::{BufRead, Write};

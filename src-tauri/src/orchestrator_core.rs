@@ -9,6 +9,7 @@ use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -46,6 +47,58 @@ impl Launcher {
     }
 }
 
+const DEFAULT_JOB_TIMEOUT_MS: u64 = 900_000;
+
+/// Finished workers stay alive so the lead can follow up on what they just did, but each one holds
+/// a process, so only the most recent few are kept and older ones are let go.
+const PARKED_LIMIT: usize = 4;
+
+fn git(cwd: &std::path::Path, args: &[&str]) -> Result<String, String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .output()
+        .map_err(|error| format!("git not available: {error}"))?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// A detached worktree per job, parked next to the repository rather than inside it, so parallel
+/// workers editing the same files cannot overwrite each other. It is left in place on purpose:
+/// the work still has to be reviewed and merged.
+fn isolate_worktree(cwd: &str, job_id: &str) -> Result<String, String> {
+    let origin = PathBuf::from(cwd);
+    let root = git(&origin, &["rev-parse", "--show-toplevel"])?;
+    let root = PathBuf::from(root.replace('/', std::path::MAIN_SEPARATOR_STR));
+    let name = root
+        .file_name()
+        .map(|value| value.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "repo".to_string());
+    let parent = root
+        .parent()
+        .ok_or_else(|| "repository has no parent directory".to_string())?;
+    let target = parent
+        .join(".alethe-worktrees")
+        .join(&name)
+        .join(format!("{job_id}-{}", now_ms()));
+    if let Some(dir) = target.parent() {
+        std::fs::create_dir_all(dir).map_err(|error| error.to_string())?;
+    }
+    git(
+        &root,
+        &[
+            "worktree",
+            "add",
+            "--detach",
+            &target.to_string_lossy(),
+            "HEAD",
+        ],
+    )?;
+    Ok(target.to_string_lossy().into_owned())
+}
+
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -67,8 +120,11 @@ struct Job {
     outcome: Option<String>,
     started_at: Option<u64>,
     ended_at: Option<u64>,
+    worktree: Option<String>,
+    timeout_ms: Option<u64>,
     child: Option<Arc<Mutex<Child>>>,
     stdin: Option<Arc<Mutex<ChildStdin>>>,
+    inbox: VecDeque<String>,
     next_request_id: i64,
 }
 
@@ -89,6 +145,7 @@ impl Job {
             "seconds": elapsed,
             "plan": self.plan,
             "tokens": self.tokens,
+            "worktree": self.worktree,
             "hasDiff": self.diff.is_some(),
             "summary": self.reply.trim().chars().take(1200).collect::<String>(),
         })
@@ -105,6 +162,8 @@ impl Job {
         if let Some(child) = self.child.take() {
             if let Ok(mut child) = child.lock() {
                 let _ = child.kill();
+                // Without the wait the killed worker is never reaped and stays as a zombie.
+                let _ = child.wait();
             }
         }
         self.stdin = None;
@@ -178,6 +237,7 @@ pub struct Core {
     signal: Arc<Condvar>,
     launcher: Arc<Mutex<Option<Launcher>>>,
     observer: Arc<Mutex<Option<Observer>>>,
+    dispatch: Arc<Mutex<Option<Sender<Value>>>>,
 }
 
 impl Default for Core {
@@ -190,6 +250,7 @@ impl Default for Core {
             signal: Arc::new(Condvar::new()),
             launcher: Arc::new(Mutex::new(None)),
             observer: Arc::new(Mutex::new(None)),
+            dispatch: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -208,7 +269,15 @@ fn send_rpc(stdin: &Arc<Mutex<ChildStdin>>, value: &Value) -> Result<(), String>
     stdin.flush().map_err(|error| error.to_string())
 }
 
-fn job_rpc(inner: &mut Inner, job_id: &str, method: &str, params: Value) -> Result<(), String> {
+/// Builds a request without sending it. Writing to a worker's stdin blocks once that pipe fills, so
+/// doing it under the orchestrator lock would let one stuck worker freeze every other job. Callers
+/// stage the request, release the lock, and only then hand it to `send_rpc`.
+fn stage_rpc(
+    inner: &mut Inner,
+    job_id: &str,
+    method: &str,
+    params: Value,
+) -> Result<(Arc<Mutex<ChildStdin>>, Value), String> {
     let job = inner
         .jobs
         .get_mut(job_id)
@@ -219,10 +288,63 @@ fn job_rpc(inner: &mut Inner, job_id: &str, method: &str, params: Value) -> Resu
         .ok_or_else(|| format!("job {job_id} has no live worker"))?;
     job.next_request_id += 1;
     let id = job.next_request_id;
-    send_rpc(
-        &stdin,
-        &json!({ "id": id, "method": method, "params": params }),
+    Ok((
+        stdin,
+        json!({ "id": id, "method": method, "params": params }),
+    ))
+}
+
+/// Pops the next queued message for a worker and turns it into a fresh turn on its own thread, so
+/// the follow-up keeps everything the worker already read.
+fn next_from_inbox(
+    inner: &mut Inner,
+    job_id: &str,
+) -> Option<(Arc<Mutex<ChildStdin>>, Value)> {
+    let job = inner.jobs.get_mut(job_id)?;
+    if job.stdin.is_none() {
+        return None;
+    }
+    let thread_id = job.thread_id.clone()?;
+    let message = job.inbox.pop_front()?;
+    stage_rpc(
+        inner,
+        job_id,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": [{ "type": "text", "text": message }],
+            "approvalPolicy": "never"
+        }),
     )
+    .ok()
+}
+
+/// Finished workers are kept so the lead can follow up, but each one is a live process. Past the
+/// limit the least recently finished is let go; its record stays, only the process is gone.
+fn release_oldest_parked(inner: &mut Inner) {
+    loop {
+        let parked: Vec<String> = inner
+            .order
+            .iter()
+            .filter(|id| {
+                inner
+                    .jobs
+                    .get(*id)
+                    .is_some_and(|job| job.settled() && job.stdin.is_some())
+            })
+            .cloned()
+            .collect();
+        if parked.len() <= PARKED_LIMIT {
+            return;
+        }
+        let Some(oldest) = parked.first().cloned() else {
+            return;
+        };
+        if let Some(job) = inner.jobs.get_mut(&oldest) {
+            job.teardown();
+            job.status = STATUS_RELEASED.to_string();
+        }
+    }
 }
 
 impl Core {
@@ -231,7 +353,14 @@ impl Core {
     }
 
     pub fn set_observer(&self, observer: Observer) {
-        *guard(&self.observer) = Some(observer);
+        *guard(&self.observer) = Some(observer.clone());
+        let (sender, receiver) = channel::<Value>();
+        *guard(&self.dispatch) = Some(sender);
+        thread::spawn(move || {
+            while let Ok(snapshot) = receiver.recv() {
+                observer(snapshot);
+            }
+        });
     }
 
     pub fn set_concurrency_limit(&self, limit: usize) {
@@ -248,10 +377,13 @@ impl Core {
         (inner.running, inner.queue.len())
     }
 
+    /// Every caller holds the lock, so the observer must not run here: it belongs to the app layer
+    /// and whatever it does - emitting to a webview, in practice - would block every other job for
+    /// as long as it took. Snapshots go to a channel instead, and one thread delivers them in order.
     fn notify(&self, inner: &Inner) {
-        let observer = guard(&self.observer).clone();
-        if let Some(observer) = observer {
-            observer(inner.snapshot());
+        let sender = guard(&self.dispatch).clone();
+        if let Some(sender) = sender {
+            let _ = sender.send(inner.snapshot());
         }
     }
 
@@ -341,6 +473,14 @@ impl Core {
             }),
         );
 
+        let timeout_ms = guard(&self.inner)
+            .jobs
+            .get(job_id)
+            .and_then(|job| job.timeout_ms);
+        if let Some(timeout_ms) = timeout_ms {
+            self.arm_watchdog(job_id, timeout_ms);
+        }
+
         if let Some(stdout) = stdout {
             let core = self.clone();
             let owned_id = job_id.to_string();
@@ -365,6 +505,47 @@ impl Core {
                 );
             });
         }
+    }
+
+    /// A worker that never finishes its turn would otherwise hold a slot forever, so the budget
+    /// is enforced here rather than left to the lead remembering to cancel.
+    fn arm_watchdog(&self, job_id: &str, timeout_ms: u64) {
+        let core = self.clone();
+        let job_id = job_id.to_string();
+        thread::spawn(move || {
+            thread::sleep(Duration::from_millis(timeout_ms));
+            let payload = {
+                let inner = guard(&core.inner);
+                let Some(job) = inner.jobs.get(&job_id) else {
+                    return;
+                };
+                if job.settled() {
+                    return;
+                }
+                match (job.thread_id.clone(), job.active_turn_id.clone()) {
+                    (Some(thread_id), Some(turn_id)) => {
+                        Some(json!({ "threadId": thread_id, "turnId": turn_id }))
+                    }
+                    _ => None,
+                }
+            };
+            if let Some(payload) = payload {
+                let staged = {
+                    let mut inner = guard(&core.inner);
+                    stage_rpc(&mut inner, &job_id, "turn/interrupt", payload)
+                };
+                if let Ok((stdin, request)) = staged {
+                    let _ = send_rpc(&stdin, &request);
+                }
+            }
+            core.finish(
+                &job_id,
+                STATUS_FAILED,
+                Some("timeout".into()),
+                format!("worker passed its {}s budget and was stopped", timeout_ms / 1000),
+                true,
+            );
+        });
     }
 
     fn settle(&self, job_id: &str, status: &str, outcome: &str, text: &str) {
@@ -502,6 +683,7 @@ impl Core {
         text: String,
         terminal: bool,
     ) {
+        let staged;
         {
             let mut inner = guard(&self.inner);
             let Some(job) = inner.jobs.get_mut(job_id) else {
@@ -519,7 +701,30 @@ impl Core {
             }
             inner.running = inner.running.saturating_sub(1);
             inner.push_delivery("worker_done", job_id, outcome, text);
+
+            // Anything sent while this worker was busy waited here rather than interrupting it or
+            // being refused. It goes out now, on the slot the worker just gave back.
+            staged = (!terminal)
+                .then(|| next_from_inbox(&mut inner, job_id))
+                .flatten();
+            if staged.is_some() {
+                if let Some(job) = inner.jobs.get_mut(job_id) {
+                    job.status = STATUS_RUNNING.to_string();
+                    job.outcome = None;
+                    job.ended_at = None;
+                    job.reply.clear();
+                }
+                inner.running += 1;
+            } else {
+                release_oldest_parked(&mut inner);
+            }
             self.notify(&inner);
+        }
+        if let Some((stdin, request)) = staged {
+            if let Err(error) = send_rpc(&stdin, &request) {
+                self.settle(job_id, STATUS_FAILED, "send-failed", &error);
+                return;
+            }
         }
         self.signal.notify_all();
         self.drain_queue();
@@ -547,7 +752,7 @@ pub fn tools() -> Value {
     json!([
         {
             "name": "alethe_delegate",
-            "description": "Hand independent units of work to worker agents that Alethe runs for you. Returns job ids immediately; the workers run in parallel. Delegate any unit that would make you read more than 5 files or that you estimate at over 2 minutes of your own work, and send every qualifying unit in ONE call so they run at the same time. Each task must be self contained.",
+            "description": "Hand independent units of work to Codex workers that Alethe runs as separate processes. These are NOT your own subagents: they are a different agent on its own token budget, so their reading and writing costs you nothing but the task text. Prefer this over launching subagents of your own for the same work. They also outlive the turn, can be corrected mid-run with alethe_steer, and can each take an isolated git worktree. Returns job ids immediately; the workers run in parallel. Delegate when the work splits into units that each need their own reading and judgement, and there are at least two of them: one unit per area of the codebase, per service, per feature. Send every unit in ONE call so they run at the same time, and make each task self contained. Do NOT delegate work that is uniform across its inputs, that one command or script does in a single pass, or that is quicker to finish than to describe.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -556,7 +761,15 @@ pub fn tools() -> Value {
                         "items": { "type": "string" },
                         "description": "One self contained instruction per worker."
                     },
-                    "cwd": { "type": "string", "description": "Working directory. Defaults to the lead's directory." }
+                    "cwd": { "type": "string", "description": "Working directory. Defaults to the lead's directory." },
+                    "isolate": {
+                        "type": "boolean",
+                        "description": "Give each worker its own detached git worktree. Use it whenever two units could touch the same files; without it parallel workers share one directory and can overwrite each other. Requires a git repository. The worktree path comes back with the job and is left in place for review."
+                    },
+                    "timeoutSeconds": {
+                        "type": "number",
+                        "description": "Budget per worker before Alethe stops it, default 900. Pass 0 to let a worker run without a limit."
+                    }
                 },
                 "required": ["tasks"]
             }
@@ -595,7 +808,7 @@ pub fn tools() -> Value {
         },
         {
             "name": "alethe_send",
-            "description": "Give a settled worker more work on its existing thread, keeping everything it already learned.",
+            "description": "Give a worker more work on its existing thread, keeping everything it already learned. If it is still busy the message waits and starts as its next turn, so you never have to interrupt it or poll for it to be free. Use alethe_steer instead when the turn it is running now is going the wrong way.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -679,18 +892,67 @@ pub fn call_tool(
                 })
                 .ok_or_else(|| "cwd is required".to_string())?;
 
+            let isolate = arguments
+                .get("isolate")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let timeout_ms = match arguments.get("timeoutSeconds").and_then(Value::as_u64) {
+                Some(0) => None,
+                Some(seconds) => Some(seconds.saturating_mul(1000)),
+                None => Some(DEFAULT_JOB_TIMEOUT_MS),
+            };
+
+            // Ids are reserved under the lock, but the worktrees are not built under it: each one
+            // shells out to git, and holding the lock across that would stall every running job.
+            let ids: Vec<String> = {
+                let mut inner = guard(&core.inner);
+                tasks
+                    .iter()
+                    .map(|_| {
+                        inner.job_counter += 1;
+                        format!("job-{:02}", inner.job_counter)
+                    })
+                    .collect()
+            };
+
+            // A batch is accepted whole or not at all. Half of it left queued with worktrees on
+            // disk and no worker coming would be worse than a clean refusal.
+            let mut prepared: Vec<(String, Option<String>)> = Vec::new();
+            if isolate {
+                for id in &ids {
+                    match isolate_worktree(&cwd, id) {
+                        Ok(path) => prepared.push((path.clone(), Some(path))),
+                        Err(error) => {
+                            for (_, worktree) in &prepared {
+                                if let Some(path) = worktree {
+                                    let _ = git(
+                                        std::path::Path::new(&cwd),
+                                        &["worktree", "remove", "--force", path],
+                                    );
+                                }
+                            }
+                            return Err(format!(
+                                "isolate needs a git repository at {cwd}: {error}"
+                            ));
+                        }
+                    }
+                }
+            } else {
+                prepared = ids.iter().map(|_| (cwd.clone(), None)).collect();
+            }
+
             let mut created = Vec::new();
             {
                 let mut inner = guard(&core.inner);
-                for spec in tasks {
-                    inner.job_counter += 1;
-                    let id = format!("job-{:02}", inner.job_counter);
+                for ((spec, id), (job_cwd, worktree)) in
+                    tasks.into_iter().zip(ids).zip(prepared.into_iter())
+                {
                     inner.jobs.insert(
                         id.clone(),
                         Job {
                             id: id.clone(),
                             spec: spec.clone(),
-                            cwd: cwd.clone(),
+                            cwd: job_cwd,
                             status: STATUS_QUEUED.to_string(),
                             thread_id: None,
                             active_turn_id: None,
@@ -701,14 +963,17 @@ pub fn call_tool(
                             outcome: None,
                             started_at: None,
                             ended_at: None,
+                            worktree: worktree.clone(),
+                            timeout_ms,
                             child: None,
                             stdin: None,
+                            inbox: VecDeque::new(),
                             next_request_id: 10,
                         },
                     );
                     inner.order.push(id.clone());
                     inner.queue.push_back(id.clone());
-                    created.push(json!({ "id": id, "spec": spec }));
+                    created.push(json!({ "id": id, "spec": spec, "worktree": worktree }));
                 }
                 core.notify(&inner);
             }
@@ -719,6 +984,8 @@ pub fn call_tool(
                 "accepted": created.len(),
                 "runningInParallel": true,
                 "concurrencyLimit": limit,
+                "isolated": isolate,
+                "timeoutSeconds": timeout_ms.map(|ms| ms / 1000),
                 "jobs": created,
                 "next": "call alethe_check with wait true"
             }))
@@ -795,7 +1062,7 @@ pub fn call_tool(
                 .active_turn_id
                 .clone()
                 .ok_or_else(|| format!("job {job_id} has no running turn to steer"))?;
-            job_rpc(
+            let (stdin, request) = stage_rpc(
                 &mut inner,
                 &job_id,
                 "turn/steer",
@@ -805,6 +1072,8 @@ pub fn call_tool(
                     "expectedTurnId": turn_id
                 }),
             )?;
+            drop(inner);
+            send_rpc(&stdin, &request)?;
             Ok(json!({ "steered": job_id, "turnId": turn_id }))
         }
 
@@ -823,13 +1092,25 @@ pub fn call_tool(
             if job.stdin.is_none() {
                 return Err(format!("job {job_id} was released and cannot take more work"));
             }
+            // Waiting beats both alternatives: refusing would make the lead babysit the worker,
+            // and steering would bend the turn already in flight instead of adding to it.
+            if !job.settled() {
+                let job = inner
+                    .jobs
+                    .get_mut(&job_id)
+                    .ok_or_else(|| format!("unknown job {job_id}"))?;
+                job.inbox.push_back(message);
+                let queued = job.inbox.len();
+                core.notify(&inner);
+                return Ok(json!({ "queued": job_id, "waiting": queued }));
+            }
             if inner.running >= inner.max_concurrent {
                 return Err(format!(
                     "concurrency limit {} reached, call alethe_check first",
                     inner.max_concurrent
                 ));
             }
-            job_rpc(
+            let (stdin, request) = stage_rpc(
                 &mut inner,
                 &job_id,
                 "turn/start",
@@ -847,6 +1128,13 @@ pub fn call_tool(
             }
             inner.running += 1;
             core.notify(&inner);
+            drop(inner);
+            // The slot was taken before the write, so a worker that never receives the turn has to
+            // give it back rather than hold it until the process dies.
+            if let Err(error) = send_rpc(&stdin, &request) {
+                core.settle(&job_id, STATUS_FAILED, "send-failed", &error);
+                return Err(error);
+            }
             Ok(json!({ "sent": job_id }))
         }
 
@@ -866,8 +1154,13 @@ pub fn call_tool(
                     })
                 };
                 if let Some(payload) = payload {
-                    let mut inner = guard(&core.inner);
-                    let _ = job_rpc(&mut inner, &job_id, "turn/interrupt", payload);
+                    let staged = {
+                        let mut inner = guard(&core.inner);
+                        stage_rpc(&mut inner, &job_id, "turn/interrupt", payload)
+                    };
+                    if let Ok((stdin, request)) = staged {
+                        let _ = send_rpc(&stdin, &request);
+                    }
                 }
                 core.finish(
                     &job_id,

@@ -1,0 +1,252 @@
+.pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.counts {
+  display: flex;
+  gap: 10px;
+  margin-left: auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-muted);
+}
+
+.close {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--fg-faint);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.close:hover {
+  color: var(--fg);
+  background: var(--bg-sunken);
+}
+
+.empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+}
+
+.empty p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.empty small {
+  max-width: 44ch;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg-faint);
+}
+
+.board {
+  display: grid;
+  grid-auto-columns: minmax(220px, 1fr);
+  grid-auto-flow: column;
+  gap: 1px;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--border);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px;
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--status-idle);
+  flex: none;
+}
+
+.card[data-status='running'] .dot {
+  background: var(--status-working);
+}
+
+.card[data-status='queued'] .dot {
+  background: var(--status-waiting);
+}
+
+.card[data-status='done'] .dot {
+  background: var(--status-active);
+}
+
+.card[data-status='failed'] .dot {
+  background: var(--status-offline);
+}
+
+.card[data-status='cancelled'] .dot,
+.card[data-status='released'] .dot {
+  background: var(--status-stopped);
+}
+
+.jobId {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.elapsed {
+  margin-left: auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-faint);
+}
+
+.status {
+  margin: 0;
+  font-size: 11px;
+  text-transform: lowercase;
+  color: var(--fg-muted);
+}
+
+.card[data-status='failed'] .status {
+  color: var(--status-offline);
+}
+
+.spec {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+
+.plan {
+  margin: 0;
+  padding-left: 14px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+
+.summary {
+  margin: 0;
+  padding-top: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-top: 1px solid var(--border);
+}
+
+.cardFoot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 8px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-faint);
+}
+
+.worktree {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.compose {
+  display: flex;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.composeInput {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--fg);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.composeInput:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.composeInput::placeholder {
+  color: var(--fg-faint);
+}
+
+.composeSend {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  padding: 0;
+  color: var(--fg-muted);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.composeSend:hover:not(:disabled) {
+  color: var(--fg);
+  background: var(--accent-bg-soft);
+  border-color: var(--accent);
+}
+
+.composeSend:disabled {
+  cursor: default;
+  opacity: 0.45;
+}

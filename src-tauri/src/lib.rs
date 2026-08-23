@@ -191,6 +191,9 @@ pub fn run() {
                 }
             }
             logging::set_logs_dir(app.handle());
+            if let Ok(dir) = paths::profile_data_dir(app.handle()) {
+                process_tree::set_roots_file_dir(dir);
+            }
             // Keep the terminal launcher available after installation.
             #[cfg(not(debug_assertions))]
             let _ = cli_shim::cli_shim_install();
@@ -234,6 +237,7 @@ pub fn run() {
             orchestrator::orchestrator_mcp_config_path,
             orchestrator::orchestrator_jobs,
             orchestrator::orchestrator_set_concurrency,
+            orchestrator::orchestrator_message,
             browser_session::browser_session_start,
             browser_session::browser_session_stop,
             browser_session::browser_session_status,
@@ -379,10 +383,10 @@ pub fn run() {
             claude_sessions::snapshot_claude_sessions,
             claude_sessions::list_claude_sessions,
             claude_sessions::get_claude_session_title,
-            claude_sessions::get_claude_session_title,
             claude_sessions::get_claude_activity,
             claude_sessions::get_multi_agent_activity,
             codex_sessions::snapshot_codex_sessions,
+            codex_sessions::get_codex_session_title,
             handoff::prepare_agent_handoff,
             handoff::materialize_agent_handoff,
             handoff::complete_agent_handoff,

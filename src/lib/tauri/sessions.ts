@@ -82,6 +82,10 @@ export async function snapshotCodexSessions(cwd: string): Promise<CodexSessionSn
   return invoke<CodexSessionSnapshot[]>('snapshot_codex_sessions', { cwd })
 }
 
+export async function getCodexSessionTitle(sessionId: string): Promise<string | null> {
+  return invoke<string | null>('get_codex_session_title', { sessionId })
+}
+
 export async function listClaudeSessions(cwd: string): Promise<ClaudeSessionMeta[]> {
   return invoke<ClaudeSessionMeta[]>('list_claude_sessions', { cwd })
 }

@@ -110,7 +110,62 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   broad core/plugin defaults with the audited permissions used by the main webview. Privileged custom
   commands still depend on their own authorization and input-validation boundaries.
 
+- You can talk to a worker directly from its card, without going through the agent that started it.
+  Type into one that is working and the correction lands on what it is doing right now; type into
+  one that has finished and it picks the work up again with everything it already learned. A worker
+  that is busy no longer refuses: the message waits and becomes its next turn, so adding to it never
+  means interrupting it.
+
+- Workers on Windows could write files but not run anything — no build, no test, no command. Their
+  sandbox cannot start programs installed from the Microsoft Store, and a Store-installed PowerShell
+  was the shell they were reaching for, so every command was denied before it ran while the worker
+  still reported the turn as finished. Workers now reach for the system shell instead. What they are
+  allowed to touch is unchanged.
+
+- Workers that finished used to stay running forever, one process each, until something else closed
+  the app. The most recent few are still kept so their work can be followed up on, and the rest are
+  let go on their own.
+
+- Delegated work is now something you can watch. A pane shows every worker Alethe is running as a
+  card of its own — what it was asked to do, whether it is waiting for a slot, working or finished,
+  how long it has taken, the plan it is following, what it reported back, how many tokens it spent,
+  and whether it took an isolated worktree. It updates as the workers do, so a long-running one
+  stays legible instead of going quiet. Add it from the project's add-content menu while agent
+  orchestration is on.
+
 ### Fixed
+
+- Workers could stall each other. Correcting, cancelling, or handing more work to one of them wrote
+  to that worker while holding the lock the whole orchestrator shares, so a worker that had stopped
+  reading was enough to freeze every other job; the same applied to the status updates the app
+  itself listens for, and to preparing isolated worktrees. All of them now happen outside the lock.
+
+- Delegating a batch that could not be isolated left part of it behind: the jobs created before the
+  failure stayed queued forever with worktrees on disk and no worker coming. A batch is now accepted
+  whole or refused whole, and anything already created is cleaned up.
+
+- Handing more work to a worker that was still busy took a second slot from the queue and never gave
+  it back, so the number of workers Alethe would run shrank over a session. It is now refused with a
+  reason. Stopped workers are also reaped instead of being left as zombie processes.
+
+- Agent tools served by Alethe over HTTP rejected the clients that use them. The token header was
+  matched exactly as written, but header names are case-insensitive and clients normally send them
+  lowercased, so the request came back unauthorized with an empty body — which the client reported
+  as a parse error rather than a rejected credential. The header is now matched without regard to
+  case.
+
+- Starting a second Alethe — a development build alongside an installed one — killed every terminal
+  running in the first, along with everything those terminals had launched. On startup Alethe clears
+  out terminal processes left behind by a session that ended badly, and the list it reads for that
+  was kept in one fixed location shared by every build, so the starting instance found the other
+  one's *live* terminals there and treated them as leftovers. The list now belongs to the instance
+  that wrote it, and is ignored entirely while that instance is still running.
+
+- Every terminal in the grid could freeze at once while the window sat behind another one, and only
+  a reload brought them back. Panes drew their queued output on animation frames, which the system
+  stops handing out to a window nobody is looking at, so output piled up until it crossed the queue
+  limit and was dropped mid-escape-sequence, leaving each pane parked on a sequence that never
+  ended. Output now also drains on a timer, so a frame that never arrives can no longer strand it.
 
 - The Source Control panel in the right sidebar no longer stays empty for a selected project that
   has no open terminal — it now falls back to the project's default working directory.

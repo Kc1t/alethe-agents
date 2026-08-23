@@ -3,6 +3,7 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
+use crate::claude_sessions::{read_capped_line, truncate_chars};
 use crate::provider_common::{file_modified_ms, normalize_cwd, provider_home_dir};
 
 #[derive(Serialize)]
@@ -112,4 +113,113 @@ fn snapshot_codex_sessions_inner(cwd: String) -> Result<Vec<CodexSessionSnapshot
 
     sessions.sort_by(|a, b| b.modified_at_ms.cmp(&a.modified_at_ms));
     Ok(sessions)
+}
+
+/// Codex has no equivalent of Claude's generated `ai-title`, and its session
+/// files are laid out under `sessions/<year>/<month>/<day>/`, not per-project
+/// like Claude's, so the id can't be turned into a path directly. The file
+/// name itself carries the session id as its trailing UUID
+/// (`rollout-<timestamp>-<id>.jsonl`), so a filename match avoids opening
+/// every file just to find the right one.
+fn find_codex_session_file(session_id: &str) -> Option<PathBuf> {
+    let root = codex_sessions_dir()?;
+    if !root.is_dir() {
+        return None;
+    }
+    let mut files = Vec::new();
+    collect_jsonl_files(&root, &mut files);
+    let suffix = format!("{session_id}.jsonl");
+    files
+        .into_iter()
+        .find(|path| path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with(&suffix)))
+}
+
+/// Only the first genuine user turn: the file also carries the framework's
+/// own injected messages (permissions/collaboration-mode/environment-context
+/// blocks), which are also `role: "user"` but wrapped in `<tag>` prose, so
+/// those are skipped in favor of the first line that isn't.
+fn codex_first_user_text(line: &str) -> Option<String> {
+    let value = serde_json::from_str::<serde_json::Value>(line).ok()?;
+    if value.get("type").and_then(|v| v.as_str()) != Some("response_item") {
+        return None;
+    }
+    let payload = value.get("payload")?;
+    if payload.get("type").and_then(|v| v.as_str()) != Some("message")
+        || payload.get("role").and_then(|v| v.as_str()) != Some("user")
+    {
+        return None;
+    }
+    payload.get("content")?.as_array()?.iter().find_map(|block| {
+        let text = block.get("text").and_then(|v| v.as_str())?.trim();
+        if text.is_empty() || text.starts_with('<') {
+            None
+        } else {
+            Some(text.to_string())
+        }
+    })
+}
+
+const MAX_TITLE_SCAN_LINES: usize = 200;
+
+fn get_codex_session_title_inner(session_id: String) -> Result<Option<String>, String> {
+    if session_id.is_empty() || session_id.contains(['/', '\\']) {
+        return Ok(None);
+    }
+    let Some(path) = find_codex_session_file(&session_id) else {
+        return Ok(None);
+    };
+    let Ok(file) = fs::File::open(&path) else {
+        return Ok(None);
+    };
+    let mut reader = BufReader::with_capacity(64 * 1024, file);
+    let mut buf: Vec<u8> = Vec::with_capacity(8 * 1024);
+    let mut scanned = 0usize;
+    while read_capped_line(&mut reader, &mut buf).unwrap_or(false) {
+        scanned += 1;
+        if scanned > MAX_TITLE_SCAN_LINES {
+            break;
+        }
+        if buf.is_empty() {
+            continue;
+        }
+        let Ok(line) = std::str::from_utf8(&buf) else {
+            continue;
+        };
+        if let Some(text) = codex_first_user_text(line) {
+            return Ok(Some(truncate_chars(&text, 240)));
+        }
+    }
+    Ok(None)
+}
+
+/// Mirrors `get_claude_session_title`: a pane header only needs the title of
+/// the one session it is attached to.
+#[tauri::command]
+pub async fn get_codex_session_title(session_id: String) -> Result<Option<String>, String> {
+    tokio::task::spawn_blocking(move || get_codex_session_title_inner(session_id))
+        .await
+        .map_err(|error| format!("get_codex_session_title: falha na task bloqueante: {error}"))?
+}
+
+#[cfg(test)]
+mod title_tests {
+    use super::codex_first_user_text;
+
+    #[test]
+    fn skips_injected_environment_context_and_finds_the_real_prompt() {
+        let env_context = r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>\n  <cwd>C:\\Users\\kauam</cwd>\n</environment_context>"}]}}"#;
+        let real_prompt = r#"{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"oi"}]}}"#;
+        assert_eq!(codex_first_user_text(env_context), None);
+        assert_eq!(codex_first_user_text(real_prompt).as_deref(), Some("oi"));
+    }
+
+    #[test]
+    fn ignores_developer_and_assistant_records() {
+        let developer = r#"{"type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"some instructions"}]}}"#;
+        let assistant = r#"{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi there"}]}}"#;
+        let other_record = r#"{"type":"event_msg","payload":{"type":"task_started"}}"#;
+        assert_eq!(codex_first_user_text(developer), None);
+        assert_eq!(codex_first_user_text(assistant), None);
+        assert_eq!(codex_first_user_text(other_record), None);
+    }
 }

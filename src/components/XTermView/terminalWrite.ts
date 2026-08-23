@@ -23,6 +23,14 @@ export const TERMINAL_WRITE_FRAME_BUDGET = 16 * 1024
 export const MAX_PENDING_WRITE_BYTES = 512 * 1024
 
 /**
+ * A frame is the normal way to drain, but the WebView stops handing them out while its window is
+ * occluded or while the machine is saturated. Queued output then sits until it crosses the cap and
+ * is trimmed mid-escape-sequence, which leaves every pane parked on a half-read sequence. A timer
+ * races the frame so a frame that never arrives cannot strand the queue.
+ */
+export const TERMINAL_WRITE_FALLBACK_MS = 250
+
+/**
  * Drops the oldest queued output so the terminal shows what is happening now instead of replaying a
  * backlog. Whole chunks go at a time: slicing one in half would cut an escape sequence.
  */

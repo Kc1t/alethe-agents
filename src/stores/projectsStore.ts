@@ -232,6 +232,7 @@ export type ProjectsState = ProjectsFile & {
 
   createWebPane: (projectId: string, args: BrowserPaneOptions) => Terminal
   createGraphifyPane: (projectId: string, cwd: string) => Terminal
+  createOrchestratorPane: (projectId: string, cwd: string) => Terminal
   renameTerminal: (projectId: string, terminalId: string, name: string) => void
   setBrowserEngine: (projectId: string, terminalId: string, engine: BrowserEngine) => void
 
@@ -309,6 +310,7 @@ export type ProjectsState = ProjectsFile & {
     tabId: string,
     sessionId: string | undefined,
   ) => void
+  setSubTabName: (projectId: string, terminalId: string, tabId: string, name: string) => void
   setSubTabInitialInput: (
     projectId: string,
     terminalId: string,

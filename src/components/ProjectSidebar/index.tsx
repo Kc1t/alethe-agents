@@ -163,6 +163,7 @@ function CleanProjectSidebar() {
       setSubTabCompletionUnread: s.setSubTabCompletionUnread,
       createFilePane: s.createFilePane,
       createGraphifyPane: s.createGraphifyPane,
+      createOrchestratorPane: s.createOrchestratorPane,
       setFullscreenPane: s.setFullscreenPane,
     })),
   )
@@ -364,6 +365,7 @@ function CleanProjectSidebar() {
   const { projectMenu, groupMenu, terminalMenu } = createSidebarMenus({
     t,
     graphifyEnabled: preferences.enabledFeatures.graphify,
+    orchestratorEnabled: preferences.enabledFeatures.orchestrator,
     browserEnabled: preferences.enabledFeatures.browser,
     groups: groups.filter((group) => !group.archived),
     openPaneSets,

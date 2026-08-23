@@ -5,6 +5,9 @@ description = "Alethe — terminal multiplexer GUI"
 authors = ["Kauã Miguel"]
 license = "AGPL-3.0-or-later"
 edition = "2021"
+# The standalone orchestrator MCP server is a second binary in this crate, which leaves
+# `cargo run` (and so `tauri dev`) with no way to pick the app without being told.
+default-run = "alethe"
 
 [lib]
 name = "alethe_lib"

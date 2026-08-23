@@ -21,10 +21,11 @@ fn init_token() -> &'static str {
 
 fn check_token(request: &tiny_http::Request) -> bool {
     let expected = init_token();
+    // Header names are case-insensitive, and clients do send them lowercased.
     request
         .headers()
         .iter()
-        .any(|h| h.field.as_str() == "X-Alethe-Token" && h.value.as_str() == expected)
+        .any(|h| h.field.equiv("X-Alethe-Token") && h.value.as_str() == expected)
 }
 
 fn listener_addr(port: u16) -> String {
