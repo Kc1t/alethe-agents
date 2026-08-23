@@ -39,6 +39,10 @@ export default tseslint.config(
       // App de terminal: regexes casam sequências ANSI/controle (\x1b, \x07…)
       // de propósito — a regra é só falso-positivo aqui.
       'no-control-regex': 'off',
+      // Terminal teardown paths deliberately swallow errors (PTY kill, stream flush, session
+      // reset) — a failed kill on a process that is already going away is not actionable, and
+      // logging here would only flood the console on every pane close.
+      'no-empty': ['error', { allowEmptyCatch: true }],
       // Hooks — a regra dura fica em error (bug real), deps fica em warn.
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
