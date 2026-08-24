@@ -195,6 +195,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - The **Continue in Claude Code** button in the agent handoff dialog was unreadable. It painted its
   label with a colour token that does not exist anywhere in the app, so the text fell back to the
   inherited foreground and sat light-on-accent.
+- On Linux, orphaned agent and shell processes could outlive the app because the kill-on-close
+  guard was a no-op. The Windows implementation uses a Job Object that kills descendants when the
+  app exits; on Linux the guard now reports as active and relies on the shutdown handler (which
+  sends `SIGTERM` to every process group) combined with orphan sweep at next startup.
 
 ## [1.6.0] — 2026-08-17
 
