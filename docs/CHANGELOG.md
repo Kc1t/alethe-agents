@@ -195,6 +195,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - The **Continue in Claude Code** button in the agent handoff dialog was unreadable. It painted its
   label with a colour token that does not exist anywhere in the app, so the text fell back to the
   inherited foreground and sat light-on-accent.
+- On Linux, agents installed through user-local toolchains were invisible to the CLI resolver. The
+  app only probed Homebrew prefixes on Unix, so CLIs installed via volta, pnpm, fnm, nvm, cargo, bun
+  or `npm i -g` were never found and agent terminals could not start. The resolver now also scans
+  `~/.local/bin`, `~/.cargo/bin`, `~/.bun/bin`, `~/.npm-global/bin`, Volta, pnpm, fnm and nvm
+  directories, and the rebuilt `PATH` (with those entries) is now propagated to child processes on
+  every platform, not just Windows.
 
 ## [1.6.0] — 2026-08-17
 

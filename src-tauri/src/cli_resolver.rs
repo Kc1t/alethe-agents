@@ -84,26 +84,33 @@ pub fn command_builder_for_terminal(
         }
     };
 
-    if cfg!(windows) {
-        let existing = builder
-            .get_env("Path")
-            .or_else(|| builder.get_env("PATH"))
-            .map(|value| value.to_string_lossy().to_string())
-            .unwrap_or_default();
-        let mut combined = existing;
-        for extra in agent_search_dirs() {
-            let extra = extra.to_string_lossy().to_string();
-            if !combined
-                .split(';')
+    let separator = if cfg!(windows) { ';' } else { ':' };
+    let existing = builder
+        .get_env("Path")
+        .or_else(|| builder.get_env("PATH"))
+        .map(|value| value.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let mut combined = existing;
+    for extra in agent_search_dirs() {
+        let extra = extra.to_string_lossy().to_string();
+        let is_duplicate = if cfg!(windows) {
+            combined
+                .split(separator)
                 .any(|part| part.eq_ignore_ascii_case(&extra))
-            {
-                if !combined.is_empty() && !combined.ends_with(';') {
-                    combined.push(';');
-                }
-                combined.push_str(&extra);
+        } else {
+            combined.split(separator).any(|part| part == extra)
+        };
+        if !is_duplicate {
+            if !combined.is_empty() && !combined.ends_with(separator) {
+                combined.push(separator);
             }
+            combined.push_str(&extra);
         }
+    }
+    if cfg!(windows) {
         builder.env("Path", combined);
+    } else {
+        builder.env("PATH", combined);
     }
     builder.env("TERM", "xterm-256color");
     builder.env("COLORTERM", "truecolor");
@@ -315,6 +322,94 @@ fn homebrew_dirs() -> Vec<PathBuf> {
     ]
 }
 
+/// User-local binary directories on Linux where Node toolchains and coding agents
+/// install themselves. A GUI app launched from a desktop launcher inherits only the
+/// system PATH (no `.bashrc`/`.zprofile`), so CLIs installed via volta, pnpm, fnm,
+/// nvm, cargo, bun or npm global would otherwise be invisible to the resolver.
+#[cfg(not(windows))]
+fn linux_user_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::<PathBuf>::new();
+    let home = env::var_os("HOME").map(PathBuf::from);
+
+    if let Some(home) = &home {
+        dirs.push(home.join(".local").join("bin"));
+        dirs.push(home.join(".cargo").join("bin"));
+        dirs.push(home.join(".bun").join("bin"));
+        dirs.push(home.join(".npm-global").join("bin"));
+    }
+
+    // Volta: `$VOLTA_HOME/bin` when set, otherwise `~/.volta/bin`.
+    if let Some(volta_home) = env::var_os("VOLTA_HOME").map(PathBuf::from) {
+        dirs.push(volta_home.join("bin"));
+    } else if let Some(home) = &home {
+        dirs.push(home.join(".volta").join("bin"));
+    }
+
+    // pnpm: `$PNPM_HOME` (pnpm's setup script exports it).
+    if let Some(pnpm_home) = env::var_os("PNPM_HOME").map(PathBuf::from) {
+        dirs.push(pnpm_home);
+    }
+
+    // fnm: each installed version lives under `$FNM_DIR/aliases/` (default
+    // `~/.local/share/fnm/aliases`), one `default`/`<alias>` symlink per version.
+    dirs.extend(fnm_linux_version_dirs());
+
+    // nvm (Linux): `$NVM_DIR/versions/node/` (default `~/.nvm/versions/node/`).
+    dirs.extend(nvm_linux_version_dirs());
+
+    dirs
+}
+
+/// Resolves every fnm alias to the `<version>/bin` directory it points at.
+#[cfg(not(windows))]
+fn fnm_linux_version_dirs() -> Vec<PathBuf> {
+    let root = env::var_os("FNM_DIR")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share/fnm")));
+    let Some(aliases_dir) = root.map(|root| root.join("aliases")) else {
+        return Vec::new();
+    };
+    let Ok(entries) = fs::read_dir(&aliases_dir) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+            let bin = path.join("bin");
+            bin.is_dir().then_some(bin)
+        })
+        .collect()
+}
+
+/// Resolves every nvm (Linux) installed node version to its `bin` directory,
+/// newest first by mtime so the currently used version wins over stale ones.
+#[cfg(not(windows))]
+fn nvm_linux_version_dirs() -> Vec<PathBuf> {
+    let root = env::var_os("NVM_DIR")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".nvm")));
+    let Some(versions_dir) = root.map(|root| root.join("versions").join("node")) else {
+        return Vec::new();
+    };
+    let Ok(entries) = fs::read_dir(&versions_dir) else {
+        return Vec::new();
+    };
+    let mut versions: Vec<(PathBuf, SystemTime)> = entries
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+            if !path.is_dir() {
+                return None;
+            }
+            let modified = entry.metadata().and_then(|m| m.modified()).ok()?;
+            Some((path.join("bin"), modified))
+        })
+        .collect();
+    versions.sort_by(|a, b| b.1.cmp(&a.1));
+    versions.into_iter().map(|(path, _)| path).collect()
+}
+
 /// Looks for the VS Code launcher (`code`) in common locations plus PATH.
 /// Returns the first one that exists.
 pub fn find_vscode_launcher() -> Option<PathBuf> {
@@ -374,46 +469,54 @@ pub fn find_vscode_launcher() -> Option<PathBuf> {
 
 pub fn agent_search_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::<PathBuf>::new();
-    if let Some(profile) = env::var_os("USERPROFILE").map(PathBuf::from) {
-        dirs.push(profile.join("AppData").join("Roaming").join("npm"));
-        dirs.push(profile.join(".local").join("bin"));
-        dirs.push(profile.join(".cargo").join("bin"));
-        dirs.push(profile.join(".bun").join("bin"));
-        dirs.push(profile.join("scoop").join("shims"));
-        dirs.push(
-            profile
-                .join("AppData")
-                .join("Local")
-                .join("agy")
-                .join("bin"),
-        );
-        dirs.push(
-            profile
-                .join("AppData")
-                .join("Local")
-                .join("antigravity")
-                .join("bin"),
-        );
+    #[cfg(windows)]
+    {
+        if let Some(profile) = env::var_os("USERPROFILE").map(PathBuf::from) {
+            dirs.push(profile.join("AppData").join("Roaming").join("npm"));
+            dirs.push(profile.join(".local").join("bin"));
+            dirs.push(profile.join(".cargo").join("bin"));
+            dirs.push(profile.join(".bun").join("bin"));
+            dirs.push(profile.join("scoop").join("shims"));
+            dirs.push(
+                profile
+                    .join("AppData")
+                    .join("Local")
+                    .join("agy")
+                    .join("bin"),
+            );
+            dirs.push(
+                profile
+                    .join("AppData")
+                    .join("Local")
+                    .join("antigravity")
+                    .join("bin"),
+            );
+        }
+        if let Some(app_data) = env::var_os("APPDATA").map(PathBuf::from) {
+            dirs.push(app_data.join("npm"));
+        }
+        dirs.extend(volta_bin_dirs());
+        dirs.extend(pnpm_bin_dirs());
+        dirs.extend(fnm_version_dirs());
+        if let Some(global) = env::var_os("SCOOP_GLOBAL").map(PathBuf::from) {
+            dirs.push(global.join("shims"));
+        } else {
+            dirs.push(PathBuf::from(r"C:\ProgramData\scoop\shims"));
+        }
+        dirs.push(PathBuf::from(r"C:\ProgramData\chocolatey\bin"));
+        dirs.extend(nvm_windows_version_dirs());
+        dirs.push(PathBuf::from(r"C:\nvm4w\nodejs"));
+        dirs.push(PathBuf::from(r"C:\Program Files\nodejs"));
+        dirs.push(PathBuf::from(r"C:\Program Files (x86)\nodejs"));
     }
-    if let Some(app_data) = env::var_os("APPDATA").map(PathBuf::from) {
-        dirs.push(app_data.join("npm"));
+    #[cfg(not(windows))]
+    {
+        dirs.extend(linux_user_dirs());
     }
-    dirs.extend(volta_bin_dirs());
-    dirs.extend(pnpm_bin_dirs());
-    dirs.extend(fnm_version_dirs());
-    if let Some(global) = env::var_os("SCOOP_GLOBAL").map(PathBuf::from) {
-        dirs.push(global.join("shims"));
-    } else {
-        dirs.push(PathBuf::from(r"C:\ProgramData\scoop\shims"));
-    }
-    dirs.push(PathBuf::from(r"C:\ProgramData\chocolatey\bin"));
-    dirs.extend(nvm_windows_version_dirs());
-    dirs.push(PathBuf::from(r"C:\nvm4w\nodejs"));
-    dirs.push(PathBuf::from(r"C:\Program Files\nodejs"));
-    dirs.push(PathBuf::from(r"C:\Program Files (x86)\nodejs"));
     dirs
 }
 
+#[cfg(windows)]
 pub fn volta_bin_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Some(volta_home) = env::var_os("VOLTA_HOME").map(PathBuf::from) {
@@ -425,6 +528,7 @@ pub fn volta_bin_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+#[cfg(windows)]
 pub fn pnpm_bin_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Some(pnpm_home) = env::var_os("PNPM_HOME").map(PathBuf::from) {
@@ -436,6 +540,7 @@ pub fn pnpm_bin_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+#[cfg(windows)]
 pub fn fnm_version_dirs() -> Vec<PathBuf> {
     let fnm_root = env::var_os("FNM_DIR")
         .map(PathBuf::from)
@@ -467,6 +572,7 @@ pub fn fnm_version_dirs() -> Vec<PathBuf> {
     versions.into_iter().map(|(path, _)| path).collect()
 }
 
+#[cfg(windows)]
 pub fn nvm_windows_version_dirs() -> Vec<PathBuf> {
     let Some(nvm_home) = env::var_os("NVM_HOME").map(PathBuf::from) else {
         return Vec::new();
@@ -521,7 +627,10 @@ pub(crate) fn build_rebuilt_path() -> String {
             .map(|value| env::split_paths(&value).collect())
             .unwrap_or_default();
         #[cfg(not(windows))]
-        paths.extend(homebrew_dirs());
+        {
+            paths.extend(homebrew_dirs());
+            paths.extend(linux_user_dirs());
+        }
         return dedupe_paths(paths)
             .into_iter()
             .map(|path| path.to_string_lossy().to_string())
