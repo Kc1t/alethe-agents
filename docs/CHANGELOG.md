@@ -195,6 +195,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - The **Continue in Claude Code** button in the agent handoff dialog was unreadable. It painted its
   label with a colour token that does not exist anywhere in the app, so the text fell back to the
   inherited foreground and sat light-on-accent.
+- On Linux, killing a terminal left grandchild processes (node, claude, codex, MCP servers) running
+  as orphans. The `kill_process_tree` function was a no-op on non-Windows, so only the immediate
+  shell died while its descendants survived. It now sends `SIGTERM` to the entire process group
+  (portable-pty already calls `setsid()`), waits 200 ms, then escalates to `SIGKILL`.
 
 ## [1.6.0] — 2026-08-17
 
