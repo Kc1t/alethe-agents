@@ -46,6 +46,10 @@ fn prepare(app: &AppHandle, state: &OrchestratorState) {
         launcher
             .env
             .push(("Path".to_string(), cli_resolver::rebuilt_path()));
+        #[cfg(not(windows))]
+        launcher
+            .env
+            .push(("PATH".to_string(), cli_resolver::rebuilt_path()));
         core.set_launcher(launcher);
     }
 }
