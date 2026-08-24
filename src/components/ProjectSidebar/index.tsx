@@ -430,10 +430,10 @@ function CleanProjectSidebar() {
           type="button"
           aria-label={t('mesh.title') || 'Conexão & Sincronização'}
           title={t('mesh.title') || 'Conexão & Sincronização'}
-          className={`${styles.toolbarButton} ${activeView !== 'home' && sidebarTab === 'mesh' ? styles.toolbarButtonActive : ''}`}
+          className={`${styles.toolbarButton} ${sidebarTab === 'mesh' && activeView === 'collaboration' ? styles.toolbarButtonActive : ''}`}
           onClick={() => {
             setSidebarTab('mesh')
-            setActiveView('workspace')
+            setActiveView('collaboration')
           }}
         >
           <Globe size={14} />

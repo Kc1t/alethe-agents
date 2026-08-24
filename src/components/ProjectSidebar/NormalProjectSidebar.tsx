@@ -439,13 +439,13 @@ export function NormalProjectSidebar() {
         <button
           type="button"
           role="tab"
-          aria-selected={sidebarTab === 'mesh'}
+          aria-selected={sidebarTab === 'mesh' && activeView === 'collaboration'}
           aria-label={t('mesh.title') || 'Conexão & Sincronização'}
           title={t('mesh.title') || 'Conexão & Sincronização'}
-          className={`${styles.sidebarTab} ${sidebarTab === 'mesh' ? styles.sidebarTabActive : ''}`}
+          className={`${styles.sidebarTab} ${sidebarTab === 'mesh' && activeView === 'collaboration' ? styles.sidebarTabActive : ''}`}
           onClick={() => {
             setSidebarTab('mesh')
-            if (!keepHome) setActiveView('workspace')
+            setActiveView('collaboration')
           }}
         >
           <Globe size={14} />

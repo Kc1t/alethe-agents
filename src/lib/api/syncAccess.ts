@@ -5,7 +5,17 @@ import { isTauriEnv, webApiFetch } from './transport'
 export type AccessRecord = {
   id: string
   category: 'security' | 'collaboration'
-  kind: 'remote_invitation' | 'connection_candidate' | 'revocation' | 'provider_attention'
+  kind:
+    | 'remote_invitation'
+    | 'connection_candidate'
+    | 'revocation'
+    | 'provider_attention'
+    | 'device_pending_approval'
+    | 'invitation_redeemed'
+    | 'sync_conflict'
+    | 'task_assigned'
+    | 'chat_mention'
+    | 'transfer_failure'
   subjectHandle: string
   actionHandle: string
   unread: boolean

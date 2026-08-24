@@ -77,11 +77,20 @@ export async function startGoogleSyncAuth(): Promise<GoogleSyncUser> {
   return invoke<GoogleSyncUser>('start_google_sync_auth')
 }
 
-export async function configureGoogleSync(clientId: string): Promise<boolean> {
+/**
+ * `clientSecret` is optional in the general OAuth sense, but Google's "Desktop app" client type
+ * has a real quirk: its token endpoint still validates a client secret even though PKCE is also
+ * used. Leaving it empty clears any previously stored one, so switching to a client that does not
+ * need it never silently keeps sending a stale secret for the new client ID.
+ */
+export async function configureGoogleSync(
+  clientId: string,
+  clientSecret?: string,
+): Promise<boolean> {
   if (!isTauriEnv()) {
     throw new Error('identity_provider_unavailable')
   }
-  return invoke<boolean>('configure_google_sync', { clientId })
+  return invoke<boolean>('configure_google_sync', { clientId, clientSecret })
 }
 
 export async function getGoogleSyncStatus(): Promise<GoogleSyncUser> {

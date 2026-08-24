@@ -79,6 +79,11 @@ const AgentCanvasPOC = lazy(() =>
 const HomeView = lazy(() =>
   import('./components/HomeView').then((module) => ({ default: module.HomeView })),
 )
+const CollaborationView = lazy(() =>
+  import('./components/CollaborationView').then((module) => ({
+    default: module.CollaborationView,
+  })),
+)
 const LayoutDesignerModal = lazy(() =>
   import('./components/modals/LayoutDesignerModal').then((module) => ({
     default: module.LayoutDesignerModal,
@@ -726,6 +731,8 @@ export default function App() {
                     <AgentSandbox />
                   ) : activeView === 'agentCanvas' ? (
                     <AgentCanvasPOC />
+                  ) : activeView === 'collaboration' ? (
+                    <CollaborationView />
                   ) : (
                     <WorkspaceView />
                   )}

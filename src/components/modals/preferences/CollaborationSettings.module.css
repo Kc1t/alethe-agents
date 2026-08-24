@@ -28,6 +28,23 @@
   color: var(--fg);
 }
 
+.modeHeading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.modeBadge {
+  padding: 1px 6px;
+  color: var(--accent-on);
+  background: var(--accent);
+  border-radius: var(--radius-sm);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
 .modeActive {
   color: var(--fg);
   background: var(--bg);
@@ -69,6 +86,14 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.enableHint {
+  margin: -4px 0 0;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: right;
 }
 
 .error {

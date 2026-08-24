@@ -1,0 +1,249 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 16px 20px;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.composer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.titleInput {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12.5px;
+}
+
+.bodyInput {
+  flex: 2 1 320px;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12.5px;
+}
+
+.addButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-on);
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.addButton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.filterRow {
+  display: flex;
+  gap: 6px;
+}
+
+.filterButton {
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.filterButtonActive {
+  color: var(--fg);
+  background: var(--bg-sunken);
+  border-color: var(--accent);
+}
+
+.loading,
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: var(--fg-muted);
+  font-size: 12.5px;
+}
+
+.error {
+  color: var(--status-offline);
+  font-size: 12px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+}
+
+.itemRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+.checkButton {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg);
+  color: transparent;
+  cursor: pointer;
+}
+
+.checkButton:hover {
+  border-color: var(--status-working);
+}
+
+.checkButtonDone {
+  background: var(--status-working-soft);
+  border-color: var(--status-working);
+  color: var(--status-working);
+  cursor: default;
+}
+
+.itemMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: var(--fg);
+  cursor: pointer;
+  text-align: left;
+  padding: 0;
+}
+
+.itemTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.itemTitleDone {
+  color: var(--fg-muted);
+  text-decoration: line-through;
+}
+
+.commentCount {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 10px;
+}
+
+.itemDetail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 10px 10px 38px;
+}
+
+.itemBody {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.comment {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+}
+
+.commentAuthor {
+  color: var(--fg-muted);
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+}
+
+.commentRow {
+  display: flex;
+  gap: 6px;
+}
+
+.commentInput {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 11.5px;
+}
+
+.commentSend {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.commentSend:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

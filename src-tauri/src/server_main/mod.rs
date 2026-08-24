@@ -11,6 +11,7 @@ pub mod pty_routes;
 pub mod session_routes;
 pub mod sync_activation_routes;
 pub mod sync_access_routes;
+pub mod sync_invitation_bridge_routes;
 pub mod sync_rendezvous_routes;
 pub mod sync_chat_routes;
 pub mod sync_engine_routes;
@@ -537,6 +538,7 @@ pub fn build_router(runtime: ServerRuntime) -> Router {
         .merge(sync_activation_routes::router())
         .merge(sync_access_routes::router())
         .merge(sync_rendezvous_routes::router())
+        .merge(sync_invitation_bridge_routes::router())
         .fallback(not_implemented)
         .layer(middleware::from_fn(authenticate_request))
         .layer(middleware::from_fn(validate_request_origin))

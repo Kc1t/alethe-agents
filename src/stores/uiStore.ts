@@ -53,7 +53,7 @@ type ModalKind =
   | 'meshFolderTree'
   | null
 
-export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox'
+export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox' | 'collaboration'
 export type RightSidebarMode = 'todo' | 'markdown' | 'git' | 'gsdSync' | 'mcp' | 'plans'
 export type MarkdownSidebarTab = { path: string; title: string }
 

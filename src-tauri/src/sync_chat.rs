@@ -131,7 +131,7 @@ pub struct Conversation {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct ConversationDocument {
+pub(crate) struct ConversationDocument {
     schema_version: u32,
     conversation: Conversation,
     messages: Vec<MessageRecord>,
@@ -175,7 +175,7 @@ fn conversation_path(data_root: &Path, conversation_id: &str) -> PathBuf {
     data_root.join("sync").join("chat").join(format!("{conversation_id}.json"))
 }
 
-fn load_at(data_root: &Path, conversation_id: &str) -> Result<ConversationDocument, ChatError> {
+pub(crate) fn load_at(data_root: &Path, conversation_id: &str) -> Result<ConversationDocument, ChatError> {
     let path = conversation_path(data_root, conversation_id);
     let bytes = fs::read(&path).map_err(|_| ChatError::NotFound)?;
     let document: ConversationDocument = serde_json::from_slice(&bytes).map_err(|_| ChatError::Io)?;
@@ -339,6 +339,47 @@ pub fn load_conversation_at(data_root: &Path, conversation_id: &str) -> Result<C
     Ok(load_at(data_root, conversation_id)?.conversation)
 }
 
+/// Finds (or creates) the single project-channel conversation for a project. There is no
+/// cross-device delivery yet (Phase 10), so a project channel today only ever has this install's
+/// own account as a member — the same "local until Phase 10" honesty already applied to
+/// invitations, tasks, and subscriptions elsewhere in this codebase.
+pub fn ensure_project_conversation_at(
+    data_root: &Path,
+    project_id: &str,
+    local_account_route: &str,
+    local_x25519_public_key: Vec<u8>,
+    now_ms: u64,
+) -> Result<Conversation, ChatError> {
+    let chat_dir = data_root.join("sync").join("chat");
+    if let Ok(entries) = fs::read_dir(&chat_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+                continue;
+            }
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
+            if let Ok(conversation) = load_conversation_at(data_root, stem) {
+                if conversation.project_id.as_deref() == Some(project_id)
+                    && conversation.kind == ConversationKind::ProjectChannel
+                {
+                    return Ok(conversation);
+                }
+            }
+        }
+    }
+    create_conversation_at(
+        data_root,
+        Some(project_id.to_string()),
+        ConversationKind::ProjectChannel,
+        None,
+        vec![MemberInfo {
+            account_route: local_account_route.to_string(),
+            x25519_public_key: local_x25519_public_key,
+        }],
+        now_ms,
+    )
+}
+
 /// Adds a member and rotates the epoch. The new member receives a wrap for the new epoch only —
 /// no access to history from before they joined (ADR-0006's documented non-goal).
 pub fn add_member_at(
@@ -459,6 +500,15 @@ pub fn send_message_at(
         document.messages.drain(0..overflow);
     }
     save_at(data_root, &document)?;
+    if !message.mentions.is_empty() {
+        let _ = crate::sync_access::record_at(
+            data_root,
+            crate::sync_access::AccessCategory::Collaboration,
+            crate::sync_access::AccessKind::ChatMention,
+            &message.message_id,
+            now_ms,
+        );
+    }
     Ok(message)
 }
 
@@ -472,6 +522,31 @@ pub fn decrypt_message(message: &MessageRecord, epoch_key: &[u8; 32]) -> Result<
 
 pub fn list_messages_at(data_root: &Path, conversation_id: &str) -> Result<Vec<MessageRecord>, ChatError> {
     Ok(load_at(data_root, conversation_id)?.messages.into_iter().filter(|m| !m.deleted).collect())
+}
+
+fn epoch_wrap_at<'a>(
+    conversation: &'a Conversation,
+    epoch_number: u64,
+    account_route: &str,
+) -> Option<&'a EpochKeyWrap> {
+    conversation
+        .epochs
+        .iter()
+        .find(|epoch| epoch.epoch_number == epoch_number)
+        .and_then(|epoch| epoch.wraps.iter().find(|wrap| wrap.member_account_route == account_route))
+}
+
+/// Resolves the plaintext key for a given epoch by unwrapping it with the local device's own
+/// X25519 secret, read only into process memory (never logged, never returned through IPC).
+pub(crate) fn resolve_epoch_key(
+    conversation: &Conversation,
+    epoch_number: u64,
+    account_route: &str,
+    device_id: &str,
+) -> Result<[u8; 32], ChatError> {
+    let wrap = epoch_wrap_at(conversation, epoch_number, account_route).ok_or(ChatError::NotAMember)?;
+    let secret = crate::sync_security::load_device_agreement_secret(device_id).map_err(|_| ChatError::Io)?;
+    unwrap_key(wrap, &secret, &conversation.conversation_id, epoch_number)
 }
 
 /// Idempotent: re-sending a message with the same `message_id` (e.g. a retried delivery from an
@@ -647,6 +722,213 @@ impl ChatDeviceAuthorizer for SecurityBackedChatAuthorizer<'_> {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DecryptedMessage {
+    pub message_id: String,
+    pub conversation_id: String,
+    pub sequence: u64,
+    pub sender_device_id: String,
+    pub sender_account_route: String,
+    pub content_type: MessageContentType,
+    pub text: String,
+    pub mentions: Vec<String>,
+    pub reactions: Vec<Reaction>,
+    pub created_at_ms: u64,
+    pub edited_at_ms: Option<u64>,
+}
+
+pub(crate) fn local_chat_identity(data_root: &Path) -> Result<(String, String), String> {
+    let identity = crate::sync_security::local_identity_at(data_root)?;
+    Ok((identity.device_id, identity.account_route))
+}
+
+#[tauri::command]
+pub fn sync_ensure_project_conversation(
+    app: tauri::AppHandle,
+    project_id: String,
+) -> Result<Conversation, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let (_, account_route) = local_chat_identity(&data_root)?;
+    let public_key = crate::sync_security::local_device_agreement_public_key_at(&data_root)?;
+    ensure_project_conversation_at(&data_root, &project_id, &account_route, public_key, crate::provider_common::now_ms())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn sync_send_message(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    content_type: MessageContentType,
+    text: String,
+    mentions: Vec<String>,
+) -> Result<DecryptedMessage, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let (device_id, account_route) = local_chat_identity(&data_root)?;
+    let conversation = load_conversation_at(&data_root, &conversation_id).map_err(|e| e.to_string())?;
+    let epoch_number = conversation.epochs.len() as u64 - 1;
+    let epoch_key = resolve_epoch_key(&conversation, epoch_number, &account_route, &device_id)
+        .map_err(|e| e.to_string())?;
+    let authorizer = SecurityBackedChatAuthorizer { data_root: &data_root };
+    let message = send_message_at(
+        &data_root,
+        &conversation_id,
+        &device_id,
+        &account_route,
+        &epoch_key,
+        content_type,
+        text.as_bytes(),
+        mentions.clone(),
+        &authorizer,
+        crate::provider_common::now_ms(),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(DecryptedMessage {
+        message_id: message.message_id,
+        conversation_id: message.conversation_id,
+        sequence: message.sequence,
+        sender_device_id: message.sender_device_id,
+        sender_account_route: message.sender_account_route,
+        content_type: message.content_type,
+        text,
+        mentions,
+        reactions: message.reactions,
+        created_at_ms: message.created_at_ms,
+        edited_at_ms: message.edited_at_ms,
+    })
+}
+
+#[tauri::command]
+pub fn sync_list_decrypted_messages(
+    app: tauri::AppHandle,
+    conversation_id: String,
+) -> Result<Vec<DecryptedMessage>, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let (device_id, account_route) = local_chat_identity(&data_root)?;
+    let conversation = load_conversation_at(&data_root, &conversation_id).map_err(|e| e.to_string())?;
+    let messages = list_messages_at(&data_root, &conversation_id).map_err(|e| e.to_string())?;
+    let mut decrypted = Vec::with_capacity(messages.len());
+    for message in messages {
+        let epoch_key = resolve_epoch_key(&conversation, message.epoch, &account_route, &device_id)
+            .map_err(|e| e.to_string())?;
+        let plaintext = decrypt_message(&message, &epoch_key).map_err(|e| e.to_string())?;
+        decrypted.push(DecryptedMessage {
+            message_id: message.message_id,
+            conversation_id: message.conversation_id,
+            sequence: message.sequence,
+            sender_device_id: message.sender_device_id,
+            sender_account_route: message.sender_account_route,
+            content_type: message.content_type,
+            text: String::from_utf8_lossy(&plaintext).into_owned(),
+            mentions: message.mentions,
+            reactions: message.reactions,
+            created_at_ms: message.created_at_ms,
+            edited_at_ms: message.edited_at_ms,
+        });
+    }
+    Ok(decrypted)
+}
+
+#[tauri::command]
+pub fn sync_edit_message(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    message_id: String,
+    new_text: String,
+) -> Result<DecryptedMessage, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let (device_id, account_route) = local_chat_identity(&data_root)?;
+    let conversation = load_conversation_at(&data_root, &conversation_id).map_err(|e| e.to_string())?;
+    let epoch_number = conversation.epochs.len() as u64 - 1;
+    let epoch_key = resolve_epoch_key(&conversation, epoch_number, &account_route, &device_id)
+        .map_err(|e| e.to_string())?;
+    let message = edit_message_at(
+        &data_root,
+        &conversation_id,
+        &message_id,
+        &epoch_key,
+        new_text.as_bytes(),
+        crate::provider_common::now_ms(),
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(DecryptedMessage {
+        message_id: message.message_id,
+        conversation_id: message.conversation_id,
+        sequence: message.sequence,
+        sender_device_id: message.sender_device_id,
+        sender_account_route: message.sender_account_route,
+        content_type: message.content_type,
+        text: new_text,
+        mentions: message.mentions,
+        reactions: message.reactions,
+        created_at_ms: message.created_at_ms,
+        edited_at_ms: message.edited_at_ms,
+    })
+}
+
+#[tauri::command]
+pub fn sync_delete_message(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    message_id: String,
+) -> Result<MessageRecord, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    delete_message_at(&data_root, &conversation_id, &message_id, crate::provider_common::now_ms())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn sync_upload_attachment(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    declared_content_type: String,
+    bytes: Vec<u8>,
+) -> Result<AttachmentRecord, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let declared_size = bytes.len() as u64;
+    upload_attachment_at(&data_root, &conversation_id, &declared_content_type, declared_size, &bytes, crate::provider_common::now_ms())
+        .map_err(|e| e.to_string())
+}
+
+/// Resolves and decrypts an attachment for the local device/account. Shared by both the Tauri
+/// command and the Web route so the field access to the (module-private) stored document never
+/// has to be duplicated across files.
+pub(crate) fn download_attachment_plaintext(
+    data_root: &Path,
+    conversation_id: &str,
+    attachment_id: &str,
+    device_id: &str,
+    account_route: &str,
+) -> Result<Vec<u8>, ChatError> {
+    let document = load_at(data_root, conversation_id)?;
+    let attachment = document
+        .attachments
+        .iter()
+        .find(|attachment| attachment.attachment_id == attachment_id)
+        .ok_or(ChatError::NotFound)?;
+    let wrap = attachment
+        .wraps
+        .iter()
+        .find(|wrap| wrap.member_account_route == account_route)
+        .ok_or(ChatError::NotAMember)?;
+    let secret =
+        crate::sync_security::load_device_agreement_secret(device_id).map_err(|_| ChatError::Io)?;
+    let attachment_key = unwrap_key(wrap, &secret, attachment_id, 0)?;
+    decrypt_attachment(attachment, &attachment_key)
+}
+
+#[tauri::command]
+pub fn sync_download_attachment(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    attachment_id: String,
+) -> Result<Vec<u8>, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let (device_id, account_route) = local_chat_identity(&data_root)?;
+    download_attachment_plaintext(&data_root, &conversation_id, &attachment_id, &device_id, &account_route)
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn sync_create_conversation(
     app: tauri::AppHandle,
@@ -766,6 +1048,33 @@ mod tests {
         let bob_key = unwrap_key(bob_wrap, &bob_secret, &conversation.conversation_id, 0).unwrap();
         let plaintext = decrypt_message(&message, &bob_key).unwrap();
         assert_eq!(plaintext, b"hello bob");
+
+        let records = crate::sync_access::list_at(&root, 2_000).unwrap();
+        let record = records
+            .iter()
+            .find(|record| record.kind == crate::sync_access::AccessKind::ChatMention)
+            .unwrap();
+        assert_eq!(record.category, crate::sync_access::AccessCategory::Collaboration);
+        assert_eq!(record.subject_handle, message.message_id);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_message_with_no_mentions_publishes_no_access_center_record() {
+        let root = temp_root("no-mentions");
+        let alice_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let conversation = create_conversation_at(
+            &root, None, ConversationKind::Direct, None, vec![member("route-alice", &alice_secret)], 1_000,
+        )
+        .unwrap();
+        let wrap = current_epoch_wrap_for(&conversation, "route-alice").unwrap();
+        let key = unwrap_key(wrap, &alice_secret, &conversation.conversation_id, 0).unwrap();
+        send_message_at(
+            &root, &conversation.conversation_id, "dev-alice", "route-alice", &key, MessageContentType::Text,
+            b"no mentions here", vec![], &AllowAll, 2_000,
+        )
+        .unwrap();
+        assert!(crate::sync_access::list_at(&root, 2_000).unwrap().is_empty());
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -920,6 +1229,42 @@ mod tests {
             b"intrusion", vec![], &AllowAll, 2_000,
         );
         assert_eq!(result.unwrap_err(), ChatError::NotAMember);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn ensure_project_conversation_reuses_the_same_channel_and_separates_projects() {
+        let root = temp_root("ensure-project");
+        let secret = X25519StaticSecret::random_from_rng(OsRng);
+        let public_key = X25519PublicKey::from(&secret).as_bytes().to_vec();
+
+        let first = ensure_project_conversation_at(&root, "proj-a", "route-alice", public_key.clone(), 1_000)
+            .unwrap();
+        let second =
+            ensure_project_conversation_at(&root, "proj-a", "route-alice", public_key.clone(), 2_000).unwrap();
+        assert_eq!(first.conversation_id, second.conversation_id);
+        assert_eq!(second.kind, ConversationKind::ProjectChannel);
+        assert_eq!(second.project_id.as_deref(), Some("proj-a"));
+
+        let other_project =
+            ensure_project_conversation_at(&root, "proj-b", "route-alice", public_key, 3_000).unwrap();
+        assert_ne!(first.conversation_id, other_project.conversation_id);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn epoch_wrap_at_finds_the_wrap_for_the_right_epoch_and_member_only() {
+        let root = temp_root("epoch-wrap");
+        let alice_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let bob_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let conversation = create_conversation_at(
+            &root, None, ConversationKind::PrivateGroup, None,
+            vec![member("route-alice", &alice_secret), member("route-bob", &bob_secret)], 1_000,
+        )
+        .unwrap();
+        assert!(epoch_wrap_at(&conversation, 0, "route-alice").is_some());
+        assert!(epoch_wrap_at(&conversation, 0, "route-mallory").is_none());
+        assert!(epoch_wrap_at(&conversation, 1, "route-alice").is_none());
         fs::remove_dir_all(root).unwrap();
     }
 }

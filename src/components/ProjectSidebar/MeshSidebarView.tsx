@@ -21,8 +21,11 @@ import { PROJECT_SYNC_CAPABILITIES, type SyncPermission } from '../../lib/sync/c
 import { buildInvitationLink, parseInvitationLink } from '../../lib/sync/invitationLink'
 import {
   configureGoogleSync,
+  disconnectGoogleSync,
   getGoogleSyncStatus,
   type GoogleSyncUser,
+  listDirectory,
+  openInBrowser,
   startGoogleSyncAuth,
   syncApproveDevice,
   type SyncDeviceRecord,
@@ -56,6 +59,10 @@ const INVITATION_EXPIRY_CHOICES_MS = [
 
 const SENSITIVE_PERMISSIONS: SyncPermission[] = ['write', 'delete', 'invite', 'admin']
 
+// Deep-links directly to the "Create OAuth client" flow for an existing/new Google Cloud
+// project, scoped to Desktop app credentials — the exact type Alethe's loopback PKCE flow needs.
+const GOOGLE_CLOUD_CREDENTIALS_URL = 'https://console.cloud.google.com/apis/credentials'
+
 export function MeshSidebarView() {
   const t = useT()
   const projects = useProjectsStore((s) => s.projects)
@@ -67,8 +74,13 @@ export function MeshSidebarView() {
   const [securityError, setSecurityError] = useState(false)
   const [authError, setAuthError] = useState(false)
   const [authBusy, setAuthBusy] = useState(false)
-  const [showGoogleSetup, setShowGoogleSetup] = useState(false)
+  const [googleSetupStage, setGoogleSetupStage] = useState<'closed' | 'explain' | 'form'>('closed')
   const [googleClientId, setGoogleClientId] = useState('')
+  const [googleClientSecret, setGoogleClientSecret] = useState('')
+  // Real Google Desktop OAuth client IDs always look like `<digits>-<hash>.apps.googleusercontent.com`.
+  const googleClientIdFormatValid = /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/.test(
+    googleClientId.trim(),
+  )
   const [renamingDevice, setRenamingDevice] = useState(false)
   const [deviceNameDraft, setDeviceNameDraft] = useState('')
   const [deviceActionBusy, setDeviceActionBusy] = useState<string | null>(null)
@@ -90,6 +102,38 @@ export function MeshSidebarView() {
   const [redeemInput, setRedeemInput] = useState('')
   const [redeemBusy, setRedeemBusy] = useState(false)
   const [redeemError, setRedeemError] = useState<string | null>(null)
+  const redeemFormatValid = parseInvitationLink(redeemInput.trim()) !== null
+  const [projectFolders, setProjectFolders] = useState<string[] | null>(null)
+  const [foldersError, setFoldersError] = useState(false)
+  const [blockedFolders, setBlockedFolders] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (!showInvitePanel || !activeProject?.defaultCwd) return
+    let active = true
+    setFoldersError(false)
+    listDirectory(activeProject.defaultCwd)
+      .then((listing) => {
+        if (!active) return
+        setProjectFolders(
+          listing.entries.filter((entry) => entry.is_dir).map((entry) => entry.name),
+        )
+      })
+      .catch(() => {
+        if (active) setFoldersError(true)
+      })
+    return () => {
+      active = false
+    }
+  }, [showInvitePanel, activeProject])
+
+  const toggleBlockedFolder = (name: string) => {
+    setBlockedFolders((current) => {
+      const next = new Set(current)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
 
   const refreshSecurity = () =>
     syncSecuritySnapshot()
@@ -159,7 +203,7 @@ export function MeshSidebarView() {
   }
 
   const deviceLabel = (device: SyncDeviceRecord) =>
-    device.displayName.trim() || device.publicKeyFingerprint.slice(0, 12)
+    device.displayName.trim() || t('mesh.deviceUnnamed')
 
   const canInviteNow = thisDevice?.trust === 'trusted' && Boolean(activeProject)
   const outgoingInvitations =
@@ -181,6 +225,9 @@ export function MeshSidebarView() {
     setInviteError(false)
     setIssuedLink(null)
     setLinkCopied(false)
+    setBlockedFolders(new Set())
+    setProjectFolders(null)
+    setFoldersError(false)
   }
 
   const submitInvite = async () => {
@@ -199,7 +246,10 @@ export function MeshSidebarView() {
         projectId: activeProject.id,
         recipientAccountId: recipientAccountId.trim(),
         permissions: selectedPermissions,
-        pathScopes: [],
+        pathScopes: Array.from(blockedFolders, (name) => ({
+          effect: 'deny' as const,
+          pattern: `${name}/**`,
+        })),
         expiresAtMs: Date.now() + expiryMs,
       })
       setIssuedLink(buildInvitationLink(issued.invitation.invitationId, issued.bearerToken))
@@ -281,15 +331,33 @@ export function MeshSidebarView() {
     }
   }
 
+  const disconnectGoogle = async () => {
+    setAuthBusy(true)
+    setAuthError(false)
+    try {
+      await disconnectGoogleSync()
+      const status = await getGoogleSyncStatus()
+      const snapshot = await syncSecuritySnapshot()
+      setGoogle(status)
+      setSecurity(snapshot)
+      setSecurityError(false)
+    } catch {
+      setAuthError(true)
+    } finally {
+      setAuthBusy(false)
+    }
+  }
+
   const saveGoogleConfiguration = async () => {
     setAuthBusy(true)
     setAuthError(false)
     try {
-      await configureGoogleSync(googleClientId)
+      await configureGoogleSync(googleClientId, googleClientSecret.trim() || undefined)
       const status = await getGoogleSyncStatus()
       setGoogle(status)
-      setShowGoogleSetup(false)
+      setGoogleSetupStage('closed')
       setGoogleClientId('')
+      setGoogleClientSecret('')
     } catch {
       setAuthError(true)
     } finally {
@@ -323,45 +391,134 @@ export function MeshSidebarView() {
                       : t('mesh.identityUnavailable')}
             </span>
           </div>
-          <button
-            type="button"
-            className={styles.loginGoogleBtn}
-            disabled={authBusy || Boolean(account)}
-            title={google?.configured ? undefined : t('mesh.oauthNotConfigured')}
-            onClick={() => {
-              if (google?.configured) void connectGoogle()
-              else setShowGoogleSetup((visible) => !visible)
-            }}
-          >
-            {authBusy ? <Loader2 size={14} className={styles.spin} /> : <GoogleIcon size={14} />}
-            <span>
-              {authBusy
-                ? t('mesh.authenticating')
-                : google?.configured
-                  ? t('mesh.connectAccount')
-                  : t('mesh.configureGoogle')}
-            </span>
-          </button>
-          {showGoogleSetup && !google?.configured ? (
-            <div className={styles.oauthSetup}>
-              <label htmlFor="google-oauth-client-id">{t('mesh.googleClientId')}</label>
-              <input
-                id="google-oauth-client-id"
-                value={googleClientId}
-                placeholder="123…apps.googleusercontent.com"
-                spellCheck={false}
-                autoComplete="off"
-                onChange={(event) => setGoogleClientId(event.target.value)}
-              />
-              <span>{t('mesh.googleClientIdHint')}</span>
+          <div className={styles.authButtonsRow}>
+            <button
+              type="button"
+              className={`${styles.loginGoogleBtn} ${account ? styles.loginGoogleBtnConnected : ''}`}
+              disabled={authBusy}
+              title={google?.configured ? undefined : t('mesh.oauthNotConfigured')}
+              onClick={() => {
+                if (account) void disconnectGoogle()
+                else if (google?.configured) void connectGoogle()
+                else setGoogleSetupStage((stage) => (stage === 'closed' ? 'explain' : 'closed'))
+              }}
+            >
+              {authBusy ? <Loader2 size={14} className={styles.spin} /> : <GoogleIcon size={14} />}
+              <span>
+                {authBusy
+                  ? t('mesh.authenticating')
+                  : account
+                    ? t('mesh.disconnectAccount')
+                    : google?.configured
+                      ? t('mesh.connectAccount')
+                      : t('mesh.configureGoogle')}
+              </span>
+            </button>
+            {google?.configured && !account ? (
               <button
                 type="button"
-                className={styles.saveOAuthBtn}
-                disabled={authBusy || !googleClientId.trim()}
-                onClick={() => void saveGoogleConfiguration()}
+                className={styles.editOAuthConfigBtn}
+                disabled={authBusy}
+                title={t('mesh.editGoogleConfiguration')}
+                onClick={() =>
+                  setGoogleSetupStage((stage) => (stage === 'form' ? 'closed' : 'form'))
+                }
               >
-                {t('mesh.saveConfiguration')}
+                {t('mesh.editGoogleConfiguration')}
               </button>
+            ) : null}
+          </div>
+          {!google?.configured ? (
+            <div
+              className={`${styles.oauthSetupWrap} ${
+                googleSetupStage === 'explain' ? styles.oauthSetupWrapOpen : ''
+              }`}
+            >
+              <div>
+                <div className={styles.oauthExplain}>
+                  <p>{t('mesh.googleSetupExplainIntro')}</p>
+                  <ol>
+                    <li>{t('mesh.googleSetupExplainStep1')}</li>
+                    <li>{t('mesh.googleSetupExplainStep2')}</li>
+                    <li>{t('mesh.googleSetupExplainStep3')}</li>
+                    <li>{t('mesh.googleSetupExplainStep4')}</li>
+                  </ol>
+                  <button
+                    type="button"
+                    className={styles.saveOAuthBtn}
+                    onClick={() => {
+                      void openInBrowser(GOOGLE_CLOUD_CREDENTIALS_URL)
+                      setGoogleSetupStage('form')
+                    }}
+                  >
+                    {t('mesh.googleSetupProceed')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {!google?.configured || !account ? (
+            <div
+              className={`${styles.oauthSetupWrap} ${
+                googleSetupStage === 'form' ? styles.oauthSetupWrapOpen : ''
+              }`}
+            >
+              <div>
+                <div className={styles.oauthSetup}>
+                  <label htmlFor="google-oauth-client-id">{t('mesh.googleClientId')}</label>
+                  <input
+                    id="google-oauth-client-id"
+                    className={
+                      googleClientId.trim() && !googleClientIdFormatValid
+                        ? styles.oauthSetupInvalid
+                        : undefined
+                    }
+                    value={googleClientId}
+                    placeholder="123…apps.googleusercontent.com"
+                    spellCheck={false}
+                    autoComplete="off"
+                    aria-invalid={Boolean(googleClientId.trim()) && !googleClientIdFormatValid}
+                    onChange={(event) => setGoogleClientId(event.target.value)}
+                  />
+                  <span
+                    className={
+                      googleClientId.trim() && !googleClientIdFormatValid
+                        ? styles.oauthSetupHint
+                        : undefined
+                    }
+                  >
+                    {googleClientId.trim() && !googleClientIdFormatValid
+                      ? t('mesh.googleClientIdInvalid')
+                      : t('mesh.googleClientIdHint')}
+                  </span>
+                  <label htmlFor="google-oauth-client-secret">{t('mesh.googleClientSecret')}</label>
+                  <input
+                    id="google-oauth-client-secret"
+                    type="password"
+                    value={googleClientSecret}
+                    placeholder="GOCSPX-…"
+                    spellCheck={false}
+                    autoComplete="off"
+                    onChange={(event) => setGoogleClientSecret(event.target.value)}
+                  />
+                  <span>{t('mesh.googleClientSecretHint')}</span>
+                  <button
+                    type="button"
+                    className={styles.saveOAuthBtn}
+                    disabled={authBusy || !googleClientId.trim() || !googleClientIdFormatValid}
+                    onClick={() => void saveGoogleConfiguration()}
+                  >
+                    {t('mesh.saveConfiguration')}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.reopenPageBtn}
+                    onClick={() => void openInBrowser(GOOGLE_CLOUD_CREDENTIALS_URL)}
+                  >
+                    {t('mesh.googleSetupReopenPage')}
+                  </button>
+                </div>
+              </div>
             </div>
           ) : null}
         </div>
@@ -372,21 +529,16 @@ export function MeshSidebarView() {
           <div className={styles.deviceHeader}>
             <Laptop size={14} />
             <span>{t('mesh.thisDevice')}</span>
-          </div>
-          <div className={styles.deviceIdRow}>
-            {!security && !securityError ? (
-              <Loader2 size={13} className={styles.spin} />
-            ) : (
-              <code className={styles.deviceId}>
-                {thisDevice?.deviceId ?? t('mesh.deviceNotRegistered')}
-              </code>
-            )}
-          </div>
-          {thisDevice ? (
-            <>
-              <span className={styles.deviceTrust} data-trust={thisDevice.trust}>
+            {thisDevice ? (
+              <span className={styles.deviceTrustPill} data-trust={thisDevice.trust}>
                 {t(`mesh.deviceTrust.${thisDevice.trust}`)}
               </span>
+            ) : null}
+          </div>
+          {!security && !securityError ? (
+            <Loader2 size={13} className={styles.spin} />
+          ) : thisDevice ? (
+            <>
               {renamingDevice ? (
                 <div className={styles.deviceRenameRow}>
                   <input
@@ -430,8 +582,14 @@ export function MeshSidebarView() {
                   </button>
                 </div>
               )}
+              <div className={styles.deviceFingerprintRow}>
+                <span className={styles.deviceFingerprintLabel}>{t('mesh.deviceFingerprint')}</span>
+                <code className={styles.deviceId}>{thisDevice.deviceId}</code>
+              </div>
             </>
-          ) : null}
+          ) : (
+            <span className={styles.deviceName}>{t('mesh.deviceNotRegistered')}</span>
+          )}
         </div>
 
         {otherDevices.length > 0 ? (
@@ -566,7 +724,11 @@ export function MeshSidebarView() {
               <li key={grant.grantId} className={styles.deviceListItem}>
                 <div className={styles.deviceListInfo}>
                   <span className={styles.deviceListName}>{grant.accountId}</span>
-                  <span className={styles.deviceTrust}>{grant.permissions.join(', ')}</span>
+                  <span className={styles.deviceTrust}>
+                    {grant.permissions
+                      .map((permission) => t(`mesh.permission.${permission}`))
+                      .join(', ')}
+                  </span>
                 </div>
                 <div className={styles.deviceListActions}>
                   <button
@@ -586,10 +748,16 @@ export function MeshSidebarView() {
 
         <div className={styles.deviceRenameRow}>
           <input
+            className={
+              redeemInput.trim() && !redeemFormatValid
+                ? `${styles.redeemInputMono} ${styles.redeemInputInvalid}`
+                : styles.redeemInputMono
+            }
             value={redeemInput}
             placeholder={t('mesh.redeemPlaceholder')}
             spellCheck={false}
             autoComplete="off"
+            aria-invalid={Boolean(redeemInput.trim()) && !redeemFormatValid}
             onChange={(event) => {
               setRedeemInput(event.target.value)
               setRedeemError(null)
@@ -598,14 +766,18 @@ export function MeshSidebarView() {
           <button
             type="button"
             className={styles.deviceActionBtn}
-            disabled={redeemBusy || !redeemInput.trim()}
+            disabled={redeemBusy || !redeemInput.trim() || !redeemFormatValid}
             title={t('mesh.redeemInvitation')}
             onClick={() => void submitRedeem()}
           >
             {redeemBusy ? <Loader2 size={12} className={styles.spin} /> : <Check size={12} />}
           </button>
         </div>
-        {redeemError ? <span className={styles.deviceActionError}>{redeemError}</span> : null}
+        {redeemInput.trim() && !redeemFormatValid ? (
+          <span className={styles.deviceActionError}>{t('mesh.redeemInvalidLink')}</span>
+        ) : redeemError ? (
+          <span className={styles.deviceActionError}>{redeemError}</span>
+        ) : null}
       </section>
 
       <section className={styles.section}>
@@ -705,7 +877,43 @@ export function MeshSidebarView() {
                         </option>
                       ))}
                     </select>
-                    <span>{selectedPermissions.join(', ')}</span>
+                    <span className={styles.permissionSummary}>
+                      {selectedPermissions
+                        .map((permission) => t(`mesh.permission.${permission}`))
+                        .join(', ')}
+                    </span>
+                    <label>{t('mesh.folderScopes')}</label>
+                    <span>{t('mesh.folderScopesHint')}</span>
+                    {foldersError ? (
+                      <span className={styles.oauthSetupHint}>{t('mesh.folderScopesError')}</span>
+                    ) : projectFolders && projectFolders.length === 0 ? (
+                      <span>{t('mesh.folderScopesEmpty')}</span>
+                    ) : projectFolders ? (
+                      <ul className={styles.folderScopeList}>
+                        {projectFolders.map((name) => {
+                          const blocked = blockedFolders.has(name)
+                          return (
+                            <li key={name}>
+                              <button
+                                type="button"
+                                className={`${styles.folderScopeItem} ${blocked ? styles.folderScopeItemBlocked : ''}`}
+                                onClick={() => toggleBlockedFolder(name)}
+                                aria-pressed={!blocked}
+                              >
+                                <span className={styles.folderScopeName}>{name}</span>
+                                <span className={styles.folderScopeState}>
+                                  {blocked
+                                    ? t('mesh.folderScopeBlocked')
+                                    : t('mesh.folderScopeIncluded')}
+                                </span>
+                              </button>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    ) : (
+                      <Loader2 size={13} className={styles.spin} />
+                    )}
                     <label htmlFor="invite-expiry">{t('mesh.invitationExpiry')}</label>
                     <select
                       id="invite-expiry"

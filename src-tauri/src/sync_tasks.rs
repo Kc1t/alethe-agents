@@ -409,7 +409,7 @@ pub fn assign_task_at(
     authorizer: &dyn ProjectMembershipAuthorizer,
     now_ms: u64,
 ) -> Result<TaskRecord, TaskError> {
-    mutate_task(
+    let result = mutate_task(
         data_root,
         project_id,
         task_id,
@@ -419,7 +419,17 @@ pub fn assign_task_at(
         TaskOperationKind::Assign,
         now_ms,
         |task| task.assignees = assignees,
-    )
+    );
+    if result.is_ok() {
+        let _ = crate::sync_access::record_at(
+            data_root,
+            crate::sync_access::AccessCategory::Collaboration,
+            crate::sync_access::AccessKind::TaskAssigned,
+            task_id,
+            now_ms,
+        );
+    }
+    result
 }
 
 pub fn complete_task_at(
@@ -645,6 +655,75 @@ pub fn sync_add_task_comment(
     .map_err(|e| e.to_string())
 }
 
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub fn sync_update_task(
+    app: tauri::AppHandle,
+    project_id: String,
+    task_id: String,
+    device_id: String,
+    expected_base_revision: u64,
+    title: Option<String>,
+    body: Option<String>,
+    labels: Option<Vec<String>>,
+    due_at_ms: Option<Option<u64>>,
+) -> Result<TaskRecord, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let authorizer = SecurityBackedMembership { data_root: &data_root };
+    update_task_at(
+        &data_root,
+        &project_id,
+        &task_id,
+        &device_id,
+        expected_base_revision,
+        title,
+        body,
+        labels,
+        due_at_ms,
+        &authorizer,
+        crate::provider_common::now_ms(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn sync_assign_task(
+    app: tauri::AppHandle,
+    project_id: String,
+    task_id: String,
+    device_id: String,
+    expected_base_revision: u64,
+    assignees: Vec<String>,
+) -> Result<TaskRecord, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let authorizer = SecurityBackedMembership { data_root: &data_root };
+    assign_task_at(
+        &data_root,
+        &project_id,
+        &task_id,
+        &device_id,
+        expected_base_revision,
+        assignees,
+        &authorizer,
+        crate::provider_common::now_ms(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn sync_delete_task(
+    app: tauri::AppHandle,
+    project_id: String,
+    task_id: String,
+    device_id: String,
+    expected_base_revision: u64,
+) -> Result<TaskRecord, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let authorizer = SecurityBackedMembership { data_root: &data_root };
+    delete_task_at(&data_root, &project_id, &task_id, &device_id, expected_base_revision, &authorizer, crate::provider_common::now_ms())
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -684,6 +763,32 @@ mod tests {
         let completed = complete_task_at(&root, "project-a", &task.task_id, "dev-b", task.revision, &AllowAll, 2_000)
             .unwrap();
         assert_eq!(completed.status, TaskStatus::Completed);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn assigning_a_task_publishes_an_access_center_record() {
+        let root = temp_root("assign");
+        let task = create_task_at(
+            &root, "project-a", "dev-a", "Fix the bug", "details", TaskVisibility::Public, vec![],
+            &AllowAll, 1_000,
+        )
+        .unwrap();
+        assert!(crate::sync_access::list_at(&root, 1_000).unwrap().is_empty());
+
+        assign_task_at(
+            &root, "project-a", &task.task_id, "dev-a", task.revision, vec!["route-b".to_string()],
+            &AllowAll, 2_000,
+        )
+        .unwrap();
+
+        let records = crate::sync_access::list_at(&root, 2_000).unwrap();
+        let record = records
+            .iter()
+            .find(|record| record.kind == crate::sync_access::AccessKind::TaskAssigned)
+            .unwrap();
+        assert_eq!(record.category, crate::sync_access::AccessCategory::Collaboration);
+        assert_eq!(record.subject_handle, task.task_id);
         fs::remove_dir_all(root).unwrap();
     }
 

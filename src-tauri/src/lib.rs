@@ -65,6 +65,7 @@ pub mod sync_access;
 pub mod sync_chat;
 pub mod sync_crypto;
 pub mod sync_engine;
+pub mod sync_invitation_bridge;
 pub mod sync_manifest;
 pub mod sync_mesh;
 pub mod sync_protocol;
@@ -497,6 +498,7 @@ pub fn run() {
             sync_mesh::get_google_sync_status,
             sync_mesh::disconnect_google_sync,
             sync_security::sync_security_snapshot,
+            sync_security::sync_local_identity,
             sync_security::sync_approve_device,
             sync_security::sync_reject_device,
             sync_security::sync_rename_device,
@@ -506,6 +508,9 @@ pub fn run() {
             sync_security::sync_revoke_invitation,
             sync_security::sync_redeem_invitation,
             sync_security::sync_revoke_grant,
+            sync_security::sync_rotate_device_keys,
+            sync_security::sync_export_account_data,
+            sync_security::sync_delete_project_access,
             sync_security::sync_resolve_capabilities,
             sync_subscription::sync_list_subscriptions,
             sync_subscription::sync_offer_subscription,
@@ -530,6 +535,9 @@ pub fn run() {
             sync_tasks::sync_get_task,
             sync_tasks::sync_complete_task,
             sync_tasks::sync_add_task_comment,
+            sync_tasks::sync_update_task,
+            sync_tasks::sync_assign_task,
+            sync_tasks::sync_delete_task,
             sync_chat::sync_create_conversation,
             sync_chat::sync_get_conversation,
             sync_chat::sync_add_conversation_member,
@@ -537,6 +545,13 @@ pub fn run() {
             sync_chat::sync_list_messages,
             sync_chat::sync_react_to_message,
             sync_chat::sync_mark_conversation_read,
+            sync_chat::sync_ensure_project_conversation,
+            sync_chat::sync_send_message,
+            sync_chat::sync_list_decrypted_messages,
+            sync_chat::sync_edit_message,
+            sync_chat::sync_delete_message,
+            sync_chat::sync_upload_attachment,
+            sync_chat::sync_download_attachment,
             sync_activation::sync_get_activation_settings,
             sync_activation::sync_set_activation_mode,
             sync_activation::sync_enable_activation,
@@ -551,6 +566,9 @@ pub fn run() {
             sync_rendezvous::sync_rendezvous_send,
             sync_rendezvous::sync_rendezvous_drain_events,
             sync_rendezvous::sync_rendezvous_validate_endpoint,
+            sync_invitation_bridge::sync_verify_discovered_device,
+            sync_invitation_bridge::sync_prepare_remote_invitation,
+            sync_invitation_bridge::sync_consume_remote_invitation,
             contract_check::contract_check,
             health_probe::health_probe,
             graphify::graphify_ensure_graph,

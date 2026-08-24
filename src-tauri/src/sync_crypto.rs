@@ -3,8 +3,11 @@
 //! Diffie-Hellman agreement, the signed binding between the two keys, and session-key
 //! derivation. Nothing here contacts a network service.
 
+use chacha20poly1305::aead::{Aead, KeyInit};
+use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use hkdf::Hkdf;
+use rand_core::RngCore;
 use sha2::Sha256;
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret as X25519StaticSecret};
 
@@ -163,6 +166,97 @@ pub fn derive_session_keys(
     }
 }
 
+/// A single-shot ECIES-style sealed payload: a fresh ephemeral X25519 keypair is
+/// Diffie-Hellman'd against the recipient's static public key, HKDF-SHA256 derives a symmetric
+/// key from that shared secret plus a caller-supplied `info` context, and ChaCha20Poly1305 seals
+/// the plaintext. Used to encrypt arbitrary-length payloads (e.g. a remote invitation envelope)
+/// for a recipient identified only by their long-term X25519 public key — no prior session or
+/// handshake required, unlike `derive_session_keys` above.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SealedEnvelope {
+    pub ephemeral_public_key: Vec<u8>,
+    pub nonce: Vec<u8>,
+    pub ciphertext: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SealError {
+    InvalidRecipientKey,
+    EncryptFailed,
+    DecryptFailed,
+    InvalidEnvelope,
+}
+
+impl std::fmt::Display for SealError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let code = match self {
+            SealError::InvalidRecipientKey => "seal_invalid_recipient_key",
+            SealError::EncryptFailed => "seal_encrypt_failed",
+            SealError::DecryptFailed => "seal_decrypt_failed",
+            SealError::InvalidEnvelope => "seal_invalid_envelope",
+        };
+        write!(f, "{code}")
+    }
+}
+
+fn derive_seal_key(shared_secret: &x25519_dalek::SharedSecret, info: &[u8]) -> [u8; 32] {
+    let hkdf = Hkdf::<Sha256>::new(None, shared_secret.as_bytes());
+    let mut key = [0_u8; 32];
+    hkdf.expand(info, &mut key).expect("32-byte okm is within HKDF-SHA256 output limits");
+    key
+}
+
+/// Encrypts `plaintext` for a recipient identified only by `recipient_public_key` (their raw
+/// 32-byte X25519 public key). `info` binds the derived key to a specific purpose/context (e.g.
+/// an invitation ID) so the same recipient key can be reused safely across unrelated envelopes.
+pub fn seal_for_recipient(
+    plaintext: &[u8],
+    recipient_public_key: &[u8],
+    info: &[u8],
+) -> Result<SealedEnvelope, SealError> {
+    let recipient_bytes: [u8; 32] =
+        recipient_public_key.try_into().map_err(|_| SealError::InvalidRecipientKey)?;
+    let recipient_public = X25519PublicKey::from(recipient_bytes);
+    let ephemeral_secret = X25519StaticSecret::random_from_rng(rand_core::OsRng);
+    let ephemeral_public = X25519PublicKey::from(&ephemeral_secret);
+    let shared_secret = ephemeral_secret.diffie_hellman(&recipient_public);
+    let key = derive_seal_key(&shared_secret, info);
+
+    let mut nonce_bytes = [0_u8; 12];
+    rand_core::OsRng.fill_bytes(&mut nonce_bytes);
+    let cipher = ChaCha20Poly1305::new(Key::from_slice(&key));
+    let ciphertext = cipher
+        .encrypt(Nonce::from_slice(&nonce_bytes), plaintext)
+        .map_err(|_| SealError::EncryptFailed)?;
+
+    Ok(SealedEnvelope {
+        ephemeral_public_key: ephemeral_public.as_bytes().to_vec(),
+        nonce: nonce_bytes.to_vec(),
+        ciphertext,
+    })
+}
+
+/// Decrypts an envelope sealed by `seal_for_recipient`, using the recipient's own long-term
+/// X25519 secret. `info` must match exactly what the sender used, or decryption fails closed.
+pub fn open_sealed(
+    envelope: &SealedEnvelope,
+    recipient_secret: &X25519StaticSecret,
+    info: &[u8],
+) -> Result<Vec<u8>, SealError> {
+    let ephemeral_bytes: [u8; 32] =
+        envelope.ephemeral_public_key.as_slice().try_into().map_err(|_| SealError::InvalidEnvelope)?;
+    let ephemeral_public = X25519PublicKey::from(ephemeral_bytes);
+    let shared_secret = recipient_secret.diffie_hellman(&ephemeral_public);
+    let key = derive_seal_key(&shared_secret, info);
+    if envelope.nonce.len() != 12 {
+        return Err(SealError::InvalidEnvelope);
+    }
+    let cipher = ChaCha20Poly1305::new(Key::from_slice(&key));
+    cipher
+        .decrypt(Nonce::from_slice(&envelope.nonce), envelope.ciphertext.as_slice())
+        .map_err(|_| SealError::DecryptFailed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -234,5 +328,35 @@ mod tests {
         let session_2 =
             derive_session_keys(&secret_a, &public_b, 1, "dev_a", "dev_b", "session-2", true);
         assert_ne!(session_1.send, session_2.send);
+    }
+
+    #[test]
+    fn sealed_envelope_round_trips_for_the_intended_recipient() {
+        let recipient_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let recipient_public = X25519PublicKey::from(&recipient_secret);
+        let envelope = seal_for_recipient(b"hello recipient", recipient_public.as_bytes(), b"ctx-1").unwrap();
+        let plaintext = open_sealed(&envelope, &recipient_secret, b"ctx-1").unwrap();
+        assert_eq!(plaintext, b"hello recipient");
+    }
+
+    #[test]
+    fn sealed_envelope_rejects_the_wrong_recipient_key_and_wrong_info() {
+        let recipient_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let recipient_public = X25519PublicKey::from(&recipient_secret);
+        let stranger_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let envelope = seal_for_recipient(b"secret", recipient_public.as_bytes(), b"ctx-1").unwrap();
+
+        assert_eq!(open_sealed(&envelope, &stranger_secret, b"ctx-1").unwrap_err(), SealError::DecryptFailed);
+        assert_eq!(open_sealed(&envelope, &recipient_secret, b"ctx-2").unwrap_err(), SealError::DecryptFailed);
+    }
+
+    #[test]
+    fn tampered_ciphertext_is_rejected() {
+        let recipient_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let recipient_public = X25519PublicKey::from(&recipient_secret);
+        let mut envelope = seal_for_recipient(b"secret", recipient_public.as_bytes(), b"ctx-1").unwrap();
+        let last = envelope.ciphertext.len() - 1;
+        envelope.ciphertext[last] ^= 0xFF;
+        assert_eq!(open_sealed(&envelope, &recipient_secret, b"ctx-1").unwrap_err(), SealError::DecryptFailed);
     }
 }

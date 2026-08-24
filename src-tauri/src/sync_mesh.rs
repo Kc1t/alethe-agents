@@ -1,3 +1,4 @@
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -7,6 +8,16 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::time::{timeout, Duration};
+
+/// Small app icon embedded in the OAuth loopback landing page (`sync_mesh.rs`'s callback HTML) —
+/// kept tiny deliberately (2.5 KB) since it is inlined as a base64 data URI in a Rust string
+/// literal, unlike the larger marketing assets under `src/assets/`.
+const ALETHE_ICON_BYTES: &[u8] = include_bytes!("../icons/32x32.png");
+
+/// Home-screen mascot artwork, reused as an animated dot-flow backdrop on the same OAuth landing
+/// page — the same asset the desktop app's `AsciiEffect` component renders on the Home view, but
+/// driven here by a small self-contained canvas loop instead of importing that React component.
+const ALETHE_FOX_BYTES: &[u8] = include_bytes!("../../src/assets/home-bg-right.png");
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -295,6 +306,12 @@ const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL: &str = "https://openidconnect.googleapis.com/v1/userinfo";
 const GOOGLE_TOKEN_SERVICE: &str = "com.kc1t.alethe.google-oauth";
 const GOOGLE_CONFIG_FILE: &str = "google-oauth.json";
+/// Credential-store account name for the Google OAuth client secret. Unlike a real per-user
+/// secret, Google's own "Desktop app" credential type still issues (and its token endpoint still
+/// validates) a client secret even though Google's docs describe it as "not treated as
+/// confidential" for installed apps — it ships baked into every copy of the app. Alethe stores it
+/// in the OS keyring anyway rather than plaintext, as the more conservative default.
+const GOOGLE_CLIENT_SECRET_ACCOUNT: &str = "oauth-client-secret";
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -326,10 +343,48 @@ fn google_client_id(data_root: &Path) -> Option<String> {
     valid_google_client_id(&config.client_id).then_some(config.client_id)
 }
 
+/// Google's "Desktop app" OAuth client type still issues a client secret and its token endpoint
+/// still validates it, even though PKCE is also used — a real quirk of Google's implementation,
+/// not a mistake in how the client is configured. `None` when unset, so the token exchange simply
+/// omits the field (matching the original assumption before this was discovered).
+fn google_client_secret() -> Option<String> {
+    if let Ok(value) = std::env::var("ALETHE_GOOGLE_CLIENT_SECRET") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    let entry = keyring::Entry::new(GOOGLE_TOKEN_SERVICE, GOOGLE_CLIENT_SECRET_ACCOUNT).ok()?;
+    let secret = entry.get_password().ok()?;
+    let trimmed = secret.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
 #[tauri::command]
-pub fn configure_google_sync(app: tauri::AppHandle, client_id: String) -> Result<bool, String> {
+pub fn configure_google_sync(
+    app: tauri::AppHandle,
+    client_id: String,
+    client_secret: Option<String>,
+) -> Result<bool, String> {
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     persist_google_config_at(&data_root, &client_id)?;
+    match client_secret.as_deref().map(str::trim) {
+        Some(secret) if !secret.is_empty() => {
+            let entry = keyring::Entry::new(GOOGLE_TOKEN_SERVICE, GOOGLE_CLIENT_SECRET_ACCOUNT)
+                .map_err(|_| "credential_store_unavailable".to_string())?;
+            entry
+                .set_password(secret)
+                .map_err(|_| "credential_store_write_failed".to_string())?;
+        }
+        _ => {
+            // An empty/omitted secret explicitly clears any previously stored one, so switching
+            // back to a client that does not need one does not silently keep sending a stale
+            // secret for the new client_id.
+            if let Ok(entry) = keyring::Entry::new(GOOGLE_TOKEN_SERVICE, GOOGLE_CLIENT_SECRET_ACCOUNT) {
+                let _ = entry.delete_credential();
+            }
+        }
+    }
     Ok(true)
 }
 
@@ -566,6 +621,12 @@ fn store_google_tokens(account_id: &str, tokens: &GoogleTokenResponse) -> Result
 
 #[tauri::command]
 pub async fn start_google_sync_auth(app: tauri::AppHandle) -> Result<GoogleSyncUser, String> {
+    // Every step below logs only its outcome (step name, HTTP status when relevant, error code) —
+    // never a token, code, or client secret — to `spawn.log`, so a login that silently fails to
+    // leave the app "connected" can actually be diagnosed instead of just disappearing.
+    let log = |message: &str| {
+        let _ = crate::diagnostics::append_spawn_log(&app, &format!("[google_sync_auth] {message}"));
+    };
     let current = get_google_sync_status(app.clone())?;
     if current.connected {
         return Ok(current);
@@ -616,7 +677,208 @@ pub async fn start_google_sync_auth(app: tauri::AppHandle) -> Result<GoogleSyncU
             .ok_or_else(|| "google_oauth_callback_invalid".to_string())?,
         &state,
     );
-    let body = "<!doctype html><title>Alethe</title><script>window.close()</script><p>Alethe</p>";
+    // Branded loopback landing page, styled after the app's own home-screen greeting/terminal
+    // aesthetic. Sent before the token exchange even starts, so it can only ever say "you're
+    // being signed in" — not "success", since failure can still happen later in this same
+    // function. `window.close()` is attempted but frequently a no-op (most browsers only allow a
+    // script to close a tab it opened itself, not one opened by the OS default handler), so the
+    // page always shows a manual "you can close this tab" instruction too rather than relying on
+    // the auto-close silently working.
+    let icon_data_uri = format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(ALETHE_ICON_BYTES)
+    );
+    let fox_data_uri = format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(ALETHE_FOX_BYTES)
+    );
+    let body = format!(
+        r##"<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Alethe</title>
+<meta name="color-scheme" content="dark">
+<style>
+  :root {{ color-scheme: dark; }}
+  * {{ box-sizing: border-box; }}
+  html, body {{
+    margin: 0;
+    height: 100%;
+    background: #101114;
+    color: #f3f4f6;
+    font-family: -apple-system, "Segoe UI", Inter, Roboto, sans-serif;
+    overflow: hidden;
+  }}
+  #fox {{
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    opacity: 0.85;
+    -webkit-mask-image: linear-gradient(to bottom, black 0%, black 70%, transparent 100%);
+    mask-image: linear-gradient(to bottom, black 0%, black 70%, transparent 100%);
+  }}
+  .page {{
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 22px;
+  }}
+  .brand {{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }}
+  .brand img {{ width: 32px; height: 32px; border-radius: 8px; }}
+  h1 {{ font-size: 17px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }}
+  .subtitle {{ font-size: 12px; color: #6b6b75; margin: 0; }}
+  .window {{
+    width: 340px;
+    border-radius: 10px;
+    background: rgba(26, 28, 31, 0.92);
+    backdrop-filter: blur(6px);
+    border: 1px solid #2a2d33;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  }}
+  .titlebar {{
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 12px;
+    background: #17181b;
+    border-bottom: 1px solid #2a2d33;
+  }}
+  .dot {{ width: 9px; height: 9px; border-radius: 50%; }}
+  .dot.red {{ background: #ef4444; }}
+  .dot.yellow {{ background: #f59e0b; }}
+  .dot.green {{ background: #10b981; }}
+  .titlebar span {{
+    margin-left: 6px;
+    font-size: 10.5px;
+    color: #6b6b75;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }}
+  .terminal {{
+    padding: 16px 14px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 12px;
+    line-height: 1.7;
+  }}
+  .terminal .muted {{ color: #6b6b75; }}
+  .terminal .ok {{ color: #10b981; }}
+  .terminal .row {{ display: flex; align-items: center; gap: 8px; }}
+  .spinner {{
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    border: 2px solid #2a2d33;
+    border-top-color: #10b981;
+    animation: spin 0.8s linear infinite;
+  }}
+  @keyframes spin {{ to {{ transform: rotate(360deg); }} }}
+  .hint {{ font-size: 11.5px; color: #6b6b75; text-align: center; max-width: 300px; }}
+</style>
+</head>
+<body>
+  <canvas id="fox"></canvas>
+  <div class="page">
+    <div class="brand">
+      <img src="{icon_data_uri}" alt="Alethe" />
+      <h1>Alethe</h1>
+      <p class="subtitle">Reveal the state of every agent, shell, and project.</p>
+    </div>
+    <div class="window">
+      <div class="titlebar">
+        <span class="dot red"></span>
+        <span class="dot yellow"></span>
+        <span class="dot green"></span>
+        <span>alethe@auth:~</span>
+      </div>
+      <div class="terminal">
+        <div class="muted">$ google sign-in --account</div>
+        <div class="row ok"><span>✓</span><span>authorization received</span></div>
+        <div class="row"><span class="spinner" aria-hidden="true"></span><span class="muted">finishing setup in the app…</span></div>
+      </div>
+    </div>
+    <p class="hint">You can close this tab and go back to Alethe.</p>
+  </div>
+  <script>
+    window.close();
+    // Lightweight ASCII/dot flow rendering of the app's own fox artwork — the same motif as the
+    // desktop app's home screen, reduced to a small self-contained canvas loop (no dependency on
+    // the full AsciiEffect engine, which is a React/canvas component this static loopback page
+    // cannot import) since this page is only ever seen for a couple of seconds during sign-in.
+    (function () {{
+      var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      var canvas = document.getElementById('fox');
+      var ctx = canvas.getContext('2d');
+      var image = new Image();
+      var cell = 8;
+      var cols = 0, rows = 0, luminance = null;
+      var offscreen = document.createElement('canvas');
+      var octx = offscreen.getContext('2d', {{ willReadFrequently: true }});
+
+      function layout() {{
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        if (!image.complete || !image.naturalWidth) return;
+        cols = Math.ceil(canvas.width / cell);
+        rows = Math.ceil(canvas.height / cell);
+        offscreen.width = cols;
+        offscreen.height = rows;
+        var scale = Math.max(cols / image.naturalWidth, rows / image.naturalHeight);
+        var drawW = image.naturalWidth * scale;
+        var drawH = image.naturalHeight * scale;
+        octx.clearRect(0, 0, cols, rows);
+        octx.drawImage(image, (cols - drawW) / 2, 0, drawW, drawH);
+        var data = octx.getImageData(0, 0, cols, rows).data;
+        luminance = new Float32Array(cols * rows);
+        for (var i = 0; i < cols * rows; i++) {{
+          var r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2], a = data[i * 4 + 3];
+          luminance[i] = a > 8 ? (0.299 * r + 0.587 * g + 0.114 * b) / 255 : 0;
+        }}
+      }}
+
+      function frame(t) {{
+        if (luminance) {{
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = '#8b8b95';
+          for (var y = 0; y < rows; y++) {{
+            for (var x = 0; x < cols; x++) {{
+              var base = luminance[y * cols + x];
+              if (base <= 0.03) continue;
+              var wave = reduceMotion ? 0 : 0.14 * Math.sin(x * 0.35 + y * 0.5 + t * 0.0016);
+              var value = Math.max(0, Math.min(1, base + wave));
+              if (value <= 0.05) continue;
+              var radius = (cell * 0.32) * value;
+              ctx.globalAlpha = 0.55 + value * 0.45;
+              ctx.beginPath();
+              ctx.arc(x * cell + cell / 2, y * cell + cell / 2, radius, 0, Math.PI * 2);
+              ctx.fill();
+            }}
+          }}
+          ctx.globalAlpha = 1;
+        }}
+        if (!reduceMotion) requestAnimationFrame(frame);
+      }}
+
+      image.onload = function () {{
+        layout();
+        requestAnimationFrame(frame);
+      }};
+      window.addEventListener('resize', layout);
+      image.src = "{fox_data_uri}";
+    }})();
+  </script>
+</body>
+</html>"##
+    );
     let response = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
@@ -624,63 +886,100 @@ pub async fn start_google_sync_auth(app: tauri::AppHandle) -> Result<GoogleSyncU
     let _ = stream.write_all(response.as_bytes()).await;
     let code = code?;
 
+    log("callback received, exchanging code for tokens");
+    let client_secret = google_client_secret();
+    if client_secret.is_some() {
+        log("using a stored client secret for the token exchange (Google Desktop client quirk)");
+    }
+    let mut token_form = vec![
+        ("client_id", client_id.as_str()),
+        ("code", code.as_str()),
+        ("code_verifier", verifier.as_str()),
+        ("grant_type", "authorization_code"),
+        ("redirect_uri", redirect_uri.as_str()),
+    ];
+    if let Some(secret) = client_secret.as_deref() {
+        token_form.push(("client_secret", secret));
+    }
     let client = reqwest::Client::new();
-    let tokens = client
+    let token_response = client
         .post(GOOGLE_TOKEN_URL)
-        .form(&[
-            ("client_id", client_id.as_str()),
-            ("code", code.as_str()),
-            ("code_verifier", verifier.as_str()),
-            ("grant_type", "authorization_code"),
-            ("redirect_uri", redirect_uri.as_str()),
-        ])
+        .form(&token_form)
         .send()
         .await
-        .map_err(|_| "google_oauth_exchange_failed".to_string())?;
-    if !tokens.status().is_success() {
+        .map_err(|error| {
+            log(&format!("token exchange request failed to send: {error}"));
+            "google_oauth_exchange_failed".to_string()
+        })?;
+    let token_status = token_response.status();
+    if !token_status.is_success() {
+        // Google's token-error body only ever contains an OAuth error code/description
+        // (e.g. `{"error":"redirect_uri_mismatch"}`) — never a token or secret — so it is safe
+        // to log verbatim and is the only way to tell "wrong client type" apart from "expired
+        // code" apart from "redirect URI not allowed" instead of guessing from the status alone.
+        let body = token_response.text().await.unwrap_or_default();
+        log(&format!("token exchange rejected by Google: HTTP {token_status} body={body}"));
         return Err("google_oauth_exchange_failed".to_string());
     }
-    let tokens: GoogleTokenResponse = tokens
-        .json()
-        .await
-        .map_err(|_| "google_oauth_exchange_failed".to_string())?;
+    let tokens: GoogleTokenResponse = token_response.json().await.map_err(|error| {
+        log(&format!("token exchange response was not the expected JSON shape: {error}"));
+        "google_oauth_exchange_failed".to_string()
+    })?;
     if !tokens.token_type.eq_ignore_ascii_case("bearer") || tokens.access_token.is_empty() {
+        log("token exchange succeeded but returned no usable bearer access token");
         return Err("google_oauth_exchange_failed".to_string());
     }
-    let user = client
+    log("tokens received, fetching profile");
+    let user_response = client
         .get(GOOGLE_USERINFO_URL)
         .bearer_auth(&tokens.access_token)
         .send()
         .await
-        .map_err(|_| "google_userinfo_failed".to_string())?;
-    if !user.status().is_success() {
+        .map_err(|error| {
+            log(&format!("userinfo request failed to send: {error}"));
+            "google_userinfo_failed".to_string()
+        })?;
+    let user_status = user_response.status();
+    if !user_status.is_success() {
+        log(&format!("userinfo request rejected by Google: HTTP {user_status}"));
         return Err("google_userinfo_failed".to_string());
     }
-    let user: GoogleUserInfo = user
-        .json()
-        .await
-        .map_err(|_| "google_userinfo_failed".to_string())?;
+    let user: GoogleUserInfo = user_response.json().await.map_err(|error| {
+        log(&format!("userinfo response was not the expected JSON shape: {error}"));
+        "google_userinfo_failed".to_string()
+    })?;
     if user.sub.is_empty() || user.name.is_empty() || user.email_verified != Some(true) {
+        log("userinfo missing required fields or email not verified");
         return Err("google_identity_unverified".to_string());
     }
 
     // The UserInfo endpoint alone does not prove issuer/audience/nonce; the ID token is the
     // signed, verifiable identity assertion. Google always returns one for an `openid`-scoped
     // authorization_code exchange.
-    let id_token = tokens
-        .id_token
-        .as_deref()
-        .ok_or_else(|| "google_id_token_missing".to_string())?;
-    let jwks = fetch_google_jwks().await?;
+    let id_token = tokens.id_token.as_deref().ok_or_else(|| {
+        log("token response had no id_token (unexpected for an openid-scoped exchange)");
+        "google_id_token_missing".to_string()
+    })?;
+    log("profile received, verifying signed ID token");
+    let jwks = fetch_google_jwks().await.map_err(|error| {
+        log(&format!("failed to fetch Google's signing keys: {error}"));
+        error
+    })?;
     let now_secs = (crate::provider_common::now_ms() / 1000) as i64;
-    let claims = verify_google_id_token(id_token, &jwks, &client_id, &nonce, now_secs)?;
+    let claims = verify_google_id_token(id_token, &jwks, &client_id, &nonce, now_secs).map_err(|error| {
+        log(&format!("ID token verification failed: {error}"));
+        error
+    })?;
     if claims.sub != user.sub {
+        log("ID token subject does not match userinfo subject");
         return Err("google_identity_unverified".to_string());
     }
     if claims.email.as_deref() != user.email.as_deref() {
+        log("ID token email does not match userinfo email");
         return Err("google_identity_unverified".to_string());
     }
 
+    log("identity verified, persisting device and account");
     store_google_tokens(&user.sub, &tokens)?;
     let device_name = std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))
@@ -699,11 +998,13 @@ pub async fn start_google_sync_auth(app: tauri::AppHandle) -> Result<GoogleSyncU
         &device_name,
         now_ms,
     ) {
+        log(&format!("complete_verified_identity failed, rolling back stored tokens: {error}"));
         if let Ok(entry) = keyring::Entry::new(GOOGLE_TOKEN_SERVICE, &user.sub) {
             let _ = entry.delete_credential();
         }
         return Err(error);
     }
+    log("sign-in complete, account is now connected");
     Ok(GoogleSyncUser {
         email: email_hint(user.email.as_deref()).unwrap_or_default(),
         name: user.name,

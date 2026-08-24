@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { LOCALES, useT } from '../../../lib/i18n'
 import {
   configureGoogleSync,
+  disconnectGoogleSync,
   getGoogleSyncStatus,
   type GoogleSyncUser,
   startGoogleSyncAuth,
@@ -69,6 +70,19 @@ export function AccountPage({
       setGoogle(await getGoogleSyncStatus())
       setShowGoogleSetup(false)
       setGoogleClientId('')
+    } catch {
+      setGoogleError(true)
+    } finally {
+      setGoogleBusy(false)
+    }
+  }
+
+  const runGoogleDisconnect = async () => {
+    setGoogleBusy(true)
+    setGoogleError(false)
+    try {
+      await disconnectGoogleSync()
+      setGoogle(await getGoogleSyncStatus())
     } catch {
       setGoogleError(true)
     } finally {
@@ -179,18 +193,19 @@ export function AccountPage({
                 alignItems: 'center',
                 gap: '8px',
                 background: 'var(--bg)',
-                color: 'var(--fg)',
+                color: google?.connected ? 'var(--status-offline)' : 'var(--fg)',
                 fontWeight: 600,
                 fontSize: '12px',
                 padding: '7px 14px',
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-sm)',
-                cursor: googleBusy || google?.connected ? 'default' : 'pointer',
+                cursor: googleBusy ? 'default' : 'pointer',
                 boxShadow: 'var(--shadow-xs)',
               }}
-              disabled={googleBusy || google?.connected}
+              disabled={googleBusy}
               onClick={() => {
-                if (google?.configured) void runGoogleLogin()
+                if (google?.connected) void runGoogleDisconnect()
+                else if (google?.configured) void runGoogleLogin()
                 else setShowGoogleSetup((visible) => !visible)
               }}
             >
@@ -198,9 +213,11 @@ export function AccountPage({
               <span>
                 {googleBusy
                   ? t('mesh.authenticating')
-                  : google?.configured
-                    ? t('mesh.connectAccount')
-                    : t('mesh.configureGoogle')}
+                  : google?.connected
+                    ? t('mesh.disconnectAccount')
+                    : google?.configured
+                      ? t('mesh.connectAccount')
+                      : t('mesh.configureGoogle')}
               </span>
             </button>
           </div>

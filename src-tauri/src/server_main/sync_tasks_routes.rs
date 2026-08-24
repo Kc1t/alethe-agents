@@ -14,6 +14,9 @@ pub fn router() -> Router {
         .route("/api/sync/tasks/create", post(create))
         .route("/api/sync/tasks/complete", post(complete))
         .route("/api/sync/tasks/comment", post(comment))
+        .route("/api/sync/tasks/update", post(update))
+        .route("/api/sync/tasks/assign", post(assign))
+        .route("/api/sync/tasks/delete", post(delete))
 }
 
 #[derive(Deserialize)]
@@ -140,6 +143,113 @@ async fn comment(Extension(runtime): Extension<Arc<ServerRuntime>>, Json(payload
                 &payload.device_id,
                 payload.expected_base_revision,
                 &payload.body,
+                &authorizer,
+                crate::provider_common::now_ms(),
+            )
+            .map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|result| result),
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateBody {
+    project_id: String,
+    task_id: String,
+    device_id: String,
+    expected_base_revision: u64,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    body: Option<String>,
+    #[serde(default)]
+    labels: Option<Vec<String>>,
+    #[serde(default)]
+    due_at_ms: Option<Option<u64>>,
+}
+
+async fn update(Extension(runtime): Extension<Arc<ServerRuntime>>, Json(payload): Json<UpdateBody>) -> Response {
+    let data_root = runtime.data_root().to_path_buf();
+    respond(
+        tokio::task::spawn_blocking(move || {
+            let authorizer = crate::sync_tasks::SecurityBackedMembership { data_root: &data_root };
+            crate::sync_tasks::update_task_at(
+                &data_root,
+                &payload.project_id,
+                &payload.task_id,
+                &payload.device_id,
+                payload.expected_base_revision,
+                payload.title,
+                payload.body,
+                payload.labels,
+                payload.due_at_ms,
+                &authorizer,
+                crate::provider_common::now_ms(),
+            )
+            .map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|result| result),
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AssignBody {
+    project_id: String,
+    task_id: String,
+    device_id: String,
+    expected_base_revision: u64,
+    assignees: Vec<String>,
+}
+
+async fn assign(Extension(runtime): Extension<Arc<ServerRuntime>>, Json(payload): Json<AssignBody>) -> Response {
+    let data_root = runtime.data_root().to_path_buf();
+    respond(
+        tokio::task::spawn_blocking(move || {
+            let authorizer = crate::sync_tasks::SecurityBackedMembership { data_root: &data_root };
+            crate::sync_tasks::assign_task_at(
+                &data_root,
+                &payload.project_id,
+                &payload.task_id,
+                &payload.device_id,
+                payload.expected_base_revision,
+                payload.assignees,
+                &authorizer,
+                crate::provider_common::now_ms(),
+            )
+            .map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|result| result),
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeleteBody {
+    project_id: String,
+    task_id: String,
+    device_id: String,
+    expected_base_revision: u64,
+}
+
+async fn delete(Extension(runtime): Extension<Arc<ServerRuntime>>, Json(payload): Json<DeleteBody>) -> Response {
+    let data_root = runtime.data_root().to_path_buf();
+    respond(
+        tokio::task::spawn_blocking(move || {
+            let authorizer = crate::sync_tasks::SecurityBackedMembership { data_root: &data_root };
+            crate::sync_tasks::delete_task_at(
+                &data_root,
+                &payload.project_id,
+                &payload.task_id,
+                &payload.device_id,
+                payload.expected_base_revision,
                 &authorizer,
                 crate::provider_common::now_ms(),
             )

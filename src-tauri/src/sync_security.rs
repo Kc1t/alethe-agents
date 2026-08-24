@@ -55,6 +55,11 @@ pub struct DeviceRecord {
     /// belong to the same device. See `sync_crypto::verify_key_binding`.
     #[serde(default)]
     pub agreement_key_binding_signature: Option<String>,
+    /// Set the last time this device's Ed25519 identity and X25519 agreement keys were rotated
+    /// via `rotate_device_keys_at` (Phase 12). `None` means the device has never rotated its keys
+    /// since registration.
+    #[serde(default)]
+    pub key_rotated_at_ms: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -309,6 +314,18 @@ pub fn load_device_signing_key(device_id: &str) -> Result<SigningKey, String> {
     Ok(SigningKey::from_bytes(&bytes))
 }
 
+/// Loads the local device's X25519 agreement private key (ADR-0003) only into process memory for
+/// an authenticated operation. Mirrors `load_device_signing_key` but reads the separate
+/// `#agree`-suffixed credential-store entry (`agreement_secret_entry_id`).
+pub fn load_device_agreement_secret(device_id: &str) -> Result<x25519_dalek::StaticSecret, String> {
+    let entry = keyring::Entry::new(DEVICE_KEY_SERVICE, &agreement_secret_entry_id(device_id))
+        .map_err(|_| "credential_store_unavailable".to_string())?;
+    let secret = entry.get_secret().map_err(|_| "credential_store_read_failed".to_string())?;
+    let bytes: [u8; 32] =
+        secret.as_slice().try_into().map_err(|_| "device_agreement_key_invalid".to_string())?;
+    Ok(x25519_dalek::StaticSecret::from(bytes))
+}
+
 impl DeviceSecretStore for PlatformDeviceSecretStore {
     fn set(&self, device_id: &str, secret: &[u8]) -> Result<(), String> {
         let entry = keyring::Entry::new(DEVICE_KEY_SERVICE, device_id)
@@ -384,6 +401,49 @@ fn local_device_id_at(data_root: &Path) -> Result<String, String> {
     load_at(data_root)?
         .local_device_id
         .ok_or_else(|| "local_device_unknown".to_string())
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalIdentity {
+    pub device_id: String,
+    pub account_route: String,
+}
+
+/// Resolves this install's own device ID and account route (ADR-0004) directly from the local
+/// security document — used by collaboration features (tasks, chat) so the frontend never has to
+/// know or supply the account-route derivation itself.
+pub fn local_identity_at(data_root: &Path) -> Result<LocalIdentity, String> {
+    let document = load_at(data_root)?;
+    let device_id = document.local_device_id.ok_or_else(|| "local_device_unknown".to_string())?;
+    let account = document.account.ok_or_else(|| "account_not_connected".to_string())?;
+    Ok(LocalIdentity {
+        device_id,
+        account_route: crate::sync_protocol::account_route_id(&account.account_id),
+    })
+}
+
+#[tauri::command]
+pub fn sync_local_identity(app: tauri::AppHandle) -> Result<LocalIdentity, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    local_identity_at(&data_root)
+}
+
+/// Resolves this install's own X25519 agreement *public* key (base64, ADR-0003) — used to add the
+/// local device as a chat conversation member. Never touches the private key or the keyring.
+pub fn local_device_agreement_public_key_at(data_root: &Path) -> Result<Vec<u8>, String> {
+    let document = load_at(data_root)?;
+    let device_id = document.local_device_id.clone().ok_or_else(|| "local_device_unknown".to_string())?;
+    let device = document
+        .devices
+        .iter()
+        .find(|device| device.device_id == device_id)
+        .ok_or_else(|| "local_device_unknown".to_string())?;
+    let encoded = device
+        .agreement_public_key
+        .as_deref()
+        .ok_or_else(|| "device_agreement_key_missing".to_string())?;
+    URL_SAFE_NO_PAD.decode(encoded).map_err(|_| "device_agreement_key_invalid".to_string())
 }
 
 fn now_ms() -> u64 {
@@ -785,6 +845,13 @@ pub(crate) fn redeem_invitation(
         Some(invitation_id.to_string()),
     );
     save_at(data_root, &document)?;
+    let _ = crate::sync_access::record_at(
+        data_root,
+        crate::sync_access::AccessCategory::Collaboration,
+        crate::sync_access::AccessKind::InvitationRedeemed,
+        invitation_id,
+        now_ms,
+    );
     Ok(grant)
 }
 
@@ -881,6 +948,171 @@ pub(crate) fn revoke_grant_at(
     );
     save_at(data_root, &document)?;
     Ok(updated)
+}
+
+/// Rotates a trusted device's Ed25519 identity key and X25519 agreement key together (Phase 12).
+/// The device keeps the same `device_id`, but every peer that cached the old public key must
+/// re-authenticate against the new one — nothing here notifies other devices; that is the caller's
+/// responsibility once a live discovery/notification channel exists. Old key material is
+/// overwritten in the credential store (never left retrievable alongside the new keys).
+pub(crate) fn rotate_device_keys_at<S: DeviceSecretStore>(
+    data_root: &Path,
+    secret_store: &S,
+    device_id: &str,
+    now_ms: u64,
+) -> Result<DeviceRecord, String> {
+    let mut document = load_at(data_root)?;
+    let index = document
+        .devices
+        .iter()
+        .position(|device| device.device_id == device_id)
+        .ok_or_else(|| "actor_device_unknown".to_string())?;
+    if document.devices[index].trust != DeviceTrust::Trusted {
+        return Err("actor_device_not_trusted".to_string());
+    }
+
+    let signing_key = SigningKey::generate(&mut OsRng);
+    let verifying_key = signing_key.verifying_key();
+    secret_store.set(device_id, &signing_key.to_bytes())?;
+    let (agreement_secret, key_binding) =
+        crate::sync_crypto::generate_bound_key_agreement(device_id, &signing_key, now_ms);
+    if let Err(error) = secret_store.set(&agreement_secret_entry_id(device_id), &agreement_secret.to_bytes()) {
+        return Err(error);
+    }
+
+    let device = &mut document.devices[index];
+    device.public_key = URL_SAFE_NO_PAD.encode(verifying_key.as_bytes());
+    device.public_key_fingerprint = public_key_fingerprint(&verifying_key);
+    device.agreement_public_key = Some(URL_SAFE_NO_PAD.encode(&key_binding.x25519_public_key));
+    device.agreement_key_bound_at_ms = Some(key_binding.bound_at_ms);
+    device.agreement_key_binding_signature = Some(URL_SAFE_NO_PAD.encode(&key_binding.signature));
+    device.key_rotated_at_ms = Some(now_ms);
+    let updated = device.clone();
+    append_audit(&mut document, now_ms, "device.keys_rotated", Some(device_id.to_string()), None);
+    save_at(data_root, &document)?;
+    Ok(updated)
+}
+
+/// Redacted, JSON-serializable export of the local account's collaboration state (Phase 12).
+/// Never includes raw public-key bytes, invitation bearer/token-hash material, or anything else
+/// the audit-privacy rule forbids ("no content, tokens, local paths, or encryption keys") — only
+/// stable identifiers, fingerprints, states, and timestamps a user could plausibly want to review
+/// or archive before deleting their account.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceExportEntry {
+    pub device_id: String,
+    pub display_name: String,
+    pub public_key_fingerprint: String,
+    pub trust: DeviceTrust,
+    pub registered_at_ms: u64,
+    pub last_verified_at_ms: Option<u64>,
+    pub revoked_at_ms: Option<u64>,
+    pub key_rotated_at_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InvitationExportEntry {
+    pub invitation_id: String,
+    pub project_id: String,
+    pub recipient_account_id: String,
+    pub state: InvitationState,
+    pub created_at_ms: u64,
+    pub expires_at_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountDataExport {
+    pub exported_at_ms: u64,
+    pub account: Option<VerifiedAccount>,
+    pub devices: Vec<DeviceExportEntry>,
+    pub invitations: Vec<InvitationExportEntry>,
+    pub grants: Vec<GrantRecord>,
+}
+
+pub(crate) fn export_account_data_at(data_root: &Path, now_ms: u64) -> Result<AccountDataExport, String> {
+    let document = load_at(data_root)?;
+    Ok(AccountDataExport {
+        exported_at_ms: now_ms,
+        account: document.account,
+        devices: document
+            .devices
+            .into_iter()
+            .map(|device| DeviceExportEntry {
+                device_id: device.device_id,
+                display_name: device.display_name,
+                public_key_fingerprint: device.public_key_fingerprint,
+                trust: device.trust,
+                registered_at_ms: device.registered_at_ms,
+                last_verified_at_ms: device.last_verified_at_ms,
+                revoked_at_ms: device.revoked_at_ms,
+                key_rotated_at_ms: device.key_rotated_at_ms,
+            })
+            .collect(),
+        invitations: document
+            .invitations
+            .into_iter()
+            .map(|invitation| InvitationExportEntry {
+                invitation_id: invitation.invitation_id,
+                project_id: invitation.project_id,
+                recipient_account_id: invitation.recipient_account_id,
+                state: invitation.state,
+                created_at_ms: invitation.created_at_ms,
+                expires_at_ms: invitation.expires_at_ms,
+            })
+            .collect(),
+        grants: document.grants,
+    })
+}
+
+/// Revokes every still-active grant and pending invitation for one project in a single operation
+/// (Phase 12's "project-access deletion"), rather than requiring the caller to revoke each one
+/// individually. Only a device on the project's issuing account may call this — same ownership
+/// check as `revoke_grant_at`. Returns the number of records changed; calling it again on an
+/// already-cleared project is a safe no-op that returns `0`, not an error.
+pub(crate) fn delete_project_access_at(
+    data_root: &Path,
+    actor_device_id: &str,
+    project_id: &str,
+    now_ms: u64,
+) -> Result<usize, String> {
+    let mut document = load_at(data_root)?;
+    let actor = find_trusted_actor(&document, actor_device_id)?.clone();
+    let issuer_owns_project = document.invitations.iter().any(|invitation| {
+        invitation.project_id == project_id
+            && document.devices.iter().any(|device| {
+                device.device_id == invitation.issuer_device_id && device.account_id == actor.account_id
+            })
+    });
+    if !issuer_owns_project {
+        return Err("project_access_unavailable".to_string());
+    }
+
+    let mut affected = 0_usize;
+    for grant in document.grants.iter_mut().filter(|grant| grant.project_id == project_id && grant.revoked_at_ms.is_none()) {
+        grant.revoked_at_ms = Some(now_ms);
+        affected += 1;
+    }
+    for invitation in document
+        .invitations
+        .iter_mut()
+        .filter(|invitation| invitation.project_id == project_id && invitation.state == InvitationState::Created)
+    {
+        invitation.state = InvitationState::Revoked;
+        invitation.revoked_at_ms = Some(now_ms);
+        affected += 1;
+    }
+    append_audit(
+        &mut document,
+        now_ms,
+        "project_access.deleted",
+        Some(actor_device_id.to_string()),
+        Some(project_id.to_string()),
+    );
+    save_at(data_root, &document)?;
+    Ok(affected)
 }
 
 #[derive(Debug, Deserialize)]
@@ -990,6 +1222,26 @@ pub fn sync_revoke_grant(app: tauri::AppHandle, grant_id: String) -> Result<Gran
     revoke_grant_at(&data_root, &actor, &grant_id, now_ms())
 }
 
+#[tauri::command]
+pub fn sync_rotate_device_keys(app: tauri::AppHandle) -> Result<DeviceRecord, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let device_id = local_device_id_at(&data_root)?;
+    rotate_device_keys_at(&data_root, &PlatformDeviceSecretStore, &device_id, now_ms())
+}
+
+#[tauri::command]
+pub fn sync_export_account_data(app: tauri::AppHandle) -> Result<AccountDataExport, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    export_account_data_at(&data_root, now_ms())
+}
+
+#[tauri::command]
+pub fn sync_delete_project_access(app: tauri::AppHandle, project_id: String) -> Result<usize, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let actor = local_device_id_at(&data_root)?;
+    delete_project_access_at(&data_root, &actor, &project_id, now_ms())
+}
+
 /// Completes identity only after the OAuth backend has verified the provider response.
 /// This function is intentionally not exposed as a Tauri or HTTP command.
 pub(crate) fn complete_verified_identity<S: DeviceSecretStore>(
@@ -1055,6 +1307,7 @@ pub(crate) fn complete_verified_identity<S: DeviceSecretStore>(
         agreement_public_key: Some(URL_SAFE_NO_PAD.encode(&key_binding.x25519_public_key)),
         agreement_key_bound_at_ms: Some(key_binding.bound_at_ms),
         agreement_key_binding_signature: Some(URL_SAFE_NO_PAD.encode(&key_binding.signature)),
+        key_rotated_at_ms: None,
     };
     document.account = Some(account);
     document.local_device_id = Some(device_id.clone());
@@ -1074,6 +1327,17 @@ pub(crate) fn complete_verified_identity<S: DeviceSecretStore>(
         let _ = secret_store.delete(&device.device_id);
         let _ = secret_store.delete(&agreement_secret_entry_id(&device.device_id));
         return Err(error);
+    }
+    if !is_first_device_for_account {
+        // Best-effort: a failure to publish the access-center record must never fail device
+        // registration itself, which already succeeded and was persisted above.
+        let _ = crate::sync_access::record_at(
+            data_root,
+            crate::sync_access::AccessCategory::Security,
+            crate::sync_access::AccessKind::DevicePendingApproval,
+            &device.device_id,
+            now_ms,
+        );
     }
     Ok(device)
 }
@@ -1425,6 +1689,61 @@ mod tests {
     }
 
     #[test]
+    fn a_second_pending_device_publishes_an_access_center_record_but_the_first_does_not() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let first = complete_verified_identity(&root, &secrets, account("acct-a"), "Laptop", 1_000).unwrap();
+        assert!(crate::sync_access::list_at(&root, 1_000).unwrap().is_empty());
+
+        let second = complete_verified_identity(&root, &secrets, account("acct-a"), "Desktop", 2_000).unwrap();
+        let records = crate::sync_access::list_at(&root, 2_000).unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].kind, crate::sync_access::AccessKind::DevicePendingApproval);
+        assert_eq!(records[0].category, crate::sync_access::AccessCategory::Security);
+        assert_eq!(records[0].subject_handle, second.device_id);
+        assert_ne!(second.device_id, first.device_id);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn redeeming_an_invitation_publishes_an_access_center_record() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let issuer = complete_verified_identity(&root, &secrets, account("acct-owner"), "Owner", 1_000).unwrap();
+        let issued = issue_invitation(
+            &root,
+            &issuer.device_id,
+            "project-a",
+            "acct-recipient",
+            Some("device-recipient".to_string()),
+            vec![SyncPermission::Read],
+            vec![],
+            2_000,
+            10_000,
+        )
+        .unwrap();
+
+        redeem_invitation(
+            &root,
+            &issued.invitation.invitation_id,
+            &issued.bearer_token,
+            "acct-recipient",
+            "device-recipient",
+            3_000,
+        )
+        .unwrap();
+
+        let records = crate::sync_access::list_at(&root, 3_000).unwrap();
+        let record = records
+            .iter()
+            .find(|record| record.kind == crate::sync_access::AccessKind::InvitationRedeemed)
+            .unwrap();
+        assert_eq!(record.category, crate::sync_access::AccessCategory::Collaboration);
+        assert_eq!(record.subject_handle, issued.invitation.invitation_id);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn disconnect_removes_device_secrets_and_identity_document() {
         let root = temp_root();
         let secrets = MemorySecrets::default();
@@ -1473,6 +1792,7 @@ mod tests {
                 agreement_public_key: None,
                 agreement_key_bound_at_ms: None,
                 agreement_key_binding_signature: None,
+                key_rotated_at_ms: None,
             }],
             invitations: vec![],
             grants: vec![],
@@ -1541,6 +1861,153 @@ mod tests {
         assert!(!serde_json::to_string(&public)
             .unwrap()
             .contains(&issued.invitation.token_hash));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rotating_device_keys_replaces_both_key_pairs_and_records_the_timestamp() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let device = complete_verified_identity(&root, &secrets, account("acct-a"), "Laptop", 1_000).unwrap();
+        let original_public_key = device.public_key.clone();
+        let original_agreement_key = device.agreement_public_key.clone();
+
+        let rotated = rotate_device_keys_at(&root, &secrets, &device.device_id, 2_000).unwrap();
+
+        assert_ne!(rotated.public_key, original_public_key);
+        assert_ne!(rotated.agreement_public_key, original_agreement_key);
+        assert_eq!(rotated.key_rotated_at_ms, Some(2_000));
+        assert_eq!(rotated.device_id, device.device_id);
+        assert_eq!(rotated.trust, DeviceTrust::Trusted);
+
+        // The new binding verifies; the credential store now holds only the new secret key.
+        let signing_key_bytes = secrets.0.lock().unwrap().get(&device.device_id).cloned().unwrap();
+        assert_eq!(
+            URL_SAFE_NO_PAD.encode(SigningKey::from_bytes(&signing_key_bytes.try_into().unwrap()).verifying_key().as_bytes()),
+            rotated.public_key
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rotating_keys_for_an_untrusted_or_unknown_device_is_rejected() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let first = complete_verified_identity(&root, &secrets, account("acct-a"), "Laptop", 1_000).unwrap();
+        let second = complete_verified_identity(&root, &secrets, account("acct-a"), "Desktop", 2_000).unwrap();
+        assert_eq!(second.trust, DeviceTrust::Pending);
+
+        assert_eq!(
+            rotate_device_keys_at(&root, &secrets, &second.device_id, 3_000),
+            Err("actor_device_not_trusted".to_string())
+        );
+        assert_eq!(
+            rotate_device_keys_at(&root, &secrets, "dev_unknown", 3_000),
+            Err("actor_device_unknown".to_string())
+        );
+        let _ = first;
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn account_export_contains_no_raw_keys_or_bearer_material() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let issuer = complete_verified_identity(&root, &secrets, account("acct-owner"), "Owner", 1_000).unwrap();
+        let issued = issue_invitation(
+            &root, &issuer.device_id, "project-a", "acct-recipient", None, vec![SyncPermission::Read], vec![],
+            2_000, 10_000,
+        )
+        .unwrap();
+        redeem_invitation(&root, &issued.invitation.invitation_id, &issued.bearer_token, "acct-recipient", "device-recipient", 3_000)
+            .unwrap();
+
+        let export = export_account_data_at(&root, 4_000).unwrap();
+        assert_eq!(export.devices.len(), 1);
+        assert_eq!(export.invitations.len(), 1);
+        assert_eq!(export.grants.len(), 1);
+        let serialized = serde_json::to_string(&export).unwrap();
+        assert!(!serialized.contains(&issuer.public_key));
+        assert!(!serialized.contains(&issued.bearer_token));
+        assert!(!serialized.contains(&issued.invitation.token_hash));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn deleting_project_access_revokes_every_grant_and_pending_invitation_for_that_project() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let issuer = complete_verified_identity(&root, &secrets, account("acct-owner"), "Owner", 1_000).unwrap();
+        let issued_a = issue_invitation(
+            &root, &issuer.device_id, "project-a", "acct-recipient-1", None, vec![SyncPermission::Read], vec![],
+            2_000, 10_000,
+        )
+        .unwrap();
+        redeem_invitation(&root, &issued_a.invitation.invitation_id, &issued_a.bearer_token, "acct-recipient-1", "device-1", 2_500)
+            .unwrap();
+        // A second, still-pending invitation to the same project, never redeemed.
+        issue_invitation(
+            &root, &issuer.device_id, "project-a", "acct-recipient-2", None, vec![SyncPermission::Read], vec![],
+            2_600, 10_000,
+        )
+        .unwrap();
+        // An unrelated project must be untouched.
+        let issued_b = issue_invitation(
+            &root, &issuer.device_id, "project-b", "acct-recipient-3", None, vec![SyncPermission::Read], vec![],
+            2_700, 10_000,
+        )
+        .unwrap();
+        redeem_invitation(&root, &issued_b.invitation.invitation_id, &issued_b.bearer_token, "acct-recipient-3", "device-3", 2_800)
+            .unwrap();
+
+        let affected = delete_project_access_at(&root, &issuer.device_id, "project-a", 5_000).unwrap();
+        assert_eq!(affected, 2); // one grant + one still-pending invitation
+
+        let document = load_at(&root).unwrap();
+        let project_a_grant = document.grants.iter().find(|g| g.project_id == "project-a").unwrap();
+        assert!(project_a_grant.revoked_at_ms.is_some());
+        let project_a_invitations: Vec<_> = document.invitations.iter().filter(|i| i.project_id == "project-a").collect();
+        assert_eq!(project_a_invitations.len(), 2);
+        // The already-redeemed invitation keeps its historical Redeemed state — it is not
+        // retroactively marked Revoked, only the grant it produced is. The still-pending one is
+        // the only invitation actually revoked by this call.
+        assert_eq!(
+            project_a_invitations.iter().filter(|i| i.state == InvitationState::Revoked).count(),
+            1
+        );
+        assert_eq!(
+            project_a_invitations.iter().filter(|i| i.state == InvitationState::Redeemed).count(),
+            1
+        );
+        let project_b_grant = document.grants.iter().find(|g| g.project_id == "project-b").unwrap();
+        assert!(project_b_grant.revoked_at_ms.is_none());
+
+        // Idempotent: nothing left to revoke.
+        assert_eq!(delete_project_access_at(&root, &issuer.device_id, "project-a", 6_000).unwrap(), 0);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn an_unknown_device_cannot_delete_project_access_and_a_project_with_no_access_is_a_safe_no_op() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let issuer = complete_verified_identity(&root, &secrets, account("acct-owner"), "Owner", 1_000).unwrap();
+        issue_invitation(
+            &root, &issuer.device_id, "project-a", "acct-recipient", None, vec![SyncPermission::Read], vec![],
+            2_000, 10_000,
+        )
+        .unwrap();
+
+        assert_eq!(
+            delete_project_access_at(&root, "device-unknown", "project-a", 3_000),
+            Err("actor_device_unknown".to_string())
+        );
+        // A project this account never issued anything for: the ownership check fails closed
+        // rather than silently succeeding with zero effect.
+        assert_eq!(
+            delete_project_access_at(&root, &issuer.device_id, "project-never-issued", 3_000),
+            Err("project_access_unavailable".to_string())
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

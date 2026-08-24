@@ -26,6 +26,7 @@ export type SyncSecuritySnapshot = {
     registeredAtMs: number
     lastVerifiedAtMs?: number
     revokedAtMs?: number
+    keyRotatedAtMs?: number
   }>
   localDeviceId: string | null
   invitations: Array<{
@@ -68,6 +69,13 @@ export type SyncDeviceRecord = SyncSecuritySnapshot['devices'][number]
 export async function syncSecuritySnapshot(): Promise<SyncSecuritySnapshot> {
   if (isTauriEnv()) return invoke<SyncSecuritySnapshot>('sync_security_snapshot')
   return webApiFetch<SyncSecuritySnapshot>('/api/sync/security')
+}
+
+export type LocalIdentity = { deviceId: string; accountRoute: string }
+
+export async function syncLocalIdentity(): Promise<LocalIdentity> {
+  if (isTauriEnv()) return invoke<LocalIdentity>('sync_local_identity')
+  return webApiFetch<LocalIdentity>('/api/sync/security/local-identity')
 }
 
 export async function syncApproveDevice(targetDeviceId: string): Promise<SyncDeviceRecord> {
@@ -196,5 +204,68 @@ export async function syncRevokeGrant(grantId: string): Promise<SyncGrantRecord>
   return webApiFetch<SyncGrantRecord>('/api/sync/security/grants/revoke', {
     method: 'POST',
     body: JSON.stringify({ grantId }),
+  })
+}
+
+/**
+ * Rotates the local device's Ed25519 identity and X25519 agreement keys together (Phase 12).
+ * Every peer that cached the old public key must re-authenticate against the new one — this call
+ * only updates local state, it does not itself notify any other device.
+ */
+export async function syncRotateDeviceKeys(): Promise<SyncDeviceRecord> {
+  if (isTauriEnv()) {
+    return invoke<SyncDeviceRecord>('sync_rotate_device_keys')
+  }
+  return webApiFetch<SyncDeviceRecord>('/api/sync/security/devices/rotate-keys', { method: 'POST' })
+}
+
+export type SyncAccountDataExport = {
+  exportedAtMs: number
+  account: SyncSecuritySnapshot['account']
+  devices: Array<{
+    deviceId: string
+    displayName: string
+    publicKeyFingerprint: string
+    trust: 'pending' | 'trusted' | 'revoked'
+    registeredAtMs: number
+    lastVerifiedAtMs?: number
+    revokedAtMs?: number
+    keyRotatedAtMs?: number
+  }>
+  invitations: Array<{
+    invitationId: string
+    projectId: string
+    recipientAccountId: string
+    state: 'created' | 'redeemed' | 'expired' | 'revoked'
+    createdAtMs: number
+    expiresAtMs: number
+  }>
+  grants: SyncGrantRecord[]
+}
+
+/**
+ * Redacted export of the local account's collaboration state — no raw key bytes, no invitation
+ * bearer/token-hash material, only identifiers, fingerprints, states, and timestamps. Intended
+ * for a user to review or archive before deleting their account (Phase 12).
+ */
+export async function syncExportAccountData(): Promise<SyncAccountDataExport> {
+  if (isTauriEnv()) {
+    return invoke<SyncAccountDataExport>('sync_export_account_data')
+  }
+  return webApiFetch<SyncAccountDataExport>('/api/sync/security/account/export')
+}
+
+/**
+ * Revokes every still-active grant and pending invitation for one project in a single call,
+ * rather than requiring the caller to revoke each one individually (Phase 12's "project-access
+ * deletion"). Returns the number of records changed; calling it again is a safe no-op.
+ */
+export async function syncDeleteProjectAccess(projectId: string): Promise<number> {
+  if (isTauriEnv()) {
+    return invoke<number>('sync_delete_project_access', { projectId })
+  }
+  return webApiFetch<number>('/api/sync/security/projects/delete-access', {
+    method: 'POST',
+    body: JSON.stringify({ projectId }),
   })
 }

@@ -341,6 +341,13 @@ pub fn apply_remote_operation_at(
     state.conflicts.push(conflict.clone());
     state.updated_at_ms = now_ms;
     save_at(data_root, &state)?;
+    let _ = crate::sync_access::record_at(
+        data_root,
+        crate::sync_access::AccessCategory::Collaboration,
+        crate::sync_access::AccessKind::SyncConflict,
+        &conflict.conflict_id,
+        now_ms,
+    );
     Ok(Err(conflict))
 }
 
@@ -721,6 +728,14 @@ mod tests {
         // Neither side's content_hash for this path silently changed to the remote's value.
         let current = current_revision(&state, "a.txt").unwrap();
         assert_eq!(current.content_hash, Some("h2-local".to_string()));
+
+        let records = crate::sync_access::list_at(&root, 4_000).unwrap();
+        let record = records
+            .iter()
+            .find(|record| record.kind == crate::sync_access::AccessKind::SyncConflict)
+            .unwrap();
+        assert_eq!(record.category, crate::sync_access::AccessCategory::Collaboration);
+        assert_eq!(record.subject_handle, conflict.conflict_id);
         fs::remove_dir_all(root).unwrap();
     }
 

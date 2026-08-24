@@ -12,6 +12,7 @@ const VIEW_LABELS = {
   workspace: 'Managing terminals',
   agentCanvas: 'Orchestrating AI agents',
   agentSandbox: 'Testing agent orchestration',
+  collaboration: 'Managing project collaboration',
 } as const
 
 export function useDiscordPresence() {

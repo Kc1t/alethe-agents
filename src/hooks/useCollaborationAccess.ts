@@ -24,6 +24,42 @@ function textFor(record: AccessRecord): { title: string; body: string } {
       body: t('collaboration.notification.connectionBody'),
     }
   }
+  if (record.kind === 'device_pending_approval') {
+    return {
+      title: t('collaboration.notification.devicePendingApprovalTitle'),
+      body: t('collaboration.notification.devicePendingApprovalBody'),
+    }
+  }
+  if (record.kind === 'invitation_redeemed') {
+    return {
+      title: t('collaboration.notification.invitationRedeemedTitle'),
+      body: t('collaboration.notification.invitationRedeemedBody'),
+    }
+  }
+  if (record.kind === 'sync_conflict') {
+    return {
+      title: t('collaboration.notification.syncConflictTitle'),
+      body: t('collaboration.notification.syncConflictBody'),
+    }
+  }
+  if (record.kind === 'task_assigned') {
+    return {
+      title: t('collaboration.notification.taskAssignedTitle'),
+      body: t('collaboration.notification.taskAssignedBody'),
+    }
+  }
+  if (record.kind === 'chat_mention') {
+    return {
+      title: t('collaboration.notification.chatMentionTitle'),
+      body: t('collaboration.notification.chatMentionBody'),
+    }
+  }
+  if (record.kind === 'transfer_failure') {
+    return {
+      title: t('collaboration.notification.transferFailureTitle'),
+      body: t('collaboration.notification.transferFailureBody'),
+    }
+  }
   return {
     title: t('collaboration.notification.providerTitle'),
     body: t('collaboration.notification.providerBody'),

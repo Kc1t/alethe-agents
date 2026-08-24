@@ -25,6 +25,21 @@ pub enum AccessKind {
     ConnectionCandidate,
     Revocation,
     ProviderAttention,
+    /// A new device registered under the local account and is awaiting explicit approval from an
+    /// already-trusted device (Phase 1, SYNC-INV-003).
+    DevicePendingApproval,
+    /// A locally-issued invitation was redeemed by its recipient.
+    InvitationRedeemed,
+    /// Continuous synchronization detected a diverged revision and recorded a `ConflictRecord`
+    /// instead of silently overwriting either side (Phase 7).
+    SyncConflict,
+    /// A task was assigned to one or more members (Phase 8).
+    TaskAssigned,
+    /// A chat message mentioned the current account (Phase 9).
+    ChatMention,
+    /// A staged transfer failed terminal verification (missing or corrupt chunk) and needs the
+    /// recipient's attention to re-request it (Phase 6).
+    TransferFailure,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

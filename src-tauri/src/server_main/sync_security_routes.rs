@@ -11,6 +11,7 @@ use super::{respond, AppError, ServerRuntime};
 pub fn router() -> Router {
     Router::new()
         .route("/api/sync/security", get(snapshot))
+        .route("/api/sync/security/local-identity", get(local_identity))
         .route("/api/sync/security/devices/approve", post(approve_device))
         .route("/api/sync/security/devices/reject", post(reject_device))
         .route("/api/sync/security/devices/rename", post(rename_device))
@@ -20,12 +21,24 @@ pub fn router() -> Router {
         .route("/api/sync/security/invitations/revoke", post(revoke_invitation))
         .route("/api/sync/security/invitations/redeem", post(redeem_invitation))
         .route("/api/sync/security/grants/revoke", post(revoke_grant))
+        .route("/api/sync/security/devices/rotate-keys", post(rotate_device_keys))
+        .route("/api/sync/security/account/export", get(export_account_data))
+        .route("/api/sync/security/projects/delete-access", post(delete_project_access))
         .route("/api/sync/security/capabilities", get(capabilities))
 }
 
 async fn snapshot(Extension(runtime): Extension<Arc<ServerRuntime>>) -> Response {
     match crate::sync_security::snapshot_at(runtime.data_root()) {
         Ok(snapshot) => Json(snapshot).into_response(),
+        Err(error) => {
+            AppError(axum::http::StatusCode::INTERNAL_SERVER_ERROR, error).into_response()
+        }
+    }
+}
+
+async fn local_identity(Extension(runtime): Extension<Arc<ServerRuntime>>) -> Response {
+    match crate::sync_security::local_identity_at(runtime.data_root()) {
+        Ok(identity) => Json(identity).into_response(),
         Err(error) => {
             AppError(axum::http::StatusCode::INTERNAL_SERVER_ERROR, error).into_response()
         }
@@ -300,6 +313,56 @@ async fn revoke_grant(
         tokio::task::spawn_blocking(move || {
             let actor = local_device_id(&data_root)?;
             crate::sync_security::revoke_grant_at(&data_root, &actor, &body.grant_id, now_ms())
+        })
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|result| result),
+    )
+}
+
+async fn rotate_device_keys(Extension(runtime): Extension<Arc<ServerRuntime>>) -> Response {
+    let data_root = runtime.data_root().to_path_buf();
+    respond(
+        tokio::task::spawn_blocking(move || {
+            let device_id = local_device_id(&data_root)?;
+            crate::sync_security::rotate_device_keys_at(
+                &data_root,
+                &crate::sync_security::PlatformDeviceSecretStore,
+                &device_id,
+                now_ms(),
+            )
+        })
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|result| result),
+    )
+}
+
+async fn export_account_data(Extension(runtime): Extension<Arc<ServerRuntime>>) -> Response {
+    let data_root = runtime.data_root().to_path_buf();
+    respond(
+        tokio::task::spawn_blocking(move || crate::sync_security::export_account_data_at(&data_root, now_ms()))
+            .await
+            .map_err(|error| error.to_string())
+            .and_then(|result| result),
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectIdBody {
+    project_id: String,
+}
+
+async fn delete_project_access(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<ProjectIdBody>,
+) -> Response {
+    let data_root = runtime.data_root().to_path_buf();
+    respond(
+        tokio::task::spawn_blocking(move || {
+            let actor = local_device_id(&data_root)?;
+            crate::sync_security::delete_project_access_at(&data_root, &actor, &body.project_id, now_ms())
         })
         .await
         .map_err(|error| error.to_string())

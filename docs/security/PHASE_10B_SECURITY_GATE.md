@@ -2,8 +2,9 @@
 
 ## Status
 
-The isolated adapter and provider-neutral client are implemented locally. The invitation-domain
-bridge, staging evidence, and production authorization remain pending.
+The isolated adapter, provider-neutral client, and the invitation-domain bridge (Core + Tauri
+commands + Web routes) are implemented and tested locally. Staging evidence and production
+authorization remain pending.
 
 The repository now contains both sides of the versioned rendezvous boundary:
 
@@ -14,6 +15,28 @@ The repository now contains both sides of the versioned rendezvous boundary:
   adapters.
 - `src/components/modals/preferences/CollaborationSettings.tsx`: explicit local-only, managed, and
   custom-provider modes with the provider-visible metadata disclosed before activation.
+- `src-tauri/src/sync_invitation_bridge.rs` (new): converts an already-issued local invitation into
+  an encrypted envelope addressed to a specific recipient device's X25519 public key
+  (`prepare_remote_invitation_envelope`), and converts a decrypted delivery back into a call to the
+  existing `redeem_invitation` (`consume_remote_invitation_delivery`) — the exact gap this gate
+  previously flagged as pending item 3. Also verifies a discovered device's key binding
+  (`verify_discovered_device_agreement_key`), closing the "which recipient device/key" gap: the
+  Cloudflare Worker's `discover` handler (`services/rendezvous-cloudflare/src/index.ts`) already
+  returned each device's `agreementPublicKey` plus its Ed25519 binding signature, but nothing
+  checked that signature before this — an unverified discovered key would have let a compromised or
+  malicious rendezvous service substitute its own X25519 key for a device's real one. Uses a new
+  generic ECIES-style sealed-envelope primitive added to `sync_crypto.rs`
+  (`seal_for_recipient`/`open_sealed`, single-shot, arbitrary-length payload, distinct from the
+  two-party session-key derivation already used by Phase 4's transport) and a new
+  `load_device_agreement_secret` reader in `sync_security.rs` (mirrors `load_device_signing_key`,
+  reads the X25519 private key from the OS keyring into process memory only, never returned through
+  IPC). Exposed as `sync_verify_discovered_device`/`sync_prepare_remote_invitation`/
+  `sync_consume_remote_invitation` Tauri commands and
+  `POST /api/sync/invitations/bridge/verify-device`/`POST /api/sync/invitations/bridge/prepare`/
+  `POST /api/sync/invitations/bridge/consume` Web routes, plus TS wrappers
+  (`verifyDiscoveredDevice`/`prepareRemoteInvitation`/`consumeRemoteInvitation`) and
+  previously-missing wrappers for the raw frame send/drain commands
+  (`sendRendezvousFrame`/`drainRendezvousEvents`) in `src/lib/api/syncRendezvous.ts`.
 
 No production deployment was performed. The managed endpoint is injected with
 `ALETHE_RENDEZVOUS_ENDPOINT` at build time and fails closed when absent. Cloudflare API credentials
@@ -92,9 +115,16 @@ The following cannot be claimed from a local repository and remain mandatory:
 
 1. Deploy a separate staging Worker/Durable Object namespace with operator credentials.
 2. Test two real machines/accounts through different NATs and changed IPs.
-3. Complete encrypted invitation creation/consumption wiring from the existing invitation domain;
-   the service can route ciphertext, but the current client does not yet convert a remote delivery
-   into an accepted project grant.
+3. `[x]` Locally complete: encrypted invitation creation/consumption wiring exists and is tested
+   (`sync_invitation_bridge.rs` — round trip, wrong-recipient-key rejection, tampered-ciphertext
+   rejection, double-redeem rejection). Device/key discovery is also now wired and verified:
+   `verify_discovered_device_agreement_key` checks the Ed25519 signature binding a discovered
+   device's advertised X25519 key to its identity (ADR-0003) before that key is ever handed to
+   `prepare_remote_invitation_envelope` — tested for the accept case, a server attempting to
+   substitute its own key (rejected), and a signature replayed under a different `device_id`
+   (rejected). What remains genuinely pending is the UI flow that calls `{ type: "discover" }`,
+   lists devices, and lets the user pick one — the Core mechanism and command/route surface it
+   will call are now real.
 4. Exercise online/offline/expired/revoked/duplicate invitation delivery and reconnect.
 5. Capture Worker storage, logs, metrics, and network traffic with forbidden sentinels and prove no
    forbidden field crosses the boundary.

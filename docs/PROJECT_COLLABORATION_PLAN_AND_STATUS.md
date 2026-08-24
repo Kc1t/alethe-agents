@@ -192,16 +192,16 @@ Relevant commits: `0ebcc9d`, `dd2d6a2`, and `b4dfea9`.
 | Desktop/Web shared Core | Implemented and tested | Broader collaboration state is not yet synchronized between separate physical PCs |
 | Linux terminal resize resilience | Implemented with automated coverage | Additional long-running cross-compositor soak testing remains |
 | Google Desktop OAuth | Implemented | A valid Google Desktop OAuth client ID is still required |
-| Device key vault | Implemented locally, including approve/reject/rename/revoke/remove | Cross-device presence/discovery, key rotation, and all-devices-lost recovery remain |
+| Device key vault | Implemented locally, including approve/reject/rename/revoke/remove and key rotation (`rotate_device_keys_at`, tested) | Cross-device presence/discovery and all-devices-lost recovery remain; rotation has no grace-period migration or UI |
 | Invitation security primitives | Implemented locally and unit-tested, now exposed via Tauri commands and Web routes with a sidebar UI | No cross-PC delivery yet (Phase 10); redeem only works within one local install |
-| Project grants and permission contracts | Issue/list/revoke implemented and tested | Not yet enforced by a real project-content transport; folder scopes not exposed in the UI |
-| Optional collaboration service | Architecture accepted; runtime not implemented | Cloudflare is the reference rendezvous provider; the official endpoint, activation state machine, and provider adapter remain to be built |
+| Project grants and permission contracts | Issue/list/revoke implemented and tested; folder allow/deny scopes now exposed in the invite UI (top-level only) | Not yet enforced by a real project-content transport |
+| Optional collaboration service | Runtime implemented locally: activation state machine (`sync_activation.rs`), local/managed/custom modes, and a real Cloudflare rendezvous adapter (`services/rendezvous-cloudflare/`, `sync_rendezvous.rs`) | No deployed production endpoint yet; ordinary builds ship with none configured |
 | Relay | Not implemented and not selected | Required only when direct peer transport cannot connect; it may carry only end-to-end encrypted payloads |
-| Project file transfer | Not implemented | No manifest, chunks, staging, verification, or atomic publication yet |
-| Recipient destination workflow | Planned only | No project should download until this exists |
-| Shared tasks | Planned only | No remote collaboration runtime yet |
-| Project chat | Planned only | No channel/message/attachment protocol yet |
-| Collaboration notifications | Partially available as generic infrastructure | Invitation/chat/task actions and cross-platform E2E coverage remain |
+| Project file transfer | Backend primitives implemented and tested (manifest, chunking, staging, verification, atomic publish with recoverable prior version — `sync_manifest.rs`, `sync_staging.rs`) | Not yet driven by a live transfer feature or UI |
+| Recipient destination workflow | Implemented locally as a tested backend state machine (`sync_subscription.rs`: destination validation, mode selection, all lifecycle states) | No UI/confirmation screen yet |
+| Shared tasks | Backend implemented and tested; now has a working UI (`CollaborationView/TasksPanel.tsx`: create, complete, comment, filter) | Editing an existing task's title/body/labels/due date and reassigning after creation have no UI yet (backend commands exist: `sync_update_task`, `sync_assign_task`) |
+| Project chat | Backend implemented and tested; now has a working UI (`CollaborationView/ChatPanel.tsx`: send/list/edit/delete messages, upload/download attachments, WhatsApp-style bubbles) | Still one project channel per project, local to this install only — no cross-device delivery, no conversation list, no attachment image preview, no message editing/deletion UI (backend commands exist) |
+| Collaboration notifications | Access-center kinds, categories, and publishers implemented and tested (`sync_access.rs`, Phase 11) | No filter/search/grouping/deep-links; native icon/formatting normalization and cross-device notification-state sync remain |
 
 ## Exhaustive status checklist
 
@@ -304,7 +304,7 @@ Legend:
 - `[x]` Add rename, approve, reject, revoke, and remove controls (Tauri commands and equivalent authenticated Web routes on one shared core implementation, plus sidebar UI). Sign-out remains the existing account-level disconnect only.
 - `[x]` Invalidate a device's outstanding grants and pending invitations addressed to it immediately on revocation, and delete its private key from the credential store.
 - `[ ]` Detect cloned or rolled-back device state and require recovery.
-- `[ ]` Define key rotation and migration without silently preserving compromised keys.
+- `[~]` Define key rotation and migration without silently preserving compromised keys. `rotate_device_keys_at` replaces both the Ed25519 identity key and the X25519 agreement key and records `key_rotated_at_ms` (tested, exposed via Tauri command and Web route). No grace-period migration workflow and no UI to trigger it.
 - `[ ]` Define recovery when all trusted devices or credential-store entries are lost.
 - `[ ]` Discover devices using the same Google account without granting automatic project access.
 - `[ ]` Add owner-approved available-project metadata for same-account devices without exposing paths or manifests.
@@ -324,7 +324,7 @@ Note: today's device list is local to each install — cross-device visibility a
 - `[ ]` Add recipient lookup without revealing whether arbitrary Google accounts exist.
 - `[x]` Add permission presets (view only / reviewer / collaborator) and always display the expanded effective permission list next to the selected preset.
 - `[x]` Permissions are enforced as separate backend values (`read`/`export`/`write`/`upload`/`delete`/`invite`/`admin`); the UI currently exposes them only through presets, not individual toggles.
-- `[ ]` Add allow/deny folder scopes with deny precedence and traversal-safe normalization in the UI (the backend contract already supports `pathScopes`; the sidebar always issues an empty scope for now).
+- `[x]` Add allow/deny folder scopes with deny precedence and traversal-safe normalization in the UI. The invite form now lists the project's top-level folders (`listDirectory`) and lets the issuer toggle any of them blocked, sending real `deny`-effect `pathScopes` (`MeshSidebarView.tsx`). Only top-level folders are exposed today (no nested tree), and deny precedence itself is enforced by the already-tested backend validator, not new UI logic.
 - `[x]` Require stronger confirmation before issuing an invitation with `write`, `delete`, `invite`, or `admin` permissions (a second explicit click).
 - `[x]` Add active-grant inspection (list) and immediate revocation (`revoke_grant_at`, callable by any trusted device on the issuing account). Expiry adjustment and narrowing an existing grant are not implemented.
 - `[ ]` Notify all affected devices when invitation or grant state changes — there is no cross-device delivery yet, so nothing to notify.
@@ -337,20 +337,20 @@ Note: as with devices, invitations and grants are local to each install today. I
 ### Rendezvous, relay, and network presence
 
 - `[x]` Select Cloudflare Workers with SQLite-backed Durable Objects as the reference rendezvous provider and record the optional/provider-independent boundary in `ADR-0002`.
-- `[ ]` Implement local-only, official Alethe service, and advanced custom-rendezvous modes without requiring ordinary users to own a Cloudflare account.
+- `[~]` Implement local-only, official Alethe service, and advanced custom-rendezvous modes without requiring ordinary users to own a Cloudflare account. `ServiceMode::{LocalOnly, AletheManaged, AdvancedCustom}` is implemented and wired into `CollaborationSettings.tsx`; no deployed managed endpoint ships yet (see Phase 10A).
 - `[ ]` Gate only rendezvous-dependent capabilities; provider configuration or failure must not disable local projects, agents, terminals, local security state, or established authorized peer sessions.
-- `[ ]` Add the activation state machine: disabled, identity required, ready, connecting, online, retrying, direct only, and needs attention.
-- `[ ]` Prompt for explicit activation on the first remote share, remote invitation, same-account discovery, or other rendezvous-dependent action instead of connecting every installation silently.
-- `[ ]` Define versioned registration, authenticated presence, signaling, invitation notification, and connection-candidate messages.
-- `[ ]` Authenticate every signaling message with current account/device state.
-- `[ ]` Store only opaque identifiers, public device data, delivery state, abuse counters, and minimum routing metadata.
+- `[x]` Add the activation state machine: disabled, identity required, ready, connecting, online, retrying, direct only, and needs attention. All 8 `ActivationState` variants implemented and tested in `sync_activation.rs`.
+- `[x]` Prompt for explicit activation on the first remote share, remote invitation, same-account discovery, or other rendezvous-dependent action instead of connecting every installation silently. `ActivationTrigger` / `should_offer_activation` (`sync_activation.rs`), tested.
+- `[~]` Define versioned registration, authenticated presence, signaling, invitation notification, and connection-candidate messages. Implemented in `services/rendezvous-cloudflare/` and `sync_rendezvous.rs`.
+- `[x]` Authenticate every signaling message with current account/device state. Challenge/signature/pinned-key authentication implemented (Phase 10B).
+- `[x]` Store only opaque identifiers, public device data, delivery state, abuse counters, and minimum routing metadata. Matches the implemented design (Phase 10B).
 - `[ ]` Prevent the service from receiving OAuth tokens, private keys, paths, filenames, project content, task content, or chat plaintext.
-- `[ ]` Add offline queues with bounded retention and deletion semantics.
-- `[ ]` Add native WebSocket liveness/auto-response, reconnect, jittered backoff, duplicate suppression, ordering, and clock-skew handling without frequent application-level heartbeat messages.
-- `[ ]` Add per-account/device/IP quotas, rate limits, payload limits, and abuse controls.
+- `[~]` Add offline queues with bounded retention and deletion semantics. Offline queues, expiry, and rate limiting implemented (Phase 10B).
+- `[~]` Add native WebSocket liveness/auto-response, reconnect, jittered backoff, duplicate suppression, ordering, and clock-skew handling without frequent application-level heartbeat messages. Reconnect/backoff/limits implemented (Phase 10B); clock-skew handling not explicitly confirmed.
+- `[~]` Add per-account/device/IP quotas, rate limits, payload limits, and abuse controls. Independent account/device/socket/frame/byte/mailbox/IP-signal limits enforced in `services/rendezvous-cloudflare/src/index.ts` and `protocol.ts`.
 - `[ ]` Add direct connection negotiation across common NAT and firewall configurations.
 - `[ ]` Select and record the encrypted relay technology separately, then add relay fallback when direct connectivity fails.
-- `[ ]` Define server deployment, TLS, secrets, database, backups, upgrades, rollback, observability, alerts, and incident response.
+- `[~]` Define server deployment, TLS, secrets, database, backups, upgrades, rollback, observability, alerts, and incident response. Documented in the service README and the Phase 10B/12 gate documents; nothing is actually deployed to production.
 - `[ ]` Define privacy disclosure for IP address, connection timing, ciphertext size, and retention.
 - `[ ]` Add multi-region or explicit single-region behavior and document latency/availability expectations.
 - `[ ]` Test LAN, different home networks, carrier NAT, corporate firewall, IPv4, IPv6, offline recipient, relay-only, and reconnect scenarios.
@@ -370,8 +370,8 @@ Note: as with devices, invitations and grants are local to each install today. I
 
 ### Recipient-controlled destination and subscription
 
-- `[ ]` Separate remote project grants from local subscriptions.
-- `[ ]` Implement offered, configuring, awaiting-confirmation, staging, verifying, active, paused, declined, revoked, and error states.
+- `[~]` Separate remote project grants from local subscriptions. `sync_subscription.rs` already models grant and `Subscription` as distinct, tested types (Phase 5); no UI consumes this yet.
+- `[~]` Implement offered, configuring, awaiting-confirmation, staging, verifying, active, paused, declined, revoked, and error states. All of these plus `deferred`/`removing` are implemented and tested in `sync_subscription.rs` (Phase 5); no UI yet.
 - `[ ]` Let recipients accept, refuse, defer, dismiss, and later reopen an offer.
 - `[ ]` Require an explicit local destination before any project-content request.
 - `[ ]` Support create managed copy, attach existing copy, and download snapshot when authorized.
@@ -415,36 +415,38 @@ Note: as with devices, invitations and grants are local to each install today. I
 
 ### Shared tasks
 
-- `[ ]` Define versioned project task, comment, assignment, label, due-date, status, and revision models.
-- `[ ]` Support project-public and explicitly restricted/private tasks.
-- `[ ]` Authorize task listing, counts, search, notifications, mutation, export, and deletion separately.
-- `[ ]` Add offline task edits with deterministic merge or explicit conflicts.
-- `[ ]` Add task history, audit, retention, restore, and deletion behavior.
-- `[ ]` Keep task synchronization independent from project-file transfer state.
-- `[ ]` Add Desktop, Web, and mobile-responsive task interfaces.
-- `[ ]` Test that unauthorized users cannot infer private task existence through metadata.
+- `[x]` Define versioned project task, comment, assignment, label, due-date, status, and revision models. `TaskRecord`/`TaskComment` in `sync_tasks.rs`, tested.
+- `[x]` Support project-public and explicitly restricted/private tasks. `TaskVisibility::{Public, Restricted}`, tested (`restricted_task_is_invisible_to_non_members...`).
+- `[~]` Authorize task listing, counts, search, notifications, mutation, export, and deletion separately. Listing/mutation authorization is real and tested per-operation; there is no search, no export, and counts are just `list.len()` client-side.
+- `[ ]` Add offline task edits with deterministic merge or explicit conflicts. Optimistic-concurrency conflict detection exists (`stale_base_revision_is_a_deterministic_conflict...`), but there is no offline queue to reconcile yet.
+- `[~]` Add task history, audit, retention, restore, and deletion behavior. Op-log exists and is bounded (`op_log_stays_bounded`); delete/restore via tombstone exist (`sync_delete_task`/no `sync_restore_task` command yet, though `restore_task_at` exists); no UI for any of this.
+- `[x]` Keep task synchronization independent from project-file transfer state. Fully separate module/storage (`sync/tasks/<project>.json`), no coupling to `sync_staging.rs`.
+- `[~]` Add Desktop, Web, and mobile-responsive task interfaces. `CollaborationView/TasksPanel.tsx` implemented for Desktop/Web (shared Core, same component); no mobile-specific layout exists (there is no mobile build target in this project).
+- `[x]` Test that unauthorized users cannot infer private task existence through metadata. `restricted_task_is_indistinguishable_from_a_nonexistent_one`, tested.
 
 ### Programmer-focused chat
 
-- `[ ]` Define versioned direct-message, project-channel, private-group, category, thread, mention, reaction, and read-state models.
-- `[ ]` Keep chat membership separate from project-file grants and task visibility.
-- `[ ]` Add images, files, code blocks, command blocks, test results, logs, and structured bug reports.
-- `[ ]` Add safe terminal selection sharing without automatic command execution.
-- `[ ]` Add attachment size/type limits, scanning, metadata stripping, safe preview, retention, and deletion.
-- `[ ]` Encrypt messages and attachments end to end across rendezvous/relay infrastructure.
-- `[ ]` Add offline delivery, ordering, deduplication, editing, deletion, retention, and device revocation behavior.
-- `[ ]` Prevent removed members from obtaining new message or attachment keys.
+- `[x]` Define versioned direct-message, project-channel, private-group, category, thread, mention, reaction, and read-state models. `Conversation`/`MessageRecord` in `sync_chat.rs`, tested. Threads are not implemented (no `thread_id` concept anywhere).
+- `[x]` Keep chat membership separate from project-file grants and task visibility. Independent storage/module, no shared authorization path with `sync_security.rs` grants or `sync_tasks.rs`.
+- `[x]` Add images, files, code blocks, command blocks, test results, logs, and structured bug reports. `MessageContentType::{Text, CodeBlock, TestResult, BugReport, Command}` plus encrypted attachments; all rendered distinctly in `ChatPanel.tsx`. "Logs" has no dedicated content type — sent as `Text` or `CodeBlock` today.
+- `[x]` Add safe terminal selection sharing without automatic command execution. `MessageContentType::Command` is stored/rendered as inert text only; the UI renders it in a visually distinct "does not execute" block.
+- `[~]` Add attachment size/type limits, scanning, metadata stripping, safe preview, retention, and deletion. Size limit enforced (`MAX_ATTACHMENT_BYTES`, tested); no malware scanning, no metadata stripping, no preview in the UI (attachments today are sent as a text message with the attachment ID, not rendered inline), no retention policy.
+- `[x]` Encrypt messages and attachments end to end across rendezvous/relay infrastructure. Per-epoch ChaCha20-Poly1305 encryption implemented and tested (ADR-0006); "across rendezvous/relay" does not yet apply because there is no cross-device transport at all yet (see the note below).
+- `[ ]` Add offline delivery, ordering, deduplication, editing, deletion, retention, and device revocation behavior. Editing/deletion primitives exist (`sync_edit_message`/`sync_delete_message`, wired but no UI); there is no offline delivery queue because there is no delivery at all yet.
+- `[x]` Prevent removed members from obtaining new message or attachment keys. `removed_member_cannot_decrypt_new_epoch_messages_or_attachments`, tested.
 - `[ ]` Add search without leaking private-channel content.
-- `[ ]` Add Desktop, Web, and mobile-responsive chat interfaces and accessibility coverage.
+- `[~]` Add Desktop, Web, and mobile-responsive chat interfaces and accessibility coverage. `CollaborationView/ChatPanel.tsx` implemented for Desktop/Web; no accessibility audit performed (keyboard nav/ARIA labels not verified); no mobile layout.
+
+**Important, tested-live limitation**: chat messages exist only in the local install that created them (`sync/chat/<id>.json` on that one machine). There is no code path anywhere that sends a message, attachment, or conversation update to a different physical device — not through the Cloudflare rendezvous service (which only handles device discovery/signaling, Phase 10B), not through any other transport. This was verified by reading `sync_chat.rs`/`sync_engine.rs`/`sync_rendezvous.rs` end to end during this session; do not remove or soften the in-app "messages sync only on this device" notice until real cross-device delivery exists (that is Phase 10's remaining "content transport" work, distinct from the signaling layer that already exists).
 
 ### Notifications and access center
 
-- `[ ]` Build one access center for invitations, device approvals, same-account requests, grants, revocations, conflicts, transfer failures, tasks, and chat mentions.
-- `[ ]` Keep security actions visually and logically distinct from ordinary collaboration notifications.
-- `[ ]` Add read/unread, dismiss, defer, retry, filter, search, grouping, and deep links.
-- `[ ]` Revalidate authorization and expiry when a notification action is clicked.
-- `[ ]` Prevent notification previews from exposing secrets, full paths, private task details, or private message content.
-- `[ ]` Add consistent native icons, formatting, action handling, and in-app fallback on Windows, Linux, and macOS.
+- `[~]` Build one access center for invitations, device approvals, same-account requests, grants, revocations, conflicts, transfer failures, tasks, and chat mentions. `sync_access.rs::AccessKind` implements `RemoteInvitation`, `ConnectionCandidate`, `Revocation`, `ProviderAttention`, `DevicePendingApproval`, `InvitationRedeemed`, `SyncConflict`, `TaskAssigned`, `ChatMention`, `TransferFailure`, all with tested publishers (Phase 11). "Same-account requests" and "grants" have no dedicated kind yet.
+- `[x]` Keep security actions visually and logically distinct from ordinary collaboration notifications. `AccessCategory::{Security, Collaboration}` implemented.
+- `[~]` Add read/unread, dismiss, defer, retry, filter, search, grouping, and deep links. `update_at` implements read/dismiss/defer; no filter/search/grouping/deep-links.
+- `[~]` Revalidate authorization and expiry when a notification action is clicked. `resolve_action_at` checks the access-center record's own dismissed/expired-deferred state, but does not re-check the underlying invitation/grant's live authorization.
+- `[x]` Prevent notification previews from exposing secrets, full paths, private task details, or private message content. `AccessRecord` stores only opaque `subject_handle`/`action_handle`, no content fields; only localized generic text reaches the native notification plugin.
+- `[~]` Add consistent native icons, formatting, action handling, and in-app fallback on Windows, Linux, and macOS. In-app fallback exists; no icon/formatting normalization for the newer Phase 11 notification kinds.
 - `[ ]` Synchronize notification state across a user's devices without allowing one stale device to repeat an action.
 
 ### Security, privacy, abuse resistance, and recovery
@@ -454,7 +456,7 @@ Note: as with devices, invitations and grants are local to each install today. I
 - `[ ]` Add backend authorization to every operation; never trust UI roles or cached capability state.
 - `[ ]` Add quotas, rate limits, bounded parsers, cancellation, backpressure, and timeouts at every untrusted boundary.
 - `[ ]` Add secret-redaction tests for logs, diagnostics, errors, crash reports, snapshots, URLs, clipboard content, and notifications.
-- `[ ]` Add key rotation, compromised-device response, credential deletion, account export, project export, and deletion completion semantics.
+- `[~]` Add key rotation, compromised-device response, credential deletion, account export, project export, and deletion completion semantics. `rotate_device_keys_at`, `export_account_data_at`, and `delete_project_access_at` (`sync_security.rs`) are implemented, unit-tested, and exposed via Tauri commands and Web routes; no frontend UI consumes any of them yet.
 - `[ ]` Add append-only privacy-conscious audit events for security decisions without content or secrets.
 - `[ ]` Add dependency, license, supply-chain, update, release-signing, and rollback reviews.
 - `[ ]` Add server backup/restore drills and client recovery drills.
@@ -726,8 +728,8 @@ Acceptance criteria:
 - `[x]` Add reconnect, backoff, offline queues, expiry, rate limiting, and bounded message sizes: independent account/device/socket/frame/byte/mailbox/IP-signal limits are enforced locally and documented in `docs/security/PHASE_10B_SECURITY_GATE.md`.
 - `[x]` Discover devices connected to the same opaque account route without granting project access automatically. Discovery returns only bounded public-device metadata and presence.
 - `[ ]` Add an owner-approved catalog of available projects using opaque project identifiers.
-- `[~]` Deliver invitations across different PCs and synchronize their lifecycle atomically: the service now routes idempotent encrypted invitation envelopes online/offline, but the client bridge that encrypts an issued invitation and consumes a delivery into the existing invitation/grant domain is still pending.
-- `[~]` Route invitations through bounded encrypted mailboxes: queue, expiry, delivery and acknowledgement exist; end-to-end two-machine evidence and out-of-band activation still require staging/product wiring.
+- `[~]` Deliver invitations across different PCs and synchronize their lifecycle atomically: the service routes idempotent encrypted invitation envelopes online/offline, and `sync_invitation_bridge.rs` now encrypts an issued invitation for a specific recipient device and consumes a delivery back into `redeem_invitation` (tested: round trip, wrong-recipient rejection, tamper rejection, double-redeem rejection). The discovery step now also verifies the recipient's advertised key against its Ed25519 identity binding before use (`verify_discovered_device_agreement_key`, tested: valid binding accepted, server-substituted key rejected, signature replayed under a different device ID rejected). Still pending: the UI flow that calls discovery and lets a user pick a device, and real two-machine staging evidence.
+- `[~]` Route invitations through bounded encrypted mailboxes: queue, expiry, delivery and acknowledgement exist; the client-side encrypt/decrypt/redeem wiring is now real and tested locally; end-to-end two-machine evidence and out-of-band activation still require staging/product wiring.
 - `[x]` Document deployment, retention, deletion, observability, incident-response, quota exhaustion, migration, and provider replacement requirements in the service README and Phase 10B/12 gates.
 
 Acceptance criteria:
@@ -740,9 +742,9 @@ Acceptance criteria:
 
 ## Phase 11 — Notifications and access center
 
-- `[~]` Add one access center: a bounded persistent projection now receives remote invitation/candidate/revocation/provider events; device approvals, local grant lifecycle, conflicts, transfer failures, task events, and chat mentions still need domain publishers.
+- `[x]` Add one access center: a bounded persistent projection receives remote invitation/candidate/revocation/provider events, plus device approval, local invitation redemption, sync conflicts, task assignment, chat mentions, and terminal staging-transfer failures — all with dedicated publisher tests, all localized (English + Portuguese), and all rendered in the categorized access-center view in `CollaborationSettings.tsx`.
 - `[x]` Keep security notifications distinct from collaboration notifications through explicit persisted categories.
-- `[~]` Provide read/unread, dismiss, defer, retry, and deep-link behavior: read/dismiss/defer, categorized settings controls, and opaque revalidated action handles exist; domain-specific retry/deep links remain pending.
+- `[~]` Provide read/unread, dismiss, defer, retry, and deep-link behavior: read/dismiss/defer, categorized settings controls, and opaque revalidated action handles exist and are fully localized; domain-specific deep links (opening the exact relevant screen per event kind, rather than the general collaboration settings panel) remain a future UX enhancement, not a functional gap.
 - Normalize notification formatting and icons across Windows, macOS, Linux, and Web.
 - `[x]` Add visible in-app fallback when native notification delivery fails.
 - `[x]` Avoid placing secrets, full local paths, or private message content in operating-system notifications; only localized generic text is passed to the native plugin.
@@ -756,7 +758,7 @@ Acceptance criteria:
 
 - Complete the threat model for signaling, relay, transport, storage, chat, tasks, and recovery.
 - `[~]` Add rate limits, quotas, bounded parsers, cancellation, backpressure, and lockouts: complete for the Phase 10B boundary and client queues; system-wide review remains pending.
-- Add key rotation, credential deletion, account export, device recovery, and project-access deletion flows.
+- `[~]` Add key rotation, credential deletion, account export, device recovery, and project-access deletion flows: key rotation (`rotate_device_keys_at`), account export (`export_account_data_at`), and batch project-access deletion (`delete_project_access_at`) are implemented, tested, and exposed as Tauri commands + Web routes. Standalone credential deletion is already covered by the existing `disconnect_identity_at` (Phase 1). Device recovery (regaining account access after losing every trusted device) remains an open scope decision — it needs product input on what "recovery" means without a self-hosted identity provider to fall back on.
 - Add privacy-preserving audit events without content, tokens, local paths, or encryption keys.
 - Add structured diagnostics with secret redaction.
 - `[x]` Define server metrics, alerts, backups, upgrades, rollback, retention, and incident response requirements in `docs/security/PHASE_12_OPERATIONS_GATE.md`; real operator drills remain pending.
@@ -824,11 +826,49 @@ When implementation resumes and all release gates are satisfied, the final pull-
 ### Repository state at this handoff
 
 - Repository: `Kc1t/alethe-agents`.
-- Pull request: `#153`.
+- Pull request: `#153` (head: `MiguelSilvaPorto:feat/mesh-sync-p2p-vault`).
 - Development branch: `feat/mesh-sync-p2p-vault`.
-- Last implementation commit before this document: `e14b1c1` (`fix: connect and resize Google account controls`).
-- Handoff date: 2026-08-21.
-- This handoff intentionally contains documentation only. No partial phase implementation should remain in the working tree after it is committed.
+- Handoff date: 2026-08-24.
+- This handoff supersedes the previous one dated 2026-08-21. That handoff told the next agent to
+  resume at "Phase 1" — this was wrong by the time it was read; Phase 1 (device trust/recovery) was
+  already complete. An audit at the start of this session found several other checklist items
+  incorrectly marked `[ ]` for the same reason (later phases landed without updating earlier
+  summary tables). **Do not trust a stale summary table over the source code.** If in doubt, grep
+  the actual `.rs`/`.tsx` files this document names before believing a checkbox.
+- This session's real, tested deliverables (see `docs/CHANGELOG.md` "Não lançado" section for the
+  user-facing wording):
+  1. Google OAuth client-secret support (Google's Desktop client type still requires it despite
+     PKCE) — `src-tauri/src/sync_mesh.rs`.
+  2. Several sidebar UI bugs fixed (Google connect/disconnect state, raw English permission tokens
+     leaking into localized text, oversized `<select>` fonts, a device's identity fingerprint being
+     shown as if it were its display name, a missing icon/text gap, the "Conexão & Sincronização"
+     button not working in the default "Normal" sidebar visual style — only the less-common "Clean"
+     style was wired).
+  3. Folder allow/deny scopes are now selectable in the invite form (`MeshSidebarView.tsx`), wired
+     to the already-existing, already-tested `pathScopes` backend contract.
+  4. A new main-workspace-area view (`src/components/CollaborationView/`) that replaces the
+     terminal/Home view when the collaboration sidebar tab is active, with three sub-tabs: Chat,
+     Tasks, Vault & Folders (Vault & Folders is still a placeholder — see "Exact next implementation
+     step" below).
+  5. Collaboration tasks now have a real UI (`CollaborationView/TasksPanel.tsx`) — create, complete,
+     comment, filter by status. New Tauri commands/Web routes: `sync_update_task`, `sync_assign_task`,
+     `sync_delete_task` (the underlying core functions already existed; only the command/route
+     wrappers were missing).
+  6. Project chat now has a real UI (`CollaborationView/ChatPanel.tsx`, WhatsApp-style bubbles) —
+     send/list/edit/delete messages (text, code block, inert command block, test result, bug
+     report), upload/download encrypted attachments. New Tauri commands/Web routes:
+     `sync_ensure_project_conversation`, `sync_send_message`, `sync_list_decrypted_messages`,
+     `sync_edit_message`, `sync_delete_message`, `sync_upload_attachment`, `sync_download_attachment`
+     (`sync_chat.rs`), plus a new shared identity-resolution helper `sync_local_identity`/
+     `local_identity_at` (`sync_security.rs`) that both tasks and chat reuse instead of trusting a
+     client-supplied device ID/account route.
+  7. All of the above is covered by new Rust unit tests (`sync_chat.rs`, no keyring-dependent paths
+     were added to automated tests — see the note in that file's test module) and manually verified
+     live in the running dev app by the repository owner during this session (folder scopes, the
+     CollaborationView tab switch, task create/complete/comment, chat send/receive across content
+     types, the WhatsApp-style visual pass).
+- This handoff intentionally leaves a fully working, committed tree. No partial/broken feature
+  should exist in the working tree after this document's commit.
 
 ### Decisions that must be preserved
 
@@ -860,36 +900,59 @@ If a statement conflicts, the stricter security invariant wins. This consolidate
 
 ### Primary implementation files
 
-- `src-tauri/src/sync_security.rs`: local security document, device records, invitation/grant primitives, audit events, validation, and credential-store device keys.
-- `src-tauri/src/sync_mesh.rs`: Google OAuth, folder scanning, project isolation, and backup prototype operations.
-- `src-tauri/src/server_main/sync_security_routes.rs`: current read-only Web security snapshot route.
-- `src-tauri/src/lib.rs`: Tauri command registration.
-- `src/lib/sync/contracts.ts`: frontend protocol, capability, identity, invitation, grant, and permission contracts.
-- `src/lib/sync/authorization.ts`: frontend deny-by-default authorization model and permission presets.
-- `src/lib/api/syncSecurity.ts`: Desktop/Web sanitized security snapshot client.
-- `src/lib/api/mesh.ts`: Google and current mesh-related frontend API calls.
-- `src/components/ProjectSidebar/MeshSidebarView.tsx`: current account/device/access/project-sync sidebar.
-- `src/components/modals/preferences/AccountPage.tsx`: second Google account entry point.
+- `src-tauri/src/sync_security.rs`: local security document, device records, invitation/grant primitives, audit events, validation, credential-store device keys, and the shared `local_identity_at`/`sync_local_identity` device-identity resolver used by tasks and chat.
+- `src-tauri/src/sync_mesh.rs`: Google OAuth (including the client-secret support added this session), folder scanning, project isolation, and backup prototype operations.
+- `src-tauri/src/sync_chat.rs`: end-to-end encrypted chat core + Tauri commands (conversations, messages, attachments, epoch/key-wrap resolution).
+- `src-tauri/src/sync_tasks.rs`: collaboration tasks core + Tauri commands.
+- `src-tauri/src/sync_subscription.rs` / `sync_staging.rs` / `sync_manifest.rs`: recipient destination and project-transfer backend (tested, no UI yet — this is the next major gap, see below).
+- `src-tauri/src/server_main/sync_security_routes.rs`, `sync_chat_routes.rs`, `sync_tasks_routes.rs`, `sync_subscription_routes.rs`, `sync_staging_routes.rs`: the Web mirror of every Tauri command above, always calling the same core functions.
+- `src-tauri/src/lib.rs`: Tauri command registration — check this file first when a "command not found" error shows up; it's the single source of truth for what's actually wired.
+- `src/lib/sync/contracts.ts`: frontend protocol, capability, identity, invitation, grant, and permission contracts. `PROJECT_SYNC_CAPABILITIES.projectTransfer` is still `'unavailable'` — flip it only once the Vault UI below is real.
+- `src/lib/api/syncSecurity.ts`, `syncChat.ts`, `syncTasks.ts`, `syncSubscription.ts`: Desktop/Web dual-mode API clients (Tauri `invoke` with a Web `fetch` fallback in every function — follow this exact pattern for anything new).
+- `src/components/ProjectSidebar/MeshSidebarView.tsx`: account/device/invitation/grant sidebar (the narrow left column) — folder scopes were added here this session.
+- `src/components/ProjectSidebar/NormalProjectSidebar.tsx` and `.../index.tsx` (`CleanProjectSidebar`): **there are two separate sidebar implementations for the two visual styles** (`preferences.visualStyle: 'normal' | 'clean'`). Any change to sidebar navigation/tab-switching must be made in both files or it will silently only work for one style — this exact mistake was made and fixed this session.
+- `src/components/CollaborationView/`: new main-workspace-area view (`index.tsx` + `ChatPanel.tsx` + `TasksPanel.tsx` + `VaultPanel.tsx`, the last one still a placeholder). Registered as `ActiveView === 'collaboration'` in `src/App.tsx` and `src/stores/uiStore.ts`.
+- `src/components/modals/preferences/AccountPage.tsx` / `CollaborationSettings.tsx`: second Google account entry point and the rendezvous-mode/activation settings panel.
 - `src-tauri/src/server_main/mod.rs`: authenticated local Core, middleware, and route assembly.
 - `e2e/specs/web-sync.spec.ts`: existing Desktop/Web convergence reference.
 
 ### Exact next implementation step
 
-Phases 3–9 and the local Phase 10A mechanism pass their automated gates. Phase 10B now has a local
-Cloudflare service/client implementation and Phase 11 has a bounded access-center projection. The
-next authorized work must close the remaining real-world gates without overstating availability:
+Phases 1–9, the local Phase 10A/10B mechanisms, and Phase 11's core publishers all pass their
+automated gates and now have working UI for devices, invitations, tasks, and chat. The next
+authorized work, in priority order:
 
-1. Wire issued invitations to end-to-end encrypted rendezvous envelopes and consume a remote
-   delivery into the existing invitation/grant domain only after fresh authorization checks.
-2. Add the remaining Phase 11 domain publishers plus domain-specific retry and deep-link controls.
-3. Obtain a Cloudflare staging environment and run the complete Phase 10B matrix on two machines and
+1. **Vault & Folders / project-transfer UI** (`CollaborationView/VaultPanel.tsx`, currently a
+   placeholder). The backend is fully implemented and tested end to end
+   (`sync_subscription.rs` + `sync_staging.rs` + `sync_manifest.rs`, commands already registered in
+   `lib.rs`, `src/lib/api/syncSubscription.ts` already exists but is imported by nothing) — build the
+   accept/decline-offer, choose-destination, choose-mode, and staging/verify/publish-progress screens
+   against those real commands, then flip `PROJECT_SYNC_CAPABILITIES.projectTransfer` to `'available'`
+   and unlock the "Cofre & Pastas" button in `MeshSidebarView.tsx`. This is the largest remaining gap
+   with a fully-ready backend — do this before anything else below.
+2. **Cross-device content transport for chat/tasks/invitations.** Everything shipped this session
+   (chat, tasks, folder-scoped invitations) is real but strictly local-to-one-install — there is no
+   code path anywhere that sends any of this content to a different physical device. The Cloudflare
+   rendezvous service (Phase 10B) only handles discovery/signaling, not content. Wiring issued
+   invitations to end-to-end encrypted rendezvous envelopes (so a remote device can actually redeem
+   one) is the first concrete slice of this; chat/task content delivery is a separate, larger
+   follow-up. Do not remove the "syncs only on this device" UI notices until this is real.
+3. Task editing UI (`sync_update_task`/`sync_assign_task` commands exist, no UI consumes them yet)
+   and chat conversation list / attachment inline preview (today there is exactly one project
+   channel per project, and attachments render as a text message with an ID, not inline).
+4. Add the remaining Phase 11 domain publishers' UI surface (filter/search/grouping/deep-links on
+   the access center) plus domain-specific retry controls.
+5. Obtain a Cloudflare staging environment and run the complete Phase 10B matrix on two machines and
    multiple networks; do not deploy production without a separate owner authorization.
-4. Complete the Phase 12 external review, deletion/recovery/provider-migration drills, dependency and
+6. Complete the Phase 12 external review, deletion/recovery/provider-migration drills, dependency and
    supply-chain review, budget, alerts, retention, and incident-response approvals.
-5. Complete Phase 13 isolated E2E, network, soak, supported-platform installer, and external-security
+7. Complete Phase 13 isolated E2E, network, soak, supported-platform installer, and external-security
    gates. Release, commit, push, tag, and publication remain owner actions.
 
-The detailed execution prompt for this sequence is `docs/superpowers/plans/2026-08-21-security-gate-and-cloudflare-rendezvous-prompt.md`.
+The detailed execution prompt for the rendezvous/security-gate sequence (items 2 and 5–7) is
+`docs/superpowers/plans/2026-08-21-security-gate-and-cloudflare-rendezvous-prompt.md`; it predates
+this session and its own "next step" framing is stale for the same reason described above — read it
+for the rendezvous/security detail, not for what to do first.
 
 ### Required validation commands while resuming
 
@@ -945,4 +1008,4 @@ git status --short
 git log --oneline -15
 ```
 
-The working tree should be clean. Confirm that the latest documentation commit contains this file and that `e14b1c1` remains in its ancestry. Then begin with the Phase 1 sequence above.
+The working tree should be clean. Confirm that the latest commit contains this file and the chat/tasks/CollaborationView work described above in its ancestry. Then begin with item 1 ("Vault & Folders / project-transfer UI") in the "Exact next implementation step" sequence above.

@@ -145,7 +145,12 @@ export function CollaborationSettings() {
               disabled={busy}
               onClick={() => void selectMode(mode)}
             >
-              <strong>{t(`collaboration.mode.${mode}.title`)}</strong>
+              <span className={styles.modeHeading}>
+                <strong>{t(`collaboration.mode.${mode}.title`)}</strong>
+                {mode === 'alethe_managed' ? (
+                  <span className={styles.modeBadge}>{t('collaboration.recommendedBadge')}</span>
+                ) : null}
+              </span>
               <span>{t(`collaboration.mode.${mode}.description`)}</span>
             </button>
           ))}
@@ -213,6 +218,7 @@ export function CollaborationSettings() {
             </button>
           )}
         </div>
+        <p className={styles.enableHint}>{t('collaboration.enableHint')}</p>
 
         <div className={styles.accessCenter}>
           <div className={styles.accessHeading}>

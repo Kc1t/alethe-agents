@@ -318,6 +318,18 @@ pub fn verify_staged_at(
             journal.error_code = Some(error.to_string());
             journal.updated_at_ms = now_ms;
             save_journal_at(data_root, &journal)?;
+            // Best-effort: a missing or corrupt chunk here is terminal for this staged transfer
+            // (nothing local can recover a chunk that never arrived intact) and needs the
+            // recipient's attention to re-request the transfer. In-progress publish-step failures
+            // (`do_publish_steps`) are deliberately not published here — those are resumable via
+            // `recover_publication_at` on the next call, not a state requiring user action.
+            let _ = crate::sync_access::record_at(
+                data_root,
+                crate::sync_access::AccessCategory::Collaboration,
+                crate::sync_access::AccessKind::TransferFailure,
+                subscription_id,
+                now_ms,
+            );
             return Err(error);
         }
     }
@@ -627,6 +639,33 @@ mod tests {
             0,
             "destination must remain untouched after a failed verification"
         );
+        fs::remove_dir_all(&fixture.data_root).unwrap();
+    }
+
+    #[test]
+    fn verification_failure_publishes_an_access_center_record() {
+        let fixture = build_fixture("missing-notify");
+        let subscription_id = "sub_notify_test_0000000001";
+        begin_staging_at(
+            &fixture.data_root,
+            subscription_id,
+            fixture.manifest.clone(),
+            fixture.destination.to_str().unwrap(),
+            2_000,
+        )
+        .unwrap();
+        for (id, bytes) in fixture.chunks.iter().skip(1) {
+            receive_chunk_at(&fixture.data_root, subscription_id, id, bytes, 3_000).unwrap();
+        }
+        verify_staged_at(&fixture.data_root, subscription_id, 4_000).unwrap_err();
+
+        let records = crate::sync_access::list_at(&fixture.data_root, 4_000).unwrap();
+        let record = records
+            .iter()
+            .find(|record| record.kind == crate::sync_access::AccessKind::TransferFailure)
+            .unwrap();
+        assert_eq!(record.category, crate::sync_access::AccessCategory::Collaboration);
+        assert_eq!(record.subject_handle, subscription_id);
         fs::remove_dir_all(&fixture.data_root).unwrap();
     }
 

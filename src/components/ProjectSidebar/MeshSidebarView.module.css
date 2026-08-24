@@ -63,10 +63,9 @@
 }
 
 .authInfo {
-  display: grid;
-  grid-template-columns: minmax(64px, auto) minmax(0, 1fr);
-  align-items: start;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
   font-size: 11px;
 }
 
@@ -78,9 +77,14 @@
 .authStatus {
   min-width: 0;
   color: var(--fg-muted);
-  font-size: 10px;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
+  font-size: 10.5px;
+  line-height: 1.4;
+  overflow-wrap: break-word;
+}
+
+.authButtonsRow {
+  display: flex;
+  gap: 6px;
 }
 
 .loginGoogleBtn {
@@ -95,11 +99,57 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
+  flex: 1;
   transition: background-color 120ms ease;
 }
 
 .loginGoogleBtn:hover {
   background: var(--panel-hover);
+}
+
+.loginGoogleBtnConnected {
+  color: var(--status-offline);
+}
+
+.loginGoogleBtnConnected:hover {
+  background: var(--panel-hover);
+  border-color: var(--status-offline);
+}
+
+.editOAuthConfigBtn {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+
+.editOAuthConfigBtn:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.oauthSetupWrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 220ms ease,
+    opacity 180ms ease;
+}
+
+.oauthSetupWrapOpen {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.oauthSetupWrap > div {
+  overflow: hidden;
+  min-height: 0;
 }
 
 .oauthSetup {
@@ -109,13 +159,22 @@
   padding-top: 2px;
 }
 
+.oauthSetupInvalid {
+  border-color: var(--status-offline) !important;
+}
+
+.oauthSetupHint {
+  color: var(--status-offline) !important;
+}
+
 .oauthSetup label {
   color: var(--fg);
   font-size: 10px;
   font-weight: 600;
 }
 
-.oauthSetup input {
+.oauthSetup input,
+.oauthSetup select {
   width: 100%;
   min-width: 0;
   padding: 6px 7px;
@@ -127,15 +186,112 @@
   font-size: 10px;
 }
 
-.oauthSetup input:focus {
+.oauthSetup input:focus,
+.oauthSetup select:focus {
   border-color: var(--accent);
   outline: none;
+}
+
+.oauthExplain {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.oauthExplain p {
+  margin: 0;
+  color: var(--fg);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.oauthExplain ol {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--fg-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.reopenPageBtn {
+  padding: 5px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-size: 9.5px;
+}
+
+.reopenPageBtn:hover {
+  color: var(--fg);
+  border-color: var(--accent);
 }
 
 .oauthSetup span {
   color: var(--fg-muted);
   font-size: 9px;
   line-height: 1.35;
+}
+
+.permissionSummary {
+  margin-top: -3px;
+  font-style: italic;
+}
+
+.folderScopeList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.folderScopeItem {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 10.5px;
+  text-align: left;
+}
+
+.folderScopeItem:hover {
+  border-color: var(--accent);
+}
+
+.folderScopeName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folderScopeState {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--status-working);
+}
+
+.folderScopeItemBlocked {
+  border-color: var(--status-offline);
+}
+
+.folderScopeItemBlocked .folderScopeState {
+  color: var(--status-offline);
 }
 
 .saveOAuthBtn {
@@ -179,10 +335,10 @@
   background: var(--bg-sunken);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 10px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .deviceHeader {
@@ -190,6 +346,7 @@
   align-items: center;
   gap: 6px;
   font-size: 11px;
+  font-weight: 600;
   color: var(--fg-muted);
 }
 
@@ -206,9 +363,12 @@
 
 .deviceId {
   font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--accent);
-  letter-spacing: 0.05em;
+  font-size: 9.5px;
+  color: var(--fg-muted);
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .deviceTrust {
@@ -224,6 +384,37 @@
   color: var(--status-offline);
 }
 
+.deviceTrustPill {
+  margin-left: auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.deviceTrustPill[data-trust='trusted'] {
+  color: var(--status-working);
+  border-color: var(--status-working);
+  background: var(--status-working-soft);
+}
+
+.deviceTrustPill[data-trust='pending'] {
+  color: var(--status-waiting);
+  border-color: var(--status-waiting);
+  background: var(--status-waiting-soft);
+}
+
+.deviceTrustPill[data-trust='revoked'] {
+  color: var(--status-offline);
+  border-color: var(--status-offline);
+  background: var(--status-offline-soft);
+}
+
 .deviceNameRow {
   display: flex;
   align-items: center;
@@ -232,11 +423,28 @@
 }
 
 .deviceName {
-  font-size: 11px;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.deviceFingerprintRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.deviceFingerprintLabel {
+  flex-shrink: 0;
+  font-size: 9px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .deviceRenameRow {
@@ -259,6 +467,15 @@
 .deviceRenameRow input:focus {
   border-color: var(--accent);
   outline: none;
+}
+
+.redeemInputMono {
+  font-family: var(--font-mono);
+  font-size: 10.5px !important;
+}
+
+.redeemInputInvalid {
+  border-color: var(--status-offline) !important;
 }
 
 .deviceActionBtn {
