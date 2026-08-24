@@ -44,7 +44,18 @@ fn main() {
     let core = Core::default();
 
     match resolve_codex() {
-        Some(program) => core.set_launcher(Launcher::codex_app_server(program)),
+        Some(program) => {
+            let mut launcher = Launcher::codex_app_server(program);
+            if cfg!(windows) {
+                if let Ok(path) = std::env::var("PATH") {
+                    launcher.env.push((
+                        "Path".to_string(),
+                        orchestrator_core::path_without_store_aliases(&path),
+                    ));
+                }
+            }
+            core.set_launcher(launcher);
+        }
         None => eprintln!("[alethe-orchestrator] codex not found on PATH; delegation will fail"),
     }
 
@@ -62,7 +73,7 @@ fn main() {
         if line.trim().is_empty() {
             continue;
         }
-        if let Some(response) = handle_mcp_body(&core, &line) {
+        if let Some(response) = handle_mcp_body(&core, &line, None) {
             if writeln!(stdout, "{response}").is_err() || stdout.flush().is_err() {
                 break;
             }

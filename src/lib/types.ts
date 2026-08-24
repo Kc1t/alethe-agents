@@ -23,6 +23,12 @@ export const ALL_AGENT_TYPES: AgentType[] = [
   'shell',
 ]
 
+/** Backends report the agent as a free-form string; anything unknown stays unidentified. */
+export function parseAgentType(value: string | null | undefined): AgentType | null {
+  const key = (value ?? '').trim().toLowerCase()
+  return ALL_AGENT_TYPES.find((type) => type === key) ?? null
+}
+
 export function agentCliCommand(agent: AgentType): string | undefined {
   if (agent === 'shell') return undefined
   return agent === 'antigravity' ? 'agy' : agent
@@ -483,6 +489,10 @@ export type Preferences = {
   remoteAllowShellInput: boolean
 
   enabledFeatures: Record<FeatureId, boolean>
+  /** Playwright MCP: attach to the shared/pane browser, or launch its own. */
+  playwrightBrowserMode: 'shared' | 'dedicated'
+  /** Only used when playwrightBrowserMode is 'dedicated'. */
+  playwrightDedicatedHeadless: boolean
   /** Folder configured as the base location for the global Todo list. */
   todoStoragePath: string
   /** Scope the MCP panel opens on. */
@@ -617,6 +627,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
     playwright: false,
     orchestrator: false,
   },
+  playwrightBrowserMode: 'shared',
+  playwrightDedicatedHeadless: false,
   todoStoragePath: '',
   mcpDefaultScope: 'global',
   mcpOnboardingSeen: false,

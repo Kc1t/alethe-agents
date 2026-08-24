@@ -108,6 +108,16 @@ function isBrowserInputPending(): boolean {
 
 let aiMemoryMissingWarned = false
 
+/** The terminal's own name is what the person recognises a planner by, not its pty id. */
+function plannerLabelFor(ptyId: string): string {
+  for (const project of useProjectsStore.getState().projects) {
+    for (const terminal of project.terminals) {
+      if (terminal.tabs.some((tab) => tab.ptyId === ptyId)) return terminal.name
+    }
+  }
+  return ptyId
+}
+
 type BootPhase = 'preparing' | 'queued' | 'spawning' | 'attaching' | 'ready'
 
 export function useXtermSession(params: {
@@ -1051,7 +1061,12 @@ export function useXtermSession(params: {
         // only once the agent reaches for one.
         const playwrightEnabled = useProjectsStore.getState().preferences.enabledFeatures.playwright
         if (playwrightEnabled && command === 'claude') {
-          const p = await playwrightMcpConfigPath().catch(() => undefined)
+          const { playwrightBrowserMode, playwrightDedicatedHeadless } =
+            useProjectsStore.getState().preferences
+          const p = await playwrightMcpConfigPath({
+            dedicated: playwrightBrowserMode === 'dedicated',
+            headless: playwrightDedicatedHeadless,
+          }).catch(() => undefined)
           if (p) mcpConfigPaths.push(p)
           if (disposed) return
         }
@@ -1059,7 +1074,9 @@ export function useXtermSession(params: {
         const orchestratorEnabled =
           useProjectsStore.getState().preferences.enabledFeatures.orchestrator
         if (orchestratorEnabled && command === 'claude') {
-          const p = await orchestratorMcpConfigPath().catch(() => undefined)
+          const p = await orchestratorMcpConfigPath(ptyId, plannerLabelFor(ptyId), command).catch(
+            () => undefined,
+          )
           if (p) mcpConfigPaths.push(p)
           if (disposed) return
         }

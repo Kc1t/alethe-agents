@@ -5,14 +5,13 @@
   min-height: 0;
   overflow: hidden;
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
 }
 
 .head {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: none;
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
@@ -27,11 +26,19 @@
 
 .counts {
   display: flex;
+  align-items: center;
   gap: 10px;
   margin-left: auto;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--fg-muted);
+}
+
+.countAlert {
+  padding: 1px 6px;
+  color: var(--status-waiting);
+  background: var(--status-waiting-soft);
+  border-radius: 3px;
 }
 
 .close {
@@ -76,141 +83,787 @@
   color: var(--fg-faint);
 }
 
-.board {
-  display: grid;
-  grid-auto-columns: minmax(220px, 1fr);
-  grid-auto-flow: column;
-  gap: 1px;
-  min-height: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  background: var(--border);
-}
-
-.card {
+.body {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-  padding: 10px;
-  overflow-y: auto;
-  background: var(--bg);
+  min-height: 0;
 }
 
-.cardHead {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--status-idle);
+.addPlanner {
+  display: grid;
+  place-items: center;
   flex: none;
+  width: 30px;
+  color: var(--fg-faint);
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border);
+  cursor: pointer;
 }
 
-.card[data-status='running'] .dot {
-  background: var(--status-working);
-}
-
-.card[data-status='queued'] .dot {
-  background: var(--status-waiting);
-}
-
-.card[data-status='done'] .dot {
-  background: var(--status-active);
-}
-
-.card[data-status='failed'] .dot {
-  background: var(--status-offline);
-}
-
-.card[data-status='cancelled'] .dot,
-.card[data-status='released'] .dot {
-  background: var(--status-stopped);
-}
-
-.jobId {
-  font-size: 12px;
-  font-weight: 600;
+.addPlanner:hover {
   color: var(--fg);
+  background: var(--bg-sunken);
 }
 
-.elapsed {
-  margin-left: auto;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
+.split {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ---------- vendor identity ---------- */
+
+.glyph {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
   color: var(--fg-faint);
 }
 
-.status {
-  margin: 0;
+.glyph img {
+  display: block;
+  border-radius: 2px;
+}
+
+/* ---------- planner tabs ---------- */
+
+.tabs {
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  min-height: 40px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-width: 148px;
+  max-width: 248px;
+  padding: 0 14px 5px;
+  font: inherit;
   font-size: 11px;
-  text-transform: lowercase;
+  font-weight: 500;
+  text-align: left;
+  color: var(--fg-faint);
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border);
+  cursor: pointer;
+  transition:
+    color var(--anim-fast) ease,
+    opacity var(--anim-fast) ease;
+}
+
+.tab:hover {
   color: var(--fg-muted);
 }
 
-.card[data-status='failed'] .status {
+/* Selection is weight, contrast and a lit bottom edge — never a tinted fill. */
+.tab[data-selected='true'] {
+  color: var(--fg);
+  font-weight: 700;
+}
+
+.tab[data-state='running'] .dot {
+  background: var(--status-working);
+}
+
+.tab[data-state='queued'] .dot {
+  background: var(--status-waiting);
+}
+
+.tab[data-state='interrupted'] .dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--status-waiting);
+}
+
+.tab[data-state='failed'] .dot {
+  background: var(--status-offline);
+}
+
+.tab[data-state='finished'] .dot {
+  background: var(--status-stopped);
+}
+
+.tabName {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tabCount {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  min-width: 18px;
+  height: 15px;
+  padding: 0 5px;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--fg-faint);
+  background: var(--panel);
+  border-radius: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tabAlert {
+  flex: none;
+  padding: 1px 5px;
+  font-size: 9px;
+  color: var(--status-offline);
+  background: var(--status-offline-soft);
+  border-radius: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- canvas ---------- */
+
+.canvas {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.board {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  background-color: var(--bg-sunken);
+  /* The dots are texture, not content: kept well under the weight of any real edge or border. */
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--border-strong) 40%, transparent) 1px,
+    transparent 1px
+  );
+}
+
+.board[data-panning='true'] {
+  cursor: grabbing;
+}
+
+.world {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+.edges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.edge {
+  fill: none;
+  stroke: var(--fg-faint);
+  stroke-width: 1;
+  opacity: 0.7;
+}
+
+.edge[data-lane='queued'] {
+  stroke: var(--status-waiting);
+  stroke-dasharray: 3 4;
+}
+
+.edge[data-lane='interrupted'] {
+  stroke: var(--status-waiting);
+  stroke-dasharray: 1 4;
+  stroke-linecap: round;
+}
+
+.edge[data-lane='running'] {
+  stroke: var(--status-working);
+  stroke-width: 1.6;
+  stroke-dasharray: 7 5;
+  animation: edge-flow 600ms linear infinite;
+}
+
+.edge[data-lane='failed'] {
+  stroke: var(--status-offline);
+  stroke-width: 1.4;
+}
+
+.edge[data-selected='true'] {
+  stroke-width: 2;
+  opacity: 1;
+}
+
+@keyframes edge-flow {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+
+.blank {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  max-width: 44ch;
+  font-size: 11px;
+  line-height: 1.9;
+  text-align: center;
+  color: var(--fg-faint);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* ---------- planner node: the root of the forest ---------- */
+
+.planner {
+  position: absolute;
+  display: flex;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+}
+
+.plannerCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.plannerCard:hover:not(:disabled) {
+  background: var(--panel-hover);
+}
+
+.plannerCard:disabled {
+  cursor: default;
+}
+
+.plannerText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.plannerKind {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.plannerName {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--fg);
+}
+
+.plannerCount {
+  flex: none;
+  font-size: 10px;
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- run node: the parent of its own workers, and the only place a run's
+   trouble is reported now that nothing is drawn around the tree ---------- */
+
+.run {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+}
+
+.run[data-lane='failed'] {
+  background: color-mix(in srgb, var(--status-offline-soft) 55%, var(--bg-elevated));
+}
+
+.runCard {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+  padding: 11px 13px 12px;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.runEyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.runKind {
+  flex: none;
+}
+
+.runState {
+  overflow: hidden;
+  margin-left: auto;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  letter-spacing: 0.1em;
+}
+
+.run[data-lane='running'] .runState {
+  color: var(--status-working);
+}
+
+.run[data-lane='failed'] .runState {
   color: var(--status-offline);
 }
 
-.spec {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.45;
+.run[data-lane='interrupted'] .runState {
+  color: var(--status-waiting);
+}
+
+.runLabel {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--fg);
-  overflow-wrap: anywhere;
+}
+
+.runFoot {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 10px;
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.runFoot b {
+  margin-left: auto;
+  font-weight: 400;
+  color: var(--fg-muted);
+}
+
+.run[data-lane='running'] .dot {
+  background: var(--status-working);
+}
+
+.run[data-lane='queued'] .dot {
+  background: var(--status-waiting);
+}
+
+.run[data-lane='interrupted'] .dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--status-waiting);
+}
+
+.run[data-lane='failed'] .dot {
+  background: var(--status-offline);
+}
+
+.run[data-lane='finished'] .dot {
+  background: var(--status-stopped);
+}
+
+/* ---------- worker node ---------- */
+
+.worker {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.worker:hover {
+  border-color: var(--border-strong);
+}
+
+.worker[data-selected='true'] {
+  z-index: 2;
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 1px var(--accent-ring);
+}
+
+.worker[data-lane='finished'] {
+  opacity: 0.58;
+}
+
+.worker[data-lane='finished'][data-selected='true'],
+.worker[data-lane='finished']:hover {
+  opacity: 1;
+}
+
+.worker[data-status='failed'] {
+  background: color-mix(in srgb, var(--status-offline-soft) 60%, var(--bg-elevated));
+}
+
+.workerCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 11px 12px 11px 14px;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.workerHead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  height: 20px;
+}
+
+.workerId {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--fg);
+}
+
+.workerElapsed {
+  flex: none;
+  font-size: 11px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.worker[data-status='running'] .workerElapsed {
+  color: var(--status-working);
+}
+
+.worker[data-status='failed'] .workerElapsed {
+  color: var(--status-offline);
+}
+
+.worker[data-status='interrupted'] .workerElapsed {
+  color: var(--status-waiting);
+}
+
+.workerLive {
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--fg-muted);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.metaStatus {
+  color: var(--fg-faint);
+}
+
+.worker[data-status='failed'] .metaStatus {
+  color: var(--status-offline);
+}
+
+.worker[data-status='interrupted'] .metaStatus {
+  color: var(--status-waiting);
+}
+
+.metaIcon {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.contextTrack {
+  display: block;
+  flex: none;
+  height: 2px;
+  overflow: hidden;
+  background: var(--panel);
+}
+
+.contextTrack i {
+  display: block;
+  height: 2px;
+  background: var(--fg-faint);
+}
+
+.errBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 14px;
+  font-size: 10px;
+  color: var(--status-offline);
+  border-top: 1px solid color-mix(in srgb, var(--status-offline) 30%, transparent);
+}
+
+.errText {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.detail {
+  padding: 10px 12px 11px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.detailLabel {
+  margin-bottom: 5px;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.plan + .detailLabel,
+.report + .detailLabel {
+  margin-top: 10px;
 }
 
 .plan {
   margin: 0;
   padding-left: 14px;
   font-size: 11px;
-  line-height: 1.5;
+  line-height: 1.55;
   color: var(--fg-muted);
 }
 
-.summary {
+.report {
   margin: 0;
-  padding-top: 6px;
   font-size: 11px;
-  line-height: 1.5;
-  color: var(--fg-muted);
+  line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  border-top: 1px solid var(--border);
+  color: var(--fg-muted);
 }
 
-.cardFoot {
+.detailActions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: auto;
-  padding-top: 8px;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  font: inherit;
   font-size: 10px;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.action:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+/* ---------- shared status dot ---------- */
+
+.dot {
+  box-sizing: border-box;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-idle);
+}
+
+/* ---------- canvas overlays ---------- */
+
+.hint {
+  position: absolute;
+  bottom: 12px;
+  left: 14px;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 52ch;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--fg-faint);
+  opacity: 0.4;
+  transition: opacity var(--anim-fast) ease;
+  pointer-events: none;
+}
+
+.board:hover .hint {
+  opacity: 1;
+}
+
+.zoomCtl {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.zoomBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  min-width: 22px;
+  padding: 0 7px;
+  font: inherit;
+  font-size: 10px;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.zoomBtn:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.zoomValue {
+  min-width: 34px;
+  font-size: 10px;
+  text-align: center;
+  color: var(--fg-faint);
   font-variant-numeric: tabular-nums;
+}
+
+/* ---------- composer: the canvas' own input line ---------- */
+
+.composer {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: none;
+  padding: 8px 12px;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border);
+  transition: border-color var(--anim-fast) ease;
+}
+
+.composer:focus-within {
+  border-top-color: var(--accent-border);
+}
+
+.composerTarget {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  max-width: 38%;
+  overflow: hidden;
+}
+
+.composerId {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--fg-muted);
+}
+
+.composerId[data-idle='true'] {
+  font-family: inherit;
   color: var(--fg-faint);
 }
 
-.worktree {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
+.composerTarget[data-status='running'] .dot {
+  background: var(--status-working);
 }
 
-.compose {
-  display: flex;
-  gap: 4px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
+.composerTarget[data-status='queued'] .dot {
+  background: var(--status-waiting);
 }
 
-.composeInput {
+.composerTarget[data-status='failed'] .dot {
+  background: var(--status-offline);
+}
+
+.composerTarget[data-status='done'] .dot {
+  background: var(--status-active);
+}
+
+.composerTarget[data-status='interrupted'] .dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--status-waiting);
+}
+
+.composerInput {
   flex: 1;
   min-width: 0;
-  padding: 4px 6px;
+  height: 26px;
+  padding: 0 8px;
   font: inherit;
   font-size: 11px;
   color: var(--fg);
@@ -219,19 +872,56 @@
   border-radius: 4px;
 }
 
-.composeInput:focus {
+.composerInput:focus {
   outline: none;
   border-color: var(--accent);
 }
 
-.composeInput::placeholder {
+.composerInput::placeholder {
   color: var(--fg-faint);
 }
 
-.composeSend {
+.composerInput:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.composerMode {
+  flex: none;
+  padding: 2px 6px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  background: var(--bg-sunken);
+  border-radius: 3px;
+}
+
+.composerMode[data-mode='steer'] {
+  color: var(--status-working);
+  background: var(--status-working-soft);
+}
+
+.composerMode[data-mode='resume'] {
+  color: var(--status-waiting);
+  background: var(--status-waiting-soft);
+}
+
+.composerNote {
+  overflow: hidden;
+  flex: none;
+  max-width: 34ch;
+  font-size: 10px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--status-waiting);
+}
+
+.composerSend {
   display: grid;
   place-items: center;
-  width: 24px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   color: var(--fg-muted);
   background: var(--bg-sunken);
@@ -240,13 +930,438 @@
   cursor: pointer;
 }
 
-.composeSend:hover:not(:disabled) {
+.composerSend:hover:not(:disabled) {
   color: var(--fg);
   background: var(--accent-bg-soft);
   border-color: var(--accent);
 }
 
-.composeSend:disabled {
+.composerSend:disabled {
   cursor: default;
   opacity: 0.45;
+}
+
+/* ---------- summary rail ---------- */
+
+.rail {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 264px;
+  min-height: 0;
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--border);
+}
+
+.railHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: 30px;
+  padding: 0 14px;
+  font-size: 11px;
+  color: var(--fg);
+  border-bottom: 1px solid var(--border);
+}
+
+.railHeadName {
+  overflow: hidden;
+  margin-left: auto;
+  font-size: 10px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--fg-faint);
+}
+
+.railScroll {
+  min-height: 0;
+  overflow: auto;
+}
+
+.railSection {
+  padding: 14px;
+}
+
+.railSection + .railSection {
+  border-top: 1px solid var(--border);
+}
+
+.headline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.headline b {
+  font-size: 19px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.headline span {
+  flex: 1;
+  font-size: 10px;
+  color: var(--fg-faint);
+}
+
+.headline u {
+  font-size: 10px;
+  text-decoration: none;
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.kvList {
+  margin-top: 12px;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  height: 22px;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.kv em {
+  box-sizing: border-box;
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--status-stopped);
+}
+
+.kv[data-lane='running'] em {
+  background: var(--status-working);
+}
+
+.kv[data-lane='queued'] em {
+  background: var(--status-waiting);
+}
+
+.kv[data-lane='interrupted'] em {
+  background: transparent;
+  border: 1.5px solid var(--status-waiting);
+}
+
+.kv[data-lane='failed'] em {
+  background: var(--status-offline);
+}
+
+.kv[data-lane='slots'] em {
+  background: var(--panel);
+}
+
+.kv b {
+  font-weight: 400;
+  text-align: right;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.kv[data-off='true'] {
+  color: var(--fg-faint);
+}
+
+.kv[data-off='true'] b {
+  color: var(--fg-faint);
+}
+
+.kv[data-off='true'] em {
+  opacity: 0.4;
+}
+
+.railLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 14px;
+  margin-bottom: 12px;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.laneCount {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.railRow {
+  display: grid;
+  grid-template-columns: 9px 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 24px;
+  padding: 0 10px 0 0;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  color: var(--fg-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.railRow:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.railRow[data-selected='true'] {
+  color: var(--fg);
+  background: var(--accent-bg-soft);
+}
+
+.worker[data-status='running'] .dot {
+  background: var(--status-working);
+}
+
+.worker[data-status='queued'] .dot {
+  background: var(--status-waiting);
+}
+
+.worker[data-status='interrupted'] .dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--status-waiting);
+}
+
+.worker[data-status='done'] .dot {
+  background: var(--status-active);
+}
+
+.worker[data-status='failed'] .dot {
+  background: var(--status-offline);
+}
+
+.worker[data-status='cancelled'] .dot,
+.worker[data-status='released'] .dot {
+  background: var(--status-stopped);
+}
+
+.railRow[data-status='running'] .dot {
+  background: var(--status-working);
+}
+
+.railRow[data-status='queued'] .dot {
+  background: var(--status-waiting);
+}
+
+.railRow[data-status='interrupted'] .dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--status-waiting);
+}
+
+.railRow[data-status='done'] .dot {
+  background: var(--status-active);
+}
+
+.railRow[data-status='failed'] .dot {
+  background: var(--status-offline);
+}
+
+.railRow[data-lane='running'] .dot {
+  background: var(--status-working);
+}
+
+.railRow[data-lane='queued'] .dot {
+  background: var(--status-waiting);
+}
+
+.railRow[data-lane='interrupted'] .dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--status-waiting);
+}
+
+.railRow[data-lane='failed'] .dot {
+  background: var(--status-offline);
+}
+
+.railRow[data-lane='finished'] .dot {
+  background: var(--status-stopped);
+}
+
+.railEmpty {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--fg-faint);
+}
+
+.railName {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.railValue {
+  font-size: 10px;
+  text-align: right;
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.railRow[data-selected='true'] .railValue {
+  color: var(--fg);
+}
+
+/* ---------- rail tree: run at depth 0, its workers at depth 1 ---------- */
+
+.railSection[data-tree='true'] {
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.railSection[data-tree='true'] .railLabel,
+.railSection[data-tree='true'] .railEmpty {
+  padding-right: 14px;
+  padding-left: 14px;
+}
+
+.branch + .branch {
+  margin-top: 1px;
+}
+
+.branchRow {
+  display: grid;
+  grid-template-columns: 12px 9px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 26px;
+  padding: 0 10px 0 8px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--fg-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.branchRow:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.branchRow[data-open='true'] {
+  color: var(--fg);
+}
+
+.branchRow[data-lane='running'] .dot {
+  background: var(--status-working);
+}
+
+.branchRow[data-lane='queued'] .dot {
+  background: var(--status-waiting);
+}
+
+.branchRow[data-lane='interrupted'] .dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--status-waiting);
+}
+
+.branchRow[data-lane='failed'] .dot {
+  background: var(--status-offline);
+}
+
+.branchRow[data-lane='finished'] .dot {
+  background: var(--status-stopped);
+}
+
+.branchName {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.branchCount {
+  display: inline-grid;
+  place-items: center;
+  min-width: 17px;
+  height: 15px;
+  padding: 0 5px;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--fg-faint);
+  background: var(--panel);
+  border-radius: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.branchRow .railValue {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.branchRow[data-lane='failed'] .railValue {
+  color: var(--status-offline);
+}
+
+.branchRow[data-lane='interrupted'] .railValue {
+  color: var(--status-waiting);
+}
+
+.attention {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 24px;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  color: var(--fg-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.attention:hover {
+  color: var(--fg);
+}
+
+.attentionName {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.attentionValue {
+  flex: none;
+  font-size: 10px;
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.attentionValue[data-lane='failed'] {
+  color: var(--status-offline);
+}
+
+.attentionValue[data-lane='interrupted'] {
+  color: var(--status-waiting);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .edge[data-lane='running'],
+    .hint,
+  .composer,
+  .tab {
+    transition: none;
+  }
 }

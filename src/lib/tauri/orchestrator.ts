@@ -8,6 +8,9 @@ export type OrchestratorJobStatus =
   | 'failed'
   | 'cancelled'
   | 'released'
+  // The process died with the app, but the thread survived on disk, so the work can be picked up
+  // again. Neither a failure nor a result.
+  | 'interrupted'
 
 export type OrchestratorTokenCount = {
   totalTokens?: number
@@ -25,6 +28,13 @@ export type OrchestratorTokens = {
 
 export type OrchestratorJob = {
   id: string
+  /** The terminal whose agent asked for this work; null for calls made outside a terminal. */
+  plannerId: string | null
+  /** Which CLI runs the worker itself. */
+  agent: string
+  /** One delegation call is one run; workers from different rounds group by this. */
+  runId: string
+  runLabel: string | null
   spec: string
   cwd: string
   status: OrchestratorJobStatus
@@ -38,8 +48,15 @@ export type OrchestratorJob = {
   summary: string
 }
 
+export type OrchestratorPlanner = {
+  id: string
+  label: string
+  agent: string
+}
+
 export type OrchestratorSnapshot = {
   jobs: OrchestratorJob[]
+  planners: OrchestratorPlanner[]
   running: number
   queued: number
   concurrencyLimit: number
@@ -47,8 +64,17 @@ export type OrchestratorSnapshot = {
 
 const JOBS_EVENT = 'orchestrator://jobs'
 
-export async function orchestratorMcpConfigPath(): Promise<string> {
-  return invoke<string>('orchestrator_mcp_config_path')
+/** Registers the calling terminal as a planner, so its runs can be told apart from another's. */
+export async function orchestratorMcpConfigPath(
+  plannerId: string,
+  plannerLabel: string,
+  plannerAgent: string,
+): Promise<string> {
+  return invoke<string>('orchestrator_mcp_config_path', {
+    plannerId,
+    plannerLabel,
+    plannerAgent,
+  })
 }
 
 export async function orchestratorJobs(): Promise<OrchestratorSnapshot> {

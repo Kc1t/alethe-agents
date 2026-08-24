@@ -10,7 +10,110 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Changed
+
+- The orchestration board is now a forest read top to bottom. The planner sits alone at the top of
+  the canvas with its own product logo, connectors drop from it to every run it started, and each
+  run stands above a row of its workers. Runs no longer stack down the board — they stand side by
+  side, each its own tree, separated by empty board rather than by a drawn frame.
+- The frames around each run are gone. Nothing is drawn around a run any more: whitespace does the
+  grouping, and everything the frame used to signal — a run that failed, a run that was
+  interrupted, a run still working — is now carried by the run node itself, through its state dot,
+  its state word, its border and the bar of worker states along its bottom edge.
+- Clicking the planner at the top of the board opens the terminal that planner runs in. When that
+  terminal is no longer open the node says so instead of leading nowhere.
+- The list of runs and workers in the summary rail became a real tree: each run is a row you can
+  fold open to see its own workers, indented under it, with the same chevrons and indentation the
+  file explorer uses. Runs that are still live open by default and finished ones start folded, so a
+  planner with twenty runs stays readable. Clicking any row still brings that node into view on the
+  canvas.
+- The selected planner tab no longer sits on a tinted panel. Selection now reads through weight,
+  contrast and its lit bottom edge.
+
+### Fixed
+
+- An interrupted worker can be messaged again. Sending it a message is exactly how it comes back:
+  Alethe re-queues it and resumes its thread with the message as its next turn, and the message box
+  now says so before you send.
+
+- The orchestration board now carries the real product logos. Claude Code, Codex, OpenCode,
+  Antigravity and every other CLI Alethe knows show their own mark on the worker cards, the planner
+  tabs, the summary rail and the message box, exactly like the rest of the app; a CLI Alethe does
+  not recognise keeps a neutral glyph instead of borrowing someone else's logo.
+- A run now looks like the parent of its workers instead of another worker. The run node states
+  what it is, names the delegation, counts how many of its workers are done and carries a bar of
+  its own workers' states along its bottom edge, and the same bar runs under each planner tab, so
+  the shape of a run reads before any of its text does.
+- Worker cards were rebuilt around one idea per line: the CLI and the worker id on top with the
+  clock beside them, what the worker last said underneath, and everything else — status, context
+  share, tokens, worktree, diff — demoted to a single quiet line. Context use moved to a hairline
+  along the bottom edge of the card instead of a labelled row competing with the rest.
+- A running worker is now visibly alive without being loud: its status edge breathes while it
+  works and its clock keeps ticking, and both stop for anyone who asked for reduced motion. A
+  failed worker is findable at a glance — its card is tinted, its edge is red and its run frame
+  turns red with it.
+- Run frames now read as groups rather than stray dashed rectangles: each one is a soft panel
+  behind its own workers, tinted when the run failed or was interrupted, and the run's name is no
+  longer printed twice.
+- The message box moved under the canvas it belongs to, so the canvas, its input line and the
+  summary rail read as one instrument. It also shows who it is aimed at, with that worker's logo
+  and live state, and highlights when the message would land on the turn already running.
+- The summary rail sits alongside the board for its full height now, shows the planner it is
+  summarising, and lists each worker with its CLI logo next to its state.
+- The tabs on the orchestration board are now the agents that asked for the work, not the rounds of
+  delegation. Each agent terminal with orchestration wired in gets one tab, named after the
+  terminal itself, and everything that terminal has ever delegated lives under it; calls made from
+  outside a terminal collect in a last tab marked as having no planner. Picking a tab no longer
+  hides work — the canvas shows every run that planner started at the same time, each one boxed in
+  its own labelled frame stacked down the board, with its worker connectors staying inside its
+  frame. Panning, zooming, fit, picking a worker and the message box all work across the whole
+  board, and the summary rail now totals the planner instead of a single run and lists its runs so
+  you can bring any one of them into view.
+- Worker and planner cards now show which CLI is behind them: a small vendor mark in that vendor's
+  colour on the tab of a planner and on the card of a worker. A vendor Alethe has no mark for keeps
+  the neutral glyph rather than being given an invented one.
+- The dot grid behind the orchestration board is fainter, so it reads as texture and no longer
+  competes with the cards, frames and connectors drawn on top of it.
+
+- The orchestration board is now a node canvas instead of status columns. The run you picked sits
+  on the left as a single node — its label, its worker count and the worst state among its
+  workers — and every worker it started hangs off it to the right, joined by a drawn connector, so
+  the delegation that fanned out into those workers is visible on screen. Each connector is tinted
+  by what its worker is doing: green while it runs, red when it failed, dashed amber while it waits
+  for a slot, and plain once it is over. Workers do not depend on each other and Alethe does not
+  pretend otherwise — the only links drawn are the ones that really exist. The canvas pans by
+  dragging the empty background, zooms with Ctrl (or Cmd) and the scroll wheel or the corner
+  control, and has a "fit" button that frames the whole run again; picking a worker in the summary
+  rail centres its card. The worker cards, the summary rail, the run tabs and the message box all
+  work exactly as before.
+
 ### Added
+
+- Playwright MCP can now run its own dedicated browser, headed or headless, instead of always
+  attaching to the shared browser Alethe uses for Browser Panes. Pick the mode in Preferences →
+  Features, under the Playwright toggle.
+- Workers whose process died with Alethe are now shown as interrupted instead of quietly reading as
+  running or failed. They appear with a dashed outline and a dashed amber edge on the board, get
+  their own line in the summary rail and their own counter in the pane header, and the tooltip
+  explains that the thread is still on disk so the work can be picked up again. A planner with
+  interrupted work is flagged in the tab strip and in the "needs you elsewhere" list, the same way
+  a failure is.
+- The orchestration pane now separates the runs a project has going at the same time. Every round
+  of delegation gets its own tab, named after the label the lead gave it, showing how many workers
+  it owns and a dot for the worst state among them, and the board, the summary rail and the message
+  box below always belong to the tab you picked. A line beside the tabs counts the runs and workers
+  the project has in total, and a run that is not on screen still tells you when one of its workers
+  failed — on its own tab and in a list on the rail that takes you straight there.
+
+- The orchestration pane was rebuilt around a board of worker cards. Workers are laid out in
+  columns by what they are doing right now — running, queued, failed, finished — and each card
+  shows its id, status, latest report, elapsed time, how much of the model context window it has
+  burned, tokens spent, and whether it works in its own worktree or already has a diff. Clicking a
+  card opens it in place, with the worker's plan and its full last report, and a summary rail on
+  the right keeps the totals, the share of workers already finished, the slots in use, and a
+  clickable list of every worker that jumps to its card, with the finished ones folded away. The
+  message box moved to the bottom of the pane and always addresses the worker you selected, saying
+  whether the text will steer the turn it is running now or become its next turn.
 
 - Agent orchestration, off by default under a new preference. When it is on, Claude Code terminals
   get a set of Alethe tools for handing independent units of work to Codex workers that Alethe runs
@@ -125,6 +228,13 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - Workers that finished used to stay running forever, one process each, until something else closed
   the app. The most recent few are still kept so their work can be followed up on, and the rest are
   let go on their own.
+
+- Delegated work is no longer lost when Alethe closes. What each worker was asked, what it reported,
+  which run and which agent session it belonged to, and the worktree it used are all kept, so the
+  history is there on the next start. Work that was still in flight is shown as interrupted rather
+  than as running, because its process did not survive — but the conversation did: sending more work
+  to such a worker starts it again and it picks up with everything it had already read, instead of
+  beginning from nothing.
 
 - Delegated work is now something you can watch. A pane shows every worker Alethe is running as a
   card of its own — what it was asked to do, whether it is waiting for a slot, working or finished,

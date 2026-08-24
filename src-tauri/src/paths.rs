@@ -21,6 +21,10 @@ pub fn app_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     profile_data_dir(app)
 }
 
+pub fn orchestrator_store_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(profile_data_dir(app)?.join("orchestrator-jobs.json"))
+}
+
 pub fn scrollback_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(profile_data_dir(app)?.join("scrollback"))
 }

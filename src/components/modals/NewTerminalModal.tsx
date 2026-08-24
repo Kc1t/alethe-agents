@@ -20,7 +20,13 @@ const AGENTS: { type: AgentType; label: string }[] = ALL_AGENT_TYPES.map((type) 
 export function NewTerminalModal() {
   const t = useT()
   const open = useUiStore((s) => s.openModal === 'newTerminal')
-  const context = useUiStore((s) => s.modalContext) as { projectId?: string } | null
+  const context = useUiStore((s) => s.modalContext) as {
+    projectId?: string
+    // Callers that need a particular kind of terminal narrow the choice rather than opening a
+    // second modal that would drift from this one.
+    only?: AgentType[]
+    titleKey?: 'term.newTerminalTitle' | 'orchestrator.addPlannerTitle'
+  } | null
   const closeModal = useUiStore((s) => s.closeModal)
   const createAgentTerminal = useProjectsStore((s) => s.createAgentTerminal)
   const alwaysStartUnrestricted = useProjectsStore((s) => s.preferences.alwaysStartUnrestricted)
@@ -48,7 +54,10 @@ export function NewTerminalModal() {
     mimo: false,
   })
 
-  const visibleAgents = AGENTS.filter((a) => enabled[a.type])
+  const only = context?.only
+  const visibleAgents = AGENTS.filter(
+    (a) => enabled[a.type] && (!only || only.includes(a.type)),
+  )
   const defaultType =
     visibleAgents.find((agent) => agent.type === 'claude')?.type ??
     visibleAgents[0]?.type ??
@@ -136,7 +145,7 @@ export function NewTerminalModal() {
         reset()
         closeModal()
       }}
-      title={t('term.newTerminalTitle')}
+      title={t(context?.titleKey ?? 'term.newTerminalTitle')}
       width={560}
       footer={
         <>

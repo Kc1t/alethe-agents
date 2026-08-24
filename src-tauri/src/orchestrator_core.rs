@@ -26,12 +26,17 @@ pub const STATUS_DONE: &str = "done";
 pub const STATUS_FAILED: &str = "failed";
 pub const STATUS_CANCELLED: &str = "cancelled";
 pub const STATUS_RELEASED: &str = "released";
+/// Its process died with the app, but Codex keeps the thread on disk, so the worker can be brought
+/// back with everything it had read still in context.
+pub const STATUS_INTERRUPTED: &str = "interrupted";
 
 pub type Observer = Arc<dyn Fn(Value) + Send + Sync>;
 
 /// How to start one worker. The app layer resolves this once; the core never guesses.
 #[derive(Clone, Debug)]
 pub struct Launcher {
+    /// Which CLI this launcher starts, so the UI can say who did the work.
+    pub kind: String,
     pub program: PathBuf,
     pub args: Vec<String>,
     pub env: Vec<(String, String)>,
@@ -40,11 +45,24 @@ pub struct Launcher {
 impl Launcher {
     pub fn codex_app_server(program: PathBuf) -> Self {
         Self {
+            kind: "codex".into(),
             program,
             args: vec!["app-server".into(), "--stdio".into()],
             env: Vec::new(),
         }
     }
+}
+
+/// A worker runs its commands inside Codex's sandbox, which uses a lowered token that cannot start
+/// anything installed from the Microsoft Store: the launch fails with access denied before the
+/// command runs, so the worker can write files but never run a build or a test. Dropping the Store
+/// aliases from its PATH leaves it on the system shell, which the sandbox can start. This narrows
+/// only what the worker sees, not what it is allowed to touch.
+pub fn path_without_store_aliases(path: &str) -> String {
+    path.split(';')
+        .filter(|entry| !entry.is_empty() && !entry.to_ascii_lowercase().contains("\\windowsapps"))
+        .collect::<Vec<_>>()
+        .join(";")
 }
 
 const DEFAULT_JOB_TIMEOUT_MS: u64 = 900_000;
@@ -99,6 +117,24 @@ fn isolate_worktree(cwd: &str, job_id: &str) -> Result<String, String> {
     Ok(target.to_string_lossy().into_owned())
 }
 
+/// `job-07` -> 7, so restored ids never collide with new ones.
+fn trailing_number(id: &str) -> u64 {
+    id.rsplit('-')
+        .next()
+        .and_then(|tail| tail.parse::<u64>().ok())
+        .unwrap_or(0)
+}
+
+/// Keeps the end of a long text: a worker's conclusion is the last thing it says, never the first.
+fn tail(text: &str, limit: usize) -> String {
+    let trimmed = text.trim();
+    let count = trimmed.chars().count();
+    if count <= limit {
+        return trimmed.to_string();
+    }
+    trimmed.chars().skip(count - limit).collect()
+}
+
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -106,14 +142,30 @@ fn now_ms() -> u64 {
         .unwrap_or_default()
 }
 
+/// The agent session that called the tools. Alethe writes one MCP config per terminal, so the
+/// request carries the terminal's own id and the app can say which session a run belongs to.
+#[derive(Clone)]
+pub struct Planner {
+    pub id: String,
+    pub label: String,
+    pub agent: String,
+}
+
 struct Job {
     id: String,
+    planner_id: Option<String>,
+    agent: String,
+    run_id: String,
+    run_label: Option<String>,
     spec: String,
     cwd: String,
     status: String,
     thread_id: Option<String>,
     active_turn_id: Option<String>,
     reply: String,
+    /// The worker's last finished message. `reply` is the live stream, which opens with narration
+    /// and only reaches the conclusion at the end, so the two are not the same thing.
+    report: String,
     plan: Vec<String>,
     diff: Option<String>,
     tokens: Option<Value>,
@@ -137,6 +189,10 @@ impl Job {
         };
         json!({
             "id": self.id,
+            "plannerId": self.planner_id,
+            "agent": self.agent,
+            "runId": self.run_id,
+            "runLabel": self.run_label,
             "spec": self.spec,
             "cwd": self.cwd,
             "status": self.status,
@@ -147,14 +203,81 @@ impl Job {
             "tokens": self.tokens,
             "worktree": self.worktree,
             "hasDiff": self.diff.is_some(),
-            "summary": self.reply.trim().chars().take(1200).collect::<String>(),
+            "summary": tail(if self.report.is_empty() { &self.reply } else { &self.report }, 1200),
+        })
+    }
+
+    fn record(&self) -> Value {
+        json!({
+            "id": self.id,
+            "plannerId": self.planner_id,
+            "agent": self.agent,
+            "runId": self.run_id,
+            "runLabel": self.run_label,
+            "spec": self.spec,
+            "cwd": self.cwd,
+            "status": self.status,
+            "threadId": self.thread_id,
+            "outcome": self.outcome,
+            "plan": self.plan,
+            "worktree": self.worktree,
+            "summary": self.report,
+            "startedAt": self.started_at,
+            "endedAt": self.ended_at,
+        })
+    }
+
+    fn from_record(value: &Value) -> Option<Self> {
+        let text = |key: &str| value.get(key).and_then(Value::as_str).map(ToOwned::to_owned);
+        let status = text("status").unwrap_or_else(|| STATUS_DONE.to_string());
+        // Work that was in flight did not finish and its process is gone. Restoring it as running
+        // would show a live worker that does not exist.
+        let status = match status.as_str() {
+            STATUS_RUNNING | STATUS_QUEUED => STATUS_INTERRUPTED.to_string(),
+            _ => status,
+        };
+        Some(Self {
+            id: text("id")?,
+            planner_id: text("plannerId"),
+            agent: text("agent").unwrap_or_else(|| "codex".to_string()),
+            run_id: text("runId").unwrap_or_else(|| "run-00".to_string()),
+            run_label: text("runLabel"),
+            spec: text("spec").unwrap_or_default(),
+            cwd: text("cwd").unwrap_or_default(),
+            status,
+            thread_id: text("threadId"),
+            active_turn_id: None,
+            reply: String::new(),
+            report: text("summary").unwrap_or_default(),
+            plan: value
+                .get("plan")
+                .and_then(Value::as_array)
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(ToOwned::to_owned)
+                        .collect()
+                })
+                .unwrap_or_default(),
+            diff: None,
+            tokens: None,
+            outcome: text("outcome"),
+            started_at: value.get("startedAt").and_then(Value::as_u64),
+            ended_at: value.get("endedAt").and_then(Value::as_u64),
+            worktree: text("worktree"),
+            timeout_ms: Some(DEFAULT_JOB_TIMEOUT_MS),
+            child: None,
+            stdin: None,
+            inbox: VecDeque::new(),
+            next_request_id: 10,
         })
     }
 
     fn settled(&self) -> bool {
         matches!(
             self.status.as_str(),
-            STATUS_DONE | STATUS_FAILED | STATUS_CANCELLED | STATUS_RELEASED
+            STATUS_DONE | STATUS_FAILED | STATUS_CANCELLED | STATUS_RELEASED | STATUS_INTERRUPTED
         )
     }
 
@@ -200,6 +323,8 @@ struct Inner {
     running: usize,
     max_concurrent: usize,
     job_counter: u64,
+    run_counter: u64,
+    planners: HashMap<String, Planner>,
 }
 
 impl Inner {
@@ -210,8 +335,16 @@ impl Inner {
             .filter_map(|id| self.jobs.get(id))
             .map(Job::snapshot)
             .collect();
+        let planners: Vec<Value> = self
+            .planners
+            .values()
+            .map(|planner| {
+                json!({ "id": planner.id, "label": planner.label, "agent": planner.agent })
+            })
+            .collect();
         json!({
             "jobs": jobs,
+            "planners": planners,
             "running": self.running,
             "queued": self.queue.len(),
             "concurrencyLimit": self.max_concurrent
@@ -238,6 +371,7 @@ pub struct Core {
     launcher: Arc<Mutex<Option<Launcher>>>,
     observer: Arc<Mutex<Option<Observer>>>,
     dispatch: Arc<Mutex<Option<Sender<Value>>>>,
+    store: Arc<Mutex<Option<PathBuf>>>,
 }
 
 impl Default for Core {
@@ -251,6 +385,7 @@ impl Default for Core {
             launcher: Arc::new(Mutex::new(None)),
             observer: Arc::new(Mutex::new(None)),
             dispatch: Arc::new(Mutex::new(None)),
+            store: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -348,6 +483,100 @@ fn release_oldest_parked(inner: &mut Inner) {
 }
 
 impl Core {
+    /// Called once per agent terminal, so a run can name the session that asked for it.
+    pub fn register_planner(&self, planner: Planner) {
+        {
+            let mut inner = guard(&self.inner);
+            inner.planners.insert(planner.id.clone(), planner);
+            self.notify(&inner);
+        }
+        self.persist();
+    }
+
+    /// Points the core at the file that outlives the app. Loading is separate so the caller decides
+    /// whether a fresh instance should adopt the previous session's history.
+    pub fn set_store(&self, path: PathBuf) {
+        *guard(&self.store) = Some(path);
+    }
+
+    pub fn restore(&self) {
+        let Some(path) = guard(&self.store).clone() else {
+            return;
+        };
+        let Ok(bytes) = std::fs::read(&path) else {
+            return;
+        };
+        let Ok(value) = serde_json::from_slice::<Value>(&bytes) else {
+            return;
+        };
+        let mut inner = guard(&self.inner);
+        for record in value.get("jobs").and_then(Value::as_array).unwrap_or(&vec![]) {
+            let Some(job) = Job::from_record(record) else {
+                continue;
+            };
+            let id = job.id.clone();
+            inner.job_counter = inner.job_counter.max(trailing_number(&id));
+            inner.run_counter = inner.run_counter.max(trailing_number(&job.run_id));
+            inner.order.push(id.clone());
+            inner.jobs.insert(id, job);
+        }
+        for record in value
+            .get("planners")
+            .and_then(Value::as_array)
+            .unwrap_or(&vec![])
+        {
+            let text = |key: &str| record.get(key).and_then(Value::as_str).map(ToOwned::to_owned);
+            let Some(id) = text("id") else { continue };
+            inner.planners.insert(
+                id.clone(),
+                Planner {
+                    label: text("label").unwrap_or_else(|| id.clone()),
+                    agent: text("agent").unwrap_or_default(),
+                    id,
+                },
+            );
+        }
+        self.notify(&inner);
+    }
+
+    /// Written on the transitions that matter rather than on every token update, which streams.
+    fn persist(&self) {
+        let Some(path) = guard(&self.store).clone() else {
+            return;
+        };
+        let payload = {
+            let inner = guard(&self.inner);
+            json!({
+                "version": 1,
+                "jobs": inner
+                    .order
+                    .iter()
+                    .filter_map(|id| inner.jobs.get(id))
+                    .map(Job::record)
+                    .collect::<Vec<_>>(),
+                "planners": inner
+                    .planners
+                    .values()
+                    .map(|planner| json!({
+                        "id": planner.id,
+                        "label": planner.label,
+                        "agent": planner.agent
+                    }))
+                    .collect::<Vec<_>>(),
+            })
+        };
+        let Ok(bytes) = serde_json::to_vec_pretty(&payload) else {
+            return;
+        };
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let temp = path.with_extension("json.tmp");
+        if std::fs::write(&temp, &bytes).is_ok() {
+            let _ = std::fs::rename(&temp, &path);
+        }
+    }
+
     pub fn set_launcher(&self, launcher: Launcher) {
         *guard(&self.launcher) = Some(launcher);
     }
@@ -388,16 +617,19 @@ impl Core {
     }
 
     fn spawn_worker(&self, job_id: &str) {
-        let (cwd, spec) = {
+        let (cwd, spec, resume_thread) = {
             let mut inner = guard(&self.inner);
             let Some(job) = inner.jobs.get_mut(job_id) else {
                 return;
             };
             job.status = STATUS_RUNNING.to_string();
             job.started_at = Some(now_ms());
-            let pair = (job.cwd.clone(), job.spec.clone());
+            job.ended_at = None;
+            // Work that arrived while the worker was down leads; otherwise this is its first turn.
+            let first_turn = job.inbox.pop_front().unwrap_or_else(|| job.spec.clone());
+            let trio = (job.cwd.clone(), first_turn, job.thread_id.clone());
             inner.running += 1;
-            pair
+            trio
         };
 
         let Some(launcher) = guard(&self.launcher).clone() else {
@@ -464,14 +696,21 @@ impl Core {
             }),
         );
         let _ = send_rpc(&stdin, &json!({ "method": "initialized" }));
-        let _ = send_rpc(
-            &stdin,
-            &json!({
+        // Codex keeps threads on disk, so a worker whose process died can pick up its own history
+        // instead of reading everything again.
+        let opening = match &resume_thread {
+            Some(thread_id) => json!({
+                "id": 2,
+                "method": "thread/resume",
+                "params": { "threadId": thread_id, "cwd": cwd }
+            }),
+            None => json!({
                 "id": 2,
                 "method": "thread/start",
                 "params": { "cwd": cwd, "approvalPolicy": "never", "sandbox": "workspace-write" }
             }),
-        );
+        };
+        let _ = send_rpc(&stdin, &opening);
 
         let timeout_ms = guard(&self.inner)
             .jobs
@@ -622,6 +861,23 @@ impl Core {
                     .and_then(Value::as_str)
                     .map(ToOwned::to_owned);
             }
+            "item/completed" => {
+                let item = params.get("item");
+                let is_message = item
+                    .and_then(|item| item.get("type"))
+                    .and_then(Value::as_str)
+                    == Some("agentMessage");
+                if is_message {
+                    let text = item
+                        .and_then(|item| item.get("text"))
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .trim();
+                    if !text.is_empty() {
+                        job.report = text.to_string();
+                    }
+                }
+            }
             "item/agentMessage/delta" => {
                 if let Some(delta) = params.get("delta").and_then(Value::as_str) {
                     job.reply.push_str(delta);
@@ -656,7 +912,11 @@ impl Core {
             }
             "turn/completed" | "turn/failed" => {
                 let completed = method == "turn/completed";
-                let summary = job.reply.trim().to_string();
+                let summary = if job.report.is_empty() {
+                    tail(job.reply.trim(), REPLY_LIMIT)
+                } else {
+                    job.report.clone()
+                };
                 drop(inner);
                 self.finish(
                     job_id,
@@ -693,6 +953,9 @@ impl Core {
                 return;
             }
             job.status = status.to_string();
+            if !text.trim().is_empty() {
+                job.report = text.trim().to_string();
+            }
             job.outcome = outcome.clone();
             job.ended_at = Some(now_ms());
             job.active_turn_id = None;
@@ -713,6 +976,7 @@ impl Core {
                     job.outcome = None;
                     job.ended_at = None;
                     job.reply.clear();
+                    job.report.clear();
                 }
                 inner.running += 1;
             } else {
@@ -726,6 +990,7 @@ impl Core {
                 return;
             }
         }
+        self.persist();
         self.signal.notify_all();
         self.drain_queue();
     }
@@ -762,6 +1027,7 @@ pub fn tools() -> Value {
                         "description": "One self contained instruction per worker."
                     },
                     "cwd": { "type": "string", "description": "Working directory. Defaults to the lead's directory." },
+                    "label": { "type": "string", "description": "A short name for this batch, in the user's words - what it is for, not how it is done. It is how the person watching tells one round of delegation from another." },
                     "isolate": {
                         "type": "boolean",
                         "description": "Give each worker its own detached git worktree. Use it whenever two units could touch the same files; without it parallel workers share one directory and can overwrite each other. Requires a git repository. The worktree path comes back with the job and is left in place for review."
@@ -874,6 +1140,7 @@ pub fn call_tool(
     core: &Core,
     name: &str,
     arguments: &Map<String, Value>,
+    planner: Option<&str>,
 ) -> Result<Value, String> {
     match name {
         "alethe_delegate" => {
@@ -904,15 +1171,33 @@ pub fn call_tool(
 
             // Ids are reserved under the lock, but the worktrees are not built under it: each one
             // shells out to git, and holding the lock across that would stall every running job.
-            let ids: Vec<String> = {
+            let label = arguments
+                .get("label")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned);
+
+            // One delegate call is one run: the batch the lead asked for at one moment. Grouping by
+            // it is what lets several rounds of delegation stay apart instead of piling into one list.
+            let planner_id = planner.map(ToOwned::to_owned);
+            let agent = guard(&core.launcher)
+                .as_ref()
+                .map(|launcher| launcher.kind.clone())
+                .unwrap_or_else(|| "codex".to_string());
+
+            let (run_id, ids): (String, Vec<String>) = {
                 let mut inner = guard(&core.inner);
-                tasks
+                inner.run_counter += 1;
+                let run_id = format!("run-{:02}", inner.run_counter);
+                let ids = tasks
                     .iter()
                     .map(|_| {
                         inner.job_counter += 1;
                         format!("job-{:02}", inner.job_counter)
                     })
-                    .collect()
+                    .collect();
+                (run_id, ids)
             };
 
             // A batch is accepted whole or not at all. Half of it left queued with worktrees on
@@ -951,12 +1236,17 @@ pub fn call_tool(
                         id.clone(),
                         Job {
                             id: id.clone(),
+                            planner_id: planner_id.clone(),
+                            agent: agent.clone(),
+                            run_id: run_id.clone(),
+                            run_label: label.clone(),
                             spec: spec.clone(),
                             cwd: job_cwd,
                             status: STATUS_QUEUED.to_string(),
                             thread_id: None,
                             active_turn_id: None,
                             reply: String::new(),
+                            report: String::new(),
                             plan: Vec::new(),
                             diff: None,
                             tokens: None,
@@ -977,11 +1267,13 @@ pub fn call_tool(
                 }
                 core.notify(&inner);
             }
+            core.persist();
             core.drain_queue();
 
             let limit = guard(&core.inner).max_concurrent;
             Ok(json!({
                 "accepted": created.len(),
+                "runId": run_id,
                 "runningInParallel": true,
                 "concurrencyLimit": limit,
                 "isolated": isolate,
@@ -1089,8 +1381,24 @@ pub fn call_tool(
                 .thread_id
                 .clone()
                 .ok_or_else(|| format!("job {job_id} has no thread"))?;
+            // A worker whose process is gone still has its thread on disk, so instead of refusing
+            // the message it is started again and picks up where it left off.
             if job.stdin.is_none() {
-                return Err(format!("job {job_id} was released and cannot take more work"));
+                drop(inner);
+                let queued = {
+                    let mut inner = guard(&core.inner);
+                    let job = inner
+                        .jobs
+                        .get_mut(&job_id)
+                        .ok_or_else(|| format!("unknown job {job_id}"))?;
+                    job.inbox.push_back(message);
+                    job.status = STATUS_QUEUED.to_string();
+                    inner.queue.push_back(job_id.clone());
+                    core.notify(&inner);
+                    true
+                };
+                core.drain_queue();
+                return Ok(json!({ "revived": job_id, "resumedThread": thread_id, "queued": queued }));
             }
             // Waiting beats both alternatives: refusing would make the lead babysit the worker,
             // and steering would bend the turn already in flight instead of adding to it.
@@ -1125,6 +1433,7 @@ pub fn call_tool(
                 job.outcome = None;
                 job.ended_at = None;
                 job.reply.clear();
+                job.report.clear();
             }
             inner.running += 1;
             core.notify(&inner);
@@ -1213,7 +1522,7 @@ pub fn call_tool(
 
 /// One JSON-RPC message in, one response out. `None` means the message was a notification and
 /// the caller should answer 202 with no body.
-pub fn handle_mcp_body(core: &Core, body: &str) -> Option<String> {
+pub fn handle_mcp_body(core: &Core, body: &str, planner: Option<&str>) -> Option<String> {
     let message: Value = serde_json::from_str(body).ok()?;
     let id = message.get("id").cloned()?;
     let method = message.get("method").and_then(Value::as_str).unwrap_or("");
@@ -1240,7 +1549,7 @@ pub fn handle_mcp_body(core: &Core, body: &str) -> Option<String> {
                 .get("arguments")
                 .and_then(Value::as_object)
                 .unwrap_or(&empty);
-            match call_tool(core, name, arguments) {
+            match call_tool(core, name, arguments, planner) {
                 Ok(value) => json!({
                     "jsonrpc": "2.0",
                     "id": id,

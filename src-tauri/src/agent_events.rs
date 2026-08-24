@@ -163,10 +163,20 @@ pub fn start_listener(app: AppHandle) {
             // O Alethe emite `agent-spawn`; o front sobe um PTY worker. Campos:
 
             if url.starts_with("/mcp") {
+                let planner = request
+                    .headers()
+                    .iter()
+                    .find(|h| h.field.equiv("X-Alethe-Planner"))
+                    .map(|h| h.value.as_str().to_string());
                 let app = app.clone();
                 std::thread::spawn(move || {
                     let state = app.state::<crate::orchestrator::OrchestratorState>();
-                    match crate::orchestrator::handle_mcp_body(Some(&app), &state, &body) {
+                    match crate::orchestrator::handle_mcp_body(
+                        Some(&app),
+                        &state,
+                        &body,
+                        planner.as_deref(),
+                    ) {
                         Some(payload) => {
                             let header =
                                 tiny_http::Header::from_bytes("Content-Type", "application/json")

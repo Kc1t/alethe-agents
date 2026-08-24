@@ -21,7 +21,7 @@ use orchestrator_core::{handle_mcp_body, Core, Launcher};
 
 fn rpc(core: &Core, id: u32, method: &str, params: Value) -> Value {
     let body = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
-    let raw = handle_mcp_body(core, &body.to_string()).expect("a response");
+    let raw = handle_mcp_body(core, &body.to_string(), None).expect("a response");
     serde_json::from_str(&raw).expect("valid json")
 }
 
@@ -135,7 +135,99 @@ fn the_handshake_advertises_every_tool() {
 fn a_notification_gets_no_response_body() {
     let core = Core::default();
     let body = r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#;
-    assert!(handle_mcp_body(&core, body).is_none());
+    assert!(handle_mcp_body(&core, body, None).is_none());
+}
+
+#[test]
+fn history_outlives_the_process_and_in_flight_work_is_not_reported_as_running() {
+    let dir = workspace("persist");
+    let store = dir.join("orchestrator-jobs.json");
+
+    let first = Core::default();
+    first.set_store(store.clone());
+    first.set_launcher(silent_launcher());
+    call(
+        &first,
+        "alethe_delegate",
+        json!({ "tasks": ["keep this"], "cwd": dir.to_string_lossy(), "label": "a run" }),
+    );
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert!(store.exists(), "the store must be written as work is created");
+
+    let second = Core::default();
+    second.set_store(store);
+    second.restore();
+    let jobs = second.snapshot();
+    let jobs = jobs["jobs"].as_array().expect("jobs");
+    assert_eq!(jobs.len(), 1, "the record survives a new process");
+    assert_eq!(jobs[0]["spec"], "keep this");
+    assert_eq!(jobs[0]["runLabel"], "a run");
+    assert_eq!(
+        jobs[0]["status"], "interrupted",
+        "a worker whose process is gone must not be shown as running"
+    );
+    assert_eq!(
+        second.snapshot()["running"], 0,
+        "restored work holds no slot"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_new_id_never_collides_with_a_restored_one() {
+    let dir = workspace("persist-ids");
+    let store = dir.join("orchestrator-jobs.json");
+
+    let first = Core::default();
+    first.set_store(store.clone());
+    first.set_launcher(silent_launcher());
+    call(
+        &first,
+        "alethe_delegate",
+        json!({ "tasks": ["one", "two"], "cwd": dir.to_string_lossy() }),
+    );
+    std::thread::sleep(std::time::Duration::from_millis(300));
+
+    let second = Core::default();
+    second.set_store(store);
+    second.restore();
+    second.set_launcher(silent_launcher());
+    let created = call(
+        &second,
+        "alethe_delegate",
+        json!({ "tasks": ["three"], "cwd": dir.to_string_lossy() }),
+    );
+    let id = created["jobs"][0]["id"].as_str().expect("an id");
+    assert_eq!(id, "job-03", "counting resumes past the restored ids");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_settled_worker_reports_its_own_outcome() {
+    let dir = workspace("report");
+    let core = Core::default();
+    core.set_launcher(silent_launcher());
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["do the thing"], "cwd": dir.to_string_lossy(), "timeoutSeconds": 1 }),
+    );
+    // The fake worker never speaks, so the watchdog is what settles it. Even then the job must
+    // carry a readable account of itself rather than falling back to the instruction it was given.
+    std::thread::sleep(std::time::Duration::from_millis(2500));
+    let snapshot = core.snapshot();
+    let job = &snapshot["jobs"][0];
+    assert_eq!(job["status"], "failed");
+    let summary = job["summary"].as_str().unwrap_or_default();
+    assert!(!summary.is_empty(), "a settled job must keep its report");
+    assert_ne!(
+        summary, "do the thing",
+        "the report is what the worker said, never an echo of the task"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -316,6 +408,7 @@ fn the_queue_never_breaches_the_concurrency_limit() {
 /// watchdog without spending a real Codex turn.
 fn silent_launcher() -> Launcher {
     Launcher {
+        kind: "silent".into(),
         program: PathBuf::from("cmd"),
         args: vec![
             "/c".into(),
