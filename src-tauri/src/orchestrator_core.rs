@@ -29,6 +29,8 @@ pub const STATUS_RELEASED: &str = "released";
 /// Its process died with the app, but Codex keeps the thread on disk, so the worker can be brought
 /// back with everything it had read still in context.
 pub const STATUS_INTERRUPTED: &str = "interrupted";
+/// Holding its slot, but stopped on a question only a person can answer.
+pub const STATUS_BLOCKED: &str = "blocked";
 
 pub type Observer = Arc<dyn Fn(Value) + Send + Sync>;
 
@@ -174,6 +176,10 @@ struct Job {
     ended_at: Option<u64>,
     worktree: Option<String>,
     timeout_ms: Option<u64>,
+    approval_policy: String,
+    sandbox: String,
+    /// The request the worker is stopped on, kept with the rpc id it must be answered with.
+    pending: Option<Value>,
     child: Option<Arc<Mutex<Child>>>,
     stdin: Option<Arc<Mutex<ChildStdin>>>,
     inbox: VecDeque<String>,
@@ -202,6 +208,7 @@ impl Job {
             "plan": self.plan,
             "tokens": self.tokens,
             "worktree": self.worktree,
+            "pendingApproval": self.pending,
             "hasDiff": self.diff.is_some(),
             "summary": tail(if self.report.is_empty() { &self.reply } else { &self.report }, 1200),
         })
@@ -221,6 +228,8 @@ impl Job {
             "outcome": self.outcome,
             "plan": self.plan,
             "worktree": self.worktree,
+            "approvalPolicy": self.approval_policy,
+            "sandbox": self.sandbox,
             "summary": self.report,
             "startedAt": self.started_at,
             "endedAt": self.ended_at,
@@ -267,6 +276,9 @@ impl Job {
             ended_at: value.get("endedAt").and_then(Value::as_u64),
             worktree: text("worktree"),
             timeout_ms: Some(DEFAULT_JOB_TIMEOUT_MS),
+            approval_policy: text("approvalPolicy").unwrap_or_else(|| "never".to_string()),
+            sandbox: text("sandbox").unwrap_or_else(|| "workspace-write".to_string()),
+            pending: None,
             child: None,
             stdin: None,
             inbox: VecDeque::new(),
@@ -617,7 +629,7 @@ impl Core {
     }
 
     fn spawn_worker(&self, job_id: &str) {
-        let (cwd, spec, resume_thread) = {
+        let (cwd, spec, resume_thread, approval_policy, sandbox) = {
             let mut inner = guard(&self.inner);
             let Some(job) = inner.jobs.get_mut(job_id) else {
                 return;
@@ -627,9 +639,15 @@ impl Core {
             job.ended_at = None;
             // Work that arrived while the worker was down leads; otherwise this is its first turn.
             let first_turn = job.inbox.pop_front().unwrap_or_else(|| job.spec.clone());
-            let trio = (job.cwd.clone(), first_turn, job.thread_id.clone());
+            let started = (
+                job.cwd.clone(),
+                first_turn,
+                job.thread_id.clone(),
+                job.approval_policy.clone(),
+                job.sandbox.clone(),
+            );
             inner.running += 1;
-            trio
+            started
         };
 
         let Some(launcher) = guard(&self.launcher).clone() else {
@@ -692,7 +710,12 @@ impl Core {
             &json!({
                 "id": 1,
                 "method": "initialize",
-                "params": { "clientInfo": { "name": "alethe-orchestrator", "title": "Alethe", "version": "1" } }
+                "params": {
+                    "clientInfo": { "name": "alethe-orchestrator", "title": "Alethe", "version": "1" },
+                    // Granular approvals are gated behind this: without it the worker cannot route
+                    // its question here and gives up on the write instead of asking.
+                    "capabilities": { "experimentalApi": true }
+                }
             }),
         );
         let _ = send_rpc(&stdin, &json!({ "method": "initialized" }));
@@ -707,7 +730,13 @@ impl Core {
             None => json!({
                 "id": 2,
                 "method": "thread/start",
-                "params": { "cwd": cwd, "approvalPolicy": "never", "sandbox": "workspace-write" }
+                "params": {
+                    "cwd": cwd,
+                    "approvalPolicy": serde_json::from_str::<Value>(&approval_policy)
+                        .unwrap_or(Value::String("never".into())),
+                    "approvalsReviewer": "user",
+                    "sandbox": sandbox
+                }
             }),
         };
         let _ = send_rpc(&stdin, &opening);
@@ -797,6 +826,83 @@ impl Core {
         );
     }
 
+    /// A worker stops on these until someone answers. Anything we do not recognise is refused
+    /// rather than left pending, because an unanswered request hangs that worker for good.
+    fn on_worker_request(
+        &self,
+        job_id: &str,
+        stdin: &Arc<Mutex<ChildStdin>>,
+        rpc_id: &Value,
+        method: &str,
+        params: &Value,
+    ) {
+        let kind = match method {
+            "item/commandExecution/requestApproval" => "command",
+            "item/fileChange/requestApproval" => "fileChange",
+            _ => {
+                let _ = send_rpc(
+                    stdin,
+                    &json!({
+                        "id": rpc_id,
+                        "error": { "code": -32601, "message": format!("unsupported request {method}") }
+                    }),
+                );
+                return;
+            }
+        };
+
+        let ask = json!({
+            "rpcId": rpc_id,
+            "kind": kind,
+            "command": params.get("command").and_then(Value::as_str),
+            "cwd": params.get("cwd").and_then(Value::as_str),
+            "reason": params.get("reason").and_then(Value::as_str),
+            "askedAtMs": now_ms(),
+        });
+
+        {
+            let mut inner = guard(&self.inner);
+            if let Some(job) = inner.jobs.get_mut(job_id) {
+                job.pending = Some(ask);
+                job.status = STATUS_BLOCKED.to_string();
+            }
+            self.notify(&inner);
+        }
+        self.signal.notify_all();
+    }
+
+    /// Sends the answer on the id the worker is waiting on and lets it carry on.
+    pub fn answer(&self, job_id: &str, decision: &str) -> Result<Value, String> {
+        const DECISIONS: [&str; 4] = ["accept", "acceptForSession", "decline", "abort"];
+        if !DECISIONS.contains(&decision) {
+            return Err(format!("decision must be one of {}", DECISIONS.join(", ")));
+        }
+        let (stdin, rpc_id) = {
+            let mut inner = guard(&self.inner);
+            let job = inner
+                .jobs
+                .get_mut(job_id)
+                .ok_or_else(|| format!("unknown job {job_id}"))?;
+            let pending = job
+                .pending
+                .take()
+                .ok_or_else(|| format!("job {job_id} is not waiting on anything"))?;
+            let rpc_id = pending
+                .get("rpcId")
+                .cloned()
+                .ok_or_else(|| "the pending request has no id to answer".to_string())?;
+            let stdin = job
+                .stdin
+                .clone()
+                .ok_or_else(|| format!("job {job_id} has no live worker"))?;
+            job.status = STATUS_RUNNING.to_string();
+            self.notify(&inner);
+            (stdin, rpc_id)
+        };
+        send_rpc(&stdin, &json!({ "id": rpc_id, "result": { "decision": decision } }))?;
+        Ok(json!({ "answered": job_id, "decision": decision }))
+    }
+
     fn on_worker_message(
         &self,
         job_id: &str,
@@ -807,6 +913,12 @@ impl Core {
         let method = message.get("method").and_then(Value::as_str).unwrap_or("");
         let params = message.get("params").cloned().unwrap_or(Value::Null);
         let result = message.get("result").cloned().unwrap_or(Value::Null);
+
+        // Both an id and a method means the worker is asking, not telling: it stops until answered.
+        if let (Some(rpc_id), true) = (message.get("id").cloned(), !method.is_empty()) {
+            self.on_worker_request(job_id, stdin, &rpc_id, method, &params);
+            return;
+        }
 
         if message.get("id").and_then(Value::as_i64) == Some(2) {
             let thread_id = result
@@ -953,6 +1065,7 @@ impl Core {
                 return;
             }
             job.status = status.to_string();
+            job.pending = None;
             if !text.trim().is_empty() {
                 job.report = text.trim().to_string();
             }
@@ -1032,6 +1145,10 @@ pub fn tools() -> Value {
                         "type": "boolean",
                         "description": "Give each worker its own detached git worktree. Use it whenever two units could touch the same files; without it parallel workers share one directory and can overwrite each other. Requires a git repository. The worktree path comes back with the job and is left in place for review."
                     },
+                    "askForApproval": {
+                        "type": "boolean",
+                        "description": "Make each worker stop and ask you before it reaches outside its own working directory - the network, another folder, anything the sandbox would otherwise refuse. Work inside the directory still proceeds on its own. Use it whenever the work touches a repository that matters. A worker that is asking shows up as blocked and is answered with alethe_answer."
+                    },
                     "timeoutSeconds": {
                         "type": "number",
                         "description": "Budget per worker before Alethe stops it, default 900. Pass 0 to let a worker run without a limit."
@@ -1082,6 +1199,21 @@ pub fn tools() -> Value {
                     "message": { "type": "string" }
                 },
                 "required": ["jobId", "message"]
+            }
+        },
+        {
+            "name": "alethe_answer",
+            "description": "Answer the question a worker is stopped on. Until it is answered that worker does nothing and holds its slot. Decline lets it carry on down another path; abort ends its turn.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "jobId": { "type": "string" },
+                    "decision": {
+                        "type": "string",
+                        "enum": ["accept", "acceptForSession", "decline", "abort"]
+                    }
+                },
+                "required": ["jobId", "decision"]
             }
         },
         {
@@ -1163,6 +1295,37 @@ pub fn call_tool(
                 .get("isolate")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
+            // What a worker may do without asking is the sandbox, not the policy: with
+            // workspace-write it never asks, because everything it wants is already permitted.
+            // Asking means starting it read-only, so every write and every command has to be
+            // escalated - and escalation is the question the person answers.
+            let ask = arguments
+                .get("askForApproval")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            // The named policies decide for themselves what is worth asking about. The granular
+            // form is the one that says plainly which callbacks this client will answer, which is
+            // what makes a worker route the question here instead of giving up on it.
+            let (approval_policy, sandbox) = if ask {
+                (
+                    json!({
+                        "granular": {
+                            "sandbox_approval": true,
+                            "request_permissions": true,
+                            "rules": true,
+                            "skill_approval": true,
+                            "mcp_elicitations": true
+                        }
+                    }),
+                    // Not read-only: a worker treats that as final and gives up instead of asking.
+                    // Kept writable, it works normally and only stops when it needs to reach
+                    // outside its own workspace - which is the moment worth a question.
+                    "workspace-write".to_string(),
+                )
+            } else {
+                (Value::String("never".into()), "workspace-write".to_string())
+            };
+            let approval_policy = approval_policy.to_string();
             let timeout_ms = match arguments.get("timeoutSeconds").and_then(Value::as_u64) {
                 Some(0) => None,
                 Some(seconds) => Some(seconds.saturating_mul(1000)),
@@ -1255,6 +1418,9 @@ pub fn call_tool(
                             ended_at: None,
                             worktree: worktree.clone(),
                             timeout_ms,
+                            approval_policy: approval_policy.clone(),
+                            sandbox: sandbox.clone(),
+                            pending: None,
                             child: None,
                             stdin: None,
                             inbox: VecDeque::new(),
@@ -1445,6 +1611,12 @@ pub fn call_tool(
                 return Err(error);
             }
             Ok(json!({ "sent": job_id }))
+        }
+
+        "alethe_answer" => {
+            let job_id = required_str(arguments, "jobId")?;
+            let decision = required_str(arguments, "decision")?;
+            core.answer(&job_id, &decision)
         }
 
         "alethe_cancel" => {

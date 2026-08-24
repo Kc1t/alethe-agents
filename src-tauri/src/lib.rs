@@ -238,6 +238,7 @@ pub fn run() {
             orchestrator::orchestrator_jobs,
             orchestrator::orchestrator_set_concurrency,
             orchestrator::orchestrator_message,
+            orchestrator::orchestrator_answer,
             browser_session::browser_session_start,
             browser_session::browser_session_stop,
             browser_session::browser_session_status,

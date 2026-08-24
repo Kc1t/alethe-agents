@@ -1,8 +1,9 @@
 import type { OrchestratorJob, OrchestratorPlanner } from './tauri'
 
-export type RunLane = 'running' | 'queued' | 'interrupted' | 'failed' | 'finished'
+export type RunLane = 'blocked' | 'running' | 'queued' | 'interrupted' | 'failed' | 'finished'
 
 export const RUN_LANE_ORDER: RunLane[] = [
+  'blocked',
   'running',
   'queued',
   'interrupted',
@@ -11,6 +12,7 @@ export const RUN_LANE_ORDER: RunLane[] = [
 ]
 
 export const LANE_OF: Record<OrchestratorJob['status'], RunLane> = {
+  blocked: 'blocked',
   running: 'running',
   queued: 'queued',
   interrupted: 'interrupted',
@@ -20,9 +22,17 @@ export const LANE_OF: Record<OrchestratorJob['status'], RunLane> = {
   released: 'finished',
 }
 
-// Worst-first: a run with a failure reads as failed even while other workers still run, and an
+// Worst-first: a blocked worker leads everything because it is stopped on a person and still
+// holding its slot, a run with a failure reads as failed even while other workers still run, and an
 // interrupted worker outranks the live ones because only the user can bring it back.
-const STATE_PRIORITY: RunLane[] = ['failed', 'interrupted', 'running', 'queued', 'finished']
+const STATE_PRIORITY: RunLane[] = [
+  'blocked',
+  'failed',
+  'interrupted',
+  'running',
+  'queued',
+  'finished',
+]
 
 export type RunCounts = Record<RunLane, number>
 
@@ -35,7 +45,7 @@ export type OrchestratorRun = {
 }
 
 export function emptyCounts(): RunCounts {
-  return { running: 0, queued: 0, interrupted: 0, failed: 0, finished: 0 }
+  return { blocked: 0, running: 0, queued: 0, interrupted: 0, failed: 0, finished: 0 }
 }
 
 export function countLanes(jobs: OrchestratorJob[]): RunCounts {
@@ -46,6 +56,20 @@ export function countLanes(jobs: OrchestratorJob[]): RunCounts {
 
 export function worstState(counts: RunCounts): RunLane {
   return STATE_PRIORITY.find((lane) => counts[lane] > 0) ?? 'finished'
+}
+
+export type AttentionLane = Extract<RunLane, 'blocked' | 'failed' | 'interrupted'>
+
+// The lanes nothing but a person can clear, worst first. Blocked leads: a failure is already over,
+// a blocked worker is still costing a slot.
+const ATTENTION_PRIORITY: AttentionLane[] = ['blocked', 'failed', 'interrupted']
+
+export type Attention = { lane: AttentionLane; count: number }
+
+/** What to say about work that is waiting on the user, or null when nothing is. */
+export function attentionOf(counts: RunCounts): Attention | null {
+  const lane = ATTENTION_PRIORITY.find((entry) => counts[entry] > 0)
+  return lane ? { lane, count: counts[lane] } : null
 }
 
 export function groupRuns(jobs: OrchestratorJob[]): OrchestratorRun[] {

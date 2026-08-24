@@ -41,6 +41,13 @@
   border-radius: 3px;
 }
 
+/* Blocked is the only state that reverses the chip: the strongest surface on the header. */
+.countAlert[data-lane='blocked'] {
+  font-weight: 600;
+  color: var(--bg);
+  background: var(--status-waiting);
+}
+
 .close {
   display: grid;
   place-items: center;
@@ -178,6 +185,10 @@
   font-weight: 700;
 }
 
+.tab[data-state='blocked'] {
+  color: var(--fg-muted);
+}
+
 .tab[data-state='running'] .dot {
   background: var(--status-working);
 }
@@ -230,6 +241,18 @@
   background: var(--status-offline-soft);
   border-radius: 3px;
   font-variant-numeric: tabular-nums;
+}
+
+.tabAlert[data-lane='interrupted'] {
+  color: var(--status-waiting);
+  background: var(--status-waiting-soft);
+}
+
+/* Blocked reverses the chip so it outweighs every other alert on the strip. */
+.tabAlert[data-lane='blocked'] {
+  font-weight: 700;
+  color: var(--bg);
+  background: var(--status-waiting);
 }
 
 /* ---------- canvas ---------- */
@@ -304,6 +327,12 @@
 .edge[data-lane='failed'] {
   stroke: var(--status-offline);
   stroke-width: 1.4;
+}
+
+.edge[data-lane='blocked'] {
+  stroke: var(--status-waiting);
+  stroke-width: 2;
+  opacity: 1;
 }
 
 .edge[data-selected='true'] {
@@ -411,6 +440,10 @@
   background: color-mix(in srgb, var(--status-offline-soft) 55%, var(--bg-elevated));
 }
 
+.run[data-lane='blocked'] {
+  background: color-mix(in srgb, var(--status-waiting-soft) 60%, var(--bg-elevated));
+}
+
 .runCard {
   display: flex;
   flex-direction: column;
@@ -460,6 +493,11 @@
   color: var(--status-waiting);
 }
 
+.run[data-lane='blocked'] .runState {
+  font-weight: 700;
+  color: var(--status-waiting);
+}
+
 .runLabel {
   overflow: hidden;
   font-size: 13px;
@@ -483,6 +521,17 @@
   margin-left: auto;
   font-weight: 400;
   color: var(--fg-muted);
+}
+
+.runBlocked {
+  flex: none;
+  padding: 1px 5px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 600;
+  color: var(--bg);
+  background: var(--status-waiting);
+  border-radius: 3px;
 }
 
 .run[data-lane='running'] .dot {
@@ -541,6 +590,11 @@
   background: color-mix(in srgb, var(--status-offline-soft) 60%, var(--bg-elevated));
 }
 
+.worker[data-status='blocked'] {
+  z-index: 1;
+  background: color-mix(in srgb, var(--status-waiting-soft) 55%, var(--bg-elevated));
+}
+
 .workerCard {
   display: flex;
   flex-direction: column;
@@ -593,6 +647,10 @@
   color: var(--status-waiting);
 }
 
+.worker[data-status='blocked'] .workerElapsed {
+  color: var(--status-waiting);
+}
+
 .workerLive {
   overflow: hidden;
   font-size: 11px;
@@ -622,6 +680,11 @@
 }
 
 .worker[data-status='interrupted'] .metaStatus {
+  color: var(--status-waiting);
+}
+
+.worker[data-status='blocked'] .metaStatus {
+  font-weight: 700;
   color: var(--status-waiting);
 }
 
@@ -721,6 +784,122 @@
   border-color: var(--accent);
 }
 
+/* ---------- the question a blocked worker is stopped on ---------- */
+
+.ask {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 12px 11px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--status-waiting-soft);
+}
+
+.askHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--status-waiting);
+}
+
+.askIcon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  color: var(--status-waiting);
+}
+
+.askWhat {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--fg);
+}
+
+.askCommand {
+  display: block;
+  max-height: 66px;
+  overflow: hidden;
+  padding: 6px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  color: var(--fg);
+  background: var(--bg-sunken);
+  border-radius: 4px;
+}
+
+.askReason {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+}
+
+.askCwd {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--fg-faint);
+}
+
+.askActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.askAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 4px 7px;
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--fg-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.askAction[data-decision='accept'] {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.askAction:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.askAction[data-decision='abort']:hover:not(:disabled) {
+  color: var(--status-offline);
+  background: var(--status-offline-soft);
+}
+
+.askAction:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.askHint {
+  margin: 0;
+  font-size: 9px;
+  line-height: 1.5;
+  color: var(--fg-faint);
+}
+
 /* ---------- shared status dot ---------- */
 
 .dot {
@@ -730,6 +909,29 @@
   height: 6px;
   border-radius: 50%;
   background: var(--status-idle);
+}
+
+/* Blocked is the only dot that breathes: it is the one state costing a worker right now. */
+.tab[data-state='blocked'] .dot,
+.run[data-lane='blocked'] .dot,
+.worker[data-status='blocked'] .dot,
+.railRow[data-status='blocked'] .dot,
+.railRow[data-lane='blocked'] .dot,
+.branchRow[data-lane='blocked'] .dot,
+.composerTarget[data-status='blocked'] .dot {
+  background: var(--status-waiting);
+  animation: block-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes block-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--status-waiting-soft);
+  }
+
+  55% {
+    box-shadow: 0 0 0 3px var(--status-waiting-soft);
+  }
 }
 
 /* ---------- canvas overlays ---------- */
@@ -1055,6 +1257,19 @@
   background: var(--status-offline);
 }
 
+.kv[data-lane='blocked'] em {
+  background: var(--status-waiting);
+  box-shadow: 0 0 0 2px var(--status-waiting-soft);
+}
+
+.kv[data-lane='blocked']:not([data-off='true']) {
+  color: var(--fg);
+}
+
+.kv[data-lane='blocked']:not([data-off='true']) b {
+  font-weight: 600;
+}
+
 .kv[data-lane='slots'] em {
   background: var(--panel);
 }
@@ -1215,6 +1430,11 @@
   color: var(--fg);
 }
 
+.railRow[data-status='blocked'] .railValue {
+  font-weight: 600;
+  color: var(--status-waiting);
+}
+
 /* ---------- rail tree: run at depth 0, its workers at depth 1 ---------- */
 
 .railSection[data-tree='true'] {
@@ -1314,6 +1534,11 @@
   color: var(--status-waiting);
 }
 
+.branchRow[data-lane='blocked'] .railValue {
+  font-weight: 700;
+  color: var(--status-waiting);
+}
+
 .attention {
   display: flex;
   align-items: center;
@@ -1357,11 +1582,30 @@
   color: var(--status-waiting);
 }
 
+.attentionValue[data-lane='blocked'] {
+  padding: 1px 5px;
+  font-weight: 600;
+  color: var(--bg);
+  background: var(--status-waiting);
+  border-radius: 3px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .edge[data-lane='running'],
     .hint,
   .composer,
   .tab {
     transition: none;
+  }
+
+  .tab[data-state='blocked'] .dot,
+  .run[data-lane='blocked'] .dot,
+  .worker[data-status='blocked'] .dot,
+  .railRow[data-status='blocked'] .dot,
+  .railRow[data-lane='blocked'] .dot,
+  .branchRow[data-lane='blocked'] .dot,
+  .composerTarget[data-status='blocked'] .dot {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--status-waiting-soft);
   }
 }

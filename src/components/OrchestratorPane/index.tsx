@@ -3,9 +3,11 @@ import {
   ChevronRight,
   CornerDownLeft,
   Cpu,
+  FilePen,
   GitBranch,
   Minus,
   Plus,
+  Terminal as TerminalIcon,
   X,
 } from 'lucide-react'
 import {
@@ -32,6 +34,10 @@ import {
   zoomAt,
 } from '../../lib/orchestratorGraph'
 import {
+  type Attention,
+  type AttentionLane,
+  attentionOf,
+  emptyCounts,
   groupPlanners,
   LANE_OF,
   type OrchestratorRun,
@@ -41,9 +47,12 @@ import {
 } from '../../lib/orchestratorRuns'
 import {
   listenOrchestratorJobs,
+  orchestratorAnswer,
+  type OrchestratorDecision,
   type OrchestratorJob,
   orchestratorJobs,
   orchestratorMessage,
+  type OrchestratorPendingApproval,
   type OrchestratorSnapshot,
 } from '../../lib/tauri'
 import { parseAgentType, type Project, type Terminal, type Theme } from '../../lib/types'
@@ -68,12 +77,38 @@ const ZOOM_STEP = 1.2
 const IDENTITY_VIEW: ViewTransform = { scale: 1, x: 0, y: 0 }
 
 const LANE_LABEL: Record<RunLane, `orchestrator.lane.${RunLane}`> = {
+  blocked: 'orchestrator.lane.blocked',
   running: 'orchestrator.lane.running',
   queued: 'orchestrator.lane.queued',
   interrupted: 'orchestrator.lane.interrupted',
   failed: 'orchestrator.lane.failed',
   finished: 'orchestrator.lane.finished',
 }
+
+const ATTENTION_LABEL: Record<AttentionLane, MessageKey> = {
+  blocked: 'orchestrator.runBlocked',
+  failed: 'orchestrator.runFailed',
+  interrupted: 'orchestrator.runInterrupted',
+}
+
+const DECISIONS: { decision: OrchestratorDecision; label: MessageKey; hint: MessageKey }[] = [
+  {
+    decision: 'accept',
+    label: 'orchestrator.answerAccept',
+    hint: 'orchestrator.answerAcceptTitle',
+  },
+  {
+    decision: 'acceptForSession',
+    label: 'orchestrator.answerSession',
+    hint: 'orchestrator.answerSessionTitle',
+  },
+  {
+    decision: 'decline',
+    label: 'orchestrator.answerDecline',
+    hint: 'orchestrator.answerDeclineTitle',
+  },
+  { decision: 'abort', label: 'orchestrator.answerAbort', hint: 'orchestrator.answerAbortTitle' },
+]
 
 // A planner id is a terminal id, never empty, so the empty string can stand for the group of jobs
 // that carry no planner at all.
@@ -144,8 +179,23 @@ function messageMode(job: OrchestratorJob): MessageMode {
   return 'next'
 }
 
-function needsYou(group: PlannerGroup): number {
-  return group.counts.failed + group.counts.interrupted
+function statusTitle(status: OrchestratorJob['status'], t: TFunction): string | undefined {
+  if (status === 'interrupted') return t('orchestrator.interruptedTitle')
+  if (status === 'blocked') return t('orchestrator.blockedTitle')
+  return undefined
+}
+
+function laneTitle(lane: RunLane, t: TFunction): string | undefined {
+  if (lane === 'interrupted') return t('orchestrator.interruptedTitle')
+  if (lane === 'blocked') return t('orchestrator.blockedTitle')
+  return undefined
+}
+
+type AttentionRow = { group: PlannerGroup; attention: Attention }
+
+// Blocked first: a failure is already over, a blocked worker is still holding a slot.
+function attentionFirst(a: AttentionRow, b: AttentionRow): number {
+  return Number(b.attention.lane === 'blocked') - Number(a.attention.lane === 'blocked')
 }
 
 // A finished run folds itself away; anything still live or still needing you opens on its own.
@@ -185,13 +235,75 @@ function AgentGlyph({ agent, theme, size = 15, title }: AgentGlyphProps) {
 
 type BindNode = (id: string, element: HTMLElement | null) => void
 
+type AnswerFn = (id: string, decision: OrchestratorDecision) => void
+
+type ApprovalAskProps = {
+  job: OrchestratorJob
+  ask: OrchestratorPendingApproval
+  answering: boolean
+  onAnswer: AnswerFn
+  t: TFunction
+}
+
+/** Everything here comes off `pendingApproval`; nothing is inferred when a field is missing. */
+function ApprovalAsk({ job, ask, answering, onAnswer, t }: ApprovalAskProps) {
+  const elsewhere = ask.cwd && ask.cwd !== job.cwd ? ask.cwd : null
+
+  return (
+    <div className={styles.ask} onPointerDown={(event) => event.stopPropagation()}>
+      <div className={styles.askHead}>
+        <span className={styles.askIcon} aria-hidden>
+          {ask.kind === 'fileChange' ? <FilePen size={11} /> : <TerminalIcon size={11} />}
+        </span>
+        <span>{t('orchestrator.askLabel')}</span>
+      </div>
+
+      <p className={styles.askWhat}>
+        {t(ask.kind === 'fileChange' ? 'orchestrator.askFileChange' : 'orchestrator.askCommand')}
+      </p>
+
+      {ask.command && (
+        <code className={styles.askCommand} title={ask.command}>
+          {ask.command}
+        </code>
+      )}
+      {ask.reason && <p className={styles.askReason}>{ask.reason}</p>}
+      {elsewhere && (
+        <span className={styles.askCwd} title={elsewhere}>
+          {t('orchestrator.askIn', { path: elsewhere })}
+        </span>
+      )}
+
+      <div className={styles.askActions}>
+        {DECISIONS.map((entry) => (
+          <button
+            key={entry.decision}
+            type="button"
+            className={styles.askAction}
+            data-decision={entry.decision}
+            disabled={answering}
+            title={t(entry.hint)}
+            onClick={() => onAnswer(job.id, entry.decision)}
+          >
+            {t(entry.label)}
+          </button>
+        ))}
+      </div>
+
+      <p className={styles.askHint}>{t('orchestrator.askHint')}</p>
+    </div>
+  )
+}
+
 type WorkerNodeProps = {
   job: OrchestratorJob
   node: GraphNode
   selected: boolean
+  answering: boolean
   theme: Theme
   onSelect: (id: string) => void
   onMessage: (id: string) => void
+  onAnswer: AnswerFn
   bind: BindNode
   t: TFunction
 }
@@ -200,9 +312,11 @@ function WorkerNode({
   job,
   node,
   selected,
+  answering,
   theme,
   onSelect,
   onMessage,
+  onAnswer,
   bind,
   t,
 }: WorkerNodeProps) {
@@ -243,10 +357,7 @@ function WorkerNode({
         {live && <span className={styles.workerLive}>{live}</span>}
 
         <span className={styles.meta}>
-          <span
-            className={styles.metaStatus}
-            title={job.status === 'interrupted' ? t('orchestrator.interruptedTitle') : undefined}
-          >
+          <span className={styles.metaStatus} title={statusTitle(job.status, t)}>
             {t(`orchestrator.status.${job.status}`)}
           </span>
           {share !== null && (
@@ -264,6 +375,16 @@ function WorkerNode({
           {job.hasDiff && <span>{t('orchestrator.hasDiff')}</span>}
         </span>
       </button>
+
+      {job.status === 'blocked' && job.pendingApproval && (
+        <ApprovalAsk
+          job={job}
+          ask={job.pendingApproval}
+          answering={answering}
+          onAnswer={onAnswer}
+          t={t}
+        />
+      )}
 
       {job.status === 'failed' && job.outcome && (
         <div className={styles.errBar}>
@@ -343,16 +464,18 @@ function RunNode({ run, node, onClear, bind, t }: RunNodeProps) {
         <span className={styles.runEyebrow}>
           <span className={styles.dot} aria-hidden />
           <span className={styles.runKind}>{t('orchestrator.runEyebrow')}</span>
-          <span
-            className={styles.runState}
-            title={run.state === 'interrupted' ? t('orchestrator.interruptedTitle') : undefined}
-          >
+          <span className={styles.runState} title={laneTitle(run.state, t)}>
             {t(LANE_LABEL[run.state])}
           </span>
         </span>
         <span className={styles.runLabel}>{run.label}</span>
         <span className={styles.runFoot}>
           <span>{t('orchestrator.workerCount', { count: total })}</span>
+          {run.counts.blocked > 0 && (
+            <em className={styles.runBlocked} title={t('orchestrator.blockedTitle')}>
+              {t('orchestrator.runBlocked', { count: run.counts.blocked })}
+            </em>
+          )}
           <b>{t('orchestrator.runDone', { done: run.counts.finished, total })}</b>
         </span>
       </button>
@@ -415,6 +538,9 @@ type RailRowProps = {
 
 function RailRow({ job, depth, selected, theme, onSelect, t }: RailRowProps) {
   const elapsed = formatElapsed(job.seconds)
+  const lane = LANE_OF[job.status]
+  // A blocked worker's clock is still running, but the state is what the row has to report.
+  const value = lane === 'blocked' ? t(LANE_LABEL.blocked) : (elapsed ?? t(LANE_LABEL[lane]))
   return (
     <button
       type="button"
@@ -422,14 +548,14 @@ function RailRow({ job, depth, selected, theme, onSelect, t }: RailRowProps) {
       style={{ paddingLeft: 8 + depth * 14 }}
       data-status={job.status}
       data-selected={selected ? 'true' : undefined}
-      title={t('orchestrator.selectWorker')}
+      title={statusTitle(job.status, t) ?? t('orchestrator.selectWorker')}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={() => onSelect(job.id)}
     >
       <span className={styles.dot} aria-hidden />
       <AgentGlyph agent={job.agent} theme={theme} size={12} />
       <span className={styles.railName}>{job.id}</span>
-      <span className={styles.railValue}>{elapsed ?? t(LANE_LABEL[LANE_OF[job.status]])}</span>
+      <span className={styles.railValue}>{value}</span>
     </button>
   )
 }
@@ -453,7 +579,7 @@ function RunBranch({ run, open, selectedId, theme, onToggle, onSelectWorker, t }
         style={{ paddingLeft: 8 }}
         data-lane={run.state}
         data-open={open ? 'true' : undefined}
-        title={t('orchestrator.selectRun')}
+        title={laneTitle(run.state, t) ?? t('orchestrator.selectRun')}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={() => onToggle(run.id)}
       >
@@ -495,7 +621,7 @@ function PlannerTab({ group, selected, theme, onSelect, t }: PlannerTabProps) {
       ? t('orchestrator.plannerTitle', { label: group.label, agent: group.agent })
       : group.label
     : t('orchestrator.noPlannerTitle')
-  const alert = !selected && needsYou(group) > 0
+  const alert = selected ? null : attentionOf(group.counts)
 
   return (
     <button
@@ -513,10 +639,8 @@ function PlannerTab({ group, selected, theme, onSelect, t }: PlannerTabProps) {
       <span className={styles.dot} aria-hidden />
       <span className={styles.tabName}>{name}</span>
       {alert ? (
-        <span className={styles.tabAlert}>
-          {group.counts.failed > 0
-            ? t('orchestrator.runFailed', { count: group.counts.failed })
-            : t('orchestrator.runInterrupted', { count: group.counts.interrupted })}
+        <span className={styles.tabAlert} data-lane={alert.lane}>
+          {t(ATTENTION_LABEL[alert.lane], { count: alert.count })}
         </span>
       ) : (
         <span className={styles.tabCount}>{group.jobs.length}</span>
@@ -550,6 +674,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
   const [openRuns, setOpenRuns] = useState<Record<string, boolean>>({})
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
+  const [answering, setAnswering] = useState<ReadonlySet<string>>(() => new Set())
   const [heights, setHeights] = useState<NodeHeights>({})
   const [view, setView] = useState<ViewTransform>(IDENTITY_VIEW)
   const [panning, setPanning] = useState(false)
@@ -727,19 +852,20 @@ export const OrchestratorPane = memo(function OrchestratorPane({
     setView((prev) => zoomAt(prev, factor, { x: size.width / 2, y: size.height / 2 }))
   }
 
-  const counts = activeGroup?.counts ?? {
-    running: 0,
-    queued: 0,
-    interrupted: 0,
-    failed: 0,
-    finished: 0,
-  }
+  const counts = activeGroup?.counts ?? emptyCounts()
   const total = groupJobs.length
   const donePercent = total === 0 ? 0 : Math.round((counts.finished / total) * 100)
-  const needsAttention = groups.filter(
-    (group) => plannerKey(group) !== activeKey && needsYou(group) > 0,
-  )
+  const needsAttention = useMemo(() => {
+    const rows: AttentionRow[] = []
+    for (const group of groups) {
+      if (plannerKey(group) === activeKey) continue
+      const attention = attentionOf(group.counts)
+      if (attention) rows.push({ group, attention })
+    }
+    return rows.sort(attentionFirst)
+  }, [groups, activeKey])
   const interruptedAll = jobs.filter((job) => job.status === 'interrupted').length
+  const blockedAll = jobs.filter((job) => job.status === 'blocked').length
 
   const openPlanner = (key: string) => {
     setSelectedPlanner(key)
@@ -791,6 +917,25 @@ export const OrchestratorPane = memo(function OrchestratorPane({
   const mode: MessageMode = selected ? messageMode(selected) : 'next'
   const canSend = selected !== null && canMessage(selected)
 
+  const answer = async (jobId: string, decision: OrchestratorDecision) => {
+    if (answering.has(jobId)) return
+    setAnswering((prev) => new Set(prev).add(jobId))
+    try {
+      await orchestratorAnswer(jobId, decision)
+    } catch (error) {
+      pushToast({
+        title: t('orchestrator.answerFailed'),
+        body: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setAnswering((prev) => {
+        const next = new Set(prev)
+        next.delete(jobId)
+        return next
+      })
+    }
+  }
+
   const send = async () => {
     const message = draft.trim()
     if (!selected || !message || sending || !canSend) return
@@ -813,8 +958,21 @@ export const OrchestratorPane = memo(function OrchestratorPane({
       <header className={styles.head}>
         <h2 className={styles.title}>{t('orchestrator.title')}</h2>
         <div className={styles.counts}>
+          {blockedAll > 0 && (
+            <span
+              className={styles.countAlert}
+              data-lane="blocked"
+              title={t('orchestrator.blockedTitle')}
+            >
+              {t('orchestrator.runBlocked', { count: blockedAll })}
+            </span>
+          )}
           {interruptedAll > 0 && (
-            <span className={styles.countAlert} title={t('orchestrator.interruptedTitle')}>
+            <span
+              className={styles.countAlert}
+              data-lane="interrupted"
+              title={t('orchestrator.interruptedTitle')}
+            >
               {t('orchestrator.runInterrupted', { count: interruptedAll })}
             </span>
           )}
@@ -934,9 +1092,11 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                           job={job}
                           node={node}
                           selected={node.id === selectedId}
+                          answering={answering.has(node.id)}
                           theme={theme}
                           onSelect={(id) => setSelectedId(id === selectedId ? null : id)}
                           onMessage={focusComposer}
+                          onAnswer={(id, decision) => void answer(id, decision)}
                           bind={bind}
                           t={t}
                         />
@@ -1099,11 +1259,12 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                     <div className={styles.railLabel}>
                       <span>{t('orchestrator.attentionLabel')}</span>
                     </div>
-                    {needsAttention.map((group) => (
+                    {needsAttention.map(({ group, attention }) => (
                       <button
                         key={plannerKey(group)}
                         type="button"
                         className={styles.attention}
+                        title={laneTitle(attention.lane, t)}
                         onPointerDown={(event) => event.stopPropagation()}
                         onClick={() => openPlanner(plannerKey(group))}
                       >
@@ -1111,15 +1272,8 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                         <span className={styles.attentionName}>
                           {group.label ?? t('orchestrator.noPlanner')}
                         </span>
-                        <span
-                          className={styles.attentionValue}
-                          data-lane={group.counts.failed > 0 ? 'failed' : 'interrupted'}
-                        >
-                          {group.counts.failed > 0
-                            ? t('orchestrator.runFailed', { count: group.counts.failed })
-                            : t('orchestrator.runInterrupted', {
-                                count: group.counts.interrupted,
-                              })}
+                        <span className={styles.attentionValue} data-lane={attention.lane}>
+                          {t(ATTENTION_LABEL[attention.lane], { count: attention.count })}
                         </span>
                       </button>
                     ))}

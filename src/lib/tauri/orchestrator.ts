@@ -11,6 +11,28 @@ export type OrchestratorJobStatus =
   // The process died with the app, but the thread survived on disk, so the work can be picked up
   // again. Neither a failure nor a result.
   | 'interrupted'
+  // Stopped on a question only a person can answer, still holding its slot. Neither settled nor a
+  // failure.
+  | 'blocked'
+
+export type OrchestratorApprovalKind = 'command' | 'fileChange'
+
+/** What a blocked worker is asking, with the rpc id its answer has to be sent on. */
+export type OrchestratorPendingApproval = {
+  rpcId: string | number
+  kind: OrchestratorApprovalKind
+  command: string | null
+  cwd: string | null
+  reason: string | null
+  askedAtMs: number
+}
+
+export type OrchestratorDecision = 'accept' | 'acceptForSession' | 'decline' | 'abort'
+
+export type OrchestratorAnswer = {
+  answered: string
+  decision: OrchestratorDecision
+}
 
 export type OrchestratorTokenCount = {
   totalTokens?: number
@@ -44,6 +66,7 @@ export type OrchestratorJob = {
   plan: string[]
   tokens: OrchestratorTokens | null
   worktree: string | null
+  pendingApproval: OrchestratorPendingApproval | null
   hasDiff: boolean
   summary: string
 }
@@ -83,6 +106,14 @@ export async function orchestratorJobs(): Promise<OrchestratorSnapshot> {
 
 export async function orchestratorSetConcurrency(limit: number): Promise<void> {
   return invoke<void>('orchestrator_set_concurrency', { limit })
+}
+
+/** Answers the request a blocked worker is stopped on. Rejects when it is not waiting on one. */
+export async function orchestratorAnswer(
+  jobId: string,
+  decision: OrchestratorDecision,
+): Promise<OrchestratorAnswer> {
+  return invoke<OrchestratorAnswer>('orchestrator_answer', { jobId, decision })
 }
 
 /** `steer` bends the turn already running; without it the message becomes the worker's next turn. */

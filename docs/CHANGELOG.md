@@ -10,6 +10,26 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Added
+
+- Delegated work can now ask before it leaves the folder it was given. Turned on for a run, a worker
+  keeps acting on its own inside that folder and only stops — for the network, another folder, or
+  anything else its sandbox would otherwise refuse — on the orchestration board, where you answer.
+  A worker that is asking shows the question on its own card — the command it wants to run, or that
+  it wants to change files, the reason it gave, and the folder when that folder is not the run's —
+  with four answers right there: approve once, approve for the rest of its session, decline, or
+  abort. Declining lets it carry on down another path; aborting ends its turn. The buttons go quiet
+  while the answer is on its way, and say so if the worker did not take it.
+- **Waiting on you** is now a state of its own across the whole board, and it outranks everything
+  else. A worker that is asking is not running, not failed and not finished: it is holding its slot
+  doing nothing until you answer, so it leads the run's state, the planner's state, the counts in
+  the summary rail, the run node and the pane header. Its dot breathes, and its card and run node
+  take a filled surface so it reads before anything else on the canvas.
+- A worker waiting on you in a run or a planner you are not looking at now reaches you anyway. The
+  header counts it across every planner, the planner tabs flag it, and the "needs you elsewhere"
+  list puts it above failures and interruptions — a failure is already over, a blocked worker is
+  still costing you a slot.
+
 ### Changed
 
 - The orchestration board is now a forest read top to bottom. The planner sits alone at the top of

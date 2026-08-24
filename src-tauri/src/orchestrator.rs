@@ -120,6 +120,16 @@ pub fn orchestrator_set_concurrency(state: tauri::State<'_, OrchestratorState>, 
     state.core.set_concurrency_limit(limit);
 }
 
+/// The pane answers a blocked worker directly: the person is already looking at the question.
+#[tauri::command]
+pub fn orchestrator_answer(
+    state: tauri::State<'_, OrchestratorState>,
+    job_id: String,
+    decision: String,
+) -> Result<Value, String> {
+    state.core.answer(&job_id, &decision)
+}
+
 /// Lets the pane talk to one worker without going through the lead. A worker mid-turn is steered so
 /// the correction lands on what it is doing now; an idle one gets the message as a new turn.
 #[tauri::command]

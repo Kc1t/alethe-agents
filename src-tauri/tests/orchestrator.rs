@@ -231,6 +231,54 @@ fn a_settled_worker_reports_its_own_outcome() {
 }
 
 #[test]
+fn the_handshake_offers_a_way_to_answer_a_blocked_worker() {
+    let core = Core::default();
+    let tools = rpc(&core, 1, "tools/list", json!({}));
+    let names: Vec<&str> = tools["result"]["tools"]
+        .as_array()
+        .expect("tools")
+        .iter()
+        .filter_map(|tool| tool["name"].as_str())
+        .collect();
+    assert!(names.contains(&"alethe_answer"));
+
+    let delegate = tools["result"]["tools"]
+        .as_array()
+        .expect("tools")
+        .iter()
+        .find(|tool| tool["name"] == "alethe_delegate")
+        .expect("the delegate tool");
+    assert!(
+        delegate["inputSchema"]["properties"]["askForApproval"].is_object(),
+        "delegation has to be able to ask for approval"
+    );
+}
+
+#[test]
+fn answering_is_refused_when_nothing_is_waiting() {
+    let dir = workspace("answer");
+    let core = Core::default();
+    core.set_launcher(silent_launcher());
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["work"], "cwd": dir.to_string_lossy() }),
+    );
+    std::thread::sleep(std::time::Duration::from_millis(300));
+
+    let refused = core.answer("job-01", "accept").expect_err("nothing to answer");
+    assert!(refused.contains("not waiting"), "got: {refused}");
+
+    let unknown = core.answer("job-99", "accept").expect_err("no such job");
+    assert!(unknown.contains("unknown job"), "got: {unknown}");
+
+    let bad = core.answer("job-01", "maybe").expect_err("not a decision");
+    assert!(bad.contains("decision must be"), "got: {bad}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn delegating_nothing_is_an_error() {
     let core = Core::default();
     let result = call(&core, "alethe_delegate", json!({ "tasks": [] }));

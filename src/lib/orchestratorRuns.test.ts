@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { countLanes, groupPlanners, groupRuns, worstState } from './orchestratorRuns'
+import {
+  attentionOf,
+  countLanes,
+  emptyCounts,
+  groupPlanners,
+  groupRuns,
+  RUN_LANE_ORDER,
+  worstState,
+} from './orchestratorRuns'
 import type { OrchestratorJob, OrchestratorPlanner } from './tauri'
 
 function job(
@@ -19,6 +27,7 @@ function job(
     plan: [],
     tokens: null,
     worktree: null,
+    pendingApproval: null,
     hasDiff: false,
     summary: '',
     ...partial,
@@ -58,7 +67,7 @@ describe('groupRuns', () => {
     ])
 
     expect(run.state).toBe('failed')
-    expect(run.counts).toEqual({ running: 1, queued: 0, interrupted: 0, failed: 1, finished: 1 })
+    expect(run.counts).toEqual({ ...emptyCounts(), running: 1, failed: 1, finished: 1 })
   })
 
   it('ranks running above queued and queued above finished', () => {
@@ -88,13 +97,7 @@ describe('groupRuns', () => {
     ])
 
     expect(run.state).toBe('interrupted')
-    expect(run.counts).toEqual({
-      running: 1,
-      queued: 0,
-      interrupted: 1,
-      failed: 0,
-      finished: 0,
-    })
+    expect(run.counts).toEqual({ ...emptyCounts(), running: 1, interrupted: 1 })
   })
 
   it('still reads as failed when a run has both a failure and interrupted work', () => {
@@ -106,8 +109,68 @@ describe('groupRuns', () => {
     expect(run.state).toBe('failed')
   })
 
+  it('counts a blocked worker in its own lane', () => {
+    const [run] = groupRuns([
+      job({ id: 'job-01', runId: 'run-a', status: 'blocked' }),
+      job({ id: 'job-02', runId: 'run-a', status: 'done' }),
+    ])
+
+    expect(run.state).toBe('blocked')
+    expect(run.counts).toEqual({ ...emptyCounts(), blocked: 1, finished: 1 })
+  })
+
+  it('ranks blocked above every other lane', () => {
+    for (const status of ['failed', 'interrupted', 'running', 'queued', 'done'] as const) {
+      const [run] = groupRuns([
+        job({ id: 'job-01', runId: 'run-a', status }),
+        job({ id: 'job-02', runId: 'run-a', status: 'blocked' }),
+      ])
+      expect(run.state).toBe('blocked')
+    }
+  })
+
+  it('leads the lane order with blocked', () => {
+    expect(RUN_LANE_ORDER[0]).toBe('blocked')
+    expect([...RUN_LANE_ORDER].sort()).toEqual(
+      ['blocked', 'failed', 'finished', 'interrupted', 'queued', 'running'].sort(),
+    )
+  })
+
   it('has no state to report for an empty run', () => {
     expect(groupRuns([])).toEqual([])
+  })
+})
+
+describe('attentionOf', () => {
+  it('reports nothing when no work is waiting on the user', () => {
+    expect(attentionOf(countLanes([job({ id: 'a', runId: 'r', status: 'running' })]))).toBeNull()
+    expect(attentionOf(emptyCounts())).toBeNull()
+  })
+
+  it('puts blocked work ahead of failures and interruptions', () => {
+    const counts = countLanes([
+      job({ id: 'a', runId: 'r', status: 'failed' }),
+      job({ id: 'b', runId: 'r', status: 'interrupted' }),
+      job({ id: 'c', runId: 'r', status: 'blocked' }),
+      job({ id: 'd', runId: 'r', status: 'blocked' }),
+    ])
+
+    expect(attentionOf(counts)).toEqual({ lane: 'blocked', count: 2 })
+  })
+
+  it('falls back to failures, then to interruptions', () => {
+    expect(
+      attentionOf(
+        countLanes([
+          job({ id: 'a', runId: 'r', status: 'failed' }),
+          job({ id: 'b', runId: 'r', status: 'interrupted' }),
+        ]),
+      ),
+    ).toEqual({ lane: 'failed', count: 1 })
+    expect(attentionOf(countLanes([job({ id: 'a', runId: 'r', status: 'interrupted' })]))).toEqual({
+      lane: 'interrupted',
+      count: 1,
+    })
   })
 })
 
@@ -133,7 +196,7 @@ describe('groupPlanners', () => {
     expect(group).toMatchObject({ id: 'pty-1', label: 'migrate CI', state: 'finished' })
     expect(group.runs).toEqual([])
     expect(group.jobs).toEqual([])
-    expect(group.counts).toEqual({ running: 0, queued: 0, interrupted: 0, failed: 0, finished: 0 })
+    expect(group.counts).toEqual(emptyCounts())
   })
 
   it('groups every run of a planner under its own tab', () => {
@@ -188,7 +251,21 @@ describe('groupPlanners', () => {
     )
 
     expect(group.state).toBe('failed')
-    expect(group.counts).toEqual({ running: 0, queued: 0, interrupted: 0, failed: 1, finished: 1 })
+    expect(group.counts).toEqual({ ...emptyCounts(), failed: 1, finished: 1 })
+  })
+
+  it('reads as blocked when any of its runs is waiting on the user', () => {
+    const [group] = groupPlanners(
+      [
+        job({ id: 'job-01', runId: 'run-a', plannerId: 'pty-1', status: 'failed' }),
+        job({ id: 'job-02', runId: 'run-b', plannerId: 'pty-1', status: 'blocked' }),
+      ],
+      [planner('pty-1', 'refactor pty')],
+    )
+
+    expect(group.state).toBe('blocked')
+    expect(group.runs.map((run) => run.state)).toEqual(['failed', 'blocked'])
+    expect(attentionOf(group.counts)).toEqual({ lane: 'blocked', count: 1 })
   })
 
   it('falls back to the planner id when the terminal has no usable name', () => {
