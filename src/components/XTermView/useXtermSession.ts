@@ -609,6 +609,38 @@ export function useXtermSession(params: {
     }
     container.addEventListener('contextmenu', onContextMenu)
 
+    // WebKitGTK binds Ctrl+Shift+V to its own paste accelerator and
+    // Ctrl+Shift+C to copy; on some Linux setups those are consumed before
+    // they ever reach xterm's key handler. Intercept them at the window
+    // (capture phase) while the terminal is the focus target, routing paste
+    // and copy through the app's clipboard path instead.
+    const onWindowKeyDown = (event: KeyboardEvent) => {
+      const target = event.target
+      if (!(target instanceof Node) || !container.contains(target)) return
+      const ctrl = event.ctrlKey || event.metaKey
+      if (!ctrl || !event.shiftKey || event.altKey) return
+      const key = event.key.toLowerCase()
+      if (key === 'v' && !readOnly) {
+        event.preventDefault()
+        event.stopPropagation()
+        void resolveClipboardPaste()
+          .catch(() => navigator.clipboard?.readText() ?? '')
+          .then(pasteText)
+          .catch(() => {
+            terminal.focus()
+          })
+      } else if (key === 'c') {
+        const selection = terminal.getSelection()
+        if (selection) {
+          event.preventDefault()
+          event.stopPropagation()
+          void writeClipboardText(selection).catch(() => navigator.clipboard?.writeText(selection))
+          terminal.clearSelection()
+        }
+      }
+    }
+    window.addEventListener('keydown', onWindowKeyDown, true)
+
     const flushInput = () => {
       inputFlushScheduled = false
       if (disposed || !queuedInput) return
@@ -1415,6 +1447,7 @@ export function useXtermSession(params: {
       window.removeEventListener('focus', restoreLastTerminalFocus)
       document.removeEventListener('visibilitychange', restoreLastTerminalFocus)
       container.removeEventListener('contextmenu', onContextMenu)
+      window.removeEventListener('keydown', onWindowKeyDown, true)
       window.removeEventListener('alethe:zoom-changed', onZoomChanged)
       window.removeEventListener('alethe:terminal-resize-request', onResizeRequest)
       ro.disconnect()
