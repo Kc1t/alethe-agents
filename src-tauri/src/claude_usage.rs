@@ -59,9 +59,9 @@ fn discover_token() -> Option<String> {
         }
     }
 
-    // 3. Keyring (Windows Credential Manager / macOS Keychain).
-    //    No macOS o Claude Code grava a entrada com account = username local,
-
+    // 3. Keyring (Windows Credential Manager / macOS Keychain / Linux Secret
+    //    Service). On macOS Claude Code stores the entry under
+    //    account = local username, hence the candidate list.
     let service = "Claude Code-credentials";
     let mut usernames: Vec<String> = Vec::new();
     if let Ok(user) = std::env::var("USER").or_else(|_| std::env::var("USERNAME")) {
@@ -86,7 +86,8 @@ fn discover_token() -> Option<String> {
     None
 }
 
-/// ({"claudeAiOauth":{"accessToken":...}}), como no macOS Keychain.
+/// Some secrets store the raw token directly; others wrap it in the Claude
+/// JSON envelope ({"claudeAiOauth":{"accessToken":...}}), as in macOS Keychain.
 fn extract_token_from_secret(secret: &str) -> String {
     if let Ok(json) = serde_json::from_str::<serde_json::Value>(secret) {
         if let Some(tok) = json
@@ -104,7 +105,13 @@ fn extract_token_from_secret(secret: &str) -> String {
 
 #[tauri::command]
 pub async fn get_claude_usage() -> Result<ClaudeUsage, String> {
-    let token = discover_token().ok_or_else(|| "no_token".to_string())?;
+    // Token discovery does blocking file reads (with retry sleeps) and a sync
+    // keyring/Secret Service round-trip on Linux — keep it off the async
+    // runtime so it can't stall a tokio worker for seconds.
+    let token = tokio::task::spawn_blocking(discover_token)
+        .await
+        .map_err(|e| format!("token discovery failed: {e}"))?
+        .ok_or_else(|| "no_token".to_string())?;
 
     let client = http_client();
     let resp = client

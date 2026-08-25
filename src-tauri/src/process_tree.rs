@@ -5,7 +5,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use sysinfo::{Pid, ProcessesToUpdate, System};
 
-/// Mapeia ptyId → PID raiz do PTY (pwsh.exe / bash).
+/// Maps ptyId → root PID of the PTY (pwsh.exe / bash).
 static PTY_ROOTS: OnceLock<Mutex<HashMap<String, u32>>> = OnceLock::new();
 
 static TREE_CACHE: OnceLock<Mutex<Option<(Instant, HashMap<u32, Vec<u32>>)>>> = OnceLock::new();
@@ -18,11 +18,12 @@ fn tree_cache() -> &'static Mutex<Option<(Instant, HashMap<u32, Vec<u32>>)>> {
     TREE_CACHE.get_or_init(|| Mutex::new(None))
 }
 
-fn build_parent_map(sys: &mut System) -> HashMap<u32, Vec<u32>> {
-    sys.refresh_processes(ProcessesToUpdate::All);
+fn build_parent_map_inner(sys: &System) -> HashMap<u32, Vec<u32>> {
     let mut map: HashMap<u32, Vec<u32>> = HashMap::new();
     for (pid, process) in sys.processes() {
-        // contagem/kill de PTY tree e deixando spawn/kill bem mais lentos.
+        // sysinfo lists kernel threads as children; skipping them keeps the
+        // PTY tree counts and kills fast instead of walking tens of threads
+        // per process.
         if process.thread_kind().is_some() {
             continue;
         }
@@ -44,8 +45,11 @@ fn get_parent_map() -> HashMap<u32, Vec<u32>> {
             return map.clone();
         }
     }
-    let mut sys = System::new();
-    let fresh = build_parent_map(&mut sys);
+    let mut sys = crate::stats::shared_system_handle()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    crate::stats::refresh_system_if_stale(&mut sys);
+    let fresh = build_parent_map_inner(&sys);
     *guard = Some((Instant::now(), fresh.clone()));
     fresh
 }
@@ -99,22 +103,33 @@ struct PersistedRoot {
     start_time: u64,
 }
 
-/// Caminho fixo, independente de perfil/`AppHandle` — `register_pty_root`/
-
+/// Fixed path, independent of profile/`AppHandle` — `register_pty_root` and
+/// the boot sweep both need it before any window state exists.
 fn roots_file_path() -> Option<PathBuf> {
     dirs_next::data_local_dir().map(|d| d.join("Alethe").join("pty_roots.json"))
 }
 
-/// Job Object (`pty::install_kill_on_close_guard`) tenha falhado silenciosamente
-
+/// Persists root PIDs so a future boot can sweep trees that escaped the
+/// job-object guard (`pty::install_kill_on_close_guard`).
 fn persist_roots() {
     let Some(path) = roots_file_path() else {
         return;
     };
     let snapshot: Vec<PersistedRoot> = {
         let Ok(guard) = roots().lock() else { return };
-        let mut sys = System::new();
-        sys.refresh_processes(ProcessesToUpdate::All);
+        let mut sys = crate::stats::shared_system_handle()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // persist_roots runs on every spawn/kill and must record the freshly
+        // spawned process. Only force a /proc scan when a root is missing
+        // from the (possibly stale) shared table; otherwise the resource
+        // monitor's recent refresh already covers it.
+        let missing = guard
+            .values()
+            .any(|&pid| sys.process(Pid::from_u32(pid)).is_none());
+        if missing {
+            sys.refresh_processes(ProcessesToUpdate::All);
+        }
         guard
             .values()
             .filter_map(|&pid| {
@@ -138,10 +153,9 @@ fn persist_roots() {
     }
 }
 
-/// inteira de qualquer PID raiz ainda vivo cujo nome+start_time batam com o
-
-/// falhar silenciosamente, ou qualquer processo que tenha escapado dele).
-
+/// Kills the whole tree of any root PID still alive whose name+start_time
+/// match the persisted record (the job-object guard may have failed silently,
+/// or a process escaped it).
 pub fn sweep_orphans_from_previous_session() -> usize {
     let Some(path) = roots_file_path() else {
         return 0;
@@ -187,7 +201,7 @@ pub fn get_pty_tree(pty_id: &str) -> Option<PtyTreeInfo> {
     let parent_map = get_parent_map();
     let (live_descendants, alive) = if let Some(root) = root_pid {
         let desc = collect_descendants(root, &parent_map);
-        // Inclui o root se ele ainda estiver vivo (aparece no parent_map)
+        // Includes the root if it is still alive (it appears in the parent map)
         let root_alive = parent_map.contains_key(&root) || desc.iter().any(|&p| p == root);
         let alive = root_alive || !desc.is_empty();
         (desc, alive)
@@ -202,6 +216,7 @@ pub fn get_pty_tree(pty_id: &str) -> Option<PtyTreeInfo> {
     })
 }
 
+#[cfg(windows)]
 fn run_with_timeout(mut command: std::process::Command, timeout: Duration) {
     let Ok(mut child) = command.spawn() else {
         return;
@@ -222,26 +237,22 @@ fn run_with_timeout(mut command: std::process::Command, timeout: Duration) {
     }
 }
 
-/// Mata um PID (Windows via taskkill /F, Unix via SIGKILL). Descarta
-
+/// Kills a PID (Windows via `taskkill /F`, Unix via direct SIGKILL syscall).
+/// Unix avoids spawning a `kill` subprocess per descendant — a syscall is
+/// ~3 orders of magnitude cheaper and removes the per-PID poll loop.
+#[cfg(not(windows))]
 fn kill_pid(pid: u32) {
-    #[cfg(windows)]
-    {
-        let mut command = std::process::Command::new("taskkill");
-        command.args(["/F", "/PID", &pid.to_string()]);
-        command.stdout(std::process::Stdio::null());
-        command.stderr(std::process::Stdio::null());
-        crate::git_control::hide_console(&mut command);
-        run_with_timeout(command, Duration::from_secs(3));
-    }
-    #[cfg(not(windows))]
-    {
-        let mut command = std::process::Command::new("kill");
-        command.args(["-9", &pid.to_string()]);
-        command.stdout(std::process::Stdio::null());
-        command.stderr(std::process::Stdio::null());
-        run_with_timeout(command, Duration::from_secs(3));
-    }
+    let _ = unsafe { libc::kill(pid as i32, libc::SIGKILL) };
+}
+
+#[cfg(windows)]
+fn kill_pid(pid: u32) {
+    let mut command = std::process::Command::new("taskkill");
+    command.args(["/F", "/PID", &pid.to_string()]);
+    command.stdout(std::process::Stdio::null());
+    command.stderr(std::process::Stdio::null());
+    crate::git_control::hide_console(&mut command);
+    run_with_timeout(command, Duration::from_secs(3));
 }
 
 pub fn kill_pty_tree(pty_id: &str) -> Result<Vec<u32>, String> {
@@ -257,8 +268,19 @@ pub fn kill_pty_tree(pty_id: &str) -> Result<Vec<u32>, String> {
     all.reverse();
     all.push(root);
 
+    #[cfg(not(windows))]
+    {
+        // portable-pty creates a new session for the PTY child, so the root is
+        // a process-group leader. killpg sends SIGKILL to the entire group in
+        // one syscall; stragglers that called setsid() themselves are handled
+        // by the per-PID pass below.
+        let _ = unsafe { libc::killpg(root as i32, libc::SIGKILL) };
+    }
+
     for &pid in &all {
-        kill_pid(pid);
+        if pid != root {
+            kill_pid(pid);
+        }
     }
 
     if let Ok(mut guard) = roots().lock() {
@@ -275,9 +297,9 @@ pub fn get_pty_tree_info(pty_id: String) -> Option<PtyTreeInfo> {
 
 #[tauri::command]
 pub async fn kill_pty_tree_cmd(pty_id: String) -> Result<Vec<u32>, String> {
-    // `kill_pty_tree` roda `taskkill`/`kill` por descendente, sequencial e
-
+    // `kill_pty_tree` walks the process table and runs killpg/`kill` — keep it
+    // off the async runtime so a large tree never stalls a tokio worker.
     tokio::task::spawn_blocking(move || kill_pty_tree(&pty_id))
         .await
-        .map_err(|error| format!("kill_pty_tree_cmd: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("kill_pty_tree_cmd: blocking task failed: {error}"))?
 }

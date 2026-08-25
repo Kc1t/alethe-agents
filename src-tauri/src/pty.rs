@@ -612,8 +612,16 @@ pub async fn spawn_pty(
 
             batch.clear();
 
-                                                                     
-            tokio::time::sleep(Duration::from_millis(2)).await;
+            // Only impose the 2 ms floor when the coalescing window hit the
+            // 64 KB cap (high throughput, potential webview flooding). On normal
+            // output yielding instead avoids the latency floor that was
+            // throttling throughput — on Linux WebKitGTK the webview handles
+            // frames just fine.
+            if count >= 64 * 1024 {
+                tokio::time::sleep(Duration::from_millis(2)).await;
+            } else {
+                tokio::task::yield_now().await;
+            }
         }
 
         // Flush de qualquer cauda restante no fim do stream.

@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use sysinfo::{Pid, System};
+use sysinfo::Pid;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::provider_common::now_ms;
@@ -144,7 +144,6 @@ struct ResourceState {
 
 pub struct ResourceSupervisor {
     state: Mutex<ResourceState>,
-    system: Mutex<System>,
 }
 
 impl Default for ResourceSupervisor {
@@ -157,7 +156,6 @@ impl Default for ResourceSupervisor {
                 last_level: "normal",
                 last_log_at_ms: 0,
             }),
-            system: Mutex::new(System::new()),
         }
     }
 }
@@ -263,40 +261,98 @@ impl ResourceSupervisor {
             })
             .unwrap_or_default();
 
-        let mut system = self.system.lock().unwrap_or_else(|p| p.into_inner());
-        system.refresh_processes(sysinfo::ProcessesToUpdate::All);
-        system.refresh_memory();
+        // Use the system-wide shared `sysinfo::System` (stats.rs) and only
+        // refresh it when stale, so the resource monitor and the stats
+        // collector reuse a single `/proc` walk. The lock is released before
+        // the per-PID smaps_rollup reads so `get_memory_stats` never blocks
+        // behind that file I/O.
+        let (app_tree, pty_trees, system_total_mb, system_available_mb, process_info) = {
+            let mut system = crate::stats::shared_system_handle()
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            crate::stats::refresh_system_if_stale(&mut system);
 
-        let mut children = HashMap::<u32, Vec<u32>>::new();
-        for (pid, process) in system.processes() {
-            // ex. roda ~30 threads).
-            if process.thread_kind().is_some() {
-                continue;
+            let mut children = HashMap::<u32, Vec<u32>>::new();
+            for (pid, process) in system.processes() {
+                // sysinfo lists kernel threads as children (e.g. ~30 per app
+                // process); skipping them keeps the tree to real processes.
+                if process.thread_kind().is_some() {
+                    continue;
+                }
+                if let Some(parent) = process.parent() {
+                    children
+                        .entry(parent.as_u32())
+                        .or_default()
+                        .push(pid.as_u32());
+                }
             }
-            if let Some(parent) = process.parent() {
-                children
-                    .entry(parent.as_u32())
-                    .or_default()
-                    .push(pid.as_u32());
-            }
-        }
 
-        let app_pid = std::process::id();
-        let app_tree = descendants(app_pid, &children);
+            let app_pid = std::process::id();
+            let app_tree = descendants(app_pid, &children);
+            let pty_trees = roots
+                .into_iter()
+                .map(|(id, root_pid, command, cwd)| {
+                    let tree = root_pid
+                        .map(|pid| descendants(pid, &children))
+                        .unwrap_or_default();
+                    (id, root_pid, command, cwd, tree)
+                })
+                .collect::<Vec<_>>();
+
+            let mut all_pids = app_tree.clone();
+            for (_, _, _, _, tree) in &pty_trees {
+                all_pids.extend(tree.iter());
+            }
+
+            let mut process_info = HashMap::with_capacity(all_pids.len());
+            for pid in all_pids {
+                if let Some(process) = system.process(Pid::from_u32(pid)) {
+                    process_info.insert(
+                        pid,
+                        (
+                            process.memory(),
+                            process.name().to_string_lossy().to_string(),
+                            process.cpu_usage(),
+                            process.parent().map(|parent| parent.as_u32()),
+                        ),
+                    );
+                }
+            }
+
+            (
+                app_tree,
+                pty_trees,
+                system.total_memory(),
+                system.available_memory(),
+                process_info,
+            )
+        };
+
+        let to_mb = |bytes: u64| bytes as f64 / 1024.0 / 1024.0;
+        // A PTY tree is always a subset of the app tree, so a pid can be
+        // visited twice per cycle; cache the smaps_rollup reads per collect.
+        let mut private_cache = HashMap::<u32, u64>::new();
+        let mut private_for = |pid: u32, working: u64| -> u64 {
+            if let Some(&cached) = private_cache.get(&pid) {
+                return cached;
+            }
+            let value = process_private_commit_bytes(pid, working);
+            private_cache.insert(pid, value);
+            value
+        };
         let mut app_bytes = 0_u64;
         let mut webview_bytes = 0_u64;
         let mut pty_bytes = 0_u64;
         let mut private_total = 0_u64;
+        let app_pid = std::process::id();
         for pid in &app_tree {
-            let Some(process) = system.process(Pid::from_u32(*pid)) else {
+            let Some((working, name, _, _)) = process_info.get(pid) else {
                 continue;
             };
-            let working = process.memory();
-
-            // processos.
-            let private = process_private_commit_bytes(*pid, working);
+            let working = *working;
+            let private = private_for(*pid, working);
             private_total += private;
-            let name = process.name().to_string_lossy().to_ascii_lowercase();
+            let name = name.to_ascii_lowercase();
             if *pid == app_pid || name.contains("alethe") {
                 app_bytes += private;
             } else if name.contains("msedgewebview2") || name.contains("webkit") {
@@ -306,40 +362,35 @@ impl ResourceSupervisor {
             }
         }
 
-        let to_mb = |bytes: u64| bytes as f64 / 1024.0 / 1024.0;
         let memory = MemoryStats {
             total_mb: to_mb(app_bytes + webview_bytes + pty_bytes),
             app_mb: to_mb(app_bytes),
             webview_mb: to_mb(webview_bytes),
             ptys_mb: to_mb(pty_bytes),
             process_count: app_tree.len(),
-            system_total_mb: to_mb(system.total_memory()),
-            system_available_mb: to_mb(system.available_memory()),
+            system_total_mb: to_mb(system_total_mb),
+            system_available_mb: to_mb(system_available_mb),
         };
 
-        let mut ptys = roots
+        let mut ptys = pty_trees
             .into_iter()
-            .map(|(id, root_pid, command, cwd)| {
-                let tree = root_pid
-                    .map(|pid| descendants(pid, &children))
-                    .unwrap_or_default();
+            .map(|(id, root_pid, command, cwd, tree)| {
                 let mut working = 0_u64;
                 let mut private = 0_u64;
                 let mut processes = tree
                     .iter()
                     .filter_map(|pid| {
-                        let process = system.process(Pid::from_u32(*pid))?;
-                        let process_working = process.memory();
-                        let process_private = process_private_commit_bytes(*pid, process_working);
-                        working += process_working;
+                        let (process_working, name, cpu, parent_pid) = process_info.get(pid)?;
+                        let process_private = private_for(*pid, *process_working);
+                        working += *process_working;
                         private += process_private;
                         Some(RuntimeProcess {
                             pid: *pid,
-                            parent_pid: process.parent().map(|parent| parent.as_u32()),
-                            name: process.name().to_string_lossy().to_string(),
-                            working_set_mb: to_mb(process_working),
+                            parent_pid: *parent_pid,
+                            name: name.clone(),
+                            working_set_mb: to_mb(*process_working),
                             private_commit_mb: to_mb(process_private),
-                            cpu_percent: process.cpu_usage(),
+                            cpu_percent: *cpu,
                         })
                     })
                     .collect::<Vec<_>>();
@@ -595,10 +646,10 @@ pub fn update_pty_runtime_meta(
 }
 
 #[tauri::command]
-pub fn get_runtime_snapshot(
+pub async fn get_runtime_snapshot(
     sessions: State<'_, PtySessions>,
-    supervisor: State<'_, std::sync::Arc<ResourceSupervisor>>,
-) -> RuntimeSnapshot {
+    supervisor: State<'_, Arc<ResourceSupervisor>>,
+) -> Result<RuntimeSnapshot, String> {
     if let Some(snapshot) = supervisor
         .state
         .lock()
@@ -606,9 +657,16 @@ pub fn get_runtime_snapshot(
         .latest
         .clone()
     {
-        return snapshot;
+        return Ok(snapshot);
     }
-    supervisor.collect(sessions.inner())
+    // Cold cache: collect off the IPC dispatch thread; the 5s cycle would
+    // have served this shortly anyway.
+    let sessions = Arc::clone(sessions.inner());
+    let supervisor = Arc::clone(supervisor.inner());
+    tokio::task::spawn_blocking(move || supervisor.collect(&sessions))
+        .await
+        .map_err(|error| format!("get_runtime_snapshot: blocking task failed: {error}"))
+        .map(|snapshot| Ok(snapshot))?
 }
 
 #[cfg(test)]
