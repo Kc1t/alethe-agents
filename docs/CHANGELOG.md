@@ -59,6 +59,31 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Changed
 
+- Terminals on Linux now render through the WebGL renderer when the GPU driver supports it,
+  with an automatic fallback to the previous renderer. Dense agent UIs (Claude/Codex/OpenCode
+  redraws, full-screen clears, ANSI sweeps) no longer stutter on WebKitGTK.
+- Terminals no longer boot as login shells by default, so they skip loading the full shell
+  profile (nvm, conda, starship, custom PATH) on every spawn — hundreds of milliseconds saved per
+  new terminal on Linux/macOS. A "Login shell" preference restores the old behavior.
+- The background process monitors on Linux now share a single system snapshot instead of three
+  overlapping scans of `/proc` every few seconds, and the scan no longer runs on an async runtime
+  worker. Memory accounting reads each process's `/proc/<pid>/smaps_rollup` once per cycle.
+  Periodic micro-stalls while typing or resizing are gone.
+- The Linux DMABUF renderer workaround now applies only on Wayland sessions with an NVIDIA driver
+  loaded (the configurations where it was known to break), keeping GPU compositing everywhere
+  else. Set `ALETHE_FORCE_DISABLE_DMABUF=1` (or `0`) to override.
+- The universal UI transition and the infinite "rainbow" project-border animation now respect the
+  Reduced motion preference, and the rainbow animation pauses while its container is off screen —
+  previously it repainted a masked gradient on every frame across the whole window.
+- Killing a terminal's process tree on Linux/macOS now uses process-group signals instead of
+  spawning a `kill` process per descendant, so closing an agent tree is near-instant.
+- Release builds now optimize for speed (`opt-level 3`) instead of binary size, improving the
+  latency of the terminal batching and process-tracking hot paths.
+- Pasting with Ctrl+Shift+V and copying with Ctrl+Shift+C now work reliably on Linux terminals:
+  the shortcuts are intercepted at the window level (WebKitGTK consumed them before reaching the
+  terminal) and the clipboard tools (`wl-paste`/`xclip`) no longer hang the paste when the
+  clipboard is empty or its source is gone.
+
 - Alethe Remote now mirrors the selected desktop theme, app icon, motion preference, and language
   while it is open. Its splash, workspace, terminal view, connection feedback, empty states, and
   recovery screens now use the same Alethe design tokens and official branding.
