@@ -3,7 +3,7 @@ import { useState } from 'react'
 
 import { useT } from '../../lib/i18n'
 import { useProjectsStore } from '../../stores/projectsStore'
-import { ChatPanel } from './ChatPanel'
+import { ChatTab } from './ChatTab'
 import styles from './CollaborationView.module.css'
 import { TasksPanel } from './TasksPanel'
 import { VaultPanel } from './VaultPanel'
@@ -49,7 +49,7 @@ export function CollaborationView() {
         {!activeProject ? (
           <div className={styles.empty}>{t('collaborationView.noProject')}</div>
         ) : tab === 'chat' ? (
-          <ChatPanel projectId={activeProject.id} />
+          <ChatTab projectId={activeProject.id} projectName={activeProject.name} />
         ) : tab === 'tasks' ? (
           <TasksPanel projectId={activeProject.id} />
         ) : (

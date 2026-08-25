@@ -366,6 +366,8 @@
 }
 
 .deviceId {
+  min-width: 0;
+  flex: 1;
   font-family: var(--font-mono);
   font-size: 9.5px;
   color: var(--fg-muted);
@@ -442,6 +444,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   padding-top: 4px;
   border-top: 1px solid var(--border);
 }

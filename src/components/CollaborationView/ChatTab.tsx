@@ -1,0 +1,152 @@
+import { Hash, Plus } from 'lucide-react'
+import { useEffect, useState } from 'react'
+
+import { drainRendezvousEvents } from '../../lib/api/syncRendezvous'
+import {
+  syncListChatContacts,
+  syncOpenChatContactAck,
+  type SyncChatContact,
+} from '../../lib/api/syncSecurity'
+import { useT } from '../../lib/i18n'
+import { getProfileInitial } from '../../lib/profile'
+import { Avatar } from '../ui/Avatar'
+import { AddChatContactModal } from './AddChatContactModal'
+import { ChatPanel, type ChatSource } from './ChatPanel'
+import styles from './ChatTab.module.css'
+
+const CONTACT_ACK_POLL_INTERVAL_MS = 4_000
+
+export function ChatTab({ projectId, projectName }: { projectId: string; projectName: string }) {
+  const t = useT()
+  const [contacts, setContacts] = useState<SyncChatContact[]>([])
+  const [contactsError, setContactsError] = useState(false)
+  const [selected, setSelected] = useState<ChatSource>({ kind: 'project', projectId, projectName })
+  const [addingContact, setAddingContact] = useState(false)
+
+  const reloadContacts = () => {
+    syncListChatContacts()
+      .then((list) => {
+        setContacts(list)
+        setContactsError(false)
+      })
+      .catch(() => setContactsError(true))
+  }
+
+  useEffect(() => {
+    reloadContacts()
+  }, [])
+
+  useEffect(() => {
+    setSelected({ kind: 'project', projectId, projectName })
+  }, [projectId, projectName])
+
+  // Drains any `chat_contact_ack` deliveries — an automatic mutual-pairing signal from someone
+  // who just verified and saved our exported invite code on their own device. Decrypting it (if
+  // its token is still valid) both adds them as a contact here and reloads the list, so a chat
+  // contact really is a two-way, single confirmation exchange instead of two separate code pastes.
+  useEffect(() => {
+    let active = true
+    const drain = async () => {
+      try {
+        const events = await drainRendezvousEvents()
+        let added = false
+        for (const event of events) {
+          if (event.eventType !== 'delivery' || event.envelopeKind !== 'chat_contact_ack') continue
+          if (!event.ciphertext) continue
+          try {
+            const label = await syncOpenChatContactAck(event.ciphertext)
+            if (label) added = true
+          } catch {
+            // Not addressed to this device, or the token no longer matches — ignore.
+          }
+        }
+        if (active && added) reloadContacts()
+      } catch {
+        // Best-effort — the next tick tries again.
+      }
+    }
+    void drain()
+    const timer = window.setInterval(() => void drain(), CONTACT_ACK_POLL_INTERVAL_MS)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  return (
+    <div className={styles.container}>
+      <div className={styles.sidebar}>
+        <div className={styles.sidebarHeader}>
+          <span>{t('chat.contacts.title')}</span>
+          <button
+            type="button"
+            className={styles.addButton}
+            title={t('chat.contacts.add')}
+            onClick={() => setAddingContact(true)}
+          >
+            <Plus size={13} />
+          </button>
+        </div>
+        <ul className={styles.conversationList}>
+          <li>
+            <button
+              type="button"
+              className={`${styles.conversationRow} ${selected.kind === 'project' ? styles.conversationRowActive : ''}`}
+              onClick={() => setSelected({ kind: 'project', projectId, projectName })}
+            >
+              <span className={styles.channelIcon}>
+                <Hash size={14} />
+              </span>
+              <span className={styles.conversationName}>{projectName}</span>
+            </button>
+          </li>
+          {contacts.map((contact) => {
+            const active =
+              selected.kind === 'direct' && selected.contactAccountRoute === contact.accountRoute
+            return (
+              <li key={contact.accountRoute}>
+                <button
+                  type="button"
+                  className={`${styles.conversationRow} ${active ? styles.conversationRowActive : ''}`}
+                  onClick={() =>
+                    setSelected({
+                      kind: 'direct',
+                      contactAccountRoute: contact.accountRoute,
+                      contactDisplayLabel: contact.displayLabel,
+                    })
+                  }
+                >
+                  <Avatar
+                    src={null}
+                    initial={getProfileInitial(contact.displayLabel)}
+                    className={styles.contactAvatar}
+                  />
+                  <span className={styles.conversationName}>{contact.displayLabel}</span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+        {contactsError ? (
+          <p className={styles.contactsError}>{t('chat.contacts.listFailed')}</p>
+        ) : null}
+        <p className={styles.chatOnlyNotice}>{t('chat.contacts.chatOnlyNotice')}</p>
+      </div>
+      <div className={styles.chatArea}>
+        <ChatPanel
+          key={selected.kind === 'project' ? 'project' : selected.contactAccountRoute}
+          source={selected}
+        />
+      </div>
+      {addingContact ? (
+        <AddChatContactModal
+          onClose={() => setAddingContact(false)}
+          onAdded={() => {
+            setAddingContact(false)
+            reloadContacts()
+          }}
+        />
+      ) : null}
+    </div>
+  )
+}

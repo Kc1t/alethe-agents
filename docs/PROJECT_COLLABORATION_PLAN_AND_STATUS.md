@@ -20,11 +20,33 @@ This section records the owner's decisions from the architecture review and over
 
 ### Who configures Cloudflare
 
+**Superseded 2026-08-25 — see ADR-0002's amendment ("no operator-managed endpoint") for the full
+rationale.** The bullets below describe the original Phase 10 plan; they no longer describe what
+is implemented and must not be implemented. Alethe never operates a shared rendezvous endpoint —
+doing so would let a single Alethe-run service observe device presence/connection metadata across
+every user of the app, not just the people any one user has actually invited, which is a strictly
+larger exposure than this project accepts.
+
+The real, current model: every user who wants online collaboration deploys and owns a personal
+Cloudflare Worker through the guided flow (`CloudflareGuidedDeploy` in Preferences → Account,
+`sync_cloudflare_deploy.rs`; Wrangler's own OAuth token stays in that user's local Wrangler config
+— Alethe never sees or stores a Cloudflare credential). Two users can only discover each other
+through Cloudflare once they already share real trust (a project grant, or a mutually-added chat
+contact) — there is no discovery of strangers. `CollaborationSettings.tsx` offers exactly two
+modes: `Local only` (no rendezvous at all) and the personal-Worker mode. The backend keeps the
+`alethe_managed` enum variant only so a settings file saved before this amendment still
+deserializes; nothing new ever writes or offers it.
+
+<details>
+<summary>Original (superseded) plan text, kept for history</summary>
+
 - The Alethe project operator owns and deploys the official Cloudflare Worker and Durable Objects. Deployment credentials never ship inside Alethe.
 - An ordinary user never creates a Cloudflare account, installs Wrangler, configures a Worker, supplies a Cloudflare API token, buys a domain, or manages TLS.
 - A user who enables online collaboration connects to the operator-managed Alethe collaboration endpoint already configured in the signed application release.
 - Advanced users may deliberately select a compatible custom/self-hosted endpoint. This is an optional expert path, not normal onboarding, and it cannot silently fall back to the official service or another public provider.
 - Every participant who wants automatic online discovery, invitation delivery, or new cross-network connection negotiation must enable Alethe collaboration. This still does not require them to own Cloudflare infrastructure.
+
+</details>
 
 ### Optional component and capability release
 
@@ -437,7 +459,7 @@ Note: as with devices, invitations and grants are local to each install today. I
 - `[ ]` Add search without leaking private-channel content.
 - `[~]` Add Desktop, Web, and mobile-responsive chat interfaces and accessibility coverage. `CollaborationView/ChatPanel.tsx` implemented for Desktop/Web; no accessibility audit performed (keyboard nav/ARIA labels not verified); no mobile layout.
 
-**Important, tested-live limitation**: chat messages exist only in the local install that created them (`sync/chat/<id>.json` on that one machine). There is no code path anywhere that sends a message, attachment, or conversation update to a different physical device — not through the Cloudflare rendezvous service (which only handles device discovery/signaling, Phase 10B), not through any other transport. This was verified by reading `sync_chat.rs`/`sync_engine.rs`/`sync_rendezvous.rs` end to end during this session; do not remove or soften the in-app "messages sync only on this device" notice until real cross-device delivery exists (that is Phase 10's remaining "content transport" work, distinct from the signaling layer that already exists).
+**Update (2026-08-25 session)**: the limitation above ("chat messages exist only in the local install") is now only partially true. A persistent P2P session registry was added (`sync_p2p_bridge.rs::P2pSessionRegistry` — previously `sync_p2p_connect` handshake-d and immediately discarded the socket, so nothing could ever be sent after connecting), automatic signaling for chat conversation members via the user's personal Cloudflare rendezvous worker (`useP2pAutoConnect.ts`, deterministic session ID instead of a manually-typed one), and a relay fallback (`chat_message` envelope kind, `sync_seal_chat_relay_message`/`sync_open_chat_relay_message`) for when direct P2P isn't available. `ChatPanel.tsx`'s header badge now shows the real state (local / connecting / P2P direct / via Cloudflare). Covered by 4 new Rust tests (session registry send/drain/state round-trip over real loopback UDP, transport-frame serialize/ingest round-trip, relay envelope seal/open round-trip) plus the Worker's own `chat_message` envelope-kind test — **not yet verified live between two different physical machines/accounts**, only via automated tests and a single local install. Still explicitly out of scope: attachments over the relay (16KB envelope limit), group (3+) P2P, and robust reconnection if a P2P session drops mid-conversation (falls back to relay, which is not yet automatically retried back up to P2P).
 
 ### Notifications and access center
 
@@ -915,6 +937,37 @@ If a statement conflicts, the stricter security invariant wins. This consolidate
 - `src/components/modals/preferences/AccountPage.tsx` / `CollaborationSettings.tsx`: second Google account entry point and the rendezvous-mode/activation settings panel.
 - `src-tauri/src/server_main/mod.rs`: authenticated local Core, middleware, and route assembly.
 - `e2e/specs/web-sync.spec.ts`: existing Desktop/Web convergence reference.
+
+### Chat-contacts / mesh-relay plan (approved, in progress)
+
+A separate 8-item plan (chat contacts with no project access, direct conversations, chat profile
+polish, an opt-in beta P2P mesh relay, and collaborator-suggests/owner-approves) was approved and is
+being implemented in priority order 3, 8, then the rest. Status as of this entry:
+
+- **Item 3 (Direct conversation) — backend complete, UI not started.** `ChatContactRecord`
+  (`sync_security.rs`, fully separate from `grants`/project authorization — confirmed by test
+  `adding_a_chat_contact_never_creates_a_grant_or_invitation`), `ensure_direct_conversation_at` +
+  `sync_start_direct_conversation` (`sync_chat.rs`, Desktop command + Web route
+  `/api/sync/chat/conversations/start-direct` + frontend client `syncStartDirectConversation`).
+  Still missing: the "add contact" pairing-code UI (item 2), the `ChatTab.tsx` conversation list
+  (item 4), and profile/avatar polish in `ChatPanel.tsx` (item 5) — `ChatPanel` still only accepts a
+  `projectId`, not a `conversationId`/`otherMember` pair.
+- **Item 8 (collaborator suggests, owner approves) — backend complete, UI not started.**
+  `AccessKind::CollaboratorSuggestion` (`sync_access.rs`), `"invite_suggestion"` envelope kind
+  (`sync_rendezvous.rs` + the Cloudflare Worker's `protocol.ts`, both validated and tested),
+  `owner_account_id`/`owner_agreement_public_key` threaded onto `InvitationRecord` end to end
+  (issuance → bridge envelope → cross-device redemption, all `#[serde(default)]`/backward
+  compatible), `find_project_owner_for_active_grant_at` (requires an active grant — proves the
+  caller is a real collaborator), and `sync_prepare_collaborator_suggestion` /
+  `sync_open_collaborator_suggestion` (Desktop commands + Web routes + frontend clients), sealing the
+  proposal end-to-end for the owner's own device, never the collaborator's. Tests confirm a
+  suggestion alone never creates a grant or invitation, and that a grant issued before this field
+  existed simply can't be used to suggest (fails closed, doesn't break). Still missing: the actual
+  "Suggest a collaborator" UI action, the owner-side access-center "Convidar"/"Descartar" actions
+  (pre-filling only the recipient field of the existing invite form), and wiring the frontend to
+  actually call `sendRendezvousFrame({ kind: 'invite_suggestion', ... })` after sealing.
+- **Items 1, 2, 4, 5, 7 (doc)** — not started.
+- **Item 6 (P2P mesh relay, BETA)** — not started; the largest remaining piece of that plan.
 
 ### Exact next implementation step
 

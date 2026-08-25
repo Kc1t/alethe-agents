@@ -20,8 +20,11 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Write};
 use std::net::{SocketAddr, UdpSocket};
+use std::sync::mpsc as std_mpsc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::sync_crypto::{open_sealed, seal_for_recipient, SealedEnvelope};
@@ -383,6 +386,29 @@ impl ReliableUdpStream {
         self.socket.send(&packet).map(|_| ())
     }
 
+    /// Non-blocking-ish poll for exactly one complete application frame, bounded by `timeout`
+    /// instead of `Read::read`'s internal 30s wait — used by the background session reader
+    /// (`P2pSessionHandle`) so it can interleave polling for outgoing frames to send without
+    /// getting stuck inside a long blocking read. Shares the same ACK/dedup/ordering logic as
+    /// `Read::read` (via `pending_data`/`recv_seq`), just parameterized on the wait duration.
+    fn poll_frame(&mut self, timeout: Duration) -> std::io::Result<Option<Vec<u8>>> {
+        let (seq, payload) = match self.pending_data.pop_front() {
+            Some(next) => next,
+            None => match self.recv_next(timeout)? {
+                Some((kind, seq, payload)) if kind == PACKET_KIND_DATA => {
+                    self.send_packet(PACKET_KIND_ACK, seq, &[])?;
+                    (seq, payload)
+                }
+                _ => return Ok(None),
+            },
+        };
+        if seq != self.recv_seq {
+            return Ok(None);
+        }
+        self.recv_seq = self.recv_seq.wrapping_add(1);
+        Ok(Some(payload))
+    }
+
     fn recv_next(&self, timeout: Duration) -> std::io::Result<Option<(u8, u32, Vec<u8>)>> {
         self.socket.set_read_timeout(Some(timeout))?;
         let mut buffer = [0_u8; MAX_CHUNK_BYTES + 5];
@@ -514,13 +540,21 @@ pub struct P2pConnectResult {
 /// Punches through to `peer_addr` and performs the Phase-4 mutual handshake over the resulting
 /// path. `is_initiator` must be agreed out of band (e.g. whichever side issued the invitation
 /// initiates) since both sides attempting the same role would deadlock the handshake.
+///
+/// `remote_account_route` is not used for authorization (the handshake's trust oracle already
+/// re-derives and checks that independently) — it is only the registry key so a later
+/// `p2p_send_frame`/`p2p_drain_frames` call knows which live session to use. On success the
+/// session is registered and kept alive by a background reader thread (see
+/// `P2pSessionRegistry::register`) instead of being dropped when this function returns.
 #[tauri::command]
 pub fn sync_p2p_connect(
     app: tauri::AppHandle,
+    registry: tauri::State<'_, Arc<P2pSessionRegistry>>,
     local_port: u16,
     peer_host: String,
     peer_port: u16,
     is_initiator: bool,
+    remote_account_route: String,
 ) -> Result<P2pConnectResult, String> {
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     let document = crate::sync_security::load_at(&data_root)?;
@@ -567,7 +601,137 @@ pub fn sync_p2p_connect(
     }
     .map_err(|error| error.to_string())?;
 
+    registry.register(remote_account_route, stream);
+
     Ok(P2pConnectResult { connected: true, remote_device_id: Some(session.remote_device_id) })
+}
+
+/// Keeps a live, authenticated P2P session usable after the connecting Tauri command returns,
+/// instead of dropping the socket the moment the handshake finishes. One background thread per
+/// session owns the `ReliableUdpStream` exclusively (its stop-and-wait ARQ state cannot safely be
+/// split across threads — see the struct's own doc comment), alternating between polling for
+/// outgoing frames to send and polling the socket for inbound frames, so neither direction can
+/// starve the other for more than `SESSION_POLL_INTERVAL`.
+const SESSION_POLL_INTERVAL: Duration = Duration::from_millis(200);
+
+pub enum P2pSessionState {
+    Connected,
+    Closed,
+}
+
+struct P2pSessionHandle {
+    outgoing_tx: std_mpsc::Sender<Vec<u8>>,
+    incoming: Arc<Mutex<VecDeque<Vec<u8>>>>,
+    closed: Arc<std::sync::atomic::AtomicBool>,
+}
+
+#[derive(Default)]
+pub struct P2pSessionRegistry {
+    sessions: Mutex<HashMap<String, P2pSessionHandle>>,
+}
+
+impl P2pSessionRegistry {
+    /// Replaces any prior session for this `remote_account_route` (a fresh successful connect
+    /// always wins) and starts its background reader/writer thread.
+    fn register(&self, remote_account_route: String, mut stream: ReliableUdpStream) {
+        let (outgoing_tx, outgoing_rx) = std_mpsc::channel::<Vec<u8>>();
+        let incoming = Arc::new(Mutex::new(VecDeque::new()));
+        let closed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+        let thread_incoming = incoming.clone();
+        let thread_closed = closed.clone();
+        std::thread::spawn(move || loop {
+            if thread_closed.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
+            }
+            match outgoing_rx.try_recv() {
+                Ok(frame) => {
+                    if stream.write_all(&frame).is_err() {
+                        thread_closed.store(true, std::sync::atomic::Ordering::Relaxed);
+                        break;
+                    }
+                    continue;
+                }
+                Err(std_mpsc::TryRecvError::Disconnected) => {
+                    thread_closed.store(true, std::sync::atomic::Ordering::Relaxed);
+                    break;
+                }
+                Err(std_mpsc::TryRecvError::Empty) => {}
+            }
+            match stream.poll_frame(SESSION_POLL_INTERVAL) {
+                Ok(Some(frame)) => {
+                    let mut queue = thread_incoming.lock().unwrap();
+                    if queue.len() >= INCOMING_QUEUE_LIMIT {
+                        queue.pop_front();
+                    }
+                    queue.push_back(frame);
+                }
+                Ok(None) => {}
+                Err(_) => {
+                    thread_closed.store(true, std::sync::atomic::Ordering::Relaxed);
+                    break;
+                }
+            }
+        });
+
+        let handle = P2pSessionHandle { outgoing_tx, incoming, closed };
+        self.sessions.lock().unwrap().insert(remote_account_route, handle);
+    }
+
+    fn send(&self, remote_account_route: &str, frame: Vec<u8>) -> Result<(), String> {
+        let sessions = self.sessions.lock().unwrap();
+        let handle = sessions.get(remote_account_route).ok_or_else(|| "p2p_session_not_found".to_string())?;
+        if handle.closed.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err("p2p_session_closed".to_string());
+        }
+        handle.outgoing_tx.send(frame).map_err(|_| "p2p_session_closed".to_string())
+    }
+
+    fn drain(&self, remote_account_route: &str) -> Vec<Vec<u8>> {
+        let sessions = self.sessions.lock().unwrap();
+        match sessions.get(remote_account_route) {
+            Some(handle) => handle.incoming.lock().unwrap().drain(..).collect(),
+            None => Vec::new(),
+        }
+    }
+
+    fn state(&self, remote_account_route: &str) -> P2pSessionState {
+        let sessions = self.sessions.lock().unwrap();
+        match sessions.get(remote_account_route) {
+            Some(handle) if !handle.closed.load(std::sync::atomic::Ordering::Relaxed) => P2pSessionState::Connected,
+            _ => P2pSessionState::Closed,
+        }
+    }
+}
+
+const INCOMING_QUEUE_LIMIT: usize = 256;
+
+#[tauri::command]
+pub fn p2p_send_frame(
+    registry: tauri::State<'_, Arc<P2pSessionRegistry>>,
+    remote_account_route: String,
+    frame: Vec<u8>,
+) -> Result<(), String> {
+    registry.send(&remote_account_route, frame)
+}
+
+#[tauri::command]
+pub fn p2p_drain_frames(
+    registry: tauri::State<'_, Arc<P2pSessionRegistry>>,
+    remote_account_route: String,
+) -> Result<Vec<Vec<u8>>, String> {
+    Ok(registry.drain(&remote_account_route))
+}
+
+#[tauri::command]
+pub fn p2p_session_state(
+    registry: tauri::State<'_, Arc<P2pSessionRegistry>>,
+    remote_account_route: String,
+) -> Result<&'static str, String> {
+    Ok(match registry.state(&remote_account_route) {
+        P2pSessionState::Connected => "connected",
+        P2pSessionState::Closed => "closed",
+    })
 }
 
 #[cfg(test)]
@@ -646,5 +810,49 @@ mod tests {
         let read = receiver.read(&mut buffer).unwrap();
         assert_eq!(&buffer[..read], b"hello over udp");
         handle.join().unwrap();
+    }
+
+    fn loopback_pair() -> (ReliableUdpStream, ReliableUdpStream) {
+        let a = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let b = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let a_addr = a.local_addr().unwrap();
+        let b_addr = b.local_addr().unwrap();
+        a.connect(b_addr).unwrap();
+        b.connect(a_addr).unwrap();
+        (ReliableUdpStream::new(a), ReliableUdpStream::new(b))
+    }
+
+    #[test]
+    fn registered_session_delivers_frames_sent_via_send_to_the_other_sides_drain() {
+        let (stream_a, stream_b) = loopback_pair();
+        let registry_a = P2pSessionRegistry::default();
+        let registry_b = P2pSessionRegistry::default();
+        registry_a.register("route-b".to_string(), stream_a);
+        registry_b.register("route-a".to_string(), stream_b);
+
+        assert!(matches!(registry_a.state("route-b"), P2pSessionState::Connected));
+
+        registry_a.send("route-b", b"hello from a".to_vec()).unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut received = Vec::new();
+        while Instant::now() < deadline && received.is_empty() {
+            received = registry_b.drain("route-a");
+            if received.is_empty() {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
+        assert_eq!(received, vec![b"hello from a".to_vec()]);
+
+        // Already drained — a second drain call finds nothing left.
+        assert!(registry_b.drain("route-a").is_empty());
+    }
+
+    #[test]
+    fn sending_to_an_unknown_route_fails_closed_instead_of_silently_dropping() {
+        let registry = P2pSessionRegistry::default();
+        let result = registry.send("route-never-connected", b"data".to_vec());
+        assert_eq!(result, Err("p2p_session_not_found".to_string()));
+        assert!(matches!(registry.state("route-never-connected"), P2pSessionState::Closed));
     }
 }

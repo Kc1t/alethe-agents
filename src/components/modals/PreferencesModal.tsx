@@ -5,14 +5,14 @@ import {
   Blocks,
   ChevronRight,
   Info,
+  type LucideIcon,
   Palette,
-  ShieldCheck,
   Plug,
   Search,
+  ShieldCheck,
   TerminalSquare,
   UserRound,
   X,
-  type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -28,9 +28,9 @@ import { FeaturesPage } from './preferences/FeaturesPage'
 import { IntegrationsPage } from './preferences/IntegrationsPage'
 import { MultiagentPage } from './preferences/MultiagentPage'
 import { OrganizationPage } from './preferences/OrganizationPage'
-import { TerminalPage } from './preferences/TerminalPage'
-import { RemoteControlPage } from './preferences/RemoteControlPage'
 import { Avatar } from './preferences/primitives'
+import { RemoteControlPage } from './preferences/RemoteControlPage'
+import { TerminalPage } from './preferences/TerminalPage'
 import styles from './PreferencesModal.module.css'
 
 type CategoryId =
@@ -321,7 +321,7 @@ export function PreferencesModal() {
     setCategory(initial)
     setQuery('')
     setResultCursor(0)
-    setPendingTarget(null)
+    setPendingTarget((modalContext?.settingTarget as string) ?? null)
   }, [open, modalContext])
 
   useEffect(() => {

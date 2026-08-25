@@ -5,6 +5,8 @@
 //! contacts a rendezvous or relay provider; every test drives both "sides" of a conversation
 //! within one local fixture, the same pattern as Phases 6–8.
 
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 use hkdf::Hkdf;
@@ -15,6 +17,8 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret as X25519StaticSecret};
+
+use crate::sync_crypto::{open_sealed, seal_for_recipient, SealedEnvelope};
 
 const CHAT_SCHEMA_VERSION: u32 = 1;
 pub const MAX_MESSAGES_PER_CONVERSATION: usize = 20_000;
@@ -376,6 +380,51 @@ pub fn ensure_project_conversation_at(
             account_route: local_account_route.to_string(),
             x25519_public_key: local_x25519_public_key,
         }],
+        now_ms,
+    )
+}
+
+/// Same find-or-create pattern as `ensure_project_conversation_at`, for a 1:1 `Direct` conversation
+/// with a chat contact instead of a project channel — filters by `kind == Direct` and both account
+/// routes present as members, instead of by `project_id`.
+pub fn ensure_direct_conversation_at(
+    data_root: &Path,
+    local_account_route: &str,
+    local_x25519_public_key: Vec<u8>,
+    contact_account_route: &str,
+    contact_x25519_public_key: Vec<u8>,
+    now_ms: u64,
+) -> Result<Conversation, ChatError> {
+    let chat_dir = data_root.join("sync").join("chat");
+    if let Ok(entries) = fs::read_dir(&chat_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+                continue;
+            }
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
+            if let Ok(conversation) = load_conversation_at(data_root, stem) {
+                if conversation.kind == ConversationKind::Direct
+                    && conversation.members.iter().any(|m| m.account_route == local_account_route)
+                    && conversation.members.iter().any(|m| m.account_route == contact_account_route)
+                {
+                    return Ok(conversation);
+                }
+            }
+        }
+    }
+    create_conversation_at(
+        data_root,
+        None,
+        ConversationKind::Direct,
+        None,
+        vec![
+            MemberInfo { account_route: local_account_route.to_string(), x25519_public_key: local_x25519_public_key },
+            MemberInfo {
+                account_route: contact_account_route.to_string(),
+                x25519_public_key: contact_x25519_public_key,
+            },
+        ],
         now_ms,
     )
 }
@@ -756,6 +805,33 @@ pub fn sync_ensure_project_conversation(
 }
 
 #[tauri::command]
+pub fn sync_start_direct_conversation(
+    app: tauri::AppHandle,
+    contact_account_route: String,
+) -> Result<Conversation, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let (_, account_route) = local_chat_identity(&data_root)?;
+    let local_public_key = crate::sync_security::local_device_agreement_public_key_at(&data_root)?;
+    let contacts = crate::sync_security::list_chat_contacts_at(&data_root)?;
+    let contact = contacts
+        .into_iter()
+        .find(|contact| contact.account_route == contact_account_route)
+        .ok_or_else(|| "chat_contact_not_found".to_string())?;
+    let contact_public_key = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(&contact.agreement_public_key)
+        .map_err(|_| "chat_contact_key_invalid".to_string())?;
+    ensure_direct_conversation_at(
+        &data_root,
+        &account_route,
+        local_public_key,
+        &contact_account_route,
+        contact_public_key,
+        crate::provider_common::now_ms(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn sync_send_message(
     app: tauri::AppHandle,
     conversation_id: String,
@@ -792,6 +868,95 @@ pub fn sync_send_message(
         content_type: message.content_type,
         text,
         mentions,
+        reactions: message.reactions,
+        created_at_ms: message.created_at_ms,
+        edited_at_ms: message.edited_at_ms,
+    })
+}
+
+/// Same as `sync_send_message`, plus the raw (still-encrypted) `MessageRecord` serialized as JSON
+/// bytes — hand this to `p2p_send_frame` or `sync_seal_chat_relay_message` for live cross-device
+/// delivery. Sending it as ciphertext (not the already-decrypted `text` field) means a receiving
+/// device can persist it with `sync_ingest_chat_transport_frame` exactly like a locally-created
+/// message, with no separate "received via network" representation to keep in sync.
+#[tauri::command]
+pub fn sync_send_message_for_transport(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    content_type: MessageContentType,
+    text: String,
+    mentions: Vec<String>,
+) -> Result<(DecryptedMessage, Vec<u8>), String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let (device_id, account_route) = local_chat_identity(&data_root)?;
+    let conversation = load_conversation_at(&data_root, &conversation_id).map_err(|e| e.to_string())?;
+    let epoch_number = conversation.epochs.len() as u64 - 1;
+    let epoch_key = resolve_epoch_key(&conversation, epoch_number, &account_route, &device_id)
+        .map_err(|e| e.to_string())?;
+    let authorizer = SecurityBackedChatAuthorizer { data_root: &data_root };
+    let message = send_message_at(
+        &data_root,
+        &conversation_id,
+        &device_id,
+        &account_route,
+        &epoch_key,
+        content_type,
+        text.as_bytes(),
+        mentions.clone(),
+        &authorizer,
+        crate::provider_common::now_ms(),
+    )
+    .map_err(|e| e.to_string())?;
+    let transport_frame = serde_json::to_vec(&message).map_err(|_| "chat_transport_encode_failed".to_string())?;
+    Ok((
+        DecryptedMessage {
+            message_id: message.message_id,
+            conversation_id: message.conversation_id,
+            sequence: message.sequence,
+            sender_device_id: message.sender_device_id,
+            sender_account_route: message.sender_account_route,
+            content_type: message.content_type,
+            text,
+            mentions,
+            reactions: message.reactions,
+            created_at_ms: message.created_at_ms,
+            edited_at_ms: message.edited_at_ms,
+        },
+        transport_frame,
+    ))
+}
+
+/// Ingests a `MessageRecord` received over P2P or the relay (see `sync_send_message_for_transport`):
+/// persists it exactly like `record_incoming_message_at` already does for any incoming message
+/// (idempotent by `message_id`), then decrypts it once for immediate display, so the receiving
+/// side never needs a separate "live" message representation from what a later
+/// `sync_list_decrypted_messages` poll would find anyway.
+#[tauri::command]
+pub fn sync_ingest_chat_transport_frame(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    frame: Vec<u8>,
+) -> Result<DecryptedMessage, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let (device_id, account_route) = local_chat_identity(&data_root)?;
+    let message: MessageRecord = serde_json::from_slice(&frame).map_err(|_| "chat_transport_decode_failed".to_string())?;
+    if message.conversation_id != conversation_id {
+        return Err("chat_transport_conversation_mismatch".to_string());
+    }
+    record_incoming_message_at(&data_root, &conversation_id, message.clone()).map_err(|e| e.to_string())?;
+    let conversation = load_conversation_at(&data_root, &conversation_id).map_err(|e| e.to_string())?;
+    let epoch_key = resolve_epoch_key(&conversation, message.epoch, &account_route, &device_id)
+        .map_err(|e| e.to_string())?;
+    let plaintext = decrypt_message(&message, &epoch_key).map_err(|e| e.to_string())?;
+    Ok(DecryptedMessage {
+        message_id: message.message_id,
+        conversation_id: message.conversation_id,
+        sequence: message.sequence,
+        sender_device_id: message.sender_device_id,
+        sender_account_route: message.sender_account_route,
+        content_type: message.content_type,
+        text: String::from_utf8_lossy(&plaintext).into_owned(),
+        mentions: message.mentions,
         reactions: message.reactions,
         created_at_ms: message.created_at_ms,
         edited_at_ms: message.edited_at_ms,
@@ -927,6 +1092,65 @@ pub fn sync_download_attachment(
     let (device_id, account_route) = local_chat_identity(&data_root)?;
     download_attachment_plaintext(&data_root, &conversation_id, &attachment_id, &device_id, &account_route)
         .map_err(|e| e.to_string())
+}
+
+pub(crate) fn pack_sealed(envelope: &SealedEnvelope) -> Vec<u8> {
+    let mut packed = Vec::with_capacity(32 + 12 + envelope.ciphertext.len());
+    packed.extend_from_slice(&envelope.ephemeral_public_key);
+    packed.extend_from_slice(&envelope.nonce);
+    packed.extend_from_slice(&envelope.ciphertext);
+    packed
+}
+
+pub(crate) fn unpack_sealed(packed: &[u8]) -> Result<SealedEnvelope, String> {
+    if packed.len() < 32 + 12 {
+        return Err("chat_relay_envelope_invalid".to_string());
+    }
+    let (ephemeral_public_key, rest) = packed.split_at(32);
+    let (nonce, ciphertext) = rest.split_at(12);
+    Ok(SealedEnvelope {
+        ephemeral_public_key: ephemeral_public_key.to_vec(),
+        nonce: nonce.to_vec(),
+        ciphertext: ciphertext.to_vec(),
+    })
+}
+
+const CHAT_RELAY_INFO: &[u8] = b"alethe-chat-relay-v1";
+
+/// Encrypts a chat message (already-serialized `DecryptedMessage` JSON, the same plaintext
+/// `p2p_send_frame` carries over a direct session) for delivery through the rendezvous relay as a
+/// `chat_message` envelope, when direct P2P isn't available or hasn't connected yet. Reuses the
+/// same sealed-box primitive already used for candidate/invitation envelopes
+/// (`sync_crypto::seal_for_recipient`) — a genuinely new envelope *kind* on the wire, not a new
+/// cryptographic scheme.
+#[tauri::command]
+pub fn sync_seal_chat_relay_message(
+    plaintext: Vec<u8>,
+    recipient_agreement_public_key: String,
+) -> Result<String, String> {
+    let public_key = URL_SAFE_NO_PAD
+        .decode(&recipient_agreement_public_key)
+        .map_err(|_| "chat_relay_recipient_key_invalid".to_string())?;
+    let sealed =
+        seal_for_recipient(&plaintext, &public_key, CHAT_RELAY_INFO).map_err(|_| "chat_relay_recipient_key_invalid".to_string())?;
+    let packed = pack_sealed(&sealed);
+    if packed.len() > 16 * 1024 {
+        return Err("chat_relay_message_too_large".to_string());
+    }
+    Ok(URL_SAFE_NO_PAD.encode(packed))
+}
+
+/// Decrypts a `chat_message` envelope delivered by the rendezvous relay using this device's own
+/// X25519 agreement secret. Returns the plaintext bytes — callers deserialize into whatever shape
+/// they sent (a `DecryptedMessage` JSON in the chat relay path).
+#[tauri::command]
+pub fn sync_open_chat_relay_message(app: tauri::AppHandle, ciphertext: String) -> Result<Vec<u8>, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let (device_id, _) = local_chat_identity(&data_root)?;
+    let recipient_secret = crate::sync_security::load_device_agreement_secret(&device_id)?;
+    let packed = URL_SAFE_NO_PAD.decode(&ciphertext).map_err(|_| "chat_relay_envelope_invalid".to_string())?;
+    let sealed = unpack_sealed(&packed)?;
+    open_sealed(&sealed, &recipient_secret, CHAT_RELAY_INFO).map_err(|_| "chat_relay_decrypt_failed".to_string())
 }
 
 #[tauri::command]
@@ -1229,6 +1453,82 @@ mod tests {
             b"intrusion", vec![], &AllowAll, 2_000,
         );
         assert_eq!(result.unwrap_err(), ChatError::NotAMember);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_transport_frame_survives_serialization_and_ingestion_round_trip() {
+        let root = temp_root("transport-frame");
+        let alice_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let bob_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let conversation = create_conversation_at(
+            &root, None, ConversationKind::PrivateGroup, None,
+            vec![member("route-alice", &alice_secret), member("route-bob", &bob_secret)], 1_000,
+        )
+        .unwrap();
+        let alice_wrap = current_epoch_wrap_for(&conversation, "route-alice").unwrap();
+        let alice_key = unwrap_key(alice_wrap, &alice_secret, &conversation.conversation_id, 0).unwrap();
+        let sent = send_message_at(
+            &root, &conversation.conversation_id, "dev-alice", "route-alice", &alice_key,
+            MessageContentType::Text, b"delivered over the wire", vec![], &AllowAll, 2_000,
+        )
+        .unwrap();
+
+        // What actually crosses the wire: the raw, still-encrypted MessageRecord as JSON bytes —
+        // exactly what `sync_send_message_for_transport` hands to `p2p_send_frame`/the relay.
+        let frame = serde_json::to_vec(&sent).unwrap();
+        let deserialized: MessageRecord = serde_json::from_slice(&frame).unwrap();
+        assert_eq!(deserialized.ciphertext, sent.ciphertext);
+
+        // The receiving side (a different install, but sharing the same fixture root here for the
+        // test) ingests it exactly like `sync_ingest_chat_transport_frame` does.
+        record_incoming_message_at(&root, &conversation.conversation_id, deserialized.clone()).unwrap();
+        // Idempotent: ingesting the same frame twice (e.g. arriving via both P2P and relay) is a
+        // safe no-op, not a duplicate.
+        record_incoming_message_at(&root, &conversation.conversation_id, deserialized).unwrap();
+        let stored = list_messages_at(&root, &conversation.conversation_id).unwrap();
+        assert_eq!(stored.len(), 1);
+
+        let bob_wrap = current_epoch_wrap_for(&conversation, "route-bob").unwrap();
+        let bob_key = unwrap_key(bob_wrap, &bob_secret, &conversation.conversation_id, 0).unwrap();
+        let plaintext = decrypt_message(&stored[0], &bob_key).unwrap();
+        assert_eq!(plaintext, b"delivered over the wire");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn seal_and_pack_round_trips_a_relayed_chat_message_and_rejects_a_short_envelope() {
+        let secret = X25519StaticSecret::random_from_rng(OsRng);
+        let public_key = URL_SAFE_NO_PAD.encode(X25519PublicKey::from(&secret).as_bytes());
+        let ciphertext = sync_seal_chat_relay_message(b"hello over the relay".to_vec(), public_key).unwrap();
+
+        let packed = URL_SAFE_NO_PAD.decode(&ciphertext).unwrap();
+        let sealed = unpack_sealed(&packed).unwrap();
+        let plaintext = open_sealed(&sealed, &secret, CHAT_RELAY_INFO).unwrap();
+        assert_eq!(plaintext, b"hello over the relay");
+
+        assert!(unpack_sealed(b"too short").is_err());
+    }
+
+    #[test]
+    fn ensure_direct_conversation_reuses_the_same_conversation_and_is_never_a_project_channel() {
+        let root = temp_root("ensure-direct");
+        let alice_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let bob_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let alice_key = X25519PublicKey::from(&alice_secret).as_bytes().to_vec();
+        let bob_key = X25519PublicKey::from(&bob_secret).as_bytes().to_vec();
+
+        let first = ensure_direct_conversation_at(
+            &root, "route-alice", alice_key.clone(), "route-bob", bob_key.clone(), 1_000,
+        )
+        .unwrap();
+        assert_eq!(first.kind, ConversationKind::Direct);
+        assert_eq!(first.project_id, None);
+        assert_eq!(first.members.len(), 2);
+
+        let second =
+            ensure_direct_conversation_at(&root, "route-alice", alice_key, "route-bob", bob_key, 2_000).unwrap();
+        assert_eq!(first.conversation_id, second.conversation_id);
         fs::remove_dir_all(root).unwrap();
     }
 

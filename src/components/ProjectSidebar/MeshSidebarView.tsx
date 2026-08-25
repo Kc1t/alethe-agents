@@ -1,6 +1,7 @@
 import {
   Archive,
   Check,
+  Cloud,
   Copy,
   FolderSync,
   Globe,
@@ -16,6 +17,18 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { useCloudflareLoginOnly } from '../../hooks/useCloudflareLoginOnly'
+import { type CloudflareProbeState, probeCloudflareState } from '../../lib/api/cloudflareDeploy'
+import {
+  type CollaborationServiceSettings,
+  connectRendezvous,
+  disableCollaborationService,
+  disconnectRendezvous,
+  enableCollaborationService,
+  getCollaborationServiceSettings,
+  getRendezvousStatus,
+  type RendezvousStatus,
+} from '../../lib/api/syncRendezvous'
 import { useT } from '../../lib/i18n'
 import { PROJECT_SYNC_CAPABILITIES, type SyncPermission } from '../../lib/sync/contracts'
 import { buildInvitationLink, parseInvitationLink } from '../../lib/sync/invitationLink'
@@ -41,6 +54,7 @@ import {
   syncSecuritySnapshot,
 } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
+import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
 import { GoogleIcon } from '../icons/AgentIcons'
 import styles from './MeshSidebarView.module.css'
@@ -65,6 +79,7 @@ const GOOGLE_CLOUD_CREDENTIALS_URL = 'https://console.cloud.google.com/apis/cred
 
 export function MeshSidebarView() {
   const t = useT()
+  const openModal = useUiStore((s) => s.openModal_)
   const projects = useProjectsStore((s) => s.projects)
   const activeProjectId = useProjectsStore((s) => s.activeProjectId)
   const activeProject = projects.find((p) => p.id === activeProjectId) ?? projects[0]
@@ -97,6 +112,7 @@ export function MeshSidebarView() {
   const [inviteError, setInviteError] = useState(false)
   const [issuedLink, setIssuedLink] = useState<string | null>(null)
   const [linkCopied, setLinkCopied] = useState(false)
+  const [deviceIdCopied, setDeviceIdCopied] = useState(false)
   const [invitationActionBusy, setInvitationActionBusy] = useState<string | null>(null)
   const [grantActionBusy, setGrantActionBusy] = useState<string | null>(null)
   const [redeemInput, setRedeemInput] = useState('')
@@ -106,6 +122,14 @@ export function MeshSidebarView() {
   const [projectFolders, setProjectFolders] = useState<string[] | null>(null)
   const [foldersError, setFoldersError] = useState(false)
   const [blockedFolders, setBlockedFolders] = useState<Set<string>>(new Set())
+  const [rendezvousSettings, setRendezvousSettings] = useState<CollaborationServiceSettings | null>(
+    null,
+  )
+  const [rendezvousStatus, setRendezvousStatus] = useState<RendezvousStatus | null>(null)
+  const [rendezvousBusy, setRendezvousBusy] = useState(false)
+  const [rendezvousError, setRendezvousError] = useState(false)
+  const [cloudflareProbe, setCloudflareProbe] = useState<CloudflareProbeState | null>(null)
+  const cloudflareLogin = useCloudflareLoginOnly()
 
   useEffect(() => {
     if (!showInvitePanel || !activeProject?.defaultCwd) return
@@ -166,6 +190,59 @@ export function MeshSidebarView() {
       active = false
     }
   }, [])
+
+  const refreshRendezvous = () =>
+    Promise.all([getCollaborationServiceSettings(), getRendezvousStatus()])
+      .then(([settings, status]) => {
+        setRendezvousSettings(settings)
+        setRendezvousStatus(status)
+        setRendezvousError(false)
+      })
+      .catch(() => setRendezvousError(true))
+
+  useEffect(() => {
+    void refreshRendezvous()
+  }, [])
+
+  const workerConfigured = Boolean(rendezvousSettings?.validatedEndpoint)
+
+  const refreshCloudflareProbe = () =>
+    probeCloudflareState()
+      .then(setCloudflareProbe)
+      .catch(() => setCloudflareProbe(null))
+
+  useEffect(() => {
+    if (workerConfigured) return
+    void refreshCloudflareProbe()
+  }, [workerConfigured])
+
+  useEffect(() => {
+    if (cloudflareLogin.step === 'success') void refreshCloudflareProbe()
+  }, [cloudflareLogin.step])
+
+  const rendezvousOnline = rendezvousStatus?.state === 'online'
+  const rendezvousConnecting =
+    rendezvousStatus?.state === 'connecting' ||
+    rendezvousStatus?.state === 'retrying_after_transient_failure'
+
+  const toggleRendezvous = async () => {
+    setRendezvousBusy(true)
+    setRendezvousError(false)
+    try {
+      if (rendezvousSettings?.enabled) {
+        await disconnectRendezvous().catch(() => undefined)
+        await disableCollaborationService()
+      } else {
+        await enableCollaborationService()
+        await connectRendezvous()
+      }
+      await refreshRendezvous()
+    } catch {
+      setRendezvousError(true)
+    } finally {
+      setRendezvousBusy(false)
+    }
+  }
 
   const account = security?.account ?? null
   const devices = security?.devices ?? []
@@ -259,6 +336,16 @@ export function MeshSidebarView() {
       setInviteError(true)
     } finally {
       setInviteBusy(false)
+    }
+  }
+
+  const copyDeviceId = async (deviceId: string) => {
+    try {
+      await navigator.clipboard.writeText(deviceId)
+      setDeviceIdCopied(true)
+      window.setTimeout(() => setDeviceIdCopied(false), 1500)
+    } catch {
+      setDeviceIdCopied(false)
     }
   }
 
@@ -525,6 +612,96 @@ export function MeshSidebarView() {
       </section>
 
       <section className={styles.section}>
+        <div className={styles.authCard}>
+          <div className={styles.authInfo}>
+            <span className={styles.authLabel}>{t('mesh.cloudflareWorker')}</span>
+            <span className={styles.authStatus}>
+              {rendezvousError
+                ? t('mesh.cloudflareStatusFailed')
+                : workerConfigured
+                  ? rendezvousOnline
+                    ? t('mesh.cloudflareOnline')
+                    : rendezvousConnecting
+                      ? t('mesh.cloudflareConnecting')
+                      : t('mesh.cloudflareOffline')
+                  : cloudflareLogin.step === 'running'
+                    ? t('mesh.cloudflareLoggingIn')
+                    : cloudflareProbe?.installed && cloudflareProbe.loggedIn
+                      ? t('mesh.cloudflareReadyToDeploy')
+                      : cloudflareProbe?.installed
+                        ? t('mesh.cloudflareNotLoggedIn')
+                        : t('mesh.cloudflareNotConfigured')}
+            </span>
+          </div>
+          <div className={styles.authButtonsRow}>
+            {workerConfigured ? (
+              <button
+                type="button"
+                className={`${styles.loginGoogleBtn} ${rendezvousOnline ? styles.loginGoogleBtnConnected : ''}`}
+                disabled={rendezvousBusy}
+                onClick={() => void toggleRendezvous()}
+              >
+                {rendezvousBusy ? (
+                  <Loader2 size={14} className={styles.spin} />
+                ) : (
+                  <Cloud size={14} />
+                )}
+                <span>
+                  {rendezvousBusy
+                    ? t('mesh.cloudflareWorking')
+                    : rendezvousSettings?.enabled
+                      ? t('mesh.cloudflareDisconnect')
+                      : t('mesh.cloudflareConnect')}
+                </span>
+              </button>
+            ) : cloudflareProbe?.installed && !cloudflareProbe.loggedIn ? (
+              <button
+                type="button"
+                className={styles.loginGoogleBtn}
+                onClick={() =>
+                  cloudflareLogin.step === 'running'
+                    ? cloudflareLogin.reset()
+                    : void cloudflareLogin.start()
+                }
+              >
+                {cloudflareLogin.step === 'running' ? (
+                  <Loader2 size={14} className={styles.spin} />
+                ) : (
+                  <Cloud size={14} />
+                )}
+                <span>
+                  {cloudflareLogin.step === 'running'
+                    ? t('mesh.cloudflareCancel')
+                    : t('mesh.cloudflareConnectAccount')}
+                </span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={styles.loginGoogleBtn}
+                onClick={() =>
+                  openModal('preferences', {
+                    category: 'account',
+                    settingTarget: 'collaboration-service',
+                  })
+                }
+              >
+                <Cloud size={14} />
+                <span>
+                  {cloudflareProbe?.installed && cloudflareProbe.loggedIn
+                    ? t('mesh.cloudflareContinueSetup')
+                    : t('mesh.cloudflareSetUp')}
+                </span>
+              </button>
+            )}
+          </div>
+          {!workerConfigured && !cloudflareProbe?.installed ? (
+            <span className={styles.oauthSetupHint}>{t('mesh.cloudflareExplain')}</span>
+          ) : null}
+        </div>
+      </section>
+
+      <section className={styles.section}>
         <div className={styles.deviceCard}>
           <div className={styles.deviceHeader}>
             <Laptop size={14} />
@@ -584,7 +761,21 @@ export function MeshSidebarView() {
               )}
               <div className={styles.deviceFingerprintRow}>
                 <span className={styles.deviceFingerprintLabel}>{t('mesh.deviceFingerprint')}</span>
-                <code className={styles.deviceId}>{thisDevice.deviceId}</code>
+                <code className={styles.deviceId} title={thisDevice.deviceId}>
+                  {thisDevice.deviceId}
+                </code>
+                <button
+                  type="button"
+                  className={styles.deviceActionBtn}
+                  onClick={() => void copyDeviceId(thisDevice.deviceId)}
+                  title={t('mesh.deviceCopyId')}
+                >
+                  {deviceIdCopied ? (
+                    <Check size={11} className={styles.successIcon} />
+                  ) : (
+                    <Copy size={11} />
+                  )}
+                </button>
               </div>
             </>
           ) : (

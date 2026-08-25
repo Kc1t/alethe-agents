@@ -78,6 +78,18 @@ export async function syncLocalIdentity(): Promise<LocalIdentity> {
   return webApiFetch<LocalIdentity>('/api/sync/security/local-identity')
 }
 
+/** Desktop-only (P2P itself is Desktop-only — see `p2pBridge.ts`). Finds a trusted device ID for
+ * `remoteAccountRoute` from this account's active grants, since a chat conversation member only
+ * carries an account route, not a device ID, but P2P's handshake needs both. */
+export async function syncFindTrustedDeviceForAccountRoute(
+  remoteAccountRoute: string,
+): Promise<string | null> {
+  if (!isTauriEnv()) return null
+  return invoke<string | null>('sync_find_trusted_device_for_account_route', {
+    remoteAccountRoute,
+  })
+}
+
 export async function syncApproveDevice(targetDeviceId: string): Promise<SyncDeviceRecord> {
   if (isTauriEnv()) {
     return invoke<SyncDeviceRecord>('sync_approve_device', { targetDeviceId })
@@ -267,5 +279,119 @@ export async function syncDeleteProjectAccess(projectId: string): Promise<number
   return webApiFetch<number>('/api/sync/security/projects/delete-access', {
     method: 'POST',
     body: JSON.stringify({ projectId }),
+  })
+}
+
+export type SyncChatContact = {
+  accountRoute: string
+  deviceId: string
+  agreementPublicKey: string
+  displayLabel: string
+  addedAtMs: number
+}
+
+export async function syncAddChatContact(
+  accountRoute: string,
+  deviceId: string,
+  agreementPublicKey: string,
+  displayLabel: string,
+): Promise<void> {
+  if (isTauriEnv()) {
+    await invoke('sync_add_chat_contact', {
+      accountRoute,
+      deviceId,
+      agreementPublicKey,
+      displayLabel,
+    })
+    return
+  }
+  await webApiFetch<void>('/api/sync/security/chat-contacts/add', {
+    method: 'POST',
+    body: JSON.stringify({ accountRoute, deviceId, agreementPublicKey, displayLabel }),
+  })
+}
+
+export async function syncListChatContacts(): Promise<SyncChatContact[]> {
+  if (isTauriEnv()) return invoke<SyncChatContact[]>('sync_list_chat_contacts')
+  return webApiFetch<SyncChatContact[]>('/api/sync/security/chat-contacts/list')
+}
+
+/**
+ * Desktop-only (same reasoning as `syncSealChatRelayMessage`): seals a "it's me, and here's my
+ * single-use invite token back" acknowledgment for the issuer of a pairing code, so the issuer's
+ * device can automatically add the recipient as a chat contact too — without the issuer ever
+ * pasting a second code. Send the returned ciphertext through `sendRendezvousFrame` with
+ * `kind: 'chat_contact_ack'`.
+ */
+export async function syncSealChatContactAck(
+  token: string,
+  accountRoute: string,
+  deviceId: string,
+  agreementPublicKey: string,
+  displayLabel: string,
+  issuerAgreementPublicKey: string,
+): Promise<string> {
+  if (!isTauriEnv()) throw new Error('chat_contact_ack_desktop_only')
+  return invoke<string>('sync_seal_chat_contact_ack', {
+    token,
+    accountRoute,
+    deviceId,
+    agreementPublicKey,
+    displayLabel,
+    issuerAgreementPublicKey,
+  })
+}
+
+/**
+ * Decrypts a delivered `chat_contact_ack` envelope and, only if its token is a still-valid,
+ * unconsumed token this device itself generated, automatically adds the sender as a chat contact.
+ * Returns the added contact's display label, or `null` if the token didn't check out (the
+ * envelope was not addressed to a currently-live invite code — ignore it).
+ */
+export async function syncOpenChatContactAck(ciphertext: string): Promise<string | null> {
+  if (!isTauriEnv()) throw new Error('chat_contact_ack_desktop_only')
+  return invoke<string | null>('sync_open_chat_contact_ack', { ciphertext })
+}
+
+export type CollaboratorSuggestionEnvelope = {
+  ownerAccountRoute: string
+  ciphertext: string
+}
+
+/**
+ * Seals a "suggest this person for the project" proposal end-to-end for the project owner (Phase
+ * 12 collaboration extension). Only callable when this device holds an active grant for
+ * `projectId` — proves the caller is a real collaborator. Never creates a grant or invitation
+ * itself; the caller still has to send the returned ciphertext through the rendezvous relay with
+ * `kind: 'invite_suggestion'`, and only the owner deciding to run the normal invite flow from
+ * scratch can turn this into real access.
+ */
+export async function syncSuggestProjectCollaborator(
+  projectId: string,
+  suggestedAccountId: string,
+  note: string,
+): Promise<CollaboratorSuggestionEnvelope> {
+  if (isTauriEnv()) {
+    return invoke<CollaboratorSuggestionEnvelope>('sync_prepare_collaborator_suggestion', {
+      projectId,
+      suggestedAccountId,
+      note,
+    })
+  }
+  return webApiFetch<CollaboratorSuggestionEnvelope>(
+    '/api/sync/security/collaborator-suggestion/prepare',
+    {
+      method: 'POST',
+      body: JSON.stringify({ projectId, suggestedAccountId, note }),
+    },
+  )
+}
+
+/** Decrypts a delivered `invite_suggestion` envelope into `{ projectId, suggestedAccountId, note }` bytes. */
+export async function syncOpenCollaboratorSuggestion(ciphertext: string): Promise<number[]> {
+  if (isTauriEnv()) return invoke<number[]>('sync_open_collaborator_suggestion', { ciphertext })
+  return webApiFetch<number[]>('/api/sync/security/collaborator-suggestion/open', {
+    method: 'POST',
+    body: JSON.stringify({ ciphertext }),
   })
 }

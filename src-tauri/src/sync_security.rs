@@ -127,6 +127,19 @@ pub struct InvitationRecord {
     pub failed_attempts: u32,
     #[serde(default)]
     pub blocked_until_ms: Option<u64>,
+    /// The project owner's raw Google account id (never a bearer secret) — lets a recipient later
+    /// address a `sync_suggest_project_collaborator` proposal back to the right account. Empty on
+    /// invitations created before this field existed; those simply can't be used to suggest a new
+    /// collaborator (no project-authorization code reads this field for anything else).
+    #[serde(default)]
+    pub owner_account_id: String,
+    /// The project owner's X25519 agreement public key (base64url, no padding) at the moment this
+    /// invitation was issued — lets a recipient seal a `sync_suggest_project_collaborator` proposal
+    /// end-to-end for the owner without an extra lookup round-trip. Empty on invitations created
+    /// before this field existed or redeemed cross-device before the issuer's key was threaded
+    /// through; those simply can't be used to suggest a new collaborator.
+    #[serde(default)]
+    pub owner_agreement_public_key: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -255,6 +268,38 @@ pub fn sync_resolve_capabilities(app: tauri::AppHandle) -> Result<SyncCapabiliti
     resolve_capabilities_at(&data_root)
 }
 
+/// A chat-only contact, established via `sync_add_chat_contact` (pairing-code identity exchange,
+/// same verification as `sync_verify_discovered_device`) — deliberately carries no permission,
+/// project, or scope field. No project-authorization code path (`issue_invitation`,
+/// `redeem_invitation`, grant checks) ever reads this list; it exists only so
+/// `find_trusted_device_for_account_route_at`/`is_peer_trusted_for_p2p` have a second, completely
+/// separate source of P2P trust that never implies project access.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatContactRecord {
+    pub account_route: String,
+    pub device_id: String,
+    pub agreement_public_key: String,
+    pub display_label: String,
+    pub added_at_ms: u64,
+}
+
+/// A single-use invite ticket embedded in an exported pairing code (`sync_export_pairing_code`),
+/// so a shared/forwarded code can't be reused indefinitely to add unlimited people as chat
+/// contacts. Generating a fresh one invalidates every previous unconsumed token for this device —
+/// only one code is ever "live" at a time — and it's marked consumed the moment the other side's
+/// confirmed `chat_contact_ack` arrives (see `sync_rendezvous.rs`'s `"chat_contact_ack"` kind),
+/// which is also what drives the automatic mutual add: the issuer never has to paste anything back.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatInviteToken {
+    pub token: String,
+    pub created_at_ms: u64,
+    pub expires_at_ms: u64,
+    #[serde(default)]
+    pub consumed_at_ms: Option<u64>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncSecurityDocument {
@@ -269,6 +314,12 @@ pub struct SyncSecurityDocument {
     pub invitations: Vec<InvitationRecord>,
     #[serde(default)]
     pub grants: Vec<GrantRecord>,
+    /// See `ChatContactRecord` — never consulted by any project-authorization code.
+    #[serde(default)]
+    pub chat_contacts: Vec<ChatContactRecord>,
+    /// See `ChatInviteToken`.
+    #[serde(default)]
+    pub chat_invite_tokens: Vec<ChatInviteToken>,
     pub audit: Vec<SecurityAuditEvent>,
 }
 
@@ -281,6 +332,8 @@ impl Default for SyncSecurityDocument {
             local_device_id: None,
             invitations: Vec::new(),
             grants: Vec::new(),
+            chat_contacts: Vec::new(),
+            chat_invite_tokens: Vec::new(),
             audit: Vec::new(),
         }
     }
@@ -765,6 +818,8 @@ pub(crate) fn issue_invitation(
         revoked_at_ms: None,
         failed_attempts: 0,
         blocked_until_ms: None,
+        owner_account_id: document.account.as_ref().map(|account| account.account_id.clone()).unwrap_or_default(),
+        owner_agreement_public_key: issuer.agreement_public_key.clone().unwrap_or_default(),
     };
     document.invitations.push(invitation.clone());
     append_audit(
@@ -1377,6 +1432,8 @@ pub(crate) fn redeem_remote_invitation_at(
     expires_at_ms: u64,
     recipient_account_id: &str,
     recipient_device_id: &str,
+    owner_account_id: &str,
+    owner_agreement_public_key: &str,
     now_ms: u64,
 ) -> Result<GrantRecord, String> {
     let mut document = load_at(data_root)?;
@@ -1397,6 +1454,8 @@ pub(crate) fn redeem_remote_invitation_at(
             revoked_at_ms: None,
             failed_attempts: 0,
             blocked_until_ms: None,
+            owner_account_id: owner_account_id.to_string(),
+            owner_agreement_public_key: owner_agreement_public_key.to_string(),
         });
         save_at(data_root, &document)?;
     }
@@ -1427,12 +1486,343 @@ pub(crate) fn is_peer_trusted_for_p2p(
     if same_account_trusted_device {
         return true;
     }
-    document.grants.iter().any(|grant| {
+    let grant_trusted = document.grants.iter().any(|grant| {
         grant.device_id == remote_device_id
             && crate::sync_protocol::account_route_id(&grant.account_id) == remote_account_route
             && grant.revoked_at_ms.is_none()
             && grant.expires_at_ms.is_none_or(|expires| expires > now_ms)
+    });
+    if grant_trusted {
+        return true;
+    }
+    // A chat-only contact (see `ChatContactRecord`) is a second, completely separate source of
+    // P2P trust — it never implies project access, and no project-authorization code reads
+    // `chat_contacts` for anything. This only widens who a device can open an authenticated P2P
+    // session with; it never widens what that session is allowed to do once authenticated.
+    document.chat_contacts.iter().any(|contact| {
+        contact.device_id == remote_device_id && contact.account_route == remote_account_route
     })
+}
+
+/// Adds (or refreshes, by `account_route`) a chat-only contact. Never touches `grants`,
+/// `invitations`, or any project-authorization state — see `ChatContactRecord`'s own doc comment.
+pub(crate) fn add_chat_contact_at(
+    data_root: &Path,
+    contact: ChatContactRecord,
+) -> Result<(), String> {
+    let mut document = load_at(data_root)?;
+    document.chat_contacts.retain(|existing| existing.account_route != contact.account_route);
+    document.chat_contacts.push(contact);
+    save_at(data_root, &document)
+}
+
+pub(crate) fn list_chat_contacts_at(data_root: &Path) -> Result<Vec<ChatContactRecord>, String> {
+    Ok(load_at(data_root)?.chat_contacts)
+}
+
+const CHAT_INVITE_TOKEN_TTL_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
+
+/// Creates a fresh single-use invite token, first invalidating every previous unconsumed token
+/// for this device (only one exported pairing code is ever "live" at a time — see
+/// `ChatInviteToken`'s own doc comment). Callers embed the returned token in the exported pairing
+/// code; it is never valid again once `consume_chat_invite_token_at` succeeds for it.
+pub(crate) fn generate_chat_invite_token_at(data_root: &Path, now_ms: u64) -> Result<String, String> {
+    let mut document = load_at(data_root)?;
+    for existing in document.chat_invite_tokens.iter_mut() {
+        if existing.consumed_at_ms.is_none() {
+            existing.consumed_at_ms = Some(now_ms);
+        }
+    }
+    let token = format!("cit_{}", nanoid::nanoid!(24));
+    document.chat_invite_tokens.push(ChatInviteToken {
+        token: token.clone(),
+        created_at_ms: now_ms,
+        expires_at_ms: now_ms.saturating_add(CHAT_INVITE_TOKEN_TTL_MS),
+        consumed_at_ms: None,
+    });
+    save_at(data_root, &document)?;
+    Ok(token)
+}
+
+/// Marks `token` consumed if (and only if) it exists, is not already consumed, and has not
+/// expired — fails closed (`Ok(false)`) on any replay, forged, or stale token instead of trusting
+/// the caller. Never touches `chat_contacts` itself; the caller adds the contact separately, only
+/// after this returns `Ok(true)`.
+pub(crate) fn consume_chat_invite_token_at(
+    data_root: &Path,
+    token: &str,
+    now_ms: u64,
+) -> Result<bool, String> {
+    let mut document = load_at(data_root)?;
+    let Some(entry) = document.chat_invite_tokens.iter_mut().find(|entry| entry.token == token) else {
+        return Ok(false);
+    };
+    if entry.consumed_at_ms.is_some() || entry.expires_at_ms <= now_ms {
+        return Ok(false);
+    }
+    entry.consumed_at_ms = Some(now_ms);
+    save_at(data_root, &document)?;
+    Ok(true)
+}
+
+#[tauri::command]
+pub fn sync_add_chat_contact(
+    app: tauri::AppHandle,
+    account_route: String,
+    device_id: String,
+    agreement_public_key: String,
+    display_label: String,
+) -> Result<(), String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    add_chat_contact_at(
+        &data_root,
+        ChatContactRecord {
+            account_route,
+            device_id,
+            agreement_public_key,
+            display_label,
+            added_at_ms: crate::provider_common::now_ms(),
+        },
+    )
+}
+
+#[tauri::command]
+pub fn sync_list_chat_contacts(app: tauri::AppHandle) -> Result<Vec<ChatContactRecord>, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    list_chat_contacts_at(&data_root)
+}
+
+/// The owner identity a collaborator needs to seal a `sync_suggest_project_collaborator` proposal:
+/// the project owner's raw Google account id and X25519 agreement public key, both carried on the
+/// `InvitationRecord` this device's own active grant for `project_id` points back to (see
+/// `owner_account_id`/`owner_agreement_public_key` doc comments). Requires an active (non-revoked,
+/// non-expired) grant — proves the caller is actually a collaborator on this project, not just
+/// anyone. Fails for a grant issued before this field existed (both fields empty).
+pub(crate) fn find_project_owner_for_active_grant_at(
+    data_root: &Path,
+    project_id: &str,
+    now_ms: u64,
+) -> Result<(String, String), String> {
+    let document = load_at(data_root)?;
+    let grant = document
+        .grants
+        .iter()
+        .filter(|grant| {
+            grant.project_id == project_id
+                && grant.revoked_at_ms.is_none()
+                && grant.expires_at_ms.is_none_or(|expires| expires > now_ms)
+        })
+        .max_by_key(|grant| grant.issued_at_ms)
+        .ok_or_else(|| "grant_not_found".to_string())?;
+    let invitation = document
+        .invitations
+        .iter()
+        .find(|invitation| invitation.invitation_id == grant.invitation_id)
+        .ok_or_else(|| "grant_not_found".to_string())?;
+    if invitation.owner_account_id.is_empty() || invitation.owner_agreement_public_key.is_empty() {
+        return Err("grant_owner_unknown".to_string());
+    }
+    Ok((invitation.owner_account_id.clone(), invitation.owner_agreement_public_key.clone()))
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CollaboratorSuggestionEnvelope {
+    pub owner_account_route: String,
+    pub ciphertext: String,
+}
+
+const COLLABORATOR_SUGGESTION_INFO: &[u8] = b"alethe-collaborator-suggestion-v1";
+const CHAT_CONTACT_ACK_INFO: &[u8] = b"alethe-chat-contact-ack-v1";
+
+/// Seals `{ token, accountRoute, deviceId, agreementPublicKey, displayLabel }` for the *issuer* of
+/// a pairing code — the recipient calls this right after locally saving the issuer as a contact,
+/// so the issuer's device can automatically add the recipient back too (see `ChatInviteToken`'s
+/// doc comment) without either side pasting a second code. Never touches this (recipient) device's
+/// own `chat_contacts`/tokens — purely a transport-layer helper.
+#[tauri::command]
+pub fn sync_seal_chat_contact_ack(
+    token: String,
+    account_route: String,
+    device_id: String,
+    agreement_public_key: String,
+    display_label: String,
+    issuer_agreement_public_key: String,
+) -> Result<String, String> {
+    let issuer_public_key = URL_SAFE_NO_PAD
+        .decode(&issuer_agreement_public_key)
+        .map_err(|_| "chat_contact_ack_issuer_key_invalid".to_string())?;
+    let payload = serde_json::json!({
+        "token": token,
+        "accountRoute": account_route,
+        "deviceId": device_id,
+        "agreementPublicKey": agreement_public_key,
+        "displayLabel": display_label,
+    });
+    let plaintext = serde_json::to_vec(&payload).map_err(|_| "chat_contact_ack_encode_failed".to_string())?;
+    let sealed = crate::sync_crypto::seal_for_recipient(&plaintext, &issuer_public_key, CHAT_CONTACT_ACK_INFO)
+        .map_err(|_| "chat_contact_ack_issuer_key_invalid".to_string())?;
+    let packed = crate::sync_chat::pack_sealed(&sealed);
+    if packed.len() > 16 * 1024 {
+        return Err("chat_contact_ack_too_large".to_string());
+    }
+    Ok(URL_SAFE_NO_PAD.encode(packed))
+}
+
+/// Decrypts a delivered `chat_contact_ack` envelope, then — only if `token` is a still-valid,
+/// unconsumed token this device itself generated (`consume_chat_invite_token_at` fails closed on
+/// any replay, forged, or stale token) — adds the sender as a chat contact automatically. Returns
+/// the added contact's display label on success, or `None` if the token didn't check out (the
+/// envelope is silently ignored by the caller in that case, same as any other unaddressed relay
+/// delivery).
+#[tauri::command]
+pub fn sync_open_chat_contact_ack(app: tauri::AppHandle, ciphertext: String) -> Result<Option<String>, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let local_device_id = load_at(&data_root)?.local_device_id.ok_or_else(|| "security_device_missing".to_string())?;
+    let recipient_secret = load_device_agreement_secret(&local_device_id)?;
+    let packed = URL_SAFE_NO_PAD.decode(&ciphertext).map_err(|_| "chat_contact_ack_invalid".to_string())?;
+    let sealed = crate::sync_chat::unpack_sealed(&packed)?;
+    let plaintext = crate::sync_crypto::open_sealed(&sealed, &recipient_secret, CHAT_CONTACT_ACK_INFO)
+        .map_err(|_| "chat_contact_ack_decrypt_failed".to_string())?;
+    let payload: serde_json::Value =
+        serde_json::from_slice(&plaintext).map_err(|_| "chat_contact_ack_invalid".to_string())?;
+    let token = payload.get("token").and_then(|v| v.as_str()).unwrap_or_default();
+    let now_ms = crate::provider_common::now_ms();
+    if !consume_chat_invite_token_at(&data_root, token, now_ms)? {
+        return Ok(None);
+    }
+    let account_route = payload.get("accountRoute").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let device_id = payload.get("deviceId").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let agreement_public_key =
+        payload.get("agreementPublicKey").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let display_label = payload.get("displayLabel").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    if account_route.is_empty() || device_id.is_empty() || agreement_public_key.is_empty() {
+        return Err("chat_contact_ack_invalid".to_string());
+    }
+    add_chat_contact_at(
+        &data_root,
+        ChatContactRecord {
+            account_route,
+            device_id,
+            agreement_public_key,
+            display_label: display_label.clone(),
+            added_at_ms: now_ms,
+        },
+    )?;
+    Ok(Some(display_label))
+}
+
+/// Builds an end-to-end sealed `invite_suggestion` payload for the owner of `project_id`, callable
+/// only when this device holds an active grant for that project (proof of being a real
+/// collaborator, not just anyone). Never touches `issue_invitation`/`grants` itself — the caller
+/// (frontend) sends the returned ciphertext through the existing rendezvous relay
+/// (`sendRendezvousFrame({ kind: "invite_suggestion", ... })`); only the owner, decrypting and then
+/// explicitly running the normal invite flow, can turn this into real access.
+pub(crate) fn prepare_collaborator_suggestion_at(
+    data_root: &Path,
+    project_id: &str,
+    suggested_account_id: &str,
+    note: &str,
+    now_ms: u64,
+) -> Result<CollaboratorSuggestionEnvelope, String> {
+    let (owner_account_id, owner_agreement_public_key) =
+        find_project_owner_for_active_grant_at(data_root, project_id, now_ms)?;
+    let owner_public_key = URL_SAFE_NO_PAD
+        .decode(&owner_agreement_public_key)
+        .map_err(|_| "collaborator_suggestion_owner_key_invalid".to_string())?;
+    let payload = serde_json::json!({
+        "projectId": project_id,
+        "suggestedAccountId": suggested_account_id,
+        "note": note,
+    });
+    let plaintext = serde_json::to_vec(&payload).map_err(|_| "collaborator_suggestion_encode_failed".to_string())?;
+    let sealed = crate::sync_crypto::seal_for_recipient(&plaintext, &owner_public_key, COLLABORATOR_SUGGESTION_INFO)
+        .map_err(|_| "collaborator_suggestion_owner_key_invalid".to_string())?;
+    let packed = crate::sync_chat::pack_sealed(&sealed);
+    if packed.len() > 16 * 1024 {
+        return Err("collaborator_suggestion_too_large".to_string());
+    }
+    Ok(CollaboratorSuggestionEnvelope {
+        owner_account_route: crate::sync_protocol::account_route_id(&owner_account_id),
+        ciphertext: URL_SAFE_NO_PAD.encode(packed),
+    })
+}
+
+pub(crate) fn open_collaborator_suggestion_at(data_root: &Path, ciphertext: &str) -> Result<Vec<u8>, String> {
+    let local_device_id = load_at(data_root)?.local_device_id.ok_or_else(|| "security_device_missing".to_string())?;
+    let recipient_secret = load_device_agreement_secret(&local_device_id)?;
+    let packed = URL_SAFE_NO_PAD.decode(ciphertext).map_err(|_| "collaborator_suggestion_invalid".to_string())?;
+    let sealed = crate::sync_chat::unpack_sealed(&packed)?;
+    crate::sync_crypto::open_sealed(&sealed, &recipient_secret, COLLABORATOR_SUGGESTION_INFO)
+        .map_err(|_| "collaborator_suggestion_decrypt_failed".to_string())
+}
+
+/// Builds an end-to-end sealed `invite_suggestion` payload for the owner of `project_id`, callable
+/// only when this device holds an active grant for that project (proof of being a real
+/// collaborator, not just anyone). Never touches `issue_invitation`/`grants` itself — the caller
+/// (frontend) sends the returned ciphertext through the existing rendezvous relay
+/// (`sendRendezvousFrame({ kind: "invite_suggestion", ... })`); only the owner, decrypting and then
+/// explicitly running the normal invite flow, can turn this into real access.
+#[tauri::command]
+pub fn sync_prepare_collaborator_suggestion(
+    app: tauri::AppHandle,
+    project_id: String,
+    suggested_account_id: String,
+    note: String,
+) -> Result<CollaboratorSuggestionEnvelope, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    prepare_collaborator_suggestion_at(&data_root, &project_id, &suggested_account_id, &note, crate::provider_common::now_ms())
+}
+
+/// Decrypts an `invite_suggestion` envelope delivered by the rendezvous relay using this device's
+/// own X25519 agreement secret, returning the plaintext JSON bytes
+/// (`{ projectId, suggestedAccountId, note }`) for the caller to parse and display. This never
+/// creates a grant or invitation by itself — the owner must still run the normal invite flow from
+/// scratch to actually grant access.
+#[tauri::command]
+pub fn sync_open_collaborator_suggestion(app: tauri::AppHandle, ciphertext: String) -> Result<Vec<u8>, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    open_collaborator_suggestion_at(&data_root, &ciphertext)
+}
+
+/// Finds a trusted device ID for `remote_account_route` from this account's active grants (a chat
+/// conversation member only carries an account route, not a device ID — P2P's trust check
+/// (`is_peer_trusted_for_p2p`) needs both). Returns the most recently issued matching grant's
+/// device, or `None` if there is no live grant for that route to connect to yet.
+pub fn find_trusted_device_for_account_route_at(
+    data_root: &Path,
+    remote_account_route: &str,
+    now_ms: u64,
+) -> Result<Option<String>, String> {
+    let document = load_at(data_root)?;
+    if let Some(device_id) = document
+        .grants
+        .iter()
+        .filter(|grant| {
+            crate::sync_protocol::account_route_id(&grant.account_id) == remote_account_route
+                && grant.revoked_at_ms.is_none()
+                && grant.expires_at_ms.is_none_or(|expires| expires > now_ms)
+        })
+        .max_by_key(|grant| grant.issued_at_ms)
+        .map(|grant| grant.device_id.clone())
+    {
+        return Ok(Some(device_id));
+    }
+    // Second, separate source (see `ChatContactRecord`) — never a project grant.
+    Ok(document
+        .chat_contacts
+        .iter()
+        .find(|contact| contact.account_route == remote_account_route)
+        .map(|contact| contact.device_id.clone()))
+}
+
+#[tauri::command]
+pub fn sync_find_trusted_device_for_account_route(
+    app: tauri::AppHandle,
+    remote_account_route: String,
+) -> Result<Option<String>, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    find_trusted_device_for_account_route_at(&data_root, &remote_account_route, crate::provider_common::now_ms())
 }
 
 fn find_trusted_actor<'a>(
@@ -1648,6 +2038,7 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use std::sync::Mutex;
+    use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret as X25519StaticSecret};
 
     fn device(account_id: &str, device_id: &str, trust: DeviceTrust) -> DeviceRecord {
         DeviceRecord {
@@ -1698,6 +2089,8 @@ mod tests {
             10_000,
             "recipient-account",
             "recipient-device",
+            "owner-account",
+            "owner-key",
             1_000,
         )
         .unwrap();
@@ -1720,6 +2113,8 @@ mod tests {
             10_000,
             "recipient-account",
             "recipient-device",
+            "owner-account",
+            "owner-key",
             1_000,
         )
         .unwrap();
@@ -1733,6 +2128,8 @@ mod tests {
             10_000,
             "recipient-account",
             "recipient-device",
+            "owner-account",
+            "owner-key",
             2_000,
         );
         assert!(second.is_err());
@@ -1752,6 +2149,8 @@ mod tests {
             1_000,
             "recipient-account",
             "recipient-device",
+            "owner-account",
+            "owner-key",
             5_000,
         );
         assert!(result.is_err());
@@ -1817,6 +2216,245 @@ mod tests {
         let document = SyncSecurityDocument::default();
         let route = crate::sync_protocol::account_route_id("stranger-account");
         assert!(!is_peer_trusted_for_p2p(&document, &route, "stranger-device", 1_000));
+    }
+
+    #[test]
+    fn a_chat_contact_is_trusted_for_p2p_with_no_grant_present() {
+        let root = temp_root();
+        let route = crate::sync_protocol::account_route_id("friend-account");
+        add_chat_contact_at(
+            &root,
+            ChatContactRecord {
+                account_route: route.clone(),
+                device_id: "friend-device".to_string(),
+                agreement_public_key: "AAAA".to_string(),
+                display_label: "Friend".to_string(),
+                added_at_ms: 1_000,
+            },
+        )
+        .unwrap();
+        let document = load_at(&root).unwrap();
+        assert!(document.grants.is_empty());
+        assert!(is_peer_trusted_for_p2p(&document, &route, "friend-device", 2_000));
+        assert_eq!(
+            find_trusted_device_for_account_route_at(&root, &route, 2_000).unwrap(),
+            Some("friend-device".to_string())
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn adding_a_chat_contact_never_creates_a_grant_or_invitation() {
+        let root = temp_root();
+        add_chat_contact_at(
+            &root,
+            ChatContactRecord {
+                account_route: "route-friend".to_string(),
+                device_id: "friend-device".to_string(),
+                agreement_public_key: "AAAA".to_string(),
+                display_label: "Friend".to_string(),
+                added_at_ms: 1_000,
+            },
+        )
+        .unwrap();
+        let document = load_at(&root).unwrap();
+        assert!(document.grants.is_empty());
+        assert!(document.invitations.is_empty());
+        assert_eq!(document.chat_contacts.len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn adding_a_chat_contact_twice_updates_instead_of_duplicating() {
+        let root = temp_root();
+        for label in ["First label", "Updated label"] {
+            add_chat_contact_at(
+                &root,
+                ChatContactRecord {
+                    account_route: "route-friend".to_string(),
+                    device_id: "friend-device".to_string(),
+                    agreement_public_key: "AAAA".to_string(),
+                    display_label: label.to_string(),
+                    added_at_ms: 1_000,
+                },
+            )
+            .unwrap();
+        }
+        let contacts = list_chat_contacts_at(&root).unwrap();
+        assert_eq!(contacts.len(), 1);
+        assert_eq!(contacts[0].display_label, "Updated label");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    fn invitation_with_owner(invitation_id: &str, project_id: &str, owner_account_id: &str, owner_key: &str) -> InvitationRecord {
+        InvitationRecord {
+            invitation_id: invitation_id.to_string(),
+            project_id: project_id.to_string(),
+            issuer_device_id: String::new(),
+            recipient_account_id: "collaborator-account".to_string(),
+            recipient_device_id: None,
+            permissions: vec![SyncPermission::Read],
+            path_scopes: Vec::new(),
+            token_hash: "0".repeat(64),
+            state: InvitationState::Redeemed,
+            created_at_ms: 0,
+            expires_at_ms: 999_999,
+            redeemed_at_ms: Some(0),
+            revoked_at_ms: None,
+            failed_attempts: 0,
+            blocked_until_ms: None,
+            owner_account_id: owner_account_id.to_string(),
+            owner_agreement_public_key: owner_key.to_string(),
+        }
+    }
+
+    #[test]
+    fn suggesting_a_collaborator_requires_an_active_grant_for_that_project() {
+        let root = temp_root();
+        let owner_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let owner_key = URL_SAFE_NO_PAD.encode(X25519PublicKey::from(&owner_secret).as_bytes());
+        let mut document = SyncSecurityDocument::default();
+        document.invitations.push(invitation_with_owner("invitation-1", "project-1", "owner-account", &owner_key));
+        document.grants.push(grant("collaborator-account", "collaborator-device", false, None));
+        save_at(&root, &document).unwrap();
+
+        // No grant for "project-2" at all — must fail closed.
+        let missing = prepare_collaborator_suggestion_at(&root, "project-2", "someone-else", "note", 1_000);
+        assert!(missing.is_err());
+
+        let ok = prepare_collaborator_suggestion_at(&root, "project-1", "someone-else", "note", 1_000).unwrap();
+        assert_eq!(ok.owner_account_route, crate::sync_protocol::account_route_id("owner-account"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn suggesting_a_collaborator_never_touches_grants_or_invitations() {
+        let root = temp_root();
+        let owner_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let owner_key = URL_SAFE_NO_PAD.encode(X25519PublicKey::from(&owner_secret).as_bytes());
+        let mut document = SyncSecurityDocument::default();
+        document.invitations.push(invitation_with_owner("invitation-1", "project-1", "owner-account", &owner_key));
+        document.grants.push(grant("collaborator-account", "collaborator-device", false, None));
+        save_at(&root, &document).unwrap();
+
+        prepare_collaborator_suggestion_at(&root, "project-1", "someone-else", "note", 1_000).unwrap();
+
+        let after = load_at(&root).unwrap();
+        assert_eq!(after.grants.len(), 1);
+        assert_eq!(after.invitations.len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_grant_predating_the_owner_key_field_cannot_be_used_to_suggest() {
+        let root = temp_root();
+        let mut document = SyncSecurityDocument::default();
+        // Old grant/invitation, from before owner_account_id/owner_agreement_public_key existed —
+        // both empty, matching #[serde(default)] backward compatibility.
+        document.invitations.push(invitation_with_owner("inv-old", "project-1", "", ""));
+        document.grants.push(grant("collaborator-account", "collaborator-device", false, None));
+        document.grants[0].invitation_id = "inv-old".to_string();
+        save_at(&root, &document).unwrap();
+
+        let result = prepare_collaborator_suggestion_at(&root, "project-1", "someone-else", "note", 1_000);
+        assert!(result.is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_prepared_collaborator_suggestion_round_trips_and_never_creates_access_by_itself() {
+        let owner_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let owner_key = URL_SAFE_NO_PAD.encode(X25519PublicKey::from(&owner_secret).as_bytes());
+        let root = temp_root();
+        let mut document = SyncSecurityDocument::default();
+        document.invitations.push(invitation_with_owner("invitation-1", "project-1", "owner-account", &owner_key));
+        document.grants.push(grant("collaborator-account", "collaborator-device", false, None));
+        save_at(&root, &document).unwrap();
+
+        let envelope = prepare_collaborator_suggestion_at(&root, "project-1", "friend-account", "please add them", 1_000).unwrap();
+        let packed = URL_SAFE_NO_PAD.decode(&envelope.ciphertext).unwrap();
+        let sealed = crate::sync_chat::unpack_sealed(&packed).unwrap();
+        let plaintext = crate::sync_crypto::open_sealed(&sealed, &owner_secret, COLLABORATOR_SUGGESTION_INFO).unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&plaintext).unwrap();
+        assert_eq!(parsed["projectId"], "project-1");
+        assert_eq!(parsed["suggestedAccountId"], "friend-account");
+        assert_eq!(parsed["note"], "please add them");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn generating_a_new_chat_invite_token_invalidates_the_previous_one() {
+        let root = temp_root();
+        let first = generate_chat_invite_token_at(&root, 1_000).unwrap();
+        let second = generate_chat_invite_token_at(&root, 2_000).unwrap();
+        assert_ne!(first, second);
+        assert!(!consume_chat_invite_token_at(&root, &first, 3_000).unwrap());
+        assert!(consume_chat_invite_token_at(&root, &second, 3_000).unwrap());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_chat_invite_token_is_single_use() {
+        let root = temp_root();
+        let token = generate_chat_invite_token_at(&root, 1_000).unwrap();
+        assert!(consume_chat_invite_token_at(&root, &token, 2_000).unwrap());
+        assert!(!consume_chat_invite_token_at(&root, &token, 3_000).unwrap());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn an_expired_or_unknown_chat_invite_token_fails_closed() {
+        let root = temp_root();
+        let token = generate_chat_invite_token_at(&root, 1_000).unwrap();
+        assert!(!consume_chat_invite_token_at(&root, &token, 1_000 + CHAT_INVITE_TOKEN_TTL_MS).unwrap());
+        assert!(!consume_chat_invite_token_at(&root, "cit_never_existed", 1_000).unwrap());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_valid_chat_contact_ack_auto_adds_the_sender_and_is_never_reusable() {
+        let issuer_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let issuer_key = URL_SAFE_NO_PAD.encode(X25519PublicKey::from(&issuer_secret).as_bytes());
+        let issuer_root = temp_root();
+        let token = generate_chat_invite_token_at(&issuer_root, 1_000).unwrap();
+
+        let ciphertext = sync_seal_chat_contact_ack(
+            token,
+            "route-friend".to_string(),
+            "friend-device".to_string(),
+            "friend-agreement-key".to_string(),
+            "Friend".to_string(),
+            issuer_key,
+        )
+        .unwrap();
+
+        // Decrypt manually (no keyring in tests) — same pattern as the chat-relay round-trip test.
+        let packed = URL_SAFE_NO_PAD.decode(&ciphertext).unwrap();
+        let sealed = crate::sync_chat::unpack_sealed(&packed).unwrap();
+        let plaintext = crate::sync_crypto::open_sealed(&sealed, &issuer_secret, CHAT_CONTACT_ACK_INFO).unwrap();
+        let parsed: serde_json::Value = serde_json::from_slice(&plaintext).unwrap();
+        let token = parsed["token"].as_str().unwrap();
+
+        // Simulate what `sync_open_chat_contact_ack` does once decrypted: consume, then add.
+        assert!(consume_chat_invite_token_at(&issuer_root, token, 2_000).unwrap());
+        add_chat_contact_at(
+            &issuer_root,
+            ChatContactRecord {
+                account_route: parsed["accountRoute"].as_str().unwrap().to_string(),
+                device_id: parsed["deviceId"].as_str().unwrap().to_string(),
+                agreement_public_key: parsed["agreementPublicKey"].as_str().unwrap().to_string(),
+                display_label: parsed["displayLabel"].as_str().unwrap().to_string(),
+                added_at_ms: 2_000,
+            },
+        )
+        .unwrap();
+
+        let contacts = list_chat_contacts_at(&issuer_root).unwrap();
+        assert_eq!(contacts.len(), 1);
+        assert_eq!(contacts[0].account_route, "route-friend");
+        // Replaying the same token a second time must fail closed.
+        assert!(!consume_chat_invite_token_at(&issuer_root, token, 3_000).unwrap());
+        fs::remove_dir_all(issuer_root).unwrap();
     }
 
     #[derive(Default)]
@@ -2043,6 +2681,8 @@ mod tests {
             }],
             invitations: vec![],
             grants: vec![],
+            chat_contacts: vec![],
+            chat_invite_tokens: vec![],
             audit: vec![],
         };
         assert_eq!(

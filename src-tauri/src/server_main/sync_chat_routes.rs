@@ -1,4 +1,5 @@
 use axum::extract::{Extension, Query};
+use base64::Engine;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -20,6 +21,10 @@ pub fn router() -> Router {
         .route(
             "/api/sync/chat/conversations/ensure-project",
             post(ensure_project_conversation),
+        )
+        .route(
+            "/api/sync/chat/conversations/start-direct",
+            post(start_direct_conversation),
         )
         .route("/api/sync/chat/messages/send", post(send_message))
         .route("/api/sync/chat/messages/decrypted", get(list_decrypted_messages))
@@ -203,6 +208,45 @@ async fn ensure_project_conversation(
                 &body.project_id,
                 &account_route,
                 public_key,
+                crate::provider_common::now_ms(),
+            )
+            .map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|result| result),
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct StartDirectConversationBody {
+    contact_account_route: String,
+}
+
+async fn start_direct_conversation(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<StartDirectConversationBody>,
+) -> Response {
+    let data_root = runtime.data_root().to_path_buf();
+    respond(
+        tokio::task::spawn_blocking(move || {
+            let (_, account_route) = crate::sync_chat::local_chat_identity(&data_root)?;
+            let local_public_key = crate::sync_security::local_device_agreement_public_key_at(&data_root)?;
+            let contacts = crate::sync_security::list_chat_contacts_at(&data_root)?;
+            let contact = contacts
+                .into_iter()
+                .find(|contact| contact.account_route == body.contact_account_route)
+                .ok_or_else(|| "chat_contact_not_found".to_string())?;
+            let contact_public_key = base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(&contact.agreement_public_key)
+                .map_err(|_| "chat_contact_key_invalid".to_string())?;
+            crate::sync_chat::ensure_direct_conversation_at(
+                &data_root,
+                &account_route,
+                local_public_key,
+                &body.contact_account_route,
+                contact_public_key,
                 crate::provider_common::now_ms(),
             )
             .map_err(|error| error.to_string())

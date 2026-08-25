@@ -19,7 +19,13 @@ const OPAQUE_ROUTE = /^[a-f0-9]{64}$/u
 const OPAQUE_ID = /^[a-zA-Z0-9_-]{8,96}$/u
 const BASE64URL = /^[a-zA-Z0-9_-]+$/u
 
-export type EnvelopeKind = 'invitation' | 'candidate' | 'revocation'
+export type EnvelopeKind =
+  | 'invitation'
+  | 'candidate'
+  | 'revocation'
+  | 'chat_message'
+  | 'invite_suggestion'
+  | 'chat_contact_ack'
 
 export type AuthFrame = {
   type: 'auth'
@@ -147,7 +153,14 @@ export function parseClientFrame(raw: string | ArrayBuffer, nowMs: number): Clie
         'ciphertext',
       ])
       const kind = value.kind
-      if (kind !== 'invitation' && kind !== 'candidate' && kind !== 'revocation') {
+      if (
+        kind !== 'invitation' &&
+        kind !== 'candidate' &&
+        kind !== 'revocation' &&
+        kind !== 'chat_message' &&
+        kind !== 'invite_suggestion' &&
+        kind !== 'chat_contact_ack'
+      ) {
         throw new ProtocolError('invalid_envelope_kind')
       }
       const expiresAtMs = integerField(value.expiresAtMs, 'invalid_expiry')

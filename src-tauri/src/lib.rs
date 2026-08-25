@@ -166,6 +166,7 @@ pub fn run() {
         .manage(planning::PlanningWatchers::default())
         .manage(cli_launch::PendingOpen::default())
         .manage(std::sync::Arc::new(sync_rendezvous::RendezvousRuntime::default()))
+        .manage(std::sync::Arc::new(sync_p2p_bridge::P2pSessionRegistry::default()))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
@@ -502,6 +503,13 @@ pub fn run() {
             sync_mesh::disconnect_google_sync,
             sync_security::sync_security_snapshot,
             sync_security::sync_local_identity,
+            sync_security::sync_find_trusted_device_for_account_route,
+            sync_security::sync_add_chat_contact,
+            sync_security::sync_list_chat_contacts,
+            sync_security::sync_prepare_collaborator_suggestion,
+            sync_security::sync_open_collaborator_suggestion,
+            sync_security::sync_seal_chat_contact_ack,
+            sync_security::sync_open_chat_contact_ack,
             sync_security::sync_approve_device,
             sync_security::sync_reject_device,
             sync_security::sync_rename_device,
@@ -549,12 +557,17 @@ pub fn run() {
             sync_chat::sync_react_to_message,
             sync_chat::sync_mark_conversation_read,
             sync_chat::sync_ensure_project_conversation,
+            sync_chat::sync_start_direct_conversation,
             sync_chat::sync_send_message,
+            sync_chat::sync_send_message_for_transport,
+            sync_chat::sync_ingest_chat_transport_frame,
             sync_chat::sync_list_decrypted_messages,
             sync_chat::sync_edit_message,
             sync_chat::sync_delete_message,
             sync_chat::sync_upload_attachment,
             sync_chat::sync_download_attachment,
+            sync_chat::sync_seal_chat_relay_message,
+            sync_chat::sync_open_chat_relay_message,
             sync_activation::sync_get_activation_settings,
             sync_activation::sync_set_activation_mode,
             sync_activation::sync_enable_activation,
@@ -574,10 +587,14 @@ pub fn run() {
             sync_invitation_bridge::sync_consume_remote_invitation,
             sync_cloudflare_deploy::cloudflare_deploy_workdir,
             sync_cloudflare_deploy::cloudflare_generate_secret,
+            sync_cloudflare_deploy::cloudflare_probe_state,
             sync_p2p_bridge::sync_prepare_remote_candidate,
             sync_p2p_bridge::sync_consume_remote_candidate,
             sync_p2p_bridge::p2p_discover_candidate,
             sync_p2p_bridge::sync_p2p_connect,
+            sync_p2p_bridge::p2p_send_frame,
+            sync_p2p_bridge::p2p_drain_frames,
+            sync_p2p_bridge::p2p_session_state,
             sync_remote_invitation::sync_consume_remote_invitation_cross_device,
             sync_remote_invitation::sync_export_pairing_code,
             sync_remote_invitation::sync_parse_pairing_code,

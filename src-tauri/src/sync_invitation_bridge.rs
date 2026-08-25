@@ -55,6 +55,10 @@ struct RemoteInvitationPayload {
     permissions: Vec<SyncPermission>,
     path_scopes: Vec<PathScope>,
     expires_at_ms: u64,
+    #[serde(default)]
+    issuer_account_id: String,
+    #[serde(default)]
+    issuer_agreement_public_key: String,
 }
 
 /// The fields needed to build a `sync_rendezvous` "enqueue" frame, kept transport-agnostic here —
@@ -104,6 +108,12 @@ pub struct LocalIssuedInvitation {
     pub path_scopes: Vec<PathScope>,
     pub expires_at_ms: u64,
     pub created_at_ms: u64,
+    /// The issuing account's own raw Google account id — carried through so the recipient can
+    /// later address a `sync_suggest_project_collaborator` proposal back to the right account.
+    pub issuer_account_id: String,
+    /// The issuing device's own X25519 agreement public key (base64url, no padding) — lets the
+    /// recipient seal a future collaborator suggestion for the owner without a separate lookup.
+    pub issuer_agreement_public_key: String,
 }
 
 /// Encrypts an already-issued local invitation for delivery to `recipient_account_route` /
@@ -125,6 +135,8 @@ pub fn prepare_remote_invitation_envelope(
         permissions: issued.permissions.clone(),
         path_scopes: issued.path_scopes.clone(),
         expires_at_ms: issued.expires_at_ms,
+        issuer_account_id: issued.issuer_account_id.clone(),
+        issuer_agreement_public_key: issued.issuer_agreement_public_key.clone(),
     };
     let plaintext = serde_json::to_vec(&payload).map_err(|_| BridgeError::Encode)?;
     let info = format!("alethe-invitation-envelope-v1|{}", issued.invitation_id);
@@ -242,6 +254,8 @@ pub fn sync_prepare_remote_invitation(
     recipient_account_route: String,
     recipient_device_id: Option<String>,
     recipient_agreement_public_key: String,
+    issuer_account_id: Option<String>,
+    issuer_agreement_public_key: Option<String>,
 ) -> Result<OutgoingInvitationEnvelope, String> {
     let public_key = URL_SAFE_NO_PAD
         .decode(&recipient_agreement_public_key)
@@ -254,6 +268,8 @@ pub fn sync_prepare_remote_invitation(
         path_scopes,
         expires_at_ms,
         created_at_ms,
+        issuer_account_id: issuer_account_id.unwrap_or_default(),
+        issuer_agreement_public_key: issuer_agreement_public_key.unwrap_or_default(),
     };
     let message_id = format!("inv_{}", nanoid::nanoid!(24));
     prepare_remote_invitation_envelope(&issued, &recipient_account_route, recipient_device_id, &public_key, message_id)
@@ -365,6 +381,8 @@ mod tests {
                 path_scopes: issued.invitation.path_scopes,
                 expires_at_ms: issued.invitation.expires_at_ms,
                 created_at_ms: issued.invitation.created_at_ms,
+                issuer_account_id: "issuer-account".to_string(),
+                issuer_agreement_public_key: "issuer-key".to_string(),
             },
         )
     }

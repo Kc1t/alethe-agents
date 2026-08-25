@@ -40,6 +40,9 @@ pub enum AccessKind {
     /// A staged transfer failed terminal verification (missing or corrupt chunk) and needs the
     /// recipient's attention to re-request it (Phase 6).
     TransferFailure,
+    /// A project collaborator suggested inviting another account; only the project owner can turn
+    /// this into a real grant, by running the normal invite flow from scratch.
+    CollaboratorSuggestion,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

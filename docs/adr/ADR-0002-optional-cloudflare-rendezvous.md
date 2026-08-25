@@ -2,6 +2,12 @@
 
 - Status: Accepted for Phase 10 implementation after Phases 3–9; production deployment pending
 - Date: 2026-08-21
+- **Amended 2026-08-25**: the "Alethe collaboration" (operator-managed shared endpoint) mode
+  described below was never implemented and is now explicitly dropped, in favor of a
+  personal-Cloudflare-Worker-only model — see "Amendment: no operator-managed endpoint" near the
+  end of this document. Read the rest of this ADR as historical context for why Cloudflare was
+  chosen as the reference provider at all; do not implement the "Alethe collaboration" mode or its
+  `alethe_managed` UI option.
 
 ## Context
 
@@ -104,6 +110,57 @@ The method used to bind an opaque account-routing identifier to a locally verifi
 - Provider outages degrade online collaboration rather than the local application.
 - Keeping the provider interface versioned prevents Cloudflare APIs from leaking into project authorization or peer-transport code.
 - The application must describe a state as connected only after a real compatible service handshake; configuration alone is not connectivity.
+
+## Amendment: no operator-managed endpoint (2026-08-25)
+
+The "Alethe collaboration" mode above (decision point 3, the "operator-managed default") is
+dropped before ever being production-implemented. Alethe does not, and will not, run a shared
+rendezvous endpoint that every user connects through by default. The reason is the same
+metadata-exposure boundary this ADR already protects (decision point 7: "never ship service
+credentials in the client"), taken one step further — a single Alethe-operated Worker, even one
+that never sees plaintext content, would still be a single vantage point able to observe device
+presence and connection metadata **across every user of the app**, not just the people any one
+user has actually invited. That is a materially different, larger exposure than the model this
+amendment replaces it with.
+
+Instead, each user who wants online collaboration deploys and owns a personal Cloudflare Worker,
+via the guided flow (`CloudflareGuidedDeploy` in Preferences → Account, backed by
+`sync_cloudflare_deploy.rs`; `wrangler login`'s OAuth token stays in the user's own local Wrangler
+config, never seen by Alethe). Two shapes of traffic now exist, corresponding to the two arrows
+below:
+
+```
+usuario -----> cloudflare (pessoal) --------> acha amigo -------> p2p
+usuario -------> p2p -------> amigo
+```
+
+- **Discovery/signaling** (finding a friend, exchanging invitations, delivering connection
+  candidates) goes through the user's own personal Worker — it only ever relays metadata for
+  people that specific user has actually invited or been invited by, never anyone else's traffic.
+- **Once a direct P2P (or relay-fallback) session is established**, further messages between the
+  two known peers no longer depend on discovery at all — the Worker's only remaining job for that
+  pair is relaying opaque, already end-to-end-encrypted envelopes when a direct P2P path isn't
+  available (see `sync_p2p_bridge.rs`'s `P2pSessionRegistry`, `chat_message` envelope kind).
+
+Consequences of this amendment:
+
+- `CollaborationServiceMode` keeps its `AletheManaged`/`alethe_managed` variant in the backend
+  enum and persisted-settings schema (`sync_activation.rs`) purely for backward-compatible
+  deserialization of any settings file that predates this amendment — no new code path ever
+  selects or offers it. The Settings UI (`CollaborationSettings.tsx`) only ever offers `Local
+  only` and `advanced_custom` (relabeled "My own Cloudflare Worker" — no longer an "advanced
+  users only" option, since the guided deploy makes it the only real online mode).
+  `docs/PROJECT_COLLABORATION_PLAN_AND_STATUS.md`'s references to an "operator-managed" default
+  are stale for the same reason and should be read historically, not as current architecture.
+- Two users can only discover each other through Cloudflare at all if they already share
+  established trust: a project grant, or a chat contact (`ChatContactRecord`,
+  `sync_security.rs`) added via the mutual pairing-code exchange. There is no cross-account
+  discovery of strangers through any Worker, personal or otherwise.
+- If B is already connected (project- or chat-trusted) to both A and C, A does not need to
+  separately discover C from scratch — this is the basis for the still-pending, explicitly
+  opt-in/beta multi-hop P2P mesh relay design (see the approved plan referenced in
+  `docs/PROJECT_COLLABORATION_PLAN_AND_STATUS.md`), which forwards only opaque already-encrypted
+  bytes through already-trusted intermediate sessions, never through any Worker at all.
 
 ## Rejected alternatives
 

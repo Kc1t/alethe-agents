@@ -325,6 +325,8 @@ async fn connect_once(
                                         Some("invitation") => crate::sync_access::AccessKind::RemoteInvitation,
                                         Some("candidate") => crate::sync_access::AccessKind::ConnectionCandidate,
                                         Some("revocation") => crate::sync_access::AccessKind::Revocation,
+                                        Some("chat_message") => crate::sync_access::AccessKind::ChatMention,
+                                        Some("invite_suggestion") => crate::sync_access::AccessKind::CollaboratorSuggestion,
                                         _ => crate::sync_access::AccessKind::ProviderAttention,
                                     };
                                     let category = if kind == crate::sync_access::AccessKind::Revocation {
@@ -572,7 +574,10 @@ fn sanitize_outgoing_frame(frame: Value, now_ms: u64) -> Result<Value, String> {
                 MAX_ENVELOPE_TTL_MS
             };
             if !is_opaque_id(id)
-                || !matches!(kind, "invitation" | "candidate" | "revocation")
+                || !matches!(
+                    kind,
+                    "invitation" | "candidate" | "revocation" | "chat_message" | "invite_suggestion" | "chat_contact_ack"
+                )
                 || !is_account_route(recipient_account_route)
                 || expires_at_ms <= now_ms
                 || expires_at_ms - now_ms > max_ttl

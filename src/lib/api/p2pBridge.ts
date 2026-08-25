@@ -15,6 +15,8 @@ export type PairingCode = {
   agreementPublicKey: string
   agreementBoundAtMs: number
   agreementBindingSignature: string
+  /** Single-use invite token embedded by the issuer — see `syncSealChatContactAck`. */
+  inviteToken: string
 }
 
 /** Exports this device's own pairing code (public key material only) to share out of band with
@@ -104,6 +106,7 @@ export async function p2pConnect(params: {
   peerHost: string
   peerPort: number
   isInitiator: boolean
+  remoteAccountRoute: string
 }): Promise<P2pConnectResult> {
   if (!isTauriEnv()) throw new Error('p2p_desktop_only')
   return invoke('sync_p2p_connect', {
@@ -111,5 +114,28 @@ export async function p2pConnect(params: {
     peerHost: params.peerHost,
     peerPort: params.peerPort,
     isInitiator: params.isInitiator,
+    remoteAccountRoute: params.remoteAccountRoute,
   })
+}
+
+/** Sends raw bytes over an already-`connected` P2P session (see `p2pConnect`), keyed by the
+ * remote peer's account route. Fails with `p2p_session_not_found`/`p2p_session_closed` instead of
+ * silently dropping the frame if there is no live session for that route. */
+export async function p2pSendFrame(remoteAccountRoute: string, frame: number[]): Promise<void> {
+  if (!isTauriEnv()) throw new Error('p2p_desktop_only')
+  await invoke('p2p_send_frame', { remoteAccountRoute, frame })
+}
+
+/** Drains (removes) every frame received on the session for `remoteAccountRoute` since the last
+ * call — call this on a short interval while a chat conversation with that peer is open. */
+export async function p2pDrainFrames(remoteAccountRoute: string): Promise<number[][]> {
+  if (!isTauriEnv()) return []
+  return invoke('p2p_drain_frames', { remoteAccountRoute })
+}
+
+export type P2pSessionState = 'connected' | 'closed'
+
+export async function p2pSessionState(remoteAccountRoute: string): Promise<P2pSessionState> {
+  if (!isTauriEnv()) return 'closed'
+  return invoke('p2p_session_state', { remoteAccountRoute })
 }

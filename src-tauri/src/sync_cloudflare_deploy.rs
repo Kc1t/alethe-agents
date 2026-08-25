@@ -80,3 +80,63 @@ pub fn cloudflare_generate_secret() -> String {
     OsRng.fill_bytes(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes)
 }
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudflareProbeState {
+    /// Whether `wrangler` is already installed in this device's deploy working copy
+    /// (`node_modules/wrangler` present — i.e. `npm install` has completed at least once).
+    pub installed: bool,
+    /// Whether this device is currently authenticated with a Cloudflare account, per
+    /// `wrangler whoami`. Always `false` when `installed` is `false` — this is deliberately never
+    /// probed by installing anything (see `probe_wrangler_login`'s own doc comment).
+    pub logged_in: bool,
+}
+
+/// Read-only status for the sidebar's 3-state Cloudflare card: not installed, installed-but-not-
+/// logged-in, or ready. Never installs, deploys, or writes anything — the two real actions
+/// (`cloudflare_deploy_workdir` + the frontend's PTY-driven `npm install`/`wrangler login`/
+/// `wrangler deploy` chain) stay exactly as they were.
+#[tauri::command]
+pub async fn cloudflare_probe_state(app: tauri::AppHandle) -> CloudflareProbeState {
+    let Ok(data_root) = crate::profiles::resolve_tauri_data_root(&app) else {
+        return CloudflareProbeState { installed: false, logged_in: false };
+    };
+    let workdir = data_root.join("cloudflare-deploy").join(WORKER_RESOURCE_DIR);
+    let installed = workdir.join("node_modules").join("wrangler").is_dir();
+    if !installed {
+        return CloudflareProbeState { installed: false, logged_in: false };
+    }
+    let logged_in = probe_wrangler_login(&workdir).await;
+    CloudflareProbeState { installed: true, logged_in }
+}
+
+/// Runs `npx wrangler whoami` in `workdir` to check login state — safe to call only once
+/// `wrangler` is confirmed already installed there (`node_modules/wrangler` exists), so `npx`
+/// always resolves the already-present local binary and never silently downloads anything over
+/// the network just to answer a status question. Fails closed (`false`) on any error, non-zero
+/// exit, or timeout, rather than ever falsely reporting "logged in".
+async fn probe_wrangler_login(workdir: &Path) -> bool {
+    let npx = if cfg!(windows) { "npx.cmd" } else { "npx" };
+    let mut command = tokio::process::Command::new(npx);
+    command
+        .arg("wrangler")
+        .arg("whoami")
+        .current_dir(workdir)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    #[cfg(windows)]
+    {
+        // CREATE_NO_WINDOW — this is a background status check, never a console flash.
+        command.creation_flags(0x0800_0000);
+    }
+    let Ok(Ok(output)) =
+        tokio::time::timeout(std::time::Duration::from_secs(10), command.output()).await
+    else {
+        return false;
+    };
+    let combined =
+        format!("{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr))
+            .to_lowercase();
+    combined.contains("you are logged in") || combined.contains("you're logged in")
+}

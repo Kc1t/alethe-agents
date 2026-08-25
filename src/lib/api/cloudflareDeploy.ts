@@ -23,3 +23,15 @@ export async function generateCloudflareSecret(): Promise<string> {
   if (!isTauriEnv()) throw new Error('cloudflare_deploy_desktop_only')
   return invoke('cloudflare_generate_secret')
 }
+
+export type CloudflareProbeState = {
+  installed: boolean
+  loggedIn: boolean
+}
+
+/** Read-only status for a 3-state UI (not installed / installed-but-not-logged-in / ready to
+ * deploy) — never installs, logs in, or deploys anything by itself. */
+export async function probeCloudflareState(): Promise<CloudflareProbeState> {
+  if (!isTauriEnv()) return { installed: false, loggedIn: false }
+  return invoke('cloudflare_probe_state')
+}

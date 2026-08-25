@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useAgentInstall } from '../../../hooks/useAgentInstall'
 import { type CloudflareDeployStep, useCloudflareDeploy } from '../../../hooks/useCloudflareDeploy'
 import { type InstallToolchain, nodeInstallMethods } from '../../../lib/agentInstall'
+import { plainTextFromPtyLog } from '../../../lib/ansi'
 import { useT } from '../../../lib/i18n'
 import { probeInstallToolchain } from '../../../lib/tauri'
 import controls from '../controls.module.css'
@@ -22,7 +23,8 @@ export function CloudflareGuidedDeploy({ onDeployed }: { onDeployed: (url: strin
   const t = useT()
   const [toolchain, setToolchain] = useState<InstallToolchain | null>(null)
   const [probing, setProbing] = useState(true)
-  const { step, failed, log, workerUrl, start, reset } = useCloudflareDeploy()
+  const { step, failed, needsWorkersDevSubdomain, log, workerUrl, start, reset } =
+    useCloudflareDeploy()
   const nodeInstall = useAgentInstall('shell', 'cloudflare-deploy-node')
 
   useEffect(() => {
@@ -106,7 +108,7 @@ export function CloudflareGuidedDeploy({ onDeployed }: { onDeployed: (url: strin
             })}
           </div>
 
-          {log ? <div className={styles.log}>{log}</div> : null}
+          {log ? <div className={styles.log}>{plainTextFromPtyLog(log)}</div> : null}
 
           {step === 'success' && workerUrl ? (
             <div className={styles.resultRow}>
@@ -115,7 +117,22 @@ export function CloudflareGuidedDeploy({ onDeployed }: { onDeployed: (url: strin
             </div>
           ) : null}
 
-          {failed ? (
+          {failed && needsWorkersDevSubdomain ? (
+            <div className={`${styles.resultRow} ${styles.failedRow}`}>
+              <X size={14} aria-hidden="true" />
+              <span>
+                {t('collaboration.cloudflareDeploy.needsSubdomain')}{' '}
+                <a
+                  href="https://dash.cloudflare.com/?to=/:account/workers-and-pages"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {t('collaboration.cloudflareDeploy.openDashboard')}
+                  <ExternalLink size={11} aria-hidden="true" />
+                </a>
+              </span>
+            </div>
+          ) : failed ? (
             <div className={`${styles.resultRow} ${styles.failedRow}`}>
               <X size={14} aria-hidden="true" />
               {t('collaboration.cloudflareDeploy.failed')}
@@ -135,8 +152,10 @@ export function CloudflareGuidedDeploy({ onDeployed }: { onDeployed: (url: strin
                 : t('collaboration.cloudflareDeploy.start')}
             </button>
             {step !== 'idle' ? (
-              <button type="button" className={controls.btn} disabled={running} onClick={reset}>
-                {t('collaboration.cloudflareDeploy.reset')}
+              <button type="button" className={controls.btn} onClick={reset}>
+                {running
+                  ? t('collaboration.cloudflareDeploy.cancel')
+                  : t('collaboration.cloudflareDeploy.reset')}
               </button>
             ) : null}
           </div>

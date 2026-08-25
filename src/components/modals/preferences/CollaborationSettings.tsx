@@ -1,5 +1,5 @@
 import { Bell, Clock3, Eye, Loader2, Radio, ShieldCheck, X } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useT } from '../../../lib/i18n'
 import {
@@ -11,43 +11,49 @@ import {
   disableCollaborationService,
   enableCollaborationService,
   getCollaborationServiceSettings,
-  getRendezvousStatus,
-  type RendezvousStatus,
   resolveCollaborationActivationState,
   setCollaborationServiceMode,
   syncAccessList,
   syncAccessUpdate,
   validateRendezvousEndpoint,
 } from '../../../lib/tauri'
+import { useUiStore } from '../../../stores/uiStore'
 import controls from '../controls.module.css'
 import { CloudflareGuidedDeploy } from './CloudflareGuidedDeploy'
 import styles from './CollaborationSettings.module.css'
-import { P2pFriendTestPanel } from './P2pFriendTestPanel'
 import { SettingsSection } from './primitives'
 
-const modes: CollaborationServiceMode[] = ['local_only', 'alethe_managed', 'advanced_custom']
+// `alethe_managed` (an operator-run shared endpoint) is deliberately never offered here — see
+// ADR-0002's amendment: Alethe never runs infrastructure that could see metadata across every
+// user. Each person who wants online collaboration deploys and owns their own Cloudflare Worker
+// (`advanced_custom`, guided by `CloudflareGuidedDeploy` below); `local_only` stays the only other
+// choice, for people who don't want collaboration at all.
+const modes = [
+  'local_only',
+  'advanced_custom',
+] as const satisfies readonly CollaborationServiceMode[]
 
 export function CollaborationSettings() {
   const t = useT()
+  const modalContext = useUiStore((state) => state.modalContext)
+  const autoOpenedCloudflareRef = useRef(false)
   const [settings, setSettings] = useState<CollaborationServiceSettings | null>(null)
   const [activation, setActivation] = useState<CollaborationActivationState>('disabled')
-  const [status, setStatus] = useState<RendezvousStatus | null>(null)
   const [endpoint, setEndpoint] = useState('')
   const [busy, setBusy] = useState(false)
   const [accessBusy, setAccessBusy] = useState<string | null>(null)
   const [accessRecords, setAccessRecords] = useState<AccessRecord[]>([])
   const [error, setError] = useState(false)
+  const [showManualEndpoint, setShowManualEndpoint] = useState(false)
 
   const refresh = useCallback(async () => {
-    const [nextSettings, nextActivation, nextStatus, nextAccessRecords] = await Promise.all([
+    const [nextSettings, nextActivation, nextAccessRecords] = await Promise.all([
       getCollaborationServiceSettings(),
       resolveCollaborationActivationState(),
-      getRendezvousStatus(),
       syncAccessList(),
     ])
     setSettings(nextSettings)
     setActivation(nextActivation)
-    setStatus(nextStatus)
     setAccessRecords(nextAccessRecords)
     setEndpoint((current) => current || nextSettings.customEndpoint || '')
   }, [])
@@ -80,6 +86,18 @@ export function CollaborationSettings() {
       setBusy(false)
     }
   }
+
+  // Coming from the sidebar's "Instalar e configurar"/"Continuar configuração" Cloudflare card:
+  // jump straight past the mode picker into the guided deploy flow, instead of leaving the user
+  // stranded on the mode-selection screen with no visible install/login/deploy steps.
+  useEffect(() => {
+    if (autoOpenedCloudflareRef.current) return
+    if (modalContext?.settingTarget !== 'collaboration-service') return
+    if (!settings || settings.mode === 'advanced_custom') return
+    autoOpenedCloudflareRef.current = true
+    void selectMode('advanced_custom')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modalContext, settings])
 
   const enable = async () => {
     if (!settings || settings.mode === 'local_only') return
@@ -150,9 +168,6 @@ export function CollaborationSettings() {
               >
                 <span className={styles.modeHeading}>
                   <strong>{t(`collaboration.mode.${mode}.title`)}</strong>
-                  {mode === 'alethe_managed' ? (
-                    <span className={styles.modeBadge}>{t('collaboration.recommendedBadge')}</span>
-                  ) : null}
                 </span>
                 <span>{t(`collaboration.mode.${mode}.description`)}</span>
               </button>
@@ -162,17 +177,31 @@ export function CollaborationSettings() {
           {settings?.mode === 'advanced_custom' ? (
             <>
               <CloudflareGuidedDeploy onDeployed={(url) => setEndpoint(url)} />
-              <label className={styles.endpoint}>
-                <span>{t('collaboration.customEndpoint')}</span>
-                <input
-                  className={controls.input}
-                  value={endpoint}
-                  placeholder="https://rendezvous.example.com"
-                  spellCheck={false}
-                  autoComplete="off"
-                  onChange={(event) => setEndpoint(event.target.value)}
-                />
-              </label>
+              {endpoint && !showManualEndpoint ? (
+                <div className={styles.endpointReadout}>
+                  <span>{t('collaboration.workerAddress')}</span>
+                  <code>{endpoint}</code>
+                  <button
+                    type="button"
+                    className={styles.linkButton}
+                    onClick={() => setShowManualEndpoint(true)}
+                  >
+                    {t('collaboration.editManually')}
+                  </button>
+                </div>
+              ) : (
+                <label className={styles.endpoint}>
+                  <span>{t('collaboration.customEndpoint')}</span>
+                  <input
+                    className={controls.input}
+                    value={endpoint}
+                    placeholder="https://rendezvous.example.com"
+                    spellCheck={false}
+                    autoComplete="off"
+                    onChange={(event) => setEndpoint(event.target.value)}
+                  />
+                </label>
+              )}
             </>
           ) : null}
 
@@ -181,7 +210,7 @@ export function CollaborationSettings() {
             <ul>
               <li>{t('collaboration.privacyVisible')}</li>
               <li>{t('collaboration.privacyHidden')}</li>
-              <li>{t('collaboration.noCloudflareAccount')}</li>
+              <li>{t('collaboration.ownWorkerRequired')}</li>
             </ul>
           </div>
 
@@ -191,9 +220,6 @@ export function CollaborationSettings() {
             </span>
             <strong>{t(`collaboration.state.${activation}`)}</strong>
           </div>
-          {status && !status.endpointConfigured && settings?.mode === 'alethe_managed' ? (
-            <p className={styles.error}>{t('collaboration.managedEndpointUnavailable')}</p>
-          ) : null}
           {error ? <p className={styles.error}>{t('collaboration.connectionError')}</p> : null}
 
           <div className={styles.actions}>
@@ -284,7 +310,6 @@ export function CollaborationSettings() {
           </div>
         </div>
       </SettingsSection>
-      <P2pFriendTestPanel />
     </>
   )
 }

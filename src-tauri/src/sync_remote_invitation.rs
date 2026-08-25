@@ -35,6 +35,11 @@ pub struct PairingCode {
     pub agreement_public_key: String,
     pub agreement_bound_at_ms: u64,
     pub agreement_binding_signature: String,
+    /// A single-use token (see `sync_security::ChatInviteToken`) the recipient hands back inside
+    /// a `"chat_contact_ack"` envelope once they've verified and saved this code as a contact —
+    /// that's what lets the issuer auto-add them back without ever having to paste anything.
+    #[serde(default)]
+    pub invite_token: String,
 }
 
 /// Exports this device's own pairing code, base64url-encoded JSON ready to paste to the other
@@ -50,6 +55,8 @@ pub fn sync_export_pairing_code(app: tauri::AppHandle) -> Result<String, String>
         .iter()
         .find(|device| device.device_id == local_device_id)
         .ok_or_else(|| "security_device_missing".to_string())?;
+    let invite_token =
+        crate::sync_security::generate_chat_invite_token_at(&data_root, crate::provider_common::now_ms())?;
     let code = PairingCode {
         account_id: account.account_id.clone(),
         account_route: crate::sync_protocol::account_route_id(&account.account_id),
@@ -58,6 +65,7 @@ pub fn sync_export_pairing_code(app: tauri::AppHandle) -> Result<String, String>
         agreement_public_key: device.agreement_public_key.clone().unwrap_or_default(),
         agreement_bound_at_ms: device.agreement_key_bound_at_ms.unwrap_or_default(),
         agreement_binding_signature: device.agreement_key_binding_signature.clone().unwrap_or_default(),
+        invite_token,
     };
     let json = serde_json::to_vec(&code).map_err(|_| "pairing_code_encode_failed".to_string())?;
     Ok(URL_SAFE_NO_PAD.encode(json))
@@ -81,6 +89,10 @@ struct RemoteInvitationPayload {
     permissions: Vec<SyncPermission>,
     path_scopes: Vec<PathScope>,
     expires_at_ms: u64,
+    #[serde(default)]
+    issuer_account_id: String,
+    #[serde(default)]
+    issuer_agreement_public_key: String,
 }
 
 fn unpack_envelope(packed: &[u8]) -> Result<SealedEnvelope, String> {
@@ -136,6 +148,8 @@ pub fn sync_consume_remote_invitation_cross_device(
         payload.expires_at_ms,
         &account_id,
         &local_device_id,
+        &payload.issuer_account_id,
+        &payload.issuer_agreement_public_key,
         crate::provider_common::now_ms(),
     )
 }

@@ -56,6 +56,53 @@ describe('rendezvous control protocol', () => {
     ).toThrowError(new ProtocolError('invalid_expiry'))
   })
 
+  it('accepts a valid chat_message envelope and rejects an unknown kind', () => {
+    const frame = parseClientFrame(
+      JSON.stringify({
+        type: 'enqueue',
+        id: 'message_opaque_456',
+        kind: 'chat_message',
+        recipientAccountRoute: 'b'.repeat(64),
+        expiresAtMs: now + 1_000,
+        authorizationGeneration: 1,
+        ciphertext: 'AQID',
+      }),
+      now,
+    )
+    expect(frame.type).toBe('enqueue')
+
+    expect(() =>
+      parseClientFrame(
+        JSON.stringify({
+          type: 'enqueue',
+          id: 'message_opaque_789',
+          kind: 'not_a_real_kind',
+          recipientAccountRoute: 'b'.repeat(64),
+          expiresAtMs: now + 1_000,
+          authorizationGeneration: 1,
+          ciphertext: 'AQID',
+        }),
+        now,
+      ),
+    ).toThrowError(new ProtocolError('invalid_envelope_kind'))
+  })
+
+  it('accepts a valid invite_suggestion envelope', () => {
+    const frame = parseClientFrame(
+      JSON.stringify({
+        type: 'enqueue',
+        id: 'message_opaque_999',
+        kind: 'invite_suggestion',
+        recipientAccountRoute: 'b'.repeat(64),
+        expiresAtMs: now + 1_000,
+        authorizationGeneration: 1,
+        ciphertext: 'AQID',
+      }),
+      now,
+    )
+    expect(frame.type).toBe('enqueue')
+  })
+
   it('uses a stable challenge binding without secrets or project metadata', () => {
     const message = new TextDecoder().decode(
       authMessage({

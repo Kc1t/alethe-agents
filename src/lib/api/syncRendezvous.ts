@@ -108,7 +108,14 @@ export async function sendRendezvousFrame(frame: Record<string, unknown>): Promi
 export type RendezvousEvent = {
   eventType: 'delivery' | 'devices' | 'error'
   messageId: string | null
-  envelopeKind: 'invitation' | 'candidate' | 'revocation' | null
+  envelopeKind:
+    | 'invitation'
+    | 'candidate'
+    | 'revocation'
+    | 'chat_message'
+    | 'invite_suggestion'
+    | 'chat_contact_ack'
+    | null
   senderDeviceId: string | null
   ciphertext: string | null
   expiresAtMs: number | null

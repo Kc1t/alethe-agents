@@ -46,6 +46,10 @@ struct PrepareBody {
     #[serde(default)]
     recipient_device_id: Option<String>,
     recipient_agreement_public_key: String,
+    #[serde(default)]
+    issuer_account_id: Option<String>,
+    #[serde(default)]
+    issuer_agreement_public_key: Option<String>,
 }
 
 async fn prepare(Extension(_runtime): Extension<Arc<ServerRuntime>>, Json(body): Json<PrepareBody>) -> Response {
@@ -64,6 +68,8 @@ async fn prepare(Extension(_runtime): Extension<Arc<ServerRuntime>>, Json(body):
                 path_scopes: body.path_scopes,
                 expires_at_ms: body.expires_at_ms,
                 created_at_ms: body.created_at_ms,
+                issuer_account_id: body.issuer_account_id.unwrap_or_default(),
+                issuer_agreement_public_key: body.issuer_agreement_public_key.unwrap_or_default(),
             };
             let message_id = format!("inv_{}", nanoid::nanoid!(24));
             crate::sync_invitation_bridge::prepare_remote_invitation_envelope(

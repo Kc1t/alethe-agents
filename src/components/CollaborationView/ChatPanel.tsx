@@ -1,20 +1,44 @@
 import { Loader2, MessageSquare, Paperclip, Send, Terminal, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { p2pDrainFrames } from '../../lib/api/p2pBridge'
 import {
   type Conversation,
   type DecryptedMessage,
   type MessageContentType,
   syncEnsureProjectConversation,
+  syncIngestChatTransportFrame,
   syncListDecryptedMessages,
-  syncSendMessage,
+  syncOpenChatRelayMessage,
+  syncSealChatRelayMessage,
+  syncSendMessageForTransport,
+  syncStartDirectConversation,
   syncUploadAttachment,
 } from '../../lib/api/syncChat'
+import {
+  getRendezvousStatus,
+  drainRendezvousEvents,
+  sendRendezvousFrame,
+} from '../../lib/api/syncRendezvous'
 import { useT } from '../../lib/i18n'
+import { getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { syncLocalIdentity } from '../../lib/tauri'
+import { useP2pAutoConnect } from '../../hooks/useP2pAutoConnect'
+import { useProjectsStore } from '../../stores/projectsStore'
+import { Avatar } from '../ui/Avatar'
 import styles from './ChatPanel.module.css'
 
+export type ChatSource =
+  | { kind: 'project'; projectId: string; projectName: string }
+  | { kind: 'direct'; contactAccountRoute: string; contactDisplayLabel: string }
+
 const POLL_INTERVAL_MS = 4_000
+
+function bytesToBase64(bytes: number[]): string {
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return window.btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
 
 const SLASH_COMMANDS: { keyword: string; type: MessageContentType }[] = [
   { keyword: 'codigo', type: 'code_block' },
@@ -44,12 +68,25 @@ function findSlashToken(value: string, cursor: number): SlashToken | null {
   return { start, end, query: value.slice(start + 1, end) }
 }
 
-export function ChatPanel({ projectId }: { projectId: string }) {
+export function ChatPanel({ source }: { source: ChatSource }) {
   const t = useT()
+  const preferences = useProjectsStore((s) => s.preferences)
+  const ownDisplayName = preferences.displayName || t('profile.fallbackName')
+  const ownAvatarUrl = getProfileImageUrl(preferences)
+  const ownInitial = getProfileInitial(ownDisplayName)
+  const otherDisplayLabel = source.kind === 'direct' ? source.contactDisplayLabel : null
   const [conversation, setConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<DecryptedMessage[]>([])
   const [localDeviceId, setLocalDeviceId] = useState<string | null>(null)
+  const [localAccountRoute, setLocalAccountRoute] = useState<string | null>(null)
+  const [rendezvousConnected, setRendezvousConnected] = useState(false)
   const [error, setError] = useState(false)
+
+  const otherMember = useMemo(
+    () => conversation?.members.find((member) => member.accountRoute !== localAccountRoute) ?? null,
+    [conversation, localAccountRoute],
+  )
+  const p2p = useP2pAutoConnect(otherMember?.accountRoute ?? null)
   const [draft, setDraft] = useState('')
   const [contentType, setContentType] = useState<MessageContentType>('text')
   const [sending, setSending] = useState(false)
@@ -96,13 +133,23 @@ export function ChatPanel({ projectId }: { projectId: string }) {
     let active = true
     syncLocalIdentity()
       .then((identity) => {
-        if (active) setLocalDeviceId(identity.deviceId)
+        if (!active) return
+        setLocalDeviceId(identity.deviceId)
+        setLocalAccountRoute(identity.accountRoute)
       })
       .catch(() => undefined)
     return () => {
       active = false
     }
   }, [])
+
+  // Kicks off signaling for the conversation's other member (if any) the moment we know both who
+  // they are and their X25519 key — see `useP2pAutoConnect` for what this actually does.
+  useEffect(() => {
+    if (!otherMember) return
+    p2p.connect(bytesToBase64(otherMember.x25519PublicKey))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [otherMember?.accountRoute])
 
   useEffect(() => {
     let active = true
@@ -123,7 +170,12 @@ export function ChatPanel({ projectId }: { projectId: string }) {
       }
     }
 
-    syncEnsureProjectConversation(projectId)
+    const resolve =
+      source.kind === 'project'
+        ? syncEnsureProjectConversation(source.projectId)
+        : syncStartDirectConversation(source.contactAccountRoute)
+
+    resolve
       .then(async (conv) => {
         if (!active) return
         setConversation(conv)
@@ -138,25 +190,117 @@ export function ChatPanel({ projectId }: { projectId: string }) {
       active = false
       if (timer) window.clearInterval(timer)
     }
-  }, [projectId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source.kind === 'project' ? source.projectId : source.contactAccountRoute])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' })
   }, [messages.length])
 
+  // Drains any message frames that arrived since the last tick (direct P2P session, or the
+  // Cloudflare relay as a `chat_message` envelope) and persists them via
+  // `syncIngestChatTransportFrame` — which writes to the exact same local conversation file the
+  // poll effect above already re-reads every `POLL_INTERVAL_MS`, so a delivered message simply
+  // shows up on the next tick without any separate merge logic here.
+  useEffect(() => {
+    if (!conversation || !otherMember) return
+    let active = true
+    const conversationId = conversation.conversationId
+    const accountRoute = otherMember.accountRoute
+
+    const drain = async () => {
+      try {
+        const status = await getRendezvousStatus()
+        if (active) setRendezvousConnected(status.state !== 'no_attempt_yet')
+      } catch {
+        // Rendezvous status is best-effort for the badge only.
+      }
+      if (p2p.state === 'p2p') {
+        try {
+          const frames = await p2pDrainFrames(accountRoute)
+          for (const frame of frames) {
+            await syncIngestChatTransportFrame(conversationId, frame).catch(() => undefined)
+          }
+        } catch {
+          // A closed/failed session here just means nothing to drain this tick.
+        }
+      }
+      try {
+        const events = await drainRendezvousEvents()
+        for (const event of events) {
+          if (event.eventType !== 'delivery' || event.envelopeKind !== 'chat_message') continue
+          if (!event.ciphertext) continue
+          try {
+            const plaintext = await syncOpenChatRelayMessage(event.ciphertext)
+            await syncIngestChatTransportFrame(conversationId, plaintext)
+          } catch {
+            // Not addressed to this device/conversation — ignore.
+          }
+        }
+      } catch {
+        // Relay drain is best-effort — the local poll still shows whatever was already ingested.
+      }
+    }
+
+    void drain()
+    const timer = window.setInterval(() => void drain(), POLL_INTERVAL_MS)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [conversation, otherMember, p2p.state])
+
   const send = async () => {
     if (!conversation || !draft.trim()) return
     setSending(true)
     try {
-      const message = await syncSendMessage(conversation.conversationId, contentType, draft.trim())
+      const [message, frame] = await syncSendMessageForTransport(
+        conversation.conversationId,
+        contentType,
+        draft.trim(),
+      )
       setMessages((current) => [...current, message])
       setDraft('')
       setContentType('text')
       setSlashToken(null)
+
+      if (otherMember && frame.length > 0) {
+        if (p2p.state === 'p2p') {
+          await p2p.send(frame).catch(async () => {
+            // Direct delivery failed after all (session dropped mid-send) — fall back to relay.
+            await deliverViaRelay(frame, otherMember.accountRoute, otherMember.x25519PublicKey)
+          })
+        } else {
+          await deliverViaRelay(frame, otherMember.accountRoute, otherMember.x25519PublicKey)
+        }
+      }
     } catch {
       setError(true)
     } finally {
       setSending(false)
+    }
+  }
+
+  const deliverViaRelay = async (
+    frame: number[],
+    recipientAccountRoute: string,
+    recipientAgreementPublicKey: number[],
+  ) => {
+    try {
+      const ciphertext = await syncSealChatRelayMessage(
+        frame,
+        bytesToBase64(recipientAgreementPublicKey),
+      )
+      await sendRendezvousFrame({
+        type: 'enqueue',
+        kind: 'chat_message',
+        messageId: `chat_${crypto.randomUUID()}`,
+        recipientAccountRoute,
+        expiresAtMs: Date.now() + 24 * 60 * 60 * 1000,
+        ciphertext,
+      })
+    } catch {
+      // Best-effort — the message is already saved locally either way; only live delivery failed.
     }
   }
 
@@ -171,12 +315,24 @@ export function ChatPanel({ projectId }: { projectId: string }) {
         file.type || 'application/octet-stream',
         bytes,
       )
-      const message = await syncSendMessage(
+      // The attachment binary itself only ever goes through `syncUploadAttachment` above (never
+      // the relay — see `MAX_CIPHERTEXT_BYTES`/16KB in `sync_rendezvous.rs`); only this short
+      // pointer text is eligible for live P2P/relay delivery, same as any other text message.
+      const [message, frame] = await syncSendMessageForTransport(
         conversation.conversationId,
         'text',
         t('chat.attachmentMessage', { name: file.name, id: attachment.attachmentId }),
       )
       setMessages((current) => [...current, message])
+      if (otherMember && frame.length > 0) {
+        if (p2p.state === 'p2p') {
+          await p2p.send(frame).catch(async () => {
+            await deliverViaRelay(frame, otherMember.accountRoute, otherMember.x25519PublicKey)
+          })
+        } else {
+          await deliverViaRelay(frame, otherMember.accountRoute, otherMember.x25519PublicKey)
+        }
+      }
     } catch {
       setError(true)
     } finally {
@@ -184,11 +340,25 @@ export function ChatPanel({ projectId }: { projectId: string }) {
     }
   }
 
+  const connectionState: 'local' | 'connecting' | 'p2p' | 'relay' = !otherMember
+    ? 'local'
+    : p2p.state === 'p2p'
+      ? 'p2p'
+      : p2p.state === 'signaling'
+        ? 'connecting'
+        : rendezvousConnected
+          ? 'relay'
+          : 'local'
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <span className={styles.headerTitle}>{t('chat.channelTitle')}</span>
-        <span className={styles.e2eBadge}>{t('chat.e2eBadge')}</span>
+        <span className={styles.headerTitle}>
+          {source.kind === 'direct' ? source.contactDisplayLabel : source.projectName}
+        </span>
+        <span className={`${styles.e2eBadge} ${styles[`e2eBadge_${connectionState}`]}`}>
+          {t(`chat.connectionState.${connectionState}`)}
+        </span>
       </div>
 
       <div className={styles.messages}>
@@ -202,31 +372,37 @@ export function ChatPanel({ projectId }: { projectId: string }) {
             <span>{t('chat.empty')}</span>
           </div>
         ) : (
-          messages.map((message, index) => {
+          messages.map((message) => {
             const own = message.senderDeviceId === localDeviceId
-            const previous = messages[index - 1]
-            const grouped = previous?.senderDeviceId === message.senderDeviceId
             return (
               <div
                 key={message.messageId}
                 className={`${styles.messageRow} ${own ? styles.messageRowOwn : ''}`}
               >
-                {!own ? (
-                  <div className={`${styles.avatar} ${grouped ? styles.avatarSpacer : ''}`}>
-                    {grouped ? null : initialsFor(message.senderDeviceId)}
-                  </div>
-                ) : null}
+                <div className={styles.avatar}>
+                  {own ? (
+                    <Avatar src={ownAvatarUrl} initial={ownInitial} className={styles.avatarImg} />
+                  ) : (
+                    <Avatar
+                      src={null}
+                      initial={
+                        otherDisplayLabel
+                          ? getProfileInitial(otherDisplayLabel)
+                          : initialsFor(message.senderDeviceId)
+                      }
+                      className={styles.avatarImg}
+                    />
+                  )}
+                </div>
                 <div className={styles.messageBubbleWrap}>
-                  {!grouped ? (
-                    <div className={styles.messageMeta}>
-                      {!own ? (
-                        <span className={styles.messageAuthor}>{message.senderDeviceId}</span>
-                      ) : null}
-                      <span className={styles.messageTime}>
-                        {new Date(message.createdAtMs).toLocaleTimeString()}
-                      </span>
-                    </div>
-                  ) : null}
+                  <div className={styles.messageMeta}>
+                    <span className={styles.messageAuthor}>
+                      {own ? ownDisplayName : (otherDisplayLabel ?? message.senderDeviceId)}
+                    </span>
+                    <span className={styles.messageTime}>
+                      {new Date(message.createdAtMs).toLocaleTimeString()}
+                    </span>
+                  </div>
                   {message.contentType === 'command' ? (
                     <div className={`${styles.commandBlock} ${own ? styles.bubbleOwn : ''}`}>
                       <div className={styles.commandLabel}>
@@ -264,7 +440,7 @@ export function ChatPanel({ projectId }: { projectId: string }) {
 
       {error ? <div className={styles.error}>{t('chat.loadFailed')}</div> : null}
 
-      <div className={styles.syncNotice}>{t('chat.localOnlyNotice')}</div>
+      <div className={styles.syncNotice}>{t(`chat.syncNotice.${connectionState}`)}</div>
 
       <div className={styles.composer}>
         {slashMenuOpen ? (
