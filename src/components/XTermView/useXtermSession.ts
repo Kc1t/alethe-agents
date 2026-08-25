@@ -2,6 +2,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
+import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import { useEffect, useRef } from 'react'
@@ -269,6 +270,15 @@ export function useXtermSession(params: {
     terminal.loadAddon(new Unicode11Addon())
     terminal.unicode.activeVersion = '11'
     terminal.open(container)
+
+    // Prefer the WebGL renderer for GPU rasterization; the canvas renderer is
+    // CPU-bound and visibly stutters on dense TUIs under WebKitGTK on Linux.
+    // Fall back silently when WebGL is unavailable (some Linux GPU drivers).
+    try {
+      terminal.loadAddon(new WebglAddon())
+    } catch {
+      // canvas renderer remains active
+    }
     terminalRef.current = terminal
     const clampHorizontalScroll = () => {
       container.scrollLeft = 0
