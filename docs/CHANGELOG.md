@@ -12,6 +12,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- Agent CLIs installed via nvm, bun, `npm --prefix`, pnpm or volta are now detected on Linux
+  even when Alethe is launched from the desktop menu — which inherits a minimal PATH — matching
+  the existing `~/.local/bin` and `~/.cargo/bin` fallbacks. Onboarding and agent tabs now see
+  these installs instead of reporting them as missing.
 - When an agent opens a page in the shared browser, Alethe asks where it should go. The browser
   itself has no window, which is right most of the time — an agent reading a page needs no
   interface at all — so the question only comes up when a page actually appears. All three
