@@ -1,6 +1,8 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
+import { useProjectsStore } from '../../stores/projectsStore'
+
 export type SpawnPtyArgs = {
   cols: number
   rows: number
@@ -10,6 +12,8 @@ export type SpawnPtyArgs = {
   extraArgs?: string[]
   /** Path absoluto pro launcher (override do auto-detect). */
   launcherOverride?: string
+  /** Override da preferência global de shell de login. Omita para usar o padrão. */
+  loginShell?: boolean
                                                                 
   env?: Record<string, string>
 }
@@ -23,6 +27,7 @@ export async function spawnPty(args: SpawnPtyArgs): Promise<{ id: string }> {
     cwd: args.cwd,
     extraArgs: args.extraArgs,
     launcherOverride: args.launcherOverride,
+    loginShell: args.loginShell ?? useProjectsStore.getState().preferences.loginShell,
     env: args.env,
   })
 }
@@ -90,6 +95,7 @@ export async function restartPty(args: SpawnPtyArgs & { id: string }): Promise<{
     cwd: args.cwd,
     extraArgs: args.extraArgs,
     launcherOverride: args.launcherOverride,
+    loginShell: args.loginShell ?? useProjectsStore.getState().preferences.loginShell,
     env: args.env,
   })
 }

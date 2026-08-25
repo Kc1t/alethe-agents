@@ -32,6 +32,7 @@ pub fn command_builder_for_terminal(
     initial_command: Option<&str>,
     resolved_launcher: Option<&str>,
     extra_args: &[String],
+    login_shell: bool,
 ) -> CommandBuilder {
     let trimmed = initial_command
         .map(str::trim)
@@ -60,14 +61,22 @@ pub fn command_builder_for_terminal(
             }
             #[cfg(not(windows))]
             {
-                // POSIX shell: exec do launcher + args, com aspas simples escapadas.
+                // POSIX shell: exec the launcher + args, with single quotes
+                // escaped. Login shells (`-lc`) load the full profile (nvm,
+                // conda, starship, PATH) on every boot — hundreds of ms of
+                // spawn latency. Default to plain `-c` and only opt into the
+                // login shell via the preference.
                 let esc = |s: &str| s.replace('\'', "'\\''");
                 let mut line = format!("exec '{}'", esc(&arg));
                 for a in extra_args {
                     line.push_str(&format!(" '{}'", esc(a)));
                 }
                 let mut builder = CommandBuilder::new(&shell);
-                builder.arg("-lc");
+                if login_shell {
+                    builder.arg("-lc");
+                } else {
+                    builder.arg("-c");
+                }
                 builder.arg(line);
                 builder
             }

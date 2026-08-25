@@ -601,6 +601,10 @@ export const en = {
   'prefs.nativeTerminalMacosDesc':
     'Use the embedded Ghostty engine (GPU rendering) instead of the internal terminal. Experimental. Reopen terminals after changing this.',
   'prefs.nativeTerminalMacosEnable': 'Enable native terminal (macOS)',
+  'prefs.loginShell': 'Login shell',
+  'prefs.loginShellDesc':
+    'Launch terminals as a login shell so they load the full shell profile (nvm, conda, starship, custom PATH). Off by default because profile loading adds hundreds of milliseconds to every terminal boot.',
+  'prefs.loginShellEnable': 'Use login shell for terminals',
   'prefs.resourcePolicy': 'Memory monitoring',
   'prefs.resourcePolicyDesc':
     'Inspect real app and Windows memory without automatically closing or parking runtimes.',

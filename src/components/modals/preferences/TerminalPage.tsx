@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { cliPathMatchesAgent } from '../../../lib/agentCliPath'
 import { pickFile } from '../../../lib/dialog'
 import { useT } from '../../../lib/i18n'
-import { isMacOS } from '../../../lib/platform'
+import { isMacOS, isWindows } from '../../../lib/platform'
 import { countLiveResumablePanes, resetLastSession } from '../../../lib/resetLastSession'
 import { agentCliCommand, type AgentType } from '../../../lib/types'
 import { SPAWN_CONCURRENCY_LIMITS, useProjectsStore } from '../../../stores/projectsStore'
@@ -267,6 +267,34 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
               onChange={(e) => setPreferences({ nativeTerminalMacos: e.target.checked })}
             />
             <span style={{ flex: 1, fontSize: 13 }}>{t('prefs.nativeTerminalMacosEnable')}</span>
+          </label>
+        </SettingsSection>
+      ) : null}
+
+      {!isWindows() ? (
+        <SettingsSection
+          id="login-shell"
+          title={t('prefs.loginShell')}
+          description={t('prefs.loginShellDesc')}
+        >
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '8px 12px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border)',
+              background: 'var(--bg-sunken)',
+              cursor: 'pointer',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={preferences.loginShell}
+              onChange={(e) => setPreferences({ loginShell: e.target.checked })}
+            />
+            <span style={{ flex: 1, fontSize: 13 }}>{t('prefs.loginShellEnable')}</span>
           </label>
         </SettingsSection>
       ) : null}
