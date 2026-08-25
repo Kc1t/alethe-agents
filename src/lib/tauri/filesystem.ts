@@ -40,7 +40,6 @@ export async function unwatchFile(path: string): Promise<void> {
   await invoke('unwatch_file', { path })
 }
 
-                                                                        
 export function listenFileChanged(handler: (path: string) => void): Promise<UnlistenFn> {
   return listen<{ path: string }>('md://changed', (event) => handler(event.payload.path))
 }

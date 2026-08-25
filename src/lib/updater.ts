@@ -1,28 +1,19 @@
 import { check, type Update } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 
-                                                                   
 export type UpdateInfo = {
   version: string
   currentVersion: string
   /** Release notes (corpo do `latest.json`), se houver. */
   notes: string | null
-                                                             
+
   date: string | null
 }
 
 export type UpdateProgress = { downloaded: number; total: number }
 
-                                                                               
-                                                                                  
 let pending: Update | null = null
 
-   
-                                                                               
-                                                                              
-                                                                           
-                                                                         
-   
 export async function checkForUpdate(): Promise<UpdateInfo | null> {
   const update = await check()
   if (!update) {
@@ -38,10 +29,6 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
   }
 }
 
-   
-                                                                                 
-                                                                             
-   
 export async function installPendingUpdate(
   onProgress?: (progress: UpdateProgress) => void,
 ): Promise<void> {
@@ -63,6 +50,6 @@ export async function installPendingUpdate(
         break
     }
   })
-                                                                       
+
   await relaunch()
 }

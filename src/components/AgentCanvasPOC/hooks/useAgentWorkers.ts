@@ -10,26 +10,17 @@ import { useUiStore } from '../../../stores/uiStore'
 
 type Session = { folder: string; ptyId: string }
 
-   
-                                                                            
-                                                                                
-                                                                     
-   
 export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
   const t = useT()
   const [codexWorkers, setCodexWorkers] = useState<CodexWorker[]>([])
   const [expandedCodexId, setExpandedCodexId] = useState<string | null>(null)
-                                                                   
+
   const codexWorkersRef = useRef<CodexWorker[]>([])
   const workerExitUnlistenersRef = useRef(new Map<string, () => void>())
   useEffect(() => {
     codexWorkersRef.current = codexWorkers
   }, [codexWorkers])
 
-                                                                               
-                                                                                 
-                                                                                  
-                                                         
   const spawnAgentWorker = useCallback(
     (
       agent: AgentType,
@@ -62,8 +53,6 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
         extraArgs: args,
       })
         .then(() => {
-                                                                                
-                                                   
           let unlistenExit: (() => void) | null = null
           let exited = false
           void listenPtyExit(ptyId, (payload) => {
@@ -75,8 +64,7 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
             setCodexWorkers((prev) =>
               prev.map((w) => (w.ptyId === ptyId ? { ...w, exitedCode: code ?? 0 } : w)),
             )
-                                                                            
-                                                                             
+
             void attachPty(ptyId)
               .then((scrollback) => {
                 const result = tailSummary(scrollback)
@@ -89,8 +77,7 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
           })
             .then((unlisten) => {
               unlistenExit = unlisten
-                                                                                    
-                                                                              
+
               if (exited) unlisten()
               else workerExitUnlistenersRef.current.set(ptyId, unlisten)
             })
@@ -103,7 +90,6 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
     [sessionRef],
   )
 
-                                                                 
   const spawnCodexWorker = useCallback(
     (title: string, opts: { open?: boolean; task?: string } = {}): string | null =>
       spawnAgentWorker('codex', title, opts),
@@ -120,23 +106,20 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
   }, [])
 
   // Ponte de dispatch: o control plane spawna um processo real via POST /spawn
-                                                                                
-                                                      
+
   const dispatchToAgent = useCallback(
     (payload: { agent?: string; task?: string; mode?: string }) => {
       const agent = payload.agent as AgentType | undefined
       if (agent !== 'claude' && agent !== 'codex' && agent !== 'opencode') return
       const rawTask = payload.task ?? ''
       // A task vira arg via PowerShell -> *.cmd (batch). Aspas duplas e newlines
-                                                                        
-                                                                               
+
       const safe = rawTask
         .replace(/"/g, "'")
         .replace(/\s*[\r\n]+\s*/g, ' ')
         .trim()
       const interactive = payload.mode === 'interactive' || !safe
-                                                                                 
-                                                                                  
+
       // a RAM spawnando dezenas de claude/codex.
       const liveWorkers = codexWorkersRef.current.filter((w) => w.exitedCode === null).length
       if (liveWorkers >= MAX_LIVE_WORKERS) {
@@ -173,7 +156,6 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
     }
   }, [dispatchToAgent])
 
-                                                                              
   // sair do canvas e ao "limpar tudo".
   const killAllWorkers = useCallback(() => {
     for (const w of codexWorkersRef.current) {
@@ -183,8 +165,6 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
     workerExitUnlistenersRef.current.clear()
   }, [])
 
-                                                                              
-                                                                             
   useEffect(() => {
     return () => {
       killAllWorkers()

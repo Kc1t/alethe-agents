@@ -130,9 +130,7 @@ export function TitleBar() {
   const antigravityReady =
     antigravityUsage?.status === 'ready' && antigravityUsage.buckets.length > 0
   const remoteConnectedLabel = t(
-    remoteConnectedDevices === 1
-      ? 'remote.topbarDeviceConnected'
-      : 'remote.topbarDevicesConnected',
+    remoteConnectedDevices === 1 ? 'remote.topbarDeviceConnected' : 'remote.topbarDevicesConnected',
     { count: remoteConnectedDevices },
   )
 
@@ -142,14 +140,10 @@ export function TitleBar() {
       window.dispatchEvent(new CustomEvent('alethe:agent-canvas-exit'))
       return
     }
-    void killPty(agentCanvasSession.ptyId).catch(() => {
-                                   
-    })
+    void killPty(agentCanvasSession.ptyId).catch(() => {})
     setAgentCanvasSession(null)
   }
 
-                                                                             
-                                                                        
   const activeRef = useRef(true)
 
   useEffect(() => {
@@ -176,7 +170,6 @@ export function TitleBar() {
     }
   }, [])
 
-                                                                            
   useEffect(() => {
     let cancelled = false
     let interval: number | null = null
@@ -191,8 +184,6 @@ export function TitleBar() {
           consecutiveFailures = 0
         }
       } catch {
-                                                                               
-                                                                                  
         consecutiveFailures += 1
         if (consecutiveFailures >= 3 && !cancelled) {
           setClaudeUsage(null)
@@ -210,8 +201,6 @@ export function TitleBar() {
     }
   }, [setClaudeUsage])
 
-                                                                                
-                                                                       
   useEffect(() => {
     let cancelled = false
     let interval: number | null = null
@@ -243,7 +232,6 @@ export function TitleBar() {
     }
   }, [setCodexUsage])
 
-                                                                                                     
   useEffect(() => {
     let cancelled = false
     let interval: number | null = null
@@ -273,7 +261,6 @@ export function TitleBar() {
 
   const win = getCurrentWindow()
 
-                                                                             
   useEffect(() => {
     const update = (focused: boolean) => {
       activeRef.current = focused && document.visibilityState === 'visible'
@@ -519,16 +506,18 @@ export function TitleBar() {
       <div className={styles.barEnd}>
         <div className={styles.widgets}>
           <div className={styles.utilityGroup}>
-            {!threeAreas ? <button
-              type="button"
-              className={`${styles.iconBtn} ${updateInfo ? styles.whatsNewPending : ''}`}
-              onClick={() => openModal('whatsNew')}
-              title={t('whatsNew.button')}
-              aria-label={t('whatsNew.button')}
-            >
-              <Newspaper size={13} />
-              {updateInfo ? <span className={styles.whatsNewDot} /> : null}
-            </button> : null}
+            {!threeAreas ? (
+              <button
+                type="button"
+                className={`${styles.iconBtn} ${updateInfo ? styles.whatsNewPending : ''}`}
+                onClick={() => openModal('whatsNew')}
+                title={t('whatsNew.button')}
+                aria-label={t('whatsNew.button')}
+              >
+                <Newspaper size={13} />
+                {updateInfo ? <span className={styles.whatsNewDot} /> : null}
+              </button>
+            ) : null}
             {!threeAreas && preferences.topbarShowSync ? (
               <button
                 type="button"

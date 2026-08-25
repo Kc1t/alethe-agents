@@ -36,7 +36,6 @@ function formatResetMs(resetsAtMs: number): string {
   return formatDiff(resetsAtMs - Date.now())
 }
 
-                                                                                   
 function meterColor(util: number, base: string): string {
   if (util >= 80) return 'var(--status-offline)'
   if (util >= 50) return 'var(--status-waiting)'

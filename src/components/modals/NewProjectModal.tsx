@@ -35,9 +35,6 @@ export function NewProjectModal() {
   const [groupId, setGroupId] = useState<string | null>(context?.groupId ?? null)
   const [isColorPopoverOpen, setIsColorPopoverOpen] = useState(false)
 
-                                                                        
-                                                                       
-                                        
   useEffect(() => {
     if (open && context?.defaultCwd) setDefaultCwd(context.defaultCwd)
   }, [open, context?.defaultCwd])

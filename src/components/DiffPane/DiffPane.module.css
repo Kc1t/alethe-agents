@@ -55,7 +55,10 @@
   color: var(--fg-faint);
   cursor: pointer;
   opacity: 0.6;
-  transition: background-color 0.2s, color 0.2s, opacity 0.2s;
+  transition:
+    background-color 0.2s,
+    color 0.2s,
+    opacity 0.2s;
   flex-shrink: 0;
 }
 

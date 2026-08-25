@@ -1,9 +1,3 @@
-   
-                                                                                
-                                                                                    
-                                                                      
-   
-
 import { nanoid } from 'nanoid'
 
 import { normalizeEnabledFeatures } from '../lib/features'
@@ -94,10 +88,9 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     windowOpacity: Number.isFinite(rawWindowOpacity)
       ? Math.min(1, Math.max(0.6, rawWindowOpacity))
       : 1,
-                                                                               
-                                                                            
+
     enabledAgents: { ...DEFAULT_PREFERENCES.enabledAgents, ...preferences.enabledAgents },
-                                                                                 
+
     enabledFeatures: normalizeEnabledFeatures(raw),
     leftSidebarVisible: raw?.leftSidebarVisible ?? true,
     rightSidebarVisible: raw?.rightSidebarVisible ?? true,
@@ -425,7 +418,6 @@ function migrateToV5(parsed: any): any {
   }
 }
 
-                                                                              
 export function collectGroupProjectIds(groupId: string, groups: Group[]): Set<string> {
   const result = new Set<string>()
   const queue = [groupId]

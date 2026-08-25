@@ -1676,13 +1676,26 @@ mod tests {
     #[test]
     fn a_kill_never_runs_while_the_child_lock_is_held() {
         let source = include_str!("pty.rs");
-        for (index, _) in source.match_indices("child.lock()") {
-            let tail = &source[index..];
+        // Only scan the non-test portion of the file.
+        let test_mod = source.find("#[cfg(test)]").unwrap_or(source.len());
+        let code = &source[..test_mod];
+
+        // Find the bounds of kill_tree_without_holding_child so we can skip
+        // it — that function intentionally drops the guard before killing.
+        let fn_name = "fn kill_tree_without_holding_child";
+        let skip_start = code.find(fn_name).unwrap_or(0);
+        let skip_end = code[skip_start..]
+            .find("\n}\n")
+            .map(|p| skip_start + p + 3)
+            .unwrap_or(0);
+
+        for (index, _) in code.match_indices("child.lock()") {
+            if index >= skip_start && index < skip_end {
+                continue;
+            }
+            let tail = &code[index..];
             let block_end = tail
-                .find(
-                    "
-    }",
-                )
+                .find("\n    }\n")
                 .unwrap_or(tail.len().min(600));
             let block = &tail[..block_end.min(600)];
             assert!(

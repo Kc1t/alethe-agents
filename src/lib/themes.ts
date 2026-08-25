@@ -41,12 +41,10 @@ export function themeLabel(t: TFunction, id: Theme): string {
   return t(`theme.${id}.label` as MessageKey)
 }
 
-                                                                        
 export function themeDescription(t: TFunction, id: Theme): string {
   return t(`theme.${id}.desc` as MessageKey)
 }
 
-                                                                           
 export function getThemeLabel(id: Theme): string {
   return translate(getLocale(), `theme.${id}.label` as MessageKey)
 }

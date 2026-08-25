@@ -51,7 +51,6 @@
   cursor: default;
 }
 
-
 .spinning {
   animation: mcpSpin 900ms linear infinite;
 }
@@ -61,7 +60,6 @@
     transform: rotate(360deg);
   }
 }
-
 
 .addMore {
   display: flex;
@@ -183,10 +181,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-
-
-
 
 .badge {
   flex: none;

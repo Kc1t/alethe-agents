@@ -479,21 +479,21 @@ export function PreferencesModal() {
             <div ref={contentRef} className={styles.content}>
               <div className={styles.contentInner}>
                 <ErrorBoundary label="preferences-page">
-                {category === 'account' ? (
-                  <AccountPage
-                    avatarUrl={avatarUrl}
-                    initial={initial}
-                    onManageAccounts={() => openModal('profiles')}
-                  />
-                ) : null}
-                {category === 'appearance' ? <AppearancePage /> : null}
-                {category === 'features' ? <FeaturesPage /> : null}
-                {category === 'terminal' ? <TerminalPage enabledCount={enabledCount} /> : null}
-                {category === 'integrations' ? <IntegrationsPage /> : null}
-                {category === 'multiagent' ? <MultiagentPage /> : null}
-                {category === 'organization' ? <OrganizationPage /> : null}
-                {category === 'about' ? <AboutPage /> : null}
-                {category === 'remoteControl' ? <RemoteControlPage /> : null}
+                  {category === 'account' ? (
+                    <AccountPage
+                      avatarUrl={avatarUrl}
+                      initial={initial}
+                      onManageAccounts={() => openModal('profiles')}
+                    />
+                  ) : null}
+                  {category === 'appearance' ? <AppearancePage /> : null}
+                  {category === 'features' ? <FeaturesPage /> : null}
+                  {category === 'terminal' ? <TerminalPage enabledCount={enabledCount} /> : null}
+                  {category === 'integrations' ? <IntegrationsPage /> : null}
+                  {category === 'multiagent' ? <MultiagentPage /> : null}
+                  {category === 'organization' ? <OrganizationPage /> : null}
+                  {category === 'about' ? <AboutPage /> : null}
+                  {category === 'remoteControl' ? <RemoteControlPage /> : null}
                 </ErrorBoundary>
               </div>
             </div>
