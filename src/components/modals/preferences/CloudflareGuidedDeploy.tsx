@@ -1,0 +1,147 @@
+import { Check, Cloud, ExternalLink, Loader2, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+
+import { useAgentInstall } from '../../../hooks/useAgentInstall'
+import { type CloudflareDeployStep, useCloudflareDeploy } from '../../../hooks/useCloudflareDeploy'
+import { type InstallToolchain, nodeInstallMethods } from '../../../lib/agentInstall'
+import { useT } from '../../../lib/i18n'
+import { probeInstallToolchain } from '../../../lib/tauri'
+import controls from '../controls.module.css'
+import styles from './CloudflareGuidedDeploy.module.css'
+
+const STEP_ORDER: CloudflareDeployStep[] = [
+  'preparing',
+  'installing',
+  'login',
+  'secret',
+  'deploying',
+  'success',
+]
+
+export function CloudflareGuidedDeploy({ onDeployed }: { onDeployed: (url: string) => void }) {
+  const t = useT()
+  const [toolchain, setToolchain] = useState<InstallToolchain | null>(null)
+  const [probing, setProbing] = useState(true)
+  const { step, failed, log, workerUrl, start, reset } = useCloudflareDeploy()
+  const nodeInstall = useAgentInstall('shell', 'cloudflare-deploy-node')
+
+  useEffect(() => {
+    let active = true
+    setProbing(true)
+    probeInstallToolchain()
+      .then((result) => {
+        if (active) setToolchain(result)
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setProbing(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [nodeInstall.status])
+
+  useEffect(() => {
+    if (step === 'success' && workerUrl) onDeployed(workerUrl)
+  }, [step, workerUrl, onDeployed])
+
+  const running = step !== 'idle' && step !== 'success' && !failed
+  const missingNode = !probing && !toolchain?.npm
+
+  return (
+    <div className={styles.container}>
+      <div className={styles.heading}>
+        <Cloud size={14} aria-hidden="true" />
+        {t('collaboration.cloudflareDeploy.title')}
+      </div>
+      <p className={styles.description}>{t('collaboration.cloudflareDeploy.description')}</p>
+
+      {missingNode ? (
+        <div className={styles.actionsRow}>
+          <button
+            type="button"
+            className={controls.btn}
+            disabled={nodeInstall.status === 'running'}
+            onClick={() => {
+              const method = nodeInstallMethods(toolchain)[0]
+              if (method) void nodeInstall.install(method)
+            }}
+          >
+            {nodeInstall.status === 'running' ? (
+              <Loader2 size={13} className={styles.spin} />
+            ) : null}
+            {t('collaboration.cloudflareDeploy.installNode')}
+          </button>
+          <a className={controls.btn} href="https://nodejs.org/" target="_blank" rel="noreferrer">
+            <ExternalLink size={13} aria-hidden="true" />
+            {t('collaboration.cloudflareDeploy.downloadNode')}
+          </a>
+        </div>
+      ) : (
+        <>
+          <div className={styles.steps}>
+            {STEP_ORDER.map((candidate) => {
+              const currentIndex = STEP_ORDER.indexOf(step)
+              const candidateIndex = STEP_ORDER.indexOf(candidate)
+              const isFailed = failed && candidateIndex === currentIndex
+              const isDone =
+                candidateIndex < currentIndex ||
+                (step === 'success' && candidateIndex === currentIndex)
+              const isActive = step === candidate && !failed
+              return (
+                <span
+                  key={candidate}
+                  className={`${styles.step} ${isActive ? styles.stepActive : ''} ${
+                    isDone ? styles.stepDone : ''
+                  } ${isFailed ? styles.stepFailed : ''}`}
+                >
+                  {isDone ? (
+                    <Check size={11} />
+                  ) : isActive ? (
+                    <Loader2 size={11} className={styles.spin} />
+                  ) : null}
+                  {t(`collaboration.cloudflareDeploy.step.${candidate}`)}
+                </span>
+              )
+            })}
+          </div>
+
+          {log ? <div className={styles.log}>{log}</div> : null}
+
+          {step === 'success' && workerUrl ? (
+            <div className={styles.resultRow}>
+              <Check size={14} aria-hidden="true" />
+              {t('collaboration.cloudflareDeploy.success')} <code>{workerUrl}</code>
+            </div>
+          ) : null}
+
+          {failed ? (
+            <div className={`${styles.resultRow} ${styles.failedRow}`}>
+              <X size={14} aria-hidden="true" />
+              {t('collaboration.cloudflareDeploy.failed')}
+            </div>
+          ) : null}
+
+          <div className={styles.actionsRow}>
+            <button
+              type="button"
+              className={`${controls.btn} ${controls.btnPrimary}`}
+              disabled={running}
+              onClick={() => void start()}
+            >
+              {running ? <Loader2 size={13} className={styles.spin} /> : <Cloud size={13} />}
+              {failed
+                ? t('collaboration.cloudflareDeploy.retry')
+                : t('collaboration.cloudflareDeploy.start')}
+            </button>
+            {step !== 'idle' ? (
+              <button type="button" className={controls.btn} disabled={running} onClick={reset}>
+                {t('collaboration.cloudflareDeploy.reset')}
+              </button>
+            ) : null}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}

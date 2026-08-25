@@ -1358,6 +1358,83 @@ pub(crate) fn disconnect_identity_at<S: DeviceSecretStore>(
     Ok(())
 }
 
+/// Materializes an invitation delivered remotely (decrypted elsewhere, by
+/// `sync_p2p_bridge.rs`/`sync_invitation_bridge.rs`) into this device's own local invitation
+/// list, then redeems it through the existing `redeem_invitation` — closing the gap where a
+/// recipient's `redeem_invitation` call would otherwise fail with `invitation_unavailable`
+/// because the `InvitationRecord` only ever existed on the issuer's own separate document.
+/// Safe to call more than once for the same `invitation_id` (a retried delivery, or the envelope
+/// being drained twice): the record is inserted only the first time, and `redeem_invitation`'s own
+/// single-use/expiry checks apply exactly as they would for a local redemption from then on — this
+/// function adds no new authorization rule, it only satisfies an existing one's precondition.
+pub(crate) fn redeem_remote_invitation_at(
+    data_root: &Path,
+    invitation_id: &str,
+    bearer_token: &str,
+    project_id: &str,
+    permissions: Vec<SyncPermission>,
+    path_scopes: Vec<PathScope>,
+    expires_at_ms: u64,
+    recipient_account_id: &str,
+    recipient_device_id: &str,
+    now_ms: u64,
+) -> Result<GrantRecord, String> {
+    let mut document = load_at(data_root)?;
+    if !document.invitations.iter().any(|invitation| invitation.invitation_id == invitation_id) {
+        document.invitations.push(InvitationRecord {
+            invitation_id: invitation_id.to_string(),
+            project_id: project_id.to_string(),
+            issuer_device_id: String::new(),
+            recipient_account_id: recipient_account_id.to_string(),
+            recipient_device_id: None,
+            permissions,
+            path_scopes,
+            token_hash: token_hash(bearer_token.as_bytes()),
+            state: InvitationState::Created,
+            created_at_ms: now_ms,
+            expires_at_ms,
+            redeemed_at_ms: None,
+            revoked_at_ms: None,
+            failed_attempts: 0,
+            blocked_until_ms: None,
+        });
+        save_at(data_root, &document)?;
+    }
+    redeem_invitation(data_root, invitation_id, bearer_token, recipient_account_id, recipient_device_id, now_ms)
+}
+
+/// Read-only trust check for `sync_transport::DeviceTrustOracle`, backed by this file the way its
+/// own doc comment already says it should be (`sync_p2p_bridge.rs` calls this instead of
+/// re-deriving trust rules of its own). A remote peer is trusted for a direct P2P session either
+/// because it's another of *this account's own* devices (`DeviceTrust::Trusted`), or because it
+/// holds a non-revoked, non-expired grant this account issued.
+pub(crate) fn is_peer_trusted_for_p2p(
+    document: &SyncSecurityDocument,
+    remote_account_route: &str,
+    remote_device_id: &str,
+    now_ms: u64,
+) -> bool {
+    let same_account_trusted_device = document
+        .account
+        .as_ref()
+        .is_some_and(|account| {
+            crate::sync_protocol::account_route_id(&account.account_id) == remote_account_route
+        })
+        && document
+            .devices
+            .iter()
+            .any(|device| device.device_id == remote_device_id && device.trust == DeviceTrust::Trusted);
+    if same_account_trusted_device {
+        return true;
+    }
+    document.grants.iter().any(|grant| {
+        grant.device_id == remote_device_id
+            && crate::sync_protocol::account_route_id(&grant.account_id) == remote_account_route
+            && grant.revoked_at_ms.is_none()
+            && grant.expires_at_ms.is_none_or(|expires| expires > now_ms)
+    })
+}
+
 fn find_trusted_actor<'a>(
     document: &'a SyncSecurityDocument,
     actor_device_id: &str,
@@ -1571,6 +1648,176 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use std::sync::Mutex;
+
+    fn device(account_id: &str, device_id: &str, trust: DeviceTrust) -> DeviceRecord {
+        DeviceRecord {
+            device_id: device_id.to_string(),
+            account_id: account_id.to_string(),
+            display_name: "Test Device".to_string(),
+            public_key: String::new(),
+            public_key_fingerprint: String::new(),
+            trust,
+            registered_at_ms: 0,
+            last_verified_at_ms: None,
+            revoked_at_ms: None,
+            agreement_public_key: None,
+            agreement_key_bound_at_ms: None,
+            agreement_key_binding_signature: None,
+            key_rotated_at_ms: None,
+        }
+    }
+
+    fn grant(account_id: &str, device_id: &str, revoked: bool, expires_at_ms: Option<u64>) -> GrantRecord {
+        GrantRecord {
+            grant_id: "grant-1".to_string(),
+            invitation_id: "invitation-1".to_string(),
+            project_id: "project-1".to_string(),
+            account_id: account_id.to_string(),
+            device_id: device_id.to_string(),
+            permissions: vec![SyncPermission::Read],
+            path_scopes: Vec::new(),
+            issued_at_ms: 0,
+            expires_at_ms,
+            revoked_at_ms: revoked.then_some(1),
+        }
+    }
+
+    #[test]
+    fn remote_invitation_redeems_against_a_document_that_never_saw_the_issuer() {
+        // The point of `redeem_remote_invitation_at`: the invitation is materialized straight
+        // from delivered fields into a document that never called `issue_invitation` at all —
+        // proving this actually works across two separate installs, unlike a same-document test.
+        let recipient_root = temp_root();
+        let grant = redeem_remote_invitation_at(
+            &recipient_root,
+            "invitation-from-elsewhere",
+            "bearer-token-value",
+            "project-1",
+            vec![SyncPermission::Read],
+            Vec::new(),
+            10_000,
+            "recipient-account",
+            "recipient-device",
+            1_000,
+        )
+        .unwrap();
+        assert_eq!(grant.account_id, "recipient-account");
+        assert_eq!(grant.device_id, "recipient-device");
+        assert_eq!(grant.project_id, "project-1");
+        fs::remove_dir_all(recipient_root).unwrap();
+    }
+
+    #[test]
+    fn remote_invitation_cannot_be_redeemed_twice() {
+        let root = temp_root();
+        redeem_remote_invitation_at(
+            &root,
+            "invitation-once",
+            "bearer-token",
+            "project-1",
+            vec![SyncPermission::Read],
+            Vec::new(),
+            10_000,
+            "recipient-account",
+            "recipient-device",
+            1_000,
+        )
+        .unwrap();
+        let second = redeem_remote_invitation_at(
+            &root,
+            "invitation-once",
+            "bearer-token",
+            "project-1",
+            vec![SyncPermission::Read],
+            Vec::new(),
+            10_000,
+            "recipient-account",
+            "recipient-device",
+            2_000,
+        );
+        assert!(second.is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn remote_invitation_past_its_expiry_is_rejected() {
+        let root = temp_root();
+        let result = redeem_remote_invitation_at(
+            &root,
+            "invitation-expired",
+            "bearer-token",
+            "project-1",
+            vec![SyncPermission::Read],
+            Vec::new(),
+            1_000,
+            "recipient-account",
+            "recipient-device",
+            5_000,
+        );
+        assert!(result.is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn own_trusted_device_is_trusted_for_p2p() {
+        let mut document = SyncSecurityDocument::default();
+        document.account = Some(VerifiedAccount {
+            account_id: "owner-account".to_string(),
+            provider: "google".to_string(),
+            display_name: "Owner".to_string(),
+            email_hint: None,
+            connected_at_ms: 0,
+        });
+        document.devices.push(device("owner-account", "dev-laptop", DeviceTrust::Trusted));
+        let route = crate::sync_protocol::account_route_id("owner-account");
+        assert!(is_peer_trusted_for_p2p(&document, &route, "dev-laptop", 1_000));
+    }
+
+    #[test]
+    fn own_pending_device_is_not_trusted_for_p2p() {
+        let mut document = SyncSecurityDocument::default();
+        document.account = Some(VerifiedAccount {
+            account_id: "owner-account".to_string(),
+            provider: "google".to_string(),
+            display_name: "Owner".to_string(),
+            email_hint: None,
+            connected_at_ms: 0,
+        });
+        document.devices.push(device("owner-account", "dev-new", DeviceTrust::Pending));
+        let route = crate::sync_protocol::account_route_id("owner-account");
+        assert!(!is_peer_trusted_for_p2p(&document, &route, "dev-new", 1_000));
+    }
+
+    #[test]
+    fn active_grant_recipient_is_trusted_for_p2p() {
+        let mut document = SyncSecurityDocument::default();
+        document.grants.push(grant("friend-account", "friend-device", false, None));
+        let route = crate::sync_protocol::account_route_id("friend-account");
+        assert!(is_peer_trusted_for_p2p(&document, &route, "friend-device", 1_000));
+    }
+
+    #[test]
+    fn revoked_grant_recipient_is_not_trusted_for_p2p() {
+        let mut document = SyncSecurityDocument::default();
+        document.grants.push(grant("friend-account", "friend-device", true, None));
+        let route = crate::sync_protocol::account_route_id("friend-account");
+        assert!(!is_peer_trusted_for_p2p(&document, &route, "friend-device", 1_000));
+    }
+
+    #[test]
+    fn expired_grant_recipient_is_not_trusted_for_p2p() {
+        let mut document = SyncSecurityDocument::default();
+        document.grants.push(grant("friend-account", "friend-device", false, Some(500)));
+        let route = crate::sync_protocol::account_route_id("friend-account");
+        assert!(!is_peer_trusted_for_p2p(&document, &route, "friend-device", 1_000));
+    }
+
+    #[test]
+    fn unrelated_device_is_not_trusted_for_p2p() {
+        let document = SyncSecurityDocument::default();
+        let route = crate::sync_protocol::account_route_id("stranger-account");
+        assert!(!is_peer_trusted_for_p2p(&document, &route, "stranger-device", 1_000));
+    }
 
     #[derive(Default)]
     struct MemorySecrets(Mutex<HashMap<String, Vec<u8>>>);

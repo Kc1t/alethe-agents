@@ -63,12 +63,15 @@ pub mod supervisor;
 pub mod sync_activation;
 pub mod sync_access;
 pub mod sync_chat;
+pub mod sync_cloudflare_deploy;
 pub mod sync_crypto;
 pub mod sync_engine;
 pub mod sync_invitation_bridge;
 pub mod sync_manifest;
 pub mod sync_mesh;
+pub mod sync_p2p_bridge;
 pub mod sync_protocol;
+pub mod sync_remote_invitation;
 pub mod sync_rendezvous;
 pub mod sync_security;
 pub mod sync_staging;
@@ -569,6 +572,15 @@ pub fn run() {
             sync_invitation_bridge::sync_verify_discovered_device,
             sync_invitation_bridge::sync_prepare_remote_invitation,
             sync_invitation_bridge::sync_consume_remote_invitation,
+            sync_cloudflare_deploy::cloudflare_deploy_workdir,
+            sync_cloudflare_deploy::cloudflare_generate_secret,
+            sync_p2p_bridge::sync_prepare_remote_candidate,
+            sync_p2p_bridge::sync_consume_remote_candidate,
+            sync_p2p_bridge::p2p_discover_candidate,
+            sync_p2p_bridge::sync_p2p_connect,
+            sync_remote_invitation::sync_consume_remote_invitation_cross_device,
+            sync_remote_invitation::sync_export_pairing_code,
+            sync_remote_invitation::sync_parse_pairing_code,
             contract_check::contract_check,
             health_probe::health_probe,
             graphify::graphify_ensure_graph,

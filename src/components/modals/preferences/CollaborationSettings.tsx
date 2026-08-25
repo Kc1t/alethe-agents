@@ -20,7 +20,9 @@ import {
   validateRendezvousEndpoint,
 } from '../../../lib/tauri'
 import controls from '../controls.module.css'
+import { CloudflareGuidedDeploy } from './CloudflareGuidedDeploy'
 import styles from './CollaborationSettings.module.css'
+import { P2pFriendTestPanel } from './P2pFriendTestPanel'
 import { SettingsSection } from './primitives'
 
 const modes: CollaborationServiceMode[] = ['local_only', 'alethe_managed', 'advanced_custom']
@@ -130,153 +132,159 @@ export function CollaborationSettings() {
   }
 
   return (
-    <SettingsSection
-      id="collaboration-service"
-      title={t('collaboration.settingsTitle')}
-      description={t('collaboration.settingsDescription')}
-    >
-      <div className={styles.stack}>
-        <div className={styles.modeGrid}>
-          {modes.map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              className={`${styles.modeButton} ${settings?.mode === mode ? styles.modeActive : ''}`}
-              disabled={busy}
-              onClick={() => void selectMode(mode)}
-            >
-              <span className={styles.modeHeading}>
-                <strong>{t(`collaboration.mode.${mode}.title`)}</strong>
-                {mode === 'alethe_managed' ? (
-                  <span className={styles.modeBadge}>{t('collaboration.recommendedBadge')}</span>
-                ) : null}
-              </span>
-              <span>{t(`collaboration.mode.${mode}.description`)}</span>
-            </button>
-          ))}
-        </div>
-
-        {settings?.mode === 'advanced_custom' ? (
-          <label className={styles.endpoint}>
-            <span>{t('collaboration.customEndpoint')}</span>
-            <input
-              className={controls.input}
-              value={endpoint}
-              placeholder="https://rendezvous.example.com"
-              spellCheck={false}
-              autoComplete="off"
-              onChange={(event) => setEndpoint(event.target.value)}
-            />
-          </label>
-        ) : null}
-
-        <div className={styles.notice}>
-          <ShieldCheck size={16} aria-hidden="true" /> {t('collaboration.privacyTitle')}
-          <ul>
-            <li>{t('collaboration.privacyVisible')}</li>
-            <li>{t('collaboration.privacyHidden')}</li>
-            <li>{t('collaboration.noCloudflareAccount')}</li>
-          </ul>
-        </div>
-
-        <div className={styles.statusRow}>
-          <span>
-            <Radio size={15} aria-hidden="true" /> {t('collaboration.statusLabel')}
-          </span>
-          <strong>{t(`collaboration.state.${activation}`)}</strong>
-        </div>
-        {status && !status.endpointConfigured && settings?.mode === 'alethe_managed' ? (
-          <p className={styles.error}>{t('collaboration.managedEndpointUnavailable')}</p>
-        ) : null}
-        {error ? <p className={styles.error}>{t('collaboration.connectionError')}</p> : null}
-
-        <div className={styles.actions}>
-          {settings?.enabled ? (
-            <button
-              type="button"
-              className={controls.btn}
-              disabled={busy}
-              onClick={() => void disable()}
-            >
-              {busy ? <Loader2 size={14} /> : null}
-              {t('collaboration.disable')}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={`${controls.btn} ${controls.btnPrimary}`}
-              disabled={
-                busy ||
-                !settings ||
-                settings.mode === 'local_only' ||
-                (settings.mode === 'advanced_custom' && !endpoint.trim())
-              }
-              onClick={() => void enable()}
-            >
-              {busy ? <Loader2 size={14} /> : null}
-              {t('collaboration.enable')}
-            </button>
-          )}
-        </div>
-        <p className={styles.enableHint}>{t('collaboration.enableHint')}</p>
-
-        <div className={styles.accessCenter}>
-          <div className={styles.accessHeading}>
-            <span>
-              <Bell size={15} aria-hidden="true" /> {t('collaboration.access.title')}
-            </span>
-            <small>{t('collaboration.access.description')}</small>
+    <>
+      <SettingsSection
+        id="collaboration-service"
+        title={t('collaboration.settingsTitle')}
+        description={t('collaboration.settingsDescription')}
+      >
+        <div className={styles.stack}>
+          <div className={styles.modeGrid}>
+            {modes.map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={`${styles.modeButton} ${settings?.mode === mode ? styles.modeActive : ''}`}
+                disabled={busy}
+                onClick={() => void selectMode(mode)}
+              >
+                <span className={styles.modeHeading}>
+                  <strong>{t(`collaboration.mode.${mode}.title`)}</strong>
+                  {mode === 'alethe_managed' ? (
+                    <span className={styles.modeBadge}>{t('collaboration.recommendedBadge')}</span>
+                  ) : null}
+                </span>
+                <span>{t(`collaboration.mode.${mode}.description`)}</span>
+              </button>
+            ))}
           </div>
-          {accessRecords.length === 0 ? (
-            <p className={styles.accessEmpty}>{t('collaboration.access.empty')}</p>
-          ) : (
-            <div className={styles.accessList}>
-              {accessRecords.map((record) => (
-                <article
-                  key={record.id}
-                  className={`${styles.accessItem} ${record.unread ? styles.accessUnread : ''}`}
-                >
-                  <div className={styles.accessCopy}>
-                    <span>{t(`collaboration.access.category.${record.category}`)}</span>
-                    <strong>{t(`collaboration.access.kind.${record.kind}`)}</strong>
-                  </div>
-                  <div className={styles.accessActions}>
-                    {record.unread ? (
+
+          {settings?.mode === 'advanced_custom' ? (
+            <>
+              <CloudflareGuidedDeploy onDeployed={(url) => setEndpoint(url)} />
+              <label className={styles.endpoint}>
+                <span>{t('collaboration.customEndpoint')}</span>
+                <input
+                  className={controls.input}
+                  value={endpoint}
+                  placeholder="https://rendezvous.example.com"
+                  spellCheck={false}
+                  autoComplete="off"
+                  onChange={(event) => setEndpoint(event.target.value)}
+                />
+              </label>
+            </>
+          ) : null}
+
+          <div className={styles.notice}>
+            <ShieldCheck size={16} aria-hidden="true" /> {t('collaboration.privacyTitle')}
+            <ul>
+              <li>{t('collaboration.privacyVisible')}</li>
+              <li>{t('collaboration.privacyHidden')}</li>
+              <li>{t('collaboration.noCloudflareAccount')}</li>
+            </ul>
+          </div>
+
+          <div className={styles.statusRow}>
+            <span>
+              <Radio size={15} aria-hidden="true" /> {t('collaboration.statusLabel')}
+            </span>
+            <strong>{t(`collaboration.state.${activation}`)}</strong>
+          </div>
+          {status && !status.endpointConfigured && settings?.mode === 'alethe_managed' ? (
+            <p className={styles.error}>{t('collaboration.managedEndpointUnavailable')}</p>
+          ) : null}
+          {error ? <p className={styles.error}>{t('collaboration.connectionError')}</p> : null}
+
+          <div className={styles.actions}>
+            {settings?.enabled ? (
+              <button
+                type="button"
+                className={controls.btn}
+                disabled={busy}
+                onClick={() => void disable()}
+              >
+                {busy ? <Loader2 size={14} /> : null}
+                {t('collaboration.disable')}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={`${controls.btn} ${controls.btnPrimary}`}
+                disabled={
+                  busy ||
+                  !settings ||
+                  settings.mode === 'local_only' ||
+                  (settings.mode === 'advanced_custom' && !endpoint.trim())
+                }
+                onClick={() => void enable()}
+              >
+                {busy ? <Loader2 size={14} /> : null}
+                {t('collaboration.enable')}
+              </button>
+            )}
+          </div>
+          <p className={styles.enableHint}>{t('collaboration.enableHint')}</p>
+
+          <div className={styles.accessCenter}>
+            <div className={styles.accessHeading}>
+              <span>
+                <Bell size={15} aria-hidden="true" /> {t('collaboration.access.title')}
+              </span>
+              <small>{t('collaboration.access.description')}</small>
+            </div>
+            {accessRecords.length === 0 ? (
+              <p className={styles.accessEmpty}>{t('collaboration.access.empty')}</p>
+            ) : (
+              <div className={styles.accessList}>
+                {accessRecords.map((record) => (
+                  <article
+                    key={record.id}
+                    className={`${styles.accessItem} ${record.unread ? styles.accessUnread : ''}`}
+                  >
+                    <div className={styles.accessCopy}>
+                      <span>{t(`collaboration.access.category.${record.category}`)}</span>
+                      <strong>{t(`collaboration.access.kind.${record.kind}`)}</strong>
+                    </div>
+                    <div className={styles.accessActions}>
+                      {record.unread ? (
+                        <button
+                          type="button"
+                          className={controls.btn}
+                          disabled={accessBusy === record.id}
+                          onClick={() => void updateAccess(record, 'read')}
+                        >
+                          <Eye size={13} aria-hidden="true" />
+                          {t('collaboration.access.read')}
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         className={controls.btn}
                         disabled={accessBusy === record.id}
-                        onClick={() => void updateAccess(record, 'read')}
+                        onClick={() => void updateAccess(record, 'defer')}
                       >
-                        <Eye size={13} aria-hidden="true" />
-                        {t('collaboration.access.read')}
+                        <Clock3 size={13} aria-hidden="true" />
+                        {t('collaboration.access.later')}
                       </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      className={controls.btn}
-                      disabled={accessBusy === record.id}
-                      onClick={() => void updateAccess(record, 'defer')}
-                    >
-                      <Clock3 size={13} aria-hidden="true" />
-                      {t('collaboration.access.later')}
-                    </button>
-                    <button
-                      type="button"
-                      className={controls.btn}
-                      disabled={accessBusy === record.id}
-                      onClick={() => void updateAccess(record, 'dismiss')}
-                    >
-                      <X size={13} aria-hidden="true" />
-                      {t('collaboration.access.dismiss')}
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
+                      <button
+                        type="button"
+                        className={controls.btn}
+                        disabled={accessBusy === record.id}
+                        onClick={() => void updateAccess(record, 'dismiss')}
+                      >
+                        <X size={13} aria-hidden="true" />
+                        {t('collaboration.access.dismiss')}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    </SettingsSection>
+      </SettingsSection>
+      <P2pFriendTestPanel />
+    </>
   )
 }

@@ -1,11 +1,14 @@
 .container {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  width: 100%;
   height: 100%;
   padding: 12px;
   gap: 16px;
   overflow-y: auto;
   color: var(--fg);
+  box-sizing: border-box;
 }
 
 .header {
@@ -332,6 +335,7 @@
 }
 
 .deviceCard {
+  min-width: 0;
   background: var(--bg-sunken);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -420,9 +424,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+  min-width: 0;
 }
 
 .deviceName {
+  min-width: 0;
+  flex: 1;
   font-size: 14px;
   font-weight: 600;
   color: var(--fg);

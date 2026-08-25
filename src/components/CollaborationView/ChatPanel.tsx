@@ -1,31 +1,47 @@
-import { Loader2, MessageSquare, Paperclip, Send, Terminal } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { Loader2, MessageSquare, Paperclip, Send, Terminal, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { useT } from '../../lib/i18n'
 import {
+  type Conversation,
+  type DecryptedMessage,
+  type MessageContentType,
   syncEnsureProjectConversation,
   syncListDecryptedMessages,
   syncSendMessage,
   syncUploadAttachment,
-  type Conversation,
-  type DecryptedMessage,
-  type MessageContentType,
 } from '../../lib/api/syncChat'
+import { useT } from '../../lib/i18n'
 import { syncLocalIdentity } from '../../lib/tauri'
 import styles from './ChatPanel.module.css'
 
 const POLL_INTERVAL_MS = 4_000
-const CONTENT_TYPES: MessageContentType[] = [
-  'text',
-  'code_block',
-  'command',
-  'test_result',
-  'bug_report',
+
+const SLASH_COMMANDS: { keyword: string; type: MessageContentType }[] = [
+  { keyword: 'codigo', type: 'code_block' },
+  { keyword: 'comando', type: 'command' },
+  { keyword: 'teste', type: 'test_result' },
+  { keyword: 'bug', type: 'bug_report' },
+  { keyword: 'texto', type: 'text' },
 ]
 
 function initialsFor(deviceId: string) {
   const trimmed = deviceId.replace(/^dev_/, '')
   return trimmed.slice(0, 2).toUpperCase()
+}
+
+interface SlashToken {
+  start: number
+  end: number
+  query: string
+}
+
+function findSlashToken(value: string, cursor: number): SlashToken | null {
+  let start = cursor
+  while (start > 0 && value[start - 1] !== ' ') start--
+  let end = cursor
+  while (end < value.length && value[end] !== ' ') end++
+  if (value[start] !== '/') return null
+  return { start, end, query: value.slice(start + 1, end) }
 }
 
 export function ChatPanel({ projectId }: { projectId: string }) {
@@ -38,8 +54,43 @@ export function ChatPanel({ projectId }: { projectId: string }) {
   const [contentType, setContentType] = useState<MessageContentType>('text')
   const [sending, setSending] = useState(false)
   const [attaching, setAttaching] = useState(false)
+  const [slashHighlight, setSlashHighlight] = useState(0)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
+  const textInputRef = useRef<HTMLInputElement | null>(null)
+
+  const [slashToken, setSlashToken] = useState<SlashToken | null>(null)
+  const slashMatches = useMemo(() => {
+    if (!slashToken) return []
+    return SLASH_COMMANDS.filter((option) =>
+      option.keyword.startsWith(slashToken.query.toLowerCase()),
+    )
+  }, [slashToken])
+  const slashMenuOpen = slashToken !== null
+
+  useEffect(() => {
+    setSlashHighlight(0)
+  }, [slashToken?.start, slashToken?.end, slashToken?.query])
+
+  const updateSlashToken = (value: string, cursor: number) => {
+    setSlashToken(findSlashToken(value, cursor))
+  }
+
+  const applySlashCommand = (type: MessageContentType) => {
+    if (!slashToken) return
+    setContentType(type)
+    const before = draft.slice(0, slashToken.start)
+    const after = draft.slice(slashToken.end)
+    const nextDraft = `${before}${after}`
+    setDraft(nextDraft)
+    setSlashToken(null)
+    requestAnimationFrame(() => {
+      const input = textInputRef.current
+      if (!input) return
+      input.focus()
+      input.setSelectionRange(before.length, before.length)
+    })
+  }
 
   useEffect(() => {
     let active = true
@@ -101,6 +152,7 @@ export function ChatPanel({ projectId }: { projectId: string }) {
       setMessages((current) => [...current, message])
       setDraft('')
       setContentType('text')
+      setSlashToken(null)
     } catch {
       setError(true)
     } finally {
@@ -215,24 +267,92 @@ export function ChatPanel({ projectId }: { projectId: string }) {
       <div className={styles.syncNotice}>{t('chat.localOnlyNotice')}</div>
 
       <div className={styles.composer}>
-        <select
-          className={styles.typeSelect}
-          value={contentType}
-          onChange={(event) => setContentType(event.target.value as MessageContentType)}
-        >
-          {CONTENT_TYPES.map((option) => (
-            <option key={option} value={option}>
-              {t(`chat.contentType.${option}`)}
-            </option>
-          ))}
-        </select>
+        {slashMenuOpen ? (
+          <div className={styles.slashMenu}>
+            <div className={styles.slashMenuHint}>{t('chat.slashHint')}</div>
+            {slashMatches.length === 0 ? (
+              <div className={styles.slashMenuEmpty}>{t('chat.slashNoMatch')}</div>
+            ) : (
+              slashMatches.map((option, index) => (
+                <button
+                  key={option.keyword}
+                  type="button"
+                  className={`${styles.slashOption} ${index === slashHighlight ? styles.slashOptionActive : ''}`}
+                  onMouseEnter={() => setSlashHighlight(index)}
+                  onClick={() => applySlashCommand(option.type)}
+                >
+                  <span className={styles.slashOptionKeyword}>/{option.keyword}</span>
+                  <span className={styles.slashOptionLabel}>
+                    {t(`chat.contentType.${option.type}`)}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        ) : null}
+        {contentType !== 'text' ? (
+          <span className={styles.activeTypePill}>
+            {t(`chat.contentType.${contentType}`)}
+            <button
+              type="button"
+              className={styles.activeTypePillClear}
+              onClick={() => setContentType('text')}
+              title={t('chat.slashClear')}
+            >
+              <X size={11} />
+            </button>
+          </span>
+        ) : null}
         <div className={styles.inputPill}>
           <input
+            ref={textInputRef}
             className={styles.textInput}
             value={draft}
             placeholder={t('chat.composerPlaceholder')}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => {
+              const { value, selectionStart } = event.target
+              setDraft(value)
+              updateSlashToken(value, selectionStart ?? value.length)
+            }}
+            onClick={(event) => {
+              const { value, selectionStart } = event.currentTarget
+              updateSlashToken(value, selectionStart ?? value.length)
+            }}
+            onKeyUp={(event) => {
+              if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') {
+                const { value, selectionStart } = event.currentTarget
+                updateSlashToken(value, selectionStart ?? value.length)
+              }
+            }}
             onKeyDown={(event) => {
+              if (slashMenuOpen) {
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault()
+                  setSlashHighlight((current) => (current + 1) % Math.max(slashMatches.length, 1))
+                  return
+                }
+                if (event.key === 'ArrowUp') {
+                  event.preventDefault()
+                  setSlashHighlight(
+                    (current) =>
+                      (current - 1 + Math.max(slashMatches.length, 1)) %
+                      Math.max(slashMatches.length, 1),
+                  )
+                  return
+                }
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  setSlashToken(null)
+                  return
+                }
+                if (event.key === 'Enter' || event.key === 'Tab') {
+                  event.preventDefault()
+                  const match = slashMatches[slashHighlight]
+                  if (match) applySlashCommand(match.type)
+                  return
+                }
+                return
+              }
               if (event.key === 'Enter') void send()
             }}
           />

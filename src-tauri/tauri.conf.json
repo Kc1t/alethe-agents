@@ -53,6 +53,12 @@
     "active": true,
     "createUpdaterArtifacts": true,
     "targets": "all",
+    "resources": {
+      "../services/rendezvous-cloudflare/src": "rendezvous-cloudflare/src",
+      "../services/rendezvous-cloudflare/package.json": "rendezvous-cloudflare/package.json",
+      "../services/rendezvous-cloudflare/wrangler.jsonc": "rendezvous-cloudflare/wrangler.jsonc",
+      "../services/rendezvous-cloudflare/tsconfig.json": "rendezvous-cloudflare/tsconfig.json"
+    },
     "publisher": "Kauã Miguel",
     "shortDescription": "Terminal multiplexer GUI",
     "longDescription": "Alethe is a Windows-first terminal multiplexer GUI: projects on the left, split-pane terminals on the right, with sub-tabs per pane.",
