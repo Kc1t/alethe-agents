@@ -75,13 +75,30 @@ export function computeVisibleFocusedPtyIds(): PtyVisibilitySets {
 }
 
 function subscribePtyVisibility(callback: () => void): () => void {
-  const unsubProjects = useProjectsStore.subscribe(() => {
-    cached = null
-    callback()
+  // Only invalidate the visibility cache when the fields that drive the
+  // computation actually change, not on every store mutation (recordIo,
+  // memory samples, toast pushes, etc.).
+  const unsubProjects = useProjectsStore.subscribe((state, prevState) => {
+    if (
+      state.preferences.isolatedPaneId !== prevState.preferences.isolatedPaneId ||
+      state.projects !== prevState.projects ||
+      state.workspace.containers !== prevState.workspace.containers
+    ) {
+      cached = null
+      callback()
+    }
   })
-  const unsubUi = useUiStore.subscribe(() => {
-    cached = null
-    callback()
+  const unsubUi = useUiStore.subscribe((state, prevState) => {
+    if (
+      state.activeView !== prevState.activeView ||
+      state.focusedTerminalId !== prevState.focusedTerminalId ||
+      state.activeTerminal?.terminalId !== prevState.activeTerminal?.terminalId ||
+      state.keptAlivePaneIds !== prevState.keptAlivePaneIds ||
+      state.agentCanvasSession?.ptyId !== prevState.agentCanvasSession?.ptyId
+    ) {
+      cached = null
+      callback()
+    }
   })
   return () => {
     unsubProjects()
