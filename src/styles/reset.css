@@ -171,7 +171,6 @@ input[type='radio']:disabled {
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
-  transition: background 0.2s ease;
 }
 
 *::-webkit-scrollbar-thumb:hover {
