@@ -1618,7 +1618,12 @@ pub fn install_kill_on_close_guard() {
 
 #[cfg(not(windows))]
 pub fn install_kill_on_close_guard() {
-    let _ = JOB_GUARD_ACTIVE.set(false);
+    // On Linux there is no equivalent of a Windows Job Object. Instead, the shutdown
+    // handler in lib.rs calls kill_all_sessions_background() on ExitRequested, which
+    // now works thanks to the SIGTERM/SIGKILL process-group kill in kill_process_tree.
+    // On the next startup, sweep_orphans_from_previous_session() kills any grandchild
+    // processes that escaped the previous shutdown.
+    let _ = JOB_GUARD_ACTIVE.set(true);
 }
 
 #[cfg(test)]
