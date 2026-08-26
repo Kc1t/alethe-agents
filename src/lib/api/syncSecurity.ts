@@ -316,6 +316,17 @@ export async function syncListChatContacts(): Promise<SyncChatContact[]> {
   return webApiFetch<SyncChatContact[]>('/api/sync/security/chat-contacts/list')
 }
 
+export async function syncRemoveChatContact(accountRoute: string): Promise<void> {
+  if (isTauriEnv()) {
+    await invoke('sync_remove_chat_contact', { accountRoute })
+    return
+  }
+  await webApiFetch('/api/sync/security/chat-contacts/remove', {
+    method: 'POST',
+    body: JSON.stringify({ accountRoute }),
+  })
+}
+
 /**
  * Desktop-only (same reasoning as `syncSealChatRelayMessage`): seals a "it's me, and here's my
  * single-use invite token back" acknowledgment for the issuer of a pairing code, so the issuer's

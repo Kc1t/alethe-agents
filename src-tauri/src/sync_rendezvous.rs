@@ -703,6 +703,44 @@ pub(crate) async fn validate_endpoint_network_at(
     Ok(())
 }
 
+/// Automatically configures this device's rendezvous endpoint from one discovered elsewhere (a
+/// chat contact's pairing code, see `sync_remote_invitation::PairingCode::rendezvous_endpoint`) —
+/// closes the gap where two people pairing had no way to reach each other unless both had already
+/// deployed their own Cloudflare Worker and manually copy-pasted the URL between them. Never
+/// overrides a device that already has its own endpoint configured and enabled; this is purely a
+/// convenience for a device that doesn't have one yet, not a way to hijack an existing setup.
+#[tauri::command]
+pub async fn sync_adopt_discovered_endpoint(
+    app: tauri::AppHandle,
+    endpoint: String,
+) -> Result<(), String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    adopt_discovered_endpoint_at(&data_root, endpoint).await
+}
+
+pub(crate) async fn adopt_discovered_endpoint_at(
+    data_root: &std::path::Path,
+    endpoint: String,
+) -> Result<(), String> {
+    let now = crate::provider_common::now_ms();
+    let current =
+        crate::sync_activation::load_settings_at(data_root, now).map_err(|error| error.to_string())?;
+    if current.enabled && current.validated_endpoint.is_some() {
+        return Ok(());
+    }
+    crate::sync_activation::set_mode_at(
+        data_root,
+        crate::sync_activation::ServiceMode::AdvancedCustom,
+        Some(endpoint.clone()),
+        now,
+    )
+    .map_err(|error| error.to_string())?;
+    validate_endpoint_network_at(data_root, endpoint).await?;
+    crate::sync_activation::enable_service_at(data_root, crate::provider_common::now_ms())
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

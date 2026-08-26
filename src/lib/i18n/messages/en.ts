@@ -74,6 +74,9 @@ export const en = {
   'chat.contacts.saveFailed': 'Could not save this contact.',
   'chat.contacts.listFailed': 'Could not load your chat contacts.',
   'chat.contacts.empty': 'Add a chat contact to start a conversation — no project required.',
+  'chat.contacts.remove': 'Remove contact',
+  'chat.contacts.removeConfirm':
+    'Remove this contact? Your message history stays, but you will no longer be able to auto-connect with them.',
   'tasks.newTitlePlaceholder': 'Task title…',
   'tasks.newBodyPlaceholder': 'Description (optional)…',
   'tasks.add': 'Add',

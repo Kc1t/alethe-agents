@@ -76,6 +76,9 @@ export const ptBR: Record<MessageKey, string> = {
   'chat.contacts.saveFailed': 'Não foi possível salvar esse contato.',
   'chat.contacts.listFailed': 'Não foi possível carregar seus contatos de chat.',
   'chat.contacts.empty': 'Adicione um contato de chat para começar a conversar — sem precisar de projeto.',
+  'chat.contacts.remove': 'Remover contato',
+  'chat.contacts.removeConfirm':
+    'Remover este contato? Seu histórico de mensagens continua salvo, mas vocês não vão mais se conectar automaticamente.',
   'tasks.newTitlePlaceholder': 'Título da tarefa…',
   'tasks.newBodyPlaceholder': 'Descrição (opcional)…',
   'tasks.add': 'Adicionar',

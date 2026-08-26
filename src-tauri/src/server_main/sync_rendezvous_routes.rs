@@ -16,6 +16,7 @@ pub fn router() -> Router {
         .route("/api/sync/rendezvous/send", post(send))
         .route("/api/sync/rendezvous/events", get(events))
         .route("/api/sync/rendezvous/validate", post(validate))
+        .route("/api/sync/rendezvous/adopt-discovered-endpoint", post(adopt_discovered_endpoint))
 }
 
 async fn connect(Extension(runtime): Extension<Arc<ServerRuntime>>) -> Response {
@@ -81,6 +82,16 @@ async fn validate(
 ) -> Response {
     respond(
         crate::sync_rendezvous::validate_endpoint_network_at(runtime.data_root(), body.endpoint)
+            .await,
+    )
+}
+
+async fn adopt_discovered_endpoint(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<ValidateBody>,
+) -> Response {
+    respond(
+        crate::sync_rendezvous::adopt_discovered_endpoint_at(runtime.data_root(), body.endpoint)
             .await,
     )
 }

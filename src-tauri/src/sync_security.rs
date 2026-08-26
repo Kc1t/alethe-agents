@@ -1520,6 +1520,15 @@ pub(crate) fn list_chat_contacts_at(data_root: &Path) -> Result<Vec<ChatContactR
     Ok(load_at(data_root)?.chat_contacts)
 }
 
+/// Removes a chat contact by `account_route`. Only ever touches `chat_contacts` — leaves any
+/// existing `Direct` conversation and its messages untouched (removing a contact stops future P2P
+/// auto-connect/trust for them, it doesn't delete chat history).
+pub(crate) fn remove_chat_contact_at(data_root: &Path, account_route: &str) -> Result<(), String> {
+    let mut document = load_at(data_root)?;
+    document.chat_contacts.retain(|contact| contact.account_route != account_route);
+    save_at(data_root, &document)
+}
+
 const CHAT_INVITE_TOKEN_TTL_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 /// Creates a fresh single-use invite token, first invalidating every previous unconsumed token
@@ -1590,6 +1599,12 @@ pub fn sync_add_chat_contact(
 pub fn sync_list_chat_contacts(app: tauri::AppHandle) -> Result<Vec<ChatContactRecord>, String> {
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     list_chat_contacts_at(&data_root)
+}
+
+#[tauri::command]
+pub fn sync_remove_chat_contact(app: tauri::AppHandle, account_route: String) -> Result<(), String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    remove_chat_contact_at(&data_root, &account_route)
 }
 
 /// The owner identity a collaborator needs to seal a `sync_suggest_project_collaborator` proposal:

@@ -40,6 +40,13 @@ pub struct PairingCode {
     /// that's what lets the issuer auto-add them back without ever having to paste anything.
     #[serde(default)]
     pub invite_token: String,
+    /// This device's own validated rendezvous endpoint (its personal Cloudflare Worker URL), if
+    /// one is configured and enabled — `None` otherwise. Carrying it here is what lets the other
+    /// side reach this device without deploying (or even knowing about) a Worker of their own:
+    /// there is no central directory (see `ADR-0002`), so without this field embedded in the
+    /// pairing code itself, two people would have no way to discover which endpoint to share.
+    #[serde(default)]
+    pub rendezvous_endpoint: Option<String>,
 }
 
 /// Exports this device's own pairing code, base64url-encoded JSON ready to paste to the other
@@ -57,6 +64,15 @@ pub fn sync_export_pairing_code(app: tauri::AppHandle) -> Result<String, String>
         .ok_or_else(|| "security_device_missing".to_string())?;
     let invite_token =
         crate::sync_security::generate_chat_invite_token_at(&data_root, crate::provider_common::now_ms())?;
+    let activation = crate::sync_activation::load_settings_at(&data_root, crate::provider_common::now_ms())
+        .ok();
+    let rendezvous_endpoint = activation.and_then(|settings| {
+        if settings.enabled {
+            settings.validated_endpoint
+        } else {
+            None
+        }
+    });
     let code = PairingCode {
         account_id: account.account_id.clone(),
         account_route: crate::sync_protocol::account_route_id(&account.account_id),
@@ -66,6 +82,7 @@ pub fn sync_export_pairing_code(app: tauri::AppHandle) -> Result<String, String>
         agreement_bound_at_ms: device.agreement_key_bound_at_ms.unwrap_or_default(),
         agreement_binding_signature: device.agreement_key_binding_signature.clone().unwrap_or_default(),
         invite_token,
+        rendezvous_endpoint,
     };
     let json = serde_json::to_vec(&code).map_err(|_| "pairing_code_encode_failed".to_string())?;
     Ok(URL_SAFE_NO_PAD.encode(json))

@@ -27,6 +27,7 @@ pub fn router() -> Router {
         .route("/api/sync/security/capabilities", get(capabilities))
         .route("/api/sync/security/chat-contacts/add", post(add_chat_contact))
         .route("/api/sync/security/chat-contacts/list", get(list_chat_contacts))
+        .route("/api/sync/security/chat-contacts/remove", post(remove_chat_contact))
         .route(
             "/api/sync/security/collaborator-suggestion/prepare",
             post(prepare_collaborator_suggestion),
@@ -63,6 +64,27 @@ async fn add_chat_contact(
                     added_at_ms: now_ms(),
                 },
             )
+        })
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|result| result),
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RemoveChatContactBody {
+    account_route: String,
+}
+
+async fn remove_chat_contact(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<RemoveChatContactBody>,
+) -> Response {
+    let data_root = runtime.data_root().to_path_buf();
+    respond(
+        tokio::task::spawn_blocking(move || {
+            crate::sync_security::remove_chat_contact_at(&data_root, &body.account_route)
         })
         .await
         .map_err(|error| error.to_string())

@@ -59,11 +59,22 @@
   gap: 2px;
 }
 
+.conversationItem {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.conversationItem:hover .removeContactButton {
+  opacity: 1;
+}
+
 .conversationRow {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
+  min-width: 0;
   padding: 7px 8px;
   border: none;
   border-radius: var(--radius-sm);
@@ -72,6 +83,26 @@
   cursor: pointer;
   font-size: 12.5px;
   text-align: left;
+}
+
+.removeContactButton {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  opacity: 0;
+}
+
+.removeContactButton:hover {
+  opacity: 1;
+  color: var(--status-offline);
 }
 
 .conversationRow:hover {

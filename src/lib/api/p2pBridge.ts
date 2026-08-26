@@ -17,6 +17,8 @@ export type PairingCode = {
   agreementBindingSignature: string
   /** Single-use invite token embedded by the issuer — see `syncSealChatContactAck`. */
   inviteToken: string
+  /** The issuer's own rendezvous endpoint (Worker URL), if they have one configured/enabled. */
+  rendezvousEndpoint: string | null
 }
 
 /** Exports this device's own pairing code (public key material only) to share out of band with

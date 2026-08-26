@@ -1,13 +1,14 @@
 import { Check, Copy, Loader2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { exportPairingCode, parsePairingCode, type PairingCode } from '../../lib/api/p2pBridge'
-import { syncAddChatContact, syncSealChatContactAck } from '../../lib/api/syncSecurity'
+import { exportPairingCode, type PairingCode, parsePairingCode } from '../../lib/api/p2pBridge'
 import {
+  adoptDiscoveredRendezvousEndpoint,
   connectRendezvous,
   sendRendezvousFrame,
   verifyDiscoveredDevice,
 } from '../../lib/api/syncRendezvous'
+import { syncAddChatContact, syncSealChatContactAck } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
 import { syncLocalIdentity } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -90,6 +91,12 @@ export function AddChatContactModal({
       // their device adds us back too, without them ever having to paste a second code. This is
       // best-effort — the local contact above is already saved either way.
       void sendAckToIssuer().catch(() => undefined)
+      // If we don't already have our own rendezvous endpoint set up and the issuer shared theirs,
+      // adopt it automatically — otherwise this device would have no way to actually reach them
+      // (there's no central directory; see `sync_remote_invitation.rs`'s `PairingCode` doc).
+      if (verified.rendezvousEndpoint) {
+        void adoptDiscoveredRendezvousEndpoint(verified.rendezvousEndpoint).catch(() => undefined)
+      }
       onAdded()
     } catch {
       setError(t('chat.contacts.saveFailed'))

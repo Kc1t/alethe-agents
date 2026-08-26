@@ -76,6 +76,20 @@ export async function validateRendezvousEndpoint(endpoint: string): Promise<void
   })
 }
 
+/**
+ * Adopts a rendezvous endpoint discovered from someone else (a chat contact's pairing code) as
+ * this device's own, but only if this device doesn't already have one configured and enabled —
+ * never overrides an existing setup. Best-effort: the caller should ignore failures, since the
+ * contact was still added successfully either way.
+ */
+export async function adoptDiscoveredRendezvousEndpoint(endpoint: string): Promise<void> {
+  if (isTauriEnv()) return invoke('sync_adopt_discovered_endpoint', { endpoint })
+  return webApiFetch('/api/sync/rendezvous/adopt-discovered-endpoint', {
+    method: 'POST',
+    body: JSON.stringify({ endpoint }),
+  })
+}
+
 export async function connectRendezvous(): Promise<RendezvousStatus> {
   if (isTauriEnv()) return invoke('sync_rendezvous_connect')
   return webApiFetch('/api/sync/rendezvous/connect', { method: 'POST' })

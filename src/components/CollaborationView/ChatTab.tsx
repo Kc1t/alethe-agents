@@ -1,4 +1,4 @@
-import { Hash, Plus } from 'lucide-react'
+import { Hash, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { drainRendezvousEvents } from '../../lib/api/syncRendezvous'
@@ -6,6 +6,7 @@ import {
   type SyncChatContact,
   syncListChatContacts,
   syncOpenChatContactAck,
+  syncRemoveChatContact,
 } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
 import { getProfileInitial } from '../../lib/profile'
@@ -30,6 +31,19 @@ export function ChatTab({
     projectId && projectName ? { kind: 'project', projectId, projectName } : null,
   )
   const [addingContact, setAddingContact] = useState(false)
+
+  const removeContact = async (contact: SyncChatContact) => {
+    if (!window.confirm(t('chat.contacts.removeConfirm'))) return
+    try {
+      await syncRemoveChatContact(contact.accountRoute)
+      if (selected?.kind === 'direct' && selected.contactAccountRoute === contact.accountRoute) {
+        setSelected(projectId && projectName ? { kind: 'project', projectId, projectName } : null)
+      }
+      reloadContacts()
+    } catch {
+      setContactsError(true)
+    }
+  }
 
   const reloadContacts = () => {
     syncListChatContacts()
@@ -127,7 +141,7 @@ export function ChatTab({
             const active =
               selected?.kind === 'direct' && selected.contactAccountRoute === contact.accountRoute
             return (
-              <li key={contact.accountRoute}>
+              <li key={contact.accountRoute} className={styles.conversationItem}>
                 <button
                   type="button"
                   className={`${styles.conversationRow} ${active ? styles.conversationRowActive : ''}`}
@@ -145,6 +159,14 @@ export function ChatTab({
                     className={styles.contactAvatar}
                   />
                   <span className={styles.conversationName}>{contact.displayLabel}</span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.removeContactButton}
+                  title={t('chat.contacts.remove')}
+                  onClick={() => void removeContact(contact)}
+                >
+                  <Trash2 size={12} />
                 </button>
               </li>
             )
