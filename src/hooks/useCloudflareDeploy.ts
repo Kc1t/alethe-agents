@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { generateCloudflareSecret, getCloudflareDeployWorkdir } from '../lib/api/cloudflareDeploy'
+import {
+  generateCloudflareSecret,
+  getCloudflareDeployWorkdir,
+  probeCloudflareState,
+} from '../lib/api/cloudflareDeploy'
 import { killPty, listenPtyData, listenPtyExit, spawnPty, writePty } from '../lib/tauri'
 
 export type CloudflareDeployStep =
@@ -80,6 +84,17 @@ export function useCloudflareDeploy() {
     try {
       const workdir = await getCloudflareDeployWorkdir()
       const secret = await generateCloudflareSecret()
+      // `wrangler login` always opens a fresh browser OAuth flow unconditionally, even when
+      // already authenticated — it never checks for a still-valid existing token first the way
+      // `wrangler whoami` does. Without this check, every single "Publicar" click forced the user
+      // through the browser again, even right after a previous successful login in the same
+      // session — skip the login step entirely when `probeCloudflareState` confirms one isn't
+      // needed.
+      const probe = await probeCloudflareState().catch(() => ({
+        installed: false,
+        loggedIn: false,
+      }))
+      const alreadyLoggedIn = probe.installed && probe.loggedIn
       if (disposedRef.current) return
 
       const ptyId = `cloudflare-deploy_${Date.now()}`
@@ -183,9 +198,10 @@ export function useCloudflareDeploy() {
       const command = [
         'npm install',
         'echo "__ALETHE_STEP_LOGIN__"',
-        // Not piped — see the `listenPtyData` callback above for why the "install Cloudflare
-        // skills" prompt is answered live instead, by typing into the still-open PTY.
-        'npx wrangler login',
+        // Skipped entirely when already logged in (see the `probeCloudflareState` check above) —
+        // otherwise not piped, see the `listenPtyData` callback above for why the "install
+        // Cloudflare skills" prompt is answered live instead, by typing into the still-open PTY.
+        ...(alreadyLoggedIn ? [] : ['npx wrangler login']),
         'echo "__ALETHE_STEP_SECRET__"',
         `echo ${secret} | npx wrangler secret put ABUSE_HASH_KEY`,
         'echo "__ALETHE_STEP_DEPLOY__"',
