@@ -1675,7 +1675,9 @@ mod tests {
 
     #[test]
     fn a_kill_never_runs_while_the_child_lock_is_held() {
-        let source = include_str!("pty.rs");
+        // Normalize line endings so the scan is independent of the checkout
+        // (Windows/CRLF checkouts would otherwise break the "\n}\n" search).
+        let source = include_str!("pty.rs").replace("\r\n", "\n");
         // Only scan the non-test portion of the file.
         let test_mod = source.find("#[cfg(test)]").unwrap_or(source.len());
         let code = &source[..test_mod];
@@ -1687,7 +1689,7 @@ mod tests {
         let skip_end = code[skip_start..]
             .find("\n}\n")
             .map(|p| skip_start + p + 3)
-            .unwrap_or(0);
+            .expect("kill_tree_without_holding_child has a closing brace");
 
         for (index, _) in code.match_indices("child.lock()") {
             if index >= skip_start && index < skip_end {
