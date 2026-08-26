@@ -1,6 +1,7 @@
 import { Loader2, MessageSquare, Paperclip, Send, Terminal, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { useP2pAutoConnect } from '../../hooks/useP2pAutoConnect'
 import { p2pDrainFrames } from '../../lib/api/p2pBridge'
 import {
   type Conversation,
@@ -16,14 +17,13 @@ import {
   syncUploadAttachment,
 } from '../../lib/api/syncChat'
 import {
-  getRendezvousStatus,
   drainRendezvousEvents,
+  getRendezvousStatus,
   sendRendezvousFrame,
 } from '../../lib/api/syncRendezvous'
 import { useT } from '../../lib/i18n'
 import { getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { syncLocalIdentity } from '../../lib/tauri'
-import { useP2pAutoConnect } from '../../hooks/useP2pAutoConnect'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { Avatar } from '../ui/Avatar'
 import styles from './ChatPanel.module.css'
@@ -165,7 +165,8 @@ export function ChatPanel({ source }: { source: ChatSource }) {
           setMessages(list)
           setError(false)
         }
-      } catch {
+      } catch (cause) {
+        console.error('[chat] syncListDecryptedMessages failed', cause)
         if (active) setError(true)
       }
     }
@@ -182,7 +183,8 @@ export function ChatPanel({ source }: { source: ChatSource }) {
         await poll(conv.conversationId)
         timer = window.setInterval(() => void poll(conv.conversationId), POLL_INTERVAL_MS)
       })
-      .catch(() => {
+      .catch((cause) => {
+        console.error('[chat] failed to resolve conversation', cause)
         if (active) setError(true)
       })
 
@@ -274,7 +276,8 @@ export function ChatPanel({ source }: { source: ChatSource }) {
           await deliverViaRelay(frame, otherMember.accountRoute, otherMember.x25519PublicKey)
         }
       }
-    } catch {
+    } catch (cause) {
+      console.error('[chat] failed to send message', cause)
       setError(true)
     } finally {
       setSending(false)
@@ -333,7 +336,8 @@ export function ChatPanel({ source }: { source: ChatSource }) {
           await deliverViaRelay(frame, otherMember.accountRoute, otherMember.x25519PublicKey)
         }
       }
-    } catch {
+    } catch (cause) {
+      console.error('[chat] failed to attach file', cause)
       setError(true)
     } finally {
       setAttaching(false)
