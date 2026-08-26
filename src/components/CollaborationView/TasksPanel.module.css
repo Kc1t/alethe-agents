@@ -3,11 +3,12 @@
   flex-direction: column;
   flex: 1;
   min-width: 0;
+  min-height: 0;
   width: 100%;
   height: 100%;
   padding: 16px 20px;
   gap: 12px;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .composer {
@@ -62,30 +63,7 @@
   cursor: not-allowed;
 }
 
-.filterRow {
-  display: flex;
-  gap: 6px;
-}
-
-.filterButton {
-  padding: 5px 11px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--fg-muted);
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.filterButtonActive {
-  color: var(--fg);
-  background: var(--bg-sunken);
-  border-color: var(--accent);
-}
-
-.loading,
-.empty {
+.loading {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -99,23 +77,117 @@
   font-size: 12px;
 }
 
-.list {
+.board {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
 }
 
-.item {
+.column {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 260px;
+  min-height: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-sunken);
 }
 
+.columnOver {
+  border-color: var(--accent);
+  background: var(--panel-hover);
+}
+
+.columnHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.columnName {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.columnCount {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 10px;
+}
+
+.columnBody {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.columnEmpty {
+  min-height: 30px;
+}
+
+.dragOverlayCard {
+  padding: 8px 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  color: var(--fg);
+  font-size: 12.5px;
+  box-shadow: var(--shadow-md);
+}
+
+.item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+
 .itemRow {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 6px;
+  padding: 6px 8px;
+}
+
+.dragHandle {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: grab;
+  touch-action: none;
+}
+
+.dragHandle:hover {
+  color: var(--fg);
+}
+
+.dragHandle:active {
+  cursor: grabbing;
 }
 
 .checkButton {
@@ -242,9 +314,9 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin: 0 10px 10px 38px;
-  padding: 10px;
-  background: var(--bg);
+  margin: 0 8px 8px 8px;
+  padding: 8px;
+  background: var(--bg-sunken);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }

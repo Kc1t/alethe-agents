@@ -83,6 +83,7 @@ export const en = {
   'tasks.empty': 'No tasks yet — add one above.',
   'tasks.complete': 'Mark as completed',
   'tasks.reopen': 'Reopen (mark as not completed)',
+  'tasks.dragHandle': 'Drag to move to another column',
   'tasks.commentPlaceholder': 'Write a comment…',
   'tasks.assignTo': 'Assign to',
   'tasks.assigneeSelf': 'Me',

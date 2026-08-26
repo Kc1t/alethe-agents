@@ -1,5 +1,16 @@
-import { Check, ChevronDown, ChevronRight, Loader2, Plus, RotateCcw, Users } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import {
+  DndContext,
+  type DragEndEvent,
+  DragOverlay,
+  type DragStartEvent,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import { Check, ChevronDown, ChevronRight, GripVertical, Loader2, Plus, RotateCcw, Users } from 'lucide-react'
+import { type ReactNode, useEffect, useState } from 'react'
 
 import {
   syncAddTaskComment,
@@ -10,20 +21,18 @@ import {
   syncReopenTask,
   type TaskRecord,
 } from '../../lib/api/syncTasks'
-import { useT } from '../../lib/i18n'
+import { type TFunction, useT } from '../../lib/i18n'
 import { syncLocalIdentity, syncSecuritySnapshot } from '../../lib/tauri'
 import styles from './TasksPanel.module.css'
 
 type Assignable = { accountId: string; label: string }
-
-type Filter = 'all' | 'open' | 'completed'
+type ColumnId = 'all' | 'open' | 'completed'
 
 export function TasksPanel({ projectId }: { projectId: string }) {
   const t = useT()
   const [identity, setIdentity] = useState<{ deviceId: string; accountRoute: string } | null>(null)
   const [tasks, setTasks] = useState<TaskRecord[] | null>(null)
   const [error, setError] = useState(false)
-  const [filter, setFilter] = useState<Filter>('all')
   const [newTitle, setNewTitle] = useState('')
   const [newBody, setNewBody] = useState('')
   const [creating, setCreating] = useState(false)
@@ -32,7 +41,9 @@ export function TasksPanel({ projectId }: { projectId: string }) {
   const [commentDraft, setCommentDraft] = useState('')
   const [assignable, setAssignable] = useState<Assignable[]>([])
   const [newAssignees, setNewAssignees] = useState<string[]>([])
-  const [assigning, setAssigning] = useState<string | null>(null)
+  const [activeDragTaskId, setActiveDragTaskId] = useState<string | null>(null)
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   const refresh = async (currentIdentity: { deviceId: string; accountRoute: string }) => {
     try {
@@ -107,21 +118,11 @@ export function TasksPanel({ projectId }: { projectId: string }) {
         [],
       )
       if (newAssignees.length > 0) {
-        await syncAssignTask(
-          projectId,
-          created.taskId,
-          identity.deviceId,
-          created.revision,
-          newAssignees,
-        )
+        await syncAssignTask(projectId, created.taskId, identity.deviceId, created.revision, newAssignees)
       }
       setNewTitle('')
       setNewBody('')
       setNewAssignees([])
-      // A freshly created task is always 'open' — if the "Completed" filter was active, it would
-      // otherwise be created successfully but immediately hidden, looking exactly like it never
-      // got created at all.
-      if (filter === 'completed') setFilter('all')
       await refresh(identity)
     } catch {
       setError(true)
@@ -140,14 +141,14 @@ export function TasksPanel({ projectId }: { projectId: string }) {
 
   const setTaskAssignees = async (task: TaskRecord, assignees: string[]) => {
     if (!identity) return
-    setAssigning(task.taskId)
+    setBusyTaskId(task.taskId)
     try {
       await syncAssignTask(projectId, task.taskId, identity.deviceId, task.revision, assignees)
       await refresh(identity)
     } catch {
       setError(true)
     } finally {
-      setAssigning(null)
+      setBusyTaskId(null)
     }
   }
 
@@ -197,11 +198,34 @@ export function TasksPanel({ projectId }: { projectId: string }) {
     }
   }
 
-  const visible = (tasks ?? []).filter((task) => {
-    if (filter === 'open') return task.status !== 'completed'
-    if (filter === 'completed') return task.status === 'completed'
-    return true
-  })
+  const all = tasks ?? []
+  const open = all.filter((task) => task.status !== 'completed')
+  const completed = all.filter((task) => task.status === 'completed')
+
+  const columns: { id: ColumnId; name: string; tasks: TaskRecord[]; draggable: boolean }[] = [
+    { id: 'all', name: t('tasks.filter.all'), tasks: all, draggable: false },
+    { id: 'open', name: t('tasks.filter.open'), tasks: open, draggable: true },
+    { id: 'completed', name: t('tasks.filter.completed'), tasks: completed, draggable: true },
+  ]
+
+  const onDragStart = (event: DragStartEvent) => {
+    const id = String(event.active.id)
+    if (id.startsWith('task:')) setActiveDragTaskId(id.slice(5))
+  }
+
+  const onDragEnd = (event: DragEndEvent) => {
+    setActiveDragTaskId(null)
+    const { active, over } = event
+    if (!over) return
+    const taskId = String(active.id).replace(/^task:/, '')
+    const columnId = String(over.id).replace(/^column:/, '') as ColumnId
+    const task = all.find((entry) => entry.taskId === taskId)
+    if (!task) return
+    if (columnId === 'completed' && task.status !== 'completed') void completeTask(task)
+    if (columnId === 'open' && task.status === 'completed') void reopenTask(task)
+  }
+
+  const activeDragTask = activeDragTaskId ? all.find((task) => task.taskId === activeDragTaskId) : null
 
   return (
     <div className={styles.container}>
@@ -254,139 +278,228 @@ export function TasksPanel({ projectId }: { projectId: string }) {
         </button>
       </div>
 
-      <div className={styles.filterRow}>
-        {(['all', 'open', 'completed'] as const).map((option) => (
-          <button
-            key={option}
-            type="button"
-            className={`${styles.filterButton} ${filter === option ? styles.filterButtonActive : ''}`}
-            onClick={() => setFilter(option)}
-          >
-            {t(`tasks.filter.${option}`)}
-          </button>
-        ))}
-      </div>
-
       {error ? <div className={styles.error}>{t('tasks.loadFailed')}</div> : null}
 
       {!tasks ? (
         <div className={styles.loading}>
           <Loader2 size={16} className={styles.spin} />
         </div>
-      ) : visible.length === 0 ? (
-        <div className={styles.empty}>{t('tasks.empty')}</div>
       ) : (
-        <ul className={styles.list}>
-          {visible.map((task) => {
-            const expanded = expandedTaskId === task.taskId
-            return (
-              <li key={task.taskId} className={styles.item}>
-                <div className={styles.itemRow}>
-                  <button
-                    type="button"
-                    className={`${styles.checkButton} ${task.status === 'completed' ? styles.checkButtonDone : ''}`}
-                    disabled={busyTaskId === task.taskId}
-                    onClick={() =>
+        <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+          <div className={styles.board}>
+            {columns.map((column) => (
+              <TaskColumn
+                key={column.id}
+                id={column.id}
+                name={column.name}
+                tasks={column.tasks}
+                droppable={column.draggable}
+              >
+                {(task) => (
+                  <TaskCard
+                    key={task.taskId}
+                    task={task}
+                    draggable={column.draggable}
+                    expanded={expandedTaskId === task.taskId}
+                    busy={busyTaskId === task.taskId}
+                    assignable={assignable}
+                    commentDraft={commentDraft}
+                    onToggleExpand={() =>
+                      setExpandedTaskId(expandedTaskId === task.taskId ? null : task.taskId)
+                    }
+                    onToggleComplete={() =>
                       void (task.status === 'completed' ? reopenTask(task) : completeTask(task))
                     }
-                    title={task.status === 'completed' ? t('tasks.reopen') : t('tasks.complete')}
-                  >
-                    {busyTaskId === task.taskId ? (
-                      <Loader2 size={11} className={styles.spin} />
-                    ) : task.status === 'completed' ? (
-                      <RotateCcw size={11} />
-                    ) : (
-                      <Check size={12} />
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.itemMain}
-                    onClick={() => setExpandedTaskId(expanded ? null : task.taskId)}
-                  >
-                    {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-                    <span
-                      className={`${styles.itemTitle} ${task.status === 'completed' ? styles.itemTitleDone : ''}`}
-                    >
-                      {task.title}
-                    </span>
-                    {task.assignees.length > 0 ? (
-                      <span className={styles.assigneeChips}>
-                        {task.assignees.map((accountId) => (
-                          <span key={accountId} className={styles.assigneeChip}>
-                            {assignable.find((person) => person.accountId === accountId)?.label ??
-                              accountId}
-                          </span>
-                        ))}
-                      </span>
-                    ) : null}
-                    {task.comments.length > 0 ? (
-                      <span className={styles.commentCount}>{task.comments.length}</span>
-                    ) : null}
-                  </button>
-                </div>
-                {expanded ? (
-                  <div className={styles.itemDetail}>
-                    {task.body ? <p className={styles.itemBody}>{task.body}</p> : null}
-                    {assignable.length > 0 ? (
-                      <div className={styles.assigneePicker}>
-                        <span className={styles.assigneePickerLabel}>
-                          <Users size={12} />
-                          {t('tasks.assignTo')}
-                        </span>
-                        {assignable.map((person) => {
-                          const checked = task.assignees.includes(person.accountId)
-                          return (
-                            <label key={person.accountId} className={styles.assigneeOption}>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                disabled={assigning === task.taskId}
-                                onChange={() => {
-                                  const next = checked
-                                    ? task.assignees.filter((id) => id !== person.accountId)
-                                    : [...task.assignees, person.accountId]
-                                  void setTaskAssignees(task, next)
-                                }}
-                              />
-                              <span>{person.label}</span>
-                            </label>
-                          )
-                        })}
-                      </div>
-                    ) : null}
-                    {task.comments.map((comment, index) => (
-                      <div key={index} className={styles.comment}>
-                        <span className={styles.commentAuthor}>{comment.authorDeviceId}</span>
-                        <span>{comment.body}</span>
-                      </div>
-                    ))}
-                    <div className={styles.commentRow}>
-                      <input
-                        className={styles.commentInput}
-                        value={commentDraft}
-                        placeholder={t('tasks.commentPlaceholder')}
-                        onChange={(event) => setCommentDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') void submitComment(task)
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className={styles.commentSend}
-                        disabled={busyTaskId === task.taskId || !commentDraft.trim()}
-                        onClick={() => void submitComment(task)}
-                      >
-                        {t('tasks.commentSend')}
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </li>
-            )
-          })}
-        </ul>
+                    onSetAssignees={(assignees) => void setTaskAssignees(task, assignees)}
+                    onCommentDraftChange={setCommentDraft}
+                    onSubmitComment={() => void submitComment(task)}
+                    t={t}
+                  />
+                )}
+              </TaskColumn>
+            ))}
+          </div>
+          <DragOverlay>
+            {activeDragTask ? (
+              <div className={styles.dragOverlayCard}>{activeDragTask.title}</div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       )}
+    </div>
+  )
+}
+
+function TaskColumn({
+  id,
+  name,
+  tasks,
+  droppable,
+  children,
+}: {
+  id: ColumnId
+  name: string
+  tasks: TaskRecord[]
+  droppable: boolean
+  children: (task: TaskRecord) => ReactNode
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: `column:${id}`, disabled: !droppable })
+  return (
+    <div ref={setNodeRef} className={`${styles.column} ${isOver ? styles.columnOver : ''}`}>
+      <div className={styles.columnHeader}>
+        <span className={styles.columnName}>{name}</span>
+        <span className={styles.columnCount}>{tasks.length}</span>
+      </div>
+      <div className={styles.columnBody}>
+        {tasks.length === 0 ? (
+          <div className={styles.columnEmpty} />
+        ) : (
+          tasks.map((task) => children(task))
+        )}
+      </div>
+    </div>
+  )
+}
+
+function TaskCard({
+  task,
+  draggable,
+  expanded,
+  busy,
+  assignable,
+  commentDraft,
+  onToggleExpand,
+  onToggleComplete,
+  onSetAssignees,
+  onCommentDraftChange,
+  onSubmitComment,
+  t,
+}: {
+  task: TaskRecord
+  draggable: boolean
+  expanded: boolean
+  busy: boolean
+  assignable: Assignable[]
+  commentDraft: string
+  onToggleExpand: () => void
+  onToggleComplete: () => void
+  onSetAssignees: (assignees: string[]) => void
+  onCommentDraftChange: (value: string) => void
+  onSubmitComment: () => void
+  t: TFunction
+}) {
+  const draggableHook = useDraggable({ id: `task:${task.taskId}`, disabled: !draggable })
+  return (
+    <div
+      ref={draggableHook.setNodeRef}
+      className={styles.item}
+      style={{ opacity: draggableHook.isDragging ? 0.4 : 1 }}
+    >
+      <div className={styles.itemRow}>
+        {draggable ? (
+          <button
+            type="button"
+            className={styles.dragHandle}
+            {...draggableHook.listeners}
+            {...draggableHook.attributes}
+            title={t('tasks.dragHandle')}
+          >
+            <GripVertical size={12} />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className={`${styles.checkButton} ${task.status === 'completed' ? styles.checkButtonDone : ''}`}
+          disabled={busy}
+          onClick={onToggleComplete}
+          title={task.status === 'completed' ? t('tasks.reopen') : t('tasks.complete')}
+        >
+          {busy ? (
+            <Loader2 size={11} className={styles.spin} />
+          ) : task.status === 'completed' ? (
+            <RotateCcw size={11} />
+          ) : (
+            <Check size={12} />
+          )}
+        </button>
+        <button type="button" className={styles.itemMain} onClick={onToggleExpand}>
+          {expanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+          <span
+            className={`${styles.itemTitle} ${task.status === 'completed' ? styles.itemTitleDone : ''}`}
+          >
+            {task.title}
+          </span>
+          {task.assignees.length > 0 ? (
+            <span className={styles.assigneeChips}>
+              {task.assignees.map((accountId) => (
+                <span key={accountId} className={styles.assigneeChip}>
+                  {assignable.find((person) => person.accountId === accountId)?.label ?? accountId}
+                </span>
+              ))}
+            </span>
+          ) : null}
+          {task.comments.length > 0 ? (
+            <span className={styles.commentCount}>{task.comments.length}</span>
+          ) : null}
+        </button>
+      </div>
+      {expanded ? (
+        <div className={styles.itemDetail}>
+          {task.body ? <p className={styles.itemBody}>{task.body}</p> : null}
+          {assignable.length > 0 ? (
+            <div className={styles.assigneePicker}>
+              <span className={styles.assigneePickerLabel}>
+                <Users size={12} />
+                {t('tasks.assignTo')}
+              </span>
+              {assignable.map((person) => {
+                const checked = task.assignees.includes(person.accountId)
+                return (
+                  <label key={person.accountId} className={styles.assigneeOption}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={busy}
+                      onChange={() => {
+                        const next = checked
+                          ? task.assignees.filter((id) => id !== person.accountId)
+                          : [...task.assignees, person.accountId]
+                        onSetAssignees(next)
+                      }}
+                    />
+                    <span>{person.label}</span>
+                  </label>
+                )
+              })}
+            </div>
+          ) : null}
+          {task.comments.map((comment, index) => (
+            <div key={index} className={styles.comment}>
+              <span className={styles.commentAuthor}>{comment.authorDeviceId}</span>
+              <span>{comment.body}</span>
+            </div>
+          ))}
+          <div className={styles.commentRow}>
+            <input
+              className={styles.commentInput}
+              value={commentDraft}
+              placeholder={t('tasks.commentPlaceholder')}
+              onChange={(event) => onCommentDraftChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') onSubmitComment()
+              }}
+            />
+            <button
+              type="button"
+              className={styles.commentSend}
+              disabled={busy || !commentDraft.trim()}
+              onClick={onSubmitComment}
+            >
+              {t('tasks.commentSend')}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }

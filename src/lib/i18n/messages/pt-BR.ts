@@ -85,6 +85,7 @@ export const ptBR: Record<MessageKey, string> = {
   'tasks.empty': 'Nenhuma tarefa ainda — adicione uma acima.',
   'tasks.complete': 'Marcar como concluída',
   'tasks.reopen': 'Reabrir (marcar como não concluída)',
+  'tasks.dragHandle': 'Arraste para mover para outra coluna',
   'tasks.commentPlaceholder': 'Escreva um comentário…',
   'tasks.assignTo': 'Atribuir a',
   'tasks.assigneeSelf': 'Eu',
