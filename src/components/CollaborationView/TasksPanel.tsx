@@ -1,16 +1,20 @@
-import { Check, ChevronDown, ChevronRight, Loader2, Plus } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, Loader2, Plus, RotateCcw, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { useT } from '../../lib/i18n'
-import { syncLocalIdentity } from '../../lib/tauri'
 import {
   syncAddTaskComment,
+  syncAssignTask,
   syncCompleteTask,
   syncCreateTask,
   syncListVisibleTasks,
+  syncReopenTask,
   type TaskRecord,
 } from '../../lib/api/syncTasks'
+import { useT } from '../../lib/i18n'
+import { syncLocalIdentity, syncSecuritySnapshot } from '../../lib/tauri'
 import styles from './TasksPanel.module.css'
+
+type Assignable = { accountId: string; label: string }
 
 type Filter = 'all' | 'open' | 'completed'
 
@@ -26,6 +30,9 @@ export function TasksPanel({ projectId }: { projectId: string }) {
   const [busyTaskId, setBusyTaskId] = useState<string | null>(null)
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null)
   const [commentDraft, setCommentDraft] = useState('')
+  const [assignable, setAssignable] = useState<Assignable[]>([])
+  const [newAssignees, setNewAssignees] = useState<string[]>([])
+  const [assigning, setAssigning] = useState<string | null>(null)
 
   const refresh = async (currentIdentity: { deviceId: string; accountRoute: string }) => {
     try {
@@ -60,11 +67,38 @@ export function TasksPanel({ projectId }: { projectId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
+  // Who a task can be assigned to: this account plus every collaborator with an active grant for
+  // this specific project — the same set of people who can actually see/act on it.
+  useEffect(() => {
+    let active = true
+    syncSecuritySnapshot()
+      .then((snapshot) => {
+        if (!active) return
+        const self: Assignable[] = snapshot.account
+          ? [{ accountId: snapshot.account.accountId, label: t('tasks.assigneeSelf') }]
+          : []
+        const collaborators: Assignable[] = snapshot.grants
+          .filter((grant) => grant.projectId === projectId && !grant.revokedAtMs)
+          .map((grant) => ({ accountId: grant.accountId, label: grant.accountId }))
+        const seen = new Set<string>()
+        const merged = [...self, ...collaborators].filter((entry) => {
+          if (seen.has(entry.accountId)) return false
+          seen.add(entry.accountId)
+          return true
+        })
+        setAssignable(merged)
+      })
+      .catch(() => undefined)
+    return () => {
+      active = false
+    }
+  }, [projectId, t])
+
   const createTask = async () => {
     if (!identity || !newTitle.trim()) return
     setCreating(true)
     try {
-      await syncCreateTask(
+      const created = await syncCreateTask(
         projectId,
         identity.deviceId,
         newTitle.trim(),
@@ -72,8 +106,22 @@ export function TasksPanel({ projectId }: { projectId: string }) {
         'public',
         [],
       )
+      if (newAssignees.length > 0) {
+        await syncAssignTask(
+          projectId,
+          created.taskId,
+          identity.deviceId,
+          created.revision,
+          newAssignees,
+        )
+      }
       setNewTitle('')
       setNewBody('')
+      setNewAssignees([])
+      // A freshly created task is always 'open' — if the "Completed" filter was active, it would
+      // otherwise be created successfully but immediately hidden, looking exactly like it never
+      // got created at all.
+      if (filter === 'completed') setFilter('all')
       await refresh(identity)
     } catch {
       setError(true)
@@ -82,11 +130,45 @@ export function TasksPanel({ projectId }: { projectId: string }) {
     }
   }
 
+  const toggleNewAssignee = (accountId: string) => {
+    setNewAssignees((current) =>
+      current.includes(accountId)
+        ? current.filter((id) => id !== accountId)
+        : [...current, accountId],
+    )
+  }
+
+  const setTaskAssignees = async (task: TaskRecord, assignees: string[]) => {
+    if (!identity) return
+    setAssigning(task.taskId)
+    try {
+      await syncAssignTask(projectId, task.taskId, identity.deviceId, task.revision, assignees)
+      await refresh(identity)
+    } catch {
+      setError(true)
+    } finally {
+      setAssigning(null)
+    }
+  }
+
   const completeTask = async (task: TaskRecord) => {
     if (!identity) return
     setBusyTaskId(task.taskId)
     try {
       await syncCompleteTask(projectId, task.taskId, identity.deviceId, task.revision)
+      await refresh(identity)
+    } catch {
+      setError(true)
+    } finally {
+      setBusyTaskId(null)
+    }
+  }
+
+  const reopenTask = async (task: TaskRecord) => {
+    if (!identity) return
+    setBusyTaskId(task.taskId)
+    try {
+      await syncReopenTask(projectId, task.taskId, identity.deviceId, task.revision)
       await refresh(identity)
     } catch {
       setError(true)
@@ -143,6 +225,24 @@ export function TasksPanel({ projectId }: { projectId: string }) {
             if (event.key === 'Enter') void createTask()
           }}
         />
+        {assignable.length > 0 ? (
+          <div className={styles.assigneePicker}>
+            <span className={styles.assigneePickerLabel}>
+              <Users size={12} />
+              {t('tasks.assignTo')}
+            </span>
+            {assignable.map((person) => (
+              <label key={person.accountId} className={styles.assigneeOption}>
+                <input
+                  type="checkbox"
+                  checked={newAssignees.includes(person.accountId)}
+                  onChange={() => toggleNewAssignee(person.accountId)}
+                />
+                <span>{person.label}</span>
+              </label>
+            ))}
+          </div>
+        ) : null}
         <button
           type="button"
           className={styles.addButton}
@@ -185,11 +285,13 @@ export function TasksPanel({ projectId }: { projectId: string }) {
                   <button
                     type="button"
                     className={`${styles.checkButton} ${task.status === 'completed' ? styles.checkButtonDone : ''}`}
-                    disabled={busyTaskId === task.taskId || task.status === 'completed'}
-                    onClick={() => void completeTask(task)}
-                    title={t('tasks.complete')}
+                    disabled={busyTaskId === task.taskId}
+                    onClick={() =>
+                      void (task.status === 'completed' ? reopenTask(task) : completeTask(task))
+                    }
+                    title={task.status === 'completed' ? t('tasks.reopen') : t('tasks.complete')}
                   >
-                    <Check size={12} />
+                    {task.status === 'completed' ? <RotateCcw size={11} /> : <Check size={12} />}
                   </button>
                   <button
                     type="button"
@@ -202,6 +304,16 @@ export function TasksPanel({ projectId }: { projectId: string }) {
                     >
                       {task.title}
                     </span>
+                    {task.assignees.length > 0 ? (
+                      <span className={styles.assigneeChips}>
+                        {task.assignees.map((accountId) => (
+                          <span key={accountId} className={styles.assigneeChip}>
+                            {assignable.find((person) => person.accountId === accountId)?.label ??
+                              accountId}
+                          </span>
+                        ))}
+                      </span>
+                    ) : null}
                     {task.comments.length > 0 ? (
                       <span className={styles.commentCount}>{task.comments.length}</span>
                     ) : null}
@@ -210,6 +322,33 @@ export function TasksPanel({ projectId }: { projectId: string }) {
                 {expanded ? (
                   <div className={styles.itemDetail}>
                     {task.body ? <p className={styles.itemBody}>{task.body}</p> : null}
+                    {assignable.length > 0 ? (
+                      <div className={styles.assigneePicker}>
+                        <span className={styles.assigneePickerLabel}>
+                          <Users size={12} />
+                          {t('tasks.assignTo')}
+                        </span>
+                        {assignable.map((person) => {
+                          const checked = task.assignees.includes(person.accountId)
+                          return (
+                            <label key={person.accountId} className={styles.assigneeOption}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={assigning === task.taskId}
+                                onChange={() => {
+                                  const next = checked
+                                    ? task.assignees.filter((id) => id !== person.accountId)
+                                    : [...task.assignees, person.accountId]
+                                  void setTaskAssignees(task, next)
+                                }}
+                              />
+                              <span>{person.label}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    ) : null}
                     {task.comments.map((comment, index) => (
                       <div key={index} className={styles.comment}>
                         <span className={styles.commentAuthor}>{comment.authorDeviceId}</span>

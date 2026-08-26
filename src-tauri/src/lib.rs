@@ -545,6 +545,7 @@ pub fn run() {
             sync_tasks::sync_list_visible_tasks,
             sync_tasks::sync_get_task,
             sync_tasks::sync_complete_task,
+            sync_tasks::sync_reopen_task,
             sync_tasks::sync_add_task_comment,
             sync_tasks::sync_update_task,
             sync_tasks::sync_assign_task,

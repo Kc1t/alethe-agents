@@ -1,11 +1,11 @@
-import { MessageSquare, ListChecks, Archive } from 'lucide-react'
+import { Archive, ListChecks, MessageSquare } from 'lucide-react'
 import { useState } from 'react'
 
 import { useT } from '../../lib/i18n'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { ChatTab } from './ChatTab'
 import styles from './CollaborationView.module.css'
-import { TasksPanel } from './TasksPanel'
+import { TasksTab } from './TasksTab'
 import { VaultPanel } from './VaultPanel'
 
 type CollaborationTab = 'chat' | 'tasks' | 'vault'
@@ -51,7 +51,7 @@ export function CollaborationView() {
         ) : tab === 'chat' ? (
           <ChatTab projectId={activeProject.id} projectName={activeProject.name} />
         ) : tab === 'tasks' ? (
-          <TasksPanel projectId={activeProject.id} />
+          <TasksTab activeProjectId={activeProject.id} />
         ) : (
           <VaultPanel projectId={activeProject.id} />
         )}

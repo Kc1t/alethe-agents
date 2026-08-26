@@ -638,6 +638,23 @@ pub fn sync_complete_task(
 }
 
 #[tauri::command]
+pub fn sync_reopen_task(
+    app: tauri::AppHandle,
+    project_id: String,
+    task_id: String,
+    device_id: String,
+    expected_base_revision: u64,
+) -> Result<TaskRecord, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let authorizer = SecurityBackedMembership { data_root: &data_root };
+    reopen_task_at(
+        &data_root, &project_id, &task_id, &device_id, expected_base_revision, &authorizer,
+        crate::provider_common::now_ms(),
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn sync_add_task_comment(
     app: tauri::AppHandle,
     project_id: String,

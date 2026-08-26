@@ -13,6 +13,7 @@ pub fn router() -> Router {
         .route("/api/sync/tasks", get(list))
         .route("/api/sync/tasks/create", post(create))
         .route("/api/sync/tasks/complete", post(complete))
+        .route("/api/sync/tasks/reopen", post(reopen))
         .route("/api/sync/tasks/comment", post(comment))
         .route("/api/sync/tasks/update", post(update))
         .route("/api/sync/tasks/assign", post(assign))
@@ -105,6 +106,28 @@ async fn complete(Extension(runtime): Extension<Arc<ServerRuntime>>, Json(body):
         tokio::task::spawn_blocking(move || {
             let authorizer = crate::sync_tasks::SecurityBackedMembership { data_root: &data_root };
             crate::sync_tasks::complete_task_at(
+                &data_root,
+                &body.project_id,
+                &body.task_id,
+                &body.device_id,
+                body.expected_base_revision,
+                &authorizer,
+                crate::provider_common::now_ms(),
+            )
+            .map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|result| result),
+    )
+}
+
+async fn reopen(Extension(runtime): Extension<Arc<ServerRuntime>>, Json(body): Json<CompleteBody>) -> Response {
+    let data_root = runtime.data_root().to_path_buf();
+    respond(
+        tokio::task::spawn_blocking(move || {
+            let authorizer = crate::sync_tasks::SecurityBackedMembership { data_root: &data_root };
+            crate::sync_tasks::reopen_task_at(
                 &data_root,
                 &body.project_id,
                 &body.task_id,

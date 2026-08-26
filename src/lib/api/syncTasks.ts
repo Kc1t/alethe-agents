@@ -97,6 +97,26 @@ export async function syncCompleteTask(
   })
 }
 
+export async function syncReopenTask(
+  projectId: string,
+  taskId: string,
+  deviceId: string,
+  expectedBaseRevision: number,
+): Promise<TaskRecord> {
+  if (isTauriEnv()) {
+    return invoke<TaskRecord>('sync_reopen_task', {
+      projectId,
+      taskId,
+      deviceId,
+      expectedBaseRevision,
+    })
+  }
+  return webApiFetch<TaskRecord>('/api/sync/tasks/reopen', {
+    method: 'POST',
+    body: JSON.stringify({ projectId, taskId, deviceId, expectedBaseRevision }),
+  })
+}
+
 export async function syncAddTaskComment(
   projectId: string,
   taskId: string,
@@ -150,6 +170,28 @@ export async function syncUpdateTask(
       labels: changes.labels,
       dueAtMs: 'dueAtMs' in changes ? changes.dueAtMs : undefined,
     }),
+  })
+}
+
+export async function syncAssignTask(
+  projectId: string,
+  taskId: string,
+  deviceId: string,
+  expectedBaseRevision: number,
+  assignees: string[],
+): Promise<TaskRecord> {
+  if (isTauriEnv()) {
+    return invoke<TaskRecord>('sync_assign_task', {
+      projectId,
+      taskId,
+      deviceId,
+      expectedBaseRevision,
+      assignees,
+    })
+  }
+  return webApiFetch<TaskRecord>('/api/sync/tasks/assign', {
+    method: 'POST',
+    body: JSON.stringify({ projectId, taskId, deviceId, expectedBaseRevision, assignees }),
   })
 }
 
