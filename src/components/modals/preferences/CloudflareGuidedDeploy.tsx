@@ -201,7 +201,9 @@ export function CloudflareGuidedDeploy({
               {running ? <Loader2 size={13} className={styles.spin} /> : <Cloud size={13} />}
               {failed
                 ? t('collaboration.cloudflareDeploy.retry')
-                : t('collaboration.cloudflareDeploy.start')}
+                : step === 'success'
+                  ? t('collaboration.cloudflareDeploy.redeploy')
+                  : t('collaboration.cloudflareDeploy.start')}
             </button>
             {step !== 'idle' ? (
               <button type="button" className={controls.btn} onClick={reset}>

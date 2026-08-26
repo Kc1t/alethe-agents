@@ -10,7 +10,10 @@ import { killPty, listenPtyData, listenPtyExit, spawnPty, writePty } from '../li
 export type CloudflareDeployStep =
   'idle' | 'preparing' | 'installing' | 'login' | 'secret' | 'deploying' | 'success'
 
-const MAX_LOG_CHARS = 20_000
+// A real deploy's full log (npm install's spinner + wrangler's three banners) comes in well under
+// this — it exists only as a hard ceiling against a truly runaway process, not a size a normal run
+// should ever reach.
+const MAX_LOG_CHARS = 200_000
 // Matches the `*.workers.dev` URL `wrangler deploy` prints once it finishes publishing.
 const WORKER_URL_PATTERN = /https:\/\/[a-z0-9.-]+\.workers\.dev\S*/gi
 // Cloudflare API error 10063: the account has never had its `*.workers.dev` subdomain
@@ -20,7 +23,14 @@ const WORKER_URL_PATTERN = /https:\/\/[a-z0-9.-]+\.workers\.dev\S*/gi
 const NEEDS_WORKERS_DEV_SUBDOMAIN = 'you need a workers.dev subdomain'
 
 function trimLog(value: string): string {
-  return value.length > MAX_LOG_CHARS ? value.slice(value.length - MAX_LOG_CHARS) : value
+  if (value.length <= MAX_LOG_CHARS) return value
+  const cut = value.length - MAX_LOG_CHARS
+  // Cut at the next newline after the naive boundary, never mid-line — a blind character-count
+  // slice can land inside an ANSI escape sequence, stripping its leading ESC byte and leaving the
+  // rest (e.g. "32m") behind as literal visible text that `plainTextFromPtyLog` no longer
+  // recognizes as a code to remove.
+  const nextNewline = value.indexOf('\n', cut)
+  return nextNewline === -1 ? value.slice(cut) : value.slice(nextNewline + 1)
 }
 
 function extractWorkerUrl(log: string): string | null {
