@@ -12,6 +12,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- Tasks now has vertical per-project tabs instead of always showing only the currently active project's tasks, tasks can be assigned to one or more collaborators (chips shown per task, editable inline), and a completed task can be reopened again — the backend already supported reopening but had no command, Web route, client, or button wired up.
 - Invitations can now block specific project subfolders from being shared, instead of always sharing the whole project; the sidebar lists the project's top-level folders and lets the issuer mark any of them as blocked before sending the invite.
 - A new "Conexão & Sincronização" area now takes over the main workspace panel (where agent terminals normally sit) whenever that sidebar tab is active, instead of leaving the previous Home/terminal view visible underneath; it currently hosts working Chat and Tasks tabs, with a Vault & Folders tab still a placeholder.
 - Collaboration tasks can now be created, listed, completed, and commented on from the app (previously the feature only existed as an untested backend contract with no UI). Added the missing `sync_update_task`/`sync_assign_task`/`sync_delete_task` commands and Web routes for existing, previously unreachable core functions.
