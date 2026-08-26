@@ -3,9 +3,9 @@ import { useEffect, useState } from 'react'
 
 import { drainRendezvousEvents } from '../../lib/api/syncRendezvous'
 import {
+  type SyncChatContact,
   syncListChatContacts,
   syncOpenChatContactAck,
-  type SyncChatContact,
 } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
 import { getProfileInitial } from '../../lib/profile'
@@ -16,11 +16,19 @@ import styles from './ChatTab.module.css'
 
 const CONTACT_ACK_POLL_INTERVAL_MS = 4_000
 
-export function ChatTab({ projectId, projectName }: { projectId: string; projectName: string }) {
+export function ChatTab({
+  projectId,
+  projectName,
+}: {
+  projectId: string | null
+  projectName: string | null
+}) {
   const t = useT()
   const [contacts, setContacts] = useState<SyncChatContact[]>([])
   const [contactsError, setContactsError] = useState(false)
-  const [selected, setSelected] = useState<ChatSource>({ kind: 'project', projectId, projectName })
+  const [selected, setSelected] = useState<ChatSource | null>(
+    projectId && projectName ? { kind: 'project', projectId, projectName } : null,
+  )
   const [addingContact, setAddingContact] = useState(false)
 
   const reloadContacts = () => {
@@ -37,8 +45,21 @@ export function ChatTab({ projectId, projectName }: { projectId: string; project
   }, [])
 
   useEffect(() => {
-    setSelected({ kind: 'project', projectId, projectName })
+    if (projectId && projectName) setSelected({ kind: 'project', projectId, projectName })
   }, [projectId, projectName])
+
+  // With no active project, default to the first chat contact once contacts load — there's no
+  // project channel to fall back to in that case.
+  useEffect(() => {
+    if (!projectId && !selected && contacts.length > 0) {
+      const contact = contacts[0]
+      setSelected({
+        kind: 'direct',
+        contactAccountRoute: contact.accountRoute,
+        contactDisplayLabel: contact.displayLabel,
+      })
+    }
+  }, [projectId, selected, contacts])
 
   // Drains any `chat_contact_ack` deliveries — an automatic mutual-pairing signal from someone
   // who just verified and saved our exported invite code on their own device. Decrypting it (if
@@ -88,21 +109,23 @@ export function ChatTab({ projectId, projectName }: { projectId: string; project
           </button>
         </div>
         <ul className={styles.conversationList}>
-          <li>
-            <button
-              type="button"
-              className={`${styles.conversationRow} ${selected.kind === 'project' ? styles.conversationRowActive : ''}`}
-              onClick={() => setSelected({ kind: 'project', projectId, projectName })}
-            >
-              <span className={styles.channelIcon}>
-                <Hash size={14} />
-              </span>
-              <span className={styles.conversationName}>{projectName}</span>
-            </button>
-          </li>
+          {projectId && projectName ? (
+            <li>
+              <button
+                type="button"
+                className={`${styles.conversationRow} ${selected?.kind === 'project' ? styles.conversationRowActive : ''}`}
+                onClick={() => setSelected({ kind: 'project', projectId, projectName })}
+              >
+                <span className={styles.channelIcon}>
+                  <Hash size={14} />
+                </span>
+                <span className={styles.conversationName}>{projectName}</span>
+              </button>
+            </li>
+          ) : null}
           {contacts.map((contact) => {
             const active =
-              selected.kind === 'direct' && selected.contactAccountRoute === contact.accountRoute
+              selected?.kind === 'direct' && selected.contactAccountRoute === contact.accountRoute
             return (
               <li key={contact.accountRoute}>
                 <button
@@ -133,10 +156,14 @@ export function ChatTab({ projectId, projectName }: { projectId: string; project
         <p className={styles.chatOnlyNotice}>{t('chat.contacts.chatOnlyNotice')}</p>
       </div>
       <div className={styles.chatArea}>
-        <ChatPanel
-          key={selected.kind === 'project' ? 'project' : selected.contactAccountRoute}
-          source={selected}
-        />
+        {selected ? (
+          <ChatPanel
+            key={selected.kind === 'project' ? 'project' : selected.contactAccountRoute}
+            source={selected}
+          />
+        ) : (
+          <div className={styles.emptyChat}>{t('chat.contacts.empty')}</div>
+        )}
       </div>
       {addingContact ? (
         <AddChatContactModal

@@ -46,10 +46,13 @@ export function CollaborationView() {
         </button>
       </div>
       <div className={styles.content}>
-        {!activeProject ? (
+        {tab === 'chat' ? (
+          <ChatTab
+            projectId={activeProject?.id ?? null}
+            projectName={activeProject?.name ?? null}
+          />
+        ) : !activeProject ? (
           <div className={styles.empty}>{t('collaborationView.noProject')}</div>
-        ) : tab === 'chat' ? (
-          <ChatTab projectId={activeProject.id} projectName={activeProject.name} />
         ) : tab === 'tasks' ? (
           <TasksTab activeProjectId={activeProject.id} />
         ) : (
