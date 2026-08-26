@@ -291,7 +291,13 @@ export function TasksPanel({ projectId }: { projectId: string }) {
                     }
                     title={task.status === 'completed' ? t('tasks.reopen') : t('tasks.complete')}
                   >
-                    {task.status === 'completed' ? <RotateCcw size={11} /> : <Check size={12} />}
+                    {busyTaskId === task.taskId ? (
+                      <Loader2 size={11} className={styles.spin} />
+                    ) : task.status === 'completed' ? (
+                      <RotateCcw size={11} />
+                    ) : (
+                      <Check size={12} />
+                    )}
                   </button>
                   <button
                     type="button"

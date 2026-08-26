@@ -156,10 +156,15 @@
   gap: 6px;
   background: transparent;
   border: none;
+  border-radius: var(--radius-sm);
   color: var(--fg);
   cursor: pointer;
   text-align: left;
   padding: 0;
+}
+
+.itemMain:hover {
+  color: var(--accent);
 }
 
 .itemTitle {
@@ -237,7 +242,11 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 0 10px 10px 38px;
+  margin: 0 10px 10px 38px;
+  padding: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
 
 .itemBody {
