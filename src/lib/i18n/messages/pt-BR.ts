@@ -2552,7 +2552,7 @@ export const ptBR: Record<MessageKey, string> = {
   'collaboration.privacyHidden':
     'Ele não consegue ver: seu login do Google, chaves privadas, nomes ou caminhos de arquivos, conteúdo dos projetos, tarefas ou mensagens do chat — tudo isso continua criptografado de ponta a ponta.',
   'collaboration.ownWorkerRequired':
-    'Você não precisa de conta própria no Cloudflare nem de configuração técnica para usar a opção recomendada (Serviço Alethe).',
+    'Não existe servidor compartilhado rodado pelo Alethe: compartilhar um projeto ou conversar com pessoas fora deste dispositivo exige publicar seu próprio Worker Cloudflare pessoal e gratuito abaixo.',
   'collaboration.cloudflareDeploy.title': 'Publicar seu próprio worker Cloudflare',
   'collaboration.cloudflareDeploy.description':
     'O Alethe roda npm e Wrangler nesta máquina para publicar um worker de rendezvous pessoal na sua própria conta gratuita da Cloudflare. O Wrangler abre seu navegador pra fazer login e guarda o token dele só neste dispositivo — o Alethe nunca vê nem guarda sua credencial da Cloudflare.',
