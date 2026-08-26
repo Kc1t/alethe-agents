@@ -170,6 +170,12 @@
   color: var(--status-offline) !important;
 }
 
+.infoHint {
+  color: var(--fg-muted);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
 .oauthSetup label {
   color: var(--fg);
   font-size: 10px;

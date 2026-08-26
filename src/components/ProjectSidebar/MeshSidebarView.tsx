@@ -696,7 +696,7 @@ export function MeshSidebarView() {
             )}
           </div>
           {!workerConfigured && !cloudflareProbe?.installed ? (
-            <span className={styles.oauthSetupHint}>{t('mesh.cloudflareExplain')}</span>
+            <span className={styles.infoHint}>{t('mesh.cloudflareExplain')}</span>
           ) : null}
         </div>
       </section>
