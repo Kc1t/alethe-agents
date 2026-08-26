@@ -19,11 +19,21 @@ const STEP_ORDER: CloudflareDeployStep[] = [
   'success',
 ]
 
-export function CloudflareGuidedDeploy({ onDeployed }: { onDeployed: (url: string) => void }) {
+export function CloudflareGuidedDeploy({
+  onDeployed,
+  alreadyDeployedUrl,
+}: {
+  onDeployed: (url: string) => void
+  /** The endpoint already persisted from a previous deploy (this session or an earlier one) —
+   * lets the component open straight into the compact "already published" summary instead of
+   * the full step-by-step flow, which otherwise had no memory of a deploy that already happened. */
+  alreadyDeployedUrl?: string | null
+}) {
   const t = useT()
   const [toolchain, setToolchain] = useState<InstallToolchain | null>(null)
   const [probing, setProbing] = useState(true)
   const [logCopied, setLogCopied] = useState(false)
+  const [redeploying, setRedeploying] = useState(false)
   const { step, failed, needsWorkersDevSubdomain, log, workerUrl, start, reset } =
     useCloudflareDeploy()
   const nodeInstall = useAgentInstall('shell', 'cloudflare-deploy-node')
@@ -50,6 +60,10 @@ export function CloudflareGuidedDeploy({ onDeployed }: { onDeployed: (url: strin
 
   const running = step !== 'idle' && step !== 'success' && !failed
   const missingNode = !probing && !toolchain?.npm
+  // Already published (from a previous deploy, this session or an earlier one) and nothing new
+  // is running right now — show the compact summary instead of the full step-by-step flow.
+  const showCompactPublished =
+    step === 'idle' && !redeploying && Boolean(alreadyDeployedUrl) && !running
 
   return (
     <div className={styles.container}>
@@ -59,7 +73,24 @@ export function CloudflareGuidedDeploy({ onDeployed }: { onDeployed: (url: strin
       </div>
       <p className={styles.description}>{t('collaboration.cloudflareDeploy.description')}</p>
 
-      {missingNode ? (
+      {showCompactPublished ? (
+        <div className={styles.resultRow}>
+          <Check size={14} aria-hidden="true" />
+          <span>
+            {t('collaboration.cloudflareDeploy.alreadyPublished')} <code>{alreadyDeployedUrl}</code>
+          </span>
+          <button
+            type="button"
+            className={styles.linkButton}
+            onClick={() => {
+              setRedeploying(true)
+              void start()
+            }}
+          >
+            {t('collaboration.cloudflareDeploy.redeploy')}
+          </button>
+        </div>
+      ) : missingNode ? (
         <div className={styles.actionsRow}>
           <button
             type="button"

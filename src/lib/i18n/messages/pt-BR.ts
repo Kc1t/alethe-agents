@@ -2572,6 +2572,8 @@ export const ptBR: Record<MessageKey, string> = {
     'Sua conta Cloudflare ainda não tem um subdomínio workers.dev — só o painel consegue criar um (abrir a seção "Workers" pela primeira vez faz isso automaticamente). Faça isso uma vez e tente de novo.',
   'collaboration.cloudflareDeploy.openDashboard': 'Abrir painel do Cloudflare',
   'collaboration.cloudflareDeploy.copyLog': 'Copiar log',
+  'collaboration.cloudflareDeploy.alreadyPublished': 'Worker já publicado em',
+  'collaboration.cloudflareDeploy.redeploy': 'Republicar',
   'collaboration.cloudflareDeploy.start': 'Publicar na minha conta Cloudflare',
   'collaboration.cloudflareDeploy.retry': 'Tentar de novo',
   'collaboration.cloudflareDeploy.reset': 'Recomeçar',

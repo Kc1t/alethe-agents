@@ -116,6 +116,22 @@
   word-break: break-all;
 }
 
+.linkButton {
+  margin-left: auto;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.linkButton:hover {
+  text-decoration: underline;
+}
+
 .actionsRow {
   display: flex;
   align-items: center;

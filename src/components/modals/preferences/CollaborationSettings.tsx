@@ -176,7 +176,10 @@ export function CollaborationSettings() {
 
           {settings?.mode === 'advanced_custom' ? (
             <>
-              <CloudflareGuidedDeploy onDeployed={(url) => setEndpoint(url)} />
+              <CloudflareGuidedDeploy
+                onDeployed={(url) => setEndpoint(url)}
+                alreadyDeployedUrl={endpoint || null}
+              />
               {endpoint && !showManualEndpoint ? (
                 <div className={styles.endpointReadout}>
                   <span>{t('collaboration.workerAddress')}</span>
