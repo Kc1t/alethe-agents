@@ -50,6 +50,18 @@ export function ChatTab({
       .then((list) => {
         setContacts(list)
         setContactsError(false)
+        // A previously-selected direct conversation can go stale (its contact was removed, e.g.
+        // via the trash icon, possibly from a different tab/session) — keeping it selected would
+        // make the next open attempt fail with `chat_contact_not_found`. Fall back instead of
+        // leaving a dead reference around.
+        setSelected((current) => {
+          if (current?.kind !== 'direct') return current
+          const stillExists = list.some(
+            (contact) => contact.accountRoute === current.contactAccountRoute,
+          )
+          if (stillExists) return current
+          return projectId && projectName ? { kind: 'project', projectId, projectName } : null
+        })
       })
       .catch(() => setContactsError(true))
   }
