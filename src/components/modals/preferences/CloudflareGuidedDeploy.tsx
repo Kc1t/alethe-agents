@@ -1,4 +1,4 @@
-import { Check, Cloud, ExternalLink, Loader2, X } from 'lucide-react'
+import { Check, Cloud, Copy, ExternalLink, Loader2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { useAgentInstall } from '../../../hooks/useAgentInstall'
@@ -23,6 +23,7 @@ export function CloudflareGuidedDeploy({ onDeployed }: { onDeployed: (url: strin
   const t = useT()
   const [toolchain, setToolchain] = useState<InstallToolchain | null>(null)
   const [probing, setProbing] = useState(true)
+  const [logCopied, setLogCopied] = useState(false)
   const { step, failed, needsWorkersDevSubdomain, log, workerUrl, start, reset } =
     useCloudflareDeploy()
   const nodeInstall = useAgentInstall('shell', 'cloudflare-deploy-node')
@@ -108,7 +109,27 @@ export function CloudflareGuidedDeploy({ onDeployed }: { onDeployed: (url: strin
             })}
           </div>
 
-          {log ? <div className={styles.log}>{plainTextFromPtyLog(log)}</div> : null}
+          {log ? (
+            <div className={styles.logWrap}>
+              <div className={styles.log}>{plainTextFromPtyLog(log).trim() || log}</div>
+              <button
+                type="button"
+                className={styles.copyLogBtn}
+                onClick={() => {
+                  navigator.clipboard
+                    .writeText(log)
+                    .then(() => {
+                      setLogCopied(true)
+                      window.setTimeout(() => setLogCopied(false), 1500)
+                    })
+                    .catch(() => undefined)
+                }}
+                title={t('collaboration.cloudflareDeploy.copyLog')}
+              >
+                {logCopied ? <Check size={12} /> : <Copy size={12} />}
+              </button>
+            </div>
+          ) : null}
 
           {step === 'success' && workerUrl ? (
             <div className={styles.resultRow}>

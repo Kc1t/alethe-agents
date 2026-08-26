@@ -91,9 +91,30 @@ export function useCloudflareDeploy() {
       ptyIdRef.current = spawned.id
 
       let answeredSkillsPrompt = false
+      let lastGenericPromptAnswerAt = 0
+      let succeededEarly = false
       cleanupRef.current.push(
         await listenPtyData(spawned.id, (chunk) => {
-          setLog((current) => trimLog(current + chunk))
+          setLog((current) => {
+            const next = trimLog(current + chunk)
+            // Detect success from the stream itself instead of only on process exit: `wrangler
+            // deploy` prints the final `*.workers.dev` URL and then, on some setups, leaves the
+            // shell sitting at an interactive prompt for a while instead of promptly running the
+            // trailing `; exit` — waiting only for `listenPtyExit` left the UI stuck on
+            // "Publicando" even though the real deploy had already finished successfully.
+            if (!succeededEarly) {
+              const url = extractWorkerUrl(next)
+              if (url) {
+                succeededEarly = true
+                setWorkerUrl(url)
+                setStep('success')
+                // The shell may keep sitting at an interactive prompt instead of promptly running
+                // the trailing `; exit` — nothing more is needed from it once the URL is in hand.
+                teardown()
+              }
+            }
+            return next
+          })
           const lower = chunk.toLowerCase()
           // Recent Wrangler versions ask an "install Cloudflare skills for AI agents?" y/n prompt
           // right after OAuth completes. Answering it by typing into the live PTY (instead of
@@ -105,22 +126,50 @@ export function useCloudflareDeploy() {
             answeredSkillsPrompt = true
             void writePty(spawned.id, 'n\r').catch(() => undefined)
           }
+          // Generic fallback for any other Wrangler y/n prompt (e.g. confirming the `workers_dev`
+          // default) — matches "(y/n)", "[y/n]", or "» (Y/n)" style hints. Debounced instead of a
+          // one-shot flag because more than one distinct prompt can appear later in the same run;
+          // the time gap keeps it from re-answering the exact same still-visible line on the next
+          // chunk before Wrangler has had a chance to move past it.
+          if (
+            /[[(]\s*y\s*\/\s*n\s*[\])]/i.test(chunk) &&
+            Date.now() - lastGenericPromptAnswerAt > 2_000
+          ) {
+            lastGenericPromptAnswerAt = Date.now()
+            void writePty(spawned.id, 'y\r').catch(() => undefined)
+          }
           if (lower.includes(NEEDS_WORKERS_DEV_SUBDOMAIN)) setNeedsWorkersDevSubdomain(true)
         }),
       )
       cleanupRef.current.push(
         await listenPtyExit(spawned.id, (payload) => {
           ptyIdRef.current = null
-          if (disposedRef.current) return
+          if (disposedRef.current || succeededEarly) return
           if (payload.code !== 0) {
             setFailed(true)
+            setLog((current) => {
+              // Always visible in DevTools (F12), even if the on-screen log box renders blank for
+              // any reason — the raw tail is what actually tells us why Wrangler/npm exited
+              // non-zero (e.g. Cloudflare's own API error text), so this stays permanent rather
+              // than a one-off debugging aid.
+
+              console.error('[cloudflare-deploy] failed, raw log tail:', current.slice(-4000))
+              return current
+            })
             return
           }
           setLog((current) => {
             const url = extractWorkerUrl(current)
             setWorkerUrl(url)
             if (url) setStep('success')
-            else setFailed(true)
+            else {
+              setFailed(true)
+
+              console.error(
+                '[cloudflare-deploy] exited 0 but no worker url found, raw log tail:',
+                current.slice(-4000),
+              )
+            }
             return current
           })
         }),

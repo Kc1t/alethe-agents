@@ -2553,6 +2553,7 @@ export const en = {
   'collaboration.cloudflareDeploy.needsSubdomain':
     "Your Cloudflare account doesn't have a workers.dev subdomain yet — only the dashboard can create one (visiting the Workers section for the first time does it automatically). Do that once, then retry.",
   'collaboration.cloudflareDeploy.openDashboard': 'Open Cloudflare dashboard',
+  'collaboration.cloudflareDeploy.copyLog': 'Copy log',
   'collaboration.cloudflareDeploy.start': 'Deploy to my Cloudflare account',
   'collaboration.cloudflareDeploy.retry': 'Retry deploy',
   'collaboration.cloudflareDeploy.reset': 'Start over',
