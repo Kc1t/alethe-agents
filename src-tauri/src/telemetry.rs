@@ -1,7 +1,10 @@
 use std::collections::{HashMap, VecDeque};
 use std::fs::OpenOptions;
 use std::io::Write;
+use std::path::PathBuf;
+use std::sync::mpsc;
 use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 use tauri::AppHandle;
 
 use crate::event_bus::EventBusPayload;
@@ -15,6 +18,7 @@ pub struct MetricData {
 
 static METRICS: OnceLock<Mutex<HashMap<String, MetricData>>> = OnceLock::new();
 static TRACES: OnceLock<Mutex<VecDeque<EventBusPayload>>> = OnceLock::new();
+static TELEMETRY_TX: OnceLock<Mutex<Option<mpsc::Sender<String>>>> = OnceLock::new();
 
 fn get_metrics() -> &'static Mutex<HashMap<String, MetricData>> {
     METRICS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -24,14 +28,60 @@ fn get_traces() -> &'static Mutex<VecDeque<EventBusPayload>> {
     TRACES.get_or_init(|| Mutex::new(VecDeque::with_capacity(500)))
 }
 
-fn append_telemetry_log(app: &AppHandle, event: &EventBusPayload) {
-    if let Ok(dir) = crate::logging::logs_dir(app) {
-        let _ = std::fs::create_dir_all(&dir);
-        let path = dir.join("telemetry.jsonl");
-        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
-            if let Ok(line) = serde_json::to_string(event) {
-                let _ = writeln!(file, "{}", line);
+/// Dedicated thread that owns the telemetry file handle. Lines are batched
+/// (flushed every 250 ms or every 64 events) so the event loop never does
+/// synchronous disk I/O on a tokio worker.
+fn telemetry_writer(dir: PathBuf, rx: mpsc::Receiver<String>) {
+    let path = dir.join("telemetry.jsonl");
+    let mut file = OpenOptions::new().create(true).append(true).open(path).ok();
+    let mut pending: Vec<String> = Vec::new();
+    loop {
+        match rx.recv_timeout(Duration::from_millis(250)) {
+            Ok(line) => {
+                pending.push(line);
+                if pending.len() >= 64 {
+                    if let Some(f) = file.as_mut() {
+                        for line in pending.drain(..) {
+                            let _ = writeln!(f, "{line}");
+                        }
+                        let _ = f.flush();
+                    } else {
+                        pending.clear();
+                    }
+                }
             }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                if let Some(f) = file.as_mut() {
+                    for line in pending.drain(..) {
+                        let _ = writeln!(f, "{line}");
+                    }
+                    let _ = f.flush();
+                } else {
+                    pending.clear();
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                if let Some(f) = file.as_mut() {
+                    for line in pending.drain(..) {
+                        let _ = writeln!(f, "{line}");
+                    }
+                    let _ = f.flush();
+                }
+                break;
+            }
+        }
+    }
+}
+
+fn append_telemetry_log(event: &EventBusPayload) {
+    if let Ok(line) = serde_json::to_string(event) {
+        let sender = TELEMETRY_TX
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        if let Some(tx) = sender {
+            let _ = tx.send(line);
         }
     }
 }
@@ -83,13 +133,20 @@ fn add_trace(event: EventBusPayload) {
 }
 
 pub fn start_telemetry_watcher(app: AppHandle) {
+    if let Ok(dir) = crate::logging::logs_dir(&app) {
+        let _ = std::fs::create_dir_all(&dir);
+        let (tx, rx) = mpsc::channel::<String>();
+        std::thread::spawn(move || telemetry_writer(dir, rx));
+        let _ = TELEMETRY_TX.set(Mutex::new(Some(tx)));
+    }
+
     tauri::async_runtime::spawn(async move {
         let mut rx = crate::event_bus::subscribe();
         loop {
             match rx.recv().await {
                 Ok(event) => {
-                    // 1. Log to file
-                    append_telemetry_log(&app, &event);
+                    // 1. Log to file (enqueued for the batched writer thread)
+                    append_telemetry_log(&event);
 
                     // 2. Update metrics
                     update_metrics(&event);
@@ -105,7 +162,7 @@ pub fn start_telemetry_watcher(app: AppHandle) {
                 // eventos reais continuando a acontecer. O receiver continua
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                     eprintln!(
-                        "[telemetry] receiver atrasado, {skipped} evento(s) perdido(s) — continuando"
+                        "[telemetry] receiver lagged, {skipped} event(s) dropped — continuing"
                     );
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,

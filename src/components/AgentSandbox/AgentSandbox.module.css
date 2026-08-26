@@ -27,19 +27,21 @@
 }
 
 .header > div,
-.headerActions { min-width: 0; }
+.headerActions {
+  min-width: 0;
+}
 
 .eyebrow {
   color: var(--accent);
   font: 9px var(--font-mono);
-  letter-spacing: .14em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .header h1 {
   margin: 3px 0 2px;
   font-size: 16px;
-  letter-spacing: -.02em;
+  letter-spacing: -0.02em;
 }
 
 .header p {
@@ -85,7 +87,7 @@
 .iconButton:disabled,
 .composer select:disabled,
 .composer input:disabled {
-  opacity: .45;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
@@ -117,7 +119,7 @@
   stroke: var(--border-strong);
   stroke-width: 1.5;
   stroke-dasharray: 5 6;
-  opacity: .8;
+  opacity: 0.8;
   animation: edgeFloat 2.4s linear infinite;
 }
 
@@ -125,7 +127,7 @@
   stroke: var(--border-strong);
   stroke-width: 1;
   stroke-dasharray: 3 5;
-  opacity: .55;
+  opacity: 0.55;
 }
 
 .edgeActive {
@@ -147,7 +149,12 @@
   user-select: none;
   cursor: grab;
   animation: nodeEnter 260ms ease-out both;
-  transition: left 420ms cubic-bezier(.22, 1, .36, 1), top 420ms cubic-bezier(.22, 1, .36, 1), width 420ms cubic-bezier(.22, 1, .36, 1), height 420ms cubic-bezier(.22, 1, .36, 1), border-color .15s ease;
+  transition:
+    left 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    top 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    height 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.15s ease;
 }
 
 .groupBox {
@@ -179,11 +186,22 @@
   cursor: pointer;
 }
 
-.node:active { cursor: grabbing; }
-.leadNode { border-color: var(--accent); }
-.selectedNode { border-color: var(--focus-ring, var(--accent)); box-shadow: inset 0 0 0 1px var(--focus-ring, var(--accent)); }
-.focusMode .node { box-shadow: none; }
-.focusMode .selectedNode { box-shadow: inset 0 0 0 1px var(--focus-ring, var(--accent)); }
+.node:active {
+  cursor: grabbing;
+}
+.leadNode {
+  border-color: var(--accent);
+}
+.selectedNode {
+  border-color: var(--focus-ring, var(--accent));
+  box-shadow: inset 0 0 0 1px var(--focus-ring, var(--accent));
+}
+.focusMode .node {
+  box-shadow: none;
+}
+.focusMode .selectedNode {
+  box-shadow: inset 0 0 0 1px var(--focus-ring, var(--accent));
+}
 
 .nodeHeader {
   height: 28px;
@@ -196,9 +214,20 @@
   border-bottom: 1px solid var(--shape-tabs-lane-border);
 }
 
-.terminalIcon { color: var(--fg-muted); flex: 0 0 auto; }
-.statusDot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
-.nodeHeader strong { font: 500 12px var(--font-sans); white-space: nowrap; }
+.terminalIcon {
+  color: var(--fg-muted);
+  flex: 0 0 auto;
+}
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.nodeHeader strong {
+  font: 500 12px var(--font-sans);
+  white-space: nowrap;
+}
 .status {
   margin-left: auto;
   color: var(--fg-faint);
@@ -206,9 +235,15 @@
   text-transform: uppercase;
 }
 
-.status_working { color: var(--accent); }
-.status_done { color: var(--status-success); }
-.status_error { color: var(--status-error); }
+.status_working {
+  color: var(--accent);
+}
+.status_done {
+  color: var(--status-success);
+}
+.status_error {
+  color: var(--status-error);
+}
 
 .nodeRole {
   min-width: 0;
@@ -234,7 +269,10 @@
   white-space: nowrap;
 }
 
-.nodeMeta span { overflow: hidden; text-overflow: ellipsis; }
+.nodeMeta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .terminalSurface {
   display: flex;
@@ -248,7 +286,9 @@
   overflow: hidden;
 }
 
-.terminalSurface > span { padding: 7px; }
+.terminalSurface > span {
+  padding: 7px;
+}
 .protocolTerminal {
   width: 100%;
   height: 100%;
@@ -274,10 +314,19 @@
   background: transparent;
   color: var(--fg-faint);
   cursor: nwse-resize;
-  opacity: .45;
+  opacity: 0.45;
 }
-.resizeHandle:hover { color: var(--fg); opacity: 1; }
-.cursor { width: 6px; height: 11px; margin-left: 5px; background: var(--accent); animation: blink 800ms steps(1) infinite; }
+.resizeHandle:hover {
+  color: var(--fg);
+  opacity: 1;
+}
+.cursor {
+  width: 6px;
+  height: 11px;
+  margin-left: 5px;
+  background: var(--accent);
+  animation: blink 800ms steps(1) infinite;
+}
 
 .emptyState {
   position: absolute;
@@ -291,10 +340,31 @@
   text-align: center;
 }
 
-.emptyState strong { font-size: 13px; }
-.emptyState span { max-width: 280px; color: var(--fg-muted); font-size: 10px; line-height: 1.5; }
-.emptyIcon { display: grid; place-items: center; width: 38px; height: 38px; border: 1px solid var(--accent); border-radius: 50%; color: var(--accent); }
-.zoomBadge { position: absolute; right: 16px; bottom: 16px; color: var(--fg-faint); font: 9px var(--font-mono); }
+.emptyState strong {
+  font-size: 13px;
+}
+.emptyState span {
+  max-width: 280px;
+  color: var(--fg-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.emptyIcon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  color: var(--accent);
+}
+.zoomBadge {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  color: var(--fg-faint);
+  font: 9px var(--font-mono);
+}
 
 .composer {
   position: relative;
@@ -321,24 +391,70 @@
   font: 10px var(--font-sans);
 }
 
-.composer select { width: 86px; }
-.composer input { flex: 1; }
-.arrow { color: var(--accent); }
-.iconButton { width: 27px; height: 27px; padding: 0; }
-.dangerButton { color: var(--status-error); }
+.composer select {
+  width: 86px;
+}
+.composer input {
+  flex: 1;
+}
+.arrow {
+  color: var(--accent);
+}
+.iconButton {
+  width: 27px;
+  height: 27px;
+  padding: 0;
+}
+.dangerButton {
+  color: var(--status-error);
+}
 
-@keyframes nodeEnter { from { opacity: 0; transform: scale(.97) translateY(6px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-@keyframes edgeFloat { to { stroke-dashoffset: -22; } }
-@keyframes blink { 50% { opacity: 0; } }
+@keyframes nodeEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@keyframes edgeFloat {
+  to {
+    stroke-dashoffset: -22;
+  }
+}
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .node, .edge, .cursor { animation: none; }
+  .node,
+  .edge,
+  .cursor {
+    animation: none;
+  }
 }
 
 @media (max-width: 720px) {
-  .header p { display: none; }
-  .headerActions .secondaryButton { width: 28px; padding: 6px; font-size: 0; }
-  .headerActions .secondaryButton svg { margin: 0; }
-  .node { width: 260px; height: 210px; }
-  .terminalSurface { height: 116px; }
+  .header p {
+    display: none;
+  }
+  .headerActions .secondaryButton {
+    width: 28px;
+    padding: 6px;
+    font-size: 0;
+  }
+  .headerActions .secondaryButton svg {
+    margin: 0;
+  }
+  .node {
+    width: 260px;
+    height: 210px;
+  }
+  .terminalSurface {
+    height: 116px;
+  }
 }

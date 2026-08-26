@@ -183,15 +183,12 @@ export function McpPanel() {
 
       <div className={styles.stats}>
         <span>
-          <b>{visibleCount}</b>{' '}
-          {showingServers ? t('mcp.statServers') : t('mcp.statSkills')}
+          <b>{visibleCount}</b> {showingServers ? t('mcp.statServers') : t('mcp.statSkills')}
           {agentFilter.length > 0 || term.trim() ? ` ${t('mcp.ofTotal', { total })}` : ''}
         </span>
       </div>
 
-      {error && showingServers ? (
-        <div className={styles.error}>{t(mcpErrorKey(error))}</div>
-      ) : null}
+      {error && showingServers ? <div className={styles.error}>{t(mcpErrorKey(error))}</div> : null}
 
       {visibleCount === 0 ? (
         <div className={styles.emptyWrap}>

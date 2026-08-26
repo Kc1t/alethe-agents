@@ -204,7 +204,7 @@ fn publish_metrics(app: &AppHandle, metrics: &ResourceMetrics) {
 }
 
 fn tick(app: &AppHandle) {
-    let mem = stats::collect_memory_stats();
+    let mem = stats::memory_stats_cached();
     let available_mb = mem.system_available_mb;
 
     let mut s = state().lock().unwrap();
@@ -317,7 +317,11 @@ pub fn start(app: AppHandle) {
 
         loop {
             interval.tick().await;
-            tick(&app);
+            // collect_memory_stats walks /proc and must never run on a tokio
+            // worker — moving the whole tick into spawn_blocking keeps the
+            // runtime free for PTY I/O while pressure is computed.
+            let app = app.clone();
+            let _ = tokio::task::spawn_blocking(move || tick(&app)).await;
         }
     });
 }
@@ -326,7 +330,7 @@ pub fn start(app: AppHandle) {
 
 #[tauri::command]
 pub fn get_resource_metrics() -> ResourceMetrics {
-    let mem = stats::collect_memory_stats();
+    let mem = stats::memory_stats_cached();
     let s = state().lock().unwrap();
     ResourceMetrics {
         memory_pressure: s.pressure,

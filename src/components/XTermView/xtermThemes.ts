@@ -1,7 +1,6 @@
 import type { Theme } from '../../lib/types'
 import type { FileLinkKind } from './terminalLinks'
 
-                                                                    
 export type LinkActionState = {
   text: string
   target: string

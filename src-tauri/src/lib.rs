@@ -106,15 +106,37 @@ fn set_window_opacity(_window: tauri::WebviewWindow, _opacity: f64) -> Result<()
 #[cfg(any(debug_assertions, desktop))]
 use tauri::Manager;
 
+/// Returns whether the WebKitGTK DMABUF renderer must be disabled before the
+/// webview is created.
+///
+/// The DMABUF path is known to break on Wayland with certain GPU drivers
+/// (fractional scaling layout corruption, "Error 71" compositor failures —
+/// see https://v2.tauri.app/develop/debug/linux-graphics/). Disabling it
+/// globally trades rendering performance for stability on every Linux setup.
+/// Instead, only disable it when the failure mode is actually likely: Wayland
+/// sessions with an NVIDIA kernel module loaded. X11 and open drivers keep
+/// the accelerated path. An explicit `ALETHE_FORCE_DISABLE_DMABUF=1` (or `0`)
+/// env var always wins.
+#[cfg(target_os = "linux")]
+fn should_disable_dmabuf_renderer() -> bool {
+    if let Ok(value) = std::env::var("ALETHE_FORCE_DISABLE_DMABUF") {
+        return value == "1";
+    }
+    if std::env::var("XDG_SESSION_TYPE").as_deref() != Ok("wayland") {
+        return false;
+    }
+    match std::fs::read_to_string("/proc/modules") {
+        Ok(modules) => modules.lines().any(|line| line.starts_with("nvidia")),
+        Err(_) => false,
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // bugs conhecidos no Wayland — escala fracionada quebrando layout,
-
-    // ("Error 71") em alguns drivers de GPU — documentados oficialmente em
-    // https://v2.tauri.app/develop/debug/linux-graphics/. Desligar o
-
     #[cfg(target_os = "linux")]
-    std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    if should_disable_dmabuf_renderer() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
 
     let _ = dotenvy::dotenv();
     // `npm run app` (dev) injeta EDITOR=vi e GIT_EDITOR=true no ambiente do

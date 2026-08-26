@@ -437,10 +437,59 @@ mod windows_clipboard {
 /// instaladas, os comandos de clipboard retornam erro em vez de panicar.
 #[cfg(all(unix, not(target_os = "macos")))]
 mod unix_clipboard {
+    use std::io::Read;
     use std::io::Write;
     use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
 
     use super::ClipboardPayload;
+
+    /// Hard cap for every clipboard subprocess. On Wayland, `wl-paste` blocks
+    /// indefinitely while the compositor waits for the selection source, which
+    /// would make Ctrl+Shift+V hang silently. A timeout turns that into a fast
+    /// "empty clipboard" instead.
+    const CLIPBOARD_TIMEOUT: Duration = Duration::from_secs(2);
+
+    fn wait_with_timeout(
+        child: &mut std::process::Child,
+        timeout: Duration,
+    ) -> Result<std::process::ExitStatus, String> {
+        let started = Instant::now();
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => return Ok(status),
+                Ok(None) => {
+                    if started.elapsed() >= timeout {
+                        let _ = child.kill();
+                        return Err("clipboard tool timed out".to_string());
+                    }
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                Err(e) => return Err(e.to_string()),
+            }
+        }
+    }
+
+    fn output_with_timeout(
+        command: &mut Command,
+        timeout: Duration,
+    ) -> Result<std::process::Output, String> {
+        let mut child = command
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        let status = wait_with_timeout(&mut child, timeout)?;
+        let mut stdout = Vec::new();
+        if let Some(mut pipe) = child.stdout.take() {
+            let _ = pipe.read_to_end(&mut stdout);
+        }
+        Ok(std::process::Output {
+            status,
+            stdout,
+            stderr: Vec::new(),
+        })
+    }
 
     fn wayland() -> bool {
         std::env::var_os("WAYLAND_DISPLAY").is_some()
@@ -454,7 +503,7 @@ mod unix_clipboard {
         };
         which::which(tool)
             .map(|_| tool)
-            .map_err(|_| format!("{tool} não encontrado no PATH (pacote `{package}`)"))
+            .map_err(|_| format!("{tool} not found in PATH (package `{package}`)"))
     }
 
     fn copy_tool() -> Result<&'static str, String> {
@@ -465,59 +514,61 @@ mod unix_clipboard {
         };
         which::which(tool)
             .map(|_| tool)
-            .map_err(|_| format!("{tool} não encontrado no PATH (pacote `{package}`)"))
+            .map_err(|_| format!("{tool} not found in PATH (package `{package}`)"))
     }
 
-    /// Lista os mimetypes disponíveis no clipboard (equivalente a
-    /// IsClipboardFormatAvailable, mas descobrindo tudo de uma vez).
+    /// Lists the mimetypes available on the clipboard (the Linux equivalent of
+    /// IsClipboardFormatAvailable, discovering everything at once).
     fn list_types() -> Vec<String> {
         let Ok(tool) = paste_tool() else {
             return Vec::new();
         };
-        let output = if tool == "wl-paste" {
-            Command::new("wl-paste").arg("--list-types").output()
+        let mut command = if tool == "wl-paste" {
+            let mut cmd = Command::new("wl-paste");
+            cmd.arg("--list-types");
+            cmd
         } else {
-            Command::new("xclip")
-                .args(["-selection", "clipboard", "-t", "TARGETS", "-o"])
-                .output()
+            let mut cmd = Command::new("xclip");
+            cmd.args(["-selection", "clipboard", "-t", "TARGETS", "-o"]);
+            cmd
         };
-        output
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| {
-                String::from_utf8_lossy(&o.stdout)
-                    .lines()
-                    .map(str::trim)
-                    .filter(|line| !line.is_empty())
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default()
+        let Ok(output) = output_with_timeout(&mut command, CLIPBOARD_TIMEOUT) else {
+            return Vec::new();
+        };
+        if !output.status.success() {
+            return Vec::new();
+        }
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect()
     }
 
     fn read_type(mime: &str) -> Result<Vec<u8>, String> {
         let tool = paste_tool()?;
-        let output = if tool == "wl-paste" {
-            Command::new("wl-paste")
-                .args(["--type", mime, "--no-newline"])
-                .output()
+        let mut command = if tool == "wl-paste" {
+            let mut cmd = Command::new("wl-paste");
+            cmd.args(["--type", mime, "--no-newline"]);
+            cmd
         } else {
-            Command::new("xclip")
-                .args(["-selection", "clipboard", "-t", mime, "-o"])
-                .output()
-        }
-        .map_err(|e| e.to_string())?;
+            let mut cmd = Command::new("xclip");
+            cmd.args(["-selection", "clipboard", "-t", mime, "-o"]);
+            cmd
+        };
+        let output = output_with_timeout(&mut command, CLIPBOARD_TIMEOUT)?;
         if !output.status.success() {
-            return Err(format!("falha ao ler clipboard ({mime})"));
+            return Err(format!("failed to read clipboard ({mime})"));
         }
         Ok(output.stdout)
     }
 
-    /// `text/uri-list` é o mimetype padrão que gerenciadores de arquivo
-    /// (Nautilus, Dolphin, Thunar, ...) usam ao copiar arquivos: uma lista de
-    /// URIs `file://` separadas por linha, com comentários opcionais em `#`.
-    /// GNOME/Nautilus às vezes só expõe `x-special/gnome-copied-files`
-    /// (mesmo formato, com uma linha extra "copy"/"cut" no início).
+    /// `text/uri-list` is the default mimetype that file managers (Nautilus,
+    /// Dolphin, Thunar, ...) use when copying files: a list of `file://` URIs,
+    /// one per line, with optional `#` comments. GNOME/Nautilus sometimes only
+    /// exposes `x-special/gnome-copied-files` (same format, with an extra
+    /// "copy"/"cut" line at the start).
     fn parse_uri_list(raw: &str) -> Vec<String> {
         raw.lines()
             .map(str::trim)
@@ -544,7 +595,7 @@ mod unix_clipboard {
             return Ok(ClipboardPayload::Empty);
         }
 
-        // Mesma ordem de prioridade do backend Windows: arquivos > imagem > texto.
+        // Same priority order as the Windows backend: files > image > text.
         let uri_mime = ["text/uri-list", "x-special/gnome-copied-files"]
             .into_iter()
             .find(|mime| types.iter().any(|t| t == mime));
@@ -556,10 +607,10 @@ mod unix_clipboard {
             }
         }
 
-        // image/png cobre a esmagadora maioria dos casos reais (screenshots,
-        // "copiar imagem" no navegador). Formatos crus como image/bmp ou
-        // image/jpeg não são reencodados aqui de propósito, pra não exigir
-        // features extras da crate `image` só pra esse caminho.
+        // image/png covers the vast majority of real cases (screenshots,
+        // "copy image" in the browser). Raw formats such as image/bmp or
+        // image/jpeg are intentionally not re-encoded here, to avoid requiring
+        // extra `image` crate features just for this path.
         if types.iter().any(|t| t == "image/png") {
             let bytes = read_type("image/png")?;
             if !bytes.is_empty() {
@@ -601,13 +652,13 @@ mod unix_clipboard {
         child
             .stdin
             .take()
-            .ok_or_else(|| "stdin do clipboard indisponível".to_string())?
+            .ok_or_else(|| "clipboard stdin unavailable".to_string())?
             .write_all(text.as_bytes())
             .map_err(|e| e.to_string())?;
 
-        let status = child.wait().map_err(|e| e.to_string())?;
+        let status = wait_with_timeout(&mut child, CLIPBOARD_TIMEOUT)?;
         if !status.success() {
-            return Err(format!("{tool} retornou erro"));
+            return Err(format!("{tool} returned an error"));
         }
         Ok(())
     }

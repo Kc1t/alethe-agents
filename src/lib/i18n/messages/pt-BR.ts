@@ -607,6 +607,10 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.nativeTerminalMacosDesc':
     'Use o mecanismo Ghostty integrado (renderização por GPU) em vez do terminal interno. Experimental. Reabra os terminais após alterar esta opção.',
   'prefs.nativeTerminalMacosEnable': 'Habilitar terminal nativo (macOS)',
+  'prefs.loginShell': 'Shell de login',
+  'prefs.loginShellDesc':
+    'Iniciar terminais como shell de login para carregar o profile completo (nvm, conda, starship, PATH customizado). Desligado por padrão porque o carregamento do profile adiciona centenas de milissegundos ao boot de cada terminal.',
+  'prefs.loginShellEnable': 'Usar shell de login para terminais',
   'prefs.resourcePolicy': 'Monitoramento de memória',
   'prefs.resourcePolicyDesc':
     'Mostra o consumo real do app e do Windows sem fechar nem estacionar runtimes automaticamente.',

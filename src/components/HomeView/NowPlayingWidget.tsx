@@ -5,7 +5,6 @@ import { useT } from '../../lib/i18n'
 import styles from './HomeView.module.css'
 
 type Props = {
-                                                                 
   enabled: boolean
 }
 

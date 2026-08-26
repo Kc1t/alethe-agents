@@ -84,14 +84,7 @@ export type VisualStyle = 'normal' | 'clean'
 export type MotionPreference = 'animated' | 'reduced'
 
 export type FeatureId =
-  | 'todos'
-  | 'git'
-  | 'browser'
-  | 'graphify'
-  | 'aiMemory'
-  | 'mcp'
-  | 'playwright'
-  | 'orchestrator'
+  'todos' | 'git' | 'browser' | 'graphify' | 'aiMemory' | 'mcp' | 'playwright' | 'orchestrator'
 
 export type TodoItem = {
   id: string
@@ -495,6 +488,9 @@ export type Preferences = {
 
   resourcePolicy: ResourcePolicyPreferences
 
+  /** Whether launched terminals run as a login shell (loads profile). Default false. */
+  loginShell: boolean
+
   workspaceGridLayout?: GridLayout
   /** Most recently saved custom layouts for the workspace. */
   workspaceGridLayoutHistory?: GridLayoutHistoryEntry[]
@@ -629,6 +625,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
     hiddenShellIdleMinutes: 30,
     spawnGraceSeconds: 120,
   },
+  loginShell: false,
   nodeHeapProfile: 'balanced',
 }
 

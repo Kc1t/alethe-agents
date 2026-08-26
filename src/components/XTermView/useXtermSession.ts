@@ -2,6 +2,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import { Unicode11Addon } from '@xterm/addon-unicode11'
+import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import { useEffect, useRef } from 'react'
@@ -269,6 +270,15 @@ export function useXtermSession(params: {
     terminal.loadAddon(new Unicode11Addon())
     terminal.unicode.activeVersion = '11'
     terminal.open(container)
+
+    // Prefer the WebGL renderer for GPU rasterization; the canvas renderer is
+    // CPU-bound and visibly stutters on dense TUIs under WebKitGTK on Linux.
+    // Fall back silently when WebGL is unavailable (some Linux GPU drivers).
+    try {
+      terminal.loadAddon(new WebglAddon())
+    } catch {
+      // canvas renderer remains active
+    }
     terminalRef.current = terminal
     const clampHorizontalScroll = () => {
       container.scrollLeft = 0
@@ -334,7 +344,9 @@ export function useXtermSession(params: {
               : undefined,
           )
           clampHorizontalScroll()
-        } catch {}
+        } catch {
+          /* empty */
+        }
       }
       if (pendingWriteLength > 0) {
         writeFrame = window.requestAnimationFrame(flushPendingWrite)
@@ -368,7 +380,9 @@ export function useXtermSession(params: {
           terminal.write(replay, () => {
             try {
               terminal.scrollToBottom()
-            } catch {}
+            } catch {
+              /* empty */
+            }
             resolve()
           })
         } catch {
@@ -393,7 +407,9 @@ export function useXtermSession(params: {
       event.stopPropagation()
       try {
         terminal.scrollLines(lines)
-      } catch {}
+      } catch {
+        /* empty */
+      }
     }
     container.addEventListener('wheel', onWheel, { passive: false, capture: true })
 
@@ -598,6 +614,38 @@ export function useXtermSession(params: {
       }
     }
     container.addEventListener('contextmenu', onContextMenu)
+
+    // WebKitGTK binds Ctrl+Shift+V to its own paste accelerator and
+    // Ctrl+Shift+C to copy; on some Linux setups those are consumed before
+    // they ever reach xterm's key handler. Intercept them at the window
+    // (capture phase) while the terminal is the focus target, routing paste
+    // and copy through the app's clipboard path instead.
+    const onWindowKeyDown = (event: KeyboardEvent) => {
+      const target = event.target
+      if (!(target instanceof Node) || !container.contains(target)) return
+      const ctrl = event.ctrlKey || event.metaKey
+      if (!ctrl || !event.shiftKey || event.altKey) return
+      const key = event.key.toLowerCase()
+      if (key === 'v' && !readOnly) {
+        event.preventDefault()
+        event.stopPropagation()
+        void resolveClipboardPaste()
+          .catch(() => navigator.clipboard?.readText() ?? '')
+          .then(pasteText)
+          .catch(() => {
+            terminal.focus()
+          })
+      } else if (key === 'c') {
+        const selection = terminal.getSelection()
+        if (selection) {
+          event.preventDefault()
+          event.stopPropagation()
+          void writeClipboardText(selection).catch(() => navigator.clipboard?.writeText(selection))
+          terminal.clearSelection()
+        }
+      }
+    }
+    window.addEventListener('keydown', onWindowKeyDown, true)
 
     const flushInput = () => {
       inputFlushScheduled = false
@@ -842,7 +890,9 @@ export function useXtermSession(params: {
         try {
           const rect = container?.getBoundingClientRect()
           if (rect && rect.width >= 50 && rect.height >= 30) fitAddon.fit()
-        } catch {}
+        } catch {
+          /* empty */
+        }
         setCommandNotFound(null)
         setBootPhase('preparing')
 
@@ -947,7 +997,9 @@ export function useXtermSession(params: {
               removeSession(sessionPersistenceKey)
               onSessionIdRef.current?.(undefined)
             }
-          } catch {}
+          } catch {
+            /* empty */
+          }
           if (disposed) return
         }
 
@@ -965,7 +1017,9 @@ export function useXtermSession(params: {
             const candidates = gsdChildId ? sessions.filter((s) => s.id !== gsdChildId) : sessions
             const claimed = claimMostRecentSession('opencode', cwd, candidates)
             if (claimed) resumeId = claimed.id
-          } catch {}
+          } catch {
+            /* empty */
+          }
           if (disposed) return
         }
         const preparedRuntime = command
@@ -1405,6 +1459,7 @@ export function useXtermSession(params: {
       window.removeEventListener('focus', restoreLastTerminalFocus)
       document.removeEventListener('visibilitychange', restoreLastTerminalFocus)
       container.removeEventListener('contextmenu', onContextMenu)
+      window.removeEventListener('keydown', onWindowKeyDown, true)
       window.removeEventListener('alethe:zoom-changed', onZoomChanged)
       window.removeEventListener('alethe:terminal-resize-request', onResizeRequest)
       ro.disconnect()

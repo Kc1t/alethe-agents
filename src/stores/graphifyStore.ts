@@ -12,11 +12,6 @@ import {
   type GraphifyStatus,
 } from '../lib/tauri'
 
-   
-                                                                        
-                                                                                 
-                                                                  
-   
 type GraphifyState = {
   repo: string | null
   status: GraphifyStatus | null
@@ -53,8 +48,6 @@ export const useGraphifyStore = create<GraphifyState>((set, get) => ({
       try {
         graph = await graphifyReadGraph(repo)
       } catch (err) {
-                                                                             
-                                                                         
         error = String(err) === 'graph_not_found' ? null : String(err)
       }
       set({ status, snapshots, graph, error })
@@ -77,8 +70,6 @@ export const useGraphifyStore = create<GraphifyState>((set, get) => ({
         return
       }
 
-                                                                             
-                                                                        
       const deadline = Date.now() + 60_000
       while (Date.now() < deadline) {
         await new Promise((resolve) => window.setTimeout(resolve, 500))
@@ -89,7 +80,7 @@ export const useGraphifyStore = create<GraphifyState>((set, get) => ({
             return
           }
         } catch {
-                                                                               
+          /* empty — graph read failure ignored, falls through to timeout */
         }
       }
 

@@ -10,10 +10,12 @@ function transfer(raw: string): DataTransfer {
 
 describe('file drag payloads', () => {
   it('reads a valid workspace file payload', () => {
-    expect(readFileDragPayload(transfer('{"projectId":"p1","path":"C:\\\\repo\\\\a.ts"}'))).toEqual({
-      projectId: 'p1',
-      path: 'C:\\repo\\a.ts',
-    })
+    expect(readFileDragPayload(transfer('{"projectId":"p1","path":"C:\\\\repo\\\\a.ts"}'))).toEqual(
+      {
+        projectId: 'p1',
+        path: 'C:\\repo\\a.ts',
+      },
+    )
   })
 
   it('rejects malformed and incomplete payloads', () => {

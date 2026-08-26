@@ -241,6 +241,10 @@ pub async fn spawn_pty(
     // launcher_override: path absoluto que supersede o auto-detect. Frontend
     launcher_override: Option<String>,
 
+    // login_shell: quando true, usa `-lc` (login shell) no POSIX; quando false,
+    // usa `-c` apenas. Padrão false (mais rápido, não carrega profile).
+    login_shell: Option<bool>,
+
     // canvas) — nunca polui o ambiente global nem outros terminais.
     env: Option<std::collections::HashMap<String, String>>,
 ) -> Result<SpawnPtyResponse, String> {
@@ -306,6 +310,7 @@ pub async fn spawn_pty(
             requested_command.as_deref(),
             resolved_launcher.as_deref(),
             &extras,
+            login_shell.unwrap_or(false),
         );
         if let Some(extra_env) = env.as_ref() {
             for (key, value) in extra_env {
@@ -607,8 +612,16 @@ pub async fn spawn_pty(
 
             batch.clear();
 
-                                                                     
-            tokio::time::sleep(Duration::from_millis(2)).await;
+            // Only impose the 2 ms floor when the coalescing window hit the
+            // 64 KB cap (high throughput, potential webview flooding). On normal
+            // output yielding instead avoids the latency floor that was
+            // throttling throughput — on Linux WebKitGTK the webview handles
+            // frames just fine.
+            if count >= 64 * 1024 {
+                tokio::time::sleep(Duration::from_millis(2)).await;
+            } else {
+                tokio::task::yield_now().await;
+            }
         }
 
         // Flush de qualquer cauda restante no fim do stream.
@@ -769,6 +782,7 @@ pub async fn restart_pty(
     cwd: Option<String>,
     extra_args: Option<Vec<String>>,
     launcher_override: Option<String>,
+    login_shell: Option<bool>,
     env: Option<HashMap<String, String>>,
 ) -> Result<SpawnPtyResponse, String> {
     // apagar o scrollback antigo rodava direto no corpo async, fora de
@@ -806,6 +820,7 @@ pub async fn restart_pty(
         cwd,
         extra_args,
         launcher_override,
+        login_shell,
         env,
     )
     .await
@@ -1660,14 +1675,29 @@ mod tests {
 
     #[test]
     fn a_kill_never_runs_while_the_child_lock_is_held() {
-        let source = include_str!("pty.rs");
-        for (index, _) in source.match_indices("child.lock()") {
-            let tail = &source[index..];
+        // Normalize line endings so the scan is independent of the checkout
+        // (Windows/CRLF checkouts would otherwise break the "\n}\n" search).
+        let source = include_str!("pty.rs").replace("\r\n", "\n");
+        // Only scan the non-test portion of the file.
+        let test_mod = source.find("#[cfg(test)]").unwrap_or(source.len());
+        let code = &source[..test_mod];
+
+        // Find the bounds of kill_tree_without_holding_child so we can skip
+        // it — that function intentionally drops the guard before killing.
+        let fn_name = "fn kill_tree_without_holding_child";
+        let skip_start = code.find(fn_name).unwrap_or(0);
+        let skip_end = code[skip_start..]
+            .find("\n}\n")
+            .map(|p| skip_start + p + 3)
+            .expect("kill_tree_without_holding_child has a closing brace");
+
+        for (index, _) in code.match_indices("child.lock()") {
+            if index >= skip_start && index < skip_end {
+                continue;
+            }
+            let tail = &code[index..];
             let block_end = tail
-                .find(
-                    "
-    }",
-                )
+                .find("\n    }\n")
                 .unwrap_or(tail.len().min(600));
             let block = &tail[..block_end.min(600)];
             assert!(

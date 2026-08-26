@@ -9,7 +9,7 @@ import {
   Plus,
   TerminalSquare,
 } from 'lucide-react'
-import { memo, useMemo } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 
 import { useT } from '../../lib/i18n'
 import type { Group, Project, Terminal, WorkspaceContainer } from '../../lib/types'
@@ -50,11 +50,36 @@ export const ProjectContainer = memo(function ProjectContainer({
   const dragId = `cont:${project.id}`
   const draggable = useDraggable({ id: dragId, disabled: isFullscreen })
   const droppable = useDroppable({ id: dragId, disabled: isFullscreen })
+  const containerRef = useRef<HTMLDivElement | null>(null)
   const setRefs = (node: HTMLDivElement | null) => {
+    containerRef.current = node
     draggable.setNodeRef(node)
     droppable.setNodeRef(node)
   }
   const isDropTarget = droppable.isOver && !draggable.isDragging
+
+  // The rainbow container animates an infinite conic-gradient ring, one of
+  // the most expensive compositing patterns on WebKitGTK. Pause it while the
+  // box is scrolled out of view so it doesn't repaint offscreen every frame.
+  const isRainbowContainer = project.color === 'rgb-rainbow' || group?.color === 'rgb-rainbow'
+  useEffect(() => {
+    if (!isRainbowContainer) return
+    const node = containerRef.current
+    if (!node) return
+    let paused = false
+    const observer = new IntersectionObserver(([entry]) => {
+      const visible = entry?.isIntersecting ?? true
+      if (visible === paused) {
+        paused = !visible
+        node.classList.toggle('rainbow-paused', !visible)
+      }
+    })
+    observer.observe(node)
+    return () => {
+      observer.disconnect()
+      node.classList.remove('rainbow-paused')
+    }
+  }, [isRainbowContainer])
 
   // renderizados. O terminal isolado busca direto em `project.terminals`,
 
@@ -73,8 +98,9 @@ export const ProjectContainer = memo(function ProjectContainer({
   )?.cwd
 
   const storedAccent = project.color || group?.color
-  const accent = storedAccent && CSS.supports('color', storedAccent) ? storedAccent : '#6ea8ff'
-  const isRainbow = accent === 'rgb-rainbow'
+  const isRainbow = storedAccent === 'rgb-rainbow'
+  const accent =
+    storedAccent && !isRainbow && CSS.supports('color', storedAccent) ? storedAccent : '#6ea8ff'
 
   if (container.collapsed) {
     return (

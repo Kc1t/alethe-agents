@@ -19,35 +19,68 @@ fn shared_system() -> &'static Mutex<System> {
     SYS.get_or_init(|| Mutex::new(System::new()))
 }
 
+const SYSTEM_REFRESH_GRACE: Duration = Duration::from_secs(2);
+
+fn refresh_tracker() -> &'static Mutex<Option<Instant>> {
+    static LAST: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
+    LAST.get_or_init(|| Mutex::new(None))
+}
+
+/// Refreshes the shared system only when the last refresh is older than
+/// [`SYSTEM_REFRESH_GRACE`]. Both the stats collector and the resource
+/// supervisor use this, so two monitors ticking on the same cadence reuse a
+/// single `/proc` walk instead of each building its own process table.
+pub(crate) fn refresh_system_if_stale(sys: &mut System) {
+    let mut last = refresh_tracker()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let stale = last.map_or(true, |at| at.elapsed() >= SYSTEM_REFRESH_GRACE);
+    if stale {
+        sys.refresh_processes(sysinfo::ProcessesToUpdate::All);
+        sys.refresh_memory();
+        *last = Some(Instant::now());
+    }
+}
+
+pub(crate) fn shared_system_handle() -> &'static Mutex<System> {
+    shared_system()
+}
+
 pub fn collect_memory_stats() -> MemoryStats {
     use sysinfo::Pid;
     let sys_lock = shared_system();
     let mut sys = sys_lock
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    sys.refresh_processes(sysinfo::ProcessesToUpdate::All);
-    sys.refresh_memory();
+    refresh_system_if_stale(&mut sys);
 
     let system_total_mb = sys.total_memory() as f64 / 1024.0 / 1024.0;
     let system_available_mb = sys.available_memory() as f64 / 1024.0 / 1024.0;
 
-    // BFS no subtree de processos a partir do PID atual.
+    // BFS over the process subtree rooted at the current PID. Build a
+    // children map in a single pass (O(N)) instead of scanning all processes
+    // per visited pid (O(N×P)).
     let root_pid = std::process::id() as usize;
+    let mut children: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+    for (other_pid, process) in sys.processes() {
+        if process.thread_kind().is_some() {
+            continue;
+        }
+        if let Some(parent) = process.parent() {
+            children
+                .entry(parent.as_u32() as usize)
+                .or_default()
+                .push(other_pid.as_u32() as usize);
+        }
+    }
     let mut visited = std::collections::HashSet::<usize>::new();
     let mut frontier = vec![root_pid];
     while let Some(pid) = frontier.pop() {
         if !visited.insert(pid) {
             continue;
         }
-        for (other_pid, process) in sys.processes() {
-            if process.thread_kind().is_some() {
-                continue;
-            }
-            if let Some(parent) = process.parent() {
-                if parent.as_u32() as usize == pid {
-                    frontier.push(other_pid.as_u32() as usize);
-                }
-            }
+        if let Some(kids) = children.get(&pid) {
+            frontier.extend(kids.iter().copied());
         }
     }
 

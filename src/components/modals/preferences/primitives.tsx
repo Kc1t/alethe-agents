@@ -2,8 +2,6 @@ import type { ReactNode } from 'react'
 
 import styles from '../PreferencesModal.module.css'
 
-                                                                     
-                                                                        
 export function SettingsSection({
   id,
   title,
@@ -26,8 +24,6 @@ export function SettingsSection({
   )
 }
 
-                                                                        
-                                                                      
 export function Avatar({
   url,
   initial,

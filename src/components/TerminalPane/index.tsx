@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { buildGhosttyCommand } from '../../lib/ghosttyCommand'
@@ -170,11 +171,21 @@ export const TerminalPane = memo(function TerminalPane({
   const showFloatingIdentity = Boolean(activeTab && (!isShell || topbarPinned))
   const showLeftFloating = showFloatingIdentity || (canDragPane && !isShell)
 
-  const ptyRuntime = useTerminalsStore((s) =>
-    activeTab?.ptyId ? (s.byPtyId[activeTab.ptyId] ?? null) : null,
+  // Select only the primitives that drive this render. recordIo swaps the
+  // whole PtyRuntime reference every 250 ms per active PTY; selecting the
+  // object itself re-rendered this large pane on every I/O tick.
+  const ptyState = useTerminalsStore(
+    useShallow((s) => {
+      const runtime = activeTab?.ptyId ? s.byPtyId[activeTab.ptyId] : undefined
+      return {
+        exists: Boolean(runtime),
+        alive: runtime?.alive ?? false,
+        parked: runtime?.parked === true,
+      }
+    }),
   )
-  const ptyExited = ptyRuntime !== null && !ptyRuntime.alive
-  const ptyParked = ptyRuntime?.parked === true
+  const ptyExited = ptyState.exists && !ptyState.alive
+  const ptyParked = ptyState.parked
   const canHandoff = activeTab?.type === 'claude' || activeTab?.type === 'codex'
   const handoffSuggested =
     (activeTab?.type === 'claude' && (claudeUsage?.five_hour.utilization ?? 0) >= 100) ||

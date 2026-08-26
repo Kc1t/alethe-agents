@@ -79,6 +79,11 @@ objc2-foundation = "0.3"
 # Backend do Keychain (onde o Claude Code guarda o token OAuth no macOS).
 keyring = { version = "3", default-features = false, features = ["apple-native"] }
 
+# Dependências só-Unix (Linux/BSD) — libc para kill/killpg direto no
+# processamento de árvore de processos, sem spawnar um subprocesso por PID.
+[target.'cfg(not(windows))'.dependencies]
+libc = "0.2"
+
 # Dependências só-Windows (registro + Win32). Em Linux/macOS o `winreg` nem
 # compila, então ficam atrás de `cfg(windows)`; o código que as usa já é gated.
 [target.'cfg(windows)'.dependencies]
@@ -103,16 +108,19 @@ windows-sys = { version = "0.61", features = [
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
 
-# Em dev, unwind permite que um panic de comando vire Err em vez de derrubar o
-# app inteiro durante uma sessão de HMR. Release segue abort (binário menor).
+# In dev, unwinding lets a command panic become Err instead of crashing the
+# whole app during an HMR session. Release follows abort (smaller binary).
 [profile.dev]
 panic = "unwind"
 
+# Release optimizes for raw speed (opt-level = 3) — the PTY batching, UTF-8
+# alignment and process-tree code are latency-sensitive hot paths. LTO +
+# single codegen unit keep the binary lean despite the larger opt level.
 [profile.release]
 panic = "abort"
 codegen-units = 1
 debug = false
 incremental = false
 lto = true
-opt-level = "s"
+opt-level = 3
 strip = true

@@ -8,17 +8,6 @@ export type PtyVisibilitySets = {
   focused: Set<string>
 }
 
-   
-                                                                    
-                                                                            
-                                                                    
-                                                                                    
-  
-                                                                         
-                                                                           
-                                                                          
-                             
-   
 export function computeVisibleFocusedPtyIds(): PtyVisibilitySets {
   const projectsState = useProjectsStore.getState()
   const ui = useUiStore.getState()
@@ -31,12 +20,6 @@ export function computeVisibleFocusedPtyIds(): PtyVisibilitySets {
     ),
   )
 
-                                                                       
-                                                                         
-                                                                             
-                                                                             
-                                                                        
-                                                                            
   // de verdade.
   const isolatedPaneId = projectsState.preferences.isolatedPaneId
 
@@ -51,9 +34,7 @@ export function computeVisibleFocusedPtyIds(): PtyVisibilitySets {
     for (const terminal of project.terminals) {
       const activeTab = terminal.tabs.find((tab) => tab.id === terminal.activeTabId)
       const inNormalGrid =
-        container &&
-        !container.collapsed &&
-        container.paneIds.includes(terminal.id)
+        container && !container.collapsed && container.paneIds.includes(terminal.id)
       const isIsolatedPane = terminal.id === isolatedPaneId
       const isKeptAlive = keptAlivePaneIds.has(terminal.id)
       if (activeTab?.ptyId && workspaceVisible && (inNormalGrid || isIsolatedPane || isKeptAlive)) {
@@ -75,13 +56,30 @@ export function computeVisibleFocusedPtyIds(): PtyVisibilitySets {
 }
 
 function subscribePtyVisibility(callback: () => void): () => void {
-  const unsubProjects = useProjectsStore.subscribe(() => {
-    cached = null
-    callback()
+  // Only invalidate the visibility cache when the fields that drive the
+  // computation actually change, not on every store mutation (recordIo,
+  // memory samples, toast pushes, etc.).
+  const unsubProjects = useProjectsStore.subscribe((state, prevState) => {
+    if (
+      state.preferences.isolatedPaneId !== prevState.preferences.isolatedPaneId ||
+      state.projects !== prevState.projects ||
+      state.workspace.containers !== prevState.workspace.containers
+    ) {
+      cached = null
+      callback()
+    }
   })
-  const unsubUi = useUiStore.subscribe(() => {
-    cached = null
-    callback()
+  const unsubUi = useUiStore.subscribe((state, prevState) => {
+    if (
+      state.activeView !== prevState.activeView ||
+      state.focusedTerminalId !== prevState.focusedTerminalId ||
+      state.activeTerminal?.terminalId !== prevState.activeTerminal?.terminalId ||
+      state.keptAlivePaneIds !== prevState.keptAlivePaneIds ||
+      state.agentCanvasSession?.ptyId !== prevState.agentCanvasSession?.ptyId
+    ) {
+      cached = null
+      callback()
+    }
   })
   return () => {
     unsubProjects()
@@ -89,11 +87,6 @@ function subscribePtyVisibility(callback: () => void): () => void {
   }
 }
 
-                                                                               
-                                                                              
-                                                                             
-                                                                               
-                                                 
 let cached: PtyVisibilitySets | null = null
 
 function visibilitySets(): PtyVisibilitySets {
@@ -101,13 +94,6 @@ function visibilitySets(): PtyVisibilitySets {
   return cached
 }
 
-   
-                                                                            
-                                                                            
-                                                                    
-                                                                         
-                                                                
-   
 export function usePtyPanelVisible(ptyId: string | undefined): boolean {
   return useSyncExternalStore(subscribePtyVisibility, () => {
     if (!ptyId) return false
