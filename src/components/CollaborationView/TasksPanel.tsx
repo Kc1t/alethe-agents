@@ -9,7 +9,19 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import { Check, ChevronDown, ChevronRight, GripVertical, Loader2, Plus, RotateCcw, Users } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  GripVertical,
+  Loader2,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Trash2,
+  Users,
+  X,
+} from 'lucide-react'
 import { type ReactNode, useEffect, useState } from 'react'
 
 import {
@@ -17,8 +29,10 @@ import {
   syncAssignTask,
   syncCompleteTask,
   syncCreateTask,
+  syncDeleteTask,
   syncListVisibleTasks,
   syncReopenTask,
+  syncUpdateTask,
   type TaskRecord,
 } from '../../lib/api/syncTasks'
 import { type TFunction, useT } from '../../lib/i18n'
@@ -26,7 +40,31 @@ import { syncLocalIdentity, syncSecuritySnapshot } from '../../lib/tauri'
 import styles from './TasksPanel.module.css'
 
 type Assignable = { accountId: string; label: string }
-type ColumnId = 'all' | 'open' | 'completed'
+
+// One column per category, always. NO_CATEGORY is the fixed column for tasks with no label yet —
+// it can't be renamed or deleted, since it isn't a real category.
+const NO_CATEGORY = '__none__'
+
+// Categories are a purely client-side concept — the backend only ever stores labels on individual
+// tasks, nothing tracks "this category/column exists" on its own. Without this, a freshly created
+// empty column (before it's ever assigned to a task) would vanish the moment this component
+// remounts — e.g. switching project tabs — since it only lived in React state.
+function categoriesStorageKey(projectId: string): string {
+  return `alethe.tasks.categories.${projectId}`
+}
+
+function loadStoredCategories(projectId: string): string[] {
+  try {
+    const raw = window.localStorage.getItem(categoriesStorageKey(projectId))
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed)
+      ? parsed.filter((entry): entry is string => typeof entry === 'string')
+      : []
+  } catch {
+    return []
+  }
+}
 
 export function TasksPanel({ projectId }: { projectId: string }) {
   const t = useT()
@@ -41,6 +79,12 @@ export function TasksPanel({ projectId }: { projectId: string }) {
   const [commentDraft, setCommentDraft] = useState('')
   const [assignable, setAssignable] = useState<Assignable[]>([])
   const [newAssignees, setNewAssignees] = useState<string[]>([])
+  const [newCategory, setNewCategory] = useState<string>(NO_CATEGORY)
+  const [extraCategories, setExtraCategories] = useState<string[]>(() =>
+    loadStoredCategories(projectId),
+  )
+  const [addingColumn, setAddingColumn] = useState(false)
+  const [newColumnName, setNewColumnName] = useState('')
   const [activeDragTaskId, setActiveDragTaskId] = useState<string | null>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
@@ -63,6 +107,7 @@ export function TasksPanel({ projectId }: { projectId: string }) {
     let active = true
     setTasks(null)
     setIdentity(null)
+    setExtraCategories(loadStoredCategories(projectId))
     syncLocalIdentity()
       .then(async (id) => {
         if (!active) return
@@ -105,6 +150,78 @@ export function TasksPanel({ projectId }: { projectId: string }) {
     }
   }, [projectId, t])
 
+  const persistCategories = (next: string[]) => {
+    try {
+      window.localStorage.setItem(categoriesStorageKey(projectId), JSON.stringify(next))
+    } catch {
+      // Best-effort — the column still works for the rest of this session either way.
+    }
+  }
+
+  const confirmNewColumn = () => {
+    const name = newColumnName.trim()
+    if (!name || name === NO_CATEGORY) return
+    setExtraCategories((current) => {
+      if (current.includes(name)) return current
+      const next = [...current, name]
+      persistCategories(next)
+      return next
+    })
+    setNewColumnName('')
+    setAddingColumn(false)
+  }
+
+  const renameColumn = async (oldName: string) => {
+    const input = window.prompt(t('tasks.renameCategoryPrompt'), oldName)
+    const newName = input?.trim()
+    if (!newName || newName === oldName) return
+    setExtraCategories((current) => {
+      const next = [...new Set(current.filter((c) => c !== oldName).concat(newName))]
+      persistCategories(next)
+      return next
+    })
+    if (identity) {
+      const affected = all.filter((task) => task.labels.includes(oldName))
+      for (const task of affected) {
+        const nextLabels = [
+          ...new Set(task.labels.map((label) => (label === oldName ? newName : label))),
+        ]
+        try {
+          await syncUpdateTask(projectId, task.taskId, identity.deviceId, task.revision, {
+            labels: nextLabels,
+          })
+        } catch {
+          setError(true)
+        }
+      }
+      await refresh(identity)
+    }
+  }
+
+  const deleteColumn = async (name: string) => {
+    if (!window.confirm(t('tasks.deleteCategoryConfirm'))) return
+    setExtraCategories((current) => {
+      const next = current.filter((c) => c !== name)
+      persistCategories(next)
+      return next
+    })
+    if (newCategory === name) setNewCategory(NO_CATEGORY)
+    if (identity) {
+      const affected = all.filter((task) => task.labels.includes(name))
+      for (const task of affected) {
+        const nextLabels = task.labels.filter((label) => label !== name)
+        try {
+          await syncUpdateTask(projectId, task.taskId, identity.deviceId, task.revision, {
+            labels: nextLabels,
+          })
+        } catch {
+          setError(true)
+        }
+      }
+      await refresh(identity)
+    }
+  }
+
   const createTask = async () => {
     if (!identity || !newTitle.trim()) return
     setCreating(true)
@@ -117,12 +234,26 @@ export function TasksPanel({ projectId }: { projectId: string }) {
         'public',
         [],
       )
+      let latestRevision = created.revision
       if (newAssignees.length > 0) {
-        await syncAssignTask(projectId, created.taskId, identity.deviceId, created.revision, newAssignees)
+        const assigned = await syncAssignTask(
+          projectId,
+          created.taskId,
+          identity.deviceId,
+          latestRevision,
+          newAssignees,
+        )
+        latestRevision = assigned.revision
+      }
+      if (newCategory !== NO_CATEGORY) {
+        await syncUpdateTask(projectId, created.taskId, identity.deviceId, latestRevision, {
+          labels: [newCategory],
+        })
       }
       setNewTitle('')
       setNewBody('')
       setNewAssignees([])
+      setNewCategory(NO_CATEGORY)
       await refresh(identity)
     } catch {
       setError(true)
@@ -144,6 +275,21 @@ export function TasksPanel({ projectId }: { projectId: string }) {
     setBusyTaskId(task.taskId)
     try {
       await syncAssignTask(projectId, task.taskId, identity.deviceId, task.revision, assignees)
+      await refresh(identity)
+    } catch {
+      setError(true)
+    } finally {
+      setBusyTaskId(null)
+    }
+  }
+
+  const setTaskColumn = async (task: TaskRecord, columnId: string) => {
+    if (!identity) return
+    setBusyTaskId(task.taskId)
+    try {
+      await syncUpdateTask(projectId, task.taskId, identity.deviceId, task.revision, {
+        labels: columnId === NO_CATEGORY ? [] : [columnId],
+      })
       await refresh(identity)
     } catch {
       setError(true)
@@ -178,6 +324,21 @@ export function TasksPanel({ projectId }: { projectId: string }) {
     }
   }
 
+  const deleteTask = async (task: TaskRecord) => {
+    if (!identity) return
+    if (!window.confirm(t('tasks.deleteConfirm'))) return
+    setBusyTaskId(task.taskId)
+    try {
+      await syncDeleteTask(projectId, task.taskId, identity.deviceId, task.revision)
+      if (expandedTaskId === task.taskId) setExpandedTaskId(null)
+      await refresh(identity)
+    } catch {
+      setError(true)
+    } finally {
+      setBusyTaskId(null)
+    }
+  }
+
   const submitComment = async (task: TaskRecord) => {
     if (!identity || !commentDraft.trim()) return
     setBusyTaskId(task.taskId)
@@ -199,13 +360,18 @@ export function TasksPanel({ projectId }: { projectId: string }) {
   }
 
   const all = tasks ?? []
-  const open = all.filter((task) => task.status !== 'completed')
-  const completed = all.filter((task) => task.status === 'completed')
 
-  const columns: { id: ColumnId; name: string; tasks: TaskRecord[]; draggable: boolean }[] = [
-    { id: 'all', name: t('tasks.filter.all'), tasks: all, draggable: false },
-    { id: 'open', name: t('tasks.filter.open'), tasks: open, draggable: true },
-    { id: 'completed', name: t('tasks.filter.completed'), tasks: completed, draggable: true },
+  const categories = (() => {
+    const seen = new Set<string>(extraCategories)
+    for (const task of all) {
+      for (const label of task.labels) seen.add(label)
+    }
+    return [...seen].sort((a, b) => a.localeCompare(b))
+  })()
+
+  const columns = [
+    { id: NO_CATEGORY, name: t('tasks.noCategory') },
+    ...categories.map((category) => ({ id: category, name: category })),
   ]
 
   const onDragStart = (event: DragStartEvent) => {
@@ -218,11 +384,12 @@ export function TasksPanel({ projectId }: { projectId: string }) {
     const { active, over } = event
     if (!over) return
     const taskId = String(active.id).replace(/^task:/, '')
-    const columnId = String(over.id).replace(/^column:/, '') as ColumnId
+    const columnId = String(over.id).replace(/^column:/, '')
     const task = all.find((entry) => entry.taskId === taskId)
     if (!task) return
-    if (columnId === 'completed' && task.status !== 'completed') void completeTask(task)
-    if (columnId === 'open' && task.status === 'completed') void reopenTask(task)
+    const currentColumn = task.labels[0] ?? NO_CATEGORY
+    if (currentColumn === columnId) return
+    void setTaskColumn(task, columnId)
   }
 
   const activeDragTask = activeDragTaskId ? all.find((task) => task.taskId === activeDragTaskId) : null
@@ -267,6 +434,21 @@ export function TasksPanel({ projectId }: { projectId: string }) {
             ))}
           </div>
         ) : null}
+        <div className={styles.assigneePicker}>
+          <span className={styles.assigneePickerLabel}>{t('tasks.category')}</span>
+          <select
+            className={styles.categorySelect}
+            value={newCategory}
+            onChange={(event) => setNewCategory(event.target.value)}
+          >
+            <option value={NO_CATEGORY}>{t('tasks.noCategory')}</option>
+            {categories.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+        </div>
         <button
           type="button"
           className={styles.addButton}
@@ -292,14 +474,15 @@ export function TasksPanel({ projectId }: { projectId: string }) {
                 key={column.id}
                 id={column.id}
                 name={column.name}
-                tasks={column.tasks}
-                droppable={column.draggable}
+                removable={column.id !== NO_CATEGORY}
+                tasks={all.filter((task) => (task.labels[0] ?? NO_CATEGORY) === column.id)}
+                onRename={() => void renameColumn(column.id)}
+                onDeleteColumn={() => void deleteColumn(column.id)}
               >
                 {(task) => (
                   <TaskCard
                     key={task.taskId}
                     task={task}
-                    draggable={column.draggable}
                     expanded={expandedTaskId === task.taskId}
                     busy={busyTaskId === task.taskId}
                     assignable={assignable}
@@ -310,6 +493,7 @@ export function TasksPanel({ projectId }: { projectId: string }) {
                     onToggleComplete={() =>
                       void (task.status === 'completed' ? reopenTask(task) : completeTask(task))
                     }
+                    onDelete={() => void deleteTask(task)}
                     onSetAssignees={(assignees) => void setTaskAssignees(task, assignees)}
                     onCommentDraftChange={setCommentDraft}
                     onSubmitComment={() => void submitComment(task)}
@@ -318,6 +502,50 @@ export function TasksPanel({ projectId }: { projectId: string }) {
                 )}
               </TaskColumn>
             ))}
+            <div className={styles.addColumn}>
+              {addingColumn ? (
+                <span className={styles.newCategoryInline}>
+                  <input
+                    autoFocus
+                    className={styles.newCategoryInput}
+                    value={newColumnName}
+                    placeholder={t('tasks.newCategoryPlaceholder')}
+                    maxLength={40}
+                    onChange={(event) => setNewColumnName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') confirmNewColumn()
+                      if (event.key === 'Escape') {
+                        setAddingColumn(false)
+                        setNewColumnName('')
+                      }
+                    }}
+                  />
+                  <button type="button" className={styles.iconButton} onClick={confirmNewColumn}>
+                    <Check size={12} />
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.iconButton}
+                    onClick={() => {
+                      setAddingColumn(false)
+                      setNewColumnName('')
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className={styles.addCategoryButton}
+                  title={t('tasks.addCategory')}
+                  onClick={() => setAddingColumn(true)}
+                >
+                  <Plus size={13} />
+                  {t('tasks.addCategory')}
+                </button>
+              )}
+            </div>
           </div>
           <DragOverlay>
             {activeDragTask ? (
@@ -334,21 +562,35 @@ function TaskColumn({
   id,
   name,
   tasks,
-  droppable,
+  removable,
+  onRename,
+  onDeleteColumn,
   children,
 }: {
-  id: ColumnId
+  id: string
   name: string
   tasks: TaskRecord[]
-  droppable: boolean
+  removable: boolean
+  onRename: () => void
+  onDeleteColumn: () => void
   children: (task: TaskRecord) => ReactNode
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: `column:${id}`, disabled: !droppable })
+  const { setNodeRef, isOver } = useDroppable({ id: `column:${id}` })
   return (
     <div ref={setNodeRef} className={`${styles.column} ${isOver ? styles.columnOver : ''}`}>
       <div className={styles.columnHeader}>
         <span className={styles.columnName}>{name}</span>
         <span className={styles.columnCount}>{tasks.length}</span>
+        {removable ? (
+          <span className={styles.columnActions}>
+            <button type="button" className={styles.iconButton} onClick={onRename}>
+              <Pencil size={11} />
+            </button>
+            <button type="button" className={styles.iconButton} onClick={onDeleteColumn}>
+              <Trash2 size={11} />
+            </button>
+          </span>
+        ) : null}
       </div>
       <div className={styles.columnBody}>
         {tasks.length === 0 ? (
@@ -363,32 +605,32 @@ function TaskColumn({
 
 function TaskCard({
   task,
-  draggable,
   expanded,
   busy,
   assignable,
   commentDraft,
   onToggleExpand,
   onToggleComplete,
+  onDelete,
   onSetAssignees,
   onCommentDraftChange,
   onSubmitComment,
   t,
 }: {
   task: TaskRecord
-  draggable: boolean
   expanded: boolean
   busy: boolean
   assignable: Assignable[]
   commentDraft: string
   onToggleExpand: () => void
   onToggleComplete: () => void
+  onDelete: () => void
   onSetAssignees: (assignees: string[]) => void
   onCommentDraftChange: (value: string) => void
   onSubmitComment: () => void
   t: TFunction
 }) {
-  const draggableHook = useDraggable({ id: `task:${task.taskId}`, disabled: !draggable })
+  const draggableHook = useDraggable({ id: `task:${task.taskId}` })
   return (
     <div
       ref={draggableHook.setNodeRef}
@@ -396,17 +638,15 @@ function TaskCard({
       style={{ opacity: draggableHook.isDragging ? 0.4 : 1 }}
     >
       <div className={styles.itemRow}>
-        {draggable ? (
-          <button
-            type="button"
-            className={styles.dragHandle}
-            {...draggableHook.listeners}
-            {...draggableHook.attributes}
-            title={t('tasks.dragHandle')}
-          >
-            <GripVertical size={12} />
-          </button>
-        ) : null}
+        <button
+          type="button"
+          className={styles.dragHandle}
+          {...draggableHook.listeners}
+          {...draggableHook.attributes}
+          title={t('tasks.dragHandle')}
+        >
+          <GripVertical size={12} />
+        </button>
         <button
           type="button"
           className={`${styles.checkButton} ${task.status === 'completed' ? styles.checkButtonDone : ''}`}
@@ -441,6 +681,15 @@ function TaskCard({
           {task.comments.length > 0 ? (
             <span className={styles.commentCount}>{task.comments.length}</span>
           ) : null}
+        </button>
+        <button
+          type="button"
+          className={styles.deleteButton}
+          disabled={busy}
+          onClick={onDelete}
+          title={t('tasks.delete')}
+        >
+          <Trash2 size={12} />
         </button>
       </div>
       {expanded ? (

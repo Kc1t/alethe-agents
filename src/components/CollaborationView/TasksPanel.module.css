@@ -106,13 +106,15 @@
 .columnHeader {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 6px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .columnName {
+  flex: 1;
+  min-width: 0;
   font-size: 11.5px;
   font-weight: 700;
   color: var(--fg);
@@ -130,6 +132,20 @@
   border: 1px solid var(--border);
   color: var(--fg-muted);
   font-size: 10px;
+}
+
+.columnActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+.addColumn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  padding-top: 4px;
 }
 
 .columnBody {
@@ -308,6 +324,85 @@
   font-size: 11px;
   color: var(--fg);
   cursor: pointer;
+}
+
+.categorySelect {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 11.5px;
+}
+
+.iconButton {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  color: var(--fg);
+}
+
+.addCategoryButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.addCategoryButton:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.newCategoryInline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.newCategoryInput {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 11px;
+  width: 120px;
+}
+
+.deleteButton {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.deleteButton:hover {
+  color: var(--status-offline);
 }
 
 .itemDetail {
