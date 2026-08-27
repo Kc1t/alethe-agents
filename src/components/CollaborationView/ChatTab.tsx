@@ -2,7 +2,11 @@ import { Eraser, Hash, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { syncDeleteDirectConversation } from '../../lib/api/syncChat'
-import { drainRendezvousEvents } from '../../lib/api/syncRendezvous'
+import {
+  connectRendezvous,
+  drainRendezvousEvents,
+  getRendezvousStatus,
+} from '../../lib/api/syncRendezvous'
 import {
   type SyncChatContact,
   syncListChatContacts,
@@ -131,6 +135,20 @@ export function ChatTab({
   useEffect(() => {
     let active = true
     const drain = async () => {
+      try {
+        // This loop is the only thing that needs the relay connected before a first contact (and
+        // therefore ChatPanel, which is what normally establishes it) exists — without this, a
+        // brand-new device with zero contacts would never actually connect, and the mutual
+        // auto-add-back ack from someone who just added them would silently never arrive.
+        const status = await getRendezvousStatus()
+        if (status.state === 'no_attempt_yet') {
+          await connectRendezvous().catch((cause) => {
+            console.error('[chat-contact] ack-loop reconnect failed', cause)
+          })
+        }
+      } catch (cause) {
+        console.error('[chat-contact] getRendezvousStatus (ack loop) failed', cause)
+      }
       try {
         const events = await drainRendezvousEvents()
         const ackEvents = events.filter((event) => event.envelopeKind === 'chat_contact_ack')
