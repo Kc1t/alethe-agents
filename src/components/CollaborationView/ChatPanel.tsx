@@ -35,8 +35,16 @@ const POLL_INTERVAL_MS = 4_000
 // appends immediately, while a peer's message might arrive moments later but with an earlier
 // `sequence`/timestamp. Always re-sorting keeps the thread in true chronological order, WhatsApp-
 // style, instead of "arrival order" which can visibly shuffle once both sides are actually live.
+//
+// Sorts by `createdAtMs` first, NOT `sequence`: `sequence` is a per-device, per-conversation-file
+// counter (`next_sequence` in `sync_chat.rs`) — each side's own copy of the conversation starts
+// counting from 1 independently, so "my message #1" and "their message #1" are unrelated numbers
+// that happen to collide, not two points on one shared timeline. Comparing them first (as this
+// used to) could sort a later message before an earlier one whenever the two devices' own local
+// counts didn't happen to agree with wall-clock order — reproduced live. `sequence` is still a
+// useful *tiebreaker* for two messages with the exact same timestamp from the same device.
 function sortMessages(list: DecryptedMessage[]): DecryptedMessage[] {
-  return [...list].sort((a, b) => a.sequence - b.sequence || a.createdAtMs - b.createdAtMs)
+  return [...list].sort((a, b) => a.createdAtMs - b.createdAtMs || a.sequence - b.sequence)
 }
 
 function bytesToBase64(bytes: number[]): string {
