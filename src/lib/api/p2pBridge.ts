@@ -58,6 +58,10 @@ export async function prepareRemoteCandidate(params: {
   sessionId: string
   publicHost: string
   publicPort: number
+  /** This device's LAN-facing address, if known — see `DiscoveredCandidate.localHost`. Lets a
+   * same-LAN peer punch through instantly instead of relying on the public/STUN address, which
+   * cannot be reached from inside the same router (no NAT hairpinning on most consumer gear). */
+  localHost?: string | null
   recipientAccountRoute: string
   recipientDeviceId?: string
   recipientAgreementPublicKey: string
@@ -67,6 +71,7 @@ export async function prepareRemoteCandidate(params: {
     sessionId: params.sessionId,
     publicHost: params.publicHost,
     publicPort: params.publicPort,
+    localHost: params.localHost ?? null,
     recipientAccountRoute: params.recipientAccountRoute,
     recipientDeviceId: params.recipientDeviceId ?? null,
     recipientAgreementPublicKey: params.recipientAgreementPublicKey,
@@ -77,6 +82,7 @@ export type RemoteCandidate = {
   sessionId: string
   publicHost: string
   publicPort: number
+  localHost: string | null
 }
 
 export async function consumeRemoteCandidate(
@@ -91,6 +97,8 @@ export type DiscoveredCandidate = {
   publicHost: string
   publicPort: number
   localPort: number
+  /** This device's LAN-facing IP, best-effort (`null` if it could not be determined). */
+  localHost: string | null
 }
 
 /** Binds a UDP socket and discovers its public address via STUN. `localPort` must be reused (not
@@ -109,6 +117,9 @@ export async function p2pConnect(params: {
   localPort: number
   peerHost: string
   peerPort: number
+  /** The peer's LAN-facing address, if they reported one — tried before `peerHost` (see
+   * `prepareRemoteCandidate`'s `localHost` doc comment). */
+  peerLocalHost?: string | null
   isInitiator: boolean
   remoteAccountRoute: string
 }): Promise<P2pConnectResult> {
@@ -117,6 +128,7 @@ export async function p2pConnect(params: {
     localPort: params.localPort,
     peerHost: params.peerHost,
     peerPort: params.peerPort,
+    peerLocalHost: params.peerLocalHost ?? null,
     isInitiator: params.isInitiator,
     remoteAccountRoute: params.remoteAccountRoute,
   })

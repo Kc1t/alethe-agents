@@ -75,6 +75,7 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
         sessionId,
         publicHost: discovered.publicHost,
         publicPort: discovered.publicPort,
+        localHost: discovered.localHost,
         recipientAccountRoute: peerAccountRoute,
         recipientDeviceId: remoteDeviceId,
         recipientAgreementPublicKey: peerAgreementPublicKey,
@@ -90,7 +91,7 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
       })
       log('own candidate sent, waiting for the peer candidate…')
 
-      type Candidate = { host: string; port: number }
+      type Candidate = { host: string; port: number; localHost: string | null }
       const box: { candidate: Candidate | null } = { candidate: null }
       const deadline = Date.now() + 10_000
       while (Date.now() < deadline && !box.candidate && !cancelledRef.current) {
@@ -100,7 +101,11 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
           if (!event.ciphertext) continue
           try {
             const candidate = await consumeRemoteCandidate(event.ciphertext, sessionId)
-            box.candidate = { host: candidate.publicHost, port: candidate.publicPort }
+            box.candidate = {
+              host: candidate.publicHost,
+              port: candidate.publicPort,
+              localHost: candidate.localHost,
+            }
           } catch (cause) {
             log('candidate delivery did not match this session, ignoring', cause)
           }
@@ -119,6 +124,7 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
         localPort: discovered.localPort,
         peerHost: finalCandidate.host,
         peerPort: finalCandidate.port,
+        peerLocalHost: finalCandidate.localHost,
         isInitiator,
         remoteAccountRoute: peerAccountRoute,
       })

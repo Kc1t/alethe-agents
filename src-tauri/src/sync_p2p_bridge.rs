@@ -171,6 +171,14 @@ struct RemoteCandidatePayload {
     session_id: String,
     public_host: String,
     public_port: u16,
+    /// This device's local (LAN-interface) address, reusing the same port as `public_port`'s
+    /// socket. When both peers are behind the same router (common case: two people testing on
+    /// the same home/office network), the STUN-derived public candidate above cannot be punched
+    /// to at all — most consumer routers do not support NAT hairpinning/loopback, so a device
+    /// cannot reach its own public IP from inside the LAN. Trying this local candidate first
+    /// lets same-LAN pairs connect near-instantly without any NAT traversal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    local_host: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -188,6 +196,8 @@ pub struct RemoteCandidate {
     pub session_id: String,
     pub public_host: String,
     pub public_port: u16,
+    /// See `RemoteCandidatePayload::local_host` — same port as `public_port`.
+    pub local_host: Option<String>,
 }
 
 fn pack(envelope: &SealedEnvelope) -> Vec<u8> {
@@ -219,6 +229,7 @@ pub fn sync_prepare_remote_candidate(
     session_id: String,
     public_host: String,
     public_port: u16,
+    local_host: Option<String>,
     recipient_account_route: String,
     recipient_device_id: Option<String>,
     recipient_agreement_public_key: String,
@@ -226,7 +237,7 @@ pub fn sync_prepare_remote_candidate(
     let public_key = URL_SAFE_NO_PAD
         .decode(&recipient_agreement_public_key)
         .map_err(|_| P2pError::InvalidRecipientKey.to_string())?;
-    let payload = RemoteCandidatePayload { session_id: session_id.clone(), public_host, public_port };
+    let payload = RemoteCandidatePayload { session_id: session_id.clone(), public_host, public_port, local_host };
     let plaintext = serde_json::to_vec(&payload).map_err(|_| P2pError::Encode.to_string())?;
     let info = format!("alethe-candidate-envelope-v1|{session_id}");
     let sealed = seal_for_recipient(&plaintext, &public_key, info.as_bytes())
@@ -268,6 +279,7 @@ pub fn sync_consume_remote_candidate(
         session_id: payload.session_id,
         public_host: payload.public_host,
         public_port: payload.public_port,
+        local_host: payload.local_host,
     })
 }
 
@@ -281,9 +293,23 @@ pub fn sync_consume_remote_candidate(
 pub struct DiscoveredCandidate {
     pub public_host: String,
     pub public_port: u16,
-    /// The local port to reuse for the actual punch attempt (`punch_and_wrap`) — STUN's mapping
+    /// The local port to reuse for the actual punch attempt (`punch_and_wrap_candidates`) — STUN's mapping
     /// is only valid for the exact local port it was observed on.
     pub local_port: u16,
+    /// This device's LAN-facing IP address (the source address the OS would use to reach the
+    /// public internet), best-effort — `None` if it could not be determined. See
+    /// `RemoteCandidatePayload::local_host` for why this matters.
+    pub local_host: Option<String>,
+}
+
+/// Best-effort local (LAN) IP discovery: opens a UDP socket and "connects" it (no packet is
+/// actually sent for UDP) to a public address, then reads back which local interface address the
+/// OS picked as the route — the standard portable trick for this, works even without real
+/// internet connectivity since UDP connect never sends anything.
+fn detect_local_ip() -> Option<String> {
+    let probe = UdpSocket::bind("0.0.0.0:0").ok()?;
+    probe.connect("8.8.8.8:80").ok()?;
+    probe.local_addr().ok().map(|addr| addr.ip().to_string())
 }
 
 /// Binds a UDP socket and discovers its public `IP:port` via STUN. Call this once per attempt on
@@ -291,43 +317,105 @@ pub struct DiscoveredCandidate {
 /// socket would get a different NAT mapping).
 #[tauri::command]
 pub fn p2p_discover_candidate() -> Result<DiscoveredCandidate, String> {
-    let socket = UdpSocket::bind("0.0.0.0:0").map_err(|_| P2pError::Io.to_string())?;
-    let public_addr = stun_discover(&socket).map_err(|error| error.to_string())?;
+    let socket = match UdpSocket::bind("0.0.0.0:0") {
+        Ok(socket) => socket,
+        Err(cause) => {
+            eprintln!("[p2p] discover: failed to bind local UDP socket: {cause}");
+            return Err(P2pError::Io.to_string());
+        }
+    };
+    let public_addr = match stun_discover(&socket) {
+        Ok(addr) => addr,
+        Err(cause) => {
+            eprintln!("[p2p] discover: STUN resolution failed: {cause}");
+            return Err(cause.to_string());
+        }
+    };
     // The bound socket itself cannot cross the Tauri command boundary, so the caller re-binds an
-    // identical local port for the actual punch attempt — see `punch_and_wrap` below, which is
+    // identical local port for the actual punch attempt — see `punch_and_wrap_candidates` below, which is
     // why this function only returns discovery info, not a handle.
     let local_port = socket.local_addr().map_err(|_| P2pError::Io.to_string())?.port();
-    Ok(DiscoveredCandidate { public_host: public_addr.ip().to_string(), public_port: public_addr.port(), local_port })
+    let local_host = detect_local_ip();
+    eprintln!(
+        "[p2p] discover: local_port={local_port} public={}:{} local_host={:?}",
+        public_addr.ip(),
+        public_addr.port(),
+        local_host
+    );
+    Ok(DiscoveredCandidate {
+        public_host: public_addr.ip().to_string(),
+        public_port: public_addr.port(),
+        local_port,
+        local_host,
+    })
 }
 
 /// Attempts to punch through NAT to `peer_addr` and wraps the resulting UDP path in a minimal
 /// reliable stream. `local_port` should be the same port `p2p_discover_candidate` bound, reused
 /// with `SO_REUSEADDR` so this attempt gets the same NAT mapping STUN just observed.
-pub fn punch_and_wrap(local_port: u16, peer_addr: SocketAddr) -> Result<ReliableUdpStream, P2pError> {
-    let socket = bind_reusable(local_port)?;
-    socket.set_read_timeout(Some(PUNCH_INTERVAL)).map_err(|_| P2pError::Io)?;
-
-    let deadline = Instant::now() + PUNCH_TOTAL_TIMEOUT;
-    let mut buffer = [0_u8; 64];
-    let mut punched = false;
-    for _ in 0..PUNCH_ATTEMPTS {
-        if Instant::now() >= deadline {
-            break;
-        }
-        let _ = socket.send_to(b"alethe-p2p-punch", peer_addr);
-        match socket.recv_from(&mut buffer) {
-            Ok((_, from)) if from == peer_addr => {
-                punched = true;
-                break;
-            }
-            _ => continue,
-        }
-    }
-    if !punched {
+/// Tries each candidate address in order, giving each a slice of the total punch budget — the
+/// first one to receive a reply from its expected peer wins. Candidates should be ordered
+/// cheapest/most-likely-to-succeed first: a same-LAN local address (near-instant, no NAT
+/// traversal needed at all) before the STUN-derived public address (needs both sides' NAT to
+/// cooperate, and never works at all for two peers behind the same router/public IP — see
+/// `RemoteCandidatePayload::local_host`).
+pub fn punch_and_wrap_candidates(local_port: u16, candidates: &[SocketAddr]) -> Result<ReliableUdpStream, P2pError> {
+    if candidates.is_empty() {
         return Err(P2pError::Punch);
     }
-    socket.connect(peer_addr).map_err(|_| P2pError::Io)?;
-    Ok(ReliableUdpStream::new(socket))
+    eprintln!(
+        "[p2p] punch: attempting local_port={local_port} candidates={candidates:?} attempts_per_candidate={PUNCH_ATTEMPTS} total_timeout={PUNCH_TOTAL_TIMEOUT:?}"
+    );
+    let socket = match bind_reusable(local_port) {
+        Ok(socket) => socket,
+        Err(cause) => {
+            eprintln!("[p2p] punch: failed to rebind local_port={local_port}: {cause}");
+            return Err(cause);
+        }
+    };
+    socket.set_read_timeout(Some(PUNCH_INTERVAL)).map_err(|_| P2pError::Io)?;
+
+    let overall_deadline = Instant::now() + PUNCH_TOTAL_TIMEOUT;
+    let mut buffer = [0_u8; 64];
+    let attempts_per_candidate = (PUNCH_ATTEMPTS as usize).div_ceil(candidates.len()) as u32;
+
+    for peer_addr in candidates {
+        let peer_addr = *peer_addr;
+        if Instant::now() >= overall_deadline {
+            eprintln!("[p2p] punch: overall deadline reached before trying {peer_addr}, skipping remaining candidates");
+            break;
+        }
+        let mut attempts_made = 0_u32;
+        let mut last_recv_error: Option<String> = None;
+        for _ in 0..attempts_per_candidate {
+            if Instant::now() >= overall_deadline {
+                break;
+            }
+            attempts_made += 1;
+            if let Err(cause) = socket.send_to(b"alethe-p2p-punch", peer_addr) {
+                eprintln!("[p2p] punch: send_to {peer_addr} failed on attempt {attempts_made}: {cause}");
+            }
+            match socket.recv_from(&mut buffer) {
+                Ok((_, from)) if from == peer_addr => {
+                    eprintln!("[p2p] punch: SUCCESS candidate={peer_addr} after {attempts_made} attempts");
+                    socket.connect(peer_addr).map_err(|_| P2pError::Io)?;
+                    return Ok(ReliableUdpStream::new(socket));
+                }
+                Ok((_, from)) => {
+                    eprintln!("[p2p] punch: received packet from unexpected source {from} while targeting {peer_addr}, ignoring");
+                }
+                Err(cause) => {
+                    last_recv_error = Some(cause.to_string());
+                }
+            }
+        }
+        eprintln!(
+            "[p2p] punch: candidate={peer_addr} FAILED after {attempts_made} attempts, last_recv_error={:?}",
+            last_recv_error
+        );
+    }
+    eprintln!("[p2p] punch: all {} candidate(s) FAILED — falling back to relay", candidates.len());
+    Err(P2pError::Punch)
 }
 
 fn bind_reusable(local_port: u16) -> Result<UdpSocket, P2pError> {
@@ -553,6 +641,7 @@ pub fn sync_p2p_connect(
     local_port: u16,
     peer_host: String,
     peer_port: u16,
+    peer_local_host: Option<String>,
     is_initiator: bool,
     remote_account_route: String,
 ) -> Result<P2pConnectResult, String> {
@@ -591,7 +680,25 @@ pub fn sync_p2p_connect(
     let peer_addr: SocketAddr = format!("{peer_host}:{peer_port}")
         .parse()
         .map_err(|_| "p2p_invalid_peer_address".to_string())?;
-    let mut stream = punch_and_wrap(local_port, peer_addr).map_err(|error| error.to_string())?;
+    // Local (same-LAN) candidate first — when both peers are behind the same router, this is the
+    // only address that can ever work (see `RemoteCandidatePayload::local_host`'s doc comment);
+    // the public/STUN candidate is always tried too, as a fallback for peers on different networks.
+    let mut candidates: Vec<SocketAddr> = Vec::with_capacity(2);
+    if let Some(local_host) = peer_local_host.as_deref() {
+        match format!("{local_host}:{peer_port}").parse::<SocketAddr>() {
+            Ok(local_addr) if local_addr != peer_addr => candidates.push(local_addr),
+            Ok(_) => {}
+            Err(cause) => eprintln!("[p2p] connect: peer_local_host {local_host:?} did not parse, skipping: {cause}"),
+        }
+    }
+    candidates.push(peer_addr);
+    eprintln!(
+        "[p2p] connect: peer={remote_account_route} candidates={candidates:?} is_initiator={is_initiator}"
+    );
+    let mut stream = punch_and_wrap_candidates(local_port, &candidates).map_err(|error| {
+        eprintln!("[p2p] connect: punch failed for peer={remote_account_route}: {error}");
+        error.to_string()
+    })?;
 
     let trust_oracle = AletheDeviceTrustOracle { document, now_ms: crate::provider_common::now_ms() };
     let session = if is_initiator {
@@ -599,8 +706,12 @@ pub fn sync_p2p_connect(
     } else {
         crate::sync_transport::establish_as_responder(&mut stream, &local_identity, &trust_oracle)
     }
-    .map_err(|error| error.to_string())?;
+    .map_err(|error| {
+        eprintln!("[p2p] connect: Phase-4 handshake failed for peer={remote_account_route} (punch succeeded): {error}");
+        error.to_string()
+    })?;
 
+    eprintln!("[p2p] connect: SUCCESS peer={remote_account_route} remote_device_id={}", session.remote_device_id);
     registry.register(remote_account_route, stream);
 
     Ok(P2pConnectResult { connected: true, remote_device_id: Some(session.remote_device_id) })
