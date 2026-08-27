@@ -173,6 +173,24 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
     [remotePeerAccountRoute, attempt],
   )
 
+  // A single attempt only has a 10s window to see the peer's candidate — if the two sides don't
+  // happen to call `connect()` within ~10s of each other (the common case: one side pairs/opens
+  // the chat well before the other one does), neither ever sees the other's candidate and the
+  // connection permanently settles on `'relay'` for the rest of the session, even though both
+  // devices are perfectly reachable. Reproduced live. Keep retrying on the same cadence as
+  // `connect()`'s own throttle for as long as the chat stays open and hasn't reached `'p2p'` yet,
+  // so the two sides' attempt windows eventually overlap instead of depending on a single, unlikely
+  // coincidence.
+  useEffect(() => {
+    if (!remotePeerAccountRoute || !remoteAgreementPublicKey || state === 'p2p') return
+    const timer = window.setInterval(() => {
+      if (cancelledRef.current) return
+      attemptedAtRef.current = Date.now()
+      void attempt(remotePeerAccountRoute, remoteAgreementPublicKey)
+    }, CONNECT_RETRY_MS)
+    return () => window.clearInterval(timer)
+  }, [remotePeerAccountRoute, remoteAgreementPublicKey, state, attempt])
+
   const send = useCallback(
     async (bytes: number[]) => {
       if (!remotePeerAccountRoute) throw new Error('p2p_no_peer')

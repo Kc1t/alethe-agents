@@ -332,33 +332,59 @@ export function ChatPanel({ source }: { source: ChatSource }) {
     }
   }
 
+  // How many times to retry an enqueue before giving up — covers the common "sent immediately
+  // after pairing/adding a contact" case, where the rendezvous connection (or the freshly-adopted
+  // endpoint) hasn't finished coming up yet by the time the very first message is sent. Reproduced
+  // live: a message sent right after pairing silently never arrived, because the single enqueue
+  // attempt failed while the connection was still settling and nothing ever retried it — the
+  // message stayed saved locally (visible only to the sender) forever.
+  const RELAY_DELIVERY_RETRY_DELAYS_MS = [800, 2_000, 5_000]
+
   const deliverViaRelay = async (
     frame: number[],
     recipientAccountRoute: string,
     recipientAgreementPublicKey: number[],
   ) => {
     const startedAt = performance.now()
+    const messageId = `chat_${crypto.randomUUID()}`
     try {
       const ciphertext = await syncSealChatRelayMessage(
         frame,
         bytesToBase64(recipientAgreementPublicKey),
       )
-      await sendRendezvousFrame({
-        type: 'enqueue',
-        kind: 'chat_message',
-        id: `chat_${crypto.randomUUID()}`,
-        recipientAccountRoute,
-        expiresAtMs: Date.now() + 24 * 60 * 60 * 1000,
-        ciphertext,
-      })
-      console.info(
-        `[chat] message sent via relay (${Math.round(performance.now() - startedAt)}ms)`,
-        { recipientAccountRoute },
-      )
+      for (let attempt = 0; ; attempt++) {
+        try {
+          // Idempotent no-op if a connection attempt is already in flight/online (see
+          // `sync_rendezvous.rs`'s `start_at` guard) — makes sure a message sent the instant after
+          // pairing doesn't race a relay connection that hasn't come up yet.
+          await connectRendezvous()
+          await sendRendezvousFrame({
+            type: 'enqueue',
+            kind: 'chat_message',
+            id: messageId,
+            recipientAccountRoute,
+            expiresAtMs: Date.now() + 24 * 60 * 60 * 1000,
+            ciphertext,
+          })
+          console.info(
+            `[chat] message sent via relay (${Math.round(performance.now() - startedAt)}ms, attempt ${attempt + 1})`,
+            { recipientAccountRoute },
+          )
+          return
+        } catch (cause) {
+          if (attempt >= RELAY_DELIVERY_RETRY_DELAYS_MS.length) throw cause
+          console.warn(
+            `[chat] deliverViaRelay attempt ${attempt + 1} failed, retrying in ${RELAY_DELIVERY_RETRY_DELAYS_MS[attempt]}ms`,
+            cause,
+          )
+          await new Promise((resolve) => setTimeout(resolve, RELAY_DELIVERY_RETRY_DELAYS_MS[attempt]))
+        }
+      }
     } catch (cause) {
-      // Best-effort — the message is already saved locally either way; only live delivery failed.
+      // Only after every retry above was exhausted — the message is already saved locally either
+      // way; only live delivery failed.
       console.error(
-        `[chat] deliverViaRelay failed (${Math.round(performance.now() - startedAt)}ms)`,
+        `[chat] deliverViaRelay failed permanently (${Math.round(performance.now() - startedAt)}ms)`,
         cause,
       )
     }
