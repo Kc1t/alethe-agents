@@ -356,11 +356,17 @@ async fn connect_once(
                     if let Ok(value) = serde_json::from_str::<Value>(&text) {
                         let event_type = value.get("type").and_then(Value::as_str).unwrap_or("unknown").to_string();
                         if matches!(event_type.as_str(), "delivery" | "devices" | "error") {
-                            if event_type == "delivery" {
+                            // `candidate` deliveries are deliberately excluded below: they are pure
+                            // connection-setup machinery exchanged automatically (and now
+                            // repeatedly, since P2P signaling retries on a timer until it connects),
+                            // not something a person took an action on or needs to be told about.
+                            // Recording them produced a notification every single retry cycle.
+                            if event_type == "delivery"
+                                && value.get("kind").and_then(Value::as_str) != Some("candidate")
+                            {
                                 if let Some(subject) = value.get("id").and_then(Value::as_str) {
                                     let kind = match value.get("kind").and_then(Value::as_str) {
                                         Some("invitation") => crate::sync_access::AccessKind::RemoteInvitation,
-                                        Some("candidate") => crate::sync_access::AccessKind::ConnectionCandidate,
                                         Some("revocation") => crate::sync_access::AccessKind::Revocation,
                                         Some("chat_message") => crate::sync_access::AccessKind::ChatMention,
                                         Some("invite_suggestion") => crate::sync_access::AccessKind::CollaboratorSuggestion,

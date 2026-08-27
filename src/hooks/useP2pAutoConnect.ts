@@ -15,6 +15,10 @@ import { syncFindTrustedDeviceForAccountRoute, syncLocalIdentity } from '../lib/
 export type P2pAutoConnectState = 'idle' | 'signaling' | 'p2p' | 'relay' | 'failed'
 
 const CONNECT_RETRY_MS = 15_000
+/// Upper bound on a single connect call (punch budget + Phase-4 handshake), after which the attempt
+/// is abandoned so the next retry can run. Generous on purpose — this is a safety net, not the
+/// normal path.
+const CONNECT_ATTEMPT_TIMEOUT_MS = 45_000
 
 /**
  * Automates, for a single already-known collaborator, the P2P signaling steps: connect the
@@ -163,15 +167,24 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
       const finalCandidate = box.candidate
       log('peer candidate received', finalCandidate)
 
-      const result = await p2pConnect({
-        localPort: discovered.localPort,
-        peerHost: finalCandidate.host,
-        peerPort: finalCandidate.port,
-        peerLocalHost: finalCandidate.localHost,
-        peerLocalPort: finalCandidate.localPort,
-        isInitiator,
-        remoteAccountRoute: peerAccountRoute,
-      })
+      // Defence in depth for the in-flight guard: if this call ever fails to settle (it once did —
+      // a peer vanishing mid-handshake blocked the backend's stream read forever), the guard would
+      // stay held and silently stop every future reconnection attempt on this device. A bounded
+      // wait guarantees the guard is always released, whatever happens downstream.
+      const result = await Promise.race([
+        p2pConnect({
+          localPort: discovered.localPort,
+          peerHost: finalCandidate.host,
+          peerPort: finalCandidate.port,
+          peerLocalHost: finalCandidate.localHost,
+          peerLocalPort: finalCandidate.localPort,
+          isInitiator,
+          remoteAccountRoute: peerAccountRoute,
+        }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('p2p_connect_timed_out')), CONNECT_ATTEMPT_TIMEOUT_MS),
+        ),
+      ])
       log('p2pConnect result', result)
       if (result.connected && !cancelledRef.current) setState('p2p')
     } catch (cause) {

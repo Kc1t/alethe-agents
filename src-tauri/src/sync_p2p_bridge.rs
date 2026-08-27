@@ -42,6 +42,12 @@ const PUNCH_TOTAL_TIMEOUT: Duration = Duration::from_secs(8);
 
 const ACK_TIMEOUT: Duration = Duration::from_millis(400);
 const MAX_RETRANSMITS: u32 = 8;
+/// Hard ceiling on a single `Read::read` — a peer that disappears mid-handshake must surface as a
+/// timeout error rather than blocking the caller forever (see `read`'s own comment).
+const READ_TOTAL_TIMEOUT: Duration = Duration::from_secs(30);
+/// How long each individual socket poll inside that budget waits, so the deadline above is checked
+/// regularly instead of only after one long blocking wait.
+const RECV_POLL_TIMEOUT: Duration = Duration::from_secs(1);
 /// Conservative payload ceiling per UDP datagram (below common path MTU minus IP/UDP/our header
 /// overhead), so a single reliable-stream chunk never needs IP-level fragmentation.
 const MAX_CHUNK_BYTES: usize = 1200;
@@ -581,18 +587,35 @@ impl Read for ReliableUdpStream {
         while self.read_cursor >= self.read_buffer.len() {
             self.read_buffer.clear();
             self.read_cursor = 0;
+            // Bounds the whole wait, not just each individual socket poll. Without this the loop
+            // below could spin forever: a poll that times out (or yields a non-DATA packet) hits
+            // `continue`, which starts another full wait, with no exit condition at all — so a peer
+            // that goes away mid-handshake left `read()` blocked permanently. That is exactly what
+            // wedged a connection attempt in production: the punch succeeded, the Phase-4 handshake
+            // then waited here forever, and the caller's "one attempt at a time" guard never
+            // cleared, silently stopping every future reconnection attempt on that device.
+            let deadline = Instant::now() + READ_TOTAL_TIMEOUT;
             loop {
+                if Instant::now() >= deadline {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "p2p_stream_read_timeout",
+                    ));
+                }
                 // Bytes queued by a previous `write()` call while it waited for its own ACK take
                 // priority over the socket, since they already arrived and were already ACKed.
                 let (seq, payload) = match self.pending_data.pop_front() {
                     Some(next) => next,
-                    None => match self.recv_next(Duration::from_secs(30))? {
-                        Some((kind, seq, payload)) if kind == PACKET_KIND_DATA => {
-                            self.send_packet(PACKET_KIND_ACK, seq, &[])?;
-                            (seq, payload)
+                    None => {
+                        let remaining = deadline.saturating_duration_since(Instant::now());
+                        match self.recv_next(remaining.min(RECV_POLL_TIMEOUT))? {
+                            Some((kind, seq, payload)) if kind == PACKET_KIND_DATA => {
+                                self.send_packet(PACKET_KIND_ACK, seq, &[])?;
+                                (seq, payload)
+                            }
+                            _ => continue,
                         }
-                        _ => continue,
-                    },
+                    }
                 };
                 if seq != self.recv_seq {
                     // Out-of-order or a duplicate retransmit of an already-consumed chunk. It was
