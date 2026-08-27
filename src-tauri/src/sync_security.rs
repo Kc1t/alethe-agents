@@ -284,12 +284,18 @@ pub struct ChatContactRecord {
     pub added_at_ms: u64,
 }
 
-/// A single-use invite ticket embedded in an exported pairing code (`sync_export_pairing_code`),
-/// so a shared/forwarded code can't be reused indefinitely to add unlimited people as chat
-/// contacts. Generating a fresh one invalidates every previous unconsumed token for this device —
-/// only one code is ever "live" at a time — and it's marked consumed the moment the other side's
-/// confirmed `chat_contact_ack` arrives (see `sync_rendezvous.rs`'s `"chat_contact_ack"` kind),
-/// which is also what drives the automatic mutual add: the issuer never has to paste anything back.
+/// An invite ticket embedded in an exported pairing code (`sync_export_pairing_code`). Generating a
+/// fresh one invalidates every previous unconsumed token for this device — only one code is ever
+/// "live" at a time — and it's marked consumed the moment the other side's confirmed
+/// `chat_contact_ack` arrives (see `sync_rendezvous.rs`'s `"chat_contact_ack"` kind), which is also
+/// what drives the automatic mutual add: the issuer never has to paste anything back.
+///
+/// This was intended to make a shared/forwarded code unusable more than once, and it does NOT
+/// currently achieve that. Consumption is checked only on the issuing device, inside
+/// `sync_open_chat_contact_ack`; the redeeming side never validates the token, so the code remains
+/// usable until it expires. See that function's doc comment for the full description of the gap,
+/// its bounded impact, and why fixing it needs a protocol change. Do not describe this type as
+/// "single-use" in user-facing text until that lands.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatInviteToken {
@@ -1740,6 +1746,24 @@ pub fn sync_seal_chat_contact_ack(
 /// the added contact's display label on success, or `None` if the token didn't check out (the
 /// envelope is silently ignored by the caller in that case, same as any other unaddressed relay
 /// delivery).
+///
+/// KNOWN GAP — the single-use guarantee is one-directional, and only covers *this* side.
+/// `consume_chat_invite_token_at` does fail closed on replay, but it is reached only here, on the
+/// issuer. The redeeming side (`AddChatContactModal.tsx`) reads the pairing code and calls
+/// `sync_add_chat_contact` straight away, without consulting the issuer or checking the token at
+/// all — so a pairing code is in practice a replayable bearer credential: whoever holds it can add
+/// the issuer as a chat contact repeatedly until the code expires, and the code itself does not
+/// rotate between exports (`current_or_new_chat_invite_token_at` deliberately returns the same live
+/// one). What single-use actually governs is only whether the issuer reciprocally auto-adds them
+/// back. Observed live: the same code redeemed several times in a row, each time successfully.
+///
+/// Impact is bounded — a chat contact is not a grant, and confers no project access (see
+/// `adding_a_chat_contact_never_creates_a_grant_or_invitation`) — but it does leak the issuer's
+/// account route and public keys to anyone who obtains the code, and lets them open a direct
+/// conversation. Closing it needs a protocol change (the redeemer waiting on the issuer's
+/// confirmation before committing the contact), so it is deliberately left as-is for now rather
+/// than half-fixed. The existing unit tests cover the function in isolation, not the end-to-end
+/// flow, which is why this went unnoticed.
 #[tauri::command]
 pub fn sync_open_chat_contact_ack(app: tauri::AppHandle, ciphertext: String) -> Result<Option<String>, String> {
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;

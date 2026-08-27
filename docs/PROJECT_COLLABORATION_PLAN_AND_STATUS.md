@@ -938,6 +938,43 @@ If a statement conflicts, the stricter security invariant wins. This consolidate
 - `src-tauri/src/server_main/mod.rs`: authenticated local Core, middleware, and route assembly.
 - `e2e/specs/web-sync.spec.ts`: existing Desktop/Web convergence reference.
 
+### Known open security gap — pairing codes are replayable (documented, fix deferred)
+
+Observed live (2026-08-27): the same pairing code was redeemed several times in a row, each time
+successfully. The single-use guarantee the code was designed around is not enforced end to end.
+
+`consume_chat_invite_token_at` does fail closed on replay, forged, and stale tokens, and its unit
+tests prove that. But it is only ever reached on the **issuing** device, inside
+`sync_open_chat_contact_ack`, when the `chat_contact_ack` comes back. The **redeeming** side
+(`AddChatContactModal.tsx` → `sync_add_chat_contact`) commits the contact straight from the code's
+contents without validating the token or consulting the issuer at all. So a pairing code is in
+practice a replayable bearer credential, usable until it expires; and it does not rotate between
+exports, because `current_or_new_chat_invite_token_at` deliberately returns the same live token.
+What single-use actually governs is only whether the issuer reciprocally auto-adds the redeemer.
+
+Impact is bounded but real: a chat contact is not a grant and confers no project access (guarded by
+`adding_a_chat_contact_never_creates_a_grant_or_invitation`), so no code or project data is exposed.
+What a code holder does get is the issuer's account route and public keys, and the ability to open a
+direct conversation with them, repeatedly.
+
+The gap survived review because the tests cover the function in isolation rather than the two-device
+flow — worth remembering when adding tests for the fix.
+
+Options considered, none implemented (owner deferred the fix; do not half-apply one):
+
+1. **Issuer-authoritative (recommended).** The redeemer commits the contact only after the issuer
+   confirms the `ack` — the issuer already consumes the token there. Closes the replay properly and
+   keeps the relay stateless and ignorant of invitations, which the project's own scope rules
+   require. Costs a round-trip and needs the issuer online.
+2. **Relay-validated.** The Cloudflare Worker rejects envelopes bearing an already-used token. Works
+   with the issuer offline, but puts invitation state on the rendezvous service, which currently
+   handles discovery/signaling only.
+3. **Accept and re-document.** Treat the code as "whoever holds it may add you" and correct every
+   comment and UI string that still promises single use.
+
+Until one lands, the code comments on `ChatInviteToken` and `sync_open_chat_contact_ack` carry the
+same warning; do not describe pairing codes as single-use in user-facing text.
+
 ### Chat-contacts / mesh-relay plan (approved, in progress)
 
 A separate 8-item plan (chat contacts with no project access, direct conversations, chat profile

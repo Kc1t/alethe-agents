@@ -137,6 +137,48 @@ fn parse_xor_mapped_address(body: &[u8], transaction_id: &[u8; 12]) -> Option<So
     None
 }
 
+/// Asks a *second* STUN server, over the same socket, whether it sees the same public port as the
+/// first one did.
+///
+/// This is the question that decides whether a direct connection is possible at all. A NAT that
+/// keeps one mapping per local socket ("cone") reports the same public port to every destination,
+/// and hole punching works. A NAT that allocates a fresh mapping per destination ("symmetric")
+/// reports a different one — and then the address a peer is told to punch toward is, by
+/// construction, not the address this machine will be reachable on, so every attempt fails no
+/// matter how many times it is retried. Without this check the two cases are indistinguishable
+/// from the logs: both look like an endless run of `p2p_hole_punch_failed`, sending the reader
+/// hunting for a bug in the punch that is not there.
+fn classify_nat(socket: &UdpSocket, first_seen: SocketAddr) -> &'static str {
+    let Some(second) = STUN_SERVERS.get(1) else {
+        return "unknown (no second STUN server configured)";
+    };
+    let mut transaction_id = [0_u8; 12];
+    OsRng.fill_bytes(&mut transaction_id);
+    let request = build_binding_request(&transaction_id);
+    let Ok(mut addrs) = std::net::ToSocketAddrs::to_socket_addrs(second) else {
+        return "unknown (second STUN server did not resolve)";
+    };
+    let Some(server_addr) = addrs.next() else {
+        return "unknown (second STUN server had no address)";
+    };
+    if socket.send_to(&request, server_addr).is_err() {
+        return "unknown (second STUN request could not be sent)";
+    }
+    let mut buffer = [0_u8; 512];
+    match socket.recv_from(&mut buffer) {
+        Ok((length, from)) if from == server_addr && length >= 20 => {
+            let body_len = u16::from_be_bytes([buffer[2], buffer[3]]) as usize;
+            let body_end = (20 + body_len).min(length);
+            match parse_xor_mapped_address(&buffer[20..body_end], &transaction_id) {
+                Some(addr) if addr.port() == first_seen.port() => "cone (direct P2P is possible)",
+                Some(_) => "SYMMETRIC (direct P2P is impossible from this network without a TURN relay)",
+                None => "unknown (second STUN reply had no mapped address)",
+            }
+        }
+        _ => "unknown (no reply from the second STUN server)",
+    }
+}
+
 /// Discovers this socket's public-facing `IP:port` via a public STUN server. The socket handed in
 /// is reused for the subsequent hole-punch attempt, so the discovered mapping stays valid (STUN
 /// only tells you the truth about the exact 5-tuple it was asked over).
@@ -367,8 +409,9 @@ fn discover_candidate_blocking() -> Result<DiscoveredCandidate, String> {
     // why this function only returns discovery info, not a handle.
     let local_port = socket.local_addr().map_err(|_| P2pError::Io.to_string())?.port();
     let local_host = detect_local_ip();
+    let nat = classify_nat(&socket, public_addr);
     eprintln!(
-        "[p2p] discover: local_port={local_port} public={}:{} local_host={:?}",
+        "[p2p] discover: local_port={local_port} public={}:{} local_host={:?} nat={nat}",
         public_addr.ip(),
         public_addr.port(),
         local_host
