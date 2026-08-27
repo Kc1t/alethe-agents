@@ -360,6 +360,11 @@
   color: var(--fg-muted);
 }
 
+.mentionHighlight {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .inputPill {
   flex: 1;
   min-width: 0;

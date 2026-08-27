@@ -51,6 +51,8 @@ export const ptBR: Record<MessageKey, string> = {
   'chat.attachmentMessage': 'Compartilhou um arquivo: {name} (id {id})',
   'chat.slashHint': 'Tipo da mensagem',
   'chat.slashNoMatch': 'Nenhum comando encontrado',
+  'chat.mentionHint': 'Mencionar',
+  'chat.mentionNoMatch': 'Nenhum membro encontrado',
   'chat.slashClear': 'Voltar para texto simples',
   'chat.contentType.text': 'Texto',
   'chat.contentType.code_block': 'Código',

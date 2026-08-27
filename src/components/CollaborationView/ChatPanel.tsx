@@ -81,6 +81,41 @@ function findSlashToken(value: string, cursor: number): SlashToken | null {
   return { start, end, query: value.slice(start + 1, end) }
 }
 
+interface MentionToken {
+  start: number
+  end: number
+  query: string
+}
+
+function findMentionToken(value: string, cursor: number): MentionToken | null {
+  let start = cursor
+  while (start > 0 && value[start - 1] !== ' ') start--
+  let end = cursor
+  while (end < value.length && value[end] !== ' ') end++
+  if (value[start] !== '@') return null
+  return { start, end, query: value.slice(start + 1, end) }
+}
+
+// Splits rendered message text on `@name` runs so they can be styled distinctly — deliberately not
+// tied to conversation membership (a mention's target is already resolved server-side into
+// `message.mentions`/`AccessKind::ChatMention`; this is purely a rendering affordance, so any
+// `@word` the sender typed is highlighted the same way, including for messages from before this
+// device knew every member's display name).
+const MENTION_SPLIT_PATTERN = /(@[^\s@]+)/g
+const MENTION_MATCH_PATTERN = /^@[^\s@]+$/
+function renderWithMentions(text: string) {
+  const parts = text.split(MENTION_SPLIT_PATTERN)
+  return parts.map((part, index) =>
+    MENTION_MATCH_PATTERN.test(part) ? (
+      <span key={index} className={styles.mentionHighlight}>
+        {part}
+      </span>
+    ) : (
+      part
+    ),
+  )
+}
+
 export function ChatPanel({ source }: { source: ChatSource }) {
   const t = useT()
   const preferences = useProjectsStore((s) => s.preferences)
@@ -139,6 +174,60 @@ export function ChatPanel({ source }: { source: ChatSource }) {
       if (!input) return
       input.focus()
       input.setSelectionRange(before.length, before.length)
+    })
+  }
+
+  // `@`-mention autocomplete — mirrors the slash-command token pattern above exactly, just
+  // triggered by `@` and inserting a name instead of picking a content type. Candidates come from
+  // the conversation's other members: for a Direct chat that's only ever the one contact (with a
+  // real display name already known from pairing/renaming); for a project channel it's every other
+  // member, falling back to their account route since no per-member display-name mapping exists
+  // client-side yet.
+  const [mentionToken, setMentionToken] = useState<MentionToken | null>(null)
+  const [mentionHighlight, setMentionHighlight] = useState(0)
+  const [pendingMentionRoutes, setPendingMentionRoutes] = useState<Set<string>>(new Set())
+  const mentionCandidates = useMemo(() => {
+    if (!conversation) return []
+    return conversation.members
+      .filter((member) => member.accountRoute !== localAccountRoute)
+      .map((member) => ({
+        accountRoute: member.accountRoute,
+        label:
+          member.accountRoute === otherMember?.accountRoute
+            ? (otherDisplayLabel ?? member.accountRoute)
+            : member.accountRoute,
+      }))
+  }, [conversation, localAccountRoute, otherMember, otherDisplayLabel])
+  const mentionMatches = useMemo(() => {
+    if (!mentionToken) return []
+    const query = mentionToken.query.toLowerCase()
+    return mentionCandidates.filter((candidate) => candidate.label.toLowerCase().includes(query))
+  }, [mentionToken, mentionCandidates])
+  const mentionMenuOpen = mentionToken !== null
+
+  useEffect(() => {
+    setMentionHighlight(0)
+  }, [mentionToken?.start, mentionToken?.end, mentionToken?.query])
+
+  const updateMentionToken = (value: string, cursor: number) => {
+    setMentionToken(findMentionToken(value, cursor))
+  }
+
+  const applyMention = (candidate: { accountRoute: string; label: string }) => {
+    if (!mentionToken) return
+    const before = draft.slice(0, mentionToken.start)
+    const after = draft.slice(mentionToken.end)
+    const inserted = `@${candidate.label} `
+    const nextDraft = `${before}${inserted}${after}`
+    setDraft(nextDraft)
+    setPendingMentionRoutes((current) => new Set(current).add(candidate.accountRoute))
+    setMentionToken(null)
+    requestAnimationFrame(() => {
+      const input = textInputRef.current
+      if (!input) return
+      input.focus()
+      const cursor = before.length + inserted.length
+      input.setSelectionRange(cursor, cursor)
     })
   }
 
@@ -305,12 +394,15 @@ export function ChatPanel({ source }: { source: ChatSource }) {
         conversation.conversationId,
         contentType,
         draft.trim(),
+        Array.from(pendingMentionRoutes),
       )
       console.info(`[chat] local encrypt+save done (${elapsed()})`)
       setMessages((current) => sortMessages([...current, message]))
       setDraft('')
       setContentType('text')
       setSlashToken(null)
+      setMentionToken(null)
+      setPendingMentionRoutes(new Set())
 
       if (otherMember && frame.length > 0) {
         if (p2p.state === 'p2p') {
@@ -514,7 +606,7 @@ export function ChatPanel({ source }: { source: ChatSource }) {
                     <p
                       className={`${styles.messageText} ${own ? styles.bubbleOwn : styles.bubbleOther}`}
                     >
-                      {message.text}
+                      {renderWithMentions(message.text)}
                     </p>
                   )}
                 </div>
@@ -530,6 +622,26 @@ export function ChatPanel({ source }: { source: ChatSource }) {
       <div className={styles.syncNotice}>{t(`chat.syncNotice.${connectionState}`)}</div>
 
       <div className={styles.composer}>
+        {mentionMenuOpen && !slashMenuOpen ? (
+          <div className={styles.slashMenu}>
+            <div className={styles.slashMenuHint}>{t('chat.mentionHint')}</div>
+            {mentionMatches.length === 0 ? (
+              <div className={styles.slashMenuEmpty}>{t('chat.mentionNoMatch')}</div>
+            ) : (
+              mentionMatches.map((candidate, index) => (
+                <button
+                  key={candidate.accountRoute}
+                  type="button"
+                  className={`${styles.slashOption} ${index === mentionHighlight ? styles.slashOptionActive : ''}`}
+                  onMouseEnter={() => setMentionHighlight(index)}
+                  onClick={() => applyMention(candidate)}
+                >
+                  <span className={styles.slashOptionKeyword}>@{candidate.label}</span>
+                </button>
+              ))
+            )}
+          </div>
+        ) : null}
         {slashMenuOpen ? (
           <div className={styles.slashMenu}>
             <div className={styles.slashMenuHint}>{t('chat.slashHint')}</div>
@@ -576,18 +688,48 @@ export function ChatPanel({ source }: { source: ChatSource }) {
               const { value, selectionStart } = event.target
               setDraft(value)
               updateSlashToken(value, selectionStart ?? value.length)
+              updateMentionToken(value, selectionStart ?? value.length)
             }}
             onClick={(event) => {
               const { value, selectionStart } = event.currentTarget
               updateSlashToken(value, selectionStart ?? value.length)
+              updateMentionToken(value, selectionStart ?? value.length)
             }}
             onKeyUp={(event) => {
               if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') {
                 const { value, selectionStart } = event.currentTarget
                 updateSlashToken(value, selectionStart ?? value.length)
+                updateMentionToken(value, selectionStart ?? value.length)
               }
             }}
             onKeyDown={(event) => {
+              if (mentionMenuOpen && !slashMenuOpen) {
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault()
+                  setMentionHighlight((current) => (current + 1) % Math.max(mentionMatches.length, 1))
+                  return
+                }
+                if (event.key === 'ArrowUp') {
+                  event.preventDefault()
+                  setMentionHighlight(
+                    (current) =>
+                      (current - 1 + Math.max(mentionMatches.length, 1)) %
+                      Math.max(mentionMatches.length, 1),
+                  )
+                  return
+                }
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  setMentionToken(null)
+                  return
+                }
+                if (event.key === 'Enter' || event.key === 'Tab') {
+                  event.preventDefault()
+                  const match = mentionMatches[mentionHighlight]
+                  if (match) applyMention(match)
+                  return
+                }
+              }
               if (slashMenuOpen) {
                 if (event.key === 'ArrowDown') {
                   event.preventDefault()

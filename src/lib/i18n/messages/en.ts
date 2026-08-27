@@ -49,6 +49,8 @@ export const en = {
   'chat.attachmentMessage': 'Shared a file: {name} (id {id})',
   'chat.slashHint': 'Message type',
   'chat.slashNoMatch': 'No matching command',
+  'chat.mentionHint': 'Mention',
+  'chat.mentionNoMatch': 'No matching member',
   'chat.slashClear': 'Back to plain text',
   'chat.contentType.text': 'Text',
   'chat.contentType.code_block': 'Code',
