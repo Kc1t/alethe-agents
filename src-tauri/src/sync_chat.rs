@@ -310,10 +310,29 @@ pub fn create_conversation_at(
     members: Vec<MemberInfo>,
     now_ms: u64,
 ) -> Result<Conversation, ChatError> {
+    create_conversation_with_id_at(
+        data_root,
+        format!("chat_{}", nanoid::nanoid!(24)),
+        project_id,
+        kind,
+        category,
+        members,
+        now_ms,
+    )
+}
+
+fn create_conversation_with_id_at(
+    data_root: &Path,
+    conversation_id: String,
+    project_id: Option<String>,
+    kind: ConversationKind,
+    category: Option<String>,
+    members: Vec<MemberInfo>,
+    now_ms: u64,
+) -> Result<Conversation, ChatError> {
     if members.is_empty() {
         return Err(ChatError::InvalidInput);
     }
-    let conversation_id = format!("chat_{}", nanoid::nanoid!(24));
     let mut epoch_key = [0_u8; 32];
     OsRng.fill_bytes(&mut epoch_key);
     let wraps = rewrap_epoch_for_members(&epoch_key, &members, &conversation_id, 0)?;
@@ -384,9 +403,23 @@ pub fn ensure_project_conversation_at(
     )
 }
 
-/// Same find-or-create pattern as `ensure_project_conversation_at`, for a 1:1 `Direct` conversation
-/// with a chat contact instead of a project channel — filters by `kind == Direct` and both account
-/// routes present as members, instead of by `project_id`.
+/// Deterministic id for the `Direct` conversation between two accounts — both devices compute the
+/// exact same id independently (sorted account routes, so member order never matters), with no
+/// coordination needed. This is what makes cross-device delivery possible at all: a message frame
+/// only carries `conversation_id` + `epoch_number`, so the receiving device needs to land in the
+/// *same* local conversation record (and therefore derive the *same* epoch key — see
+/// `resolve_direct_epoch_key`) as the sender, purely from data both sides already have.
+fn direct_conversation_id(account_route_a: &str, account_route_b: &str) -> String {
+    let mut routes = [account_route_a, account_route_b];
+    routes.sort_unstable();
+    let digest = Sha256::digest(format!("alethe-direct-conversation-v1|{}|{}", routes[0], routes[1]).as_bytes());
+    format!("chat_{}", URL_SAFE_NO_PAD.encode(digest))
+}
+
+/// Same find-or-create shape as `ensure_project_conversation_at`, for a 1:1 `Direct` conversation
+/// with a chat contact instead of a project channel — except the id is computed, not searched for
+/// (see `direct_conversation_id`), since a `Direct` conversation's id must be derivable identically
+/// by both devices for delivery to work at all.
 pub fn ensure_direct_conversation_at(
     data_root: &Path,
     local_account_route: &str,
@@ -395,26 +428,13 @@ pub fn ensure_direct_conversation_at(
     contact_x25519_public_key: Vec<u8>,
     now_ms: u64,
 ) -> Result<Conversation, ChatError> {
-    let chat_dir = data_root.join("sync").join("chat");
-    if let Ok(entries) = fs::read_dir(&chat_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
-                continue;
-            }
-            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
-            if let Ok(conversation) = load_conversation_at(data_root, stem) {
-                if conversation.kind == ConversationKind::Direct
-                    && conversation.members.iter().any(|m| m.account_route == local_account_route)
-                    && conversation.members.iter().any(|m| m.account_route == contact_account_route)
-                {
-                    return Ok(conversation);
-                }
-            }
-        }
+    let conversation_id = direct_conversation_id(local_account_route, contact_account_route);
+    if let Ok(conversation) = load_conversation_at(data_root, &conversation_id) {
+        return Ok(conversation);
     }
-    create_conversation_at(
+    create_conversation_with_id_at(
         data_root,
+        conversation_id,
         None,
         ConversationKind::Direct,
         None,
@@ -440,25 +460,13 @@ pub fn delete_direct_conversation_at(
     local_account_route: &str,
     contact_account_route: &str,
 ) -> Result<(), ChatError> {
-    let chat_dir = data_root.join("sync").join("chat");
-    let Ok(entries) = fs::read_dir(&chat_dir) else { return Ok(()) };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
-            continue;
-        }
-        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
-        if let Ok(conversation) = load_conversation_at(data_root, stem) {
-            if conversation.kind == ConversationKind::Direct
-                && conversation.members.iter().any(|m| m.account_route == local_account_route)
-                && conversation.members.iter().any(|m| m.account_route == contact_account_route)
-            {
-                fs::remove_file(&path).map_err(|_| ChatError::Io)?;
-                return Ok(());
-            }
-        }
+    let conversation_id = direct_conversation_id(local_account_route, contact_account_route);
+    let path = conversation_path(data_root, &conversation_id);
+    match fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(_) => Err(ChatError::Io),
     }
-    Ok(())
 }
 
 /// Adds a member and rotates the epoch. The new member receives a wrap for the new epoch only —
@@ -619,15 +627,52 @@ fn epoch_wrap_at<'a>(
 
 /// Resolves the plaintext key for a given epoch by unwrapping it with the local device's own
 /// X25519 secret, read only into process memory (never logged, never returned through IPC).
+///
+/// `Direct` conversations are the one exception: they never go through the wrap mechanism at all.
+/// A wrapped epoch key only ever lives inside the document of whichever device happened to create
+/// the conversation first — the other device, having independently created its *own* local
+/// `Direct` conversation record with its *own* random epoch key, has no way to ever learn that
+/// key. Real cross-device delivery (as opposed to the single-device fixture every wrap-based test
+/// here drives both "sides" of) needs a key both devices can derive *identically* on their own —
+/// so `Direct` uses a plain ECDH shared secret between the two members' long-term X25519 keys
+/// instead, which is symmetric by construction and needs nothing transmitted or agreed on ahead of
+/// time beyond the deterministic `conversation_id` both sides already compute the same way (see
+/// `ensure_direct_conversation_at`).
 pub(crate) fn resolve_epoch_key(
     conversation: &Conversation,
     epoch_number: u64,
     account_route: &str,
     device_id: &str,
 ) -> Result<[u8; 32], ChatError> {
+    if conversation.kind == ConversationKind::Direct {
+        return resolve_direct_epoch_key(conversation, epoch_number, account_route, device_id);
+    }
     let wrap = epoch_wrap_at(conversation, epoch_number, account_route).ok_or(ChatError::NotAMember)?;
     let secret = crate::sync_security::load_device_agreement_secret(device_id).map_err(|_| ChatError::Io)?;
     unwrap_key(wrap, &secret, &conversation.conversation_id, epoch_number)
+}
+
+fn resolve_direct_epoch_key(
+    conversation: &Conversation,
+    epoch_number: u64,
+    account_route: &str,
+    device_id: &str,
+) -> Result<[u8; 32], ChatError> {
+    let other = conversation
+        .members
+        .iter()
+        .find(|member| member.account_route != account_route)
+        .ok_or(ChatError::NotAMember)?;
+    let other_public_bytes: [u8; 32] =
+        other.x25519_public_key.as_slice().try_into().map_err(|_| ChatError::InvalidInput)?;
+    let other_public = X25519PublicKey::from(other_public_bytes);
+    let secret = crate::sync_security::load_device_agreement_secret(device_id).map_err(|_| ChatError::Io)?;
+    let shared = secret.diffie_hellman(&other_public);
+    let hkdf = Hkdf::<Sha256>::new(None, shared.as_bytes());
+    let info = format!("alethe-chat-direct-epoch-v1|{}|{epoch_number}", conversation.conversation_id);
+    let mut key = [0_u8; 32];
+    hkdf.expand(info.as_bytes(), &mut key).map_err(|_| ChatError::Io)?;
+    Ok(key)
 }
 
 /// Idempotent: re-sending a message with the same `message_id` (e.g. a retried delivery from an
