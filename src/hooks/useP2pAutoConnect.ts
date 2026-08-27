@@ -7,11 +7,8 @@ import {
   p2pSendFrame,
   prepareRemoteCandidate,
 } from '../lib/api/p2pBridge'
-import {
-  connectRendezvous,
-  drainRendezvousEvents,
-  sendRendezvousFrame,
-} from '../lib/api/syncRendezvous'
+import { subscribeToRendezvousEvents } from '../lib/api/rendezvousEventBus'
+import { connectRendezvous, sendRendezvousFrame } from '../lib/api/syncRendezvous'
 import { syncFindTrustedDeviceForAccountRoute, syncLocalIdentity } from '../lib/tauri'
 
 export type P2pAutoConnectState = 'idle' | 'signaling' | 'p2p' | 'relay' | 'failed'
@@ -93,27 +90,42 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
       log('own candidate sent, waiting for the peer candidate…')
 
       type Candidate = { host: string; port: number; localHost: string | null; localPort: number | null }
+      // Subscribes to the shared event bus instead of calling `drainRendezvousEvents()` directly —
+      // that call removes events from the server-side queue as it reads them (it's a drain, not a
+      // peek), so an independent direct poller here used to race with ChatPanel's/the bus's own
+      // polling and could silently steal (and discard, since it wasn't looking for "candidate"
+      // kind) the very delivery this loop is waiting for. See `rendezvousEventBus.ts`.
       const box: { candidate: Candidate | null } = { candidate: null }
-      const deadline = Date.now() + 10_000
-      while (Date.now() < deadline && !box.candidate && !cancelledRef.current) {
-        const events = await drainRendezvousEvents()
-        for (const event of events) {
-          if (event.eventType !== 'delivery' || event.envelopeKind !== 'candidate') continue
-          if (!event.ciphertext) continue
-          try {
-            const candidate = await consumeRemoteCandidate(event.ciphertext, sessionId)
-            box.candidate = {
-              host: candidate.publicHost,
-              port: candidate.publicPort,
-              localHost: candidate.localHost,
-              localPort: candidate.localPort,
+      await new Promise<void>((resolve) => {
+        const timeoutId = setTimeout(() => {
+          unsubscribe()
+          resolve()
+        }, 10_000)
+        const unsubscribe = subscribeToRendezvousEvents((events) => {
+          void (async () => {
+            for (const event of events) {
+              if (box.candidate || cancelledRef.current) return
+              if (event.eventType !== 'delivery' || event.envelopeKind !== 'candidate') continue
+              if (!event.ciphertext) continue
+              try {
+                const candidate = await consumeRemoteCandidate(event.ciphertext, sessionId)
+                box.candidate = {
+                  host: candidate.publicHost,
+                  port: candidate.publicPort,
+                  localHost: candidate.localHost,
+                  localPort: candidate.localPort,
+                }
+                clearTimeout(timeoutId)
+                unsubscribe()
+                resolve()
+                return
+              } catch (cause) {
+                log('candidate delivery did not match this session, ignoring', cause)
+              }
             }
-          } catch (cause) {
-            log('candidate delivery did not match this session, ignoring', cause)
-          }
-        }
-        if (!box.candidate) await new Promise((resolve) => setTimeout(resolve, 400))
-      }
+          })()
+        })
+      })
       if (!box.candidate) {
         log('timed out waiting for the peer candidate (10s) — staying on relay')
         return
