@@ -31,10 +31,23 @@ const CONNECT_RETRY_MS = 15_000
  * degrades to `'idle'` if the rendezvous relay itself never connects.
  */
 export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
-  const [state, setState] = useState<P2pAutoConnectState>('idle')
+  const [state, setStateRaw] = useState<P2pAutoConnectState>('idle')
   const [remoteAgreementPublicKey, setRemoteAgreementPublicKey] = useState<string | null>(null)
   const attemptedAtRef = useRef(0)
   const cancelledRef = useRef(false)
+
+  // Every transition, timestamped — the single clearest signal for "why did the connection state
+  // change right after sending", since it's directly comparable against the timed send/relay logs
+  // in ChatPanel.
+  const setState: typeof setStateRaw = useCallback((next) => {
+    setStateRaw((current) => {
+      const resolved = typeof next === 'function' ? (next as (prev: typeof current) => typeof current)(current) : next
+      if (resolved !== current) {
+        console.info(`[p2p] state ${current} -> ${resolved} @ ${new Date().toISOString()}`)
+      }
+      return resolved
+    })
+  }, [])
 
   const attempt = useCallback(async (peerAccountRoute: string, peerAgreementPublicKey: string) => {
     const log = (...args: unknown[]) => console.info('[p2p]', `peer=${peerAccountRoute}`, ...args)

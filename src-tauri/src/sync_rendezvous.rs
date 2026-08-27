@@ -296,6 +296,20 @@ async fn connect_once(
         .await
         .map_err(|_| "rendezvous_unavailable".to_string())?;
 
+    // A dead connection (peer stopped responding without a clean close — the exact case reported
+    // live: two devices on the same LAN, presumably wifi power-save or a mid-session Worker
+    // eviction, not a real network failure) can otherwise sit unnoticed for minutes, since nothing
+    // was ever sent or received to reveal it. A native WS ping every HEARTBEAT_INTERVAL forces a
+    // write attempt on a schedule — if the connection is actually gone, that write (or the
+    // absence of any traffic at all afterward) fails fast instead of waiting on an OS-level
+    // timeout, so the existing reconnect loop in `run_connection` kicks in promptly. Also re-sends
+    // "presence" on the same schedule so this device's online status to others never quietly
+    // expires (`MAX_PRESENCE_TTL_MS` is only 2 minutes) on a long-lived connection.
+    const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(20);
+    let mut heartbeat = tokio::time::interval(HEARTBEAT_INTERVAL);
+    heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    heartbeat.tick().await; // first tick fires immediately; consume it so the cadence starts clean
+
     loop {
         tokio::select! {
             changed = stop_rx.changed() => {
@@ -303,6 +317,18 @@ async fn connect_once(
                     let _ = writer.send(Message::Close(None)).await;
                     return Ok(());
                 }
+            }
+            _ = heartbeat.tick() => {
+                writer.send(Message::Ping(Vec::new().into())).await.map_err(|_| "rendezvous_unavailable".to_string())?;
+                writer
+                    .send(Message::Text(
+                        json!({ "type": "presence", "generation": 1_u64,
+                            "expiresAtMs": crate::provider_common::now_ms() + 120_000 })
+                            .to_string()
+                            .into(),
+                    ))
+                    .await
+                    .map_err(|_| "rendezvous_unavailable".to_string())?;
             }
             outgoing = outgoing_rx.recv() => {
                 let Some(Outgoing::Json(value)) = outgoing else { return Ok(()); };

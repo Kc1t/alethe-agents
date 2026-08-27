@@ -35,6 +35,14 @@ export type ChatSource =
 
 const POLL_INTERVAL_MS = 4_000
 
+// Cross-device delivery (relay/P2P) can land messages out of order — a locally-sent message
+// appends immediately, while a peer's message might arrive moments later but with an earlier
+// `sequence`/timestamp. Always re-sorting keeps the thread in true chronological order, WhatsApp-
+// style, instead of "arrival order" which can visibly shuffle once both sides are actually live.
+function sortMessages(list: DecryptedMessage[]): DecryptedMessage[] {
+  return [...list].sort((a, b) => a.sequence - b.sequence || a.createdAtMs - b.createdAtMs)
+}
+
 function bytesToBase64(bytes: number[]): string {
   let binary = ''
   for (const byte of bytes) binary += String.fromCharCode(byte)
@@ -163,7 +171,7 @@ export function ChatPanel({ source }: { source: ChatSource }) {
       try {
         const list = await syncListDecryptedMessages(conversationId)
         if (active) {
-          setMessages(list)
+          setMessages(sortMessages(list))
           setError(false)
         }
       } catch (cause) {
@@ -281,29 +289,34 @@ export function ChatPanel({ source }: { source: ChatSource }) {
   const send = async () => {
     if (!conversation || !draft.trim()) return
     setSending(true)
+    const startedAt = performance.now()
+    const elapsed = () => `${Math.round(performance.now() - startedAt)}ms`
     try {
       const [message, frame] = await syncSendMessageForTransport(
         conversation.conversationId,
         contentType,
         draft.trim(),
       )
-      setMessages((current) => [...current, message])
+      console.info(`[chat] local encrypt+save done (${elapsed()})`)
+      setMessages((current) => sortMessages([...current, message]))
       setDraft('')
       setContentType('text')
       setSlashToken(null)
 
       if (otherMember && frame.length > 0) {
         if (p2p.state === 'p2p') {
-          await p2p.send(frame).catch(async () => {
+          await p2p.send(frame).catch(async (cause) => {
             // Direct delivery failed after all (session dropped mid-send) — fall back to relay.
+            console.warn(`[chat] p2p.send failed mid-send (${elapsed()}), falling back to relay`, cause)
             await deliverViaRelay(frame, otherMember.accountRoute, otherMember.x25519PublicKey)
           })
         } else {
           await deliverViaRelay(frame, otherMember.accountRoute, otherMember.x25519PublicKey)
         }
       }
+      console.info(`[chat] send() finished (${elapsed()})`)
     } catch (cause) {
-      console.error('[chat] failed to send message', cause)
+      console.error(`[chat] failed to send message (${elapsed()})`, cause)
       setError(true)
     } finally {
       setSending(false)
@@ -315,6 +328,7 @@ export function ChatPanel({ source }: { source: ChatSource }) {
     recipientAccountRoute: string,
     recipientAgreementPublicKey: number[],
   ) => {
+    const startedAt = performance.now()
     try {
       const ciphertext = await syncSealChatRelayMessage(
         frame,
@@ -328,10 +342,16 @@ export function ChatPanel({ source }: { source: ChatSource }) {
         expiresAtMs: Date.now() + 24 * 60 * 60 * 1000,
         ciphertext,
       })
-      console.info('[chat] message sent via relay', { recipientAccountRoute })
+      console.info(
+        `[chat] message sent via relay (${Math.round(performance.now() - startedAt)}ms)`,
+        { recipientAccountRoute },
+      )
     } catch (cause) {
       // Best-effort — the message is already saved locally either way; only live delivery failed.
-      console.error('[chat] deliverViaRelay failed', cause)
+      console.error(
+        `[chat] deliverViaRelay failed (${Math.round(performance.now() - startedAt)}ms)`,
+        cause,
+      )
     }
   }
 
@@ -354,7 +374,7 @@ export function ChatPanel({ source }: { source: ChatSource }) {
         'text',
         t('chat.attachmentMessage', { name: file.name, id: attachment.attachmentId }),
       )
-      setMessages((current) => [...current, message])
+      setMessages((current) => sortMessages([...current, message]))
       if (otherMember && frame.length > 0) {
         if (p2p.state === 'p2p') {
           await p2p.send(frame).catch(async () => {
