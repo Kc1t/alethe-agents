@@ -41,7 +41,15 @@ const PUNCH_INTERVAL: Duration = Duration::from_millis(150);
 const PUNCH_TOTAL_TIMEOUT: Duration = Duration::from_secs(8);
 
 const ACK_TIMEOUT: Duration = Duration::from_millis(400);
-const MAX_RETRANSMITS: u32 = 8;
+/// Deliberately generous: the peer may still be finishing its own punch loop when this side starts
+/// the handshake, and it cannot answer until it gets there. At 400ms per try this tolerates roughly
+/// eight seconds of that skew — matching the punch budget — instead of failing the whole connection
+/// with `transport_io_error` while the other side was about to be ready (observed live).
+const MAX_RETRANSMITS: u32 = 20;
+/// Datagrams sent to the peer right after this side's punch succeeds, so the peer — which only
+/// completes when it *receives* one — is very unlikely to be left punching into silence. See the
+/// call site for the full failure this prevents.
+const PUNCH_CONFIRM_BURST: u32 = 20;
 /// Hard ceiling on a single `Read::read` — a peer that disappears mid-handshake must surface as a
 /// timeout error rather than blocking the caller forever (see `read`'s own comment).
 const READ_TOTAL_TIMEOUT: Duration = Duration::from_secs(30);
@@ -427,6 +435,18 @@ pub fn punch_and_wrap_candidates(local_port: u16, candidates: &[SocketAddr]) -> 
         match socket.recv_from(&mut buffer) {
             Ok((_, from)) if candidates.contains(&from) => {
                 eprintln!("[p2p] punch: SUCCESS candidate={from} after {rounds} round(s)");
+                // Keep answering for a moment before moving on. Punching is symmetric: this side
+                // succeeds as soon as it *receives* a datagram, but the peer only succeeds when it
+                // receives one of ours. Returning immediately stopped our transmissions the instant
+                // we were satisfied, so a peer that hadn't received anything yet kept punching into
+                // silence and eventually gave up — while this side, already past the punch, tried
+                // to speak the handshake protocol to someone still punching, and failed with
+                // `transport_io_error`. Observed live from both machines at once: one side logging
+                // SUCCESS, the other logging only failures. This burst makes it overwhelmingly
+                // likely the peer also completes, so both sides enter the handshake together.
+                for _ in 0..PUNCH_CONFIRM_BURST {
+                    let _ = socket.send_to(b"alethe-p2p-punch", from);
+                }
                 socket.connect(from).map_err(|_| P2pError::Io)?;
                 return Ok(ReliableUdpStream::new(socket));
             }
