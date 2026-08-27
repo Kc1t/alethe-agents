@@ -12,6 +12,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- Devtools console output (`log`/`info`/`warn`/`error`/`debug`) is now mirrored to `logs/frontend.log` at the repo root, and `npm run app:logs` tees the terminal to `logs/backend.log` — both tailable side by side, for diagnosing live cross-device sessions where opening devtools isn't practical (e.g. WebKitGTK on Linux without a bound devtools shortcut).
 - Chat messages can now mention someone with `@`, mirroring the existing `/` slash-command composer pattern: typing `@` opens a filtered dropdown of the conversation's other members (arrow keys / Enter / Tab to pick, Escape to cancel), and `@mentions` render highlighted in the message bubble. The backend access-center notification for mentions already existed; this closes the gap where there was no way to actually author one from the composer.
 
 - Tasks now has vertical per-project tabs instead of always showing only the currently active project's tasks, tasks can be assigned to one or more collaborators (chips shown per task, editable inline), and a completed task can be reopened again — the backend already supported reopening but had no command, Web route, client, or button wired up.

@@ -153,6 +153,33 @@ pub fn record_frontend_error(
     Ok(())
 }
 
+static TRACE_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// `logs/` at the process working directory (repo root under `tauri dev`), kept
+/// separate from the per-profile `LOGS_DIR` so it stays trivial to `tail -f`
+/// alongside the terminal during a live cross-device debugging session.
+fn trace_dir() -> &'static PathBuf {
+    TRACE_DIR.get_or_init(|| {
+        let dir = std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join("logs");
+        let _ = fs::create_dir_all(&dir);
+        dir
+    })
+}
+
+/// Mirrors a devtools console call (log/info/warn/error/debug) to
+/// `logs/frontend.log`. Installed by `src/lib/debugTrace.ts` on every console
+/// call without replacing the original devtools output.
+#[tauri::command]
+pub fn record_console_log(level: String, message: String) -> Result<(), String> {
+    append_log(
+        &trace_dir().join("frontend.log"),
+        &format!("[{level}] {message}"),
+    );
+    Ok(())
+}
+
 /// Records non-sensitive lifecycle facts used to diagnose persistence and UI
 /// restoration. Callers must send counts/flags only, never project names or paths.
 #[tauri::command]

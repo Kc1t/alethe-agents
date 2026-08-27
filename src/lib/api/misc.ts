@@ -268,6 +268,16 @@ export async function recordFrontendError(
   }
 }
 
+/** Mirrors a devtools console call to `logs/frontend.log` for live debugging. */
+export async function recordConsoleLog(level: string, message: string): Promise<void> {
+  if (!isTauriEnv()) return
+  try {
+    await invoke('record_console_log', { level, message })
+  } catch {
+    /* best-effort */
+  }
+}
+
 /** Records a non-sensitive lifecycle event for persistence diagnostics. */
 export async function recordAppEvent(kind: string, message: string): Promise<void> {
   if (!isTauriEnv()) return

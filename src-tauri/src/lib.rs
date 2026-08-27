@@ -417,6 +417,7 @@ pub fn run() {
             diagnostics::open_logs_folder,
             diagnostics::export_logs,
             logging::record_frontend_error,
+            logging::record_console_log,
             logging::record_app_event,
             discord_presence::set_discord_presence,
             discord_presence::clear_discord_presence,
