@@ -123,7 +123,7 @@ export function AddChatContactModal({
     await sendRendezvousFrame({
       type: 'enqueue',
       kind: 'chat_contact_ack',
-      messageId: `contact_ack_${crypto.randomUUID()}`,
+      id: `contact_ack_${crypto.randomUUID()}`,
       recipientAccountRoute: verified.accountRoute,
       expiresAtMs: Date.now() + 24 * 60 * 60 * 1000,
       ciphertext,

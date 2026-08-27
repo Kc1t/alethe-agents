@@ -310,7 +310,7 @@ export function ChatPanel({ source }: { source: ChatSource }) {
       await sendRendezvousFrame({
         type: 'enqueue',
         kind: 'chat_message',
-        messageId: `chat_${crypto.randomUUID()}`,
+        id: `chat_${crypto.randomUUID()}`,
         recipientAccountRoute,
         expiresAtMs: Date.now() + 24 * 60 * 60 * 1000,
         ciphertext,

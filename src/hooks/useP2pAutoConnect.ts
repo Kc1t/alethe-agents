@@ -69,7 +69,7 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
       await sendRendezvousFrame({
         type: 'enqueue',
         kind: 'candidate',
-        messageId: envelope.messageId,
+        id: envelope.messageId,
         recipientAccountRoute: envelope.recipientAccountRoute,
         recipientDeviceId: envelope.recipientDeviceId,
         expiresAtMs: Date.now() + 5 * 60 * 1000,

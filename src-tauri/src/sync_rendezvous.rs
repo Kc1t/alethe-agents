@@ -536,6 +536,12 @@ fn sanitize_outgoing_frame(frame: Value, now_ms: u64) -> Result<Value, String> {
         .ok_or_else(|| "rendezvous_invalid_frame".to_string())?;
     match required_string(object, "type")? {
         "enqueue" => {
+            // `authorizationGeneration` is deliberately NOT accepted from the caller here — it's
+            // the same internal key-generation concept the AUTH frame already sends (see
+            // `key_generation` above), which the frontend has no business knowing or supplying.
+            // Requiring it from callers silently broke every enqueue (candidate/chat/ack delivery)
+            // for exactly this reason: no caller ever sent it, and this is a thin passthrough,
+            // never a place callers are expected to reconstruct protocol internals.
             let allowed = [
                 "type",
                 "id",
@@ -543,7 +549,6 @@ fn sanitize_outgoing_frame(frame: Value, now_ms: u64) -> Result<Value, String> {
                 "recipientAccountRoute",
                 "recipientDeviceId",
                 "expiresAtMs",
-                "authorizationGeneration",
                 "ciphertext",
             ];
             if !exact_keys(object, &allowed) {
@@ -563,10 +568,7 @@ fn sanitize_outgoing_frame(frame: Value, now_ms: u64) -> Result<Value, String> {
                 .get("expiresAtMs")
                 .and_then(Value::as_u64)
                 .ok_or_else(|| "rendezvous_invalid_frame".to_string())?;
-            let authorization_generation = object
-                .get("authorizationGeneration")
-                .and_then(Value::as_u64)
-                .ok_or_else(|| "rendezvous_invalid_frame".to_string())?;
+            let authorization_generation = 1_u64;
             let ciphertext = required_string(object, "ciphertext")?;
             let max_ttl = if kind == "candidate" {
                 MAX_CANDIDATE_TTL_MS
