@@ -409,6 +409,20 @@ pub async fn start_at(
     data_root: std::path::PathBuf,
     runtime: Arc<RendezvousRuntime>,
 ) -> Result<RendezvousStatus, String> {
+    // A no-op whenever a connection attempt is already alive: `connectRendezvous()` is called
+    // from more than one place on the frontend (P2P signaling setup, the chat drain loop's
+    // auto-reconnect), and none of those callers know about each other. Since this used to
+    // unconditionally tear down and respawn the connection loop every single call, two callers
+    // polling independently — one every ~4s, one every ~15s — kept stopping a perfectly healthy
+    // connection out from under each other before it ever settled, so it looked (from the
+    // frontend's status snapshots) like the connection could never stay up. Restarting is only
+    // ever actually needed after a real failure (`NoAttemptYet`/`ProviderFailure`) or an explicit
+    // `disconnectRendezvous()` — everything else should just observe the connection already in
+    // progress instead of resetting it.
+    match runtime.status() {
+        LiveConnectionStatus::NoAttemptYet | LiveConnectionStatus::ProviderFailure => {}
+        _ => return Ok(status_snapshot(&runtime, true)),
+    }
     let settings =
         crate::sync_activation::load_settings_at(&data_root, crate::provider_common::now_ms())
             .map_err(|error| error.to_string())?;
