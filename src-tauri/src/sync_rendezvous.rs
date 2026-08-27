@@ -218,9 +218,20 @@ async fn connect_once(
         .ok_or_else(|| "device_key_binding_missing".to_string())?;
     let account_route = crate::sync_protocol::account_route_id(&account.account_id);
     let signing_key = crate::sync_security::load_device_signing_key(&device.device_id)?;
-    let (socket, _) = tokio_tungstenite::connect_async(websocket_url(endpoint, &account_route)?)
-        .await
-        .map_err(|_| "rendezvous_unavailable".to_string())?;
+    // The connect itself (TCP + TLS + WS upgrade) had no timeout at all, unlike every read after
+    // it — a real bug: some firewalls/antivirus silently drop packets for a WebSocket upgrade
+    // instead of cleanly refusing the connection, which left this hanging forever with the status
+    // stuck on `Connecting` and no way for the retry loop below to ever kick in (confirmed live:
+    // reproduced consistently even on a fresh manual reconnect, on a LAN, with the Worker itself
+    // confirmed healthy over plain HTTPS — pointing squarely at the WS-specific handshake, not
+    // general connectivity).
+    let (socket, _) = tokio::time::timeout(
+        Duration::from_secs(15),
+        tokio_tungstenite::connect_async(websocket_url(endpoint, &account_route)?),
+    )
+    .await
+    .map_err(|_| "rendezvous_connect_timeout".to_string())?
+    .map_err(|_| "rendezvous_unavailable".to_string())?;
     let (mut writer, mut reader) = socket.split();
     let challenge_message = tokio::time::timeout(Duration::from_secs(15), reader.next())
         .await
