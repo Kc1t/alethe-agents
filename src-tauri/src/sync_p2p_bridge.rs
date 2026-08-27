@@ -171,14 +171,19 @@ struct RemoteCandidatePayload {
     session_id: String,
     public_host: String,
     public_port: u16,
-    /// This device's local (LAN-interface) address, reusing the same port as `public_port`'s
-    /// socket. When both peers are behind the same router (common case: two people testing on
-    /// the same home/office network), the STUN-derived public candidate above cannot be punched
-    /// to at all — most consumer routers do not support NAT hairpinning/loopback, so a device
-    /// cannot reach its own public IP from inside the LAN. Trying this local candidate first
-    /// lets same-LAN pairs connect near-instantly without any NAT traversal.
+    /// This device's local (LAN-interface) address. When both peers are behind the same router
+    /// (common case: two people testing on the same home/office network), the STUN-derived
+    /// public candidate above cannot be punched to at all — most consumer routers do not support
+    /// NAT hairpinning/loopback, so a device cannot reach its own public IP from inside the LAN.
+    /// Trying this local candidate first lets same-LAN pairs connect near-instantly without any
+    /// NAT traversal. Carries its own port (`local_port`), NOT `public_port` — the router almost
+    /// always rewrites the port too, so the socket's local LAN port and its STUN-mapped public
+    /// port are two different numbers; sending the wrong one here just gets "connection reset"
+    /// from nothing listening on that port on the peer's LAN address.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     local_host: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    local_port: Option<u16>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -196,8 +201,9 @@ pub struct RemoteCandidate {
     pub session_id: String,
     pub public_host: String,
     pub public_port: u16,
-    /// See `RemoteCandidatePayload::local_host` — same port as `public_port`.
+    /// See `RemoteCandidatePayload::local_host`/`local_port`.
     pub local_host: Option<String>,
+    pub local_port: Option<u16>,
 }
 
 fn pack(envelope: &SealedEnvelope) -> Vec<u8> {
@@ -230,6 +236,7 @@ pub fn sync_prepare_remote_candidate(
     public_host: String,
     public_port: u16,
     local_host: Option<String>,
+    local_port: Option<u16>,
     recipient_account_route: String,
     recipient_device_id: Option<String>,
     recipient_agreement_public_key: String,
@@ -237,7 +244,8 @@ pub fn sync_prepare_remote_candidate(
     let public_key = URL_SAFE_NO_PAD
         .decode(&recipient_agreement_public_key)
         .map_err(|_| P2pError::InvalidRecipientKey.to_string())?;
-    let payload = RemoteCandidatePayload { session_id: session_id.clone(), public_host, public_port, local_host };
+    let payload =
+        RemoteCandidatePayload { session_id: session_id.clone(), public_host, public_port, local_host, local_port };
     let plaintext = serde_json::to_vec(&payload).map_err(|_| P2pError::Encode.to_string())?;
     let info = format!("alethe-candidate-envelope-v1|{session_id}");
     let sealed = seal_for_recipient(&plaintext, &public_key, info.as_bytes())
@@ -280,6 +288,7 @@ pub fn sync_consume_remote_candidate(
         public_host: payload.public_host,
         public_port: payload.public_port,
         local_host: payload.local_host,
+        local_port: payload.local_port,
     })
 }
 
@@ -642,6 +651,7 @@ pub fn sync_p2p_connect(
     peer_host: String,
     peer_port: u16,
     peer_local_host: Option<String>,
+    peer_local_port: Option<u16>,
     is_initiator: bool,
     remote_account_route: String,
 ) -> Result<P2pConnectResult, String> {
@@ -684,8 +694,8 @@ pub fn sync_p2p_connect(
     // only address that can ever work (see `RemoteCandidatePayload::local_host`'s doc comment);
     // the public/STUN candidate is always tried too, as a fallback for peers on different networks.
     let mut candidates: Vec<SocketAddr> = Vec::with_capacity(2);
-    if let Some(local_host) = peer_local_host.as_deref() {
-        match format!("{local_host}:{peer_port}").parse::<SocketAddr>() {
+    if let (Some(local_host), Some(local_port)) = (peer_local_host.as_deref(), peer_local_port) {
+        match format!("{local_host}:{local_port}").parse::<SocketAddr>() {
             Ok(local_addr) if local_addr != peer_addr => candidates.push(local_addr),
             Ok(_) => {}
             Err(cause) => eprintln!("[p2p] connect: peer_local_host {local_host:?} did not parse, skipping: {cause}"),

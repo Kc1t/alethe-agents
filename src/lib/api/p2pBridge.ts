@@ -60,8 +60,11 @@ export async function prepareRemoteCandidate(params: {
   publicPort: number
   /** This device's LAN-facing address, if known — see `DiscoveredCandidate.localHost`. Lets a
    * same-LAN peer punch through instantly instead of relying on the public/STUN address, which
-   * cannot be reached from inside the same router (no NAT hairpinning on most consumer gear). */
+   * cannot be reached from inside the same router (no NAT hairpinning on most consumer gear).
+   * Carries its own port (`localPort`) — the router almost always rewrites the port too, so this
+   * is NOT the same number as `publicPort`. */
   localHost?: string | null
+  localPort?: number | null
   recipientAccountRoute: string
   recipientDeviceId?: string
   recipientAgreementPublicKey: string
@@ -72,6 +75,7 @@ export async function prepareRemoteCandidate(params: {
     publicHost: params.publicHost,
     publicPort: params.publicPort,
     localHost: params.localHost ?? null,
+    localPort: params.localPort ?? null,
     recipientAccountRoute: params.recipientAccountRoute,
     recipientDeviceId: params.recipientDeviceId ?? null,
     recipientAgreementPublicKey: params.recipientAgreementPublicKey,
@@ -83,6 +87,7 @@ export type RemoteCandidate = {
   publicHost: string
   publicPort: number
   localHost: string | null
+  localPort: number | null
 }
 
 export async function consumeRemoteCandidate(
@@ -120,6 +125,7 @@ export async function p2pConnect(params: {
   /** The peer's LAN-facing address, if they reported one — tried before `peerHost` (see
    * `prepareRemoteCandidate`'s `localHost` doc comment). */
   peerLocalHost?: string | null
+  peerLocalPort?: number | null
   isInitiator: boolean
   remoteAccountRoute: string
 }): Promise<P2pConnectResult> {
@@ -129,6 +135,7 @@ export async function p2pConnect(params: {
     peerHost: params.peerHost,
     peerPort: params.peerPort,
     peerLocalHost: params.peerLocalHost ?? null,
+    peerLocalPort: params.peerLocalPort ?? null,
     isInitiator: params.isInitiator,
     remoteAccountRoute: params.remoteAccountRoute,
   })
