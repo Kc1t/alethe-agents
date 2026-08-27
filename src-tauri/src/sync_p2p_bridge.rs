@@ -324,8 +324,16 @@ fn detect_local_ip() -> Option<String> {
 /// Binds a UDP socket and discovers its public `IP:port` via STUN. Call this once per attempt on
 /// both devices before exchanging candidates — the socket must be reused for punching (a fresh
 /// socket would get a different NAT mapping).
+/// Off the UI thread for the same reason as `sync_p2p_connect` — STUN resolution blocks on network
+/// round-trips (and its own retry/timeout budget) and would otherwise freeze the app window.
 #[tauri::command]
-pub fn p2p_discover_candidate() -> Result<DiscoveredCandidate, String> {
+pub async fn p2p_discover_candidate() -> Result<DiscoveredCandidate, String> {
+    tokio::task::spawn_blocking(discover_candidate_blocking)
+        .await
+        .map_err(|_| "p2p_discover_task_failed".to_string())?
+}
+
+fn discover_candidate_blocking() -> Result<DiscoveredCandidate, String> {
     let socket = match UdpSocket::bind("0.0.0.0:0") {
         Ok(socket) => socket,
         Err(cause) => {
@@ -362,18 +370,31 @@ pub fn p2p_discover_candidate() -> Result<DiscoveredCandidate, String> {
 /// Attempts to punch through NAT to `peer_addr` and wraps the resulting UDP path in a minimal
 /// reliable stream. `local_port` should be the same port `p2p_discover_candidate` bound, reused
 /// with `SO_REUSEADDR` so this attempt gets the same NAT mapping STUN just observed.
-/// Tries each candidate address in order, giving each a slice of the total punch budget — the
-/// first one to receive a reply from its expected peer wins. Candidates should be ordered
-/// cheapest/most-likely-to-succeed first: a same-LAN local address (near-instant, no NAT
-/// traversal needed at all) before the STUN-derived public address (needs both sides' NAT to
-/// cooperate, and never works at all for two peers behind the same router/public IP — see
-/// `RemoteCandidatePayload::local_host`).
+/// Punches toward every candidate at once (round-robin, one datagram per candidate per round) for
+/// the whole budget, and accepts a reply from *any* of them — whichever answers first wins.
+///
+/// Two properties here are what actually make this work in practice, both learned from live
+/// failures:
+///
+/// 1. **Accept from any known candidate, not just the one currently being targeted.** Hole punching
+///    only succeeds when both sides happen to be sending during the same window, and the two sides
+///    run their own unsynchronized retry loops — so the peer's reply routinely arrives via a
+///    different candidate than the one this side is mid-send to. The previous sequential version
+///    logged exactly that and threw the reply away ("received packet from unexpected source ...
+///    ignoring"), discarding a perfectly good connection.
+/// 2. **Interleave candidates instead of draining one before starting the next.** Spending the
+///    first half of the budget on only the LAN candidate and the second half on only the public one
+///    means two peers sitting in opposite phases never overlap at all.
+///
+/// The candidate order still matters as a preference hint (LAN first — instant, no NAT traversal,
+/// and the only thing that can ever work for two peers behind the same router, see
+/// `RemoteCandidatePayload::local_host`), but no candidate is ever starved of the budget.
 pub fn punch_and_wrap_candidates(local_port: u16, candidates: &[SocketAddr]) -> Result<ReliableUdpStream, P2pError> {
     if candidates.is_empty() {
         return Err(P2pError::Punch);
     }
     eprintln!(
-        "[p2p] punch: attempting local_port={local_port} candidates={candidates:?} attempts_per_candidate={PUNCH_ATTEMPTS} total_timeout={PUNCH_TOTAL_TIMEOUT:?}"
+        "[p2p] punch: attempting local_port={local_port} candidates={candidates:?} rounds={PUNCH_ATTEMPTS} total_timeout={PUNCH_TOTAL_TIMEOUT:?}"
     );
     let socket = match bind_reusable(local_port) {
         Ok(socket) => socket,
@@ -386,44 +407,36 @@ pub fn punch_and_wrap_candidates(local_port: u16, candidates: &[SocketAddr]) -> 
 
     let overall_deadline = Instant::now() + PUNCH_TOTAL_TIMEOUT;
     let mut buffer = [0_u8; 64];
-    let attempts_per_candidate = (PUNCH_ATTEMPTS as usize).div_ceil(candidates.len()) as u32;
+    let mut rounds = 0_u32;
+    let mut last_recv_error: Option<String> = None;
 
-    for peer_addr in candidates {
-        let peer_addr = *peer_addr;
-        if Instant::now() >= overall_deadline {
-            eprintln!("[p2p] punch: overall deadline reached before trying {peer_addr}, skipping remaining candidates");
-            break;
-        }
-        let mut attempts_made = 0_u32;
-        let mut last_recv_error: Option<String> = None;
-        for _ in 0..attempts_per_candidate {
-            if Instant::now() >= overall_deadline {
-                break;
-            }
-            attempts_made += 1;
+    while Instant::now() < overall_deadline {
+        rounds += 1;
+        for peer_addr in candidates {
             if let Err(cause) = socket.send_to(b"alethe-p2p-punch", peer_addr) {
-                eprintln!("[p2p] punch: send_to {peer_addr} failed on attempt {attempts_made}: {cause}");
-            }
-            match socket.recv_from(&mut buffer) {
-                Ok((_, from)) if from == peer_addr => {
-                    eprintln!("[p2p] punch: SUCCESS candidate={peer_addr} after {attempts_made} attempts");
-                    socket.connect(peer_addr).map_err(|_| P2pError::Io)?;
-                    return Ok(ReliableUdpStream::new(socket));
-                }
-                Ok((_, from)) => {
-                    eprintln!("[p2p] punch: received packet from unexpected source {from} while targeting {peer_addr}, ignoring");
-                }
-                Err(cause) => {
-                    last_recv_error = Some(cause.to_string());
-                }
+                eprintln!("[p2p] punch: send_to {peer_addr} failed on round {rounds}: {cause}");
             }
         }
-        eprintln!(
-            "[p2p] punch: candidate={peer_addr} FAILED after {attempts_made} attempts, last_recv_error={:?}",
-            last_recv_error
-        );
+        // One bounded read per round — a reply from *any* candidate completes the punch.
+        match socket.recv_from(&mut buffer) {
+            Ok((_, from)) if candidates.contains(&from) => {
+                eprintln!("[p2p] punch: SUCCESS candidate={from} after {rounds} round(s)");
+                socket.connect(from).map_err(|_| P2pError::Io)?;
+                return Ok(ReliableUdpStream::new(socket));
+            }
+            Ok((_, from)) => {
+                eprintln!("[p2p] punch: ignoring packet from {from} (not one of this session's candidates)");
+            }
+            Err(cause) => {
+                last_recv_error = Some(cause.to_string());
+            }
+        }
     }
-    eprintln!("[p2p] punch: all {} candidate(s) FAILED — falling back to relay", candidates.len());
+    eprintln!(
+        "[p2p] punch: all {} candidate(s) FAILED after {rounds} round(s), last_recv_error={:?} — falling back to relay",
+        candidates.len(),
+        last_recv_error
+    );
     Err(P2pError::Punch)
 }
 
@@ -643,10 +656,45 @@ pub struct P2pConnectResult {
 /// `p2p_send_frame`/`p2p_drain_frames` call knows which live session to use. On success the
 /// session is registered and kept alive by a background reader thread (see
 /// `P2pSessionRegistry::register`) instead of being dropped when this function returns.
+/// Runs entirely off the UI thread: a synchronous `#[tauri::command]` executes on Tauri's main
+/// thread, and this one blocks for the whole punch budget plus the full Phase-4 handshake — which
+/// froze the entire app window for seconds at a time whenever a connection was attempted
+/// (reported live: "the app locked up the moment it connected").
 #[tauri::command]
-pub fn sync_p2p_connect(
+#[allow(clippy::too_many_arguments)]
+pub async fn sync_p2p_connect(
     app: tauri::AppHandle,
     registry: tauri::State<'_, Arc<P2pSessionRegistry>>,
+    local_port: u16,
+    peer_host: String,
+    peer_port: u16,
+    peer_local_host: Option<String>,
+    peer_local_port: Option<u16>,
+    is_initiator: bool,
+    remote_account_route: String,
+) -> Result<P2pConnectResult, String> {
+    let registry = Arc::clone(&registry);
+    tokio::task::spawn_blocking(move || {
+        p2p_connect_blocking(
+            app,
+            registry,
+            local_port,
+            peer_host,
+            peer_port,
+            peer_local_host,
+            peer_local_port,
+            is_initiator,
+            remote_account_route,
+        )
+    })
+    .await
+    .map_err(|_| "p2p_connect_task_failed".to_string())?
+}
+
+#[allow(clippy::too_many_arguments)]
+fn p2p_connect_blocking(
+    app: tauri::AppHandle,
+    registry: Arc<P2pSessionRegistry>,
     local_port: u16,
     peer_host: String,
     peer_port: u16,
