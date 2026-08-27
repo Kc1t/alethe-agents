@@ -476,6 +476,12 @@ fn bind_reusable(local_port: u16) -> Result<UdpSocket, P2pError> {
 
 const PACKET_KIND_DATA: u8 = 1;
 const PACKET_KIND_ACK: u8 = 2;
+/// Carries no payload and takes no sequence number, so it never enters the stop-and-wait ARQ: a
+/// receiver ignores it (every read path matches `PACKET_KIND_DATA` explicitly). Its only job is to
+/// put a packet on the wire so the NAT mapping the punch opened does not expire while the session
+/// is idle — an empty `write()` cannot serve this purpose, since `buf.chunks()` over an empty slice
+/// yields no chunks and sends nothing at all.
+const PACKET_KIND_KEEPALIVE: u8 = 3;
 
 /// A stop-and-wait reliable stream over a connected `UdpSocket`: at most one unacknowledged data
 /// chunk in flight at a time. Simple on purpose — see the module doc for why throughput was
@@ -512,6 +518,12 @@ impl ReliableUdpStream {
             self.pending_data.push_back((seq, payload));
         }
         Ok(())
+    }
+
+    /// Refreshes the NAT mapping opened by the punch. Unacknowledged and outside the ARQ on
+    /// purpose — losing one is harmless, the next one follows shortly after.
+    fn send_keepalive(&self) -> std::io::Result<()> {
+        self.send_packet(PACKET_KIND_KEEPALIVE, 0, &[])
     }
 
     fn send_packet(&self, kind: u8, seq: u32, payload: &[u8]) -> std::io::Result<()> {
@@ -825,6 +837,8 @@ fn p2p_connect_blocking(
 /// outgoing frames to send and polling the socket for inbound frames, so neither direction can
 /// starve the other for more than `SESSION_POLL_INTERVAL`.
 const SESSION_POLL_INTERVAL: Duration = Duration::from_millis(200);
+/// Comfortably under the ~30s idle timeout of the least generous home routers.
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(12);
 
 pub enum P2pSessionState {
     Connected,
@@ -852,9 +866,23 @@ impl P2pSessionRegistry {
 
         let thread_incoming = incoming.clone();
         let thread_closed = closed.clone();
-        std::thread::spawn(move || loop {
+        std::thread::spawn(move || {
+            let mut last_traffic = Instant::now();
+            loop {
             if thread_closed.load(std::sync::atomic::Ordering::Relaxed) {
                 break;
+            }
+            // Nothing kept the punched-through path warm before this: a home router drops an idle
+            // UDP mapping in as little as ~30s, so a session that connected successfully died on
+            // its own during any quiet stretch of the conversation. The death was then only
+            // noticed by the *next* send failing, which meant the UI kept showing a direct
+            // connection that no longer existed.
+            if last_traffic.elapsed() >= KEEPALIVE_INTERVAL {
+                if stream.send_keepalive().is_err() {
+                    thread_closed.store(true, std::sync::atomic::Ordering::Relaxed);
+                    break;
+                }
+                last_traffic = Instant::now();
             }
             match outgoing_rx.try_recv() {
                 Ok(frame) => {
@@ -862,6 +890,7 @@ impl P2pSessionRegistry {
                         thread_closed.store(true, std::sync::atomic::Ordering::Relaxed);
                         break;
                     }
+                    last_traffic = Instant::now();
                     continue;
                 }
                 Err(std_mpsc::TryRecvError::Disconnected) => {
@@ -872,6 +901,7 @@ impl P2pSessionRegistry {
             }
             match stream.poll_frame(SESSION_POLL_INTERVAL) {
                 Ok(Some(frame)) => {
+                    last_traffic = Instant::now();
                     let mut queue = thread_incoming.lock().unwrap();
                     if queue.len() >= INCOMING_QUEUE_LIMIT {
                         queue.pop_front();
@@ -883,6 +913,7 @@ impl P2pSessionRegistry {
                     thread_closed.store(true, std::sync::atomic::Ordering::Relaxed);
                     break;
                 }
+            }
             }
         });
 

@@ -160,9 +160,17 @@ static TRACE_DIR: OnceLock<PathBuf> = OnceLock::new();
 /// alongside the terminal during a live cross-device debugging session.
 fn trace_dir() -> &'static PathBuf {
     TRACE_DIR.get_or_init(|| {
-        let dir = std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join("logs");
+        // Under `tauri dev` the Rust process runs with its working directory at `src-tauri/`, so
+        // resolving `logs/` naively puts it beside the crate instead of at the repo root next to
+        // the terminal log that `npm run app:logs` writes. Step out one level in that case so both
+        // logs always land in the same folder.
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let root = if cwd.file_name().is_some_and(|name| name == "src-tauri") {
+            cwd.parent().map(PathBuf::from).unwrap_or(cwd)
+        } else {
+            cwd
+        };
+        let dir = root.join("logs");
         let _ = fs::create_dir_all(&dir);
         dir
     })
@@ -178,6 +186,32 @@ pub fn record_console_log(level: String, message: String) -> Result<(), String> 
         &format!("[{level}] {message}"),
     );
     Ok(())
+}
+
+/// Reports, once at startup, whether the platform services this app depends on are actually
+/// reachable here. These differ per OS and previously failed *silently*: on Linux the credential
+/// store is a D-Bus Secret Service (gnome-keyring/KWallet) that simply is not there in some
+/// sessions, and every device key read then fails with an opaque error far away from the cause.
+/// Writing the verdict at startup means a later failure can be explained by a line that was already
+/// captured, instead of needing the whole session reproduced.
+pub fn record_platform_readiness() {
+    let credential_store = match keyring::Entry::new("com.kc1t.alethe.probe", "startup-probe") {
+        // `NoEntry` is the expected, healthy answer: the store answered, it just holds nothing
+        // under this name. Anything else means the store itself could not be reached.
+        Ok(entry) => match entry.get_secret() {
+            Ok(_) => "reachable".to_string(),
+            Err(keyring::Error::NoEntry) => "reachable".to_string(),
+            Err(cause) => format!("UNAVAILABLE ({cause})"),
+        },
+        Err(cause) => format!("UNAVAILABLE ({cause})"),
+    };
+    let message = format!(
+        "os={} arch={} credential_store={credential_store}",
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+    );
+    eprintln!("[platform] {message}");
+    append_log(&trace_dir().join("frontend.log"), &format!("[platform] {message}"));
 }
 
 /// Records non-sensitive lifecycle facts used to diagnose persistence and UI

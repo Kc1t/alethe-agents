@@ -10,8 +10,16 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Não lançado]
 
+### Fixed
+
+- A direct P2P connection could stop being possible for the rest of the session, silently. Candidate envelopes are delivered through a queue that is drained destructively, and the connection attempt only listened during its own 10s wait — so a candidate arriving in the ~5s gap between attempts was drained, offered only to listeners that ignore that kind, and lost forever. Since both sides retry on the same fixed 15s period, once their phases drifted apart they never realigned, and the chat stayed on relay permanently while both devices were perfectly reachable, reporting only "timed out waiting for the peer candidate". Candidates are now retained as they arrive, so an attempt can use one that showed up before it started waiting.
+- A P2P session that connected successfully then died on its own during any quiet stretch of the conversation: nothing kept the punched-through path warm, and a home router drops an idle UDP mapping in as little as ~30s. The session now sends a periodic keepalive, and its liveness is polled — previously the death was only noticed when the next message failed to send, so the UI kept showing a direct connection that no longer existed and never attempted to reconnect.
+- On Linux and macOS every device registered itself in the mesh under the generic fallback name, making a user's own machines indistinguishable in the device list. The device name was read from `HOSTNAME`, which Bash maintains for itself and does not export, so it is never visible to a GUI-launched process; `/etc/hostname` is now read instead.
+- The app showed a generic placeholder icon on GNOME-based Linux desktops (Ubuntu) under Wayland. Wayland has no per-window icon protocol, so the compositor can only resolve an icon by matching the window to an installed desktop entry — a match that was failing because no Linux bundle configuration existed at all. KDE and X11 sessions were unaffected, which is why this only appeared on some machines.
+
 ### Added
 
+- The app now records, at startup, whether the platform services it depends on are actually reachable on this machine (notably the OS credential store, which on Linux is a D-Bus service that is simply absent in some sessions). These differences previously failed silently, surfacing much later as an unexplained error far from the cause.
 - Devtools console output (`log`/`info`/`warn`/`error`/`debug`) is now mirrored to `logs/frontend.log` at the repo root, and `npm run app:logs` tees the terminal to `logs/backend.log` — both tailable side by side, for diagnosing live cross-device sessions where opening devtools isn't practical (e.g. WebKitGTK on Linux without a bound devtools shortcut).
 - Chat messages can now mention someone with `@`, mirroring the existing `/` slash-command composer pattern: typing `@` opens a filtered dropdown of the conversation's other members (arrow keys / Enter / Tab to pick, Escape to cancel), and `@mentions` render highlighted in the message bubble. The backend access-center notification for mentions already existed; this closes the gap where there was no way to actually author one from the composer.
 

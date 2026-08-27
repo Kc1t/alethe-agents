@@ -5,6 +5,7 @@ import {
   discoverP2pCandidate,
   p2pConnect,
   p2pSendFrame,
+  p2pSessionState,
   prepareRemoteCandidate,
   type DiscoveredCandidate,
 } from '../lib/api/p2pBridge'
@@ -19,6 +20,12 @@ const CONNECT_RETRY_MS = 15_000
 /// is abandoned so the next retry can run. Generous on purpose — this is a safety net, not the
 /// normal path.
 const CONNECT_ATTEMPT_TIMEOUT_MS = 45_000
+/// How long a single attempt waits for a *fresh* peer candidate when the retained inbox is empty.
+const CANDIDATE_WAIT_MS = 10_000
+/// Cap on retained candidate ciphertexts — only the newest matter (a candidate describes a
+/// currently-bound socket), and this stops a peer that keeps retrying from growing the list without
+/// bound while we can't decrypt any of them.
+const CANDIDATE_INBOX_MAX = 8
 
 /**
  * Automates, for a single already-known collaborator, the P2P signaling steps: connect the
@@ -54,6 +61,13 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
   // receiving side's own punch log), while the sender had already moved on to a new port by then
   // and reported failure. A stable local port for the whole session avoids that staleness entirely.
   const discoveredRef = useRef<DiscoveredCandidate | null>(null)
+  // Candidate ciphertexts seen by the always-on subscription below, newest last, kept so an
+  // attempt can consume one that arrived *before* it started waiting. See that subscription's
+  // comment for why retaining them is required for correctness, not just an optimisation.
+  const candidateInboxRef = useRef<string[]>([])
+  // Set while an attempt is inside its candidate wait, so a candidate arriving mid-wait wakes it
+  // immediately instead of only being noticed on the next poll.
+  const candidateWaiterRef = useRef<(() => void) | null>(null)
 
   // Every transition, timestamped — the single clearest signal for "why did the connection state
   // change right after sending", since it's directly comparable against the timed send/relay logs
@@ -123,48 +137,54 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
       log('own candidate sent, waiting for the peer candidate…')
 
       type Candidate = { host: string; port: number; localHost: string | null; localPort: number | null }
-      // Subscribes to the shared event bus instead of calling `drainRendezvousEvents()` directly —
-      // that call removes events from the server-side queue as it reads them (it's a drain, not a
-      // peek), so an independent direct poller here used to race with ChatPanel's/the bus's own
-      // polling and could silently steal (and discard, since it wasn't looking for "candidate"
-      // kind) the very delivery this loop is waiting for. See `rendezvousEventBus.ts`.
-      const box: { candidate: Candidate | null } = { candidate: null }
-      await new Promise<void>((resolve) => {
-        const timeoutId = setTimeout(() => {
-          unsubscribe()
-          resolve()
-        }, 10_000)
-        const unsubscribe = subscribeToRendezvousEvents((events) => {
-          void (async () => {
-            for (const event of events) {
-              if (box.candidate || cancelledRef.current) return
-              if (event.eventType !== 'delivery' || event.envelopeKind !== 'candidate') continue
-              if (!event.ciphertext) continue
-              try {
-                const candidate = await consumeRemoteCandidate(event.ciphertext, sessionId)
-                box.candidate = {
-                  host: candidate.publicHost,
-                  port: candidate.publicPort,
-                  localHost: candidate.localHost,
-                  localPort: candidate.localPort,
-                }
-                clearTimeout(timeoutId)
-                unsubscribe()
-                resolve()
-                return
-              } catch (cause) {
-                log('candidate delivery did not match this session, ignoring', cause)
-              }
+      // Drains the retained inbox (filled by the always-on subscription) rather than only watching
+      // for candidates that happen to arrive during this call's own wait window.
+      const takeCandidateFromInbox = async (): Promise<Candidate | null> => {
+        while (candidateInboxRef.current.length > 0) {
+          const ciphertext = candidateInboxRef.current.shift()
+          if (!ciphertext) continue
+          try {
+            const candidate = await consumeRemoteCandidate(ciphertext, sessionId)
+            return {
+              host: candidate.publicHost,
+              port: candidate.publicPort,
+              localHost: candidate.localHost,
+              localPort: candidate.localPort,
             }
-          })()
+          } catch (cause) {
+            log('candidate delivery did not match this session, ignoring', cause)
+          }
+        }
+        return null
+      }
+
+      let candidate = await takeCandidateFromInbox()
+      if (candidate) {
+        log('peer candidate taken from the retained inbox (arrived before this attempt)')
+      } else {
+        log(`no retained candidate, waiting up to ${CANDIDATE_WAIT_MS / 1000}s for a fresh one…`)
+        await new Promise<void>((resolve) => {
+          const timeoutId = setTimeout(() => {
+            candidateWaiterRef.current = null
+            resolve()
+          }, CANDIDATE_WAIT_MS)
+          candidateWaiterRef.current = () => {
+            clearTimeout(timeoutId)
+            candidateWaiterRef.current = null
+            resolve()
+          }
         })
-      })
-      if (!box.candidate) {
-        log('timed out waiting for the peer candidate (10s) — staying on relay')
+        candidate = await takeCandidateFromInbox()
+      }
+      if (!candidate) {
+        log(
+          `timed out waiting for the peer candidate (${CANDIDATE_WAIT_MS / 1000}s) — staying on relay. ` +
+            'The peer is not sending one (their chat is closed, or their relay is down).',
+        )
         return
       }
       if (cancelledRef.current) return
-      const finalCandidate = box.candidate
+      const finalCandidate = candidate
       log('peer candidate received', finalCandidate)
 
       // Defence in depth for the in-flight guard: if this call ever fails to settle (it once did —
@@ -198,12 +218,40 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
   useEffect(() => {
     cancelledRef.current = false
     discoveredRef.current = null
+    candidateInboxRef.current = []
     setState('idle')
     setRemoteAgreementPublicKey(null)
     if (!remotePeerAccountRoute) return
     return () => {
       cancelledRef.current = true
     }
+  }, [remotePeerAccountRoute])
+
+  // Retains every `candidate` envelope for the whole time this peer's chat is open, instead of only
+  // while an attempt happens to be inside its wait window.
+  //
+  // `drainRendezvousEvents()` is destructive (see `rendezvousEventBus.ts`): the bus keeps draining
+  // continuously because ChatPanel's chat_message listener is always subscribed. An attempt used to
+  // subscribe only for its 10s wait, so a candidate delivered during the ~5s gap between attempts
+  // was drained, offered only to listeners that ignore that kind, and lost permanently. Since both
+  // sides retry on the same fixed 15s period, once the two sides' phases drifted apart they could
+  // never realign — the connection then stayed on relay forever while both devices were perfectly
+  // reachable, reporting only "timed out waiting for the peer candidate". Reproduced live from the
+  // captured logs of both machines.
+  useEffect(() => {
+    if (!remotePeerAccountRoute) return
+    return subscribeToRendezvousEvents((events) => {
+      for (const event of events) {
+        if (event.eventType !== 'delivery' || event.envelopeKind !== 'candidate') continue
+        if (!event.ciphertext) continue
+        candidateInboxRef.current.push(event.ciphertext)
+        if (candidateInboxRef.current.length > CANDIDATE_INBOX_MAX) candidateInboxRef.current.shift()
+        console.info(
+          `[p2p] peer=${remotePeerAccountRoute} candidate envelope retained (inbox=${candidateInboxRef.current.length})`,
+        )
+        candidateWaiterRef.current?.()
+      }
+    })
   }, [remotePeerAccountRoute])
 
   const connect = useCallback(
@@ -235,6 +283,29 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
     }, CONNECT_RETRY_MS)
     return () => window.clearInterval(timer)
   }, [remotePeerAccountRoute, remoteAgreementPublicKey, state, attempt])
+
+  // Watches a live session for death instead of only discovering it when a send fails. The backend
+  // thread marks a session closed as soon as its socket errors, but nothing asked: a session that
+  // died during a quiet stretch left the UI claiming "P2P direto" indefinitely, and — because the
+  // reconnect loop above skips entirely while `state === 'p2p'` — no reconnection was ever
+  // attempted either. Dropping back to `'relay'` here is what lets that loop resume.
+  useEffect(() => {
+    if (state !== 'p2p' || !remotePeerAccountRoute) return
+    const timer = window.setInterval(() => {
+      void (async () => {
+        try {
+          const sessionState = await p2pSessionState(remotePeerAccountRoute)
+          if (sessionState !== 'connected' && !cancelledRef.current) {
+            console.info(`[p2p] peer=${remotePeerAccountRoute} session reported "${sessionState}" — dropping back to relay`)
+            setState('relay')
+          }
+        } catch (cause) {
+          console.info(`[p2p] peer=${remotePeerAccountRoute} session liveness check failed`, cause)
+        }
+      })()
+    }, 5_000)
+    return () => window.clearInterval(timer)
+  }, [state, remotePeerAccountRoute, setState])
 
   const send = useCallback(
     async (bytes: number[]) => {

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Categories={{categories}}
+Comment={{comment}}
+Exec={{exec}}
+Icon={{icon}}
+Name={{name}}
+Terminal=false
+Type=Application
+StartupWMClass=Alethe
+StartupNotify=true

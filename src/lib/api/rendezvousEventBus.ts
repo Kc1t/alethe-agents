@@ -46,6 +46,14 @@ async function tick(): Promise<void> {
   }
   if (events.length > 0) {
     markActivity()
+    // Every drained event, by kind — the queue is destructive (see the module doc), so this is the
+    // only place an arriving envelope can still be observed before a listener either handles it or
+    // silently drops it. Without this line, an envelope delivered while nothing was listening for
+    // its kind left no trace at all.
+    console.info(
+      `[rendezvous-bus] drained ${events.length} event(s) to ${listeners.size} listener(s):`,
+      events.map((event) => `${event.eventType}/${event.envelopeKind ?? '-'}`).join(', '),
+    )
     for (const listener of listeners) {
       try {
         listener(events)

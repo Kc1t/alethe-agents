@@ -231,6 +231,7 @@ pub fn run() {
                 }
             }
             logging::set_logs_dir(app.handle());
+            logging::record_platform_readiness();
             let data_root = profiles::resolve_tauri_data_root(app.handle())
                 .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error))?;
             let runtime = server_main::ServerRuntime::embedded(

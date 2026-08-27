@@ -604,6 +604,35 @@ fn email_hint(email: Option<&str>) -> Option<String> {
     Some(format!("{first}***@{domain}"))
 }
 
+/// Best-effort human-readable name for this machine, used to label the device in the mesh.
+///
+/// `HOSTNAME` looks like the obvious Unix counterpart to Windows' `COMPUTERNAME`, but it is a
+/// variable Bash maintains for itself and does not export — so reading it from a GUI-launched
+/// process fails on Linux and macOS essentially always. Relying on it alone meant every non-Windows
+/// device silently registered under the generic fallback name, with nothing logged and no way for
+/// the user to tell their own machines apart in the device list. `/etc/hostname` is the value that
+/// is actually readable here.
+fn local_device_name() -> String {
+    if let Ok(name) = std::env::var("COMPUTERNAME") {
+        if !name.trim().is_empty() {
+            return name.trim().to_string();
+        }
+    }
+    #[cfg(unix)]
+    if let Ok(contents) = std::fs::read_to_string("/etc/hostname") {
+        let name = contents.trim();
+        if !name.is_empty() {
+            return name.to_string();
+        }
+    }
+    if let Ok(name) = std::env::var("HOSTNAME") {
+        if !name.trim().is_empty() {
+            return name.trim().to_string();
+        }
+    }
+    "Alethe device".to_string()
+}
+
 fn store_google_tokens(account_id: &str, tokens: &GoogleTokenResponse) -> Result<(), String> {
     let entry = keyring::Entry::new(GOOGLE_TOKEN_SERVICE, account_id)
         .map_err(|_| "credential_store_unavailable".to_string())?;
@@ -981,9 +1010,7 @@ pub async fn start_google_sync_auth(app: tauri::AppHandle) -> Result<GoogleSyncU
 
     log("identity verified, persisting device and account");
     store_google_tokens(&user.sub, &tokens)?;
-    let device_name = std::env::var("COMPUTERNAME")
-        .or_else(|_| std::env::var("HOSTNAME"))
-        .unwrap_or_else(|_| "Alethe device".to_string());
+    let device_name = local_device_name();
     let now_ms = crate::provider_common::now_ms();
     if let Err(error) = crate::sync_security::complete_verified_identity(
         &data_root,
@@ -1066,6 +1093,23 @@ pub fn disconnect_google_sync(app: tauri::AppHandle) -> Result<bool, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Guards the Linux/macOS path specifically: `HOSTNAME` is not exported to a GUI-launched
+    /// process, so a name must still be resolved without it. Before the `/etc/hostname` fallback,
+    /// every non-Windows device silently registered as the generic placeholder.
+    #[cfg(unix)]
+    #[test]
+    fn device_name_resolves_on_unix_without_the_hostname_variable() {
+        if !std::path::Path::new("/etc/hostname").exists() {
+            return; // nothing to assert against on a host without it
+        }
+        let expected = std::fs::read_to_string("/etc/hostname").unwrap().trim().to_string();
+        if expected.is_empty() || std::env::var("COMPUTERNAME").is_ok() {
+            return;
+        }
+        assert_eq!(local_device_name(), expected);
+        assert_ne!(local_device_name(), "Alethe device");
+    }
 
     #[test]
     fn oauth_authorization_uses_pkce_loopback_and_minimal_scopes() {
