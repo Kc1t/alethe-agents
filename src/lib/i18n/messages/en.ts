@@ -76,7 +76,10 @@ export const en = {
   'chat.contacts.empty': 'Add a chat contact to start a conversation — no project required.',
   'chat.contacts.rename': 'Rename contact',
   'chat.contacts.renamePrompt': 'New name for this contact:',
-  'chat.contacts.remove': 'Remove contact',
+  'chat.contacts.remove': 'Remove contact (keeps message history)',
+  'chat.contacts.deleteAll': 'Delete contact and all history',
+  'chat.contacts.deleteAllConfirm':
+    'Permanently delete this contact AND the entire conversation with them? This cannot be undone.',
   'chat.contacts.removeConfirm':
     'Remove this contact? Your message history stays, but you will no longer be able to auto-connect with them.',
   'tasks.newTitlePlaceholder': 'Task title…',

@@ -17,6 +17,7 @@ import {
   syncUploadAttachment,
 } from '../../lib/api/syncChat'
 import {
+  connectRendezvous,
   drainRendezvousEvents,
   getRendezvousStatus,
   sendRendezvousFrame,
@@ -216,6 +217,18 @@ export function ChatPanel({ source }: { source: ChatSource }) {
         if (active) setRendezvousConnected(status.state !== 'no_attempt_yet')
         if (status.state !== 'online') {
           console.info('[chat] rendezvous status', status)
+        }
+        // The backend's own retry loop only runs while a connection attempt is in flight — once
+        // it gives up (or was never started because this device just launched) it settles on
+        // `no_attempt_yet` forever, with nothing to kick it again. A conversation being open here
+        // means we *do* want to be connected, so treat this as "reconnect", not just a status to
+        // display — otherwise a dropped connection silently stays dead until something else (like
+        // reopening the conversation) happens to call `connectRendezvous()` again.
+        if (status.state === 'no_attempt_yet') {
+          console.info('[chat] rendezvous is not connected — reconnecting…')
+          await connectRendezvous().catch((cause) => {
+            console.error('[chat] auto-reconnect failed', cause)
+          })
         }
       } catch (cause) {
         console.error('[chat] getRendezvousStatus failed', cause)

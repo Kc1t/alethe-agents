@@ -78,7 +78,10 @@ export const ptBR: Record<MessageKey, string> = {
   'chat.contacts.empty': 'Adicione um contato de chat para começar a conversar — sem precisar de projeto.',
   'chat.contacts.rename': 'Renomear contato',
   'chat.contacts.renamePrompt': 'Novo nome para este contato:',
-  'chat.contacts.remove': 'Remover contato',
+  'chat.contacts.remove': 'Remover contato (mantém histórico)',
+  'chat.contacts.deleteAll': 'Excluir contato e todo o histórico',
+  'chat.contacts.deleteAllConfirm':
+    'Excluir este contato E toda a conversa com ele permanentemente? Não é possível desfazer.',
   'chat.contacts.removeConfirm':
     'Remover este contato? Seu histórico de mensagens continua salvo, mas vocês não vão mais se conectar automaticamente.',
   'tasks.newTitlePlaceholder': 'Título da tarefa…',

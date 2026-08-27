@@ -429,6 +429,38 @@ pub fn ensure_direct_conversation_at(
     )
 }
 
+/// Permanently deletes the `Direct` conversation with a contact, if one exists — messages and
+/// attachments live embedded in that single conversation file, so removing it wipes all of it in
+/// one step. A no-op (not an error) if no such conversation exists yet. This is deliberately a
+/// separate action from removing the chat contact itself (`sync_security::remove_chat_contact_at`):
+/// removing a contact alone only revokes future auto-connect/trust and keeps history, exactly as
+/// documented there — this is the "delete everything" option for someone who wants that instead.
+pub fn delete_direct_conversation_at(
+    data_root: &Path,
+    local_account_route: &str,
+    contact_account_route: &str,
+) -> Result<(), ChatError> {
+    let chat_dir = data_root.join("sync").join("chat");
+    let Ok(entries) = fs::read_dir(&chat_dir) else { return Ok(()) };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
+        if let Ok(conversation) = load_conversation_at(data_root, stem) {
+            if conversation.kind == ConversationKind::Direct
+                && conversation.members.iter().any(|m| m.account_route == local_account_route)
+                && conversation.members.iter().any(|m| m.account_route == contact_account_route)
+            {
+                fs::remove_file(&path).map_err(|_| ChatError::Io)?;
+                return Ok(());
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Adds a member and rotates the epoch. The new member receives a wrap for the new epoch only —
 /// no access to history from before they joined (ADR-0006's documented non-goal).
 pub fn add_member_at(
@@ -829,6 +861,17 @@ pub fn sync_start_direct_conversation(
         crate::provider_common::now_ms(),
     )
     .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn sync_delete_direct_conversation(
+    app: tauri::AppHandle,
+    contact_account_route: String,
+) -> Result<(), String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let (_, account_route) = local_chat_identity(&data_root)?;
+    delete_direct_conversation_at(&data_root, &account_route, &contact_account_route)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

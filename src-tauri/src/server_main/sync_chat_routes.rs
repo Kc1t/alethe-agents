@@ -26,6 +26,10 @@ pub fn router() -> Router {
             "/api/sync/chat/conversations/start-direct",
             post(start_direct_conversation),
         )
+        .route(
+            "/api/sync/chat/conversations/delete-direct",
+            post(delete_direct_conversation),
+        )
         .route("/api/sync/chat/messages/send", post(send_message))
         .route("/api/sync/chat/messages/decrypted", get(list_decrypted_messages))
         .route("/api/sync/chat/messages/edit", post(edit_message))
@@ -494,6 +498,27 @@ async fn mark_read(Extension(runtime): Extension<Arc<ServerRuntime>>, Json(body)
                 &body.member_account_route,
                 body.up_to_sequence,
                 crate::provider_common::now_ms(),
+            )
+            .map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|result| result),
+    )
+}
+
+async fn delete_direct_conversation(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<StartDirectConversationBody>,
+) -> Response {
+    let data_root = runtime.data_root().to_path_buf();
+    respond(
+        tokio::task::spawn_blocking(move || {
+            let (_, account_route) = crate::sync_chat::local_chat_identity(&data_root)?;
+            crate::sync_chat::delete_direct_conversation_at(
+                &data_root,
+                &account_route,
+                &body.contact_account_route,
             )
             .map_err(|error| error.to_string())
         })

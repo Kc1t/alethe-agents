@@ -561,6 +561,7 @@ pub fn run() {
             sync_chat::sync_mark_conversation_read,
             sync_chat::sync_ensure_project_conversation,
             sync_chat::sync_start_direct_conversation,
+            sync_chat::sync_delete_direct_conversation,
             sync_chat::sync_send_message,
             sync_chat::sync_send_message_for_transport,
             sync_chat::sync_ingest_chat_transport_frame,

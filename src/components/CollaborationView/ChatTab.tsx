@@ -1,6 +1,7 @@
-import { Hash, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Eraser, Hash, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { syncDeleteDirectConversation } from '../../lib/api/syncChat'
 import { drainRendezvousEvents } from '../../lib/api/syncRendezvous'
 import {
   type SyncChatContact,
@@ -48,15 +49,35 @@ export function ChatTab({
     }
   }
 
+  const clearSelectionIfCurrent = (accountRoute: string) => {
+    if (selected?.kind === 'direct' && selected.contactAccountRoute === accountRoute) {
+      setSelected(projectId && projectName ? { kind: 'project', projectId, projectName } : null)
+    }
+  }
+
+  // "Remove" keeps message history and only revokes future auto-connect/trust — see
+  // `remove_chat_contact_at`'s own doc comment. "Delete everything" (below) additionally wipes the
+  // Direct conversation itself, for someone who explicitly wants that instead.
   const removeContact = async (contact: SyncChatContact) => {
     if (!window.confirm(t('chat.contacts.removeConfirm'))) return
     try {
       await syncRemoveChatContact(contact.accountRoute)
-      if (selected?.kind === 'direct' && selected.contactAccountRoute === contact.accountRoute) {
-        setSelected(projectId && projectName ? { kind: 'project', projectId, projectName } : null)
-      }
+      clearSelectionIfCurrent(contact.accountRoute)
       reloadContacts()
     } catch {
+      setContactsError(true)
+    }
+  }
+
+  const deleteContactAndHistory = async (contact: SyncChatContact) => {
+    if (!window.confirm(t('chat.contacts.deleteAllConfirm'))) return
+    try {
+      await syncRemoveChatContact(contact.accountRoute)
+      await syncDeleteDirectConversation(contact.accountRoute)
+      clearSelectionIfCurrent(contact.accountRoute)
+      reloadContacts()
+    } catch (cause) {
+      console.error('[chat-contact] deleteContactAndHistory failed', cause)
       setContactsError(true)
     }
   }
@@ -112,20 +133,30 @@ export function ChatTab({
     const drain = async () => {
       try {
         const events = await drainRendezvousEvents()
+        const ackEvents = events.filter((event) => event.envelopeKind === 'chat_contact_ack')
+        if (ackEvents.length > 0) {
+          console.info('[chat-contact] chat_contact_ack envelopes received', ackEvents.length)
+        }
         let added = false
         for (const event of events) {
           if (event.eventType !== 'delivery' || event.envelopeKind !== 'chat_contact_ack') continue
           if (!event.ciphertext) continue
           try {
             const label = await syncOpenChatContactAck(event.ciphertext)
-            if (label) added = true
-          } catch {
-            // Not addressed to this device, or the token no longer matches — ignore.
+            if (label) {
+              added = true
+              console.info('[chat-contact] auto-added contact from ack', label)
+            } else {
+              console.warn('[chat-contact] ack token did not match any live token (stale/reused?)')
+            }
+          } catch (cause) {
+            // Not addressed to this device — but could also be a real bug, so log instead of hiding.
+            console.warn('[chat-contact] ack could not be opened (may be addressed to someone else)', cause)
           }
         }
         if (active && added) reloadContacts()
-      } catch {
-        // Best-effort — the next tick tries again.
+      } catch (cause) {
+        console.error('[chat-contact] drainRendezvousEvents (ack loop) failed', cause)
       }
     }
     void drain()
@@ -203,6 +234,14 @@ export function ChatTab({
                   onClick={() => void removeContact(contact)}
                 >
                   <Trash2 size={12} />
+                </button>
+                <button
+                  type="button"
+                  className={styles.removeContactButton}
+                  title={t('chat.contacts.deleteAll')}
+                  onClick={() => void deleteContactAndHistory(contact)}
+                >
+                  <Eraser size={12} />
                 </button>
               </li>
             )

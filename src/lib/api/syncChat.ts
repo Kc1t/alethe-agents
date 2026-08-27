@@ -62,6 +62,19 @@ export async function syncStartDirectConversation(
   })
 }
 
+/** Permanently deletes the Direct conversation (messages + attachments) with a chat contact, if
+ * one exists. Separate from removing the contact itself — see `syncRemoveChatContact`. */
+export async function syncDeleteDirectConversation(contactAccountRoute: string): Promise<void> {
+  if (isTauriEnv()) {
+    await invoke('sync_delete_direct_conversation', { contactAccountRoute })
+    return
+  }
+  await webApiFetch('/api/sync/chat/conversations/delete-direct', {
+    method: 'POST',
+    body: JSON.stringify({ contactAccountRoute }),
+  })
+}
+
 export async function syncSendMessage(
   conversationId: string,
   contentType: MessageContentType,

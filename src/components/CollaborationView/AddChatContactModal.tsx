@@ -71,7 +71,8 @@ export function AddChatContactModal({
       // stays editable below so this is only a starting point, never forced.
       setDisplayLabel(parsed.displayName?.trim() || parsed.deviceId)
       setStep('confirm')
-    } catch {
+    } catch (cause) {
+      console.error('[chat-contact] verify failed', cause)
       setError(t('chat.contacts.verifyFailed'))
     } finally {
       setBusy(false)
@@ -89,18 +90,24 @@ export function AddChatContactModal({
         verified.verifiedAgreementPublicKey,
         displayLabel.trim() || verified.deviceId,
       )
+      console.info('[chat-contact] contact saved locally', { accountRoute: verified.accountRoute })
       // Automatic mutual pairing: send an ack back to the issuer over the rendezvous relay so
       // their device adds us back too, without them ever having to paste a second code. This is
       // best-effort — the local contact above is already saved either way.
-      void sendAckToIssuer().catch(() => undefined)
+      void sendAckToIssuer()
+        .then(() => console.info('[chat-contact] ack sent to issuer'))
+        .catch((cause) => console.error('[chat-contact] sendAckToIssuer failed', cause))
       // If we don't already have our own rendezvous endpoint set up and the issuer shared theirs,
       // adopt it automatically — otherwise this device would have no way to actually reach them
       // (there's no central directory; see `sync_remote_invitation.rs`'s `PairingCode` doc).
       if (verified.rendezvousEndpoint) {
-        void adoptDiscoveredRendezvousEndpoint(verified.rendezvousEndpoint).catch(() => undefined)
+        void adoptDiscoveredRendezvousEndpoint(verified.rendezvousEndpoint)
+          .then(() => console.info('[chat-contact] adopted discovered endpoint', verified.rendezvousEndpoint))
+          .catch((cause) => console.error('[chat-contact] adoptDiscoveredRendezvousEndpoint failed', cause))
       }
       onAdded()
-    } catch {
+    } catch (cause) {
+      console.error('[chat-contact] confirm/save failed', cause)
       setError(t('chat.contacts.saveFailed'))
     } finally {
       setBusy(false)
