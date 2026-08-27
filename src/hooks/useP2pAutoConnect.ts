@@ -32,6 +32,14 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
   const [remoteAgreementPublicKey, setRemoteAgreementPublicKey] = useState<string | null>(null)
   const attemptedAtRef = useRef(0)
   const cancelledRef = useRef(false)
+  // Guards against two `attempt()` calls overlapping — the periodic background retry below used to
+  // fire every 15s regardless of whether the previous attempt (itself up to ~18s: 10s candidate
+  // wait + 8s punch budget) had finished. Each attempt binds a fresh ephemeral UDP socket via
+  // `discoverP2pCandidate()`, so an overlapping second attempt would rebind to a *different* local
+  // port and send *that* one to the peer, abandoning the socket the peer might already be punching
+  // toward — reproduced live as "received packet from unexpected source" on the receiving end, and
+  // consistent punch timeouts even when the exchanged candidate looked correct at send time.
+  const inFlightRef = useRef(false)
 
   // Every transition, timestamped — the single clearest signal for "why did the connection state
   // change right after sending", since it's directly comparable against the timed send/relay logs
@@ -48,6 +56,11 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
 
   const attempt = useCallback(async (peerAccountRoute: string, peerAgreementPublicKey: string) => {
     const log = (...args: unknown[]) => console.info('[p2p]', `peer=${peerAccountRoute}`, ...args)
+    if (inFlightRef.current) {
+      log('an attempt is already in flight, skipping this one')
+      return
+    }
+    inFlightRef.current = true
     try {
       log('connecting rendezvous relay…')
       setState('signaling')
@@ -148,6 +161,8 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
     } catch (cause) {
       log('attempt failed, falling back to relay', cause)
       if (!cancelledRef.current) setState((current) => (current === 'p2p' ? current : 'relay'))
+    } finally {
+      inFlightRef.current = false
     }
   }, [])
 
