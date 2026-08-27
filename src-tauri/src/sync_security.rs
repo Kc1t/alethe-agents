@@ -1531,6 +1531,29 @@ pub(crate) fn remove_chat_contact_at(data_root: &Path, account_route: &str) -> R
 
 const CHAT_INVITE_TOKEN_TTL_MS: u64 = 7 * 24 * 60 * 60 * 1_000;
 
+/// Returns this device's currently live (unconsumed, unexpired) invite token if one exists,
+/// otherwise generates a fresh one. Exporting a pairing code is not the same action as
+/// *regenerating* one — re-opening the "add contact" screen just to view or re-copy the same code
+/// must never silently invalidate a token that was already shared and might still be in flight to
+/// the other side (this was a real bug: the automatic mutual add-back would fail whenever the
+/// issuer had reopened the export screen after sharing their code, since `generate_chat_invite_token_at`
+/// unconditionally invalidates every previous token). Use `generate_chat_invite_token_at` instead
+/// for an explicit, user-initiated "new code" action.
+pub(crate) fn current_or_new_chat_invite_token_at(
+    data_root: &Path,
+    now_ms: u64,
+) -> Result<String, String> {
+    let document = load_at(data_root)?;
+    if let Some(existing) = document
+        .chat_invite_tokens
+        .iter()
+        .find(|entry| entry.consumed_at_ms.is_none() && entry.expires_at_ms > now_ms)
+    {
+        return Ok(existing.token.clone());
+    }
+    generate_chat_invite_token_at(data_root, now_ms)
+}
+
 /// Creates a fresh single-use invite token, first invalidating every previous unconsumed token
 /// for this device (only one exported pairing code is ever "live" at a time — see
 /// `ChatInviteToken`'s own doc comment). Callers embed the returned token in the exported pairing
@@ -1605,6 +1628,33 @@ pub fn sync_list_chat_contacts(app: tauri::AppHandle) -> Result<Vec<ChatContactR
 pub fn sync_remove_chat_contact(app: tauri::AppHandle, account_route: String) -> Result<(), String> {
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     remove_chat_contact_at(&data_root, &account_route)
+}
+
+/// Renames an existing chat contact's local display label — never touches anything else about the
+/// contact (keys, trust). A contact's name is no longer a one-time choice made only at add time.
+pub(crate) fn rename_chat_contact_at(
+    data_root: &Path,
+    account_route: &str,
+    display_label: &str,
+) -> Result<(), String> {
+    let mut document = load_at(data_root)?;
+    let contact = document
+        .chat_contacts
+        .iter_mut()
+        .find(|contact| contact.account_route == account_route)
+        .ok_or_else(|| "chat_contact_not_found".to_string())?;
+    contact.display_label = display_label.to_string();
+    save_at(data_root, &document)
+}
+
+#[tauri::command]
+pub fn sync_rename_chat_contact(
+    app: tauri::AppHandle,
+    account_route: String,
+    display_label: String,
+) -> Result<(), String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    rename_chat_contact_at(&data_root, &account_route, &display_label)
 }
 
 /// The owner identity a collaborator needs to seal a `sync_suggest_project_collaborator` proposal:

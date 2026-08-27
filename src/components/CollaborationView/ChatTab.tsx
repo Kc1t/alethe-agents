@@ -1,4 +1,4 @@
-import { Hash, Plus, Trash2 } from 'lucide-react'
+import { Hash, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { drainRendezvousEvents } from '../../lib/api/syncRendezvous'
@@ -7,6 +7,7 @@ import {
   syncListChatContacts,
   syncOpenChatContactAck,
   syncRemoveChatContact,
+  syncRenameChatContact,
 } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
 import { getProfileInitial } from '../../lib/profile'
@@ -31,6 +32,21 @@ export function ChatTab({
     projectId && projectName ? { kind: 'project', projectId, projectName } : null,
   )
   const [addingContact, setAddingContact] = useState(false)
+
+  const renameContact = async (contact: SyncChatContact) => {
+    const input = window.prompt(t('chat.contacts.renamePrompt'), contact.displayLabel)
+    const nextLabel = input?.trim()
+    if (!nextLabel || nextLabel === contact.displayLabel) return
+    try {
+      await syncRenameChatContact(contact.accountRoute, nextLabel)
+      if (selected?.kind === 'direct' && selected.contactAccountRoute === contact.accountRoute) {
+        setSelected({ ...selected, contactDisplayLabel: nextLabel })
+      }
+      reloadContacts()
+    } catch {
+      setContactsError(true)
+    }
+  }
 
   const removeContact = async (contact: SyncChatContact) => {
     if (!window.confirm(t('chat.contacts.removeConfirm'))) return
@@ -171,6 +187,14 @@ export function ChatTab({
                     className={styles.contactAvatar}
                   />
                   <span className={styles.conversationName}>{contact.displayLabel}</span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.removeContactButton}
+                  title={t('chat.contacts.rename')}
+                  onClick={() => void renameContact(contact)}
+                >
+                  <Pencil size={11} />
                 </button>
                 <button
                   type="button"

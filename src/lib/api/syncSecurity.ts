@@ -316,6 +316,17 @@ export async function syncListChatContacts(): Promise<SyncChatContact[]> {
   return webApiFetch<SyncChatContact[]>('/api/sync/security/chat-contacts/list')
 }
 
+export async function syncRenameChatContact(accountRoute: string, displayLabel: string): Promise<void> {
+  if (isTauriEnv()) {
+    await invoke('sync_rename_chat_contact', { accountRoute, displayLabel })
+    return
+  }
+  await webApiFetch('/api/sync/security/chat-contacts/rename', {
+    method: 'POST',
+    body: JSON.stringify({ accountRoute, displayLabel }),
+  })
+}
+
 export async function syncRemoveChatContact(accountRoute: string): Promise<void> {
   if (isTauriEnv()) {
     await invoke('sync_remove_chat_contact', { accountRoute })

@@ -19,13 +19,15 @@ export type PairingCode = {
   inviteToken: string
   /** The issuer's own rendezvous endpoint (Worker URL), if they have one configured/enabled. */
   rendezvousEndpoint: string | null
+  /** The issuer's own profile display name, if set — used to pre-fill the contact's name. */
+  displayName: string | null
 }
 
 /** Exports this device's own pairing code (public key material only) to share out of band with
  * someone on a different Google account, since there is no automated cross-account discovery. */
-export async function exportPairingCode(): Promise<string> {
+export async function exportPairingCode(displayName?: string | null): Promise<string> {
   if (!isTauriEnv()) throw new Error('p2p_desktop_only')
-  return invoke('sync_export_pairing_code')
+  return invoke('sync_export_pairing_code', { displayName: displayName ?? null })
 }
 
 /** Parses a pairing code pasted from the other side. Callers must still run the result through

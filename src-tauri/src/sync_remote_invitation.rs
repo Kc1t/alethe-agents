@@ -47,12 +47,18 @@ pub struct PairingCode {
     /// pairing code itself, two people would have no way to discover which endpoint to share.
     #[serde(default)]
     pub rendezvous_endpoint: Option<String>,
+    /// This device's own display name (the exporter's profile name), if set — lets the recipient
+    /// default the new contact's label to the real name instead of a raw device id, without either
+    /// side having to type anything at pairing time. Still just a starting point: the recipient can
+    /// always rename the contact afterward (see `sync_rename_chat_contact`).
+    #[serde(default)]
+    pub display_name: Option<String>,
 }
 
 /// Exports this device's own pairing code, base64url-encoded JSON ready to paste to the other
 /// side. Fails if this device hasn't completed Google sign-in and device registration yet.
 #[tauri::command]
-pub fn sync_export_pairing_code(app: tauri::AppHandle) -> Result<String, String> {
+pub fn sync_export_pairing_code(app: tauri::AppHandle, display_name: Option<String>) -> Result<String, String> {
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     let document = crate::sync_security::load_at(&data_root)?;
     let local_device_id = document.local_device_id.clone().ok_or_else(|| "security_device_missing".to_string())?;
@@ -62,8 +68,10 @@ pub fn sync_export_pairing_code(app: tauri::AppHandle) -> Result<String, String>
         .iter()
         .find(|device| device.device_id == local_device_id)
         .ok_or_else(|| "security_device_missing".to_string())?;
-    let invite_token =
-        crate::sync_security::generate_chat_invite_token_at(&data_root, crate::provider_common::now_ms())?;
+    let invite_token = crate::sync_security::current_or_new_chat_invite_token_at(
+        &data_root,
+        crate::provider_common::now_ms(),
+    )?;
     let activation = crate::sync_activation::load_settings_at(&data_root, crate::provider_common::now_ms())
         .ok();
     let rendezvous_endpoint = activation.and_then(|settings| {
@@ -83,6 +91,7 @@ pub fn sync_export_pairing_code(app: tauri::AppHandle) -> Result<String, String>
         agreement_binding_signature: device.agreement_key_binding_signature.clone().unwrap_or_default(),
         invite_token,
         rendezvous_endpoint,
+        display_name: display_name.filter(|name| !name.trim().is_empty()),
     };
     let json = serde_json::to_vec(&code).map_err(|_| "pairing_code_encode_failed".to_string())?;
     Ok(URL_SAFE_NO_PAD.encode(json))

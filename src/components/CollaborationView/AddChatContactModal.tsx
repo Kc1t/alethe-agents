@@ -37,7 +37,7 @@ export function AddChatContactModal({
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    exportPairingCode()
+    exportPairingCode(preferences.displayName || null)
       .then(setMyCode)
       .catch(() => setError(t('chat.contacts.exportFailed')))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -67,7 +67,9 @@ export function AddChatContactModal({
         agreementBindingSignature: parsed.agreementBindingSignature,
       })
       setVerified({ ...parsed, verifiedAgreementPublicKey: verifiedKey })
-      setDisplayLabel(parsed.deviceId)
+      // Auto-detected from the other side's own profile when they exported the code — the field
+      // stays editable below so this is only a starting point, never forced.
+      setDisplayLabel(parsed.displayName?.trim() || parsed.deviceId)
       setStep('confirm')
     } catch {
       setError(t('chat.contacts.verifyFailed'))

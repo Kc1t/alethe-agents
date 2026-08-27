@@ -507,6 +507,7 @@ pub fn run() {
             sync_security::sync_add_chat_contact,
             sync_security::sync_list_chat_contacts,
             sync_security::sync_remove_chat_contact,
+            sync_security::sync_rename_chat_contact,
             sync_security::sync_prepare_collaborator_suggestion,
             sync_security::sync_open_collaborator_suggestion,
             sync_security::sync_seal_chat_contact_ack,
