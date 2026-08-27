@@ -214,33 +214,46 @@ export function ChatPanel({ source }: { source: ChatSource }) {
       try {
         const status = await getRendezvousStatus()
         if (active) setRendezvousConnected(status.state !== 'no_attempt_yet')
-      } catch {
-        // Rendezvous status is best-effort for the badge only.
+        if (status.state !== 'online') {
+          console.info('[chat] rendezvous status', status)
+        }
+      } catch (cause) {
+        console.error('[chat] getRendezvousStatus failed', cause)
       }
       if (p2p.state === 'p2p') {
         try {
           const frames = await p2pDrainFrames(accountRoute)
+          if (frames.length > 0) console.info('[chat] p2p frames received', frames.length)
           for (const frame of frames) {
-            await syncIngestChatTransportFrame(conversationId, frame).catch(() => undefined)
+            await syncIngestChatTransportFrame(conversationId, frame).catch((cause) => {
+              console.error('[chat] failed to ingest p2p frame', cause)
+            })
           }
-        } catch {
-          // A closed/failed session here just means nothing to drain this tick.
+        } catch (cause) {
+          console.error('[chat] p2pDrainFrames failed', cause)
         }
       }
       try {
         const events = await drainRendezvousEvents()
+        const chatEvents = events.filter((event) => event.envelopeKind === 'chat_message')
+        if (chatEvents.length > 0) {
+          console.info('[chat] chat_message envelopes received via relay', chatEvents.length)
+        }
         for (const event of events) {
           if (event.eventType !== 'delivery' || event.envelopeKind !== 'chat_message') continue
           if (!event.ciphertext) continue
           try {
             const plaintext = await syncOpenChatRelayMessage(event.ciphertext)
             await syncIngestChatTransportFrame(conversationId, plaintext)
-          } catch {
-            // Not addressed to this device/conversation — ignore.
+            console.info('[chat] relay message decrypted and ingested')
+          } catch (cause) {
+            // Not addressed to this device/conversation — but could also be a real decrypt bug,
+            // so log it instead of hiding it entirely.
+            console.warn('[chat] relay message could not be opened/ingested (may be for someone else)', cause)
           }
         }
-      } catch {
-        // Relay drain is best-effort — the local poll still shows whatever was already ingested.
+      } catch (cause) {
+        console.error('[chat] drainRendezvousEvents failed', cause)
       }
     }
 
@@ -302,8 +315,10 @@ export function ChatPanel({ source }: { source: ChatSource }) {
         expiresAtMs: Date.now() + 24 * 60 * 60 * 1000,
         ciphertext,
       })
-    } catch {
+      console.info('[chat] message sent via relay', { recipientAccountRoute })
+    } catch (cause) {
       // Best-effort — the message is already saved locally either way; only live delivery failed.
+      console.error('[chat] deliverViaRelay failed', cause)
     }
   }
 

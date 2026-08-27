@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
+  consumeRemoteCandidate,
   discoverP2pCandidate,
   p2pConnect,
   p2pSendFrame,
   prepareRemoteCandidate,
-  consumeRemoteCandidate,
 } from '../lib/api/p2pBridge'
 import {
   connectRendezvous,
@@ -37,19 +37,27 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
   const cancelledRef = useRef(false)
 
   const attempt = useCallback(async (peerAccountRoute: string, peerAgreementPublicKey: string) => {
+    const log = (...args: unknown[]) => console.info('[p2p]', `peer=${peerAccountRoute}`, ...args)
     try {
+      log('connecting rendezvous relay…')
       setState('signaling')
-      await connectRendezvous()
+      const status = await connectRendezvous()
+      log('rendezvous connected', status)
       setState('relay')
 
       const remoteDeviceId = await syncFindTrustedDeviceForAccountRoute(peerAccountRoute)
-      if (!remoteDeviceId) return // stays 'relay' — no known trusted device yet to punch to
+      log('trusted device lookup', { remoteDeviceId })
+      if (!remoteDeviceId) {
+        log('no trusted device yet — staying on relay, no P2P attempt')
+        return // stays 'relay' — no known trusted device yet to punch to
+      }
 
       const identity = await syncLocalIdentity()
       const sessionId = [identity.accountRoute, peerAccountRoute].sort().join('|')
       const isInitiator = identity.accountRoute < peerAccountRoute
 
       const discovered = await discoverP2pCandidate()
+      log('local candidate discovered', discovered, { isInitiator, sessionId })
       const envelope = await prepareRemoteCandidate({
         sessionId,
         publicHost: discovered.publicHost,
@@ -67,6 +75,7 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
         expiresAtMs: Date.now() + 5 * 60 * 1000,
         ciphertext: envelope.ciphertext,
       })
+      log('own candidate sent, waiting for the peer candidate…')
 
       type Candidate = { host: string; port: number }
       const box: { candidate: Candidate | null } = { candidate: null }
@@ -79,14 +88,19 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
           try {
             const candidate = await consumeRemoteCandidate(event.ciphertext, sessionId)
             box.candidate = { host: candidate.publicHost, port: candidate.publicPort }
-          } catch {
-            // Not addressed to this session — ignore and keep waiting.
+          } catch (cause) {
+            log('candidate delivery did not match this session, ignoring', cause)
           }
         }
         if (!box.candidate) await new Promise((resolve) => setTimeout(resolve, 400))
       }
-      if (!box.candidate || cancelledRef.current) return
+      if (!box.candidate) {
+        log('timed out waiting for the peer candidate (10s) — staying on relay')
+        return
+      }
+      if (cancelledRef.current) return
       const finalCandidate = box.candidate
+      log('peer candidate received', finalCandidate)
 
       const result = await p2pConnect({
         localPort: discovered.localPort,
@@ -95,8 +109,10 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
         isInitiator,
         remoteAccountRoute: peerAccountRoute,
       })
+      log('p2pConnect result', result)
       if (result.connected && !cancelledRef.current) setState('p2p')
-    } catch {
+    } catch (cause) {
+      log('attempt failed, falling back to relay', cause)
       if (!cancelledRef.current) setState((current) => (current === 'p2p' ? current : 'relay'))
     }
   }, [])
