@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useP2pAutoConnect } from '../../hooks/useP2pAutoConnect'
 import { p2pDrainFrames } from '../../lib/api/p2pBridge'
+import { subscribeToRendezvousEvents } from '../../lib/api/rendezvousEventBus'
 import {
   type Conversation,
   type DecryptedMessage,
@@ -16,12 +17,7 @@ import {
   syncStartDirectConversation,
   syncUploadAttachment,
 } from '../../lib/api/syncChat'
-import {
-  connectRendezvous,
-  drainRendezvousEvents,
-  getRendezvousStatus,
-  sendRendezvousFrame,
-} from '../../lib/api/syncRendezvous'
+import { connectRendezvous, getRendezvousStatus, sendRendezvousFrame } from '../../lib/api/syncRendezvous'
 import { useT } from '../../lib/i18n'
 import { getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { syncLocalIdentity } from '../../lib/tauri'
@@ -208,11 +204,12 @@ export function ChatPanel({ source }: { source: ChatSource }) {
     bottomRef.current?.scrollIntoView({ block: 'end' })
   }, [messages.length])
 
-  // Drains any message frames that arrived since the last tick (direct P2P session, or the
-  // Cloudflare relay as a `chat_message` envelope) and persists them via
-  // `syncIngestChatTransportFrame` — which writes to the exact same local conversation file the
-  // poll effect above already re-reads every `POLL_INTERVAL_MS`, so a delivered message simply
-  // shows up on the next tick without any separate merge logic here.
+  // Connection status + P2P frame draining. `chat_message` relay events are handled separately
+  // below, via the shared event bus — this used to call `drainRendezvousEvents()` directly here
+  // too, which raced with `ChatTab.tsx`'s own independent poller for the exact same shared,
+  // drain-once queue: whichever of the two happened to call first that tick "stole" every event,
+  // including kinds it didn't care about, silently discarding them — a real, confirmed bug behind
+  // messages that were sent successfully but simply never showed up on the receiving side.
   useEffect(() => {
     if (!conversation || !otherMember) return
     let active = true
@@ -254,15 +251,28 @@ export function ChatPanel({ source }: { source: ChatSource }) {
           console.error('[chat] p2pDrainFrames failed', cause)
         }
       }
-      try {
-        const events = await drainRendezvousEvents()
-        const chatEvents = events.filter((event) => event.envelopeKind === 'chat_message')
-        if (chatEvents.length > 0) {
-          console.info('[chat] chat_message envelopes received via relay', chatEvents.length)
-        }
-        for (const event of events) {
-          if (event.eventType !== 'delivery' || event.envelopeKind !== 'chat_message') continue
-          if (!event.ciphertext) continue
+    }
+
+    void drain()
+    const timer = window.setInterval(() => void drain(), POLL_INTERVAL_MS)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [conversation, otherMember, p2p.state])
+
+  // `chat_message` relay deliveries, via the shared event bus (see `rendezvousEventBus.ts`) so
+  // this never competes with any other listener for the same drain-once queue.
+  useEffect(() => {
+    if (!conversation || !otherMember) return
+    const conversationId = conversation.conversationId
+    return subscribeToRendezvousEvents((events) => {
+      const chatEvents = events.filter((event) => event.envelopeKind === 'chat_message')
+      if (chatEvents.length === 0) return
+      console.info('[chat] chat_message envelopes received via relay', chatEvents.length)
+      void (async () => {
+        for (const event of chatEvents) {
+          if (event.eventType !== 'delivery' || !event.ciphertext) continue
           try {
             const plaintext = await syncOpenChatRelayMessage(event.ciphertext)
             await syncIngestChatTransportFrame(conversationId, plaintext)
@@ -273,18 +283,9 @@ export function ChatPanel({ source }: { source: ChatSource }) {
             console.warn('[chat] relay message could not be opened/ingested (may be for someone else)', cause)
           }
         }
-      } catch (cause) {
-        console.error('[chat] drainRendezvousEvents failed', cause)
-      }
-    }
-
-    void drain()
-    const timer = window.setInterval(() => void drain(), POLL_INTERVAL_MS)
-    return () => {
-      active = false
-      window.clearInterval(timer)
-    }
-  }, [conversation, otherMember, p2p.state])
+      })()
+    })
+  }, [conversation, otherMember])
 
   const send = async () => {
     if (!conversation || !draft.trim()) return
