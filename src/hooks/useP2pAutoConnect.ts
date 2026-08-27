@@ -227,12 +227,26 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
     async (bytes: number[]) => {
       if (!remotePeerAccountRoute) throw new Error('p2p_no_peer')
       if (state === 'p2p') {
-        await p2pSendFrame(remotePeerAccountRoute, bytes)
-        return
+        try {
+          await p2pSendFrame(remotePeerAccountRoute, bytes)
+          return
+        } catch (cause) {
+          // The session died (e.g. the punched-through UDP path's NAT mapping expired from
+          // inactivity — nothing here actively keeps it alive) — nothing was watching for this
+          // before, so `state` stayed stuck on `'p2p'` forever once reached: the background retry
+          // above skips entirely whenever `state === 'p2p'`, so a session that silently died left
+          // the connection permanently claiming to be direct, quietly delivering everything through
+          // ChatPanel's per-message relay fallback instead, and never attempting to reconnect.
+          // Reproduced live ("switches to P2P, then drops"). Drop back to `'relay'` so the retry
+          // loop picks the reconnection attempt back up, then let the caller's own relay fallback
+          // (already in place in ChatPanel) handle this specific message.
+          if (!cancelledRef.current) setState('relay')
+          throw cause
+        }
       }
       throw new Error('p2p_not_connected')
     },
-    [remotePeerAccountRoute, state],
+    [remotePeerAccountRoute, state, setState],
   )
 
   return { state, connect, send, remoteAgreementPublicKey }
