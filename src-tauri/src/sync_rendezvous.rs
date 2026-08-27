@@ -339,6 +339,19 @@ async fn connect_once(
                                     );
                                 }
                             }
+                            // Acknowledge every delivered mailbox item right away — without this,
+                            // the server has no way to know it was ever received, so it keeps
+                            // redelivering the exact same item on every future reconnect. This was
+                            // a real bug: a single old, already-processed `chat_message` delivery
+                            // kept firing a fresh "you were mentioned" notification (and access
+                            // center record) forever, since nothing ever told the server to stop
+                            // resending it.
+                            if event_type == "delivery" {
+                                if let Some(id) = value.get("id").and_then(Value::as_str) {
+                                    let ack = json!({ "type": "ack", "id": id });
+                                    let _ = writer.send(Message::Text(ack.to_string().into())).await;
+                                }
+                            }
                             runtime.push_event(RendezvousEvent {
                                 event_type,
                                 message_id: value.get("id").and_then(Value::as_str).map(str::to_string),
