@@ -6,6 +6,7 @@ import {
   p2pConnect,
   p2pSendFrame,
   prepareRemoteCandidate,
+  type DiscoveredCandidate,
 } from '../lib/api/p2pBridge'
 import { subscribeToRendezvousEvents } from '../lib/api/rendezvousEventBus'
 import { connectRendezvous, sendRendezvousFrame } from '../lib/api/syncRendezvous'
@@ -40,6 +41,15 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
   // toward — reproduced live as "received packet from unexpected source" on the receiving end, and
   // consistent punch timeouts even when the exchanged candidate looked correct at send time.
   const inFlightRef = useRef(false)
+  // Reused across retries for the lifetime of this peer's session (reset only when the peer
+  // changes or a fresh discovery is explicitly forced) — each `discoverP2pCandidate()` call binds
+  // a brand-new ephemeral UDP socket, so rediscovering on every retry meant the candidate one side
+  // advertises keeps changing round to round. Since the two sides' retries aren't synchronized,
+  // a peer could receive and act on a candidate that was already stale by the time they punched:
+  // reproduced live — one side's punch actually reached the other and got a reply (confirmed in the
+  // receiving side's own punch log), while the sender had already moved on to a new port by then
+  // and reported failure. A stable local port for the whole session avoids that staleness entirely.
+  const discoveredRef = useRef<DiscoveredCandidate | null>(null)
 
   // Every transition, timestamped — the single clearest signal for "why did the connection state
   // change right after sending", since it's directly comparable against the timed send/relay logs
@@ -79,8 +89,14 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
       const sessionId = [identity.accountRoute, peerAccountRoute].sort().join('|')
       const isInitiator = identity.accountRoute < peerAccountRoute
 
-      const discovered = await discoverP2pCandidate()
-      log('local candidate discovered', discovered, { isInitiator, sessionId })
+      let discovered = discoveredRef.current
+      if (!discovered) {
+        discovered = await discoverP2pCandidate()
+        discoveredRef.current = discovered
+        log('local candidate discovered (new)', discovered, { isInitiator, sessionId })
+      } else {
+        log('local candidate reused from earlier attempt', discovered, { isInitiator, sessionId })
+      }
       const envelope = await prepareRemoteCandidate({
         sessionId,
         publicHost: discovered.publicHost,
@@ -168,6 +184,7 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
 
   useEffect(() => {
     cancelledRef.current = false
+    discoveredRef.current = null
     setState('idle')
     setRemoteAgreementPublicKey(null)
     if (!remotePeerAccountRoute) return
