@@ -1,7 +1,12 @@
-import { Check, Copy, Loader2, X } from 'lucide-react'
+import { Check, Copy, Loader2, RefreshCw, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { exportPairingCode, type PairingCode, parsePairingCode } from '../../lib/api/p2pBridge'
+import {
+  exportPairingCode,
+  type PairingCode,
+  parsePairingCode,
+  regeneratePairingCode,
+} from '../../lib/api/p2pBridge'
 import { subscribeToRendezvousEvents } from '../../lib/api/rendezvousEventBus'
 import {
   adoptDiscoveredRendezvousEndpoint,
@@ -42,6 +47,7 @@ export function AddChatContactModal({
   const [step, setStep] = useState<Step>('exchange')
   const [myCode, setMyCode] = useState<string | null>(null)
   const [myCodeCopied, setMyCodeCopied] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
   const [theirCode, setTheirCode] = useState('')
   const [displayLabel, setDisplayLabel] = useState('')
   const [verified, setVerified] = useState<
@@ -62,6 +68,21 @@ export function AddChatContactModal({
       .catch(() => setError(t('chat.contacts.exportFailed')))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const regenerateMyCode = async () => {
+    setRegenerating(true)
+    setError(null)
+    try {
+      const thumbnail = await downscaleAvatar(getProfileImageUrl(preferences))
+      const code = await regeneratePairingCode(preferences.displayName || null, thumbnail)
+      setMyCode(code)
+      setMyCodeCopied(false)
+    } catch {
+      setError(t('chat.contacts.exportFailed'))
+    } finally {
+      setRegenerating(false)
+    }
+  }
 
   const copyMyCode = async () => {
     if (!myCode) return
@@ -235,15 +256,31 @@ export function AddChatContactModal({
                 <span className={styles.codePlaceholder}>{t('chat.contacts.generating')}</span>
               )}
             </div>
-            <button
-              type="button"
-              className={styles.copyButton}
-              disabled={!myCode}
-              onClick={() => void copyMyCode()}
-            >
-              {myCodeCopied ? <Check size={13} /> : <Copy size={13} />}
-              {myCodeCopied ? t('chat.contacts.copied') : t('chat.contacts.copy')}
-            </button>
+            <div className={styles.codeActions}>
+              <button
+                type="button"
+                className={styles.copyButton}
+                disabled={!myCode}
+                onClick={() => void copyMyCode()}
+              >
+                {myCodeCopied ? <Check size={13} /> : <Copy size={13} />}
+                {myCodeCopied ? t('chat.contacts.copied') : t('chat.contacts.copy')}
+              </button>
+              <button
+                type="button"
+                className={styles.copyButton}
+                disabled={!myCode || regenerating}
+                title={t('chat.contacts.regenerateHint')}
+                onClick={() => void regenerateMyCode()}
+              >
+                {regenerating ? (
+                  <Loader2 size={13} className={styles.spin} />
+                ) : (
+                  <RefreshCw size={13} />
+                )}
+                {t('chat.contacts.regenerate')}
+              </button>
+            </div>
 
             <label className={styles.label}>{t('chat.contacts.theirCodeLabel')}</label>
             <textarea

@@ -292,16 +292,15 @@ pub struct ChatContactRecord {
 
 /// An invite ticket embedded in an exported pairing code (`sync_export_pairing_code`). Generating a
 /// fresh one invalidates every previous unconsumed token for this device — only one code is ever
-/// "live" at a time — and it's marked consumed the moment the other side's confirmed
-/// `chat_contact_ack` arrives (see `sync_rendezvous.rs`'s `"chat_contact_ack"` kind), which is also
-/// what drives the automatic mutual add: the issuer never has to paste anything back.
+/// "live" at a time — and it's marked consumed the moment a `chat_contact_ack` from the other side
+/// is opened (`sync_open_chat_contact_ack`), which is what queues the pairing request for the
+/// issuer's review (see `PendingChatContactRequest`) instead of adding the contact outright.
 ///
-/// This was intended to make a shared/forwarded code unusable more than once, and it does NOT
-/// currently achieve that. Consumption is checked only on the issuing device, inside
-/// `sync_open_chat_contact_ack`; the redeeming side never validates the token, so the code remains
-/// usable until it expires. See that function's doc comment for the full description of the gap,
-/// its bounded impact, and why fixing it needs a protocol change. Do not describe this type as
-/// "single-use" in user-facing text until that lands.
+/// Single-use is enforced on the issuing device (`consume_chat_invite_token_at` fails closed on
+/// replay/expiry/forgery); the redeeming side additionally never commits the contact until the
+/// issuer explicitly resolves the queued request and a `chat_contact_confirm` envelope actually
+/// reaches them back (`sync_open_chat_contact_confirm`, `AddChatContactModal.tsx`'s
+/// `waitForConfirmation`) — so a pasted-around code alone is not enough to become anyone's contact.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatInviteToken {
@@ -310,6 +309,28 @@ pub struct ChatInviteToken {
     pub expires_at_ms: u64,
     #[serde(default)]
     pub consumed_at_ms: Option<u64>,
+}
+
+/// A pairing request awaiting the issuer's review — created when a `chat_contact_ack` is opened
+/// (`sync_open_chat_contact_ack`) instead of committing the contact automatically. Lets the issuer
+/// decide, per person, whether to just add them as a chat contact or also grant them access to one
+/// of their projects, and scales to several people asking at once (a queue, not a single blocking
+/// prompt) — see `PairingRequestsPanel.tsx`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingChatContactRequest {
+    pub request_id: String,
+    /// The raw Google account id (`sub`) of whoever sent the ack — never exposed to the frontend;
+    /// only used server-side if the issuer later chooses to grant project access (`GrantRecord`
+    /// requires the real account id, not just its one-way `account_route` hash — ADR-0004).
+    pub account_id: String,
+    pub account_route: String,
+    pub device_id: String,
+    pub agreement_public_key: String,
+    pub display_label: String,
+    #[serde(default)]
+    pub avatar_thumbnail: Option<String>,
+    pub received_at_ms: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -332,6 +353,9 @@ pub struct SyncSecurityDocument {
     /// See `ChatInviteToken`.
     #[serde(default)]
     pub chat_invite_tokens: Vec<ChatInviteToken>,
+    /// See `PendingChatContactRequest`.
+    #[serde(default)]
+    pub pending_chat_contact_requests: Vec<PendingChatContactRequest>,
     pub audit: Vec<SecurityAuditEvent>,
 }
 
@@ -346,6 +370,7 @@ impl Default for SyncSecurityDocument {
             grants: Vec::new(),
             chat_contacts: Vec::new(),
             chat_invite_tokens: Vec::new(),
+            pending_chat_contact_requests: Vec::new(),
             audit: Vec::new(),
         }
     }
@@ -1822,13 +1847,21 @@ const COLLABORATOR_SUGGESTION_INFO: &[u8] = b"alethe-collaborator-suggestion-v1"
 const CHAT_CONTACT_ACK_INFO: &[u8] = b"alethe-chat-contact-ack-v1";
 const AVATAR_UPDATE_INFO: &[u8] = b"alethe-avatar-update-v1";
 
-/// Seals `{ token, accountRoute, deviceId, agreementPublicKey, displayLabel }` for the *issuer* of
-/// a pairing code — the recipient calls this right after locally saving the issuer as a contact,
-/// so the issuer's device can automatically add the recipient back too (see `ChatInviteToken`'s
-/// doc comment) without either side pasting a second code. Never touches this (recipient) device's
+/// Seals `{ token, accountId, accountRoute, deviceId, agreementPublicKey, displayLabel }` for the
+/// *issuer* of a pairing code — the recipient calls this right after verifying the issuer's code,
+/// so the issuer's device can queue a pairing request instead of the recipient guessing whether
+/// they'll be let in (see `ChatInviteToken`'s doc comment). Never touches this (recipient) device's
 /// own `chat_contacts`/tokens — purely a transport-layer helper.
+///
+/// `accountId` (the sender's own raw Google account id) is read straight from the local security
+/// document rather than accepted as a frontend-supplied argument — the frontend/JS layer never
+/// handles raw account ids by design (ADR-0004, opaque account routing); it only ever sees
+/// `accountRoute`, the one-way hash. The issuer needs the real id only if it later chooses to
+/// grant project access (`GrantRecord.account_id`), and only Rust-to-Rust, inside this sealed
+/// envelope, ever carries it.
 #[tauri::command]
 pub fn sync_seal_chat_contact_ack(
+    app: tauri::AppHandle,
     token: String,
     account_route: String,
     device_id: String,
@@ -1837,11 +1870,40 @@ pub fn sync_seal_chat_contact_ack(
     issuer_agreement_public_key: String,
     avatar_thumbnail: Option<String>,
 ) -> Result<String, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    seal_chat_contact_ack_at(
+        &data_root,
+        token,
+        account_route,
+        device_id,
+        agreement_public_key,
+        display_label,
+        issuer_agreement_public_key,
+        avatar_thumbnail,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn seal_chat_contact_ack_at(
+    data_root: &Path,
+    token: String,
+    account_route: String,
+    device_id: String,
+    agreement_public_key: String,
+    display_label: String,
+    issuer_agreement_public_key: String,
+    avatar_thumbnail: Option<String>,
+) -> Result<String, String> {
+    let own_account_id = load_at(data_root)?
+        .account
+        .ok_or_else(|| "security_account_missing".to_string())?
+        .account_id;
     let issuer_public_key = URL_SAFE_NO_PAD
         .decode(&issuer_agreement_public_key)
         .map_err(|_| "chat_contact_ack_issuer_key_invalid".to_string())?;
     let payload = serde_json::json!({
         "token": token,
+        "accountId": own_account_id,
         "accountRoute": account_route,
         "deviceId": device_id,
         "agreementPublicKey": agreement_public_key,
@@ -1860,28 +1922,16 @@ pub fn sync_seal_chat_contact_ack(
 
 /// Decrypts a delivered `chat_contact_ack` envelope, then — only if `token` is a still-valid,
 /// unconsumed token this device itself generated (`consume_chat_invite_token_at` fails closed on
-/// any replay, forged, or stale token) — adds the sender as a chat contact automatically. Returns
-/// the added contact's display label on success, or `None` if the token didn't check out (the
-/// envelope is silently ignored by the caller in that case, same as any other unaddressed relay
-/// delivery).
+/// any replay, forged, or stale token) — queues a `PendingChatContactRequest` for the issuer to
+/// review (`PairingRequestsPanel.tsx`) instead of adding the contact automatically. Returns the
+/// queued request's summary on success, or `None` if the token didn't check out (the envelope is
+/// silently ignored by the caller in that case, same as any other unaddressed relay delivery).
 ///
-/// KNOWN GAP — the single-use guarantee is one-directional, and only covers *this* side.
-/// `consume_chat_invite_token_at` does fail closed on replay, but it is reached only here, on the
-/// issuer. The redeeming side (`AddChatContactModal.tsx`) reads the pairing code and calls
-/// `sync_add_chat_contact` straight away, without consulting the issuer or checking the token at
-/// all — so a pairing code is in practice a replayable bearer credential: whoever holds it can add
-/// the issuer as a chat contact repeatedly until the code expires, and the code itself does not
-/// rotate between exports (`current_or_new_chat_invite_token_at` deliberately returns the same live
-/// one). What single-use actually governs is only whether the issuer reciprocally auto-adds them
-/// back. Observed live: the same code redeemed several times in a row, each time successfully.
-///
-/// Impact is bounded — a chat contact is not a grant, and confers no project access (see
-/// `adding_a_chat_contact_never_creates_a_grant_or_invitation`) — but it did leak the issuer's
-/// account route and public keys to anyone who obtained the code, and let them open a direct
-/// conversation, repeatedly, since the redeemer used to commit the contact immediately rather than
-/// waiting on this confirmation. See `sync_open_chat_contact_confirm` for the other half of the
-/// fix: the redeemer now only commits after this function calls `consume_chat_invite_token_at`
-/// successfully *and* the resulting `chat_contact_confirm` envelope actually reaches them.
+/// The redeeming side (`AddChatContactModal.tsx`) never commits the contact on its own either — it
+/// waits for a `chat_contact_confirm` envelope that only exists once the issuer actually resolves
+/// the queued request (`resolve_pending_chat_contact_request_at`). So possessing a pasted-around
+/// code is not, by itself, enough to become anyone's contact: the issuer's device has to still be
+/// reachable, the token has to still be live, and a human has to actually decide to let them in.
 #[tauri::command]
 pub fn sync_open_chat_contact_ack(
     app: tauri::AppHandle,
@@ -1901,36 +1951,255 @@ pub fn sync_open_chat_contact_ack(
     if !consume_chat_invite_token_at(&data_root, token, now_ms)? {
         return Ok(None);
     }
+    let account_id = payload.get("accountId").and_then(|v| v.as_str()).unwrap_or_default().to_string();
     let account_route = payload.get("accountRoute").and_then(|v| v.as_str()).unwrap_or_default().to_string();
     let device_id = payload.get("deviceId").and_then(|v| v.as_str()).unwrap_or_default().to_string();
     let agreement_public_key =
         payload.get("agreementPublicKey").and_then(|v| v.as_str()).unwrap_or_default().to_string();
     let display_label = payload.get("displayLabel").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-    if account_route.is_empty() || device_id.is_empty() || agreement_public_key.is_empty() {
+    if account_id.is_empty() || account_route.is_empty() || device_id.is_empty() || agreement_public_key.is_empty() {
         return Err("chat_contact_ack_invalid".to_string());
     }
     let avatar_thumbnail =
         payload.get("avatarThumbnail").and_then(|v| v.as_str()).map(|s| s.to_string());
-    add_chat_contact_at(
-        &data_root,
-        ChatContactRecord {
-            account_route: account_route.clone(),
-            device_id,
-            agreement_public_key: agreement_public_key.clone(),
-            display_label: display_label.clone(),
-            added_at_ms: now_ms,
-            avatar_thumbnail,
-        },
-    )?;
-    Ok(Some(ChatContactAckResult { account_route, agreement_public_key, display_label }))
+    let request = PendingChatContactRequest {
+        request_id: format!("pcr_{}", nanoid::nanoid!(24)),
+        account_id,
+        account_route: account_route.clone(),
+        device_id,
+        agreement_public_key: agreement_public_key.clone(),
+        display_label: display_label.clone(),
+        avatar_thumbnail,
+        received_at_ms: now_ms,
+    };
+    let request_id = request.request_id.clone();
+    queue_pending_chat_contact_request_at(&data_root, request, now_ms)?;
+    Ok(Some(ChatContactAckResult { request_id, account_route, agreement_public_key, display_label }))
 }
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatContactAckResult {
+    pub request_id: String,
     pub account_route: String,
     pub agreement_public_key: String,
     pub display_label: String,
+}
+
+/// Queues a pairing request for the issuer's review instead of adding the contact immediately —
+/// called by `sync_open_chat_contact_ack` once the ack's token has already been validated. The
+/// access-center publish is best-effort: it must never fail the queue itself, which has already
+/// been persisted by this point (same reasoning as `register_device_at`'s `DevicePendingApproval`
+/// publish).
+fn queue_pending_chat_contact_request_at(
+    data_root: &Path,
+    request: PendingChatContactRequest,
+    now_ms: u64,
+) -> Result<(), String> {
+    let mut document = load_at(data_root)?;
+    document.pending_chat_contact_requests.push(request.clone());
+    save_at(data_root, &document)?;
+    let _ = crate::sync_access::record_at(
+        data_root,
+        crate::sync_access::AccessCategory::Collaboration,
+        crate::sync_access::AccessKind::PairingRequestPending,
+        &request.request_id,
+        now_ms,
+    );
+    Ok(())
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingChatContactRequestSummary {
+    pub request_id: String,
+    pub account_route: String,
+    pub display_label: String,
+    pub avatar_thumbnail: Option<String>,
+    pub received_at_ms: u64,
+}
+
+pub(crate) fn list_pending_chat_contact_requests_at(
+    data_root: &Path,
+) -> Result<Vec<PendingChatContactRequestSummary>, String> {
+    Ok(load_at(data_root)?
+        .pending_chat_contact_requests
+        .into_iter()
+        .map(|request| PendingChatContactRequestSummary {
+            request_id: request.request_id,
+            account_route: request.account_route,
+            display_label: request.display_label,
+            avatar_thumbnail: request.avatar_thumbnail,
+            received_at_ms: request.received_at_ms,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub fn sync_list_pending_chat_contact_requests(
+    app: tauri::AppHandle,
+) -> Result<Vec<PendingChatContactRequestSummary>, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    list_pending_chat_contact_requests_at(&data_root)
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingChatContactGrantChoice {
+    pub project_id: String,
+    pub permissions: Vec<SyncPermission>,
+    pub path_scopes: Vec<PathScope>,
+    pub expires_at_ms: u64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedPendingChatContactRequest {
+    pub contact: ChatContactRecord,
+    pub grant: Option<GrantRecord>,
+    /// Sealed `chat_contact_confirm` envelope, ready to send to the requester over the rendezvous
+    /// relay (`sendRendezvousFrame`, kind `"chat_contact_confirm"`) — carries the grant details (if
+    /// any) for the requester's own device to materialize a matching local `GrantRecord` via
+    /// `sync_open_chat_contact_confirm`.
+    pub confirm_ciphertext: String,
+    pub account_route: String,
+}
+
+/// Resolves a queued pairing request: always adds the requester as a chat contact, and — if
+/// `grant` is provided — also grants them access to one of this device's projects. Reuses the
+/// existing, already-tested `issue_invitation`/`redeem_invitation` pair internally for the grant
+/// (never a second, parallel authorization path just for this flow) — the pairing token already
+/// served as the proof-of-possession that a bearer token would otherwise provide. Removes the
+/// pending request either way; fails if it's already gone (resolved from elsewhere, e.g. two
+/// browser tabs, or pruned).
+///
+/// Also seals the `chat_contact_confirm` envelope in the same call: the grant's `bearer_token`
+/// only ever exists transiently, right here, the same way it does for `issue_invitation`'s other
+/// caller (`VaultPanel.tsx`'s advanced email-invite path) — never persisted in plaintext, and
+/// immediately sealed for the one recipient who can decrypt it before this function returns.
+pub(crate) fn resolve_pending_chat_contact_request_at(
+    data_root: &Path,
+    local_device_id: &str,
+    request_id: &str,
+    grant: Option<PendingChatContactGrantChoice>,
+    now_ms: u64,
+) -> Result<ResolvedPendingChatContactRequest, String> {
+    let mut document = load_at(data_root)?;
+    let index = document
+        .pending_chat_contact_requests
+        .iter()
+        .position(|request| request.request_id == request_id)
+        .ok_or_else(|| "pairing_request_not_found".to_string())?;
+    let request = document.pending_chat_contact_requests.remove(index);
+    save_at(data_root, &document)?;
+
+    let contact = ChatContactRecord {
+        account_route: request.account_route.clone(),
+        device_id: request.device_id.clone(),
+        agreement_public_key: request.agreement_public_key.clone(),
+        display_label: request.display_label.clone(),
+        added_at_ms: now_ms,
+        avatar_thumbnail: request.avatar_thumbnail.clone(),
+    };
+    add_chat_contact_at(data_root, contact.clone())?;
+
+    let mut grant_confirm_payload = serde_json::Value::Null;
+    let granted = match grant {
+        Some(choice) => {
+            let owner = load_at(data_root)?;
+            let owner_account_id = owner
+                .account
+                .as_ref()
+                .ok_or_else(|| "security_account_missing".to_string())?
+                .account_id
+                .clone();
+            let owner_device = owner
+                .devices
+                .iter()
+                .find(|device| device.device_id == local_device_id)
+                .ok_or_else(|| "security_device_missing".to_string())?;
+            let owner_agreement_public_key = owner_device.agreement_public_key.clone().unwrap_or_default();
+
+            let issued = issue_invitation(
+                data_root,
+                local_device_id,
+                &choice.project_id,
+                &request.account_id,
+                Some(request.device_id.clone()),
+                choice.permissions.clone(),
+                choice.path_scopes.clone(),
+                now_ms,
+                choice.expires_at_ms,
+            )?;
+            let granted = redeem_invitation(
+                data_root,
+                &issued.invitation.invitation_id,
+                &issued.bearer_token,
+                &request.account_id,
+                &request.device_id,
+                now_ms,
+            )?;
+            grant_confirm_payload = serde_json::json!({
+                "invitationId": issued.invitation.invitation_id,
+                "bearerToken": issued.bearer_token,
+                "projectId": choice.project_id,
+                "permissions": choice.permissions,
+                "pathScopes": choice.path_scopes,
+                "expiresAtMs": choice.expires_at_ms,
+                "ownerAccountId": owner_account_id,
+                "ownerAgreementPublicKey": owner_agreement_public_key,
+            });
+            Some(granted)
+        }
+        None => None,
+    };
+
+    let confirm_ciphertext =
+        seal_chat_contact_confirm(&request.agreement_public_key, grant_confirm_payload)?;
+
+    Ok(ResolvedPendingChatContactRequest {
+        contact,
+        grant: granted,
+        confirm_ciphertext,
+        account_route: request.account_route,
+    })
+}
+
+#[tauri::command]
+pub fn sync_resolve_pending_chat_contact_request(
+    app: tauri::AppHandle,
+    request_id: String,
+    grant: Option<PendingChatContactGrantChoice>,
+) -> Result<ResolvedPendingChatContactRequest, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let local_device_id =
+        load_at(&data_root)?.local_device_id.ok_or_else(|| "security_device_missing".to_string())?;
+    resolve_pending_chat_contact_request_at(
+        &data_root,
+        &local_device_id,
+        &request_id,
+        grant,
+        crate::provider_common::now_ms(),
+    )
+}
+
+/// Declines a queued pairing request without adding the contact — just removes it so it stops
+/// showing up for review. The requester's own device eventually times out waiting for a confirm
+/// (`AddChatContactModal.tsx`'s `CONFIRM_WAIT_MS`), the same path as an issuer who never comes
+/// online at all — declining never tells the requester they were explicitly rejected.
+#[tauri::command]
+pub fn sync_decline_pending_chat_contact_request(
+    app: tauri::AppHandle,
+    request_id: String,
+) -> Result<(), String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let mut document = load_at(&data_root)?;
+    let before = document.pending_chat_contact_requests.len();
+    document.pending_chat_contact_requests.retain(|request| request.request_id != request_id);
+    if document.pending_chat_contact_requests.len() == before {
+        return Err("pairing_request_not_found".to_string());
+    }
+    save_at(&data_root, &document)
 }
 
 const CHAT_CONTACT_CONFIRM_INFO: &[u8] = b"alethe-chat-contact-confirm-v1";
@@ -1940,30 +2209,96 @@ const CHAT_CONTACT_CONFIRM_INFO: &[u8] = b"alethe-chat-contact-confirm-v1";
 /// succeeds. The payload carries nothing beyond what a successful decrypt already proves (that this
 /// device, and only this device, holds the matching agreement secret): possession of a valid
 /// confirm envelope *is* the confirmation, there is nothing further to authenticate inside it.
-#[tauri::command]
-pub fn sync_seal_chat_contact_confirm(recipient_agreement_public_key: String) -> Result<String, String> {
+/// `grant` is `Null` for a chat-only decision, or the grant payload built by
+/// `resolve_pending_chat_contact_request_at` when the issuer also chose to share a project.
+fn seal_chat_contact_confirm(
+    recipient_agreement_public_key: &str,
+    grant: serde_json::Value,
+) -> Result<String, String> {
     let recipient_public_key = URL_SAFE_NO_PAD
-        .decode(&recipient_agreement_public_key)
+        .decode(recipient_agreement_public_key)
         .map_err(|_| "chat_contact_confirm_recipient_key_invalid".to_string())?;
-    let sealed = crate::sync_crypto::seal_for_recipient(b"{}", &recipient_public_key, CHAT_CONTACT_CONFIRM_INFO)
+    let plaintext = serde_json::to_vec(&serde_json::json!({ "grant": grant }))
+        .map_err(|_| "chat_contact_confirm_encode_failed".to_string())?;
+    let sealed = crate::sync_crypto::seal_for_recipient(&plaintext, &recipient_public_key, CHAT_CONTACT_CONFIRM_INFO)
         .map_err(|_| "chat_contact_confirm_recipient_key_invalid".to_string())?;
-    let packed = crate::sync_chat::pack_sealed(&sealed);
-    Ok(URL_SAFE_NO_PAD.encode(packed))
+    Ok(URL_SAFE_NO_PAD.encode(crate::sync_chat::pack_sealed(&sealed)))
 }
 
-/// Decrypts a delivered `chat_contact_confirm` envelope. Returns `true` only if it actually opens
-/// with this device's own agreement secret — the redeeming side of `AddChatContactModal.tsx` waits
-/// for this before calling `sync_add_chat_contact`, closing the replay gap documented on
-/// `sync_open_chat_contact_ack`: a pasted-around code no longer, by itself, gets its holder
-/// committed as a contact — the issuer's device has to still be alive and willing to confirm it.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenedChatContactConfirm {
+    pub grant: Option<GrantRecord>,
+}
+
+/// Decrypts a delivered `chat_contact_confirm` envelope. Returns `None` if it doesn't open with
+/// this device's own agreement secret (not addressed to us) — the redeeming side of
+/// `AddChatContactModal.tsx` waits for `Some(...)` before calling `sync_add_chat_contact`, closing
+/// the replay gap documented on `sync_open_chat_contact_ack`: a pasted-around code no longer, by
+/// itself, gets its holder committed as a contact — the issuer's device has to still be alive and
+/// willing to confirm it. When the issuer also chose to grant project access, this materializes a
+/// matching local `GrantRecord` here too, the same way `sync_consume_remote_invitation_cross_device`
+/// already does for the old email-invite flow (`redeem_remote_invitation_at`, reused as-is).
 #[tauri::command]
-pub fn sync_open_chat_contact_confirm(app: tauri::AppHandle, ciphertext: String) -> Result<bool, String> {
+pub fn sync_open_chat_contact_confirm(
+    app: tauri::AppHandle,
+    ciphertext: String,
+) -> Result<Option<OpenedChatContactConfirm>, String> {
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     let local_device_id = load_at(&data_root)?.local_device_id.ok_or_else(|| "security_device_missing".to_string())?;
     let recipient_secret = load_device_agreement_secret(&local_device_id)?;
-    let Ok(packed) = URL_SAFE_NO_PAD.decode(&ciphertext) else { return Ok(false) };
-    let Ok(sealed) = crate::sync_chat::unpack_sealed(&packed) else { return Ok(false) };
-    Ok(crate::sync_crypto::open_sealed(&sealed, &recipient_secret, CHAT_CONTACT_CONFIRM_INFO).is_ok())
+    let Ok(packed) = URL_SAFE_NO_PAD.decode(&ciphertext) else { return Ok(None) };
+    let Ok(sealed) = crate::sync_chat::unpack_sealed(&packed) else { return Ok(None) };
+    let Ok(plaintext) = crate::sync_crypto::open_sealed(&sealed, &recipient_secret, CHAT_CONTACT_CONFIRM_INFO)
+    else {
+        return Ok(None);
+    };
+    let payload: serde_json::Value = serde_json::from_slice(&plaintext).unwrap_or(serde_json::Value::Null);
+    let grant_payload = payload.get("grant").cloned().unwrap_or(serde_json::Value::Null);
+    if grant_payload.is_null() {
+        return Ok(Some(OpenedChatContactConfirm { grant: None }));
+    }
+    let invitation_id = grant_payload.get("invitationId").and_then(|v| v.as_str()).unwrap_or_default();
+    let bearer_token = grant_payload.get("bearerToken").and_then(|v| v.as_str()).unwrap_or_default();
+    let project_id = grant_payload.get("projectId").and_then(|v| v.as_str()).unwrap_or_default();
+    let permissions: Vec<SyncPermission> = grant_payload
+        .get("permissions")
+        .cloned()
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+    let path_scopes: Vec<PathScope> = grant_payload
+        .get("pathScopes")
+        .cloned()
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+    let expires_at_ms = grant_payload.get("expiresAtMs").and_then(|v| v.as_u64()).unwrap_or_default();
+    let owner_account_id = grant_payload.get("ownerAccountId").and_then(|v| v.as_str()).unwrap_or_default();
+    let owner_agreement_public_key =
+        grant_payload.get("ownerAgreementPublicKey").and_then(|v| v.as_str()).unwrap_or_default();
+    if invitation_id.is_empty() || bearer_token.is_empty() || project_id.is_empty() {
+        return Err("chat_contact_confirm_invalid_grant".to_string());
+    }
+    let identity = local_identity_at(&data_root)?;
+    let account_id = load_at(&data_root)?
+        .account
+        .ok_or_else(|| "security_account_missing".to_string())?
+        .account_id;
+    let now_ms = crate::provider_common::now_ms();
+    let grant = redeem_remote_invitation_at(
+        &data_root,
+        invitation_id,
+        bearer_token,
+        project_id,
+        permissions,
+        path_scopes,
+        expires_at_ms,
+        &account_id,
+        &identity.device_id,
+        owner_account_id,
+        owner_agreement_public_key,
+        now_ms,
+    )?;
+    Ok(Some(OpenedChatContactConfirm { grant: Some(grant) }))
 }
 
 /// Seals `{ accountRoute, avatarThumbnail }` for a specific chat contact — sent whenever this
@@ -2731,7 +3066,15 @@ mod tests {
         let issuer_root = temp_root();
         let token = generate_chat_invite_token_at(&issuer_root, 1_000).unwrap();
 
-        let ciphertext = sync_seal_chat_contact_ack(
+        // Sealing an ack is the *friend's* own device acting — needs its own account on record,
+        // distinct from the issuer's, so `seal_chat_contact_ack_at` can embed `accountId`.
+        let friend_root = temp_root();
+        let mut friend_document = SyncSecurityDocument::default();
+        friend_document.account = Some(account("friend-account"));
+        save_at(&friend_root, &friend_document).unwrap();
+
+        let ciphertext = seal_chat_contact_ack_at(
+            &friend_root,
             token,
             "route-friend".to_string(),
             "friend-device".to_string(),
@@ -2770,6 +3113,7 @@ mod tests {
         // Replaying the same token a second time must fail closed.
         assert!(!consume_chat_invite_token_at(&issuer_root, token, 3_000).unwrap());
         fs::remove_dir_all(issuer_root).unwrap();
+        fs::remove_dir_all(friend_root).unwrap();
     }
 
     #[derive(Default)]
@@ -2998,6 +3342,7 @@ mod tests {
             grants: vec![],
             chat_contacts: vec![],
             chat_invite_tokens: vec![],
+            pending_chat_contact_requests: vec![],
             audit: vec![],
         };
         assert_eq!(
@@ -3657,7 +4002,7 @@ mod tests {
         let recipient_key = URL_SAFE_NO_PAD.encode(X25519PublicKey::from(&recipient_secret).as_bytes());
         let stranger_secret = X25519StaticSecret::random_from_rng(OsRng);
 
-        let ciphertext = sync_seal_chat_contact_confirm(recipient_key).unwrap();
+        let ciphertext = seal_chat_contact_confirm(&recipient_key, serde_json::Value::Null).unwrap();
 
         // The real recipient's secret opens it.
         let packed = URL_SAFE_NO_PAD.decode(&ciphertext).unwrap();

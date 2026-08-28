@@ -16,6 +16,7 @@ export type AccessRecord = {
     | 'task_assigned'
     | 'chat_mention'
     | 'transfer_failure'
+    | 'pairing_request_pending'
   subjectHandle: string
   actionHandle: string
   unread: boolean

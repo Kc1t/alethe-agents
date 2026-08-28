@@ -393,6 +393,7 @@ export async function syncSealChatContactAck(
 }
 
 export type ChatContactAckResult = {
+  requestId: string
   accountRoute: string
   agreementPublicKey: string
   displayLabel: string
@@ -400,12 +401,10 @@ export type ChatContactAckResult = {
 
 /**
  * Decrypts a delivered `chat_contact_ack` envelope and, only if its token is a still-valid,
- * unconsumed token this device itself generated, automatically adds the sender as a chat contact.
- * Returns the added contact's info, or `null` if the token didn't check out (the envelope was not
- * addressed to a currently-live invite code — ignore it). The caller must still send a
- * `chat_contact_confirm` envelope back (see `syncSealChatContactConfirm`) — the sender is waiting
- * on it before committing the contact on their own side (closes the replay gap where a pasted
- * pairing code alone used to be enough).
+ * unconsumed token this device itself generated, queues a pairing request for review instead of
+ * adding the contact automatically — see `PairingRequestsPanel.tsx`. Returns the queued request's
+ * summary, or `null` if the token didn't check out (the envelope was not addressed to a
+ * currently-live invite code — ignore it).
  */
 export async function syncOpenChatContactAck(ciphertext: string): Promise<ChatContactAckResult | null> {
   if (!isTauriEnv()) throw new Error('chat_contact_ack_desktop_only')
@@ -413,23 +412,68 @@ export async function syncOpenChatContactAck(ciphertext: string): Promise<ChatCo
 }
 
 /**
- * Seals a minimal "the token checked out, go ahead and commit me as a contact" signal for whoever
- * redeemed a pairing code — send this as a `chat_contact_confirm` envelope right after
- * `syncOpenChatContactAck` returns a non-null result.
+ * Decrypts a delivered `chat_contact_confirm` envelope. Returns `null` if it doesn't open with
+ * this device's own key (not addressed to us) — the redeeming side of `AddChatContactModal.tsx`
+ * waits for a non-null result before finalizing the contact via `syncAddChatContact`. `grant` is
+ * set when the issuer also chose to share project access when resolving the pairing request — a
+ * matching local `SyncGrantRecord` has already been created by the time this resolves.
  */
-export async function syncSealChatContactConfirm(recipientAgreementPublicKey: string): Promise<string> {
+export async function syncOpenChatContactConfirm(
+  ciphertext: string,
+): Promise<{ grant: SyncGrantRecord | null } | null> {
   if (!isTauriEnv()) throw new Error('chat_contact_confirm_desktop_only')
-  return invoke<string>('sync_seal_chat_contact_confirm', { recipientAgreementPublicKey })
+  return invoke<{ grant: SyncGrantRecord | null } | null>('sync_open_chat_contact_confirm', { ciphertext })
+}
+
+export type PendingChatContactRequest = {
+  requestId: string
+  accountRoute: string
+  displayLabel: string
+  avatarThumbnail: string | null
+  receivedAtMs: number
+}
+
+/** Lists every pairing request currently awaiting this device's review — see `PairingRequestsPanel.tsx`. */
+export async function syncListPendingChatContactRequests(): Promise<PendingChatContactRequest[]> {
+  if (!isTauriEnv()) throw new Error('pending_chat_contact_requests_desktop_only')
+  return invoke<PendingChatContactRequest[]>('sync_list_pending_chat_contact_requests')
+}
+
+export type PendingChatContactGrantChoice = {
+  projectId: string
+  permissions: SyncPermission[]
+  pathScopes: SyncPathScope[]
+  expiresAtMs: number
+}
+
+export type ResolvedPendingChatContactRequest = {
+  accountRoute: string
+  grant: SyncGrantRecord | null
+  /** Sealed `chat_contact_confirm` envelope — send it to `accountRoute` via `sendRendezvousFrame`
+   * with kind `"chat_contact_confirm"` right after this resolves. */
+  confirmCiphertext: string
 }
 
 /**
- * Decrypts a delivered `chat_contact_confirm` envelope. Returns `true` only if it actually opens
- * with this device's own key — the redeeming side of `AddChatContactModal.tsx` waits for this
- * before finalizing the contact via `syncAddChatContact`.
+ * Resolves a queued pairing request: always adds the requester as a chat contact, and — when
+ * `grant` is provided — also grants them access to that project. Returns the sealed confirm
+ * envelope the caller must still send back to the requester over the rendezvous relay.
  */
-export async function syncOpenChatContactConfirm(ciphertext: string): Promise<boolean> {
-  if (!isTauriEnv()) throw new Error('chat_contact_confirm_desktop_only')
-  return invoke<boolean>('sync_open_chat_contact_confirm', { ciphertext })
+export async function syncResolvePendingChatContactRequest(
+  requestId: string,
+  grant: PendingChatContactGrantChoice | null,
+): Promise<ResolvedPendingChatContactRequest> {
+  if (!isTauriEnv()) throw new Error('pending_chat_contact_requests_desktop_only')
+  return invoke<ResolvedPendingChatContactRequest>('sync_resolve_pending_chat_contact_request', {
+    requestId,
+    grant,
+  })
+}
+
+/** Declines a queued pairing request without adding the contact. */
+export async function syncDeclinePendingChatContactRequest(requestId: string): Promise<void> {
+  if (!isTauriEnv()) throw new Error('pending_chat_contact_requests_desktop_only')
+  return invoke<void>('sync_decline_pending_chat_contact_request', { requestId })
 }
 
 /**

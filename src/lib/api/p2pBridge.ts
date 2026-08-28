@@ -39,6 +39,21 @@ export async function exportPairingCode(
   })
 }
 
+/** Explicit "generate a new code" action: invalidates the previously exported invite token (an
+ * old, possibly-shared code stops working) and returns a fresh pairing code. Unlike
+ * `exportPairingCode`, which deliberately reuses a still-live code, this always produces a
+ * different one. */
+export async function regeneratePairingCode(
+  displayName?: string | null,
+  avatarThumbnail?: string | null,
+): Promise<string> {
+  if (!isTauriEnv()) throw new Error('p2p_desktop_only')
+  return invoke('sync_regenerate_pairing_code', {
+    displayName: displayName ?? null,
+    avatarThumbnail: avatarThumbnail ?? null,
+  })
+}
+
 /** Parses a pairing code pasted from the other side. Callers must still run the result through
  * `verifyDiscoveredDevice` (from `syncRendezvous.ts`) before trusting it for anything. */
 export async function parsePairingCode(code: string): Promise<PairingCode> {

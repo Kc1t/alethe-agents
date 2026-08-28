@@ -43,6 +43,9 @@ pub enum AccessKind {
     /// A project collaborator suggested inviting another account; only the project owner can turn
     /// this into a real grant, by running the normal invite flow from scratch.
     CollaboratorSuggestion,
+    /// Someone used this device's pairing code and is awaiting a decision (chat-only, or also
+    /// project access) — see `PendingChatContactRequest` in `sync_security.rs`.
+    PairingRequestPending,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

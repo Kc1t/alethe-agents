@@ -63,15 +63,16 @@ pub struct PairingCode {
     pub avatar_thumbnail: Option<String>,
 }
 
-/// Exports this device's own pairing code, base64url-encoded JSON ready to paste to the other
-/// side. Fails if this device hasn't completed Google sign-in and device registration yet.
-#[tauri::command]
-pub fn sync_export_pairing_code(
-    app: tauri::AppHandle,
+/// Shared by `sync_export_pairing_code` (reuse-if-live) and `sync_regenerate_pairing_code`
+/// (always-fresh) — the only difference between the two is which `sync_security` token function
+/// gets called; everything else about assembling the code is identical.
+fn build_pairing_code(
+    app: &tauri::AppHandle,
     display_name: Option<String>,
     avatar_thumbnail: Option<String>,
+    force_new_token: bool,
 ) -> Result<String, String> {
-    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let data_root = crate::profiles::resolve_tauri_data_root(app)?;
     let document = crate::sync_security::load_at(&data_root)?;
     let local_device_id = document.local_device_id.clone().ok_or_else(|| "security_device_missing".to_string())?;
     let account = document.account.clone().ok_or_else(|| "security_account_missing".to_string())?;
@@ -80,12 +81,13 @@ pub fn sync_export_pairing_code(
         .iter()
         .find(|device| device.device_id == local_device_id)
         .ok_or_else(|| "security_device_missing".to_string())?;
-    let invite_token = crate::sync_security::current_or_new_chat_invite_token_at(
-        &data_root,
-        crate::provider_common::now_ms(),
-    )?;
-    let activation = crate::sync_activation::load_settings_at(&data_root, crate::provider_common::now_ms())
-        .ok();
+    let now_ms = crate::provider_common::now_ms();
+    let invite_token = if force_new_token {
+        crate::sync_security::generate_chat_invite_token_at(&data_root, now_ms)?
+    } else {
+        crate::sync_security::current_or_new_chat_invite_token_at(&data_root, now_ms)?
+    };
+    let activation = crate::sync_activation::load_settings_at(&data_root, now_ms).ok();
     let rendezvous_endpoint = activation.and_then(|settings| {
         if settings.enabled {
             settings.validated_endpoint
@@ -108,6 +110,33 @@ pub fn sync_export_pairing_code(
     };
     let json = serde_json::to_vec(&code).map_err(|_| "pairing_code_encode_failed".to_string())?;
     Ok(URL_SAFE_NO_PAD.encode(json))
+}
+
+/// Exports this device's own pairing code, base64url-encoded JSON ready to paste to the other
+/// side. Reuses the currently live invite token if one exists (see
+/// `current_or_new_chat_invite_token_at`'s own doc comment) — reopening the "add contact" screen
+/// never silently invalidates a code already shared and possibly in flight. Fails if this device
+/// hasn't completed Google sign-in and device registration yet.
+#[tauri::command]
+pub fn sync_export_pairing_code(
+    app: tauri::AppHandle,
+    display_name: Option<String>,
+    avatar_thumbnail: Option<String>,
+) -> Result<String, String> {
+    build_pairing_code(&app, display_name, avatar_thumbnail, false)
+}
+
+/// Explicit, user-initiated "new code" action: invalidates any previously unconsumed invite token
+/// for this device (so an old, possibly-leaked code stops working) and exports a fresh pairing
+/// code built around a brand-new one. This is the only way to force a new code before the current
+/// one's 7-day TTL expires on its own.
+#[tauri::command]
+pub fn sync_regenerate_pairing_code(
+    app: tauri::AppHandle,
+    display_name: Option<String>,
+    avatar_thumbnail: Option<String>,
+) -> Result<String, String> {
+    build_pairing_code(&app, display_name, avatar_thumbnail, true)
 }
 
 /// Parses a pairing code pasted from the other side back into its fields, ready to be handed to

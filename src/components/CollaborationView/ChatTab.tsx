@@ -1,21 +1,17 @@
-import { Eraser, Hash, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Bell, Eraser, Hash, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { subscribeToRendezvousEvents } from '../../lib/api/rendezvousEventBus'
 import { syncDeleteDirectConversation } from '../../lib/api/syncChat'
-import {
-  connectRendezvous,
-  getRendezvousStatus,
-  sendRendezvousFrame,
-} from '../../lib/api/syncRendezvous'
+import { connectRendezvous, getRendezvousStatus } from '../../lib/api/syncRendezvous'
 import {
   type SyncChatContact,
   syncListChatContacts,
+  syncListPendingChatContactRequests,
   syncOpenAvatarUpdate,
   syncOpenChatContactAck,
   syncRemoveChatContact,
   syncRenameChatContact,
-  syncSealChatContactConfirm,
 } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
 import { getProfileInitial } from '../../lib/profile'
@@ -23,6 +19,7 @@ import { Avatar } from '../ui/Avatar'
 import { AddChatContactModal } from './AddChatContactModal'
 import { ChatPanel, type ChatSource } from './ChatPanel'
 import styles from './ChatTab.module.css'
+import { PairingRequestsPanel } from './PairingRequestsPanel'
 
 const CONTACT_ACK_POLL_INTERVAL_MS = 4_000
 
@@ -40,6 +37,14 @@ export function ChatTab({
     projectId && projectName ? { kind: 'project', projectId, projectName } : null,
   )
   const [addingContact, setAddingContact] = useState(false)
+  const [showPairingRequests, setShowPairingRequests] = useState(false)
+  const [pendingRequestCount, setPendingRequestCount] = useState(0)
+
+  const reloadPendingRequestCount = () => {
+    syncListPendingChatContactRequests()
+      .then((list) => setPendingRequestCount(list.length))
+      .catch(() => undefined)
+  }
 
   const renameContact = async (contact: SyncChatContact) => {
     const input = window.prompt(t('chat.contacts.renamePrompt'), contact.displayLabel)
@@ -158,11 +163,10 @@ export function ChatTab({
 
   // Handles any `chat_contact_ack` deliveries from the shared event bus (see
   // `rendezvousEventBus.ts` — calling `drainRendezvousEvents()` directly here used to race with
-  // ChatPanel's own listener and silently steal/discard whichever event wasn't its own kind) — an
-  // automatic mutual-pairing signal from someone who just verified and saved our exported invite
-  // code on their own device. Decrypting it (if its token is still valid) both adds them as a
-  // contact here and reloads the list, so a chat contact really is a two-way, single confirmation
-  // exchange instead of two separate code pastes.
+  // ChatPanel's own listener and silently steal/discard whichever event wasn't its own kind) —
+  // someone who just verified and saved our exported invite code on their own device. Decrypting
+  // it (if its token is still valid) queues a pairing request for review instead of adding them
+  // automatically — see `PairingRequestsPanel.tsx` for where the actual decision happens.
   useEffect(() => {
     let active = true
     const unsubscribe = subscribeToRendezvousEvents((events) => {
@@ -170,33 +174,14 @@ export function ChatTab({
       if (ackEvents.length === 0) return
       console.info('[chat-contact] chat_contact_ack envelopes received', ackEvents.length)
       void (async () => {
-        let added = false
+        let queued = false
         for (const event of ackEvents) {
           if (event.eventType !== 'delivery' || !event.ciphertext) continue
           try {
             const result = await syncOpenChatContactAck(event.ciphertext)
             if (result) {
-              added = true
-              console.info('[chat-contact] auto-added contact from ack', result.displayLabel)
-              // The sender is waiting on this before committing us as a contact on their own side
-              // (see AddChatContactModal.tsx's `waitForConfirmation`) — without it, a pasted
-              // pairing code alone was enough to get added, even if the token had already expired
-              // or this device was never actually reachable.
-              try {
-                const ciphertext = await syncSealChatContactConfirm(result.agreementPublicKey)
-                await connectRendezvous()
-                await sendRendezvousFrame({
-                  type: 'enqueue',
-                  kind: 'chat_contact_confirm',
-                  id: `contact_confirm_${crypto.randomUUID()}`,
-                  recipientAccountRoute: result.accountRoute,
-                  expiresAtMs: Date.now() + 5 * 60 * 1000,
-                  ciphertext,
-                })
-                console.info('[chat-contact] confirm sent back to', result.accountRoute)
-              } catch (cause) {
-                console.error('[chat-contact] failed to send chat_contact_confirm', cause)
-              }
+              queued = true
+              console.info('[chat-contact] queued pairing request from', result.displayLabel)
             } else {
               console.warn('[chat-contact] ack token did not match any live token (stale/reused?)')
             }
@@ -205,7 +190,7 @@ export function ChatTab({
             console.warn('[chat-contact] ack could not be opened (may be addressed to someone else)', cause)
           }
         }
-        if (active && added) reloadContacts()
+        if (active && queued) reloadPendingRequestCount()
       })()
     })
     return () => {
@@ -213,6 +198,12 @@ export function ChatTab({
       unsubscribe()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    reloadPendingRequestCount()
+    const timer = window.setInterval(reloadPendingRequestCount, 15_000)
+    return () => window.clearInterval(timer)
   }, [])
 
   // Keeps a contact's avatar live: whenever they change their profile picture, their device sends
@@ -250,14 +241,27 @@ export function ChatTab({
       <div className={styles.sidebar}>
         <div className={styles.sidebarHeader}>
           <span>{t('chat.contacts.title')}</span>
-          <button
-            type="button"
-            className={styles.addButton}
-            title={t('chat.contacts.add')}
-            onClick={() => setAddingContact(true)}
-          >
-            <Plus size={13} />
-          </button>
+          <div className={styles.sidebarHeaderActions}>
+            <button
+              type="button"
+              className={styles.addButton}
+              title={t('pairingRequests.badgeTitle')}
+              onClick={() => setShowPairingRequests(true)}
+            >
+              <Bell size={13} />
+              {pendingRequestCount > 0 ? (
+                <span className={styles.pendingBadge}>{pendingRequestCount}</span>
+              ) : null}
+            </button>
+            <button
+              type="button"
+              className={styles.addButton}
+              title={t('chat.contacts.add')}
+              onClick={() => setAddingContact(true)}
+            >
+              <Plus size={13} />
+            </button>
+          </div>
         </div>
         <ul className={styles.conversationList}>
           {projectId && projectName ? (
@@ -347,6 +351,15 @@ export function ChatTab({
           onAdded={() => {
             setAddingContact(false)
             reloadContacts()
+          }}
+        />
+      ) : null}
+      {showPairingRequests ? (
+        <PairingRequestsPanel
+          onClose={() => {
+            setShowPairingRequests(false)
+            reloadContacts()
+            reloadPendingRequestCount()
           }}
         />
       ) : null}

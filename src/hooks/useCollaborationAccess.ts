@@ -60,6 +60,12 @@ function textFor(record: AccessRecord): { title: string; body: string } {
       body: t('collaboration.notification.transferFailureBody'),
     }
   }
+  if (record.kind === 'pairing_request_pending') {
+    return {
+      title: t('collaboration.notification.pairingRequestTitle'),
+      body: t('collaboration.notification.pairingRequestBody'),
+    }
+  }
   return {
     title: t('collaboration.notification.providerTitle'),
     body: t('collaboration.notification.providerBody'),
