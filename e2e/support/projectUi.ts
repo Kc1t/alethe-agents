@@ -1,32 +1,32 @@
 /**
- * Helpers que dirigem o pipeline de git através de CLIQUE/DIGITAÇÃO real na
- * UI — não via `window.__ALETHE_E2E__` (que só chama ações do store/API
- * direto). Pedido explícito do dono depois de ver, ao vivo, bugs reais que
- * um teste hook-driven NUNCA pegaria:
+ * Helpers that drive the git pipeline through real CLICK/TYPING in the
+ * UI — not via `window.__ALETHE_E2E__` (which only calls store/API
+ * actions directly). Explicit request from the owner after seeing, live, real
+ * bugs that a hook-driven test would NEVER catch:
  *
- * 1. O campo de pasta (`Novo projeto`/`Novo terminal`) tem um botão
- *    "Procurar" que abre o seletor de pasta NATIVO do Windows — fora do
- *    webview, o WebDriver não enxerga nem consegue fechar essa janela. O
- *    campo de texto ao lado aceita digitação direta (`onChange` normal) —
- *    SEMPRE digitar o caminho, NUNCA clicar em "Procurar".
- * 2. A aba "Agentes" das Configurações do projeto tem DOIS seletores de
- *    agente diferentes na mesma tela: o toggle de worktree automática e,
- *    mais abaixo, "AGENTE DE RESOLUÇÃO DE CONFLITOS" — cards com os MESMOS
- *    rótulos ("OpenCode", "Mimo" etc.) que os cards do modal "Novo
- *    terminal". Um seletor de texto solto (`button*=OpenCode`) pode achar o
- *    card errado se o modal de configurações ainda não tiver fechado de
- *    verdade — foi assim que um teste anterior "selecionou Mimo" clicando
- *    no card errado sem nenhum erro. Por isso: (a) todo clique aqui usa
- *    `markScreenshotAndClick` — PROVA visual (ponto vermelho + print) de
- *    qual elemento foi resolvido, sem exceção; (b) toda troca de modal
- *    espera ativamente o modal ANTERIOR sumir do DOM antes de seguir; (c)
- *    a seleção de agente do "Novo terminal" é escopada dentro do container
- *    daquele modal específico (achado via `h2*=Novo terminal`), nunca uma
- *    busca solta na página inteira.
+ * 1. The folder field (`New project`/`New terminal`) has a
+ *    "Browse" button that opens Windows' NATIVE folder picker — outside the
+ *    webview, WebDriver can't see or close that window. The
+ *    text field next to it accepts direct typing (a normal `onChange`) —
+ *    ALWAYS type the path, NEVER click "Browse".
+ * 2. The project Settings' "Agents" tab has TWO different agent
+ *    selectors on the same screen: the automatic worktree toggle and,
+ *    further down, "CONFLICT RESOLUTION AGENT" — cards with the SAME
+ *    labels ("OpenCode", "Mimo" etc.) as the cards in the "New
+ *    terminal" modal. A loose text selector (`button*=OpenCode`) can find the
+ *    wrong card if the settings modal hasn't really closed
+ *    yet — that's how a previous test "selected Mimo" by clicking
+ *    the wrong card with no error at all. Because of this: (a) every click here uses
+ *    `markScreenshotAndClick` — visual PROOF (red dot + screenshot) of
+ *    which element was resolved, no exceptions; (b) every modal switch
+ *    actively waits for the PREVIOUS modal to disappear from the DOM before continuing; (c)
+ *    the "New terminal" agent selection is scoped inside the container
+ *    of that specific modal (found via `h2*=Novo terminal`), never a
+ *    loose search on the whole page.
  *
- * `__ALETHE_E2E_QUERY__` (ver `src/lib/e2eHooks.ts`) é usado só para LER
- * IDs que a UI já criou (cliques reais não devolvem IDs pro teste) — nunca
- * para disparar a criação em si.
+ * `__ALETHE_E2E_QUERY__` (see `src/lib/e2eHooks.ts`) is used only to READ
+ * IDs the UI already created (real clicks don't return IDs to the test) — never
+ * to trigger the creation itself.
  */
 import { captureScreenshot, markScreenshotAndClick } from './screenshot'
 import { withIdleScreenshot } from './uiKit'
@@ -41,14 +41,14 @@ type QueryWindow = {
   }
 }
 
-/** O card de agente de conflito (`EditProjectAgentSettings.tsx`) não tem
- *  `aria-pressed` (só um ícone condicional, não checável sem depender de
- *  classe CSS hasheada) — a única verificação confiável é ler o valor real
- *  persistido no store depois do clique. */
+/** The conflict agent card (`EditProjectAgentSettings.tsx`) has no
+ *  `aria-pressed` (just a conditional icon, not checkable without depending on a
+ *  hashed CSS class) — the only reliable verification is reading the real value
+ *  persisted in the store after the click. */
 export async function getConflictAgentProvider(projectId: string): Promise<string | null> {
   return browser.execute((id) => {
     const query = (window as unknown as QueryWindow).__ALETHE_E2E_QUERY__
-    if (!query) throw new Error('__ALETHE_E2E_QUERY__ não está pronto ainda')
+    if (!query) throw new Error('__ALETHE_E2E_QUERY__ is not ready yet')
     return query.getConflictAgentProvider(id)
   }, projectId) as unknown as Promise<string | null>
 }
@@ -62,16 +62,16 @@ function nextShotName(label: string): string {
 export async function findProjectId(name: string): Promise<string> {
   const id = await browser.execute((projectName) => {
     const query = (window as unknown as QueryWindow).__ALETHE_E2E_QUERY__
-    if (!query) throw new Error('__ALETHE_E2E_QUERY__ não está pronto ainda')
+    if (!query) throw new Error('__ALETHE_E2E_QUERY__ is not ready yet')
     return query.findProjectIdByName(projectName)
   }, name)
-  if (!id) throw new Error(`findProjectId: projeto "${name}" não encontrado no store`)
+  if (!id) throw new Error(`findProjectId: project "${name}" not found in the store`)
   return id as unknown as string
 }
 
-/** Terminal mais recente do projeto — o que uma sequência de cliques reais
- *  acabou de abrir. Faz polling porque o PTY pode levar um instante pra
- *  subir depois do clique em "Abrir <Agente>". */
+/** The project's most recent terminal — the one a sequence of real clicks
+ *  just opened. Polls because the PTY can take a moment to
+ *  come up after clicking "Open <Agent>". */
 export async function findLatestTerminal(
   projectId: string,
 ): Promise<{ ptyId: string; worktreeAgentId: string | null }> {
@@ -80,7 +80,7 @@ export async function findLatestTerminal(
     async () => {
       result = (await browser.execute((id) => {
         const query = (window as unknown as QueryWindow).__ALETHE_E2E_QUERY__
-        if (!query) throw new Error('__ALETHE_E2E_QUERY__ não está pronto ainda')
+        if (!query) throw new Error('__ALETHE_E2E_QUERY__ is not ready yet')
         return query.findLatestTerminal(id)
       }, projectId)) as unknown as { ptyId: string; worktreeAgentId: string | null } | null
       return result !== null
@@ -88,23 +88,23 @@ export async function findLatestTerminal(
     {
       timeout: 15_000,
       interval: 500,
-      timeoutMsg: `nenhum terminal apareceu pro projeto ${projectId}`,
+      timeoutMsg: `no terminal showed up for project ${projectId}`,
     },
   )
   return result!
 }
 
-/** Espera nenhum `role="dialog"` do Radix estar mais na tela — usado depois
- *  de fechar/salvar qualquer modal, antes de confiar que a próxima tela
- *  (sidebar, outro modal) está livre pra interação. */
+/** Waits until no Radix `role="dialog"` is on screen anymore — used after
+ *  closing/saving any modal, before trusting that the next screen
+ *  (sidebar, another modal) is free for interaction. */
 async function waitNoDialogOpen(timeout = 10_000): Promise<void> {
   await browser.waitUntil(async () => !(await $('[role="dialog"]').isExisting()), {
     timeout,
-    timeoutMsg: 'um modal continuou aberto além do esperado',
+    timeoutMsg: 'a modal stayed open longer than expected',
   })
 }
 
-/** Cria um projeto pela UI real: digita nome + pasta (NUNCA clica "Procurar"). */
+/** Creates a project via the real UI: types name + folder (NEVER clicks "Browse"). */
 export async function createProjectViaUi(name: string, folderPath: string): Promise<void> {
   const nameInput = await $('input[placeholder="Ex: Site novo, Cliente X..."]')
   await nameInput.waitForDisplayed({ timeout: 15_000 })
@@ -113,7 +113,7 @@ export async function createProjectViaUi(name: string, folderPath: string): Prom
   const pathInput = await $('input[placeholder="Escolha a pasta do projeto"]')
   await pathInput.setValue(folderPath)
   if ((await pathInput.getValue()) !== folderPath) {
-    throw new Error('createProjectViaUi: o campo de pasta não recebeu o valor digitado')
+    throw new Error('createProjectViaUi: the folder field did not receive the typed value')
   }
 
   const createButton = await $('button*=Criar projeto e abrir terminal')
@@ -124,9 +124,9 @@ export async function createProjectViaUi(name: string, folderPath: string): Prom
   await sidebarEntry.waitForDisplayed({ timeout: 10_000 })
 }
 
-/** Fecha o modal "Novo terminal" que abre sozinho logo após criar um projeto
- *  (`OnboardingModal`/`NewProjectModal`'s `finish()`/`submit()`) — sem
- *  interagir com ele, pra poder ir configurar git/worktree antes. */
+/** Closes the "New terminal" modal that opens on its own right after
+ *  creating a project (`OnboardingModal`/`NewProjectModal`'s `finish()`/`submit()`) — without
+ *  interacting with it, so we can go configure git/worktree first. */
 export async function cancelAutoOpenedNewTerminalModal(): Promise<void> {
   const cancelButton = await $('button*=Cancelar')
   if (await cancelButton.isExisting()) {
@@ -135,10 +135,10 @@ export async function cancelAutoOpenedNewTerminalModal(): Promise<void> {
   }
 }
 
-/** Abre "Configurações…" do projeto (menu "Mais ações" → item de menu) e
- *  vai pra aba "Agentes", onde vivem o banner de `git init`, o toggle de
- *  worktree automática, e (mais abaixo, SEM relação com este fluxo) o
- *  seletor de agente de resolução de conflitos. */
+/** Opens the project's "Settings…" (via the "More actions" menu → menu item) and
+ *  goes to the "Agents" tab, where the `git init` banner lives, the automatic
+ *  worktree toggle, and (further down, UNRELATED to this flow) the
+ *  conflict resolution agent selector. */
 async function openProjectAgentsSettings(): Promise<void> {
   const moreActions = await $('[aria-label="Mais ações"]')
   await moreActions.waitForClickable({ timeout: 10_000 })
@@ -153,12 +153,12 @@ async function openProjectAgentsSettings(): Promise<void> {
   await markScreenshotAndClick(agentsTab, nextShotName('aba-agentes'))
 }
 
-/** Fecha o modal de Configurações do projeto pelo X, e espera sumir de
- *  verdade — nunca segue em frente assumindo que fechou.
- *  ESCOPADO ao `[role="dialog"]` aberto: `[aria-label="Fechar"]` solto
- *  também bate no botão de fechar a JANELA DO APP inteira na topbar (mesmo
- *  aria-label!) — bug real quase causado ao vivo, só não fechou o app
- *  porque o overlay do modal bloqueou o clique por acaso. */
+/** Closes the project Settings modal via the X, and waits for it to actually
+ *  disappear — never proceeds assuming it closed.
+ *  SCOPED to the open `[role="dialog"]`: a loose `[aria-label="Fechar"]`
+ *  also matches the button that closes the WHOLE APP WINDOW in the topbar (same
+ *  aria-label!) — a real bug that was almost caused live, the app only
+ *  didn't close because the modal overlay happened to block the click. */
 async function closeProjectSettings(): Promise<void> {
   const closeButton = await $('[role="dialog"] button[aria-label="Fechar"]')
   if (await closeButton.isExisting()) {
@@ -168,10 +168,10 @@ async function closeProjectSettings(): Promise<void> {
 }
 
 /**
- * Clica um botão que dispara `confirm()` nativo e aceita o diálogo — com uma
- * segunda tentativa de clique se o alert não aparecer a tempo (flake
- * confirmado ao vivo: o marcador provou que o alvo do clique estava certo,
- * mas às vezes o clique não registra a tempo do `confirm()` chegar).
+ * Clicks a button that triggers a native `confirm()` and accepts the dialog — with a
+ * second click attempt if the alert doesn't appear in time (flake
+ * confirmed live: the marker proved the click target was correct,
+ * but sometimes the click doesn't register in time for the `confirm()` to arrive).
  */
 async function clickAndAcceptConfirm(selector: string, shotLabel: string): Promise<void> {
   const button = await $(selector)
@@ -185,9 +185,9 @@ async function clickAndAcceptConfirm(selector: string, shotLabel: string): Promi
     })
     .catch(() => false)
   if (!alertAppeared) {
-    // Pedido explícito do dono: se algo ficar mais de 5s sem resolver,
-    // captura o estado da tela ANTES de continuar — mesmo se a segunda
-    // tentativa também falhar, sobra um print do instante exato do travamento.
+    // Explicit request from the owner: if something stays unresolved for more than 5s,
+    // capture the screen state BEFORE continuing — even if the second
+    // attempt also fails, we're left with a screenshot of the exact moment it hung.
     await withIdleScreenshot(
       `${shotLabel}-esperando-confirm`,
       async () => {
@@ -200,7 +200,7 @@ async function clickAndAcceptConfirm(selector: string, shotLabel: string): Promi
           {
             timeout: 6_000,
             interval: 300,
-            timeoutMsg: `confirm() nunca apareceu pra "${selector}" (2 tentativas)`,
+            timeoutMsg: `confirm() never appeared for "${selector}" (2 attempts)`,
           },
         )
       },
@@ -210,18 +210,19 @@ async function clickAndAcceptConfirm(selector: string, shotLabel: string): Promi
   await browser.acceptAlert()
 }
 
-/** Roda `git init` na pasta do projeto através do banner real da UI —
- *  aceita o `confirm()` nativo do navegador (esse SIM o WebDriver consegue
- *  automatizar via `acceptAlert()`; é diferente do seletor de pasta nativo
- *  do SO, que não dá). Verificação de que o `.git` existe de verdade fica
- *  por conta do chamador, lendo o disco direto (`hasRealGitDir`). */
+/** Runs `git init` in the project's folder through the real UI banner —
+ *  accepts the browser's native `confirm()` (this one WebDriver CAN
+ *  automate via `acceptAlert()`; unlike the OS's native folder picker,
+ *  which it can't). Verifying that `.git` really exists is the
+ *  caller's responsibility, by reading the disk directly (`hasRealGitDir`). */
 export async function initGitViaUi(): Promise<void> {
   await openProjectAgentsSettings()
 
-  // O banner só existe se a pasta AINDA não for um repo Git — se um agente
-  // real (ex. OpenCode) já rodou `git init` sozinho ao subir na pasta antes
-  // deste passo (confirmado ao vivo: acontece), o banner nem aparece. Não é
-  // erro, é só a pasta já estar pronta — segue sem tentar clicar em nada.
+  // The banner only exists if the folder is NOT already a Git repo — if a
+  // real agent (e.g. OpenCode) already ran `git init` on its own when it started up
+  // in the folder before this step (confirmed live: it happens), the banner doesn't even
+  // appear. It's not an error, the folder is just already ready — proceeds without
+  // trying to click anything.
   const initButton = await $('button*=Inicializar repositório Git')
   if (!(await initButton.isExisting())) {
     await closeProjectSettings()
@@ -231,14 +232,14 @@ export async function initGitViaUi(): Promise<void> {
   try {
     await clickAndAcceptConfirm('button*=Inicializar repositório Git', 'inicializar-git')
   } catch (err) {
-    // Corrida real observada ao vivo (2 execuções seguidas): o botão existe
-    // no momento do check, mas o `confirm()` nunca chega a aparecer pro
-    // WebDriver — e quando isso acontece, o banner já sumiu sozinho (a
-    // checagem `hasGit` do componente correu na frente do clique). Em vez
-    // de travar o teste, trata como equivalente ao caso "banner nunca
-    // existiu" (mesmo raciocínio do comentário acima) — o objetivo desta
-    // função é só "pasta virou repo git", e quem verifica isso de verdade é
-    // sempre o chamador, lendo o disco direto, nunca este helper.
+    // Real race condition observed live (2 consecutive runs): the button exists
+    // at the time of the check, but the `confirm()` never actually appears to
+    // WebDriver — and when that happens, the banner has already disappeared on its own (the
+    // component's `hasGit` check ran ahead of the click). Instead
+    // of hanging the test, treat it as equivalent to the "banner never
+    // existed" case (same reasoning as the comment above) — this function's
+    // goal is only "folder became a git repo", and whoever really verifies that is
+    // always the caller, reading the disk directly, never this helper.
     if (await $('button*=Inicializar repositório Git').isExisting()) throw err
   }
 
@@ -248,38 +249,38 @@ export async function initGitViaUi(): Promise<void> {
 export type MergePostAction = 'relocateToNewBranch' | 'relocateKeepSession' | 'closeTerminal'
 
 /**
- * Configura a aba "Agentes" (seleciona o agente de resolução de conflitos
- * pelo card certo, liga "Isolamento automático de agentes", clica "Migrar
- * terminais existentes agora") e a aba "Merge" (ação pós-merge do agente),
- * nessa ordem, no MESMO modal aberto — é assim que o dono mostrou ao vivo o
- * procedimento real: tudo configurado antes de um único "Salvar" no final.
+ * Configures the "Agents" tab (selects the conflict resolution agent
+ * via the correct card, turns on "Automatic agent isolation", clicks "Migrate
+ * existing terminals now") and the "Merge" tab (agent's post-merge action),
+ * in that order, in the SAME open modal — this is how the owner showed the
+ * real procedure live: everything configured before a single final "Save".
  *
- * Seletor do card de agente aqui é `button*=<label>` DENTRO da aba Agentes
- * já ativa — mesma preocupação de colisão do modal "Novo terminal"
- * (rótulos repetidos), mas como só um modal Radix fica aberto por vez
- * (confirmado: `waitNoDialogOpen` antes de abrir qualquer modal novo), não
- * precisa escopar por container aqui — só garantir que nenhum outro modal
- * está por cima.
+ * The agent card selector here is `button*=<label>` INSIDE the already-active
+ * Agents tab — the same collision concern as the "New terminal" modal
+ * (repeated labels), but since only one Radix modal stays open at a time
+ * (confirmed: `waitNoDialogOpen` before opening any new modal), there's
+ * no need to scope by container here — just make sure no other modal
+ * is on top.
  */
-/** Clica "Salvar" no modal de Configurações e espera fechar de verdade. */
+/** Clicks "Save" in the Settings modal and waits for it to actually close. */
 async function saveProjectSettings(): Promise<void> {
   const saveButton = await $('button*=Salvar')
   await saveButton.waitForClickable({ timeout: 5_000 })
   await markScreenshotAndClick(saveButton, nextShotName('salvar-configuracoes-projeto'))
-  // "Salvar" fecha o modal sozinho — mas nunca assume isso sem checar: é
-  // exatamente o tipo de corrida que fez um teste anterior colidir com o
-  // card de "agente de resolução de conflitos" (mesma aba, mais abaixo, com
-  // rótulos de agente iguais aos do modal "Novo terminal").
+  // "Save" closes the modal on its own — but never assume that without checking: it's
+  // exactly the kind of race condition that made a previous test collide with the
+  // "conflict resolution agent" card (same tab, further down, with
+  // agent labels identical to those in the "New terminal" modal).
   await waitNoDialogOpen()
 }
 
 /**
- * FASE 1: seleciona o agente de resolução de conflitos e liga "Isolamento
- * automático de agentes", e SALVA — precisa estar persistido de verdade
- * antes da Fase 2 (pedido explícito do dono: "pra migrar os terminais tem
- * que salvar o isolamento automático antes e depois voltar pra
- * configuração" — migrar contra um toggle ainda não salvo seria testar
- * estado inconsistente).
+ * PHASE 1: selects the conflict resolution agent and turns on "Automatic
+ * agent isolation", and SAVES — needs to be truly persisted
+ * before Phase 2 (explicit request from the owner: "to migrate the terminals you
+ * have to save the automatic isolation first and then go back to the
+ * setting" — migrating against a not-yet-saved toggle would be testing
+ * an inconsistent state).
  */
 export async function selectConflictAgentAndAutoWorktreeViaUi(
   projectId: string,
@@ -288,21 +289,21 @@ export async function selectConflictAgentAndAutoWorktreeViaUi(
 ): Promise<void> {
   await openProjectAgentsSettings()
 
-  // `waitForClickable` às vezes dá falso negativo aqui mesmo com o card
-  // visivelmente normal no print (mesma classe de falso-negativo já vista
-  // no clique do dropdown, antes de virar o bug real de pointer-events) —
-  // não trava a espera inteira nisso, tenta o clique de verdade mesmo
-  // assim (o comando `click()` do WebDriver faz sua própria checagem, às
-  // vezes menos conservadora que o pré-check).
+  // `waitForClickable` sometimes gives a false negative here even with the card
+  // visibly normal in the screenshot (same class of false negative already seen
+  // in the dropdown click, before it turned out to be the real pointer-events bug) —
+  // doesn't block the whole wait on this, tries the actual click anyway
+  // (WebDriver's `click()` command does its own check, sometimes
+  // less conservative than the pre-check).
   const conflictAgentCard = await $(`button*=${conflictAgentLabel}`)
   await withIdleScreenshot('aguardando-card-agente-conflito-clicavel', () =>
     conflictAgentCard.waitForClickable({ timeout: 10_000 }).catch(() => {}),
   )
-  // `waitForClickable` E o próprio `.click()` já deram falso negativo aqui
-  // em execuções diferentes (confirmado ao vivo: mesmo clique passou limpo
-  // em 5 execuções anteriores e falhou "element not interactable" só nesta,
-  // sem nenhuma mudança de app entre elas) — retry com pausa curta, mesmo
-  // padrão já usado em `clickByText` pro flake do menu em portal.
+  // Both `waitForClickable` AND `.click()` itself have already given false negatives here
+  // on different runs (confirmed live: the same click passed cleanly
+  // on 5 previous runs and failed with "element not interactable" only on this one,
+  // with no app change between them) — retry with a short pause, same
+  // pattern already used in `clickByText` for the portal menu flake.
   let lastClickError: unknown = null
   let clicked = false
   for (let attempt = 0; attempt < 3 && !clicked; attempt++) {
@@ -319,17 +320,17 @@ export async function selectConflictAgentAndAutoWorktreeViaUi(
   }
   if (!clicked) throw lastClickError
 
-  // Selecionar o card revela a seção "Modelo do agente (<PROVIDER>)" —
-  // confirma que ela apareceu de verdade (o dropdown fica no valor padrão,
-  // não precisa trocar, mas a seção precisa existir de verdade na tela).
+  // Selecting the card reveals the "Agent model (<PROVIDER>)" section —
+  // confirms it really appeared (the dropdown stays at its default value,
+  // no need to change it, but the section needs to genuinely exist on screen).
   const modelLabel = await $(`label*=Modelo do agente (${conflictAgentLabel.toUpperCase()})`)
   await modelLabel.waitForDisplayed({ timeout: 5_000 })
   await captureScreenshot(nextShotName(`modelo-do-agente-${conflictAgentLabel}`))
 
-  // `ModelSearchablePicker` — trigger + busca + lista, tudo inline (SEM
-  // portal, diferente do `Dropdown.tsx` — não sofre do bug de
-  // pointer-events já corrigido lá). Pedido explícito do dono: sempre
-  // escolher o modelo GRÁTIS explicitamente, nunca confiar no default.
+  // `ModelSearchablePicker` — trigger + search + list, all inline (NO
+  // portal, unlike `Dropdown.tsx` — doesn't suffer from the
+  // pointer-events bug already fixed there). Explicit request from the owner: always
+  // explicitly pick the FREE model, never rely on the default.
   if (modelSearchTerm) {
     const modelFieldContainer = await modelLabel.$('..')
     const modelTrigger = await modelFieldContainer.$('button')
@@ -353,35 +354,35 @@ export async function selectConflictAgentAndAutoWorktreeViaUi(
   }
   if (!(await checkbox.isSelected())) {
     throw new Error(
-      'selectConflictAgentAndAutoWorktreeViaUi: checkbox autoWorktree não marcou depois do clique',
+      'selectConflictAgentAndAutoWorktreeViaUi: autoWorktree checkbox did not check after the click',
     )
   }
 
   await saveProjectSettings()
 
-  // Verificação real de que persistiu — SÓ FAZ SENTIDO depois de "Salvar":
-  // `EditProjectModal.tsx` guarda a seleção do card em estado LOCAL do
-  // React enquanto o modal está aberto; só grava em
-  // `project.conflictAgentProvider` (o store de verdade) quando "Salvar" é
-  // clicado. Checar antes disso sempre dava `null`, mesmo com o clique
-  // certo (bug do teste, não do app — confirmado ao vivo).
+  // Real verification that it persisted — ONLY MAKES SENSE after "Save":
+  // `EditProjectModal.tsx` keeps the card selection in LOCAL React state
+  // while the modal is open; it only writes to
+  // `project.conflictAgentProvider` (the real store) when "Save" is
+  // clicked. Checking before that always returned `null`, even with the
+  // correct click (a test bug, not an app bug — confirmed live).
   const provider = await getConflictAgentProvider(projectId)
   const normalizedLabel = conflictAgentLabel.toLowerCase().replace(/\s+/g, '')
   if (!provider || !normalizedLabel.includes(provider.toLowerCase())) {
     throw new Error(
-      `selectConflictAgentAndAutoWorktreeViaUi: esperava conflictAgentProvider compatível com "${conflictAgentLabel}" após salvar, achou "${provider}"`,
+      `selectConflictAgentAndAutoWorktreeViaUi: expected conflictAgentProvider compatible with "${conflictAgentLabel}" after saving, got "${provider}"`,
     )
   }
 }
 
 /**
- * FASE 2: reabre Configurações (o toggle de autoWorktree já está salvo de
- * verdade agora) e clica "Migrar terminais existentes agora" — só faz
- * sentido depois de já existir pelo menos 1 terminal real no projeto
- * (`completeAutoOpenedNewTerminalModal`, nunca cancelado). Dispara um
- * `confirm()` nativo. Confirma que a migração não navega a modal pra outro
- * lugar inesperado (mesma classe de bug de navegação já achada em
- * `NewTerminalModal.tsx` — tratada como suspeita a verificar, não assumida OK).
+ * PHASE 2: reopens Settings (the autoWorktree toggle is now truly
+ * saved) and clicks "Migrate existing terminals now" — only makes
+ * sense after at least 1 real terminal already exists in the project
+ * (`completeAutoOpenedNewTerminalModal`, never cancelled). Triggers a native
+ * `confirm()`. Confirms that the migration doesn't navigate the modal to some
+ * other unexpected place (same class of navigation bug already found in
+ * `NewTerminalModal.tsx` — treated as a suspicion to verify, not assumed OK).
  */
 export async function migrateExistingTerminalsViaUi(): Promise<void> {
   await openProjectAgentsSettings()
@@ -389,28 +390,29 @@ export async function migrateExistingTerminalsViaUi(): Promise<void> {
   const migrateButton = await $('button*=Migrar terminais existentes agora')
   if (!(await migrateButton.isExisting())) {
     throw new Error(
-      'migrateExistingTerminalsViaUi: botão "Migrar terminais existentes agora" não apareceu — o projeto tem algum terminal real pra migrar?',
+      'migrateExistingTerminalsViaUi: "Migrate existing terminals now" button did not appear — does the project have any real terminal to migrate?',
     )
   }
   await clickAndAcceptConfirm(
     'button*=Migrar terminais existentes agora',
     'migrar-terminais-existentes',
   )
-  // Confirma que a migração não navegou pra outro lugar: a aba Agentes
-  // (e o próprio checkbox autoWorktree) precisam continuar visíveis.
+  // Confirms that the migration didn't navigate somewhere else: the Agents tab
+  // (and the autoWorktree checkbox itself) need to remain visible.
   const stillOnAgentsTab = await $('#autoWorktree').isExisting()
   if (!stillOnAgentsTab) {
     throw new Error(
-      'migrateExistingTerminalsViaUi: "Migrar terminais existentes agora" navegou pra fora da aba Agentes',
+      'migrateExistingTerminalsViaUi: "Migrate existing terminals now" navigated away from the Agents tab',
     )
   }
   await captureScreenshot(nextShotName('agentes-tab-apos-migrar'))
 }
 
 /**
- * FASE 3: dentro da MESMA sessão de modal deixada aberta por
- * `migrateExistingTerminalsViaUi`, troca pra aba "Merge", seleciona a ação
- * pós-merge do agente, e salva/fecha — fechando o ciclo de configuração.
+ * PHASE 3: within the SAME modal session left open by
+ * `migrateExistingTerminalsViaUi`, switches to the "Merge" tab, selects the
+ * agent's post-merge action, and saves/closes — closing the configuration
+ * cycle.
  */
 export async function selectMergePostActionAndSaveViaUi(
   postMergeAction: MergePostAction,
@@ -427,7 +429,7 @@ export async function selectMergePostActionAndSaveViaUi(
   )
   if (!(await postActionRadio.isSelected())) {
     throw new Error(
-      `selectMergePostActionAndSaveViaUi: rádio de ação pós-merge "${postMergeAction}" não marcou depois do clique`,
+      `selectMergePostActionAndSaveViaUi: post-merge action radio "${postMergeAction}" did not check after the click`,
     )
   }
 
@@ -435,15 +437,15 @@ export async function selectMergePostActionAndSaveViaUi(
 }
 
 /**
- * Abre um novo terminal de agente pela UI real: clica no "+" do projeto,
- * seleciona o card do agente pelo TEXTO exato DENTRO do modal "Novo
- * terminal" (nunca uma busca solta na página inteira — a aba "Agentes" das
- * Configurações do projeto tem cards com os MESMOS rótulos mais abaixo, pro
- * agente de resolução de conflitos; foi essa colisão que fez um teste
- * anterior selecionar "Mimo" por engano quando devia selecionar
- * "OpenCode"), CONFIRMA visualmente (`aria-pressed` + texto do botão de
- * submissão) que o agente certo ficou selecionado antes de clicar, e NUNCA
- * toca no botão "Procurar" da pasta.
+ * Opens a new agent terminal through the real UI: clicks the project's "+",
+ * selects the agent card by exact TEXT INSIDE the "New
+ * terminal" modal (never a loose search on the whole page — the project
+ * Settings' "Agents" tab has cards with the SAME labels further down, for
+ * the conflict resolution agent; that collision is what made a previous test
+ * mistakenly select "Mimo" when it should have selected
+ * "OpenCode"), visually CONFIRMS (`aria-pressed` + submit button text)
+ * that the correct agent got selected before clicking, and NEVER
+ * touches the folder's "Browse" button.
  */
 export async function openAgentTerminalViaUi(agentLabel: string): Promise<void> {
   await waitNoDialogOpen()
@@ -456,20 +458,20 @@ export async function openAgentTerminalViaUi(agentLabel: string): Promise<void> 
 }
 
 /**
- * Seleciona o agente e clica "Abrir <Agente>" num modal "Novo terminal" que
- * JÁ ESTÁ ABERTO — reaproveitado tanto por `openAgentTerminalViaUi` (que
- * abre o modal primeiro, via o "+" do projeto) quanto pelo modal que abre
- * SOZINHO logo depois de criar um projeto (`completeAutoOpenedNewTerminal`)
- * — mesma tela, mesmos seletores, só muda quem a abriu.
+ * Selects the agent and clicks "Open <Agent>" in a "New terminal" modal that
+ * is ALREADY OPEN — reused both by `openAgentTerminalViaUi` (which
+ * opens the modal first, via the project's "+") and by the modal that opens
+ * ON ITS OWN right after creating a project (`completeAutoOpenedNewTerminal`)
+ * — same screen, same selectors, only who opened it differs.
  */
 async function selectAgentInOpenNewTerminalModal(agentLabel: string): Promise<void> {
-  // Escopa a busca ao `[role="dialog"]` (Radix Dialog.Content) — MESMO
-  // padrão já corrigido antes em `closeProjectSettings()` pro mesmo tipo de
-  // colisão: subir "2 níveis de pai" a partir do `<h2>` é frágil e já
-  // colidiu ao vivo com o seletor rápido de agente da Home (`HomeView`
-  // também tem um botão "OpenCode" com ícone+texto, só que escondido dentro
-  // de um `<details>` fechado — `element not interactable`, não "not
-  // found", porque o elemento existe no DOM mas nunca fica visível).
+  // Scopes the search to the `[role="dialog"]` (Radix Dialog.Content) — SAME
+  // pattern already fixed before in `closeProjectSettings()` for the same type of
+  // collision: going up "2 parent levels" from the `<h2>` is fragile and already
+  // collided live with the Home's quick agent selector (`HomeView`
+  // also has an "OpenCode" button with icon+text, just hidden inside
+  // a closed `<details>` — "element not interactable", not "not
+  // found", because the element exists in the DOM but never becomes visible).
   const modal = await $('[role="dialog"]')
   await modal.waitForDisplayed({ timeout: 10_000 })
   const modalTitle = await modal.$('h2*=Novo terminal')
@@ -484,7 +486,7 @@ async function selectAgentInOpenNewTerminalModal(agentLabel: string): Promise<vo
   const pressed = await agentCard.getAttribute('aria-pressed')
   if (pressed !== 'true') {
     throw new Error(
-      `selectAgentInOpenNewTerminalModal: card "${agentLabel}" não ficou com aria-pressed=true depois do clique (achou "${pressed}")`,
+      `selectAgentInOpenNewTerminalModal: card "${agentLabel}" did not end up with aria-pressed=true after the click (got "${pressed}")`,
     )
   }
 
@@ -495,11 +497,11 @@ async function selectAgentInOpenNewTerminalModal(agentLabel: string): Promise<vo
 }
 
 /**
- * Completa (não cancela) o modal "Novo terminal" que abre SOZINHO logo após
- * criar um projeto — pedido explícito do dono: o primeiro terminal precisa
- * existir de verdade (com histórico real, não cancelado) ANTES de ir pras
- * Configurações, senão "Migrar terminais existentes agora" não tem nada de
- * verdade pra migrar (o projeto ainda não teria nenhum terminal).
+ * Completes (does not cancel) the "New terminal" modal that opens ON ITS OWN
+ * right after creating a project — explicit request from the owner: the first terminal
+ * needs to genuinely exist (with real history, not cancelled) BEFORE going to
+ * Settings, otherwise "Migrate existing terminals now" has nothing
+ * real to migrate (the project wouldn't have any terminal yet).
  */
 export async function completeAutoOpenedNewTerminalModal(agentLabel: string): Promise<void> {
   await selectAgentInOpenNewTerminalModal(agentLabel)

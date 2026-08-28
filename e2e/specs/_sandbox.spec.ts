@@ -22,58 +22,58 @@ import { recordStep } from '../support/report'
 import { clickByText, snapshot } from '../support/uiKit'
 
 /**
- * Sandbox de exploração ad-hoc — NÃO é um teste de regressão, não afirma
- * nada sobre o app estar certo ou errado. Existe pra eu (Claude) conseguir
- * navegar rapidamente por uma tela nova via clique/digitação real, sem
- * precisar escrever um helper dedicado em `projectUi.ts` toda vez que
- * quiser só OLHAR o que uma tela faz. Edite o corpo do `it()` livremente
- * pra cada exploração — não fica versionado como "o" teste de nada
- * específico, é reescrito conforme a necessidade do momento.
+ * Ad-hoc exploration sandbox — NOT a regression test, it doesn't assert
+ * anything about the app being right or wrong. It exists so I (Claude) can
+ * quickly navigate a new screen via real click/typing, without
+ * needing to write a dedicated helper in `projectUi.ts` every time I
+ * just want to LOOK at what a screen does. Freely edit the body of `it()`
+ * for each exploration — it isn't versioned as "the" test for anything
+ * specific, it's rewritten as needed at the moment.
  *
- * Rodar: npx wdio run e2e/wdio.conf.ts --spec e2e/specs/_sandbox.spec.ts
+ * Run: npx wdio run e2e/wdio.conf.ts --spec e2e/specs/_sandbox.spec.ts
  */
 const AGENT_LABEL = 'OpenCode'
 const PROFILE_ID = 'default'
 
-describe('sandbox: exploração ad-hoc', () => {
+describe('sandbox: ad-hoc exploration', () => {
   before(async () => {
     await suppressWindowFocusTax()
     await quickLogin(`E2E Sandbox ${Date.now()}`)
   })
 
-  it('dá uma tarefa pro OpenCode (worktree já isolada desde o início), integra, e confirma se o terminal volta', async () => {
+  it('gives OpenCode a task (worktree already isolated from the start), integrates, and confirms whether the terminal comes back', async () => {
     const fixture = createEmptyFixtureProject()
     const repoPath = fixture.path
     const projectName = `e2e-sandbox-${Date.now()}`
     try {
-      // 1. Cria o projeto — CANCELA o "Novo terminal" que abre sozinho (não
-      // completa ainda: git init + autoWorktree precisam vir ANTES de
-      // qualquer terminal existir, pedido explícito do dono — assim o
-      // terminal já nasce isolado, sem precisar de "Migrar terminais"
-      // depois, e sem risco de mudanças não commitadas no caminho).
+      // 1. Creates the project — CANCELS the "New terminal" that opens on its own (doesn't
+      // complete it yet: git init + autoWorktree need to come BEFORE
+      // any terminal exists, an explicit request from the owner — this way the
+      // terminal is already born isolated, with no need for "Migrate terminals"
+      // afterward, and no risk of uncommitted changes along the way).
       await createProjectViaUi(projectName, repoPath)
       const projectId = await findProjectId(projectName)
       await cancelAutoOpenedNewTerminalModal()
 
-      // 2. git init pela UI — banner existe de verdade agora, nenhum agente
-      // rodou ainda nessa pasta.
+      // 2. git init via the UI — the banner really exists now, no agent has
+      // run in this folder yet.
       await initGitViaUi()
       initRepoWithInitialCommit(repoPath)
 
-      // 3. Agente de resolução de conflitos = OpenCode, modelo GRÁTIS
-      // explícito, autoWorktree ligado. NUNCA toca em Graphify MCP (pedido
-      // explícito — fica desligado, o padrão).
+      // 3. Conflict resolution agent = OpenCode, explicit FREE model,
+      // autoWorktree turned on. NEVER touches Graphify MCP (explicit
+      // request — it stays off, the default).
       await selectConflictAgentAndAutoWorktreeViaUi(projectId, AGENT_LABEL, 'free')
 
-      // 4. Ação pós-merge = "Criar nova branch e manter sessão" (pedido
-      // explícito do dono — testar essa opção específica).
+      // 4. Post-merge action = "Create new branch and keep session" (explicit
+      // request from the owner — test this specific option).
       await selectMergePostActionAndSaveViaUi('relocateKeepSession')
 
-      // Guarda esse caminho (aba Merge → "manter sessão" → Salvar) como
-      // procedimento nomeado — pedido explícito do dono ("lembra dessa
-      // config"). Clica pelo TEXTO do <label> (que também alterna o rádio,
-      // padrão HTML nativo), já que `procedures.json` só sabe clicar por
-      // texto visível, não por seletor CSS de atributo.
+      // Saves this path (Merge tab → "keep session" → Save) as a
+      // named procedure — explicit request from the owner ("remember this
+      // config"). Clicks by the <label> TEXT (which also toggles the radio,
+      // native HTML default), since `procedures.json` only knows how to click by
+      // visible text, not by CSS attribute selector.
       saveProcedure('abrirMergeTabEManterSessao', [
         { action: 'click', text: 'Mais ações' },
         { action: 'click', text: 'Configurações' },
@@ -82,13 +82,13 @@ describe('sandbox: exploração ad-hoc', () => {
         { action: 'click', text: 'Salvar' },
       ])
 
-      // 5. SÓ AGORA abre o terminal — com autoWorktree já salvo, nasce
-      // direto numa worktree isolada (sem passo de migração nenhum).
+      // 5. ONLY NOW opens the terminal — with autoWorktree already saved, it's born
+      // directly in an isolated worktree (no migration step at all).
       await openAgentTerminalViaUi(AGENT_LABEL)
       const terminal = await findLatestTerminal(projectId)
       const worktreeAgentId = terminal.worktreeAgentId
       if (!worktreeAgentId) {
-        throw new Error('terminal não nasceu com worktreeAgentId — autoWorktree não pegou?')
+        throw new Error('terminal was not born with a worktreeAgentId — did autoWorktree not take effect?')
       }
       const worktreePath = join(repoPath, '.alethe', 'worktrees', worktreeAgentId)
       const ptyId = terminal.ptyId
@@ -102,7 +102,7 @@ describe('sandbox: exploração ad-hoc', () => {
         detail: `worktreePath=${worktreePath} pty=${ptyId}`,
       })
 
-      // 6. Dá uma tarefa real e estruturada — verificável no disco.
+      // 6. Gives it a real, structured task — verifiable on disk.
       const delivered = await sendOpenCodePrompt(
         ptyId,
         "Crie um arquivo chamado ola.txt na raiz do projeto com o texto exato 'primeira sessao' (sem aspas, sem texto extra).",
@@ -122,18 +122,18 @@ describe('sandbox: exploração ad-hoc', () => {
         scenario: 'sandbox',
         step: 'arquivo-criado-pelo-agente',
         status: fileExisted ? 'pass' : 'fail',
-        detail: fileExisted ? readFileSync(filePath, 'utf8') : 'arquivo não existe',
+        detail: fileExisted ? readFileSync(filePath, 'utf8') : 'file does not exist',
       })
 
-      // 7. Integra pela UI real. A worktree pode ter mudanças de
-      // inicialização do próprio OpenCode além do ola.txt — commita tudo
-      // via git cru primeiro (setup de teste, não o que está sendo
-      // testado) pra garantir que "Iniciar merge" não fique bloqueado.
+      // 7. Integrates via the real UI. The worktree may have initialization
+      // changes from OpenCode itself besides ola.txt — commits everything
+      // via raw git first (test setup, not what's being
+      // tested) to make sure "Start merge" isn't blocked.
       try {
         execFileSync('git', ['add', '-A'], { cwd: worktreePath })
         execFileSync('git', ['commit', '-m', 'e2e: trabalho do agente'], { cwd: worktreePath })
       } catch {
-        // Sem nada novo pra commitar — segue em frente.
+        // Nothing new to commit — moves on.
       }
 
       const mergeTab = await $('button*=Merge')
@@ -165,8 +165,8 @@ describe('sandbox: exploração ad-hoc', () => {
         })
       }
 
-      // 8. Confirma via git real (fora do Alethe) se o merge realmente
-      // aconteceu — nunca confiar só no que a UI relata.
+      // 8. Confirms via real git (outside Alethe) whether the merge actually
+      // happened — never trust only what the UI reports.
       await new Promise((resolve) => setTimeout(resolve, 3000))
       let mergedContent: string | null = null
       try {
@@ -181,11 +181,11 @@ describe('sandbox: exploração ad-hoc', () => {
         scenario: 'sandbox',
         step: 'merge-verificado-independente',
         status: mergedContent ? 'pass' : 'fail',
-        detail: mergedContent ?? 'main:ola.txt não existe — merge não aconteceu de verdade',
+        detail: mergedContent ?? 'main:ola.txt does not exist — the merge did not actually happen',
       })
 
-      // 9. O ponto central: confirma se o terminal "volta" (post-merge
-      // "manter sessão").
+      // 9. The central point: confirms whether the terminal "comes back" (post-merge
+      // "keep session").
       await new Promise((resolve) => setTimeout(resolve, 5000))
       await snapshot('estado-apos-merge')
       const afterMerge = await findLatestTerminal(projectId)

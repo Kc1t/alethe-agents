@@ -4,30 +4,31 @@ import { useT } from '../../lib/i18n'
 import type { GitCommitEntry } from '../../lib/tauri'
 import styles from './GitGraph.module.css'
 
-// Mais espaçado (estilo GitLens/GitKraken) do que o valor original — mais
-// respiro entre raias e entre linhas de commit. `ROW_HEIGHT` tem que bater
-// com `.row { height: ... }` em GitGraph.module.css (CSS não importa
-// constante de TS, então os dois precisam ser trocados juntos).
-// Proporção ROW_HEIGHT×LANE_WIDTH controla o quão "suave" cada curva de
-// divergência/convergência parece: a curva cobre LANE_WIDTH na horizontal
-// em só METADE de ROW_HEIGHT na vertical (ver `GraphRowView`) — com a
-// proporção antiga (20×28, curva usando só 14px verticais) a diagonal ficava
-// íngreme e parecia um "cotovelo" em vez de curva, principalmente em
-// históricos com várias branches curtas empilhadas em sequência. Subir
-// ROW_HEIGHT e descer um pouco LANE_WIDTH deixa a curva bem mais suave sem
-// mudar a lógica de desenho.
+// More spaced out (GitLens/GitKraken style) than the original value — more
+// breathing room between lanes and between commit rows. `ROW_HEIGHT` has to
+// match `.row { height: ... }` in GitGraph.module.css (CSS can't import a
+// TS constant, so both need to be changed together).
+// The ROW_HEIGHT×LANE_WIDTH ratio controls how "smooth" each divergence/
+// convergence curve looks: the curve covers LANE_WIDTH horizontally in only
+// HALF of ROW_HEIGHT vertically (see `GraphRowView`) — with the old ratio
+// (20×28, curve using only 14px of vertical space) the diagonal ended up
+// steep and looked like an "elbow" instead of a curve, especially in
+// histories with several short branches stacked in sequence. Raising
+// ROW_HEIGHT and lowering LANE_WIDTH a bit makes the curve noticeably
+// smoother without changing the drawing logic.
 export const ROW_HEIGHT = 34
 const LANE_WIDTH = 18
 const DOT_RADIUS = 5
 const OVERSCAN = 8
 
-/** Cores de raia — cicla pela paleta `--agent-*` já existente no tema (nunca
- *  hex novo hardcoded, regra do design system). SEM `--agent-shell`: em
- *  TODOS os temas ele tem o mesmíssimo valor hex de `--status-working` (a
- *  cor fixa forçada na raia principal, ver `laneColorForId`) — uma raia
- *  secundária que caísse nesse índice de cor por hash ficava indistinguível
- *  da raia principal, criando um "ziguezague" de uma única cor que parecia
- *  uma linha só se contorcendo em vez de raias distintas convergindo. */
+/** Lane colors — cycles through the `--agent-*` palette already defined in
+ *  the theme (never a new hardcoded hex, per design-system rules). Excludes
+ *  `--agent-shell`: in EVERY theme it has the exact same hex value as
+ *  `--status-working` (the fixed color forced on the main lane, see
+ *  `laneColorForId`) — a secondary lane that landed on that color index by
+ *  hash would be indistinguishable from the main lane, creating a
+ *  single-color "zigzag" that looked like one line writhing around instead
+ *  of distinct lanes converging. */
 const LANE_COLOR_VARS = [
   '--agent-claude',
   '--agent-codex',
@@ -37,10 +38,10 @@ const LANE_COLOR_VARS = [
   '--agent-antigravity',
 ]
 
-/** Raia 0 é sempre a raia principal (a primeira alocada, na prática a
- *  branch atual/HEAD) — desenhada mais grossa e SEMPRE com a mesma cor fixa
- *  (`--status-working`), independente de qual identidade passa por ela ao
- *  longo do histórico. */
+/** Lane 0 is always the main lane (the first one allocated, in practice the
+ *  current branch/HEAD) — drawn thicker and ALWAYS with the same fixed color
+ *  (`--status-working`), regardless of which identity passes through it over
+ *  the course of the history. */
 const MAIN_LANE = 0
 const MAIN_STROKE_WIDTH = 3
 const SIDE_STROKE_WIDTH = 2
@@ -54,8 +55,8 @@ type LaneIdState = (string | null)[]
 type GraphRow = {
   commit: GitCommitEntry
   lane: number
-  /** Var de cor (ex. `--agent-claude`) já resolvida pro rodízio de cor da
-   *  PRÓPRIA raia deste commit — ver `createColorAssigner`. */
+  /** Color var (e.g. `--agent-claude`) already resolved by the color
+   *  round-robin for THIS commit's OWN lane — see `createColorAssigner`. */
   laneId: string | null
   lanesBefore: LaneState
   lanesAfter: LaneState
@@ -64,8 +65,8 @@ type GraphRow = {
   isLastRow: boolean
 }
 
-/** Extrai um nome de ref limpo de uma entrada de decoração (`%D`) — ignora
- *  tags (`tag: ...`) e resolve `HEAD -> nome` pro `nome` em si. */
+/** Extracts a clean ref name from a decoration entry (`%D`) — ignores tags
+ *  (`tag: ...`) and resolves `HEAD -> name` down to `name` itself. */
 function normalizeRefName(raw: string): string | null {
   const trimmed = raw.trim()
   if (!trimmed || trimmed.startsWith('tag: ')) return null
@@ -74,11 +75,12 @@ function normalizeRefName(raw: string): string | null {
   return name || null
 }
 
-/** Melhor nome de branch pra decorar cada commit de ponta — prioriza branch
- *  LOCAL sobre `origin/*`, e colapsa `origin/main`/`main` na mesma
- *  identidade (local e remota da mesma branch nunca divergem de cor). Nomes
- *  de branch só existem na decoração do commit de ponta; commits no meio da
- *  história não têm ref nenhuma — por isso o fallback em `identityFor`. */
+/** Best branch name to decorate each tip commit — prioritizes the LOCAL
+ *  branch over `origin/*`, and collapses `origin/main`/`main` into the same
+ *  identity (local and remote of the same branch never diverge in color).
+ *  Branch names only exist on the tip commit's decoration; commits in the
+ *  middle of the history have no ref at all — hence the fallback in
+ *  `identityFor`. */
 function buildBranchByHash(commits: GitCommitEntry[]): Map<string, string> {
   const map = new Map<string, string>()
   for (const c of commits) {
@@ -99,23 +101,24 @@ function buildBranchByHash(commits: GitCommitEntry[]): Map<string, string> {
   return map
 }
 
-/** Identidade estável pra colorir uma raia: nome da branch quando disponível,
- *  senão o próprio hash do commit que originou a raia — o hash nunca muda,
- *  então a cor nunca muda mesmo sem nome de branch pra usar. */
+/** Stable identity for coloring a lane: branch name when available,
+ *  otherwise the hash of the commit that originated the lane itself — the
+ *  hash never changes, so the color never changes even without a branch
+ *  name to use. */
 function identityFor(hash: string, branchByHash: Map<string, string>): string {
   return branchByHash.get(hash) ?? hash
 }
 
-/** Atribui a cor de cada identidade por RODÍZIO (não por hash) — cada
- *  identidade nova encontrada ganha a PRÓXIMA cor não usada da paleta, na
- *  ordem em que as raias vão nascendo de cima pra baixo no histórico. Um
- *  hash puro (`id → índice`) não garante nada sobre raias VIZINHAS — duas
- *  branches diferentes podem cair no mesmo índice por coincidência, o que
- *  fica bem visível num histórico com várias branches curtas em sequência
- *  (parecia repetição/ziguezague de uma cor só). Rodízio garante que raias
- *  vizinhas nunca repetem cor (só depois de esgotar a paleta inteira), e a
- *  identidade mantém a MESMA cor se reaparecer mais adiante no histórico
- *  (cache no Map, não reatribui).
+/** Assigns each identity's color by ROUND-ROBIN (not by hash) — every newly
+ *  encountered identity gets the NEXT unused color in the palette, in the
+ *  order lanes are born from top to bottom in the history. A pure hash
+ *  (`id → index`) guarantees nothing about NEIGHBORING lanes — two different
+ *  branches can land on the same index by coincidence, which is very
+ *  noticeable in a history with several short branches in sequence (looked
+ *  like a single color repeating/zigzagging). Round-robin guarantees that
+ *  neighboring lanes never repeat a color (only after exhausting the whole
+ *  palette), and an identity keeps the SAME color if it reappears further
+ *  down the history (cached in the Map, never reassigned).
  */
 function createColorAssigner(): (identity: string) => string {
   const assigned = new Map<string, string>()
@@ -137,14 +140,14 @@ function laneColorForId(lane: number, colorVar: string | null): string {
 }
 
 /**
- * Calcula a atribuição topológica de raias do grafo de commits (DAG), com
- * identidade estável por raia (`laneId`) pra colorir sempre a mesma branch
- * com a mesma cor, mesmo quando a coluna numérica é reciclada. SEMPRE roda
- * sobre a lista COMPLETA de commits — nunca sobre uma lista já filtrada por
- * busca, senão o algoritmo perde a topologia real (um pai fora do filtro
- * simplesmente deixa de existir pro cálculo) e as linhas "param no nada".
- * A busca (ver `GitGraphList`) só decide quais linhas ficam em destaque,
- * nunca realimenta este cálculo.
+ * Computes the topological lane assignment of the commit graph (DAG), with
+ * a stable per-lane identity (`laneId`) to always color the same branch with
+ * the same color, even when the numeric column gets recycled. ALWAYS runs
+ * over the FULL list of commits — never over a list already filtered by
+ * search, otherwise the algorithm loses the real topology (a parent outside
+ * the filter simply stops existing for the calculation) and lines "end in
+ * nothing". Search (see `GitGraphList`) only decides which lines get
+ * highlighted, it never feeds back into this calculation.
  */
 function buildGraphRows(commits: GitCommitEntry[]): GraphRow[] {
   const branchByHash = buildBranchByHash(commits)
@@ -168,8 +171,8 @@ function buildGraphRows(commits: GitCommitEntry[]): GraphRow[] {
     const lanesBefore = [...lanes]
     const laneIdsBefore = [...laneIds]
 
-    // 1. Determina a raia do commit atual — se é uma raia nova, registra a
-    //    cor de origem dela agora (rodízio, não hash — ver createColorAssigner).
+    // 1. Determine the current commit's lane — if it's a new lane, register
+    //    its origin color now (round-robin, not hash — see createColorAssigner).
     let lane = lanes.indexOf(commit.hash)
     if (lane === -1) {
       lane = findFreeLane()
@@ -177,16 +180,16 @@ function buildGraphRows(commits: GitCommitEntry[]): GraphRow[] {
     }
     const laneId = laneIds[lane] ?? colorFor(identityFor(commit.hash, branchByHash))
 
-    // 2. Limpa TODAS as ocorrências deste hash no vetor de raias
+    // 2. Clear ALL occurrences of this hash in the lanes array
     for (let l = 0; l < lanes.length; l++) {
       if (lanes[l] === commit.hash) lanes[l] = null
     }
 
-    // 3. Atribui os pais às raias se eles existirem na janela de commits
+    // 3. Assign parents to lanes if they exist within the commit window
     if (commit.parents.length > 0) {
       const firstParent = commit.parents[0]
-      // Primeiro pai CONTINUA na mesma raia — não mexe em laneIds[lane], é
-      // isso que preserva a cor ao longo de toda a branch.
+      // First parent CONTINUES in the same lane — doesn't touch
+      // laneIds[lane], which is what preserves the color along the whole branch.
       lanes[lane] = remainingHashes.has(firstParent) ? firstParent : null
 
       for (const parent of commit.parents.slice(1)) {
@@ -231,8 +234,8 @@ export function relativeTime(timestampSeconds: number, t: ReturnType<typeof useT
 }
 
 /**
- * Componente que renderiza no máximo 2 badges principais e um contador +N se houver múltiplas refs.
- * Este componente foi feito para evitar que múltiplos badges (ex: 10 worktrees) quebrem o layout da linha.
+ * Renders at most 2 primary badges plus a +N counter when there are multiple refs.
+ * Prevents multiple badges (e.g. 10 worktrees) from breaking the row layout.
  */
 export function RefBadges({ refs }: { refs: string[] }) {
   if (!refs || refs.length === 0) return null
@@ -271,9 +274,9 @@ export function RefBadges({ refs }: { refs: string[] }) {
 }
 
 /**
- * Componente que renderiza a linha do Grafo de Commits com modelo matemático de fluxo contínuo.
- * - Metade Superior (0 -> cy): Linhas retas de entrada para o nó ou raias de passagem.
- * - Metade Inferior (cy -> ROW_HEIGHT): Linhas retas ou curvas de saída que partem do nó do commit em direção aos pais.
+ * Renders a Commit Graph row using a continuous-flow mathematical model.
+ * - Top half (0 -> cy): straight lines entering the node, or pass-through lanes.
+ * - Bottom half (cy -> ROW_HEIGHT): straight or curved lines leaving the commit node toward its parents.
  */
 function GraphRowView({
   row,
@@ -295,7 +298,7 @@ function GraphRowView({
 
   const elements: React.ReactNode[] = []
 
-  // 1. Processa a Metade Superior (0 -> cy)
+  // 1. Process the top half (0 -> cy)
   for (let l = 0; l < row.lanesBefore.length; l++) {
     if (row.lanesBefore[l] != null) {
       const fromX = l * LANE_WIDTH + LANE_WIDTH / 2
@@ -315,10 +318,11 @@ function GraphRowView({
           />,
         )
       } else if (row.lanesBefore[l] === row.commit.hash) {
-        // Ponto de convergência: outra raia também apontava pra este commit
-        // (ex.: uma branch que se originou dele) — em vez de continuar reta
-        // e sumir no vazio, curva pra dentro do ponto do commit e se funde
-        // ali, igual à curva de divergência que já existe na metade inferior.
+        // Convergence point: another lane was also pointing at this commit
+        // (e.g. a branch that originated from it) — instead of continuing
+        // straight and disappearing into empty space, curve into the
+        // commit's dot and merge there, just like the divergence curve
+        // that already exists in the bottom half.
         const midY = cy / 2
         elements.push(
           <path
@@ -347,7 +351,7 @@ function GraphRowView({
     }
   }
 
-  // 2. Processa a Metade Inferior (cy -> ROW_HEIGHT) — apenas se não for a última linha
+  // 2. Process the bottom half (cy -> ROW_HEIGHT) — only if this isn't the last row
   if (!row.isLastRow) {
     for (let l = 0; l < row.lanesAfter.length; l++) {
       const parent = row.lanesAfter[l]
@@ -415,10 +419,10 @@ function GraphRowView({
         aria-hidden="true"
       >
         {elements}
-        {/* Ponto/Nó principal do commit — raia principal ganha um raio maior,
-            mesma lógica de hierarquia visual do traço mais grosso. O
-            contorno na cor do fundo "corta" visualmente as linhas que
-            passam atrás do ponto, estilo GitLens/GitKraken. */}
+        {/* Commit's main dot/node — the main lane gets a bigger radius,
+            same visual-hierarchy logic as the thicker stroke. The outline
+            in the background color visually "cuts" the lines that pass
+            behind the dot, GitLens/GitKraken style. */}
         <circle
           cx={cx}
           cy={cy}
@@ -443,16 +447,15 @@ function GraphRowView({
 export type GitGraphListProps = {
   commits: GitCommitEntry[]
   searchQuery: string
-  /** Posição de scroll a restaurar ao montar (voltando da tela de detalhe). */
+  /** Scroll position to restore on mount (returning from the detail screen). */
   initialScrollTop: number
   onSelectCommit: (hash: string, scrollTop: number) => void
   onOpenMenu: (x: number, y: number, hash: string) => void
 }
 
-/** Lista/grafo de commits propriamente dito — cálculo de raias, cor estável
- *  por identidade, e virtualização (windowing manual, sem dependência nova:
- *  cada linha tem altura fixa de `ROW_HEIGHT`, o caso mais simples possível
- *  pra virtualizar). */
+/** The actual commit list/graph — lane calculation, identity-stable color,
+ *  and virtualization (manual windowing, no new dependency: every row has
+ *  a fixed `ROW_HEIGHT`, the simplest possible case to virtualize). */
 export function GitGraphList({
   commits,
   searchQuery,
@@ -468,12 +471,12 @@ export function GitGraphList({
 
   const rows = useMemo(() => buildGraphRows(commits), [commits])
 
-  // Largura de raia GLOBAL pro grafo inteiro (não por linha) — cada linha
-  // precisa começar o texto na MESMA posição X, senão a raia de passagem de
-  // uma linha com mais raias abertas visualmente invade o texto da mensagem
-  // de uma linha vizinha mais estreita. Loop manual (não spread+Math.max) —
-  // com histórico grande, espalhar milhares de números como argumentos
-  // estoura a pilha de chamada.
+  // GLOBAL lane width for the whole graph (not per row) — every row needs
+  // to start its text at the SAME X position, otherwise a pass-through
+  // lane from a row with more open lanes would visually invade the message
+  // text of a narrower neighboring row. Manual loop (not spread+Math.max) —
+  // with a large history, spreading thousands of numbers as arguments
+  // blows the call stack.
   const laneCount = useMemo(() => {
     let max = 1
     for (const row of rows) {
@@ -482,9 +485,9 @@ export function GitGraphList({
     return max
   }, [rows])
 
-  // null = sem busca ativa (ninguém fica esmaecido). Nunca reduz `rows` —
-  // só marca quais commits batem, pra nunca perder a continuidade visual do
-  // grafo (ver comentário de `buildGraphRows`).
+  // null = no active search (nothing gets dimmed). Never shrinks `rows` —
+  // only marks which commits match, to never lose the graph's visual
+  // continuity (see comment on `buildGraphRows`).
   const matchingHashes = useMemo(() => {
     const query = searchQuery.toLowerCase().trim()
     if (!query) return null
@@ -503,8 +506,8 @@ export function GitGraphList({
     return set
   }, [rows, searchQuery])
 
-  // Restaura a posição de scroll salva ao voltar da tela de detalhe — só na
-  // montagem (o componente inteiro desmonta/remonta ao trocar de view).
+  // Restores the saved scroll position when returning from the detail
+  // screen — only on mount (the whole component unmounts/remounts when the view changes).
   useLayoutEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = initialScrollTop
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -521,9 +524,9 @@ export function GitGraphList({
 
   const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const top = e.currentTarget.scrollTop
-    // rAF-throttled — sem isso, `onScroll` dispara a cada pixel rolado e
-    // recalcula a janela visível bem mais vezes do que a tela consegue
-    // pintar.
+    // rAF-throttled — without this, `onScroll` fires on every pixel
+    // scrolled and recalculates the visible window far more often than the
+    // screen can paint.
     if (rafRef.current != null) return
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null

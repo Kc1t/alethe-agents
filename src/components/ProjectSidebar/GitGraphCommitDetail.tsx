@@ -13,17 +13,17 @@ import { RefBadges, relativeTime } from './GitGraphList'
 
 export type GitGraphCommitDetailProps = {
   repoRoot: string
-  /** null enquanto o commit ainda não está disponível na lista já carregada
-   *  (ex.: acabou de recarregar) — o componente volta pra lista sozinho. */
+  /** null while the commit isn't available yet in the already-loaded list
+   *  (e.g. just refreshed) — the component navigates back to the list on its own. */
   commit: GitCommitEntry | null
   onBack: () => void
 }
 
-/** Tela de detalhe do commit — substitui a antiga expansão inline por linha
- *  (que quebrava a altura fixa da linha e as raias simuladas por CSS).
- *  Troca o CONTEÚDO do mesmo painel (sem modal, sem view separada do app):
- *  mensagem COMPLETA do commit (subject + corpo, não só o subject que
- *  `git_log_graph` já trazia) + lista de arquivos alterados. */
+/** Commit detail screen — replaces the old inline per-row expansion
+ *  (which broke the row's fixed height and the CSS-simulated lanes).
+ *  Swaps the CONTENT of the same panel (no modal, no separate app view):
+ *  the FULL commit message (subject + body, not just the subject that
+ *  `git_log_graph` already provided) + the list of changed files. */
 export function GitGraphCommitDetail({ repoRoot, commit, onBack }: GitGraphCommitDetailProps) {
   const t = useT()
   const [message, setMessage] = useState<string | null>(null)

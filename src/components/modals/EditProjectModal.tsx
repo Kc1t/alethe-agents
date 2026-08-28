@@ -129,12 +129,13 @@ export function EditProjectModal() {
         })
         .catch(() => setBranches([]))
 
-      // Sugere comandos de validação prontos quando o campo está vazio — sem
-      // isso, `validationCommands` fica vazio pra sempre (ninguém preenche
-      // manualmente) e o gate de verificação nunca roda nada de verdade. Só
-      // pré-preenche, nunca sobrescreve o que o usuário já digitou; o guard
-      // de `openedProjectId` evita aplicar a sugestão depois que o modal já
-      // foi fechado ou reaberto noutro projeto enquanto a promise corria.
+      // Suggests ready-made validation commands when the field is empty —
+      // without this, `validationCommands` stays empty forever (nobody fills
+      // it in by hand) and the verification gate never actually runs
+      // anything. Only pre-fills, never overwrites what the user already
+      // typed; the `openedProjectId` guard avoids applying the suggestion
+      // after the modal has already closed or reopened on another project
+      // while the promise was running.
       if ((project.validationCommands ?? []).length === 0) {
         const openedProjectId = project.id
         detectProjectStack(repoPath)
@@ -350,7 +351,7 @@ export function EditProjectModal() {
                     />
                   ))}
 
-                  {/* Cor customizada ativa (se não estiver nos presets do GROUP_COLORS e não for rainbow) */}
+                  {/* Active custom color (if not in the GROUP_COLORS presets and not rainbow) */}
                   {color && !GROUP_COLORS.includes(color as any) && color !== 'rgb-rainbow' && (
                     <button
                       type="button"
@@ -369,7 +370,7 @@ export function EditProjectModal() {
                     />
                   )}
 
-                  {/* Botão de Paleta Completa / Mais Cores */}
+                  {/* Full Palette / More Colors button */}
                   <button
                     type="button"
                     onClick={() => setIsColorPopoverOpen(true)}
@@ -390,11 +391,11 @@ export function EditProjectModal() {
                     <Palette size={14} />
                   </button>
 
-                  {/* Opção Arco-Íris Infinito (Rainbow RGB) */}
                   <button
                     type="button"
                     onClick={() => setColor('rgb-rainbow')}
-                    title="Arco-Íris Infinito (RGB)"
+                    title={t('crud.colorRainbow')}
+                    aria-label={t('crud.colorRainbow')}
                     className="swatch-rgb-rainbow"
                     style={{
                       width: 28,

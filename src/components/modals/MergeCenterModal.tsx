@@ -28,9 +28,9 @@ import { Modal } from './Modal'
 export type MergeCenterModalProps = {
   open: boolean
   onClose: () => void
-  /** Todos os pendingMerges VISÍVEIS (todos os projetos, mesma ordem da
-   *  sidebar) — a paginação cruza projetos mesmo que a árvore que abriu o
-   *  popup mostre só o projeto ativo. */
+  /** All VISIBLE pendingMerges (every project, same order as the sidebar)
+   *  — pagination crosses projects even when the tree that opened the popup
+   *  only shows the active project. */
   items: PendingMergeCard[]
   initialIndex: number
   gateStatus: Record<string, GateResult>
@@ -62,11 +62,11 @@ export type MergeCenterModalProps = {
   onRecheckGate: (item: PendingMergeCard) => void
 }
 
-/** Popup de detalhe da Central de Merges — aberto a partir de uma linha da
- *  árvore compacta (MergeTree). Mostra o mesmo card completo (descrição +
- *  5 ações) que antes ficava direto na sidebar, com paginação entre TODAS as
- *  worktrees pendentes de TODOS os projetos. Nenhuma lógica nova: estado e
- *  handlers continuam vivendo em SidebarMergePanel.tsx, repassados via props. */
+/** Merge Center detail popup — opened from a row in the compact tree
+ *  (MergeTree). Shows the same full card (description + 5 actions) that used
+ *  to live directly in the sidebar, with pagination across ALL pending
+ *  worktrees of ALL projects. No new logic: state and handlers still live
+ *  in SidebarMergePanel.tsx, passed down via props. */
 export function MergeCenterModal({
   open,
   onClose,
@@ -100,15 +100,15 @@ export function MergeCenterModal({
   const t = useT()
   const [index, setIndex] = useState(() => Math.min(initialIndex, Math.max(items.length - 1, 0)))
 
-  // Reabre sempre no item clicado (ou reaberto por um modal aninhado).
+  // Always reopens on the clicked item (or reopened by a nested modal).
   useEffect(() => {
     if (open) setIndex(Math.min(initialIndex, Math.max(items.length - 1, 0)))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialIndex])
 
-  // Se o item atual sumir da lista (integrado/rejeitado enquanto o popup
-  // está aberto), clampa pro último válido; se a lista inteira esvaziar,
-  // fecha o popup sozinho — não há mais nada pra paginar.
+  // If the current item disappears from the list (integrated/rejected while
+  // the popup is open), clamp to the last valid one; if the whole list
+  // empties out, close the popup on its own — there's nothing left to page through.
   useEffect(() => {
     if (!open) return
     if (items.length === 0) {

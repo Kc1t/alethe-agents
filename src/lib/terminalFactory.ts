@@ -92,7 +92,6 @@ export function makeDefaultTerminal(args: {
         initialInput: args.firstTab.initialInput,
         handoff: args.firstTab.handoff,
         runtimeProfile: args.firstTab.runtimeProfile,
-        skipSessionClaim: true,
       },
     ],
   }
@@ -167,6 +166,8 @@ export function makeWebPane(args: BrowserPaneOptions): Terminal {
       javascriptEnabled: args.javascriptEnabled ?? true,
       zoom: args.zoom ?? 1,
       resourceMode: args.resourceMode ?? 'app-first',
+      ...(args.engine ? { engine: args.engine } : {}),
+      ...(args.watchTargetId ? { watchTargetId: args.watchTargetId } : {}),
     },
   }
 }
@@ -228,17 +229,10 @@ export function getProjectDefaultCwd(
   projects: Project[] = [],
 ): string {
   if (!project) return ''
-  const stored = project.defaultCwd?.trim()
-  if (stored) {
-    // Ao contrário de `getProjectRepoRoot`, este era confiado direto sem
-    // nenhum filtro — se o projeto ficar sem nenhum terminal "puro" pra
-    // referenciar (todos isolados, ou todos apagados), `defaultCwd` pode
-    // ter sido gravado com um caminho de worktree/ambiente efêmero de uma
-    // sessão anterior. Confirmado ao vivo: modal "Adicionar terminal"
-    // sugerindo `.alethe\worktrees\<id>` como pasta padrão. Deriva a raiz
-    // real quando o valor guardado bate com esse padrão, em vez de expor
-    // o caminho efêmero direto na UI.
-    return deriveRepoRootFromWorktreeCwd(stored) || stored
+  if (project.defaultCwd?.trim()) {
+    const raw = project.defaultCwd.trim()
+    const derived = deriveRepoRootFromWorktreeCwd(raw)
+    return derived || raw
   }
   const candidates = [project]
   if (project.groupId) {
@@ -257,20 +251,14 @@ export function getProjectDefaultCwd(
   return ''
 }
 
-/** Casa o segmento `.alethe/worktrees/` OU `.alethe/merge-envs/` (Windows ou
- *  POSIX) em qualquer ponto do caminho — inclusive worktrees aninhadas, onde
- *  o match mais à esquerda ainda aponta pro segmento mais externo (a raiz
- *  real). `merge-envs` é o ambiente EFÊMERO do agente de resolução de
- *  conflito (`conflict_resolution.rs`) — mesma classe de "caminho isolado
- *  sem representar a pasta principal do projeto" das worktrees normais. */
+/** Matches the `.alethe/worktrees/` OR `.alethe/merge-envs/` segment (Windows or
+ *  POSIX) anywhere in the path — including nested worktrees, where the
+ *  leftmost match still points at the outermost segment (the real root).
+ *  `merge-envs` is the conflict-resolution agent's ephemeral environment
+ *  (`conflict_resolution.rs`) — same class of "isolated path that doesn't
+ *  represent the project's main folder" as regular worktrees. */
 const ALETHE_WORKTREES_SEGMENT = /[\\/]\.alethe[\\/](?:worktrees|merge-envs)[\\/]/i
 
-/** Deriva a raiz do repo a partir do cwd de uma worktree/ambiente efêmero
- *  isolado, sem git: o próprio Alethe sempre cria worktrees em
- *  `<raiz>/.alethe/worktrees/<id>` (ver `worktrees_base` em `worktrees.rs`)
- *  e ambientes de merge em `<raiz>/.alethe/merge-envs/<id>` (ver
- *  `merge_envs_dir` em `merge_analyzer.rs`) — cortar nesse ponto devolve a
- *  raiz original, mesmo que o cwd seja de uma worktree aninhada. */
 function deriveRepoRootFromWorktreeCwd(cwd: string): string {
   const match = cwd.match(ALETHE_WORKTREES_SEGMENT)
   if (!match || match.index === undefined) return ''
@@ -281,17 +269,12 @@ export function getProjectRepoRoot(project: Project | null | undefined): string 
   if (!project) return ''
   const sorted = [...project.terminals].sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))
 
-  // `gsdSyncViewer`/`ephemeralConflictAgent`/`ephemeralUtility` nunca contam
-  // como "puro": o cwd deles É a worktree do agente (só não têm
-  // `worktreeAgentId` porque não são o agente isolado em si — são viewer
-  // secundário, agente efêmero de conflito, ou sessão de "Revisar"/"Testar")
-  // — sem essa exclusão qualquer um vira referência de raiz por engano,
-  // devolvendo o path da worktree em vez do repo de verdade. Já quebrou a
-  // descoberta de sessões GSD Sync (gsdSyncViewer) e, confirmado ao vivo
-  // nesta sessão, fazia o card do agente sumir da Central de Merges sempre
-  // que "Revisar"/"Testar" estava aberto (`pendingMerges` para de bater
-  // `term.cwd !== repo` pro terminal original assim que `repo` fica
-  // contaminado com o path da própria worktree).
+  // `gsdSyncViewer`/`ephemeralConflictAgent`/`ephemeralUtility` never count as
+  // "pure": their cwd IS the agent's worktree (they just lack
+  // `worktreeAgentId` because they aren't the isolated agent itself — they're
+  // a secondary viewer, the ephemeral conflict agent, or a "Review"/"Test"
+  // session). Without this exclusion any of them can become the root
+  // reference by mistake, returning the worktree path instead of the real repo.
   const pure = sorted.filter(
     (terminal) =>
       !terminal.worktreeAgentId &&

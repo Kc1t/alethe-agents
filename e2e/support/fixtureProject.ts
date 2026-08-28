@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 /**
- * "Uma pasta sem nada" — projeto-fixture pra Parte 4 do plano da Central de
- * Merges. Criada do zero a cada execução (nunca reaproveitada entre runs,
- * nunca commitada no repositório do Alethe): uma pasta verdadeiramente vazia
- * não sobrevive ao git (diretórios vazios não são versionados), e reusar uma
- * pasta fixa acumularia histórico de execuções anteriores, quebrando a
- * premissa de "sempre começa vazio, sem `.git`".
+ * "A folder with nothing in it" — fixture project for Part 4 of the Merge
+ * Center plan. Created from scratch on every run (never reused between runs,
+ * never committed to the Alethe repository): a truly empty folder
+ * doesn't survive git (empty directories aren't versioned), and reusing a
+ * fixed folder would accumulate history from previous runs, breaking the
+ * premise of "always starts empty, with no `.git`".
  */
 export function createEmptyFixtureProject(): { path: string; cleanup: () => void } {
   const path = mkdtempSync(join(tmpdir(), 'alethe-e2e-fixture-'))
@@ -19,12 +19,12 @@ export function createEmptyFixtureProject(): { path: string; cleanup: () => void
       try {
         git(path, ['worktree', 'prune'])
       } catch {
-        // best-effort — a pasta será removida de qualquer forma abaixo.
+        // best-effort — the folder will be removed anyway below.
       }
       try {
         rmSync(path, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 })
       } catch {
-        // best-effort — cleanup de fixture de teste, não deve travar a suite.
+        // best-effort — test fixture cleanup, shouldn't hang the suite.
       }
     },
   }
@@ -35,12 +35,12 @@ function git(cwd: string, args: string[]): string {
 }
 
 /**
- * Setup de baixo nível via `git` cru (Node `child_process`, NUNCA via Alethe)
- * — usado só pra preparar o estado inicial que o teste não está verificando
- * (ex. dar ao repo um commit inicial em `main` antes de testar o pipeline de
- * merge). Deliberadamente fora do caminho testado: se isso usasse os mesmos
- * comandos do Alethe, um bug ali poderia mascarar a própria preparação do
- * teste.
+ * Low-level setup via raw `git` (Node `child_process`, NEVER via Alethe)
+ * — used only to prepare the initial state that the test isn't verifying
+ * (e.g. giving the repo an initial commit on `main` before testing the merge
+ * pipeline). Deliberately outside the tested path: if this used the same
+ * commands as Alethe, a bug there could mask the test's own
+ * setup.
  */
 export function initRepoWithInitialCommit(repoPath: string, defaultBranch = 'main'): void {
   git(repoPath, ['init', '--initial-branch', defaultBranch])
@@ -53,20 +53,20 @@ export function initRepoWithInitialCommit(repoPath: string, defaultBranch = 'mai
 }
 
 /**
- * Confirmação INDEPENDENTE de que um `.git` real existe — nunca através de
- * nenhuma API do Alethe. É o contraponto de "o app diz que inicializou";
- * aqui é o sistema de arquivos que decide.
+ * INDEPENDENT confirmation that a real `.git` exists — never through
+ * any Alethe API. It's the counterpoint to "the app says it initialized";
+ * here it's the filesystem that decides.
  */
 export function hasRealGitDir(repoPath: string): boolean {
   return existsSync(join(repoPath, '.git'))
 }
 
 /**
- * Commit direto (fora do Alethe) num branch específico, tocando `filePath`
- * com `content` — usado pra forçar um conflito real e determinístico: o
- * teste escreve uma mudança concorrente na MESMA linha/arquivo que o
- * worktree do agente também alterou, ao invés de esperar o agente "por
- * acaso" conflitar.
+ * Direct commit (outside Alethe) on a specific branch, touching `filePath`
+ * with `content` — used to force a real, deterministic conflict: the
+ * test writes a concurrent change to the SAME line/file that the
+ * agent's worktree also modified, instead of waiting for the agent to "randomly"
+ * conflict.
  */
 export function commitFileOnBranch(
   repoPath: string,
@@ -83,10 +83,10 @@ export function commitFileOnBranch(
 }
 
 /**
- * Verificação independente pós-merge: lê o `git log`/`git show` DIRETO no
- * repositório (nunca via Alethe) e confirma que o conteúdo esperado está
- * mesmo no HEAD da branch alvo — a asserção que substitui "confiar no que
- * o app diz que aconteceu".
+ * Independent post-merge verification: reads `git log`/`git show` DIRECTLY on the
+ * repository (never via Alethe) and confirms the expected content really is
+ * in the target branch's HEAD — the assertion that replaces "trusting
+ * what the app says happened".
  */
 export function fileContentAtBranchHead(
   repoPath: string,

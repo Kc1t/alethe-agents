@@ -1,43 +1,43 @@
 /**
- * Kit genérico de navegação por clique/digitação real — pedido explícito do
- * dono pra não precisar escrever uma função nova toda vez que quiser
- * explorar/clicar em algo na UI. Regras de sempre continuam valendo:
- * NUNCA clicar em "Procurar" (dispara o seletor de pasta nativo do Windows,
- * que trava o WebDriver); todo clique tira print com marcador vermelho
- * ANTES de clicar (`markScreenshotAndClick`); nunca usar `window.__ALETHE_E2E__`
- * pra disparar ação — hooks só servem pra LER estado (ver `projectUi.ts`).
+ * Generic navigation kit for real clicking/typing — explicit request from the
+ * owner so we don't need to write a new function every time we want to
+ * explore/click something in the UI. The usual rules still apply:
+ * NEVER click "Browse" (triggers Windows' native folder picker,
+ * which hangs WebDriver); every click takes a screenshot with a red marker
+ * BEFORE clicking (`markScreenshotAndClick`); never use `window.__ALETHE_E2E__`
+ * to trigger an action — hooks are only for READING state (see `projectUi.ts`).
  *
- * Diferença pra `projectUi.ts`: aqueles helpers são ESPECÍFICOS de fluxos já
- * mapeados (criar projeto, git init, etc.) com seletores exatos conhecidos.
- * Este arquivo é GENÉRICO — pra clicar em qualquer coisa por texto visível,
- * sem precisar saber de antemão a estrutura exata do componente. Use
- * `projectUi.ts` quando o fluxo já tiver um helper dedicado (mais preciso,
- * já blindado contra colisões conhecidas); use este arquivo pra explorar
- * telas novas ou casos avulsos.
+ * Difference from `projectUi.ts`: those helpers are SPECIFIC to already
+ * mapped flows (create project, git init, etc.) with known exact selectors.
+ * This file is GENERIC — for clicking on anything by visible text,
+ * without needing to know the component's exact structure ahead of time. Use
+ * `projectUi.ts` when the flow already has a dedicated helper (more precise,
+ * already hardened against known collisions); use this file to explore
+ * new screens or one-off cases.
  */
 import { markScreenshotAndClick, captureScreenshot } from './screenshot'
 
 let shotCounter = 0
 function nextShotName(label: string): string {
   shotCounter += 1
-  // Texto de elemento clicado vira parte do nome do arquivo (ex.
-  // `click-${text}`) — se o texto tiver "/" (comum em ids de modelo, tipo
-  // "opencode/deepseek-v4-flash-free"), o `path.join` de `captureScreenshot`
-  // interpreta como separador de diretório e quebra com "directory doesn't
-  // exist" (bug real, confirmado ao vivo — nada a ver com o clique em si,
-  // que funcionava certinho). Sanitiza qualquer caractere inseguro de nome
-  // de arquivo antes de montar o nome.
+  // The text of the clicked element becomes part of the file name (e.g.
+  // `click-${text}`) — if the text has a "/" (common in model ids, like
+  // "opencode/deepseek-v4-flash-free"), `captureScreenshot`'s `path.join`
+  // interprets it as a directory separator and breaks with "directory doesn't
+  // exist" (a real bug, confirmed live — nothing to do with the click itself,
+  // which worked fine). Sanitizes any unsafe file-name character
+  // before building the name.
   const safeLabel = label.replace(/[/\\:*?"<>|]/g, '_')
   return `uikit--${String(shotCounter).padStart(3, '0')}-${safeLabel}`
 }
 
 /**
- * Clica em QUALQUER elemento clicável (button, a, [role="button"]) cujo
- * texto visível contenha `text` — com print do marcador antes do clique.
- * Se houver mais de um match, usa o PRIMEIRO do DOM por padrão (`index`
- * ajusta isso) — prefira `scopeSelector` pra evitar ambiguidade em vez de
- * confiar no índice, especialmente em telas com rótulos repetidos (já
- * mordeu esta suíte antes: "OpenCode" aparece em mais de um lugar).
+ * Clicks on ANY clickable element (button, a, [role="button"]) whose
+ * visible text contains `text` — with a marker screenshot before the click.
+ * If there's more than one match, uses the FIRST one in the DOM by default (`index`
+ * adjusts this) — prefer `scopeSelector` to avoid ambiguity instead of
+ * relying on the index, especially on screens with repeated labels (has already
+ * bitten this suite before: "OpenCode" appears in more than one place).
  */
 export async function clickByText(
   text: string,
@@ -45,17 +45,17 @@ export async function clickByText(
 ): Promise<void> {
   const { index = 0, scopeSelector, timeout = 10_000 } = opts
   const base = scopeSelector ? await $(scopeSelector) : browser
-  // WebdriverIO NÃO entende seletor múltiplo separado por vírgula do jeito
-  // que CSS normal entende — precisa consultar cada estratégia separada e
-  // juntar os resultados (bug real, confirmado ao vivo: um selector tipo
-  // `button*=X, a*=X` virava UM xpath só, com a vírgula dentro do texto
-  // procurado, e sempre falhava com "invalid selector"). Botões só-ícone
-  // (ex. "Mais ações") não têm texto visível, só `aria-label`/`title`.
-  // `label` entra na lista porque o gravador (`e2e/support/recorder.ts`)
-  // captura texto de `<label>` (ex. legenda de checkbox) como alvo de
-  // clique válido — sem isso, um passo gravado clicando num label nunca
-  // encontrava nada no replay (bug real, confirmado ao vivo: "Isolamento
-  // automático de agentes..." é a legenda de um checkbox, não um botão).
+  // WebdriverIO does NOT understand a comma-separated multi-selector the way
+  // normal CSS does — you need to query each strategy separately and
+  // merge the results (a real bug, confirmed live: a selector like
+  // `button*=X, a*=X` turned into a SINGLE xpath, with the comma inside the searched
+  // text, and always failed with "invalid selector"). Icon-only buttons
+  // (e.g. "More actions") have no visible text, only `aria-label`/`title`.
+  // `label` is on the list because the recorder (`e2e/support/recorder.ts`)
+  // captures `<label>` text (e.g. a checkbox caption) as a valid click
+  // target — without this, a recorded step clicking on a label would never
+  // find anything on replay (a real bug, confirmed live: "Automatic
+  // agent isolation..." is the caption of a checkbox, not a button).
   const strategies = [`button*=${text}`, `a*=${text}`, `[role="button"]*=${text}`, `label*=${text}`]
   const findCandidates = async (): Promise<WebdriverIO.Element[]> => {
     let found: WebdriverIO.Element[] = []
@@ -70,11 +70,11 @@ export async function clickByText(
     return found
   }
 
-  // Busca UMA vez só dava falso negativo em texto que só aparece depois de
-  // um check assíncrono resolver (ex. o banner "Inicializar repositório
-  // Git" só renderiza depois de `gitStatus()` responder — confirmado ao
-  // vivo: `clickByText` falhava na hora com "não encontrado" mesmo o botão
-  // aparecendo meio segundo depois). Poll curto antes de desistir de vez.
+  // Searching only once gave a false negative on text that only appears after
+  // an async check resolves (e.g. the "Initialize Git repository"
+  // banner only renders after `gitStatus()` responds — confirmed
+  // live: `clickByText` failed immediately with "not found" even though the button
+  // appeared half a second later). Short poll before giving up for good.
   let candidates = await findCandidates()
   const deadline = Date.now() + timeout
   while (candidates.length <= index && Date.now() < deadline) {
@@ -83,32 +83,32 @@ export async function clickByText(
   }
   if (!candidates[index]) {
     throw new Error(
-      `clickByText: nenhum elemento clicável com texto/aria-label/title "${text}" encontrado${scopeSelector ? ` dentro de "${scopeSelector}"` : ''} (índice ${index})`,
+      `clickByText: no clickable element with text/aria-label/title "${text}" found${scopeSelector ? ` inside "${scopeSelector}"` : ''} (index ${index})`,
     )
   }
-  // `waitForClickable` (checagem de sobreposição do WebDriver) às vezes dá
-  // falso negativo em menus renderizados via portal (`createPortal` direto
-  // em `document.body`, ex. `Dropdown.tsx`) — confirmado ao vivo: o print
-  // mostrava o item claramente visível e clicável, mas o check nunca
-  // liberava. Tenta esperar normalmente primeiro; se estourar o timeout,
-  // ainda tenta o clique de verdade (o comando `click()` do WebDriver faz
-  // seu próprio scroll-into-view e costuma funcionar mesmo quando o
-  // pré-check é excessivamente conservador) em vez de desistir na hora.
+  // `waitForClickable` (WebDriver's overlap check) sometimes gives a
+  // false negative on menus rendered via portal (`createPortal` straight
+  // into `document.body`, e.g. `Dropdown.tsx`) — confirmed live: the screenshot
+  // clearly showed the item visible and clickable, but the check never
+  // passed. Tries waiting normally first; if it times out,
+  // still attempts the actual click (WebDriver's `click()` command does its
+  // own scroll-into-view and tends to work even when the
+  // pre-check is overly conservative) instead of giving up right away.
   await candidates[index].waitForClickable({ timeout }).catch(() => {})
 
-  // Layout pode mudar ENTRE tentativas (ex. um banner acima do alvo some
-  // depois de um check assíncrono resolver — confirmado ao vivo: clicar
-  // "Inicializar repositório Git" reflowava a seção logo abaixo, e um clique
-  // imediato no card seguinte mirava a posição ANTIGA, "element not
-  // interactable", por ~30s de retry automático do próprio WebDriver antes
-  // de desistir). RECONSULTA o elemento do zero em cada tentativa — nunca
-  // reusa a referência já resolvida — pra sempre clicar na posição atual,
-  // não na de quando `findCandidates()` rodou pela primeira vez.
+  // The layout can change BETWEEN attempts (e.g. a banner above the target disappears
+  // after an async check resolves — confirmed live: clicking
+  // "Initialize Git repository" reflowed the section right below, and an immediate
+  // click on the next card targeted the OLD position, "element not
+  // interactable", for ~30s of WebDriver's own automatic retry before
+  // giving up). RE-QUERIES the element from scratch on every attempt — never
+  // reuses the already-resolved reference — to always click at the current
+  // position, not the one from when `findCandidates()` first ran.
   let lastError: unknown = null
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const fresh = (await findCandidates())[index]
-      if (!fresh) throw new Error(`clickByText: "${text}" sumiu da tela entre tentativas de clique`)
+      if (!fresh) throw new Error(`clickByText: "${text}" disappeared from the screen between click attempts`)
       await markScreenshotAndClick(fresh, nextShotName(`click-${text.slice(0, 30)}`))
       return
     } catch (err) {
@@ -120,13 +120,13 @@ export async function clickByText(
 }
 
 /**
- * Clica o N-ésimo `<button>` (padrão: primeiro) dentro do container-pai de
- * um `<label>` achado por texto — pra botões cujo PRÓPRIO texto muda
- * dinamicamente (ex. o gatilho do `ModelSearchablePicker`, que mostra o
- * modelo atualmente selecionado como texto — gravar um clique pelo texto
- * literal desse gatilho não reproduz depois se o modelo padrão for outro).
- * O texto do `<label>` vizinho (ex. "Modelo do agente (OPENCODE)") é bem
- * mais estável entre execuções.
+ * Clicks the Nth `<button>` (default: first) inside the parent container of
+ * a `<label>` found by text — for buttons whose OWN text changes
+ * dynamically (e.g. the `ModelSearchablePicker` trigger, which shows the
+ * currently selected model as text — recording a click by that trigger's
+ * literal text won't replay correctly if the default model is different).
+ * The neighboring `<label>` text (e.g. "Agent model (OPENCODE)") is much
+ * more stable across runs.
  */
 export async function clickNearLabel(labelText: string, nth = 0): Promise<void> {
   const label = await $(`label*=${labelText}`)
@@ -136,17 +136,17 @@ export async function clickNearLabel(labelText: string, nth = 0): Promise<void> 
   const target = buttons[nth]
   if (!target) {
     throw new Error(
-      `clickNearLabel: nenhum <button> (índice ${nth}) encontrado perto do label "${labelText}"`,
+      `clickNearLabel: no <button> (index ${nth}) found near label "${labelText}"`,
     )
   }
   await markScreenshotAndClick(target, nextShotName(`click-near-label-${labelText.slice(0, 30)}`))
 }
 
 /**
- * Digita num campo achado por placeholder OU label associado — NUNCA usar
- * pra campos de pasta que tenham botão "Procurar" ao lado sem confirmar
- * antes que é seguro (esses sempre aceitam digitação direta nesta app, mas
- * confirme lendo o componente se for um campo novo/desconhecido).
+ * Types into a field found by placeholder OR associated label — NEVER use it
+ * for folder fields that have a "Browse" button next to them without confirming
+ * first that it's safe (those always accept direct typing in this app, but
+ * confirm by reading the component if it's a new/unknown field).
  */
 export async function typeIntoByPlaceholder(placeholder: string, value: string): Promise<void> {
   const input = await $(
@@ -157,7 +157,7 @@ export async function typeIntoByPlaceholder(placeholder: string, value: string):
   const actual = await input.getValue()
   if (actual !== value) {
     throw new Error(
-      `typeIntoByPlaceholder: campo "${placeholder}" recebeu "${actual}", esperava "${value}"`,
+      `typeIntoByPlaceholder: field "${placeholder}" received "${actual}", expected "${value}"`,
     )
   }
 }
@@ -169,57 +169,57 @@ export async function typeIntoBySelector(selector: string, value: string): Promi
 }
 
 /**
- * NUNCA clicar no botão "Procurar" ao lado de um campo de pasta — abre o
- * seletor de pasta NATIVO do Windows, fora do webview, que o WebDriver não
- * enxerga nem consegue fechar (trava a sessão). Todo campo de pasta desta
- * app aceita digitação direta no `<input>` — este é o helper CANÔNICO pra
- * isso, com nome explícito pra deixar óbvio qual caminho usar em qualquer
- * exploração nova. Por baixo é o mesmo `typeIntoByPlaceholder`, só com o
- * nome gritando a intenção.
+ * NEVER click the "Browse" button next to a folder field — it opens
+ * Windows' NATIVE folder picker, outside the webview, which WebDriver can't
+ * see or close (hangs the session). Every folder field in this app accepts
+ * direct typing into the `<input>` — this is the CANONICAL helper for
+ * that, with an explicit name to make it obvious which path to use in any new
+ * exploration. Under the hood it's the same `typeIntoByPlaceholder`, just with
+ * the name shouting the intent.
  */
 export async function typePath(placeholder: string, path: string): Promise<void> {
   await typeIntoByPlaceholder(placeholder, path)
 }
 
-/** Espera um texto aparecer em qualquer lugar da tela — útil pra confirmar
- *  que uma ação surtiu efeito sem precisar saber o seletor exato. */
+/** Waits for a text to appear anywhere on screen — useful for confirming
+ *  that an action took effect without needing to know the exact selector. */
 export async function waitForText(text: string, timeout = 10_000): Promise<void> {
   await browser.waitUntil(async () => await $(`*=${text}`).isExisting(), {
     timeout,
-    timeoutMsg: `texto "${text}" nunca apareceu na tela`,
+    timeoutMsg: `text "${text}" never appeared on screen`,
   })
 }
 
-/** Confirma que um texto NÃO está mais na tela — o par de `waitForText`. */
+/** Confirms that a text is NO LONGER on screen — the counterpart of `waitForText`. */
 export async function waitForTextGone(text: string, timeout = 10_000): Promise<void> {
   await browser.waitUntil(async () => !(await $(`*=${text}`).isExisting()), {
     timeout,
-    timeoutMsg: `texto "${text}" continuou na tela além do esperado`,
+    timeoutMsg: `text "${text}" remained on screen longer than expected`,
   })
 }
 
-/** Print nomeado, sem marcador — pra registrar o estado da tela num ponto
- *  qualquer da exploração, sem estar ligado a um clique específico. */
+/** Named screenshot, no marker — for recording the screen state at some
+ *  point during exploration, without being tied to a specific click. */
 export async function snapshot(label: string): Promise<string> {
   return captureScreenshot(nextShotName(label))
 }
 
 /**
- * Arrasta o mouse de forma precisa e ajustável — pedido explícito do dono,
- * pra coisas como redimensionar um painel arrastando o divisor (a classe de
- * bug de sincronização de resize desktop↔web que motivou boa parte desta
- * sessão) ou qualquer drag real que um clique simples não cobre. Usa a W3C
- * Actions API do WebDriver (`browser.action('pointer')`), não um "drop"
- * instantâneo — o movimento é dividido em `steps` incrementos, cada um com
- * sua própria duração, porque alguns handlers de resize/drag só disparam
- * corretamente com movimento gradual (um salto único de A pra B pode não
- * emitir os eventos intermediários que o app escuta).
+ * Drags the mouse in a precise, adjustable way — explicit request from the owner,
+ * for things like resizing a panel by dragging the divider (the class of
+ * desktop↔web resize sync bug that drove a good part of
+ * this session) or any real drag that a simple click doesn't cover. Uses WebDriver's
+ * W3C Actions API (`browser.action('pointer')`), not an instant "drop" —
+ * the movement is split into `steps` increments, each with its
+ * own duration, because some resize/drag handlers only fire
+ * correctly with gradual movement (a single jump from A to B might not
+ * emit the intermediate events the app listens for).
  *
- * `deltaX`/`deltaY` são relativos ao CENTRO do elemento em `selector`
- * (positivo = direita/baixo, negativo = esquerda/cima — mapeia direto os
- * 4 sentidos que o dono pediu). `repetitions` repete o arrasto inteiro N
- * vezes, com uma pausa entre cada (`repetitionPauseMs`) — útil pra estressar
- * um resize incremental ou confirmar que ele converge sempre pro mesmo lugar.
+ * `deltaX`/`deltaY` are relative to the CENTER of the element at `selector`
+ * (positive = right/down, negative = left/up — maps directly to the
+ * 4 directions the owner asked for). `repetitions` repeats the whole drag N
+ * times, with a pause between each one (`repetitionPauseMs`) — useful for stress-testing
+ * an incremental resize or confirming it always converges to the same place.
  */
 export async function dragBy(
   selector: string,
@@ -266,9 +266,9 @@ export async function dragBy(
 }
 
 /**
- * Arrasta de um elemento até OUTRO elemento (em vez de um delta relativo) —
- * útil quando o alvo final é conhecido (ex. soltar num pane específico) em
- * vez de uma distância calculada.
+ * Drags from one element to ANOTHER element (instead of a relative delta) —
+ * useful when the final target is known (e.g. dropping onto a specific pane)
+ * instead of a calculated distance.
  */
 export async function dragFromTo(
   fromSelector: string,
@@ -301,10 +301,10 @@ export async function dragFromTo(
   await action.perform()
 }
 
-/** Rola um elemento pra dentro da área visível — wrapper fino sobre o
- *  comando nativo do WebDriver, útil antes de checar/clicar algo que pode
- *  estar fora da tela (ex. opção no fim de uma lista longa, painel com
- *  scroll interno como as abas de Preferências). */
+/** Scrolls an element into the visible area — a thin wrapper over
+ *  WebDriver's native command, useful before checking/clicking something that might
+ *  be off screen (e.g. an option at the end of a long list, a panel with
+ *  internal scroll like the Preferences tabs). */
 export async function scrollIntoView(selector: string): Promise<void> {
   const el = await $(selector)
   await el.waitForExist({ timeout: 10_000 })
@@ -312,13 +312,13 @@ export async function scrollIntoView(selector: string): Promise<void> {
 }
 
 /**
- * Rola a página (ou o elemento em `selector`, se passado) por uma
- * quantidade de pixels — via W3C wheel action (`browser.action('wheel')`),
- * que simula rolagem de mouse de verdade, diferente de setar
- * `scrollTop` direto via JS (que alguns componentes com scroll virtualizado
- * ou listeners de `wheel` não reagem a). `deltaY` positivo rola pra baixo,
- * negativo pra cima; `deltaX` positivo pra direita, negativo pra esquerda —
- * mesma convenção de eventos de wheel nativos do navegador.
+ * Scrolls the page (or the element at `selector`, if given) by a
+ * number of pixels — via the W3C wheel action (`browser.action('wheel')`),
+ * which simulates real mouse scrolling, unlike setting
+ * `scrollTop` directly via JS (which some components with virtualized scroll
+ * or `wheel` listeners don't react to). Positive `deltaY` scrolls down,
+ * negative scrolls up; positive `deltaX` scrolls right, negative scrolls left —
+ * the same convention as the browser's native wheel events.
  */
 export async function scrollBy(
   deltaX: number,
@@ -344,13 +344,13 @@ export async function scrollBy(
 }
 
 /**
- * Roda `fn()` e, se ela não resolver dentro de `idleMs` (padrão 5s), tira um
- * print automático ANTES de continuar esperando — pedido explícito do dono:
- * "quando ficar 5 segundos sem interação, tirar uma print, um momento antes
- * de falhar". Não cancela `fn()` nem afeta o resultado, só captura o estado
- * da tela no momento em que algo está demorando mais que o esperado, pra
- * diagnosticar falhas sem precisar adivinhar de antemão onde colocar
- * `snapshot()` manualmente.
+ * Runs `fn()` and, if it hasn't resolved within `idleMs` (default 5s), takes an
+ * automatic screenshot BEFORE continuing to wait — explicit request from the owner:
+ * "when it's been 5 seconds with no interaction, take a screenshot, a moment
+ * before failing". Doesn't cancel `fn()` or affect the result, just captures the
+ * screen state at the moment something is taking longer than expected, to
+ * diagnose failures without needing to guess ahead of time where to place
+ * `snapshot()` manually.
  */
 export async function withIdleScreenshot<T>(
   label: string,
@@ -359,7 +359,7 @@ export async function withIdleScreenshot<T>(
 ): Promise<T> {
   let done = false
   const timer = setTimeout(() => {
-    if (!done) void snapshot(`${label}-parado-${idleMs}ms`).catch(() => {})
+    if (!done) void snapshot(`${label}-stalled-${idleMs}ms`).catch(() => {})
   }, idleMs)
   try {
     return await fn()
@@ -370,9 +370,9 @@ export async function withIdleScreenshot<T>(
 }
 
 /**
- * Aceita um `confirm()`/`alert()` nativo se um aparecer dentro de `timeout`
- * — não falha se nenhum aparecer (alguns fluxos só mostram o diálogo às
- * vezes). Use depois de um `clickByText` que PODE disparar confirmação.
+ * Accepts a native `confirm()`/`alert()` if one appears within `timeout`
+ * — doesn't fail if none appears (some flows only show the dialog
+ * sometimes). Use after a `clickByText` that MAY trigger a confirmation.
  */
 export async function acceptAlertIfPresent(timeout = 3_000): Promise<boolean> {
   const appeared = await browser

@@ -1,9 +1,11 @@
 import {
+  type CollisionDetection,
   DndContext,
   type DragEndEvent,
   type DragMoveEvent,
   DragOverlay,
   PointerSensor,
+  pointerWithin,
   useDroppable,
   useSensor,
   useSensors,
@@ -12,7 +14,6 @@ import {
   Folder,
   FolderPlus,
   GitBranch,
-  Globe,
   Grid3x3,
   Home,
   MoreHorizontal,
@@ -22,73 +23,158 @@ import {
   Users,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
 import { useT } from '../../lib/i18n'
 import { formatShortcut } from '../../lib/platform'
 import {
-  sidebarCollisionDetection,
   sidebarDragKind,
   type SidebarDropIndicator,
-  sidebarDropIndicatorForEvent,
   sidebarInsertionIndex,
 } from '../../lib/sidebarDrag'
 import { type Group, type Project } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
+import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
 import { SidebarNowPlaying } from '../SidebarNowPlaying'
 import { UserProfile } from '../UserProfile'
 import { ContextMenu, type MenuItem } from './ContextMenu'
 import { FileExplorer } from './FileExplorer'
 import { GitControl } from './GitControl'
-import { LayoutFooter, WorkspaceLayoutFooter } from './LayoutFooter'
-import { MeshSidebarView } from './MeshSidebarView'
 import { NormalGroupNode as GroupNode } from './NormalGroupNode'
+import { LayoutFooter, WorkspaceLayoutFooter } from './LayoutFooter'
 import { NormalProjectNode as ProjectNode } from './NormalProjectNode'
 import styles from './NormalProjectSidebar.module.css'
-import { useSidebarActions, useSidebarData, useSidebarUi } from './sidebarController'
 import { createSidebarMenus } from './sidebarMenus'
 import { SidebarMergePanel } from './SidebarMergePanel'
 import { SidebarUpdate } from './SidebarUpdate'
 
 type ContextMenuState = { x: number; y: number; items: MenuItem[] } | null
 
+const sidebarCollisionDetection: CollisionDetection = (args) => {
+  const kind = sidebarDragKind(String(args.active.id))
+  const candidates = pointerWithin(args).filter(({ id }) => {
+    const target = String(id)
+    if (target === String(args.active.id)) return false
+    if (kind === 'terminal') return target.startsWith('proj:')
+    if (kind === 'project') return target.startsWith('proj:') || target.startsWith('group:')
+    if (kind === 'group') {
+      const sourceId = String(args.active.id).slice('grp:'.length)
+      return (
+        target !== `group:${sourceId}` && (target.startsWith('grp:') || target.startsWith('group:'))
+      )
+    }
+    return false
+  })
+
+  const rank = (id: string) => {
+    if (kind === 'project') return id.startsWith('proj:') ? 0 : 1
+    if (kind === 'group') return id.startsWith('grp:') ? 0 : 1
+    return 0
+  }
+
+  return candidates.sort((a, b) => {
+    const rankDifference = rank(String(a.id)) - rank(String(b.id))
+    if (rankDifference !== 0) return rankDifference
+    const aRect = args.droppableRects.get(a.id)
+    const bRect = args.droppableRects.get(b.id)
+    const aArea = aRect ? aRect.width * aRect.height : Number.POSITIVE_INFINITY
+    const bArea = bRect ? bRect.width * bRect.height : Number.POSITIVE_INFINITY
+    return aArea - bArea
+  })
+}
+
+function dropIndicatorForEvent(event: DragMoveEvent | DragEndEvent): SidebarDropIndicator | null {
+  if (!event.over) return null
+  const id = String(event.over.id)
+  if (id.startsWith('group:') || sidebarDragKind(String(event.active.id)) === 'terminal') {
+    return { id, edge: 'inside' }
+  }
+
+  const activatorEvent = event.activatorEvent
+  const pointerY =
+    'clientY' in activatorEvent && typeof activatorEvent.clientY === 'number'
+      ? activatorEvent.clientY + event.delta.y
+      : event.active.rect.current.translated
+        ? event.active.rect.current.translated.top + event.active.rect.current.translated.height / 2
+        : event.over.rect.top + event.over.rect.height / 2
+  const edge = pointerY < event.over.rect.top + event.over.rect.height / 2 ? 'before' : 'after'
+  return { id, edge }
+}
+
 export function NormalProjectSidebar() {
   const t = useT()
   // --- data selectors (reactive) ---
-  const {
-    projects,
-    groups,
-    ungroupedOrder,
-    containers,
-    activeProjectId,
-    showGitControl,
-    preferences,
-  } = useSidebarData()
+  const projects = useProjectsStore((s) => s.projects)
+  const groups = useProjectsStore((s) => s.groups)
+  const ungroupedOrder = useProjectsStore((s) => s.ungroupedOrder)
+  const containers = useProjectsStore((s) => s.workspace.containers)
+  const activeProjectId = useProjectsStore((s) => s.activeProjectId)
+  const showGitControl = useProjectsStore((s) => s.preferences.enabledFeatures.git)
+  const preferences = useProjectsStore((s) => s.preferences)
 
   // --- action selectors (stable refs, grouped for readability) ---
-  const actions = useSidebarActions()
+  const actions = useProjectsStore(
+    useShallow((s) => ({
+      setActiveProject: s.setActiveProject,
+      openGroupScope: s.openGroupScope,
+      openProjectWorkspace: s.openProjectWorkspace,
+      addProjectToWorkspace: s.addProjectToWorkspace,
+      openGroupWorkspace: s.openGroupWorkspace,
+      openTerminalWorkspace: s.openTerminalWorkspace,
+      addTerminalToWorkspace: s.addTerminalToWorkspace,
+      focusWorkspaceTerminal: s.focusWorkspaceTerminal,
+      toggleProjectCollapsed: s.toggleProjectCollapsed,
+      toggleGroupCollapsed: s.toggleGroupCollapsed,
+      archiveGroup: s.archiveGroup,
+      renameProject: s.renameProject,
+      archiveProject: s.archiveProject,
+      deleteProject: s.deleteProject,
+      renameGroup: s.renameGroup,
+      deleteGroup: s.deleteGroup,
+      resumeGroup: s.resumeGroup,
+      setProjectDisabled: s.setProjectDisabled,
+      renameTerminal: s.renameTerminal,
+      killTerminal: s.killTerminal,
+      deleteTerminal: s.deleteTerminal,
+      deleteTerminalWithWorktreeCleanup: s.deleteTerminalWithWorktreeCleanup,
+      setTerminalDisabled: s.setTerminalDisabled,
+      moveTerminal: s.moveTerminal,
+      moveProjectToGroup: s.moveProjectToGroup,
+      moveGroupToParent: s.moveGroupToParent,
+      reorderProjectInGroup: s.reorderProjectInGroup,
+      reorderUngrouped: s.reorderUngrouped,
+      reorderGroups: s.reorderGroups,
+      togglePane: s.togglePane,
+      setLaneVisible: s.setLaneVisible,
+      setTerminalRemoteExcluded: s.setTerminalRemoteExcluded,
+      setSubTabCompletionUnread: s.setSubTabCompletionUnread,
+      createFilePane: s.createFilePane,
+      createGraphifyPane: s.createGraphifyPane,
+      setFullscreenPane: s.setFullscreenPane,
+    })),
+  )
 
-  const {
-    requestPaneFocus,
-    openModal,
-    activeView,
-    setActiveView,
-    activeTerminalRef,
-    setActiveTerminal,
-    setFocusedTerminal,
-    openMarkdownSidebar,
-  } = useSidebarUi()
+  const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
+  const openModal = useUiStore((s) => s.openModal_)
+  const activeView = useUiStore((s) => s.activeView)
+  const setActiveView = useUiStore((s) => s.setActiveView)
+  const activeTerminalRef = useUiStore((s) => s.activeTerminal)
+  const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
+  const setFocusedTerminal = useUiStore((s) => s.setFocusedTerminal)
+  const openMarkdownSidebar = useUiStore((s) => s.openMarkdownSidebar)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const [menu, setMenu] = useState<ContextMenuState>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropIndicator, setDropIndicator] = useState<SidebarDropIndicator | null>(null)
-  const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects' | 'mesh'>('projects')
+  const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects'>('projects')
   const keepHome = activeView === 'home'
 
   useEffect(() => {
     if (!showGitControl && sidebarTab === 'git') setSidebarTab('projects')
   }, [showGitControl, sidebarTab])
 
+                                                                         
   const openPaneSets = useMemo(() => {
     const map: Record<string, Set<string>> = {}
     for (const c of containers) map[c.projectId] = new Set(c.paneIds)
@@ -138,14 +224,14 @@ export function NormalProjectSidebar() {
   }
 
   const updateDropIndicator = (event: DragMoveEvent) => {
-    const next = sidebarDropIndicatorForEvent(event)
+    const next = dropIndicatorForEvent(event)
     setDropIndicator((current) =>
       current?.id === next?.id && current?.edge === next?.edge ? current : next,
     )
   }
 
   const onDragEnd = (event: DragEndEvent) => {
-    const indicator = sidebarDropIndicatorForEvent(event)
+    const indicator = dropIndicatorForEvent(event)
     clearDragState()
     const { active, over } = event
     if (!over || !indicator) return
@@ -153,6 +239,7 @@ export function NormalProjectSidebar() {
     const target = String(over.id)
     if (dragged === target) return
 
+                                                                                        
     if (dragged.startsWith('term:') && target.startsWith('proj:')) {
       const [, fromProject, terminalId] = dragged.split(':')
       const [, toProject] = target.split(':')
@@ -160,6 +247,8 @@ export function NormalProjectSidebar() {
       return
     }
 
+                                                                                
+                                                                              
     if (dragged.startsWith('proj:') && target.startsWith('proj:')) {
       const fromId = dragged.slice('proj:'.length)
       const toId = target.slice('proj:'.length)
@@ -202,6 +291,7 @@ export function NormalProjectSidebar() {
       return
     }
 
+                                                                           
     if (dragged.startsWith('proj:') && target.startsWith('group:')) {
       const [, projectId] = dragged.split(':')
       const [, groupId] = target.split(':')
@@ -227,6 +317,7 @@ export function NormalProjectSidebar() {
       return
     }
 
+                                                                        
     if (dragged.startsWith('grp:') && target.startsWith('group:')) {
       const [, srcGroupId] = dragged.split(':')
       const [, parentId] = target.split(':')
@@ -278,6 +369,10 @@ export function NormalProjectSidebar() {
       }}
       onToggleCollapsed={() => actions.toggleProjectCollapsed(p.id)}
       onTerminalClick={(t) => {
+                                                                             
+                                                                           
+                                                                           
+                                                               
         if (t.gsdSyncViewer) {
           actions.setFullscreenPane(t.id)
           setActiveView('workspace')
@@ -362,6 +457,7 @@ export function NormalProjectSidebar() {
           })
         }
         onToggle={() => actions.toggleGroupCollapsed(g.id)}
+        onOpenAll={() => onGroupOpenAll(g)}
         onOpenOnly={() => onGroupOpenAll(g, 'only')}
         dragKind={draggingKind}
         reorderEdge={dropIndicator?.id === `grp:${g.id}` ? dropIndicator.edge : null}
@@ -436,21 +532,6 @@ export function NormalProjectSidebar() {
             <span>{t('ui.sidebar.git')}</span>
           </button>
         ) : null}
-        <button
-          type="button"
-          role="tab"
-          aria-selected={sidebarTab === 'mesh' && activeView === 'collaboration'}
-          aria-label={t('mesh.title') || 'Conexão & Sincronização'}
-          title={t('mesh.title') || 'Conexão & Sincronização'}
-          className={`${styles.sidebarTab} ${sidebarTab === 'mesh' && activeView === 'collaboration' ? styles.sidebarTabActive : ''}`}
-          onClick={() => {
-            setSidebarTab('mesh')
-            setActiveView('collaboration')
-          }}
-        >
-          <Globe size={14} />
-          <span>{t('mesh.title') || 'Conexão'}</span>
-        </button>
       </div>
 
       <div className={styles.quickNavList}>
@@ -550,8 +631,6 @@ export function NormalProjectSidebar() {
         </section>
       ) : null}
 
-      {sidebarTab === 'mesh' ? <MeshSidebarView /> : null}
-
       {sidebarTab === 'projects' ? (
         <DndContext
           sensors={sensors}
@@ -603,7 +682,6 @@ export function NormalProjectSidebar() {
         </DndContext>
       ) : null}
 
-      {/* PAINEL DE MERGES NA BARRA LATERAL */}
       {sidebarTab === 'projects' && !keepHome ? <SidebarMergePanel /> : null}
 
       {menu ? (

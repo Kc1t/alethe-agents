@@ -381,6 +381,19 @@ export const en = {
   'menu.addBrowser': 'Add browser',
   'menu.agentSandbox': 'Agent Sandbox',
   'menu.remoteControl': 'Remote control',
+  'menu.audit': 'Audit Center',
+  'audit.title': 'Alethe Audit & Diagnostics Center',
+  'audit.searchPlaceholder': 'Search audit logs (message, category, or stack)…',
+  'audit.filterAll': 'All ({count})',
+  'audit.filterErrors': 'Errors ({count})',
+  'audit.copy': 'Copy',
+  'audit.copyTooltip': 'Copy the full report to the clipboard',
+  'audit.export': 'Export',
+  'audit.exportTooltip': 'Download the diagnostics JSON file',
+  'audit.clearTooltip': 'Clear logs',
+  'audit.empty': 'No audit records found for the current filter.',
+  'audit.copiedTitle': 'Audit report copied',
+  'audit.copiedBody': 'Paste it in the chat for immediate agent analysis.',
   'menu.welcome': 'Welcome',
   'menu.pickTheme': 'Pick theme',
   'menu.groupByProject': 'Group by project',
@@ -430,6 +443,54 @@ export const en = {
   'remote.openSettings': 'Open Remote Control settings',
   'remote.hiddenAddressPlaceholder':
     'http://192.168.x.x:9340 · Open a pairing window to reveal the address',
+  'brand.remote': 'Alethe Remote',
+  'common.details': 'Technical details',
+  'common.reload': 'Try again',
+  'common.terminal': 'Terminal',
+  'connection.connecting': 'Connecting',
+  'connection.live': 'Live',
+  'connection.reconnecting': 'Reconnecting',
+  'device.browser': 'Browser',
+  'device.mobile': 'Mobile device',
+  'home.activeChats': '{count} available chat',
+  'home.activeChatsPlural': '{count} available chats',
+  'home.chatCount': '{count} chat',
+  'home.chatCountPlural': '{count} chats',
+  'home.description': 'Choose a shared terminal and continue your work from this device.',
+  'home.emptyDescription': 'Open a terminal in Alethe or allow remote access to an existing one.',
+  'home.emptyTitle': 'No shared chats yet',
+  'home.noMatchesDescription': 'Try a project, group, agent, or terminal name.',
+  'home.noMatchesTitle': 'No matching chats',
+  'home.openChat': 'Open {name}',
+  'home.projectCount': '{count} project',
+  'home.projectCountPlural': '{count} projects',
+  'home.remoteAccess': 'Available remotely',
+  'home.search': 'Search projects, groups, or agents',
+  'home.title': 'Continue where you left off',
+  'home.ungrouped': 'Ungrouped',
+  'home.workspace': 'Workspace',
+  'chat.context': '{project} · {agent}',
+  'chat.emptyTerminal': 'Waiting for terminal output…',
+  'chat.jumpLatest': 'Jump to latest',
+  'chat.liveTerminal': 'Live terminal',
+  'chat.messageHint': 'Enter sends · Shift + Enter adds a line',
+  'chat.readOnly': 'This device has read-only access. Sending messages is disabled in Alethe.',
+  'chat.send': 'Send message',
+  'chat.sendError': 'Message not sent: {message}',
+  'chat.sendPlaceholder': 'Message this terminal…',
+  'chat.sending': 'Sending message',
+  'state.connectionDescription':
+    'Alethe could not be reached on the local network. Check that the desktop app and this device are still connected to the same network.',
+  'state.connectionTitle': 'Connection unavailable',
+  'state.loadingDescription': 'Preparing your shared workspace…',
+  'state.loadingTitle': 'Connecting to Alethe',
+  'state.pairingDescription':
+    'Open Remote control in Alethe and scan the QR code to connect this device.',
+  'state.pairingTitle': 'Pair this device',
+  'state.sessionDescription':
+    'This device is no longer paired. Open Remote control in Alethe and scan a new QR code.',
+  'state.sessionTitle': 'Remote session ended',
+  'state.terminalError': 'Unable to load terminal output.',
   'ui.terminal.hideFromRemote': 'Hide from remote devices',
   'ui.terminal.shareWithRemote': 'Show on remote devices',
   'ui.terminal.recentChats': 'Recent chats',
@@ -682,6 +743,21 @@ export const en = {
   'features.browser.description': 'Open websites inside the workspace as browser panes.',
   'features.graphify.title': 'Graphify',
   'features.graphify.description': 'Visualize the code graph inside the workspace.',
+  'resources.parkedTitle': 'Terminal parked to free memory',
+  'resources.parkedBody':
+    '"{name}" was stopped because memory ran low. Restart it to pick up where it left off.',
+  'resources.criticalTitle': 'Memory is critically low',
+  'resources.criticalBody':
+    'Only {free} MB free — terminals are holding {ptys} MB. Close an agent terminal you are not using before the app stops responding.',
+  'playwright.browserFailedTitle': 'Playwright browser did not start',
+  'playwright.browserFailedBody':
+    'No Chromium-based browser was found, or it did not expose its debugging port. Playwright will fall back to launching its own.',
+  'features.playwright.title': 'Playwright browser',
+  'features.playwright.description':
+    'Alethe launches and owns a browser for automation, and points the Playwright MCP server at it. The browser closes with Alethe.',
+  'features.orchestrator.title': 'Agent orchestration',
+  'features.orchestrator.description':
+    'Gives Claude Code a set of Alethe tools for handing work to Codex workers that run in parallel. Alethe owns the sandbox, the concurrency limit and the workers themselves, and can steer or cancel one mid-run.',
   'features.mcp.title': 'MCP & Skills',
   'features.mcp.description':
     'Inspect and manage the MCP servers and skills of every coding agent from one panel.',
@@ -1008,6 +1084,7 @@ export const en = {
   'rightSidebar.gsdSyncEmptyTitle': 'No active GSD Sync session',
   'rightSidebar.gsdSyncEmptyDesc':
     'Turn on GSD monitoring for a project to see its child sessions here.',
+  'plans.title': 'Planning docs',
   'rightSidebar.markdownEmptyTitle': 'No Markdown selected',
   'rightSidebar.markdownEmptyDesc':
     'Open a Markdown file from the project sidebar to preview it here.',
@@ -1211,6 +1288,11 @@ export const en = {
   'crud.editProjectAgents': 'Agents',
   'merge.providerLabel': 'Conflict resolution agent',
   'merge.modelLabel': 'Agent model ({provider})',
+  'merge.modelLoading': 'Loading CLI models…',
+  'merge.modelSelect': 'Select a model ({provider})',
+  'merge.modelSearch': 'Search {count} {provider} models…',
+  'merge.modelEmpty': 'No models found for “{query}”.',
+  'merge.modelCustom': 'Use custom model: “{model}”',
   'merge.gsdSyncPaneName': 'GSD Sync',
   'crud.editProjectWorktrees': 'Worktrees',
   'crud.editProjectMerge': 'Merge',
@@ -1506,6 +1588,8 @@ export const en = {
   'ui.terminal.hideTabsLane': 'Hide tabs lane',
   'ui.terminal.showTabsLane': 'Show tabs lane',
   'ui.terminal.toggleLane': 'Toggle lane',
+  'ui.terminal.pinTopbar': 'Pin terminal topbar',
+  'ui.terminal.unpinTopbar': 'Unpin terminal topbar',
   'ui.terminal.sessionHistory': 'Session history',
   'ui.terminal.history': 'History',
   'ui.terminal.disableFreesRam': 'Pause (frees RAM · resumable)',
@@ -1634,7 +1718,6 @@ export const en = {
   'git.graph.menu.resetHardConfirm':
     'Hard reset will discard ALL unstaged and staged changes in your workspace. Continue?',
   'git.graph.menu.resetDone': 'Branch reset',
-  // Este foi feito para adicionar as chaves de busca e atualização do Grafo de Git no i18n em inglês
   'git.graph.searchPlaceholder': 'Filter commits by subject, hash, author, or ref…',
   'git.graph.noSearchResults': 'No commits match your filter.',
   'git.graph.refresh': 'Refresh graph',
@@ -1871,6 +1954,7 @@ export const en = {
   'diff.close': 'Close diff',
   'crud.colorPaletteTitle': 'Color Palette',
   'crud.moreColors': 'More colors / Full palette',
+  'crud.colorRainbow': 'Infinite Rainbow (RGB)',
   'crud.customColor': 'Custom color:',
   'crud.pickColor': 'Eyedropper',
   'crud.githubUrlLabel': 'GitHub Repository (Optional)',
@@ -1961,6 +2045,18 @@ export const en = {
   'webPane.invalidUrl': 'This website address is invalid.',
   'webPane.privateStarting': 'Starting private browser…',
   'webPane.privateStartFailed': 'Could not start the private browser.',
+  'webPane.agentOpenedTitle': 'An agent opened a page',
+  'webPane.agentOpenedBody': '{page} is open in the shared browser.',
+  'webPane.agentOpenedOutside': 'Open in my browser',
+  'webPane.agentOpenedDismiss': 'Leave in the background',
+  'webPane.agentOpenedAction': 'Show it here',
+  'webPane.cdpCloseTab': 'Close tab',
+  'webPane.cdpTabs': 'Open tabs',
+  'webPane.cdpLoading': 'Connecting to the browser...',
+  'webPane.cdpFailed': 'Could not render the page in this pane.',
+  'webPane.cdpSurface': 'Browser page',
+  'webPane.engineCdpOn': 'Embedded browser on - click to go back to the native window',
+  'webPane.engineCdpOff': 'Render this page inside the pane (shared with the agent)',
   'webPane.privateHint':
     'Private native session · browsing data is discarded when this pane closes.',
 
@@ -2183,11 +2279,6 @@ export const en = {
   'merge.abortBusy':
     'An automatic check for this merge is running right now — try aborting again in a moment.',
 
-  /* ---- pool / hibernation ---- */
-  'ui.terminal.suspended': 'Suspended',
-  'ui.terminal.suspendedTooltip': 'Terminal suspended — click to reactivate',
-  'ui.terminal.clickToReactivate': 'Click to reactivate',
-
   /* ---- RFC-006/007/008 — safe merge cycle ---- */
   'merge.sectionTitle': 'Merge cycle',
   'merge.needBranches': 'This repo needs at least two local branches to merge.',
@@ -2325,6 +2416,8 @@ export const en = {
   'merge.testItemNotePlaceholder': 'What went wrong? (optional, sent to the agent)',
   'merge.testSendFeedback': 'Send feedback to agent',
   'merge.testSendFeedbackTooltip': "Sends what passed/failed straight to the agent's terminal",
+  'merge.testFeedbackUnverified': 'not verified',
+  'merge.testFeedbackSummaryHeader': 'Test feedback for branch "{branch}":',
   'merge.testFeedbackSentTitle': 'Feedback sent',
   'merge.testFeedbackSentBody': 'The test checklist result was sent to the agent.',
   'merge.review': 'Review',
@@ -2347,6 +2440,11 @@ export const en = {
   'merge.centerPrev': 'Previous merge',
   'merge.centerNext': 'Next merge',
   'merge.treeResizeHandle': 'Drag to resize the merge list',
+
+  /* ---- pool / hibernation ---- */
+  'ui.terminal.suspended': 'Suspended',
+  'ui.terminal.suspendedTooltip': 'Terminal suspended — click to reactivate',
+  'ui.terminal.clickToReactivate': 'Click to reactivate',
 
   /* ---- fsBrowser ---- */
   'fsBrowser.titleFolder': 'Select Folder',
@@ -2539,7 +2637,6 @@ export const en = {
 
   /* ---- plans ---- */
   'plans.tab': 'Plans',
-  'plans.title': 'Project Plans',
   'plans.selectProject': 'Select a project to view its plans',
   'plans.noPlans': 'No plans found',
   'plans.noPlansDesc': 'Plans created by agents will appear here in .alethe/plans/.',

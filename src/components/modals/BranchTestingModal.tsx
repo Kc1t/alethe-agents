@@ -44,13 +44,13 @@ export type BranchTestingModalProps = {
   branchName: string
   projectName: string
   changesSummary: Array<string | { path: string; status: string; additions?: number; deletions?: number }>
-  /** Camada 4 do Escudo — 'idle' quando o projeto não tem `healthCheckCommand`
-   *  configurado (seção mostra só uma dica, nunca dispara sozinha). */
+  /** Shield layer 4 — 'idle' when the project has no `healthCheckCommand`
+   *  configured (the section shows only a hint, never triggers on its own). */
   healthState: 'idle' | 'loading' | 'ok' | 'warn'
   healthSummary: string[]
   testingItems: TestingItem[]
   onStartTesting: () => void
-  /** Recebe o resumo já formatado (passou/falhou + notas) pra mandar ao agente — a confirmação de correção é sempre humana, nunca automática. */
+  /** Receives the already-formatted summary (passed/failed + notes) to send to the agent — confirming a fix is always a human decision, never automatic. */
   onSendFeedback: (summary: string) => void
 }
 
@@ -85,11 +85,12 @@ export function BranchTestingModal({
   const buildFeedbackSummary = () => {
     const lines = testingItems.map((item) => {
       const entry = feedback[item.id]
-      if (!entry || entry.state === 'pending') return `? ${item.text} (não verificado)`
+      if (!entry || entry.state === 'pending')
+        return `? ${item.text} (${t('merge.testFeedbackUnverified')})`
       if (entry.state === 'pass') return `✓ ${item.text}`
       return `✗ ${item.text}${entry.note.trim() ? ` — ${entry.note.trim()}` : ''}`
     })
-    return `Feedback de teste da branch "${branchName}":\n${lines.join('\n')}`
+    return `${t('merge.testFeedbackSummaryHeader', { branch: branchName })}\n${lines.join('\n')}`
   }
 
   return (
@@ -155,7 +156,7 @@ export function BranchTestingModal({
           </div>
         </div>
 
-        {/* Resumo real das alterações (git diff --name-status target...source) */}
+        {/* Real change summary (git diff --name-status target...source) */}
         <div>
           <h4
             style={{
@@ -372,8 +373,8 @@ export function BranchTestingModal({
           </ul>
         </div>
 
-        {/* Camada 4 do Escudo — sobe o app de verdade num ambiente isolado
-            (Testar/Integrar) e mostra o resultado real, não uma promessa. */}
+        {/* Shield layer 4 — actually boots the app in an isolated environment
+            (Test/Integrate) and shows the real result, not a promise. */}
         <div>
           <h4
             style={{
@@ -421,9 +422,9 @@ export function BranchTestingModal({
           </ul>
         </div>
 
-        {/* Procedimento de teste — checklist de confirmação humana. A IA só
-            descreve o que testar (nunca afirma que funciona); passou/falhou
-            é sempre uma decisão do usuário, marcada aqui item a item. */}
+        {/* Test procedure — human confirmation checklist. The AI only
+            describes what to test (never claims it works); pass/fail is
+            always a user decision, marked here item by item. */}
         <div>
           <h4
             style={{

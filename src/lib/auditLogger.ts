@@ -1,10 +1,5 @@
-// Este foi feito para criar um sistema de Auditoria e Logs Avançado independente do DevTools, capturando exceções globais, rejeições de promessas e eventos de rede em tempo real.
-
-import { isTauriEnv } from './api/transport'
-
 export type AuditLogLevel = 'error' | 'warn' | 'info' | 'debug'
-export type AuditLogCategory =
-  'SYSTEM' | 'HTTP' | 'WS' | 'TAURI' | 'REACT' | 'ROUTER' | 'DOM' | 'PTY'
+export type AuditLogCategory = 'SYSTEM' | 'HTTP' | 'WS' | 'TAURI' | 'REACT' | 'ROUTER' | 'DOM' | 'PTY'
 
 export interface AuditEntry {
   id: string
@@ -15,7 +10,7 @@ export interface AuditEntry {
   message: string
   stack?: string
   context?: Record<string, unknown>
-  env: 'Desktop (Tauri)' | 'Web Browser'
+  env: 'Desktop (Tauri)'
 }
 
 type AuditListener = (entries: AuditEntry[]) => void
@@ -34,7 +29,6 @@ class AuditSystem {
     if (typeof window === 'undefined' || this.initialized) return
     this.initialized = true
 
-    // Captura erros JavaScript globais não tratados (window.onerror)
     window.addEventListener('error', (event) => {
       this.log({
         level: 'error',
@@ -49,7 +43,6 @@ class AuditSystem {
       })
     })
 
-    // Captura rejeições de Promessas não tratadas (unhandledrejection)
     window.addEventListener('unhandledrejection', (event) => {
       const reason = event.reason
       const message = reason instanceof Error ? reason.message : String(reason)
@@ -67,7 +60,7 @@ class AuditSystem {
     this.log({
       level: 'info',
       category: 'SYSTEM',
-      message: `Central de Auditoria inicializada em modo ${isTauriEnv() ? 'Desktop Tauri' : 'Web Server Browser'}.`,
+      message: 'Audit Center initialized in Desktop Tauri mode.',
     })
   }
 
@@ -87,7 +80,7 @@ class AuditSystem {
       message: params.message,
       stack: params.stack,
       context: params.context,
-      env: isTauriEnv() ? 'Desktop (Tauri)' : 'Web Browser',
+      env: 'Desktop (Tauri)',
     }
 
     this.logs.unshift(entry)
@@ -125,7 +118,7 @@ class AuditSystem {
     return JSON.stringify(
       {
         exportedAt: new Date().toISOString(),
-        environment: isTauriEnv() ? 'Desktop (Tauri 2)' : 'Web Browser',
+        environment: 'Desktop (Tauri 2)',
         url: typeof window !== 'undefined' ? window.location.href : 'N/A',
         totalLogs: this.logs.length,
         logs: this.logs,

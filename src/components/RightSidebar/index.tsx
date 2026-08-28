@@ -40,11 +40,9 @@ import type { Project, SubTab, Terminal } from '../../lib/types'
 import { selectActiveProject, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
-import { McpPanel } from '../McpPanel'
 
-const MarkdownRenderer = lazy(() =>
-  import('../MarkdownPane/MarkdownRenderer').then((m) => ({ default: m.MarkdownRenderer })),
-)
+const MarkdownRenderer = lazy(() => import('../MarkdownPane/MarkdownRenderer').then(m => ({ default: m.MarkdownRenderer })))
+import { McpPanel } from '../McpPanel'
 import { GitControl } from '../ProjectSidebar/GitControl'
 import { TodoSidebar } from '../TodoSidebar'
 import { DotmCircular2 } from '../ui/dotm-circular-2'
@@ -71,12 +69,12 @@ export function RightSidebar() {
         .filter((terminal) => !terminal.kind)
         .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))[0]
     : null
-  const sidebarSubTab =
-    sidebarTerminal?.tabs.find((tab) => tab.id === sidebarTerminal.activeTabId) ??
-    sidebarTerminal?.tabs[0]
+  const sidebarSubTab = sidebarTerminal?.tabs.find((tab) => tab.id === sidebarTerminal.activeTabId)
+    ?? sidebarTerminal?.tabs[0]
 
   const todoEnabled = preferences.enabledFeatures.todos
-  const gitEnabled = preferences.enabledFeatures.git && preferences.gitControlPlacement === 'right'
+  const gitEnabled =
+    preferences.enabledFeatures.git && preferences.gitControlPlacement === 'right'
   const mcpEnabled = preferences.enabledFeatures.mcp
   // The panel now survives its features being turned off one by one, so a mode whose
   // feature was disabled has to fall back instead of rendering a hidden feature.
@@ -317,11 +315,11 @@ function GitSidebarContent({
   sidebarSubTab: SubTab | undefined
 }) {
   const t = useT()
-  // Prefere o cwd do terminal/sub-tab vivo quando existir (mais preciso —
-  // cobre worktree/subpasta) — mas o Controle de Versão sempre deveria
-  // funcionar com o projeto SELECIONADO, não exigir um terminal aberto. Sem
-  // esse fallback, um projeto sem nenhum terminal aberto nunca mostrava git
-  // nenhum mesmo estando selecionado.
+  // Prefers the live terminal/sub-tab's cwd when it exists (more precise —
+  // covers worktree/subfolder) — but Source Control should always work
+  // with the SELECTED project, not require an open terminal. Without this
+  // fallback, a project with no open terminal never showed any git status
+  // even while selected.
   const cwd = sidebarSubTab?.cwd || sidebarTerminal?.cwd || activeProject?.defaultCwd
   const ptyId = sidebarSubTab && sidebarTerminal ? sidebarSubTab.ptyId : null
   const terminalName = sidebarTerminal?.name ?? activeProject?.name ?? ''
@@ -435,8 +433,7 @@ function MarkdownSidebarViewer() {
   useEffect(() => {
     if (!selected?.path || content === null) return
     const frame = window.requestAnimationFrame(() => {
-      if (scrollRef.current)
-        scrollRef.current.scrollTop = markdownScrollPositions.get(selected.path) ?? 0
+      if (scrollRef.current) scrollRef.current.scrollTop = markdownScrollPositions.get(selected.path) ?? 0
     })
     return () => window.cancelAnimationFrame(frame)
   }, [content, selected?.path])
@@ -467,9 +464,13 @@ function MarkdownSidebarViewer() {
         const payload = event.payload
         if (payload.type === 'enter') {
           nativeDragHasMarkdownRef.current = payload.paths.some(isMarkdownPath)
-          setDropActive(nativeDragHasMarkdownRef.current && isOverViewer(payload.position))
+          setDropActive(
+            nativeDragHasMarkdownRef.current && isOverViewer(payload.position),
+          )
         } else if (payload.type === 'over') {
-          setDropActive(nativeDragHasMarkdownRef.current && isOverViewer(payload.position))
+          setDropActive(
+            nativeDragHasMarkdownRef.current && isOverViewer(payload.position),
+          )
         } else if (payload.type === 'leave') {
           nativeDragHasMarkdownRef.current = false
           setDropActive(false)
@@ -531,13 +532,33 @@ function MarkdownSidebarViewer() {
         <section
           ref={panelRef}
           className={`${styles.emptyMarkdown} ${dropActive ? styles.markdownDropActive : ''}`}
-          style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', padding: '12px', gap: '8px', overflowY: 'auto' }}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'stretch',
+            padding: '12px',
+            gap: '8px',
+            overflowY: 'auto',
+          }}
           onDragEnter={onInternalDragOver}
           onDragOver={onInternalDragOver}
           onDragLeave={onInternalDragLeave}
           onDrop={onInternalDrop}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', paddingBottom: '6px', borderBottom: '1px solid var(--border)', fontSize: '11px', fontWeight: 600, color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              paddingBottom: '6px',
+              borderBottom: '1px solid var(--border)',
+              fontSize: '11px',
+              fontWeight: 600,
+              color: 'var(--fg-muted)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
             <FileText size={13} />
             <span>{t('plans.title')}</span>
           </div>
@@ -562,7 +583,9 @@ function MarkdownSidebarViewer() {
                 onClick={() => openMarkdownSidebar(p.path, p.title)}
               >
                 <FileText size={13} style={{ color: 'var(--accent)', flexShrink: 0 }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title}</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {p.title}
+                </span>
               </button>
             ))}
           </div>
@@ -608,7 +631,9 @@ function MarkdownSidebarViewer() {
       <header className={styles.header}>
         <div className={styles.heading}>
           <FileText size={15} />
-          <span title={selected?.title ?? markdown?.title ?? ''}>{selected?.title ?? markdown?.title ?? ''}</span>
+          <span title={selected?.title ?? markdown?.title ?? ''}>
+            {selected?.title ?? markdown?.title ?? ''}
+          </span>
         </div>
         <div className={styles.headerActions}>
           <button
@@ -698,27 +723,26 @@ function MarkdownSidebarViewer() {
           ref={scrollRef}
           className={styles.content}
           onScroll={(event) => {
-            if (selected?.path)
-              markdownScrollPositions.set(selected.path, event.currentTarget.scrollTop)
+            if (selected?.path) markdownScrollPositions.set(selected.path, event.currentTarget.scrollTop)
           }}
         >
-          {error ? (
-            <div className={styles.empty}>
-              <FileText size={20} />
-              <strong>{t('rightSidebar.markdownError')}</strong>
-              <span>{error}</span>
-            </div>
-          ) : content === null ? (
-            <div className={styles.empty}>
-              <span>{t('ui.markdown.loading')}</span>
-            </div>
-          ) : (
-            <div ref={markdownRef} className={styles.commentableMarkdown}>
-              <Suspense fallback={<span>{t('ui.markdown.loading')}</span>}>
-                <MarkdownRenderer content={content} dark={dark} />
-              </Suspense>
-            </div>
-          )}
+        {error ? (
+          <div className={styles.empty}>
+            <FileText size={20} />
+            <strong>{t('rightSidebar.markdownError')}</strong>
+            <span>{error}</span>
+          </div>
+        ) : content === null ? (
+          <div className={styles.empty}>
+            <span>{t('ui.markdown.loading')}</span>
+          </div>
+        ) : (
+          <div ref={markdownRef} className={styles.commentableMarkdown}>
+            <Suspense fallback={<span>{t('ui.markdown.loading')}</span>}>
+              <MarkdownRenderer content={content} dark={dark} />
+            </Suspense>
+          </div>
+        )}
         </div>
       </div>
     </section>

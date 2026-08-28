@@ -13,27 +13,27 @@ export type ContinuityResult = {
   file2Exists: boolean
   file2FollowsRule: boolean
   /**
-   * Verdadeiro só quando os dois arquivos existem E o segundo seguiu a regra
-   * do primeiro sem ela ter sido repetida no segundo prompt — prova de que a
-   * MESMA sessão de agente manteve contexto real entre os dois turnos, não
-   * só que o CLI consegue mexer em arquivo. Se o arquivo 2 existe mas não
-   * segue a regra, a conclusão é que não era a mesma sessão — ela "nasceu
-   * vazia" e só criou um arquivo novo sem memória do que veio antes.
+   * True only when both files exist AND the second one followed the rule
+   * from the first without it being repeated in the second prompt — proof that the
+   * SAME agent session kept real context across the two turns, not
+   * just that the CLI can touch a file. If file 2 exists but doesn't
+   * follow the rule, the conclusion is that it wasn't the same session — it "was born
+   * empty" and just created a new file with no memory of what came before.
    */
   sessionLikelyContinuous: boolean
 }
 
 /**
- * Cenário de continuidade de sessão pedido explicitamente nesta tarefa:
- * prompt 1 manda o agente criar um arquivo com uma regra explícita; prompt 2
- * pede um SEGUNDO arquivo "seguindo a mesma regra" sem repeti-la. O sistema
- * verifica os dois fatos direto no disco (nunca confiando no que o agente
- * *diz* que fez): o arquivo 1 existe, o arquivo 2 existe, e o conteúdo do
- * arquivo 2 realmente obedece a regra do arquivo 1.
+ * Session continuity scenario explicitly requested for this task:
+ * prompt 1 tells the agent to create a file with an explicit rule; prompt 2
+ * asks for a SECOND file "following the same rule" without repeating it. The system
+ * verifies both facts directly on disk (never trusting what the agent
+ * *says* it did): file 1 exists, file 2 exists, and the content of
+ * file 2 really obeys file 1's rule.
  *
- * Reaproveitado em três cenários do plano: 1 terminal (baseline), 2
- * terminais simultâneos (concorrência), e "terminal volta a subir depois do
- * merge" (roda de novo numa sessão nova, no projeto já integrado).
+ * Reused across three scenarios in the plan: 1 terminal (baseline), 2
+ * simultaneous terminals (concurrency), and "terminal comes back up after the
+ * merge" (runs again in a new session, in the already-integrated project).
  */
 export async function verifyAgentSessionContinuity(
   ptyId: string,
@@ -42,13 +42,13 @@ export async function verifyAgentSessionContinuity(
 ): Promise<ContinuityResult> {
   const timeoutMs = opts.timeoutMs ?? 120_000
 
-  // Pré-checagem defensiva: responde um eventual diálogo de confiança/
-  // permissão (visto ao vivo no Antigravity — "Do you trust the contents of
-  // this project?") ANTES de mandar qualquer prompt de trabalho. A entrega
-  // do prompt em si (`sendOpenCodePrompt`, abaixo) já reaproveita a lógica
-  // real de digitação/confirmação do app (`agentPromptDelivery.ts`), que
-  // por si só já tolera o CLI ainda estar carregando — isso aqui cobre só a
-  // tela ANTERIOR à caixa de prompt, que aquela lógica não conhece.
+  // Defensive pre-check: answers any trust/permission dialog
+  // (seen live in Antigravity — "Do you trust the contents of
+  // this project?") BEFORE sending any work prompt. The actual prompt
+  // delivery (`sendOpenCodePrompt`, below) already reuses the app's real
+  // typing/confirmation logic (`agentPromptDelivery.ts`), which
+  // already tolerates the CLI still loading on its own — this here only covers the
+  // screen BEFORE the prompt box, which that logic doesn't know about.
   await ensureAgentReady(ptyId, { timeoutMs: 60_000 })
 
   const tag = Math.random().toString(36).slice(2, 8)
@@ -65,7 +65,7 @@ export async function verifyAgentSessionContinuity(
   const delivered1 = await sendOpenCodePrompt(ptyId, prompt1, { timeoutMs })
   if (!delivered1) {
     throw new Error(
-      `verifyAgentSessionContinuity: prompt 1 não foi confirmado na tela do OpenCode (pty=${ptyId})`,
+      `verifyAgentSessionContinuity: prompt 1 was not confirmed on the OpenCode screen (pty=${ptyId})`,
     )
   }
 
@@ -97,7 +97,7 @@ export async function verifyAgentSessionContinuity(
   const delivered2 = await sendOpenCodePrompt(ptyId, prompt2, { timeoutMs })
   if (!delivered2) {
     throw new Error(
-      `verifyAgentSessionContinuity: prompt 2 não foi confirmado na tela do OpenCode (pty=${ptyId})`,
+      `verifyAgentSessionContinuity: prompt 2 was not confirmed on the OpenCode screen (pty=${ptyId})`,
     )
   }
 

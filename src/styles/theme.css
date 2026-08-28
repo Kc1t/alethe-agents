@@ -1,22 +1,21 @@
-/* Fonte do terminal embutida no app (não depende de fonte instalada no SO).
-   No Windows "Cascadia Mono" já vem instalada por padrão e cobre os glyphs
-   estilo Powerline/Nerd Font que TUIs modernas (ex. o `opentui` do
-   OpenCode) usam pra ícones/separadores decorativos — no Linux/macOS ela
-   normalmente NÃO existe, e o navegador cai pro fallback genérico do
-   sistema. Esse fallback cobre o alfabeto normal, mas não os glyphs
-   decorativos — então, só PRA ESSES caracteres específicos, o navegador
-   troca de fonte de novo, silenciosamente, pra uma terceira fonte com
-   métricas de largura diferentes. Como o renderer Canvas do xterm.js
-   desenha cada célula com um avanço de pixel FIXO (medido de uma fonte de
-   referência única), esse glyph "de fonte errada" não encaixa na grade —
-   o resultado visual é letras/símbolos se sobrepondo, pior quanto mais
-   compacto o painel (confirmado ao vivo, e via `fc-match` checando
-   cobertura de charset por fonte nesta máquina).
-   Fix: embutir "Caskaydia Cove Nerd Font Mono" (a variante Nerd Font da
-   própria Cascadia Code, cobertura de glyph completa, SIL OFL 1.1 — ver
-   src/assets/fonts/LICENSE-CascadiaCode.txt) como PRIMEIRA opção da
-   fonte do terminal — mesma família visual em todo SO, garantida, sem
-   depender de fallback nenhum. */
+/* Terminal font embedded in the app (doesn't depend on an OS-installed font).
+   On Windows "Cascadia Mono" ships installed by default and covers the
+   Powerline/Nerd Font-style glyphs that modern TUIs (e.g. OpenCode's
+   `opentui`) use for decorative icons/separators — on Linux/macOS it
+   normally does NOT exist, and the browser falls back to the system's
+   generic fallback. That fallback covers the normal alphabet but not the
+   decorative glyphs — so, only for THOSE specific characters, the browser
+   silently switches fonts again, to a third font with different width
+   metrics. Since xterm.js's Canvas renderer draws every cell with a FIXED
+   pixel advance (measured from a single reference font), that "wrong-font"
+   glyph doesn't fit the grid — the visual result is letters/symbols
+   overlapping, worse the more compact the pane (confirmed live, and via
+   `fc-match` checking per-font charset coverage on this machine).
+   Fix: embed "Caskaydia Cove Nerd Font Mono" (the Nerd Font variant of
+   Cascadia Code itself, full glyph coverage, SIL OFL 1.1 — see
+   src/assets/fonts/LICENSE-CascadiaCode.txt) as the FIRST option for the
+   terminal font — the same visual family on every OS, guaranteed, with no
+   dependency on any fallback. */
 @font-face {
   font-family: 'Caskaydia Cove Nerd Font Mono';
   src: url('../assets/fonts/CaskaydiaCoveNerdFontMono-Regular.ttf') format('truetype');
@@ -46,16 +45,16 @@
   font-display: block;
 }
 
-/* Transição suave ao trocar de tema (App.tsx seta
-   document.documentElement.dataset.theme = uiTheme, instantâneo por padrão).
-   Custom properties em si não são animáveis, mas as propriedades que as
-   CONSOMEM são — então transicionar essas é o que faz a troca de paleta
-   parecer suave. Curta (150ms) de propósito: rápida o bastante pra não virar
-   "delay perceptível" em feedback de hover/status que hoje é instantâneo;
-   seletores mais específicos (ex.: .activityCell:hover) continuam vencendo a
-   cascata com sua própria transição, então não é 100% universal, mas cobre a
-   grande maioria da UI sem tocar em cada componente. Desliga se o usuário
-   pediu menos animação no SO. */
+/* Smooth transition when switching theme (App.tsx sets
+   document.documentElement.dataset.theme = uiTheme, instant by default).
+   Custom properties themselves aren't animatable, but the properties that
+   CONSUME them are — so transitioning those is what makes the palette swap
+   look smooth. Short (150ms) on purpose: fast enough to not become a
+   "perceptible delay" on hover/status feedback that's instant today; more
+   specific selectors (e.g. .activityCell:hover) still win the cascade with
+   their own transition, so it's not 100% universal, but it covers most of
+   the UI without touching every component. Turns off if the user asked for
+   less animation at the OS level. */
 *,
 *::before,
 *::after {
@@ -143,6 +142,17 @@
   --agent-freebuff-soft: rgba(124, 92, 255, 0.15);
   --agent-mimo-soft: rgba(255, 122, 26, 0.15);
   --agent-antigravity-soft: rgba(66, 133, 244, 0.15);
+
+  --project-orange: #f97316;
+  --project-pink: #ec4899;
+  --project-purple: #8b5cf6;
+  --project-blue: #0ea5e9;
+  --project-teal: #14b8a6;
+  --project-green: #84cc16;
+  --project-yellow: #eab308;
+  --project-red: #ef4444;
+  --project-gray: #64748b;
+  --project-black: #0a0a0a;
 
   /* foco dotted (Alethe focus mode) */
   --focus-ring: #38bdf8;
@@ -797,15 +807,15 @@
 }
 
 /* ==========================================================================
-   Arco-Íris Infinito (Infinite Rainbow RGB) & Borda Infinita de Container
+   Infinite Rainbow RGB & Infinite Container Border
    ========================================================================== */
-/* `filter: hue-rotate()` foi removido de propósito: era redundante com o
-   `background-position` (o próprio gradiente já contém todas as cores, o
-   hue-rotate só duplicava o efeito de "cor girando" por cima) e é a
-   propriedade mais cara das duas — `filter` força repaint pixel a pixel do
-   elemento inteiro a cada frame, sem poder ficar só no compositor como
-   `transform`/`opacity`. Sem o `filter`, sobra só a animação do gradiente,
-   bem mais barato de manter fluido. */
+/* `filter: hue-rotate()` was removed on purpose: it was redundant with
+   `background-position` (the gradient itself already contains every color,
+   hue-rotate just duplicated the "color spinning" effect on top) and is the
+   more expensive property of the two — `filter` forces a pixel-by-pixel
+   repaint of the whole element every frame, unable to stay compositor-only
+   like `transform`/`opacity`. Without `filter`, only the gradient animation
+   is left, much cheaper to keep smooth. */
 @keyframes rainbowInfinite {
   0% {
     background-position: 0% 50%;
@@ -818,13 +828,13 @@
   }
 }
 
-/* Ângulo animável do gradiente cônico da borda do container — registrado via
-   `@property` pra dar pro navegador interpolar um <angle> suavemente entre
-   os keyframes (sem isso, `from <var>` não anima, só troca em degrau). Só
-   usado pela borda do CONTAINER (`.rainbow-container-border`), não pelos
-   swatches de cor (`.swatch-rgb-rainbow`), que continuam com o gradiente
-   linear original — mudar aqueles também mudaria a prévia de cor no
-   seletor de cor do projeto, fora do escopo deste fix. */
+/* Animatable angle for the container border's conic gradient — registered via
+   `@property` so the browser can smoothly interpolate an <angle> between
+   keyframes (without this, `from <var>` doesn't animate, it just steps).
+   Only used by the CONTAINER border (`.rainbow-container-border`), not the
+   color swatches (`.swatch-rgb-rainbow`), which keep the original linear
+   gradient — changing those too would also change the color preview in the
+   project color picker, out of scope for this fix. */
 @property --rainbow-angle {
   syntax: '<angle>';
   inherits: false;
@@ -859,30 +869,32 @@
   border-radius: 12px;
 }
 
-/* Tema de cor "arco-íris" escolhido pelo projeto — sempre visível/animando
-   enquanto essa cor estiver selecionada, independente de foco (não é um
-   indicador de foco; é uma opção de cor única, igual qualquer outra cor de
-   projeto, só que animada). Aplicada só quando `project.color ===
-   'rgb-rainbow'` (ver `isRainbow` em ProjectContainer.tsx). */
+/* Project-chosen "rainbow" color theme — always visible/animating while this
+   color is selected, regardless of focus (it's not a focus indicator; it's a
+   single color option, like any other project color, just animated). Applied
+   only when `project.color === 'rgb-rainbow'` (see `isRainbow` in
+   ProjectContainer.tsx). */
 .rainbow-container-border::before {
   content: '';
   position: absolute;
-  /* `inset: 0` (não -2px) + `border-radius: inherit`: o anel precisa nascer
-     DENTRO da caixa real (que tem `overflow: hidden` e cantos quadrados via
-     ProjectContainer.module.css), senão fica todo cortado nas bordas retas
-     e só a curva de um raio hardcoded aparece nos cantos. */
+  /* `inset: 0` (not -2px) + `border-radius: inherit`: the ring needs to be
+     born INSIDE the real box (which has `overflow: hidden` and square
+     corners via ProjectContainer.module.css), otherwise it gets clipped at
+     the straight edges and only the curve of a hardcoded radius shows at
+     the corners. */
   inset: 0;
   border-radius: inherit;
   padding: 2px;
-  /* Cônico em vez de linear: um gradiente linear (mesmo diagonal) só varia
-     ao longo de UM eixo reto — cantos opostos do retângulo (ex.: superior-
-     esquerdo x inferior-direito) sempre mostram cores bem diferentes do
-     gradiente ao mesmo tempo, o que por trás do recorte em anel (mask xor
-     abaixo) parece uma cor "cortando" o contorno em vez de circular por
-     ele. Cônico centrado no meio do container faz a cor variar pelo ÂNGULO
-     a partir do centro — como o contorno de um retângulo é, ao redor de
-     todo o perímetro, uma sequência contínua de ângulos vistos desse
-     centro, a cor circula de verdade pela borda inteira, sem esse corte. */
+  /* Conic instead of linear: a linear gradient (even diagonal) only varies
+     along ONE straight axis — opposite corners of the rectangle (e.g.
+     top-left vs bottom-right) always show very different colors from the
+     gradient at the same time, which behind the ring cutout (mask xor
+     below) looks like a color "cutting" the outline instead of circling
+     it. Conic centered on the container's middle makes the color vary by
+     ANGLE from the center — since a rectangle's outline is, all the way
+     around its perimeter, a continuous sequence of angles seen from that
+     center, the color genuinely circles the whole border, without that
+     cut. */
   background: conic-gradient(
     from var(--rainbow-angle),
     #ff0055,
@@ -901,13 +913,13 @@
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   pointer-events: none;
-  /* Precisa ficar acima do anel de foco de qualquer pane dentro do
-     container (`.pane:focus-within`, z-index: 2 em TerminalPane.module.css)
-     — como os dois empatavam em z-index: 2, a pane focada (mais funda na
-     árvore, pintada depois) vencia o desempate por ordem de DOM e seu
-     box-shadow (que sangra 3px pra fora da própria borda) cobria justo o
-     trecho do anel arco-íris adjacente a ela, aparecendo como uma linha
-     azul cortando o anel só onde havia foco. */
+  /* Needs to sit above the focus ring of any pane inside the container
+     (`.pane:focus-within`, z-index: 2 in TerminalPane.module.css) — since
+     both tied at z-index: 2, the focused pane (deeper in the tree, painted
+     later) won DOM-order tiebreaking and its box-shadow (which bleeds 3px
+     outside its own border) covered exactly the stretch of the rainbow ring
+     adjacent to it, showing up as a blue line cutting the ring only where
+     there was focus. */
   z-index: 5;
 }
 

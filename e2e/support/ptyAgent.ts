@@ -1,24 +1,24 @@
 /**
- * Ponte fina pro hook real de e2e exposto pelo app (`window.__ALETHE_E2E__`,
- * ver `src/lib/e2eHooks.ts`) — chamado via `browser.execute()` PADRÃO do
- * WebDriver (não `browser.tauri.execute()`).
+ * Thin bridge to the app's real e2e hook (`window.__ALETHE_E2E__`,
+ * see `src/lib/e2eHooks.ts`) — called via WebDriver's STANDARD
+ * `browser.execute()` (not `browser.tauri.execute()`).
  *
- * MUDANÇA DE ABORDAGEM CONFIRMADA AO VIVO NESTA SESSÃO: `browser.tauri
- * .execute()` (a ponte específica de Tauri do `@wdio/tauri-service`) nunca
- * funciona nesse ambiente — todo `tauri.core.invoke(...)` estourava
- * "Tauri core.invoke not available after 5s timeout", reproduzido de forma
- * isolada e determinística. A alternativa óbvia (bater direto no backend
- * via `fetch()` HTTP a partir do Node, contornando o webview) FOI
- * DELIBERADAMENTE REJEITADA: isso testaria só o backend, nunca o FRONTEND —
- * e é exatamente no frontend que bugs reais já apareceram nesta sessão
- * (Parte 1: o gate de validação mentindo; correções de sincronização de
- * terminal). `browser.execute()` padrão FOI confirmado funcionando (alcança
- * `window.location`, `window.__ALETHE_E2E__` etc. na página real) — então
- * cada helper aqui chama, via uma função literal (serialização padrão do
- * WebdriverIO, sem reconstrução manual de string), a função exposta pelo
- * hook — que por sua vez chama a função REAL de `src/lib/api/*` que a UI de
- * verdade usa (mesma decisão `isTauriEnv()`/`canUseSharedCoreTransport()`
- * de sempre).
+ * APPROACH CHANGE CONFIRMED LIVE IN THIS SESSION: `browser.tauri
+ * .execute()` (the `@wdio/tauri-service`'s Tauri-specific bridge) never
+ * works in this environment — every `tauri.core.invoke(...)` threw
+ * "Tauri core.invoke not available after 5s timeout", reproduced in an
+ * isolated and deterministic way. The obvious alternative (hitting the backend
+ * directly via HTTP `fetch()` from Node, bypassing the webview) was
+ * DELIBERATELY REJECTED: that would only test the backend, never the FRONTEND —
+ * and it's exactly the frontend where real bugs have already shown up in this session
+ * (Part 1: the validation gate lying; terminal sync
+ * fixes). The standard `browser.execute()` WAS confirmed to work (it reaches
+ * `window.location`, `window.__ALETHE_E2E__` etc. on the real page) — so
+ * each helper here calls, via a literal function (WebdriverIO's standard
+ * serialization, no manual string reconstruction), the function exposed by
+ * the hook — which in turn calls the REAL function from `src/lib/api/*` that the
+ * actual UI uses (the same `isTauriEnv()`/`canUseSharedCoreTransport()`
+ * decision as always).
  */
 type AletheE2EWindow = {
   __ALETHE_E2E__?: {
@@ -61,7 +61,7 @@ export async function writePtyData(
   await invokeTauri('write_pty', { id, data, profileId })
 }
 
-/** Manda uma linha de comando (adiciona o Enter certo pro SO). */
+/** Sends a command line (adds the right Enter for the OS). */
 export async function sendPtyLine(
   id: string,
   line: string,
@@ -100,7 +100,7 @@ export async function invokeTauri<T = unknown>(
         return Boolean(tauri.__TAURI_INTERNALS__?.invoke ?? tauri.__TAURI__?.core?.invoke)
       })
     },
-    { timeout: 15_000, interval: 300, timeoutMsg: 'Tauri invoke não ficou pronto em 15s' },
+    { timeout: 15_000, interval: 300, timeoutMsg: 'Tauri invoke was not ready within 15s' },
   )
   const result = await browser.execute(
     (command, invokeArgs) => {
@@ -109,7 +109,7 @@ export async function invokeTauri<T = unknown>(
         __TAURI__?: { core?: { invoke: (c: string, a?: unknown) => Promise<unknown> } }
       }
       const invokeFn = tauri.__TAURI_INTERNALS__?.invoke ?? tauri.__TAURI__?.core?.invoke
-      if (!invokeFn) throw new Error('Tauri invoke function não encontrada em window')
+      if (!invokeFn) throw new Error('Tauri invoke function not found on window')
       return invokeFn(command, invokeArgs)
     },
     cmd,
@@ -139,16 +139,16 @@ export async function killPty(id: string, profileId = DEFAULT_PROFILE_ID): Promi
 }
 
 /**
- * `write_pty` retorna sucesso assim que os bytes chegam no PTY — isso NÃO
- * prova que o processo do outro lado (um CLI de agente ainda inicializando)
- * estava pronto pra interpretar aquilo como um prompt de verdade. É
- * exatamente o tipo de falso positivo raso que motivou essa suíte inteira:
- * a chamada "funciona" (sem erro), mas o texto se perde numa tela de
- * carregamento, splash, ou é mal-interpretado por um diálogo de
- * sim/não ainda aberto. Espera o scrollback "assentar" (parar de mudar por
- * `stableForMs` seguidos) antes de considerar o terminal pronto pra receber
- * entrada de verdade — mesmo princípio já usado no settle-check de resize
- * do app real (`useXtermSession.ts`), aplicado aqui pro conteúdo do CLI.
+ * `write_pty` returns success as soon as the bytes reach the PTY — that does NOT
+ * prove that the process on the other side (an agent CLI still starting up)
+ * was ready to interpret that as a real prompt. This is
+ * exactly the kind of shallow false positive that motivated this whole suite:
+ * the call "works" (no error), but the text gets lost on a
+ * loading screen, a splash, or gets misinterpreted by a
+ * yes/no dialog still open. Waits for the scrollback to "settle" (stop changing for
+ * `stableForMs` in a row) before considering the terminal ready to receive
+ * real input — the same principle already used in the real app's resize
+ * settle-check (`useXtermSession.ts`), applied here to the CLI's content.
  */
 export async function waitForScrollbackStable(
   id: string,
@@ -172,14 +172,14 @@ export async function waitForScrollbackStable(
     }
     await new Promise((resolve) => setTimeout(resolve, pollMs))
   }
-  throw new Error(`waitForScrollbackStable: PTY ${id} nunca assentou em ${timeoutMs}ms`)
+  throw new Error(`waitForScrollbackStable: PTY ${id} never settled within ${timeoutMs}ms`)
 }
 
-/** Padrões de diálogo de confiança/permissão vistos ao vivo nesta sessão
- *  (Antigravity: "Do you trust the contents of this project?") — bloqueiam
- *  o CLI até alguém responder. Heurística deliberadamente ampla (vários
- *  CLIs de agente têm variações desse mesmo tipo de prompt na primeira
- *  execução numa pasta nova). */
+/** Trust/permission dialog patterns seen live in this session
+ *  (Antigravity: "Do you trust the contents of this project?") — they block
+ *  the CLI until someone answers. Deliberately broad heuristic (several
+ *  agent CLIs have variations of this same type of prompt on their first
+ *  run in a new folder). */
 const TRUST_OR_PERMISSION_PATTERNS = [
   /do you trust/i,
   /trust the contents/i,
@@ -189,12 +189,12 @@ const TRUST_OR_PERMISSION_PATTERNS = [
 ]
 
 /**
- * Espera o CLI do agente terminar de subir e, se ele estiver preso num
- * diálogo de confiança/permissão, responde automaticamente (Enter no
- * default, geralmente "Sim") antes de devolver o controle — só DEPOIS disso
- * é seguro mandar um prompt de trabalho de verdade. Sem isso, o primeiro
- * prompt real chegava cedo demais nesse tipo de tela e era engolido sem
- * nenhum erro reportado.
+ * Waits for the agent CLI to finish starting up and, if it's stuck on a
+ * trust/permission dialog, answers it automatically (Enter on the
+ * default, usually "Yes") before returning control — only AFTER this
+ * is it safe to send a real work prompt. Without this, the first
+ * real prompt arrived too early on this kind of screen and was swallowed with
+ * no error reported at all.
  */
 export async function ensureAgentReady(
   id: string,
@@ -204,8 +204,8 @@ export async function ensureAgentReady(
   if (TRUST_OR_PERMISSION_PATTERNS.some((pattern) => pattern.test(content))) {
     await sendPtyLine(id, '')
     content = await waitForScrollbackStable(id, opts)
-    // Ainda preso num diálogo depois de um Enter — tenta "y" explícito
-    // (padrão comum quando o default não é a opção afirmativa).
+    // Still stuck on a dialog after an Enter — tries an explicit "y"
+    // (a common pattern when the default isn't the affirmative option).
     if (TRUST_OR_PERMISSION_PATTERNS.some((pattern) => pattern.test(content))) {
       await sendPtyLine(id, 'y')
       await waitForScrollbackStable(id, opts)
@@ -214,11 +214,11 @@ export async function ensureAgentReady(
 }
 
 /**
- * Espera até que `predicate()` resolva com um valor truthy, ou estoura
- * timeout. Usado no lugar de esperas fixas porque o tempo de um agente real
- * (OpenCode) processar um prompt varia bastante (cold start do CLI, latência
- * do modelo) — um sleep fixo seria ou lento demais no caso comum ou flaky no
- * caso lento.
+ * Waits until `predicate()` resolves with a truthy value, or throws on
+ * timeout. Used instead of fixed waits because how long a real agent
+ * (OpenCode) takes to process a prompt varies a lot (CLI cold start, model
+ * latency) — a fixed sleep would be either too slow in the common case or flaky in the
+ * slow case.
  */
 export async function waitUntil<T>(
   predicate: () => Promise<T | null | undefined | false>,
@@ -236,6 +236,6 @@ export async function waitUntil<T>(
     await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
   throw new Error(
-    `waitUntil: timeout após ${timeoutMs}ms${lastError ? ` (último erro: ${String(lastError)})` : ''}`,
+    `waitUntil: timeout after ${timeoutMs}ms${lastError ? ` (last error: ${String(lastError)})` : ''}`,
   )
 }

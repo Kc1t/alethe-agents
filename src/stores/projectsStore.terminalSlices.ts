@@ -38,6 +38,7 @@ type TerminalsSlice = Pick<
   | 'createWebPane'
   | 'createGraphifyPane'
   | 'renameTerminal'
+  | 'setBrowserEngine'
   | 'markGsdSyncViewer'
   | 'deleteTerminal'
   | 'deleteTerminalWithWorktreeCleanup'
@@ -46,6 +47,7 @@ type TerminalsSlice = Pick<
   | 'setTerminalDisabled'
   | 'setProjectDisabled'
   | 'setLaneVisible'
+  | 'setTerminalTopbarPinned'
   | 'setTerminalRemoteExcluded'
   | 'markTerminalUsed'
 >
@@ -296,6 +298,12 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
     renameTerminal: (projectId, terminalId, name) =>
       updateTerminal(projectId, terminalId, (t) => ({ ...t, name })),
 
+    setBrowserEngine: (projectId, terminalId, engine) =>
+      updateTerminal(projectId, terminalId, (t) => ({
+        ...t,
+        browserConfig: { ...t.browserConfig, engine },
+      })),
+
     markGsdSyncViewer: (projectId, terminalId) =>
       updateTerminal(projectId, terminalId, (t) =>
         t.gsdSyncViewer ? t : { ...t, gsdSyncViewer: true },
@@ -305,19 +313,7 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
       update((state) => {
         const project = state.projects.find((p) => p.id === projectId)
         const terminal = project?.terminals.find((t) => t.id === terminalId)
-        // Deletar QUALQUER terminal com cwd arrasta junto o terminal "viewer"
-        // GSD Sync da mesma pasta (casado por `cwd`, já que o viewer não tem
-        // `worktreeAgentId` próprio). Sem isso, o PTY do viewer (se já foi
-        // aberto ao menos uma vez pela gaveta) vaza pra sempre: assim que o
-        // terminal pai morre, o viewer some da lista vigiada e nunca mais
-        // aparece em lugar nenhum da interface pra ser fechado manualmente.
-        // Centralizado aqui (em vez de em cada chamador) pra cobrir TODOS os
-        // caminhos de teardown — merge integrado, abort, rejeição — de uma vez
-        // só. Antes só disparava com `worktreeAgentId` setado, o que excluía
-        // justamente o agente EFÊMERO de resolução de conflito (nunca tem
-        // esse campo) — confirmado ao vivo: o terminal efêmero morria e o
-        // viewer da sessão-filha dele ficava órfão pra sempre, apontando pra
-        // uma pasta já apagada ("Invalid session ID").
+        // Deleting ANY terminal with cwd drags along the GSD Sync "viewer" terminal for the same folder
         const idsToRemove = new Set([terminalId])
         if (terminal?.cwd) {
           for (const sibling of project?.terminals ?? []) {
@@ -402,21 +398,12 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
           await worktreeRemove(repo, terminal.worktreeAgentId, true)
         } catch (firstErr) {
           if (String(firstErr).includes('worktree_not_found')) {
-            // já tinha sido removida, inofensivo — nada a fazer.
+            // Already removed, harmless — nothing to do.
           } else {
-            // No Windows o handle da pasta pode não ter sido liberado ainda
-            // no instante em que killPtyTree retornou (lag do SO/antivírus
-            // entre o processo morrer de verdade e o handle soltar) — uma
-            // segunda tentativa depois de um respiro curto resolve a maioria
-            // dos casos sem precisar cair pra órfã rastreada.
             await new Promise((resolve) => setTimeout(resolve, 400))
             try {
               await worktreeRemove(repo, terminal.worktreeAgentId, true)
             } catch (secondErr) {
-              // Falha real (persistiu no retry) vira órfã rastreada (mesma
-              // rede de segurança do fluxo de merge) — sem isso a pasta
-              // ficava perdida em disco sem nenhum rastro na interface pra
-              // limpar depois.
               if (!String(secondErr).includes('worktree_not_found')) {
                 get().addOrphanWorktree(projectId, {
                   path: terminal.cwd ?? '',
@@ -529,6 +516,9 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
 
     setLaneVisible: (projectId, terminalId, visible) =>
       updateTerminal(projectId, terminalId, (t) => ({ ...t, laneVisible: visible })),
+
+    setTerminalTopbarPinned: (projectId, terminalId, pinned) =>
+      updateTerminal(projectId, terminalId, (t) => ({ ...t, topbarPinned: pinned })),
 
     setTerminalRemoteExcluded: (projectId, terminalId, excluded) =>
       updateTerminal(projectId, terminalId, (t) => ({ ...t, remoteExcluded: excluded })),

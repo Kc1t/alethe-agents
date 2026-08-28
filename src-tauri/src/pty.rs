@@ -1017,6 +1017,23 @@ pub async fn spawn_pty(
     .await
 }
 
+/// Reads the pid, releases the lock, and only then kills the tree.
+///
+/// `kill_process_tree` runs `taskkill` and waits for it, which under load takes anywhere from
+/// hundreds of milliseconds to seconds. Holding the child lock across that stalls the snapshot
+/// path, which takes the global session lock before this one — and `write_pty` starts by taking
+/// that same global lock, so a single slow kill stops every terminal in the app from accepting a
+/// keystroke while output, which never touches the lock, keeps arriving.
+fn kill_tree_without_holding_child(child: &Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>) {
+    let pid = child.lock().ok().and_then(|mut child| child.process_id());
+    if let Some(pid) = pid {
+        kill_process_tree(pid);
+    }
+    if let Ok(mut child) = child.lock() {
+        let _ = child.kill();
+    }
+}
+
 #[cfg(windows)]
 pub(crate) fn kill_process_tree(pid: u32) {
     let mut command = std::process::Command::new("taskkill");
@@ -1797,11 +1814,14 @@ pub async fn list_pty_processes_core(
                         .map_or(true, |expected| session.profile_id == *expected)
                 })
                 .map(|(id, session)| {
+                    // try_lock, not lock: this snapshot is telemetry and it runs while holding
+                    // the global session lock, which every keystroke needs. Waiting here for a
+                    // busy child would stop the whole app from accepting input to report a pid.
                     let pid = session
                         .child
-                        .lock()
+                        .try_lock()
                         .ok()
-                        .and_then(|child| child.process_id());
+                        .and_then(|mut child| child.process_id());
                     (
                         id.clone(),
                         pid,
@@ -2068,6 +2088,9 @@ pub fn cleanup_orphan_scrollback(app: &AppHandle) {
 
 /// Removes every session from shared state immediately and terminates process trees off the event
 /// loop, so a slow Windows `taskkill` cannot make the application appear frozen while closing.
+/// How long shutdown waits for terminal processes to die before giving up on them.
+const SHUTDOWN_KILL_TIMEOUT: Duration = Duration::from_secs(4);
+
 pub fn kill_all_sessions_background(sessions: &PtySessions) {
     let drained = sessions
         .lock()
@@ -2084,13 +2107,32 @@ pub fn kill_all_sessions_background(sessions: &PtySessions) {
         return;
     }
 
-    let _ = std::thread::Builder::new()
-        .name("alethe-pty-shutdown".to_string())
-        .spawn(move || {
-            for session in drained {
+    // One thread per session, then wait for them. Two reasons this is not fire-and-forget:
+    // terminating a session runs `taskkill` and waits for it, so doing them in sequence costs the
+    // sum of every kill; and a detached thread dies with the process, which on shutdown is
+    // immediate — the agents were simply left running, and the next attempt to resume one of their
+    // sessions found the old process still holding it.
+    let total = drained.len();
+    let (done, finished) = std::sync::mpsc::channel::<()>();
+    for session in drained {
+        let done = done.clone();
+        let _ = std::thread::Builder::new()
+            .name("alethe-pty-shutdown".to_string())
+            .spawn(move || {
                 terminate_session(session);
-            }
-        });
+                let _ = done.send(());
+            });
+    }
+    drop(done);
+
+    // Bounded: a kill that will not finish must not hold the window open forever.
+    let deadline = Instant::now() + SHUTDOWN_KILL_TIMEOUT;
+    for _ in 0..total {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() || finished.recv_timeout(remaining).is_err() {
+            break;
+        }
+    }
 }
 
 /// Synchronous variant for callers (e.g. the standalone `alethe-server`
@@ -2170,12 +2212,82 @@ pub fn install_kill_on_close_guard() {
 
 #[cfg(not(windows))]
 pub fn install_kill_on_close_guard() {
-    let _ = JOB_GUARD_ACTIVE.set(false);
+    // On Linux there is no equivalent of a Windows Job Object. Instead, the shutdown
+    // handler in lib.rs calls kill_all_sessions_background() on ExitRequested, which
+    // now works thanks to the SIGTERM/SIGKILL process-group kill in kill_process_tree.
+    // On the next startup, sweep_orphans_from_previous_session() kills any grandchild
+    // processes that escaped the previous shutdown.
+    let _ = JOB_GUARD_ACTIVE.set(true);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Guards the invariant that made every terminal stop accepting keystrokes at once:
+    /// `kill_process_tree` runs `taskkill` and waits for it, and holding the child lock across
+    /// that stalled the snapshot path, which holds the global session lock that every write needs.
+    /// Guards the reason agents outlived the app: shutdown spawned a detached thread that killed
+    /// sessions one after another, and the process exited before it got through them. The next
+    /// attempt to resume one of those sessions then found the old process still holding it.
+    #[test]
+    fn shutdown_waits_for_the_kills_it_started() {
+        let source = include_str!("pty.rs");
+        let body = source
+            .split("pub fn kill_all_sessions_background")
+            .nth(1)
+            .expect("the shutdown path exists");
+        let body = &body[..body.len().min(2200)];
+
+        assert!(
+            body.contains("recv_timeout"),
+            "shutdown must wait for the kills: a detached thread dies with the process"
+        );
+        assert!(
+            !body.contains(
+                "for session in drained {
+                terminate_session"
+            ),
+            "kills must not run one after another: each waits on taskkill, so the cost adds up"
+        );
+    }
+
+    #[test]
+    fn a_kill_never_runs_while_the_child_lock_is_held() {
+        let source = include_str!("pty.rs");
+        for (index, _) in source.match_indices("child.lock()") {
+            let tail = &source[index..];
+            let block_end = tail
+                .find(
+                    "
+    }",
+                )
+                .unwrap_or(tail.len().min(600));
+            let block = &tail[..block_end.min(600)];
+            assert!(
+                !block.contains("kill_process_tree("),
+                "a child lock is held across kill_process_tree near byte {index};                  read the pid, release the lock, then kill"
+            );
+        }
+    }
+
+    /// The snapshot paths run under the global session lock, so they must never wait on a child.
+    #[test]
+    fn telemetry_never_waits_on_a_child_lock() {
+        let source = include_str!("pty.rs");
+        let snapshot = source
+            .split("fn list_pty_processes")
+            .nth(1)
+            .expect("list_pty_processes exists");
+        let body = &snapshot[..snapshot.len().min(2000)];
+        assert!(
+            !body.contains(
+                ".child
+                        .lock()"
+            ),
+            "the process snapshot must use try_lock: it holds the lock every keystroke needs"
+        );
+    }
 
     #[test]
     fn scrollback_cap_keeps_long_agent_chats() {

@@ -26,44 +26,44 @@ import {
 import { recordStep } from '../support/report'
 
 /**
- * Central de Merges — pipeline de git de ponta a ponta, sobre um
- * projeto-fixture que começa vazio (sem nem `.git`) e é jogado fora ao
- * final. Usa OpenCode como agente de referência (modelos grátis, maior taxa
- * histórica de erro na integração, confirmado pelo dono do projeto) — pra
- * estender esta suíte a outro agente, troque `AGENT_LABEL`/`AGENT_COMMAND`
- * abaixo.
+ * Merge Center — end-to-end git pipeline, over a fixture project that
+ * starts empty (not even `.git`) and is discarded at the
+ * end. Uses OpenCode as the reference agent (free models, the highest
+ * historical error rate on integration, confirmed by the project owner) — to
+ * extend this suite to another agent, swap `AGENT_LABEL`/`AGENT_COMMAND`
+ * below.
  *
- * SETUP (criar projeto, inicializar git, ligar worktree automática, abrir o
- * terminal do agente) é 100% clique/digitação real na UI — pedido explícito
- * do dono depois de ver dois bugs reais que testes hook-driven não pegavam:
- * (1) o botão "Procurar" da pasta abre o seletor nativo do Windows, que
- * trava o WebDriver; (2) selecionar um agente por posição/índice do grid em
- * vez de pelo texto do card pode confirmar o agente ERRADO sem erro nenhum.
- * Ver `e2e/support/projectUi.ts` pros helpers e o raciocínio completo.
+ * SETUP (create project, initialize git, turn on automatic worktree, open the
+ * agent terminal) is 100% real click/typing in the UI — an explicit request
+ * from the owner after seeing two real bugs that hook-driven tests didn't catch:
+ * (1) the folder "Browse" button opens Windows' native picker, which
+ * hangs WebDriver; (2) selecting an agent by grid position/index instead
+ * of by the card's text can confirm the WRONG agent with no error at all.
+ * See `e2e/support/projectUi.ts` for the helpers and the full reasoning.
  *
- * O PIPELINE DE MERGE (analyze/prepare/validate/finalize) continua via
- * `invokeTauri()` direto — EXCEÇÃO DELIBERADA, não esquecimento: assim que
- * `merge_prepare` detecta um conflito de verdade, a Central de Merges REAL
- * (`mergeStore.ts`) sobe sozinha um agente de IA efêmero pra tentar resolver
- * os marcadores de conflito ANTES que "Validar"/"Integrar" fiquem clicáveis
- * — passar por esses botões via UI tornaria o teste não-determinístico e
- * lento (depende de um LLM decidir como resolver), contrariando o objetivo
- * original desta suíte (conflito forçado e reproduzível, resolução
- * determinística escrita pelo próprio teste). `invokeTauri()` aqui chama os
- * MESMOS comandos Rust que os botões da UI chamam — cobre o mesmo código,
- * só sem depender da resolução automática por IA.
+ * THE MERGE PIPELINE (analyze/prepare/validate/finalize) still goes through
+ * `invokeTauri()` directly — a DELIBERATE EXCEPTION, not an oversight: as soon as
+ * `merge_prepare` detects a real conflict, the REAL Merge Center
+ * (`mergeStore.ts`) spins up an ephemeral AI agent on its own to try to resolve
+ * the conflict markers BEFORE "Validate"/"Integrate" become clickable
+ * — going through those buttons via the UI would make the test non-deterministic and
+ * slow (it depends on an LLM deciding how to resolve it), defeating the
+ * original purpose of this suite (a forced, reproducible conflict, with a
+ * deterministic resolution written by the test itself). `invokeTauri()` here calls the
+ * SAME Rust commands the UI buttons call — it covers the same code,
+ * just without depending on automatic AI resolution.
  *
- * Cada passo verifica o resultado de forma INDEPENDENTE de qualquer API do
- * Alethe sempre que possível (arquivo real no disco via `fs`, `git log`/
- * `git show` crus via `child_process`) — o ponto inteiro desta suíte é não
- * repetir o erro que motivou a Parte 1 do plano: o app "dizendo que passou"
- * sem ter checado nada de verdade.
+ * Each step verifies the result INDEPENDENTLY of any Alethe API
+ * whenever possible (a real file on disk via `fs`, raw `git log`/
+ * `git show` via `child_process`) — the entire point of this suite is to not
+ * repeat the mistake that motivated Part 1 of the plan: the app "saying it passed"
+ * without actually having checked anything.
  */
 const AGENT_LABEL = 'OpenCode'
 const AGENT_COMMAND = 'opencode'
 const PROFILE_ID = 'default'
 
-describe('Central de Merges: pipeline de git completo', function () {
+describe('Merge Center: full git pipeline', function () {
   this.timeout(300_000)
   const fixture = createEmptyFixtureProject()
   const projectName = `e2e-git-pipeline-${Date.now()}`
@@ -75,9 +75,9 @@ describe('Central de Merges: pipeline de git completo', function () {
 
   before(async () => {
     await suppressWindowFocusTax()
-    // Todo profile e2e nasce isolado e vazio — sem isto, o resto do spec
-    // trava esperando o campo "Nome do projeto" que nunca aparece, porque
-    // o onboarding ainda está bloqueando a tela (visto ao vivo nesta sessão).
+    // Every e2e profile starts isolated and empty — without this, the rest of the spec
+    // hangs waiting for the "Project name" field that never appears, because
+    // onboarding is still blocking the screen (seen live in this session).
     await completeOnboarding(`E2E git-pipeline ${Date.now()}`)
   })
 
@@ -85,28 +85,28 @@ describe('Central de Merges: pipeline de git completo', function () {
     fixture.cleanup()
   })
 
-  it(`cria o projeto pela UI e COMPLETA (não cancela) o terminal ${AGENT_LABEL} que abre sozinho`, async () => {
+  it(`creates the project via the UI and COMPLETES (doesn't cancel) the ${AGENT_LABEL} terminal that opens on its own`, async () => {
     repoPath = fixture.path
     expect(hasRealGitDir(repoPath)).toBe(false)
 
-    // `completeOnboarding` já deixa o modal "Novo projeto" aberto sozinho
-    // (a mesma cadeia automática de `OnboardingModal.tsx`'s `finish()`) —
-    // `createProjectViaUi` reaproveita essa tela, sem precisar reabri-la.
+    // `completeOnboarding` already leaves the "New project" modal open on its own
+    // (the same automatic chain from `OnboardingModal.tsx`'s `finish()`) —
+    // `createProjectViaUi` reuses that screen, no need to reopen it.
     await createProjectViaUi(projectName, repoPath)
     projectId = await findProjectId(projectName)
 
-    // Pedido explícito do dono: o primeiro terminal precisa existir de
-    // verdade (histórico real) ANTES de ir pras Configurações — só assim
-    // "Migrar terminais existentes agora" (mais adiante) tem algo de
-    // verdade pra migrar. Ainda sem git/autoWorktree, então nasce na pasta
-    // principal mesmo (sem worktreeAgentId) — exatamente o estado que a
-    // migração precisa encontrar depois.
+    // Explicit request from the owner: the first terminal needs to really
+    // exist (real history) BEFORE going to Settings — that's the only way
+    // "Migrate existing terminals now" (later on) has something real
+    // to migrate. Still without git/autoWorktree, so it's created in the
+    // main folder itself (no worktreeAgentId) — exactly the state that the
+    // migration needs to find afterward.
     await completeAutoOpenedNewTerminalModal(AGENT_LABEL)
     const firstTerminal = await findLatestTerminal(projectId)
     agentAPtyId = firstTerminal.ptyId
     expect(firstTerminal.worktreeAgentId).toBeFalsy()
 
-    // A pasta ainda não tem .git — a UI cria o PROJETO, não o repositório.
+    // The folder still has no .git — the UI creates the PROJECT, not the repository.
     expect(hasRealGitDir(repoPath)).toBe(false)
     recordStep({
       scenario: 'git-pipeline',
@@ -116,15 +116,15 @@ describe('Central de Merges: pipeline de git completo', function () {
     })
   })
 
-  it('git init pela UI (banner real + confirm() nativo) cria o .git corretamente (verificado direto no disco)', async () => {
+  it('git init via the UI (real banner + native confirm()) correctly creates .git (verified directly on disk)', async () => {
     await initGitViaUi()
-    // Node child_process, não a API do Alethe — a confirmação de verdade.
+    // Node child_process, not the Alethe API — the real confirmation.
     expect(hasRealGitDir(repoPath)).toBe(true)
 
-    // `git init` sozinho não deixa HEAD resolvível (sem commit ainda) — o
-    // resto do pipeline (worktree/merge) precisa de um HEAD real. Rodar
-    // `git init` de novo aqui é idempotente (git reinicializa em cima do
-    // que a UI já criou) — só garante branch=main e as configs de autor.
+    // `git init` alone doesn't leave a resolvable HEAD (no commit yet) — the
+    // rest of the pipeline (worktree/merge) needs a real HEAD. Running
+    // `git init` again here is idempotent (git reinitializes on top of
+    // what the UI already created) — it just guarantees branch=main and the author configs.
     initRepoWithInitialCommit(repoPath)
     writeFileSync(join(repoPath, 'shared.txt'), 'linha original\n')
     commitFileOnBranch(repoPath, 'main', 'shared.txt', 'linha original\n', 'add shared.txt')
@@ -132,7 +132,7 @@ describe('Central de Merges: pipeline de git completo', function () {
     recordStep({ scenario: 'git-pipeline', step: 'git-init-pela-ui', status: 'pass' })
   })
 
-  it('FASE 1: seleciona o agente de resolução de conflitos + liga autoWorktree, e salva', async () => {
+  it('PHASE 1: selects the conflict resolution agent + turns on autoWorktree, and saves', async () => {
     await selectConflictAgentAndAutoWorktreeViaUi(projectId, AGENT_LABEL)
     recordStep({
       scenario: 'git-pipeline',
@@ -141,17 +141,17 @@ describe('Central de Merges: pipeline de git completo', function () {
     })
   })
 
-  it('FASE 2: reabre Configurações e migra o terminal existente pra uma worktree isolada', async () => {
+  it('PHASE 2: reopens Settings and migrates the existing terminal to an isolated worktree', async () => {
     await migrateExistingTerminalsViaUi()
 
-    // Verificação real: o MESMO terminal (ptyId igual) precisa ter ganhado
-    // worktreeAgentId — não um terminal novo, o mesmo que já tinha histórico.
+    // Real verification: the SAME terminal (same ptyId) needs to have gained
+    // a worktreeAgentId — not a new terminal, the same one that already had history.
     const migrated = await findLatestTerminal(projectId)
     expect(migrated.worktreeAgentId).toBeTruthy()
     agentAWorktreeId = migrated.worktreeAgentId!
     agentAWorktreePath = join(repoPath, '.alethe', 'worktrees', agentAWorktreeId)
     if (!existsSync(agentAWorktreePath)) {
-      // Fallback: confirma o path real via API caso a convenção de pasta mude.
+      // Fallback: confirms the real path via the API in case the folder convention changes.
       const worktrees = await invokeTauri<{ path: string; agentId: string }[]>('worktree_list', {
         repo: repoPath,
       }).catch(() => [])
@@ -160,8 +160,8 @@ describe('Central de Merges: pipeline de git completo', function () {
     }
     expect(existsSync(agentAWorktreePath)).toBe(true)
 
-    // A migração suspende/reinicia o PTY do zero na pasta nova (disruptivo,
-    // por design — sem continuidade de conversa) — precisa de um novo ptyId.
+    // The migration suspends/restarts the PTY from scratch in the new folder (disruptive,
+    // by design — no conversation continuity) — it needs a new ptyId.
     agentAPtyId = migrated.ptyId
     const alive = await waitUntil(
       async () => {
@@ -180,16 +180,16 @@ describe('Central de Merges: pipeline de git completo', function () {
     })
   })
 
-  it('FASE 3: seleciona a ação pós-merge do agente e salva', async () => {
-    // "relocateToNewBranch" ("Criar nova branch e manter chat ativo") é a
-    // opção que o dono confirmou/testou ao vivo primeiro — as outras 2
-    // (relocateKeepSession/closeTerminal) entram num teste dedicado separado
-    // que repete o ciclo completo pra cada uma (ver plano).
+  it('PHASE 3: selects the agent post-merge action and saves', async () => {
+    // "relocateToNewBranch" ("Create new branch and keep chat active") is the
+    // option the owner confirmed/tested live first — the other 2 options
+    // (relocateKeepSession/closeTerminal) get a separate dedicated test
+    // that repeats the full cycle for each one (see the plan).
     await selectMergePostActionAndSaveViaUi('relocateToNewBranch')
     recordStep({ scenario: 'git-pipeline', step: 'fase3-acao-pos-merge', status: 'pass' })
   })
 
-  it('1 terminal: o agente mantém contexto real entre dois prompts (cria arquivo 2 seguindo a regra do arquivo 1)', async () => {
+  it('1 terminal: the agent keeps real context across two prompts (creates file 2 following the rule from file 1)', async () => {
     const result = await verifyAgentSessionContinuity(agentAPtyId, agentAWorktreePath)
     recordStep({
       scenario: 'git-pipeline',
@@ -197,18 +197,18 @@ describe('Central de Merges: pipeline de git completo', function () {
       status: result.sessionLikelyContinuous ? 'pass' : 'fail',
       detail: JSON.stringify(result),
     })
-    // Se o arquivo 2 existe mas não segue a regra do arquivo 1, a conclusão
-    // é que não era a mesma sessão — nasceu vazia, sem contexto do prompt
-    // anterior (critério pedido explicitamente nesta tarefa).
+    // If file 2 exists but doesn't follow the rule from file 1, the conclusion
+    // is that it wasn't the same session — it started empty, without context from the
+    // previous prompt (a criterion explicitly requested for this task).
     expect(result.file1Exists).toBe(true)
     expect(result.file2Exists).toBe(true)
     expect(result.file2FollowsRule).toBe(true)
   })
 
-  it('gera um conflito real de git (determinístico, não depende do agente "por acaso" conflitar)', async () => {
-    // Muda o MESMO arquivo nos dois lados — no worktree do agente e direto
-    // em main — garantindo conflito real e reproduzível, ao invés de
-    // esperar o agente eventualmente esbarrar numa mudança concorrente.
+  it('generates a real git conflict (deterministic, doesn\'t depend on the agent "randomly" conflicting)', async () => {
+    // Changes the SAME file on both sides — in the agent's worktree and directly
+    // in main — guaranteeing a real, reproducible conflict, instead of
+    // waiting for the agent to eventually run into a concurrent change.
     const agentBranch = `alethe/agent-${agentAWorktreeId}`
     writeFileSync(join(agentAWorktreePath, 'shared.txt'), 'mudança do agente A\n')
     commitFileOnBranch(
@@ -241,7 +241,7 @@ describe('Central de Merges: pipeline de git completo', function () {
     })
   })
 
-  it('resolve o conflito, integra, e confirma via git log/show DIRETO no repo (não confia no que o app relata)', async () => {
+  it('resolves the conflict, integrates, and confirms via git log/show DIRECTLY on the repo (does not trust what the app reports)', async () => {
     const agentBranch = `alethe/agent-${agentAWorktreeId}`
     const env = await invokeTauri<{
       id: string
@@ -251,10 +251,10 @@ describe('Central de Merges: pipeline de git completo', function () {
     }>('merge_prepare', { repo: repoPath, source: agentBranch, target: 'main' })
     expect(env.clean).toBe(false)
 
-    // "Resolve" o conflito de forma determinística — escreve o conteúdo
-    // final direto, sem depender do agente-de-IA-efêmero da Central de
-    // Merges decidir como reconciliar (o pipeline de merge em si é o que
-    // está sendo testado aqui, não a qualidade de resolução de um LLM).
+    // "Resolves" the conflict deterministically — writes the final
+    // content directly, without depending on the Merge Center's ephemeral
+    // AI agent to decide how to reconcile it (the merge pipeline itself is what's
+    // being tested here, not an LLM's resolution quality).
     const resolvedContent = 'linha original\nmudança do agente A + mudança concorrente em main\n'
     writeFileSync(join(env.path, 'shared.txt'), resolvedContent)
 
@@ -271,10 +271,10 @@ describe('Central de Merges: pipeline de git completo', function () {
     )
     expect(outcome.merged).toBe(true)
 
-    // A asserção que importa de verdade: ignora `outcome.merged` e vai ler o
-    // git de verdade. Se a UI achasse que integrou mas não tivesse integrado
-    // (o cenário de falso positivo que motivou toda essa suíte), é AQUI que
-    // isso seria pego.
+    // The assertion that actually matters: ignores `outcome.merged` and reads
+    // git directly. If the UI thought it had integrated but hadn't actually
+    // integrated (the false-positive scenario that motivated this whole suite), this
+    // is where it would be caught.
     const headContent = fileContentAtBranchHead(repoPath, 'main', 'shared.txt')
     const normalizedHead = headContent?.replace(/\r\n/g, '\n').trim()
     const normalizedResolved = resolvedContent.replace(/\r\n/g, '\n').trim()
@@ -283,11 +283,11 @@ describe('Central de Merges: pipeline de git completo', function () {
       scenario: 'git-pipeline',
       step: 'integracao-verificada-independente',
       status: normalizedHead === normalizedResolved ? 'pass' : 'fail',
-      detail: `git show main:shared.txt confirma o conteúdo integrado (${headContent?.length ?? 0} bytes)`,
+      detail: `git show main:shared.txt confirms the integrated content (${headContent?.length ?? 0} bytes)`,
     })
   })
 
-  it('terminal volta a subir depois do merge, no projeto agora atualizado', async () => {
+  it('terminal comes back up after the merge, in the now-updated project', async () => {
     await killPty(agentAPtyId, PROFILE_ID).catch(() => {})
 
     const newPtyId = await spawnPty({ cwd: repoPath, command: AGENT_COMMAND })
@@ -300,9 +300,9 @@ describe('Central de Merges: pipeline de git completo', function () {
     )
     expect(alive).toBe(true)
 
-    // Mesmo critério de continuidade de sessão, agora numa sessão NOVA no
-    // repo principal já atualizado — confirma que reabrir um terminal
-    // depois do merge não deixa nenhum estado quebrado/zumbi pra trás.
+    // Same session-continuity criterion, now in a NEW session in the
+    // already-updated main repo — confirms that reopening a terminal
+    // after the merge leaves no broken/zombie state behind.
     const result = await verifyAgentSessionContinuity(newPtyId, repoPath)
     expect(result.file1Exists).toBe(true)
     expect(result.file2Exists).toBe(true)
@@ -317,7 +317,7 @@ describe('Central de Merges: pipeline de git completo', function () {
     await killPty(newPtyId, PROFILE_ID).catch(() => {})
   })
 
-  it('repete com 2 terminais simultâneos (concorrência)', async () => {
+  it('repeats with 2 simultaneous terminals (concurrency)', async () => {
     const worktreeB = await invokeTauri<{ path: string; branch: string }>('worktree_provision', {
       repo: repoPath,
       agentId: 'b',
@@ -339,9 +339,9 @@ describe('Central de Merges: pipeline de git completo', function () {
       expect(alive).toBe(true)
     }
 
-    // Roda a continuidade das duas sessões EM PARALELO — é justamente a
-    // concorrência (duas sessões escrevendo/lendo PTY ao mesmo tempo) que
-    // pode expor race conditions que um terminal sozinho nunca revela.
+    // Runs the continuity check for both sessions IN PARALLEL — it's exactly
+    // the concurrency (two sessions writing/reading the PTY at the same time) that
+    // can expose race conditions that a single terminal never reveals.
     const [resultC1, resultC2] = await Promise.all([
       verifyAgentSessionContinuity(ptyC1, worktreeB.path),
       verifyAgentSessionContinuity(ptyC2, worktreeB.path),

@@ -5,29 +5,29 @@ import { attachRecorder } from '../support/recorder'
 import { clickByText, snapshot } from '../support/uiKit'
 
 /**
- * Diagnóstico ao vivo do clique "OpenCode" (card de agente de resolução de
- * conflitos) que falha 100% das vezes, sempre logo depois de "Inicializar
- * repositório Git", só quando reproduzido via procedimento gravado — nunca
- * quando dirigido pelo helper dedicado. Reproduz os passos até ali via o
- * procedimento "test3" já gravado, e ANTES do clique problemático, inspeciona
- * o DOM de verdade (elementFromPoint + getComputedStyle) pra achar a causa
- * raiz real, em vez de continuar adivinhando.
+ * Live diagnostic for the "OpenCode" click (the conflict resolution agent
+ * card) that fails 100% of the time, always right after "Initialize
+ * Git repository", but only when reproduced via a recorded procedure — never
+ * when driven by the dedicated helper. Reproduces the steps up to that point via the
+ * already-recorded "test3" procedure, and BEFORE the problematic click, inspects
+ * the real DOM (elementFromPoint + getComputedStyle) to find the real root
+ * cause, instead of continuing to guess.
  */
-describe('diagnóstico: clique OpenCode não interativo', () => {
+describe('diagnostic: non-interactive OpenCode click', () => {
   before(async () => {
     await suppressWindowFocusTax()
     await quickLogin(`E2E Diag ${Date.now()}`)
     await attachRecorder()
   })
 
-  it('reproduz até o clique problemático e inspeciona o DOM', async () => {
+  it('reproduces up to the problematic click and inspects the DOM', async () => {
     const steps = getProcedure('test3')
-    if (!steps) throw new Error('procedimento "test3" não encontrado')
+    if (!steps) throw new Error('procedure "test3" not found')
 
-    // Roda tudo ATÉ (sem incluir) o primeiro clique em "OpenCode" — mesma
-    // sequência exata do test3.
+    // Runs everything UP TO (not including) the first click on "OpenCode" — same
+    // exact sequence as test3.
     const openCodeIndex = steps.findIndex((s) => s.action === 'click' && s.text === 'OpenCode')
-    if (openCodeIndex === -1) throw new Error('passo "OpenCode" não encontrado no test3')
+    if (openCodeIndex === -1) throw new Error('"OpenCode" step not found in test3')
 
     for (let i = 0; i < openCodeIndex; i++) {
       const step = steps[i]
@@ -53,7 +53,7 @@ describe('diagnóstico: clique OpenCode não interativo', () => {
 
     await snapshot('diag-antes-do-clique-openCode')
 
-    // Acha o elemento "OpenCode" (mesma busca do clickByText) e inspeciona.
+    // Finds the "OpenCode" element (same lookup as clickByText) and inspects it.
     const target = await $('button*=OpenCode')
     const location = await target.getLocation()
     const size = await target.getSize()
@@ -81,8 +81,8 @@ describe('diagnóstico: clique OpenCode não interativo', () => {
             rect: { x: rect.x, y: rect.y, w: rect.width, h: rect.height },
           }
         }
-        // Sobe a cadeia de ancestrais do ponto até <body>, descrevendo cada
-        // um — mostra qual camada está de fato recebendo o clique.
+        // Walks the ancestor chain from the point up to <body>, describing each
+        // one — shows which layer is actually receiving the click.
         const chain: unknown[] = []
         let el: Element | null = atPoint
         let depth = 0
@@ -99,7 +99,7 @@ describe('diagnóstico: clique OpenCode não interativo', () => {
 
     // eslint-disable-next-line no-console
     console.log(
-      '\n>>> DIAGNÓSTICO elementFromPoint(%d, %d):\n%s\n',
+      '\n>>> DIAGNOSTIC elementFromPoint(%d, %d):\n%s\n',
       cx,
       cy,
       JSON.stringify(diag, null, 2),

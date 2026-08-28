@@ -19,6 +19,7 @@ import {
   type AgentHandoffBootstrap,
   type AgentRuntimeProfile,
   type AgentType,
+  type BrowserEngine,
   type BrowserPaneOptions,
   EMPTY_PROJECTS_FILE,
   type GridLayout,
@@ -142,27 +143,11 @@ export type ProjectsState = ProjectsFile & {
     id: string,
     action: 'relocateToNewBranch' | 'relocateKeepSession' | 'closeTerminal',
   ) => void
-  /** Relocaliza o terminal do agente de merge (`agentTerminalId` do mergeStore) pra
-   *  uma worktree/branch nova em vez de matá-lo — usado pelo pós-merge quando
-   *  `mergePostAction` é `relocateToNewBranch`/`relocateKeepSession` (ver
-   *  `mergeStore.finalize`). Mesmo mecanismo de `migrateProjectTerminalsToWorktrees`
-   *  (`worktreeProvision` + `restartAgentPtyWithHangGuard`), só que pra UM terminal já
-   *  identificado. `keepSession: true` tenta resumir a conversa atual na worktree nova
-   *  (sujeito ao mesmo `CROSS_CWD_RESUME_OK`/hang-guard da migração); `false` força
-   *  sessão nova de propósito. */
   relocateMergeAgentTerminal: (
     projectId: string,
     terminalId: string,
     opts: { keepSession: boolean },
   ) => Promise<{ ok: boolean; error?: string }>
-  /** Migra terminais existentes (sem `worktreeAgentId`) do projeto pra worktrees
-   *  isoladas — ação explícita via botão dedicado, nunca automática (ver
-   *  `setAutoWorktree`). Suspende os PTYs antigos em vez de matar. */
-  /** `gsdWatcherEnabledOverride`: valor ainda pendente (não salvo) da tela de
-   *  edição do projeto — o botão de migrar fica na mesma aba do checkbox GSD
-   *  e roda ANTES do "Salvar", então sem isso a migração lia o valor antigo
-   *  do store mesmo com a caixinha marcada na tela, e nunca instalava o
-   *  plugin GSD na worktree nova. */
   migrateProjectTerminalsToWorktrees: (
     projectId: string,
     gsdWatcherEnabledOverride?: boolean,
@@ -260,6 +245,7 @@ export type ProjectsState = ProjectsFile & {
   createWebPane: (projectId: string, args: BrowserPaneOptions) => Terminal
   createGraphifyPane: (projectId: string, cwd: string) => Terminal
   renameTerminal: (projectId: string, terminalId: string, name: string) => void
+  setBrowserEngine: (projectId: string, terminalId: string, engine: BrowserEngine) => void
 
   markGsdSyncViewer: (projectId: string, terminalId: string) => void
   deleteTerminal: (projectId: string, terminalId: string) => void
@@ -272,6 +258,7 @@ export type ProjectsState = ProjectsFile & {
 
   setProjectDisabled: (projectId: string, disabled: boolean) => void
   setLaneVisible: (projectId: string, terminalId: string, visible: boolean | null) => void
+  setTerminalTopbarPinned: (projectId: string, terminalId: string, pinned: boolean) => void
   /** Hides a terminal from every paired remote device. */
   setTerminalRemoteExcluded: (projectId: string, terminalId: string, excluded: boolean) => void
 

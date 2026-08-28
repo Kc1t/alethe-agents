@@ -1,9 +1,11 @@
 import {
+  type CollisionDetection,
   DndContext,
   type DragEndEvent,
   type DragMoveEvent,
   DragOverlay,
   PointerSensor,
+  pointerWithin,
   useDroppable,
   useSensor,
   useSensors,
@@ -13,7 +15,6 @@ import {
   Folder,
   FolderPlus,
   GitBranch,
-  Globe,
   Home,
   MoreHorizontal,
   Plus,
@@ -24,18 +25,18 @@ import {
   Users,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
 import { useT } from '../../lib/i18n'
 import { formatShortcut } from '../../lib/platform'
 import {
-  sidebarCollisionDetection,
   sidebarDragKind,
   type SidebarDropIndicator,
-  sidebarDropIndicatorForEvent,
   sidebarInsertionIndex,
 } from '../../lib/sidebarDrag'
 import { type Group, type Project } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
+import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
 import { SidebarNowPlaying } from '../SidebarNowPlaying'
 import { UserProfile } from '../UserProfile'
@@ -43,17 +44,66 @@ import { ContextMenu, type MenuItem } from './ContextMenu'
 import { FileExplorer } from './FileExplorer'
 import { GitControl } from './GitControl'
 import { GroupNode } from './GroupNode'
-import { LayoutFooter, WorkspaceLayoutFooter } from './LayoutFooter'
-import { MeshSidebarView } from './MeshSidebarView'
 import { NormalProjectSidebar } from './NormalProjectSidebar'
+import { LayoutFooter, WorkspaceLayoutFooter } from './LayoutFooter'
 import { ProjectNode } from './ProjectNode'
 import styles from './ProjectSidebar.module.css'
-import { useSidebarActions, useSidebarData, useSidebarUi } from './sidebarController'
 import { createSidebarMenus } from './sidebarMenus'
 import { SidebarMergePanel } from './SidebarMergePanel'
 import { SidebarUpdate } from './SidebarUpdate'
 
 type ContextMenuState = { x: number; y: number; items: MenuItem[] } | null
+
+const sidebarCollisionDetection: CollisionDetection = (args) => {
+  const kind = sidebarDragKind(String(args.active.id))
+  const candidates = pointerWithin(args).filter(({ id }) => {
+    const target = String(id)
+    if (target === String(args.active.id)) return false
+    if (kind === 'terminal') return target.startsWith('proj:')
+    if (kind === 'project') return target.startsWith('proj:') || target.startsWith('group:')
+    if (kind === 'group') {
+      const sourceId = String(args.active.id).slice('grp:'.length)
+      return (
+        target !== `group:${sourceId}` && (target.startsWith('grp:') || target.startsWith('group:'))
+      )
+    }
+    return false
+  })
+
+  const rank = (id: string) => {
+    if (kind === 'project') return id.startsWith('proj:') ? 0 : 1
+    if (kind === 'group') return id.startsWith('grp:') ? 0 : 1
+    return 0
+  }
+
+  return candidates.sort((a, b) => {
+    const rankDifference = rank(String(a.id)) - rank(String(b.id))
+    if (rankDifference !== 0) return rankDifference
+    const aRect = args.droppableRects.get(a.id)
+    const bRect = args.droppableRects.get(b.id)
+    const aArea = aRect ? aRect.width * aRect.height : Number.POSITIVE_INFINITY
+    const bArea = bRect ? bRect.width * bRect.height : Number.POSITIVE_INFINITY
+    return aArea - bArea
+  })
+}
+
+function dropIndicatorForEvent(event: DragMoveEvent | DragEndEvent): SidebarDropIndicator | null {
+  if (!event.over) return null
+  const id = String(event.over.id)
+  if (id.startsWith('group:') || sidebarDragKind(String(event.active.id)) === 'terminal') {
+    return { id, edge: 'inside' }
+  }
+
+  const activatorEvent = event.activatorEvent
+  const pointerY =
+    'clientY' in activatorEvent && typeof activatorEvent.clientY === 'number'
+      ? activatorEvent.clientY + event.delta.y
+      : event.active.rect.current.translated
+        ? event.active.rect.current.translated.top + event.active.rect.current.translated.height / 2
+        : event.over.rect.top + event.over.rect.height / 2
+  const edge = pointerY < event.over.rect.top + event.over.rect.height / 2 ? 'before' : 'after'
+  return { id, edge }
+}
 
 export function ProjectSidebar() {
   const visualStyle = useProjectsStore((state) => state.preferences.visualStyle ?? 'normal')
@@ -63,18 +113,59 @@ export function ProjectSidebar() {
 function CleanProjectSidebar() {
   const t = useT()
   // --- data selectors (reactive) ---
-  const {
-    projects,
-    groups,
-    ungroupedOrder,
-    containers,
-    activeProjectId,
-    showGitControl,
-    preferences,
-  } = useSidebarData()
+  const { projects, groups, ungroupedOrder, containers, activeProjectId, showGitControl, preferences } = useProjectsStore(
+    useShallow((s) => ({
+      projects: s.projects,
+      groups: s.groups,
+      ungroupedOrder: s.ungroupedOrder,
+      containers: s.workspace.containers,
+      activeProjectId: s.activeProjectId,
+      showGitControl: s.preferences.enabledFeatures.git,
+      preferences: s.preferences,
+    }))
+  )
 
   // --- action selectors (stable refs, grouped for readability) ---
-  const actions = useSidebarActions()
+  const actions = useProjectsStore(
+    useShallow((s) => ({
+      setActiveProject: s.setActiveProject,
+      openGroupScope: s.openGroupScope,
+      openProjectWorkspace: s.openProjectWorkspace,
+      addProjectToWorkspace: s.addProjectToWorkspace,
+      openGroupWorkspace: s.openGroupWorkspace,
+      openTerminalWorkspace: s.openTerminalWorkspace,
+      addTerminalToWorkspace: s.addTerminalToWorkspace,
+      focusWorkspaceTerminal: s.focusWorkspaceTerminal,
+      toggleProjectCollapsed: s.toggleProjectCollapsed,
+      toggleGroupCollapsed: s.toggleGroupCollapsed,
+      archiveGroup: s.archiveGroup,
+      renameProject: s.renameProject,
+      archiveProject: s.archiveProject,
+      deleteProject: s.deleteProject,
+      renameGroup: s.renameGroup,
+      deleteGroup: s.deleteGroup,
+      resumeGroup: s.resumeGroup,
+      setProjectDisabled: s.setProjectDisabled,
+      renameTerminal: s.renameTerminal,
+      killTerminal: s.killTerminal,
+      deleteTerminal: s.deleteTerminal,
+      deleteTerminalWithWorktreeCleanup: s.deleteTerminalWithWorktreeCleanup,
+      setTerminalDisabled: s.setTerminalDisabled,
+      moveTerminal: s.moveTerminal,
+      moveProjectToGroup: s.moveProjectToGroup,
+      moveGroupToParent: s.moveGroupToParent,
+      reorderProjectInGroup: s.reorderProjectInGroup,
+      reorderUngrouped: s.reorderUngrouped,
+      reorderGroups: s.reorderGroups,
+      togglePane: s.togglePane,
+      setLaneVisible: s.setLaneVisible,
+      setTerminalRemoteExcluded: s.setTerminalRemoteExcluded,
+      setSubTabCompletionUnread: s.setSubTabCompletionUnread,
+      createFilePane: s.createFilePane,
+      createGraphifyPane: s.createGraphifyPane,
+      setFullscreenPane: s.setFullscreenPane,
+    })),
+  )
 
   const {
     requestPaneFocus,
@@ -85,17 +176,29 @@ function CleanProjectSidebar() {
     setActiveTerminal,
     setFocusedTerminal,
     openMarkdownSidebar,
-  } = useSidebarUi()
+  } = useUiStore(
+    useShallow((s) => ({
+      requestPaneFocus: s.requestPaneFocus,
+      openModal: s.openModal_,
+      activeView: s.activeView,
+      setActiveView: s.setActiveView,
+      activeTerminalRef: s.activeTerminal,
+      setActiveTerminal: s.setActiveTerminal,
+      setFocusedTerminal: s.setFocusedTerminal,
+      openMarkdownSidebar: s.openMarkdownSidebar,
+    }))
+  )
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const [menu, setMenu] = useState<ContextMenuState>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropIndicator, setDropIndicator] = useState<SidebarDropIndicator | null>(null)
-  const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects' | 'mesh'>('projects')
+  const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects'>('projects')
 
   useEffect(() => {
     if (!showGitControl && sidebarTab === 'git') setSidebarTab('projects')
   }, [showGitControl, sidebarTab])
 
+                                                                         
   const openPaneSets = useMemo(() => {
     const map: Record<string, Set<string>> = {}
     for (const c of containers) map[c.projectId] = new Set(c.paneIds)
@@ -136,13 +239,6 @@ function CleanProjectSidebar() {
   const sidebarSubTab =
     sidebarTerminal?.tabs.find((tab) => tab.id === sidebarTerminal.activeTabId) ??
     sidebarTerminal?.tabs[0]
-  // Controle de Versão: prefere o cwd do terminal/sub-tab vivo (mais preciso
-  // — cobre worktree/subpasta), mas cai pra pasta padrão do projeto quando
-  // não há terminal aberto — o painel sempre deveria funcionar com o projeto
-  // SELECIONADO, não exigir um terminal aberto pra existir.
-  const gitCwd = sidebarSubTab?.cwd || sidebarTerminal?.cwd || activeProject?.defaultCwd
-  const gitPtyId = sidebarSubTab && sidebarTerminal ? sidebarSubTab.ptyId : null
-  const gitTerminalName = sidebarTerminal?.name ?? activeProject?.name ?? ''
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -152,14 +248,14 @@ function CleanProjectSidebar() {
   }
 
   const updateDropIndicator = (event: DragMoveEvent) => {
-    const next = sidebarDropIndicatorForEvent(event)
+    const next = dropIndicatorForEvent(event)
     setDropIndicator((current) =>
       current?.id === next?.id && current?.edge === next?.edge ? current : next,
     )
   }
 
   const onDragEnd = (event: DragEndEvent) => {
-    const indicator = sidebarDropIndicatorForEvent(event)
+    const indicator = dropIndicatorForEvent(event)
     clearDragState()
     const { active, over } = event
     if (!over || !indicator) return
@@ -167,6 +263,7 @@ function CleanProjectSidebar() {
     const target = String(over.id)
     if (dragged === target) return
 
+                                                                                        
     if (dragged.startsWith('term:') && target.startsWith('proj:')) {
       const [, fromProject, terminalId] = dragged.split(':')
       const [, toProject] = target.split(':')
@@ -174,6 +271,8 @@ function CleanProjectSidebar() {
       return
     }
 
+                                                                                
+                                                                              
     if (dragged.startsWith('proj:') && target.startsWith('proj:')) {
       const fromId = dragged.slice('proj:'.length)
       const toId = target.slice('proj:'.length)
@@ -216,6 +315,7 @@ function CleanProjectSidebar() {
       return
     }
 
+                                                                           
     if (dragged.startsWith('proj:') && target.startsWith('group:')) {
       const [, projectId] = dragged.split(':')
       const [, groupId] = target.split(':')
@@ -241,6 +341,7 @@ function CleanProjectSidebar() {
       return
     }
 
+                                                                        
     if (dragged.startsWith('grp:') && target.startsWith('group:')) {
       const [, srcGroupId] = dragged.split(':')
       const [, parentId] = target.split(':')
@@ -291,6 +392,10 @@ function CleanProjectSidebar() {
         activateProject(p)
       }}
       onTerminalClick={(t) => {
+                                                                             
+                                                                           
+                                                                           
+                                                               
         if (t.gsdSyncViewer) {
           actions.setFullscreenPane(t.id)
           setActiveView('workspace')
@@ -426,18 +531,6 @@ function CleanProjectSidebar() {
             <GitBranch size={14} />
           </button>
         ) : null}
-        <button
-          type="button"
-          aria-label={t('mesh.title') || 'Conexão & Sincronização'}
-          title={t('mesh.title') || 'Conexão & Sincronização'}
-          className={`${styles.toolbarButton} ${sidebarTab === 'mesh' && activeView === 'collaboration' ? styles.toolbarButtonActive : ''}`}
-          onClick={() => {
-            setSidebarTab('mesh')
-            setActiveView('collaboration')
-          }}
-        >
-          <Globe size={14} />
-        </button>
         <span className={styles.toolbarSpacer} />
         <button
           type="button"
@@ -519,12 +612,12 @@ function CleanProjectSidebar() {
           <div className={styles.explorerHeader}>
             <span className={styles.explorerLabel}>{t('ui.sidebar.sourceControl')}</span>
           </div>
-          {activeProject && gitCwd ? (
+          {sidebarTerminal && sidebarSubTab && activeProject ? (
             <GitControl
               projectId={activeProject.id}
-              cwd={gitCwd}
-              ptyId={gitPtyId}
-              terminalName={gitTerminalName}
+              cwd={sidebarSubTab.cwd || sidebarTerminal.cwd}
+              ptyId={sidebarSubTab.ptyId}
+              terminalName={sidebarTerminal.name}
             />
           ) : (
             <div className={styles.explorerEmpty}>
@@ -542,8 +635,6 @@ function CleanProjectSidebar() {
           )}
         </section>
       ) : null}
-
-      {sidebarTab === 'mesh' ? <MeshSidebarView /> : null}
 
       {sidebarTab === 'projects' ? (
         <DndContext
@@ -596,7 +687,6 @@ function CleanProjectSidebar() {
         </DndContext>
       ) : null}
 
-      {/* PAINEL DE MERGES NA BARRA LATERAL */}
       {sidebarTab === 'projects' && activeView !== 'home' ? <SidebarMergePanel /> : null}
 
       {menu ? (

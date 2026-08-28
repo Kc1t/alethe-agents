@@ -10,20 +10,20 @@ import { captureScreenshot } from '../support/screenshot'
 import { clickByText, snapshot } from '../support/uiKit'
 
 /**
- * Diagnóstico visual do Gráfico de Commits (`GitGraph.tsx`/`GitGraphList.tsx`)
- * — não é uma suíte de regressão com asserções, é uma ferramenta pra tirar um
- * screenshot REAL do painel sobre um repositório com topologia conhecida
- * (branch divergindo de main + merge de volta), pra diagnosticar bugs
- * visuais reportados sem depender de prints recortados pelo usuário.
+ * Visual diagnostic for the Commit Graph (`GitGraph.tsx`/`GitGraphList.tsx`)
+ * — this is not an assertion-based regression suite, it's a tool for taking a
+ * REAL screenshot of the panel against a repository with known topology
+ * (a branch diverging from main + merging back), to diagnose reported
+ * visual bugs without depending on screenshots cropped by the user.
  *
- * Roda FORA da suíte padrão (não está em `wdio.conf.ts`'s `specs`) — invocar
- * explícito via `--spec e2e/specs/git-graph-screenshot.spec.ts`.
+ * Runs OUTSIDE the default suite (it's not in `wdio.conf.ts`'s `specs`) — invoke it
+ * explicitly via `--spec e2e/specs/git-graph-screenshot.spec.ts`.
  */
 function git(cwd: string, args: string[]): void {
   execFileSync('git', args, { cwd, encoding: 'utf8' })
 }
 
-describe('diagnóstico visual: gráfico de commits', function () {
+describe('visual diagnostic: commit graph', function () {
   this.timeout(180_000)
   const fixture = createEmptyFixtureProject()
   const projectName = `e2e-git-graph-${Date.now()}`
@@ -31,10 +31,10 @@ describe('diagnóstico visual: gráfico de commits', function () {
   before(async () => {
     await suppressWindowFocusTax()
 
-    // Topologia conhecida: main com 2 commits, uma branch de feature que
-    // diverge entre eles e tem 2 commits próprios, mergeada de volta (merge
-    // commit de verdade, --no-ff) — o mínimo pra ver raia principal + raia
-    // de branch + curva de divergência + curva de merge, tudo na mesma tela.
+    // Known topology: main with 2 commits, a feature branch that
+    // diverges between them and has 2 of its own commits, merged back (a real
+    // merge commit, --no-ff) — the minimum needed to see the main lane + branch
+    // lane + divergence curve + merge curve, all on the same screen.
     const repoPath = fixture.path
     git(repoPath, ['init', '--initial-branch', 'main'])
     git(repoPath, ['config', 'user.email', 'e2e@alethe.test'])
@@ -64,11 +64,11 @@ describe('diagnóstico visual: gráfico de commits', function () {
       "Merge branch 'feature/graph-colors'",
     ])
 
-    // Várias branches curtas (1 commit, merge imediato) em sequência — é
-    // exatamente o padrão que expôs a colisão de cor `--agent-shell` ==
-    // `--status-working` (raia secundária ficava com a MESMA cor da raia
-    // principal, parecendo uma única linha "ziguezagueando" em vez de raias
-    // distintas convergindo). Reproduz o cenário do print do dono.
+    // Several short branches (1 commit, immediate merge) in sequence — this is
+    // exactly the pattern that exposed the `--agent-shell` == `--status-working`
+    // color collision (the secondary lane ended up with the SAME color as the
+    // main lane, looking like a single "zigzagging" line instead of distinct
+    // lanes converging). Reproduces the scenario from the owner's screenshot.
     for (let i = 1; i <= 4; i++) {
       const branch = `hotfix/${i}`
       git(repoPath, ['checkout', '-b', branch])
@@ -86,50 +86,50 @@ describe('diagnóstico visual: gráfico de commits', function () {
     fixture.cleanup()
   })
 
-  // Sempre tira um print no estado em que o teste ficou quando falha —
-  // sem isso, um `waitForText` que estoura o timeout não deixa nenhuma
-  // prova visual de qual tela realmente ficou aberta no fim.
+  // Always takes a screenshot of the state the test was in when it failed —
+  // without this, a `waitForText` that times out leaves no visual proof
+  // of which screen was actually open at the end.
   afterEach(async function () {
     if (this.currentTest?.state === 'failed') {
       await snapshot('estado-na-falha').catch(() => {})
     }
   })
 
-  it('abre o painel Gráfico de Commits e tira um screenshot real', async () => {
+  it('opens the Commit Graph panel and takes a real screenshot', async () => {
     await createProjectViaUi(projectName, fixture.path)
-    // Sem agente nenhum aqui de propósito — só precisamos do projeto
-    // apontando pro repo com histórico real, nada de terminal.
+    // No agent here on purpose — we only need the project pointing
+    // at the repo with real history, no terminal needed.
     await cancelAutoOpenedNewTerminalModal()
 
-    // Diagnóstico ANTES do clique — se "Controle Git" não estiver clicável,
-    // isso mostra exatamente que tela ficou aberta (modal ainda por cima?
-    // sidebar em outra aba? layout diferente do esperado?).
+    // Diagnostic BEFORE the click — if "Controle Git" isn't clickable,
+    // this shows exactly which screen was left open (modal still on top?
+    // sidebar on another tab? layout different than expected?).
     await snapshot('antes-de-abrir-controle-git')
 
-    // `completeOnboarding` seleciona "Português" como parte do próprio
-    // fluxo — o app fica em pt-BR, não no default 'en' do E2E_LOCALE (que só
-    // valeria se algo chamasse `applyE2eLocale()` depois, o que não fazemos
-    // aqui). Textos daqui pra frente seguem pt-BR.
+    // `completeOnboarding` selects "Português" as part of its own
+    // flow — the app ends up in pt-BR, not the E2E_LOCALE default 'en' (which
+    // would only apply if something called `applyE2eLocale()` afterward, which we
+    // don't do here). Text from this point on follows pt-BR.
     await clickByText('Controle Git')
-    // SEMPRE captura o estado pós-clique, mesmo que o texto esperado nunca
-    // apareça — sem isso, uma falha no waitForText não deixa nenhuma prova
-    // visual de qual tela realmente ficou aberta.
+    // ALWAYS captures the post-click state, even if the expected text never
+    // shows up — without this, a failure in waitForText leaves no visual
+    // proof of which screen was actually open.
     await browser.pause(800)
     await snapshot('depois-de-abrir-controle-git')
 
-    // `waitForText` (seletor XPath `*=texto` do WebdriverIO) se mostrou
-    // consistentemente flaky contra este WebView2/tauri-service — em mais de
-    // uma execução ele deu timeout mesmo com "main: commit inicial" já
-    // visível na tela no instante exato da falha (confirmado comparando o
-    // screenshot automático de falha do `afterEach` contra o log). Como o
-    // objetivo real deste spec é só CAPTURAR o estado visual pra diagnóstico
-    // manual (não fazer asserção de passa/falha), uma pausa fixa generosa é
-    // mais confiável aqui do que um matcher de texto que não é de confiança
-    // neste ambiente — o carregamento real do `git log` + primeira
-    // renderização do grafo bate perto de 20s neste binário de debug
-    // isolado.
+    // `waitForText` (WebdriverIO's `*=text` XPath selector) has proven
+    // consistently flaky against this WebView2/tauri-service — in more than
+    // one run it timed out even with "main: commit inicial" already
+    // visible on screen at the exact instant of the failure (confirmed by comparing the
+    // `afterEach` automatic failure screenshot against the log). Since the
+    // real goal of this spec is just to CAPTURE the visual state for manual
+    // diagnosis (not to make a pass/fail assertion), a generous fixed pause is
+    // more reliable here than a text matcher that isn't trustworthy in this
+    // environment — the real `git log` load + first graph render lands
+    // around 20s on this isolated debug
+    // binary.
     await browser.pause(25_000)
     const path = await captureScreenshot('git-graph--diagnostico')
-    console.log(`[git-graph diagnóstico] screenshot salvo em: ${path}`)
+    console.log(`[git-graph diagnostic] screenshot saved at: ${path}`)
   })
 })

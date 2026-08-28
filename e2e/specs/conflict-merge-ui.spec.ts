@@ -24,7 +24,7 @@ import {
 import { clickByText, snapshot, waitForText, waitForTextGone } from '../support/uiKit'
 import { recordStep } from '../support/report'
 
-describe('E2E: Conflito de merge e clique em Integrar na UI', function () {
+describe('E2E: Merge conflict and clicking Integrate in the UI', function () {
   this.timeout(300_000)
   const fixture = createEmptyFixtureProject()
   const projectName = `e2e-conflict-${Date.now()}`
@@ -42,7 +42,7 @@ describe('E2E: Conflito de merge e clique em Integrar na UI', function () {
     fixture.cleanup()
   })
 
-  it('configura o projeto, inicializa git e cria terminal em worktree', async () => {
+  it('sets up the project, initializes git, and creates a terminal in a worktree', async () => {
     repoPath = fixture.path
     await createProjectViaUi(projectName, repoPath)
     projectId = await findProjectId(projectName)
@@ -72,7 +72,7 @@ describe('E2E: Conflito de merge e clique em Integrar na UI', function () {
     await snapshot('1-projeto-e-worktree-prontos')
   })
 
-  it('cria conflito determinístico entre o worktree do agente e a branch main', async () => {
+  it('creates a deterministic conflict between the agent worktree and the main branch', async () => {
     const agentBranch = `alethe/agent-${agentAWorktreeId}`
     writeFileSync(join(agentAWorktreePath, 'shared.txt'), 'mudança do agente na worktree\n')
     commitFileOnBranch(
@@ -101,15 +101,15 @@ describe('E2E: Conflito de merge e clique em Integrar na UI', function () {
     await snapshot('2-conflito-gerado')
   })
 
-  it('clica em Integrar na UI, detecta o conflito e abre o ambiente de resolução', async () => {
-    // Abre a Central de Merges / clica no card da worktree pendente
+  it('clicks Integrate in the UI, detects the conflict, and opens the resolution environment', async () => {
+    // Opens the Merge Center / clicks the pending worktree card
     await snapshot('3-antes-de-clicar-integrar')
 
-    // Clica no card da worktree ou no botão Integrar
+    // Clicks the worktree card or the Integrate button
     await clickByText('Integrar')
     await snapshot('4-apos-clicar-integrar')
 
-    // O mergeStore entra em preparing -> resolving e cria a worktree efêmera .alethe/merge-<id>
+    // The mergeStore transitions preparing -> resolving and creates the ephemeral .alethe/merge-<id> worktree
     const envResolved = await waitUntil(
       async () => {
         const mergeEnvs = await invokeTauri<{ id: string; path: string }[]>('worktree_list', {
@@ -125,16 +125,16 @@ describe('E2E: Conflito de merge e clique em Integrar na UI', function () {
     const mergeEnvPath = envResolved!.path
     expect(existsSync(mergeEnvPath)).toBe(true)
 
-    // Simula a resolução do conflito pelo agente: remove marcadores e escreve ALETHE_RESOLVED
+    // Simulates the agent resolving the conflict: removes markers and writes ALETHE_RESOLVED
     const resolvedContent = 'linha base original\nmudança do agente + mudança em main\n'
     writeFileSync(join(mergeEnvPath, 'shared.txt'), resolvedContent)
     writeFileSync(join(mergeEnvPath, 'ALETHE_RESOLVED'), '')
 
-    // Aguarda a UI detectar o marcador e avançar para 'Aguardando sua revisão' / 'awaiting_review'
+    // Waits for the UI to detect the marker and advance to 'Aguardando sua revisão' / 'awaiting_review'
     await waitForText('Aguardando sua revisão', 15_000).catch(() => {})
     await snapshot('5-aguardando-revisao-detectado')
 
-    // Abre o modal de detalhe da Central de Merges clicando no card se necessário
+    // Opens the Merge Center detail modal by clicking the card if needed
     const hasValidateBtn = await $('button=Validar')
       .isDisplayed()
       .catch(() => false)
@@ -144,18 +144,18 @@ describe('E2E: Conflito de merge e clique em Integrar na UI', function () {
 
     await snapshot('6-modal-com-botoes-validar-integrar')
 
-    // Clica em 'Validar' na UI
+    // Clicks 'Validar' in the UI
     await clickByText('Validar')
     await snapshot('7-apos-clicar-validar')
 
-    // Aguarda a validação concluir
+    // Waits for validation to complete
     await waitForText('Integrar', 10_000)
 
-    // Clica em 'Integrar' na UI para finalizar
+    // Clicks 'Integrar' in the UI to finalize
     await clickByText('Integrar')
     await snapshot('8-apos-clicar-integrar-final')
 
-    // Confirma se o branch foi integrado de verdade em main
+    // Confirms whether the branch was actually integrated into main
     const headContent = fileContentAtBranchHead(repoPath, 'main', 'shared.txt')
     const normalizedHead = headContent?.replace(/\r\n/g, '\n').trim()
     const normalizedResolved = resolvedContent.replace(/\r\n/g, '\n').trim()

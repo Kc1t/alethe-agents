@@ -50,8 +50,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  /* Tem que bater com ROW_HEIGHT em GitGraphList.tsx — CSS não importa
-     constante de TS, os dois precisam ser trocados juntos. */
+  /* Must match ROW_HEIGHT in GitGraphList.tsx — CSS can't import a TS
+     constant, so the two must be changed together. */
   height: 34px;
   padding: 0 6px;
   width: 100%;
@@ -66,9 +66,9 @@
   background: var(--panel-hover);
 }
 
-/* Busca ativa: commits que não batem ficam esmaecidos, nunca removidos da
-   lista — removê-los cortaria o segmento de SVG deles e voltaria a quebrar a
-   continuidade visual do grafo (cada linha só desenha seu próprio trecho). */
+/* Active search: non-matching commits are dimmed, never removed from the
+   list — removing them would cut their SVG segment and break the graph's
+   visual continuity again (each row only draws its own stretch). */
 .rowDimmed {
   opacity: 0.35;
 }
@@ -179,8 +179,8 @@
   text-overflow: ellipsis;
 }
 
-/* Tela de detalhe do commit — troca o CONTEÚDO do mesmo painel (sem modal,
-   sem view separada do app) no lugar da antiga expansão inline por linha. */
+/* Commit detail screen — swaps the CONTENT of the same panel (no modal, no
+   separate app view) in place of the old inline per-row expansion. */
 .detail {
   display: flex;
   flex-direction: column;

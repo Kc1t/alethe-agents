@@ -380,6 +380,19 @@ export const ptBR: Record<MessageKey, string> = {
   'menu.addBrowser': 'Adicionar browser',
   'menu.agentSandbox': 'Sandbox de Agents',
   'menu.remoteControl': 'Controle remoto',
+  'menu.audit': 'Central de Auditoria',
+  'audit.title': 'Central de Auditoria e Diagnósticos do Alethe',
+  'audit.searchPlaceholder': 'Pesquisar nos logs de auditoria (mensagem, categoria ou stack)…',
+  'audit.filterAll': 'Todos ({count})',
+  'audit.filterErrors': 'Erros ({count})',
+  'audit.copy': 'Copiar',
+  'audit.copyTooltip': 'Copiar relatório completo para área de transferência',
+  'audit.export': 'Exportar',
+  'audit.exportTooltip': 'Baixar arquivo JSON de diagnósticos',
+  'audit.clearTooltip': 'Limpar logs',
+  'audit.empty': 'Nenhum registro de auditoria encontrado para o filtro atual.',
+  'audit.copiedTitle': 'Relatório de auditoria copiado',
+  'audit.copiedBody': 'Cole no chat para análise imediata do agente.',
   'menu.welcome': 'Boas-vindas',
   'menu.pickTheme': 'Escolher tema',
   'menu.groupByProject': 'Agrupar por projeto',
@@ -430,6 +443,57 @@ export const ptBR: Record<MessageKey, string> = {
   'remote.openSettings': 'Abrir configurações do controle remoto',
   'remote.hiddenAddressPlaceholder':
     'http://192.168.x.x:9340 · Abra uma janela de pareamento para revelar o endereço',
+  'brand.remote': 'Alethe Remote',
+  'common.details': 'Detalhes técnicos',
+  'common.reload': 'Tentar novamente',
+  'common.terminal': 'Terminal',
+  'connection.connecting': 'Conectando',
+  'connection.live': 'Ao vivo',
+  'connection.reconnecting': 'Reconectando',
+  'device.browser': 'Navegador',
+  'device.mobile': 'Dispositivo móvel',
+  'home.activeChats': '{count} conversa disponível',
+  'home.activeChatsPlural': '{count} conversas disponíveis',
+  'home.chatCount': '{count} conversa',
+  'home.chatCountPlural': '{count} conversas',
+  'home.description':
+    'Escolha um terminal compartilhado e continue seu trabalho neste dispositivo.',
+  'home.emptyDescription':
+    'Abra um terminal no Alethe ou permita o acesso remoto a um terminal existente.',
+  'home.emptyTitle': 'Nenhuma conversa compartilhada',
+  'home.noMatchesDescription': 'Busque pelo nome de um projeto, grupo, agente ou terminal.',
+  'home.noMatchesTitle': 'Nenhuma conversa encontrada',
+  'home.openChat': 'Abrir {name}',
+  'home.projectCount': '{count} projeto',
+  'home.projectCountPlural': '{count} projetos',
+  'home.remoteAccess': 'Disponível remotamente',
+  'home.search': 'Buscar projetos, grupos ou agentes',
+  'home.title': 'Continue de onde parou',
+  'home.ungrouped': 'Sem grupo',
+  'home.workspace': 'Workspace',
+  'chat.context': '{project} · {agent}',
+  'chat.emptyTerminal': 'Aguardando saída do terminal…',
+  'chat.jumpLatest': 'Ir para o final',
+  'chat.liveTerminal': 'Terminal ao vivo',
+  'chat.messageHint': 'Enter envia · Shift + Enter adiciona uma linha',
+  'chat.readOnly':
+    'Este dispositivo tem acesso somente leitura. O envio de mensagens está desativado no Alethe.',
+  'chat.send': 'Enviar mensagem',
+  'chat.sendError': 'Mensagem não enviada: {message}',
+  'chat.sendPlaceholder': 'Enviar mensagem para este terminal…',
+  'chat.sending': 'Enviando mensagem',
+  'state.connectionDescription':
+    'Não foi possível alcançar o Alethe na rede local. Confira se o app desktop e este dispositivo continuam conectados à mesma rede.',
+  'state.connectionTitle': 'Conexão indisponível',
+  'state.loadingDescription': 'Preparando seu workspace compartilhado…',
+  'state.loadingTitle': 'Conectando ao Alethe',
+  'state.pairingDescription':
+    'Abra o Controle remoto no Alethe e escaneie o QR code para conectar este dispositivo.',
+  'state.pairingTitle': 'Conecte este dispositivo',
+  'state.sessionDescription':
+    'Este dispositivo não está mais pareado. Abra o Controle remoto no Alethe e escaneie um novo QR code.',
+  'state.sessionTitle': 'Sessão remota encerrada',
+  'state.terminalError': 'Não foi possível carregar a saída do terminal.',
   'ui.terminal.hideFromRemote': 'Ocultar de dispositivos remotos',
   'ui.terminal.shareWithRemote': 'Exibir em dispositivos remotos',
   'ui.terminal.recentChats': 'Chats recentes',
@@ -685,6 +749,21 @@ export const ptBR: Record<MessageKey, string> = {
   'features.browser.description': 'Abra sites dentro da workspace em panes de navegador.',
   'features.graphify.title': 'Graphify',
   'features.graphify.description': 'Visualize o grafo do código dentro da workspace.',
+  'resources.parkedTitle': 'Terminal estacionado para liberar memória',
+  'resources.parkedBody':
+    '"{name}" foi parado porque a memória acabou. Reinicie para continuar de onde parou.',
+  'resources.criticalTitle': 'Memória em nível crítico',
+  'resources.criticalBody':
+    'Só {free} MB livres — os terminais estão segurando {ptys} MB. Feche um terminal de agente que você não esteja usando antes do app travar.',
+  'playwright.browserFailedTitle': 'O navegador do Playwright não subiu',
+  'playwright.browserFailedBody':
+    'Nenhum navegador baseado em Chromium foi encontrado, ou ele não abriu a porta de depuração. O Playwright vai subir o próprio.',
+  'features.playwright.title': 'Navegador Playwright',
+  'features.playwright.description':
+    'O Alethe sobe e controla um navegador para automação, e aponta o servidor MCP do Playwright para ele. O navegador fecha junto com o Alethe.',
+  'features.orchestrator.title': 'Orquestração de agentes',
+  'features.orchestrator.description':
+    'Dá ao Claude Code um conjunto de ferramentas do Alethe para repassar trabalho a workers Codex que rodam em paralelo. O Alethe é dono do sandbox, do limite de concorrência e dos workers, e consegue corrigir ou cancelar um deles no meio da execução.',
   'features.mcp.title': 'MCP e Skills',
   'features.mcp.description':
     'Inspecione e gerencie os servidores MCP e as skills de cada agente em um só painel.',
@@ -1019,6 +1098,7 @@ export const ptBR: Record<MessageKey, string> = {
   'rightSidebar.gsdSyncEmptyTitle': 'Nenhuma sessão GSD Sync ativa',
   'rightSidebar.gsdSyncEmptyDesc':
     'Ligue o monitoramento GSD de um projeto pra ver as sessões-filha aqui.',
+  'plans.title': 'Documentos de planejamento',
   'rightSidebar.markdownEmptyTitle': 'Nenhum Markdown selecionado',
   'rightSidebar.markdownEmptyDesc':
     'Abra um arquivo Markdown na sidebar de projetos para visualizá-lo aqui.',
@@ -1222,6 +1302,11 @@ export const ptBR: Record<MessageKey, string> = {
   'crud.editProjectAgents': 'Agentes',
   'merge.providerLabel': 'Agente de resolução de conflitos',
   'merge.modelLabel': 'Modelo do agente ({provider})',
+  'merge.modelLoading': 'Carregando modelos da CLI…',
+  'merge.modelSelect': 'Selecione um modelo ({provider})',
+  'merge.modelSearch': 'Buscar entre {count} modelos de {provider}…',
+  'merge.modelEmpty': 'Nenhum modelo encontrado para “{query}”.',
+  'merge.modelCustom': 'Usar modelo personalizado: “{model}”',
   'merge.gsdSyncPaneName': 'GSD Sync',
   'crud.editProjectWorktrees': 'Worktrees',
   'crud.editProjectMerge': 'Merge',
@@ -1523,6 +1608,8 @@ export const ptBR: Record<MessageKey, string> = {
   'ui.terminal.hideTabsLane': 'Esconder lane de tabs',
   'ui.terminal.showTabsLane': 'Mostrar lane de tabs',
   'ui.terminal.toggleLane': 'Alternar lane',
+  'ui.terminal.pinTopbar': 'Fixar topbar do terminal',
+  'ui.terminal.unpinTopbar': 'Desafixar topbar do terminal',
   'ui.terminal.sessionHistory': 'Histórico de sessões',
   'ui.terminal.history': 'Histórico',
   'ui.terminal.disableFreesRam': 'Pausar (libera RAM · retomável)',
@@ -1652,7 +1739,6 @@ export const ptBR: Record<MessageKey, string> = {
   'git.graph.menu.resetHardConfirm':
     'O reset hard descartará TODAS as alterações não salvas da workspace. Continuar?',
   'git.graph.menu.resetDone': 'Branch resetada',
-  // Este foi feito para adicionar as chaves de busca e atualização do Grafo de Git no i18n em português
   'git.graph.searchPlaceholder': 'Filtrar commits por mensagem, hash, autor ou ref…',
   'git.graph.noSearchResults': 'Nenhum commit atende ao filtro de busca.',
   'git.graph.refresh': 'Atualizar gráfico',
@@ -1888,6 +1974,7 @@ export const ptBR: Record<MessageKey, string> = {
   'diff.close': 'Fechar diff',
   'crud.colorPaletteTitle': 'Paleta de Cores',
   'crud.moreColors': 'Mais cores / Paleta completa',
+  'crud.colorRainbow': 'Arco-Íris Infinito (RGB)',
   'crud.customColor': 'Cor personalizada:',
   'crud.pickColor': 'Conta-gotas',
   'crud.githubUrlLabel': 'REPOSITÓRIO GITHUB (OPCIONAL)',
@@ -1976,6 +2063,18 @@ export const ptBR: Record<MessageKey, string> = {
   'webPane.invalidUrl': 'O endereço deste site é inválido.',
   'webPane.privateStarting': 'Iniciando browser privado…',
   'webPane.privateStartFailed': 'Não foi possível iniciar o browser privado.',
+  'webPane.agentOpenedTitle': 'Um agente abriu uma página',
+  'webPane.agentOpenedBody': '{page} está aberta no navegador compartilhado.',
+  'webPane.agentOpenedOutside': 'Abrir no meu navegador',
+  'webPane.agentOpenedDismiss': 'Deixar em segundo plano',
+  'webPane.agentOpenedAction': 'Ver aqui dentro',
+  'webPane.cdpCloseTab': 'Fechar aba',
+  'webPane.cdpTabs': 'Abas abertas',
+  'webPane.cdpLoading': 'Conectando ao navegador...',
+  'webPane.cdpFailed': 'Não foi possível renderizar a página neste painel.',
+  'webPane.cdpSurface': 'Página do navegador',
+  'webPane.engineCdpOn': 'Navegador embutido ligado — clique para voltar à janela nativa',
+  'webPane.engineCdpOff': 'Renderizar esta página dentro do painel (compartilhada com o agente)',
   'webPane.privateHint':
     'Sessão nativa privada · os dados de navegação são descartados ao fechar este pane.',
 
@@ -2200,10 +2299,6 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.abortBusy':
     'Uma checagem automática deste merge está rodando agora — tente abortar de novo em um instante.',
 
-  'ui.terminal.suspended': 'Suspenso',
-  'ui.terminal.suspendedTooltip': 'Terminal suspenso — clique para reativar',
-  'ui.terminal.clickToReactivate': 'Clique para reativar',
-
   /* ---- RFC-006/007/008 — ciclo de merge seguro ---- */
   'merge.sectionTitle': 'Ciclo de merge',
   'merge.needBranches': 'Este repo precisa de ao menos dois branches locais para merge.',
@@ -2343,6 +2438,8 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.testItemNotePlaceholder': 'O que deu errado? (opcional, enviado ao agente)',
   'merge.testSendFeedback': 'Enviar feedback ao agente',
   'merge.testSendFeedbackTooltip': 'Manda o que passou/falhou direto pro terminal do agente',
+  'merge.testFeedbackUnverified': 'não verificado',
+  'merge.testFeedbackSummaryHeader': 'Feedback de teste da branch "{branch}":',
   'merge.testFeedbackSentTitle': 'Feedback enviado',
   'merge.testFeedbackSentBody': 'O resultado do checklist de teste foi enviado ao agente.',
   'merge.review': 'Revisar',
@@ -2365,6 +2462,11 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.centerPrev': 'Merge anterior',
   'merge.centerNext': 'Próximo merge',
   'merge.treeResizeHandle': 'Arraste pra redimensionar a lista de merges',
+
+  'ui.terminal.suspended': 'Suspenso',
+  'ui.terminal.suspendedTooltip': 'Terminal suspenso — clique para reativar',
+  'ui.terminal.clickToReactivate': 'Clique para reativar',
+
 
   /* ---- fsBrowser ---- */
   'fsBrowser.titleFolder': 'Selecionar Pasta',
@@ -2557,7 +2659,6 @@ export const ptBR: Record<MessageKey, string> = {
 
   /* ---- plans ---- */
   'plans.tab': 'Planos',
-  'plans.title': 'Planos do Projeto',
   'plans.selectProject': 'Selecione um projeto para ver seus planos',
   'plans.noPlans': 'Nenhum plano encontrado',
   'plans.noPlansDesc': 'Os planos criados pelos agentes aparecerão aqui em .alethe/plans/.',

@@ -132,9 +132,9 @@ export function EditProjectAgentSettings({
     const cached = globalModelsCache[targetProvider]
     setDiscoveredModels(cached || fallback)
 
-    // Com cache já preenchido, isso é só uma revalidação silenciosa em segundo
-    // plano — não precisa piscar "Carregando..." de novo (ModelSearchablePicker
-    // só mostra esse texto quando ainda não há opções pra exibir).
+    // With the cache already filled, this is just a silent background
+    // revalidation — no need to flash "Loading..." again (ModelSearchablePicker
+    // only shows that text when there are no options to display yet).
     if (!cached) setLoadingModels(true)
     discoverProviderModels(targetProvider)
       .then((list) => {
@@ -250,7 +250,6 @@ export function EditProjectAgentSettings({
         </div>
       ) : null}
 
-      {/* SELETOR ESTRUTURADO DE AGENTE DE CONFLITOS (CARDS COM ÍCONES) */}
       <div className={controls.field}>
         <label className={controls.label}>{t('merge.providerLabel')}</label>
         <div className={controls.agentGrid}>
@@ -274,7 +273,6 @@ export function EditProjectAgentSettings({
         </div>
       </div>
 
-      {/* SELETOR DE MODELO PESQUISÁVEL E ROLÁVEL */}
       <div className={controls.field} style={{ marginTop: 10 }}>
         <label className={controls.label}>
           {t('merge.modelLabel', { provider: conflictProvider.toUpperCase() })}
@@ -300,10 +298,10 @@ export function EditProjectAgentSettings({
         </label>
       </div>
 
-      {/* Migração de terminais JÁ existentes é uma ação explícita e separada
-          do toggle acima — o toggle só afeta agentes novos. Migrar os
-          existentes mata/suspende o PTY e reinicia o agente do zero na
-          worktree nova (sem continuidade de conversa). */}
+      {/* Migrating ALREADY existing terminals is an explicit, separate action
+          from the toggle above — the toggle only affects new agents. Migrating
+          existing ones kills/suspends the PTY and restarts the agent from
+          scratch on the new worktree (no conversation continuity). */}
       <div style={{ marginTop: 4, marginBottom: 4 }}>
         <button
           type="button"

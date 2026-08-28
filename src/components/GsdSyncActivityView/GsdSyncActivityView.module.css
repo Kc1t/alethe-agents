@@ -98,9 +98,9 @@
   font-size: 13px;
 }
 
-/* Trilho colorido do agente — sempre expandido, é o conteúdo "principal" do
- * feed. Usa --agent-opencode pois é sempre uma sessão do OpenCode sendo
- * lida. */
+/* Agent's colored rail — always expanded, this is the "main" content of the
+ * feed. Uses --agent-opencode since it's always an OpenCode session being
+ * read. */
 .agentMessage {
   display: flex;
   flex-direction: column;
@@ -120,9 +120,9 @@
   color: var(--agent-opencode);
 }
 
-/* Bloco de instrução (o que FOI ENVIADO pro agente) — recolhido por padrão,
- * trilho neutro tracejado, pra ficar claro à primeira vista que não é fala
- * do agente. Abrir mostra o texto completo quando precisar conferir. */
+/* Instruction block (what WAS SENT to the agent) — collapsed by default,
+ * neutral dashed rail, to make clear at a glance it isn't the agent
+ * speaking. Opening it shows the full text when you need to check it. */
 .instructionBlock {
   border-left: 3px dashed var(--border);
   padding: 6px 12px 6px 14px;

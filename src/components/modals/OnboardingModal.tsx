@@ -1,13 +1,23 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { BrainCircuit, Check, GitBranch, Globe, ListTodo, Network, Plug } from 'lucide-react'
+import {
+  Bot,
+  BrainCircuit,
+  Check,
+  GitBranch,
+  Globe,
+  ListTodo,
+  Network,
+  Plug,
+  Workflow,
+} from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { APP_ICON_OPTIONS, getThemeIcon } from '../../lib/themeIcons'
+import { latestVersionFor } from '../../lib/agentVersions'
 import { FEATURES } from '../../lib/features'
 import { LOCALES, useT } from '../../lib/i18n'
 import { DEFAULT_PROFILE_IMAGE_URL, getProfileInitial } from '../../lib/profile'
-import { latestVersionFor } from '../../lib/agentVersions'
 import { agentCliVersion, findCliLauncher, renameProfile } from '../../lib/tauri'
+import { APP_ICON_OPTIONS, getThemeIcon } from '../../lib/themeIcons'
 import { THEME_OPTIONS, themeDescription, themeLabel } from '../../lib/themes'
 import { agentCliCommand, type AgentType, type VisualStyle } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -59,6 +69,8 @@ const FEATURE_ICONS = {
   aiMemory: BrainCircuit,
   graphify: Network,
   mcp: Plug,
+  playwright: Bot,
+  orchestrator: Workflow,
 } as const
 
 export function OnboardingModal() {

@@ -68,6 +68,8 @@ export type InAppToast = {
   createdAt: number
   /** Agent that originated the notification and determines its icon and color. */
   agent?: AgentType
+  /** Offers next steps. A toast carrying any waits longer before dismissing itself. */
+  actions?: { label: string; run: () => void; quiet?: boolean }[]
 }
 
 const MAX_MEMORY_HISTORY = 720
@@ -124,8 +126,8 @@ type UiState = {
   updateInfo: UpdateInfo | null
   /** URL aberta no visualizador in-app (overlay com iframe). null = fechado. */
   linkViewerUrl: string | null
-  /** Sessão-filha do GSD Sync aberta no feed de atividade somente-leitura
-   *  (overlay próprio, sem terminal PTY nenhum). null = fechado. */
+  /** GSD Sync child session open in the read-only activity feed (its own
+   *  overlay, no PTY terminal involved). null = closed. */
   gsdSyncActivityView: { worktreePath: string; sessionId: string; title: string } | null
 
   openModal_: (kind: Exclude<ModalKind, null>, context?: Record<string, unknown>) => void
@@ -163,6 +165,7 @@ type UiState = {
     title: string
     body: string
     agent?: AgentType
+    actions?: { label: string; run: () => void; quiet?: boolean }[]
     /** Record in history without showing an ephemeral banner. */
     silent?: boolean
   }) => void
@@ -301,7 +304,7 @@ export const useUiStore = create<UiState>((set) => ({
   showPlansSidebar: () => set({ rightSidebarMode: 'plans' }),
   setAgentCanvasSession: (session) => set({ agentCanvasSession: session }),
   setAgentCanvasBudget: (usd) => set({ agentCanvasBudgetUsd: usd }),
-  pushToast: ({ title, body, agent, silent }) =>
+  pushToast: ({ title, body, agent, actions, silent }) =>
     set((s) => {
       const now = Date.now()
       const last = s.notifications[0]
@@ -317,6 +320,7 @@ export const useUiStore = create<UiState>((set) => ({
         id: `${now}:${Math.random().toString(36).slice(2)}`,
         title,
         body,
+        actions,
         createdAt: now,
         agent,
       }

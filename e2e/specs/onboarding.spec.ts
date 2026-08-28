@@ -5,16 +5,16 @@ import { recordStep } from '../support/report'
 import { captureScreenshot, markScreenshotAndClick } from '../support/screenshot'
 
 /**
- * Testa o fluxo de onboarding (criação do primeiro perfil) INTERAGINDO DE
- * VERDADE com a UI — digitando no campo de nome, clicando nos botões de
- * idioma e "Próximo"/"Finish setup" via seletores reais do WebDriver — ao
- * invés de contornar via `window.__ALETHE_E2E__` (que só chama ações do
- * store direto, sem provar que a TELA em si funciona).
+ * Tests the onboarding flow (creating the first profile) by REALLY
+ * interacting with the UI — typing in the name field, clicking the
+ * language and "Next"/"Finish setup" buttons via real WebDriver selectors — instead
+ * of bypassing it via `window.__ALETHE_E2E__` (which only calls store
+ * actions directly, without proving the SCREEN itself works).
  *
- * Motivo de existir como spec separada: o dono observou ao vivo a janela do
- * onboarding "sem nada acontecer" enquanto rodava outros specs — que só
- * inspecionavam `window`/chamavam hooks, nunca clicavam em nada da tela.
- * Este spec é o primeiro a de fato exercitar essa UI.
+ * Why it exists as a separate spec: the owner observed live the onboarding
+ * window "with nothing happening" while running other specs — which only
+ * inspected `window`/called hooks, never clicked anything on screen.
+ * This spec is the first to actually exercise that UI.
  */
 async function readPreferences(): Promise<{
   displayName: string
@@ -31,23 +31,23 @@ async function readPreferences(): Promise<{
         }
       }
     ).__ALETHE_E2E_STORE_DEBUG__
-    if (!store) throw new Error('__ALETHE_E2E_STORE_DEBUG__ não está pronto ainda')
+    if (!store) throw new Error('__ALETHE_E2E_STORE_DEBUG__ is not ready yet')
     return store()
   })
   return result as unknown as { displayName: string; language: string; onboardingDone: boolean }
 }
 
-describe('onboarding: criação do primeiro perfil', () => {
+describe('onboarding: creating the first profile', () => {
   before(async () => {
     await suppressWindowFocusTax()
   })
 
-  it('bloqueia avançar sem nome, aceita idioma e nome digitados, e persiste os dois de verdade', async () => {
+  it('blocks advancing without a name, accepts typed language and name, and truly persists both', async () => {
     const nameInput = await $('#onboarding-name')
     await nameInput.waitForDisplayed({ timeout: 15_000 })
 
-    // Passo 0 sem nome: o botão "Next" deve estar DESABILITADO — é
-    // literalmente o comportamento que o dono suspeitava estar quebrado.
+    // Step 0 with no name: the "Next" button must be DISABLED — this is
+    // literally the behavior the owner suspected was broken.
     const nextButtonEmpty = await $('button*=Next')
     expect(await nextButtonEmpty.isEnabled()).toBe(false)
     recordStep({
@@ -59,23 +59,23 @@ describe('onboarding: criação do primeiro perfil', () => {
     const testName = `E2E Tester ${Date.now()}`
     await captureScreenshot('onboarding--step0-empty')
 
-    // O helper compartilhado (`completeOnboarding`) faz o resto do fluxo —
-    // aqui mantém as asserções PRÓPRIAS deste spec (idioma pt-BR explícito,
-    // fechamento do modal), já que testar o onboarding em si é o objetivo.
+    // The shared helper (`completeOnboarding`) does the rest of the flow —
+    // here it keeps this spec's OWN assertions (explicit pt-BR language,
+    // modal closing), since testing onboarding itself is the goal.
     await completeOnboarding(testName)
 
-    // `onboardingDone` é setado antes de `renameProfile`/`flushPersistence`
-    // terminarem (ver `OnboardingModal.tsx`'s `finish()`) — dá pra existir uma
-    // janela curta onde o store ainda não assentou. Faz polling em vez de ler
-    // uma vez só: se nunca assentar dentro do timeout, É um bug real (não um
-    // falso negativo de timing do teste).
+    // `onboardingDone` is set before `renameProfile`/`flushPersistence`
+    // finish (see `OnboardingModal.tsx`'s `finish()`) — there can be a short
+    // window where the store hasn't settled yet. Polls instead of reading
+    // once: if it never settles within the timeout, that IS a real bug (not a
+    // false negative from test timing).
     let prefs: { displayName: string; language: string; onboardingDone: boolean } | null = null
     await browser.waitUntil(
       async () => {
         prefs = await readPreferences()
         return prefs.onboardingDone && prefs.displayName === testName && prefs.language === 'pt-BR'
       },
-      { timeout: 5_000, interval: 250, timeoutMsg: 'preferences nunca assentaram pós-onboarding' },
+      { timeout: 5_000, interval: 250, timeoutMsg: 'preferences never settled after onboarding' },
     )
     recordStep({
       scenario: 'onboarding',
@@ -88,10 +88,10 @@ describe('onboarding: criação do primeiro perfil', () => {
     expect(prefs!.language).toBe('pt-BR')
   })
 
-  it('cria o primeiro projeto digitando a pasta (sem clicar em "Procurar") e abre um terminal', async () => {
-    // `OnboardingModal.tsx`'s `finish()` abre "Novo projeto" automaticamente
-    // (setTimeout 0) logo depois do onboarding fechar — é o próximo passo
-    // real que o usuário vê, não algo que este teste precisa disparar.
+  it('creates the first project by typing the folder (without clicking "Browse") and opens a terminal', async () => {
+    // `OnboardingModal.tsx`'s `finish()` opens "New project" automatically
+    // (setTimeout 0) right after onboarding closes — it's the next real
+    // step the user sees, not something this test needs to trigger.
     const nameInput = await $('input[placeholder="Ex: Site novo, Cliente X..."]')
     await nameInput.waitForDisplayed({ timeout: 15_000 })
 
@@ -100,11 +100,11 @@ describe('onboarding: criação do primeiro perfil', () => {
     try {
       await nameInput.setValue(projectName)
 
-      // Clicar em "Procurar" abriria o seletor de pasta NATIVO do Windows —
-      // fora do webview, o WebDriver não enxerga nem consegue fechar essa
-      // janela (é o que travava a sessão antes). O campo ao lado aceita
-      // digitação direta (`onChange` normal, não é somente leitura) — usa
-      // esse caminho, nunca o botão "Procurar".
+      // Clicking "Browse" would open Windows' NATIVE folder picker —
+      // outside the webview, WebDriver can't see or close that
+      // window (that's what used to hang the session). The field next to it accepts
+      // direct typing (a normal `onChange`, not read-only) — use
+      // that path, never the "Browse" button.
       const pathInput = await $('input[placeholder="Escolha a pasta do projeto"]')
       await pathInput.setValue(fixture.path)
       expect(await pathInput.getValue()).toBe(fixture.path)
@@ -113,14 +113,14 @@ describe('onboarding: criação do primeiro perfil', () => {
       await createButton.waitForClickable({ timeout: 5_000 })
       await markScreenshotAndClick(createButton, 'onboarding--click-criar-projeto')
 
-      // Prova real: o projeto aparece na sidebar esquerda com o nome digitado
-      // — não só que o modal fechou sem erro.
+      // Real proof: the project shows up in the left sidebar with the typed name
+      // — not just that the modal closed without error.
       const sidebarEntry = await $(`span[title="${projectName}"]`)
       await sidebarEntry.waitForDisplayed({ timeout: 10_000 })
       recordStep({ scenario: 'onboarding', step: 'projeto-criado-na-sidebar', status: 'pass' })
 
-      // Modo padrão sem GitHub URL abre "Novo terminal" em seguida — escolhe
-      // Shell (não depende de nenhum CLI de agente externo instalado).
+      // Default mode without a GitHub URL opens "New terminal" next — picks
+      // Shell (doesn't depend on any external agent CLI being installed).
       const shellCard = await $('button*=Shell')
       await shellCard.waitForClickable({ timeout: 10_000 })
       await markScreenshotAndClick(shellCard, 'onboarding--click-selecionar-shell')
@@ -129,17 +129,17 @@ describe('onboarding: criação do primeiro perfil', () => {
       await openButton.waitForClickable({ timeout: 5_000 })
       await markScreenshotAndClick(openButton, 'onboarding--click-abrir-shell')
 
-      // Prova real: o modal "Novo terminal" some — o terminal foi de fato
-      // aberto, não travou esperando algo que o WebDriver não consegue clicar.
+      // Real proof: the "New terminal" modal disappears — the terminal was actually
+      // opened, it didn't hang waiting for something WebDriver can't click.
       await browser.waitUntil(async () => !(await $('button*=Abrir Shell').isExisting()), {
         timeout: 15_000,
-        timeoutMsg: 'modal "Novo terminal" nunca fechou depois de "Abrir Shell"',
+        timeoutMsg: '"New terminal" modal never closed after "Open Shell"',
       })
 
-      // O modal sumir NÃO prova que o terminal embaixo realmente renderizou
-      // (é o mesmo tipo de falso positivo raso que motivou toda essa suíte)
-      // — `.xterm` é a classe própria do xterm.js (não hasheada pelo CSS
-      // Modules do app), confirma que a instância real montou na tela.
+      // The modal disappearing does NOT prove the terminal underneath actually rendered
+      // (it's the same kind of shallow false positive that motivated this whole suite)
+      // — `.xterm` is xterm.js's own class (not hashed by the app's CSS
+      // Modules), confirming the real instance mounted on screen.
       await captureScreenshot('onboarding--logo-apos-modal-fechar')
       const xtermSurface = await $('.xterm')
       try {
@@ -153,7 +153,7 @@ describe('onboarding: criação do primeiro perfil', () => {
         scenario: 'onboarding',
         step: 'terminal-aberto',
         status: 'pass',
-        detail: '.xterm confirmado no DOM depois do modal fechar',
+        detail: '.xterm confirmed in the DOM after the modal closed',
       })
     } finally {
       fixture.cleanup()

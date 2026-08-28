@@ -8,8 +8,8 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import { useEffect, useRef } from 'react'
 
 import { recordAgentActivityInput } from '../../lib/activityTracker'
-import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
 import { cliPathMatchesAgent } from '../../lib/agentCliPath'
+import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
 import { deliverOpenCodePrompt } from '../../lib/agentPromptDelivery'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { watchAndPersistDiscoveredSession } from '../../lib/agentSessionDiscovery'
@@ -53,6 +53,8 @@ import {
   listenPtyExit,
   listenPtyResized,
   listenPtyResync,
+  orchestratorMcpConfigPath,
+  playwrightMcpConfigPath,
   ptyExists,
   type PtyResyncReason,
   readClipboardPayload,
@@ -92,6 +94,7 @@ import {
 import {
   findSafeChunkBoundary,
   TERMINAL_WRITE_FRAME_BUDGET,
+  trimPendingWrites,
   writePtyChunked,
   writePtyWithTimeout,
 } from './terminalWrite'
@@ -739,6 +742,7 @@ export function useXtermSession(params: {
       }
       pendingWrites.push(chunk)
       pendingWriteLength += chunk.length
+      pendingWriteLength = trimPendingWrites(pendingWrites, pendingWriteLength).length
       if (writeFrame !== null) return
       writeFrame = window.requestAnimationFrame(flushPendingWrite)
     }
@@ -1987,6 +1991,27 @@ export function useXtermSession(params: {
               body: translate(getLocale(), 'aiMemory.notInstalledBody'),
             })
           }
+          if (disposed) return
+        }
+
+        // Claude only: it takes an ephemeral --mcp-config, so nothing is left behind pointing at a
+        // dead endpoint. Codex and OpenCode need in-repo config writes.
+        //
+        // This must never start a browser. The config points at the shared browser when one is
+        // already running and otherwise leaves Playwright on its default, which opens a browser
+        // only once the agent reaches for one.
+        const playwrightEnabled = useProjectsStore.getState().preferences.enabledFeatures.playwright
+        if (playwrightEnabled && command === 'claude') {
+          const p = await playwrightMcpConfigPath().catch(() => undefined)
+          if (p) mcpConfigPaths.push(p)
+          if (disposed) return
+        }
+
+        const orchestratorEnabled =
+          useProjectsStore.getState().preferences.enabledFeatures.orchestrator
+        if (orchestratorEnabled && command === 'claude') {
+          const p = await orchestratorMcpConfigPath().catch(() => undefined)
+          if (p) mcpConfigPaths.push(p)
           if (disposed) return
         }
 

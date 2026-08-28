@@ -33,10 +33,10 @@ import { MergeCenterModal } from '../modals/MergeCenterModal'
 import { MergeTree } from './MergeTree'
 import styles from './SidebarMergePanel.module.css'
 
-/** Prompt inicial do Revisor de Branch — agente-facing (aparece no terminal
- *  dele, não na UI do Alethe), por isso fica fora do i18n, igual ao
- *  conflictPrompt() do mergeStore. Não implementa/corrige nada sozinho — só
- *  avalia e responde ao usuário no próprio terminal. */
+/** Initial prompt for the Branch Reviewer — agent-facing (appears in its own
+ *  terminal, not in the Alethe UI), so it lives outside i18n, same as
+ *  conflictPrompt() in mergeStore. Doesn't implement/fix anything on its
+ *  own — only evaluates and responds to the user in its own terminal. */
 function reviewPrompt(branch: string, target: string): string {
   return (
     `Revise as alterações da branch "${branch}" antes de um merge para "${target}". ` +
@@ -57,28 +57,28 @@ export type PendingMergeCard = {
   branchName: string
   worktreePath: string
   agentName: string
-  /** Provider do agente rodando nessa worktree (tab ativa do terminal) — só
-   *  pra escolher o ícone certo (AgentIcon), sem efeito nenhum no gate. */
+  /** Provider of the agent running in this worktree (terminal's active tab)
+   *  — only used to pick the right icon (AgentIcon), has no effect on the gate. */
   agentType: AgentType
   gsdWatcherEnabled: boolean
-  /** false quando o provider desta worktree não é OpenCode — o plugin GSD
-   *  (que escreve `.planning/status.md`) só é instalado em terminais
-   *  OpenCode, então a Camada 1 do gate nunca teria como passar aqui. */
+  /** false when this worktree's provider isn't OpenCode — the GSD plugin
+   *  (which writes `.planning/status.md`) is only installed in OpenCode
+   *  terminals, so gate Layer 1 could never pass here. */
   gsdGateApplicable: boolean
 }
 
-/** Fases do Gate de Conclusão de Planejamento GSD (opt-in via
- *  `gsdWatcherEnabled`) — `hidden`/`checking` nunca aparecem na lista, só
- *  `ready`/`failed`. `failed` significa "planejamento diz completo, mas a
- *  checagem automática (diff real ou validação) não confirmou" — mostrado,
- *  nunca escondido, porque esconder um problema real é pior que mostrá-lo. */
+/** Stages of the GSD Planning Completion Gate (opt-in via
+ *  `gsdWatcherEnabled`) — `hidden`/`checking` never show up in the list,
+ *  only `ready`/`failed`. `failed` means "planning says complete, but the
+ *  automatic check (real diff or validation) didn't confirm it" — shown,
+ *  never hidden, because hiding a real problem is worse than showing it. */
 export type GateStage = 'hidden' | 'checking' | 'ready' | 'failed' | 'unverified'
 export type GateResult = { stage: GateStage; detail?: string }
 
-/** Deriva o rótulo/tom do card a partir da fase real do mergeStore — só o
- *  card cujo worktreeAgentId bate com o merge ativo mostra progresso; os
- *  demais ficam neutros ("pronto para revisão"), sem prometer validação
- *  nenhuma que ainda não rodou. */
+/** Derives the card's label/tone from mergeStore's real phase — only the
+ *  card whose worktreeAgentId matches the active merge shows progress; the
+ *  others stay neutral ("ready for review"), without promising any
+ *  validation that hasn't run yet. */
 type CardStatus = { key: MessageKey; tone: 'working' | 'waiting' | 'offline' | 'stopped' }
 
 export function statusInfo(phase: MergePhase, isActive: boolean): CardStatus {
@@ -106,9 +106,9 @@ export function statusInfo(phase: MergePhase, isActive: boolean): CardStatus {
   }
 }
 
-/** Mesma decisão hoje calculada inline no `.map()` de render — extraída pra
- *  ser reaproveitada tanto pela linha compacta da árvore (MergeTree) quanto
- *  pela tag do popup de detalhe (MergeCenterModal), sem duplicar a lógica. */
+/** Same decision that used to be computed inline in the render `.map()` —
+ *  extracted so it can be reused both by the tree's compact row (MergeTree)
+ *  and by the detail popup's tag (MergeCenterModal), without duplicating the logic. */
 export function deriveCardStatus(
   gate: GateResult | undefined,
   isCardActive: boolean,
@@ -154,15 +154,15 @@ export function SidebarMergePanel() {
   } | null>(null)
   const [testBriefing, setTestBriefing] = useState<{
     id: string
-    /** null = ainda carregando o diff real. */
+    /** null = still loading the real diff. */
     diff: DiffSummaryEntry[] | null
     validation: 'idle' | 'loading' | ValidationResult
-    /** Passos de teste estruturados, registrados pela sessão-filha via tool
-     *  dedicada (`gsd_record_step`) — null = ainda carregando; [] = sem
-     *  planejamento GSD nesse projeto (cai no fallback determinístico). */
+    /** Structured test steps, recorded by the child session via a dedicated
+     *  tool (`gsd_record_step`) — null = still loading; [] = no GSD planning
+     *  in this project (falls back to the deterministic fallback). */
     procedure: GsdProcedureStep[] | null
-    /** Camada 4 do Escudo — 'idle' quando não há `healthCheckCommand`
-     *  configurado nesse projeto (nunca dispara sozinho). */
+    /** Shield Layer 4 — 'idle' when there's no `healthCheckCommand`
+     *  configured on this project (never fires on its own). */
     health: 'idle' | 'loading' | HealthProbeResult
   } | null>(null)
   const [validatingId, setValidatingId] = useState<string | null>(null)
@@ -175,34 +175,35 @@ export function SidebarMergePanel() {
   const probingRef = useRef<Set<string>>(new Set())
   const [centerModalOpen, setCenterModalOpen] = useState(false)
   const [centerModalIndex, setCenterModalIndex] = useState(0)
-  /** Painel some grande com muitas worktrees pendentes ao mesmo tempo — deixa
-   *  o usuário recolher a árvore (cabeçalho/badge continuam visíveis) sem
-   *  perder o sinal de que há merges pendentes. */
+  /** Panel grows large with many pending worktrees at once — lets the user
+   *  collapse the tree (header/badge stay visible) without losing the
+   *  signal that there are pending merges. */
   const [treeCollapsed, setTreeCollapsed] = useState(false)
-  /** Altura total do painel (cabeçalho + árvore) — arrasta a alça no TOPO do
-   *  painel pra empurrar a fronteira com a lista de projetos acima pra cima
-   *  ou pra baixo. A lista de projetos é `flex:1` (ProjectSidebar.module.css
-   *  `.list`), então crescer este painel automaticamente encolhe a lista —
-   *  nunca sobrepõe, só divide o espaço. */
+  /** Total panel height (header + tree) — dragging the handle at the TOP of
+   *  the panel pushes the boundary with the project list above up or down.
+   *  The project list is `flex:1` (ProjectSidebar.module.css `.list`), so
+   *  growing this panel automatically shrinks the list — it never overlaps,
+   *  it only divides the space. */
   const [panelHeight, setPanelHeight] = useState(220)
   const MIN_PANEL_HEIGHT = 90
-  /** Altura só do cabeçalho+alça, quando recolhido — igual ao que o
-   *  separador da sidebar direita (react-resizable-panels, ver App.tsx
-   *  `collapsedSize="0px"`) faz ao recolher: some sempre é DE→PARA entre
-   *  dois números com `height` animável, nunca um pulo pra `auto`. */
+  /** Height of just the header+handle, when collapsed — same as what the
+   *  right sidebar separator (react-resizable-panels, see App.tsx
+   *  `collapsedSize="0px"`) does on collapse: it always animates FROM→TO
+   *  between two numbers with an animatable `height`, never a jump to `auto`. */
   const HEADER_ONLY_HEIGHT = 44
-  /** true só durante o arrasto ativo — desliga a transição CSS de `height`
-   *  pra ela seguir o ponteiro 1:1 (igual ao `:has([data-separator='active'])`
-   *  de App.module.css), e liga de novo no pointerup pra o "encaixe" final
-   *  (expandir/recolher) ficar suave em vez de instantâneo. */
+  /** true only during active dragging — turns off the CSS `height`
+   *  transition so it follows the pointer 1:1 (same as
+   *  `:has([data-separator='active'])` in App.module.css), and turns it
+   *  back on on pointerup so the final "snap" (expand/collapse) feels
+   *  smooth instead of instant. */
   const [isResizingPanel, setIsResizingPanel] = useState(false)
 
   const handlePanelResizeStart = (e: React.PointerEvent) => {
     e.preventDefault()
-    // Limita a no máximo metade da altura real da sidebar no momento do
-    // arrasto — garante que a lista de projetos acima (e o rodapé fixo
-    // abaixo) sempre sobrem com espaço, em vez de deixar esse painel comer
-    // a sidebar inteira.
+    // Caps at at most half the sidebar's real height at drag time —
+    // guarantees the project list above (and the fixed footer below)
+    // always keep some room left, instead of letting this panel eat up
+    // the whole sidebar.
     const asideEl = (e.currentTarget as HTMLElement).closest('aside')
     const maxHeight = asideEl
       ? Math.max(MIN_PANEL_HEIGHT + 40, asideEl.getBoundingClientRect().height * 0.5)
@@ -211,13 +212,13 @@ export function SidebarMergePanel() {
     const startHeight = treeCollapsed ? HEADER_ONLY_HEIGHT : panelHeight
     setIsResizingPanel(true)
     const onMove = (ev: PointerEvent) => {
-      // Arrastar a alça do TOPO pra CIMA (mouse sobe, deltaY negativo) deve
-      // AUMENTAR a altura do painel — por isso o sinal invertido aqui.
+      // Dragging the TOP handle UPWARD (mouse moves up, deltaY negative)
+      // should INCREASE the panel's height — hence the inverted sign here.
       const raw = startHeight - (ev.clientY - startY)
-      // Arrastar além do limite mínimo recolhe de vez (mesmo estado do
-      // clique no cabeçalho), em vez de travar num sliver pequeno demais pra
-      // ser útil. Se o usuário voltar a arrastar pra cima sem soltar, reabre
-      // e retoma o resize normalmente — o gesto é reversível.
+      // Dragging past the minimum threshold collapses it outright (same
+      // state as clicking the header), instead of getting stuck at a
+      // sliver too small to be useful. If the user drags back up without
+      // releasing, it reopens and resumes the resize normally — the gesture is reversible.
       if (raw < MIN_PANEL_HEIGHT) {
         setTreeCollapsed(true)
         return
@@ -234,9 +235,9 @@ export function SidebarMergePanel() {
     window.addEventListener('pointerup', onUp)
   }
 
-  // Coleta todas as worktrees ativas dos projetos que possuem alterações/branches
-  // pendentes. useMemo evita identidade nova de array a cada render — sem isso,
-  // o efeito de poll do Gate GSD (abaixo) dispararia sem parar.
+  // Collects all active worktrees from projects that have pending
+  // changes/branches. useMemo avoids a new array identity on every render —
+  // without this, the GSD Gate polling effect (below) would keep firing nonstop.
   const pendingMerges: PendingMergeCard[] = useMemo(() => {
     const result: PendingMergeCard[] = []
     for (const proj of projects) {
@@ -264,14 +265,14 @@ export function SidebarMergePanel() {
     return result
   }, [projects])
 
-  /** Gate de Conclusão de Planejamento GSD — só roda pra cards de projetos com
-   *  `gsdWatcherEnabled`. Camada 1 (planejamento completo, `.planning/STATE.md`/
-   *  `roadmap.md` na PRÓPRIA worktree) decide se o card fica escondido; só
-   *  quando ela passa, roda Camada 2 (diff real existe) e Camada 3 (validação
-   *  passa). Falha em 2/3 NUNCA esconde o card — mostra com status de falha,
-   *  porque esconder um problema real seria pior que mostrá-lo. `probingRef`
-   *  evita disparo duplicado se o poll seguinte disparar antes da promise
-   *  anterior resolver. */
+  /** GSD Planning Completion Gate — only runs for cards of projects with
+   *  `gsdWatcherEnabled`. Layer 1 (complete planning, `.planning/STATE.md`/
+   *  `roadmap.md` in the worktree ITSELF) decides whether the card stays
+   *  hidden; only once it passes do Layer 2 (real diff exists) and Layer 3
+   *  (validation passes) run. Failing 2/3 NEVER hides the card — it shows
+   *  with a failed status, because hiding a real problem would be worse
+   *  than showing it. `probingRef` prevents a duplicate fire if the next
+   *  poll fires before the previous promise resolves. */
   const checkCard = async (item: PendingMergeCard) => {
     if (probingRef.current.has(item.id)) return
     probingRef.current.add(item.id)
@@ -280,10 +281,10 @@ export function SidebarMergePanel() {
       [item.id]: prev[item.id]?.stage === 'failed' ? prev[item.id] : { stage: 'checking' },
     }))
     try {
-      // Camada 1 (planejamento GSD) não bloqueia o card: mesmo com
-      // `item.gsdGateApplicable`, um planejamento ainda em andamento não
-      // esconde nem trava o card pra sempre — a Camada 2 (diff real) abaixo
-      // já decide isso sozinha, então não há checagem de planejamento aqui.
+      // Layer 1 (GSD planning) doesn't block the card: even with
+      // `item.gsdGateApplicable`, a planning still in progress doesn't hide
+      // or lock the card forever — Layer 2 (real diff) below already
+      // decides that on its own, so there's no planning check here.
       const proj = projects.find((p) => p.id === item.projectId)
       const repo = proj ? getProjectRepoRoot(proj) : ''
       if (!repo) {
@@ -294,7 +295,7 @@ export function SidebarMergePanel() {
       try {
         target = (await gitStatus(repo)).branch
       } catch {
-        // sem repo resolvível / gitStatus falhou — segue com o fallback 'main'
+        // no resolvable repo / gitStatus failed — proceed with the 'main' fallback
       }
       const diff = await gitDiffSummary(repo, item.branchName, target, item.worktreePath).catch(
         () => [],
@@ -312,9 +313,9 @@ export function SidebarMergePanel() {
 
       const commands = proj?.validationCommands ?? []
       if (commands.length === 0) {
-        // Sem comandos configurados, nada foi de fato checado — não pode
-        // virar o mesmo selo verde de "passou" (era exatamente isso que
-        // fazia o gate mentir que validou quando não validou nada).
+        // With no commands configured, nothing was actually checked — it
+        // can't turn into the same green "passed" badge (that's exactly
+        // what made the gate lie about validating when it validated nothing).
         setGateStatus((prev) => ({ ...prev, [item.id]: { stage: 'unverified' } }))
         return
       }
@@ -364,15 +365,15 @@ export function SidebarMergePanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingMerges, gateStatus])
 
-  // Descoberta da sessão-filha isolada e leitura de status (busy/erro) —
-  // extraída pro hook `useGsdSyncSessions` (usado também pela gaveta GSD
-  // Sync). A pane "GSD Sync" NUNCA é aberta sozinha na grade normal do
-  // projeto aqui; abrir é uma ação explícita do usuário só pela gaveta.
+  // Isolated child session discovery and status reading (busy/error) —
+  // extracted into the `useGsdSyncSessions` hook (also used by the GSD
+  // Sync drawer). The "GSD Sync" pane is NEVER opened on its own in the
+  // normal project grid here; opening it is an explicit user action from the drawer only.
   useGsdSyncSessionsWatcher((_session, childError) => {
-    // Defesa: no modo web, uma rota de backend ainda não implementada
-    // devolve um JSON genérico `{status, path}` em vez do texto de erro real
-    // — sem essa checagem, `childError` vira um objeto e `.slice` explode em
-    // loop a cada poll (5s), inundando o console mesmo sem nenhum erro real.
+    // Defense: in web mode, a backend route not yet implemented returns a
+    // generic `{status, path}` JSON instead of the real error text —
+    // without this check, `childError` becomes an object and `.slice`
+    // blows up in a loop on every poll (5s), flooding the console even with no real error.
     const message = typeof childError === 'string' ? childError : JSON.stringify(childError)
     pushToast({
       title: t('merge.gsdChildErrorTitle'),
@@ -392,18 +393,18 @@ export function SidebarMergePanel() {
     )
   })
 
-  // Recorte só pra árvore da sidebar — o popup de detalhe continua navegando
-  // por `visiblePendingMerges` inteiro (todos os projetos); só a árvore fica
-  // escopada ao projeto selecionado no momento.
+  // Slice used only for the sidebar tree — the detail popup keeps
+  // navigating the whole `visiblePendingMerges` (all projects); only the
+  // tree stays scoped to the currently selected project.
   const treeItemsForActiveProject = visiblePendingMerges.filter(
     (item) => item.projectId === activeProjectId,
   )
   const hasOtherProjectsPending = visiblePendingMerges.some(
     (item) => item.projectId !== activeProjectId,
   )
-  // Pedido explícito: a Central de Merges só ocupa espaço na sidebar quando o
-  // projeto ATIVO tem algo pendente — evita competir por altura com o Gráfico
-  // de commits (mesmo painel) quando o merge pendente é de outro projeto.
+  // Explicit request: the Merge Center only takes up sidebar space when the
+  // ACTIVE project has something pending — avoids competing for height with
+  // the Commit Graph (same panel) when the pending merge belongs to a different project.
   const hasActiveProjectMerges = pendingMerges.some((item) => item.projectId === activeProjectId)
 
   const isMergeBusy = MERGE_BUSY_PHASES.includes(mergePhase)
@@ -418,9 +419,9 @@ export function SidebarMergePanel() {
     setCenterModalOpen(true)
   }
 
-  /** Reabre o popup de detalhe no MESMO item depois que um modal aninhado
-   *  (Testar / confirmação de commit) fecha — nunca empilha dois Dialog Radix
-   *  ao mesmo tempo, então o Center sempre fecha antes de abrir o outro. */
+  /** Reopens the detail popup on the SAME item after a nested modal
+   *  (Test / commit confirmation) closes — never stacks two Radix Dialogs
+   *  at the same time, so the Center always closes before opening the other one. */
   const reopenCenterModalFor = (item: PendingMergeCard) => {
     const idx = visiblePendingMerges.findIndex((i) => i.id === item.id)
     if (idx === -1) return
@@ -429,8 +430,8 @@ export function SidebarMergePanel() {
   }
 
   const handleAcceptMerge = async (item: PendingMergeCard) => {
-    // Clicar em Integrar sempre fecha o popup de detalhe — pedido explícito
-    // do dono, não fica esperando o usuário fechar na mão.
+    // Clicking Integrate always closes the detail popup — explicit request
+    // from the owner, doesn't sit around waiting for the user to close it manually.
     setCenterModalOpen(false)
     const proj = projects.find((p) => p.id === item.projectId)
     if (!proj) return
@@ -439,18 +440,17 @@ export function SidebarMergePanel() {
       pushToast({ title: t('merge.noRepoTitle'), body: t('merge.noRepoBody') })
       return
     }
-    // git merge só move commits — se essa worktree tem trabalho nunca
-    // commitado, para e pede confirmação (com a mensagem do commit) antes de
-    // seguir, em vez de commitar silenciosamente ou integrar um no-op (bug
-    // real, confirmado ao vivo: "merge concluído" sem mover nada).
+    // git merge only moves commits — if this worktree has work that was
+    // never committed, stop and ask for confirmation (with the commit
+    // message) before proceeding, instead of committing silently or
+    // integrating a no-op (real bug, confirmed live: "merge complete" without moving anything).
     const pending = await worktreePendingChanges(repo, item.worktreeAgentId).catch(() => [])
     if (pending.length > 0) {
       const defaultMessage = await readTextFile(`${item.worktreePath}/.planning/goal.md`).catch(
         () => '',
       )
-      // Popup já fechado no topo da função — só empilha o modal de
-      // confirmação de commit (nunca dois Dialog Radix abertos ao mesmo
-      // tempo).
+      // Popup already closed at the top of the function — just stacks the
+      // commit confirmation modal (never two Radix Dialogs open at the same time).
       setCommitConfirmTarget({ item, repo, pending, defaultMessage: defaultMessage.trim() })
       return
     }
@@ -461,9 +461,9 @@ export function SidebarMergePanel() {
     const target = commitConfirmTarget
     if (!target) return
     setCommitConfirmTarget(null)
-    // Confirmar o commit segue direto pro integrate de verdade — o popup de
-    // detalhe já estava fechado desde o clique em Integrar, e continua
-    // fechado (mesma regra: Integrar sempre fecha, não reabre sozinho).
+    // Confirming the commit goes straight into the real integrate — the
+    // detail popup was already closed since the click on Integrate, and
+    // stays closed (same rule: Integrate always closes, never reopens on its own).
     const proj = projects.find((p) => p.id === target.item.projectId)
     if (!proj) return
     await worktreeCommitWorktree(target.repo, target.item.worktreeAgentId, message).catch((err) => {
@@ -481,24 +481,24 @@ export function SidebarMergePanel() {
     const repo = getProjectRepoRoot(proj)
     if (!repo) return
     if (!confirm(t('merge.rejectConfirm', { branch: item.branchName }))) return
-    // Idem: fecha o popup de detalhe só depois do confirm nativo passar.
+    // Same here: only closes the detail popup after the native confirm passes.
     setCenterModalOpen(false)
 
     try {
-      // Mata o processo/PTY do agente ANTES de remover a worktree — no Windows,
-      // apagar uma pasta que ainda é o cwd de um processo vivo falha com
-      // "failed to delete <path>" (é exatamente esse o erro que motivou este
-      // fix). Espera de verdade a árvore de processos morrer via
-      // `killPtyTree`/`kill_pty_tree_cmd`, não o `killPty` fire-and-forget que
-      // `deleteTerminal` dispara (sem garantia de ordem).
+      // Kill the agent's process/PTY BEFORE removing the worktree — on
+      // Windows, deleting a folder that's still the cwd of a live process
+      // fails with "failed to delete <path>" (that's exactly the error that
+      // motivated this fix). Actually waits for the process tree to die via
+      // `killPtyTree`/`kill_pty_tree_cmd`, not the fire-and-forget `killPty`
+      // that `deleteTerminal` fires (with no ordering guarantee).
       const terminal = proj.terminals.find((term) => term.id === item.terminalId)
       const ptyIds = (terminal?.tabs ?? [])
         .map((tab) => tab.ptyId)
         .filter((id): id is string => Boolean(id))
       await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(() => [])))
 
-      // Só remove a worktree — a branch é preservada de propósito (worktree_remove
-      // não apaga branch), diferente de Aceitar, que faz um merge real.
+      // Only removes the worktree — the branch is deliberately preserved
+      // (worktree_remove doesn't delete the branch), unlike Accept, which does a real merge.
       await worktreeRemove(repo, item.worktreeAgentId, true)
       deleteTerminal(item.projectId, item.terminalId)
       pushToast({
@@ -506,11 +506,11 @@ export function SidebarMergePanel() {
         body: t('merge.rejectedBody', { branch: item.branchName }),
       })
     } catch (err) {
-      // Falha real (não conseguiu matar o processo a tempo, lock
-      // administrativo, disco, etc.) nunca pode deixar a worktree sem rastro
-      // nenhum — registra como órfã (mesmo padrão de mergeStore.ts abort(),
-      // linhas ~495-515) pro dono limpar depois via Editar Projeto →
-      // Multi-Agentes, em vez de só um toast que some e a pasta ficar perdida.
+      // A real failure (couldn't kill the process in time, administrative
+      // lock, disk, etc.) can never leave the worktree with no trace at all
+      // — record it as orphaned (same pattern as mergeStore.ts abort(),
+      // lines ~495-515) for the owner to clean up later via Edit Project →
+      // Multi-Agents, instead of just a toast that disappears and the folder gets lost.
       useProjectsStore.getState().addOrphanWorktree(item.projectId, {
         path: item.worktreePath,
         mode: 'gitWorktree',
@@ -550,11 +550,11 @@ export function SidebarMergePanel() {
     }
   }
 
-  /** Spawna (ou reabre a caixa de feedback de) um agente revisor dedicado no
-   *  próprio worktree do pane — reaproveita o mesmo mecanismo de terminal
-   *  usado pelo agente efêmero de conflito, sem precisar de nenhum comando
-   *  Rust novo. O feedback do usuário é digitado direto no stdin do agente
-   *  já rodando (writePty), igual a um humano no terminal. */
+  /** Spawns (or reopens the feedback box for) a dedicated review agent in
+   *  the pane's own worktree — reuses the same terminal mechanism used by
+   *  the ephemeral conflict agent, with no new Rust command required. The
+   *  user's feedback is typed directly into the running agent's stdin
+   *  (writePty), just like a human would in the terminal. */
   const handleToggleReview = async (item: PendingMergeCard) => {
     const existing = reviewSessions[item.id]
     if (existing) {
@@ -569,7 +569,7 @@ export function SidebarMergePanel() {
     try {
       if (repo) target = (await gitStatus(repo)).branch
     } catch {
-      // sem repo resolvível / gitStatus falhou — segue com o fallback 'main'
+      // no resolvable repo / gitStatus failed — proceed with the 'main' fallback
     }
 
     const provider = proj.reviewAgentProvider ?? proj.conflictAgentProvider ?? 'claude'
@@ -622,7 +622,7 @@ export function SidebarMergePanel() {
   const handleStartTesting = async (item: PendingMergeCard) => {
     const proj = projects.find((p) => p.id === item.projectId)
 
-    // 1. Procura comandos explícitos de ação/execução no procedimento registrado pelo GSD
+    // 1. Look for explicit action/run commands in the procedure recorded by GSD
     let runCommand = testBriefing?.procedure
       ?.map((step) => {
         const match = /["'`](.+?)["'`]/.exec(step.description)
@@ -631,12 +631,12 @@ export function SidebarMergePanel() {
       .find((cmd): cmd is string => Boolean(cmd) && (cmd!.startsWith('go run') || cmd!.startsWith('npm') || cmd!.startsWith('cargo run') || cmd!.startsWith('python') || cmd!.startsWith('make') || cmd!.startsWith('go build')))
 
     if (runCommand && runCommand.startsWith('go build')) {
-      // Se for "go build ./cmd/animego", encadeia a execução do binário gerado na sequência
+      // If it's "go build ./cmd/animego", chain the generated binary's execution right after
       const binName = runCommand.split('/').pop() || 'app'
       runCommand = `${runCommand} && .\\${binName}.exe`
     }
 
-    // 2. Se não houver no procedimento, procura em healthCheck / validationCommands
+    // 2. If not in the procedure, look in healthCheck / validationCommands
     if (!runCommand) {
       runCommand = proj?.healthCheckCommand?.trim() || proj?.validationCommands?.[0]?.trim()
     }
@@ -671,14 +671,14 @@ export function SidebarMergePanel() {
     })
   }
 
-  /** Abre o Briefing de Testes com dado real: diff de arquivos alterados
-   *  (git de verdade) + resultado real dos validationCommands do projeto —
-   *  nada de texto fabricado. As duas chamadas rodam em paralelo; cada
-   *  atualização de estado confere `prev?.id === item.id` pra não pisar no
-   *  resultado se o usuário trocar de card antes das respostas chegarem. */
+  /** Opens the Test Briefing with real data: diff of changed files (actual
+   *  git) + the project's real validationCommands result — no fabricated
+   *  text. Both calls run in parallel; every state update checks
+   *  `prev?.id === item.id` so it doesn't stomp on the result if the user
+   *  switches cards before the responses arrive. */
   const handleOpenTestModal = (item: PendingMergeCard) => {
-    // Fecha o popup de detalhe antes de empilhar o Briefing de Testes — nunca
-    // dois Dialog Radix abertos ao mesmo tempo (ver reopenCenterModalFor).
+    // Closes the detail popup before stacking the Test Briefing — never two
+    // Radix Dialogs open at the same time (see reopenCenterModalFor).
     setCenterModalOpen(false)
     setTestModalTarget(item)
     const proj = projects.find((p) => p.id === item.projectId)
@@ -723,7 +723,7 @@ export function SidebarMergePanel() {
         try {
           target = (await gitStatus(repo)).branch
         } catch {
-          // sem repo resolvível / gitStatus falhou — segue com o fallback 'main'
+          // no resolvable repo / gitStatus failed — proceed with the 'main' fallback
         }
         try {
           const diff = await gitDiffSummary(repo, item.branchName, target, item.worktreePath)
@@ -758,10 +758,10 @@ export function SidebarMergePanel() {
         )
     }
 
-    // Procedimento de teste estruturado, registrado pela sessão-filha via
-    // tool dedicada (gsd_record_step) — nunca por parsing de markdown solto.
-    // Lista vazia: sem planejamento GSD nesse projeto (ou ciclo ainda não
-    // rodou), o modal cai no fallback determinístico que já existia antes.
+    // Structured test procedure, recorded by the child session via a
+    // dedicated tool (gsd_record_step) — never by parsing loose markdown.
+    // Empty list: no GSD planning in this project (or the cycle hasn't run
+    // yet), the modal falls back to the deterministic fallback that already existed before.
     readGsdProcedure(item.worktreePath)
       .then((procedure) =>
         setTestBriefing((prev) => (prev?.id === item.id ? { ...prev, procedure } : prev)),
@@ -771,11 +771,11 @@ export function SidebarMergePanel() {
       )
   }
 
-  /** Envia o checklist de confirmação humana (passou/falhou + notas) direto
-   *  pro terminal do agente — reaproveita o MESMO mecanismo do Revisor de
-   *  Branch (writePty no ptyId já vivo), sem inventar arquivo/convenção
-   *  nova. Se o terminal não estiver mais aberto/vivo, avisa em vez de falhar
-   *  silenciosamente. */
+  /** Sends the human confirmation checklist (passed/failed + notes)
+   *  straight to the agent's terminal — reuses the SAME mechanism as the
+   *  Branch Reviewer (writePty on the already-live ptyId), without
+   *  inventing a new file/convention. If the terminal is no longer
+   *  open/alive, warns instead of failing silently. */
   const handleSendTestFeedback = async (item: PendingMergeCard, summary: string) => {
     const proj = useProjectsStore.getState().projects.find((p) => p.id === item.projectId)
     const term = proj?.terminals.find((t) => t.id === item.terminalId)
@@ -802,9 +802,9 @@ export function SidebarMergePanel() {
             transitionProperty: isResizingPanel ? 'none' : undefined,
           }}
         >
-          {/* Sempre montada, mesmo recolhido — arrastar pra cima a partir do
-              cabeçalho recolhido já reabre e retoma o resize (mesma lógica
-              reversível do onMove em handlePanelResizeStart). */}
+          {/* Always mounted, even when collapsed — dragging up from the
+              collapsed header already reopens and resumes the resize (same
+              reversible logic as onMove in handlePanelResizeStart). */}
           <div
             className={styles.resizeHandle}
             onPointerDown={handlePanelResizeStart}
@@ -836,10 +836,10 @@ export function SidebarMergePanel() {
             </div>
           </div>
 
-          {/* Sempre montada (mesmo recolhido) — anima opacidade/deslocamento
-              junto com a altura do .container encolhendo, em vez de sumir
-              de golpe no unmount (mesmo espírito do .sidebarContent[data-hidden]
-              de App.module.css pro drawer direito). */}
+          {/* Always mounted (even when collapsed) — animates opacity/offset
+              together with the .container height shrinking, instead of
+              disappearing abruptly on unmount (same spirit as
+              .sidebarContent[data-hidden] in App.module.css for the right drawer). */}
           <div className={styles.body} data-hidden={treeCollapsed}>
             {treeItemsForActiveProject.length === 0 ? (
               <div className={styles.emptyState}>

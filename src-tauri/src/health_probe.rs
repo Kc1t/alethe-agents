@@ -1,6 +1,6 @@
 //!
 
-//! timeout — nunca deixa um servidor de teste vivo em background. Camada de
+//! timeout — never leaves a test server alive in the background. Layer of
 
 use serde::Serialize;
 use std::net::TcpListener;
@@ -20,27 +20,27 @@ pub struct HealthProbeResult {
     pub status_code: Option<u16>,
     pub elapsed_ms: u64,
     pub output_tail: String,
-    /// `None` = o projeto testado não é um core do Alethe (não tem API de
-    /// PTY, nada a verificar aqui — a maioria dos projetos de usuário). Só
-    /// quando `/api/health` confirma `service: "alethe-core"` é que tentamos
-    /// de verdade abrir um terminal contra a instância recém-subida — `Some`
-    /// carrega se esse terminal realmente veio à tona.
+    /// `None` = the tested project is not an Alethe core (it has no PTY API,
+    /// nothing to verify here — the majority of user projects). Only when
+    /// `/api/health` confirms `service: "alethe-core"` do we actually try to
+    /// open a terminal against the freshly-started instance — `Some` carries
+    /// whether that terminal actually came up.
     pub terminal_verified: Option<bool>,
 }
 
-/// Só roda quando `/api/health` confirma que o que subiu é um core do
-/// Alethe — abre um PTY de verdade contra a instância recém-provisionada e
-/// confirma um round-trip real de entrada/saída (escreve um comando com um
-/// marcador único, lê de volta o scrollback até o marcador aparecer).
+/// Only runs when `/api/health` confirms that what came up is an Alethe
+/// core — opens a real PTY against the freshly-provisioned instance and
+/// confirms an actual input/output round trip (writes a command with a
+/// unique marker, reads the scrollback back until the marker appears).
 ///
-/// Spawnar um processo e achá-lo "existente" um instante depois NÃO prova
-/// que o terminal funciona — o shell pode ter travado no primeiro prompt,
-/// crashado silenciosamente, ou nunca aceitado entrada nenhuma (era
-/// exatamente esse tipo de sinal raso, "respondeu rápido = passou", que
-/// motivou toda essa revisão da Central de Merges). Só um `write` seguido
-/// de um `read` confirmando o conteúdo esperado de volta é prova de verdade.
-/// O PTY spawnado aqui é filho do processo que `health_probe` já mata
-/// incondicionalmente ao final — não precisa de limpeza própria.
+/// Spawning a process and finding it "existing" an instant later does NOT
+/// prove the terminal works — the shell could have hung on the first
+/// prompt, crashed silently, or never accepted any input at all (it was
+/// exactly this kind of shallow signal, "responded quickly = passed", that
+/// motivated this whole Merges Hub revision). Only a `write` followed by a
+/// `read` confirming the expected content comes back is actual proof.
+/// The PTY spawned here is a child of the process that `health_probe`
+/// already kills unconditionally at the end — it needs no cleanup of its own.
 async fn verify_alethe_terminal(client: &reqwest::Client, base_url: &str) -> Option<bool> {
     let health = client
         .get(format!("{base_url}/api/health"))
@@ -58,7 +58,10 @@ async fn verify_alethe_terminal(client: &reqwest::Client, base_url: &str) -> Opt
         .await
         .ok()?;
     let session_body: serde_json::Value = session.json().await.ok()?;
-    let token = session_body.get("token").and_then(|v| v.as_str())?.to_string();
+    let token = session_body
+        .get("token")
+        .and_then(|v| v.as_str())?
+        .to_string();
 
     let spawn_body = serde_json::json!({
         "cols": 80,
@@ -79,9 +82,9 @@ async fn verify_alethe_terminal(client: &reqwest::Client, base_url: &str) -> Opt
     let spawn_json: serde_json::Value = spawn_res.json().await.ok()?;
     let pty_id = spawn_json.get("id").and_then(|v| v.as_str())?.to_string();
 
-    // Dá um instante pro shell terminar de inicializar (imprimir o prompt)
-    // antes de mandar entrada — sem isso, o comando pode chegar cedo demais
-    // e se perder.
+    // Give the shell a moment to finish initializing (print the prompt)
+    // before sending input — without this, the command could arrive too
+    // early and get lost.
     tokio::time::sleep(Duration::from_millis(800)).await;
 
     let marker = format!("ALETHE_HEALTH_PROBE_{}", nanoid::nanoid!(8));
@@ -101,9 +104,9 @@ async fn verify_alethe_terminal(client: &reqwest::Client, base_url: &str) -> Opt
         return Some(false);
     }
 
-    // Faz polling do scrollback em vez de checar num único instante — um
-    // shell frio (primeiro boot de um interpretador pesado) pode levar mais
-    // de 1s pra processar e ecoar o comando de volta.
+    // Poll the scrollback instead of checking a single snapshot — a cold
+    // shell (first boot of a heavy interpreter) can take more than 1s to
+    // process and echo the command back.
     let round_trip_deadline = Instant::now() + Duration::from_secs(6);
     let mut echoed_back = false;
     while Instant::now() < round_trip_deadline {
@@ -121,7 +124,10 @@ async fn verify_alethe_terminal(client: &reqwest::Client, base_url: &str) -> Opt
         let Ok(snapshot) = snapshot_res.json::<serde_json::Value>().await else {
             continue;
         };
-        let content = snapshot.get("content").and_then(|v| v.as_str()).unwrap_or("");
+        let content = snapshot
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         if content.contains(&marker) {
             echoed_back = true;
             break;
@@ -131,8 +137,8 @@ async fn verify_alethe_terminal(client: &reqwest::Client, base_url: &str) -> Opt
         return Some(false);
     }
 
-    // Confirma que o terminal ainda está de pé depois do round-trip — não
-    // só que existiu por um instante logo após o spawn.
+    // Confirm the terminal is still standing after the round trip — not
+    // just that it existed for an instant right after spawning.
     let exists_res = client
         .get(format!(
             "{base_url}/api/pty/exists/{pty_id}?profileId=default"
@@ -257,8 +263,8 @@ pub async fn health_probe(
         None
     };
 
-    // Kill incondicional da árvore inteira — nunca deixa o servidor de teste
-    // vivo em background, não importa como o loop acima terminou.
+    // Unconditional kill of the entire tree — never leaves the test server
+    // alive in the background, no matter how the loop above ended.
     if let Some(pid) = pid {
         kill_process_tree(pid);
     }
@@ -317,9 +323,9 @@ mod tests {
         .unwrap();
         assert!(!result.responded);
         assert!(result.status_code.is_none());
-        // Nunca tenta abrir terminal contra um processo que nem respondeu —
-        // `terminal_verified` só é `Some` depois de um `responded: true`
-        // confirmado como alethe-core.
+        // Never tries to open a terminal against a process that didn't even
+        // respond — `terminal_verified` is only `Some` after a `responded: true`
+        // confirmed as alethe-core.
         assert!(result.terminal_verified.is_none());
         std::fs::remove_dir_all(dir).unwrap();
     }

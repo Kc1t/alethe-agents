@@ -83,7 +83,15 @@ export type VisualStyle = 'normal' | 'clean'
 
 export type MotionPreference = 'animated' | 'reduced'
 
-export type FeatureId = 'todos' | 'git' | 'browser' | 'graphify' | 'aiMemory' | 'mcp'
+export type FeatureId =
+  | 'todos'
+  | 'git'
+  | 'graphify'
+  | 'browser'
+  | 'aiMemory'
+  | 'mcp'
+  | 'playwright'
+  | 'orchestrator'
 
 export type TodoItem = {
   id: string
@@ -156,6 +164,12 @@ export type PaneKind =
 
 export type BrowserResourceMode = 'app-first' | 'balanced' | 'keep-alive'
 
+/**
+ * `native` is a child webview positioned over the pane; `cdp` paints screencast frames from the
+ * automation browser onto a canvas, which is ordinary DOM and is the same browser an agent drives.
+ */
+export type BrowserEngine = 'native' | 'cdp'
+
 export type BrowserPaneConfig = {
   /** Whether scripts may run in the private webview. Defaults to true. */
   javascriptEnabled?: boolean
@@ -163,6 +177,13 @@ export type BrowserPaneConfig = {
   zoom?: number
   /** How aggressively a hidden native webview is released. Defaults to app-first. */
   resourceMode?: BrowserResourceMode
+  /** Which surface renders the page. Defaults to native. */
+  engine?: BrowserEngine
+  /**
+   * Attach to this tab in the shared browser instead of opening a new one. Set when a pane is
+   * created to watch a page an agent opened, so the pane shows that page rather than a copy.
+   */
+  watchTargetId?: string
 }
 
 export type BrowserPaneOptions = BrowserPaneConfig & {
@@ -178,6 +199,8 @@ export type Terminal = {
   activeTabId: string
   disabled: boolean
   laneVisible: boolean | null
+  /** Keeps terminal controls in a fixed topbar instead of revealing them on hover. */
+  topbarPinned?: boolean
 
   lastUsedAt?: number
 
@@ -195,27 +218,26 @@ export type Terminal = {
 
   gsdSyncViewer?: boolean
   /**
-   * Marca este terminal como o agente EFÊMERO de resolução de conflito
-   * (`mergeStore.ts` — "nasce, resolve, morre"). Nunca deve ser tratado como
-   * um worktree de agente rastreável: exclui do watcher/plugin GSD Sync
-   * (`useGsdSyncSessionsWatcher`/`gsdOpenCodePluginWrite`) — confirmado ao
-   * vivo que, sem essa exclusão, o plugin GSD era instalado nesse terminal
-   * descartável igual a qualquer worktree normal, criando uma sessão-filha
-   * de verdade que ficava órfã (apontando pra uma pasta já apagada) assim
-   * que o agente efêmero era encerrado ao final do merge.
+   * Marks this terminal as the EPHEMERAL conflict-resolution agent
+   * (`mergeStore.ts` — "born, resolves, dies"). Must never be treated as a
+   * trackable agent worktree: excluded from the GSD Sync watcher/plugin
+   * (`useGsdSyncSessionsWatcher`/`gsdOpenCodePluginWrite`) — without this
+   * exclusion the GSD plugin got installed on this disposable terminal like
+   * any normal worktree, creating a real child session that went orphaned
+   * (pointing at an already-deleted folder) the moment the ephemeral agent
+   * was torn down at the end of the merge.
    */
   ephemeralConflictAgent?: boolean
   /**
-   * Marca um terminal utilitário descartável (sessão de "Revisar"/"Testar" da
-   * Central de Merges — nasce, serve pra revisão manual, morre) que NUNCA
-   * deve ser tratado como candidato a "raiz pura do repositório" em
-   * `getProjectRepoRoot`. Bug real, confirmado ao vivo: esses terminais têm
-   * `cwd` = a worktree do agente sendo revisado, mas não tinham
-   * `worktreeAgentId`/`gsdSyncViewer` — a heurística de raiz os escolhia como
-   * referência por engano, contaminando `repo` com o path da worktree em vez
-   * da raiz de verdade, e o card do agente sumia da Central de Merges
-   * enquanto a sessão de revisão/teste estivesse aberta (mesma classe de bug
-   * já corrigida antes só para `gsdSyncViewer`).
+   * Marks a disposable utility terminal (a "Review"/"Test" session from the
+   * Merge Center — born, serves manual review, dies) that must NEVER be
+   * treated as a candidate "pure repository root" in `getProjectRepoRoot`.
+   * These terminals have `cwd` = the worktree of the agent under review, but
+   * no `worktreeAgentId`/`gsdSyncViewer`, so the root heuristic picked them
+   * as a reference by mistake, contaminating `repo` with the worktree path
+   * instead of the real root, and the agent's card vanished from the Merge
+   * Center while the review/test session was open (same bug class already
+   * fixed for `gsdSyncViewer`).
    */
   ephemeralUtility?: boolean
   /** Hides this terminal and its output from every paired remote device. */
@@ -269,11 +291,11 @@ export type Project = {
   // --- RFC-009 / RFC-003 — Multi-Agent settings ---
   worktreeMode?: 'gitWorktree' | 'localCopy'
   validationCommands?: string[]
-  /** Comando que sobe o app pra probe de saúde ao vivo (Testar/Integrar). Deve
-   *  respeitar a variável de ambiente PORT (health_probe injeta uma porta
-   *  livre nela). Vazio/undefined = probe desabilitado. */
+  /** Command that boots the app for the live health probe (Test/Integrate). Must
+   *  respect the PORT env var (health_probe injects a free port into it).
+   *  Empty/undefined = probe disabled. */
   healthCheckCommand?: string
-  /** Caminho HTTP checado pelo probe (ex.: "/", "/health"). Default '/' quando vazio. */
+  /** HTTP path checked by the probe (e.g. "/", "/health"). Defaults to '/' when empty. */
   healthCheckPath?: string
   gsdWatcherEnabled?: boolean
 
@@ -292,9 +314,8 @@ export type Project = {
   githubUrl?: string
 
   firstBootPending?: boolean
-  /** Comportamento do terminal após aceitar o merge (relocalizar em nova branch ou fechar). */
+  /** Terminal behavior after a merge is accepted (relocate to a new branch or close). */
   mergePostAction?: 'relocateToNewBranch' | 'relocateKeepSession' | 'closeTerminal'
-  /** Worktrees com limpeza inacabada (deleção física ou `prune` falhados). */
   orphanWorktrees?: OrphanWorktree[]
 }
 
@@ -473,13 +494,10 @@ export type Preferences = {
   leftSidebarWidth: number
   rightSidebarWidth: number
   /**
-   * Posição das barras divisórias entre painéis, por grupo de painéis
-   * (`groupId` → `panelId` → porcentagem 0..100). Guardado em proporção, não em
-   * pixels, pra fazer sentido em janelas de tamanhos diferentes — é o que
-   * permite o Desktop e o Web mostrarem o mesmo arranjo de painéis.
+   * Position of split handles between panes, per pane group (`groupId` -> `panelId` -> 0..100 percentage).
+   * Stored as proportions so it adapts across different window sizes and between Desktop and Web.
    */
   paneLayouts?: Record<string, Record<string, number>>
-  /** Notifica quando uma janela de uso do Claude/Codex reseta, indicando qual. Default true. */
   notifyOnLimitReset: boolean
   /** Ditado por voz (speech-to-text) escreve no terminal ativo. Default false. */
   dictationEnabled: boolean
@@ -599,6 +617,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
     graphify: true,
     aiMemory: false,
     mcp: true,
+    playwright: false,
+    orchestrator: false,
   },
   todoStoragePath: '',
   mcpDefaultScope: 'global',

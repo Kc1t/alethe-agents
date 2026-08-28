@@ -309,22 +309,18 @@ pub(crate) fn worktree_fetch_branch_inner(repo: String, agent_id: String) -> Res
     }
 }
 
-/// `git merge` só move COMMITS — um agente que escreveu arquivos na worktree
-/// sem nunca rodar `git commit` faz a branch dele não ter nenhum commit novo
-/// em relação ao alvo, e a integração inteira (Central de Merges) vira um
-/// no-op silencioso: reporta `merged: true`, mas nada muda no repo principal
-/// (confirmado ao vivo — README.md ficava `Untracked` na worktree pra sempre,
-/// `git log --all` mostrava só o commit inicial em toda branch). Chamado
-/// antes de `merge_prepare`/`merge_analyze` no fluxo de "Integrar": commita
-/// automaticamente o que estiver pendente (staged, unstaged ou untracked) —
-/// combina com a intenção do botão ("pegar o trabalho desta worktree"), sem
-/// exigir que o usuário ou o agente lembrem de commitar manualmente. No-op
-/// numa worktree já limpa.
+/// `git merge` only moves commits — an agent that wrote files in the worktree
+/// without ever running `git commit` leaves its branch with no new commit
+/// relative to the target, so the merge silently no-ops (`merged: true`
+/// reported, nothing actually changes upstream). Called before
+/// `merge_prepare`/`merge_analyze` in the "Integrate" flow to auto-commit
+/// whatever is pending, so the user/agent never has to remember to commit by
+/// hand. No-op on an already-clean worktree.
 #[tauri::command]
 pub async fn worktree_commit_pending(repo: String, agent_id: String) -> Result<bool, String> {
     tokio::task::spawn_blocking(move || worktree_commit_pending_inner(repo, agent_id))
         .await
-        .map_err(|error| format!("worktree_commit_pending: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("worktree_commit_pending: blocking task failed: {error}"))?
 }
 
 pub(crate) fn worktree_commit_pending_inner(
@@ -332,19 +328,14 @@ pub(crate) fn worktree_commit_pending_inner(
     agent_id: String,
 ) -> Result<bool, String> {
     let env = resolve_worktree_env(&repo, &agent_id)?;
-    commit_all_pending(
-        &env,
-        "Trabalho do agente (commit automático antes da integração)",
-    )
+    commit_all_pending(&env, "Agent work (auto-commit before integration)")
 }
 
-/// Resolve e valida o diretório de uma worktree de agente a partir do id —
-/// compartilhado pelas três operações de commit pendente (auto/listar/commitar
-/// com mensagem escolhida pelo usuário).
+/// Shared by the three pending-commit operations (auto/list/commit-with-message).
 fn resolve_worktree_env(repo: &str, agent_id: &str) -> Result<PathBuf, String> {
-    // main_repository_root (não repository_root): mesma razão de
-    // worktree_provision_inner — `repo` pode já ser uma worktree isolada se o
-    // projeto não tiver nenhum terminal "puro" sobrando como referência.
+    // main_repository_root, not repository_root: same reason as
+    // worktree_provision_inner — `repo` may already be an isolated worktree
+    // if the project has no "plain" terminal left to use as a reference.
     let root = main_repository_root(repo)?;
     let id = sanitize_id(agent_id)?;
     let env = worktrees_base(&root).join(&id);
@@ -354,13 +345,10 @@ fn resolve_worktree_env(repo: &str, agent_id: &str) -> Result<PathBuf, String> {
     Ok(env)
 }
 
-/// Espelha `isRealWork()` de `assets/opencode-plugins/alethe-gsd-state.ts` —
-/// infraestrutura do próprio Alethe (plugin GSD em `.opencode/`, estado do
-/// GSD Sync em `.planning/`, o `opencode.json` que o Alethe escreve a cada
-/// spawn) nunca é trabalho real do agente nesta worktree. Sem esse filtro, o
-/// commit automático (e a lista mostrada no pop-up de confirmação) incluía
-/// esses arquivos de configuração junto com o trabalho de verdade — confirmado
-/// ao vivo, eles acabavam mergeados pro repo principal.
+/// Mirrors `isRealWork()` in `assets/opencode-plugins/alethe-gsd-state.ts` —
+/// Alethe's own infrastructure (GSD plugin in `.opencode/`, GSD Sync state in
+/// `.planning/`, the `opencode.json` Alethe writes on every spawn) is never
+/// real agent work in this worktree and must not be auto-committed/merged.
 fn is_real_work(path: &str) -> bool {
     !path.is_empty()
         && !path.starts_with(".planning/")
@@ -394,13 +382,12 @@ fn commit_all_pending(env: &Path, message: &str) -> Result<bool, String> {
         return Ok(false);
     }
     let message = if message.trim().is_empty() {
-        "Trabalho do agente (commit automático antes da integração)"
+        "Agent work (auto-commit before integration)"
     } else {
         message
     };
-    // Nunca `add -A`: stagia só os paths reais (filtrados acima), pra nunca
-    // arrastar infraestrutura do Alethe (.opencode/, .planning/, opencode.json)
-    // pro commit mesmo que estejam pendentes/untracked na worktree.
+    // Never `add -A`: stage only the real paths (filtered above) so Alethe's
+    // own infrastructure never rides along into the commit.
     let mut add_args: Vec<&str> = vec!["add", "--"];
     add_args.extend(changes.iter().map(|change| change.path.as_str()));
     checked_output(env, &add_args)?;
@@ -408,10 +395,10 @@ fn commit_all_pending(env: &Path, message: &str) -> Result<bool, String> {
     Ok(true)
 }
 
-/// Lista o que está pendente (staged/unstaged/untracked) numa worktree de
-/// agente sem mexer em nada — usado pelo pop-up de confirmação antes de
-/// integrar (o usuário revisa e escreve a mensagem do commit antes de
-/// `worktree_commit_worktree` rodar de fato).
+/// Lists what's pending (staged/unstaged/untracked) in an agent worktree
+/// without touching anything — used by the confirmation dialog before
+/// integrating, so the user can review and write the commit message before
+/// `worktree_commit_worktree` actually runs.
 #[tauri::command]
 pub async fn worktree_pending_changes(
     repo: String,
@@ -419,7 +406,7 @@ pub async fn worktree_pending_changes(
 ) -> Result<Vec<PendingChange>, String> {
     tokio::task::spawn_blocking(move || worktree_pending_changes_inner(repo, agent_id))
         .await
-        .map_err(|error| format!("worktree_pending_changes: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("worktree_pending_changes: blocking task failed: {error}"))?
 }
 
 pub(crate) fn worktree_pending_changes_inner(
@@ -431,9 +418,9 @@ pub(crate) fn worktree_pending_changes_inner(
     Ok(parse_porcelain(&String::from_utf8_lossy(&status.stdout)))
 }
 
-/// Como `worktree_commit_pending`, mas com mensagem escolhida pelo usuário no
-/// pop-up de confirmação em vez do texto genérico — mesmo no-op numa worktree
-/// já limpa.
+/// Like `worktree_commit_pending`, but with the message the user chose in the
+/// confirmation dialog instead of the generic text — still a no-op on an
+/// already-clean worktree.
 #[tauri::command]
 pub async fn worktree_commit_worktree(
     repo: String,
@@ -442,7 +429,7 @@ pub async fn worktree_commit_worktree(
 ) -> Result<bool, String> {
     tokio::task::spawn_blocking(move || worktree_commit_worktree_inner(repo, agent_id, message))
         .await
-        .map_err(|error| format!("worktree_commit_worktree: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("worktree_commit_worktree: blocking task failed: {error}"))?
 }
 
 pub(crate) fn worktree_commit_worktree_inner(
@@ -565,23 +552,23 @@ mod tests {
         checked_output(env, &["config", "user.name", "Alethe Test"]).unwrap();
         checked_output(env, &["config", "user.email", "alethe@example.invalid"]).unwrap();
 
-        // Nada pendente ainda — no-op, sem commit novo.
+        // Nothing pending yet — no-op, no new commit.
         assert!(!worktree_commit_pending(root_str.clone(), "op1".into()).unwrap());
         let before = git_command(env, &["rev-parse", "HEAD"]).unwrap();
 
-        // Agente "esqueceu" de commitar: arquivo novo untracked.
-        fs::write(env.join("README.md"), "trabalho do agente\n").unwrap();
+        // Agent "forgot" to commit: new untracked file.
+        fs::write(env.join("README.md"), "agent work\n").unwrap();
         assert!(worktree_commit_pending(root_str.clone(), "op1".into()).unwrap());
 
         let after = git_command(env, &["rev-parse", "HEAD"]).unwrap();
-        assert_ne!(before.stdout, after.stdout, "devia existir um commit novo");
+        assert_ne!(before.stdout, after.stdout, "should have a new commit");
         let status = checked_output(env, &["status", "--porcelain"]).unwrap();
         assert!(
             String::from_utf8_lossy(&status.stdout).trim().is_empty(),
-            "worktree devia estar limpa após o commit"
+            "worktree should be clean after the commit"
         );
 
-        // Repetir sem mudança nenhuma: no-op de novo.
+        // Repeat with no change: no-op again.
         assert!(!worktree_commit_pending(root_str.clone(), "op1".into()).unwrap());
 
         assert!(worktree_commit_pending(root_str.clone(), "nope".into()).is_err());
@@ -607,12 +594,12 @@ mod tests {
             .unwrap()
             .is_empty());
 
-        fs::write(env.join("README.md"), "trabalho do agente\n").unwrap();
+        fs::write(env.join("README.md"), "agent work\n").unwrap();
         let pending = worktree_pending_changes(root_str.clone(), "op2".into()).unwrap();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].path, "README.md");
         assert_eq!(pending[0].status, "??");
-        // Listar não deve mexer em nada — ainda untracked, nenhum commit novo.
+        // Listing must not touch anything — still untracked, no new commit.
         let status_after_list = checked_output(env, &["status", "--porcelain"]).unwrap();
         assert!(!String::from_utf8_lossy(&status_after_list.stdout)
             .trim()
@@ -621,25 +608,25 @@ mod tests {
         assert!(worktree_commit_worktree(
             root_str.clone(),
             "op2".into(),
-            "resumo real do trabalho".into()
+            "real work summary".into()
         )
         .unwrap());
         let log = git_command(env, &["log", "-1", "--format=%s"]).unwrap();
         assert_eq!(
             String::from_utf8_lossy(&log.stdout).trim(),
-            "resumo real do trabalho"
+            "real work summary"
         );
         assert!(worktree_pending_changes(root_str.clone(), "op2".into())
             .unwrap()
             .is_empty());
 
-        // Mensagem em branco cai pro texto genérico em vez de falhar o commit.
-        fs::write(env.join("README.md"), "mais uma mudança\n").unwrap();
+        // Blank message falls back to the generic text instead of failing the commit.
+        fs::write(env.join("README.md"), "one more change\n").unwrap();
         assert!(worktree_commit_worktree(root_str.clone(), "op2".into(), "   ".into()).unwrap());
         let log2 = git_command(env, &["log", "-1", "--format=%s"]).unwrap();
         assert_eq!(
             String::from_utf8_lossy(&log2.stdout).trim(),
-            "Trabalho do agente (commit automático antes da integração)"
+            "Agent work (auto-commit before integration)"
         );
 
         worktree_remove(root_str, "op2".into(), true).unwrap();
@@ -659,8 +646,8 @@ mod tests {
         checked_output(env, &["config", "user.name", "Alethe Test"]).unwrap();
         checked_output(env, &["config", "user.email", "alethe@example.invalid"]).unwrap();
 
-        // Só infraestrutura do Alethe pendente (plugin GSD + config do OpenCode
-        // escritos automaticamente no spawn) — nenhum trabalho real do agente.
+        // Only Alethe infrastructure pending (GSD plugin + OpenCode config
+        // auto-written on spawn) — no real agent work.
         fs::create_dir_all(env.join(".opencode").join("plugins")).unwrap();
         fs::write(
             env.join(".opencode")
@@ -670,34 +657,36 @@ mod tests {
         )
         .unwrap();
         fs::create_dir_all(env.join(".planning")).unwrap();
-        fs::write(env.join(".planning").join("goal.md"), "objetivo\n").unwrap();
+        fs::write(env.join(".planning").join("goal.md"), "goal\n").unwrap();
         fs::write(env.join("opencode.json"), "{}\n").unwrap();
 
         assert!(
             worktree_pending_changes(root_str.clone(), "op3".into())
                 .unwrap()
                 .is_empty(),
-            "arquivos de infraestrutura do Alethe não devem aparecer como pendentes"
+            "Alethe infrastructure files must not show up as pending"
         );
         assert!(
-            !worktree_commit_worktree(root_str.clone(), "op3".into(), "só infra".into()).unwrap(),
-            "sem trabalho real, não deveria criar commit nenhum"
+            !worktree_commit_worktree(root_str.clone(), "op3".into(), "infra only".into()).unwrap(),
+            "with no real work, no commit should be created"
         );
 
-        // Mistura infra + trabalho real: só o real entra na lista e no commit.
-        fs::write(env.join("README.md"), "trabalho de verdade\n").unwrap();
+        // Mix of infra + real work: only the real part enters the list and the commit.
+        fs::write(env.join("README.md"), "real work\n").unwrap();
         let pending = worktree_pending_changes(root_str.clone(), "op3".into()).unwrap();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].path, "README.md");
 
-        assert!(worktree_commit_worktree(root_str.clone(), "op3".into(), "resumo".into()).unwrap());
+        assert!(
+            worktree_commit_worktree(root_str.clone(), "op3".into(), "summary".into()).unwrap()
+        );
         let committed = checked_output(env, &["show", "--stat", "--format=", "HEAD"]).unwrap();
         let committed_files = String::from_utf8_lossy(&committed.stdout);
         assert!(committed_files.contains("README.md"));
         assert!(!committed_files.contains("opencode.json"));
         assert!(!committed_files.contains(".planning"));
         assert!(!committed_files.contains(".opencode"));
-        // Infra continua untracked (nunca commitada), sem quebrar mais nada.
+        // Infra stays untracked (never committed), nothing else broken.
         let final_status = checked_output(env, &["status", "--porcelain"]).unwrap();
         assert!(String::from_utf8_lossy(&final_status.stdout).contains("opencode.json"));
 
@@ -723,7 +712,7 @@ mod tests {
         let listed = worktree_list(root_str.clone()).unwrap();
         assert_eq!(listed.len(), 2);
 
-        // Reprovisionar o mesmo id deve falhar (destino já existe).
+        // Reprovisioning the same id should fail (destination already exists).
         assert!(
             worktree_provision(root_str.clone(), "wt1".into(), WorktreeMode::GitWorktree).is_err()
         );
@@ -748,8 +737,8 @@ mod tests {
         )
         .unwrap();
 
-        // Trava administrativa real via `git worktree lock --reason`, como um
-        // usuário faria fora do Alethe.
+        // Real administrative lock via `git worktree lock --reason`, like a
+        // user would do outside Alethe.
         checked_output(
             &root,
             &[
@@ -836,9 +825,9 @@ mod tests {
             raw_events: Vec<serde_json::Value>,
         }
 
-        /// Roda `opencode run` não-interativo, sem --pure (graphify precisa
-        /// aparecer), com --auto (aprova permissões sem travar o script) e
-        /// captura o stream --format json linha a linha.
+        /// Runs `opencode run` non-interactively, without --pure (graphify needs
+        /// to show up), with --auto (approves permissions without stalling the
+        /// script), and captures the --format json stream line by line.
         fn run_opencode(
             bin: &Path,
             cwd: &Path,

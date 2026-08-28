@@ -273,11 +273,13 @@ impl ResourceSupervisor {
                     .map(|(id, session)| {
                         (
                             id.clone(),
+                            // try_lock: taken while the global session lock is held, and that
+                            // lock is what every keystroke goes through.
                             session
                                 .child
-                                .lock()
+                                .try_lock()
                                 .ok()
-                                .and_then(|child| child.process_id()),
+                                .and_then(|mut child| child.process_id()),
                             session.command.clone(),
                             session.cwd.clone(),
                         )
@@ -443,6 +445,12 @@ impl RuntimeProcess {
     fn effective_memory(&self) -> f64 {
         self.working_set_mb.max(self.private_commit_mb)
     }
+}
+
+/// Whether this cycle is allowed to terminate a session. Manual mode means the app never does it
+/// on its own, at any pressure level; the warning is what it offers instead.
+fn may_suspend(level: &str, policy: &ResourcePolicy) -> bool {
+    level == "critical" && policy.mode != "manual"
 }
 
 fn eligible_candidates(
@@ -675,9 +683,20 @@ pub fn update_pty_runtime_meta(
     if let Ok(sessions) = sessions.lock() {
         for meta in &metas {
             if let Some(session) = sessions.get(&meta.id) {
-                session
+                // A silenced pane is indistinguishable from a frozen one, so every flip is
+                // recorded: it is the only trace left when a terminal stops showing output.
+                let was = session
                     .visible
-                    .store(meta.visible, std::sync::atomic::Ordering::Relaxed);
+                    .swap(meta.visible, std::sync::atomic::Ordering::Relaxed);
+                if was != meta.visible {
+                    let _ = crate::logging::record_app_event(
+                        "pty.visibility".to_string(),
+                        format!(
+                            "id={} visible={} focused={} status={}",
+                            meta.id, meta.visible, meta.focused, meta.status
+                        ),
+                    );
+                }
             }
         }
     }
@@ -763,6 +782,29 @@ mod tests {
                 last_suspended_id: None,
             },
         }
+    }
+
+    #[test]
+    fn manual_mode_never_terminates_a_session() {
+        let policy = ResourcePolicy::default();
+        assert_eq!(policy.mode, "manual", "manual is the shipped default");
+        for level in ["normal", "warning", "critical"] {
+            assert!(
+                !may_suspend(level, &policy),
+                "at {level} pressure manual mode must warn, never kill"
+            );
+        }
+    }
+
+    #[test]
+    fn opting_in_allows_termination_only_when_critical() {
+        let policy = ResourcePolicy {
+            mode: "smart-lru".to_string(),
+            ..ResourcePolicy::default()
+        };
+        assert!(!may_suspend("normal", &policy));
+        assert!(!may_suspend("warning", &policy));
+        assert!(may_suspend("critical", &policy));
     }
 
     fn meta(id: &str) -> PtyRuntimeMeta {

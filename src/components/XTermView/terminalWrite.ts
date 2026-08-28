@@ -15,15 +15,15 @@ export const PTY_WRITE_TIMEOUT_MS = 5_000
 export const TERMINAL_WRITE_FRAME_BUDGET = 16 * 1024
 
 /**
- * Encontra um ponto de corte seguro para o frame budget do terminal:
- * 1. Não divide pares substitutos UTF-16 (surrogate pairs / emojis / caracteres CJK/Unicode).
- * 2. Não corta no meio de sequências de escape ANSI (CSI '\x1b[...', OSC '\x1b]...', DCS, ST).
+ * Finds a safe cut point for the terminal frame budget:
+ * 1. Doesn't split UTF-16 surrogate pairs (emojis / CJK / Unicode).
+ * 2. Doesn't cut in the middle of ANSI escape sequences (CSI '\x1b[...', OSC '\x1b]...', DCS, ST).
  */
 export function findSafeChunkBoundary(text: string, maxTake: number): number {
   if (maxTake >= text.length) return text.length
   let take = maxTake
 
-  // 1. Evita partir par substituto UTF-16
+  // 1. Avoid splitting UTF-16 surrogate pairs
   if (
     take > 0 &&
     take < text.length &&
@@ -35,22 +35,18 @@ export function findSafeChunkBoundary(text: string, maxTake: number): number {
     take -= 1
   }
 
-  // 2. Evita partir sequência ANSI escape (\x1b...)
-  // Procura para trás pelo último caractere ESC ('\x1b') nos últimos 64 caracteres
+  // 2. Avoid splitting ANSI escape sequence (\x1b...)
   const lastEsc = text.lastIndexOf('\x1b', take - 1)
   if (lastEsc !== -1 && take - lastEsc < 64) {
-    // Verifica se a sequência iniciada em lastEsc já foi finalizada antes de take
     let isTerminated = false
     for (let i = lastEsc + 1; i < take; i++) {
       const ch = text.charCodeAt(i)
-      // Caracteres finais padrão ANSI (A-Z, a-z, ~, @) ou ST (\x07 / \x1b\\)
       if ((ch >= 0x40 && ch <= 0x7e) || ch === 0x07) {
         isTerminated = true
         break
       }
     }
     if (!isTerminated) {
-      // Se não terminou antes de take, corta exatamente antes do ESC para não partir a sequência
       if (lastEsc > 0) {
         take = lastEsc
       }
@@ -58,6 +54,33 @@ export function findSafeChunkBoundary(text: string, maxTake: number): number {
   }
 
   return take > 0 ? take : maxTake
+}
+
+/**
+ * A PTY can hand over 64 KB every 16 ms while a frame drains 16 KB, so a command that prints fast
+ * outruns the terminal four to one. Left unbounded the queue keeps growing, the pane renders output
+ * from minutes ago, and the frame it asks for every 16 ms never stops arriving — which stalls every
+ * other pane, since they all draw on the same thread.
+ */
+export const MAX_PENDING_WRITE_BYTES = 512 * 1024
+
+/**
+ * Drops the oldest queued output so the terminal shows what is happening now instead of replaying a
+ * backlog. Whole chunks go at a time: slicing one in half would cut an escape sequence.
+ */
+export function trimPendingWrites(
+  pending: string[],
+  length: number,
+  cap = MAX_PENDING_WRITE_BYTES,
+): { length: number; dropped: number } {
+  let dropped = 0
+  while (length > cap && pending.length > 1) {
+    const head = pending.shift()
+    if (head === undefined) break
+    length -= head.length
+    dropped += head.length
+  }
+  return { length, dropped }
 }
 
 export function loadPromptHistory(ptyId: string): string[] {

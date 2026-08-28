@@ -6,6 +6,7 @@ import { useT } from '../../lib/i18n'
 import type { BrowserResourceMode } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { Dropdown } from '../ui/Dropdown'
 import styles from './AddBrowserModal.module.css'
 import controls from './controls.module.css'
 import { Modal } from './Modal'
@@ -131,18 +132,17 @@ export function AddBrowserModal() {
           <label className={controls.label} htmlFor="add-browser-zoom">
             {t('browser.zoom')}
           </label>
-          <select
+          <Dropdown
             id="add-browser-zoom"
             className={controls.input}
-            value={zoom}
-            onChange={(event) => setZoom(Number(event.target.value))}
-          >
-            {BROWSER_ZOOM_OPTIONS.map((value) => (
-              <option key={value} value={value}>
-                {Math.round(value * 100)}%
-              </option>
-            ))}
-          </select>
+            value={String(zoom)}
+            onChange={(value) => setZoom(Number(value))}
+            ariaLabel={t('browser.zoom')}
+            options={BROWSER_ZOOM_OPTIONS.map((value) => ({
+              value: String(value),
+              label: `${Math.round(value * 100)}%`,
+            }))}
+          />
         </div>
 
         <label className={styles.toggleCard}>
@@ -162,19 +162,19 @@ export function AddBrowserModal() {
         <label className={controls.label} htmlFor="add-browser-resource-mode">
           {t('browser.resourceMode')}
         </label>
-        <select
+        <Dropdown
           id="add-browser-resource-mode"
           className={controls.input}
           value={resourceMode}
-          onChange={(event) => setResourceMode(event.target.value as BrowserResourceMode)}
-        >
-          <option value="app-first">{t('browser.resourceModeAppFirst')}</option>
-          <option value="balanced">{t('browser.resourceModeBalanced')}</option>
-          <option value="keep-alive">{t('browser.resourceModeKeepAlive')}</option>
-        </select>
-        <span className={controls.hint}>
-          {t(`browser.resourceModeDescription.${resourceMode}`)}
-        </span>
+          onChange={(value) => setResourceMode(value as BrowserResourceMode)}
+          ariaLabel={t('browser.resourceMode')}
+          options={[
+            { value: 'app-first', label: t('browser.resourceModeAppFirst') },
+            { value: 'balanced', label: t('browser.resourceModeBalanced') },
+            { value: 'keep-alive', label: t('browser.resourceModeKeepAlive') },
+          ]}
+        />
+        <span className={controls.hint}>{t(`browser.resourceModeDescription.${resourceMode}`)}</span>
       </div>
 
       {project ? (

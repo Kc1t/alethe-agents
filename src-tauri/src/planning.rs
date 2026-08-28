@@ -21,10 +21,10 @@ pub fn start_gsd_watcher(
     start_gsd_watcher_core(&state, project_id, repo_path)
 }
 
-/// Núcleo sem `AppHandle`/`tauri::State` — reaproveitado pelo `alethe-server`
-/// (que mantém seu PRÓPRIO `PlanningWatchers` estático em vez do gerenciado
-/// pelo Tauri, ver `server_main/misc_routes.rs`). `_app` acima nunca foi
-/// usado dentro da função mesmo no Tauri — só o `State` importa de verdade.
+/// Core without `AppHandle`/`tauri::State` — split out so the watcher logic
+/// can be driven by any owner of a `PlanningWatchers`, not just the one
+/// Tauri manages. The `State` wrapper above never used anything besides the
+/// inner map anyway.
 pub fn start_gsd_watcher_core(
     watchers: &PlanningWatchers,
     project_id: String,
@@ -153,8 +153,8 @@ fn audit_record(
             .unwrap_or("planning update")
     );
     let trailer = format!("Alethe-Agent: {}", agent_id.unwrap_or("unknown"));
-    // Commit escopado: `commit -- .planning` garante que mudanças staged de
-    // outros diretórios NÃO entram neste commit de auditoria.
+    // Scoped commit: `commit -- .planning` guarantees staged changes from
+    // other directories do NOT get pulled into this audit commit.
     checked_output(
         root,
         &["commit", "-m", &subject, "-m", &trailer, "--", PLANNING_DIR],
@@ -204,7 +204,7 @@ pub fn planning_audit_history(
     let format = format!(
         "%H{FIELD_SEP}%an{FIELD_SEP}%ct{FIELD_SEP}%s{FIELD_SEP}%(trailers:key=Alethe-Agent,valueonly,separator=,){RECORD_SEP}"
     );
-    // Sem commits ainda (repo novo) o log falha — devolve histórico vazio.
+    // With no commits yet (new repo) the log fails — return an empty history.
     let output = match git_command(
         &root,
         &[

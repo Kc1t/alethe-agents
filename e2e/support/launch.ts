@@ -7,43 +7,43 @@ const ROOT = fileURLToPath(new URL('../..', import.meta.url))
 
 function realBinaryPath(): string {
   const name = process.platform === 'win32' ? 'alethe.exe' : 'alethe'
-  // target-e2e, não target/: build isolada, nunca compartilha o binário nem o
-  // lock de build com a sessão interativa de `tauri dev` do dono (ver
-  // CARGO_TARGET_DIR no script `test:e2e:build` do package.json).
+  // target-e2e, not target/: an isolated build that never shares the binary or the
+  // build lock with the owner's interactive `tauri dev` session (see
+  // CARGO_TARGET_DIR in the `test:e2e:build` script in package.json).
   return join(ROOT, 'src-tauri', 'target-e2e', 'debug', name)
 }
 
 /**
- * Isola o data dir numa pasta temporária, pra garantir ZERO contato com o
- * perfil real do dono (`%LOCALAPPDATA%\Alethe` no Windows, `~/.local/share`
- * no Linux, etc.).
+ * Isolates the data dir in a temporary folder, to guarantee ZERO contact with the
+ * owner's real profile (`%LOCALAPPDATA%\Alethe` on Windows, `~/.local/share`
+ * on Linux, etc.).
  *
- * BUG REAL CONFIRMADO NESTA SESSÃO (achado pelo dono, rodando ao vivo): a
- * versão anterior deste arquivo sobrescrevia `APPDATA` (pasta Roaming) no
- * Windows, mas `app.path().app_local_data_dir()` do Tauri resolve por
- * `%LOCALAPPDATA%` (pasta Local) — uma variável DIFERENTE, nunca tocada. O
- * isolamento nunca funcionou de verdade no Windows: todo run de e2e abria
- * contra o perfil real do dono, com projetos/repositórios reais. Confirmado
- * empiricamente (`%APPDATA%\Alethe` nem existe; `%LOCALAPPDATA%\Alethe` é
- * onde os dados de verdade ficam).
+ * REAL BUG CONFIRMED IN THIS SESSION (found by the owner, running live): the
+ * previous version of this file overrode `APPDATA` (the Roaming folder) on
+ * Windows, but Tauri's `app.path().app_local_data_dir()` resolves via
+ * `%LOCALAPPDATA%` (the Local folder) — a DIFFERENT variable, never touched. The
+ * isolation never actually worked on Windows: every e2e run opened
+ * against the owner's real profile, with real projects/repositories. Confirmed
+ * empirically (`%APPDATA%\Alethe` doesn't even exist; `%LOCALAPPDATA%\Alethe` is
+ * where the real data lives).
  *
- * Correção: usa `ALETHE_APP_DATA_DIR`, o override explícito que TANTO
- * `resolve_tauri_data_root` (desktop) QUANTO `resolve_standalone_data_root`
- * (`alethe-server`) checam ANTES de qualquer resolução por SO
- * (`src-tauri/src/profiles.rs`) — não depende de adivinhar qual variável de
- * ambiente o SO/Tauri realmente consulta em cada plataforma. Mantém
- * `HOME`/`APPDATA`/`XDG_DATA_HOME` como isolamento de reforço (nunca fazem
- * mal, só não são mais a proteção principal).
+ * Fix: uses `ALETHE_APP_DATA_DIR`, the explicit override that BOTH
+ * `resolve_tauri_data_root` (desktop) AND `resolve_standalone_data_root`
+ * (`alethe-server`) check BEFORE any OS-specific resolution
+ * (`src-tauri/src/profiles.rs`) — doesn't depend on guessing which environment
+ * variable the OS/Tauri actually consults on each platform. Keeps
+ * `HOME`/`APPDATA`/`XDG_DATA_HOME` as reinforcement isolation (they never do
+ * harm, they're just no longer the main protection).
  *
- * O binário real é apontado direto em `application` (nunca um wrapper
- * `.cmd`/`.sh`): `@wdio/tauri-service` spawna com `child_process.spawn(path,
- * args, {...})` sem `shell: true` (confirmado lendo o pacote) — no Windows,
- * spawnar um `.cmd` sem shell falha com `EINVAL` (não é um executável nativo
- * pro `CreateProcess`), então um wrapper batch quebrava o E2E de propósito.
- * As variáveis de ambiente de isolamento vão via
- * `wdio:tauriServiceOptions.env` (opção documentada da própria lib, que
- * chega intacta no spawn final — `mergeOptions` faz um spread simples, sem
- * whitelist), não via wrapper.
+ * The real binary is pointed to directly in `application` (never a
+ * `.cmd`/`.sh` wrapper): `@wdio/tauri-service` spawns with `child_process.spawn(path,
+ * args, {...})` without `shell: true` (confirmed by reading the package) — on Windows,
+ * spawning a `.cmd` without a shell fails with `EINVAL` (it's not a native executable
+ * for `CreateProcess`), so a batch wrapper broke E2E on purpose.
+ * The isolation environment variables go through
+ * `wdio:tauriServiceOptions.env` (an option documented by the library itself, which
+ * arrives intact at the final spawn — `mergeOptions` does a simple spread, with no
+ * whitelist), not through a wrapper.
  */
 export function prepareIsolatedLaunch(dataDir = mkdtempSync(join(tmpdir(), 'alethe-e2e-'))): {
   applicationPath: string
@@ -64,11 +64,11 @@ export function prepareIsolatedLaunch(dataDir = mkdtempSync(join(tmpdir(), 'alet
     dataDir,
     env,
     cleanup: () => {
-      // Só apaga a pasta temporária. Matar o processo é responsabilidade do
-      // @wdio/tauri-service (dono do ciclo de vida do app que ele mesmo
-      // spawnou) — um pkill por nome/caminho aqui arriscaria acertar o
-      // `target/debug/alethe` do `tauri dev` interativo do dono, que usa o
-      // MESMO binário. Nunca vale esse risco só pra limpeza de teste.
+      // Only deletes the temporary folder. Killing the process is the
+      // @wdio/tauri-service's responsibility (it owns the lifecycle of the app it
+      // spawned itself) — a pkill by name/path here would risk hitting the
+      // owner's interactive `tauri dev` `target/debug/alethe`, which uses the
+      // SAME binary. Never worth that risk just for test cleanup.
       rmSync(dataDir, { recursive: true, force: true })
     },
   }

@@ -29,41 +29,41 @@ import { useProjectsStore } from './projectsStore'
 import { useUiStore } from './uiStore'
 
 /**
- * RFC-006/007/008 — orquestração do ciclo de merge seguro no front.
+ * RFC-006/007/008 — orchestration of the safe merge cycle on the frontend.
  *
- * `analyze → prepare → [conflito? spawna agente efêmero num terminal VISÍVEL do
- * projeto] → agente sinaliza "terminei" (awaiting_review) → clique manual em
- * "Validar" → clique manual em "Integrar" (commit + ff) → teardown do terminal`.
+ * `analyze → prepare → [conflict? spawns an ephemeral agent in a VISIBLE
+ * project terminal] → agent signals "done" (awaiting_review) → manual click
+ * on "Validate" → manual click on "Integrate" (commit + ff) → terminal teardown`.
  *
- * O agente efêmero é a única exceção autônoma do blueprint, mas continua
- * humano-visível: ele roda num Terminal normal do projeto (o usuário vê e pode
- * intervir). O provider vem de `project.conflictAgentProvider` (RFC-009).
+ * The ephemeral agent is the blueprint's only autonomous exception, but it
+ * stays human-visible: it runs in a normal project Terminal (the user sees
+ * it and can intervene). The provider comes from `project.conflictAgentProvider` (RFC-009).
  *
- * A detecção de "terminei" é disparada por 3 camadas em cascata, nenhuma
- * delas confiável sozinha (ver `beginResolvingWatch`): marcador de arquivo
- * (`ALETHE_RESOLVED`), saída do processo do agente (`pty://exit`), e um poll
- * barato de fallback (só relê o marcador, nunca chama o backend). Nenhuma
- * camada valida, commita ou integra nada sozinha — elas só páram em
- * `awaiting_review` e esperam confirmação humana. Pedido explícito do
- * usuário: o gatilho antigo chamava `merge_finalize` (valida+commita+integra
- * tudo junto) sozinho assim que qualquer camada disparava, sem nenhum humano
- * confirmar se a resolução do agente fazia sentido — confirmado ao vivo como
- * imprudente. Quem decide corretude continua sendo sempre o backend
- * (`merge_validate`/`merge_finalize`, que varrem marcadores + rodam
- * validação), idêntico não importa o provider/qualidade do modelo — só que
- * agora só rodam quando o usuário clica.
+ * "Done" detection is triggered by 3 cascading layers, none of them
+ * reliable on its own (see `beginResolvingWatch`): a file marker
+ * (`ALETHE_RESOLVED`), the agent process exiting (`pty://exit`), and a
+ * cheap fallback poll (only re-reads the marker, never calls the backend).
+ * No layer validates, commits, or integrates anything on its own — they
+ * only stop at `awaiting_review` and wait for human confirmation. Explicit
+ * user request: the old trigger called `merge_finalize` (validate+commit+
+ * integrate all together) on its own as soon as any layer fired, with no
+ * human confirming whether the agent's resolution made sense — confirmed
+ * live as reckless. Correctness is always decided by the backend
+ * (`merge_validate`/`merge_finalize`, which sweep markers + run
+ * validation), identical regardless of the provider/model quality — except
+ * now they only run when the user clicks.
  */
 export type MergePhase =
   | 'idle'
   | 'analyzing'
   | 'preparing'
   | 'resolving'
-  /** Agente sinalizou "terminei" (marcador ALETHE_RESOLVED, pty saiu, ou o
-   *  poll de fallback achou o marcador) — mas NADA foi checado/validado/
-   *  commitado ainda. Pedido explícito do usuário: o gatilho automático de
-   *  3 camadas integrava sozinho sem nenhum humano confirmar se a resolução
-   *  fazia sentido (confirmado ao vivo como imprudente). A partir daqui só
-   *  clique manual em "Validar" e depois "Integrar" avança o merge. */
+  /** Agent signaled "done" (ALETHE_RESOLVED marker, pty exited, or the
+   *  fallback poll found the marker) — but NOTHING has been checked/
+   *  validated/committed yet. Explicit user request: the old automatic
+   *  3-layer trigger integrated on its own with no human confirming
+   *  whether the resolution made sense (confirmed live as reckless). From
+   *  here on, only a manual click on "Validate" and then "Integrate" advances the merge. */
   | 'awaiting_review'
   | 'finalizing_commit'
   | 'branch_diverged'
@@ -72,10 +72,10 @@ export type MergePhase =
   | 'failed'
   | 'terminal_error'
 
-/** Fases em que já existe um merge em andamento — uma integração por vez
- *  (ver integrateWorktree). Exportado pra UI (SidebarMergePanel) desabilitar
- *  ações de outros cards enquanto uma integração está ocupada, sem duplicar
- *  a lista. */
+/** Phases in which a merge is already in progress — one integration at a
+ *  time (see integrateWorktree). Exported so the UI (SidebarMergePanel) can
+ *  disable other cards' actions while an integration is busy, without
+ *  duplicating the list. */
 export const MERGE_BUSY_PHASES: MergePhase[] = [
   'analyzing',
   'preparing',
@@ -94,16 +94,16 @@ type MergeState = {
   env: ConflictEnv | null
   outcome: MergeOutcome | null
   error: string | null
-  /** Terminal efêmero criado para o agente de conflito (para teardown/reabertura). */
+  /** Ephemeral terminal created for the conflict agent (for teardown/reopening). */
   agentTerminalId: string | null
-  /** ID da worktree de origem, quando o merge nasceu de integrateWorktree — permite
-   *  à UI (SidebarMergePanel) saber qual card corresponde ao merge ativo no momento. */
+  /** Source worktree ID, when the merge originated from integrateWorktree —
+   *  lets the UI (SidebarMergePanel) know which card corresponds to the currently active merge. */
   worktreeAgentId: string | null
-  /** Lock de reentrância: true durante qualquer chamada de finalize/retry/abort-bruto em progresso. */
+  /** Reentrancy lock: true during any finalize/retry/raw-abort call in progress. */
   isFinalizing: boolean
-  /** Tentativas de "Retry Manual" desde o último sucesso — zera em merged/idle. */
+  /** "Manual Retry" attempts since the last success — resets on merged/idle. */
   retryCount: number
-  /** Motivo do lock administrativo do git, quando é essa a causa da fase `failed`. */
+  /** Reason for git's administrative lock, when that's the cause of the `failed` phase. */
   adminLockReason: string | null
 
   analyze: (project: Project, repo: string, source: string, target: string) => Promise<void>
@@ -114,17 +114,17 @@ type MergeState = {
     target: string,
     worktreeAgentId?: string,
   ) => Promise<void>
-  /** Só roda a Validation Pipeline (marcadores + testes/build) — não commita nem integra. Gate manual antes de `finalize`. */
+  /** Only runs the Validation Pipeline (markers + tests/build) — doesn't commit or integrate. Manual gate before `finalize`. */
   validate: () => Promise<void>
-  /** Commita e integra de verdade — sempre disparado por clique manual (Integrar), nunca automaticamente. */
+  /** Actually commits and integrates — always triggered by a manual click (Integrate), never automatically. */
   finalize: () => Promise<void>
-  /** Reexecuta o abort preventivo no ambiente efêmero e chama finalize do topo. Lock administrativo não incrementa retryCount nem vira TerminalError. */
+  /** Re-runs the preventive abort on the ephemeral environment and calls finalize from the top. An administrative lock doesn't increment retryCount or become a TerminalError. */
   retry: () => Promise<void>
   abort: () => Promise<void>
   /**
-   * RFC-003 Fase 3 — botão "Integrar" do pane em worktree: (localCopy) fetch do
-   * branch do clone → ciclo de merge para o branch atual → sucesso destrói a
-   * worktree e o pane. UMA integração por vez (merge.busy).
+   * RFC-003 Phase 3 — the worktree pane's "Integrate" button: (localCopy)
+   * fetches the branch from the clone → merge cycle onto the current
+   * branch → success destroys the worktree and the pane. ONE integration at a time (merge.busy).
    */
   integrateWorktree: (
     project: Project,
@@ -135,21 +135,22 @@ type MergeState = {
   reset: () => void
 }
 
-/** Regras/passo a passo compartilhados pelos dois prompts (inicial e retry) —
- *  agente-facing, por isso fora do i18n de UI (mensagens próprias, não vêm de
- *  `messages/*.ts`), mas seguem o IDIOMA ATUAL do app (`getLocale()`) — pedido
- *  explícito do usuário: o Alethe já tem duas línguas (en/pt-BR), então o
- *  agente de conflito devia falar a mesma língua que o usuário está usando no
- *  app, com instrução explícita nesse sentido (a língua da UI não garante que
- *  o modelo vá responder nela sozinho). Reescrito pra ser um resolvedor de
- *  verdade, não só "leia e resolva": lê CADA arquivo inteiro (não só os
- *  marcadores) pra entender intenção real de cada lado, e — pedido explícito
- *  do usuário — pergunta ANTES de decidir sozinho quando a escolha entre os
- *  dois lados for realmente ambígua, em vez de sempre resolver tudo
- *  automaticamente. Também instrui a criar o marcador `ALETHE_RESOLVED` ao
- *  terminar: sem isso, a detecção de conclusão nunca usava a camada mais
- *  rápida (watchFile), só o poll de 7s ou o processo morrer — o agente nunca
- *  sabia que devia criar esse arquivo. */
+/** Rules/step-by-step shared by both prompts (initial and retry) —
+ *  agent-facing, so it stays outside UI i18n (its own messages, not sourced
+ *  from `messages/*.ts`), but follows the app's CURRENT LANGUAGE
+ *  (`getLocale()`) — explicit user request: Alethe already has two
+ *  languages (en/pt-BR), so the conflict agent should speak the same
+ *  language the user is currently using in the app, with an explicit
+ *  instruction to that effect (the UI's language alone doesn't guarantee
+ *  the model will respond in it on its own). Rewritten to be a genuine
+ *  resolver, not just "read and resolve": reads EACH file in full (not
+ *  just the markers) to understand the real intent on each side, and —
+ *  explicit user request — asks BEFORE deciding alone when the choice
+ *  between the two sides is genuinely ambiguous, instead of always
+ *  resolving everything automatically. Also instructs it to create the
+ *  `ALETHE_RESOLVED` marker when done: without this, completion detection
+ *  never used the fastest layer (watchFile), only the 7s poll or the
+ *  process dying — the agent never knew it was supposed to create that file. */
 function conflictRules(locale: Locale): string {
   if (locale === 'en') {
     return (
@@ -187,7 +188,7 @@ function conflictRules(locale: Locale): string {
   )
 }
 
-/** Prompt inicial do agente efêmero — escopo travado, aponta pro arquivo de contexto. */
+/** Initial prompt for the ephemeral agent — scope locked, points to the context file. */
 function conflictPrompt(locale: Locale): string {
   if (locale === 'en') {
     return (
@@ -201,7 +202,7 @@ function conflictPrompt(locale: Locale): string {
   )
 }
 
-/** Prompt de retry — o agente novo não tem memória da tentativa anterior, então o motivo da falha precisa ir no prompt. */
+/** Retry prompt — the new agent has no memory of the previous attempt, so the failure reason has to go into the prompt. */
 function retryPrompt(failureContext: string, locale: Locale): string {
   if (locale === 'en') {
     return (
@@ -221,14 +222,14 @@ function retryPrompt(failureContext: string, locale: Locale): string {
   )
 }
 
-/** Flags iniciais pra abrir o CLI já com o modelo correto — nunca o prompt
- *  aqui (vai via `initialInput`, digitado no terminal depois do boot). O
- *  OpenCode trata um argumento posicional solto como PASTA a abrir, não como
- *  prompt inicial — passar o texto do conflito por `extraArgs` fazia ele
- *  tentar `cd` pro próprio texto do prompt concatenado ao cwd real
- *  (`Failed to change directory to <cwd>\<prompt inteiro>`, confirmado ao
- *  vivo). `initialInput` é o mesmo mecanismo já usado pelo prompt rápido da
- *  Home pra qualquer provider, incluindo OpenCode — funciona pros quatro. */
+/** Initial flags to open the CLI already with the right model — never the
+ *  prompt here (that goes via `initialInput`, typed into the terminal after
+ *  boot). OpenCode treats a loose positional argument as a FOLDER to open,
+ *  not as an initial prompt — passing the conflict text via `extraArgs`
+ *  made it try to `cd` into the prompt text itself concatenated to the real
+ *  cwd (`Failed to change directory to <cwd>\<whole prompt>`, confirmed
+ *  live). `initialInput` is the same mechanism already used by the Home
+ *  quick prompt for any provider, including OpenCode — works for all four. */
 function providerArgs(model?: string): string[] {
   return model ? ['--model', model] : []
 }
@@ -246,7 +247,7 @@ function adminLockReasonFrom(message: string): string | null {
   return match ? match[1] : null
 }
 
-/** Fecha o terminal antigo (se houver) e abre um novo apontando pro mesmo cwd — não existe "resumir" um PTY morto, só recriar (ver decisão de design do plano). */
+/** Closes the old terminal (if any) and opens a new one pointing at the same cwd — there's no "resuming" a dead PTY, only recreating it (see the plan's design decision). */
 function reopenAgentTerminal(
   set: (partial: Partial<MergeState>) => void,
   get: () => MergeState,
@@ -277,21 +278,22 @@ function reopenAgentTerminal(
   beginResolvingWatch(env, terminal.id)
 }
 
-// --- Gatilho automático de "aguardando revisão" (3 camadas em cascata) ---
+// --- Automatic "awaiting review" trigger (3 cascading layers) ---
 //
-// NENHUMA camada valida, commita ou integra nada sozinha — elas só detectam
-// que o agente sinalizou "terminei" e páram, esperando confirmação manual
-// (botões Validar/Integrar na UI, fase `awaiting_review`). Pedido explícito
-// do usuário: o gatilho antigo chamava merge_finalize (valida+commita+
-// integra tudo junto) sozinho assim que qualquer camada disparava, sem
-// nenhum humano confirmar se a resolução do agente fazia sentido —
-// confirmado ao vivo como imprudente (agente juntou conteúdo incompatível
-// num arquivo só, sem perguntar, e foi commitado/integrado automaticamente).
-//   1. watchFile no marcador ALETHE_RESOLVED (mais rápido, se o agente criar).
-//   2. pty://exit do terminal do agente (processo morreu — terminou ou
-//      crashou; "Validar" mostra qual dos dois foi, não decidimos aqui).
-//   3. poll barato periódico (fallback caso o watchFile do SO perca o evento
-//      de criação do marcador — só relê o arquivo, nunca chama o backend).
+// NO layer validates, commits, or integrates anything on its own — they
+// only detect that the agent signaled "done" and stop, waiting for manual
+// confirmation (Validate/Integrate buttons in the UI, `awaiting_review`
+// phase). Explicit user request: the old trigger called merge_finalize
+// (validate+commit+integrate all together) on its own as soon as any layer
+// fired, with no human confirming whether the agent's resolution made
+// sense — confirmed live as reckless (the agent merged incompatible
+// content into a single file, without asking, and it was
+// committed/integrated automatically).
+//   1. watchFile on the ALETHE_RESOLVED marker (fastest, if the agent creates it).
+//   2. pty://exit of the agent's terminal (process died — finished or
+//      crashed; "Validate" shows which one it was, we don't decide here).
+//   3. cheap periodic poll (fallback in case the OS's watchFile misses the
+//      marker's creation event — only re-reads the file, never calls the backend).
 
 const POLL_INTERVAL_MS = 7000
 
@@ -325,23 +327,23 @@ function beginResolvingWatch(env: ConflictEnv, agentTerminalId: string) {
         if (path === markerPath) signal()
       })
     } catch (err) {
-      console.warn('[mergeStore] watchFile indisponível, seguindo só com pty-exit/poll:', err)
+      console.warn('[mergeStore] watchFile unavailable, continuing with only pty-exit/poll:', err)
     }
     try {
       unlistenExit = await listenPtyExit(agentTerminalId, () => signal())
     } catch (err) {
-      console.warn('[mergeStore] listenPtyExit falhou:', err)
+      console.warn('[mergeStore] listenPtyExit failed:', err)
     }
     pollTimer = setInterval(() => {
       readTextFile(markerPath)
         .then(() => signal())
         .catch(() => {
-          /* marcador ainda não existe — nada a fazer, só o próximo tick */
+          /* marker doesn't exist yet — nothing to do, just wait for the next tick */
         })
     }, POLL_INTERVAL_MS)
 
-    // Corrida: se já saímos de resolving enquanto o setup assíncrono rodava,
-    // desliga na hora em vez de deixar listeners/timer vazando.
+    // Race: if we already left resolving while the async setup was
+    // running, tear down right away instead of leaking listeners/timer.
     if (useMergeStore.getState().phase !== 'resolving' || stopped) {
       unlistenFile?.()
       unlistenExit?.()
@@ -405,11 +407,11 @@ export const useMergeStore = create<MergeState>((set, get) => ({
       const env = await mergePrepare(repo, source, target, project.id)
       set({ env })
       if (env.clean) {
-        // Sem conflito: valida e integra direto, sem agente.
+        // No conflict: validate and integrate directly, no agent needed.
         await get().finalize()
         return
       }
-      // Conflito: spawna o agente efêmero num terminal visível do projeto.
+      // Conflict: spawn the ephemeral agent in a visible project terminal.
       const provider = project.conflictAgentProvider ?? 'claude'
       const model = project.conflictAgentModel
       const terminal = useProjectsStore.getState().createTerminal(project.id, {
@@ -462,15 +464,15 @@ export const useMergeStore = create<MergeState>((set, get) => ({
     stopResolvingWatch()
     set({ isFinalizing: true, outcome: null, error: null, phase: 'finalizing_commit' })
 
-    // Mata o processo do agente ANTES de chamar o backend: se o merge for
-    // bem-sucedido, `merge_finalize` (Rust) faz `git worktree remove --force`
-    // na hora, na MESMA chamada — sem isso, a pasta que ainda é o cwd do
-    // processo do agente é apagada com ele potencialmente vivo ali dentro
-    // (mesma causa-raiz já corrigida em Rejeitar/integrateWorktree: no
-    // Windows, apagar pasta com processo vivo como cwd falha/corrompe
-    // estado — confirmado ao vivo: terminal "reiniciado sem sessão" depois
-    // do merge). `killPtyTree` espera de verdade a árvore morrer, diferente
-    // do `killPty` fire-and-forget que `deleteTerminal` dispara sozinho.
+    // Kill the agent's process BEFORE calling the backend: if the merge
+    // succeeds, `merge_finalize` (Rust) does `git worktree remove --force`
+    // right away, in the SAME call — without this, the folder that's still
+    // the agent process's cwd gets deleted while it's potentially still
+    // alive in there (same root cause already fixed in Reject/
+    // integrateWorktree: on Windows, deleting a folder with a live process
+    // as its cwd fails/corrupts state — confirmed live: terminal
+    // "restarted without a session" after the merge). `killPtyTree` really
+    // waits for the tree to die, unlike the fire-and-forget `killPty` that `deleteTerminal` fires on its own.
     if (projectId && agentTerminalId) {
       const terminal = useProjectsStore
         .getState()
@@ -495,13 +497,13 @@ export const useMergeStore = create<MergeState>((set, get) => ({
 
       if (outcome.merged) {
         stopResolvingWatch()
-        // O agente efêmero é DESCARTÁVEL por design ("nasce, resolve,
-        // morre") — nunca reloca pra branch nova nem tenta manter sessão
-        // (isso é `mergePostAction`, uma opção do agente de trabalho REAL
-        // aplicada em `integrateWorktree`/`paneTerminalId`, não aqui).
-        // Aplicar relocate neste terminal descartável já causou um card
-        // fantasma na Central de Merges (ganhava um worktreeAgentId de
-        // verdade sem ser um worktree de agente de verdade).
+        // The ephemeral agent is DISPOSABLE by design ("spawns, resolves,
+        // dies") — it never relocates to a new branch or tries to keep a
+        // session (that's `mergePostAction`, an option for the REAL work
+        // agent applied in `integrateWorktree`/`paneTerminalId`, not here).
+        // Applying relocate to this disposable terminal already caused a
+        // ghost card in the Merge Center (it got a real worktreeAgentId
+        // without being a real agent worktree).
         if (projectId && agentTerminalId) {
           useProjectsStore.getState().deleteTerminal(projectId, agentTerminalId)
         }
@@ -515,15 +517,15 @@ export const useMergeStore = create<MergeState>((set, get) => ({
           adminLockReason: null,
         })
         toast(t('merge.mergedTitle'), outcome.output)
-        // Honestidade pós-merge: o auto-merge de branches limpas continua
-        // automático (decisão deliberada), mas não pode fingir que checou
-        // algo que não checou — avisa quando integrou sem nenhum comando de
-        // validação configurado.
+        // Post-merge honesty: auto-merging clean branches stays automatic
+        // (deliberate decision), but it can't pretend to have checked
+        // something it didn't — warns when it integrated with no
+        // validation command configured.
         if (!outcome.validationRan) {
           toast(t('merge.mergedUnverifiedTitle'), t('merge.mergedUnverifiedBody'))
         }
-        // Camada 4 do Escudo (aviso, nunca bloqueou o merge acima) — só
-        // presente se o projeto tinha `healthCheckCommand` configurado.
+        // Shield Layer 4 (warning, never blocked the merge above) — only
+        // present if the project had `healthCheckCommand` configured.
         if (outcome.healthProbe) {
           const hp = outcome.healthProbe
           toast(
@@ -539,8 +541,8 @@ export const useMergeStore = create<MergeState>((set, get) => ({
                 }),
           )
         }
-        // Camada 3 do Escudo (aviso, nunca bloqueou o merge acima) — informa
-        // depois de integrado, pra revisão posterior do usuário.
+        // Shield Layer 3 (warning, never blocked the merge above) —
+        // informs after integration, for the user's later review.
         if (outcome.contractWarnings.length > 0) {
           toast(
             t('merge.contractWarningsTitle', { count: outcome.contractWarnings.length }),
@@ -553,16 +555,16 @@ export const useMergeStore = create<MergeState>((set, get) => ({
       }
 
       if (outcome.stage === 'nothing_to_integrate') {
-        // Honesto em vez de fingir sucesso (bug real corrigido no backend,
-        // ver `conflict_resolution.rs`): a branch não tinha nenhuma mudança
-        // em relação ao alvo — nada foi commitado, `main` não avança. Não é
-        // um erro pra tentar de novo (não tem "retry" que resolva "nada pra
-        // fazer"), então não vira `phase: 'failed'` — só informa e limpa o
-        // agente efêmero de conflito (se for esse o caso). O worktree/
-        // terminal do agente REAL (fluxo `integrateWorktree`) fica intacto —
-        // `phase` não vira `'merged'`, então a limpeza de lá nem roda,
-        // deixando o usuário decidir (o card continua visível pra ele
-        // rejeitar/investigar).
+        // Honest instead of faking success (real bug fixed in the backend,
+        // see `conflict_resolution.rs`): the branch had no changes relative
+        // to the target — nothing was committed, `main` doesn't advance.
+        // It's not an error worth retrying (there's no "retry" that fixes
+        // "nothing to do"), so it doesn't turn into `phase: 'failed'` — it
+        // just informs and cleans up the ephemeral conflict agent (if that
+        // was the case). The REAL agent's worktree/terminal
+        // (`integrateWorktree` flow) stays intact — `phase` doesn't become
+        // `'merged'`, so cleanup over there doesn't even run, leaving the
+        // user to decide (the card stays visible for them to reject/investigate).
         stopResolvingWatch()
         if (projectId && agentTerminalId) {
           useProjectsStore.getState().deleteTerminal(projectId, agentTerminalId)
@@ -596,7 +598,7 @@ export const useMergeStore = create<MergeState>((set, get) => ({
             toast(t('merge.conflictTitle'), rebased.output.slice(0, 300))
             return
           }
-          // rebase_failed — erro de execução do git/disco cheio etc.
+          // rebase_failed — git execution error/full disk/etc.
           set({ phase: 'failed', outcome: rebased, error: rebased.output, isFinalizing: false })
           toast(t('merge.blockedTitle', { stage: rebased.stage }), rebased.output.slice(0, 300))
         } catch (err) {
@@ -613,8 +615,8 @@ export const useMergeStore = create<MergeState>((set, get) => ({
         return
       }
 
-      // target_not_checked_out, integration (não-divergência) e qualquer
-      // outro stage não mapeado: erro duro recuperável via Retry Manual.
+      // target_not_checked_out, integration (non-divergence), and any
+      // other unmapped stage: a hard error recoverable via Manual Retry.
       stopResolvingWatch()
       set({ phase: 'failed', outcome, isFinalizing: false })
       toast(t('merge.blockedTitle', { stage: outcome.stage }), outcome.output.slice(0, 300))
@@ -642,11 +644,11 @@ export const useMergeStore = create<MergeState>((set, get) => ({
       const message = String(err)
       const adminLockReason = adminLockReasonFrom(message)
       if (adminLockReason) {
-        // Lock administrativo detectado no abort preventivo — volta pra
-        // Failed com o motivo, NÃO incrementa retryCount, NÃO vira TerminalError.
+        // Administrative lock detected during the preventive abort — go
+        // back to Failed with the reason, does NOT increment retryCount, does NOT become a TerminalError.
         set({ phase: 'failed', isFinalizing: false, error: message, adminLockReason })
       } else {
-        // Erro genérico no abort preventivo = corrupção real do ambiente.
+        // Generic error in the preventive abort = real environment corruption.
         set({ phase: 'terminal_error', isFinalizing: false, error: message })
       }
       return
@@ -661,36 +663,36 @@ export const useMergeStore = create<MergeState>((set, get) => ({
       return
     }
     try {
-      // git merge só move commits — se o agente escreveu arquivo e nunca
-      // commitou, a branch dele não tem nada de novo em relação ao alvo e a
-      // integração inteira vira um no-op silencioso (reporta "concluído" sem
-      // mover nada — bug real, confirmado ao vivo). Commita automaticamente
-      // o que estiver pendente antes de seguir; no-op numa worktree já limpa.
+      // git merge only moves commits — if the agent wrote files and never
+      // committed, its branch has nothing new relative to the target and
+      // the whole integration turns into a silent no-op (reports
+      // "complete" without moving anything — real bug, confirmed live).
+      // Automatically commits whatever is pending before proceeding; a no-op on an already-clean worktree.
       await worktreeCommitPending(repo, worktreeAgentId)
-      // LocalCopy: o branch vive no clone — traz pro repo principal primeiro.
-      // (No modo gitWorktree é no-op no backend.)
+      // LocalCopy: the branch lives in the clone — bring it into the main repo first.
+      // (In gitWorktree mode this is a no-op on the backend.)
       await worktreeFetchBranch(repo, worktreeAgentId)
       const target = (await gitStatus(repo)).branch
       const source = `alethe/agent-${worktreeAgentId}`
       await get().start(project, repo, source, target, worktreeAgentId)
       const { phase } = get()
       if (phase === 'merged') {
-        // Integrado limpo: mata o processo do agente ANTES de tentar remover
-        // a worktree — mesma causa-raiz do bug de "Rejeitar" já corrigido
-        // (no Windows, apagar uma pasta que ainda é o cwd de um processo vivo
-        // falha). Aguarda de verdade a árvore de processos morrer.
+        // Cleanly integrated: kill the agent's process BEFORE trying to
+        // remove the worktree — same root cause as the "Reject" bug
+        // already fixed (on Windows, deleting a folder that's still a live
+        // process's cwd fails). Really waits for the process tree to die.
         const projectAtCleanup = useProjectsStore
           .getState()
           .projects.find((p) => p.id === project.id)
         const terminal = projectAtCleanup?.terminals.find((term) => term.id === paneTerminalId)
-        // O terminal "viewer" da sessão-filha GSD Sync (se existir) é uma
-        // entidade SEPARADA, casada só por `cwd` — matar só o pane principal
-        // aqui e deixar `deleteTerminal` (mais abaixo) matar o viewer por
-        // último não basta: `worktreeRemove`, logo em seguida, já apaga a
-        // pasta do disco enquanto o processo do viewer ainda pode estar vivo
-        // nela (confirmado ao vivo: "ENOENT: no such file or directory,
-        // lstat <worktree>" num terminal GSD Sync órfão). Mata os dois juntos
-        // agora, antes de qualquer remoção de disco.
+        // The GSD Sync child session's "viewer" terminal (if it exists) is
+        // a SEPARATE entity, matched only by `cwd` — killing just the main
+        // pane here and leaving `deleteTerminal` (further below) to kill
+        // the viewer last isn't enough: `worktreeRemove`, right after,
+        // already deletes the folder from disk while the viewer's process
+        // may still be alive in it (confirmed live: "ENOENT: no such file
+        // or directory, lstat <worktree>" in an orphaned GSD Sync
+        // terminal). Kill both together now, before any disk removal.
         const gsdViewer = projectAtCleanup?.terminals.find(
           (term) => term.gsdSyncViewer && term.cwd === terminal?.cwd,
         )
@@ -702,13 +704,13 @@ export const useMergeStore = create<MergeState>((set, get) => ({
         try {
           await worktreeRemove(repo, worktreeAgentId, true)
         } catch (err) {
-          // "worktree_not_found" = já tinha sido removida, inofensivo. Falha
-          // real nunca pode sumir só num console.warn — vira órfã rastreada
-          // (mesma rede de segurança do abort()/Rejeitar), senão a pasta
-          // fica presa em disco pra sempre, sem nenhum rastro na interface —
-          // e o toast "Merge concluído" já mostrado fica parecendo mentira
-          // pro usuário (bug real, confirmado ao vivo: worktree sobrevivia
-          // e nada avisava). Agora avisa também.
+          // "worktree_not_found" = it had already been removed, harmless.
+          // A real failure can never just vanish into a console.warn — it
+          // becomes a tracked orphan (same safety net as abort()/Reject),
+          // otherwise the folder stays stuck on disk forever, with no
+          // trace in the UI — and the already-shown "Merge complete" toast
+          // ends up looking like a lie to the user (real bug, confirmed
+          // live: the worktree survived and nothing warned about it). Now it warns too.
           if (!String(err).includes('worktree_not_found')) {
             useProjectsStore.getState().addOrphanWorktree(project.id, {
               path: terminal?.cwd ?? '',
@@ -716,14 +718,14 @@ export const useMergeStore = create<MergeState>((set, get) => ({
             })
             toast(t('merge.worktreeRemoveFailedTitle'), String(err).slice(0, 300))
           }
-          console.warn('[mergeStore] worktree já removida?', err)
+          console.warn('[mergeStore] worktree already removed?', err)
         }
 
-        // Ação pós-merge do agente (config do projeto) — bug real corrigido:
-        // `relocateMergeAgentTerminal` já existia pronta e testada, mas
-        // nunca era chamada; o terminal sempre era fechado incondicionalmente
-        // aqui, ignorando "Criar nova branch e manter chat ativo"/"...manter
-        // sessão" configurados pelo usuário.
+        // Agent post-merge action (project config) — real bug fixed:
+        // `relocateMergeAgentTerminal` already existed, ready and tested,
+        // but was never called; the terminal was always closed
+        // unconditionally here, ignoring the user-configured "Create a new
+        // branch and keep chat active"/"...keep session" settings.
         const postAction = project.mergePostAction ?? 'closeTerminal'
         if (postAction === 'closeTerminal') {
           useProjectsStore.getState().deleteTerminal(project.id, paneTerminalId)
@@ -734,15 +736,15 @@ export const useMergeStore = create<MergeState>((set, get) => ({
               keepSession: postAction === 'relocateKeepSession',
             })
           if (!relocated.ok) {
-            // Não deixa o terminal preso apontando pra uma pasta que acabou
-            // de ser removida — cai pro fechamento como último recurso.
+            // Doesn't leave the terminal stuck pointing at a folder that
+            // was just removed — falls back to closing it as a last resort.
             toast(t('merge.relocateFailedTitle'), relocated.error ?? '')
             useProjectsStore.getState().deleteTerminal(project.id, paneTerminalId)
           }
         }
       }
-      // Em conflito, o fluxo normal segue (agente efêmero + Finalizar); a
-      // worktree/pane originais ficam intactos até o merge concluir.
+      // On conflict, the normal flow continues (ephemeral agent +
+      // Finalize); the original worktree/pane stay intact until the merge completes.
     } catch (err) {
       set({ phase: 'failed', error: String(err) })
       toast(t('merge.blockedTitle', { stage: 'integrate' }), String(err).slice(0, 300))
@@ -752,11 +754,11 @@ export const useMergeStore = create<MergeState>((set, get) => ({
   abort: async () => {
     const { repo, env, projectId, agentTerminalId, phase, isFinalizing } = get()
     if (isFinalizing) {
-      // Validar/Integrar (clique manual) já está em progresso — se o clique
-      // em "Abortar" cair bem no meio dessa chamada, a guarda de
-      // reentrância ignorava o clique sem nenhum aviso, parecendo que o
-      // botão simplesmente não fazia nada (confirmado ao vivo: funcionava
-      // só no segundo clique, sem explicação nenhuma).
+      // Validate/Integrate (manual click) is already in progress — if the
+      // click on "Abort" landed right in the middle of that call, the
+      // reentrancy guard used to ignore the click with no warning at all,
+      // making it look like the button simply did nothing (confirmed
+      // live: it only worked on the second click, with no explanation).
       toast(t('merge.abortBusyTitle'), t('merge.abortBusy'))
       return
     }
@@ -781,9 +783,9 @@ export const useMergeStore = create<MergeState>((set, get) => ({
               requiresRawDeletion: true,
             })
           }
-          // deleted && pruned: totalmente limpo, nada a rastrear.
+          // deleted && pruned: fully cleaned up, nothing to track.
         } catch (err) {
-          console.error('[mergeStore] limpeza bruta falhou:', err)
+          console.error('[mergeStore] raw cleanup failed:', err)
           useProjectsStore.getState().addOrphanWorktree(projectId, {
             path: env.path,
             mode: 'gitWorktree',
@@ -813,7 +815,7 @@ export const useMergeStore = create<MergeState>((set, get) => ({
       try {
         await mergeAbort(repo, env.id)
       } catch (err) {
-        console.error('[mergeStore] Falha ao abortar merge:', err)
+        console.error('[mergeStore] Failed to abort merge:', err)
       }
     }
     if (projectId && agentTerminalId) {

@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
 
+import { isOverlayPresent, subscribeOverlayPresence } from '../../lib/overlayPresence'
+import { surfaceRectsEqual, visibleRectOf } from '../../lib/surfaceGeometry'
 import {
   ghosttySetFocus,
   ghosttySetHidden,
@@ -8,7 +10,6 @@ import {
   ghosttySyncFrame,
   type WebRect,
 } from '../../lib/tauri'
-import { webRectsEqual } from '../../lib/webRect'
 
 const EXIT_POLL_MS = 2500
 
@@ -66,11 +67,11 @@ export function GhosttySurface({
     const pushFrame = () => {
       rafRef.current = null
       if (disposed) return
-      const r = node.getBoundingClientRect()
+      const r = visibleRectOf(node)
+      if (!r) return
 
-      if (r.width < 1 || r.height < 1) return
-      const rect: WebRect = { x: r.left, y: r.top, width: r.width, height: r.height }
-      if (webRectsEqual(lastRectRef.current, rect)) return
+      const rect: WebRect = { x: r.x, y: r.y, width: r.width, height: r.height }
+      if (surfaceRectsEqual(lastRectRef.current, rect)) return
       lastRectRef.current = rect
       void ghosttySyncFrame(surfaceId, rect, window.devicePixelRatio || 1)
     }
@@ -140,10 +141,8 @@ export function GhosttySurface({
     let lastHidden: boolean | null = null
     let lastFocused: boolean | null = null
 
-    const anyModalOpen = () => document.querySelector('[role="dialog"][data-state="open"]') !== null
-
     const applyHidden = () => {
-      const hidden = !activeRef.current || !intersecting || anyModalOpen()
+      const hidden = !activeRef.current || !intersecting || isOverlayPresent()
 
       if (hidden !== lastHidden) {
         if (!hidden) pushFrameNowRef.current?.()
@@ -168,17 +167,11 @@ export function GhosttySurface({
     )
     io.observe(node)
 
-    const mo = new MutationObserver(applyHidden)
-    mo.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['data-state'],
-    })
+    const unsubscribeOverlayPresence = subscribeOverlayPresence(applyHidden)
 
     return () => {
       io.disconnect()
-      mo.disconnect()
+      unsubscribeOverlayPresence()
       reevaluateVisibilityRef.current = null
     }
   }, [surfaceId])
@@ -202,9 +195,7 @@ export function GhosttySurface({
           window.clearInterval(iv)
           onExitRef.current?.()
         }
-      } catch {
-        /* erro transitório — tenta de novo */
-      }
+      } catch {}
     }, EXIT_POLL_MS)
     return () => {
       stopped = true

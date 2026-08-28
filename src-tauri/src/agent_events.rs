@@ -6,7 +6,7 @@ use std::io::Read;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 const HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 9123;
@@ -70,7 +70,9 @@ pub fn agent_hooks_settings_path() -> Result<String, String> {
     let port = wait_for_listener_port()
         .ok_or_else(|| "listener de agents ainda nao esta disponivel".to_string())?;
     let endpoint = listener_endpoint(port);
-    let path = std::env::temp_dir().join("alethe-agent-hooks.json");
+    // Namespaced by port so a second instance cannot overwrite the first one's endpoint and
+    // silently redirect its agents.
+    let path = std::env::temp_dir().join(format!("alethe-agent-hooks-{port}.json"));
     let token = init_token();
     let hook = serde_json::json!([
         { "hooks": [ {
@@ -158,6 +160,27 @@ pub fn start_listener(app: AppHandle) {
             // processo real (claude/codex/opencode) via
             // `curl -X POST /spawn -d '{"agent":"codex","task":"...","mode":"exec"}'`.
             // O Alethe emite `agent-spawn`; o front sobe um PTY worker. Campos:
+
+            if url.starts_with("/mcp") {
+                let app = app.clone();
+                std::thread::spawn(move || {
+                    let state = app.state::<crate::orchestrator::OrchestratorState>();
+                    match crate::orchestrator::handle_mcp_body(Some(&app), &state, &body) {
+                        Some(payload) => {
+                            let header =
+                                tiny_http::Header::from_bytes("Content-Type", "application/json")
+                                    .expect("static header");
+                            let _ = request.respond(
+                                tiny_http::Response::from_string(payload).with_header(header),
+                            );
+                        }
+                        None => {
+                            let _ = request.respond(tiny_http::Response::empty(202));
+                        }
+                    }
+                });
+                continue;
+            }
 
             if url.starts_with("/spawn") {
                 match serde_json::from_str::<serde_json::Value>(&body) {

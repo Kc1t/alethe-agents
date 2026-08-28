@@ -101,6 +101,21 @@ export type PtySuspendedPayload = {
   reason: 'memory-pressure' | string
 }
 
+/**
+ * Relief requests the resource manager raises as free memory falls.
+ *
+ * `drop-caches` was emitted as `resource::drop-caches` and matched no listener, so the most severe
+ * level was the one that did nothing.
+ */
+export const MEMORY_RELIEF_EVENTS = {
+  low: 'resource://hibernate-idle',
+  medium: 'resource://webview-low-memory',
+  high: 'resource://reduce-pool',
+  critical: 'resource://drop-caches',
+} as const
+
+export type MemoryReliefLevel = keyof typeof MEMORY_RELIEF_EVENTS
+
 export type CrashSession = {
   started_at_ms: number
   clean_exit: boolean
@@ -196,6 +211,24 @@ export function listenPtySuspended(
       handler(event.payload),
     )
   return Promise.resolve(() => {})
+}
+
+/**
+ * Desktop-only: memory relief signals come from the local resource manager, which has no
+ * web-remote equivalent (see `listenPtySuspended` for the same pattern).
+ */
+export async function listenMemoryRelief(
+  handler: (level: MemoryReliefLevel) => void,
+): Promise<UnlistenFn> {
+  if (!isTauriEnv()) return Promise.resolve(() => {})
+  const unlisteners = await Promise.all(
+    (Object.keys(MEMORY_RELIEF_EVENTS) as MemoryReliefLevel[]).map((level) =>
+      listen(MEMORY_RELIEF_EVENTS[level], () => handler(level)),
+    ),
+  )
+  return () => {
+    for (const unlisten of unlisteners) unlisten()
+  }
 }
 
 export async function getLastCrashReport(): Promise<CrashReport | null> {

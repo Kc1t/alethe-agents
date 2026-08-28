@@ -141,7 +141,7 @@ export function MainMenu() {
           closeMainMenu()
         }}
       >
-        <ShieldAlert size={14} /> <span>Central de Auditoria</span>
+        <ShieldAlert size={14} /> <span>{t('menu.audit')}</span>
       </button>
       {import.meta.env.DEV ? (
         <>

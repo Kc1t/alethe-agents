@@ -1,5 +1,3 @@
-// Este foi feito para refatorar o renderizador do Grafo de Git com fluxo contínuo de curva saindo do nó do commit na metade inferior (cy -> ROW_HEIGHT) e entrando em linha reta no nó do pai na metade superior (0 -> cy), resolvendo 100% dos desajustes e linhas soltas.
-
 import {
   ChevronDown,
   ChevronRight,

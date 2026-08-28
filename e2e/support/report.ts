@@ -20,7 +20,7 @@ function runDir(): string {
   return dir
 }
 
-/** Registra um passo de cenário no report.json/report.md do dia (append-only). */
+/** Records a scenario step in the day's report.json/report.md (append-only). */
 export function recordStep(entry: Omit<StepEntry, 'at'>): void {
   const dir = runDir()
   const jsonPath = join(dir, 'report.json')
@@ -33,7 +33,7 @@ export function recordStep(entry: Omit<StepEntry, 'at'>): void {
   if (!existsSync(mdPath)) {
     writeFileSync(
       mdPath,
-      '# Relatório E2E\n\n| Status | Cenário | Passo | Detalhe | Screenshot |\n|---|---|---|---|---|\n',
+      '# E2E Report\n\n| Status | Scenario | Step | Detail | Screenshot |\n|---|---|---|---|---|\n',
     )
   }
   const icon = full.status === 'pass' ? '✅' : '❌'

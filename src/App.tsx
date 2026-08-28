@@ -17,6 +17,7 @@ import { MainMenu } from './components/MainMenu'
 import { AddBrowserModal } from './components/modals/AddBrowserModal'
 import { AddContentModal } from './components/modals/AddContentModal'
 import { AiUsageModal } from './components/modals/AiUsageModal'
+import { AuditModal } from './components/modals/AuditModal'
 import { EditGroupModal } from './components/modals/EditGroupModal'
 import { EditProjectModal } from './components/modals/EditProjectModal'
 import { FindJumpModal } from './components/modals/FindJumpModal'
@@ -49,6 +50,7 @@ import { TitleBar } from './components/TitleBar'
 import { TokenHud } from './components/TokenHud'
 import { AsciiEffect } from './components/ui/ascii-effect'
 import { WorkspaceView } from './components/WorkspaceView'
+import { useAgentBrowserOffers } from './hooks/useAgentBrowserOffers'
 import { useCliOpenRequests } from './hooks/useCliOpenRequests'
 import { useCloseConfirmation } from './hooks/useCloseConfirmation'
 import { useCollaborationAccess } from './hooks/useCollaborationAccess'
@@ -188,9 +190,13 @@ function ToastItem({ toast }: { toast: InAppToast }) {
   const uiTheme = useProjectsStore((s) => s.preferences.uiTheme)
 
   useEffect(() => {
-    const timer = window.setTimeout(() => dismissToast(toast.id), 6500)
+    // A toast that asks something has to outlive a glance, or the offer is gone before it is read.
+    const timer = window.setTimeout(
+      () => dismissToast(toast.id),
+      toast.actions?.length ? 20000 : 6500,
+    )
     return () => window.clearTimeout(timer)
-  }, [dismissToast, toast.id])
+  }, [dismissToast, toast.id, toast.actions])
 
   const accentStyle = {
     '--toast-accent': toast.agent ? `var(--agent-${toast.agent})` : 'var(--accent)',
@@ -208,6 +214,29 @@ function ToastItem({ toast }: { toast: InAppToast }) {
       <div className={styles.toastText}>
         <strong>{toast.title}</strong>
         <span title={toast.body}>{toast.body}</span>
+        {toast.actions?.length ? (
+          <div className={styles.toastActions}>
+            {toast.actions.map((action, index) => (
+              <button
+                key={action.label}
+                type="button"
+                className={
+                  action.quiet
+                    ? styles.toastActionQuiet
+                    : index === 0
+                      ? styles.toastAction
+                      : styles.toastActionSecondary
+                }
+                onClick={() => {
+                  action.run()
+                  dismissToast(toast.id)
+                }}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
       <button
         type="button"
@@ -258,6 +287,7 @@ export default function App() {
   const leftSidebarWidth = useProjectsStore((s) => s.preferences.leftSidebarWidth)
   const rightSidebarWidth = useProjectsStore((s) => s.preferences.rightSidebarWidth)
   const todosEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.todos)
+  const playwrightEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.playwright)
   const gitEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.git)
   const mcpEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.mcp)
   const gitControlPlacement = useProjectsStore((s) => s.preferences.gitControlPlacement)
@@ -297,6 +327,7 @@ export default function App() {
   useCloseConfirmation()
   useCollaborationAccess()
   useResourceSupervisor(hydrated)
+  useAgentBrowserOffers(playwrightEnabled)
   useCliOpenRequests(hydrated)
 
   useEffect(() => {
@@ -859,6 +890,7 @@ export default function App() {
         <McpManagerModal />
         <McpIntroModal />
         <RemoteControlModal />
+        <AuditModal />
         {openModal === 'meshFolderTree' ? <ProjectFolderTreeModal /> : null}
       </ErrorBoundary>
       <InAppNotifications />

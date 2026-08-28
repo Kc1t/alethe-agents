@@ -133,6 +133,7 @@ describe('production renderer security policy', () => {
       'dialog:allow-confirm',
       'dialog:allow-open',
       'dialog:allow-save',
+      'dialog:allow-confirm',
       'dialog:allow-message',
       'notification:default',
       'notification:allow-is-permission-granted',

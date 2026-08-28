@@ -2,16 +2,16 @@ import type { Options } from '@wdio/types'
 
 import { prepareIsolatedLaunch } from './support/launch'
 
-// BUG REAL CONFIRMADO NESTA SESSÃO (rodando ao vivo): mutar `capabilities`
-// dentro de `onPrepare` NÃO chegava a valer — o app subia com
-// `application: "PLACEHOLDER_SET_IN_ON_PREPARE"` (um caminho que não
-// existe), e o `@wdio/tauri-service` caía num fallback silencioso pro Edge
-// comum em vez do app Tauri real (confirmado pelo log: `Running: msedge` e
-// `Tauri core.invoke not available after 5s timeout`) — e mesmo assim o
-// smoke test "passava", porque só checava `title.length > 0`. Corrigido
-// calculando o launch isolado EM TEMPO DE MÓDULO (síncrono — `mkdtempSync`
-// não precisa de nenhum hook assíncrono) e escrevendo os valores reais
-// direto no objeto `capabilities` exportado, em vez de tentar mutá-lo depois.
+// REAL BUG CONFIRMED IN THIS SESSION (running live): mutating `capabilities`
+// inside `onPrepare` did NOT actually take effect — the app started with
+// `application: "PLACEHOLDER_SET_IN_ON_PREPARE"` (a path that doesn't
+// exist), and `@wdio/tauri-service` silently fell back to plain Edge
+// instead of the real Tauri app (confirmed by the log: `Running: msedge` and
+// `Tauri core.invoke not available after 5s timeout`) — and even so the
+// smoke test "passed", because it only checked `title.length > 0`. Fixed by
+// computing the isolated launch AT MODULE TIME (synchronous — `mkdtempSync`
+// doesn't need any async hook) and writing the real values
+// directly into the exported `capabilities` object, instead of trying to mutate it later.
 const launch = prepareIsolatedLaunch()
 
 export const config: Options.Testrunner = {
@@ -23,15 +23,15 @@ export const config: Options.Testrunner = {
   reporters: ['spec'],
   mochaOpts: {
     ui: 'bdd',
-    // `_record.spec.ts` (gravador interativo, `npm run replay:record`)
-    // precisa de até ~16min por padrão (`--minutes=N` pode pedir mais) — o
-    // `this.timeout()` chamado DENTRO do teste não tem efeito aqui: o
-    // `@wdio/mocha-framework` embrulha cada `it()` com seu PRÓPRIO timeout
-    // (confirmado ao vivo: travou em exatos 300s mesmo com
-    // `this.timeout(16*60_000)` como primeira linha do teste) — só o valor
-    // global daqui é respeitado de verdade. Generoso o bastante pra cobrir
-    // `--minutes=30`; specs normais falham pelos próprios timeouts internos
-    // (10-15s por passo) muito antes disso, então não fica preso à toa.
+    // `_record.spec.ts` (the interactive recorder, `npm run replay:record`)
+    // needs up to ~16min by default (`--minutes=N` can ask for more) — the
+    // `this.timeout()` called INSIDE the test has no effect here: the
+    // `@wdio/mocha-framework` wraps each `it()` with its OWN timeout
+    // (confirmed live: it hung at exactly 300s even with
+    // `this.timeout(16*60_000)` as the test's first line) — only the
+    // global value here is actually respected. Generous enough to cover
+    // `--minutes=30`; normal specs fail from their own internal timeouts
+    // (10-15s per step) well before that, so it doesn't hang around pointlessly.
     timeout: 2_000_000,
   },
   services: [['@wdio/tauri-service', { driverProvider: 'tauri-driver' }]],
@@ -41,9 +41,9 @@ export const config: Options.Testrunner = {
       'tauri:options': {
         application: launch.applicationPath,
       },
-      // Env de isolamento via opção documentada da lib (chega intacta no
-      // spawn final) — nunca via wrapper .cmd/.sh, que quebra o spawn direto
-      // do @wdio/tauri-service no Windows (ver comentário em launch.ts).
+      // Isolation env via the lib's documented option (arrives intact at the
+      // final spawn) — never via a .cmd/.sh wrapper, which breaks the direct
+      // spawn of @wdio/tauri-service on Windows (see comment in launch.ts).
       'wdio:tauriServiceOptions': {
         driverProvider: 'tauri-driver',
         env: launch.env,
@@ -51,16 +51,16 @@ export const config: Options.Testrunner = {
     } as WebdriverIO.Capabilities,
   ],
 
-  // Setar o idioma NÃO pode ficar aqui: confirmado ao vivo que os hooks
-  // `before` de config e do próprio `@wdio/tauri-service` (que anexa
-  // `browser.tauri`) rodam em PARALELO via `Promise.all`, não em sequência
-  // — esse hook às vezes disparava antes de `browser.tauri` existir,
-  // lançando `Cannot read properties of undefined (reading 'execute')`
-  // (silenciosamente engolido pelo runner, sem derrubar a suíte — outro
-  // falso positivo, à parte do problema original). Cada spec aplica o
-  // idioma no PRÓPRIO `before()` do mocha (ver `e2e/support/locale.ts`),
-  // que só roda depois que a sessão WDIO (e todos os hooks de framework)
-  // já terminaram de verdade.
+  // Setting the language CANNOT live here: confirmed live that config's
+  // `before` hooks and `@wdio/tauri-service`'s own hooks (which attaches
+  // `browser.tauri`) run in PARALLEL via `Promise.all`, not sequentially
+  // — this hook would sometimes fire before `browser.tauri` existed,
+  // throwing `Cannot read properties of undefined (reading 'execute')`
+  // (silently swallowed by the runner, without failing the suite — another
+  // false positive, unrelated to the original problem). Each spec applies the
+  // language in its OWN mocha `before()` (see `e2e/support/locale.ts`),
+  // which only runs after the WDIO session (and all framework hooks)
+  // have actually finished.
 
   onComplete: () => {
     launch.cleanup()

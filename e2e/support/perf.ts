@@ -1,16 +1,16 @@
 /**
- * Suprime a penalidade de ~5s por comando e timeouts de executeAsync do @wdio/tauri-service.
+ * Suppresses the ~5s per-command penalty and executeAsync timeouts from @wdio/tauri-service.
  *
- * Causa raiz confirmada por medição direta:
- * 1. `@wdio/tauri-service` roda `ensureActiveWindowFocus()` como `beforeCommand`
- *    hook ANTES de todo comando `$`/`$$`/`click`/`getTitle`/`findElement`. Essa
- *    função chama `browser.tauri.execute(...)` pra descobrir o estado das janelas,
- *    e `browser.tauri.execute()` sofre timeout de 5s no modo embedded.
- *    Chamar `browser.switchToWindow(handles[0])` aciona o `afterCommand` do service
- *    que popula o `userSwitchedWindowCache`, suprimindo a checagem cara pro resto da sessão.
- * 2. `@wdio/tauri-service` substitui `browser.execute` por `patchedExecute` que usa
- *    `executeAsync` no WebView2, sofrendo timeout de 30s. Remover a propriedade própria
- *    restaura o `execute` nativo W3C síncrono do WebdriverIO.
+ * Root cause confirmed by direct measurement:
+ * 1. `@wdio/tauri-service` runs `ensureActiveWindowFocus()` as a `beforeCommand`
+ *    hook BEFORE every `$`/`$$`/`click`/`getTitle`/`findElement` command. That
+ *    function calls `browser.tauri.execute(...)` to find out the window state,
+ *    and `browser.tauri.execute()` suffers a 5s timeout in embedded mode.
+ *    Calling `browser.switchToWindow(handles[0])` triggers the service's `afterCommand`
+ *    which populates `userSwitchedWindowCache`, suppressing the expensive check for the rest of the session.
+ * 2. `@wdio/tauri-service` replaces `browser.execute` with `patchedExecute`, which uses
+ *    `executeAsync` on WebView2, suffering a 30s timeout. Removing the property itself
+ *    restores WebdriverIO's native synchronous W3C `execute`.
  */
 export async function suppressWindowFocusTax(): Promise<void> {
   try {
@@ -20,6 +20,6 @@ export async function suppressWindowFocusTax(): Promise<void> {
     }
     await browser.maximizeWindow().catch(() => {})
   } catch {
-    // Best-effort — se falhar, não quebra o teste.
+    // Best-effort — if it fails, it doesn't break the test.
   }
 }

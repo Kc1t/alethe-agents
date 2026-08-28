@@ -7,8 +7,8 @@ import { useProjectsStore } from '../stores/projectsStore'
 export type GsdSyncSession = {
   id: string
   projectId: string
-  /** Pasta da worktree onde a sessão-filha roda — usada direto como fonte de
-   *  dados (`opencode export`), sem nenhum terminal PTY no meio. */
+  /** Worktree folder the child session runs in — used directly as the data
+   *  source (`opencode export`), with no PTY terminal in between. */
   worktreePath: string
   childId: string
   busy: boolean
@@ -21,23 +21,23 @@ type WatchedItem = {
   worktreePath: string
 }
 
-// Store minúsculo, só pra ter UM único poll de verdade no app inteiro
-// (SidebarMergePanel E a gaveta GSD Sync mostram os mesmos dados). Sem isso,
-// cada `useEffect` chamando o hook rodaria seu próprio poll de 5s.
+// Tiny store, just to have exactly ONE real poll across the whole app
+// (SidebarMergePanel AND the GSD Sync drawer show the same data). Without it,
+// each `useEffect` calling the hook would run its own 5s poll.
 const useGsdSyncSessionsStore = create<{ sessions: GsdSyncSession[] }>(() => ({ sessions: [] }))
 
 /**
- * Único responsável por rodar o poll de verdade (leitura de
- * `.planning/.gsd-child-session` / `.gsd-child-busy` / `.gsd-child-error` a
- * cada 5s). Deve ser chamado em exatamente UM lugar montado sempre (hoje:
- * `SidebarMergePanel`, montado incondicionalmente na Sidebar de Projetos).
+ * The sole owner of the real poll (reading `.planning/.gsd-child-session` /
+ * `.gsd-child-busy` / `.gsd-child-error` every 5s). Must be called from
+ * exactly ONE place that's always mounted (today: `SidebarMergePanel`,
+ * mounted unconditionally in the Project Sidebar).
  *
- * Não cria nenhum terminal/PTY — a sessão-filha roda dentro do processo
- * OpenCode do terminal PRINCIPAL (mecanismo interno de multi-sessão do
- * próprio OpenCode via o plugin `alethe-gsd-state.ts`), então não depende de
- * nenhum terminal "viewer" pra existir. A visualização (gaveta GSD Sync) lê o
- * conteúdo direto via `opencode export <childId>` (`GsdSyncActivityView`) —
- * um `<div>` HTML somente-leitura, sem terminal PTY nenhum no caminho.
+ * Creates no terminal/PTY — the child session runs inside the MAIN
+ * terminal's OpenCode process (OpenCode's own internal multi-session
+ * mechanism, via the `alethe-gsd-state.ts` plugin), so it doesn't depend on
+ * any "viewer" terminal existing. The view (GSD Sync drawer) reads the
+ * content directly via `opencode export <childId>` (`GsdSyncActivityView`) —
+ * a read-only HTML `<div>`, with no PTY terminal in the path.
  */
 export function useGsdSyncSessionsWatcher(
   onChildError?: (session: { projectId: string; worktreePath: string }, message: string) => void,
@@ -48,15 +48,15 @@ export function useGsdSyncSessionsWatcher(
   const onChildErrorRef = useRef(onChildError)
   onChildErrorRef.current = onChildError
 
-  // Mesmo critério de `XTermView` pra escrever o plugin GSD (comando opencode
-  // + cwd + watcher ligado no projeto) — sem exigir isolamento de worktree.
+  // Same criterion `XTermView` uses to write the GSD plugin (opencode command
+  // + cwd + watcher enabled on the project) — no worktree isolation required.
   const watched: WatchedItem[] = useMemo(() => {
     const result: WatchedItem[] = []
     for (const proj of projects) {
       if (!proj.gsdWatcherEnabled) continue
       for (const term of proj.terminals) {
-        // Agente efêmero de resolução de conflito nunca é rastreável aqui —
-        // o plugin GSD nem é instalado nele (ver TerminalPane).
+        // The ephemeral conflict-resolution agent is never trackable here —
+        // the GSD plugin isn't even installed on it (see TerminalPane).
         if (term.ephemeralConflictAgent) continue
         if (term.cwd && term.tabs.some((tab) => tab.type === 'opencode')) {
           result.push({ id: `${proj.id}-${term.id}`, projectId: proj.id, worktreePath: term.cwd })
@@ -73,18 +73,17 @@ export function useGsdSyncSessionsWatcher(
     }
 
     const poll = async () => {
-      // Lido fresco a cada tick (não como dependência do efeito) pelo mesmo
-      // motivo de sempre: evitar reagendar o poll a cada mutação de estado.
+      // Read fresh on every tick (not as an effect dependency) for the usual
+      // reason: avoid rescheduling the poll on every state mutation.
       const { projects } = useProjectsStore.getState()
       const next: GsdSyncSession[] = []
-      // Ids que este poll de fato resolveu (sessão encontrada OU
-      // comprovadamente ausente) — usado pra decidir o que remover do store
-      // compartilhado sem apagar entradas de itens que outro poll sobreposto
-      // ainda está processando.
+      // Ids this poll actually resolved (session found OR confirmed absent) —
+      // used to decide what to remove from the shared store without wiping
+      // entries for items an overlapping poll is still processing.
       const resolvedIds = new Set<string>()
       for (const item of watched) {
-        // Guard síncrono antes de qualquer await — evita reentrância quando
-        // dois `poll()` se sobrepõem.
+        // Synchronous guard before any await — avoids reentrancy when two
+        // `poll()` calls overlap.
         if (pollingRef.current.has(item.id)) continue
         pollingRef.current.add(item.id)
         try {
@@ -118,19 +117,19 @@ export function useGsdSyncSessionsWatcher(
             hasError: Boolean(childError),
           })
         } catch (error) {
-          // Sem isso, uma falha escapava do loop inteiro como rejeição não
-          // tratada — abortava o resto de `watched` NESTE tick, não só este
-          // item. Não marca `resolvedIds` pra este item: tenta de novo
-          // sozinho no próximo tick de 5s.
-          console.error(`[gsd-sync] falha processando ${item.id}:`, error)
+          // Without this, a failure escaped the whole loop as an unhandled
+          // rejection — aborting the rest of `watched` for THIS tick, not
+          // just this item. Doesn't mark `resolvedIds` for this item: retries
+          // on its own on the next 5s tick.
+          console.error(`[gsd-sync] failed processing ${item.id}:`, error)
         } finally {
           pollingRef.current.delete(item.id)
         }
       }
-      // Merge por id em vez de substituição total: preserva entradas de itens
-      // que um poll SOBREPOSTO ainda está processando, atualiza/remove só o
-      // que este poll de fato resolveu, e descarta qualquer entrada cuja
-      // worktree já não existe mais em `watched`.
+      // Merge by id instead of full replacement: preserves entries for items
+      // an OVERLAPPING poll is still processing, updates/removes only what
+      // this poll actually resolved, and drops any entry whose worktree no
+      // longer exists in `watched`.
       useGsdSyncSessionsStore.setState((state) => {
         const byId = new Map(state.sessions.map((session) => [session.id, session]))
         for (const session of next) byId.set(session.id, session)

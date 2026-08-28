@@ -1,8 +1,9 @@
 // Barrel do wrapper de transporte do Alethe. Reexporta a camada de abstração
-// unificada (Tauri IPC vs Web REST/WS) em `src/lib/api/`. Os call-sites seguem
-// importando de `.../lib/tauri` sem nenhuma alteração — este barrel resolve tudo.
-// `handoff`, `mcp`, and `skills` are not migrated to `lib/api/` yet, so they
-// still export their own local (desktop-only) implementations here.
+// unificada (Tauri IPC vs Web REST/WS) em `src/lib/api/`. Call sites keep
+// importing from `.../lib/tauri` unchanged — this barrel resolves everything.
+// `browserPane`, `browserSession`, `handoff`, `mcp`, `orchestrator`, `pty`, and
+// `skills` are not migrated to `lib/api/` yet, so they still export their own
+// local (desktop-only) implementations here.
 
 export * from '../api/agents'
 export * from '../api/aiMemory'
@@ -24,7 +25,10 @@ export * from '../api/syncSubscription'
 export * from '../api/transport'
 export * from '../api/usage'
 export * from '../api/window'
+export * from './browserPane'
+export * from './browserSession'
 export * from './handoff'
 export * from './mcp'
+export * from './orchestrator'
 export * from './pty'
 export * from './skills'

@@ -4,10 +4,10 @@ import { fileURLToPath } from 'node:url'
 
 const OUT_DIR = fileURLToPath(new URL('../__screenshots__', import.meta.url))
 
-/** Salva um PNG em e2e/__screenshots__/<nome>.png e retorna o caminho salvo.
- *  Aceita uma sessão explícita (ex. a sessão web de um teste de sync com
- *  duas sessões abertas ao mesmo tempo) — sem argumento, usa a sessão
- *  global `browser` de sempre. */
+/** Saves a PNG at e2e/__screenshots__/<name>.png and returns the saved path.
+ *  Accepts an explicit session (e.g. the web session of a sync test with
+ *  two sessions open at the same time) — with no argument, uses the usual
+ *  global `browser` session. */
 export async function captureScreenshot(
   name: string,
   session: { saveScreenshot: (path: string) => Promise<unknown> } = browser,
@@ -19,29 +19,29 @@ export async function captureScreenshot(
 }
 
 /**
- * Marca visualmente (ponto vermelho) o elemento que o teste está prestes a
- * clicar, tira o print, e SÓ DEPOIS clica de verdade — pedido explícito do
- * dono depois de ver um teste selecionar o card errado (Mimo em vez de
- * OpenCode) sem nenhum sinal visual de qual elemento tinha sido resolvido
- * pelo seletor. Isso prova, print a print, qual elemento o WebDriver
- * realmente encontrou — não só o que o código do teste PRETENDIA clicar.
- * O marcador é um `<div>` fixo injetado via `getBoundingClientRect()`
- * (posição real na tela, não a leitura própria do WebDriver, que pode ter
- * offset em drivers embarcados) e removido logo depois do print — não
- * sobra rastro na página nem afeta o clique em si.
+ * Visually marks (red dot) the element the test is about to
+ * click, takes the screenshot, and ONLY THEN actually clicks — explicit request
+ * from the owner after seeing a test select the wrong card (Mimo instead of
+ * OpenCode) with no visual sign of which element the selector had actually
+ * resolved to. This proves, screenshot by screenshot, which element WebDriver
+ * really found — not just what the test code INTENDED to click.
+ * The marker is a fixed `<div>` positioned via `getBoundingClientRect()`
+ * (the real position on screen, not WebDriver's own reading, which can have an
+ * offset on embedded drivers) and removed right after the screenshot — no
+ * trace is left on the page and it doesn't affect the click itself.
  */
 export async function markAndScreenshot(
   element: WebdriverIO.Element,
   name: string,
 ): Promise<string> {
-  // NUNCA passar o elemento em si pro `execute()` — `@wdio/tauri-service`
-  // troca `browser.execute` por uma versão que resolve referências de
-  // elemento via `executeAsync`, sofrendo o MESMO timeout de 30s documentado
-  // em `perf.ts` (o comentário lá descreve a correção, mas o código daquele
-  // arquivo nunca chegou a implementá-la — confirmado ao vivo: travava sem
-  // salvar nenhum print). `getLocation()`/`getSize()` são comandos W3C
-  // nativos (não passam por `execute()`), e só números primitivos entram no
-  // `execute()` que desenha o marcador — evita o caminho lento inteiro.
+  // NEVER pass the element itself to `execute()` — `@wdio/tauri-service`
+  // swaps `browser.execute` for a version that resolves element
+  // references via `executeAsync`, suffering the SAME 30s timeout documented
+  // in `perf.ts` (the comment there describes the fix, but that file's
+  // code never actually got around to implementing it — confirmed live: it hung without
+  // saving any screenshot). `getLocation()`/`getSize()` are native W3C
+  // commands (they don't go through `execute()`), and only primitive numbers go into the
+  // `execute()` that draws the marker — avoids the whole slow path.
   const [location, size] = await Promise.all([element.getLocation(), element.getSize()])
 
   await browser.execute(
@@ -76,9 +76,9 @@ export async function markAndScreenshot(
   return path
 }
 
-/** Marca + printa + clica, nessa ordem — junta `markAndScreenshot` com o
- *  clique de verdade, pra todo clique "importante" de um spec deixar prova
- *  visual de qual elemento foi resolvido antes de agir sobre ele. */
+/** Marks + screenshots + clicks, in that order — combines `markAndScreenshot` with the
+ *  actual click, so every "important" click in a spec leaves visual
+ *  proof of which element was resolved before acting on it. */
 export async function markScreenshotAndClick(
   element: WebdriverIO.Element,
   name: string,

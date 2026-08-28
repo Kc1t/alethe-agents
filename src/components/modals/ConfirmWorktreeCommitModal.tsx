@@ -11,15 +11,15 @@ export type ConfirmWorktreeCommitModalProps = {
   onClose: () => void
   branchName: string
   pending: WorktreePendingChange[]
-  /** Pré-preenchido a partir de `.planning/goal.md` (sessão-filha do GSD Sync), quando existir. */
+  /** Pre-filled from `.planning/goal.md` (GSD Sync child session), when it exists. */
   defaultMessage: string
   onConfirm: (message: string) => void
 }
 
-/** git merge só move commits — antes de integrar uma worktree com trabalho
- *  nunca commitado, mostra o que está pendente e deixa o usuário escrever
- *  (ou revisar) a mensagem do commit automático, em vez de commitar
- *  silenciosamente com um texto genérico. */
+/** git merge only moves commits — before integrating a worktree with work
+ *  that was never committed, shows what's pending and lets the user write
+ *  (or review) the automatic commit message, instead of committing silently
+ *  with generic placeholder text. */
 export function ConfirmWorktreeCommitModal({
   open,
   onClose,

@@ -6,6 +6,9 @@ pub mod ai_memory;
 pub mod antigravity_sessions;
 pub mod antigravity_usage;
 pub mod backup;
+pub mod browser_pane;
+pub mod browser_session;
+pub mod cdp;
 pub mod claude_sessions;
 pub mod claude_usage;
 pub mod cli_launch;
@@ -40,6 +43,8 @@ pub mod merge_analyzer;
 pub mod opencode_bridge;
 pub mod opencode_gsd_plugin;
 pub mod opencode_sessions;
+pub mod orchestrator;
+pub mod orchestrator_core;
 pub mod paths;
 pub mod planning;
 pub mod planning_gate;
@@ -149,6 +154,8 @@ pub fn run() {
 
     pty::install_kill_on_close_guard();
     let sessions: PtySessions = pty::global_pty_sessions().clone();
+    let browser_session_state = browser_session::BrowserSessionState::default();
+    let browser_pane_state = browser_pane::BrowserPaneState::default();
     let codex_app_server_state = codex_app_server::CodexAppServerState::default();
     let sessions_for_exit = Arc::clone(&sessions);
     let sessions_for_resources = Arc::clone(&sessions);
@@ -157,6 +164,8 @@ pub fn run() {
 
     let mut builder = tauri::Builder::default()
         .manage(sessions.clone())
+        .manage(browser_session_state)
+        .manage(browser_pane_state)
         .manage(codex_app_server_state)
         .manage(remote::hub())
         .manage(resource_supervisor)
@@ -167,6 +176,7 @@ pub fn run() {
         .manage(cli_launch::PendingOpen::default())
         .manage(std::sync::Arc::new(sync_rendezvous::RendezvousRuntime::default()))
         .manage(std::sync::Arc::new(sync_p2p_bridge::P2pSessionRegistry::default()))
+        .manage(orchestrator::OrchestratorState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
@@ -301,6 +311,26 @@ pub fn run() {
             agent_events::agent_hooks_settings_path,
             agent_events::agent_hooks_endpoint,
             agent_events::agent_hooks_token,
+            orchestrator::orchestrator_mcp_config_path,
+            orchestrator::orchestrator_jobs,
+            orchestrator::orchestrator_set_concurrency,
+            browser_session::browser_session_start,
+            browser_session::browser_session_stop,
+            browser_session::browser_session_status,
+            browser_session::playwright_mcp_config_path,
+            browser_pane::browser_pane_open,
+            browser_pane::browser_pane_close,
+            browser_pane::browser_pane_navigate,
+            browser_pane::browser_pane_reload,
+            browser_pane::browser_pane_history,
+            browser_pane::browser_pane_resize,
+            browser_pane::browser_pane_set_streaming,
+            browser_pane::browser_pane_mouse,
+            browser_pane::browser_pane_key,
+            browser_pane::browser_pane_observe,
+            browser_pane::browser_pane_targets,
+            browser_pane::browser_pane_watch,
+            browser_pane::browser_pane_close_target,
             codex_app_server::codex_app_server_start,
             codex_app_server::codex_app_server_send,
             codex_app_server::codex_app_server_stop,
@@ -433,7 +463,6 @@ pub fn run() {
             claude_sessions::snapshot_claude_sessions,
             claude_sessions::list_claude_sessions,
             claude_sessions::get_claude_session_title,
-            claude_sessions::get_claude_session_title,
             claude_sessions::get_claude_activity,
             claude_sessions::get_multi_agent_activity,
             codex_sessions::snapshot_codex_sessions,
@@ -462,6 +491,14 @@ pub fn run() {
             worktrees::worktree_commit_worktree,
             worktrees::worktree_lock,
             worktrees::worktree_unlock,
+            merge_analyzer::merge_analyze,
+            conflict_resolution::merge_prepare,
+            conflict_resolution::merge_validate,
+            conflict_resolution::merge_finalize,
+            conflict_resolution::merge_abort,
+            conflict_resolution::merge_preflight_abort,
+            conflict_resolution::merge_rebase_onto_target,
+            conflict_resolution::merge_force_cleanup,
             event_bus::publish_event,
             telemetry::get_telemetry_metrics,
             telemetry::get_telemetry_traces,
@@ -486,14 +523,6 @@ pub fn run() {
             scheduler::get_scheduler_tasks,
             scheduler::trigger_scheduler_tick,
             scheduler::cancel_task,
-            merge_analyzer::merge_analyze,
-            conflict_resolution::merge_prepare,
-            conflict_resolution::merge_validate,
-            conflict_resolution::merge_finalize,
-            conflict_resolution::merge_abort,
-            conflict_resolution::merge_preflight_abort,
-            conflict_resolution::merge_rebase_onto_target,
-            conflict_resolution::merge_force_cleanup,
             project_detector::detect_project_stack,
             sync_mesh::scan_project_folder_tree,
             sync_mesh::setup_project_mesh_isolation,
@@ -621,9 +650,6 @@ pub fn run() {
             graphify::graphify_read_graph,
             graphify::graphify_snapshot,
             graphify::graphify_list_snapshots,
-            graphify::graphify_diff_snapshot,
-            graphify::graphify_rollback,
-            graphify::graphify_prune_snapshots,
             ai_memory::ai_memory_detect,
             ai_memory::ai_memory_mcp_config_path,
             ai_memory::ai_memory_opencode_config_write,
@@ -653,6 +679,9 @@ pub fn run() {
 
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 pty::kill_all_sessions_background(&sessions_for_exit);
+                browser_session::kill_running_session(
+                    &_app_handle.state::<browser_session::BrowserSessionState>(),
+                );
             }
 
             if let tauri::RunEvent::Exit = event {
@@ -679,7 +708,7 @@ fn ping() -> &'static str {
 /// painel `RecorderHelper`) — atalho "pular criação de projeto" pra não
 /// obrigar o dono a digitar uma pasta real toda vez que só quer gravar um
 /// procedimento. Mesmo padrão de `std::env::temp_dir()` já usado em dezenas
-/// de outros pontos do backend (testes, `agent_events.rs`, `graphify.rs`
+/// de outros pontos do backend (testes, `agent_events.rs`
 /// etc.) — nunca exposto antes pro frontend porque nada até agora precisava.
 #[tauri::command]
 fn recorder_scratch_dir() -> Result<String, String> {

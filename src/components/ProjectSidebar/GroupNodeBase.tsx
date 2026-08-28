@@ -15,6 +15,7 @@ export type GroupNodeProps = {
   onMenu: (event: React.MouseEvent) => void
   onAddProject: () => void
   onToggle: () => void
+  onOpenAll?: () => void
   onOpenOnly?: () => void
   dragKind: SidebarDragKind | null
   reorderEdge: SidebarDropEdge | null

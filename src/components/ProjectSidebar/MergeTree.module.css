@@ -4,20 +4,20 @@
   flex-direction: column;
 }
 
-/* Tronco decorativo — cada linha (inclusive "main") tem sua própria curva
-   (.connector) bridging até o ponto, então nenhuma fica desalinhada do
-   tronco independente da altura da linha. */
+/* Decorative trunk — every row (including "main") has its own curve
+   (.connector) bridging to the dot, so none of them end up misaligned
+   with the trunk regardless of row height. */
 .trunk {
   position: absolute;
   top: 14px;
   bottom: 14px;
   left: 9px;
   width: 2px;
-  /* --border (opaco), não --border-strong (rgba translúcido) — a curva de
-     cada linha (.connector) desenha por cima da metade de cima do tronco;
-     com uma cor translúcida, as duas camadas somam opacidade e aquele
-     trecho fica visivelmente mais claro que o resto da linha. Opaco não
-     tem esse problema (a camada de cima simplesmente substitui a de baixo). */
+  /* --border (opaque), not --border-strong (translucent rgba) — each row's
+     curve (.connector) draws over the top half of the trunk; with a
+     translucent color the two layers would sum opacity and that stretch
+     would read visibly lighter than the rest of the line. Opaque doesn't
+     have that problem (the top layer simply replaces the one underneath). */
   background: var(--border);
 }
 
@@ -35,9 +35,9 @@
   cursor: pointer;
 }
 
-/* O fundo de hover fica só aqui (não em .node inteiro) — .node cobre toda a
-   largura da linha, inclusive a faixa do tronco/curva à esquerda; se o hover
-   pintasse o .node inteiro, ele cobriria o tronco desenhado atrás dele. */
+/* The hover background lives only here (not on the whole .node) — .node
+   covers the full row width, including the trunk/curve strip on the left;
+   if hover painted the whole .node, it would cover the trunk drawn behind it. */
 .nodeContent {
   display: flex;
   align-items: center;
@@ -116,9 +116,9 @@
   text-overflow: ellipsis;
 }
 
-/* Sem interação nenhuma (não é botão, não abre nada) — por isso, ao
-   contrário de .node, o ponto não "ramifica" com curva pra fora: fica
-   centralizado bem em cima do tronco, como se a linha só terminasse nele. */
+/* No interaction at all (not a button, opens nothing) — so unlike .node, the
+   dot doesn't "branch off" with an outward curve: it stays centered right
+   over the trunk, as if the line simply ends there. */
 .mainNode {
   position: relative;
   display: flex;

@@ -184,6 +184,10 @@ fn resolve_cli_launcher(command: &str) -> Option<PathBuf> {
         // mesmo estando no disco. Cobrir os prefixos padrão do Homebrew
         // (Apple Silicon e Intel) como fallback fixo.
         dirs.extend(homebrew_dirs());
+        // Linux user-scoped installers (nvm, bun, npm --prefix, pnpm, volta) —
+        // invisible under the minimal PATH a desktop menu inherits.
+        #[cfg(target_os = "linux")]
+        dirs.extend(linux_user_bin_dirs());
         for dir in dirs {
             let candidate = dir.join(command);
             if candidate.is_file() {
@@ -319,6 +323,56 @@ fn homebrew_dirs() -> Vec<PathBuf> {
         PathBuf::from("/usr/local/bin"),
         PathBuf::from("/usr/local/sbin"),
     ]
+}
+
+/// Standard user bin dirs for Linux package managers. Desktop menus launch the
+/// app with a minimal PATH, so agents installed via `npm --prefix`, bun, pnpm,
+/// volta or nvm are invisible to `which`; these are the default install roots
+/// for each tool (mirrors `agent_search_dirs` on Windows and the fixed Homebrew
+/// fallback on macOS).
+#[cfg(target_os = "linux")]
+fn linux_user_bin_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::<PathBuf>::new();
+    if let Some(home) = env::var_os("HOME").map(PathBuf::from) {
+        dirs.push(home.join(".npm-global").join("bin"));
+        dirs.push(home.join(".bun").join("bin"));
+        dirs.push(home.join(".volta").join("bin"));
+        dirs.push(home.join(".local").join("share").join("pnpm"));
+    }
+    if let Some(pnpm_home) = env::var_os("PNPM_HOME").map(PathBuf::from) {
+        dirs.push(pnpm_home);
+    }
+    // nvm installs one versioned bin dir per node release; pick every one
+    // newest first (same pattern as `fnm_version_dirs`).
+    let nvm_root = env::var_os("NVM_DIR")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".nvm")));
+    if let Some(root) = nvm_root {
+        let versions_dir = root.join("versions").join("node");
+        if let Ok(entries) = fs::read_dir(&versions_dir) {
+            let mut versions: Vec<(PathBuf, SystemTime)> = entries
+                .filter_map(|entry| entry.ok())
+                .filter_map(|entry| {
+                    let path = entry.path();
+                    let name = path.file_name()?.to_str()?.to_string();
+                    if !name.starts_with('v') {
+                        return None;
+                    }
+                    let bin = path.join("bin");
+                    if !bin.is_dir() {
+                        return None;
+                    }
+                    let modified = entry.metadata().and_then(|m| m.modified()).ok()?;
+                    Some((bin, modified))
+                })
+                .collect();
+            versions.sort_by(|a, b| b.1.cmp(&a.1));
+            for (bin, _) in versions {
+                dirs.push(bin);
+            }
+        }
+    }
+    dirs
 }
 
 /// Looks for the VS Code launcher (`code`) in common locations plus PATH.
@@ -1015,5 +1069,41 @@ mod tests {
     fn resolves_cli_launcher_on_unix() {
         assert!(find_windows_cli_launcher("sh").is_some());
         assert!(find_windows_cli_launcher("non_existent_binary_xyz_123").is_none());
+    }
+
+    /// With the Linux user-bin-dirs fallback, an agent installed via
+    /// `npm --prefix ~/.npm-global` is found even under a minimal desktop-menu
+    /// PATH.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_user_bin_dirs_finds_npm_global_agents() {
+        let home = std::env::temp_dir().join("alethe-audit-home");
+        let npm_global = home.join(".npm-global").join("bin");
+        std::fs::create_dir_all(&npm_global).expect("create npm-global dir");
+        std::fs::write(npm_global.join("fake-agent-audit"), "#!/bin/sh\necho hi\n")
+            .expect("write fake agent");
+        let original_home = std::env::var_os("HOME");
+        let original_path = std::env::var_os("PATH");
+        std::env::set_var("HOME", &home);
+        std::env::set_var(
+            "PATH",
+            "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        );
+        let found = find_windows_cli_launcher("fake-agent-audit");
+        assert!(
+            found.is_some(),
+            "linux_user_bin_dirs should find npm-global installs: {found:?}"
+        );
+        if let Some(h) = original_home {
+            std::env::set_var("HOME", h);
+        } else {
+            std::env::remove_var("HOME");
+        }
+        if let Some(p) = original_path {
+            std::env::set_var("PATH", p);
+        } else {
+            std::env::remove_var("PATH");
+        }
+        let _ = std::fs::remove_dir_all(&home);
     }
 }

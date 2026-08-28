@@ -86,19 +86,19 @@ fn snapshot_opencode_sessions_inner(cwd: String) -> Result<Vec<OpenCodeSessionSn
     Ok(sessions)
 }
 
-/// Exporta o histórico estruturado (mensagens, chamadas de ferramenta, patches
-/// de arquivo) de uma sessão via `opencode export <sessionID>` — devolvido
-/// como JSON opaco pro frontend interpretar, sem tentar modelar cada `part`
-/// possível em Rust (o schema tem vários `type`s hoje — `text`, `reasoning`,
-/// `tool`, `patch`, `step-start`, `step-finish` — e provavelmente ganha mais
-/// no futuro; um passthrough tolera isso sem quebrar).
+/// Exports a session's structured history (messages, tool calls, file
+/// patches) via `opencode export <sessionID>` — returned as opaque JSON for
+/// the frontend to interpret, without trying to model every possible `part`
+/// in Rust (the schema currently has several `type`s — `text`, `reasoning`,
+/// `tool`, `patch`, `step-start`, `step-finish` — and will likely gain more
+/// over time; a passthrough tolerates that without breaking).
 ///
-/// Usado pra renderizar a sessão-filha do GSD Sync como um feed de atividade
-/// somente-leitura (sem terminal PTY nenhum no caminho) — ver
-/// `useGsdSyncSessionsWatcher` no frontend.
+/// Used to render the GSD Sync child session as a read-only activity feed
+/// (no PTY terminal in the path) — see `useGsdSyncSessionsWatcher` in the
+/// frontend.
 ///
-/// `async` + `spawn_blocking`: mesmo motivo de `snapshot_opencode_sessions`
-/// (subprocesso de verdade, não pode rodar na thread de despacho do Tauri).
+/// `async` + `spawn_blocking`: same reason as `snapshot_opencode_sessions`
+/// (a real subprocess, can't run on Tauri's dispatch thread).
 #[tauri::command]
 pub async fn opencode_export_session(
     cwd: String,
@@ -106,7 +106,7 @@ pub async fn opencode_export_session(
 ) -> Result<serde_json::Value, String> {
     tokio::task::spawn_blocking(move || opencode_export_session_inner(cwd, session_id))
         .await
-        .map_err(|error| format!("opencode_export_session: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("opencode_export_session: blocking task failed: {error}"))?
 }
 
 fn opencode_export_session_inner(
@@ -114,7 +114,7 @@ fn opencode_export_session_inner(
     session_id: String,
 ) -> Result<serde_json::Value, String> {
     if session_id.is_empty() {
-        return Err("session_id vazio".to_string());
+        return Err("session_id empty".to_string());
     }
     let mut command = Command::new("opencode");
     command.args(["export", &session_id]);
@@ -123,19 +123,19 @@ fn opencode_export_session_inner(
     }
     let output = command
         .output()
-        .map_err(|e| format!("falha ao executar opencode: {e}"))?;
+        .map_err(|e| format!("failed to run opencode: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("opencode export falhou: {stderr}"));
+        return Err(format!("opencode export failed: {stderr}"));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // O CLI imprime uma linha de status ("Exporting session: <id>") ANTES do
-    // JSON de verdade no stdout — confirmado ao vivo rodando o comando. Pula
-    // pro primeiro `{` em vez de assumir que o stdout inteiro é JSON.
+    // The CLI prints a status line ("Exporting session: <id>") BEFORE the
+    // actual JSON on stdout — confirmed live by running the command. Skip to
+    // the first `{` instead of assuming the whole stdout is JSON.
     let json_start = stdout
         .find('{')
-        .ok_or_else(|| "opencode export não devolveu JSON".to_string())?;
+        .ok_or_else(|| "opencode export did not return JSON".to_string())?;
     serde_json::from_str(&stdout[json_start..]).map_err(|e| format!("falha ao parsear JSON: {e}"))
 }

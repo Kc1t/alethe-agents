@@ -15,11 +15,11 @@ import styles from './GsdSyncActivityView.module.css'
 const POLL_INTERVAL_MS = 5000
 
 /**
- * Feed de atividade SOMENTE LEITURA da sessão-filha do GSD Sync — estilo
- * "subagente" (nenhuma caixa de entrada, nenhum jeito de digitar). Lê
- * `opencode export <sessionID>` direto (sem terminal PTY nenhum no caminho),
- * então não existe o conflito arquitetural "readOnly vs. scrollável" que um
- * terminal PTY vivo tem — é um `<div>` HTML normal, rola livre.
+ * READ-ONLY activity feed for the GSD Sync child session — "subagent" style
+ * (no input box, no way to type). Reads `opencode export <sessionID>`
+ * directly (no PTY terminal in the path), so there's none of the
+ * "readOnly vs. scrollable" architectural conflict a live PTY terminal has —
+ * it's a normal HTML `<div>`, scrolls freely.
  */
 export function GsdSyncActivityView() {
   const t = useT()
@@ -86,9 +86,9 @@ function GsdSyncActivityContent({
     }
   }, [view.worktreePath, view.sessionId])
 
-  // Gruda no fim quando o usuário já está perto do fim (comportamento normal
-  // de feed/chat) — nunca força scroll se o usuário rolou pra cima pra ler
-  // algo mais antigo.
+  // Sticks to the bottom when the user is already near it (normal feed/chat
+  // behavior) — never forces a scroll if the user scrolled up to read
+  // something older.
   useEffect(() => {
     const el = scrollRef.current
     if (!el || !stickToBottomRef.current) return
@@ -157,13 +157,13 @@ function MessageBlock({
     <PartBlock key={`${message.info.id}-${index}`} part={part} t={t} />
   ))
 
-  // Mensagens de usuário (instrução enviada PRA o agente) e do assistente
-  // (o que o agente de fato disse/fez) precisam ser inconfundíveis à
-  // primeira vista — antes as duas renderizavam como o mesmo bloco de texto
-  // plano, só com um label pequeno diferenciando. Agora: instrução vira um
-  // bloco recolhido por padrão (é tipicamente um preâmbulo longo repetido a
-  // cada rodada) com trilho neutro; a resposta do agente fica sempre
-  // expandida, com trilho colorido — a "linha do tempo" fica só de agente.
+  // User messages (the instruction sent TO the agent) and assistant messages
+  // (what the agent actually said/did) need to be unmistakable at a glance —
+  // both used to render as the same plain text block, only differentiated
+  // by a small label. Now: the instruction becomes a block collapsed by
+  // default (typically a long preamble repeated every round) with a neutral
+  // rail; the agent's response always stays expanded, with a colored rail —
+  // the "timeline" ends up being agent-only.
   if (isUser) {
     return (
       <details className={styles.instructionBlock}>
@@ -212,9 +212,9 @@ function PartBlock({ part, t }: { part: OpenCodeExportPart; t: ReturnType<typeof
   if (part.type === 'patch') {
     return <p className={styles.patchLine}>{t('gsdActivity.patchApplied')}</p>
   }
-  // step-start/step-finish e qualquer type futuro desconhecido: sem
-  // renderização própria ainda, ignora silenciosamente (nunca quebra o feed
-  // por um schema novo).
+  // step-start/step-finish and any unknown future type: no rendering of
+  // their own yet, silently ignored (never breaks the feed over a new
+  // schema).
   return null
 }
 

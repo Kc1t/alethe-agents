@@ -277,7 +277,7 @@ fn tick(app: &AppHandle) {
             MemoryPressureLevel::Critical => {
                 enqueue_task(
                     ScheduledTask::new(TaskPriority::High, "drop-caches-gc", move || {
-                        let _ = handle.emit("resource::drop-caches", "");
+                        let _ = handle.emit("resource://drop-caches", "");
                     })
                     .with_cancel_key("drop-caches"),
                 );

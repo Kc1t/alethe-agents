@@ -29,6 +29,7 @@ use crate::pty::PtySessions;
 const HTTP_START: u16 = 9340;
 const HTTP_END: u16 = 9360;
 const MAX_BODY: usize = 64 * 1024;
+const MAX_STATIC_ASSET: usize = 4 * 1024 * 1024;
 const MAX_REQUEST: usize = 96 * 1024;
 const MAX_MESSAGE: usize = 4 * 1024;
 const MAX_SCROLLBACK: usize = 512 * 1024;
@@ -72,6 +73,16 @@ pub struct RemoteInfo {
     pub qr_svg: Option<String>,
     pub http_url: Option<String>,
     pub ws_url: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RemoteAppearance {
+    ui_theme: String,
+    app_icon_theme: String,
+    language: String,
+    motion_preference: String,
+    color_scheme: String,
 }
 
 struct RemoteSession {
@@ -991,6 +1002,15 @@ fn handle_http(
         };
     }
 
+    if path == "/appearance.json" && method == "GET" {
+        return respond(
+            stream,
+            200,
+            "application/json",
+            &remote_appearance(projects_path).to_string(),
+        );
+    }
+
     if path.starts_with("/api/") {
         let Some(session_id) = hub.session_id_for(&bearer_token(&head)) else {
             hub.record_auth_failure(&address);
@@ -1032,6 +1052,42 @@ fn handle_http(
             200,
             "text/css; charset=utf-8",
             include_str!("../remote/app.css"),
+        ),
+        "/theme.css" => respond(
+            stream,
+            200,
+            "text/css; charset=utf-8",
+            include_str!("../../src/styles/theme.css"),
+        ),
+        "/brand-icon.png" => respond_asset_bytes(
+            stream,
+            200,
+            "image/png",
+            selected_brand_icon(&projects_document(projects_path)),
+        ),
+        "/assets/fonts/CaskaydiaCoveNerdFontMono-Regular.ttf" => respond_asset_bytes(
+            stream,
+            200,
+            "font/ttf",
+            include_bytes!("../../src/assets/fonts/CaskaydiaCoveNerdFontMono-Regular.ttf"),
+        ),
+        "/assets/fonts/CaskaydiaCoveNerdFontMono-Bold.ttf" => respond_asset_bytes(
+            stream,
+            200,
+            "font/ttf",
+            include_bytes!("../../src/assets/fonts/CaskaydiaCoveNerdFontMono-Bold.ttf"),
+        ),
+        "/assets/fonts/CaskaydiaCoveNerdFontMono-Italic.ttf" => respond_asset_bytes(
+            stream,
+            200,
+            "font/ttf",
+            include_bytes!("../../src/assets/fonts/CaskaydiaCoveNerdFontMono-Italic.ttf"),
+        ),
+        "/assets/fonts/CaskaydiaCoveNerdFontMono-BoldItalic.ttf" => respond_asset_bytes(
+            stream,
+            200,
+            "font/ttf",
+            include_bytes!("../../src/assets/fonts/CaskaydiaCoveNerdFontMono-BoldItalic.ttf"),
         ),
         "/manifest.webmanifest" => respond(
             stream,
@@ -1176,6 +1232,99 @@ fn projects_document(projects_path: &Path) -> Value {
         .ok()
         .and_then(|content| serde_json::from_str::<Value>(&content).ok())
         .unwrap_or_else(|| json!({}))
+}
+
+fn remote_appearance(projects_path: &Path) -> Value {
+    json!(appearance_from_document(&projects_document(projects_path)))
+}
+
+fn appearance_from_document(document: &Value) -> RemoteAppearance {
+    let preferences = document.get("preferences").unwrap_or(&Value::Null);
+    let ui_theme = preferences
+        .get("uiTheme")
+        .and_then(Value::as_str)
+        .filter(|theme| is_known_theme(theme))
+        .unwrap_or("elite-indigo")
+        .to_string();
+    let app_icon_theme = preferences
+        .get("appIconTheme")
+        .and_then(Value::as_str)
+        .filter(|theme| is_known_app_icon(theme))
+        .unwrap_or("elite-indigo")
+        .to_string();
+    let language = match preferences.get("language").and_then(Value::as_str) {
+        Some("pt-BR") => "pt-BR",
+        _ => "en",
+    }
+    .to_string();
+    let motion_preference = match preferences.get("motionPreference").and_then(Value::as_str) {
+        Some("reduced") => "reduced",
+        _ => "animated",
+    }
+    .to_string();
+    let color_scheme = if is_light_theme(&ui_theme) {
+        "light"
+    } else {
+        "dark"
+    }
+    .to_string();
+
+    RemoteAppearance {
+        ui_theme,
+        app_icon_theme,
+        language,
+        motion_preference,
+        color_scheme,
+    }
+}
+
+fn is_known_theme(theme: &str) -> bool {
+    matches!(
+        theme,
+        "elite-original"
+            | "elite-pure-black"
+            | "elite-indigo"
+            | "elite-blush"
+            | "dark"
+            | "light"
+            | "dracula"
+            | "nord"
+            | "gruvbox"
+            | "solarized"
+            | "tokyo-night"
+            | "vscode"
+            | "min-dark"
+            | "min-light"
+            | "dark-lemon"
+            | "orca"
+            | "ember"
+            | "golden-premium"
+    )
+}
+
+fn is_light_theme(theme: &str) -> bool {
+    matches!(
+        theme,
+        "elite-original" | "elite-blush" | "light" | "min-light"
+    )
+}
+
+fn is_known_app_icon(theme: &str) -> bool {
+    matches!(
+        theme,
+        "elite-original" | "elite-pure-black" | "elite-indigo" | "elite-blush"
+    )
+}
+
+fn selected_brand_icon(document: &Value) -> &'static [u8] {
+    match appearance_from_document(document).app_icon_theme.as_str() {
+        "elite-original" => include_bytes!("../../src/assets/theme-icons/elite-original.png"),
+        "elite-pure-black" => {
+            include_bytes!("../../src/assets/theme-icons/elite-pure-black.png")
+        }
+        "elite-blush" => include_bytes!("../../src/assets/theme-icons/elite-blush.png"),
+        _ => include_bytes!("../../src/assets/theme-icons/elite-indigo.png"),
+    }
 }
 
 fn tab_is_shared(terminal: &Value) -> bool {
@@ -1337,7 +1486,35 @@ fn respond(
     content_type: &str,
     body: &str,
 ) -> Result<(), String> {
-    if body.len() > MAX_BODY {
+    respond_bytes(stream, status, content_type, body.as_bytes())
+}
+
+fn respond_bytes(
+    stream: &mut TcpStream,
+    status: u16,
+    content_type: &str,
+    body: &[u8],
+) -> Result<(), String> {
+    respond_bytes_with_limit(stream, status, content_type, body, MAX_BODY)
+}
+
+fn respond_asset_bytes(
+    stream: &mut TcpStream,
+    status: u16,
+    content_type: &str,
+    body: &[u8],
+) -> Result<(), String> {
+    respond_bytes_with_limit(stream, status, content_type, body, MAX_STATIC_ASSET)
+}
+
+fn respond_bytes_with_limit(
+    stream: &mut TcpStream,
+    status: u16,
+    content_type: &str,
+    body: &[u8],
+    max_size: usize,
+) -> Result<(), String> {
+    if body.len() > max_size {
         return Err("Response too large".into());
     }
     let reason = match status {
@@ -1350,9 +1527,10 @@ fn respond(
         429 => "Too Many Requests",
         _ => "Error",
     };
-    let response = format!("HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'self'; connect-src 'self' ws:; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'\r\n\r\n{body}", body.as_bytes().len());
+    let response = format!("HTTP/1.1 {status} {reason}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nConnection: close\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'self'; connect-src 'self' ws:; img-src 'self' data:; style-src 'self'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'\r\n\r\n", body.len());
     stream
         .write_all(response.as_bytes())
+        .and_then(|_| stream.write_all(body))
         .map_err(|e| e.to_string())
 }
 
@@ -1450,8 +1628,79 @@ fn local_ip() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{find_headers_end, header_value, percent_decode, RemoteHub};
+    use super::{
+        appearance_from_document, find_headers_end, header_value, percent_decode,
+        selected_brand_icon, RemoteAppearance, RemoteHub,
+    };
+    use serde_json::json;
     use std::cell::Cell;
+
+    #[test]
+    fn appearance_defaults_are_safe_and_branded() {
+        assert_eq!(
+            appearance_from_document(&json!({})),
+            RemoteAppearance {
+                ui_theme: "elite-indigo".into(),
+                app_icon_theme: "elite-indigo".into(),
+                language: "en".into(),
+                motion_preference: "animated".into(),
+                color_scheme: "dark".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn appearance_accepts_persisted_light_preferences() {
+        assert_eq!(
+            appearance_from_document(&json!({
+                "preferences": {
+                    "uiTheme": "elite-blush",
+                    "appIconTheme": "elite-original",
+                    "language": "pt-BR",
+                    "motionPreference": "reduced"
+                }
+            })),
+            RemoteAppearance {
+                ui_theme: "elite-blush".into(),
+                app_icon_theme: "elite-original".into(),
+                language: "pt-BR".into(),
+                motion_preference: "reduced".into(),
+                color_scheme: "light".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn appearance_rejects_unknown_persisted_values() {
+        let appearance = appearance_from_document(&json!({
+            "preferences": {
+                "uiTheme": "custom-script",
+                "appIconTheme": "missing-icon",
+                "language": "unknown",
+                "motionPreference": "spin"
+            }
+        }));
+
+        assert_eq!(appearance.ui_theme, "elite-indigo");
+        assert_eq!(appearance.app_icon_theme, "elite-indigo");
+        assert_eq!(appearance.language, "en");
+        assert_eq!(appearance.motion_preference, "animated");
+    }
+
+    #[test]
+    fn selected_brand_icon_uses_embedded_png_assets() {
+        let icon = selected_brand_icon(&json!({
+            "preferences": { "appIconTheme": "elite-blush" }
+        }));
+
+        assert_eq!(&icon[..8], b"\x89PNG\r\n\x1a\n");
+        assert_ne!(
+            icon,
+            selected_brand_icon(&json!({
+                "preferences": { "appIconTheme": "elite-indigo" }
+            }))
+        );
+    }
 
     #[test]
     fn publish_does_not_build_payload_without_subscribers() {

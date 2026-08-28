@@ -1,23 +1,26 @@
-//! RFC-007 — Conflict Resolution (ambiente efêmero de merge).
+//! RFC-007 — Conflict Resolution (ephemeral merge environment).
 //!
-//! Segundo estágio do ciclo de merge seguro. O Merge Analyzer (RFC-006) decidiu
-//! que existe integração a fazer; este módulo provisiona um **ambiente efêmero**
-//! (worktree `alethe/merge-<id>`) com o merge real aplicado — incluindo os
-//! marcadores de conflito — e o **contexto mínimo** (`ALETHE_CONFLICT.md`) para
-//! o Conflict Resolution Agent trabalhar:
+//! Second stage of the safe merge cycle. The Merge Analyzer (RFC-006) decided
+//! there's integration work to do; this module provisions an **ephemeral
+//! environment** (worktree `alethe/merge-<id>`) with the real merge applied —
+//! including the conflict markers — and the **minimal context**
+//! (`ALETHE_CONFLICT.md`) for the Conflict Resolution Agent to work with:
 //!
-//! - o agente é efêmero e provider-agnóstico: o FRONT spawna o CLI configurado
-//!   (Claude/Codex/OpenCode) com `cwd = env.path`; ele nasce, resolve, morre;
-//! - o agente NUNCA decide se há conflito (isso é do Analyzer) e NUNCA
-//!   implementa features (o prompt trava o escopo);
-//! - `merge_finalize` é o gate: confere que não sobrou marcador, roda a
-//!   Validation Pipeline (RFC-008, `validation.rs`) e só então commita e integra
-//!   no branch alvo via `--ff-only` — o worktree do usuário só avança limpo;
-//! - `merge_abort` destrói o ambiente sem deixar rastro.
+//! - the agent is ephemeral and provider-agnostic: the FRONTEND spawns the
+//!   configured CLI (Claude/Codex/OpenCode) with `cwd = env.path`; it's born,
+//!   resolves, dies;
+//! - the agent NEVER decides whether there's a conflict (that's the
+//!   Analyzer's job) and NEVER implements features (the prompt locks the
+//!   scope);
+//! - `merge_finalize` is the gate: it checks that no marker was left behind,
+//!   runs the Validation Pipeline (RFC-008, `validation.rs`), and only then
+//!   commits and integrates into the target branch via `--ff-only` — the
+//!   user's worktree only ever advances cleanly;
+//! - `merge_abort` destroys the environment without leaving a trace.
 //!
-//! Metadados do ciclo ficam FORA do worktree (`merge-envs/<id>.json`) para não
-//! contaminarem o commit de merge; o prompt fica dentro (o agente precisa ler),
-//! mas é removido antes do commit.
+//! Cycle metadata lives OUTSIDE the worktree (`merge-envs/<id>.json`) so it
+//! doesn't contaminate the merge commit; the prompt lives inside (the agent
+//! needs to read it), but it's removed before the commit.
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -57,18 +60,18 @@ pub struct MergeOutcome {
     pub merged: bool,
     pub stage: String,
     pub output: String,
-    /// Camada 3 do Escudo (aviso, nunca bloqueia): endpoints chamados pelo
-    /// frontend sem rota de backend correspondente encontrada no ambiente
-    /// efêmero. Best-effort — falha silenciosa não impede o merge.
+    /// Shield Layer 3 (warning, never blocks): endpoints called by the
+    /// frontend with no matching backend route found in the ephemeral
+    /// environment. Best-effort — a silent failure doesn't block the merge.
     #[serde(default)]
     pub contract_warnings: Vec<crate::contract_check::ContractWarning>,
-    /// `false` quando o projeto não tinha `validationCommands` configurado —
-    /// distingue "validou e passou" de "nada foi checado", pra o frontend
-    /// nunca afirmar que uma integração foi verificada quando não foi.
+    /// `false` when the project had no `validationCommands` configured —
+    /// distinguishes "validated and passed" from "nothing was checked", so
+    /// the frontend never claims an integration was verified when it wasn't.
     #[serde(default)]
     pub validation_ran: bool,
-    /// Camada 4 do Escudo (aviso, nunca bloqueia): resultado do boot real do
-    /// app no ambiente efêmero, se `healthCheckCommand` estava configurado.
+    /// Shield Layer 4 (warning, never blocks): result of the app's real boot
+    /// in the ephemeral environment, if `healthCheckCommand` was configured.
     #[serde(default)]
     pub health_probe: Option<crate::health_probe::HealthProbeResult>,
 }
@@ -110,17 +113,17 @@ fn emit(event_type: &str, meta: &MergeMeta, data: serde_json::Value) {
 
 fn build_prompt(meta: &MergeMeta, conflicts: &[ConflictFile]) -> String {
     let mut lines = vec![
-        "# Resolução de conflito de merge (Alethe)".to_string(),
+        "# Merge conflict resolution (Alethe)".to_string(),
         String::new(),
-        format!("Merge de `{}` para `{}`. Este diretório é um ambiente EFÊMERO só para esta integração.", meta.source, meta.target),
+        format!("Merge from `{}` into `{}`. This directory is an EPHEMERAL environment for this integration only.", meta.source, meta.target),
         String::new(),
-        "## Regras (escopo travado)".to_string(),
-        "- Resolva SOMENTE os conflitos listados abaixo. Nada além disso.".to_string(),
-        "- NUNCA implemente funcionalidades, mude requisitos ou arquitetura.".to_string(),
-        "- Preserve a intenção das DUAS branches; confirme que nada se perdeu.".to_string(),
-        "- Ao terminar, apenas salve os arquivos resolvidos (sem commit — o Alethe commita após validar).".to_string(),
+        "## Rules (locked scope)".to_string(),
+        "- Resolve ONLY the conflicts listed below. Nothing beyond that.".to_string(),
+        "- NEVER implement features, change requirements, or change architecture.".to_string(),
+        "- Preserve the intent of BOTH branches; confirm nothing was lost.".to_string(),
+        "- When done, just save the resolved files (no commit — Alethe commits after validation).".to_string(),
         String::new(),
-        "## Arquivos em conflito".to_string(),
+        "## Conflicted files".to_string(),
     ];
     for conflict in conflicts {
         lines.push(format!(
@@ -132,19 +135,20 @@ fn build_prompt(meta: &MergeMeta, conflicts: &[ConflictFile]) -> String {
     }
     lines.push(String::new());
     lines.push(
-        "Use `git diff` neste diretório para ver os marcadores (`<<<<<<<`/`>>>>>>>`).".to_string(),
+        "Use `git diff` in this directory to see the markers (`<<<<<<<`/`>>>>>>>`).".to_string(),
     );
     lines.join("\n")
 }
 
-/// Provisiona o ambiente efêmero com o merge aplicado (com marcadores, se houver
-/// conflito). Publica `MergeRequested` (+ `MergeConflict` quando aplicável).
+/// Provisions the ephemeral environment with the merge applied (with markers,
+/// if there's a conflict). Publishes `MergeRequested` (+ `MergeConflict` when
+/// applicable).
 ///
-/// Comandos deste arquivo rodam `git`/IO de verdade — igual ao `spawn_pty` do
-/// `pty.rs` e aos comandos de `worktrees.rs` (ambos já corrigidos), isso nunca
-/// pode rodar direto na thread de despacho do Tauri. Lógica de cada comando
-/// fica numa função `_inner` síncrona comum (testável direto), e o
-/// `#[tauri::command]` exposto é só um wrapper fino em `spawn_blocking`.
+/// Commands in this file run real `git`/IO — same as `spawn_pty` in `pty.rs`
+/// and the commands in `worktrees.rs` (both already fixed), this can never run
+/// directly on the Tauri dispatch thread. Each command's logic lives in a
+/// common synchronous `_inner` function (directly testable), and the exposed
+/// `#[tauri::command]` is just a thin wrapper in `spawn_blocking`.
 #[tauri::command]
 pub async fn merge_prepare(
     repo: String,
@@ -154,7 +158,7 @@ pub async fn merge_prepare(
 ) -> Result<ConflictEnv, String> {
     tokio::task::spawn_blocking(move || merge_prepare_inner(repo, source, target, project_id))
         .await
-        .map_err(|error| format!("merge_prepare: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("merge_prepare: blocking task failed: {error}"))?
 }
 
 pub(crate) fn merge_prepare_inner(
@@ -223,11 +227,11 @@ pub(crate) fn merge_prepare_inner(
 
     Ok(ConflictEnv {
         id,
-        // `env` vem de um `root` já canonicalizado (prefixo `\\?\` no Windows) —
-        // sem stripar aqui, o frontend usa esse `path` como cwd pra spawnar o
-        // agente de resolução de conflito, e nem todo CLI tolera esse prefixo
-        // como diretório de trabalho (mesma causa-raiz corrigida em
-        // `worktrees::worktree_provision`/`worktree_list`).
+        // `env` comes from a `root` that's already canonicalized (`\\?\`
+        // prefix on Windows) — without stripping it here, the frontend uses
+        // this `path` as the cwd to spawn the conflict resolution agent, and
+        // not every CLI tolerates that prefix as a working directory (same
+        // root cause fixed in `worktrees::worktree_provision`/`worktree_list`).
         path: git_arg(&env),
         branch,
         clean,
@@ -236,13 +240,13 @@ pub(crate) fn merge_prepare_inner(
     })
 }
 
-/// Varre os arquivos que estavam em conflito atrás de marcadores esquecidos.
+/// Scans the files that were in conflict for leftover forgotten markers.
 fn leftover_markers(env: &Path, paths: &[String]) -> Vec<String> {
     let mut leftovers = Vec::new();
     for rel in paths {
         let file = env.join(rel);
         let Ok(content) = std::fs::read_to_string(&file) else {
-            continue; // binário/removido — o estágio de unmerged já cobre
+            continue; // binary/removed — the unmerged stage already covers this
         };
         if content
             .lines()
@@ -254,9 +258,9 @@ fn leftover_markers(env: &Path, paths: &[String]) -> Vec<String> {
     leftovers
 }
 
-/// Gate final: sem marcadores → Validation Pipeline → commit → `--ff-only` no
-/// branch alvo → teardown. Se qualquer etapa falhar, o ambiente é PRESERVADO
-/// para inspeção/retry e o motivo volta em `MergeOutcome`.
+/// Final gate: no markers → Validation Pipeline → commit → `--ff-only` on the
+/// target branch → teardown. If any step fails, the environment is PRESERVED
+/// for inspection/retry and the reason comes back in `MergeOutcome`.
 #[tauri::command]
 pub async fn merge_finalize(
     repo: String,
@@ -275,73 +279,70 @@ pub async fn merge_finalize(
         )
     })
     .await
-    .map_err(|error| format!("merge_finalize: falha na task bloqueante: {error}"))?
+    .map_err(|error| format!("merge_finalize: blocking task failed: {error}"))?
 }
 
-/// Resultado de `validate_and_stage`: ou está bloqueado (com um `MergeOutcome`
-/// já pronto pra devolver ao chamador), ou passou e está pronto pra commitar
-/// — carregando se algum comando de validação real chegou a rodar, pra quem
-/// chama poder propagar isso honestamente em vez de assumir "validado" quando
-/// na real nada foi checado.
+/// Result of `validate_and_stage`: either it's blocked (with a `MergeOutcome`
+/// already ready to return to the caller), or it passed and is ready to
+/// commit — carrying whether any real validation command actually ran, so the
+/// caller can propagate that honestly instead of assuming "validated" when
+/// nothing was actually checked.
 enum StageOutcome {
-    /// Bloqueado (marcadores, unmerged ou validação falhou) — nunca integra.
+    /// Blocked (markers, unmerged, or validation failed) — never integrates.
     Blocked(MergeOutcome),
-    /// Validado e staged, pronto pra commitar.
+    /// Validated and staged, ready to commit.
     Proceed { ran_any_command: bool },
 }
 
-/// Checa marcadores/unmerged, estagia (`add -A`) e roda a Validation Pipeline
-/// — SEM commitar nem integrar. Compartilhado por `merge_validate` (pára
-/// aqui, gate manual) e `merge_finalize` (continua pro commit só depois que
-/// isto retorna `Proceed`).
+/// Checks markers/unmerged, stages (`add -A`), and runs the Validation
+/// Pipeline — WITHOUT committing or integrating. Shared by `merge_validate`
+/// (stops here, manual gate) and `merge_finalize` (continues to commit only
+/// after this returns `Proceed`).
 fn validate_and_stage(
     env: &Path,
     meta: &MergeMeta,
     validation_commands: Vec<String>,
 ) -> Result<StageOutcome, String> {
-    // Conflitos ainda não resolvidos (não-staged) contam como pendência.
+    // Conflicts not yet resolved (not staged) count as pending.
     let pending = unmerged_files(env)?;
     let markers = leftover_markers(env, &meta.conflict_paths);
     if !markers.is_empty() {
         return Ok(StageOutcome::Blocked(MergeOutcome {
             merged: false,
             stage: "conflict_markers".to_string(),
-            output: format!(
-                "Marcadores de conflito restantes em: {}",
-                markers.join(", ")
-            ),
+            output: format!("Conflict markers remaining in: {}", markers.join(", ")),
             ..Default::default()
         }));
     }
 
-    // Remove o prompt ANTES do `add -A` — não pode entrar no commit. Removê-lo
-    // DEPOIS de estagiado não adianta nada: `git add -A` já capturou o
-    // conteúdo dele no índice, e apagar do disco em seguida não desfaz esse
-    // stage sozinho (precisaria de outro `add -A`/`rm` pra refletir a
-    // remoção) — confirmado ao vivo: `ALETHE_CONFLICT.md` vazou pro commit
-    // final por causa exatamente dessa ordem errada, numa versão anterior
-    // deste mesmo código nesta sessão. Também não pode remover mais cedo que
-    // isso, incondicionalmente (como era antes de existir esse gate) —
-    // apagava o arquivo no primeiro poll periódico (a cada 7s, ver
-    // `beginResolvingWatch` no frontend) mesmo com o agente ainda
-    // digitando/confirmando o prompt inicial.
+    // Remove the prompt BEFORE `add -A` — it can't enter the commit. Removing
+    // it AFTER staging doesn't help: `git add -A` already captured its
+    // content in the index, and deleting it from disk afterward doesn't undo
+    // that stage on its own (it would need another `add -A`/`rm` to reflect
+    // the removal) — confirmed live: `ALETHE_CONFLICT.md` leaked into the
+    // final commit because of exactly this wrong ordering, in an earlier
+    // version of this same code in this session. It also can't be removed
+    // any earlier than this, unconditionally (as it was before this gate
+    // existed) — it deleted the file on the first periodic poll (every 7s,
+    // see `beginResolvingWatch` in the frontend) even while the agent was
+    // still typing/confirming the initial prompt.
     let _ = std::fs::remove_file(env.join(PROMPT_FILE));
 
     checked_output(env, &["add", "-A"])?;
     if !pending.is_empty() {
-        // add -A acabou de stagear; se ainda assim restar unmerged, algo está errado.
+        // add -A just staged everything; if unmerged files still remain, something is wrong.
         let still = unmerged_files(env)?;
         if !still.is_empty() {
             return Ok(StageOutcome::Blocked(MergeOutcome {
                 merged: false,
                 stage: "unmerged".to_string(),
-                output: format!("Arquivos não resolvidos: {}", still.join(", ")),
+                output: format!("Unresolved files: {}", still.join(", ")),
                 ..Default::default()
             }));
         }
     }
 
-    // RFC-008 — Validation Pipeline no ambiente de merge, antes de integrar.
+    // RFC-008 — Validation Pipeline in the merge environment, before integrating.
     let validation =
         crate::validation::run_validation(env.to_string_lossy().into_owned(), validation_commands)?;
     if !validation.success {
@@ -363,14 +364,14 @@ fn validate_and_stage(
     })
 }
 
-/// Só valida (marcadores + Validation Pipeline), sem commitar nem integrar —
-/// gate manual: o usuário confirma que a resolução está boa ANTES de
-/// `merge_finalize` tocar em `git commit`/`git merge`. Pedido explícito do
-/// usuário: o gatilho automático de 3 camadas (ver `beginResolvingWatch` no
-/// frontend) integrava sozinho assim que o agente sinalizava "terminei", sem
-/// nenhum humano confirmar se a resolução fazia sentido — confirmado ao vivo
-/// como imprudente (agente juntou conteúdo incompatível num arquivo só, sem
-/// perguntar, e foi commitado/integrado automaticamente).
+/// Only validates (markers + Validation Pipeline), without committing or
+/// integrating — manual gate: the user confirms the resolution is good
+/// BEFORE `merge_finalize` touches `git commit`/`git merge`. Explicit user
+/// request: the automatic 3-layer trigger (see `beginResolvingWatch` in the
+/// frontend) integrated on its own as soon as the agent signaled "done", with
+/// no human confirming the resolution made sense — confirmed live as
+/// reckless (an agent merged incompatible content into a single file without
+/// asking, and it was auto-committed/integrated).
 #[tauri::command]
 pub async fn merge_validate(
     repo: String,
@@ -379,7 +380,7 @@ pub async fn merge_validate(
 ) -> Result<MergeOutcome, String> {
     tokio::task::spawn_blocking(move || merge_validate_inner(repo, env_id, validation_commands))
         .await
-        .map_err(|error| format!("merge_validate: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("merge_validate: blocking task failed: {error}"))?
 }
 
 pub(crate) fn merge_validate_inner(
@@ -400,9 +401,9 @@ pub(crate) fn merge_validate_inner(
             merged: false,
             stage: "validated".to_string(),
             output: if ran_any_command {
-                "Validação passou — pronto para integrar.".to_string()
+                "Validation passed — ready to integrate.".to_string()
             } else {
-                "Nenhum comando de validação configurado — nada foi verificado (não é um bloqueio)."
+                "No validation command configured — nothing was checked (not a blocker)."
                     .to_string()
             },
             validation_ran: ran_any_command,
@@ -426,28 +427,29 @@ pub(crate) fn merge_finalize_inner(
     }
     let meta = read_meta(&root, &env_id)?;
 
-    // Revalida na hora do commit (idempotente e barato o bastante) — cobre o
-    // caso do usuário ter clicado em "Integrar" sem passar por "Validar"
-    // antes, ou de algo ter mudado no ambiente entre os dois cliques.
+    // Revalidates at commit time (idempotent and cheap enough) — covers the
+    // case of the user clicking "Integrate" without going through "Validate"
+    // first, or something having changed in the environment between the two
+    // clicks.
     let ran_any_command = match validate_and_stage(&env, &meta, validation_commands)? {
         StageOutcome::Blocked(outcome) => return Ok(outcome),
         StageOutcome::Proceed { ran_any_command } => ran_any_command,
     };
 
-    // Camada 3 do Escudo — Verificador de Contrato de API (heurístico, best-effort).
-    // Nunca falha o merge: erro na checagem só vira lista vazia de avisos.
+    // Shield Layer 3 — API Contract Checker (heuristic, best-effort).
+    // Never fails the merge: a check error just becomes an empty warning list.
     let contract_warnings =
         crate::contract_check::contract_check(env.to_string_lossy().into_owned())
             .unwrap_or_default();
 
-    // Camada 4 do Escudo — Health Probe (aviso, nunca bloqueia): sobe o
-    // comando de start do projeto no MESMO ambiente efêmero (nunca no
-    // worktree real do usuário) e confirma que o app realmente responde —
-    // e, se for um core do Alethe, que um terminal de verdade funciona
-    // (round-trip de escrita/leitura, não só "o processo existe").
-    // `block_on` é seguro aqui: esta função já roda dentro de um
-    // `spawn_blocking` (thread do pool bloqueante do tokio, não a thread
-    // do reator async), então bloquear não trava nada.
+    // Shield Layer 4 — Health Probe (warning, never blocks): boots the
+    // project's start command in the SAME ephemeral environment (never in
+    // the user's real worktree) and confirms the app actually responds —
+    // and, if it's an Alethe core, that a real terminal works (a
+    // write/read round-trip, not just "the process exists").
+    // `block_on` is safe here: this function already runs inside a
+    // `spawn_blocking` (a thread from tokio's blocking pool, not the async
+    // reactor thread), so blocking doesn't stall anything.
     let health_probe_result = health_check_command
         .filter(|cmd| !cmd.trim().is_empty())
         .and_then(|cmd| {
@@ -465,29 +467,30 @@ pub(crate) fn merge_finalize_inner(
         });
 
     let message = format!("merge(alethe): {} -> {}", meta.source, meta.target);
-    // Depois de um merge_rebase_onto_target bem-sucedido, a reconciliação já
-    // commitou tudo — não sobra nada staged aqui, e isso é esperado (HEAD já é
-    // o commit correto). `diff --cached --quiet`: exit 0 = nada staged (git
-    // imprime "nothing to commit" no STDOUT, que checked_output nem captura —
-    // checar staged de antemão é mais robusto que tentar casar essa mensagem).
+    // After a successful merge_rebase_onto_target, the reconciliation already
+    // committed everything — nothing is left staged here, and that's expected
+    // (HEAD is already the right commit). `diff --cached --quiet`: exit 0 =
+    // nothing staged (git prints "nothing to commit" to STDOUT, which
+    // checked_output doesn't even capture — checking staged state up front is
+    // more robust than trying to match that message).
     let has_staged_changes = git_command(&env, &["diff", "--cached", "--quiet"])
         .map(|output| !output.status.success())
         .unwrap_or(true);
     if has_staged_changes {
-        // `ALETHE_CONFLICT.md` fica em disco (não-rastreado) desde ANTES do
-        // agente começar a trabalhar (escrito em `merge_prepare`, acima) —
-        // se o agente terminar a resolução com o padrão comum de "stagear
-        // tudo e commitar", esse arquivo vaza pro commit DELE sem querer
-        // (ele nem sabe que existe esse arquivo). A remoção logo acima
-        // (`validate_and_stage`) então fica staged aqui como uma remoção
-        // real — e sem essa checagem, isso sozinho já bastava pra criar um
-        // SEGUNDO commit inteiro só pra tirar 1 arquivo de apoio, duplicando
-        // visualmente cada resolução no gráfico (commit real do agente +
-        // commit genérico "merge(alethe): ..." sem nenhuma informação nova).
-        // Quando a ÚNICA mudança staged é exatamente essa remoção e já
-        // existe um commit anterior nesta branch (o do agente), emenda nele
-        // em vez de criar um commit novo — fast-forward ainda funciona igual,
-        // já que só usamos o HEAD atual da branch efêmera pra integrar.
+        // `ALETHE_CONFLICT.md` sits on disk (untracked) from BEFORE the agent
+        // even starts working (written in `merge_prepare`, above) — if the
+        // agent finishes the resolution with the common "stage everything and
+        // commit" pattern, this file unintentionally leaks into ITS commit
+        // (it doesn't even know this file exists). The removal just above
+        // (`validate_and_stage`) then ends up staged here as a real removal —
+        // and without this check, that alone was enough to create an ENTIRE
+        // second commit just to drop 1 support file, visually duplicating
+        // each resolution in the graph (the agent's real commit + a generic
+        // "merge(alethe): ..." commit with no new information). When the
+        // ONLY staged change is exactly this removal and there's already a
+        // prior commit on this branch (the agent's), amend it instead of
+        // creating a new commit — fast-forward still works the same, since
+        // we only use the ephemeral branch's current HEAD to integrate.
         let staged_files = git_command(&env, &["diff", "--cached", "--name-only"])
             .map(|output| {
                 String::from_utf8_lossy(&output.stdout)
@@ -507,8 +510,9 @@ pub(crate) fn merge_finalize_inner(
         }
     }
 
-    // Integração: o branch alvo precisa estar checked out no repo do usuário e o
-    // avanço precisa ser fast-forward — nunca reescrevemos nada do usuário.
+    // Integration: the target branch needs to be checked out in the user's
+    // repo and the advance must be fast-forward — we never rewrite anything
+    // of the user's.
     let head = checked_output(&root, &["symbolic-ref", "--short", "HEAD"])
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_default();
@@ -517,23 +521,23 @@ pub(crate) fn merge_finalize_inner(
             merged: false,
             stage: "target_not_checked_out".to_string(),
             output: format!(
-                "O branch alvo '{}' não está checked out no repositório (atual: '{}'). Faça checkout e finalize de novo.",
+                "The target branch '{}' is not checked out in the repository (current: '{}'). Check it out and finalize again.",
                 meta.target, head
             ),
             ..Default::default()
         });
     }
     let branch = format!("alethe/merge-{env_id}");
-    // Bug real, confirmado ao vivo com um agente real (branch sem nenhum
-    // commit em relação ao alvo — nada foi commitado acima porque não havia
-    // mudança nenhuma): sem esta checagem, `git merge --ff-only` responde
-    // "Already up to date" com exit 0 (sucesso!) mesmo sem mover `main` NEM
-    // UM commit — e o código seguia até o fim devolvendo `merged: true`. A
-    // UI mostrava "Merge concluído" com um toast de verdade, o card virava
-    // "Integrado", mas `main` nunca avançava. Compara o HEAD da branch
-    // efêmera com o HEAD do alvo ANTES de tentar o fast-forward: se forem
-    // idênticos, não há nada de novo pra integrar — reporta honestamente em
-    // vez de fingir sucesso.
+    // Real bug, confirmed live with a real agent (a branch with no commit
+    // relative to the target — nothing was committed above because there was
+    // no change at all): without this check, `git merge --ff-only` responds
+    // "Already up to date" with exit 0 (success!) even without moving `main`
+    // NOR A SINGLE commit — and the code carried on to the end returning
+    // `merged: true`. The UI showed "Merge complete" with a real toast, the
+    // card turned "Integrated", but `main` never advanced. Compares the
+    // ephemeral branch's HEAD with the target's HEAD BEFORE attempting the
+    // fast-forward: if they're identical, there's nothing new to integrate —
+    // report honestly instead of faking success.
     let branch_sha = git_command(&env, &["rev-parse", "HEAD"])
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_default();
@@ -545,17 +549,17 @@ pub(crate) fn merge_finalize_inner(
             merged: false,
             stage: "nothing_to_integrate".to_string(),
             output:
-                "Nada para integrar — a branch do agente não tem nenhuma mudança em relação à branch alvo."
+                "Nothing to integrate — the agent's branch has no changes relative to the target branch."
                     .to_string(),
             validation_ran: ran_any_command,
             ..Default::default()
         });
     }
     if let Err(error) = checked_output(&root, &["merge", "--ff-only", &branch]) {
-        // Distingue "o alvo avançou desde o merge_prepare" (recuperável via
-        // merge_rebase_onto_target) de um erro genérico/duro — git usa essa
-        // mensagem (variações de caixa) especificamente pra ff-only recusado
-        // por divergência, não por corrupção ou I/O.
+        // Distinguishes "the target advanced since merge_prepare" (recoverable
+        // via merge_rebase_onto_target) from a generic/hard error — git uses
+        // this message (case variations) specifically for ff-only refused due
+        // to divergence, not due to corruption or I/O.
         let lower = error.to_lowercase();
         let stage = if lower.contains("not possible to fast-forward")
             || lower.contains("non-fast-forward")
@@ -572,7 +576,7 @@ pub(crate) fn merge_finalize_inner(
         });
     }
 
-    // Teardown: worktree + branch temporário + metadados.
+    // Teardown: worktree + temporary branch + metadata.
     let env_arg = git_arg(&env);
     let _ = git_command(&root, &["worktree", "remove", "--force", &env_arg]);
     let _ = git_command(&root, &["branch", "-d", &branch]);
@@ -584,8 +588,9 @@ pub(crate) fn merge_finalize_inner(
         serde_json::json!({ "source": meta.source, "target": meta.target }),
     );
 
-    // Grafo é conhecimento versionado: snapshot automático pós-integração
-    // (best-effort — sem grafo no repo, só ignora). Amarra RFC-004 ↔ RFC-006.
+    // The graph is versioned knowledge: automatic post-integration snapshot
+    // (best-effort — with no graph in the repo, it's simply skipped). Ties
+    // RFC-004 ↔ RFC-006 together.
     let _ = crate::graphify::graphify_snapshot_inner(
         root.to_string_lossy().into_owned(),
         meta.project_id.clone(),
@@ -601,10 +606,10 @@ pub(crate) fn merge_finalize_inner(
     })
 }
 
-/// `git merge --abort`/`git rebase --abort` no worktree efêmero são no-ops
-/// esperados quando nada está em progresso — só propaga erros que indiquem
-/// algo realmente errado (incluindo lock administrativo, via `checked_output`
-/// já lock-aware).
+/// `git merge --abort`/`git rebase --abort` in the ephemeral worktree are
+/// expected no-ops when nothing is in progress — only propagates errors that
+/// indicate something actually wrong (including an administrative lock, via
+/// `checked_output` which is already lock-aware).
 fn safe_abort(env: &Path, args: &[&str]) -> Result<(), String> {
     match checked_output(env, args) {
         Ok(_) => Ok(()),
@@ -619,15 +624,16 @@ fn safe_abort(env: &Path, args: &[&str]) -> Result<(), String> {
     }
 }
 
-/// Abort preventivo chamado pelo "Retry Manual" do front antes de reprocessar
-/// um merge em `Failed`: limpa qualquer merge/rebase inacabado no worktree
-/// EFÊMERO (nunca o do usuário). Erro que não seja lock administrativo aqui
-/// indica corrupção real do ambiente — o front trata como `TerminalError`.
+/// Preventive abort called by the frontend's "Manual Retry" before
+/// reprocessing a merge in `Failed`: cleans up any unfinished merge/rebase in
+/// the EPHEMERAL worktree (never the user's). An error here that isn't an
+/// administrative lock indicates real environment corruption — the frontend
+/// treats it as `TerminalError`.
 #[tauri::command]
 pub async fn merge_preflight_abort(repo: String, env_id: String) -> Result<(), String> {
     tokio::task::spawn_blocking(move || merge_preflight_abort_inner(repo, env_id))
         .await
-        .map_err(|error| format!("merge_preflight_abort: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("merge_preflight_abort: blocking task failed: {error}"))?
 }
 
 pub(crate) fn merge_preflight_abort_inner(repo: String, env_id: String) -> Result<(), String> {
@@ -642,23 +648,23 @@ pub(crate) fn merge_preflight_abort_inner(repo: String, env_id: String) -> Resul
     Ok(())
 }
 
-/// Chamado quando `merge_finalize` reporta `stage == "branch_diverged"`: o
-/// branch alvo avançou desde o `merge_prepare`. Traz a ponta atual do alvo pro
-/// worktree EFÊMERO (fetch local, sem tocar o worktree do usuário) e reconcilia
-/// via `git merge` (não rebase) — a branch efêmera já tem um commit de merge
-/// formado (feito em `merge_finalize`), e fazer REBASE de um commit de merge é
-/// um patch-replay que pode gerar conflitos espúrios mesmo quando um merge de
-/// árvore normal aplicaria limpo. Resultado prático é equivalente ao que o
-/// usuário chamaria de "RebaseAttempt": a ponta nova do alvo passa a ser
-/// ancestral da branch efêmera, o que já é suficiente pro `--ff-only` da
-/// reintegração funcionar.
+/// Called when `merge_finalize` reports `stage == "branch_diverged"`: the
+/// target branch advanced since `merge_prepare`. Brings the target's current
+/// tip into the EPHEMERAL worktree (local fetch, without touching the user's
+/// worktree) and reconciles via `git merge` (not rebase) — the ephemeral
+/// branch already has a merge commit formed (made in `merge_finalize`), and
+/// REBASing a merge commit is a patch-replay that can generate spurious
+/// conflicts even when a normal tree merge would apply cleanly. The practical
+/// result is equivalent to what the user would call "RebaseAttempt": the
+/// target's new tip becomes an ancestor of the ephemeral branch, which is
+/// already enough for the reintegration's `--ff-only` to work.
 ///
-/// - Reconciliação limpa → `stage: "rebase_ok"`, pronto pro front chamar
-///   `merge_finalize` de novo.
-/// - Conflitos → reescreve `ALETHE_CONFLICT.md`/metadados com os novos
-///   arquivos em conflito e devolve `stage: "rebase_conflict"` — mesma
-///   superfície de "resolver" de antes, front volta a `resolving`.
-/// - Falha dura (não-conflito) → aborta e devolve `stage: "rebase_failed"`.
+/// - Clean reconciliation → `stage: "rebase_ok"`, ready for the frontend to
+///   call `merge_finalize` again.
+/// - Conflicts → rewrites `ALETHE_CONFLICT.md`/metadata with the new
+///   conflicted files and returns `stage: "rebase_conflict"` — same
+///   "resolve" surface as before, frontend goes back to `resolving`.
+/// - Hard failure (not a conflict) → aborts and returns `stage: "rebase_failed"`.
 #[tauri::command]
 pub async fn merge_rebase_onto_target(
     repo: String,
@@ -666,7 +672,7 @@ pub async fn merge_rebase_onto_target(
 ) -> Result<MergeOutcome, String> {
     tokio::task::spawn_blocking(move || merge_rebase_onto_target_inner(repo, env_id))
         .await
-        .map_err(|error| format!("merge_rebase_onto_target: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("merge_rebase_onto_target: blocking task failed: {error}"))?
 }
 
 pub(crate) fn merge_rebase_onto_target_inner(
@@ -689,15 +695,15 @@ pub(crate) fn merge_rebase_onto_target_inner(
         return Ok(MergeOutcome {
             merged: false,
             stage: "rebase_ok".to_string(),
-            output: "Reconciliado com o alvo atualizado — pronto para reintegrar.".to_string(),
+            output: "Reconciled with the updated target — ready to reintegrate.".to_string(),
             ..Default::default()
         });
     }
 
     let unresolved = unmerged_files(&env).unwrap_or_default();
     if !unresolved.is_empty() {
-        // Conflitos: mesma superfície de resolução de antes — regrava o prompt
-        // e os metadados com os novos arquivos em conflito.
+        // Conflicts: same resolution surface as before — rewrites the prompt
+        // and the metadata with the new conflicted files.
         let conflicts: Vec<ConflictFile> = unresolved
             .into_iter()
             .map(|path| ConflictFile {
@@ -722,13 +728,13 @@ pub(crate) fn merge_rebase_onto_target_inner(
         return Ok(MergeOutcome {
             merged: false,
             stage: "rebase_conflict".to_string(),
-            output: format!("Conflitos ao reconciliar com o alvo atualizado: {paths}"),
+            output: format!("Conflicts while reconciling with the updated target: {paths}"),
             ..Default::default()
         });
     }
 
-    // Falha dura (não-conflito): aborta pra não deixar o ambiente efêmero num
-    // merge pendurado, e propaga a mensagem real do git.
+    // Hard failure (not a conflict): aborts so the ephemeral environment
+    // isn't left with a hanging merge, and propagates git's real message.
     let stderr = String::from_utf8_lossy(&reconcile.stderr)
         .trim()
         .to_string();
@@ -752,11 +758,12 @@ pub struct ForceCleanupResult {
     pub pruned: bool,
 }
 
-/// Limpeza bruta de um ambiente de merge irrecuperável (`TerminalError`, quando
-/// o abort preventivo já falhou por corrupção real). Deleção física direta do
-/// diretório (double-checked pra nunca sair de `.alethe/merge-envs/`) seguida
-/// de `git worktree prune` best-effort. O front decide `pruneOnly` vs
-/// `requiresRawDeletion` com base em `deleted`/`pruned`.
+/// Brute-force cleanup of an unrecoverable merge environment (`TerminalError`,
+/// when the preventive abort already failed due to real corruption). Direct
+/// physical deletion of the directory (double-checked to never leave
+/// `.alethe/merge-envs/`) followed by a best-effort `git worktree prune`. The
+/// frontend decides `pruneOnly` vs `requiresRawDeletion` based on
+/// `deleted`/`pruned`.
 #[tauri::command]
 pub async fn merge_force_cleanup(
     repo: String,
@@ -764,7 +771,7 @@ pub async fn merge_force_cleanup(
 ) -> Result<ForceCleanupResult, String> {
     tokio::task::spawn_blocking(move || merge_force_cleanup_inner(repo, env_id))
         .await
-        .map_err(|error| format!("merge_force_cleanup: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("merge_force_cleanup: blocking task failed: {error}"))?
 }
 
 pub(crate) fn merge_force_cleanup_inner(
@@ -797,12 +804,12 @@ pub(crate) fn merge_force_cleanup_inner(
     Ok(ForceCleanupResult { deleted, pruned })
 }
 
-/// Destrói o ambiente efêmero sem integrar nada.
+/// Destroys the ephemeral environment without integrating anything.
 #[tauri::command]
 pub async fn merge_abort(repo: String, env_id: String) -> Result<(), String> {
     tokio::task::spawn_blocking(move || merge_abort_inner(repo, env_id))
         .await
-        .map_err(|error| format!("merge_abort: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("merge_abort: blocking task failed: {error}"))?
 }
 
 pub(crate) fn merge_abort_inner(repo: String, env_id: String) -> Result<(), String> {
@@ -828,10 +835,10 @@ mod tests {
     use crate::merge_analyzer::tests::conflicting_repo;
     use std::fs;
 
-    // Testes chamam a lógica síncrona direto, sem precisar de runtime async —
-    // os `#[tauri::command]` async acima são só wrappers finos em
-    // `spawn_blocking`. Shadowing explícito vence o `use super::*` acima sem
-    // conflito (regra padrão de resolução de nomes do Rust).
+    // Tests call the synchronous logic directly, no need for an async runtime
+    // — the async `#[tauri::command]`s above are just thin wrappers in
+    // `spawn_blocking`. Explicit shadowing wins over the `use super::*`
+    // above without conflict (Rust's standard name-resolution rule).
     use super::merge_abort_inner as merge_abort;
     use super::merge_finalize_inner as merge_finalize;
     use super::merge_force_cleanup_inner as merge_force_cleanup;
@@ -842,7 +849,7 @@ mod tests {
     #[test]
     fn full_cycle_conflict_resolution_validation_and_ff() {
         let (root, root_str) = conflicting_repo();
-        // Alvo da integração: agent-a precisa estar checked out no repo.
+        // Integration target: agent-a needs to be checked out in the repo.
         checked_output(&root, &["checkout", "agent-a"]).unwrap();
 
         let env =
@@ -850,55 +857,67 @@ mod tests {
         assert!(!env.clean);
         assert_eq!(env.conflicts.len(), 1);
         let env_path = PathBuf::from(&env.path);
-        // Prompt de contexto mínimo existe e trava o escopo.
+        // Minimal context prompt exists and locks the scope.
         let prompt = fs::read_to_string(env.prompt_path.as_ref().unwrap()).unwrap();
         assert!(prompt.contains("shared.ts"));
-        assert!(prompt.contains("NUNCA implemente"));
-        // O arquivo tem marcadores reais de conflito.
+        assert!(prompt.contains("NEVER implement"));
+        // The file has real conflict markers.
         let conflicted = fs::read_to_string(env_path.join("shared.ts")).unwrap();
         assert!(conflicted.contains("<<<<<<<"));
 
-        // Finalize ANTES de resolver → barra nos marcadores, ambiente preservado.
+        // Finalize BEFORE resolving → blocked on markers, environment preserved.
         let blocked = merge_finalize(root_str.clone(), env.id.clone(), vec![], None, None).unwrap();
         assert!(!blocked.merged);
         assert_eq!(blocked.stage, "conflict_markers");
         assert!(env_path.is_dir());
 
-        // "Agente" resolve preservando as duas intenções.
+        // "Agent" resolves preserving both intentions.
         fs::write(
             env_path.join("shared.ts"),
             "export const value = 'from-a+from-b'\n",
         )
         .unwrap();
 
-        // Validação que falha → merge barrado, ambiente preservado.
-        let failed =
-            merge_finalize(root_str.clone(), env.id.clone(), vec!["exit 1".into()], None, None)
-                .unwrap();
+        // Validation that fails → merge blocked, environment preserved.
+        let failed = merge_finalize(
+            root_str.clone(),
+            env.id.clone(),
+            vec!["exit 1".into()],
+            None,
+            None,
+        )
+        .unwrap();
         assert!(!failed.merged);
         assert!(failed.stage.starts_with("validation:"));
         assert!(env_path.is_dir());
 
-        // Validação que passa → commit + ff no agent-a + teardown.
-        let ok = merge_finalize(root_str.clone(), env.id.clone(), vec!["echo ok".into()], None, None).unwrap();
+        // Validation that passes → commit + ff on agent-a + teardown.
+        let ok = merge_finalize(
+            root_str.clone(),
+            env.id.clone(),
+            vec!["echo ok".into()],
+            None,
+            None,
+        )
+        .unwrap();
         assert!(
             ok.merged,
-            "esperava merge, veio: {} / {}",
+            "expected a merge, got: {} / {}",
             ok.stage, ok.output
         );
         assert!(!env_path.exists());
         let merged = fs::read_to_string(root.join("shared.ts")).unwrap();
         assert!(merged.contains("from-a+from-b"));
-        // other.rs veio da branch B junto no merge.
+        // other.rs came along from branch B in the merge.
         let other = fs::read_to_string(root.join("other.rs")).unwrap();
         assert!(other.contains("from_b"));
-        // ALETHE_CONFLICT.md (o prompt efêmero) nunca pode vazar pro commit
-        // final — regressão real: `git add -A` estagiava o arquivo ANTES dele
-        // ser removido do disco, então apagar depois não desfazia o stage e
-        // ele entrava no commit mesmo assim (corrigido: remoção agora vem
-        // antes do `add -A`).
+        // ALETHE_CONFLICT.md (the ephemeral prompt) must never leak into the
+        // final commit — real regression: `git add -A` staged the file
+        // BEFORE it was removed from disk, so deleting it afterward didn't
+        // undo the stage and it still ended up in the commit (fixed: removal
+        // now happens before `add -A`).
         assert!(!root.join("ALETHE_CONFLICT.md").exists());
-        // Branch temporário removido.
+        // Temporary branch removed.
         let branches = checked_output(&root, &["branch", "--list", "alethe/merge-*"]).unwrap();
         assert!(String::from_utf8_lossy(&branches.stdout).trim().is_empty());
 
@@ -908,14 +927,15 @@ mod tests {
     #[test]
     fn clean_merge_skips_agent_and_integrates() {
         let (root, root_str) = conflicting_repo();
-        // main é ancestral de agent-a → merge limpo direto.
+        // main is an ancestor of agent-a → merge is clean right away.
         let env = merge_prepare(root_str.clone(), "agent-a".into(), "main".into(), None).unwrap();
         assert!(env.clean);
         assert!(env.prompt_path.is_none());
-        let ok = merge_finalize(root_str.clone(), env.id, vec!["echo ok".into()], None, None).unwrap();
+        let ok =
+            merge_finalize(root_str.clone(), env.id, vec!["echo ok".into()], None, None).unwrap();
         assert!(
             ok.merged,
-            "esperava merge, veio: {} / {}",
+            "expected a merge, got: {} / {}",
             ok.stage, ok.output
         );
         let value = fs::read_to_string(root.join("shared.ts")).unwrap();
@@ -923,17 +943,17 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
-    /// Bug real, confirmado ao vivo com um agente OpenCode real: uma branch
-    /// SEM nenhum commit em relação ao alvo (`git merge --ff-only` responde
-    /// "Already up to date", exit 0) fazia `merge_finalize_inner` devolver
-    /// `merged: true` do mesmo jeito — a UI mostrava "Merge concluído" sem
-    /// `main` avançar nem um commit sequer. Trava essa correção: uma branch
-    /// criada a partir de `main`, sem nenhuma mudança, precisa reportar
-    /// honestamente que não há nada pra integrar.
+    /// Real bug, confirmed live with a real OpenCode agent: a branch WITHOUT
+    /// any commit relative to the target (`git merge --ff-only` responds
+    /// "Already up to date", exit 0) made `merge_finalize_inner` return
+    /// `merged: true` all the same — the UI showed "Merge complete" without
+    /// `main` advancing even a single commit. Locks in this fix: a branch
+    /// created from `main`, with no changes at all, needs to honestly report
+    /// that there's nothing to integrate.
     #[test]
     fn finalize_reports_nothing_to_integrate_for_branch_without_changes() {
         let (root, root_str) = conflicting_repo();
-        // Branch nova, criada em cima de `main`, sem nenhum commit próprio.
+        // New branch, created on top of `main`, with no commit of its own.
         checked_output(&root, &["checkout", "-b", "agent-empty"]).unwrap();
         checked_output(&root, &["checkout", "main"]).unwrap();
 
@@ -944,12 +964,12 @@ mod tests {
             merge_finalize(root_str.clone(), env.id, vec!["echo ok".into()], None, None).unwrap();
         assert!(
             !outcome.merged,
-            "não deveria reportar merge — nada mudou: {} / {}",
+            "should not report a merge — nothing changed: {} / {}",
             outcome.stage, outcome.output
         );
         assert_eq!(outcome.stage, "nothing_to_integrate");
-        // Ambiente efêmero preservado (mesma regra dos outros estágios
-        // bloqueados) — nada de teardown pra um "merge" que não aconteceu.
+        // Ephemeral environment preserved (same rule as the other blocked
+        // stages) — no teardown for a "merge" that didn't happen.
         assert!(PathBuf::from(&env.path).is_dir());
 
         fs::remove_dir_all(root).unwrap();
@@ -960,7 +980,7 @@ mod tests {
         let (root, root_str) = conflicting_repo();
         let env =
             merge_prepare(root_str.clone(), "agent-b".into(), "agent-a".into(), None).unwrap();
-        // Nada em progresso — não deve falhar mesmo sem merge/rebase pendente.
+        // Nothing in progress — should not fail even without a pending merge/rebase.
         merge_preflight_abort(root_str.clone(), env.id.clone()).unwrap();
         merge_abort(root_str, env.id).unwrap();
         fs::remove_dir_all(root).unwrap();
@@ -971,49 +991,63 @@ mod tests {
         let (root, root_str) = conflicting_repo();
         checked_output(&root, &["checkout", "agent-a"]).unwrap();
 
-        // Conflito normal entre agent-b e agent-a, como no ciclo completo.
+        // Normal conflict between agent-b and agent-a, like in the full cycle.
         let env =
             merge_prepare(root_str.clone(), "agent-b".into(), "agent-a".into(), None).unwrap();
         assert!(!env.clean);
         let env_path = PathBuf::from(&env.path);
 
-        // "Agente" resolve preservando as duas intenções.
+        // "Agent" resolves preserving both intentions.
         fs::write(
             env_path.join("shared.ts"),
             "export const value = 'from-a+from-b'\n",
         )
         .unwrap();
 
-        // Commit CONCORRENTE em agent-a (o alvo) — simula outra integração que
-        // avançou a branch enquanto o merge estava em andamento. Precisa estar
-        // em um arquivo diferente pra não gerar conflito de rebase também.
-        fs::write(root.join("concurrent.txt"), "commit concorrente\n").unwrap();
+        // CONCURRENT commit on agent-a (the target) — simulates another
+        // integration that advanced the branch while the merge was in
+        // progress. Needs to be in a different file so it doesn't also
+        // generate a rebase conflict.
+        fs::write(root.join("concurrent.txt"), "concurrent commit\n").unwrap();
         checked_output(&root, &["add", "concurrent.txt"]).unwrap();
-        checked_output(&root, &["commit", "-m", "commit concorrente"]).unwrap();
+        checked_output(&root, &["commit", "-m", "concurrent commit"]).unwrap();
 
-        // Finalize agora falha por divergência, não por marcador/validação.
-        let diverged =
-            merge_finalize(root_str.clone(), env.id.clone(), vec!["echo ok".into()], None, None).unwrap();
+        // Finalize now fails due to divergence, not markers/validation.
+        let diverged = merge_finalize(
+            root_str.clone(),
+            env.id.clone(),
+            vec!["echo ok".into()],
+            None,
+            None,
+        )
+        .unwrap();
         assert!(!diverged.merged);
         assert_eq!(diverged.stage, "branch_diverged");
-        assert!(env_path.is_dir(), "ambiente deve ser preservado pra retry");
+        assert!(env_path.is_dir(), "environment must be preserved for retry");
 
-        // Abort preventivo (Retry Manual) — nada em progresso ainda, no-op ok.
+        // Preventive abort (Manual Retry) — nothing in progress yet, no-op ok.
         merge_preflight_abort(root_str.clone(), env.id.clone()).unwrap();
 
-        // Rebase sobre a nova ponta do alvo — sem conflito (arquivo diferente).
+        // Rebase onto the target's new tip — no conflict (different file).
         let rebased = merge_rebase_onto_target(root_str.clone(), env.id.clone()).unwrap();
-        assert_eq!(rebased.stage, "rebase_ok", "saída: {}", rebased.output);
+        assert_eq!(rebased.stage, "rebase_ok", "output: {}", rebased.output);
 
-        // Reintegra — agora o ff-only deve funcionar.
-        let ok = merge_finalize(root_str.clone(), env.id.clone(), vec!["echo ok".into()], None, None).unwrap();
+        // Reintegrates — the ff-only should work now.
+        let ok = merge_finalize(
+            root_str.clone(),
+            env.id.clone(),
+            vec!["echo ok".into()],
+            None,
+            None,
+        )
+        .unwrap();
         assert!(
             ok.merged,
-            "esperava merge, veio: {} / {}",
+            "expected a merge, got: {} / {}",
             ok.stage, ok.output
         );
 
-        // Asserção crítica: o commit concorrente está presente no alvo final.
+        // Critical assertion: the concurrent commit is present in the final target.
         assert!(root.join("concurrent.txt").is_file());
         let merged = fs::read_to_string(root.join("shared.ts")).unwrap();
         assert!(merged.contains("from-a+from-b"));
@@ -1034,8 +1068,8 @@ mod tests {
         assert!(result.pruned);
         assert!(!env_path.exists());
 
-        // Rodar de novo (pasta já sumiu) continua reportando sucesso — é
-        // exatamente o cenário `pruneOnly` que o front cataloga como órfão.
+        // Running again (folder already gone) still reports success — this is
+        // exactly the `pruneOnly` scenario the frontend catalogs as orphaned.
         let again = merge_force_cleanup(root_str.clone(), env.id).unwrap();
         assert!(again.deleted);
 
@@ -1051,7 +1085,7 @@ mod tests {
         assert!(env_path.is_dir());
         merge_abort(root_str.clone(), env.id.clone()).unwrap();
         assert!(!env_path.exists());
-        // Id forjado é rejeitado.
+        // Forged id is rejected.
         assert!(merge_abort(root_str, "../evil".into()).is_err());
         fs::remove_dir_all(root).unwrap();
     }

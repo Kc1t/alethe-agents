@@ -10,11 +10,11 @@ pub struct ValidationResult {
     pub success: bool,
     pub stage: String,
     pub output: String,
-    /// `false` quando `commands` estava vazio (ou só tinha linhas em branco) e
-    /// nenhum comando real chegou a ser executado — distingue "validou e
-    /// passou" de "não havia nada configurado pra validar", que antes eram
-    /// indistinguíveis (`success: true` nos dois casos), fazendo o gate
-    /// afirmar "passou" sobre projetos que nunca rodaram nada de verdade.
+    /// `false` when `commands` was empty (or only blank lines) and no real
+    /// command actually ran — distinguishes "validated and passed" from
+    /// "nothing was configured to validate", which used to be indistinguishable
+    /// (`success: true` in both cases), making the gate claim "passed" for
+    /// projects that never ran anything real.
     #[serde(default)]
     pub ran_any_command: bool,
 }
@@ -65,7 +65,7 @@ pub fn run_validation(cwd: String, commands: Vec<String>) -> Result<ValidationRe
                 return Ok(ValidationResult {
                     success: false,
                     stage: trimmed.to_string(),
-                    output: format!("Falha ao iniciar comando: {}", e),
+                    output: format!("Failed to start command: {}", e),
                     ran_any_command,
                 });
             }
@@ -74,11 +74,15 @@ pub fn run_validation(cwd: String, commands: Vec<String>) -> Result<ValidationRe
 
     Ok(ValidationResult {
         success: true,
-        stage: if ran_any_command { "All".to_string() } else { "None".to_string() },
-        output: if ran_any_command {
-            "Todas as validações passaram com sucesso!".to_string()
+        stage: if ran_any_command {
+            "All".to_string()
         } else {
-            "Nenhum comando de validação configurado — nada foi executado.".to_string()
+            "None".to_string()
+        },
+        output: if ran_any_command {
+            "All validations passed successfully!".to_string()
+        } else {
+            "No validation command configured — nothing was run.".to_string()
         },
         ran_any_command,
     })
@@ -115,9 +119,11 @@ mod tests {
         assert!(!res.ran_any_command);
         assert_eq!(res.stage, "None");
 
-        let res_blank_only =
-            run_validation(dir.to_string_lossy().to_string(), vec!["   ".to_string(), "".to_string()])
-                .unwrap();
+        let res_blank_only = run_validation(
+            dir.to_string_lossy().to_string(),
+            vec!["   ".to_string(), "".to_string()],
+        )
+        .unwrap();
         assert!(res_blank_only.success);
         assert!(!res_blank_only.ran_any_command);
         assert_eq!(res_blank_only.stage, "None");

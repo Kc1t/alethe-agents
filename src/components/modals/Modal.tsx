@@ -31,9 +31,17 @@ export function Modal({
       <Dialog.Portal>
         <Dialog.Overlay className={`${styles.overlay} ${nested ? styles.overlayNested : ''}`} />
         <Dialog.Content
+          data-alethe-modal-content=""
           className={`${styles.content} ${nested ? styles.contentNested : ''}`}
           style={{ width }}
           aria-describedby={undefined}
+          onInteractOutside={(event) => {
+            const target = event.target as Element | null
+            if (target?.closest('[data-alethe-dropdown-menu]')) event.preventDefault()
+          }}
+          onEscapeKeyDown={(event) => {
+            if (document.querySelector('[data-alethe-dropdown-menu]')) event.preventDefault()
+          }}
           onOpenAutoFocus={(e) => {
             const root = e.currentTarget as HTMLElement | null
             const input = root?.querySelector<HTMLElement>('input,textarea,[data-autofocus]')

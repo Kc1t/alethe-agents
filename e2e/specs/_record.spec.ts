@@ -4,53 +4,53 @@ import { listProcedures, saveProcedure } from '../support/procedures'
 import { attachRecorder, collectRecordedSteps, pushRecordedStep } from '../support/recorder'
 
 /**
- * Gravador interativo — pedido explícito do dono: em vez de sempre precisar
- * redescobrir seletores manualmente, ele grava um procedimento clicando na
- * janela real do app (nunca um vídeo — sai um ARQUIVO, `procedures.json`, no
- * mesmo formato que `runProcedure`/`npm run replay` já sabe reproduzir).
+ * Interactive recorder — explicit request from the owner: instead of always
+ * having to manually rediscover selectors, he records a procedure by clicking on the
+ * app's real window (never a video — the output is a FILE, `procedures.json`, in the
+ * same format `runProcedure`/`npm run replay` already knows how to play back).
  *
- * NÃO afirma nada (não é teste de regressão) — abre o app isolado (mesmo
- * perfil e2e vazio de sempre), passa pelo onboarding sozinho (via
- * `quickLogin`, cliques reais, não conta como parte do procedimento gravado
- * porque o gravador só é injetado DEPOIS), e entrega o controle: o dono
- * interage com a janela normalmente. Salva incrementalmente em
- * `procedures.json` a cada 2s (Ctrl+C no terminal a qualquer momento é
- * seguro — nada se perde) e também ao atingir o tempo máximo.
+ * Does NOT assert anything (it's not a regression test) — opens the isolated app (the
+ * same always-empty e2e profile), goes through onboarding on its own (via
+ * `quickLogin`, real clicks, doesn't count as part of the recorded procedure
+ * because the recorder is only injected AFTERWARD), and hands over control: the owner
+ * interacts with the window normally. Saves incrementally to
+ * `procedures.json` every 2s (Ctrl+C in the terminal at any time is
+ * safe — nothing is lost) and also when the maximum time is reached.
  *
- * Rodar: npm run replay:record --name=nomeDoProcedimento
- * (nome default se `--name` não for passado: `gravacao-<timestamp>`)
- * (minutos default 15, ajustável com `--minutes=30`)
+ * Run: npm run replay:record --name=procedureName
+ * (default name if `--name` isn't passed: `gravacao-<timestamp>`)
+ * (default minutes 15, adjustable with `--minutes=30`)
  */
 const PROCEDURE_NAME = process.env.npm_config_name || `gravacao-${Date.now()}`
 const MAX_MINUTES = Number(process.env.npm_config_minutes) || 15
 
-describe('gravação interativa de procedimento', () => {
+describe('interactive procedure recording', () => {
   before(async () => {
     await suppressWindowFocusTax()
     await quickLogin(`E2E Recorder ${Date.now()}`)
   })
 
-  it(`grava até ${MAX_MINUTES}min de interação real (nome: "${PROCEDURE_NAME}")`, async function () {
+  it(`records up to ${MAX_MINUTES}min of real interaction (name: "${PROCEDURE_NAME}")`, async function () {
     this.timeout((MAX_MINUTES + 1) * 60_000)
     await attachRecorder()
 
     // eslint-disable-next-line no-console
     console.log(
-      `\n>>> Gravando "${PROCEDURE_NAME}" — interaja com a janela do Alethe normalmente.\n` +
-        `>>> Um botão "REC" aparece no canto inferior direito com atalhos (ex. criar\n` +
-        `>>> projeto numa pasta temporária, sem digitar nada).\n` +
-        `>>> Salva sozinho a cada 2s — Ctrl+C aqui a qualquer momento é seguro.\n` +
-        `>>> Para automaticamente em ${MAX_MINUTES} minuto(s).\n`,
+      `\n>>> Recording "${PROCEDURE_NAME}" — interact with the Alethe window normally.\n` +
+        `>>> A "REC" button appears in the bottom-right corner with shortcuts (e.g. create\n` +
+        `>>> a project in a temporary folder, without typing anything).\n` +
+        `>>> Saves on its own every 2s — Ctrl+C here at any time is safe.\n` +
+        `>>> Stops automatically after ${MAX_MINUTES} minute(s).\n`,
     )
 
     const deadline = Date.now() + MAX_MINUTES * 60_000
     while (Date.now() < deadline) {
-      // `confirm()`/`alert()` nativo trava a página até ser respondido —
-      // detecta e aceita automaticamente (nunca cancela — mesmo padrão já
-      // usado em `clickAndAcceptConfirm`), registrando o passo no MESMO
-      // buffer da página pra manter a ordem cronológica certa no
-      // procedimento salvo (senão um alerta no meio de uma sequência de
-      // cliques ficaria fora de ordem no JSON final).
+      // A native `confirm()`/`alert()` blocks the page until answered —
+      // detects and accepts it automatically (never cancels — same pattern already
+      // used in `clickAndAcceptConfirm`), recording the step in the SAME
+      // page buffer to keep the correct chronological order in the
+      // saved procedure (otherwise an alert in the middle of a sequence of
+      // clicks would end up out of order in the final JSON).
       const alertText = await browser.getAlertText().catch(() => null)
       if (alertText !== null) {
         await browser.acceptAlert()
@@ -67,9 +67,9 @@ describe('gravação interativa de procedimento', () => {
     saveProcedure(PROCEDURE_NAME, finalSteps)
     // eslint-disable-next-line no-console
     console.log(
-      `\n>>> Gravação "${PROCEDURE_NAME}" salva com ${finalSteps.length} passo(s) em e2e/support/procedures.json\n` +
-        `>>> Procedimentos salvos: ${listProcedures().join(', ')}\n` +
-        `>>> Reproduzir com: npm run replay --name=${PROCEDURE_NAME}\n`,
+      `\n>>> Recording "${PROCEDURE_NAME}" saved with ${finalSteps.length} step(s) in e2e/support/procedures.json\n` +
+        `>>> Saved procedures: ${listProcedures().join(', ')}\n` +
+        `>>> Play back with: npm run replay --name=${PROCEDURE_NAME}\n`,
     )
   })
 })

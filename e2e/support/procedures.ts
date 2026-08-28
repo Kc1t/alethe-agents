@@ -1,15 +1,15 @@
 /**
- * Registro de PROCEDIMENTOS nomeados — pedido explícito do dono: uma
- * ferramenta pra guardar um caminho de navegação já descoberto (ex. "abrir
- * Configurações → aba Agentes") e só REPETIR depois, sem precisar re-derivar
- * os seletores/passos toda vez que precisar voltar lá.
+ * Registry of named PROCEDURES — explicit request from the owner: a
+ * tool for storing an already-discovered navigation path (e.g. "open
+ * Settings → Agents tab") and just REPLAYING it later, without needing to re-derive
+ * the selectors/steps every time you need to go back there.
  *
- * Persistido em `procedures.json` (não `.ts`) — arquivo de dados simples,
- * legível, versionável no git, sobrevive entre execuções (cada `wdio run` é
- * um processo Node novo, então guardar só em memória não adiantaria).
+ * Persisted in `procedures.json` (not `.ts`) — a simple, readable, git-versionable
+ * data file, that survives between runs (each `wdio run` is a
+ * new Node process, so keeping it only in memory wouldn't help).
  *
- * Cada passo é uma ação genérica de `uiKit.ts` — este arquivo só SEQUENCIA
- * chamadas que já existem, não inventa nenhuma interação nova.
+ * Each step is a generic action from `uiKit.ts` — this file only SEQUENCES
+ * calls that already exist, it doesn't invent any new interaction.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -31,9 +31,9 @@ import {
 
 export type ProcedureStep =
   | { action: 'click'; text: string; index?: number; scopeSelector?: string }
-  /** Pra botões cujo PRÓPRIO texto muda (ex. gatilho de dropdown que mostra
-   *  o valor atualmente selecionado) — clica pelo texto de um `<label>`
-   *  vizinho estável em vez do texto do botão em si. */
+  /** For buttons whose OWN text changes (e.g. a dropdown trigger that shows
+   *  the currently selected value) — clicks by the text of a stable neighboring
+   *  `<label>` instead of the button's own text. */
   | { action: 'clickNearLabel'; labelText: string; nth?: number }
   | { action: 'type'; placeholder: string; value: string }
   | { action: 'waitText'; text: string }
@@ -63,10 +63,10 @@ export type ProcedureStep =
       deltaX: number
       deltaY: number
       selector?: string
-      /** Coordenadas de origem cruas (px), gravadas automaticamente pelo
-       *  gravador — ganham prioridade sobre `selector` quando ambos vierem
-       *  preenchidos, já que apontam pro ponto exato onde o scroll real
-       *  aconteceu (mais preciso que recalcular o centro de um elemento). */
+      /** Raw origin coordinates (px), recorded automatically by the
+       *  recorder — take priority over `selector` when both are
+       *  filled in, since they point to the exact spot where the real scroll
+       *  happened (more precise than recalculating an element's center). */
       originX?: number
       originY?: number
     }
@@ -87,15 +87,15 @@ function saveStore(store: Record<string, ProcedureStep[]>): void {
   writeFileSync(STORE_PATH, JSON.stringify(store, null, 2) + '\n', 'utf8')
 }
 
-/** Grava (ou sobrescreve) um procedimento nomeado — chamar depois de
- *  descobrir manualmente um caminho de navegação que vale a pena reusar. */
+/** Saves (or overwrites) a named procedure — call after
+ *  manually discovering a navigation path worth reusing. */
 export function saveProcedure(name: string, steps: ProcedureStep[]): void {
   const store = loadStore()
   store[name] = steps
   saveStore(store)
 }
 
-/** Lê os passos de um procedimento salvo, ou `null` se nunca foi gravado. */
+/** Reads the steps of a saved procedure, or `null` if it was never recorded. */
 export function getProcedure(name: string): ProcedureStep[] | null {
   return loadStore()[name] ?? null
 }
@@ -108,20 +108,20 @@ async function runStep(step: ProcedureStep): Promise<void> {
   switch (step.action) {
     case 'click': {
       await clickByText(step.text, { index: step.index, scopeSelector: step.scopeSelector })
-      // Cliques que disparam `confirm()`/`alert()` nativo (ex. "Inicializar
-      // repositório Git") nem sempre viram um passo `acceptAlert` explícito
-      // gravado — se o dono clicar "OK" no diálogo real mais rápido que o
-      // poll de 2s da gravação (`_record.spec.ts`), o alerta nunca chega a
-      // ser detectado NA HORA de gravar, mas o clique que o dispara continua
-      // no procedimento. Sem isso, o replay trava com o diálogo aberto pra
-      // sempre, e todo clique seguinte falha "not interactable" (confirmado
-      // ao vivo — nada a ver com o elemento do PRÓXIMO passo em si). Checa
-      // depois de TODO clique, não só dos marcados — mais robusto do que
-      // confiar na gravação ter pego o timing certo. 150ms (não 500ms):
-      // `confirm()` bloqueia a JS thread na hora, então se existir já está
-      // lá no primeiro check — timeout maior só soma espera morta em toda
-      // gravação real sem nenhum confirm (medido ao vivo: dezenas de
-      // cliques × 500ms perdidos à toa).
+      // Clicks that trigger a native `confirm()`/`alert()` (e.g. "Initialize
+      // Git repository") don't always turn into an explicit `acceptAlert` step
+      // recorded — if the owner clicks "OK" on the real dialog faster than the
+      // recording's 2s poll (`_record.spec.ts`), the alert never gets
+      // detected AT THE MOMENT of recording, but the click that triggers it stays
+      // in the procedure. Without this, replay hangs with the dialog open
+      // forever, and every following click fails with "not interactable" (confirmed
+      // live — nothing to do with the element of the NEXT step itself). Checks
+      // after EVERY click, not just the marked ones — more robust than
+      // trusting that the recording caught the right timing. 150ms (not 500ms):
+      // `confirm()` blocks the JS thread immediately, so if it exists it's already
+      // there on the first check — a bigger timeout would just add dead wait time on every
+      // real recording with no confirm at all (measured live: dozens of
+      // clicks × 500ms wasted for nothing).
       await acceptAlertIfPresent(150)
       return
     }
@@ -167,21 +167,21 @@ async function runStep(step: ProcedureStep): Promise<void> {
   }
 }
 
-/** Roda uma lista de passos direto (sem precisar ter salvo antes) — útil
- *  pra montar/testar um procedimento antes de gravá-lo com `saveProcedure`. */
+/** Runs a list of steps directly (without needing to have saved it before) — useful
+ *  for building/testing a procedure before recording it with `saveProcedure`. */
 export async function runSteps(steps: ProcedureStep[]): Promise<void> {
   for (const step of steps) {
     await runStep(step)
   }
 }
 
-/** Roda um procedimento já salvo pelo nome. Lança erro claro se nunca foi
- *  gravado — nunca falha silenciosamente fingindo que rodou algo. */
+/** Runs an already-saved procedure by name. Throws a clear error if it was never
+ *  recorded — never fails silently pretending it ran something. */
 export async function runProcedure(name: string): Promise<void> {
   const steps = getProcedure(name)
   if (!steps) {
     throw new Error(
-      `runProcedure: nenhum procedimento salvo com o nome "${name}" (salvos: ${listProcedures().join(', ') || 'nenhum'})`,
+      `runProcedure: no procedure saved with the name "${name}" (saved: ${listProcedures().join(', ') || 'none'})`,
     )
   }
   await runSteps(steps)

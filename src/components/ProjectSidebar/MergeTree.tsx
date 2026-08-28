@@ -8,15 +8,15 @@ import styles from './MergeTree.module.css'
 import { deriveCardStatus, type GateResult, type PendingMergeCard } from './SidebarMergePanel'
 
 type MergeTreeProps = {
-  /** Já filtrado pelo pai: `visiblePendingMerges` do projeto ativo — a árvore
-   *  troca sozinha quando o usuário troca de projeto na sidebar. */
+  /** Already filtered by the parent: `visiblePendingMerges` for the active
+   *  project — the tree swaps on its own when the user switches project in the sidebar. */
   items: PendingMergeCard[]
   gateStatus: Record<string, GateResult>
   mergePhase: MergePhase
   activeCardId: string | null
   terminalTheme: Theme
-  /** true quando há pendências em OUTROS projetos além do ativo — usado só
-   *  pro texto do estado vazio, o badge global do painel já mostra a soma. */
+  /** true when there are pending items in OTHER projects besides the active
+   *  one — used only for the empty-state text, the panel's global badge already shows the total. */
   hasOtherProjectsPending: boolean
   onSelect: (item: PendingMergeCard) => void
 }
@@ -28,11 +28,11 @@ const TONE_CLASS: Record<'working' | 'waiting' | 'offline' | 'stopped', string> 
   stopped: styles.toneStopped,
 }
 
-/** Árvore compacta: um ponto de status + ícone/nome do agente + status curto
- *  por worktree, conectados por uma linha decorativa até um nó "main" fixo
- *  no fim — representa os terminais/worktrees abertos do projeto ativo, não
- *  topologia git real (sem ahead/behind). Clicar numa linha abre o popup de
- *  detalhe (MergeCenterModal) com o card completo de sempre. */
+/** Compact tree: a status dot + agent icon/name + short status per worktree,
+ *  connected by a decorative line down to a fixed "main" node at the end —
+ *  represents the active project's open terminals/worktrees, not real git
+ *  topology (no ahead/behind). Clicking a row opens the usual detail popup
+ *  (MergeCenterModal) with the full card. */
 export function MergeTree({
   items,
   gateStatus,

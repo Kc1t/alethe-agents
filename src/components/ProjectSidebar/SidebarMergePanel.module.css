@@ -6,20 +6,20 @@
   background: var(--bg-sunken);
   margin-top: 8px;
   margin-bottom: 8px;
-  /* A altura vem de style inline (arrastando .resizeHandle) — a lista de
-     projetos acima é flex:1 (ProjectSidebar.module.css .list), então
-     crescer este painel só encolhe a lista, nunca sobrepõe nada. Sempre um
-     número (nunca `auto`) pra "height" poder animar — mesma ideia do
-     drawer direito (App.module.css `[data-panel]`), que também transiciona
-     entre dois tamanhos numéricos ao recolher via react-resizable-panels. */
+  /* Height comes from an inline style (dragging .resizeHandle) — the project
+     list above is flex:1 (ProjectSidebar.module.css .list), so growing this
+     panel only shrinks the list, never overlaps anything. Always a number
+     (never `auto`) so "height" can animate — same idea as the right drawer
+     (App.module.css `[data-panel]`), which also transitions between two
+     numeric sizes when collapsing via react-resizable-panels. */
   flex-shrink: 0;
   min-height: 0;
   overflow: hidden;
   transition: height 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Cabeçalho fica FORA da área com scroll — clicar recolhe/expande a árvore,
-   e o botão continua visível/clicável mesmo com a lista rolada. */
+/* Header sits OUTSIDE the scrollable area — clicking collapses/expands the
+   tree, and the button stays visible/clickable even with the list scrolled. */
 .header {
   display: flex;
   align-items: center;
@@ -45,9 +45,9 @@
   color: var(--fg-muted);
 }
 
-/* DEV-ONLY — botão de frasco pra ligar/desligar os cards sintéticos de
-   teste sem precisar editar código (ver mocksEnabled em SidebarMergePanel).
-   Some quando o dono decidir tirar os mocks de vez. */
+/* DEV-ONLY — flask button to toggle synthetic test cards on/off without
+   editing code (see mocksEnabled in SidebarMergePanel). Goes away once the
+   mocks are removed for good. */
 .mocksToggle {
   display: flex;
   align-items: center;
@@ -79,10 +79,10 @@
   background: var(--status-waiting-soft);
 }
 
-/* Preenche o que sobrar da altura do .container depois do cabeçalho — cresce/
-   encolhe sozinho conforme a alça de arrasto muda a altura do .container.
-   Opacidade/deslocamento seguem o mesmo timing de .sidebarContent em
-   App.module.css (o fade do drawer direito ao recolher). */
+/* Fills whatever's left of .container's height after the header — grows/
+   shrinks on its own as the resize handle changes .container's height.
+   Opacity/offset follow the same timing as .sidebarContent in
+   App.module.css (the right drawer's fade on collapse). */
 .body {
   flex: 1;
   min-height: 0;
@@ -100,8 +100,8 @@
   pointer-events: none;
 }
 
-/* Alça de arrasto no TOPO do painel — arrasta a fronteira com a lista de
-   projetos acima pra cima/baixo (ajusta .container via style inline). */
+/* Resize handle at the TOP of the panel — drags the boundary with the
+   project list above up/down (adjusts .container via inline style). */
 .resizeHandle {
   position: relative;
   flex-shrink: 0;

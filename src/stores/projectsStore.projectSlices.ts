@@ -597,8 +597,6 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
         const agentId = `merge-${nanoid(6)}`
         const info = await worktreeProvision(repo, agentId, project.worktreeMode ?? 'gitWorktree')
 
-        // Mesma ordem de migrateProjectTerminalsToWorktrees: cwd/worktreeAgentId
-        // primeiro, sessionId limpo, restart depois — ver comentário lá.
         updateProject(projectId, (p) => ({
           ...p,
           terminals: p.terminals.map((t) => {

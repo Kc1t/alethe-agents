@@ -649,7 +649,7 @@ pub struct DiffSummaryEntry {
     pub deletions: Option<usize>,
 }
 
-/// `opencode.json` (MCP do Graphify + plugin GSD, escritos automaticamente a
+/// `opencode.json` (plugin GSD, escrito automaticamente a
 
 /// `.opencode/alethe-gsd-config.json`, `.planning/goal.md` etc. como se
 
@@ -717,7 +717,8 @@ fn git_diff_summary_inner(
     let raw = String::from_utf8_lossy(&output.stdout);
 
     // Coleta numstat para contagem exata de linhas adicionadas e removidas
-    let mut numstat_map: std::collections::HashMap<String, (usize, usize)> = std::collections::HashMap::new();
+    let mut numstat_map: std::collections::HashMap<String, (usize, usize)> =
+        std::collections::HashMap::new();
     if let Ok(numstat_output) = checked_output(&root, &["diff", "--numstat", "-z", &range]) {
         let numstat_raw = String::from_utf8_lossy(&numstat_output.stdout);
         let parts: Vec<&str> = numstat_raw.split('\0').filter(|s| !s.is_empty()).collect();
@@ -797,14 +798,14 @@ pub async fn git_diff_summary(
         git_diff_summary_inner(repo_root, source, target, worktree_path)
     })
     .await
-    .map_err(|error| format!("git_diff_summary: falha na task bloqueante: {error}"))?
+    .map_err(|error| format!("git_diff_summary: blocking task failed: {error}"))?
 }
 
-/// Um commit do histórico, pro gráfico de commits do painel de Controle de
-/// versão — o cálculo de raia/coluna (lane) é sempre client-side (o próprio
-/// `git log` não devolve coordenadas de gráfico prontas; VSCode/gitk fazem o
-/// mesmo cálculo no cliente a partir de hash→pais), então aqui só devolvemos
-/// os dados crus.
+/// A commit from history, for the commit graph on the Version Control panel
+/// — the lane/column calculation is always client-side (`git log` itself
+/// doesn't return ready-made graph coordinates; VSCode/gitk do the same
+/// calculation on the client from hash→parents), so here we just return the
+/// raw data.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitCommitEntry {
@@ -812,25 +813,25 @@ pub struct GitCommitEntry {
     pub parents: Vec<String>,
     pub author_name: String,
     pub author_email: String,
-    /// Segundos desde epoch (`%at`, o mesmo formato de `git log`).
+    /// Seconds since epoch (`%at`, the same format `git log` uses).
     pub timestamp: i64,
     pub subject: String,
-    /// Branches/tags apontando pra este commit (`%D`), vazio quando nenhuma.
+    /// Branches/tags pointing at this commit (`%D`), empty when none.
     pub refs: Vec<String>,
 }
 
-/// Separador de campo improvável de aparecer em nome/e-mail/assunto de
-/// commit — mesmo problema do `-z` do `git diff --name-status` acima, só que
-/// aqui `-z` trocaria também o separador ENTRE commits, e `%s` (assunto) já é
-/// garantidamente uma linha só pela própria convenção do git, então um
-/// separador de campo simples (não-NUL) com quebra de linha normal entre
-/// commits já resolve sem ambiguidade.
+/// Field separator unlikely to appear in a commit's name/e-mail/subject —
+/// same problem as the `-z` on `git diff --name-status` above, except here
+/// `-z` would also replace the separator BETWEEN commits, and `%s` (subject)
+/// is already guaranteed to be a single line by git's own convention, so a
+/// plain (non-NUL) field separator combined with a normal newline between
+/// commits already resolves this without ambiguity.
 const LOG_GRAPH_FIELD_SEP: char = '\u{1f}';
 
-/// Reconhece `alethe/agent-<id>` e `alethe/merge-<id>` (com ou sem prefixo de
-/// decoração como `HEAD -> `/`tag: `/`origin/`) — as branches efêmeras que o
-/// próprio Alethe cria e apaga nos fluxos de worktree/merge, nunca branches
-/// de verdade do ponto de vista do usuário.
+/// Recognizes `alethe/agent-<id>` and `alethe/merge-<id>` (with or without a
+/// decoration prefix like `HEAD -> `/`tag: `/`origin/`) — the ephemeral
+/// branches that Alethe itself creates and deletes in worktree/merge flows,
+/// never real branches from the user's point of view.
 fn is_ephemeral_ref(raw: &str) -> bool {
     let name = raw
         .strip_prefix("HEAD -> ")
@@ -846,27 +847,26 @@ fn git_log_graph_inner(repo: String, max_count: u32) -> Result<Vec<GitCommitEntr
         "--format=%H{sep}%P{sep}%an{sep}%ae{sep}%at{sep}%s{sep}%D",
         sep = LOG_GRAPH_FIELD_SEP
     );
-    // `--branches --tags` (não `--all`): mostra as branches/tags reais do
-    // usuário no gráfico — sem isso, o log cai pra só o histórico de HEAD e
-    // qualquer outra branch simplesmente some da interface. Os `--exclude`
-    // tiram só as branches EFÊMERAS que o próprio Alethe cria e descarta
-    // pros fluxos de worktree/merge (`alethe/agent-<id>`, `alethe/merge-<id>`
-    // — ver worktrees.rs/conflict_resolution.rs), que não são branches de
-    // verdade do ponto de vista do usuário e só poluíam o grafo com raias
-    // isoladas sem nenhuma linha conectando.
+    // `--branches --tags` (not `--all`): shows the user's real branches/tags
+    // in the graph — without this, the log falls back to just HEAD's history
+    // and any other branch simply disappears from the UI. The `--exclude`
+    // flags strip out only the EPHEMERAL branches that Alethe itself creates
+    // and discards for worktree/merge flows (`alethe/agent-<id>`,
+    // `alethe/merge-<id>` — see worktrees.rs/conflict_resolution.rs), which
+    // aren't real branches from the user's point of view and would only
+    // pollute the graph with isolated lanes with no connecting line.
     //
-    // `--topo-order`: SEM isso, `git log` ordena por DATA de commit, não
-    // topologicamente — um commit pode aparecer na lista antes do próprio
-    // pai sempre que houver qualquer discrepância de timestamp entre eles
-    // (comum aqui: agentes de IA rodando em horários diferentes, rebase,
-    // relógio de máquina divergente). O algoritmo de raias do frontend
-    // (`buildGraphRows`, GitGraphList.tsx) assume que um commit SEMPRE
-    // aparece antes de qualquer um dos seus pais na lista — quando isso
-    // quebra, a raia daquele branch não encontra o pai ainda "pendente" e a
-    // linha simplesmente para, parecendo um coto isolado que "volta pra
-    // main" sem nunca ter se conectado de verdade. `--topo-order` garante
-    // essa invariante (filhos sempre antes dos pais), do mesmo jeito que
-    // GitLens/gitk fazem.
+    // `--topo-order`: WITHOUT this, `git log` orders by commit DATE, not
+    // topologically — a commit can appear in the list before its own parent
+    // whenever there's any timestamp discrepancy between them (common here:
+    // AI agents running at different times, rebases, diverging machine
+    // clocks). The frontend's lane algorithm (`buildGraphRows`,
+    // GitGraphList.tsx) assumes a commit ALWAYS appears before any of its
+    // parents in the list — when that breaks, that branch's lane never finds
+    // its still-"pending" parent and the line simply stops, looking like an
+    // isolated stub that "goes back to main" without ever truly connecting.
+    // `--topo-order` guarantees that invariant (children always before
+    // parents), the same way GitLens/gitk do.
     let mut args = vec![
         "log",
         "--topo-order",
@@ -900,13 +900,13 @@ fn git_log_graph_inner(repo: String, max_count: u32) -> Result<Vec<GitCommitEntr
             let timestamp = fields.next()?.trim().parse().ok()?;
             let subject = fields.next()?.to_string();
             let refs_raw = fields.next().unwrap_or("").trim();
-            // `--exclude` só afeta quais commits o `log` PERCORRE, não a
-            // decoração (`%D`) de um commit que ainda é alcançável por outra
-            // ref incluída — se uma branch efêmera do Alethe aponta pro
-            // MESMO commit que já está em `main` (comum depois de um merge
-            // --ff-only, onde nenhum commit novo é criado), o nome dela
-            // continua aparecendo como badge mesmo excluída da travessia.
-            // Filtra de novo aqui, na decoração em si.
+            // `--exclude` only affects which commits `log` TRAVERSES, not the
+            // decoration (`%D`) of a commit that's still reachable through
+            // another included ref — if an ephemeral Alethe branch points at
+            // the SAME commit that's already on `main` (common after a
+            // --ff-only merge, where no new commit is created), its name
+            // still shows up as a badge even though it was excluded from the
+            // traversal. Filter it out again here, on the decoration itself.
             let refs = if refs_raw.is_empty() {
                 Vec::new()
             } else {
@@ -935,16 +935,16 @@ fn git_log_graph_inner(repo: String, max_count: u32) -> Result<Vec<GitCommitEntr
 pub async fn git_log_graph(repo: String, max_count: u32) -> Result<Vec<GitCommitEntry>, String> {
     tokio::task::spawn_blocking(move || git_log_graph_inner(repo, max_count))
         .await
-        .map_err(|error| format!("git_log_graph: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("git_log_graph: blocking task failed: {error}"))?
 }
 
-// --- Ações por commit do gráfico (menu de contexto) ---
+// --- Per-commit actions from the graph (context menu) ---
 
-/// Só aceita hash hexadecimal — recusa qualquer coisa que pareça uma flag
-/// (`-...`) ou ref arbitrária, já que este valor sempre deveria vir de um
-/// `hash` que NÓS geramos via `git log` (git_log_graph), nunca digitado
-/// livremente pelo usuário. Defesa em profundidade contra injeção de
-/// argumento nos comandos abaixo (alguns são destrutivos: reset --hard).
+/// Only accepts a hexadecimal hash — rejects anything that looks like a flag
+/// (`-...`) or an arbitrary ref, since this value should always come from a
+/// `hash` WE generate via `git log` (git_log_graph), never typed freely by
+/// the user. Defense in depth against argument injection in the commands
+/// below (some of which are destructive: reset --hard).
 fn validate_commit_hash(hash: &str) -> Result<(), String> {
     if hash.is_empty() || hash.len() > 40 || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err("invalid_commit_hash".to_string());
@@ -952,8 +952,8 @@ fn validate_commit_hash(hash: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Recusa nome de branch vazio, que pareça uma flag, ou com espaço/controle
-/// — mesma defesa em profundidade do hash acima.
+/// Rejects an empty branch name, one that looks like a flag, or one with a
+/// whitespace/control character — same defense-in-depth as the hash above.
 fn validate_branch_name(name: &str) -> Result<(), String> {
     if name.is_empty()
         || name.starts_with('-')
@@ -964,10 +964,10 @@ fn validate_branch_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Parseia a saída de `--name-status -z` (git diff/diff-tree) em
-/// `GitFileChange` — mesmo formato usado por `git_status`/`git_diff_summary`,
-/// extraído aqui pra ser reaproveitado pelas 3 funções novas abaixo
-/// (arquivos de um commit, incoming, outgoing) sem duplicar o parsing.
+/// Parses the output of `--name-status -z` (git diff/diff-tree) into
+/// `GitFileChange` — the same format used by `git_status`/`git_diff_summary`,
+/// extracted here to be reused by the 3 new functions below (files of a
+/// commit, incoming, outgoing) without duplicating the parsing.
 fn parse_name_status_z(raw: &[u8]) -> Vec<GitFileChange> {
     let text = String::from_utf8_lossy(raw);
     let fields: Vec<&str> = text.split('\0').filter(|s| !s.is_empty()).collect();
@@ -1005,7 +1005,8 @@ fn git_show_commit_files_inner(
 ) -> Result<Vec<GitFileChange>, String> {
     let root = repository_root(&repo_root)?;
     validate_commit_hash(&hash)?;
-    // `--root` cobre o commit raiz (sem pai), que `diff-tree` sozinho ignora.
+    // `--root` covers the root commit (no parent), which `diff-tree` alone
+    // ignores.
     let output = checked_output(
         &root,
         &[
@@ -1028,11 +1029,11 @@ pub async fn git_show_commit_files(
 ) -> Result<Vec<GitFileChange>, String> {
     tokio::task::spawn_blocking(move || git_show_commit_files_inner(repo, hash))
         .await
-        .map_err(|error| format!("git_show_commit_files: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("git_show_commit_files: blocking task failed: {error}"))?
 }
 
-/// Mensagem COMPLETA do commit (`%B` — subject + corpo), pra tela de detalhe
-/// do gráfico de commits (`git_log_graph` só devolve `%s`, uma linha só).
+/// The FULL commit message (`%B` — subject + body), for the commit detail
+/// screen (`git_log_graph` only returns `%s`, a single line).
 fn git_show_commit_message_inner(repo_root: String, hash: String) -> Result<String, String> {
     let root = repository_root(&repo_root)?;
     validate_commit_hash(&hash)?;
@@ -1046,7 +1047,7 @@ fn git_show_commit_message_inner(repo_root: String, hash: String) -> Result<Stri
 pub async fn git_show_commit_message(repo: String, hash: String) -> Result<String, String> {
     tokio::task::spawn_blocking(move || git_show_commit_message_inner(repo, hash))
         .await
-        .map_err(|error| format!("git_show_commit_message: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("git_show_commit_message: blocking task failed: {error}"))?
 }
 
 fn git_create_branch_from_commit_inner(
@@ -1071,7 +1072,7 @@ pub async fn git_create_branch_from_commit(
         git_create_branch_from_commit_inner(repo, hash, branch_name)
     })
     .await
-    .map_err(|error| format!("git_create_branch_from_commit: falha na task bloqueante: {error}"))?
+    .map_err(|error| format!("git_create_branch_from_commit: blocking task failed: {error}"))?
 }
 
 fn git_cherry_pick_commit_inner(repo_root: String, hash: String) -> Result<String, String> {
@@ -1085,7 +1086,7 @@ fn git_cherry_pick_commit_inner(repo_root: String, hash: String) -> Result<Strin
 pub async fn git_cherry_pick_commit(repo: String, hash: String) -> Result<String, String> {
     tokio::task::spawn_blocking(move || git_cherry_pick_commit_inner(repo, hash))
         .await
-        .map_err(|error| format!("git_cherry_pick_commit: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("git_cherry_pick_commit: blocking task failed: {error}"))?
 }
 
 fn git_revert_commit_inner(repo_root: String, hash: String) -> Result<String, String> {
@@ -1099,7 +1100,7 @@ fn git_revert_commit_inner(repo_root: String, hash: String) -> Result<String, St
 pub async fn git_revert_commit(repo: String, hash: String) -> Result<String, String> {
     tokio::task::spawn_blocking(move || git_revert_commit_inner(repo, hash))
         .await
-        .map_err(|error| format!("git_revert_commit: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("git_revert_commit: blocking task failed: {error}"))?
 }
 
 fn git_reset_to_commit_inner(repo_root: String, hash: String, mode: String) -> Result<(), String> {
@@ -1115,25 +1116,26 @@ fn git_reset_to_commit_inner(repo_root: String, hash: String, mode: String) -> R
     Ok(())
 }
 
-/// `mode`: "soft" (mantém staged), "mixed" (mantém no working tree, unstage)
-/// ou "hard" (descarta tudo — destrutivo, a UI confirma antes de chamar).
+/// `mode`: "soft" (keeps changes staged), "mixed" (keeps changes in the
+/// working tree, unstaged), or "hard" (discards everything — destructive,
+/// the UI confirms before calling).
 #[tauri::command]
 pub async fn git_reset_to_commit(repo: String, hash: String, mode: String) -> Result<(), String> {
     tokio::task::spawn_blocking(move || git_reset_to_commit_inner(repo, hash, mode))
         .await
-        .map_err(|error| format!("git_reset_to_commit: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("git_reset_to_commit: blocking task failed: {error}"))?
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IncomingOutgoing {
-    /// Arquivos que mudam no working tree ao trazer `@{upstream}` (pull).
+    /// Files that change in the working tree when pulling in `@{upstream}` (pull).
     pub incoming: Vec<GitFileChange>,
-    /// Arquivos que mudam no remoto ao mandar HEAD pra lá (push).
+    /// Files that change on the remote when sending HEAD there (push).
     pub outgoing: Vec<GitFileChange>,
-    /// `false` quando o branch atual não tem upstream configurado — nesse
-    /// caso `incoming`/`outgoing` vêm vazios (não é erro, é normal pra um
-    /// branch local que nunca foi publicado).
+    /// `false` when the current branch has no upstream configured — in that
+    /// case `incoming`/`outgoing` come back empty (not an error, it's normal
+    /// for a local branch that was never published).
     pub has_upstream: bool,
 }
 
@@ -1176,7 +1178,7 @@ fn git_incoming_outgoing_inner(repo_root: String) -> Result<IncomingOutgoing, St
 pub async fn git_incoming_outgoing(repo: String) -> Result<IncomingOutgoing, String> {
     tokio::task::spawn_blocking(move || git_incoming_outgoing_inner(repo))
         .await
-        .map_err(|error| format!("git_incoming_outgoing: falha na task bloqueante: {error}"))?
+        .map_err(|error| format!("git_incoming_outgoing: blocking task failed: {error}"))?
 }
 
 fn git_pull_inner(repo_root: String) -> Result<String, String> {
@@ -1407,11 +1409,11 @@ mod tests {
         assert!(find("new.txt").is_some_and(|e| e.status == "A"));
         assert!(
             find("new-name.txt").is_some(),
-            "rename deveria aparecer com o nome novo: {entries:?}"
+            "rename should show up under the new name: {entries:?}"
         );
         assert!(
             find("old-name.txt").is_none(),
-            "rename não deveria duplicar o nome antigo: {entries:?}"
+            "rename should not duplicate the old name: {entries:?}"
         );
 
         fs::remove_dir_all(root).unwrap();
@@ -1438,7 +1440,7 @@ mod tests {
         .unwrap();
         assert!(
             without_worktree.is_empty(),
-            "sem worktree_path, diff de commits deve ficar vazio"
+            "without worktree_path, the commit diff should be empty"
         );
 
         fs::write(root.join("novo.txt"), "").unwrap();
@@ -1464,11 +1466,11 @@ mod tests {
         .unwrap();
         assert!(
             with_worktree.iter().any(|e| e.path == "novo.txt"),
-            "com worktree_path, arquivo não commitado deve aparecer: {with_worktree:?}"
+            "with worktree_path, an uncommitted file should show up: {with_worktree:?}"
         );
         assert!(
             with_worktree.iter().all(|e| !e.path.starts_with(".planning/") && !e.path.starts_with(".opencode/") && e.path != "opencode.json"),
-            "infraestrutura do Alethe (.planning/, .opencode/, opencode.json) nunca deve aparecer: {with_worktree:?}"
+            "Alethe infrastructure (.planning/, .opencode/, opencode.json) should never show up: {with_worktree:?}"
         );
 
         fs::remove_dir_all(root).unwrap();
@@ -1506,7 +1508,7 @@ mod tests {
         let lock_file = root.join(".git").join("index.lock");
         fs::write(&lock_file, b"").unwrap();
 
-        // Simula outro processo git segurando o index.lock brevemente — some
+        // Simulates another git process briefly holding index.lock — it goes away
 
         let lock_file_clone = lock_file.clone();
         std::thread::spawn(move || {
@@ -1517,7 +1519,7 @@ mod tests {
         let result = checked_output(&root, &["status"]);
         assert!(
             result.is_ok(),
-            "esperava sucesso após o lock transitório sumir: {result:?}"
+            "expected success after the transient lock disappears: {result:?}"
         );
 
         fs::remove_dir_all(root).unwrap();
