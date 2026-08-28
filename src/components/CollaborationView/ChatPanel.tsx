@@ -166,6 +166,13 @@ export function ChatPanel({ source }: { source: ChatSource }) {
     () => conversation?.members.find((member) => member.accountRoute !== localAccountRoute) ?? null,
     [conversation, localAccountRoute],
   )
+  // Everyone else in the conversation — for a project channel this is every collaborator with
+  // access, shown as a row of avatars in the header (WhatsApp-style), so people already know who
+  // else is in the channel without opening the collaborators list separately.
+  const otherMembers = useMemo(
+    () => conversation?.members.filter((member) => member.accountRoute !== localAccountRoute) ?? [],
+    [conversation, localAccountRoute],
+  )
   const p2p = useP2pAutoConnect(otherMember?.accountRoute ?? null)
   const [draft, setDraft] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
@@ -608,6 +615,21 @@ export function ChatPanel({ source }: { source: ChatSource }) {
             <span className={`${styles.e2eBadge} ${styles[`e2eBadge_${connectionState}`]}`}>
               {t(`chat.connectionState.${connectionState}`)}
             </span>
+            {source.kind === 'project' && otherMembers.length > 0 ? (
+              <div className={styles.headerMembers} title={t('chat.headerMembersTitle', { count: otherMembers.length })}>
+                {otherMembers.slice(0, 4).map((member) => (
+                  <Avatar
+                    key={member.accountRoute}
+                    src={null}
+                    initial={initialsFor(member.accountRoute)}
+                    className={styles.headerMemberAvatar}
+                  />
+                ))}
+                {otherMembers.length > 4 ? (
+                  <span className={styles.headerMemberOverflow}>+{otherMembers.length - 4}</span>
+                ) : null}
+              </div>
+            ) : null}
             <button
               type="button"
               className={styles.headerSearchButton}
@@ -845,6 +867,17 @@ export function ChatPanel({ source }: { source: ChatSource }) {
                 return
               }
               if (event.key === 'Enter') void send()
+            }}
+            onPaste={(event) => {
+              const files = Array.from(event.clipboardData.items)
+                .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+                .map((item) => item.getAsFile())
+                .filter((file): file is File => file !== null)
+              if (files.length === 0) return
+              // A pasted image has no filename from the clipboard — text keeps flowing into the
+              // draft as usual, only the image itself is intercepted and attached.
+              event.preventDefault()
+              for (const file of files) void attachFile(file)
             }}
           />
           <input

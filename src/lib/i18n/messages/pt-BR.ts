@@ -52,6 +52,7 @@ export const ptBR: Record<MessageKey, string> = {
   'chat.slashHint': 'Tipo da mensagem',
   'chat.slashNoMatch': 'Nenhum comando encontrado',
   'chat.mentionHint': 'Mencionar',
+  'chat.headerMembersTitle': '{count} outro(s) membro(s) neste canal',
   'chat.mentionNoMatch': 'Nenhum membro encontrado',
   'chat.searchMessages': 'Buscar mensagens',
   'chat.searchPlaceholder': 'Buscar nesta conversa…',

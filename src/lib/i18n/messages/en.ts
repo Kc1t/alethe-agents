@@ -50,6 +50,7 @@ export const en = {
   'chat.slashHint': 'Message type',
   'chat.slashNoMatch': 'No matching command',
   'chat.mentionHint': 'Mention',
+  'chat.headerMembersTitle': '{count} other member(s) in this channel',
   'chat.mentionNoMatch': 'No matching member',
   'chat.searchMessages': 'Search messages',
   'chat.searchPlaceholder': 'Search in this conversation…',

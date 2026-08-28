@@ -22,6 +22,8 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- The chat header for a project channel now shows a small stack of avatars (WhatsApp-style) for every other collaborator in the channel, so it's visible at a glance who else has access without opening a separate members list.
+- Pasting an image (Ctrl+V) directly into the chat composer now attaches and sends it immediately, the same way the paperclip attach button does — no need to save the image to a file first.
 - A project collaborator's grant (permissions + which folders they can see) can now be edited in place instead of only fully revoked and re-invited from scratch — closes a real gap where "changing someone's access" meant losing the original grant and starting over.
 - The chat panel now has a message search (magnifying-glass icon in the header): filters the current conversation down to messages containing the typed text, with the matching text highlighted inline, instead of having to scroll back through history by hand.
 - Sending or receiving a chat message is now fast regardless of how long the conversation's history already is: it used to re-serialize and rewrite the *entire* conversation document (every message ever sent) to disk on every single send/receive, so a long-running chat got measurably slower over time purely from re-writing bytes that hadn't changed. New messages are now appended to a small per-conversation journal file instead (an O(1) write), with the full document only rewritten periodically (every 50 messages) or whenever some other change already needs a full rewrite anyway (editing/deleting/reacting to a message, etc.) — the on-disk message format itself is unchanged, only how often the expensive full rewrite happens.

@@ -24,6 +24,39 @@
   color: var(--fg);
 }
 
+.headerMembers {
+  display: flex;
+  align-items: center;
+}
+
+.headerMemberAvatar {
+  width: 22px;
+  height: 22px;
+  font-size: 9px;
+  border: 2px solid var(--panel);
+  border-radius: 999px;
+  margin-left: -6px;
+}
+
+.headerMemberAvatar:first-child {
+  margin-left: 0;
+}
+
+.headerMemberOverflow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: -6px;
+  border: 2px solid var(--panel);
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
 .headerSearchButton {
   margin-left: auto;
   display: flex;

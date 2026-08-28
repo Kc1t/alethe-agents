@@ -154,3 +154,21 @@ Custom grids support `colSpan`, `rowSpan`, drag-and-drop swapping, and resizable
 ## Agent Planning
 
 Agent Planning / Agent Canvas is experimental. It provides a visual control surface for coordinating agent sessions and workers from inside Alethe.
+
+## Project Collaboration
+
+Opt-in, end-to-end encrypted collaboration between trusted devices — never active until a user
+explicitly enables it. See `docs/PROJECT_COLLABORATION_PLAN_AND_STATUS.md` for architecture and
+current status, and `docs/CHANGELOG.md` for the dated history of what shipped.
+
+- Google-authenticated device identity, trust approval/revocation, and key rotation.
+- Direct P2P connections (STUN + UDP hole punching) with an optional personal Cloudflare relay
+  fallback for when a direct connection isn't possible.
+- Project invitations with per-member permissions and folder scopes, editable after issuing.
+- End-to-end encrypted chat: direct messages and per-project channels, mentions, message search,
+  attachments, and live avatar sync between chat contacts.
+- Shared, project-scoped tasks with assignment, visibility, and comments.
+- An access center for collaboration/security notifications (invites, grants, sync conflicts,
+  device approvals).
+- "Cofre & Pastas" — per-project collaborator list with editable permission presets, and an entry
+  point into the backup folder-tree browser.

@@ -19,8 +19,8 @@ At the repository root — the app directory. It contains:
 
 - `src/` — React frontend.
 - `src-tauri/` — Rust/Tauri backend.
-- `docs/` — versioned docs (`FEATURES.md`, `CHANGELOG.md`, `OVERVIEW.md`, `BRAND.md`,
-  `DIAGNOSTICO_MATURIDADE_TECNICA.md`).
+- `docs/` — versioned docs (`FEATURES.md`, `CHANGELOG.md`, `OVERVIEW.md`, `BRAND.md`, plus `adr/`
+  and `security/` for the project-collaboration feature — see §9).
 - `package.json`, `vite.config.ts`, `tsconfig.json`, `tests/`.
 
 ## 3. Stack
@@ -124,8 +124,18 @@ Versioned in this repo:
 - [`docs/OVERVIEW.md`](docs/OVERVIEW.md) — domain model (Group, Project, Container, Pane, Terminal,
   Sub-tab, PTY), stack, and persistence.
 - [`docs/BRAND.md`](docs/BRAND.md).
-- [`docs/DIAGNOSTICO_MATURIDADE_TECNICA.md`](docs/DIAGNOSTICO_MATURIDADE_TECNICA.md) — diagnostic of
-  code organization, duplication, and performance, with prioritized recommendations.
+- [`docs/PRIVACY.md`](docs/PRIVACY.md) — data flow, what's stored where, what's encrypted.
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — aspirational, not a commitment; check before assuming an
+  item is unimplemented.
+- [`docs/THEMES.md`](docs/THEMES.md), [`docs/UI_VISUAL_STYLES.md`](docs/UI_VISUAL_STYLES.md) —
+  theming and the two sidebar visual styles (Normal/Clean).
+- [`docs/PROJECT_COLLABORATION_PLAN_AND_STATUS.md`](docs/PROJECT_COLLABORATION_PLAN_AND_STATUS.md)
+  — current status, known gaps, and next steps for the project-collaboration feature (P2P sync,
+  chat, tasks, mesh). Phase-by-phase history now lives in `docs/CHANGELOG.md`.
+- [`docs/adr/`](docs/adr) — Architecture Decision Records for project collaboration (never edit an
+  old ADR in place; a changed decision gets a new ADR that marks the old one superseded).
+- [`docs/security/`](docs/security) — per-phase security gates and the sync threat model; audit
+  history, not meant to be pruned as phases age.
 
 The domain glossary (Group, Project, Container, Pane, Sub-tab, PTY) is summarized in `CONTRIBUTING.md`.
 
