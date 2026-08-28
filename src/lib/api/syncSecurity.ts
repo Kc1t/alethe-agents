@@ -219,6 +219,27 @@ export async function syncRevokeGrant(grantId: string): Promise<SyncGrantRecord>
   })
 }
 
+export type SyncPathScope = { effect: 'allow' | 'deny'; pattern: string }
+
+/** Updates the `permissions`/`path_scopes` of an already-active grant in place — previously the
+ * only way to change a collaborator's access was revoking their grant entirely and issuing a new
+ * invitation from scratch. Desktop-only for now (no Web route exists yet). */
+export async function syncUpdateGrant(
+  grantId: string,
+  permissions: SyncPermission[],
+  pathScopes: SyncPathScope[],
+): Promise<SyncGrantRecord> {
+  if (!isTauriEnv()) throw new Error('update_grant_desktop_only')
+  return invoke<SyncGrantRecord>('sync_update_grant', { grantId, permissions, pathScopes })
+}
+
+/** Lists every non-revoked grant for a single project, instead of every grant across every
+ * project this account has ever issued/received (which is all `syncSecuritySnapshot` returns). */
+export async function syncListProjectGrants(projectId: string): Promise<SyncGrantRecord[]> {
+  if (!isTauriEnv()) throw new Error('list_project_grants_desktop_only')
+  return invoke<SyncGrantRecord[]>('sync_list_project_grants', { projectId })
+}
+
 /**
  * Rotates the local device's Ed25519 identity and X25519 agreement keys together (Phase 12).
  * Every peer that cached the old public key must re-authenticate against the new one — this call
@@ -371,15 +392,44 @@ export async function syncSealChatContactAck(
   })
 }
 
+export type ChatContactAckResult = {
+  accountRoute: string
+  agreementPublicKey: string
+  displayLabel: string
+}
+
 /**
  * Decrypts a delivered `chat_contact_ack` envelope and, only if its token is a still-valid,
  * unconsumed token this device itself generated, automatically adds the sender as a chat contact.
- * Returns the added contact's display label, or `null` if the token didn't check out (the
- * envelope was not addressed to a currently-live invite code — ignore it).
+ * Returns the added contact's info, or `null` if the token didn't check out (the envelope was not
+ * addressed to a currently-live invite code — ignore it). The caller must still send a
+ * `chat_contact_confirm` envelope back (see `syncSealChatContactConfirm`) — the sender is waiting
+ * on it before committing the contact on their own side (closes the replay gap where a pasted
+ * pairing code alone used to be enough).
  */
-export async function syncOpenChatContactAck(ciphertext: string): Promise<string | null> {
+export async function syncOpenChatContactAck(ciphertext: string): Promise<ChatContactAckResult | null> {
   if (!isTauriEnv()) throw new Error('chat_contact_ack_desktop_only')
-  return invoke<string | null>('sync_open_chat_contact_ack', { ciphertext })
+  return invoke<ChatContactAckResult | null>('sync_open_chat_contact_ack', { ciphertext })
+}
+
+/**
+ * Seals a minimal "the token checked out, go ahead and commit me as a contact" signal for whoever
+ * redeemed a pairing code — send this as a `chat_contact_confirm` envelope right after
+ * `syncOpenChatContactAck` returns a non-null result.
+ */
+export async function syncSealChatContactConfirm(recipientAgreementPublicKey: string): Promise<string> {
+  if (!isTauriEnv()) throw new Error('chat_contact_confirm_desktop_only')
+  return invoke<string>('sync_seal_chat_contact_confirm', { recipientAgreementPublicKey })
+}
+
+/**
+ * Decrypts a delivered `chat_contact_confirm` envelope. Returns `true` only if it actually opens
+ * with this device's own key — the redeeming side of `AddChatContactModal.tsx` waits for this
+ * before finalizing the contact via `syncAddChatContact`.
+ */
+export async function syncOpenChatContactConfirm(ciphertext: string): Promise<boolean> {
+  if (!isTauriEnv()) throw new Error('chat_contact_confirm_desktop_only')
+  return invoke<boolean>('sync_open_chat_contact_confirm', { ciphertext })
 }
 
 /**

@@ -1017,6 +1017,76 @@ pub(crate) fn revoke_grant_at(
     Ok(updated)
 }
 
+/// Updates the `permissions`/`path_scopes` of an already-active grant in place — the only mutation
+/// on a `GrantRecord` before this was full revocation (`revoke_grant_at`), which meant "editing" a
+/// collaborator's access really meant revoking their grant and starting a whole new invitation from
+/// scratch, losing continuity (a new `grant_id`, no record of what changed). Same authorization
+/// rule as revocation: only a trusted device on the account that owns the project (i.e. issued the
+/// invitation the grant came from) may narrow or widen it — a collaborator can never edit their own
+/// or anyone else's grant.
+pub(crate) fn update_grant_at(
+    data_root: &Path,
+    actor_device_id: &str,
+    grant_id: &str,
+    permissions: Vec<SyncPermission>,
+    path_scopes: Vec<PathScope>,
+    now_ms: u64,
+) -> Result<GrantRecord, String> {
+    validate_permissions(&permissions)?;
+    validate_scopes(&path_scopes)?;
+    let mut document = load_at(data_root)?;
+    let actor = find_trusted_actor(&document, actor_device_id)?.clone();
+    let grant_project_id = document
+        .grants
+        .iter()
+        .find(|grant| grant.grant_id == grant_id)
+        .ok_or_else(|| "grant_unavailable".to_string())?
+        .project_id
+        .clone();
+    let issuer_owns_project = document.invitations.iter().any(|invitation| {
+        invitation.project_id == grant_project_id
+            && document
+                .devices
+                .iter()
+                .any(|device| device.device_id == invitation.issuer_device_id && device.account_id == actor.account_id)
+    });
+    if !issuer_owns_project {
+        return Err("grant_unavailable".to_string());
+    }
+    let grant = document
+        .grants
+        .iter_mut()
+        .find(|grant| grant.grant_id == grant_id)
+        .ok_or_else(|| "grant_unavailable".to_string())?;
+    if grant.revoked_at_ms.is_some() {
+        return Err("grant_already_revoked".to_string());
+    }
+    grant.permissions = permissions;
+    grant.path_scopes = path_scopes;
+    let updated = grant.clone();
+    append_audit(
+        &mut document,
+        now_ms,
+        "grant.updated",
+        Some(actor_device_id.to_string()),
+        Some(grant_id.to_string()),
+    );
+    save_at(data_root, &document)?;
+    Ok(updated)
+}
+
+/// Lists every non-revoked grant for a specific project — the snapshot command returns every
+/// grant across every project this account has ever issued or received, requiring the caller to
+/// filter client-side. Scoped listing is what a per-project "collaborators" panel actually needs.
+pub(crate) fn list_project_grants_at(data_root: &Path, project_id: &str) -> Result<Vec<GrantRecord>, String> {
+    let document = load_at(data_root)?;
+    Ok(document
+        .grants
+        .into_iter()
+        .filter(|grant| grant.project_id == project_id && grant.revoked_at_ms.is_none())
+        .collect())
+}
+
 /// Rotates a trusted device's Ed25519 identity key and X25519 agreement key together (Phase 12).
 /// The device keeps the same `device_id`, but every peer that cached the old public key must
 /// re-authenticate against the new one — nothing here notifies other devices; that is the caller's
@@ -1287,6 +1357,24 @@ pub fn sync_revoke_grant(app: tauri::AppHandle, grant_id: String) -> Result<Gran
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     let actor = local_device_id_at(&data_root)?;
     revoke_grant_at(&data_root, &actor, &grant_id, now_ms())
+}
+
+#[tauri::command]
+pub fn sync_update_grant(
+    app: tauri::AppHandle,
+    grant_id: String,
+    permissions: Vec<SyncPermission>,
+    path_scopes: Vec<PathScope>,
+) -> Result<GrantRecord, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let actor = local_device_id_at(&data_root)?;
+    update_grant_at(&data_root, &actor, &grant_id, permissions, path_scopes, now_ms())
+}
+
+#[tauri::command]
+pub fn sync_list_project_grants(app: tauri::AppHandle, project_id: String) -> Result<Vec<GrantRecord>, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    list_project_grants_at(&data_root, &project_id)
 }
 
 #[tauri::command]
@@ -1788,14 +1876,17 @@ pub fn sync_seal_chat_contact_ack(
 /// back. Observed live: the same code redeemed several times in a row, each time successfully.
 ///
 /// Impact is bounded — a chat contact is not a grant, and confers no project access (see
-/// `adding_a_chat_contact_never_creates_a_grant_or_invitation`) — but it does leak the issuer's
-/// account route and public keys to anyone who obtains the code, and lets them open a direct
-/// conversation. Closing it needs a protocol change (the redeemer waiting on the issuer's
-/// confirmation before committing the contact), so it is deliberately left as-is for now rather
-/// than half-fixed. The existing unit tests cover the function in isolation, not the end-to-end
-/// flow, which is why this went unnoticed.
+/// `adding_a_chat_contact_never_creates_a_grant_or_invitation`) — but it did leak the issuer's
+/// account route and public keys to anyone who obtained the code, and let them open a direct
+/// conversation, repeatedly, since the redeemer used to commit the contact immediately rather than
+/// waiting on this confirmation. See `sync_open_chat_contact_confirm` for the other half of the
+/// fix: the redeemer now only commits after this function calls `consume_chat_invite_token_at`
+/// successfully *and* the resulting `chat_contact_confirm` envelope actually reaches them.
 #[tauri::command]
-pub fn sync_open_chat_contact_ack(app: tauri::AppHandle, ciphertext: String) -> Result<Option<String>, String> {
+pub fn sync_open_chat_contact_ack(
+    app: tauri::AppHandle,
+    ciphertext: String,
+) -> Result<Option<ChatContactAckResult>, String> {
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     let local_device_id = load_at(&data_root)?.local_device_id.ok_or_else(|| "security_device_missing".to_string())?;
     let recipient_secret = load_device_agreement_secret(&local_device_id)?;
@@ -1823,15 +1914,56 @@ pub fn sync_open_chat_contact_ack(app: tauri::AppHandle, ciphertext: String) -> 
     add_chat_contact_at(
         &data_root,
         ChatContactRecord {
-            account_route,
+            account_route: account_route.clone(),
             device_id,
-            agreement_public_key,
+            agreement_public_key: agreement_public_key.clone(),
             display_label: display_label.clone(),
             added_at_ms: now_ms,
             avatar_thumbnail,
         },
     )?;
-    Ok(Some(display_label))
+    Ok(Some(ChatContactAckResult { account_route, agreement_public_key, display_label }))
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatContactAckResult {
+    pub account_route: String,
+    pub agreement_public_key: String,
+    pub display_label: String,
+}
+
+const CHAT_CONTACT_CONFIRM_INFO: &[u8] = b"alethe-chat-contact-confirm-v1";
+
+/// Seals a minimal "the token checked out, go ahead and commit me as a contact" signal for the
+/// device that redeemed a pairing code — sent by the issuer right after `sync_open_chat_contact_ack`
+/// succeeds. The payload carries nothing beyond what a successful decrypt already proves (that this
+/// device, and only this device, holds the matching agreement secret): possession of a valid
+/// confirm envelope *is* the confirmation, there is nothing further to authenticate inside it.
+#[tauri::command]
+pub fn sync_seal_chat_contact_confirm(recipient_agreement_public_key: String) -> Result<String, String> {
+    let recipient_public_key = URL_SAFE_NO_PAD
+        .decode(&recipient_agreement_public_key)
+        .map_err(|_| "chat_contact_confirm_recipient_key_invalid".to_string())?;
+    let sealed = crate::sync_crypto::seal_for_recipient(b"{}", &recipient_public_key, CHAT_CONTACT_CONFIRM_INFO)
+        .map_err(|_| "chat_contact_confirm_recipient_key_invalid".to_string())?;
+    let packed = crate::sync_chat::pack_sealed(&sealed);
+    Ok(URL_SAFE_NO_PAD.encode(packed))
+}
+
+/// Decrypts a delivered `chat_contact_confirm` envelope. Returns `true` only if it actually opens
+/// with this device's own agreement secret — the redeeming side of `AddChatContactModal.tsx` waits
+/// for this before calling `sync_add_chat_contact`, closing the replay gap documented on
+/// `sync_open_chat_contact_ack`: a pasted-around code no longer, by itself, gets its holder
+/// committed as a contact — the issuer's device has to still be alive and willing to confirm it.
+#[tauri::command]
+pub fn sync_open_chat_contact_confirm(app: tauri::AppHandle, ciphertext: String) -> Result<bool, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let local_device_id = load_at(&data_root)?.local_device_id.ok_or_else(|| "security_device_missing".to_string())?;
+    let recipient_secret = load_device_agreement_secret(&local_device_id)?;
+    let Ok(packed) = URL_SAFE_NO_PAD.decode(&ciphertext) else { return Ok(false) };
+    let Ok(sealed) = crate::sync_chat::unpack_sealed(&packed) else { return Ok(false) };
+    Ok(crate::sync_crypto::open_sealed(&sealed, &recipient_secret, CHAT_CONTACT_CONFIRM_INFO).is_ok())
 }
 
 /// Seals `{ accountRoute, avatarThumbnail }` for a specific chat contact — sent whenever this
@@ -3408,6 +3540,137 @@ mod tests {
             Err("grant_already_revoked".to_string())
         );
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn update_grant_narrows_permissions_and_is_scoped_like_revoke() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let issuer =
+            complete_verified_identity(&root, &secrets, account("acct-owner"), "Owner", 1_000)
+                .unwrap();
+        let issued = issue_invitation(
+            &root,
+            &issuer.device_id,
+            "project-a",
+            "acct-recipient",
+            Some("device-recipient".to_string()),
+            vec![SyncPermission::Read, SyncPermission::Write],
+            vec![PathScope { effect: ScopeEffect::Allow, pattern: "**".to_string() }],
+            2_000,
+            10_000,
+        )
+        .unwrap();
+        let grant = redeem_invitation(
+            &root,
+            &issued.invitation.invitation_id,
+            &issued.bearer_token,
+            "acct-recipient",
+            "device-recipient",
+            3_000,
+        )
+        .unwrap();
+        assert_eq!(grant.permissions, vec![SyncPermission::Read, SyncPermission::Write]);
+
+        // An unrelated device cannot edit someone else's grant, same rule as revocation.
+        assert_eq!(
+            update_grant_at(
+                &root,
+                "device-unknown",
+                &grant.grant_id,
+                vec![SyncPermission::Read],
+                vec![],
+                3_500,
+            ),
+            Err("actor_device_unknown".to_string())
+        );
+
+        // The issuer narrows the grant down to read-only on a single subfolder.
+        let updated = update_grant_at(
+            &root,
+            &issuer.device_id,
+            &grant.grant_id,
+            vec![SyncPermission::Read],
+            vec![PathScope { effect: ScopeEffect::Allow, pattern: "docs/**".to_string() }],
+            4_000,
+        )
+        .unwrap();
+        assert_eq!(updated.permissions, vec![SyncPermission::Read]);
+        assert_eq!(updated.path_scopes, vec![PathScope { effect: ScopeEffect::Allow, pattern: "docs/**".to_string() }]);
+        assert!(updated.revoked_at_ms.is_none());
+        assert_eq!(updated.grant_id, grant.grant_id); // same grant, not a new one
+
+        // The change actually persisted, not just returned in memory.
+        let grants = list_project_grants_at(&root, "project-a").unwrap();
+        assert_eq!(grants.len(), 1);
+        assert_eq!(grants[0].permissions, vec![SyncPermission::Read]);
+
+        // A revoked grant can no longer be edited.
+        revoke_grant_at(&root, &issuer.device_id, &grant.grant_id, 5_000).unwrap();
+        assert_eq!(
+            update_grant_at(&root, &issuer.device_id, &grant.grant_id, vec![SyncPermission::Read], vec![], 6_000),
+            Err("grant_already_revoked".to_string())
+        );
+        // ...and a revoked grant no longer shows up in the project's active-grant list.
+        assert!(list_project_grants_at(&root, "project-a").unwrap().is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn update_grant_rejects_invalid_permissions_and_scopes_without_touching_the_grant() {
+        let root = temp_root();
+        let secrets = MemorySecrets::default();
+        let issuer =
+            complete_verified_identity(&root, &secrets, account("acct-owner"), "Owner", 1_000)
+                .unwrap();
+        let issued = issue_invitation(
+            &root, &issuer.device_id, "project-a", "acct-recipient", Some("device-recipient".to_string()),
+            vec![SyncPermission::Read], vec![], 2_000, 10_000,
+        )
+        .unwrap();
+        let grant = redeem_invitation(
+            &root, &issued.invitation.invitation_id, &issued.bearer_token, "acct-recipient",
+            "device-recipient", 3_000,
+        )
+        .unwrap();
+
+        // An absolute/parent-escaping pattern is exactly what `validate_scopes` exists to reject —
+        // same validation `issue_invitation` already relies on, reused here rather than
+        // reimplemented, so this must fail closed identically.
+        let result = update_grant_at(
+            &root, &issuer.device_id, &grant.grant_id, vec![SyncPermission::Read],
+            vec![PathScope { effect: ScopeEffect::Allow, pattern: "../escape".to_string() }], 4_000,
+        );
+        assert!(result.is_err());
+
+        // Rejected outright — the grant's original permissions/scopes are untouched.
+        let unchanged = list_project_grants_at(&root, "project-a").unwrap();
+        assert_eq!(unchanged.len(), 1);
+        assert_eq!(unchanged[0].permissions, vec![SyncPermission::Read]);
+        assert!(unchanged[0].path_scopes.is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn chat_contact_confirm_only_opens_for_its_actual_recipient() {
+        let recipient_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let recipient_key = URL_SAFE_NO_PAD.encode(X25519PublicKey::from(&recipient_secret).as_bytes());
+        let stranger_secret = X25519StaticSecret::random_from_rng(OsRng);
+
+        let ciphertext = sync_seal_chat_contact_confirm(recipient_key).unwrap();
+
+        // The real recipient's secret opens it.
+        let packed = URL_SAFE_NO_PAD.decode(&ciphertext).unwrap();
+        let sealed = crate::sync_chat::unpack_sealed(&packed).unwrap();
+        assert!(
+            crate::sync_crypto::open_sealed(&sealed, &recipient_secret, CHAT_CONTACT_CONFIRM_INFO).is_ok()
+        );
+        // Nobody else's secret does — this is the whole security property `sync_open_chat_contact_
+        // confirm` relies on: a successful decrypt *is* the confirmation, there is no separate
+        // token to check.
+        assert!(
+            crate::sync_crypto::open_sealed(&sealed, &stranger_secret, CHAT_CONTACT_CONFIRM_INFO).is_err()
+        );
     }
 
     #[test]

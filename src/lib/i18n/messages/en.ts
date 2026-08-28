@@ -77,6 +77,8 @@ export const en = {
   'chat.contacts.displayLabelPlaceholder': 'e.g. Ana',
   'chat.contacts.save': 'Save contact',
   'chat.contacts.saveFailed': 'Could not save this contact.',
+  'chat.contacts.waitingConfirm': 'Waiting for the other device to confirm…',
+  'chat.contacts.confirmTimedOut': 'The other device did not confirm in time — make sure their app is open and try again.',
   'chat.contacts.listFailed': 'Could not load your chat contacts.',
   'chat.contacts.empty': 'Add a chat contact to start a conversation — no project required.',
   'chat.contacts.rename': 'Rename contact',

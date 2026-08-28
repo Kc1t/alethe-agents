@@ -1,14 +1,19 @@
 import { Check, Copy, Loader2, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { exportPairingCode, type PairingCode, parsePairingCode } from '../../lib/api/p2pBridge'
+import { subscribeToRendezvousEvents } from '../../lib/api/rendezvousEventBus'
 import {
   adoptDiscoveredRendezvousEndpoint,
   connectRendezvous,
   sendRendezvousFrame,
   verifyDiscoveredDevice,
 } from '../../lib/api/syncRendezvous'
-import { syncAddChatContact, syncSealChatContactAck } from '../../lib/api/syncSecurity'
+import {
+  syncAddChatContact,
+  syncOpenChatContactConfirm,
+  syncSealChatContactAck,
+} from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
 import { downscaleAvatar } from '../../lib/image/downscaleAvatar'
 import { getProfileImageUrl } from '../../lib/profile'
@@ -16,7 +21,14 @@ import { syncLocalIdentity } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import styles from './AddChatContactModal.module.css'
 
-type Step = 'exchange' | 'confirm'
+type Step = 'exchange' | 'confirm' | 'waiting'
+
+// How long to wait for the issuer's chat_contact_confirm before giving up and letting the user
+// retry — the issuer's device has to be online and process our ack for this to ever arrive. See
+// docs/PROJECT_COLLABORATION_PLAN_AND_STATUS.md's "pairing codes are replayable" section: this
+// wait is what actually closes that gap (previously the contact was committed immediately on
+// this side, before the issuer had any say).
+const CONFIRM_WAIT_MS = 25_000
 
 export function AddChatContactModal({
   onClose,
@@ -37,6 +49,11 @@ export function AddChatContactModal({
   >(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const confirmWaitCleanupRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    return () => confirmWaitCleanupRef.current?.()
+  }, [])
 
   useEffect(() => {
     downscaleAvatar(getProfileImageUrl(preferences))
@@ -82,25 +99,16 @@ export function AddChatContactModal({
     }
   }
 
+  // Does NOT save the contact yet — only sends the ack and waits for the issuer's
+  // chat_contact_confirm. Committing immediately here (as this used to) is exactly what made a
+  // pasted-around pairing code a replayable bearer credential: whoever held the code got added
+  // as a contact instantly, whether or not the issuer's device was even reachable to consume the
+  // token. See CONFIRM_WAIT_MS's doc comment.
   const confirm = async () => {
     if (!verified) return
     setBusy(true)
     setError(null)
     try {
-      await syncAddChatContact(
-        verified.accountRoute,
-        verified.deviceId,
-        verified.verifiedAgreementPublicKey,
-        displayLabel.trim() || verified.deviceId,
-        verified.avatarThumbnail,
-      )
-      console.info('[chat-contact] contact saved locally', { accountRoute: verified.accountRoute })
-      // Automatic mutual pairing: send an ack back to the issuer over the rendezvous relay so
-      // their device adds us back too, without them ever having to paste a second code. This is
-      // best-effort — the local contact above is already saved either way.
-      void sendAckToIssuer()
-        .then(() => console.info('[chat-contact] ack sent to issuer'))
-        .catch((cause) => console.error('[chat-contact] sendAckToIssuer failed', cause))
       // If we don't already have our own rendezvous endpoint set up and the issuer shared theirs,
       // adopt it automatically — otherwise this device would have no way to actually reach them
       // (there's no central directory; see `sync_remote_invitation.rs`'s `PairingCode` doc).
@@ -109,12 +117,65 @@ export function AddChatContactModal({
           .then(() => console.info('[chat-contact] adopted discovered endpoint', verified.rendezvousEndpoint))
           .catch((cause) => console.error('[chat-contact] adoptDiscoveredRendezvousEndpoint failed', cause))
       }
-      onAdded()
+      await sendAckToIssuer()
+      console.info('[chat-contact] ack sent to issuer, waiting for confirmation')
+      setStep('waiting')
+      waitForConfirmation()
     } catch (cause) {
-      console.error('[chat-contact] confirm/save failed', cause)
+      console.error('[chat-contact] sendAckToIssuer failed', cause)
       setError(t('chat.contacts.saveFailed'))
     } finally {
       setBusy(false)
+    }
+  }
+
+  const finalizeContact = async () => {
+    if (!verified) return
+    await syncAddChatContact(
+      verified.accountRoute,
+      verified.deviceId,
+      verified.verifiedAgreementPublicKey,
+      displayLabel.trim() || verified.deviceId,
+      verified.avatarThumbnail,
+    )
+    console.info('[chat-contact] contact saved locally', { accountRoute: verified.accountRoute })
+    onAdded()
+  }
+
+  const waitForConfirmation = () => {
+    confirmWaitCleanupRef.current?.()
+    let settled = false
+    const timeoutId = window.setTimeout(() => {
+      if (settled) return
+      settled = true
+      unsubscribe()
+      console.warn('[chat-contact] timed out waiting for chat_contact_confirm')
+      setError(t('chat.contacts.confirmTimedOut'))
+      setStep('confirm')
+    }, CONFIRM_WAIT_MS)
+    const unsubscribe = subscribeToRendezvousEvents((events) => {
+      const confirmEvents = events.filter((event) => event.envelopeKind === 'chat_contact_confirm')
+      if (confirmEvents.length === 0 || settled) return
+      void (async () => {
+        for (const event of confirmEvents) {
+          if (settled || event.eventType !== 'delivery' || !event.ciphertext) continue
+          try {
+            const opened = await syncOpenChatContactConfirm(event.ciphertext)
+            if (!opened || settled) continue
+            settled = true
+            window.clearTimeout(timeoutId)
+            unsubscribe()
+            await finalizeContact()
+          } catch (cause) {
+            console.warn('[chat-contact] chat_contact_confirm could not be opened', cause)
+          }
+        }
+      })()
+    })
+    confirmWaitCleanupRef.current = () => {
+      settled = true
+      window.clearTimeout(timeoutId)
+      unsubscribe()
     }
   }
 
@@ -205,7 +266,7 @@ export function AddChatContactModal({
               {t('chat.contacts.verify')}
             </button>
           </div>
-        ) : (
+        ) : step === 'confirm' ? (
           <div className={styles.body}>
             <label className={styles.label}>{t('chat.contacts.displayLabelLabel')}</label>
             <input
@@ -223,6 +284,24 @@ export function AddChatContactModal({
             >
               {busy ? <Loader2 size={13} className={styles.spin} /> : null}
               {t('chat.contacts.save')}
+            </button>
+          </div>
+        ) : (
+          <div className={styles.body}>
+            <div className={styles.waitingState}>
+              <Loader2 size={18} className={styles.spin} />
+              <span>{t('chat.contacts.waitingConfirm')}</span>
+            </div>
+            {error ? <span className={styles.error}>{error}</span> : null}
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => {
+                confirmWaitCleanupRef.current?.()
+                setStep('confirm')
+              }}
+            >
+              {t('common.cancel')}
             </button>
           </div>
         )}

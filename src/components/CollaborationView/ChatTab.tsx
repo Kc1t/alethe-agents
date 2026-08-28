@@ -3,7 +3,11 @@ import { useEffect, useState } from 'react'
 
 import { subscribeToRendezvousEvents } from '../../lib/api/rendezvousEventBus'
 import { syncDeleteDirectConversation } from '../../lib/api/syncChat'
-import { connectRendezvous, getRendezvousStatus } from '../../lib/api/syncRendezvous'
+import {
+  connectRendezvous,
+  getRendezvousStatus,
+  sendRendezvousFrame,
+} from '../../lib/api/syncRendezvous'
 import {
   type SyncChatContact,
   syncListChatContacts,
@@ -11,6 +15,7 @@ import {
   syncOpenChatContactAck,
   syncRemoveChatContact,
   syncRenameChatContact,
+  syncSealChatContactConfirm,
 } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
 import { getProfileInitial } from '../../lib/profile'
@@ -169,10 +174,29 @@ export function ChatTab({
         for (const event of ackEvents) {
           if (event.eventType !== 'delivery' || !event.ciphertext) continue
           try {
-            const label = await syncOpenChatContactAck(event.ciphertext)
-            if (label) {
+            const result = await syncOpenChatContactAck(event.ciphertext)
+            if (result) {
               added = true
-              console.info('[chat-contact] auto-added contact from ack', label)
+              console.info('[chat-contact] auto-added contact from ack', result.displayLabel)
+              // The sender is waiting on this before committing us as a contact on their own side
+              // (see AddChatContactModal.tsx's `waitForConfirmation`) — without it, a pasted
+              // pairing code alone was enough to get added, even if the token had already expired
+              // or this device was never actually reachable.
+              try {
+                const ciphertext = await syncSealChatContactConfirm(result.agreementPublicKey)
+                await connectRendezvous()
+                await sendRendezvousFrame({
+                  type: 'enqueue',
+                  kind: 'chat_contact_confirm',
+                  id: `contact_confirm_${crypto.randomUUID()}`,
+                  recipientAccountRoute: result.accountRoute,
+                  expiresAtMs: Date.now() + 5 * 60 * 1000,
+                  ciphertext,
+                })
+                console.info('[chat-contact] confirm sent back to', result.accountRoute)
+              } catch (cause) {
+                console.error('[chat-contact] failed to send chat_contact_confirm', cause)
+              }
             } else {
               console.warn('[chat-contact] ack token did not match any live token (stale/reused?)')
             }

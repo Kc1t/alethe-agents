@@ -365,7 +365,10 @@ async fn connect_once(
                             // contact any time the profile picture changes.
                             let envelope_kind = value.get("kind").and_then(Value::as_str);
                             if event_type == "delivery"
-                                && !matches!(envelope_kind, Some("candidate") | Some("avatar_update"))
+                                && !matches!(
+                                    envelope_kind,
+                                    Some("candidate") | Some("avatar_update") | Some("chat_contact_confirm")
+                                )
                             {
                                 if let Some(subject) = value.get("id").and_then(Value::as_str) {
                                     let kind = match value.get("kind").and_then(Value::as_str) {
@@ -657,6 +660,7 @@ fn sanitize_outgoing_frame(frame: Value, now_ms: u64) -> Result<Value, String> {
                         | "chat_message"
                         | "invite_suggestion"
                         | "chat_contact_ack"
+                        | "chat_contact_confirm"
                         | "avatar_update"
                 )
                 || !is_account_route(recipient_account_route)
