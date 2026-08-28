@@ -282,6 +282,12 @@ pub struct ChatContactRecord {
     pub agreement_public_key: String,
     pub display_label: String,
     pub added_at_ms: u64,
+    /// A small downscaled profile-picture thumbnail for this contact, if known — set at pairing
+    /// time from the pairing code's own `avatar_thumbnail`, and refreshed later whenever an
+    /// `"avatar_update"` envelope arrives from them (see `sync_apply_avatar_update`). `None` if
+    /// they have no picture set, or none has been received yet.
+    #[serde(default)]
+    pub avatar_thumbnail: Option<String>,
 }
 
 /// An invite ticket embedded in an exported pairing code (`sync_export_pairing_code`). Generating a
@@ -1610,6 +1616,7 @@ pub fn sync_add_chat_contact(
     device_id: String,
     agreement_public_key: String,
     display_label: String,
+    avatar_thumbnail: Option<String>,
 ) -> Result<(), String> {
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     add_chat_contact_at(
@@ -1620,6 +1627,7 @@ pub fn sync_add_chat_contact(
             agreement_public_key,
             display_label,
             added_at_ms: crate::provider_common::now_ms(),
+            avatar_thumbnail,
         },
     )
 }
@@ -1628,6 +1636,25 @@ pub fn sync_add_chat_contact(
 pub fn sync_list_chat_contacts(app: tauri::AppHandle) -> Result<Vec<ChatContactRecord>, String> {
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     list_chat_contacts_at(&data_root)
+}
+
+/// Updates a contact's stored avatar thumbnail after an `"avatar_update"` envelope from them was
+/// decrypted and its sender verified — see `sync_open_avatar_update` (`sync_invitation_bridge.rs`-
+/// style seal/open pattern) for the decrypt step. A no-op (not an error) if the account route isn't
+/// a known contact, since a stale/late update from someone since removed shouldn't surface as a
+/// failure to the caller.
+pub(crate) fn update_chat_contact_avatar_at(
+    data_root: &Path,
+    account_route: &str,
+    avatar_thumbnail: Option<String>,
+) -> Result<(), String> {
+    let mut document = load_at(data_root)?;
+    let Some(contact) = document.chat_contacts.iter_mut().find(|contact| contact.account_route == account_route)
+    else {
+        return Ok(());
+    };
+    contact.avatar_thumbnail = avatar_thumbnail;
+    save_at(data_root, &document)
 }
 
 #[tauri::command]
@@ -1705,6 +1732,7 @@ pub struct CollaboratorSuggestionEnvelope {
 
 const COLLABORATOR_SUGGESTION_INFO: &[u8] = b"alethe-collaborator-suggestion-v1";
 const CHAT_CONTACT_ACK_INFO: &[u8] = b"alethe-chat-contact-ack-v1";
+const AVATAR_UPDATE_INFO: &[u8] = b"alethe-avatar-update-v1";
 
 /// Seals `{ token, accountRoute, deviceId, agreementPublicKey, displayLabel }` for the *issuer* of
 /// a pairing code — the recipient calls this right after locally saving the issuer as a contact,
@@ -1719,6 +1747,7 @@ pub fn sync_seal_chat_contact_ack(
     agreement_public_key: String,
     display_label: String,
     issuer_agreement_public_key: String,
+    avatar_thumbnail: Option<String>,
 ) -> Result<String, String> {
     let issuer_public_key = URL_SAFE_NO_PAD
         .decode(&issuer_agreement_public_key)
@@ -1729,6 +1758,7 @@ pub fn sync_seal_chat_contact_ack(
         "deviceId": device_id,
         "agreementPublicKey": agreement_public_key,
         "displayLabel": display_label,
+        "avatarThumbnail": avatar_thumbnail,
     });
     let plaintext = serde_json::to_vec(&payload).map_err(|_| "chat_contact_ack_encode_failed".to_string())?;
     let sealed = crate::sync_crypto::seal_for_recipient(&plaintext, &issuer_public_key, CHAT_CONTACT_ACK_INFO)
@@ -1788,6 +1818,8 @@ pub fn sync_open_chat_contact_ack(app: tauri::AppHandle, ciphertext: String) -> 
     if account_route.is_empty() || device_id.is_empty() || agreement_public_key.is_empty() {
         return Err("chat_contact_ack_invalid".to_string());
     }
+    let avatar_thumbnail =
+        payload.get("avatarThumbnail").and_then(|v| v.as_str()).map(|s| s.to_string());
     add_chat_contact_at(
         &data_root,
         ChatContactRecord {
@@ -1796,9 +1828,66 @@ pub fn sync_open_chat_contact_ack(app: tauri::AppHandle, ciphertext: String) -> 
             agreement_public_key,
             display_label: display_label.clone(),
             added_at_ms: now_ms,
+            avatar_thumbnail,
         },
     )?;
     Ok(Some(display_label))
+}
+
+/// Seals `{ accountRoute, avatarThumbnail }` for a specific chat contact — sent whenever this
+/// device's own profile picture changes (see `AccountPage.tsx`), to every currently-known contact,
+/// so their `ChatContactRecord.avatar_thumbnail` stays live instead of only ever reflecting the
+/// picture at the moment they were paired. `avatar_thumbnail: None` clears the picture on the
+/// receiving side (the user removed theirs).
+#[tauri::command]
+pub fn sync_seal_avatar_update(
+    account_route: String,
+    avatar_thumbnail: Option<String>,
+    recipient_agreement_public_key: String,
+) -> Result<String, String> {
+    let recipient_public_key = URL_SAFE_NO_PAD
+        .decode(&recipient_agreement_public_key)
+        .map_err(|_| "avatar_update_recipient_key_invalid".to_string())?;
+    let payload = serde_json::json!({
+        "accountRoute": account_route,
+        "avatarThumbnail": avatar_thumbnail,
+    });
+    let plaintext = serde_json::to_vec(&payload).map_err(|_| "avatar_update_encode_failed".to_string())?;
+    let sealed = crate::sync_crypto::seal_for_recipient(&plaintext, &recipient_public_key, AVATAR_UPDATE_INFO)
+        .map_err(|_| "avatar_update_recipient_key_invalid".to_string())?;
+    let packed = crate::sync_chat::pack_sealed(&sealed);
+    if packed.len() > 16 * 1024 {
+        return Err("avatar_update_too_large".to_string());
+    }
+    Ok(URL_SAFE_NO_PAD.encode(packed))
+}
+
+/// Decrypts a delivered `avatar_update` envelope and, if the sender is a known chat contact,
+/// updates their stored thumbnail. Returns the sender's account route on success (so the caller
+/// can e.g. refresh a currently-open conversation), `None` if the sender isn't a known contact
+/// (nothing to update).
+#[tauri::command]
+pub fn sync_open_avatar_update(app: tauri::AppHandle, ciphertext: String) -> Result<Option<String>, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let local_device_id = load_at(&data_root)?.local_device_id.ok_or_else(|| "security_device_missing".to_string())?;
+    let recipient_secret = load_device_agreement_secret(&local_device_id)?;
+    let packed = URL_SAFE_NO_PAD.decode(&ciphertext).map_err(|_| "avatar_update_invalid".to_string())?;
+    let sealed = crate::sync_chat::unpack_sealed(&packed)?;
+    let plaintext = crate::sync_crypto::open_sealed(&sealed, &recipient_secret, AVATAR_UPDATE_INFO)
+        .map_err(|_| "avatar_update_decrypt_failed".to_string())?;
+    let payload: serde_json::Value =
+        serde_json::from_slice(&plaintext).map_err(|_| "avatar_update_invalid".to_string())?;
+    let account_route = payload.get("accountRoute").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    if account_route.is_empty() {
+        return Err("avatar_update_invalid".to_string());
+    }
+    let avatar_thumbnail = payload.get("avatarThumbnail").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let document = load_at(&data_root)?;
+    if !document.chat_contacts.iter().any(|contact| contact.account_route == account_route) {
+        return Ok(None);
+    }
+    update_chat_contact_avatar_at(&data_root, &account_route, avatar_thumbnail)?;
+    Ok(Some(account_route))
 }
 
 /// Builds an end-to-end sealed `invite_suggestion` payload for the owner of `project_id`, callable
@@ -2319,6 +2408,7 @@ mod tests {
                 agreement_public_key: "AAAA".to_string(),
                 display_label: "Friend".to_string(),
                 added_at_ms: 1_000,
+                avatar_thumbnail: None,
             },
         )
         .unwrap();
@@ -2343,6 +2433,7 @@ mod tests {
                 agreement_public_key: "AAAA".to_string(),
                 display_label: "Friend".to_string(),
                 added_at_ms: 1_000,
+                avatar_thumbnail: None,
             },
         )
         .unwrap();
@@ -2365,6 +2456,7 @@ mod tests {
                     agreement_public_key: "AAAA".to_string(),
                     display_label: label.to_string(),
                     added_at_ms: 1_000,
+                    avatar_thumbnail: None,
                 },
             )
             .unwrap();
@@ -2514,6 +2606,7 @@ mod tests {
             "friend-agreement-key".to_string(),
             "Friend".to_string(),
             issuer_key,
+            None,
         )
         .unwrap();
 
@@ -2534,6 +2627,7 @@ mod tests {
                 agreement_public_key: parsed["agreementPublicKey"].as_str().unwrap().to_string(),
                 display_label: parsed["displayLabel"].as_str().unwrap().to_string(),
                 added_at_ms: 2_000,
+                avatar_thumbnail: None,
             },
         )
         .unwrap();

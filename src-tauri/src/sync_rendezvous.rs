@@ -356,13 +356,16 @@ async fn connect_once(
                     if let Ok(value) = serde_json::from_str::<Value>(&text) {
                         let event_type = value.get("type").and_then(Value::as_str).unwrap_or("unknown").to_string();
                         if matches!(event_type.as_str(), "delivery" | "devices" | "error") {
-                            // `candidate` deliveries are deliberately excluded below: they are pure
-                            // connection-setup machinery exchanged automatically (and now
-                            // repeatedly, since P2P signaling retries on a timer until it connects),
-                            // not something a person took an action on or needs to be told about.
-                            // Recording them produced a notification every single retry cycle.
+                            // `candidate`/`avatar_update` deliveries are deliberately excluded
+                            // below: pure automatic machinery (connection setup, profile-picture
+                            // sync), never something a person took an action on or needs to be
+                            // told about. `candidate` recording used to produce a notification
+                            // every single P2P retry cycle once signaling started retrying on a
+                            // timer — same class of problem for `avatar_update`, sent to every
+                            // contact any time the profile picture changes.
+                            let envelope_kind = value.get("kind").and_then(Value::as_str);
                             if event_type == "delivery"
-                                && value.get("kind").and_then(Value::as_str) != Some("candidate")
+                                && !matches!(envelope_kind, Some("candidate") | Some("avatar_update"))
                             {
                                 if let Some(subject) = value.get("id").and_then(Value::as_str) {
                                     let kind = match value.get("kind").and_then(Value::as_str) {
@@ -648,7 +651,13 @@ fn sanitize_outgoing_frame(frame: Value, now_ms: u64) -> Result<Value, String> {
             if !is_opaque_id(id)
                 || !matches!(
                     kind,
-                    "invitation" | "candidate" | "revocation" | "chat_message" | "invite_suggestion" | "chat_contact_ack"
+                    "invitation"
+                        | "candidate"
+                        | "revocation"
+                        | "chat_message"
+                        | "invite_suggestion"
+                        | "chat_contact_ack"
+                        | "avatar_update"
                 )
                 || !is_account_route(recipient_account_route)
                 || expires_at_ms <= now_ms

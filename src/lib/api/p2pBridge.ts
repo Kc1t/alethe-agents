@@ -21,13 +21,22 @@ export type PairingCode = {
   rendezvousEndpoint: string | null
   /** The issuer's own profile display name, if set — used to pre-fill the contact's name. */
   displayName: string | null
+  /** The issuer's own profile picture, already downscaled to a small thumbnail — see
+   * `downscaleAvatar.ts`. `null` if they have no picture set. */
+  avatarThumbnail: string | null
 }
 
 /** Exports this device's own pairing code (public key material only) to share out of band with
  * someone on a different Google account, since there is no automated cross-account discovery. */
-export async function exportPairingCode(displayName?: string | null): Promise<string> {
+export async function exportPairingCode(
+  displayName?: string | null,
+  avatarThumbnail?: string | null,
+): Promise<string> {
   if (!isTauriEnv()) throw new Error('p2p_desktop_only')
-  return invoke('sync_export_pairing_code', { displayName: displayName ?? null })
+  return invoke('sync_export_pairing_code', {
+    displayName: displayName ?? null,
+    avatarThumbnail: avatarThumbnail ?? null,
+  })
 }
 
 /** Parses a pairing code pasted from the other side. Callers must still run the result through

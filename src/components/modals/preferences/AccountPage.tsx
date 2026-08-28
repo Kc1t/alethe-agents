@@ -1,6 +1,7 @@
 import { Check, ChevronRight, Loader2, UserRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { broadcastAvatarUpdate } from '../../../lib/api/avatarSync'
 import { LOCALES, useT } from '../../../lib/i18n'
 import {
   configureGoogleSync,
@@ -109,7 +110,10 @@ export function AccountPage({
             <ImageInput
               label={t('prefs.profilePhoto')}
               value={preferences.profileImageUrl}
-              onChange={(profileImageUrl) => setPreferences({ profileImageUrl })}
+              onChange={(profileImageUrl) => {
+                setPreferences({ profileImageUrl })
+                void broadcastAvatarUpdate(profileImageUrl)
+              }}
               placeholder={t('prefs.photoPlaceholder')}
               hint={t('image.urlOrUpload')}
             />

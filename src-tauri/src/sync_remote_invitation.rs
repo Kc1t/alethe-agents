@@ -53,12 +53,24 @@ pub struct PairingCode {
     /// always rename the contact afterward (see `sync_rename_chat_contact`).
     #[serde(default)]
     pub display_name: Option<String>,
+    /// This device's own profile picture, already downscaled to a small thumbnail (see
+    /// `src/lib/image/downscaleAvatar.ts`) before being embedded here — the pairing code is a
+    /// pasteable string, so this must stay small (a few KB at most), never the full-size
+    /// `profileImageUrl`. `None` if the exporter has no profile picture set. Same snapshot-at-
+    /// pairing role as `display_name`; live updates after pairing go through the separate
+    /// `"avatar_update"` rendezvous envelope instead (see `sync_send_avatar_update`).
+    #[serde(default)]
+    pub avatar_thumbnail: Option<String>,
 }
 
 /// Exports this device's own pairing code, base64url-encoded JSON ready to paste to the other
 /// side. Fails if this device hasn't completed Google sign-in and device registration yet.
 #[tauri::command]
-pub fn sync_export_pairing_code(app: tauri::AppHandle, display_name: Option<String>) -> Result<String, String> {
+pub fn sync_export_pairing_code(
+    app: tauri::AppHandle,
+    display_name: Option<String>,
+    avatar_thumbnail: Option<String>,
+) -> Result<String, String> {
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     let document = crate::sync_security::load_at(&data_root)?;
     let local_device_id = document.local_device_id.clone().ok_or_else(|| "security_device_missing".to_string())?;
@@ -92,6 +104,7 @@ pub fn sync_export_pairing_code(app: tauri::AppHandle, display_name: Option<Stri
         invite_token,
         rendezvous_endpoint,
         display_name: display_name.filter(|name| !name.trim().is_empty()),
+        avatar_thumbnail: avatar_thumbnail.filter(|thumbnail| !thumbnail.trim().is_empty()),
     };
     let json = serde_json::to_vec(&code).map_err(|_| "pairing_code_encode_failed".to_string())?;
     Ok(URL_SAFE_NO_PAD.encode(json))

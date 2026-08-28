@@ -26,6 +26,7 @@ export type EnvelopeKind =
   | 'chat_message'
   | 'invite_suggestion'
   | 'chat_contact_ack'
+  | 'avatar_update'
 
 export type AuthFrame = {
   type: 'auth'
@@ -159,7 +160,8 @@ export function parseClientFrame(raw: string | ArrayBuffer, nowMs: number): Clie
         kind !== 'revocation' &&
         kind !== 'chat_message' &&
         kind !== 'invite_suggestion' &&
-        kind !== 'chat_contact_ack'
+        kind !== 'chat_contact_ack' &&
+        kind !== 'avatar_update'
       ) {
         throw new ProtocolError('invalid_envelope_kind')
       }

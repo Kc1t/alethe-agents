@@ -7,6 +7,7 @@ import { connectRendezvous, getRendezvousStatus } from '../../lib/api/syncRendez
 import {
   type SyncChatContact,
   syncListChatContacts,
+  syncOpenAvatarUpdate,
   syncOpenChatContactAck,
   syncRemoveChatContact,
   syncRenameChatContact,
@@ -121,6 +122,7 @@ export function ChatTab({
         kind: 'direct',
         contactAccountRoute: contact.accountRoute,
         contactDisplayLabel: contact.displayLabel,
+        contactAvatarThumbnail: contact.avatarThumbnail,
       })
     }
   }, [projectId, selected, contacts])
@@ -189,6 +191,36 @@ export function ChatTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Keeps a contact's avatar live: whenever they change their profile picture, their device sends
+  // an `avatar_update` envelope to every contact of theirs (see `AccountPage.tsx`). Reload the
+  // contact list so the new thumbnail shows immediately instead of only appearing after some
+  // unrelated refresh.
+  useEffect(() => {
+    let active = true
+    const unsubscribe = subscribeToRendezvousEvents((events) => {
+      const avatarEvents = events.filter((event) => event.envelopeKind === 'avatar_update')
+      if (avatarEvents.length === 0) return
+      void (async () => {
+        let updated = false
+        for (const event of avatarEvents) {
+          if (event.eventType !== 'delivery' || !event.ciphertext) continue
+          try {
+            const accountRoute = await syncOpenAvatarUpdate(event.ciphertext)
+            if (accountRoute) updated = true
+          } catch (cause) {
+            console.warn('[chat-contact] avatar_update could not be opened', cause)
+          }
+        }
+        if (active && updated) reloadContacts()
+      })()
+    })
+    return () => {
+      active = false
+      unsubscribe()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   return (
     <div className={styles.container}>
       <div className={styles.sidebar}>
@@ -231,11 +263,12 @@ export function ChatTab({
                       kind: 'direct',
                       contactAccountRoute: contact.accountRoute,
                       contactDisplayLabel: contact.displayLabel,
+                      contactAvatarThumbnail: contact.avatarThumbnail,
                     })
                   }
                 >
                   <Avatar
-                    src={null}
+                    src={contact.avatarThumbnail ?? null}
                     initial={getProfileInitial(contact.displayLabel)}
                     className={styles.contactAvatar}
                   />

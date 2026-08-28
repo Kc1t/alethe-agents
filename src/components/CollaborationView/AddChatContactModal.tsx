@@ -10,6 +10,8 @@ import {
 } from '../../lib/api/syncRendezvous'
 import { syncAddChatContact, syncSealChatContactAck } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
+import { downscaleAvatar } from '../../lib/image/downscaleAvatar'
+import { getProfileImageUrl } from '../../lib/profile'
 import { syncLocalIdentity } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import styles from './AddChatContactModal.module.css'
@@ -37,7 +39,8 @@ export function AddChatContactModal({
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    exportPairingCode(preferences.displayName || null)
+    downscaleAvatar(getProfileImageUrl(preferences))
+      .then((thumbnail) => exportPairingCode(preferences.displayName || null, thumbnail))
       .then(setMyCode)
       .catch(() => setError(t('chat.contacts.exportFailed')))
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -89,6 +92,7 @@ export function AddChatContactModal({
         verified.deviceId,
         verified.verifiedAgreementPublicKey,
         displayLabel.trim() || verified.deviceId,
+        verified.avatarThumbnail,
       )
       console.info('[chat-contact] contact saved locally', { accountRoute: verified.accountRoute })
       // Automatic mutual pairing: send an ack back to the issuer over the rendezvous relay so
@@ -125,6 +129,7 @@ export function AddChatContactModal({
       ownCode.agreementPublicKey,
       preferences.displayName || t('profile.fallbackName'),
       verified.verifiedAgreementPublicKey,
+      ownCode.avatarThumbnail,
     )
     await connectRendezvous()
     await sendRendezvousFrame({

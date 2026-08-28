@@ -27,7 +27,12 @@ import styles from './ChatPanel.module.css'
 
 export type ChatSource =
   | { kind: 'project'; projectId: string; projectName: string }
-  | { kind: 'direct'; contactAccountRoute: string; contactDisplayLabel: string }
+  | {
+      kind: 'direct'
+      contactAccountRoute: string
+      contactDisplayLabel: string
+      contactAvatarThumbnail?: string | null
+    }
 
 const POLL_INTERVAL_MS = 4_000
 
@@ -123,6 +128,7 @@ export function ChatPanel({ source }: { source: ChatSource }) {
   const ownAvatarUrl = getProfileImageUrl(preferences)
   const ownInitial = getProfileInitial(ownDisplayName)
   const otherDisplayLabel = source.kind === 'direct' ? source.contactDisplayLabel : null
+  const otherAvatarUrl = source.kind === 'direct' ? (source.contactAvatarThumbnail ?? null) : null
   const [conversation, setConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<DecryptedMessage[]>([])
   const [localDeviceId, setLocalDeviceId] = useState<string | null>(null)
@@ -563,7 +569,7 @@ export function ChatPanel({ source }: { source: ChatSource }) {
                     <Avatar src={ownAvatarUrl} initial={ownInitial} className={styles.avatarImg} />
                   ) : (
                     <Avatar
-                      src={null}
+                      src={otherAvatarUrl}
                       initial={
                         otherDisplayLabel
                           ? getProfileInitial(otherDisplayLabel)

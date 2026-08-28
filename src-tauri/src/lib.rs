@@ -514,6 +514,8 @@ pub fn run() {
             sync_security::sync_open_collaborator_suggestion,
             sync_security::sync_seal_chat_contact_ack,
             sync_security::sync_open_chat_contact_ack,
+            sync_security::sync_seal_avatar_update,
+            sync_security::sync_open_avatar_update,
             sync_security::sync_approve_device,
             sync_security::sync_reject_device,
             sync_security::sync_rename_device,

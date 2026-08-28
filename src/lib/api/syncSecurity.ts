@@ -288,6 +288,9 @@ export type SyncChatContact = {
   agreementPublicKey: string
   displayLabel: string
   addedAtMs: number
+  /** Small downscaled profile-picture thumbnail (`data:image/jpeg;base64,...`), if known — set at
+   * pairing time and refreshed live via `syncOpenAvatarUpdate`. `null`/absent if none is known. */
+  avatarThumbnail?: string | null
 }
 
 export async function syncAddChatContact(
@@ -295,6 +298,7 @@ export async function syncAddChatContact(
   deviceId: string,
   agreementPublicKey: string,
   displayLabel: string,
+  avatarThumbnail?: string | null,
 ): Promise<void> {
   if (isTauriEnv()) {
     await invoke('sync_add_chat_contact', {
@@ -302,6 +306,7 @@ export async function syncAddChatContact(
       deviceId,
       agreementPublicKey,
       displayLabel,
+      avatarThumbnail: avatarThumbnail ?? null,
     })
     return
   }
@@ -352,6 +357,7 @@ export async function syncSealChatContactAck(
   agreementPublicKey: string,
   displayLabel: string,
   issuerAgreementPublicKey: string,
+  avatarThumbnail?: string | null,
 ): Promise<string> {
   if (!isTauriEnv()) throw new Error('chat_contact_ack_desktop_only')
   return invoke<string>('sync_seal_chat_contact_ack', {
@@ -361,6 +367,7 @@ export async function syncSealChatContactAck(
     agreementPublicKey,
     displayLabel,
     issuerAgreementPublicKey,
+    avatarThumbnail: avatarThumbnail ?? null,
   })
 }
 
@@ -373,6 +380,34 @@ export async function syncSealChatContactAck(
 export async function syncOpenChatContactAck(ciphertext: string): Promise<string | null> {
   if (!isTauriEnv()) throw new Error('chat_contact_ack_desktop_only')
   return invoke<string | null>('sync_open_chat_contact_ack', { ciphertext })
+}
+
+/**
+ * Seals `{ accountRoute, avatarThumbnail }` for a specific chat contact, to be sent as an
+ * `avatar_update` rendezvous envelope whenever this device's own profile picture changes — keeps
+ * that contact's stored avatar live instead of only reflecting the picture from pairing time.
+ */
+export async function syncSealAvatarUpdate(
+  accountRoute: string,
+  avatarThumbnail: string | null,
+  recipientAgreementPublicKey: string,
+): Promise<string> {
+  if (!isTauriEnv()) throw new Error('avatar_update_desktop_only')
+  return invoke<string>('sync_seal_avatar_update', {
+    accountRoute,
+    avatarThumbnail,
+    recipientAgreementPublicKey,
+  })
+}
+
+/**
+ * Decrypts a delivered `avatar_update` envelope and, if the sender is a known chat contact,
+ * updates their stored thumbnail. Returns the sender's account route on success, or `null` if
+ * they aren't a known contact (nothing to update).
+ */
+export async function syncOpenAvatarUpdate(ciphertext: string): Promise<string | null> {
+  if (!isTauriEnv()) throw new Error('avatar_update_desktop_only')
+  return invoke<string | null>('sync_open_avatar_update', { ciphertext })
 }
 
 export type CollaboratorSuggestionEnvelope = {
