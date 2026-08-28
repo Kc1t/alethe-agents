@@ -4,7 +4,6 @@ pub mod event_routes;
 pub mod fs_cli_routes;
 pub mod git_routes;
 pub mod github_sync_routes;
-pub mod graphify_routes;
 pub mod misc_routes;
 pub mod profile_routes;
 pub mod pty_routes;
@@ -522,7 +521,6 @@ pub fn build_router(runtime: ServerRuntime) -> Router {
         .merge(git_routes::router())
         .merge(session_routes::router())
         .merge(agent_routes::router())
-        .merge(graphify_routes::router())
         .merge(misc_routes::router())
         .merge(fs_cli_routes::router())
         .merge(backup_routes::router())

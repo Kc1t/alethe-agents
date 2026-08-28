@@ -86,7 +86,6 @@ export type MotionPreference = 'animated' | 'reduced'
 export type FeatureId =
   | 'todos'
   | 'git'
-  | 'graphify'
   | 'browser'
   | 'aiMemory'
   | 'mcp'
@@ -160,7 +159,7 @@ export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
 }
 
 export type PaneKind =
-  'terminal' | 'markdown' | 'file' | 'image' | 'video' | 'web' | 'graphify' | 'diff'
+  'terminal' | 'markdown' | 'file' | 'image' | 'video' | 'web' | 'diff'
 
 export type BrowserResourceMode = 'app-first' | 'balanced' | 'keep-alive'
 
@@ -306,8 +305,6 @@ export type Project = {
   reviewAgentProvider?: AgentType
 
   reviewAgentModel?: string
-
-  graphifyEnabled?: boolean
 
   autoWorktree?: boolean
 
@@ -614,7 +611,6 @@ export const DEFAULT_PREFERENCES: Preferences = {
     todos: true,
     git: true,
     browser: true,
-    graphify: true,
     aiMemory: false,
     mcp: true,
     playwright: false,

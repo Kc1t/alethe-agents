@@ -33,6 +33,26 @@ const modes = [
   'advanced_custom',
 ] as const satisfies readonly CollaborationServiceMode[]
 
+// Records of the same category+kind (e.g. a run of "you were mentioned" chat notifications) are
+// grouped into a single row with a count, instead of rendering one full row per record forever —
+// a conversation with several mentions today made the list grow without any practical bound,
+// every entry looking identical apart from a timestamp no one was scanning for. Acting on the
+// group (read/defer/dismiss) applies to every record in it at once.
+function accessGroupKey(record: AccessRecord): string {
+  return `${record.category}|${record.kind}`
+}
+
+function groupAccessRecords(records: AccessRecord[]): AccessRecord[][] {
+  const groups = new Map<string, AccessRecord[]>()
+  for (const record of records) {
+    const key = accessGroupKey(record)
+    const group = groups.get(key)
+    if (group) group.push(record)
+    else groups.set(key, [record])
+  }
+  return Array.from(groups.values())
+}
+
 export function CollaborationSettings() {
   const t = useT()
   const modalContext = useUiStore((state) => state.modalContext)
@@ -132,15 +152,13 @@ export function CollaborationSettings() {
     }
   }
 
-  const updateAccess = async (record: AccessRecord, operation: 'read' | 'dismiss' | 'defer') => {
-    setAccessBusy(record.id)
+  const updateAccess = async (records: AccessRecord[], operation: 'read' | 'dismiss' | 'defer') => {
+    const groupKey = accessGroupKey(records[0])
+    setAccessBusy(groupKey)
     setError(false)
     try {
-      await syncAccessUpdate(
-        record.id,
-        operation,
-        operation === 'defer' ? Date.now() + 60 * 60 * 1_000 : undefined,
-      )
+      const deferUntilMs = operation === 'defer' ? Date.now() + 60 * 60 * 1_000 : undefined
+      await Promise.all(records.map((record) => syncAccessUpdate(record.id, operation, deferUntilMs)))
       await refresh()
     } catch {
       setError(true)
@@ -266,48 +284,58 @@ export function CollaborationSettings() {
               <p className={styles.accessEmpty}>{t('collaboration.access.empty')}</p>
             ) : (
               <div className={styles.accessList}>
-                {accessRecords.map((record) => (
-                  <article
-                    key={record.id}
-                    className={`${styles.accessItem} ${record.unread ? styles.accessUnread : ''}`}
-                  >
-                    <div className={styles.accessCopy}>
-                      <span>{t(`collaboration.access.category.${record.category}`)}</span>
-                      <strong>{t(`collaboration.access.kind.${record.kind}`)}</strong>
-                    </div>
-                    <div className={styles.accessActions}>
-                      {record.unread ? (
+                {groupAccessRecords(accessRecords).map((group) => {
+                  const record = group[0]
+                  const groupKey = accessGroupKey(record)
+                  const hasUnread = group.some((item) => item.unread)
+                  const busy = accessBusy === groupKey
+                  return (
+                    <article
+                      key={groupKey}
+                      className={`${styles.accessItem} ${hasUnread ? styles.accessUnread : ''}`}
+                    >
+                      <div className={styles.accessCopy}>
+                        <span>{t(`collaboration.access.category.${record.category}`)}</span>
+                        <strong>
+                          {t(`collaboration.access.kind.${record.kind}`)}
+                          {group.length > 1 ? ` ×${group.length}` : ''}
+                        </strong>
+                      </div>
+                      <div className={styles.accessActions}>
+                        {hasUnread ? (
+                          <button
+                            type="button"
+                            className={controls.btn}
+                            disabled={busy}
+                            onClick={() => void updateAccess(group, 'read')}
+                          >
+                            <Eye size={13} aria-hidden="true" />
+                            {t('collaboration.access.read')}
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           className={controls.btn}
-                          disabled={accessBusy === record.id}
-                          onClick={() => void updateAccess(record, 'read')}
+                          disabled={busy}
+                          onClick={() => void updateAccess(group, 'defer')}
                         >
-                          <Eye size={13} aria-hidden="true" />
-                          {t('collaboration.access.read')}
+                          <Clock3 size={13} aria-hidden="true" />
+                          {t('collaboration.access.later')}
                         </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className={controls.btn}
-                        disabled={accessBusy === record.id}
-                        onClick={() => void updateAccess(record, 'defer')}
-                      >
-                        <Clock3 size={13} aria-hidden="true" />
-                        {t('collaboration.access.later')}
-                      </button>
-                      <button
-                        type="button"
-                        className={controls.btn}
-                        disabled={accessBusy === record.id}
-                        onClick={() => void updateAccess(record, 'dismiss')}
-                      >
-                        <X size={13} aria-hidden="true" />
-                        {t('collaboration.access.dismiss')}
-                      </button>
-                    </div>
-                  </article>
-                ))}
+                        <button
+                          type="button"
+                          className={controls.btn}
+                          disabled={busy}
+                          onClick={() => void updateAccess(group, 'dismiss')}
+                        >
+                          <X size={13} aria-hidden="true" />
+                          {t('collaboration.access.dismiss')}
+                          {group.length > 1 ? ` (${group.length})` : ''}
+                        </button>
+                      </div>
+                    </article>
+                  )
+                })}
               </div>
             )}
           </div>

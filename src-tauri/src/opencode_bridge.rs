@@ -8,8 +8,7 @@
 // Este modulo escreve um plugin real do OpenCode (formato confirmado em
 // opencode.ai/docs/plugins/) num diretorio GLOBAL do usuario
 
-// qualquer terminal opencode que o Alethe spawnar, nao so os com Graphify
-// habilitado. O plugin reporta session.idle/tool.execute.before de volta pro
+// qualquer terminal opencode que o Alethe spawnar. O plugin reporta session.idle/tool.execute.before de volta pro
 // Alethe via HTTP local, reaproveitando o listener ja existente em
 
 use std::path::PathBuf;

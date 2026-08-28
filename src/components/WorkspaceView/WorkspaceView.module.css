@@ -438,21 +438,6 @@
   cursor: not-allowed;
 }
 
-.emptyGraphifyToggle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: min(430px, 100%);
-  color: var(--fg-muted);
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.emptyGraphifyToggle input {
-  accent-color: var(--accent);
-  cursor: pointer;
-}
-
 .emptySecondaryAction {
   padding: 0 12px;
   color: var(--fg-muted);

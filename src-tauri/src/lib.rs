@@ -30,7 +30,6 @@ pub mod ghostty_bridge;
 pub mod ghostty_ffi;
 pub mod git_control;
 pub mod github_sync;
-pub mod graphify;
 pub mod handoff;
 pub mod health_probe;
 pub mod logging;
@@ -642,14 +641,6 @@ pub fn run() {
             sync_remote_invitation::sync_parse_pairing_code,
             contract_check::contract_check,
             health_probe::health_probe,
-            graphify::graphify_ensure_graph,
-            graphify::graphify_detect,
-            graphify::graphify_mcp_config_path,
-            graphify::graphify_opencode_config_write,
-            graphify::graphify_codex_config_write,
-            graphify::graphify_read_graph,
-            graphify::graphify_snapshot,
-            graphify::graphify_list_snapshots,
             ai_memory::ai_memory_detect,
             ai_memory::ai_memory_mcp_config_path,
             ai_memory::ai_memory_opencode_config_write,

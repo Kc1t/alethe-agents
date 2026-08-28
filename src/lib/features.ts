@@ -24,11 +24,6 @@ export const FEATURES: readonly FeatureDefinition[] = [
     descriptionKey: 'features.browser.description',
   },
   {
-    id: 'graphify',
-    titleKey: 'features.graphify.title',
-    descriptionKey: 'features.graphify.description',
-  },
-  {
     id: 'mcp',
     titleKey: 'features.mcp.title',
     descriptionKey: 'features.mcp.description',
@@ -58,7 +53,6 @@ export function normalizeEnabledFeatures(
       todos: raw.enabledFeatures.todos ?? true,
       git: raw.enabledFeatures.git ?? true,
       browser: raw.enabledFeatures.browser ?? true,
-      graphify: raw.enabledFeatures.graphify ?? true,
       mcp: raw.enabledFeatures.mcp ?? true,
 
       aiMemory: raw.enabledFeatures.aiMemory ?? false,
@@ -72,7 +66,6 @@ export function normalizeEnabledFeatures(
     todos: raw === undefined,
     git: raw?.showGitControl ?? true,
     browser: true,
-    graphify: true,
     aiMemory: false,
     mcp: true,
     playwright: false,

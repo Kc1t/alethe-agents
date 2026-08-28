@@ -42,10 +42,6 @@ import {
   clearPtyScrollback,
   findCliLauncher,
   getPtySize,
-  graphifyCodexConfigWrite,
-  graphifyEnsureGraph,
-  graphifyMcpConfigPath,
-  graphifyOpenCodeConfigWrite,
   gsdOpenCodePluginWrite,
   killPty,
   listenPtyActivity,
@@ -219,7 +215,6 @@ export function useXtermSession(params: {
   initialInput?: string
   sessionId?: string
   env?: Record<string, string>
-  graphifyRepo?: string | null
 
   gsdWatcherEnabled?: boolean
 
@@ -272,7 +267,6 @@ export function useXtermSession(params: {
     initialInput,
     sessionId,
     env,
-    graphifyRepo,
     gsdWatcherEnabled,
     trustSessionId,
     readOnly,
@@ -1951,22 +1945,6 @@ export function useXtermSession(params: {
 
         // o spawn.
         const mcpConfigPaths: string[] = []
-
-        if (
-          graphifyRepo &&
-          (command === 'claude' || command === 'codex' || command === 'opencode')
-        ) {
-          void graphifyEnsureGraph(graphifyRepo).catch(() => undefined)
-          if (command === 'claude') {
-            const p = await graphifyMcpConfigPath(graphifyRepo).catch(() => undefined)
-            if (p) mcpConfigPaths.push(p)
-          } else if (command === 'opencode') {
-            await graphifyOpenCodeConfigWrite(graphifyRepo).catch(() => {})
-          } else if (command === 'codex') {
-            await graphifyCodexConfigWrite(graphifyRepo).catch(() => {})
-          }
-          if (disposed) return
-        }
 
         const aiMemoryEnabled = useProjectsStore.getState().preferences.enabledFeatures.aiMemory
         if (

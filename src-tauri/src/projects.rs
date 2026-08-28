@@ -430,8 +430,6 @@ pub async fn clone_github_repo(url: String, target_dir: String) -> Result<String
         // Gera os arquivos de briefing de contexto para os agentes de IA
         let _ = generate_repo_context_files(&target_dir);
 
-        let _ = crate::graphify::graphify_opencode_config_write_inner(target_dir.clone(), None);
-
         Ok(target_dir)
     })
     .await

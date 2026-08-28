@@ -6,7 +6,6 @@ import {
   GitBranch,
   Globe,
   ListTodo,
-  Network,
   Plug,
   Workflow,
 } from 'lucide-react'
@@ -67,7 +66,6 @@ const FEATURE_ICONS = {
   git: GitBranch,
   browser: Globe,
   aiMemory: BrainCircuit,
-  graphify: Network,
   mcp: Plug,
   playwright: Bot,
   orchestrator: Workflow,

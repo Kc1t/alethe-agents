@@ -19,7 +19,6 @@ import {
   touchTerminalUsage,
 } from '../lib/terminalFactory'
 import { cleanupPtys } from '../lib/terminalLifecycle'
-import type { Terminal } from '../lib/types'
 import { sanitizeWorkspaceSnapshot } from '../lib/workspaceNavigation'
 import type { ProjectsState } from './projectsStore'
 import type { SliceCtx } from './projectsStore.slices'
@@ -36,7 +35,6 @@ type TerminalsSlice = Pick<
   | 'createFilePane'
   | 'createDiffPane'
   | 'createWebPane'
-  | 'createGraphifyPane'
   | 'renameTerminal'
   | 'setBrowserEngine'
   | 'markGsdSyncViewer'
@@ -236,47 +234,6 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
                     lastUsedAt: Date.now(),
                   }
                 : container,
-            )
-          : [...state.workspace.containers, newContainer(projectId, [pane.id], layout)]
-        return {
-          projects,
-          workspace: {
-            ...state.workspace,
-            containers,
-            recentProjectIds: rememberProjectTab(state.workspace.recentProjectIds, projectId),
-            recentTabs: rememberWorkspaceTab(state.workspace.recentTabs, {
-              kind: 'project',
-              id: projectId,
-            }),
-          },
-        }
-      })
-      return pane
-    },
-
-    createGraphifyPane: (projectId, cwd) => {
-      const pane: Terminal = {
-        id: `graphify-${nanoid()}`,
-        name: 'Visualização de Grafo (Graphify)',
-        cwd,
-        tabs: [],
-        activeTabId: '',
-        disabled: false,
-        laneVisible: true,
-        kind: 'graphify',
-      }
-      update((state) => {
-        const projects = state.projects.map((p) =>
-          p.id === projectId ? { ...p, terminals: [...p.terminals, pane] } : p,
-        )
-        const project = projects.find((p) => p.id === projectId)
-        const layout = project?.layoutMode ?? 'auto'
-        const existing = state.workspace.containers.find((c) => c.projectId === projectId)
-        const containers = existing
-          ? state.workspace.containers.map((c) =>
-              c.projectId === projectId
-                ? { ...c, paneIds: [...c.paneIds, pane.id], lastUsedAt: Date.now() }
-                : c,
             )
           : [...state.workspace.containers, newContainer(projectId, [pane.id], layout)]
         return {

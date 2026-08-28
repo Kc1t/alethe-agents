@@ -137,7 +137,6 @@ export type ProjectsState = ProjectsFile & {
   setConflictAgentModel: (id: string, model: string) => void
   setReviewAgentProvider: (id: string, provider: AgentType) => void
   setReviewAgentModel: (id: string, model: string) => void
-  setGraphifyEnabled: (id: string, enabled: boolean) => void
   setAutoWorktree: (id: string, enabled: boolean) => void
   setMergePostAction: (
     id: string,
@@ -243,7 +242,6 @@ export type ProjectsState = ProjectsFile & {
   ) => Terminal
 
   createWebPane: (projectId: string, args: BrowserPaneOptions) => Terminal
-  createGraphifyPane: (projectId: string, cwd: string) => Terminal
   renameTerminal: (projectId: string, terminalId: string, name: string) => void
   setBrowserEngine: (projectId: string, terminalId: string, engine: BrowserEngine) => void
 

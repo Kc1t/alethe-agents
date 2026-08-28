@@ -437,7 +437,6 @@ type ProjectsSlice = Pick<
   | 'setConflictAgentModel'
   | 'setReviewAgentProvider'
   | 'setReviewAgentModel'
-  | 'setGraphifyEnabled'
   | 'setAutoWorktree'
   | 'setMergePostAction'
   | 'relocateMergeAgentTerminal'
@@ -575,9 +574,6 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
 
     setReviewAgentModel: (id, reviewAgentModel) =>
       updateProject(id, (p) => ({ ...p, reviewAgentModel })),
-
-    setGraphifyEnabled: (id, graphifyEnabled) =>
-      updateProject(id, (p) => ({ ...p, graphifyEnabled })),
 
     setAutoWorktree: (id, autoWorktree) => updateProject(id, (p) => ({ ...p, autoWorktree })),
 

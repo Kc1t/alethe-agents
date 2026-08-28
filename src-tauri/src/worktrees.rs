@@ -825,9 +825,9 @@ mod tests {
             raw_events: Vec<serde_json::Value>,
         }
 
-        /// Runs `opencode run` non-interactively, without --pure (graphify needs
-        /// to show up), with --auto (approves permissions without stalling the
-        /// script), and captures the --format json stream line by line.
+        /// Runs `opencode run` non-interactively, without --pure, with --auto
+        /// (approves permissions without stalling the script), and captures
+        /// the --format json stream line by line.
         fn run_opencode(
             bin: &Path,
             cwd: &Path,
@@ -914,11 +914,6 @@ mod tests {
                 )
                 .expect("worktree_provision falhou");
                 let wt_path = PathBuf::from(&wt.path);
-
-                let _ = crate::graphify::graphify_opencode_config_write_inner(
-                    wt_path.to_string_lossy().into_owned(),
-                    None,
-                );
                 let (prompt, expected_file, expected_content) =
                     pick_pseudo_random(&pool, i as u128 * 7919);
                 worktrees.push((agent_id, wt_path, prompt, expected_file, expected_content));

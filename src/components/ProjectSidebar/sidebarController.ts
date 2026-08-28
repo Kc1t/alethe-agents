@@ -84,7 +84,6 @@ export function useSidebarActions() {
       setTerminalRemoteExcluded: state.setTerminalRemoteExcluded,
       setSubTabCompletionUnread: state.setSubTabCompletionUnread,
       createFilePane: state.createFilePane,
-      createGraphifyPane: state.createGraphifyPane,
       setFullscreenPane: state.setFullscreenPane,
     })),
   )

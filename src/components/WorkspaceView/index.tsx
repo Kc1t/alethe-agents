@@ -887,9 +887,7 @@ function NoWorkspace({
   const createProject = useProjectsStore((s) => s.createProject)
   const createTerminal = useProjectsStore((s) => s.createTerminal)
   const openTerminalWorkspace = useProjectsStore((s) => s.openTerminalWorkspace)
-  const setGraphifyEnabled = useProjectsStore((s) => s.setGraphifyEnabled)
   const [folder, setFolder] = useState('')
-  const [graphifyEnabled, setGraphifyEnabledState] = useState(false)
   const enabledAgents = useProjectsStore((s) => s.preferences.enabledAgents)
   const terminalTheme = useProjectsStore(
     (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,
@@ -937,7 +935,6 @@ function NoWorkspace({
       return
     }
     const createdProject = createProject({ name, defaultCwd: cwd })
-    if (graphifyEnabled) setGraphifyEnabled(createdProject.id, true)
     const terminal = createTerminal(createdProject.id, {
       name: quickAgent[0].toUpperCase() + quickAgent.slice(1),
       cwd,
@@ -989,14 +986,6 @@ function NoWorkspace({
               {t('ws.emptyFolderAction')}
             </button>
           </div>
-          <label className={styles.emptyGraphifyToggle}>
-            <input
-              type="checkbox"
-              checked={graphifyEnabled}
-              onChange={(event) => setGraphifyEnabledState(event.target.checked)}
-            />
-            <span>{t('project.graphifyEnabled')}</span>
-          </label>
           <button
             type="button"
             className={styles.emptySecondaryAction}

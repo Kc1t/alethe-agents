@@ -45,7 +45,6 @@ const SKIP_DIRS: &[&str] = &[
     "venv",
     "__pycache__",
     ".alethe",
-    "graphify-out",
 ];
 
 fn walk_files(root: &Path, exts: &[&str], out: &mut Vec<PathBuf>) {

@@ -588,14 +588,6 @@ pub(crate) fn merge_finalize_inner(
         serde_json::json!({ "source": meta.source, "target": meta.target }),
     );
 
-    // The graph is versioned knowledge: automatic post-integration snapshot
-    // (best-effort — with no graph in the repo, it's simply skipped). Ties
-    // RFC-004 ↔ RFC-006 together.
-    let _ = crate::graphify::graphify_snapshot_inner(
-        root.to_string_lossy().into_owned(),
-        meta.project_id.clone(),
-    );
-
     Ok(MergeOutcome {
         merged: true,
         stage: "merged".to_string(),

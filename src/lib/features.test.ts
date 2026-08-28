@@ -8,7 +8,6 @@ describe('normalizeEnabledFeatures', () => {
       todos: true,
       git: true,
       browser: true,
-      graphify: true,
       aiMemory: false,
       mcp: true,
       playwright: false,
@@ -21,7 +20,6 @@ describe('normalizeEnabledFeatures', () => {
       todos: false,
       git: false,
       browser: true,
-      graphify: true,
       aiMemory: false,
       mcp: true,
       playwright: false,
@@ -34,7 +32,6 @@ describe('normalizeEnabledFeatures', () => {
       todos: false,
       git: true,
       browser: true,
-      graphify: true,
       aiMemory: false,
       mcp: true,
       playwright: false,
@@ -49,7 +46,6 @@ describe('normalizeEnabledFeatures', () => {
       todos: true,
       git: true,
       browser: true,
-      graphify: true,
       aiMemory: true,
       mcp: true,
       playwright: false,
@@ -72,9 +68,5 @@ describe('normalizeEnabledFeatures', () => {
     expect(normalizeEnabledFeatures({ enabledFeatures: { orchestrator: true } }).orchestrator).toBe(
       true,
     )
-  })
-
-  it('preserves an explicit Graphify preference', () => {
-    expect(normalizeEnabledFeatures({ enabledFeatures: { graphify: false } }).graphify).toBe(false)
   })
 })

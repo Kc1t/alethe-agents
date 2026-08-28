@@ -13,105 +13,12 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
-import { type GsdSyncSession, useGsdSyncSessions } from '../../hooks/useGsdSyncSessions'
 import { useT } from '../../lib/i18n'
 import { formatShortcut } from '../../lib/platform'
-import { type PlanningStatus, readPlanningStatus } from '../../lib/tauri'
 import { TODO_TITLE_MAX_LENGTH } from '../../lib/todos'
-import type { Terminal, TodoItem } from '../../lib/types'
-import { selectActiveProject, useProjectsStore } from '../../stores/projectsStore'
-import { DotmCircular2 } from '../ui/dotm-circular-2'
+import type { TodoItem } from '../../lib/types'
+import { useProjectsStore } from '../../stores/projectsStore'
 import styles from './TodoSidebar.module.css'
-
-function GsdSyncSection() {
-  const t = useT()
-  const activeProject = useProjectsStore(selectActiveProject)
-  const setFullscreenPane = useProjectsStore((state) => state.setFullscreenPane)
-  const sessions = useGsdSyncSessions()
-  const projectSessions = activeProject
-    ? sessions.filter((session) => session.projectId === activeProject.id)
-    : []
-
-  if (!activeProject || projectSessions.length === 0) return null
-
-  return (
-    <section className={styles.section}>
-      <div className={styles.sectionHeader}>
-        <span>{t('todo.gsdSectionTitle')}</span>
-        <span className={styles.sectionCount}>{projectSessions.length}</span>
-      </div>
-      <div className={styles.list}>
-        {projectSessions.map((session) => {
-          const terminal = activeProject.terminals.find((term) => term.cwd === session.worktreePath)
-          if (!terminal) return null
-          return (
-            <GsdSyncRow
-              key={session.id}
-              terminal={terminal}
-              session={session}
-              onOpen={() => setFullscreenPane(terminal.id)}
-            />
-          )
-        })}
-      </div>
-    </section>
-  )
-}
-
-function GsdSyncRow({
-  terminal,
-  session,
-  onOpen,
-}: {
-  terminal: Terminal
-  session: GsdSyncSession
-  onOpen: () => void
-}) {
-  const t = useT()
-  const [status, setStatus] = useState<PlanningStatus | null>(null)
-
-  useEffect(() => {
-    if (!terminal.cwd) return
-    let cancelled = false
-    readPlanningStatus(terminal.cwd)
-      .then((result) => {
-        if (!cancelled) setStatus(result)
-      })
-      .catch(() => {
-        if (!cancelled) setStatus(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [terminal.cwd, session.busy])
-
-  const statusLabel = session.hasError ? t('todo.gsdError') : session.busy ? t('todo.gsdBusy') : t('todo.gsdIdle')
-  const progressLabel =
-    status?.roadmapTotalCount != null && status.roadmapPendingCount != null
-      ? t('todo.gsdProgress', {
-          done: status.roadmapTotalCount - status.roadmapPendingCount,
-          total: status.roadmapTotalCount,
-        })
-      : null
-
-  return (
-    <button type="button" className={styles.gsdRow} onClick={onOpen} title={terminal.name}>
-      <span className={styles.gsdRowState}>
-        {session.hasError ? (
-          <span className={styles.gsdErrorDot} />
-        ) : session.busy ? (
-          <DotmCircular2 size={13} dotSize={2} cellPadding={1} speed={1.2} bloom ariaLabel={statusLabel} />
-        ) : (
-          <span className={styles.gsdIdleDot} />
-        )}
-      </span>
-      <span className={styles.gsdRowBody}>
-        <span className={styles.gsdRowName}>{terminal.name}</span>
-        <span className={styles.gsdRowMeta}>{progressLabel ?? statusLabel}</span>
-      </span>
-    </button>
-  )
-}
 
 export function TodoSidebar() {
   const t = useT()
@@ -544,7 +451,6 @@ export function TodoSidebar() {
       </form>
 
       <div className={styles.content}>
-        {filter !== 'completed' ? <GsdSyncSection /> : null}
         {todos.length === 0 ? (
           <div className={styles.empty}>
             <div className={styles.emptyIcon}>

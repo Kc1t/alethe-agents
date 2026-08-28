@@ -138,12 +138,6 @@ export const TerminalPane = memo(function TerminalPane({
   const nativeTerminalMacos = useProjectsStore((s) => s.preferences.nativeTerminalMacos ?? false)
   const useNativeBackend = shouldUseNativeBackend(nativeTerminalMacos)
 
-  // repo para injetar o MCP (o XTermView resolve o config/bootstrap).
-  const graphifyRepo = useProjectsStore((s) => {
-    const p = s.projects.find((p) => p.id === projectId)
-    if (!p?.graphifyEnabled) return null
-    return terminal.cwd || p.terminals[0]?.cwd || null
-  })
 
   // sozinho (ver XTermView, gatilho condicionado a command === 'opencode').
   // NUNCA pro agente efêmero de resolução de conflito (`mergeStore.ts` —
@@ -569,7 +563,6 @@ export const TerminalPane = memo(function TerminalPane({
                   onSessionClaimSkipped={() =>
                     setSubTabSkipSessionClaim(projectId, terminal.id, activeTab.id, false)
                   }
-                  graphifyRepo={graphifyRepo}
                   gsdWatcherEnabled={gsdWatcherEnabled}
                   trustSessionId={terminal.gsdSyncViewer}
                   readOnly={terminal.gsdSyncViewer}

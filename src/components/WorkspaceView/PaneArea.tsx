@@ -21,9 +21,6 @@ import { WebPane } from '../WebPane'
 import { PersistentPanelGroup as Group } from './PersistentPanelGroup'
 import styles from './WorkspaceView.module.css'
 
-const GraphifyView = lazy(() =>
-  import('../GraphifyView').then((m) => ({ default: m.GraphifyView })),
-)
 const MarkdownPane = lazy(() =>
   import('../MarkdownPane').then((m) => ({ default: m.MarkdownPane })),
 )
@@ -46,13 +43,6 @@ function Pane({
     ? project?.paneGroups?.find((candidate) => candidate.paneIds[0] === terminal.id)
     : undefined
   if (group) return <PaneGroupView projectId={projectId} group={group} />
-  if (terminal.kind === 'graphify') {
-    return (
-      <Suspense fallback={<div className={styles.paneLoading}>Loading graph...</div>}>
-        <GraphifyView repo={terminal.cwd} projectId={projectId} terminalId={terminal.id} />
-      </Suspense>
-    )
-  }
   if (terminal.kind === 'markdown' || terminal.kind === 'file') {
     return (
       <Suspense fallback={<div className={styles.paneLoading}>Loading markdown...</div>}>

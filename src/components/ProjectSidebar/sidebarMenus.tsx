@@ -47,7 +47,6 @@ type MenuActions = Pick<
   | 'moveProjectToGroup'
   | 'setProjectDisabled'
   | 'deleteProject'
-  | 'createGraphifyPane'
   | 'openGroupWorkspace'
   | 'renameGroup'
   | 'moveGroupToParent'
@@ -71,7 +70,6 @@ type MenuActions = Pick<
 
 export type SidebarMenuDeps = {
   t: ReturnType<typeof useT>
-  graphifyEnabled: boolean
   browserEnabled: boolean
   groups: Group[]
   openPaneSets: Record<string, Set<string>>
@@ -91,7 +89,6 @@ function visibleProjectTerminals(project: Project): Terminal[] {
 export function createSidebarMenus(deps: SidebarMenuDeps) {
   const {
     t,
-    graphifyEnabled,
     browserEnabled,
     groups,
     openPaneSets,
@@ -209,23 +206,6 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
       icon: <Layout size={14} />,
       onClick: () => openModal('layoutDesigner', { kind: 'project', id: project.id }),
     },
-    ...(graphifyEnabled
-      ? [
-          {
-            kind: 'item' as const,
-            label: t('graphify.startInProject'),
-            onClick: () => {
-              const repoPath = project.terminals[0]?.cwd
-              if (repoPath) {
-                actions.createGraphifyPane(project.id, repoPath)
-                setActiveView('workspace')
-              } else {
-                alert('Adicione um terminal ao projeto primeiro para obter a raiz do repositório.')
-              }
-            },
-          },
-        ]
-      : []),
     {
       kind: 'item',
       label: project.groupId ? t('ui.sidebar.removeFromGroup') : t('ui.sidebar.moveToGroup'),

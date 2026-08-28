@@ -53,8 +53,6 @@ export type XTermViewProps = {
 
   env?: Record<string, string>
 
-  graphifyRepo?: string | null
-
   gsdWatcherEnabled?: boolean
 
   trustSessionId?: boolean
@@ -95,7 +93,6 @@ export function XTermView({
   sessionId,
   sessionKey,
   env,
-  graphifyRepo,
   gsdWatcherEnabled,
   trustSessionId,
   readOnly,
@@ -334,7 +331,6 @@ export function XTermView({
     initialInput,
     sessionId,
     env,
-    graphifyRepo,
     gsdWatcherEnabled,
     trustSessionId,
     readOnly,

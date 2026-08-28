@@ -822,8 +822,7 @@
   gap: 0;
 }
 
-:global([data-visual-style='clean']) .todoRow,
-:global([data-visual-style='clean']) .gsdRow {
+:global([data-visual-style='clean']) .todoRow {
   min-height: var(--clean-row-height);
   border: 0;
   border-radius: var(--clean-row-radius);
