@@ -14,6 +14,7 @@ import {
   Folder,
   FolderPlus,
   GitBranch,
+  Globe,
   Grid3x3,
   Home,
   MoreHorizontal,
@@ -36,6 +37,7 @@ import { type Group, type Project } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
+import { MeshSidebarView } from './MeshSidebarView'
 import { SidebarNowPlaying } from '../SidebarNowPlaying'
 import { UserProfile } from '../UserProfile'
 import { ContextMenu, type MenuItem } from './ContextMenu'
@@ -150,7 +152,6 @@ export function NormalProjectSidebar() {
       setTerminalRemoteExcluded: s.setTerminalRemoteExcluded,
       setSubTabCompletionUnread: s.setSubTabCompletionUnread,
       createFilePane: s.createFilePane,
-      createGraphifyPane: s.createGraphifyPane,
       setFullscreenPane: s.setFullscreenPane,
     })),
   )
@@ -167,7 +168,7 @@ export function NormalProjectSidebar() {
   const [menu, setMenu] = useState<ContextMenuState>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropIndicator, setDropIndicator] = useState<SidebarDropIndicator | null>(null)
-  const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects'>('projects')
+  const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects' | 'mesh'>('projects')
   const keepHome = activeView === 'home'
 
   useEffect(() => {
@@ -339,7 +340,6 @@ export function NormalProjectSidebar() {
 
   const { projectMenu, groupMenu, terminalMenu } = createSidebarMenus({
     t,
-    graphifyEnabled: preferences.enabledFeatures.graphify,
     browserEnabled: preferences.enabledFeatures.browser,
     groups: groups.filter((group) => !group.archived),
     openPaneSets,
@@ -532,6 +532,21 @@ export function NormalProjectSidebar() {
             <span>{t('ui.sidebar.git')}</span>
           </button>
         ) : null}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={sidebarTab === 'mesh' && activeView === 'collaboration'}
+          aria-label={t('mesh.title')}
+          title={t('mesh.title')}
+          className={`${styles.sidebarTab} ${sidebarTab === 'mesh' && activeView === 'collaboration' ? styles.sidebarTabActive : ''}`}
+          onClick={() => {
+            setSidebarTab('mesh')
+            setActiveView('collaboration')
+          }}
+        >
+          <Globe size={14} />
+          <span>{t('mesh.title')}</span>
+        </button>
       </div>
 
       <div className={styles.quickNavList}>
@@ -630,6 +645,8 @@ export function NormalProjectSidebar() {
           )}
         </section>
       ) : null}
+
+      {sidebarTab === 'mesh' ? <MeshSidebarView /> : null}
 
       {sidebarTab === 'projects' ? (
         <DndContext

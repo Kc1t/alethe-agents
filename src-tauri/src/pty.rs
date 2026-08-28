@@ -2254,16 +2254,27 @@ mod tests {
 
     #[test]
     fn a_kill_never_runs_while_the_child_lock_is_held() {
+        // Only `if let Ok(...) = child.lock() { ... }` actually *holds* the guard across
+        // whatever runs inside that block — `child.lock().ok().and_then(|child| ...)` (used by
+        // `kill_tree_without_holding_child`/`terminate_child_tree` to read the pid) is a temporary
+        // that Rust drops at the end of that statement, before any later call, no matter how close
+        // the two appear in the source text. A plain substring/byte-window scan (the previous form
+        // of this test) can't tell those apart and flagged the correct, deliberately-lock-released
+        // pattern as if it were the bug it exists to catch — see `kill_tree_without_holding_child`'s
+        // own doc comment for why holding the lock across a `taskkill` wait is a real deadlock risk
+        // this test still needs to guard against, just via the actual binding pattern, not proximity.
         let source = include_str!("pty.rs");
-        for (index, _) in source.match_indices("child.lock()") {
+        for (index, _) in source.match_indices("if let Ok(mut child) = child.lock()") {
             let tail = &source[index..];
-            let block_end = tail
+            let block_start = tail.find('{').map(|offset| offset + 1).unwrap_or(0);
+            let block_end = tail[block_start..]
                 .find(
                     "
     }",
                 )
-                .unwrap_or(tail.len().min(600));
-            let block = &tail[..block_end.min(600)];
+                .map(|offset| block_start + offset)
+                .unwrap_or(tail.len());
+            let block = &tail[block_start..block_end];
             assert!(
                 !block.contains("kill_process_tree("),
                 "a child lock is held across kill_process_tree near byte {index};                  read the pid, release the lock, then kill"

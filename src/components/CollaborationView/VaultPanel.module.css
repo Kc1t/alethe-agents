@@ -1,0 +1,190 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+  overflow-y: auto;
+  height: 100%;
+  width: 100%;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.sectionCount {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.sectionHint {
+  font-size: 12px;
+  color: var(--fg-muted);
+  margin: 0 0 4px;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0;
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.error {
+  font-size: 12px;
+  color: var(--status-offline);
+}
+
+.empty {
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+.grantList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.grantRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+}
+
+.grantInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.grantAccount {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grantScopes {
+  font-size: 11px;
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.presetGroup {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.presetButton {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.presetButton:hover:not(:disabled) {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.presetButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.presetButtonActive {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+.revokeButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.revokeButton:hover:not(:disabled) {
+  background: var(--status-offline-soft);
+  color: var(--status-offline);
+}
+
+.revokeButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.backupButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--fg);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.backupButton:hover {
+  background: var(--panel-hover);
+}

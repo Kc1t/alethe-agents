@@ -15,6 +15,7 @@ import {
   Folder,
   FolderPlus,
   GitBranch,
+  Globe,
   Home,
   MoreHorizontal,
   Plus,
@@ -38,6 +39,7 @@ import { type Group, type Project } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
+import { MeshSidebarView } from './MeshSidebarView'
 import { SidebarNowPlaying } from '../SidebarNowPlaying'
 import { UserProfile } from '../UserProfile'
 import { ContextMenu, type MenuItem } from './ContextMenu'
@@ -162,7 +164,6 @@ function CleanProjectSidebar() {
       setTerminalRemoteExcluded: s.setTerminalRemoteExcluded,
       setSubTabCompletionUnread: s.setSubTabCompletionUnread,
       createFilePane: s.createFilePane,
-      createGraphifyPane: s.createGraphifyPane,
       setFullscreenPane: s.setFullscreenPane,
     })),
   )
@@ -192,7 +193,7 @@ function CleanProjectSidebar() {
   const [menu, setMenu] = useState<ContextMenuState>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropIndicator, setDropIndicator] = useState<SidebarDropIndicator | null>(null)
-  const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects'>('projects')
+  const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects' | 'mesh'>('projects')
 
   useEffect(() => {
     if (!showGitControl && sidebarTab === 'git') setSidebarTab('projects')
@@ -363,7 +364,6 @@ function CleanProjectSidebar() {
 
   const { projectMenu, groupMenu, terminalMenu } = createSidebarMenus({
     t,
-    graphifyEnabled: preferences.enabledFeatures.graphify,
     browserEnabled: preferences.enabledFeatures.browser,
     groups: groups.filter((group) => !group.archived),
     openPaneSets,
@@ -531,6 +531,18 @@ function CleanProjectSidebar() {
             <GitBranch size={14} />
           </button>
         ) : null}
+        <button
+          type="button"
+          aria-label={t('mesh.title')}
+          title={t('mesh.title')}
+          className={`${styles.toolbarButton} ${sidebarTab === 'mesh' && activeView === 'collaboration' ? styles.toolbarButtonActive : ''}`}
+          onClick={() => {
+            setSidebarTab('mesh')
+            setActiveView('collaboration')
+          }}
+        >
+          <Globe size={14} />
+        </button>
         <span className={styles.toolbarSpacer} />
         <button
           type="button"
@@ -635,6 +647,8 @@ function CleanProjectSidebar() {
           )}
         </section>
       ) : null}
+
+      {sidebarTab === 'mesh' ? <MeshSidebarView /> : null}
 
       {sidebarTab === 'projects' ? (
         <DndContext
