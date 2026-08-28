@@ -24,6 +24,64 @@
   color: var(--fg);
 }
 
+.headerSearchButton {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.headerSearchButton:hover:not(:disabled) {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.headerSearchButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.searchBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.searchIcon {
+  color: var(--fg-muted);
+  flex-shrink: 0;
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 13px;
+  outline: none;
+}
+
+.searchInput::placeholder {
+  color: var(--fg-muted);
+}
+
+.searchHighlight {
+  background: var(--status-waiting-soft);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
 .e2eBadge {
   padding: 2px 7px;
   border-radius: 999px;

@@ -1,4 +1,4 @@
-import { Loader2, MessageSquare, Paperclip, Send, Terminal, X } from 'lucide-react'
+import { Loader2, MessageSquare, Paperclip, Search, Send, Terminal, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useP2pAutoConnect } from '../../hooks/useP2pAutoConnect'
@@ -108,17 +108,43 @@ function findMentionToken(value: string, cursor: number): MentionToken | null {
 // device knew every member's display name).
 const MENTION_SPLIT_PATTERN = /(@[^\s@]+)/g
 const MENTION_MATCH_PATTERN = /^@[^\s@]+$/
-function renderWithMentions(text: string) {
-  const parts = text.split(MENTION_SPLIT_PATTERN)
-  return parts.map((part, index) =>
-    MENTION_MATCH_PATTERN.test(part) ? (
-      <span key={index} className={styles.mentionHighlight}>
-        {part}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** Renders message text with `@mentions` styled distinctly, and — while a message search is
+ * active — the matching search substring highlighted too (case-insensitive), so a result reads as
+ * obviously matched instead of the search feeling like it filtered the list for no visible reason. */
+function renderMessageText(text: string, searchQuery: string) {
+  const mentionParts = text.split(MENTION_SPLIT_PATTERN)
+  const trimmedQuery = searchQuery.trim()
+  const searchPattern = trimmedQuery ? new RegExp(`(${escapeRegExp(trimmedQuery)})`, 'ig') : null
+
+  return mentionParts.map((part, partIndex) => {
+    if (MENTION_MATCH_PATTERN.test(part)) {
+      return (
+        <span key={partIndex} className={styles.mentionHighlight}>
+          {part}
+        </span>
+      )
+    }
+    if (!searchPattern) return part
+    const searchSegments = part.split(searchPattern)
+    return (
+      <span key={partIndex}>
+        {searchSegments.map((segment, segmentIndex) =>
+          segment.toLowerCase() === trimmedQuery.toLowerCase() && segment !== '' ? (
+            <mark key={segmentIndex} className={styles.searchHighlight}>
+              {segment}
+            </mark>
+          ) : (
+            segment
+          ),
+        )}
       </span>
-    ) : (
-      part
-    ),
-  )
+    )
+  })
 }
 
 export function ChatPanel({ source }: { source: ChatSource }) {
@@ -142,6 +168,13 @@ export function ChatPanel({ source }: { source: ChatSource }) {
   )
   const p2p = useP2pAutoConnect(otherMember?.accountRoute ?? null)
   const [draft, setDraft] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const visibleMessages = useMemo(() => {
+    if (!searchOpen || !searchQuery.trim()) return messages
+    const query = searchQuery.trim().toLowerCase()
+    return messages.filter((message) => message.text.toLowerCase().includes(query))
+  }, [messages, searchOpen, searchQuery])
   const [contentType, setContentType] = useState<MessageContentType>('text')
   const [sending, setSending] = useState(false)
   const [attaching, setAttaching] = useState(false)
@@ -538,12 +571,54 @@ export function ChatPanel({ source }: { source: ChatSource }) {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <span className={styles.headerTitle}>
-          {source.kind === 'direct' ? source.contactDisplayLabel : source.projectName}
-        </span>
-        <span className={`${styles.e2eBadge} ${styles[`e2eBadge_${connectionState}`]}`}>
-          {t(`chat.connectionState.${connectionState}`)}
-        </span>
+        {searchOpen ? (
+          <div className={styles.searchBar}>
+            <Search size={13} className={styles.searchIcon} />
+            <input
+              autoFocus
+              className={styles.searchInput}
+              value={searchQuery}
+              placeholder={t('chat.searchPlaceholder')}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  setSearchOpen(false)
+                  setSearchQuery('')
+                }
+              }}
+            />
+            <button
+              type="button"
+              className={styles.iconButton}
+              title={t('common.close')}
+              onClick={() => {
+                setSearchOpen(false)
+                setSearchQuery('')
+              }}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ) : (
+          <>
+            <span className={styles.headerTitle}>
+              {source.kind === 'direct' ? source.contactDisplayLabel : source.projectName}
+            </span>
+            <span className={`${styles.e2eBadge} ${styles[`e2eBadge_${connectionState}`]}`}>
+              {t(`chat.connectionState.${connectionState}`)}
+            </span>
+            <button
+              type="button"
+              className={styles.headerSearchButton}
+              title={t('chat.searchMessages')}
+              disabled={!conversation}
+              onClick={() => setSearchOpen(true)}
+            >
+              <Search size={14} />
+            </button>
+          </>
+        )}
       </div>
 
       <div className={styles.messages}>
@@ -556,8 +631,13 @@ export function ChatPanel({ source }: { source: ChatSource }) {
             <MessageSquare size={28} className={styles.emptyIcon} />
             <span>{t('chat.empty')}</span>
           </div>
+        ) : searchOpen && searchQuery.trim() && visibleMessages.length === 0 ? (
+          <div className={styles.empty}>
+            <Search size={28} className={styles.emptyIcon} />
+            <span>{t('chat.searchNoMatch')}</span>
+          </div>
         ) : (
-          messages.map((message) => {
+          visibleMessages.map((message) => {
             const own = message.senderDeviceId === localDeviceId
             return (
               <div
@@ -612,7 +692,7 @@ export function ChatPanel({ source }: { source: ChatSource }) {
                     <p
                       className={`${styles.messageText} ${own ? styles.bubbleOwn : styles.bubbleOther}`}
                     >
-                      {renderWithMentions(message.text)}
+                      {renderMessageText(message.text, searchOpen ? searchQuery : '')}
                     </p>
                   )}
                 </div>
