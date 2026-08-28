@@ -179,14 +179,96 @@ fn conversation_path(data_root: &Path, conversation_id: &str) -> PathBuf {
     data_root.join("sync").join("chat").join(format!("{conversation_id}.json"))
 }
 
+/// Append-only journal of newly sent/received messages not yet folded into the base document.
+///
+/// `save_at`'s full rewrite (serialize the whole `ConversationDocument`, fsync, atomic rename) is
+/// O(size of the entire conversation) — fine occasionally, but `send_message_at`/
+/// `record_incoming_message_at` used to call it on *every single message*, so a long-running
+/// conversation got measurably slower to send in the same way its history grew, purely from
+/// re-writing bytes that had already been written before. New messages are now appended here in
+/// O(1) instead (see `append_message_to_journal_at`), with the base document only rewritten
+/// periodically (`maybe_compact_at`) or whenever some other mutation (edit/delete/react/membership
+/// change) already needs a full rewrite anyway — those already call `save_at`, which folds any
+/// pending journal entries in as a side effect (via `load_at` merging them first) and clears the
+/// journal, so nothing here changes the source of truth's shape or any other code path's
+/// correctness — only how often the expensive full rewrite happens.
+fn journal_path(data_root: &Path, conversation_id: &str) -> PathBuf {
+    data_root.join("sync").join("chat").join(format!("{conversation_id}.jsonl"))
+}
+
+/// Compact the base document (folding in any journaled messages, see `load_at`) once the journal
+/// reaches this many pending entries — bounds both the per-append cost (still O(1)) and how much
+/// journal a crash between appends could ever lose track of/re-read before the next full rewrite.
+const JOURNAL_COMPACT_THRESHOLD: usize = 50;
+
 pub(crate) fn load_at(data_root: &Path, conversation_id: &str) -> Result<ConversationDocument, ChatError> {
     let path = conversation_path(data_root, conversation_id);
     let bytes = fs::read(&path).map_err(|_| ChatError::NotFound)?;
-    let document: ConversationDocument = serde_json::from_slice(&bytes).map_err(|_| ChatError::Io)?;
+    let mut document: ConversationDocument = serde_json::from_slice(&bytes).map_err(|_| ChatError::Io)?;
     if document.schema_version != CHAT_SCHEMA_VERSION {
         return Err(ChatError::Io);
     }
+    let journal_path = journal_path(data_root, conversation_id);
+    if let Ok(journal_bytes) = fs::read(&journal_path) {
+        for line in String::from_utf8_lossy(&journal_bytes).lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            // A journal line can be truncated if the process was killed mid-write (append is not
+            // atomic the way the base document's write-temp-then-rename is) — skip a malformed
+            // trailing line rather than failing the whole load; the sender still has the message
+            // in its own document, and a receiver would get it again on the next delivery retry.
+            let Ok(message) = serde_json::from_str::<MessageRecord>(line) else { continue };
+            if !document.messages.iter().any(|existing| existing.message_id == message.message_id) {
+                document.messages.push(message);
+            }
+        }
+    }
+    if let Some(max_sequence) = document.messages.iter().map(|message| message.sequence).max() {
+        document.next_sequence = document.next_sequence.max(max_sequence + 1);
+    }
     Ok(document)
+}
+
+/// Appends one message to the journal (O(1): open-append, write one JSON line, fsync) instead of
+/// rewriting the whole conversation document. See `journal_path`'s doc comment for the full design.
+fn append_message_to_journal_at(
+    data_root: &Path,
+    conversation_id: &str,
+    message: &MessageRecord,
+) -> Result<(), ChatError> {
+    let path = journal_path(data_root, conversation_id);
+    let parent = path.parent().ok_or(ChatError::Io)?;
+    fs::create_dir_all(parent).map_err(|_| ChatError::Io)?;
+    let mut line = serde_json::to_vec(message).map_err(|_| ChatError::Io)?;
+    line.push(b'\n');
+    let mut file = OpenOptions::new().create(true).append(true).open(&path).map_err(|_| ChatError::Io)?;
+    file.write_all(&line).and_then(|_| file.sync_all()).map_err(|_| ChatError::Io)
+}
+
+fn journal_entry_count_at(data_root: &Path, conversation_id: &str) -> usize {
+    let path = journal_path(data_root, conversation_id);
+    match fs::read(&path) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).lines().filter(|line| !line.trim().is_empty()).count(),
+        Err(_) => 0,
+    }
+}
+
+/// Appends `message` to the journal, then folds it into the base document with a full rewrite
+/// (clearing the journal) once `JOURNAL_COMPACT_THRESHOLD` pending entries accumulate. `document`
+/// must already have `message` pushed onto `document.messages` — the caller builds the in-memory
+/// document once and this just decides how to persist it.
+fn append_or_compact_at(
+    data_root: &Path,
+    document: &ConversationDocument,
+    message: &MessageRecord,
+) -> Result<(), ChatError> {
+    let conversation_id = &document.conversation.conversation_id;
+    append_message_to_journal_at(data_root, conversation_id, message)?;
+    if journal_entry_count_at(data_root, conversation_id) >= JOURNAL_COMPACT_THRESHOLD {
+        save_at(data_root, document)?;
+    }
+    Ok(())
 }
 
 #[cfg(windows)]
@@ -229,7 +311,14 @@ fn save_at(data_root: &Path, document: &ConversationDocument) -> Result<(), Chat
     replace_file(&temporary, &path).map_err(|error| {
         let _ = fs::remove_file(&temporary);
         error
-    })
+    })?;
+    // A full rewrite always reflects everything the journal held (`load_at` merges journal
+    // entries into whatever `document` the caller is about to persist here), so any pending
+    // journal is now redundant — clear it so a future `load_at` doesn't re-merge already-included
+    // messages. Best-effort: a leftover journal file is harmless (its messages are already
+    // deduplicated by `message_id` on merge), just wasted space until the next compaction.
+    let _ = fs::remove_file(journal_path(data_root, &document.conversation.conversation_id));
+    Ok(())
 }
 
 fn wrap_epoch_key_for(
@@ -462,6 +551,9 @@ pub fn delete_direct_conversation_at(
 ) -> Result<(), ChatError> {
     let conversation_id = direct_conversation_id(local_account_route, contact_account_route);
     let path = conversation_path(data_root, &conversation_id);
+    // The journal (see `journal_path`'s doc comment) can hold messages not yet folded into the
+    // base document — removing only the base file would leave those resurrectable on next load.
+    let _ = fs::remove_file(journal_path(data_root, &conversation_id));
     match fs::remove_file(&path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -588,7 +680,7 @@ pub fn send_message_at(
         let overflow = document.messages.len() - MAX_MESSAGES_PER_CONVERSATION;
         document.messages.drain(0..overflow);
     }
-    save_at(data_root, &document)?;
+    append_or_compact_at(data_root, &document, &message)?;
     if !message.mentions.is_empty() {
         let _ = crate::sync_access::record_at(
             data_root,
@@ -686,8 +778,8 @@ pub fn record_incoming_message_at(
     if document.messages.iter().any(|existing| existing.message_id == message.message_id) {
         return Ok(());
     }
-    document.messages.push(message);
-    save_at(data_root, &document)
+    document.messages.push(message.clone());
+    append_or_compact_at(data_root, &document, &message)
 }
 
 pub fn edit_message_at(
@@ -1387,6 +1479,126 @@ mod tests {
         )
         .unwrap();
         assert!(crate::sync_access::list_at(&root, 2_000).unwrap().is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn sending_a_message_appends_to_the_journal_instead_of_rewriting_the_base_document() {
+        let root = temp_root("journal-append");
+        let alice_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let conversation = create_conversation_at(
+            &root, None, ConversationKind::Direct, None, vec![member("route-alice", &alice_secret)], 1_000,
+        )
+        .unwrap();
+        let wrap = current_epoch_wrap_for(&conversation, "route-alice").unwrap();
+        let key = unwrap_key(wrap, &alice_secret, &conversation.conversation_id, 0).unwrap();
+
+        let base_path = conversation_path(&root, &conversation.conversation_id);
+        let base_bytes_before = fs::read(&base_path).unwrap();
+
+        send_message_at(
+            &root, &conversation.conversation_id, "dev-alice", "route-alice", &key, MessageContentType::Text,
+            b"hi", vec![], &AllowAll, 2_000,
+        )
+        .unwrap();
+
+        // The base document is untouched by a single send (well under the compaction threshold) —
+        // only the journal grew. This is the whole point: sending stays O(1) instead of rewriting
+        // everything sent before.
+        assert_eq!(fs::read(&base_path).unwrap(), base_bytes_before);
+        assert!(journal_path(&root, &conversation.conversation_id).exists());
+        assert_eq!(journal_entry_count_at(&root, &conversation.conversation_id), 1);
+
+        // But the message is still visible through the normal read path, transparently merged.
+        let messages = list_messages_at(&root, &conversation.conversation_id).unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].sequence, 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn journal_compacts_into_the_base_document_once_the_threshold_is_reached() {
+        let root = temp_root("journal-compact");
+        let alice_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let conversation = create_conversation_at(
+            &root, None, ConversationKind::Direct, None, vec![member("route-alice", &alice_secret)], 1_000,
+        )
+        .unwrap();
+        let wrap = current_epoch_wrap_for(&conversation, "route-alice").unwrap();
+        let key = unwrap_key(wrap, &alice_secret, &conversation.conversation_id, 0).unwrap();
+
+        for index in 0..JOURNAL_COMPACT_THRESHOLD {
+            send_message_at(
+                &root, &conversation.conversation_id, "dev-alice", "route-alice", &key,
+                MessageContentType::Text, format!("msg {index}").as_bytes(), vec![], &AllowAll,
+                2_000 + index as u64,
+            )
+            .unwrap();
+        }
+
+        // Compaction fired: the journal was folded into the base document and cleared.
+        assert!(!journal_path(&root, &conversation.conversation_id).exists());
+        let base = load_at(&root, &conversation.conversation_id).unwrap();
+        assert_eq!(base.messages.len(), JOURNAL_COMPACT_THRESHOLD);
+        assert_eq!(base.next_sequence, JOURNAL_COMPACT_THRESHOLD as u64 + 1);
+
+        // Sequence numbers survive the merge correctly-ordered (not just "some 50 messages").
+        for (index, message) in base.messages.iter().enumerate() {
+            assert_eq!(message.sequence, index as u64 + 1);
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn load_skips_a_truncated_trailing_journal_line_instead_of_failing() {
+        let root = temp_root("journal-truncated");
+        let alice_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let conversation = create_conversation_at(
+            &root, None, ConversationKind::Direct, None, vec![member("route-alice", &alice_secret)], 1_000,
+        )
+        .unwrap();
+        let wrap = current_epoch_wrap_for(&conversation, "route-alice").unwrap();
+        let key = unwrap_key(wrap, &alice_secret, &conversation.conversation_id, 0).unwrap();
+        send_message_at(
+            &root, &conversation.conversation_id, "dev-alice", "route-alice", &key, MessageContentType::Text,
+            b"first", vec![], &AllowAll, 2_000,
+        )
+        .unwrap();
+
+        // Simulates a crash mid-`write_all` (append is not atomic like the base document's
+        // write-temp-then-rename) by appending a line that isn't valid JSON.
+        let path = journal_path(&root, &conversation.conversation_id);
+        let mut file = OpenOptions::new().append(true).open(&path).unwrap();
+        file.write_all(b"{not valid json\n").unwrap();
+
+        let messages = list_messages_at(&root, &conversation.conversation_id).unwrap();
+        assert_eq!(messages.len(), 1);
+        let plaintext = decrypt_message(&messages[0], &key).unwrap();
+        assert_eq!(plaintext, b"first");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn deleting_a_direct_conversation_also_removes_its_journal() {
+        let root = temp_root("journal-delete");
+        let alice_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let bob_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let alice_route = "route-alice-delete";
+        let bob_route = "route-bob-delete";
+        let conversation = ensure_direct_conversation_at(
+            &root, alice_route, X25519PublicKey::from(&alice_secret).as_bytes().to_vec(), bob_route,
+            X25519PublicKey::from(&bob_secret).as_bytes().to_vec(), 1_000,
+        )
+        .unwrap();
+        // Sending a real message isn't the point of this test, only that a journal file exists
+        // and gets removed along with the base document — write a placeholder directly.
+        fs::write(journal_path(&root, &conversation.conversation_id), b"{}\n").unwrap();
+        assert!(journal_path(&root, &conversation.conversation_id).exists());
+
+        delete_direct_conversation_at(&root, alice_route, bob_route).unwrap();
+
+        assert!(!journal_path(&root, &conversation.conversation_id).exists());
+        assert!(!conversation_path(&root, &conversation.conversation_id).exists());
         fs::remove_dir_all(root).unwrap();
     }
 
