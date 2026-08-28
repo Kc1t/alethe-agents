@@ -24,6 +24,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   reported as they change. The same orchestrator also ships as a standalone MCP server, so the
   tools can be used from any editor without Alethe running.
 
+- Agent CLIs installed via nvm, bun, `npm --prefix`, pnpm or volta are now detected on Linux
+  even when Alethe is launched from the desktop menu — which inherits a minimal PATH — matching
+  the existing `~/.local/bin` and `~/.cargo/bin` fallbacks. Onboarding and agent tabs now see
+  these installs instead of reporting them as missing.
 - When an agent opens a page in the shared browser, Alethe asks where it should go. The browser
   itself has no window, which is right most of the time — an agent reading a page needs no
   interface at all — so the question only comes up when a page actually appears. All three
@@ -233,6 +237,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - The **Continue in Claude Code** button in the agent handoff dialog was unreadable. It painted its
   label with a colour token that does not exist anywhere in the app, so the text fell back to the
   inherited foreground and sat light-on-accent.
+- On Linux, orphaned agent and shell processes could outlive the app because the kill-on-close
+  guard was a no-op. The Windows implementation uses a Job Object that kills descendants when the
+  app exits; on Linux the guard now reports as active and relies on the shutdown handler (which
+  sends `SIGTERM` to every process group) combined with orphan sweep at next startup.
 
 ## [1.6.0] — 2026-08-17
 
