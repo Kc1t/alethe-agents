@@ -11,7 +11,7 @@ const THUMBNAIL_JPEG_QUALITY = 0.72
  * picture set) or decoding fails — callers treat that the same as "no thumbnail". */
 export async function downscaleAvatar(imageDataUrl: string | null | undefined): Promise<string | null> {
   const trimmed = imageDataUrl?.trim()
-  if (!trimmed) return null
+  if (!trimmed || !trimmed.startsWith('data:')) return null
   try {
     const image = await loadImage(trimmed)
     const scale = Math.min(1, THUMBNAIL_MAX_DIMENSION / Math.max(image.width, image.height))

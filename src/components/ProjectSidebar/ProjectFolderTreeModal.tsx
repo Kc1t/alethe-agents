@@ -4,18 +4,27 @@ import {
   CheckSquare,
   ChevronDown,
   ChevronRight,
+  File,
+  FileCode,
+  FileText,
+  Filter,
   Folder,
   FolderSync,
   HardDrive,
   Lock,
   RefreshCw,
+  Search,
+  ShieldCheck,
+  Sparkles,
   Square,
   Trash2,
   X,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
+  type BackupArchiveEntry,
   type FolderTreeNode,
+  listProjectBackups,
   purgeProjectBackupsSecured,
   scanProjectFolderTree,
   triggerProjectArchiveBackup,
@@ -23,6 +32,36 @@ import {
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import styles from './ProjectFolderTreeModal.module.css'
+
+type FilterMode = 'all' | 'essential' | 'heavy' | 'selected'
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+}
+
+function getNodeIcon(node: FolderTreeNode) {
+  if (node.isDir) {
+    return <Folder size={13} className={node.isHeavy ? styles.folderHeavy : styles.folderNormal} />
+  }
+  if (node.isEssential) {
+    return <ShieldCheck size={13} className={styles.fileEssential} />
+  }
+  const lower = node.name.toLowerCase()
+  if (lower.endsWith('.exe') || lower.endsWith('.dll') || lower.endsWith('.bin') || lower.endsWith('.so')) {
+    return <FileCode size={13} className={styles.fileBinary} />
+  }
+  if (lower.endsWith('.zip') || lower.endsWith('.tar') || lower.endsWith('.gz') || lower.endsWith('.7z')) {
+    return <Archive size={13} className={styles.fileArchive} />
+  }
+  if (lower.endsWith('.md') || lower.endsWith('.txt') || lower.endsWith('.json') || lower.endsWith('.toml')) {
+    return <FileText size={13} className={styles.fileNormal} />
+  }
+  return <File size={13} className={node.isHeavy ? styles.fileHeavy : styles.fileNormal} />
+}
 
 export function ProjectFolderTreeModal() {
   const closeModal = useUiStore((s) => s.closeModal)
@@ -35,9 +74,27 @@ export function ProjectFolderTreeModal() {
   const [loading, setLoading] = useState(false)
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
+  const [filterMode, setFilterMode] = useState<FilterMode>('all')
+  const [searchQuery, setSearchQuery] = useState('')
   const [confirmDeleteModal, setConfirmDeleteModal] = useState(false)
   const [confirmInput, setConfirmInput] = useState('')
-  const [vaultBackupsCount, setVaultBackupsCount] = useState(3)
+  const [backups, setBackups] = useState<BackupArchiveEntry[]>([])
+  const [backupsLoading, setBackupsLoading] = useState(false)
+  const [creatingBackup, setCreatingBackup] = useState(false)
+
+  const reloadBackups = () => {
+    if (!activeProject?.defaultCwd) return
+    setBackupsLoading(true)
+    listProjectBackups(activeProject.defaultCwd)
+      .then(setBackups)
+      .catch((e) => pushToast({ title: 'Erro', body: String(e) }))
+      .finally(() => setBackupsLoading(false))
+  }
+
+  useEffect(() => {
+    reloadBackups()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProject])
 
   useEffect(() => {
     if (!activeProject?.defaultCwd) return
@@ -45,19 +102,20 @@ export function ProjectFolderTreeModal() {
     scanProjectFolderTree(activeProject.defaultCwd)
       .then((nodes) => {
         setTree(nodes)
-        // Auto-seleciona pastas leves e desmarca heavy (node_modules, target, .env)
+        // Auto-seleciona de forma inteligente: todos os itens essenciais e leves, preservando a integridade do projeto
         const initialSelected = new Set<string>()
-        const collectLight = (list: FolderTreeNode[]) => {
+        const collectSafe = (list: FolderTreeNode[]) => {
           for (const item of list) {
-            if (!item.isHeavy) {
+            // Itens essenciais (lockfiles, manifestos, configs) são SEMPRE selecionados
+            if (item.isEssential || !item.isHeavy) {
               initialSelected.add(item.path)
             }
             if (item.children.length > 0) {
-              collectLight(item.children)
+              collectSafe(item.children)
             }
           }
         }
-        collectLight(nodes)
+        collectSafe(nodes)
         setSelectedPaths(initialSelected)
       })
       .catch((e) => pushToast({ title: 'Erro', body: String(e) }))
@@ -82,28 +140,138 @@ export function ProjectFolderTreeModal() {
     })
   }
 
-  const deselectHeavy = () => {
+  // Desmarca apenas caches/build outputs pesados, garantindo que nada essencial seja perdido
+  const deselectHeavyCaches = () => {
     setSelectedPaths((prev) => {
       const next = new Set(prev)
       const uncheck = (list: FolderTreeNode[]) => {
         for (const item of list) {
-          if (item.isHeavy) next.delete(item.path)
+          if (item.isHeavy && !item.isEssential) {
+            next.delete(item.path)
+          }
           if (item.children.length > 0) uncheck(item.children)
         }
       }
       uncheck(tree)
       return next
     })
+    pushToast({
+      title: 'Cofre Inteligente',
+      body: 'Caches e saídas de build descartáveis foram desmarcados. Todos os manifestos e arquivos essenciais foram preservados!',
+    })
   }
+
+  const selectAll = () => {
+    const all = new Set<string>()
+    const collectAll = (list: FolderTreeNode[]) => {
+      for (const item of list) {
+        all.add(item.path)
+        if (item.children.length > 0) collectAll(item.children)
+      }
+    }
+    collectAll(tree)
+    setSelectedPaths(all)
+  }
+
+  const deselectAll = () => {
+    setSelectedPaths(new Set())
+  }
+
+  // Stats calculation
+  const stats = useMemo(() => {
+    let totalItems = 0
+    let totalBytes = 0
+    let selectedCount = 0
+    let selectedBytes = 0
+    let heavyCount = 0
+    let heavyBytes = 0
+    let essentialCount = 0
+    let essentialBytes = 0
+
+    const traverse = (list: FolderTreeNode[]) => {
+      for (const item of list) {
+        totalItems++
+        if (!item.isDir) totalBytes += item.sizeBytes
+        const isSelected = selectedPaths.has(item.path)
+        if (isSelected) {
+          selectedCount++
+          if (!item.isDir) selectedBytes += item.sizeBytes
+        }
+        if (item.isEssential) {
+          essentialCount++
+          if (!item.isDir) essentialBytes += item.sizeBytes
+        } else if (item.isHeavy) {
+          heavyCount++
+          if (!item.isDir) heavyBytes += item.sizeBytes
+        }
+        if (item.children.length > 0) {
+          traverse(item.children)
+        }
+      }
+    }
+    traverse(tree)
+    return {
+      totalItems,
+      totalBytes,
+      selectedCount,
+      selectedBytes,
+      heavyCount,
+      heavyBytes,
+      essentialCount,
+      essentialBytes,
+    }
+  }, [tree, selectedPaths])
+
+  // Filter nodes according to search and mode
+  const filteredTree = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+
+    const filterNode = (node: FolderTreeNode): FolderTreeNode | null => {
+      const isSelected = selectedPaths.has(node.path)
+      const isHeavy = node.isHeavy && !node.isEssential
+      const isEssential = Boolean(node.isEssential)
+
+      let matchesMode = true
+      if (filterMode === 'essential') matchesMode = isEssential
+      else if (filterMode === 'heavy') matchesMode = isHeavy
+      else if (filterMode === 'selected') matchesMode = isSelected
+
+      const matchesQuery = !query || node.name.toLowerCase().includes(query) || node.path.toLowerCase().includes(query)
+
+      const filteredChildren: FolderTreeNode[] = []
+      for (const child of node.children) {
+        const matchingChild = filterNode(child)
+        if (matchingChild) filteredChildren.push(matchingChild)
+      }
+
+      if ((matchesMode && matchesQuery) || filteredChildren.length > 0) {
+        return {
+          ...node,
+          children: filteredChildren,
+        }
+      }
+      return null
+    }
+
+    const result: FolderTreeNode[] = []
+    for (const node of tree) {
+      const filtered = filterNode(node)
+      if (filtered) result.push(filtered)
+    }
+    return result
+  }, [tree, selectedPaths, filterMode, searchQuery])
 
   const handleCreateBackup = async () => {
     if (!activeProject?.defaultCwd) return
+    setCreatingBackup(true)
     try {
       await triggerProjectArchiveBackup(activeProject.defaultCwd, activeProject.name)
-      setVaultBackupsCount((c) => c + 1)
+      reloadBackups()
       pushToast({ title: 'Sucesso', body: 'Backup definitivo e imutável gravado no cofre!' })
     } catch (e) {
       pushToast({ title: 'Erro', body: `Falha ao gravar backup: ${e}` })
+    } finally {
+      setCreatingBackup(false)
     }
   }
 
@@ -111,7 +279,7 @@ export function ProjectFolderTreeModal() {
     if (!activeProject?.defaultCwd) return
     try {
       await purgeProjectBackupsSecured(activeProject.defaultCwd, activeProject.name, confirmInput)
-      setVaultBackupsCount(0)
+      setBackups([])
       setConfirmDeleteModal(false)
       setConfirmInput('')
       pushToast({ title: 'Cofre', body: 'Histórico do cofre de backups foi purgado.' })
@@ -120,11 +288,22 @@ export function ProjectFolderTreeModal() {
     }
   }
 
+  const formatBackupDate = (createdAtSecs: number) =>
+    new Date(createdAtSecs * 1000).toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+
   const renderTree = (nodes: FolderTreeNode[]) => {
     return nodes.map((node) => {
       const isSelected = selectedPaths.has(node.path)
       const isExpanded = expandedPaths.has(node.path)
       const hasChildren = node.children.length > 0
+      const isHeavy = node.isHeavy && !node.isEssential
+      const isEssential = Boolean(node.isEssential)
 
       return (
         <div key={node.path} className={styles.treeItemRow}>
@@ -153,11 +332,31 @@ export function ProjectFolderTreeModal() {
               )}
             </button>
 
-            <Folder size={13} className={node.isHeavy ? styles.folderHeavy : styles.folderNormal} />
-            <span className={`${styles.nodeName} ${node.isHeavy ? styles.nodeNameHeavy : ''}`}>
+            {getNodeIcon(node)}
+
+            <span
+              className={`${styles.nodeName} ${isEssential ? styles.nodeNameEssential : isHeavy ? styles.nodeNameHeavy : ''}`}
+            >
               {node.name}
             </span>
-            {node.isHeavy ? <span className={styles.heavyBadge}>Ignorado por Padrão</span> : null}
+
+            <div className={styles.nodeMeta}>
+              {node.sizeBytes > 0 ? (
+                <span className={`${styles.nodeSize} ${isHeavy ? styles.nodeSizeHeavy : ''}`}>
+                  {formatBytes(node.sizeBytes)}
+                </span>
+              ) : null}
+
+              {isEssential ? (
+                <span className={styles.essentialBadge} title="Arquivo/Manifesto crítico indispensável para build e execução">
+                  Essencial
+                </span>
+              ) : isHeavy ? (
+                <span className={styles.heavyBadge}>
+                  {node.isDir ? 'Cache / Build' : 'Binário Descartável'}
+                </span>
+              ) : null}
+            </div>
           </div>
 
           {isExpanded && hasChildren ? (
@@ -191,22 +390,115 @@ export function ProjectFolderTreeModal() {
             </span>
           </div>
 
+          {/* Quick Metrics Bar */}
+          <div className={styles.metricsBar}>
+            <div className={styles.metricItem}>
+              <span className={styles.metricLabel}>Selecionados:</span>
+              <strong className={styles.metricValue}>
+                {stats.selectedCount} ({formatBytes(stats.selectedBytes)})
+              </strong>
+            </div>
+            <div className={styles.metricDivider} />
+            <div className={styles.metricItem}>
+              <span className={styles.metricLabel}>Essenciais:</span>
+              <span className={styles.metricValueEssential}>
+                {stats.essentialCount} ({formatBytes(stats.essentialBytes)})
+              </span>
+            </div>
+            <div className={styles.metricDivider} />
+            <div className={styles.metricItem}>
+              <span className={styles.metricLabel}>Caches/Pesados:</span>
+              <span className={`${styles.metricValue} ${stats.heavyCount > 0 ? styles.metricValueWarning : ''}`}>
+                {stats.heavyCount} ({formatBytes(stats.heavyBytes)})
+              </span>
+            </div>
+          </div>
+
           <div className={styles.treeSection}>
             <div className={styles.treeHeader}>
-              <span className={styles.sectionLabel}>Pastas para Sincronizar ({selectedPaths.size} selecionadas)</span>
-              <button type="button" className={styles.presetBtn} onClick={deselectHeavy}>
-                Desmarcar Pastas Pesadas
-              </button>
+              <div className={styles.filterTabs}>
+                <button
+                  type="button"
+                  className={`${styles.filterTab} ${filterMode === 'all' ? styles.filterTabActive : ''}`}
+                  onClick={() => setFilterMode('all')}
+                >
+                  Todos ({stats.totalItems})
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.filterTab} ${filterMode === 'essential' ? styles.filterTabActive : ''}`}
+                  onClick={() => setFilterMode('essential')}
+                >
+                  <Sparkles size={11} className={styles.tabIconEssential} />
+                  Essenciais ({stats.essentialCount})
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.filterTab} ${filterMode === 'heavy' ? styles.filterTabActive : ''}`}
+                  onClick={() => setFilterMode('heavy')}
+                >
+                  <Filter size={11} />
+                  Caches/Pesados ({stats.heavyCount})
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.filterTab} ${filterMode === 'selected' ? styles.filterTabActive : ''}`}
+                  onClick={() => setFilterMode('selected')}
+                >
+                  Selecionados ({stats.selectedCount})
+                </button>
+              </div>
+
+              <div className={styles.actionButtons}>
+                <button
+                  type="button"
+                  className={styles.actionBtnWarning}
+                  title="Desmarca node_modules, target, builds e arquivos pesados descartáveis preservando todos os manifestos e arquivos essenciais"
+                  onClick={deselectHeavyCaches}
+                >
+                  Desmarcar Apenas Caches
+                </button>
+                <button type="button" className={styles.presetBtn} onClick={selectAll}>
+                  Selecionar Tudo
+                </button>
+                <button type="button" className={styles.presetBtn} onClick={deselectAll}>
+                  Limpar
+                </button>
+              </div>
+            </div>
+
+            {/* Search Input */}
+            <div className={styles.searchBar}>
+              <Search size={13} className={styles.searchIcon} />
+              <input
+                className={styles.searchInput}
+                value={searchQuery}
+                placeholder="Filtrar arquivos ou pastas..."
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              {searchQuery ? (
+                <button
+                  type="button"
+                  className={styles.clearSearchBtn}
+                  onClick={() => setSearchQuery('')}
+                >
+                  <X size={12} />
+                </button>
+              ) : null}
             </div>
 
             <div className={styles.treeContainer}>
               {loading ? (
                 <div className={styles.loadingRow}>
                   <RefreshCw size={14} className={styles.spin} />
-                  <span>Escaneando pastas do projeto...</span>
+                  <span>Escaneando pastas e identificando arquivos essenciais...</span>
+                </div>
+              ) : filteredTree.length === 0 ? (
+                <div className={styles.emptyState}>
+                  <span>Nenhum arquivo ou pasta encontrado para os filtros atuais.</span>
                 </div>
               ) : (
-                renderTree(tree)
+                renderTree(filteredTree)
               )}
             </div>
           </div>
@@ -217,27 +509,57 @@ export function ProjectFolderTreeModal() {
                 <Archive size={14} className={styles.vaultIcon} />
                 <span className={styles.sectionLabel}>Cofre de Backups Definitivos (WORM)</span>
               </div>
-              <span className={styles.vaultCountBadge}>{vaultBackupsCount} Snapshots Imutáveis</span>
+              <span className={styles.vaultCountBadge}>
+                {backupsLoading ? '…' : backups.length} Snapshots Imutáveis
+              </span>
             </div>
 
             <div className={styles.vaultActions}>
               <button
                 type="button"
                 className={styles.backupBtn}
+                disabled={creatingBackup}
                 onClick={handleCreateBackup}
               >
-                <HardDrive size={13} />
+                {creatingBackup ? (
+                  <RefreshCw size={13} className={styles.spin} />
+                ) : (
+                  <HardDrive size={13} />
+                )}
                 <span>Gerar Ponto de Restauração Agora</span>
               </button>
               <button
                 type="button"
                 className={styles.purgeBtn}
+                disabled={backups.length === 0}
                 onClick={() => setConfirmDeleteModal(true)}
               >
                 <Trash2 size={13} />
                 <span>Limpar Histórico do Cofre...</span>
               </button>
             </div>
+
+            {backupsLoading ? (
+              <div className={styles.loadingRow}>
+                <RefreshCw size={14} className={styles.spin} />
+                <span>Carregando snapshots do cofre...</span>
+              </div>
+            ) : backups.length > 0 ? (
+              <ul className={styles.backupList}>
+                {backups.map((entry) => (
+                  <li key={entry.filename} className={styles.backupRow}>
+                    <Archive size={12} className={styles.backupRowIcon} />
+                    <div className={styles.backupRowInfo}>
+                      <span className={styles.backupRowDate}>{formatBackupDate(entry.createdAt)}</span>
+                      <span className={styles.backupRowHash} title={entry.sha256}>
+                        sha256:{entry.sha256.slice(0, 12)}…
+                      </span>
+                    </div>
+                    <span className={styles.backupRowSize}>{formatBytes(entry.sizeBytes)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         </div>
 

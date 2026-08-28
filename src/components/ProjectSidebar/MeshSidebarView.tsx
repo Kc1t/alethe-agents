@@ -5,10 +5,10 @@ import {
   Copy,
   FolderSync,
   Globe,
-  Inbox,
   Laptop,
   Loader2,
   Pencil,
+  RefreshCw,
   Share2,
   ShieldAlert,
   Trash2,
@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react'
 
 import { useCloudflareLoginOnly } from '../../hooks/useCloudflareLoginOnly'
 import { type CloudflareProbeState, probeCloudflareState } from '../../lib/api/cloudflareDeploy'
+import { exportPairingCode, regeneratePairingCode } from '../../lib/api/p2pBridge'
 import {
   type CollaborationServiceSettings,
   connectRendezvous,
@@ -30,26 +31,22 @@ import {
   type RendezvousStatus,
 } from '../../lib/api/syncRendezvous'
 import { useT } from '../../lib/i18n'
-import { PROJECT_SYNC_CAPABILITIES, type SyncPermission } from '../../lib/sync/contracts'
-import { buildInvitationLink, parseInvitationLink } from '../../lib/sync/invitationLink'
+import { downscaleAvatar } from '../../lib/image/downscaleAvatar'
+import { PROJECT_SYNC_CAPABILITIES } from '../../lib/sync/contracts'
 import {
   configureGoogleSync,
   disconnectGoogleSync,
   getGoogleSyncStatus,
   type GoogleSyncUser,
-  listDirectory,
   openInBrowser,
   startGoogleSyncAuth,
   syncApproveDevice,
   type SyncDeviceRecord,
-  syncIssueInvitation,
-  syncRedeemInvitation,
   syncRejectDevice,
   syncRemoveDevice,
   syncRenameDevice,
   syncRevokeDevice,
   syncRevokeGrant,
-  syncRevokeInvitation,
   type SyncSecuritySnapshot,
   syncSecuritySnapshot,
 } from '../../lib/tauri'
@@ -59,20 +56,6 @@ import { EmptyState } from '../EmptyState'
 import { GoogleIcon } from '../icons/AgentIcons'
 import styles from './MeshSidebarView.module.css'
 
-const INVITATION_PERMISSION_PRESETS = [
-  { id: 'viewOnly', permissions: ['read'] as SyncPermission[] },
-  { id: 'reviewer', permissions: ['read', 'export'] as SyncPermission[] },
-  { id: 'collaborator', permissions: ['read', 'write'] as SyncPermission[] },
-] as const
-
-const INVITATION_EXPIRY_CHOICES_MS = [
-  { id: '1h', ms: 60 * 60 * 1000 },
-  { id: '24h', ms: 24 * 60 * 60 * 1000 },
-  { id: '7d', ms: 7 * 24 * 60 * 60 * 1000 },
-] as const
-
-const SENSITIVE_PERMISSIONS: SyncPermission[] = ['write', 'delete', 'invite', 'admin']
-
 // Deep-links directly to the "Create OAuth client" flow for an existing/new Google Cloud
 // project, scoped to Desktop app credentials — the exact type Alethe's loopback PKCE flow needs.
 const GOOGLE_CLOUD_CREDENTIALS_URL = 'https://console.cloud.google.com/apis/credentials'
@@ -81,6 +64,7 @@ export function MeshSidebarView() {
   const t = useT()
   const openModal = useUiStore((s) => s.openModal_)
   const projects = useProjectsStore((s) => s.projects)
+  const preferences = useProjectsStore((s) => s.preferences)
   const activeProjectId = useProjectsStore((s) => s.activeProjectId)
   const activeProject = projects.find((p) => p.id === activeProjectId) ?? projects[0]
   const canTransfer = PROJECT_SYNC_CAPABILITIES.projectTransfer === 'available'
@@ -101,27 +85,12 @@ export function MeshSidebarView() {
   const [deviceActionBusy, setDeviceActionBusy] = useState<string | null>(null)
   const [deviceActionError, setDeviceActionError] = useState(false)
   const [showInvitePanel, setShowInvitePanel] = useState(false)
-  const [recipientAccountId, setRecipientAccountId] = useState('')
-  const [invitePresetId, setInvitePresetId] = useState<
-    (typeof INVITATION_PERMISSION_PRESETS)[number]['id']
-  >(INVITATION_PERMISSION_PRESETS[0].id)
-  const [inviteExpiryId, setInviteExpiryId] =
-    useState<(typeof INVITATION_EXPIRY_CHOICES_MS)[number]['id']>('24h')
-  const [inviteConfirming, setInviteConfirming] = useState(false)
-  const [inviteBusy, setInviteBusy] = useState(false)
-  const [inviteError, setInviteError] = useState(false)
-  const [issuedLink, setIssuedLink] = useState<string | null>(null)
-  const [linkCopied, setLinkCopied] = useState(false)
+  const [pairingCode, setPairingCode] = useState<string | null>(null)
+  const [pairingCodeCopied, setPairingCodeCopied] = useState(false)
+  const [pairingCodeBusy, setPairingCodeBusy] = useState(false)
+  const [pairingCodeError, setPairingCodeError] = useState(false)
   const [deviceIdCopied, setDeviceIdCopied] = useState(false)
-  const [invitationActionBusy, setInvitationActionBusy] = useState<string | null>(null)
   const [grantActionBusy, setGrantActionBusy] = useState<string | null>(null)
-  const [redeemInput, setRedeemInput] = useState('')
-  const [redeemBusy, setRedeemBusy] = useState(false)
-  const [redeemError, setRedeemError] = useState<string | null>(null)
-  const redeemFormatValid = parseInvitationLink(redeemInput.trim()) !== null
-  const [projectFolders, setProjectFolders] = useState<string[] | null>(null)
-  const [foldersError, setFoldersError] = useState(false)
-  const [blockedFolders, setBlockedFolders] = useState<Set<string>>(new Set())
   const [rendezvousSettings, setRendezvousSettings] = useState<CollaborationServiceSettings | null>(
     null,
   )
@@ -130,34 +99,6 @@ export function MeshSidebarView() {
   const [rendezvousError, setRendezvousError] = useState(false)
   const [cloudflareProbe, setCloudflareProbe] = useState<CloudflareProbeState | null>(null)
   const cloudflareLogin = useCloudflareLoginOnly()
-
-  useEffect(() => {
-    if (!showInvitePanel || !activeProject?.defaultCwd) return
-    let active = true
-    setFoldersError(false)
-    listDirectory(activeProject.defaultCwd)
-      .then((listing) => {
-        if (!active) return
-        setProjectFolders(
-          listing.entries.filter((entry) => entry.is_dir).map((entry) => entry.name),
-        )
-      })
-      .catch(() => {
-        if (active) setFoldersError(true)
-      })
-    return () => {
-      active = false
-    }
-  }, [showInvitePanel, activeProject])
-
-  const toggleBlockedFolder = (name: string) => {
-    setBlockedFolders((current) => {
-      const next = new Set(current)
-      if (next.has(name)) next.delete(name)
-      else next.add(name)
-      return next
-    })
-  }
 
   const refreshSecurity = () =>
     syncSecuritySnapshot()
@@ -248,8 +189,58 @@ export function MeshSidebarView() {
   const devices = security?.devices ?? []
   const thisDevice = devices.find((device) => device.deviceId === security?.localDeviceId) ?? null
   const otherDevices = devices.filter((device) => device.deviceId !== security?.localDeviceId)
-  const pendingInvitations = security?.invitations.filter((item) => item.state === 'created') ?? []
   const activeGrants = security?.grants.filter((grant) => !grant.revokedAtMs) ?? []
+
+  const loadPairingCode = async () => {
+    setPairingCodeBusy(true)
+    setPairingCodeError(false)
+    try {
+      const rawAvatar = preferences.profileImageUrl?.trim() || null
+      const thumbnail = rawAvatar ? await downscaleAvatar(rawAvatar) : null
+      const code = await exportPairingCode(preferences.displayName || null, thumbnail)
+      setPairingCode(code)
+    } catch (cause) {
+      console.error('[mesh] exportPairingCode failed', cause)
+      setPairingCodeError(true)
+    } finally {
+      setPairingCodeBusy(false)
+    }
+  }
+
+  const regenerateCode = async () => {
+    setPairingCodeBusy(true)
+    setPairingCodeError(false)
+    try {
+      const rawAvatar = preferences.profileImageUrl?.trim() || null
+      const thumbnail = rawAvatar ? await downscaleAvatar(rawAvatar) : null
+      const code = await regeneratePairingCode(preferences.displayName || null, thumbnail)
+      setPairingCode(code)
+      setPairingCodeCopied(false)
+    } catch (cause) {
+      console.error('[mesh] regeneratePairingCode failed', cause)
+      setPairingCodeError(true)
+    } finally {
+      setPairingCodeBusy(false)
+    }
+  }
+
+  const copyPairingCode = async () => {
+    if (!pairingCode) return
+    try {
+      await navigator.clipboard.writeText(pairingCode)
+      setPairingCodeCopied(true)
+      window.setTimeout(() => setPairingCodeCopied(false), 1500)
+    } catch {
+      setPairingCodeCopied(false)
+    }
+  }
+
+  useEffect(() => {
+    if (showInvitePanel && !pairingCode) {
+      void loadPairingCode()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showInvitePanel])
 
   const runDeviceAction = async (deviceId: string, action: () => Promise<unknown>) => {
     setDeviceActionBusy(deviceId)
@@ -283,61 +274,6 @@ export function MeshSidebarView() {
     device.displayName.trim() || t('mesh.deviceUnnamed')
 
   const canInviteNow = thisDevice?.trust === 'trusted' && Boolean(activeProject)
-  const outgoingInvitations =
-    security?.invitations.filter((item) => item.issuerDeviceId === thisDevice?.deviceId) ?? []
-  const selectedPreset =
-    INVITATION_PERMISSION_PRESETS.find((preset) => preset.id === invitePresetId) ??
-    INVITATION_PERMISSION_PRESETS[0]
-  const selectedPermissions = selectedPreset.permissions
-  const requiresConfirmation = selectedPermissions.some((permission) =>
-    SENSITIVE_PERMISSIONS.includes(permission),
-  )
-
-  const resetInvitePanel = () => {
-    setShowInvitePanel(false)
-    setRecipientAccountId('')
-    setInvitePresetId(INVITATION_PERMISSION_PRESETS[0].id)
-    setInviteExpiryId('24h')
-    setInviteConfirming(false)
-    setInviteError(false)
-    setIssuedLink(null)
-    setLinkCopied(false)
-    setBlockedFolders(new Set())
-    setProjectFolders(null)
-    setFoldersError(false)
-  }
-
-  const submitInvite = async () => {
-    if (!activeProject || !recipientAccountId.trim()) return
-    if (requiresConfirmation && !inviteConfirming) {
-      setInviteConfirming(true)
-      return
-    }
-    setInviteBusy(true)
-    setInviteError(false)
-    try {
-      const expiryMs =
-        INVITATION_EXPIRY_CHOICES_MS.find((choice) => choice.id === inviteExpiryId)?.ms ??
-        INVITATION_EXPIRY_CHOICES_MS[0].ms
-      const issued = await syncIssueInvitation({
-        projectId: activeProject.id,
-        recipientAccountId: recipientAccountId.trim(),
-        permissions: selectedPermissions,
-        pathScopes: Array.from(blockedFolders, (name) => ({
-          effect: 'deny' as const,
-          pattern: `${name}/**`,
-        })),
-        expiresAtMs: Date.now() + expiryMs,
-      })
-      setIssuedLink(buildInvitationLink(issued.invitation.invitationId, issued.bearerToken))
-      setInviteConfirming(false)
-      await refreshSecurity()
-    } catch {
-      setInviteError(true)
-    } finally {
-      setInviteBusy(false)
-    }
-  }
 
   const copyDeviceId = async (deviceId: string) => {
     try {
@@ -346,28 +282,6 @@ export function MeshSidebarView() {
       window.setTimeout(() => setDeviceIdCopied(false), 1500)
     } catch {
       setDeviceIdCopied(false)
-    }
-  }
-
-  const copyIssuedLink = async () => {
-    if (!issuedLink) return
-    try {
-      await navigator.clipboard.writeText(issuedLink)
-      setLinkCopied(true)
-    } catch {
-      setLinkCopied(false)
-    }
-  }
-
-  const revokeInvitation = async (invitationId: string) => {
-    setInvitationActionBusy(invitationId)
-    try {
-      await syncRevokeInvitation(invitationId)
-      await refreshSecurity()
-    } catch {
-      setDeviceActionError(true)
-    } finally {
-      setInvitationActionBusy(null)
     }
   }
 
@@ -380,25 +294,6 @@ export function MeshSidebarView() {
       setDeviceActionError(true)
     } finally {
       setGrantActionBusy(null)
-    }
-  }
-
-  const submitRedeem = async () => {
-    const parsed = parseInvitationLink(redeemInput.trim())
-    if (!parsed) {
-      setRedeemError(t('mesh.redeemInvalidLink'))
-      return
-    }
-    setRedeemBusy(true)
-    setRedeemError(null)
-    try {
-      await syncRedeemInvitation(parsed.invitationId, parsed.bearerToken)
-      setRedeemInput('')
-      await refreshSecurity()
-    } catch {
-      setRedeemError(t('mesh.redeemFailed'))
-    } finally {
-      setRedeemBusy(false)
     }
   }
 
@@ -870,44 +765,11 @@ export function MeshSidebarView() {
         </div>
         <div className={styles.accessGrid}>
           <div className={styles.accessMetric}>
-            <Inbox size={14} />
-            <span>{t('mesh.pendingInvitations')}</span>
-            <strong>{pendingInvitations.length}</strong>
-          </div>
-          <div className={styles.accessMetric}>
             <Users size={14} />
             <span>{t('mesh.activeGrants')}</span>
             <strong>{activeGrants.length}</strong>
           </div>
         </div>
-
-        {outgoingInvitations.length > 0 ? (
-          <ul className={styles.deviceList}>
-            {outgoingInvitations.map((invitation) => (
-              <li key={invitation.invitationId} className={styles.deviceListItem}>
-                <div className={styles.deviceListInfo}>
-                  <span className={styles.deviceListName}>{invitation.recipientAccountId}</span>
-                  <span className={styles.deviceTrust} data-trust={invitation.state}>
-                    {t(`mesh.invitationState.${invitation.state}`)}
-                  </span>
-                </div>
-                {invitation.state === 'created' ? (
-                  <div className={styles.deviceListActions}>
-                    <button
-                      type="button"
-                      className={styles.deviceActionBtn}
-                      disabled={invitationActionBusy === invitation.invitationId}
-                      title={t('mesh.revokeInvitation')}
-                      onClick={() => void revokeInvitation(invitation.invitationId)}
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : null}
 
         {activeGrants.length > 0 ? (
           <ul className={styles.deviceList}>
@@ -935,39 +797,6 @@ export function MeshSidebarView() {
               </li>
             ))}
           </ul>
-        ) : null}
-
-        <div className={styles.deviceRenameRow}>
-          <input
-            className={
-              redeemInput.trim() && !redeemFormatValid
-                ? `${styles.redeemInputMono} ${styles.redeemInputInvalid}`
-                : styles.redeemInputMono
-            }
-            value={redeemInput}
-            placeholder={t('mesh.redeemPlaceholder')}
-            spellCheck={false}
-            autoComplete="off"
-            aria-invalid={Boolean(redeemInput.trim()) && !redeemFormatValid}
-            onChange={(event) => {
-              setRedeemInput(event.target.value)
-              setRedeemError(null)
-            }}
-          />
-          <button
-            type="button"
-            className={styles.deviceActionBtn}
-            disabled={redeemBusy || !redeemInput.trim() || !redeemFormatValid}
-            title={t('mesh.redeemInvitation')}
-            onClick={() => void submitRedeem()}
-          >
-            {redeemBusy ? <Loader2 size={12} className={styles.spin} /> : <Check size={12} />}
-          </button>
-        </div>
-        {redeemInput.trim() && !redeemFormatValid ? (
-          <span className={styles.deviceActionError}>{t('mesh.redeemInvalidLink')}</span>
-        ) : redeemError ? (
-          <span className={styles.deviceActionError}>{redeemError}</span>
         ) : null}
       </section>
 
@@ -1010,133 +839,56 @@ export function MeshSidebarView() {
 
             {showInvitePanel ? (
               <div className={styles.oauthSetup}>
-                {issuedLink ? (
+                <span className={styles.infoHint}>{t('mesh.sharePairingCodeHint')}</span>
+                {pairingCodeBusy ? (
+                  <div className={styles.loadingRow}>
+                    <Loader2 size={14} className={styles.spin} />
+                  </div>
+                ) : pairingCode ? (
                   <>
-                    <span>{t('mesh.invitationIssuedOnce')}</span>
                     <div className={styles.deviceRenameRow}>
-                      <code className={styles.deviceId}>{issuedLink}</code>
+                      <input
+                        className={styles.redeemInputMono}
+                        value={pairingCode}
+                        readOnly
+                        spellCheck={false}
+                      />
                       <button
                         type="button"
                         className={styles.deviceActionBtn}
-                        onClick={() => void copyIssuedLink()}
-                        title={t('mesh.copyLink')}
+                        onClick={() => void copyPairingCode()}
+                        title={t('mesh.copyPairingCode')}
                       >
-                        {linkCopied ? (
+                        {pairingCodeCopied ? (
                           <Check size={12} className={styles.successIcon} />
                         ) : (
                           <Copy size={12} />
                         )}
                       </button>
+                      <button
+                        type="button"
+                        className={styles.deviceActionBtn}
+                        onClick={() => void regenerateCode()}
+                        title={t('mesh.generateNewCode')}
+                        disabled={pairingCodeBusy}
+                      >
+                        <RefreshCw size={12} className={pairingCodeBusy ? styles.spin : ''} />
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      className={styles.saveOAuthBtn}
-                      onClick={resetInvitePanel}
-                    >
-                      {t('mesh.deviceCancel')}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <label htmlFor="invite-recipient-account">{t('mesh.recipientAccount')}</label>
-                    <input
-                      id="invite-recipient-account"
-                      value={recipientAccountId}
-                      placeholder="recipient@example.com"
-                      spellCheck={false}
-                      autoComplete="off"
-                      onChange={(event) => {
-                        setRecipientAccountId(event.target.value)
-                        setInviteConfirming(false)
-                      }}
-                    />
-                    <label htmlFor="invite-permission-preset">{t('mesh.permissionPreset')}</label>
-                    <select
-                      id="invite-permission-preset"
-                      value={invitePresetId}
-                      onChange={(event) => {
-                        setInvitePresetId(
-                          event.target
-                            .value as (typeof INVITATION_PERMISSION_PRESETS)[number]['id'],
-                        )
-                        setInviteConfirming(false)
-                      }}
-                    >
-                      {INVITATION_PERMISSION_PRESETS.map((preset) => (
-                        <option key={preset.id} value={preset.id}>
-                          {t(`mesh.permissionPreset.${preset.id}`)}
-                        </option>
-                      ))}
-                    </select>
-                    <span className={styles.permissionSummary}>
-                      {selectedPermissions
-                        .map((permission) => t(`mesh.permission.${permission}`))
-                        .join(', ')}
-                    </span>
-                    <label>{t('mesh.folderScopes')}</label>
-                    <span>{t('mesh.folderScopesHint')}</span>
-                    {foldersError ? (
-                      <span className={styles.oauthSetupHint}>{t('mesh.folderScopesError')}</span>
-                    ) : projectFolders && projectFolders.length === 0 ? (
-                      <span>{t('mesh.folderScopesEmpty')}</span>
-                    ) : projectFolders ? (
-                      <ul className={styles.folderScopeList}>
-                        {projectFolders.map((name) => {
-                          const blocked = blockedFolders.has(name)
-                          return (
-                            <li key={name}>
-                              <button
-                                type="button"
-                                className={`${styles.folderScopeItem} ${blocked ? styles.folderScopeItemBlocked : ''}`}
-                                onClick={() => toggleBlockedFolder(name)}
-                                aria-pressed={!blocked}
-                              >
-                                <span className={styles.folderScopeName}>{name}</span>
-                                <span className={styles.folderScopeState}>
-                                  {blocked
-                                    ? t('mesh.folderScopeBlocked')
-                                    : t('mesh.folderScopeIncluded')}
-                                </span>
-                              </button>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    ) : (
-                      <Loader2 size={13} className={styles.spin} />
-                    )}
-                    <label htmlFor="invite-expiry">{t('mesh.invitationExpiry')}</label>
-                    <select
-                      id="invite-expiry"
-                      value={inviteExpiryId}
-                      onChange={(event) => {
-                        setInviteExpiryId(
-                          event.target.value as (typeof INVITATION_EXPIRY_CHOICES_MS)[number]['id'],
-                        )
-                        setInviteConfirming(false)
-                      }}
-                    >
-                      {INVITATION_EXPIRY_CHOICES_MS.map((choice) => (
-                        <option key={choice.id} value={choice.id}>
-                          {t(`mesh.invitationExpiry.${choice.id}`)}
-                        </option>
-                      ))}
-                    </select>
-                    {inviteError ? (
-                      <span className={styles.deviceActionError}>{t('mesh.inviteFailed')}</span>
+                    {pairingCodeCopied ? (
+                      <span className={styles.successHint}>{t('mesh.pairingCodeCopied')}</span>
                     ) : null}
-                    <button
-                      type="button"
-                      className={styles.saveOAuthBtn}
-                      disabled={inviteBusy || !recipientAccountId.trim()}
-                      onClick={() => void submitInvite()}
-                    >
-                      {inviteConfirming
-                        ? t('mesh.confirmSensitiveInvite')
-                        : t('mesh.sendInvitation')}
-                    </button>
                   </>
-                )}
+                ) : pairingCodeError ? (
+                  <span className={styles.deviceActionError}>{t('chat.contacts.exportFailed')}</span>
+                ) : null}
+                <button
+                  type="button"
+                  className={styles.saveOAuthBtn}
+                  onClick={() => setShowInvitePanel(false)}
+                >
+                  {t('mesh.deviceCancel')}
+                </button>
               </div>
             ) : null}
           </div>

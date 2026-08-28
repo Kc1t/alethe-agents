@@ -8,6 +8,63 @@
   width: 100%;
 }
 
+.backButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.backButton:hover {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.grantAccountRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.collaboratorAvatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--fg);
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+
+.pendingSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.pendingExpiry {
+  font-size: 10.5px;
+  color: var(--fg-muted);
+}
+
 .section {
   display: flex;
   flex-direction: column;
@@ -72,6 +129,97 @@
   color: var(--fg-muted);
 }
 
+.projectContext {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  margin: 0;
+}
+
+.inviteToggleButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 6px 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.inviteToggleButton:hover {
+  background: var(--panel-hover);
+}
+
+.inviteForm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  font-size: 12px;
+}
+
+.inviteForm label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  margin-top: 4px;
+}
+
+.inviteInput {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.inviteIssuedHint {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.inviteLinkRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inviteLinkCode {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font-size: 10.5px;
+}
+
+.successIcon {
+  color: var(--status-working);
+}
+
+.successHint {
+  font-size: 11px;
+  color: var(--status-working);
+}
+
+.folderScopeModeRow {
+  display: flex;
+  gap: 6px;
+}
+
 .grantList {
   display: flex;
   flex-direction: column;
@@ -81,11 +229,104 @@
 .grantRow {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-sunken);
+}
+
+.p2pNotice {
+  font-size: 11px;
+  color: var(--fg-muted);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  margin: 0 0 4px;
+  line-height: 1.4;
+}
+
+.grantScopeChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.grantScopeChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--fg-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.editFoldersButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.editFoldersButton:hover:not(:disabled) {
+  background: var(--panel-hover);
+  color: var(--accent);
+}
+
+.editFoldersButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.editFoldersPanel {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.editFoldersActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.editFoldersCancelBtn {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.editFoldersSaveBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .grantInfo {

@@ -609,6 +609,17 @@ export function ChatPanel({ source }: { source: ChatSource }) {
           </div>
         ) : (
           <>
+            {source.kind === 'direct' ? (
+              <Avatar
+                src={otherAvatarUrl}
+                initial={
+                  otherDisplayLabel
+                    ? getProfileInitial(otherDisplayLabel)
+                    : initialsFor(otherMember?.accountRoute ?? '')
+                }
+                className={styles.headerDirectAvatar}
+              />
+            ) : null}
             <span className={styles.headerTitle}>
               {source.kind === 'direct' ? source.contactDisplayLabel : source.projectName}
             </span>

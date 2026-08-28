@@ -252,55 +252,30 @@
   font-style: italic;
 }
 
-.folderScopeList {
+.folderScopeModeRow {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 140px;
-  overflow-y: auto;
+  gap: 6px;
 }
 
-.folderScopeItem {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+.folderScopeModeBtn {
+  flex: 1;
   padding: 5px 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg);
-  color: var(--fg);
+  color: var(--fg-muted);
   cursor: pointer;
-  font-size: 10.5px;
-  text-align: left;
+  font-size: 11px;
 }
 
-.folderScopeItem:hover {
+.folderScopeModeBtn:hover {
   border-color: var(--accent);
 }
 
-.folderScopeName {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.folderScopeState {
-  flex-shrink: 0;
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  color: var(--status-working);
-}
-
-.folderScopeItemBlocked {
-  border-color: var(--status-offline);
-}
-
-.folderScopeItemBlocked .folderScopeState {
-  color: var(--status-offline);
+.folderScopeModeBtnActive {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .saveOAuthBtn {
@@ -742,4 +717,17 @@
 .shieldIcon {
   color: var(--status-working);
   flex-shrink: 0;
+}
+
+.loadingRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 0;
+  color: var(--fg-muted);
+}
+
+.successHint {
+  font-size: 10px;
+  color: var(--status-working);
 }

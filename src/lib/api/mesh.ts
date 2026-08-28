@@ -9,6 +9,8 @@ export type FolderTreeNode = {
   sizeBytes: number
   children: FolderTreeNode[]
   isHeavy: boolean
+  isEssential?: boolean
+  category?: string
 }
 
 export type BackupArchiveEntry = {
@@ -44,6 +46,13 @@ export async function triggerProjectArchiveBackup(
     throw new Error('mesh_unavailable_in_browser')
   }
   return invoke<BackupArchiveEntry>('trigger_project_archive_backup', { projectPath, projectName })
+}
+
+export async function listProjectBackups(projectPath: string): Promise<BackupArchiveEntry[]> {
+  if (!isTauriEnv()) {
+    throw new Error('mesh_unavailable_in_browser')
+  }
+  return invoke<BackupArchiveEntry[]>('list_project_backups', { projectPath })
 }
 
 export async function purgeProjectBackupsSecured(

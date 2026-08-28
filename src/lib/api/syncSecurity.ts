@@ -145,56 +145,12 @@ export async function syncRemoveDevice(targetDeviceId: string): Promise<void> {
 export type SyncInvitationSummary = SyncSecuritySnapshot['invitations'][number]
 export type SyncGrantRecord = SyncSecuritySnapshot['grants'][number]
 
-export type IssueInvitationRequest = {
-  projectId: string
-  recipientAccountId: string
-  recipientDeviceId?: string
-  permissions: SyncPermission[]
-  pathScopes: Array<{ effect: 'allow' | 'deny'; pattern: string }>
-  expiresAtMs: number
-}
-
-export type IssuedInvitationResponse = {
-  invitation: SyncInvitationSummary
-  bearerToken: string
-}
-
-export async function syncIssueInvitation(
-  request: IssueInvitationRequest,
-): Promise<IssuedInvitationResponse> {
-  if (isTauriEnv()) {
-    return invoke<IssuedInvitationResponse>('sync_issue_invitation', { request })
-  }
-  return webApiFetch<IssuedInvitationResponse>('/api/sync/security/invitations/issue', {
-    method: 'POST',
-    body: JSON.stringify(request),
-  })
-}
-
 export async function syncRevokeInvitation(invitationId: string): Promise<SyncInvitationSummary> {
-  if (isTauriEnv()) {
-    return invoke<SyncInvitationSummary>('sync_revoke_invitation', { invitationId })
-  }
-  return webApiFetch<SyncInvitationSummary>('/api/sync/security/invitations/revoke', {
-    method: 'POST',
-    body: JSON.stringify({ invitationId }),
-  })
+  if (!isTauriEnv()) throw new Error('revoke_invitation_desktop_only')
+  return invoke<SyncInvitationSummary>('sync_revoke_invitation', { invitationId })
 }
 
-export async function syncRedeemInvitation(
-  invitationId: string,
-  bearerToken: string,
-): Promise<SyncGrantRecord> {
-  if (isTauriEnv()) {
-    return invoke<SyncGrantRecord>('sync_redeem_invitation', {
-      request: { invitationId, bearerToken },
-    })
-  }
-  return webApiFetch<SyncGrantRecord>('/api/sync/security/invitations/redeem', {
-    method: 'POST',
-    body: JSON.stringify({ invitationId, bearerToken }),
-  })
-}
+
 
 /**
  * Fetches the backend-derived capability state (Phase 3 Step 3.7). Always parsed through

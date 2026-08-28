@@ -21,7 +21,6 @@ import {
 } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
 import { downscaleAvatar } from '../../lib/image/downscaleAvatar'
-import { getProfileImageUrl } from '../../lib/profile'
 import { syncLocalIdentity } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import styles from './AddChatContactModal.module.css'
@@ -62,10 +61,14 @@ export function AddChatContactModal({
   }, [])
 
   useEffect(() => {
-    downscaleAvatar(getProfileImageUrl(preferences))
+    const rawAvatar = preferences.profileImageUrl?.trim() || null
+    ;(rawAvatar ? downscaleAvatar(rawAvatar) : Promise.resolve(null))
       .then((thumbnail) => exportPairingCode(preferences.displayName || null, thumbnail))
       .then(setMyCode)
-      .catch(() => setError(t('chat.contacts.exportFailed')))
+      .catch((cause) => {
+        console.error('[chat-contact] exportPairingCode failed', cause)
+        setError(t('chat.contacts.exportFailed'))
+      })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -73,11 +76,13 @@ export function AddChatContactModal({
     setRegenerating(true)
     setError(null)
     try {
-      const thumbnail = await downscaleAvatar(getProfileImageUrl(preferences))
+      const rawAvatar = preferences.profileImageUrl?.trim() || null
+      const thumbnail = rawAvatar ? await downscaleAvatar(rawAvatar) : null
       const code = await regeneratePairingCode(preferences.displayName || null, thumbnail)
       setMyCode(code)
       setMyCodeCopied(false)
-    } catch {
+    } catch (cause) {
+      console.error('[chat-contact] regeneratePairingCode failed', cause)
       setError(t('chat.contacts.exportFailed'))
     } finally {
       setRegenerating(false)

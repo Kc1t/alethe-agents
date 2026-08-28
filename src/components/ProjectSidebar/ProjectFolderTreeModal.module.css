@@ -14,8 +14,8 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   width: 90%;
-  max-width: 580px;
-  max-height: 85vh;
+  max-width: 640px;
+  max-height: 88vh;
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow-xl);
@@ -69,7 +69,7 @@
   padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   overflow-y: auto;
 }
 
@@ -99,6 +99,42 @@
   flex-shrink: 0;
 }
 
+.metricsBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+}
+
+.metricItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.metricLabel {
+  color: var(--fg-muted);
+}
+
+.metricValue {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.metricValueWarning {
+  color: #f59e0b;
+}
+
+.metricDivider {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+}
+
 .treeSection {
   display: flex;
   flex-direction: column;
@@ -109,14 +145,63 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.sectionLabel {
-  font-size: 11px;
-  font-weight: 650;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.filterTabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.filterTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid transparent;
   color: var(--fg-muted);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filterTab:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.filterTabActive {
+  background: var(--bg-sunken);
+  border-color: var(--border);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.actionButtons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.actionBtnWarning {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #f59e0b;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.actionBtnWarning:hover {
+  background: rgba(245, 158, 11, 0.2);
 }
 
 .presetBtn {
@@ -133,14 +218,59 @@
   background: var(--panel-hover);
 }
 
+.searchBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+}
+
+.searchIcon {
+  color: var(--fg-muted);
+  flex-shrink: 0;
+}
+
+.searchInput {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--fg);
+  font-size: 11px;
+  outline: none;
+}
+
+.clearSearchBtn {
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+
+.clearSearchBtn:hover {
+  color: var(--fg);
+}
+
 .treeContainer {
   background: var(--bg-sunken);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 8px;
-  max-height: 220px;
+  max-height: 240px;
   overflow-y: auto;
   font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.emptyState {
+  padding: 20px;
+  text-align: center;
+  color: var(--fg-muted);
   font-size: 11px;
 }
 
@@ -213,30 +343,104 @@
 
 .folderNormal {
   color: var(--accent);
+  flex-shrink: 0;
 }
 
 .folderHeavy {
+  color: #f59e0b;
+  flex-shrink: 0;
+}
+
+.fileNormal {
   color: var(--fg-muted);
-  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.fileHeavy {
+  color: #f59e0b;
+  flex-shrink: 0;
+}
+
+.fileBinary {
+  color: #a855f7;
+  flex-shrink: 0;
+}
+
+.fileArchive {
+  color: #f97316;
+  flex-shrink: 0;
 }
 
 .nodeName {
   color: var(--fg);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .nodeNameHeavy {
   color: var(--fg-muted);
-  text-decoration: line-through;
+}
+
+.metricValueEssential {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tabIconEssential {
+  color: var(--accent);
+}
+
+.fileEssential {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.nodeNameEssential {
+  color: var(--fg);
+  font-weight: 550;
+}
+
+.essentialBadge {
+  font-size: 9px;
+  color: var(--accent);
+  background: rgba(14, 165, 233, 0.12);
+  border: 1px solid rgba(14, 165, 233, 0.3);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.nodeMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.nodeSize {
+  font-size: 10px;
+  color: var(--fg-muted);
+}
+
+.nodeSizeHeavy {
+  color: #f59e0b;
+  font-weight: 600;
 }
 
 .heavyBadge {
   font-size: 9px;
-  color: var(--fg-muted);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  padding: 1px 4px;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  padding: 1px 5px;
   border-radius: 3px;
-  margin-left: auto;
+  font-weight: 500;
 }
 
 .treeChildren {
@@ -265,6 +469,14 @@
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.sectionLabel {
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
 }
 
 .vaultIcon {
@@ -318,6 +530,62 @@
 
 .purgeBtn:hover {
   background: rgba(239, 68, 68, 0.1);
+}
+
+.backupBtn:disabled,
+.purgeBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.backupList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.backupRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.backupRowIcon {
+  color: var(--fg-muted);
+  flex-shrink: 0;
+}
+
+.backupRowInfo {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.backupRowDate {
+  font-size: 11px;
+  color: var(--fg);
+}
+
+.backupRowHash {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backupRowSize {
+  font-size: 10px;
+  color: var(--fg-muted);
+  flex-shrink: 0;
 }
 
 .criticalOverlay {

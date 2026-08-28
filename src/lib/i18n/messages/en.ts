@@ -214,6 +214,13 @@ export const en = {
   'mesh.redeemInvitation': 'Redeem invitation',
   'mesh.redeemInvalidLink': 'This does not look like a valid invitation link',
   'mesh.redeemFailed': 'The invitation could not be redeemed',
+  'mesh.sharePairingCodeHint':
+    'Share your pairing code with a friend. When they enter the code in Alethe, you can grant them access to this project in the Access Center review queue.',
+  'mesh.generateNewCode': 'Generate new code',
+  'mesh.copyPairingCode': 'Copy code',
+  'mesh.pairingCodeCopied': 'Code copied!',
+  'vault.invitePairingCodeHint':
+    'Share your universal pairing code with a collaborator. Once they connect, you can approve their request and choose project permissions and folder scopes in the Access Center review queue.',
   'mesh.invitationIssuedOnce': 'Copy this link now — it will not be shown again',
   'mesh.copyLink': 'Copy link',
   'mesh.recipientAccount': 'Recipient account',
@@ -221,6 +228,20 @@ export const en = {
   'mesh.permissionPreset.viewOnly': 'View only',
   'mesh.permissionPreset.reviewer': 'Reviewer',
   'mesh.permissionPreset.collaborator': 'Collaborator',
+  'vault.hub.title': 'Vault & Folders',
+  'vault.hub.description':
+    'Manage access permissions, shared folders, and backups across your projects.',
+  'vault.hub.activeCollaborators':
+    '{count, plural, =1 {1 person with access} other {# people with access}}',
+  'vault.hub.pendingInvites':
+    '{count, plural, =1 {1 pending invite} other {# pending invites}}',
+  'vault.hub.noProjects': 'No projects found',
+  'vault.backToProjects': 'Back to projects',
+  'vault.pendingInvitations': 'Pending invitations',
+  'vault.pendingState': 'Pending',
+  'vault.revokeInvitation': 'Revoke invitation',
+  'vault.revokeInvitationConfirm':
+    'Revoke this pending invitation? The recipient will not be able to redeem it.',
   'vault.collaboratorsTitle': 'Collaborators & permissions',
   'vault.collaboratorsHint': 'Edit what each collaborator on this project can see and do — no need to revoke and re-invite just to change access.',
   'vault.loadFailed': 'Could not load collaborators.',

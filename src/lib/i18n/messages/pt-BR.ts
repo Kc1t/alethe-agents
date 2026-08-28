@@ -217,6 +217,13 @@ export const ptBR: Record<MessageKey, string> = {
   'mesh.redeemInvitation': 'Resgatar convite',
   'mesh.redeemInvalidLink': 'Isso não parece um link de convite válido',
   'mesh.redeemFailed': 'Não foi possível resgatar o convite',
+  'mesh.sharePairingCodeHint':
+    'Compartilhe seu código com um amigo. Quando ele colar o código no Alethe, você poderá conceder acesso a este projeto na fila de decisões da Central de Acesso.',
+  'mesh.generateNewCode': 'Gerar novo código',
+  'mesh.copyPairingCode': 'Copiar código',
+  'mesh.pairingCodeCopied': 'Código copiado!',
+  'vault.invitePairingCodeHint':
+    'Compartilhe seu código universal de pareamento com um colaborador. Assim que ele se conectar, você poderá aprovar a solicitação e escolher as permissões do projeto e pastas na Central de Acesso.',
   'mesh.invitationIssuedOnce': 'Copie este link agora — ele não será mostrado novamente',
   'mesh.copyLink': 'Copiar link',
   'mesh.recipientAccount': 'Conta do destinatário',
@@ -224,6 +231,20 @@ export const ptBR: Record<MessageKey, string> = {
   'mesh.permissionPreset.viewOnly': 'Somente leitura',
   'mesh.permissionPreset.reviewer': 'Revisor',
   'mesh.permissionPreset.collaborator': 'Colaborador',
+  'vault.hub.title': 'Cofre & Pastas',
+  'vault.hub.description':
+    'Gerencie permissões de acesso, pastas compartilhadas e backups de cada projeto.',
+  'vault.hub.activeCollaborators':
+    '{count, plural, =1 {1 pessoa com acesso} other {# pessoas com acesso}}',
+  'vault.hub.pendingInvites':
+    '{count, plural, =1 {1 convite pendente} other {# convites pendentes}}',
+  'vault.hub.noProjects': 'Nenhum projeto encontrado',
+  'vault.backToProjects': 'Voltar aos projetos',
+  'vault.pendingInvitations': 'Convites pendentes',
+  'vault.pendingState': 'Pendente',
+  'vault.revokeInvitation': 'Revogar convite',
+  'vault.revokeInvitationConfirm':
+    'Revogar este convite pendente? O destinatário não poderá mais resgatá-lo.',
   'vault.collaboratorsTitle': 'Colaboradores e permissões',
   'vault.collaboratorsHint': 'Edite o que cada colaborador deste projeto pode ver e fazer — sem precisar revogar e convidar de novo só pra mudar o acesso.',
   'vault.loadFailed': 'Não foi possível carregar os colaboradores.',

@@ -6,7 +6,7 @@ import { useProjectsStore } from '../../stores/projectsStore'
 import { ChatTab } from './ChatTab'
 import styles from './CollaborationView.module.css'
 import { TasksTab } from './TasksTab'
-import { VaultPanel } from './VaultPanel'
+import { VaultHub } from './VaultHub'
 
 type CollaborationTab = 'chat' | 'tasks' | 'vault'
 
@@ -51,12 +51,12 @@ export function CollaborationView() {
             projectId={activeProject?.id ?? null}
             projectName={activeProject?.name ?? null}
           />
+        ) : tab === 'vault' ? (
+          <VaultHub />
         ) : !activeProject ? (
           <div className={styles.empty}>{t('collaborationView.noProject')}</div>
-        ) : tab === 'tasks' ? (
-          <TasksTab activeProjectId={activeProject.id} />
         ) : (
-          <VaultPanel projectId={activeProject.id} />
+          <TasksTab activeProjectId={activeProject.id} />
         )}
       </div>
     </div>

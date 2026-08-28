@@ -1277,104 +1277,15 @@ pub(crate) fn delete_project_access_at(
     Ok(affected)
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IssueInvitationRequest {
-    pub project_id: String,
-    pub recipient_account_id: String,
-    pub recipient_device_id: Option<String>,
-    pub permissions: Vec<SyncPermission>,
-    pub path_scopes: Vec<PathScope>,
-    pub expires_at_ms: u64,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IssuedInvitationResponse {
-    pub invitation: InvitationSummary,
-    pub bearer_token: String,
-}
-
-fn to_summary(invitation: InvitationRecord) -> InvitationSummary {
-    InvitationSummary {
-        invitation_id: invitation.invitation_id,
-        project_id: invitation.project_id,
-        issuer_device_id: invitation.issuer_device_id,
-        recipient_account_id: invitation.recipient_account_id,
-        recipient_device_id: invitation.recipient_device_id,
-        permissions: invitation.permissions,
-        path_scopes: invitation.path_scopes,
-        state: invitation.state,
-        created_at_ms: invitation.created_at_ms,
-        expires_at_ms: invitation.expires_at_ms,
-        redeemed_at_ms: invitation.redeemed_at_ms,
-        revoked_at_ms: invitation.revoked_at_ms,
-    }
-}
-
-#[tauri::command]
-pub fn sync_issue_invitation(
-    app: tauri::AppHandle,
-    request: IssueInvitationRequest,
-) -> Result<IssuedInvitationResponse, String> {
-    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
-    let issuer = local_device_id_at(&data_root)?;
-    let issued = issue_invitation(
-        &data_root,
-        &issuer,
-        &request.project_id,
-        &request.recipient_account_id,
-        request.recipient_device_id,
-        normalize_permissions(request.permissions),
-        request.path_scopes,
-        now_ms(),
-        request.expires_at_ms,
-    )?;
-    Ok(IssuedInvitationResponse {
-        invitation: to_summary(issued.invitation),
-        bearer_token: issued.bearer_token,
-    })
-}
 
 #[tauri::command]
 pub fn sync_revoke_invitation(
     app: tauri::AppHandle,
     invitation_id: String,
-) -> Result<InvitationSummary, String> {
+) -> Result<InvitationRecord, String> {
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     let actor = local_device_id_at(&data_root)?;
-    revoke_invitation_at(&data_root, &actor, &invitation_id, now_ms()).map(to_summary)
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RedeemInvitationRequest {
-    pub invitation_id: String,
-    pub bearer_token: String,
-}
-
-#[tauri::command]
-pub fn sync_redeem_invitation(
-    app: tauri::AppHandle,
-    request: RedeemInvitationRequest,
-) -> Result<GrantRecord, String> {
-    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
-    let document = load_at(&data_root)?;
-    let account_id = document
-        .account
-        .ok_or_else(|| "security_account_invalid".to_string())?
-        .account_id;
-    let recipient_device_id = document
-        .local_device_id
-        .ok_or_else(|| "local_device_unknown".to_string())?;
-    redeem_invitation(
-        &data_root,
-        &request.invitation_id,
-        &request.bearer_token,
-        &account_id,
-        &recipient_device_id,
-        now_ms(),
-    )
+    revoke_invitation_at(&data_root, &actor, &invitation_id, now_ms())
 }
 
 #[tauri::command]

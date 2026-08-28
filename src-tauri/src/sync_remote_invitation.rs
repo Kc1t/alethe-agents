@@ -12,9 +12,6 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 
-use crate::sync_crypto::{open_sealed, SealedEnvelope};
-use crate::sync_security::{GrantRecord, PathScope, SyncPermission};
-
 /// A device's own identity, shaped exactly like `sync_invitation_bridge::DiscoveredDevice` so it
 /// can be verified with the existing `sync_verify_discovered_device` command — meant to be shared
 /// out of band (a paste, a QR code) between two accounts that have no automated cross-account
@@ -148,76 +145,3 @@ pub fn sync_parse_pairing_code(code: String) -> Result<PairingCode, String> {
     serde_json::from_slice(&json).map_err(|_| "pairing_code_decode_failed".to_string())
 }
 
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RemoteInvitationPayload {
-    invitation_id: String,
-    bearer_token: String,
-    project_id: String,
-    permissions: Vec<SyncPermission>,
-    path_scopes: Vec<PathScope>,
-    expires_at_ms: u64,
-    #[serde(default)]
-    issuer_account_id: String,
-    #[serde(default)]
-    issuer_agreement_public_key: String,
-}
-
-fn unpack_envelope(packed: &[u8]) -> Result<SealedEnvelope, String> {
-    if packed.len() < 32 + 12 {
-        return Err("invitation_bridge_invalid_envelope".to_string());
-    }
-    let (ephemeral_public_key, rest) = packed.split_at(32);
-    let (nonce, ciphertext) = rest.split_at(12);
-    Ok(SealedEnvelope {
-        ephemeral_public_key: ephemeral_public_key.to_vec(),
-        nonce: nonce.to_vec(),
-        ciphertext: ciphertext.to_vec(),
-    })
-}
-
-/// The genuinely cross-device counterpart to `sync_invitation_bridge::sync_consume_remote_invitation`:
-/// decrypts the same envelope shape, then redeems it via `redeem_remote_invitation_at` instead of
-/// the plain `redeem_invitation` the bridge module calls, so this works when the invitation truly
-/// only ever existed on a different machine.
-#[tauri::command]
-pub fn sync_consume_remote_invitation_cross_device(
-    app: tauri::AppHandle,
-    ciphertext: String,
-    invitation_id: String,
-) -> Result<GrantRecord, String> {
-    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
-    let document = crate::sync_security::load_at(&data_root)?;
-    let local_device_id = document.local_device_id.ok_or_else(|| "security_device_missing".to_string())?;
-    let account_id = document
-        .account
-        .ok_or_else(|| "security_account_missing".to_string())?
-        .account_id;
-    let recipient_secret = crate::sync_security::load_device_agreement_secret(&local_device_id)?;
-
-    let packed = URL_SAFE_NO_PAD.decode(&ciphertext).map_err(|_| "invitation_bridge_decode_failed".to_string())?;
-    let sealed = unpack_envelope(&packed)?;
-    let info = format!("alethe-invitation-envelope-v1|{invitation_id}");
-    let plaintext = open_sealed(&sealed, &recipient_secret, info.as_bytes())
-        .map_err(|_| "invitation_bridge_decode_failed".to_string())?;
-    let payload: RemoteInvitationPayload =
-        serde_json::from_slice(&plaintext).map_err(|_| "invitation_bridge_decode_failed".to_string())?;
-    if payload.invitation_id != invitation_id {
-        return Err("invitation_bridge_invalid_envelope".to_string());
-    }
-
-    crate::sync_security::redeem_remote_invitation_at(
-        &data_root,
-        &payload.invitation_id,
-        &payload.bearer_token,
-        &payload.project_id,
-        payload.permissions,
-        payload.path_scopes,
-        payload.expires_at_ms,
-        &account_id,
-        &local_device_id,
-        &payload.issuer_account_id,
-        &payload.issuer_agreement_public_key,
-        crate::provider_common::now_ms(),
-    )
-}

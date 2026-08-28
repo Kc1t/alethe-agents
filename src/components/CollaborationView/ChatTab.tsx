@@ -236,6 +236,24 @@ export function ChatTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    if (selected?.kind === 'direct') {
+      const match = contacts.find((c) => c.accountRoute === selected.contactAccountRoute)
+      if (
+        match &&
+        (match.displayLabel !== selected.contactDisplayLabel ||
+          match.avatarThumbnail !== selected.contactAvatarThumbnail)
+      ) {
+        setSelected({
+          kind: 'direct',
+          contactAccountRoute: match.accountRoute,
+          contactDisplayLabel: match.displayLabel,
+          contactAvatarThumbnail: match.avatarThumbnail,
+        })
+      }
+    }
+  }, [contacts, selected])
+
   return (
     <div className={styles.container}>
       <div className={styles.sidebar}>

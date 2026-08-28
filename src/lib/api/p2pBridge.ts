@@ -61,15 +61,6 @@ export async function parsePairingCode(code: string): Promise<PairingCode> {
   return invoke('sync_parse_pairing_code', { code })
 }
 
-/** The cross-device counterpart of `consumeRemoteInvitation` — use this one for a real remote
- * delivery; the original only round-trips within a single local document (see its own tests). */
-export async function consumeRemoteInvitationCrossDevice(
-  ciphertext: string,
-  invitationId: string,
-): Promise<unknown> {
-  if (!isTauriEnv()) throw new Error('p2p_desktop_only')
-  return invoke('sync_consume_remote_invitation_cross_device', { ciphertext, invitationId })
-}
 
 export type OutgoingCandidateEnvelope = {
   messageId: string

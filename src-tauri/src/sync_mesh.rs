@@ -28,6 +28,10 @@ pub struct FolderTreeNode {
     pub size_bytes: u64,
     pub children: Vec<FolderTreeNode>,
     pub is_heavy: bool,
+    #[serde(default)]
+    pub is_essential: bool,
+    #[serde(default)]
+    pub category: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +42,30 @@ pub struct BackupArchiveEntry {
     pub created_at: u64,
     pub size_bytes: u64,
     pub sha256: String,
+}
+
+fn compute_folder_size(path: &Path, max_entries: usize) -> u64 {
+    let mut total = 0u64;
+    let mut count = 0;
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        if let Ok(entries) = fs::read_dir(&current) {
+            for entry in entries.flatten() {
+                count += 1;
+                if count > max_entries {
+                    break;
+                }
+                if let Ok(meta) = entry.metadata() {
+                    if meta.is_dir() {
+                        stack.push(entry.path());
+                    } else {
+                        total = total.saturating_add(meta.len());
+                    }
+                }
+            }
+        }
+    }
+    total
 }
 
 /// Scans project folders for the explicit selection UI.
@@ -55,16 +83,91 @@ pub fn scan_project_folder_tree_core(
         return nodes;
     };
 
-    let heavy_names: HashSet<&str> = [
+    let heavy_dir_names: HashSet<&str> = [
         "node_modules",
         "target",
         "dist",
         "build",
+        "out",
+        "bin",
+        "obj",
         ".next",
+        ".nuxt",
         "venv",
         ".venv",
+        "env",
+        ".env",
         "__pycache__",
         ".git",
+        ".turbo",
+        ".gradle",
+        "vendor",
+        ".cache",
+        "coverage",
+    ]
+    .into_iter()
+    .collect();
+
+    let heavy_file_extensions: HashSet<&str> = [
+        ".exe", ".dll", ".so", ".dylib", ".zip", ".tar", ".gz", ".tgz", ".7z", ".rar",
+        ".iso", ".bin", ".dmg", ".pkg", ".mp4", ".mkv", ".avi", ".mov", ".sqlite",
+        ".sqlite3", ".db", ".apk", ".aab", ".ipa", ".jar", ".war", ".wasm", ".whl",
+        ".pdb", ".cab", ".msi",
+    ]
+    .into_iter()
+    .collect();
+
+    let essential_file_names: HashSet<&str> = [
+        "package.json",
+        "package-lock.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "yarn.lock",
+        "bun.lockb",
+        "cargo.toml",
+        "cargo.lock",
+        "go.mod",
+        "go.sum",
+        "requirements.txt",
+        "pyproject.toml",
+        "poetry.lock",
+        "pipfile",
+        "pipfile.lock",
+        "composer.json",
+        "composer.lock",
+        "pom.xml",
+        "build.gradle",
+        "build.gradle.kts",
+        "settings.gradle",
+        "settings.gradle.kts",
+        "gemfile",
+        "gemfile.lock",
+        "cmakelists.txt",
+        "makefile",
+        "dockerfile",
+        "docker-compose.yml",
+        "docker-compose.yaml",
+        "tsconfig.json",
+        "vite.config.ts",
+        "vite.config.js",
+        "webpack.config.js",
+        ".gitignore",
+        ".gitattributes",
+        ".editorconfig",
+        ".env.example",
+        ".env.template",
+        ".env.sample",
+        "readme.md",
+        "license",
+    ]
+    .into_iter()
+    .collect();
+
+    let essential_extensions: HashSet<&str> = [
+        ".ts", ".tsx", ".js", ".jsx", ".rs", ".go", ".py", ".c", ".cpp", ".h", ".hpp",
+        ".java", ".kt", ".swift", ".cs", ".php", ".rb", ".proto", ".sql", ".prisma",
+        ".graphql", ".gql", ".yaml", ".yml", ".toml", ".json", ".xml", ".html", ".css",
+        ".scss", ".sass", ".less", ".md", ".svg",
     ]
     .into_iter()
     .collect();
@@ -74,7 +177,11 @@ pub fn scan_project_folder_tree_core(
         let name = entry.file_name().to_string_lossy().into_owned();
         let Ok(meta) = entry.metadata() else { continue };
         let is_dir = meta.is_dir();
-        let is_heavy = heavy_names.contains(name.as_str()) || name.starts_with(".env");
+        let name_lower = name.to_lowercase();
+
+        let is_heavy_dir = is_dir && heavy_dir_names.contains(name_lower.as_str());
+        let is_heavy_ext = !is_dir && heavy_file_extensions.iter().any(|ext| name_lower.ends_with(ext));
+        let is_env = name_lower.starts_with(".env");
 
         let rel_path = path
             .strip_prefix(root)
@@ -83,18 +190,58 @@ pub fn scan_project_folder_tree_core(
             .replace('\\', "/");
 
         let mut children = Vec::new();
-        // Heavy generated directories are represented but never traversed.
-        if is_dir && !is_heavy && max_depth > 1 {
+        // Heavy generated directories are represented but never traversed deeply.
+        if is_dir && !is_heavy_dir && max_depth > 1 {
             children = scan_project_folder_tree_core(root, &path, max_depth - 1);
         }
+
+        let size_bytes = if is_dir {
+            if !children.is_empty() {
+                children.iter().map(|c| c.size_bytes).sum()
+            } else {
+                compute_folder_size(&path, 150)
+            }
+        } else {
+            meta.len()
+        };
+
+        // Intelligent categorization:
+        // 1. Essential files (lockfiles, manifests, source code, configs) MUST NEVER be classified as disposable heavy
+        let is_essential = !is_heavy_dir
+            && (essential_file_names.contains(name_lower.as_str())
+                || (!is_dir && essential_extensions.iter().any(|ext| name_lower.ends_with(ext))));
+
+        let category = if is_env && !name_lower.contains("example") && !name_lower.contains("sample") {
+            "sensitive".to_string()
+        } else if is_essential {
+            "essential".to_string()
+        } else if is_heavy_dir {
+            "heavy_cache".to_string()
+        } else if is_heavy_ext {
+            "binary".to_string()
+        } else if size_bytes >= 1_000_000 {
+            "heavy_file".to_string()
+        } else {
+            "standard".to_string()
+        };
+
+        // Only mark as heavy if it's truly disposable cache/binary/sensitive AND NOT an essential build file
+        let is_heavy = !is_essential
+            && (is_heavy_dir
+                || is_heavy_ext
+                || is_env
+                || (!is_dir && size_bytes >= 1_000_000)
+                || (is_dir && size_bytes >= 5_000_000));
 
         nodes.push(FolderTreeNode {
             name,
             path: rel_path,
             is_dir,
-            size_bytes: if is_dir { 0 } else { meta.len() },
+            size_bytes,
             children,
             is_heavy,
+            is_essential,
+            category,
         });
     }
 
@@ -222,6 +369,48 @@ pub fn create_project_archive_backup(
     })
 }
 
+/// Lists the checkpoints currently sitting in a project's archive vault, newest first — the vault
+/// UI previously tracked "how many backups exist" as client-side local state that started at a
+/// hardcoded `3` and only ever incremented, never reflecting what was actually on disk.
+pub fn list_project_backup_vault(project_root: &Path) -> Result<Vec<BackupArchiveEntry>, String> {
+    let archive_dir = project_root.join(".alethe").join("backups").join("archive");
+    if !archive_dir.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(&archive_dir).map_err(|e| e.to_string())?.flatten() {
+        let path = entry.path();
+        let Ok(meta) = entry.metadata() else { continue };
+        if !meta.is_file() {
+            continue;
+        }
+        let Ok(payload) = fs::read(&path) else { continue };
+        let sha256 = Sha256::digest(&payload)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        let created_at = meta
+            .created()
+            .or_else(|_| meta.modified())
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        entries.push(BackupArchiveEntry {
+            filename: entry.file_name().to_string_lossy().into_owned(),
+            path: path.to_string_lossy().into_owned(),
+            created_at,
+            size_bytes: meta.len(),
+            sha256,
+        });
+    }
+
+    entries.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    Ok(entries)
+}
+
 /// Manually deletes archived backups after confirming the exact project name.
 pub fn purge_project_backup_vault(
     project_root: &Path,
@@ -253,12 +442,16 @@ pub fn purge_project_backup_vault(
 }
 
 #[tauri::command]
-pub fn scan_project_folder_tree(project_path: String) -> Result<Vec<FolderTreeNode>, String> {
-    let root = Path::new(&project_path);
-    if !root.is_dir() {
-        return Err("project_path_not_found".to_string());
-    }
-    Ok(scan_project_folder_tree_core(root, root, 4))
+pub async fn scan_project_folder_tree(project_path: String) -> Result<Vec<FolderTreeNode>, String> {
+    tokio::task::spawn_blocking(move || {
+        let root = Path::new(&project_path);
+        if !root.is_dir() {
+            return Err("project_path_not_found".to_string());
+        }
+        Ok(scan_project_folder_tree_core(root, root, 4))
+    })
+    .await
+    .map_err(|e| format!("scan_folder_tree_task_failed: {e}"))?
 }
 
 #[tauri::command]
@@ -278,6 +471,12 @@ pub fn trigger_project_archive_backup(
 ) -> Result<BackupArchiveEntry, String> {
     let root = Path::new(&project_path);
     create_project_archive_backup(root, &project_name)
+}
+
+#[tauri::command]
+pub fn list_project_backups(project_path: String) -> Result<Vec<BackupArchiveEntry>, String> {
+    let root = Path::new(&project_path);
+    list_project_backup_vault(root)
 }
 
 #[tauri::command]
