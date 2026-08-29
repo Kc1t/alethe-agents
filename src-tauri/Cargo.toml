@@ -5,6 +5,10 @@ description = "Alethe — terminal multiplexer GUI"
 authors = ["Kauã Miguel"]
 license = "AGPL-3.0-or-later"
 edition = "2021"
+# Two binaries in this crate (alethe + alethe-orchestrator-mcp). Without
+# default-run, the bare `cargo run` that `tauri dev` issues cannot pick one and
+# aborts before the app ever starts.
+default-run = "alethe"
 
 [lib]
 name = "alethe_lib"
