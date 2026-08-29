@@ -12,12 +12,39 @@ export async function listDirectory(path: string): Promise<DirectoryEntry[]> {
   return invoke<DirectoryEntry[]>('list_directory', { path })
 }
 
+export type BrowseDirectoryEntry = {
+  name: string
+  path: string
+  isDir: boolean
+  sizeBytes: number | null
+}
+
+export type DirectoryListing = {
+  currentPath: string
+  parentPath: string | null
+  homePath: string
+  systemRoots: string[]
+  entries: BrowseDirectoryEntry[]
+}
+
+export async function browseDirectory(path: string): Promise<DirectoryListing> {
+  return invoke<DirectoryListing>('browse_directory', { path })
+}
+
 export async function readTextFile(path: string): Promise<string> {
   return invoke<string>('read_text_file', { path })
 }
 
 export async function writeTextFile(path: string, content: string): Promise<void> {
   await invoke('write_text_file', { path, content })
+}
+
+export async function writeProjectMarker(projectDir: string, content: string): Promise<void> {
+  await invoke('write_project_marker', { projectDir, content })
+}
+
+export async function readProjectMarker(projectDir: string): Promise<string | null> {
+  return invoke<string | null>('read_project_marker', { projectDir })
 }
 
 export async function renameFilesystemEntry(path: string, newName: string): Promise<string> {

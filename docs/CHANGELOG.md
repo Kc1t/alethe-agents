@@ -12,6 +12,22 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- Agent orchestration, off by default under a new preference. When it is on, Claude Code terminals
+  get a set of Alethe tools for handing independent units of work to Codex workers that Alethe runs
+  in parallel, up to a concurrency limit it enforces itself. The lead gets job ids back immediately
+  and waits for every worker to settle before it can report, so it never claims an outcome it does
+  not have. Each worker can optionally get its own detached git worktree, which is what makes it
+  safe to run several of them over the same files, and each carries a time budget after which
+  Alethe stops it rather than letting it hold a slot forever. Alethe pins every worker to
+  workspace-scoped writes, and can correct one while it is still running or cancel it outright
+  without losing its context. Worker status, plan, elapsed time, token usage and unified diff are
+  reported as they change. The same orchestrator also ships as a standalone MCP server, so the
+  tools can be used from any editor without Alethe running.
+
+- Agent CLIs installed via nvm, bun, `npm --prefix`, pnpm or volta are now detected on Linux
+  even when Alethe is launched from the desktop menu — which inherits a minimal PATH — matching
+  the existing `~/.local/bin` and `~/.cargo/bin` fallbacks. Onboarding and agent tabs now see
+  these installs instead of reporting them as missing.
 - When an agent opens a page in the shared browser, Alethe asks where it should go. The browser
   itself has no window, which is right most of the time — an agent reading a page needs no
   interface at all — so the question only comes up when a page actually appears. All three
@@ -46,6 +62,20 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   OS instead of falling back to a mismatched system font.
 - A new "GSD Sync" tab in the right sidebar shows a read-only activity feed for each project's GSD
   Sync child sessions — no PTY terminal involved, reads straight from `opencode export`.
+- An Audit Center (main menu) captures uncaught errors and unhandled promise rejections as they
+  happen, with search/filter and one-click copy or JSON export of the full report.
+- The Markdown sidebar now lists a project's planning docs (`.alethe/plans/`) as quick-open tabs
+  when no document is selected.
+- An in-app folder/file browser (breadcrumbs, search, drive quick-jump) is available as an
+  alternative to the OS file picker for any environment that can't show a native dialog.
+- Duplicate in-app notifications (same title and body within 5 seconds) are now collapsed into
+  one instead of stacking.
+- New projects can now be created directly from a GitHub URL — Alethe clones the repo and injects
+  an AI context briefing into AGENTS.md/CLAUDE.md. Pointing a new project at a folder that already
+  has an exported Alethe config (`.alethe/project.json`) now offers to restore it instead of
+  starting from scratch.
+- Project configs can be exported to a file and re-imported as a new project from the sidebar's
+  project menu, for sharing a project's setup or moving it to a new machine.
 
 ### Removed
 
@@ -55,6 +85,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Changed
 
+- Redesigned the Alethe Remote home list to match the desktop Project Sidebar: a folder icon tinted
+  by the project's own color replaces the old initials avatar, groups render as a plain label with a
+  hairline rule instead of a boxed section, and chats sit indented under their project with the
+  real Claude Code / Codex / OpenCode logos instead of letter badges. Projects with more than one
+  chat collapse by default and expand on tap; searching always expands matches.
 - Alethe Remote now mirrors the selected desktop theme, app icon, motion preference, and language
   while it is open. Its splash, workspace, terminal view, connection feedback, empty states, and
   recovery screens now use the same Alethe design tokens and official branding.
@@ -83,6 +118,13 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 - The Source Control panel in the right sidebar no longer stays empty for a selected project that
   has no open terminal — it now falls back to the project's default working directory.
+- The ephemeral conflict-resolution agent's initial prompt is now delivered reliably to OpenCode.
+  Confirming the prompt actually reached the screen used to scan the PTY's raw byte stream, where
+  ANSI escape codes interleaved with the text broke any string match; it now reads the screen
+  already rendered by xterm.js instead. Retyping only happens if the input box still looks
+  visibly empty, and resending Enter only continues while the screen stays identical between
+  attempts, so a delivered prompt is never duplicated or resent after the agent has already
+  started responding.
 - Closing the app now actually stops the agents it started. Shutdown handed the work to a
   detached thread that killed sessions one after another, each waiting on `taskkill`, and the
   process exited before it got through them — so terminals were left running with nothing to
@@ -195,10 +237,15 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - The **Continue in Claude Code** button in the agent handoff dialog was unreadable. It painted its
   label with a colour token that does not exist anywhere in the app, so the text fell back to the
   inherited foreground and sat light-on-accent.
+
 - On Linux, killing a terminal left grandchild processes (node, claude, codex, MCP servers) running
   as orphans. The `kill_process_tree` function was a no-op on non-Windows, so only the immediate
   shell died while its descendants survived. It now sends `SIGTERM` to the entire process group
   (portable-pty already calls `setsid()`), waits 200 ms, then escalates to `SIGKILL`.
+- On Linux, orphaned agent and shell processes could outlive the app because the kill-on-close
+  guard was a no-op. The Windows implementation uses a Job Object that kills descendants when the
+  app exits; on Linux the guard now reports as active and relies on the shutdown handler (which
+  sends `SIGTERM` to every process group) combined with orphan sweep at next startup.
 
 ## [1.6.0] — 2026-08-17
 

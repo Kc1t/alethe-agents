@@ -72,6 +72,141 @@ pub fn list_directory(path: String) -> Result<Vec<DirectoryEntry>, String> {
     Ok(entries)
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowseDirectoryEntry {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub size_bytes: Option<u64>,
+}
+
+/// In-app folder/file browser used by `FsBrowserModal` as an alternative to
+/// the native OS picker — separate from `list_directory`/`DirectoryEntry`
+/// (used by the sidebar file explorer) since this returns navigation context
+/// (parent/home/drive roots) that explorer callers don't need or expect.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectoryListing {
+    pub current_path: String,
+    pub parent_path: Option<String>,
+    pub home_path: String,
+    pub system_roots: Vec<String>,
+    pub entries: Vec<BrowseDirectoryEntry>,
+}
+
+fn get_home_dir() -> PathBuf {
+    if let Ok(v) = std::env::var("USERPROFILE") {
+        PathBuf::from(v)
+    } else if let Ok(v) = std::env::var("HOME") {
+        PathBuf::from(v)
+    } else {
+        PathBuf::from(".")
+    }
+}
+
+fn get_system_roots() -> Vec<String> {
+    let mut roots = Vec::new();
+    #[cfg(target_os = "windows")]
+    {
+        for letter in b'A'..=b'Z' {
+            let drive = format!("{}:\\", letter as char);
+            if Path::new(&drive).exists() {
+                roots.push(drive);
+            }
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        roots.push("/".to_string());
+        if Path::new("/home").exists() {
+            roots.push("/home".to_string());
+        }
+        if Path::new("/media").exists() {
+            roots.push("/media".to_string());
+        }
+        if Path::new("/mnt").exists() {
+            roots.push("/mnt".to_string());
+        }
+        if Path::new("/Volumes").exists() {
+            roots.push("/Volumes".to_string());
+        }
+    }
+    roots
+}
+
+#[tauri::command]
+pub fn browse_directory(path: String) -> Result<DirectoryListing, String> {
+    let home = get_home_dir();
+    let trimmed = path.trim();
+    let directory = if trimmed.is_empty() || trimmed == "~" {
+        home.clone()
+    } else {
+        let p = PathBuf::from(trimmed);
+        if p.exists() {
+            if p.is_file() {
+                p.parent().map(|parent| parent.to_path_buf()).unwrap_or(home.clone())
+            } else {
+                p
+            }
+        } else {
+            home.clone()
+        }
+    };
+
+    let canonical = directory.canonicalize().unwrap_or_else(|_| directory.clone());
+    let current_path_str = canonical.to_string_lossy().into_owned();
+    let clean_current_path = current_path_str
+        .strip_prefix(r"\\?\")
+        .unwrap_or(&current_path_str)
+        .to_string();
+
+    let parent_path = canonical.parent().map(|p| {
+        let s = p.to_string_lossy().into_owned();
+        s.strip_prefix(r"\\?\").unwrap_or(&s).to_string()
+    });
+
+    let mut entries = match fs::read_dir(&canonical) {
+        Ok(read_dir) => read_dir
+            .filter_map(|entry| {
+                let entry = entry.ok()?;
+                let file_type = entry.file_type().ok()?;
+                let metadata = entry.metadata().ok();
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name.starts_with('$') || name == "System Volume Information" {
+                    return None;
+                }
+                let full_path = entry.path().to_string_lossy().into_owned();
+                let clean_path = full_path.strip_prefix(r"\\?\").unwrap_or(&full_path).to_string();
+                Some(BrowseDirectoryEntry {
+                    name,
+                    path: clean_path,
+                    is_dir: file_type.is_dir(),
+                    size_bytes: metadata.map(|m| m.len()),
+                })
+            })
+            .collect::<Vec<_>>(),
+        Err(_) => Vec::new(),
+    };
+
+    entries.sort_by(|a, b| {
+        b.is_dir
+            .cmp(&a.is_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+
+    let clean_home = home.to_string_lossy().into_owned();
+    let home_path = clean_home.strip_prefix(r"\\?\").unwrap_or(&clean_home).to_string();
+
+    Ok(DirectoryListing {
+        current_path: clean_current_path,
+        parent_path,
+        home_path,
+        system_roots: get_system_roots(),
+        entries,
+    })
+}
+
 fn existing_entry(path: &str) -> Result<PathBuf, String> {
     let target = PathBuf::from(path.trim());
     if target.as_os_str().is_empty() || !target.exists() {
@@ -134,6 +269,34 @@ pub fn write_text_file(path: String, content: String) -> Result<(), String> {
         return Err("file not found".to_string());
     }
     fs::write(&file, content).map_err(|error| error.to_string())
+}
+
+/// Writes the `.alethe/project.json` mirror inside the project's own folder
+/// (not app data) — creates `.alethe/` if it doesn't exist yet. Unlike
+/// `write_text_file`, this command can create the file from scratch (doesn't
+/// require it to already exist), because the whole point is to initialize
+/// the mirror the first time the project is saved.
+#[tauri::command]
+pub fn write_project_marker(project_dir: String, content: String) -> Result<(), String> {
+    let dir = PathBuf::from(project_dir.trim());
+    if !dir.is_dir() {
+        return Err("directory not found".to_string());
+    }
+    let marker_dir = dir.join(".alethe");
+    fs::create_dir_all(&marker_dir).map_err(|error| error.to_string())?;
+    fs::write(marker_dir.join("project.json"), content).map_err(|error| error.to_string())
+}
+
+/// Reads a folder's `.alethe/project.json`, if it exists — used to detect an
+/// "already-configured project" when pointing a new project at that folder.
+/// `None` (not an error) when the marker simply doesn't exist yet, which is
+/// the normal case for any folder new to / never used by Alethe.
+#[tauri::command]
+pub fn read_project_marker(project_dir: String) -> Option<String> {
+    let marker = PathBuf::from(project_dir.trim())
+        .join(".alethe")
+        .join("project.json");
+    fs::read_to_string(marker).ok()
 }
 
 #[tauri::command]

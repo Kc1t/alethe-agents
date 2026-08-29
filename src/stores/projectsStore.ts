@@ -104,6 +104,7 @@ export type ProjectsState = ProjectsFile & {
     githubUrl?: string
     firstBootPending?: boolean
   }) => Project
+  importProjectFromFile: (data: Project, groupId?: string | null) => Project
   renameProject: (id: string, name: string) => void
   archiveProject: (id: string) => void
   unarchiveProject: (id: string) => void

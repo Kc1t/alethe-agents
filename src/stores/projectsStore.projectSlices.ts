@@ -360,6 +360,7 @@ export function createGroupsSlice({ update }: SliceCtx): GroupsSlice {
 type ProjectsSlice = Pick<
   ProjectsState,
   | 'createProject'
+  | 'importProjectFromFile'
   | 'renameProject'
   | 'archiveProject'
   | 'unarchiveProject'
@@ -430,6 +431,36 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
           ungroupedOrder,
           activeProjectId: state.activeProjectId ?? project.id,
         }
+      })
+      return project
+    },
+
+    importProjectFromFile: (data, groupId = null) => {
+      const project: Project = {
+        ...data,
+        id: nanoid(),
+        groupId,
+        archived: false,
+        createdAt: Date.now(),
+        // No live process ever exists to reuse for a freshly imported
+        // project — zeroes every tab's ptyId, but keeps sessionId (tries to
+        // resume on purpose on the next spawn, same logic as the worktree
+        // migration item).
+        terminals: (data.terminals ?? []).map((terminal) => ({
+          ...terminal,
+          tabs: terminal.tabs.map((tab) => ({ ...tab, ptyId: null })),
+        })),
+      }
+      update((state) => {
+        const groups =
+          groupId === null
+            ? state.groups
+            : state.groups.map((g) =>
+                g.id === groupId ? { ...g, projectIds: [...g.projectIds, project.id] } : g,
+              )
+        const ungroupedOrder =
+          groupId === null ? [...state.ungroupedOrder, project.id] : state.ungroupedOrder
+        return { projects: [...state.projects, project], groups, ungroupedOrder }
       })
       return project
     },
