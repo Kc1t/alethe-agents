@@ -237,6 +237,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - The **Continue in Claude Code** button in the agent handoff dialog was unreadable. It painted its
   label with a colour token that does not exist anywhere in the app, so the text fell back to the
   inherited foreground and sat light-on-accent.
+- Multiple features (Graphify, GSD plugin, AI Memory) now share a lock when writing to
+  `opencode.json`, preventing race conditions where concurrent read-modify-write cycles
+  clobbered each other's MCP entries.
 
 - On Linux, killing a terminal left grandchild processes (node, claude, codex, MCP servers) running
   as orphans. The `kill_process_tree` function was a no-op on non-Windows, so only the immediate

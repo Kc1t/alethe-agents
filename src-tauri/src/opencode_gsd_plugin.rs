@@ -78,6 +78,9 @@ fn write_gsd_config_sidecar(root: &std::path::Path, model_chain: &[String]) -> R
 }
 
 fn write_opencode_plugin_entry(root: &std::path::Path) -> Result<(), String> {
+    let _guard = crate::provider_common::opencode_json_lock()
+        .lock()
+        .map_err(|_| "opencode.json lock poisoned".to_string())?;
     let path = root.join("opencode.json");
 
     let mut config: serde_json::Map<String, Value> = if path.is_file() {
