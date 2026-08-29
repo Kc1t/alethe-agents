@@ -757,7 +757,24 @@ pub(crate) fn kill_process_tree(pid: u32) {
 }
 
 #[cfg(not(windows))]
-pub(crate) fn kill_process_tree(_pid: u32) {}
+pub(crate) fn kill_process_tree(pid: u32) {
+    // portable-pty calls setsid() on Linux, so the shell owns its own process
+    // group. Sending a signal to the negative PID targets the entire group.
+    let _ = std::process::Command::new("kill")
+        .args(["-TERM", &format!("-{pid}")])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .and_then(|mut child| child.wait());
+    // Give well-behaved processes a moment to exit cleanly, then escalate.
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let _ = std::process::Command::new("kill")
+        .args(["-9", &format!("-{pid}")])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .and_then(|mut child| child.wait());
+}
 
 #[tauri::command]
 pub async fn restart_pty(
