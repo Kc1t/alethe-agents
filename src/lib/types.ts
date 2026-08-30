@@ -462,6 +462,11 @@ export type Preferences = {
   lastTerminalCreation: TerminalCreationPreset | null
 
   topbarStyle: 'classic' | 'three-areas'
+  /**
+   * Where minimize / maximize / close sit in the custom title bar.
+   * `system` follows the OS (GNOME `button-layout` on Linux); left/right force a side.
+   */
+  windowControlsPlacement: 'system' | 'left' | 'right'
   /** Local do controle Git: sidebar esquerda ou direita. */
   gitControlPlacement: 'left' | 'right'
 
@@ -599,6 +604,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   alwaysStartUnrestricted: false,
   lastTerminalCreation: null,
   topbarStyle: 'classic',
+  windowControlsPlacement: 'system',
   gitControlPlacement: 'left',
   spotifyClientId: '',
   spotifyClientSecret: '',

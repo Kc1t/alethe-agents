@@ -12,6 +12,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- Window minimize / maximize / close follow the desktop layout on Linux: Alethe reads GNOME's
+  `button-layout` (so Pop!_OS / Ubuntu left-hand chrome is mirrored) and places the buttons on
+  that side in the matching order. Preferences → Appearance can still force left, right, or
+  System. Windows stays right-hand; macOS uses traffic-light order on the left.
+
 - Cursor Agent is available as a coding-agent CLI alongside Claude, Codex, Copilot and the rest.
   Alethe detects `cursor-agent` on Windows (`%LOCALAPPDATA%\cursor-agent`), macOS and Linux, can
   install it from Preferences / Onboarding, and the unrestricted toggle maps to `--force`. Model

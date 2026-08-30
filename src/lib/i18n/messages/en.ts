@@ -494,6 +494,12 @@ export const en = {
     'Choose how the topbar divides sidebars, tabs, status, and window controls.',
   'prefs.topbarStyleClassic': 'Classic',
   'prefs.topbarStyleThreeAreas': 'Three areas',
+  'prefs.windowControlsPlacement': 'Window controls',
+  'prefs.windowControlsPlacementDesc':
+    'Where minimize, maximize and close sit in the title bar. System follows the desktop (GNOME button-layout on Linux).',
+  'prefs.windowControlsPlacementSystem': 'System',
+  'prefs.windowControlsPlacementLeft': 'Left',
+  'prefs.windowControlsPlacementRight': 'Right',
   'prefs.gitControl': 'Git Control sidebar',
   'prefs.gitControlDesc': 'Show or hide the Source Control tab in the project sidebar.',
   'prefs.gitControlShow': 'Show',
@@ -1335,6 +1341,7 @@ export const en = {
   'ui.titlebar.minimize': 'Minimize',
   'ui.titlebar.maximize': 'Maximize',
   'ui.titlebar.close': 'Close',
+  'ui.titlebar.windowControls': 'Window controls',
   'appClose.title': 'Close Alethe?',
   'appClose.message':
     'Open agents and terminals will be stopped. Saved conversations can be resumed the next time you open Alethe.',

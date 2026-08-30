@@ -14,6 +14,7 @@ const store = vi.hoisted(() => ({
       uiTheme: 'dark',
       uiZoom: 1,
       visualStyle: 'normal',
+      windowControlsPlacement: 'system',
       windowOpacity: 1,
     },
     setPreferences: vi.fn(),
