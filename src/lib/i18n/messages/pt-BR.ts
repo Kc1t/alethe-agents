@@ -80,6 +80,7 @@ export const ptBR: Record<MessageKey, string> = {
   'agent.claude.desc': 'Anthropic CLI',
   'agent.codex.desc': 'OpenAI CLI',
   'agent.copilot.desc': 'Agente CLI do GitHub',
+  'agent.cursor.desc': 'CLI do Cursor Agent (Windows, macOS, Linux)',
   'agent.opencode.desc': 'Open source',
   'agent.freebuff.desc': 'Agente grátis',
   'agent.mimo.desc': 'CLI da Xiaomi',
@@ -687,7 +688,7 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.cliPathMismatch': 'Isso não parece ser o CLI',
   'prefs.cliPathMismatchBody':
     'A ferramenta de linha de comando do {agent} se chama "{command}". O arquivo escolhido tem outro nome, então ele pode abrir o aplicativo gráfico em vez de rodar no terminal.',
-  'prefs.enabledAgents': 'Agentes habilitados ({count}/4)',
+  'prefs.enabledAgents': 'Agentes habilitados ({count})',
   'prefs.resetSession': 'Resetar última sessão',
   'prefs.resetSessionDesc':
     'Se reabrir o app não retomou seus agentes, isto acha a conversa mais recente de cada agente aberto e reinicia com resume.',

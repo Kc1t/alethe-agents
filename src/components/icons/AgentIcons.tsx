@@ -87,6 +87,24 @@ export function CopilotIcon({ size = 16 }: { size?: number }) {
   )
 }
 
+/** Simplified Cursor mark — arrow-in-box, matches the CLI's monochrome feel. */
+export function CursorIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      <rect x="2.5" y="2.5" width="11" height="11" rx="2" />
+      <path d="M6 11.5V5.5L11 8.5 6 11.5Z" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 export function AgentIcon({
   type,
   size = 16,
@@ -100,6 +118,7 @@ export function AgentIcon({
   if (type === 'claude') return <ClaudeIcon size={size} />
   if (type === 'codex') return <CodexIcon size={size} />
   if (type === 'copilot') return <CopilotIcon size={size} />
+  if (type === 'cursor') return <CursorIcon size={size} />
   if (type === 'freebuff') return <FreebuffIcon size={size} />
   if (type === 'mimo') return <MimoIcon size={size} />
   if (type === 'antigravity') return <AntigravityIcon size={size} />

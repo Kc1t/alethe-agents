@@ -67,6 +67,11 @@ describe('installMethodsFor', () => {
     )
     expect(installMethodsFor('mimo', BARE).map((method) => method.id)).toEqual(['native'])
   })
+
+  it('installs Cursor Agent through the official Windows install script', () => {
+    expect(installMethodsFor('cursor', BARE).map((method) => method.id)).toEqual(['native'])
+    expect(installMethodsFor('cursor', BARE)[0].command).toContain('cursor.com/install')
+  })
 })
 
 describe('needsNodeToolchain', () => {

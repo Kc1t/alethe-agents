@@ -27,7 +27,7 @@ Custom grids support `colSpan`, `rowSpan`, drag-and-drop swapping, and resizable
 ## Terminals and PTYs
 
 - Real backend PTYs through `portable-pty`.
-- Shell, Claude Code, Codex, and OpenCode terminal types.
+- Shell, Claude Code, Codex, GitHub Copilot, Cursor Agent, Antigravity, OpenCode, Mimo, and Freebuff terminal types.
 - Spawn, attach, write, resize, restart, and kill through Tauri commands.
 - Persisted scrollback per PTY.
 - Automatic terminal resize through `ResizeObserver` and `xterm-fit`.
@@ -42,7 +42,7 @@ Custom grids support `colSpan`, `rowSpan`, drag-and-drop swapping, and resizable
 - Each sub-tab can have its own agent type, cwd, and PTY.
 - The sub-tab lane can be hidden or shown.
 - Multi-tab terminals force the lane visible.
-- New tabs can be created as Shell, Claude Code, Codex, or OpenCode.
+- New tabs can be created as Shell, Claude Code, Codex, GitHub Copilot, Cursor Agent, Antigravity, OpenCode, Mimo, or Freebuff.
 
 ## Agents and Launchers
 
@@ -52,7 +52,9 @@ Custom grids support `colSpan`, `rowSpan`, drag-and-drop swapping, and resizable
 - Per-agent unrestricted mode flags:
   - Claude Code: `--dangerously-skip-permissions`
   - Codex: `--dangerously-bypass-approvals-and-sandbox`
-  - OpenCode: `--dangerously-skip-permissions`
+  - GitHub Copilot: `--allow-all`
+  - Cursor Agent: `--force`
+  - OpenCode / Antigravity: `--dangerously-skip-permissions`
 
 ## Local Accounts
 
