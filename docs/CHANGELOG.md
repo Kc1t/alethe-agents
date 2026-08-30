@@ -12,6 +12,14 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- Local voice dictation with on-device Parakeet TDT v3 (sherpa-onnx). Enable it under Preferences →
+  Integrations, download the model once (~640 MB), then press Ctrl+E (⌘E on macOS) to dictate into
+  the active terminal. The mic indicator appears only while listening or while the model is
+  transcribing (spinner), so a long transcription does not look like a freeze. Choose Toggle or Hold
+  mode and pick a microphone; System default follows the OS input device. Mic capture uses the
+  native audio stack (cpal/PipeWire), not WebKit getUserMedia, so AppImages still see microphones.
+  On Linux, Alethe also enables WebKitGTK media-stream as a fallback path for other features.
+
 - Agent orchestration, off by default under a new preference. When it is on, Claude Code terminals
   get a set of Alethe tools for handing independent units of work to Codex workers that Alethe runs
   in parallel, up to a concurrency limit it enforces itself. The lead gets job ids back immediately

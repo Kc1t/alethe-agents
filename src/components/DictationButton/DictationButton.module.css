@@ -25,8 +25,7 @@
 }
 
 .btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  cursor: wait;
 }
 
 .listening {
@@ -34,6 +33,23 @@
   border-color: var(--status-offline);
   background: var(--status-offline-soft);
   animation: audioRadarPulse 1.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.busy {
+  color: var(--status-waiting);
+  border-color: var(--status-waiting);
+  background: var(--status-waiting-soft);
+  cursor: wait;
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+.error {
+  color: var(--status-offline);
+  border-color: var(--status-offline);
+  background: var(--status-offline-soft);
 }
 
 @keyframes audioRadarPulse {
@@ -46,5 +62,11 @@
     box-shadow:
       0 0 0 16px color-mix(in srgb, var(--status-offline) 0%, transparent),
       0 6px 20px rgba(0, 0, 0, 0.35);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }

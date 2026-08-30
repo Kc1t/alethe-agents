@@ -46,7 +46,12 @@ qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 which = "6"
 zip = "0.6"
 sysinfo = "0.31"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+sha2 = "0.10"
+hex = "0.4"
+cpal = "0.15"
+# On-device STT (Parakeet / Whisper / …). Build script downloads prebuilt libs when unset.
+sherpa-onnx = "1.13.6"
 tiny_http = "0.12"
 # keyring v3 não habilita NENHUM backend de plataforma por padrão — sem uma
 # feature explícita ele usa um store mock e todo get_password() falha. Os
@@ -106,6 +111,9 @@ windows-sys = { version = "0.61", features = [
 # sistema pra criptografia da sessão D-Bus.
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
+# Match the webkit2gtk version Tauri already pulls so we can enable media-stream
+# and answer permission-request for getUserMedia (voice dictation).
+webkit2gtk = { version = "2.0.1", features = ["v2_40"] }
 
 # Em dev, unwind permite que um panic de comando vire Err em vez de derrubar o
 # app inteiro durante uma sessão de HMR. Release segue abort (binário menor).
