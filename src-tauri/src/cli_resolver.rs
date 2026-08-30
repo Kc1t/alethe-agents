@@ -162,6 +162,22 @@ pub fn find_windows_cli_launcher(command: &str) -> Option<PathBuf> {
 }
 
 fn resolve_cli_launcher(command: &str) -> Option<PathBuf> {
+    let command = match command {
+        "antigravity" | "agy" => "agy",
+        "cursor" | "cursor-agent" => "cursor-agent",
+        other => other,
+    };
+
+    // Cursor Agent on Windows lives under %LOCALAPPDATA%\cursor-agent with .cmd/.ps1
+    // shims. That folder is often missing from PATH until the shell is restarted, so
+    // probe it before the generic PATH walk — same idea as OpenAgents' detection.
+    #[cfg(windows)]
+    if command == "cursor-agent" {
+        if let Some(path) = resolve_cursor_agent_windows() {
+            return Some(path);
+        }
+    }
+
     #[cfg(not(windows))]
     {
         if let Ok(path) = which::which(command) {
@@ -200,6 +216,7 @@ fn resolve_cli_launcher(command: &str) -> Option<PathBuf> {
         // exclusivamente `agy`. Nunca use o desktop como fallback para o CLI.
         let candidates_to_try = match command {
             "antigravity" | "agy" => vec!["agy"],
+            "cursor" | "cursor-agent" => vec!["cursor-agent"],
             other => vec![other],
         };
 
@@ -426,6 +443,32 @@ pub fn find_vscode_launcher() -> Option<PathBuf> {
     }
 }
 
+/// Windows Cursor Agent install layout: `%LOCALAPPDATA%\cursor-agent\cursor-agent.cmd`
+/// (and `agent.cmd`). Prefer these over a bare `agent` on PATH, which can belong to another tool.
+#[cfg(windows)]
+fn resolve_cursor_agent_windows() -> Option<PathBuf> {
+    let mut roots = Vec::<PathBuf>::new();
+    if let Some(local) = env::var_os("LOCALAPPDATA").map(PathBuf::from) {
+        roots.push(local.join("cursor-agent"));
+    }
+    if let Some(profile) = env::var_os("USERPROFILE").map(PathBuf::from) {
+        roots.push(profile.join("AppData").join("Local").join("cursor-agent"));
+        roots.push(profile.join(".local").join("bin"));
+    }
+
+    for root in &roots {
+        for name in ["cursor-agent", "agent"] {
+            for extension in ["cmd", "exe", "bat", "ps1"] {
+                let candidate = root.join(format!("{name}.{extension}"));
+                if candidate.is_file() {
+                    return Some(candidate);
+                }
+            }
+        }
+    }
+    None
+}
+
 pub fn agent_search_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::<PathBuf>::new();
     if let Some(profile) = env::var_os("USERPROFILE").map(PathBuf::from) {
@@ -448,6 +491,12 @@ pub fn agent_search_dirs() -> Vec<PathBuf> {
                 .join("antigravity")
                 .join("bin"),
         );
+        dirs.push(profile.join("AppData").join("Local").join("cursor-agent"));
+    }
+    // Official Windows Cursor Agent install root (shims: cursor-agent.cmd / agent.cmd).
+    if let Some(local) = env::var_os("LOCALAPPDATA").map(PathBuf::from) {
+        dirs.push(local.join("cursor-agent"));
+        dirs.push(local.join("cursor-agent").join("bin"));
     }
     if let Some(app_data) = env::var_os("APPDATA").map(PathBuf::from) {
         dirs.push(app_data.join("npm"));
@@ -707,6 +756,7 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
 
     let cmd_name = match provider_lower.as_str() {
         "antigravity" | "agy" => "agy",
+        "cursor" | "cursor-agent" => "cursor-agent",
         other => other,
     };
 
@@ -900,6 +950,44 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                 models.push(ModelOption {
                     id: "freebuff-fast".into(),
                     label: "Freebuff Fast".into(),
+                });
+            }
+        }
+        "cursor" | "cursor-agent" => {
+            if let Ok(output) = std::process::Command::new(&bin_path)
+                .arg("--list-models")
+                .output()
+            {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("Available models") {
+                        continue;
+                    }
+                    // `id - Label` (Cursor CLI). Fall back to the first token.
+                    let (id, label) = match trimmed.split_once(" - ") {
+                        Some((id, label)) => (id.trim(), label.trim()),
+                        None => (
+                            trimmed.split_whitespace().next().unwrap_or(trimmed),
+                            trimmed,
+                        ),
+                    };
+                    if is_valid_model_id(id) {
+                        models.push(ModelOption {
+                            id: id.to_string(),
+                            label: format!("{label} (Cursor Agent)"),
+                        });
+                    }
+                }
+            }
+            if models.is_empty() {
+                models.push(ModelOption {
+                    id: "auto".into(),
+                    label: "Auto (Cursor Agent)".into(),
+                });
+                models.push(ModelOption {
+                    id: "composer-2.5".into(),
+                    label: "Composer 2.5 (Cursor Agent)".into(),
                 });
             }
         }

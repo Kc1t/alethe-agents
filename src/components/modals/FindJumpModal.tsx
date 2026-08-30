@@ -13,6 +13,7 @@ const ICONS: Record<AgentType, LucideIcon> = {
   claude: Sparkles,
   codex: Code2,
   copilot: Bot,
+  cursor: Sparkles,
   antigravity: Sparkles,
   opencode: Boxes,
   freebuff: Gift,
