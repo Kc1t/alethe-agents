@@ -59,6 +59,12 @@ export const AGENT_INSTALL_CATALOG: Partial<Record<AgentType, AgentInstallCatalo
       { id: 'npm', command: 'npm install -g @github/copilot', requires: 'npm' },
     ],
   },
+  cursor: {
+    docsUrl: 'https://cursor.com/docs/cli/installation',
+    methods: [
+      { id: 'native', command: "irm 'https://cursor.com/install?win32=true' | iex" },
+    ],
+  },
   antigravity: {
     docsUrl: 'https://antigravity.google/docs/cli/install',
     methods: [{ id: 'native', command: 'irm https://antigravity.google/cli/install.ps1 | iex' }],

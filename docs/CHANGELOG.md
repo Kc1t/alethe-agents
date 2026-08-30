@@ -12,6 +12,16 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- Window minimize / maximize / close follow the desktop layout on Linux: Alethe reads GNOME's
+  `button-layout` (so Pop!_OS / Ubuntu left-hand chrome is mirrored) and places the buttons on
+  that side in the matching order. Preferences → Appearance can still force left, right, or
+  System. Windows stays right-hand; macOS uses traffic-light order on the left.
+
+- Cursor Agent is available as a coding-agent CLI alongside Claude, Codex, Copilot and the rest.
+  Alethe detects `cursor-agent` on Windows (`%LOCALAPPDATA%\cursor-agent`), macOS and Linux, can
+  install it from Preferences / Onboarding, and the unrestricted toggle maps to `--force`. Model
+  discovery uses `cursor-agent --list-models`.
+
 - Agent orchestration, off by default under a new preference. When it is on, Claude Code terminals
   get a set of Alethe tools for handing independent units of work to Codex workers that Alethe runs
   in parallel, up to a concurrency limit it enforces itself. The lead gets job ids back immediately
@@ -116,6 +126,14 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- The undecorated main window can be resized again by dragging its edges and corners. Without OS
+  decorations there was no native resize border (especially on Linux), so thin in-window handles
+  now start Tauri's resize drag for each edge and corner, and hide while the window is maximized
+  or fullscreen.
+- Deleting a terminal on Linux no longer terminates the whole app. Closing a pane used
+  `kill -TERM -{pid}` against the PTY process group; when that group was (or collided with)
+  Alethe's own PGID, the AppImage exited with SIGTERM. Terminal teardown now walks the PTY's
+  process tree and signals each PID individually, and refuses to signal the app's own pid.
 - The Source Control panel in the right sidebar no longer stays empty for a selected project that
   has no open terminal — it now falls back to the project's default working directory.
 - The ephemeral conflict-resolution agent's initial prompt is now delivered reliably to OpenCode.

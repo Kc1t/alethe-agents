@@ -18,6 +18,7 @@ const AGENTS: { id: AgentType; label: string }[] = [
   { id: 'claude', label: 'Claude Code' },
   { id: 'codex', label: 'Codex' },
   { id: 'copilot', label: 'GitHub Copilot' },
+  { id: 'cursor', label: 'Cursor Agent' },
   { id: 'antigravity', label: 'Antigravity' },
   { id: 'opencode', label: 'OpenCode' },
   { id: 'freebuff', label: 'Freebuff' },

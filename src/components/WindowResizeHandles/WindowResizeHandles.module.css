@@ -1,0 +1,78 @@
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  pointer-events: none;
+}
+
+.handle {
+  position: absolute;
+  pointer-events: auto;
+  /* Keep the hit target invisible — only the cursor change signals it. */
+  background: transparent;
+}
+
+.n,
+.s {
+  left: 6px;
+  right: 6px;
+  height: 5px;
+  cursor: ns-resize;
+}
+
+.e,
+.w {
+  top: 6px;
+  bottom: 6px;
+  width: 5px;
+  cursor: ew-resize;
+}
+
+.n {
+  top: 0;
+}
+
+.s {
+  bottom: 0;
+}
+
+.e {
+  right: 0;
+}
+
+.w {
+  left: 0;
+}
+
+.ne,
+.nw,
+.se,
+.sw {
+  width: 10px;
+  height: 10px;
+  z-index: 1;
+}
+
+.ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.se {
+  bottom: 0;
+  right: 0;
+  cursor: nwse-resize;
+}
+
+.sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}

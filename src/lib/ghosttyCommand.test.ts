@@ -13,6 +13,7 @@ describe('buildGhosttyCommand', () => {
     expect(buildGhosttyCommand('codex')).toBe('codex')
     expect(buildGhosttyCommand('opencode')).toBe('opencode')
     expect(buildGhosttyCommand('antigravity')).toBe('agy')
+    expect(buildGhosttyCommand('cursor')).toBe('cursor-agent')
   })
 
   it('inclui extraArgs simples sem aspas', () => {
@@ -22,6 +23,7 @@ describe('buildGhosttyCommand', () => {
     expect(buildGhosttyCommand('antigravity', ['--dangerously-skip-permissions'])).toBe(
       'agy --dangerously-skip-permissions',
     )
+    expect(buildGhosttyCommand('cursor', ['--force'])).toBe('cursor-agent --force')
   })
 
   it('cita args com espaços ou caracteres perigosos', () => {

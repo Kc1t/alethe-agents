@@ -80,6 +80,7 @@ export const ptBR: Record<MessageKey, string> = {
   'agent.claude.desc': 'Anthropic CLI',
   'agent.codex.desc': 'OpenAI CLI',
   'agent.copilot.desc': 'Agente CLI do GitHub',
+  'agent.cursor.desc': 'CLI do Cursor Agent (Windows, macOS, Linux)',
   'agent.opencode.desc': 'Open source',
   'agent.freebuff.desc': 'Agente grátis',
   'agent.mimo.desc': 'CLI da Xiaomi',
@@ -498,6 +499,12 @@ export const ptBR: Record<MessageKey, string> = {
     'Escolha como a topbar divide sidebars, abas, status e controles da janela.',
   'prefs.topbarStyleClassic': 'Clássico',
   'prefs.topbarStyleThreeAreas': 'Três áreas',
+  'prefs.windowControlsPlacement': 'Controles da janela',
+  'prefs.windowControlsPlacementDesc':
+    'Onde ficam minimizar, maximizar e fechar na barra de título. Sistema segue o desktop (button-layout do GNOME no Linux).',
+  'prefs.windowControlsPlacementSystem': 'Sistema',
+  'prefs.windowControlsPlacementLeft': 'Esquerda',
+  'prefs.windowControlsPlacementRight': 'Direita',
   'prefs.gitControl': 'Controle Git na sidebar',
   'prefs.gitControlDesc': 'Mostre ou oculte a aba Source Control na sidebar de projetos.',
   'prefs.gitControlShow': 'Mostrar',
@@ -687,7 +694,7 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.cliPathMismatch': 'Isso não parece ser o CLI',
   'prefs.cliPathMismatchBody':
     'A ferramenta de linha de comando do {agent} se chama "{command}". O arquivo escolhido tem outro nome, então ele pode abrir o aplicativo gráfico em vez de rodar no terminal.',
-  'prefs.enabledAgents': 'Agentes habilitados ({count}/4)',
+  'prefs.enabledAgents': 'Agentes habilitados ({count})',
   'prefs.resetSession': 'Resetar última sessão',
   'prefs.resetSessionDesc':
     'Se reabrir o app não retomou seus agentes, isto acha a conversa mais recente de cada agente aberto e reinicia com resume.',
@@ -1352,6 +1359,7 @@ export const ptBR: Record<MessageKey, string> = {
   'ui.titlebar.minimize': 'Minimizar',
   'ui.titlebar.maximize': 'Maximizar',
   'ui.titlebar.close': 'Fechar',
+  'ui.titlebar.windowControls': 'Controles da janela',
   'appClose.title': 'Fechar o Alethe?',
   'appClose.message':
     'Agentes e terminais abertos serão encerrados. As conversas salvas poderão ser retomadas quando você abrir o Alethe novamente.',

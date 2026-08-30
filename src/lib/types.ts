@@ -1,10 +1,19 @@
 export type AgentType =
-  'shell' | 'claude' | 'codex' | 'copilot' | 'opencode' | 'freebuff' | 'mimo' | 'antigravity'
+  | 'shell'
+  | 'claude'
+  | 'codex'
+  | 'copilot'
+  | 'cursor'
+  | 'opencode'
+  | 'freebuff'
+  | 'mimo'
+  | 'antigravity'
 
 export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
   copilot: 'GitHub Copilot',
+  cursor: 'Cursor Agent',
   antigravity: 'Antigravity',
   opencode: 'OpenCode',
   mimo: 'Mimo',
@@ -16,6 +25,7 @@ export const ALL_AGENT_TYPES: AgentType[] = [
   'claude',
   'codex',
   'copilot',
+  'cursor',
   'antigravity',
   'opencode',
   'mimo',
@@ -25,7 +35,10 @@ export const ALL_AGENT_TYPES: AgentType[] = [
 
 export function agentCliCommand(agent: AgentType): string | undefined {
   if (agent === 'shell') return undefined
-  return agent === 'antigravity' ? 'agy' : agent
+  // Type id stays readable; the real binaries differ for some vendors.
+  if (agent === 'antigravity') return 'agy'
+  if (agent === 'cursor') return 'cursor-agent'
+  return agent
 }
 
 export type Locale = 'en' | 'pt-BR'
@@ -143,6 +156,7 @@ export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
   claude: '--dangerously-skip-permissions',
   codex: '--dangerously-bypass-approvals-and-sandbox',
   copilot: '--allow-all',
+  cursor: '--force',
   opencode: '--dangerously-skip-permissions',
 
   freebuff: null,
@@ -448,6 +462,11 @@ export type Preferences = {
   lastTerminalCreation: TerminalCreationPreset | null
 
   topbarStyle: 'classic' | 'three-areas'
+  /**
+   * Where minimize / maximize / close sit in the custom title bar.
+   * `system` follows the OS (GNOME `button-layout` on Linux); left/right force a side.
+   */
+  windowControlsPlacement: 'system' | 'left' | 'right'
   /** Local do controle Git: sidebar esquerda ou direita. */
   gitControlPlacement: 'left' | 'right'
 
@@ -567,6 +586,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
     claude: true,
     codex: true,
     copilot: true,
+    cursor: true,
     antigravity: true,
     opencode: true,
     freebuff: true,
@@ -584,6 +604,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   alwaysStartUnrestricted: false,
   lastTerminalCreation: null,
   topbarStyle: 'classic',
+  windowControlsPlacement: 'system',
   gitControlPlacement: 'left',
   spotifyClientId: '',
   spotifyClientSecret: '',
@@ -682,6 +703,14 @@ export const PROVIDER_MODELS: Record<AgentType, { id: string; label: string }[]>
     { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
   ],
   copilot: [],
+  cursor: [
+    { id: 'auto', label: 'Auto (default)' },
+    { id: 'composer-2.5', label: 'Composer 2.5' },
+    { id: 'composer-2.5-fast', label: 'Composer 2.5 Fast' },
+    { id: 'gpt-5.2', label: 'GPT-5.2' },
+    { id: 'claude-sonnet-5-thinking-high', label: 'Claude Sonnet 5 Thinking' },
+    { id: 'claude-opus-5-thinking-high', label: 'Claude Opus 5 Thinking' },
+  ],
   opencode: [
     { id: 'deepseek/deepseek-r1', label: 'DeepSeek R1 (Raciocínio)' },
     { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3' },

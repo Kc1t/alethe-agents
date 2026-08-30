@@ -445,6 +445,10 @@ svg {
   color: var(--fg-muted);
   background: var(--accent-soft);
 }
+.agent-badge[data-agent='cursor'] {
+  color: var(--agent-cursor);
+  background: var(--agent-cursor-soft);
+}
 
 .empty-state {
   display: grid;

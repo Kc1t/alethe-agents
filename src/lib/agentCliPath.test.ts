@@ -11,4 +11,11 @@ describe('cliPathMatchesAgent', () => {
   it('accepts Windows launcher extensions for GitHub Copilot', () => {
     expect(cliPathMatchesAgent('copilot', String.raw`C:\npm\copilot.cmd`)).toBe(true)
   })
+
+  it('accepts the Cursor Agent CLI binary name', () => {
+    expect(cliPathMatchesAgent('cursor', String.raw`C:\Users\me\.local\bin\cursor-agent.exe`)).toBe(
+      true,
+    )
+    expect(cliPathMatchesAgent('cursor', String.raw`C:\Tools\agent.exe`)).toBe(false)
+  })
 })
