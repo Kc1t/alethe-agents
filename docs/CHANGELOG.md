@@ -116,6 +116,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- The undecorated main window can be resized again by dragging its edges and corners. Without OS
+  decorations there was no native resize border (especially on Linux), so thin in-window handles
+  now start Tauri's resize drag for each edge and corner, and hide while the window is maximized
+  or fullscreen.
 - The Source Control panel in the right sidebar no longer stays empty for a selected project that
   has no open terminal — it now falls back to the project's default working directory.
 - The ephemeral conflict-resolution agent's initial prompt is now delivered reliably to OpenCode.
