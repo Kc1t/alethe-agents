@@ -12,6 +12,14 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- Local voice dictation with on-device Parakeet TDT v3 (sherpa-onnx). Enable it under Preferences →
+  Integrations, download the model once (~640 MB), then press Ctrl+E (⌘E on macOS) to dictate into
+  the active terminal. The mic indicator appears only while listening or while the model is
+  transcribing (spinner), so a long transcription does not look like a freeze. Choose Toggle or Hold
+  mode and pick a microphone; System default follows the OS input device. Mic capture uses the
+  native audio stack (cpal/PipeWire), not WebKit getUserMedia, so AppImages still see microphones.
+  On Linux, Alethe also enables WebKitGTK media-stream as a fallback path for other features.
+
 - Window minimize / maximize / close follow the desktop layout on Linux: Alethe reads GNOME's
   `button-layout` (so Pop!_OS / Ubuntu left-hand chrome is mirrored) and places the buttons on
   that side in the matching order. Preferences → Appearance can still force left, right, or
