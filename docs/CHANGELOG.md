@@ -12,6 +12,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- Window minimize / maximize / close follow the desktop layout on Linux: Alethe reads GNOME's
+  `button-layout` (so Pop!_OS / Ubuntu left-hand chrome is mirrored) and places the buttons on
+  that side in the matching order. Preferences → Appearance can still force left, right, or
+  System. Windows stays right-hand; macOS uses traffic-light order on the left.
+
 - Agent orchestration, off by default under a new preference. When it is on, Claude Code terminals
   get a set of Alethe tools for handing independent units of work to Codex workers that Alethe runs
   in parallel, up to a concurrency limit it enforces itself. The lead gets job ids back immediately

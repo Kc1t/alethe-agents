@@ -498,6 +498,12 @@ export const ptBR: Record<MessageKey, string> = {
     'Escolha como a topbar divide sidebars, abas, status e controles da janela.',
   'prefs.topbarStyleClassic': 'Clássico',
   'prefs.topbarStyleThreeAreas': 'Três áreas',
+  'prefs.windowControlsPlacement': 'Controles da janela',
+  'prefs.windowControlsPlacementDesc':
+    'Onde ficam minimizar, maximizar e fechar na barra de título. Sistema segue o desktop (button-layout do GNOME no Linux).',
+  'prefs.windowControlsPlacementSystem': 'Sistema',
+  'prefs.windowControlsPlacementLeft': 'Esquerda',
+  'prefs.windowControlsPlacementRight': 'Direita',
   'prefs.gitControl': 'Controle Git na sidebar',
   'prefs.gitControlDesc': 'Mostre ou oculte a aba Source Control na sidebar de projetos.',
   'prefs.gitControlShow': 'Mostrar',
@@ -1352,6 +1358,7 @@ export const ptBR: Record<MessageKey, string> = {
   'ui.titlebar.minimize': 'Minimizar',
   'ui.titlebar.maximize': 'Maximizar',
   'ui.titlebar.close': 'Fechar',
+  'ui.titlebar.windowControls': 'Controles da janela',
   'appClose.title': 'Fechar o Alethe?',
   'appClose.message':
     'Agentes e terminais abertos serão encerrados. As conversas salvas poderão ser retomadas quando você abrir o Alethe novamente.',

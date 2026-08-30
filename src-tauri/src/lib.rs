@@ -66,6 +66,7 @@ mod stats;
 mod supervisor;
 mod telemetry;
 mod validation;
+mod window_controls;
 mod window_style;
 #[cfg(windows)]
 mod windows_webview;
@@ -397,6 +398,7 @@ pub fn run() {
             crash_watch::get_last_crash_report,
             crash_watch::get_job_guard_status,
             set_window_opacity,
+            window_controls::desktop_window_controls,
             quit_app,
             worktrees::worktree_provision,
             worktrees::worktree_list,
