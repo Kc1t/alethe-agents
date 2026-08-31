@@ -1404,6 +1404,167 @@ pub fn sync_mark_conversation_read(
         .map_err(|e| e.to_string())
 }
 
+// ---------------------------------------------------------------------------------------------
+// Storage usage / selective cleanup. Attachments live embedded as ciphertext inside each
+// conversation's own document (see `AttachmentRecord`'s doc comment) — there is no separate
+// per-attachment file on disk, so "how much space is this project/contact using" and "delete just
+// the videos" both have to work at the document level: scan every conversation file, categorize
+// each attachment by its declared MIME type, and — for cleanup — rewrite the document with the
+// matching attachments stripped out (never touching `messages`, so message text/history survives
+// a cleanup; only the attachment bytes go away, and downloading that attachment afterward fails
+// closed with "not found" rather than serving stale/wrong bytes).
+// ---------------------------------------------------------------------------------------------
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AttachmentCategory {
+    Image,
+    Video,
+    Other,
+}
+
+impl AttachmentCategory {
+    fn of(declared_content_type: &str) -> Self {
+        if declared_content_type.starts_with("image/") {
+            AttachmentCategory::Image
+        } else if declared_content_type.starts_with("video/") {
+            AttachmentCategory::Video
+        } else {
+            AttachmentCategory::Other
+        }
+    }
+}
+
+/// Storage breakdown for one conversation — the frontend groups these by `project_id` (for
+/// `ProjectChannel`/`PrivateGroup`) or by `other_account_route` (for `Direct`) to answer "what's
+/// using space, per project and per person", since name resolution (project name, contact display
+/// label) already lives in frontend stores this module has no reason to duplicate.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationStorageUsage {
+    pub conversation_id: String,
+    pub kind: ConversationKind,
+    pub project_id: Option<String>,
+    /// The other member's account route, for a `Direct` conversation only — `None` for
+    /// `ProjectChannel`/`PrivateGroup`, where "who" is the project/group itself, not one person.
+    pub other_account_route: Option<String>,
+    /// Sum of message ciphertext bytes (the base document) plus the pending journal file's raw
+    /// size, if any — an approximation of "text" storage, not attachment bytes.
+    pub message_bytes: u64,
+    pub image_bytes: u64,
+    pub video_bytes: u64,
+    pub other_bytes: u64,
+}
+
+impl ConversationStorageUsage {
+    pub fn total_bytes(&self) -> u64 {
+        self.message_bytes + self.image_bytes + self.video_bytes + self.other_bytes
+    }
+}
+
+fn conversation_ids_at(data_root: &Path) -> Vec<String> {
+    let chat_dir = data_root.join("sync").join("chat");
+    let Ok(entries) = fs::read_dir(&chat_dir) else { return Vec::new() };
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+                return None;
+            }
+            path.file_stem().and_then(|stem| stem.to_str()).map(str::to_string)
+        })
+        .collect()
+}
+
+fn usage_for_document(data_root: &Path, document: &ConversationDocument, local_account_route: &str) -> ConversationStorageUsage {
+    let mut usage = ConversationStorageUsage {
+        conversation_id: document.conversation.conversation_id.clone(),
+        kind: document.conversation.kind,
+        project_id: document.conversation.project_id.clone(),
+        other_account_route: (document.conversation.kind == ConversationKind::Direct)
+            .then(|| {
+                document
+                    .conversation
+                    .members
+                    .iter()
+                    .find(|member| member.account_route != local_account_route)
+                    .map(|member| member.account_route.clone())
+            })
+            .flatten(),
+        message_bytes: document.messages.iter().map(|message| message.ciphertext.len() as u64).sum(),
+        image_bytes: 0,
+        video_bytes: 0,
+        other_bytes: 0,
+    };
+    for attachment in &document.attachments {
+        let size = attachment.ciphertext.len() as u64;
+        match AttachmentCategory::of(&attachment.declared_content_type) {
+            AttachmentCategory::Image => usage.image_bytes += size,
+            AttachmentCategory::Video => usage.video_bytes += size,
+            AttachmentCategory::Other => usage.other_bytes += size,
+        }
+    }
+    if let Ok(metadata) = fs::metadata(journal_path(data_root, &document.conversation.conversation_id)) {
+        usage.message_bytes += metadata.len();
+    }
+    usage
+}
+
+/// Scans every local conversation and returns its storage breakdown. Best-effort: a conversation
+/// file that fails to parse (corrupt, mid-write) is skipped rather than failing the whole scan —
+/// one bad file should not hide the usage of every other conversation from the user.
+pub fn storage_usage_at(data_root: &Path, local_account_route: &str) -> Vec<ConversationStorageUsage> {
+    conversation_ids_at(data_root)
+        .into_iter()
+        .filter_map(|conversation_id| {
+            let document = load_at(data_root, &conversation_id).ok()?;
+            Some(usage_for_document(data_root, &document, local_account_route))
+        })
+        .collect()
+}
+
+/// Strips every attachment of `category` from one conversation, returning the number of bytes
+/// freed. Never touches `messages` — the message text/history is untouched; only the referenced
+/// attachment's bytes are removed, so a later download attempt for it fails closed with "not
+/// found" instead of serving stale or substituted content.
+pub fn cleanup_attachments_by_category_at(
+    data_root: &Path,
+    conversation_id: &str,
+    category: AttachmentCategory,
+) -> Result<u64, ChatError> {
+    let mut document = load_at(data_root, conversation_id)?;
+    let mut freed_bytes = 0_u64;
+    document.attachments.retain(|attachment| {
+        if AttachmentCategory::of(&attachment.declared_content_type) != category {
+            return true;
+        }
+        freed_bytes += attachment.ciphertext.len() as u64;
+        false
+    });
+    save_at(data_root, &document)?;
+    Ok(freed_bytes)
+}
+
+#[tauri::command]
+pub async fn sync_storage_usage(app: tauri::AppHandle) -> Result<Vec<ConversationStorageUsage>, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let (_, local_account_route) = local_chat_identity(&data_root)?;
+    tokio::task::spawn_blocking(move || storage_usage_at(&data_root, &local_account_route))
+        .await
+        .map_err(|_| "storage_usage_task_failed".to_string())
+}
+
+#[tauri::command]
+pub fn sync_storage_cleanup_attachments(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    category: AttachmentCategory,
+) -> Result<u64, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    cleanup_attachments_by_category_at(&data_root, &conversation_id, category).map_err(|error| error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1865,6 +2026,77 @@ mod tests {
         assert!(epoch_wrap_at(&conversation, 0, "route-alice").is_some());
         assert!(epoch_wrap_at(&conversation, 0, "route-mallory").is_none());
         assert!(epoch_wrap_at(&conversation, 1, "route-alice").is_none());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn storage_usage_categorizes_attachments_and_sums_message_bytes() {
+        let root = temp_root("storage-usage");
+        let alice_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let bob_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let conversation = create_conversation_at(
+            &root,
+            Some("proj-animego".to_string()),
+            ConversationKind::ProjectChannel,
+            None,
+            vec![member("route-alice", &alice_secret), member("route-bob", &bob_secret)],
+            1_000,
+        )
+        .unwrap();
+        let alice_wrap = current_epoch_wrap_for(&conversation, "route-alice").unwrap();
+        let alice_key = unwrap_key(alice_wrap, &alice_secret, &conversation.conversation_id, 0).unwrap();
+        send_message_at(
+            &root, &conversation.conversation_id, "dev-alice", "route-alice", &alice_key,
+            MessageContentType::Text, b"hello team", vec![], &AllowAll, 1_500,
+        )
+        .unwrap();
+
+        let image_bytes = vec![0_u8; 1_000];
+        let video_bytes = vec![1_u8; 2_000];
+        let pdf_bytes = vec![2_u8; 500];
+        upload_attachment_at(&root, &conversation.conversation_id, "image/png", 1_000, &image_bytes, 2_000).unwrap();
+        upload_attachment_at(&root, &conversation.conversation_id, "video/mp4", 2_000, &video_bytes, 2_100).unwrap();
+        upload_attachment_at(&root, &conversation.conversation_id, "application/pdf", 500, &pdf_bytes, 2_200).unwrap();
+
+        let usage = storage_usage_at(&root, "route-alice");
+        assert_eq!(usage.len(), 1);
+        let row = &usage[0];
+        assert_eq!(row.kind, ConversationKind::ProjectChannel);
+        assert_eq!(row.project_id.as_deref(), Some("proj-animego"));
+        assert!(row.other_account_route.is_none());
+        assert!(row.image_bytes > 0, "image attachment should be categorized as image bytes");
+        assert!(row.video_bytes > 0, "video attachment should be categorized as video bytes");
+        assert!(row.other_bytes > 0, "pdf attachment should be categorized as other bytes");
+        assert!(row.message_bytes > 0, "the sent message should contribute message bytes");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn cleanup_removes_only_the_matching_category_and_never_touches_messages() {
+        let root = temp_root("storage-cleanup");
+        let alice_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let conversation = create_conversation_at(
+            &root, None, ConversationKind::PrivateGroup, None, vec![member("route-alice", &alice_secret)], 1_000,
+        )
+        .unwrap();
+        let alice_wrap = current_epoch_wrap_for(&conversation, "route-alice").unwrap();
+        let alice_key = unwrap_key(alice_wrap, &alice_secret, &conversation.conversation_id, 0).unwrap();
+        send_message_at(
+            &root, &conversation.conversation_id, "dev-alice", "route-alice", &alice_key,
+            MessageContentType::Text, b"keep me", vec![], &AllowAll, 1_500,
+        )
+        .unwrap();
+        upload_attachment_at(&root, &conversation.conversation_id, "image/png", 4, &[0_u8; 4], 2_000).unwrap();
+        upload_attachment_at(&root, &conversation.conversation_id, "video/mp4", 8, &[1_u8; 8], 2_100).unwrap();
+
+        let freed = cleanup_attachments_by_category_at(&root, &conversation.conversation_id, AttachmentCategory::Image).unwrap();
+        assert!(freed > 0);
+
+        let document = load_at(&root, &conversation.conversation_id).unwrap();
+        assert_eq!(document.attachments.len(), 1, "only the video attachment should remain");
+        assert_eq!(document.attachments[0].declared_content_type, "video/mp4");
+        assert_eq!(document.messages.len(), 1, "cleanup must never remove message history");
+        assert!(!document.messages[0].deleted);
         fs::remove_dir_all(root).unwrap();
     }
 }

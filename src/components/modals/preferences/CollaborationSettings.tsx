@@ -19,7 +19,7 @@ import {
   resolveCollaborationActivationState,
   setCollaborationServiceMode,
   syncAccessList,
-  syncAccessUpdate,
+  syncAccessUpdateMany,
   validateRendezvousEndpoint,
 } from '../../../lib/tauri'
 import { useUiStore } from '../../../stores/uiStore'
@@ -271,7 +271,14 @@ export function CollaborationSettings() {
     setError(false)
     try {
       const deferUntilMs = operation === 'defer' ? Date.now() + 60 * 60 * 1_000 : undefined
-      await Promise.all(records.map((record) => syncAccessUpdate(record.id, operation, deferUntilMs)))
+      // One backend round-trip for the whole group, not N — see `syncAccessUpdateMany`'s doc
+      // comment for the freeze this replaces on a large group (e.g. ×50 mentions dismissed at
+      // once).
+      await syncAccessUpdateMany(
+        records.map((record) => record.id),
+        operation,
+        deferUntilMs,
+      )
       await refresh()
     } catch {
       setError(true)

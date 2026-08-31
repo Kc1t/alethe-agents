@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Info,
   type LucideIcon,
+  MessagesSquare,
   Palette,
   Plug,
   Search,
@@ -24,6 +25,7 @@ import { ErrorBoundary } from '../ErrorBoundary'
 import { AboutPage } from './preferences/AboutPage'
 import { AccountPage } from './preferences/AccountPage'
 import { AppearancePage } from './preferences/AppearancePage'
+import { ChatsProjectsPage } from './preferences/ChatsProjectsPage'
 import { FeaturesPage } from './preferences/FeaturesPage'
 import { IntegrationsPage } from './preferences/IntegrationsPage'
 import { MultiagentPage } from './preferences/MultiagentPage'
@@ -43,6 +45,7 @@ type CategoryId =
   | 'organization'
   | 'about'
   | 'remoteControl'
+  | 'chatsProjects'
 
 type Category = {
   id: CategoryId
@@ -98,6 +101,12 @@ export function PreferencesModal() {
         label: t('prefs.categoryRemoteControl'),
         description: t('prefs.categoryRemoteControlDesc'),
         Icon: ShieldCheck,
+      },
+      {
+        id: 'chatsProjects',
+        label: t('prefs.categoryChatsProjects'),
+        description: t('prefs.categoryChatsProjectsDesc'),
+        Icon: MessagesSquare,
       },
       {
         id: 'features',
@@ -204,6 +213,13 @@ export function PreferencesModal() {
         label: t('prefs.gitControlPlacement'),
         description: t('prefs.gitControlPlacementDesc'),
         keywords: 'git source control sidebar esquerda direita left right',
+      },
+      {
+        category: 'chatsProjects',
+        target: 'chats-projects-storage',
+        label: t('prefs.chatsProjects.storageTitle'),
+        description: t('prefs.chatsProjects.storageDesc'),
+        keywords: 'storage armazenamento espaço disk disco cleanup limpeza anexos attachments video imagem',
       },
       {
         category: 'features',
@@ -487,6 +503,7 @@ export function PreferencesModal() {
                     />
                   ) : null}
                   {category === 'appearance' ? <AppearancePage /> : null}
+                  {category === 'chatsProjects' ? <ChatsProjectsPage /> : null}
                   {category === 'features' ? <FeaturesPage /> : null}
                   {category === 'terminal' ? <TerminalPage enabledCount={enabledCount} /> : null}
                   {category === 'integrations' ? <IntegrationsPage /> : null}

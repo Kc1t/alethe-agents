@@ -241,6 +241,43 @@ pub fn update_at(
     Ok(result)
 }
 
+/// Same operation as `update_at`, applied to every id in `ids` against a **single**
+/// load+mutate+save cycle instead of one full document rewrite per id. Grouped access-center rows
+/// (e.g. "You were mentioned in chat ×50") dismiss/read/defer their whole group at once from the
+/// frontend — calling `update_at` once per id there meant N concurrent full-document rewrites of
+/// the same file for one user action, which is what froze the app for a few seconds on a large
+/// group (reported live). Unknown ids are skipped rather than failing the whole batch, since a
+/// stale id in the group (already dismissed by another tab/session) shouldn't block the rest.
+pub fn update_many_at(
+    data_root: &Path,
+    ids: &[String],
+    operation: &str,
+    defer_until_ms: Option<u64>,
+    now_ms: u64,
+) -> Result<Vec<AccessRecord>, String> {
+    let mut document = load_at(data_root)?;
+    let mut updated = Vec::with_capacity(ids.len());
+    for id in ids {
+        let Some(record) = document.records.iter_mut().find(|record| &record.id == id) else { continue };
+        match operation {
+            "read" => record.unread = false,
+            "dismiss" => record.dismissed_at_ms = Some(now_ms),
+            "defer" => {
+                let until = defer_until_ms.ok_or_else(|| "access_center_invalid_defer".to_string())?;
+                if until <= now_ms || until - now_ms > MAX_DEFER_MS {
+                    return Err("access_center_invalid_defer".to_string());
+                }
+                record.deferred_until_ms = Some(until);
+            }
+            _ => return Err("access_center_invalid_operation".to_string()),
+        }
+        record.updated_at_ms = now_ms;
+        updated.push(record.clone());
+    }
+    save_at(data_root, &document)?;
+    Ok(updated)
+}
+
 /// Resolves an opaque action handle only after checking the record is still current. The return
 /// value is a navigation hint, never authorization to accept an invitation or mutate a project.
 pub fn resolve_action_at(
@@ -283,6 +320,17 @@ pub fn sync_access_update(
         defer_until_ms,
         crate::provider_common::now_ms(),
     )
+}
+
+#[tauri::command]
+pub fn sync_access_update_many(
+    app: tauri::AppHandle,
+    ids: Vec<String>,
+    operation: String,
+    defer_until_ms: Option<u64>,
+) -> Result<Vec<AccessRecord>, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    update_many_at(&data_root, &ids, &operation, defer_until_ms, crate::provider_common::now_ms())
 }
 
 #[tauri::command]
@@ -360,6 +408,31 @@ mod tests {
         update_at(&root, &deferred.id, "defer", Some(5_000), 3_100).unwrap();
         assert!(list_at(&root, 4_000).unwrap().is_empty());
         assert_eq!(list_at(&root, 5_000).unwrap().len(), 1);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn update_many_dismisses_a_whole_group_in_one_call_and_skips_unknown_ids() {
+        let root = test_root("update-many");
+        let mut ids = Vec::new();
+        for index in 0..5 {
+            let record = record_at(
+                &root,
+                AccessCategory::Collaboration,
+                AccessKind::ChatMention,
+                &format!("mention_opaque_{index}"),
+                1_000,
+            )
+            .unwrap();
+            ids.push(record.id);
+        }
+        ids.push("does-not-exist".to_string());
+
+        let updated = update_many_at(&root, &ids, "dismiss", None, 2_000).unwrap();
+        // The unknown id is skipped, not an error — every real id still got updated.
+        assert_eq!(updated.len(), 5);
+        assert!(updated.iter().all(|record| record.dismissed_at_ms == Some(2_000)));
+        assert!(list_at(&root, 3_000).unwrap().is_empty());
         let _ = fs::remove_dir_all(root);
     }
 }
