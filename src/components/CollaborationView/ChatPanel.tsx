@@ -22,11 +22,13 @@ import {
   syncUploadAttachment,
 } from '../../lib/api/syncChat'
 import { connectRendezvous, getRendezvousStatus, sendRendezvousFrame } from '../../lib/api/syncRendezvous'
+import { encodeAttachmentReference, parseAttachmentReference } from '../../lib/attachmentReference'
 import { useT } from '../../lib/i18n'
 import { DEFAULT_PROFILE_IMAGE_URL, getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { syncLocalIdentity } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { Avatar } from '../ui/Avatar'
+import { AttachmentPreview } from './AttachmentPreview'
 import styles from './ChatPanel.module.css'
 
 export type ChatSource =
@@ -635,7 +637,8 @@ export function ChatPanel({
       const [message, frame] = await syncSendMessageForTransport(
         conversation.conversationId,
         'text',
-        t('chat.attachmentMessage', { name: file.name, id: attachment.attachmentId }),
+        encodeAttachmentReference(attachment.attachmentId, file.name) +
+          t('chat.attachmentMessage', { name: file.name, id: attachment.attachmentId }),
       )
       setMessages((current) => sortMessages([...current, message]))
       if (otherMember && frame.length > 0) {
@@ -856,6 +859,17 @@ export function ChatPanel({
                       </span>
                       <p>{message.text}</p>
                     </div>
+                  ) : message.contentType === 'text' && parseAttachmentReference(message.text) && conversation ? (
+                    (() => {
+                      const attachment = parseAttachmentReference(message.text)!
+                      return (
+                        <AttachmentPreview
+                          conversationId={conversation.conversationId}
+                          attachmentId={attachment.attachmentId}
+                          name={attachment.name}
+                        />
+                      )
+                    })()
                   ) : (
                     <p
                       className={`${styles.messageText} ${own ? styles.bubbleOwn : styles.bubbleOther}`}

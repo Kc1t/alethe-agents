@@ -54,6 +54,7 @@ export const en = {
   'chat.composerPlaceholder': 'Write a message… (use / for code, command, etc.)',
   'chat.attachFile': 'Attach a file',
   'chat.attachmentMessage': 'Shared a file: {name} (id {id})',
+  'chat.attachmentPreviewFailed': 'Could not load — click to retry',
   'chat.slashHint': 'Message type',
   'chat.slashNoMatch': 'No matching command',
   'chat.mentionHint': 'Mention',

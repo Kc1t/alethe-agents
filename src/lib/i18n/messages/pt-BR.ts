@@ -56,6 +56,7 @@ export const ptBR: Record<MessageKey, string> = {
   'chat.composerPlaceholder': 'Escreva uma mensagem… (use / para código, comando, etc.)',
   'chat.attachFile': 'Anexar arquivo',
   'chat.attachmentMessage': 'Compartilhou um arquivo: {name} (id {id})',
+  'chat.attachmentPreviewFailed': 'Não foi possível carregar — clique para tentar de novo',
   'chat.slashHint': 'Tipo da mensagem',
   'chat.slashNoMatch': 'Nenhum comando encontrado',
   'chat.mentionHint': 'Mencionar',

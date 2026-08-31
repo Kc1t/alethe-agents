@@ -1,0 +1,77 @@
+.imagePreview {
+  display: block;
+  max-width: 240px;
+  max-height: 240px;
+  border-radius: 10px;
+  object-fit: cover;
+  cursor: pointer;
+}
+
+.videoPreview {
+  display: block;
+  max-width: 280px;
+  max-height: 280px;
+  border-radius: 10px;
+}
+
+.loadingPreview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 90px;
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.fileChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.fileChip:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.fileChip:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.fileName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.downloadIcon {
+  flex-shrink: 0;
+  color: var(--fg-muted);
+}
+
+.fileError {
+  color: var(--status-offline);
+  font-size: 10px;
+}
