@@ -3,17 +3,22 @@ import '@xterm/xterm/css/xterm.css'
 import type { Terminal } from '@xterm/xterm'
 import {
   AppWindow,
+  ClipboardCopy,
+  ClipboardPaste,
   Copy,
+  Eraser,
   ExternalLink,
   FolderOpen,
   LayoutGrid,
   Maximize2,
   PanelRight,
+  TextSelect,
   X,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { AgentInstallButton } from '../AgentInstall/AgentInstallButton'
+import { ContextMenu, type MenuItem } from '../ProjectSidebar/ContextMenu'
 import { DotmCircular2 } from '../ui/dotm-circular-2'
 import { cliPathMatchesAgent } from '../../lib/agentCliPath'
 import { normalizeBrowserUrl } from '../../lib/browserUrl'
@@ -32,7 +37,7 @@ import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { type DetectedTerminalLink } from './terminalLinks'
 import { applyPromptHistoryInput, loadPromptHistory, PROMPT_HISTORY_KEY } from './terminalWrite'
-import { useXtermSession } from './useXtermSession'
+import { useXtermSession, type TerminalContextMenuActions } from './useXtermSession'
 import { getXtermTheme, type LinkActionState } from './xtermThemes'
 import styles from './XTermView.module.css'
 
@@ -62,6 +67,8 @@ export type XTermViewProps = {
   readOnly?: boolean
   runtimeProfile?: AgentRuntimeProfile
   terminalTheme?: Theme
+  /** Extra pane-level items appended after the built-in clipboard actions. */
+  extraContextMenuItems?: MenuItem[]
   onSpawned?: (id: string) => void
   onSessionId?: (id: string | undefined) => void
   onInitialInputSent?: () => void
@@ -92,6 +99,7 @@ export function XTermView({
 
   runtimeProfile = 'lean',
   terminalTheme = 'dark',
+  extraContextMenuItems,
   onSpawned,
   onSessionId,
   onInitialInputSent,
@@ -106,6 +114,7 @@ export function XTermView({
   const lastCtrlCRef = useRef(0)
   const linkMenuRef = useRef<HTMLDivElement | null>(null)
   const linkActionsRef = useRef<LinkActionState | null>(null)
+  const contextMenuActionsRef = useRef<TerminalContextMenuActions | null>(null)
 
   const cliPathOverride = useProjectsStore((s) =>
     command && command !== 'shell' ? (s.cliPaths[command] ?? null) : null,
@@ -143,6 +152,7 @@ export function XTermView({
     'preparing' | 'queued' | 'spawning' | 'attaching' | 'ready'
   >('preparing')
   const [linkActions, setLinkActions] = useState<LinkActionState | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
   const [dropActive, setDropActive] = useState(false)
   const sessionPersistenceKey = sessionKey ?? ptyId
 
@@ -150,11 +160,21 @@ export function XTermView({
     setLinkActions(null)
   }, [])
 
-  // estimativa conservadora do tamanho para nunca cortar o menu na viewport.
+  const hideTerminalContextMenu = useCallback(() => {
+    setContextMenu(null)
+  }, [])
+
+  const closeContextMenuAndFocus = useCallback(() => {
+    setContextMenu(null)
+    terminalRef.current?.focus()
+  }, [])
+
+  // Conservative size estimate so the menu never clips off-screen.
   const showLinkActionsMenu = useCallback((event: MouseEvent, link: DetectedTerminalLink) => {
     event.preventDefault()
     event.stopPropagation()
 
+    setContextMenu(null)
     terminalRef.current?.clearSelection()
     window.getSelection()?.removeAllRanges()
 
@@ -175,6 +195,59 @@ export function XTermView({
       y,
     })
   }, [])
+
+  const showTerminalContextMenu = useCallback((event: MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setLinkActions(null)
+    setContextMenu({ x: event.clientX, y: event.clientY })
+  }, [])
+
+  const contextMenuItems = useMemo((): MenuItem[] => {
+    const actions = contextMenuActionsRef.current
+    if (!actions) return []
+    const items: MenuItem[] = [
+      {
+        kind: 'item',
+        label: t('xterm.contextCopy'),
+        icon: <Copy size={15} />,
+        onClick: () => actions.copy(),
+      },
+    ]
+    if (actions.canPaste) {
+      items.push({
+        kind: 'item',
+        label: t('xterm.contextPaste'),
+        icon: <ClipboardPaste size={15} />,
+        onClick: () => actions.paste(),
+      })
+    }
+    items.push(
+      {
+        kind: 'item',
+        label: t('xterm.contextSelectAll'),
+        icon: <TextSelect size={15} />,
+        onClick: () => actions.selectAll(),
+      },
+      {
+        kind: 'item',
+        label: t('xterm.contextCopyContext'),
+        icon: <ClipboardCopy size={15} />,
+        onClick: () => actions.copyContext(),
+      },
+      { kind: 'separator' },
+      {
+        kind: 'item',
+        label: t('xterm.contextClearScreen'),
+        icon: <Eraser size={15} />,
+        onClick: () => actions.clearScreen(),
+      },
+    )
+    if (extraContextMenuItems && extraContextMenuItems.length > 0) {
+      items.push({ kind: 'separator' }, ...extraContextMenuItems)
+    }
+    return items
+  }, [contextMenu, extraContextMenuItems, t])
 
   useEffect(() => {
     linkActionsRef.current = linkActions
@@ -348,6 +421,9 @@ export function XTermView({
     setRetryKey,
     setDropActive,
     showLinkActionsMenu,
+    showTerminalContextMenu,
+    hideTerminalContextMenu,
+    contextMenuActionsRef,
     recordPromptInput,
     navigateHistory,
   })
@@ -437,6 +513,14 @@ export function XTermView({
             {t('xterm.configurePath')}
           </button>
         </div>
+      ) : null}
+      {contextMenu && contextMenuItems.length > 0 ? (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={contextMenuItems}
+          onClose={closeContextMenuAndFocus}
+        />
       ) : null}
       {linkActions ? (
         <div
