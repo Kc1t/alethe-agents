@@ -55,6 +55,7 @@ export const en = {
   'chat.attachFile': 'Attach a file',
   'chat.attachmentMessage': 'Shared a file: {name} (id {id})',
   'chat.attachmentPreviewFailed': 'Could not load — click to retry',
+  'chat.viewFullSize': 'View full size',
   'chat.slashHint': 'Message type',
   'chat.slashNoMatch': 'No matching command',
   'chat.mentionHint': 'Mention',

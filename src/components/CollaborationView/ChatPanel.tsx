@@ -29,6 +29,7 @@ import { syncLocalIdentity } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { Avatar } from '../ui/Avatar'
 import { AttachmentPreview } from './AttachmentPreview'
+import { Lightbox } from './Lightbox'
 import styles from './ChatPanel.module.css'
 
 export type ChatSource =
@@ -249,6 +250,7 @@ export function ChatPanel({
   // actually sent, instead of the file going out the instant it's pasted with no way to say
   // anything alongside it.
   const [pendingAttachment, setPendingAttachment] = useState<{ file: File; previewUrl: string | null } | null>(null)
+  const [pendingLightboxOpen, setPendingLightboxOpen] = useState(false)
   const [slashHighlight, setSlashHighlight] = useState(0)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
@@ -532,6 +534,7 @@ export function ChatPanel({
       if (current?.previewUrl) URL.revokeObjectURL(current.previewUrl)
       return null
     })
+    setPendingLightboxOpen(false)
   }
 
   // Pins the file above the composer instead of uploading it right away — see `pendingAttachment`.
@@ -989,12 +992,20 @@ export function ChatPanel({
         ) : null}
         {pendingAttachment ? (
           <div className={styles.pendingAttachment}>
-            {pendingAttachment.previewUrl ? (
-              <img src={pendingAttachment.previewUrl} alt="" className={styles.pendingAttachmentThumb} />
-            ) : (
-              <Paperclip size={14} />
-            )}
-            <span className={styles.pendingAttachmentName}>{pendingAttachment.file.name}</span>
+            <button
+              type="button"
+              className={styles.pendingAttachmentPreviewTrigger}
+              disabled={!pendingAttachment.previewUrl}
+              onClick={() => setPendingLightboxOpen(true)}
+              title={pendingAttachment.previewUrl ? t('chat.viewFullSize') : undefined}
+            >
+              {pendingAttachment.previewUrl ? (
+                <img src={pendingAttachment.previewUrl} alt="" className={styles.pendingAttachmentThumb} />
+              ) : (
+                <Paperclip size={14} />
+              )}
+              <span className={styles.pendingAttachmentName}>{pendingAttachment.file.name}</span>
+            </button>
             <button
               type="button"
               className={styles.pendingAttachmentClear}
@@ -1005,6 +1016,10 @@ export function ChatPanel({
             </button>
           </div>
         ) : null}
+        {pendingLightboxOpen && pendingAttachment?.previewUrl ? (
+          <Lightbox src={pendingAttachment.previewUrl} kind="image" onClose={() => setPendingLightboxOpen(false)} />
+        ) : null}
+        <div className={styles.composerRow}>
         <div className={styles.inputPill}>
           <input
             ref={textInputRef}
@@ -1128,6 +1143,7 @@ export function ChatPanel({
         >
           {sending || attaching ? <Loader2 size={14} className={styles.spin} /> : <Send size={14} />}
         </button>
+        </div>
       </div>
         </div>
 

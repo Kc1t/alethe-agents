@@ -57,6 +57,7 @@ export const ptBR: Record<MessageKey, string> = {
   'chat.attachFile': 'Anexar arquivo',
   'chat.attachmentMessage': 'Compartilhou um arquivo: {name} (id {id})',
   'chat.attachmentPreviewFailed': 'Não foi possível carregar — clique para tentar de novo',
+  'chat.viewFullSize': 'Ver em tamanho real',
   'chat.slashHint': 'Tipo da mensagem',
   'chat.slashNoMatch': 'Nenhum comando encontrado',
   'chat.mentionHint': 'Mencionar',

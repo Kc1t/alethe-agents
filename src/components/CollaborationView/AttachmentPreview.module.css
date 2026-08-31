@@ -20,44 +20,13 @@
   border-radius: 10px;
   object-fit: cover;
   cursor: pointer;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition: outline-color 0.15s ease;
 }
 
-.lightboxOverlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.85);
-  cursor: zoom-out;
-}
-
-.lightboxMedia {
-  max-width: 90vw;
-  max-height: 90vh;
-  border-radius: 8px;
-  cursor: default;
-}
-
-.lightboxClose {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border: none;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  cursor: pointer;
-}
-
-.lightboxClose:hover {
-  background: rgba(255, 255, 255, 0.2);
+.imagePreview:hover {
+  outline-color: var(--accent);
 }
 
 .videoPreview {
@@ -66,6 +35,13 @@
   max-height: 280px;
   border-radius: 10px;
   cursor: pointer;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition: outline-color 0.15s ease;
+}
+
+.videoPreview:hover {
+  outline-color: var(--accent);
 }
 
 .loadingPreview {

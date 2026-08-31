@@ -547,12 +547,22 @@
 .composer {
   position: relative;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 8px;
   padding: 12px 16px;
   background: var(--panel);
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+}
+
+/* The actual input+send row — split out from `.composer` (now a column) so a pinned attachment
+ * chip or the active-type pill stacks *above* the input instead of squeezing into the same row
+ * and narrowing the text field. */
+.composerRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .activeTypePill {
@@ -594,7 +604,35 @@
   border-radius: var(--radius-md);
   background: var(--bg-sunken);
   border: 1px solid var(--border);
-  margin: 0 16px 6px;
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+.pendingAttachmentPreviewTrigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  border: 1px solid transparent;
+  background: none;
+  padding: 3px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease;
+}
+
+.pendingAttachmentPreviewTrigger:disabled {
+  cursor: default;
+}
+
+.pendingAttachmentPreviewTrigger:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.pendingAttachmentPreviewTrigger:hover:not(:disabled) .pendingAttachmentName {
+  color: var(--fg);
 }
 
 .pendingAttachmentThumb {

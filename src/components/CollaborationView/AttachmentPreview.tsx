@@ -1,10 +1,11 @@
-import { Download, File as FileIcon, Loader2, X } from 'lucide-react'
+import { Download, File as FileIcon, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { syncDownloadAttachment } from '../../lib/api/syncChat'
 import { guessMimeFromName, previewKindFor } from '../../lib/attachmentReference'
 import { useT } from '../../lib/i18n'
 import styles from './AttachmentPreview.module.css'
+import { Lightbox } from './Lightbox'
 
 /** Per-attachment object URL cache, shared across every message row that references the same
  * attachment (re-rendering the message list — e.g. on scroll — must not re-download and
@@ -56,15 +57,6 @@ export function AttachmentPreview({
       active = false
     }
   }, [conversationId, attachmentId, kind, url, name])
-
-  useEffect(() => {
-    if (!lightboxOpen) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setLightboxOpen(false)
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [lightboxOpen])
 
   const downloadToDisk = async () => {
     setDownloading(true)
@@ -119,29 +111,7 @@ export function AttachmentPreview({
         <video src={url} controls className={styles.videoPreview} onClick={() => setLightboxOpen(true)} />
       )}
       {caption ? <p className={styles.caption}>{caption}</p> : null}
-      {lightboxOpen ? (
-        <div className={styles.lightboxOverlay} onClick={() => setLightboxOpen(false)}>
-          <button
-            type="button"
-            className={styles.lightboxClose}
-            onClick={() => setLightboxOpen(false)}
-            title={t('common.close')}
-          >
-            <X size={20} />
-          </button>
-          {kind === 'image' ? (
-            <img src={url} alt={name} className={styles.lightboxMedia} onClick={(event) => event.stopPropagation()} />
-          ) : (
-            <video
-              src={url}
-              controls
-              autoPlay
-              className={styles.lightboxMedia}
-              onClick={(event) => event.stopPropagation()}
-            />
-          )}
-        </div>
-      ) : null}
+      {lightboxOpen ? <Lightbox src={url} kind={kind} alt={name} onClose={() => setLightboxOpen(false)} /> : null}
     </div>
   )
 }
