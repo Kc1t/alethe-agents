@@ -46,9 +46,7 @@ export function ChatTab({
       .catch(() => undefined)
   }
 
-  const renameContact = async (contact: SyncChatContact) => {
-    const input = window.prompt(t('chat.contacts.renamePrompt'), contact.displayLabel)
-    const nextLabel = input?.trim()
+  const renameContact = async (contact: SyncChatContact, nextLabel: string) => {
     if (!nextLabel || nextLabel === contact.displayLabel) return
     try {
       await syncRenameChatContact(contact.accountRoute, nextLabel)
@@ -327,9 +325,9 @@ export function ChatTab({
             contactActions={
               selected.kind === 'direct'
                 ? {
-                    onRename: () => {
+                    onRename: (newDisplayLabel: string) => {
                       const contact = contacts.find((item) => item.accountRoute === selected.contactAccountRoute)
-                      if (contact) void renameContact(contact)
+                      if (contact) void renameContact(contact, newDisplayLabel)
                     },
                     onDeleteAll: () => {
                       const contact = contacts.find((item) => item.accountRoute === selected.contactAccountRoute)

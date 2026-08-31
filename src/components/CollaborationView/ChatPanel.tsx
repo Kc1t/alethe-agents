@@ -44,7 +44,7 @@ export type ChatSource =
  * one `onDeleteAll` action instead of keeping both). Owned by `ChatTab.tsx` (it already holds the
  * contact list and the prompts/confirmations for these), just rendered from here. */
 export type ChatContactActions = {
-  onRename: () => void
+  onRename: (newDisplayLabel: string) => void
   onDeleteAll: () => void
 }
 
@@ -224,6 +224,11 @@ export function ChatPanel({
   const [draft, setDraft] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [contactInfoOpen, setContactInfoOpen] = useState(false)
+  // Inline rename in the contact-info panel, replacing the native `window.prompt()` this used to
+  // call straight through to — a raw browser dialog ("localhost:1422 diz…") looks like a bug in a
+  // desktop app, not a feature.
+  const [contactRenaming, setContactRenaming] = useState(false)
+  const [contactRenameDraft, setContactRenameDraft] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const visibleMessages = useMemo(() => {
     if (!searchOpen || !searchQuery.trim()) return messages
@@ -351,6 +356,7 @@ export function ChatPanel({
   // carry over and silently show the previous contact's details on top of a new chat.
   useEffect(() => {
     setContactInfoOpen(false)
+    setContactRenaming(false)
   }, [source.kind === 'direct' ? source.contactAccountRoute : source.kind === 'project' ? source.projectId : null])
 
   // Backfills this device's own avatar to the other member every time a direct conversation with
@@ -1058,12 +1064,15 @@ export function ChatPanel({
                 <X size={14} />
               </button>
               <span className={styles.contactInfoTitle}>{t('chat.contactInfo.title')}</span>
-              {contactActions ? (
+              {contactActions && !contactRenaming ? (
                 <button
                   type="button"
                   className={styles.iconButton}
                   title={t('chat.contacts.rename')}
-                  onClick={() => contactActions.onRename()}
+                  onClick={() => {
+                    setContactRenameDraft(source.contactDisplayLabel)
+                    setContactRenaming(true)
+                  }}
                 >
                   <Pencil size={14} />
                 </button>
@@ -1077,7 +1086,34 @@ export function ChatPanel({
                 initial={otherDisplayLabel ? getProfileInitial(otherDisplayLabel) : initialsFor(otherMember?.accountRoute ?? '')}
                 className={styles.contactInfoAvatar}
               />
-              <span className={styles.contactInfoName}>{source.contactDisplayLabel}</span>
+              {contactRenaming && contactActions ? (
+                <form
+                  className={styles.contactInfoRenameForm}
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    const trimmed = contactRenameDraft.trim()
+                    if (trimmed && trimmed !== source.contactDisplayLabel) contactActions.onRename(trimmed)
+                    setContactRenaming(false)
+                  }}
+                >
+                  <input
+                    autoFocus
+                    className={styles.contactInfoRenameInput}
+                    value={contactRenameDraft}
+                    maxLength={80}
+                    onChange={(event) => setContactRenameDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape') {
+                        event.preventDefault()
+                        setContactRenaming(false)
+                      }
+                    }}
+                    onBlur={() => setContactRenaming(false)}
+                  />
+                </form>
+              ) : (
+                <span className={styles.contactInfoName}>{source.contactDisplayLabel}</span>
+              )}
               <span className={styles.contactInfoStatus}>{t(`chat.connectionState.${connectionState}`)}</span>
             </div>
             {contactActions ? (

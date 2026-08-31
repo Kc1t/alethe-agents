@@ -90,6 +90,26 @@
   text-align: center;
 }
 
+.contactInfoRenameForm {
+  width: 100%;
+}
+
+.contactInfoRenameInput {
+  width: 100%;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+  background: var(--bg-sunken);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.contactInfoRenameInput:focus {
+  outline: none;
+}
+
 .contactInfoStatus {
   font-size: 10.5px;
   color: var(--fg-muted);

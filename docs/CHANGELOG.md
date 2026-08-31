@@ -31,6 +31,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Renaming a chat contact no longer opens a raw browser prompt** ("localhost:1422 diz…", which read as a bug in a desktop app) — the rename button in the contact info panel now edits the name inline, right below the avatar.
 - **Contact info panel**: clicking a direct chat's header (avatar, name, connection badge) now opens a right-side panel with the contact's details and the action that used to be three small icon buttons crowded into the sidebar contact list row — one click closer to the conversation they act on, instead of easy-to-misread icons next to every contact in the list. "Remove contact" and "delete everything" were two separate destructive actions with overlapping intent; consolidated into one "delete conversation" action. The panel now pushes the conversation to the side instead of floating on top of it, the whole header opens it (not just the avatar), and its close button/rename button sit at opposite top corners instead of both on the right.
 
 - **Reconstructed "Cofre & Pastas" (VaultHub)**: the collaboration vault is no longer constrained to whichever project is active in the sidebar. It now opens directly to a comprehensive list of all projects displaying real-time metrics ("N people with access" and "M pending invites"), allowing seamless navigation into any project's collaborators, pending invitations, folder scopes, and backups with a clear "Back to projects" navigation flow.
