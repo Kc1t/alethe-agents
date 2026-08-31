@@ -16,6 +16,7 @@ export const ptBR: Record<MessageKey, string> = {
   /* ---- common ---- */
   'common.back': 'Voltar',
   'common.next': 'Próximo',
+  'common.previous': 'Anterior',
   'common.start': 'Começar',
   'common.skip': 'Pular',
   'common.close': 'Fechar',
@@ -56,6 +57,7 @@ export const ptBR: Record<MessageKey, string> = {
   'chat.composerPlaceholder': 'Escreva uma mensagem… (use / para código, comando, etc.)',
   'chat.attachFile': 'Anexar arquivo',
   'chat.attachmentMessage': 'Compartilhou um arquivo: {name} (id {id})',
+  'chat.attachmentGroupMessage': 'Compartilhou {count} arquivos',
   'chat.attachmentPreviewFailed': 'Não foi possível carregar — clique para tentar de novo',
   'chat.viewFullSize': 'Ver em tamanho real',
   'chat.slashHint': 'Tipo da mensagem',

@@ -1,24 +1,19 @@
 import { Download, File as FileIcon, Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 import { syncDownloadAttachment } from '../../lib/api/syncChat'
-import { guessMimeFromName, previewKindFor } from '../../lib/attachmentReference'
+import { guessMimeFromName } from '../../lib/attachmentReference'
 import { useT } from '../../lib/i18n'
 import styles from './AttachmentPreview.module.css'
 import { Lightbox } from './Lightbox'
-
-/** Per-attachment object URL cache, shared across every message row that references the same
- * attachment (re-rendering the message list — e.g. on scroll — must not re-download and
- * re-decrypt the same bytes every time). Never explicitly revoked: these are small (capped at
- * `MAX_ATTACHMENT_BYTES`, 8MB) and live only as long as the chat panel/app session anyway. */
-const objectUrlCache = new Map<string, string>()
+import { useAttachmentPreviewUrl } from './useAttachmentPreviewUrl'
 
 /** Renders an inline image/video preview for a chat attachment (decrypted on demand via
  * `syncDownloadAttachment`), or a clickable "download" file chip for anything else — instead of
  * the plain "Shared a file: name.png (id ...)" text every attachment message used to show
  * regardless of what it actually was. Clicking an image/video preview opens it full-screen (see
- * `Lightbox` below) — the inline thumbnail is deliberately small (fits the message bubble), so
- * there has to be a way to actually see the thing at size. */
+ * `Lightbox`) — the inline thumbnail is deliberately small (fits the message bubble), so there
+ * has to be a way to actually see the thing at size. */
 export function AttachmentPreview({
   conversationId,
   attachmentId,
@@ -32,31 +27,9 @@ export function AttachmentPreview({
   caption?: string
 }) {
   const t = useT()
-  const kind = previewKindFor(name)
-  const [url, setUrl] = useState<string | null>(objectUrlCache.get(attachmentId) ?? null)
-  const [failed, setFailed] = useState(false)
+  const { kind, url, failed } = useAttachmentPreviewUrl(conversationId, attachmentId, name)
   const [downloading, setDownloading] = useState(false)
   const [lightboxOpen, setLightboxOpen] = useState(false)
-
-  useEffect(() => {
-    if (!kind || url) return
-    let active = true
-    setFailed(false)
-    void syncDownloadAttachment(conversationId, attachmentId)
-      .then((bytes) => {
-        if (!active) return
-        const blob = new Blob([new Uint8Array(bytes)], { type: guessMimeFromName(name) })
-        const objectUrl = URL.createObjectURL(blob)
-        objectUrlCache.set(attachmentId, objectUrl)
-        setUrl(objectUrl)
-      })
-      .catch(() => {
-        if (active) setFailed(true)
-      })
-    return () => {
-      active = false
-    }
-  }, [conversationId, attachmentId, kind, url, name])
 
   const downloadToDisk = async () => {
     setDownloading(true)
@@ -70,7 +43,9 @@ export function AttachmentPreview({
       link.click()
       URL.revokeObjectURL(objectUrl)
     } catch {
-      setFailed(true)
+      // downloadToDisk failing doesn't affect the preview's own `failed` state — this is a
+      // separate action (a save-to-disk request), not part of loading the inline preview.
+      console.error('[chat] attachment download to disk failed')
     } finally {
       setDownloading(false)
     }
@@ -111,7 +86,9 @@ export function AttachmentPreview({
         <video src={url} controls className={styles.videoPreview} onClick={() => setLightboxOpen(true)} />
       )}
       {caption ? <p className={styles.caption}>{caption}</p> : null}
-      {lightboxOpen ? <Lightbox src={url} kind={kind} alt={name} onClose={() => setLightboxOpen(false)} /> : null}
+      {lightboxOpen ? (
+        <Lightbox items={[{ src: url, kind, alt: name }]} onClose={() => setLightboxOpen(false)} />
+      ) : null}
     </div>
   )
 }

@@ -14,6 +14,7 @@ export const en = {
   /* ---- common ---- */
   'common.back': 'Back',
   'common.next': 'Next',
+  'common.previous': 'Previous',
   'common.start': 'Start',
   'common.skip': 'Skip',
   'common.close': 'Close',
@@ -54,6 +55,7 @@ export const en = {
   'chat.composerPlaceholder': 'Write a message… (use / for code, command, etc.)',
   'chat.attachFile': 'Attach a file',
   'chat.attachmentMessage': 'Shared a file: {name} (id {id})',
+  'chat.attachmentGroupMessage': 'Shared {count} files',
   'chat.attachmentPreviewFailed': 'Could not load — click to retry',
   'chat.viewFullSize': 'View full size',
   'chat.slashHint': 'Message type',

@@ -22,12 +22,13 @@ import {
   syncUploadAttachment,
 } from '../../lib/api/syncChat'
 import { connectRendezvous, getRendezvousStatus, sendRendezvousFrame } from '../../lib/api/syncRendezvous'
-import { encodeAttachmentReference, parseAttachmentReference } from '../../lib/attachmentReference'
+import { encodeAttachmentReferences, parseAttachmentReferences, previewKindFor } from '../../lib/attachmentReference'
 import { useT } from '../../lib/i18n'
 import { DEFAULT_PROFILE_IMAGE_URL, getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { syncLocalIdentity } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { Avatar } from '../ui/Avatar'
+import { AttachmentGrid } from './AttachmentGrid'
 import { AttachmentPreview } from './AttachmentPreview'
 import { Lightbox } from './Lightbox'
 import styles from './ChatPanel.module.css'
@@ -568,12 +569,10 @@ export function ChatPanel({
     if (!conversation) return
     if (pendingAttachments.length > 0) {
       const staged = pendingAttachments
+      const caption = draft
       clearAllPendingAttachments()
-      // The typed caption (if any) goes on the first attachment only — sending N separate
-      // messages each repeating the same caption would read as spam, not a caption.
-      for (const [index, { file }] of staged.entries()) {
-        await attachFile(file, index === 0 ? draft : undefined)
-      }
+      setDraft('')
+      await attachFiles(staged.map((s) => s.file), caption)
       return
     }
     if (!draft.trim()) return
@@ -673,29 +672,41 @@ export function ChatPanel({
     }
   }
 
-  const attachFile = async (file: File, caption?: string) => {
-    if (!conversation) return
+  // Uploads every file and sends them as ONE message carrying all their attachment references —
+  // several files sent together used to become N separate messages (one per file), each its own
+  // bubble, cluttering the conversation with a run of near-identical "shared a file" lines instead
+  // of the one grouped/grid message a batch of images should read as.
+  const attachFiles = async (files: File[], caption?: string) => {
+    if (!conversation || files.length === 0) return
     setAttaching(true)
     try {
-      const buffer = await file.arrayBuffer()
-      const bytes = Array.from(new Uint8Array(buffer))
-      const attachment = await syncUploadAttachment(
-        conversation.conversationId,
-        file.type || 'application/octet-stream',
-        bytes,
+      const uploaded = await Promise.all(
+        files.map(async (file) => {
+          const buffer = await file.arrayBuffer()
+          const bytes = Array.from(new Uint8Array(buffer))
+          const attachment = await syncUploadAttachment(
+            conversation.conversationId,
+            file.type || 'application/octet-stream',
+            bytes,
+          )
+          return { attachmentId: attachment.attachmentId, name: file.name }
+        }),
       )
-      // The attachment binary itself only ever goes through `syncUploadAttachment` above (never
-      // the relay — see `MAX_CIPHERTEXT_BYTES`/16KB in `sync_rendezvous.rs`); only this short
-      // pointer text is eligible for live P2P/relay delivery, same as any other text message. When
-      // there's no caption, the same localized fallback text as before is embedded instead — the
-      // renderer treats that exact string as "no caption" (see `renderMessageBody`) rather than
-      // showing it as a redundant caption underneath the preview.
+      // The attachment binaries themselves only ever go through `syncUploadAttachment` above
+      // (never the relay — see `MAX_CIPHERTEXT_BYTES`/16KB in `sync_rendezvous.rs`); only this
+      // short pointer text is eligible for live P2P/relay delivery, same as any other text
+      // message. When there's no caption, the same localized fallback text as before is embedded
+      // instead — the renderer treats that exact string as "no caption" (see the message-rendering
+      // block below) rather than showing it as a redundant caption underneath the preview/grid.
       const trimmedCaption = caption?.trim()
+      const fallbackText =
+        uploaded.length === 1
+          ? t('chat.attachmentMessage', { name: uploaded[0].name, id: uploaded[0].attachmentId })
+          : t('chat.attachmentGroupMessage', { count: uploaded.length })
       const [message, frame] = await syncSendMessageForTransport(
         conversation.conversationId,
         'text',
-        encodeAttachmentReference(attachment.attachmentId, file.name) +
-          (trimmedCaption || t('chat.attachmentMessage', { name: file.name, id: attachment.attachmentId })),
+        encodeAttachmentReferences(uploaded) + (trimmedCaption || fallbackText),
       )
       setMessages((current) => sortMessages([...current, message]))
       setDraft('')
@@ -713,7 +724,7 @@ export function ChatPanel({
         }
       }
     } catch (cause) {
-      console.error('[chat] failed to attach file', cause)
+      console.error('[chat] failed to attach file(s)', cause)
       setError(true)
     } finally {
       setAttaching(false)
@@ -921,19 +932,30 @@ export function ChatPanel({
                       </span>
                       <p>{message.text}</p>
                     </div>
-                  ) : message.contentType === 'text' && parseAttachmentReference(message.text) && conversation ? (
+                  ) : message.contentType === 'text' && parseAttachmentReferences(message.text) && conversation ? (
                     (() => {
-                      const attachment = parseAttachmentReference(message.text)!
+                      const parsed = parseAttachmentReferences(message.text)!
+                      const [attachment] = parsed.attachments
                       // The auto-generated fallback text (no real caption typed) must not be
                       // shown again as a redundant caption line under a preview that already
-                      // displays the filename itself.
-                      const fallback = t('chat.attachmentMessage', { name: attachment.name, id: attachment.attachmentId })
-                      return (
+                      // displays the filename(s) itself.
+                      const fallback =
+                        parsed.attachments.length > 1
+                          ? t('chat.attachmentGroupMessage', { count: parsed.attachments.length })
+                          : t('chat.attachmentMessage', { name: attachment.name, id: attachment.attachmentId })
+                      const caption = parsed.rest !== fallback ? parsed.rest : undefined
+                      return parsed.attachments.length > 1 ? (
+                        <AttachmentGrid
+                          conversationId={conversation.conversationId}
+                          attachments={parsed.attachments}
+                          caption={caption}
+                        />
+                      ) : (
                         <AttachmentPreview
                           conversationId={conversation.conversationId}
                           attachmentId={attachment.attachmentId}
                           name={attachment.name}
-                          caption={attachment.rest !== fallback ? attachment.rest : undefined}
+                          caption={caption}
                         />
                       )
                     })()
@@ -1043,13 +1065,22 @@ export function ChatPanel({
             ))}
           </div>
         ) : null}
-        {pendingLightboxIndex !== null && pendingAttachments[pendingLightboxIndex]?.previewUrl ? (
-          <Lightbox
-            src={pendingAttachments[pendingLightboxIndex].previewUrl!}
-            kind="image"
-            onClose={() => setPendingLightboxIndex(null)}
-          />
-        ) : null}
+        {pendingLightboxIndex !== null
+          ? (() => {
+              const previewable = pendingAttachments
+                .map((p, index) => ({ p, index }))
+                .filter(({ p }) => p.previewUrl && previewKindFor(p.file.name))
+              if (previewable.length === 0) return null
+              const items = previewable.map(({ p }) => ({
+                src: p.previewUrl!,
+                kind: previewKindFor(p.file.name)!,
+                alt: p.file.name,
+              }))
+              const targetPos = previewable.findIndex(({ index }) => index === pendingLightboxIndex)
+              const clampedIndex = targetPos >= 0 ? targetPos : 0
+              return <Lightbox items={items} initialIndex={clampedIndex} onClose={() => setPendingLightboxIndex(null)} />
+            })()
+          : null}
         <div className={styles.composerRow}>
         <div className={styles.inputPill}>
           <input
