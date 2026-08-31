@@ -213,10 +213,6 @@ export const ptBR: Record<MessageKey, string> = {
   'mesh.invitationState.revoked': 'Revogado',
   'mesh.revokeInvitation': 'Revogar convite',
   'mesh.revokeGrant': 'Revogar permissão',
-  'mesh.redeemPlaceholder': 'alethe-invite://...',
-  'mesh.redeemInvitation': 'Resgatar convite',
-  'mesh.redeemInvalidLink': 'Isso não parece um link de convite válido',
-  'mesh.redeemFailed': 'Não foi possível resgatar o convite',
   'mesh.sharePairingCodeHint':
     'Compartilhe seu código com um amigo. Quando ele colar o código no Alethe, você poderá conceder acesso a este projeto na fila de decisões da Central de Acesso.',
   'mesh.generateNewCode': 'Gerar novo código',

@@ -210,10 +210,6 @@ export const en = {
   'mesh.invitationState.revoked': 'Revoked',
   'mesh.revokeInvitation': 'Revoke invitation',
   'mesh.revokeGrant': 'Revoke grant',
-  'mesh.redeemPlaceholder': 'alethe-invite://...',
-  'mesh.redeemInvitation': 'Redeem invitation',
-  'mesh.redeemInvalidLink': 'This does not look like a valid invitation link',
-  'mesh.redeemFailed': 'The invitation could not be redeemed',
   'mesh.sharePairingCodeHint':
     'Share your pairing code with a friend. When they enter the code in Alethe, you can grant them access to this project in the Access Center review queue.',
   'mesh.generateNewCode': 'Generate new code',
