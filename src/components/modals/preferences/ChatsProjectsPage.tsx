@@ -1,4 +1,4 @@
-import { Film, Image as ImageIcon, Loader2, Paperclip, Trash2 } from 'lucide-react'
+import { Film, Image as ImageIcon, Loader2, MessageSquare, Paperclip, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { useT } from '../../../lib/i18n'
@@ -113,6 +113,19 @@ export function ChatsProjectsPage() {
     }
   }
 
+  // Informational only, deliberately no delete action here — unlike attachments, message text is
+  // conversation history, not disposable storage; this tab only ever offers to clear attachments.
+  const messageRow = (bytes: number) => {
+    if (bytes === 0) return null
+    return (
+      <div className={styles.categoryRow}>
+        <MessageSquare size={13} aria-hidden="true" />
+        <span className={styles.categoryLabel}>{t('prefs.chatsProjects.categoryMessages')}</span>
+        <span className={styles.categoryBytes}>{formatBytes(bytes)}</span>
+      </div>
+    )
+  }
+
   const categoryRow = (
     group: StorageGroup,
     category: AttachmentCategory,
@@ -166,6 +179,7 @@ export function ChatsProjectsPage() {
                   <span className={styles.groupTotal}>{formatBytes(totalBytes(group))}</span>
                 </div>
                 <div className={styles.categories}>
+                  {messageRow(group.messageBytes)}
                   {categoryRow(group, 'image', group.imageBytes, ImageIcon, t('prefs.chatsProjects.categoryImage'))}
                   {categoryRow(group, 'video', group.videoBytes, Film, t('prefs.chatsProjects.categoryVideo'))}
                   {categoryRow(group, 'other', group.otherBytes, Paperclip, t('prefs.chatsProjects.categoryOther'))}

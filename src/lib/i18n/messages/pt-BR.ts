@@ -692,6 +692,7 @@ export const ptBR: Record<MessageKey, string> = {
     'O que está pesando, agrupado por projeto e por contato direto — apague só as imagens ou vídeos de um específico sem apagar a conversa.',
   'prefs.chatsProjects.kindProject': 'Projeto',
   'prefs.chatsProjects.kindDirect': 'Direto',
+  'prefs.chatsProjects.categoryMessages': 'Mensagens',
   'prefs.chatsProjects.categoryImage': 'Imagens',
   'prefs.chatsProjects.categoryVideo': 'Vídeos',
   'prefs.chatsProjects.categoryOther': 'Outros arquivos',

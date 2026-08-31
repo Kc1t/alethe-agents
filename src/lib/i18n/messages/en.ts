@@ -690,6 +690,7 @@ export const en = {
     'What is using space, grouped by project and by direct contact — delete just the images or videos of a specific one without deleting the conversation.',
   'prefs.chatsProjects.kindProject': 'Project',
   'prefs.chatsProjects.kindDirect': 'Direct',
+  'prefs.chatsProjects.categoryMessages': 'Messages',
   'prefs.chatsProjects.categoryImage': 'Images',
   'prefs.chatsProjects.categoryVideo': 'Videos',
   'prefs.chatsProjects.categoryOther': 'Other files',

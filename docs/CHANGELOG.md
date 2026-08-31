@@ -32,6 +32,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Fixed the storage tab silently omitting a "Messages" row**: a group whose total was only text (no attachments yet) showed a total size with nothing underneath explaining it — the breakdown only ever rendered image/video/other rows, never the message-bytes figure it already computed. Now shown as its own (informational, non-deletable — it's conversation history, not disposable storage) row.
 - **New "Chats & Projects" preferences tab**: shows what's using storage, grouped by project and by direct contact (categorized as images/videos/other files), with a per-category delete action — clear just the videos of a specific project, or just the images from a specific contact, without touching the conversation itself or its message history.
 - **Discord-style bio**: set a short "About me" (up to 190 characters) in Preferences → Account, shown to your chat contacts in the contact info panel. Read-only for everyone but you — synced the same way avatars already were (live update on change, plus a backfill send when opening a conversation with someone who missed it).
 - **Renaming a chat contact no longer opens a raw browser prompt** ("localhost:1422 diz…", which read as a bug in a desktop app) — the rename button in the contact info panel now edits the name inline, right below the avatar.
