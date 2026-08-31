@@ -1666,13 +1666,14 @@ mod tests {
 
     #[test]
     fn a_kill_never_runs_while_the_child_lock_is_held() {
-        let source = include_str!("pty.rs");
+        // Normalize CRLF so Windows checkouts (core.autocrlf) match Linux/macOS parsing.
+        let source = include_str!("pty.rs").replace("\r\n", "\n");
         for (index, _) in source.match_indices("child.lock()") {
             let head = &source[index.saturating_sub(96)..index];
-            let tail = &source[index..];
+            let after = &source[index + "child.lock()".len()..];
 
             // `.lock().ok().and_then(|...| ...)` — lock ends when the closure returns.
-            if let Some(rest) = tail.strip_prefix(".ok().and_then(") {
+            if let Some(rest) = after.strip_prefix(".ok().and_then(") {
                 let closure_body = rest
                     .split_once('|')
                     .map(|(_, body)| body)
@@ -1687,8 +1688,8 @@ mod tests {
 
             // `if let ... = child.lock() { ... }` — lock held for the whole block.
             if head.contains("if let") {
-                if let Some(brace) = tail.find('{') {
-                    let block = child_lock_brace_block(&tail[brace..]);
+                if let Some(brace) = after.find('{') {
+                    let block = child_lock_brace_block(&after[brace..]);
                     assert!(
                         !block.contains("kill_process_tree("),
                         "kill_process_tree while child.lock if-let block near byte {index}; read the pid, release the lock, then kill"
@@ -1698,8 +1699,8 @@ mod tests {
             }
 
             // Fallback: same statement only (until the next semicolon).
-            let stmt_end = tail.find(";\n").unwrap_or(tail.len().min(200));
-            let stmt = &tail[..stmt_end];
+            let stmt_end = after.find(';').unwrap_or(after.len().min(200));
+            let stmt = &after[..stmt_end];
             assert!(
                 !stmt.contains("kill_process_tree("),
                 "kill_process_tree in the same statement as child.lock near byte {index}; read the pid, release the lock, then kill"
