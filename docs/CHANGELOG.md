@@ -12,6 +12,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- Right-click on a terminal opens a context menu with Copy, Paste, Select All, Copy Context, and
+  Clear Screen, plus pane actions (Rename, Focus mode, Restart, Recent chats, Handoff, Open in
+  Explorer / VS Code, Delete). Ctrl+right-click still does the previous terminal-style shortcut
+  (copy selection or paste).
+
 - Local voice dictation with on-device Parakeet TDT v3 (sherpa-onnx). Enable it under Preferences →
   Integrations, download the model once (~640 MB), then press Ctrl+E (⌘E on macOS) to dictate into
   the active terminal. The mic indicator appears only while listening or while the model is
@@ -124,6 +129,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- Choosing a folder or file on Linux no longer crashes the AppImage. File dialogs now use the
+  desktop portal (the real OS picker) instead of an in-process GTK chooser that aborted when SVG
+  icon loaders were missing from the bundle. The in-app browser remains only for non-Tauri
+  environments and as a fallback if the portal is unavailable, and it still stacks over the
+  dialog that opened it.
 - The Source Control panel in the right sidebar no longer stays empty for a selected project that
   has no open terminal — it now falls back to the project's default working directory.
 - The ephemeral conflict-resolution agent's initial prompt is now delivered reliably to OpenCode.

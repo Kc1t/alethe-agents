@@ -2,11 +2,13 @@ import { useDraggable, useDroppable } from '@dnd-kit/core'
 import {
   ArrowRightLeft,
   Clock,
+  FolderOpen,
   GripVertical,
   Maximize2,
   Minimize2,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
   Pin,
   PinOff,
   RefreshCw,
@@ -24,6 +26,7 @@ import { getActiveSessions, savedConversationIdFor, saveSession } from '../../li
 import {
   completeAgentHandoff,
   getPtyCwd,
+  openInFileExplorer,
   openInVscode,
   restartPty,
   snapshotCodexSessions,
@@ -40,6 +43,7 @@ import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { GhosttySurface } from '../GhosttySurface'
 import { AgentIcon, VSCodeIcon } from '../icons/AgentIcons'
+import { type MenuItem } from '../ProjectSidebar/ContextMenu'
 import { SubTabsLane } from '../SubTabsLane'
 import { XTermView } from '../XTermView'
 import styles from './TerminalPane.module.css'
@@ -297,6 +301,126 @@ export const TerminalPane = memo(function TerminalPane({
   }
 
   const cwd = activeTab?.cwd?.trim() || terminal.cwd?.trim() || ''
+
+  const openExplorer = async () => {
+    let target = cwd
+    if (!target && activeTab?.ptyId) {
+      target = (await getPtyCwd(activeTab.ptyId).catch(() => null)) ?? ''
+    }
+    if (!target) {
+      pushToast({
+        title: t('ui.terminal.noCwdAvailable', { label: 'Explorer' }),
+        body: '',
+      })
+      return
+    }
+    await openInFileExplorer(target).catch((err) => {
+      pushToast({
+        title: t('ui.terminal.openFailed', { label: 'Explorer', error: String(err) }),
+        body: String(err),
+      })
+    })
+  }
+
+  const onRename = () => {
+    const current = activeTab?.name || terminal.name
+    const name = window.prompt(t('ui.sidebar.newNamePrompt'), current)?.trim()
+    if (!name || name === terminal.name) return
+    useProjectsStore.getState().renameTerminal(projectId, terminal.id, name)
+  }
+
+  const contextMenuExtras = useMemo((): MenuItem[] => {
+    if (preview) return []
+    const items: MenuItem[] = [
+      {
+        kind: 'item',
+        label: t('ui.sidebar.rename'),
+        icon: <Pencil size={15} />,
+        onClick: onRename,
+      },
+      {
+        kind: 'item',
+        label: isFocusMode ? t('ui.terminal.exitFocusMode') : t('ui.terminal.focusMode'),
+        icon: isFocusMode ? <Minimize2 size={15} /> : <Maximize2 size={15} />,
+        onClick: () => setFocusedTerminal(isFocusMode ? null : terminal.id),
+      },
+    ]
+    if (activeTab?.ptyId) {
+      items.push({
+        kind: 'item',
+        label: ptyParked ? t('ui.terminal.resume') : t('ui.terminal.restart'),
+        icon: <RefreshCw size={15} />,
+        onClick: () => void onRestart(),
+      })
+    }
+    if (activeTab && activeTab.type !== 'shell') {
+      items.push({
+        kind: 'item',
+        label: t('ui.terminal.recentChats'),
+        icon: <Clock size={15} />,
+        onClick: () =>
+          openModal('recentChats', {
+            projectId,
+            terminalId: terminal.id,
+            agent: activeTab.type,
+          }),
+      })
+    }
+    if (canHandoff) {
+      items.push({
+        kind: 'item',
+        label: handoffSuggested ? t('ui.terminal.handoffSuggested') : t('ui.terminal.handoff'),
+        icon: <ArrowRightLeft size={15} />,
+        onClick: () =>
+          openModal('handoff', {
+            projectId,
+            terminalId: terminal.id,
+            agent: activeTab?.type,
+            sourceSessionId: activeTab?.sessionId,
+          }),
+      })
+    }
+    items.push(
+      {
+        kind: 'item',
+        label: t('ui.terminal.openInExplorer'),
+        icon: <FolderOpen size={15} />,
+        onClick: () => void openExplorer(),
+      },
+      {
+        kind: 'item',
+        label: t('ui.terminal.openInVscode'),
+        icon: <VSCodeIcon size={15} />,
+        onClick: () => void openVscode(),
+      },
+      { kind: 'separator' },
+      {
+        kind: 'item',
+        label: t('ui.sidebar.deleteTerminal'),
+        icon: <Trash2 size={15} />,
+        danger: true,
+        onClick: onDelete,
+      },
+    )
+    return items
+    // Pane actions close over latest handlers; rebuild when menu-relevant state changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    preview,
+    t,
+    isFocusMode,
+    terminal.id,
+    terminal.name,
+    activeTab?.ptyId,
+    activeTab?.type,
+    activeTab?.name,
+    activeTab?.sessionId,
+    ptyParked,
+    canHandoff,
+    handoffSuggested,
+    projectId,
+    cwd,
+  ])
 
   const dropTarget = canDragPane && droppable.isOver
   const dragging = canDragPane && draggable.isDragging
@@ -558,6 +682,7 @@ export const TerminalPane = memo(function TerminalPane({
                   trustSessionId={terminal.gsdSyncViewer}
                   readOnly={terminal.gsdSyncViewer}
                   terminalTheme={terminalTheme}
+                  extraContextMenuItems={contextMenuExtras}
                   onSpawned={(id) => {
                     setResumePending(false)
                     if (activeTab.ptyId !== id) {
