@@ -14,9 +14,24 @@ use std::path::Path;
 
 pub const MANIFEST_SCHEMA_VERSION: u32 = 1;
 pub const EXCLUSION_POLICY_VERSION: u32 = 1;
-/// Bounded chunk size — large enough to keep chunk counts reasonable, small enough to bound
-/// per-chunk memory during hashing/verification.
+/// Chunk size ceiling for files classified as binary (see `is_probably_binary`) — large enough to
+/// keep chunk counts reasonable for big binary assets, small enough to bound per-chunk memory
+/// during hashing/verification. Binary files are still chunked at this single fixed size (not
+/// content-defined): most of them (images, executables) do not benefit from CDC's "only the
+/// touched region re-hashes" property the way text/source files do, and fixed chunking is cheaper.
 pub const CHUNK_SIZE_BYTES: usize = 4 * 1024 * 1024;
+/// Content-defined chunk size bounds for files classified as text/source (the common case for a
+/// code project). Deliberately in the tens-of-KB range rather than `CHUNK_SIZE_BYTES`: a whole
+/// small file becoming a single chunk (the old fixed-4MiB behavior) meant any edit, even one line,
+/// retransmitted the entire file. See `cdc_cut_points` for how the actual boundaries are chosen.
+const TEXT_CHUNK_MIN_BYTES: usize = 16 * 1024;
+const TEXT_CHUNK_TARGET_BYTES: usize = 32 * 1024;
+const TEXT_CHUNK_MAX_BYTES: usize = 128 * 1024;
+/// How many leading bytes of a file are inspected to decide text vs. binary — enough to catch a
+/// null byte in typical binary formats without reading the whole file (the same heuristic
+/// `git`/`file` use: a null byte in the first few KB is treated as decisive evidence of binary
+/// content, since legitimate text never contains one).
+const BINARY_SNIFF_BYTES: usize = 8 * 1024;
 /// Sanity ceiling on manifest entry count, enforced while building so a hostile or enormous
 /// directory tree cannot produce an unbounded manifest.
 pub const MAX_ENTRIES: usize = 200_000;
@@ -323,17 +338,111 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
+/// Classic "sniff the first few KB for a null byte" heuristic (the same one `git`/`file` use) for
+/// deciding whether a file is text/source (eligible for content-defined chunking) or binary
+/// (chunked at the larger fixed `CHUNK_SIZE_BYTES`). Deliberately not extension-based — a `.txt`
+/// file that is actually binary, or an unfamiliar extension, would otherwise be misclassified.
+fn is_probably_binary(path: &Path) -> Result<bool, ManifestError> {
+    let mut file = fs::File::open(path).map_err(|_| ManifestError::Io)?;
+    let mut buffer = vec![0_u8; BINARY_SNIFF_BYTES];
+    let mut filled = 0_usize;
+    while filled < buffer.len() {
+        let read = file.read(&mut buffer[filled..]).map_err(|_| ManifestError::Io)?;
+        if read == 0 {
+            break;
+        }
+        filled += read;
+    }
+    Ok(buffer[..filled].contains(&0))
+}
+
+/// Precomputed 256-entry table for the gear-hash rolling hash `cdc_cut_points` uses to find
+/// content-defined chunk boundaries. Generated once, deterministically (fixed seed, splitmix64) —
+/// determinism matters here: both peers must derive identical chunk boundaries for identical
+/// bytes, or the whole point of content-addressed chunk IDs (recognizing already-known chunks)
+/// breaks.
+fn gear_table() -> &'static [u64; 256] {
+    static TABLE: std::sync::OnceLock<[u64; 256]> = std::sync::OnceLock::new();
+    TABLE.get_or_init(|| {
+        // splitmix64, a small deterministic PRNG — good enough statistical spread for a gear-hash
+        // table, and trivial to keep reproducible across builds/platforms (unlike relying on a
+        // hashing crate's internal, possibly-changing constants).
+        let mut state: u64 = 0x9E3779B97F4A7C15;
+        let mut table = [0_u64; 256];
+        for slot in table.iter_mut() {
+            state = state.wrapping_add(0x9E3779B97F4A7C15);
+            let mut z = state;
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
+            *slot = z ^ (z >> 31);
+        }
+        table
+    })
+}
+
+/// Finds content-defined chunk boundaries within `data` using a gear-hash rolling hash: the cut
+/// point after each byte depends only on the bytes immediately preceding it, so inserting or
+/// removing bytes elsewhere in the file shifts chunk boundaries only in the region actually
+/// touched — chunks before and after that region keep their exact same content and hash, unlike
+/// fixed-offset chunking where every chunk after an edit changes. Returns the lengths of each
+/// chunk found; the caller is responsible for slicing/hashing.
+fn cdc_cut_points(data: &[u8], min_size: usize, target_size: usize, max_size: usize) -> Vec<usize> {
+    if data.is_empty() {
+        return Vec::new();
+    }
+    let table = gear_table();
+    // Mask width chosen so a boundary occurs on average every `target_size` bytes: for a uniform
+    // random hash, the chance of `hash & mask == 0` is `1 / (mask + 1)`.
+    let mask = (target_size.next_power_of_two() as u64).saturating_sub(1);
+    let mut lengths = Vec::new();
+    let mut chunk_start = 0_usize;
+    let mut hash: u64 = 0;
+    let mut index = 0_usize;
+    while index < data.len() {
+        hash = (hash << 1).wrapping_add(table[data[index] as usize]);
+        let chunk_len = index - chunk_start + 1;
+        let at_boundary = chunk_len >= min_size && (hash & mask) == 0;
+        let at_forced_max = chunk_len >= max_size;
+        if at_boundary || at_forced_max {
+            lengths.push(chunk_len);
+            chunk_start = index + 1;
+            hash = 0;
+        }
+        index += 1;
+    }
+    if chunk_start < data.len() {
+        lengths.push(data.len() - chunk_start);
+    }
+    lengths
+}
+
 /// Reads a file and splits it into bounded, content-addressed chunks, returning the chunk
-/// references (for the manifest) and the whole-file hash. Does not keep chunk bytes in memory
-/// beyond what is needed to hash and, when `sink` is provided, persist each one — bounded memory
-/// regardless of file size.
+/// references (for the manifest) and the whole-file hash. Binary files (see `is_probably_binary`)
+/// are chunked at the fixed `CHUNK_SIZE_BYTES`, same as before; text/source files use
+/// content-defined chunking (`cdc_cut_points`) at a much smaller size, so a small edit only
+/// changes the chunk(s) actually touched instead of retransmitting the whole file. Does not keep
+/// more than one file's worth... — see the per-branch comments for the actual memory bound of
+/// each path.
 fn chunk_file(
     path: &Path,
     mut on_chunk: impl FnMut(&str, &[u8]) -> Result<(), ManifestError>,
 ) -> Result<(String, Vec<ChunkRef>, u64), ManifestError> {
+    if is_probably_binary(path)? {
+        return chunk_file_fixed_size(path, CHUNK_SIZE_BYTES, &mut on_chunk);
+    }
+    chunk_file_content_defined(path, &mut on_chunk)
+}
+
+/// Fixed-offset chunking — bounded memory regardless of file size, since only one chunk-sized
+/// buffer is ever held at once.
+fn chunk_file_fixed_size(
+    path: &Path,
+    chunk_size: usize,
+    on_chunk: &mut impl FnMut(&str, &[u8]) -> Result<(), ManifestError>,
+) -> Result<(String, Vec<ChunkRef>, u64), ManifestError> {
     let mut file = fs::File::open(path).map_err(|_| ManifestError::Io)?;
     let mut whole_file_hasher = Sha256::new();
-    let mut buffer = vec![0_u8; CHUNK_SIZE_BYTES];
+    let mut buffer = vec![0_u8; chunk_size];
     let mut chunks = Vec::new();
     let mut total_size = 0_u64;
     loop {
@@ -365,6 +474,32 @@ fn chunk_file(
         }
     }
     Ok((hex(&whole_file_hasher.finalize()), chunks, total_size))
+}
+
+/// Content-defined chunking for text/source files. Reads the whole file into memory to feed the
+/// rolling hash — bounded in practice because text/source files this applies to are, by
+/// construction of `is_probably_binary`'s exclusion, not the large binary assets
+/// `chunk_file_fixed_size` handles; `MAX_FILE_SIZE_BYTES` remains the hard ceiling either way.
+fn chunk_file_content_defined(
+    path: &Path,
+    on_chunk: &mut impl FnMut(&str, &[u8]) -> Result<(), ManifestError>,
+) -> Result<(String, Vec<ChunkRef>, u64), ManifestError> {
+    let data = fs::read(path).map_err(|_| ManifestError::Io)?;
+    if data.len() as u64 > MAX_FILE_SIZE_BYTES {
+        return Err(ManifestError::FileTooLarge);
+    }
+    let mut whole_file_hasher = Sha256::new();
+    whole_file_hasher.update(&data);
+    let mut chunks = Vec::new();
+    let mut offset = 0_usize;
+    for length in cdc_cut_points(&data, TEXT_CHUNK_MIN_BYTES, TEXT_CHUNK_TARGET_BYTES, TEXT_CHUNK_MAX_BYTES) {
+        let chunk_bytes = &data[offset..offset + length];
+        let chunk_id = hex(&Sha256::digest(chunk_bytes));
+        on_chunk(&chunk_id, chunk_bytes)?;
+        chunks.push(ChunkRef { chunk_id, size: length as u64 });
+        offset += length;
+    }
+    Ok((hex(&whole_file_hasher.finalize()), chunks, data.len() as u64))
 }
 
 /// Builds and signs a manifest from a local directory tree, applying the default exclusion
@@ -642,6 +777,108 @@ mod tests {
         let reassembled: Vec<u8> = received.into_iter().flat_map(|(_, bytes)| bytes).collect();
         assert_eq!(reassembled, content);
         assert_eq!(hash, hex(&Sha256::digest(&content)));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn is_probably_binary_detects_a_null_byte_and_accepts_plain_text() {
+        let root = temp_dir("binary-sniff");
+        fs::write(root.join("text.txt"), b"just some ordinary source code\nwith multiple lines\n").unwrap();
+        let mut binary_content = b"PNG-ish header".to_vec();
+        binary_content.push(0);
+        binary_content.extend_from_slice(b"more bytes after the null");
+        fs::write(root.join("image.bin"), &binary_content).unwrap();
+
+        assert!(!is_probably_binary(&root.join("text.txt")).unwrap());
+        assert!(is_probably_binary(&root.join("image.bin")).unwrap());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn cdc_cut_points_cover_the_whole_input_without_gaps_or_overlap() {
+        let data: Vec<u8> = (0..200_000_u32).map(|value| (value % 251) as u8).collect();
+        let lengths = cdc_cut_points(&data, TEXT_CHUNK_MIN_BYTES, TEXT_CHUNK_TARGET_BYTES, TEXT_CHUNK_MAX_BYTES);
+        assert!(!lengths.is_empty());
+        let total: usize = lengths.iter().sum();
+        assert_eq!(total, data.len());
+        for length in &lengths {
+            assert!(*length >= 1);
+            assert!(*length <= TEXT_CHUNK_MAX_BYTES);
+        }
+    }
+
+    #[test]
+    fn cdc_boundaries_are_stable_away_from_a_localized_edit() {
+        // The core promise of content-defined chunking: inserting bytes in the middle of a large
+        // file should only change the chunk(s) near the insertion point — everything before that
+        // region, and most of what's after it (once the rolling hash resynchronizes), should
+        // reproduce byte-identical chunks. This is exactly what fixed-offset chunking cannot do
+        // (every chunk after the edit point would shift and re-hash).
+        let base: Vec<u8> = (0..300_000_u32).map(|value| ((value * 37) % 256) as u8).collect();
+        let mut edited = base.clone();
+        let insertion_point = 150_000;
+        edited.splice(insertion_point..insertion_point, std::iter::repeat(0xAB_u8).take(500));
+
+        let hash_chunks = |data: &[u8]| -> Vec<String> {
+            let lengths = cdc_cut_points(data, TEXT_CHUNK_MIN_BYTES, TEXT_CHUNK_TARGET_BYTES, TEXT_CHUNK_MAX_BYTES);
+            let mut offset = 0;
+            let mut hashes = Vec::new();
+            for length in lengths {
+                hashes.push(hex(&Sha256::digest(&data[offset..offset + length])));
+                offset += length;
+            }
+            hashes
+        };
+
+        let base_hashes = hash_chunks(&base);
+        let edited_hashes = hash_chunks(&edited);
+
+        // Chunks entirely before the insertion point must be untouched.
+        let prefix_chunk_count = {
+            let mut offset = 0usize;
+            let mut count = 0usize;
+            for length in cdc_cut_points(&base, TEXT_CHUNK_MIN_BYTES, TEXT_CHUNK_TARGET_BYTES, TEXT_CHUNK_MAX_BYTES) {
+                if offset + length > insertion_point {
+                    break;
+                }
+                offset += length;
+                count += 1;
+            }
+            count
+        };
+        assert!(prefix_chunk_count > 0, "fixture should span multiple chunks before the edit point");
+        assert_eq!(&base_hashes[..prefix_chunk_count], &edited_hashes[..prefix_chunk_count]);
+
+        // The tail of the file (well after the edit + resync distance) should also match — proof
+        // that only a bounded region around the edit was affected, not everything downstream.
+        let base_suffix: &[String] = &base_hashes[base_hashes.len().saturating_sub(3)..];
+        let edited_suffix: &[String] = &edited_hashes[edited_hashes.len().saturating_sub(3)..];
+        assert_eq!(base_suffix, edited_suffix);
+
+        // And the two chunk lists as a whole must actually differ somewhere — otherwise this test
+        // would trivially pass even if chunking ignored the insertion entirely.
+        assert_ne!(base_hashes, edited_hashes);
+    }
+
+    #[test]
+    fn chunk_file_uses_content_defined_chunking_for_text_and_fixed_size_for_binary() {
+        let root = temp_dir("chunk-dispatch");
+        let text_content: Vec<u8> = (0..200_000_u32).map(|value| (value % 97) as u8 + 1).collect();
+        fs::write(root.join("source.rs"), &text_content).unwrap();
+        let mut binary_content = vec![0_u8; 10 * 1024 * 1024];
+        binary_content[0] = 0; // guarantees the null-byte sniff sees it within the first window
+        fs::write(root.join("asset.bin"), &binary_content).unwrap();
+
+        let (_, text_chunks, _) = chunk_file(&root.join("source.rs"), |_id, _bytes| Ok(())).unwrap();
+        assert!(text_chunks.len() > 1, "large text file should split into multiple CDC chunks");
+        assert!(text_chunks.iter().all(|chunk| chunk.size as usize <= TEXT_CHUNK_MAX_BYTES));
+
+        let (_, binary_chunks, _) = chunk_file(&root.join("asset.bin"), |_id, _bytes| Ok(())).unwrap();
+        assert!(binary_chunks.iter().all(|chunk| chunk.size as usize == CHUNK_SIZE_BYTES || chunk.size < CHUNK_SIZE_BYTES as u64));
+        // Fixed-size chunking: every chunk but the last is exactly CHUNK_SIZE_BYTES.
+        for chunk in &binary_chunks[..binary_chunks.len() - 1] {
+            assert_eq!(chunk.size as usize, CHUNK_SIZE_BYTES);
+        }
         fs::remove_dir_all(root).unwrap();
     }
 }

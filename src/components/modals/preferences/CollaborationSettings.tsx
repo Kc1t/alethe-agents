@@ -1,7 +1,12 @@
-import { Bell, Clock3, Eye, Loader2, Radio, ShieldCheck, X } from 'lucide-react'
+import { Bell, Clock3, Eye, Github, Loader2, Radio, ShieldCheck, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useT } from '../../../lib/i18n'
+import {
+  githubSignalingClearToken,
+  githubSignalingHasToken,
+  githubSignalingSetToken,
+} from '../../../lib/api/syncRendezvousGit'
 import {
   type AccessRecord,
   type CollaborationActivationState,
@@ -22,6 +27,114 @@ import controls from '../controls.module.css'
 import { CloudflareGuidedDeploy } from './CloudflareGuidedDeploy'
 import styles from './CollaborationSettings.module.css'
 import { SettingsSection } from './primitives'
+
+/** Configuration for the optional GitHub Gist signaling fallback (`sync_rendezvous_git.rs`) — an
+ * additional candidate-exchange channel alongside the primary Cloudflare relay above, never a
+ * replacement for it. Entirely opt-in: with no token stored, `useP2pAutoConnect` never touches
+ * this channel at all. */
+function GithubSignalingSettings() {
+  const t = useT()
+  const [hasToken, setHasToken] = useState<boolean | null>(null)
+  const [tokenInput, setTokenInput] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(false)
+
+  const refresh = useCallback(async () => {
+    setHasToken(await githubSignalingHasToken())
+  }, [])
+
+  useEffect(() => {
+    void refresh().catch(() => setHasToken(false))
+  }, [refresh])
+
+  const save = async () => {
+    if (!tokenInput.trim()) return
+    setBusy(true)
+    setError(false)
+    try {
+      await githubSignalingSetToken(tokenInput.trim())
+      setTokenInput('')
+      await refresh()
+    } catch {
+      setError(true)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const remove = async () => {
+    setBusy(true)
+    setError(false)
+    try {
+      await githubSignalingClearToken()
+      await refresh()
+    } catch {
+      setError(true)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <SettingsSection
+      id="collaboration-github-signaling"
+      title={t('collaboration.githubSignaling.title')}
+      description={t('collaboration.githubSignaling.description')}
+    >
+      <div className={styles.stack}>
+        <div className={styles.notice}>
+          <Github size={16} aria-hidden="true" /> {t('collaboration.githubSignaling.explainer')}
+        </div>
+
+        <div className={styles.statusRow}>
+          <span>{t('collaboration.githubSignaling.statusLabel')}</span>
+          <strong>
+            {hasToken === null
+              ? '…'
+              : t(hasToken ? 'collaboration.githubSignaling.configured' : 'collaboration.githubSignaling.notConfigured')}
+          </strong>
+        </div>
+
+        {error ? <p className={styles.error}>{t('collaboration.githubSignaling.error')}</p> : null}
+
+        {hasToken ? (
+          <div className={styles.actions}>
+            <button type="button" className={controls.btn} disabled={busy} onClick={() => void remove()}>
+              {busy ? <Loader2 size={14} /> : null}
+              {t('collaboration.githubSignaling.remove')}
+            </button>
+          </div>
+        ) : (
+          <>
+            <label className={styles.endpoint}>
+              <span>{t('collaboration.githubSignaling.tokenLabel')}</span>
+              <input
+                className={controls.input}
+                type="password"
+                value={tokenInput}
+                placeholder="ghp_…"
+                spellCheck={false}
+                autoComplete="off"
+                onChange={(event) => setTokenInput(event.target.value)}
+              />
+            </label>
+            <div className={styles.actions}>
+              <button
+                type="button"
+                className={`${controls.btn} ${controls.btnPrimary}`}
+                disabled={busy || !tokenInput.trim()}
+                onClick={() => void save()}
+              >
+                {busy ? <Loader2 size={14} /> : null}
+                {t('collaboration.githubSignaling.save')}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </SettingsSection>
+  )
+}
 
 // `alethe_managed` (an operator-run shared endpoint) is deliberately never offered here — see
 // ADR-0002's amendment: Alethe never runs infrastructure that could see metadata across every
@@ -341,6 +454,7 @@ export function CollaborationSettings() {
           </div>
         </div>
       </SettingsSection>
+      <GithubSignalingSettings />
     </>
   )
 }

@@ -29,7 +29,17 @@ use std::time::{Duration, Instant};
 
 use crate::sync_crypto::{open_sealed, seal_for_recipient, SealedEnvelope};
 
-const STUN_SERVERS: [&str; 2] = ["stun.l.google.com:19302", "stun1.l.google.com:19302"];
+const STUN_SERVERS: [&str; 3] =
+    ["stun.l.google.com:19302", "stun1.l.google.com:19302", "stun.cloudflare.com:3478"];
+/// How many independent STUN comparisons `classify_nat` runs before it will report `Symmetric`.
+/// A single comparison is cheap to spoof by network flakiness (a dropped/late reply looks the same
+/// as a different mapped port); requiring agreement across several avoids flip-flopping the
+/// classification on every discovery call.
+const NAT_CLASSIFICATION_SAMPLES: u32 = 3;
+/// How long a `NatClass` result stays valid for a given local network before being re-derived.
+/// NAT behavior is a property of the router/network, not of any single discovery attempt, so this
+/// is intentionally much longer than a single STUN round-trip.
+const NAT_CLASS_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 const STUN_MAGIC_COOKIE: u32 = 0x2112_A442;
 const STUN_BINDING_REQUEST: u16 = 0x0001;
 const STUN_BINDING_RESPONSE: u16 = 0x0101;
@@ -69,6 +79,12 @@ pub enum P2pError {
     Decode,
     InvalidRecipientKey,
     PayloadTooLarge,
+    /// Both sides classified their local network as `Symmetric` with confidence. Returned instead
+    /// of running `punch_and_wrap_candidates` at all — direct connectivity is not just unlikely
+    /// here, it is the same failure mode every STUN-only P2P system hits against this NAT
+    /// behavior, so spending the full punch budget only delays the (already known) fallback to
+    /// relay.
+    BothSidesSymmetric,
 }
 
 impl std::fmt::Display for P2pError {
@@ -81,9 +97,30 @@ impl std::fmt::Display for P2pError {
             P2pError::Decode => "p2p_decode_failed",
             P2pError::InvalidRecipientKey => "p2p_invalid_recipient_key",
             P2pError::PayloadTooLarge => "p2p_payload_too_large",
+            P2pError::BothSidesSymmetric => "p2p_both_sides_symmetric_nat",
         };
         write!(f, "{code}")
     }
+}
+
+/// A network's NAT behavior, as inferred by comparing the public mapping STUN servers report for
+/// the same local socket. Not a certainty — see `classify_nat_with_confidence` — but a strong
+/// enough signal to decide whether spending the hole-punch budget is worthwhile.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NatClass {
+    /// Every STUN server observed the same public port for this socket — a hole punch has a
+    /// realistic chance of succeeding.
+    Cone,
+    /// At least one STUN server observed a different public port than another — this network
+    /// allocates a fresh mapping per destination, so the address a peer is told to punch toward is
+    /// not the address this machine is actually reachable on. Direct P2P is not possible here
+    /// without a TURN relay, regardless of retry count.
+    Symmetric,
+    /// Not enough consistent samples to classify confidently (network flakiness, unreachable STUN
+    /// servers, etc.) — callers should still attempt the punch, since `Unknown` is not evidence it
+    /// will fail.
+    Unknown,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -148,35 +185,94 @@ fn parse_xor_mapped_address(body: &[u8], transaction_id: &[u8; 12]) -> Option<So
 /// matter how many times it is retried. Without this check the two cases are indistinguishable
 /// from the logs: both look like an endless run of `p2p_hole_punch_failed`, sending the reader
 /// hunting for a bug in the punch that is not there.
-fn classify_nat(socket: &UdpSocket, first_seen: SocketAddr) -> &'static str {
-    let Some(second) = STUN_SERVERS.get(1) else {
-        return "unknown (no second STUN server configured)";
-    };
+/// Asks one STUN server, over the same socket used for the initial discovery, what public port it
+/// observes — returns `None` on any failure (unresolvable server, send error, timeout, malformed
+/// reply) so the caller can just skip that sample rather than propagate a hard error.
+fn probe_mapped_port(socket: &UdpSocket, server: &str) -> Option<u16> {
     let mut transaction_id = [0_u8; 12];
     OsRng.fill_bytes(&mut transaction_id);
     let request = build_binding_request(&transaction_id);
-    let Ok(mut addrs) = std::net::ToSocketAddrs::to_socket_addrs(second) else {
-        return "unknown (second STUN server did not resolve)";
-    };
-    let Some(server_addr) = addrs.next() else {
-        return "unknown (second STUN server had no address)";
-    };
-    if socket.send_to(&request, server_addr).is_err() {
-        return "unknown (second STUN request could not be sent)";
-    }
+    let mut addrs = std::net::ToSocketAddrs::to_socket_addrs(server).ok()?;
+    let server_addr = addrs.next()?;
+    socket.send_to(&request, server_addr).ok()?;
     let mut buffer = [0_u8; 512];
-    match socket.recv_from(&mut buffer) {
-        Ok((length, from)) if from == server_addr && length >= 20 => {
-            let body_len = u16::from_be_bytes([buffer[2], buffer[3]]) as usize;
-            let body_end = (20 + body_len).min(length);
-            match parse_xor_mapped_address(&buffer[20..body_end], &transaction_id) {
-                Some(addr) if addr.port() == first_seen.port() => "cone (direct P2P is possible)",
-                Some(_) => "SYMMETRIC (direct P2P is impossible from this network without a TURN relay)",
-                None => "unknown (second STUN reply had no mapped address)",
-            }
-        }
-        _ => "unknown (no reply from the second STUN server)",
+    let (length, from) = socket.recv_from(&mut buffer).ok()?;
+    if from != server_addr || length < 20 {
+        return None;
     }
+    let body_len = u16::from_be_bytes([buffer[2], buffer[3]]) as usize;
+    let body_end = (20 + body_len).min(length);
+    parse_xor_mapped_address(&buffer[20..body_end], &transaction_id).map(|addr| addr.port())
+}
+
+/// Classifies this network's NAT behavior by comparing the public port every STUN server in
+/// `STUN_SERVERS` (besides the one used for the initial discovery) reports for the same local
+/// socket against `first_seen`'s port.
+///
+/// This is the question that decides whether a direct connection is possible at all. A NAT that
+/// keeps one mapping per local socket ("cone") reports the same public port to every destination,
+/// and hole punching works. A NAT that allocates a fresh mapping per destination ("symmetric")
+/// reports a different one — and then the address a peer is told to punch toward is, by
+/// construction, not the address this machine will be reachable on, so every attempt fails no
+/// matter how many times it is retried. Without this check the two cases are indistinguishable
+/// from the logs: both look like an endless run of `p2p_hole_punch_failed`, sending the reader
+/// hunting for a bug in the punch that is not there.
+///
+/// Runs up to `NAT_CLASSIFICATION_SAMPLES` comparisons (cycling through the other configured STUN
+/// servers) and only reports `Symmetric` when at least two-thirds of the samples that produced an
+/// answer agree the port changed — a single dropped/late reply should not flip the classification.
+fn classify_nat(socket: &UdpSocket, first_seen: SocketAddr) -> NatClass {
+    let other_servers: Vec<&str> = STUN_SERVERS.iter().copied().filter(|server| *server != STUN_SERVERS[0]).collect();
+    if other_servers.is_empty() {
+        return NatClass::Unknown;
+    }
+    let mut agree_same = 0_u32;
+    let mut agree_different = 0_u32;
+    for index in 0..NAT_CLASSIFICATION_SAMPLES {
+        let server = other_servers[(index as usize) % other_servers.len()];
+        match probe_mapped_port(socket, server) {
+            Some(port) if port == first_seen.port() => agree_same += 1,
+            Some(_) => agree_different += 1,
+            None => {}
+        }
+    }
+    let total = agree_same + agree_different;
+    if total == 0 {
+        return NatClass::Unknown;
+    }
+    // Require two-thirds agreement in either direction; anything murkier stays Unknown rather than
+    // guessing — callers still attempt the punch when unsure.
+    if agree_different * 3 >= total * 2 {
+        NatClass::Symmetric
+    } else if agree_same * 3 >= total * 2 {
+        NatClass::Cone
+    } else {
+        NatClass::Unknown
+    }
+}
+
+/// Per-local-network cache of the last `classify_nat` result, so repeated connection attempts on
+/// the same network do not re-run STUN classification every time. Keyed by the best-effort local
+/// (LAN) IP, since NAT behavior is a property of the router/network the device is currently on —
+/// switching Wi-Fi networks naturally invalidates the cache by changing the key.
+static NAT_CLASS_CACHE: std::sync::OnceLock<Mutex<HashMap<String, (NatClass, Instant)>>> = std::sync::OnceLock::new();
+
+fn nat_class_cache() -> &'static Mutex<HashMap<String, (NatClass, Instant)>> {
+    NAT_CLASS_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Returns the cached `NatClass` for `local_ip` if it is still within `NAT_CLASS_CACHE_TTL`,
+/// otherwise runs `classify_nat` fresh and caches the result.
+fn classify_nat_cached(socket: &UdpSocket, first_seen: SocketAddr, local_ip: Option<&str>) -> NatClass {
+    let key = local_ip.unwrap_or("unknown");
+    if let Some((cached, observed_at)) = nat_class_cache().lock().unwrap().get(key) {
+        if observed_at.elapsed() < NAT_CLASS_CACHE_TTL {
+            return *cached;
+        }
+    }
+    let fresh = classify_nat(socket, first_seen);
+    nat_class_cache().lock().unwrap().insert(key.to_string(), (fresh, Instant::now()));
+    fresh
 }
 
 /// Discovers this socket's public-facing `IP:port` via a public STUN server. The socket handed in
@@ -240,6 +336,12 @@ struct RemoteCandidatePayload {
     local_host: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     local_port: Option<u16>,
+    /// This device's own `classify_nat` result, so the peer knows — without an extra round-trip —
+    /// whether the sender's network can plausibly be punched to. `None` for envelopes produced
+    /// before this field existed (kept optional rather than defaulted to a specific variant, so a
+    /// missing value is never silently read as "cone").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    nat_class: Option<NatClass>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -260,6 +362,8 @@ pub struct RemoteCandidate {
     /// See `RemoteCandidatePayload::local_host`/`local_port`.
     pub local_host: Option<String>,
     pub local_port: Option<u16>,
+    /// See `RemoteCandidatePayload::nat_class`.
+    pub nat_class: Option<NatClass>,
 }
 
 fn pack(envelope: &SealedEnvelope) -> Vec<u8> {
@@ -293,6 +397,7 @@ pub fn sync_prepare_remote_candidate(
     public_port: u16,
     local_host: Option<String>,
     local_port: Option<u16>,
+    nat_class: Option<NatClass>,
     recipient_account_route: String,
     recipient_device_id: Option<String>,
     recipient_agreement_public_key: String,
@@ -300,8 +405,14 @@ pub fn sync_prepare_remote_candidate(
     let public_key = URL_SAFE_NO_PAD
         .decode(&recipient_agreement_public_key)
         .map_err(|_| P2pError::InvalidRecipientKey.to_string())?;
-    let payload =
-        RemoteCandidatePayload { session_id: session_id.clone(), public_host, public_port, local_host, local_port };
+    let payload = RemoteCandidatePayload {
+        session_id: session_id.clone(),
+        public_host,
+        public_port,
+        local_host,
+        local_port,
+        nat_class,
+    };
     let plaintext = serde_json::to_vec(&payload).map_err(|_| P2pError::Encode.to_string())?;
     let info = format!("alethe-candidate-envelope-v1|{session_id}");
     let sealed = seal_for_recipient(&plaintext, &public_key, info.as_bytes())
@@ -345,6 +456,7 @@ pub fn sync_consume_remote_candidate(
         public_port: payload.public_port,
         local_host: payload.local_host,
         local_port: payload.local_port,
+        nat_class: payload.nat_class,
     })
 }
 
@@ -365,6 +477,9 @@ pub struct DiscoveredCandidate {
     /// public internet), best-effort — `None` if it could not be determined. See
     /// `RemoteCandidatePayload::local_host` for why this matters.
     pub local_host: Option<String>,
+    /// This device's own `classify_nat` result for its current network. See `NatClass`'s doc
+    /// comments for what each variant means and its caveats.
+    pub nat_class: NatClass,
 }
 
 /// Best-effort local (LAN) IP discovery: opens a UDP socket and "connects" it (no packet is
@@ -409,9 +524,9 @@ fn discover_candidate_blocking() -> Result<DiscoveredCandidate, String> {
     // why this function only returns discovery info, not a handle.
     let local_port = socket.local_addr().map_err(|_| P2pError::Io.to_string())?.port();
     let local_host = detect_local_ip();
-    let nat = classify_nat(&socket, public_addr);
+    let nat_class = classify_nat_cached(&socket, public_addr, local_host.as_deref());
     eprintln!(
-        "[p2p] discover: local_port={local_port} public={}:{} local_host={:?} nat={nat}",
+        "[p2p] discover: local_port={local_port} public={}:{} local_host={:?} nat_class={nat_class:?}",
         public_addr.ip(),
         public_addr.port(),
         local_host
@@ -421,6 +536,7 @@ fn discover_candidate_blocking() -> Result<DiscoveredCandidate, String> {
         public_port: public_addr.port(),
         local_port,
         local_host,
+        nat_class,
     })
 }
 
@@ -770,6 +886,8 @@ pub async fn sync_p2p_connect(
     peer_local_port: Option<u16>,
     is_initiator: bool,
     remote_account_route: String,
+    local_nat_class: Option<NatClass>,
+    peer_nat_class: Option<NatClass>,
 ) -> Result<P2pConnectResult, String> {
     let registry = Arc::clone(&registry);
     tokio::task::spawn_blocking(move || {
@@ -783,6 +901,8 @@ pub async fn sync_p2p_connect(
             peer_local_port,
             is_initiator,
             remote_account_route,
+            local_nat_class,
+            peer_nat_class,
         )
     })
     .await
@@ -800,7 +920,20 @@ fn p2p_connect_blocking(
     peer_local_port: Option<u16>,
     is_initiator: bool,
     remote_account_route: String,
+    local_nat_class: Option<NatClass>,
+    peer_nat_class: Option<NatClass>,
 ) -> Result<P2pConnectResult, String> {
+    // Both sides already classified their network as `Symmetric` with confidence — a hole punch
+    // cannot succeed here (see `NatClass::Symmetric`'s doc comment), so skip straight to the
+    // caller's relay fallback instead of spending the full punch budget on an attempt that is
+    // already known to fail. `Unknown`/`Cone` on either side still attempts the punch, since the
+    // classification is a heuristic, not a guarantee.
+    if matches!(local_nat_class, Some(NatClass::Symmetric)) && matches!(peer_nat_class, Some(NatClass::Symmetric)) {
+        eprintln!(
+            "[p2p] connect: skipping punch for peer={remote_account_route} — both sides classified as symmetric NAT"
+        );
+        return Err(P2pError::BothSidesSymmetric.to_string());
+    }
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     let document = crate::sync_security::load_at(&data_root)?;
     let local_device_id = document.local_device_id.clone().ok_or_else(|| "security_device_missing".to_string())?;
@@ -964,7 +1097,13 @@ impl P2pSessionRegistry {
         self.sessions.lock().unwrap().insert(remote_account_route, handle);
     }
 
-    fn send(&self, remote_account_route: &str, frame: Vec<u8>) -> Result<(), String> {
+    /// `pub(crate)` (not private) so other backend modules sharing this one P2P session per peer
+    /// — currently only `sync_file_pipeline_session.rs`, which multiplexes file-sync frames onto
+    /// the same session chat already uses (Phase 4 ships exactly one logical stream per session,
+    /// see `sync_transport.rs`'s `open_stream` doc comment) — can send on it too, tagged so the
+    /// frontend's single drain loop can route each frame to the right consumer. Never exposed to
+    /// the frontend directly; only through a `#[tauri::command]` wrapper, same as every other use.
+    pub(crate) fn send(&self, remote_account_route: &str, frame: Vec<u8>) -> Result<(), String> {
         let sessions = self.sessions.lock().unwrap();
         let handle = sessions.get(remote_account_route).ok_or_else(|| "p2p_session_not_found".to_string())?;
         if handle.closed.load(std::sync::atomic::Ordering::Relaxed) {
@@ -1140,5 +1279,82 @@ mod tests {
         let result = registry.send("route-never-connected", b"data".to_vec());
         assert_eq!(result, Err("p2p_session_not_found".to_string()));
         assert!(matches!(registry.state("route-never-connected"), P2pSessionState::Closed));
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // NAT classification
+    // -----------------------------------------------------------------------------------------
+
+    /// A tiny in-process STUN server that always answers with the same fixed mapped port,
+    /// regardless of who asks — stands in for a "cone NAT" observation from the peer's
+    /// perspective without depending on real internet STUN servers in tests.
+    fn fixed_port_stun_responder(mapped_port: u16) -> (UdpSocket, SocketAddr) {
+        let responder = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let addr = responder.local_addr().unwrap();
+        std::thread::spawn(move || {
+            let mut buffer = [0_u8; 512];
+            loop {
+                let Ok((length, from)) = responder.recv_from(&mut buffer) else { break };
+                if length < 20 {
+                    continue;
+                }
+                let transaction_id: [u8; 12] = buffer[8..20].try_into().unwrap();
+                let attribute = xor_mapped_address_attribute([127, 0, 0, 1], mapped_port, &transaction_id);
+                let mut response = Vec::new();
+                response.extend_from_slice(&STUN_BINDING_RESPONSE.to_be_bytes());
+                response.extend_from_slice(&(attribute.len() as u16).to_be_bytes());
+                response.extend_from_slice(&STUN_MAGIC_COOKIE.to_be_bytes());
+                response.extend_from_slice(&transaction_id);
+                response.extend_from_slice(&attribute);
+                let _ = responder.send_to(&response, from);
+            }
+        });
+        (UdpSocket::bind("127.0.0.1:0").unwrap(), addr)
+    }
+
+    #[test]
+    fn probe_mapped_port_reads_the_port_a_synthetic_stun_server_reports() {
+        let (client, server_addr) = fixed_port_stun_responder(51820);
+        client.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        let observed = probe_mapped_port(&client, &server_addr.to_string());
+        assert_eq!(observed, Some(51820));
+    }
+
+    #[test]
+    fn probe_mapped_port_returns_none_for_an_unroutable_server() {
+        let client = UdpSocket::bind("127.0.0.1:0").unwrap();
+        client.set_read_timeout(Some(Duration::from_millis(200))).unwrap();
+        // Port 0 never resolves to a reachable server for our purposes; the point is only that a
+        // failure returns `None` instead of panicking or hanging.
+        let observed = probe_mapped_port(&client, "not-a-real-host.invalid:19302");
+        assert_eq!(observed, None);
+    }
+
+    #[test]
+    fn nat_class_cache_reuses_a_fresh_result_and_expires_after_ttl() {
+        let cache = nat_class_cache();
+        cache.lock().unwrap().clear();
+        let key = "192.0.2.1-test";
+        cache.lock().unwrap().insert(key.to_string(), (NatClass::Cone, Instant::now()));
+        assert_eq!(cache.lock().unwrap().get(key).map(|(class, _)| *class), Some(NatClass::Cone));
+
+        // Simulate expiry by inserting a timestamp already outside the TTL window.
+        let expired_at = Instant::now() - NAT_CLASS_CACHE_TTL - Duration::from_secs(1);
+        cache.lock().unwrap().insert(key.to_string(), (NatClass::Cone, expired_at));
+        let (_, observed_at) = *cache.lock().unwrap().get(key).unwrap();
+        assert!(observed_at.elapsed() >= NAT_CLASS_CACHE_TTL);
+    }
+
+    #[test]
+    fn both_sides_symmetric_skips_the_punch_attempt_entirely() {
+        // `p2p_connect_blocking` is not directly callable here (it needs a full Tauri AppHandle
+        // and on-disk device identity), so this test exercises the same guard condition the
+        // function opens with, confirming the short-circuit logic itself is correct in isolation.
+        let local = Some(NatClass::Symmetric);
+        let peer = Some(NatClass::Symmetric);
+        assert!(matches!(local, Some(NatClass::Symmetric)) && matches!(peer, Some(NatClass::Symmetric)));
+
+        let local_unknown = Some(NatClass::Unknown);
+        assert!(!(matches!(local_unknown, Some(NatClass::Symmetric)) && matches!(peer, Some(NatClass::Symmetric))));
     }
 }

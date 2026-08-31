@@ -6,14 +6,73 @@
 //! are pure/local-fixture-tested building blocks for that future integration.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::sync_manifest::normalize_and_validate_path;
 
-const ENGINE_SCHEMA_VERSION: u32 = 1;
+/// A path's version, generalized for any number of peers: one counter per device that has ever
+/// touched this path, each incremented only by that device. `BTreeMap` (not `HashMap`) so
+/// serialization is deterministic — the same version compares equal byte-for-byte regardless of
+/// insertion order, which matters since it round-trips through `serde_json` on disk.
+///
+/// An empty map means "this path has no known history yet" (equivalent to the old `None`
+/// sentinel) — kept as an empty map rather than `Option<PathVersion>` so comparisons never need to
+/// unwrap: two paths that have never been touched compare equal (`{} == {}`) the same way two that
+/// have converged to the same history do.
+pub type PathVersion = BTreeMap<String, u64>;
+
+/// Advances `base` by one for `device_id`, leaving every other device's counter untouched —
+/// exactly what "this device just made an edit on top of `base`" means. Used both to compute the
+/// version an operation produces and, symmetrically, to adopt a fast-forwarded remote operation's
+/// resulting version as the new local state.
+fn bump_version(base: &PathVersion, device_id: &str) -> PathVersion {
+    let mut next = base.clone();
+    let counter = next.entry(device_id.to_string()).or_insert(0);
+    *counter += 1;
+    next
+}
+
+/// The version an operation produces once applied — its `base_version` with its own author's
+/// counter advanced by one. Deterministic from the operation alone, so it never needs to be
+/// transmitted separately: whichever side applies the operation (locally, at creation time, or
+/// remotely, on fast-forward) derives the exact same value.
+fn resulting_version(operation: &SignedOperation) -> PathVersion {
+    bump_version(&operation.base_version, &operation.author_device_id)
+}
+
+/// Whether version `a` causally dominates version `b`: every device's counter in `a` is at least
+/// as high as in `b`, and at least one is strictly higher (or `a` has an entry `b` lacks). Two
+/// versions where neither dominates the other are causally concurrent — genuinely independent
+/// edits, not a case of one simply being "behind" the other. Not used by the fast-forward/conflict
+/// decision below (that stays a simpler, sufficient equality check — see its own comment), but
+/// exposed and tested in its own right since it is the general vocabulary this module's
+/// multi-device model is built on, and a useful diagnostic for a conflict's two sides.
+pub fn version_dominates(a: &PathVersion, b: &PathVersion) -> bool {
+    let mut strictly_greater = false;
+    for (device_id, b_count) in b {
+        let a_count = a.get(device_id).copied().unwrap_or(0);
+        if a_count < *b_count {
+            return false;
+        }
+        if a_count > *b_count {
+            strictly_greater = true;
+        }
+    }
+    // `a` may also have devices `b` has never seen at all — that alone makes `a` strictly ahead.
+    strictly_greater || a.keys().any(|device_id| !b.contains_key(device_id))
+}
+
+/// Bumped from 1 to 2 when `SignedOperation.base_revision: Option<u64>` (a two-party-only
+/// optimistic-lock counter) generalized to `base_version: PathVersion` (a per-device version
+/// vector — see that type's doc comment for why the scalar did not actually generalize past two
+/// parties). `load_at` rejects a persisted document at a different schema version outright rather
+/// than attempting a field-level migration — Phase 7 state is a local, disposable sync cursor, not
+/// data of record, so a clean reset (re-derived on the next sync pass) is preferable to carrying
+/// migration code for a format only ever produced by pre-release builds.
+const ENGINE_SCHEMA_VERSION: u32 = 2;
 /// Bound on queued raw watcher events per coalescing pass. Exceeding this signals overflow —
 /// the caller must fall back to a full rescan rather than trust a partial, possibly-incomplete
 /// batch.
@@ -35,13 +94,17 @@ pub enum OperationKind {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignedOperation {
+    /// Locally assigned, monotonically increasing ordinal — an audit/ordering aid within a single
+    /// device's own op log, not a cross-device identity. Version comparisons (fast-forward vs.
+    /// conflict) never use this field; see `base_version`.
     pub sequence: u64,
     pub relative_path: String,
     pub kind: OperationKind,
-    /// The path's revision this operation assumes as its parent. `None` means "path did not
-    /// exist locally yet". A mismatch against the actual current revision is exactly what
-    /// signals a conflict rather than a clean fast-forward.
-    pub base_revision: Option<u64>,
+    /// The path's version this operation assumes as its parent, generalized to any number of
+    /// devices (see `PathVersion`). An empty map means "path did not exist locally yet". A
+    /// mismatch against the actual current version is exactly what signals a conflict rather than
+    /// a clean fast-forward — see `apply_remote_operation_at`.
+    pub base_version: PathVersion,
     pub content_hash: Option<String>,
     pub author_device_id: String,
     pub applied_at_ms: u64,
@@ -51,7 +114,7 @@ pub struct SignedOperation {
 #[serde(rename_all = "camelCase")]
 struct PathRevisionState {
     relative_path: String,
-    current_revision: u64,
+    current_version: PathVersion,
     content_hash: Option<String>,
     deleted: bool,
 }
@@ -206,10 +269,15 @@ fn current_revision<'a>(state: &'a EngineState, relative_path: &str) -> Option<&
     state.path_revisions.iter().find(|entry| entry.relative_path == relative_path)
 }
 
+/// The version to compare/base new operations on for a path with no recorded history yet.
+fn empty_version() -> PathVersion {
+    PathVersion::new()
+}
+
 fn upsert_revision(
     state: &mut EngineState,
     relative_path: &str,
-    revision: u64,
+    version: PathVersion,
     content_hash: Option<String>,
     deleted: bool,
 ) {
@@ -218,13 +286,13 @@ fn upsert_revision(
         .iter_mut()
         .find(|entry| entry.relative_path == relative_path)
     {
-        entry.current_revision = revision;
+        entry.current_version = version;
         entry.content_hash = content_hash;
         entry.deleted = deleted;
     } else {
         state.path_revisions.push(PathRevisionState {
             relative_path: relative_path.to_string(),
-            current_revision: revision,
+            current_version: version,
             content_hash,
             deleted,
         });
@@ -255,20 +323,21 @@ pub fn apply_local_operation_at(
     }
     authorizer.check(device_id, &normalized)?;
 
-    let base_revision = current_revision(&state, &normalized).map(|entry| entry.current_revision);
+    let base_version = current_revision(&state, &normalized).map(|entry| entry.current_version.clone()).unwrap_or_else(empty_version);
     let sequence = state.next_sequence;
     state.next_sequence += 1;
     let operation = SignedOperation {
         sequence,
         relative_path: normalized.clone(),
         kind,
-        base_revision,
+        base_version,
         content_hash: content_hash.clone(),
         author_device_id: device_id.to_string(),
         applied_at_ms: now_ms,
     };
     let deleted = matches!(operation.kind, OperationKind::Delete);
-    upsert_revision(&mut state, &normalized, sequence, content_hash, deleted);
+    let new_version = resulting_version(&operation);
+    upsert_revision(&mut state, &normalized, new_version, content_hash, deleted);
     push_op_log(&mut state, operation.clone());
     state.updated_at_ms = now_ms;
     save_at(data_root, &state)?;
@@ -294,14 +363,27 @@ pub fn apply_remote_operation_at(
     authorizer.check(&remote_operation.author_device_id, &remote_operation.relative_path)?;
 
     let local_entry = current_revision(&state, &remote_operation.relative_path).cloned();
-    let local_revision = local_entry.as_ref().map(|entry| entry.current_revision);
+    let local_version = local_entry.as_ref().map(|entry| entry.current_version.clone()).unwrap_or_else(empty_version);
 
-    if remote_operation.base_revision == local_revision {
+    // Fast-forward exactly when the remote operation's parent version is *exactly* what this
+    // device currently has for the path — a distributed compare-and-swap using the version vector
+    // as the token, generalized to any number of devices (not just two). This is deliberately an
+    // equality check, not a `version_dominates` check: an operation's `base_version` records the
+    // precise state its author observed before editing, so if the local version has moved on to
+    // anything else at all — including a version that would `version_dominates` the remote's base
+    // — something this remote operation did not know about happened first, and applying it now
+    // would silently discard that. Recording it as a conflict instead (below) is what keeps that
+    // discard from ever being silent, regardless of how many devices are involved: with N devices
+    // syncing through this same equality check pairwise, any two operations built on the same base
+    // version race the same way two would, and the loser is always caught here rather than only
+    // between exactly two parties.
+    if remote_operation.base_version == local_version {
         let deleted = matches!(remote_operation.kind, OperationKind::Delete);
+        let new_version = resulting_version(&remote_operation);
         upsert_revision(
             &mut state,
             &remote_operation.relative_path,
-            remote_operation.sequence,
+            new_version,
             remote_operation.content_hash.clone(),
             deleted,
         );
@@ -311,19 +393,19 @@ pub fn apply_remote_operation_at(
         return Ok(Ok(remote_operation));
     }
 
-    // Diverged: find the local operation that produced the current local revision, so the
+    // Diverged: find the local operation that produced the current local version, so the
     // conflict record preserves both sides' actual inputs.
     let local_operation = state
         .op_log
         .iter()
         .rev()
-        .find(|op| op.relative_path == remote_operation.relative_path && Some(op.sequence) == local_revision)
+        .find(|op| op.relative_path == remote_operation.relative_path && resulting_version(op) == local_version)
         .cloned()
         .unwrap_or(SignedOperation {
-            sequence: local_revision.unwrap_or(0),
+            sequence: 0,
             relative_path: remote_operation.relative_path.clone(),
             kind: OperationKind::Create,
-            base_revision: None,
+            base_version: empty_version(),
             content_hash: local_entry.and_then(|entry| entry.content_hash),
             author_device_id: "unknown".to_string(),
             applied_at_ms: 0,
@@ -377,10 +459,11 @@ pub fn resolve_conflict_at(
         ConflictResolution::KeepLocal => {}
         ConflictResolution::KeepRemote => {
             let deleted = matches!(remote_operation.kind, OperationKind::Delete);
+            let new_version = resulting_version(&remote_operation);
             upsert_revision(
                 &mut state,
                 &remote_operation.relative_path,
-                remote_operation.sequence,
+                new_version,
                 remote_operation.content_hash.clone(),
                 deleted,
             );
@@ -394,11 +477,12 @@ pub fn resolve_conflict_at(
             };
             let mut side_operation = remote_operation.clone();
             side_operation.relative_path = renamed_path.clone();
-            side_operation.base_revision = None;
+            side_operation.base_version = empty_version();
+            let new_version = resulting_version(&side_operation);
             upsert_revision(
                 &mut state,
                 &renamed_path,
-                remote_operation.sequence,
+                new_version,
                 remote_operation.content_hash.clone(),
                 false,
             );
@@ -631,18 +715,40 @@ mod tests {
             Some("hash-1".to_string()), &AllowAll, 1_000,
         )
         .unwrap();
-        assert_eq!(first.base_revision, None);
+        assert!(first.base_version.is_empty());
 
         let second = apply_local_operation_at(
             &root, "sub-1", "dev-a", "src/main.rs", OperationKind::Update,
             Some("hash-2".to_string()), &AllowAll, 2_000,
         )
         .unwrap();
-        assert_eq!(second.base_revision, Some(first.sequence));
+        assert_eq!(second.base_version, resulting_version(&first));
 
         let state = load_engine_at(&root, "sub-1").unwrap();
         assert_eq!(state.op_log.len(), 2);
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn version_dominates_recognizes_strict_advancement_and_concurrency() {
+        let empty = PathVersion::new();
+        let a1: PathVersion = [("dev-a".to_string(), 1)].into_iter().collect();
+        let a1_b1: PathVersion = [("dev-a".to_string(), 1), ("dev-b".to_string(), 1)].into_iter().collect();
+        let b1: PathVersion = [("dev-b".to_string(), 1)].into_iter().collect();
+
+        assert!(version_dominates(&a1, &empty));
+        assert!(!version_dominates(&empty, &a1));
+        assert!(version_dominates(&a1_b1, &a1));
+        assert!(!version_dominates(&a1, &a1_b1));
+        // Neither `a1` nor `b1` has seen the other's edit — genuinely concurrent, not ordered.
+        assert!(!version_dominates(&a1, &b1));
+        assert!(!version_dominates(&b1, &a1));
+        // A version dominates itself trivially (equal, not *strictly* ahead) — not exercised by
+        // the fast-forward decision (which uses plain equality), but should hold for the general
+        // definition: no counter is lower, none is proven higher either, so "dominates" here means
+        // "at least as far along," and equal vectors satisfy that non-strictly. This helper treats
+        // equal vectors as NOT dominating (see the "strictly ahead" wording in its doc comment).
+        assert!(!version_dominates(&a1, &a1));
     }
 
     #[test]
@@ -682,7 +788,7 @@ mod tests {
             sequence: 999,
             relative_path: "a.txt".to_string(),
             kind: OperationKind::Update,
-            base_revision: Some(local.sequence),
+            base_version: resulting_version(&local),
             content_hash: Some("h2".to_string()),
             author_device_id: "dev-b".to_string(),
             applied_at_ms: 2_000,
@@ -712,7 +818,7 @@ mod tests {
             sequence: 999,
             relative_path: "a.txt".to_string(),
             kind: OperationKind::Update,
-            base_revision: Some(first.sequence),
+            base_version: resulting_version(&first),
             content_hash: Some("h2-remote".to_string()),
             author_device_id: "dev-b".to_string(),
             applied_at_ms: 3_000,
@@ -740,6 +846,80 @@ mod tests {
     }
 
     #[test]
+    fn three_devices_diverging_from_the_same_base_is_recorded_as_a_genuine_conflict() {
+        // Generalization check for the version-vector model: not just two parties racing, but
+        // three independent devices (A local to this store, B and C remote) all branching off the
+        // *same* base version while offline from each other. None of the three resulting versions
+        // dominates either of the others — this is the scenario the plan explicitly called out as
+        // needing its own coverage, since a two-device test alone cannot distinguish "the model
+        // generalizes to N" from "the model happens to still work for the one pair I tested."
+        let root = temp_root("three-way-diverge");
+        let created = apply_local_operation_at(
+            &root, "sub-1", "dev-a", "shared.txt", OperationKind::Create, Some("h0".to_string()), &AllowAll, 1_000,
+        )
+        .unwrap();
+        let shared_base = resulting_version(&created);
+
+        // Device A (this store) advances locally on top of the shared base.
+        let local_advance = apply_local_operation_at(
+            &root, "sub-1", "dev-a", "shared.txt", OperationKind::Update, Some("h-a".to_string()), &AllowAll, 2_000,
+        )
+        .unwrap();
+        let version_after_a = resulting_version(&local_advance);
+
+        // Device B produced an edit from the *same* shared base, unaware of A's — a genuine
+        // concurrent branch, not a linear continuation of A's.
+        let remote_from_b = SignedOperation {
+            sequence: 501,
+            relative_path: "shared.txt".to_string(),
+            kind: OperationKind::Update,
+            base_version: shared_base.clone(),
+            content_hash: Some("h-b".to_string()),
+            author_device_id: "dev-b".to_string(),
+            applied_at_ms: 2_500,
+        };
+        let outcome_b = apply_remote_operation_at(&root, "sub-1", remote_from_b.clone(), &AllowAll, 3_000).unwrap();
+        let conflict_b = outcome_b.expect_err("B branched from the same base A already advanced past — must conflict");
+        assert_eq!(conflict_b.remote_operation, remote_from_b);
+        // The local side of this conflict is A's advance, not B's — confirms the store still
+        // reports what *it* has, not what the incoming side claimed.
+        assert_eq!(conflict_b.local_operation.content_hash, Some("h-a".to_string()));
+
+        // Device C, entirely independent of both A and B, also branches from the same shared base.
+        let remote_from_c = SignedOperation {
+            sequence: 777,
+            relative_path: "shared.txt".to_string(),
+            kind: OperationKind::Update,
+            base_version: shared_base.clone(),
+            content_hash: Some("h-c".to_string()),
+            author_device_id: "dev-c".to_string(),
+            applied_at_ms: 2_600,
+        };
+        let outcome_c = apply_remote_operation_at(&root, "sub-1", remote_from_c.clone(), &AllowAll, 3_100).unwrap();
+        let conflict_c = outcome_c.expect_err("C branched from the same base A already advanced past — must conflict");
+        assert_eq!(conflict_c.remote_operation, remote_from_c);
+
+        // None of the three resulting versions dominates either other — a genuinely 3-way
+        // divergence, not one strictly ahead of the rest.
+        let version_b = resulting_version(&remote_from_b);
+        let version_c = resulting_version(&remote_from_c);
+        assert!(!version_dominates(&version_after_a, &version_b));
+        assert!(!version_dominates(&version_b, &version_after_a));
+        assert!(!version_dominates(&version_after_a, &version_c));
+        assert!(!version_dominates(&version_c, &version_after_a));
+        assert!(!version_dominates(&version_b, &version_c));
+        assert!(!version_dominates(&version_c, &version_b));
+
+        // Both conflicts were recorded (not merged into one, not silently dropped), and the local
+        // state still reflects only A's own advance — neither B's nor C's content silently won.
+        let state = load_engine_at(&root, "sub-1").unwrap();
+        assert_eq!(state.conflicts.len(), 2);
+        let current = current_revision(&state, "shared.txt").unwrap();
+        assert_eq!(current.content_hash, Some("h-a".to_string()));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn resolve_keep_remote_overwrites_and_keep_both_preserves_a_renamed_sibling() {
         let root = temp_root("resolve");
         let first = apply_local_operation_at(
@@ -754,7 +934,7 @@ mod tests {
             sequence: 999,
             relative_path: "notes.md".to_string(),
             kind: OperationKind::Update,
-            base_revision: Some(first.sequence),
+            base_version: resulting_version(&first),
             content_hash: Some("h2-remote".to_string()),
             author_device_id: "dev-b".to_string(),
             applied_at_ms: 3_000,
@@ -790,7 +970,7 @@ mod tests {
             sequence: 999,
             relative_path: "notes.md".to_string(),
             kind: OperationKind::Update,
-            base_revision: Some(first2.sequence),
+            base_version: resulting_version(&first2),
             content_hash: Some("h2-remote".to_string()),
             author_device_id: "dev-b".to_string(),
             applied_at_ms: 3_000,
@@ -855,7 +1035,7 @@ mod tests {
                     sequence: i as u64,
                     relative_path: format!("file-{i}.txt"),
                     kind: OperationKind::Create,
-                    base_revision: None,
+                    base_version: empty_version(),
                     content_hash: None,
                     author_device_id: "dev-a".to_string(),
                     applied_at_ms: 1_000 + i as u64,

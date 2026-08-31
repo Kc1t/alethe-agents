@@ -8,9 +8,17 @@ import {
   p2pSessionState,
   prepareRemoteCandidate,
   type DiscoveredCandidate,
+  type NatClass,
 } from '../lib/api/p2pBridge'
+import { P2P_CHANNEL_CHAT, tagFrame } from '../lib/api/p2pChannel'
 import { subscribeToRendezvousEvents } from '../lib/api/rendezvousEventBus'
 import { connectRendezvous, sendRendezvousFrame } from '../lib/api/syncRendezvous'
+import {
+  githubSignalingCleanupSession,
+  githubSignalingHasToken,
+  githubSignalingPollCandidate,
+  githubSignalingPublishCandidate,
+} from '../lib/api/syncRendezvousGit'
 import { syncFindTrustedDeviceForAccountRoute, syncLocalIdentity } from '../lib/tauri'
 
 export type P2pAutoConnectState = 'idle' | 'signaling' | 'p2p' | 'relay' | 'failed'
@@ -27,6 +35,55 @@ const CANDIDATE_WAIT_MS = 10_000
 /// bound while we can't decrypt any of them.
 const CANDIDATE_INBOX_MAX = 8
 
+/** Publishes this device's own candidate to its signaling Gist and polls the peer's Gist for
+ * theirs, for up to `GITHUB_FALLBACK_WAIT_MS` — only reached after the primary Cloudflare wait
+ * already timed out (see the call site), so this never adds latency to the common case where
+ * Cloudflare delivers the candidate normally. Returns `null` (not a throw) on any failure — a
+ * broken/unconfigured fallback must never be worse than not having tried it, so a rejected token
+ * or an unreachable GitHub API just means "stay on relay," same as if this fallback did not
+ * exist. */
+async function tryGithubSignalingFallback(params: {
+  log: (...args: unknown[]) => void
+  sessionId: string
+  localDeviceId: string
+  localGistId: string
+  peerGistId: string
+  ownEnvelopeCiphertext: string
+}): Promise<{ host: string; port: number; localHost: string | null; localPort: number | null; natClass: NatClass | null } | null> {
+  const { log, sessionId, localDeviceId, localGistId, peerGistId, ownEnvelopeCiphertext } = params
+  try {
+    if (!(await githubSignalingHasToken())) return null
+    log('primary relay candidate wait timed out — trying the GitHub signaling fallback')
+    await githubSignalingPublishCandidate({
+      gistId: localGistId,
+      sessionId,
+      senderDeviceId: localDeviceId,
+      ciphertext: ownEnvelopeCiphertext,
+    })
+    const deadline = Date.now() + GITHUB_FALLBACK_WAIT_MS
+    while (Date.now() < deadline) {
+      const ciphertext = await githubSignalingPollCandidate({ gistId: peerGistId, sessionId, localDeviceId })
+      if (ciphertext) {
+        const candidate = await consumeRemoteCandidate(ciphertext, sessionId)
+        log('peer candidate received via the GitHub signaling fallback')
+        return {
+          host: candidate.publicHost,
+          port: candidate.publicPort,
+          localHost: candidate.localHost,
+          localPort: candidate.localPort,
+          natClass: candidate.natClass,
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, GITHUB_FALLBACK_POLL_INTERVAL_MS))
+    }
+    log(`GitHub signaling fallback also timed out after ${GITHUB_FALLBACK_WAIT_MS / 1000}s`)
+    return null
+  } catch (cause) {
+    log('GitHub signaling fallback failed, staying on relay', cause)
+    return null
+  }
+}
+
 /**
  * Automates, for a single already-known collaborator, the P2P signaling steps: connect the
  * rendezvous relay, discover this device's public candidate via STUN, encrypt+send it to the peer,
@@ -39,9 +96,29 @@ const CANDIDATE_INBOX_MAX = 8
  * direct UDP session) whenever the direct attempt fails or hasn't completed yet — this only
  * degrades to `'idle'` if the rendezvous relay itself never connects.
  */
-export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
+export type P2pNatInfo = { local: NatClass; peer: NatClass | null }
+
+/// Extra window given to the GitHub Gist fallback after the primary Cloudflare candidate wait
+/// (`CANDIDATE_WAIT_MS`) times out — only spent when the fallback is actually configured
+/// (`localGistId`/`peerGistId` both present and a GitHub token is stored), so a session with no
+/// fallback configured never waits any longer than before this existed.
+const GITHUB_FALLBACK_WAIT_MS = 10_000
+const GITHUB_FALLBACK_POLL_INTERVAL_MS = 2_000
+
+export function useP2pAutoConnect(
+  remotePeerAccountRoute: string | null,
+  /** This device's own signaling Gist id (see `syncRendezvousGit.ts`'s `githubSignalingCreateGist`)
+   * and the peer's, as learned from the pairing invitation. Either being `null`/`undefined`
+   * disables the GitHub fallback entirely for this peer — Cloudflare remains the only signaling
+   * path in that case, exactly as before this fallback existed. */
+  gistIds?: { local: string | null; peer: string | null },
+) {
   const [state, setStateRaw] = useState<P2pAutoConnectState>('idle')
   const [remoteAgreementPublicKey, setRemoteAgreementPublicKey] = useState<string | null>(null)
+  // Additive to the state machine above, not a replacement — reflects the last NAT classification
+  // seen for this peer, for callers (e.g. `ChatPanel`) that want to explain *why* a direct
+  // connection is unavailable rather than just showing "relay".
+  const [natInfo, setNatInfo] = useState<P2pNatInfo | null>(null)
   const attemptedAtRef = useRef(0)
   const cancelledRef = useRef(false)
   // Guards against two `attempt()` calls overlapping — the periodic background retry below used to
@@ -121,6 +198,7 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
         publicPort: discovered.publicPort,
         localHost: discovered.localHost,
         localPort: discovered.localPort,
+        natClass: discovered.natClass,
         recipientAccountRoute: peerAccountRoute,
         recipientDeviceId: remoteDeviceId,
         recipientAgreementPublicKey: peerAgreementPublicKey,
@@ -136,7 +214,13 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
       })
       log('own candidate sent, waiting for the peer candidate…')
 
-      type Candidate = { host: string; port: number; localHost: string | null; localPort: number | null }
+      type Candidate = {
+        host: string
+        port: number
+        localHost: string | null
+        localPort: number | null
+        natClass: NatClass | null
+      }
       // Drains the retained inbox (filled by the always-on subscription) rather than only watching
       // for candidates that happen to arrive during this call's own wait window.
       const takeCandidateFromInbox = async (): Promise<Candidate | null> => {
@@ -150,6 +234,7 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
               port: candidate.publicPort,
               localHost: candidate.localHost,
               localPort: candidate.localPort,
+              natClass: candidate.natClass,
             }
           } catch (cause) {
             log('candidate delivery did not match this session, ignoring', cause)
@@ -176,6 +261,16 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
         })
         candidate = await takeCandidateFromInbox()
       }
+      if (!candidate && gistIds?.local && gistIds?.peer) {
+        candidate = await tryGithubSignalingFallback({
+          log,
+          sessionId,
+          localDeviceId: identity.deviceId,
+          localGistId: gistIds.local,
+          peerGistId: gistIds.peer,
+          ownEnvelopeCiphertext: envelope.ciphertext,
+        })
+      }
       if (!candidate) {
         log(
           `timed out waiting for the peer candidate (${CANDIDATE_WAIT_MS / 1000}s) — staying on relay. ` +
@@ -186,6 +281,16 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
       if (cancelledRef.current) return
       const finalCandidate = candidate
       log('peer candidate received', finalCandidate)
+      setNatInfo({ local: discovered.natClass, peer: finalCandidate.natClass })
+
+      // Both sides classified their network as symmetric NAT with confidence — a hole punch
+      // cannot succeed here (see the Rust `NatClass::Symmetric` doc comment), so skip straight to
+      // relay instead of waiting out the full punch/handshake timeout below for an attempt that is
+      // already known to fail.
+      if (discovered.natClass === 'symmetric' && finalCandidate.natClass === 'symmetric') {
+        log('both sides are behind symmetric NAT — skipping the punch attempt, staying on relay')
+        return
+      }
 
       // Defence in depth for the in-flight guard: if this call ever fails to settle (it once did —
       // a peer vanishing mid-handshake blocked the backend's stream read forever), the guard would
@@ -200,13 +305,23 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
           peerLocalPort: finalCandidate.localPort,
           isInitiator,
           remoteAccountRoute: peerAccountRoute,
+          localNatClass: discovered.natClass,
+          peerNatClass: finalCandidate.natClass,
         }),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('p2p_connect_timed_out')), CONNECT_ATTEMPT_TIMEOUT_MS),
         ),
       ])
       log('p2pConnect result', result)
-      if (result.connected && !cancelledRef.current) setState('p2p')
+      if (result.connected && !cancelledRef.current) {
+        setState('p2p')
+        if (gistIds?.local) {
+          // Best-effort — the entry also self-expires (see `sync_rendezvous_git.rs`'s
+          // `CANDIDATE_TTL_MS`), so a failure here just means slightly more dead weight in the
+          // Gist until it expires on its own, not a correctness problem.
+          void githubSignalingCleanupSession(gistIds.local, sessionId).catch(() => {})
+        }
+      }
     } catch (cause) {
       log('attempt failed, falling back to relay', cause)
       if (!cancelledRef.current) setState((current) => (current === 'p2p' ? current : 'relay'))
@@ -221,6 +336,7 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
     candidateInboxRef.current = []
     setState('idle')
     setRemoteAgreementPublicKey(null)
+    setNatInfo(null)
     if (!remotePeerAccountRoute) return
     return () => {
       cancelledRef.current = true
@@ -312,7 +428,9 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
       if (!remotePeerAccountRoute) throw new Error('p2p_no_peer')
       if (state === 'p2p') {
         try {
-          await p2pSendFrame(remotePeerAccountRoute, bytes)
+          // Tagged so the receiving side's single drain loop can tell this apart from a file-sync
+          // frame sharing the same underlying P2P session — see `p2pChannel.ts`.
+          await p2pSendFrame(remotePeerAccountRoute, tagFrame(P2P_CHANNEL_CHAT, bytes))
           return
         } catch (cause) {
           // The session died (e.g. the punched-through UDP path's NAT mapping expired from
@@ -333,5 +451,5 @@ export function useP2pAutoConnect(remotePeerAccountRoute: string | null) {
     [remotePeerAccountRoute, state, setState],
   )
 
-  return { state, connect, send, remoteAgreementPublicKey }
+  return { state, connect, send, remoteAgreementPublicKey, natInfo }
 }

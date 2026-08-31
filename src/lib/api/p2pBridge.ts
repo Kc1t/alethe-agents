@@ -62,6 +62,11 @@ export async function parsePairingCode(code: string): Promise<PairingCode> {
 }
 
 
+/** This device's `classify_nat` result — see the Rust `NatClass` doc comments for what each
+ * variant means and its caveats. `symmetric` on both sides of a session means a hole punch cannot
+ * succeed (not "is unlikely to") and the caller should skip straight to the relay fallback. */
+export type NatClass = 'cone' | 'symmetric' | 'unknown'
+
 export type OutgoingCandidateEnvelope = {
   messageId: string
   recipientAccountRoute: string
@@ -80,6 +85,9 @@ export async function prepareRemoteCandidate(params: {
    * is NOT the same number as `publicPort`. */
   localHost?: string | null
   localPort?: number | null
+  /** This device's own NAT classification, so the peer can decide whether to skip the punch
+   * without an extra round-trip. See `DiscoveredCandidate.natClass`. */
+  natClass?: NatClass | null
   recipientAccountRoute: string
   recipientDeviceId?: string
   recipientAgreementPublicKey: string
@@ -91,6 +99,7 @@ export async function prepareRemoteCandidate(params: {
     publicPort: params.publicPort,
     localHost: params.localHost ?? null,
     localPort: params.localPort ?? null,
+    natClass: params.natClass ?? null,
     recipientAccountRoute: params.recipientAccountRoute,
     recipientDeviceId: params.recipientDeviceId ?? null,
     recipientAgreementPublicKey: params.recipientAgreementPublicKey,
@@ -103,6 +112,8 @@ export type RemoteCandidate = {
   publicPort: number
   localHost: string | null
   localPort: number | null
+  /** The peer's own NAT classification, as reported by them. See `DiscoveredCandidate.natClass`. */
+  natClass: NatClass | null
 }
 
 export async function consumeRemoteCandidate(
@@ -119,6 +130,8 @@ export type DiscoveredCandidate = {
   localPort: number
   /** This device's LAN-facing IP, best-effort (`null` if it could not be determined). */
   localHost: string | null
+  /** This device's own NAT classification for its current network. See `NatClass`. */
+  natClass: NatClass
 }
 
 /** Binds a UDP socket and discovers its public address via STUN. `localPort` must be reused (not
@@ -143,6 +156,12 @@ export async function p2pConnect(params: {
   peerLocalPort?: number | null
   isInitiator: boolean
   remoteAccountRoute: string
+  /** This device's own NAT classification (from `discoverP2pCandidate`). Passed through so the
+   * backend can skip the punch entirely when both sides are `symmetric` — see `p2pConnect`'s
+   * rejection with `p2p_both_sides_symmetric_nat` in that case. */
+  localNatClass?: NatClass | null
+  /** The peer's NAT classification, as reported in their candidate exchange. */
+  peerNatClass?: NatClass | null
 }): Promise<P2pConnectResult> {
   if (!isTauriEnv()) throw new Error('p2p_desktop_only')
   return invoke('sync_p2p_connect', {
@@ -153,6 +172,8 @@ export async function p2pConnect(params: {
     peerLocalPort: params.peerLocalPort ?? null,
     isInitiator: params.isInitiator,
     remoteAccountRoute: params.remoteAccountRoute,
+    localNatClass: params.localNatClass ?? null,
+    peerNatClass: params.peerNatClass ?? null,
   })
 }
 

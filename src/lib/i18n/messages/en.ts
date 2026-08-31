@@ -38,6 +38,13 @@ export const en = {
   'chat.connectionState.connecting': 'Connecting…',
   'chat.connectionState.p2p': 'P2P direct · encrypted',
   'chat.connectionState.relay': 'Via Cloudflare · encrypted',
+  'chat.connectionState.symmetricNatHint':
+    "Your network doesn't allow a direct connection to this peer (symmetric NAT/CGNAT) — messages keep working through the relay, but a direct connection isn't possible from this network.",
+  'chat.fileSync.syncNow': 'Sync project now',
+  'chat.fileSync.offered': 'Project offered — waiting for the transfer to complete…',
+  'chat.fileSync.receiving': 'Receiving the project…',
+  'chat.fileSync.received': 'Project received at {path}',
+  'chat.fileSync.error': 'Something went wrong syncing the project — check the logs for details.',
   'chat.syncNotice.local':
     'No one else has joined this conversation yet — messages stay only on this device.',
   'chat.syncNotice.connecting': 'Trying to reach the other device…',
@@ -2678,6 +2685,18 @@ export const en = {
   'collaboration.editManually': 'Edit manually',
   'collaboration.enableHint':
     'Enabling starts a connection attempt using the option selected above. You can turn it off at any time — nothing is sent until it is enabled.',
+  'collaboration.githubSignaling.title': 'Alternate signaling via GitHub',
+  'collaboration.githubSignaling.description':
+    'An additional, optional channel for exchanging connection candidates, in case Cloudflare is unreachable. Never a replacement — Cloudflare stays the primary path.',
+  'collaboration.githubSignaling.explainer':
+    'Uses a private Gist in your own GitHub account as a fallback mailbox. Only ever carries the same small, already-encrypted connection candidate — never project files or chat content.',
+  'collaboration.githubSignaling.statusLabel': 'Status',
+  'collaboration.githubSignaling.configured': 'Configured',
+  'collaboration.githubSignaling.notConfigured': 'Not configured',
+  'collaboration.githubSignaling.tokenLabel': 'Personal access token (scope: gist)',
+  'collaboration.githubSignaling.save': 'Save',
+  'collaboration.githubSignaling.remove': 'Remove',
+  'collaboration.githubSignaling.error': 'Could not validate or save this token — check it and try again.',
   'collaboration.privacyTitle': 'What this service can and cannot see',
   'collaboration.privacyVisible':
     'It can see: anonymous device IDs, public keys, whether a device is online, and the size of encrypted data — never its content.',

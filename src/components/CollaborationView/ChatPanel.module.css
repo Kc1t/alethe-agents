@@ -158,6 +158,30 @@
   color: var(--status-working);
 }
 
+.headerAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.headerAction:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.headerAction:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .e2eBadge_relay {
   background: var(--accent-soft, var(--status-working-soft));
   border: 1px solid var(--accent);

@@ -3,7 +3,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useP2pAutoConnect } from '../../hooks/useP2pAutoConnect'
 import { p2pDrainFrames } from '../../lib/api/p2pBridge'
+import { P2P_CHANNEL_CHAT, P2P_CHANNEL_FILE_SYNC, untagFrame } from '../../lib/api/p2pChannel'
 import { subscribeToRendezvousEvents } from '../../lib/api/rendezvousEventBus'
+import { syncFilePipelineIngestFrame, syncFilePipelineOfferProject } from '../../lib/api/syncFilePipeline'
 import {
   type Conversation,
   type DecryptedMessage,
@@ -174,6 +176,29 @@ export function ChatPanel({ source }: { source: ChatSource }) {
     [conversation, localAccountRoute],
   )
   const p2p = useP2pAutoConnect(otherMember?.accountRoute ?? null)
+  // Manual "sync project now" trigger — see `syncFilePipeline.ts`. Deliberately manual (not
+  // automatic on connect) for this first testable pass: no background watcher is wired to trigger
+  // it yet, and starting a transfer of arbitrary size the instant two peers connect would be a
+  // surprise, not a convenience, before this path has been proven reliable.
+  const localProject = useProjectsStore((state) =>
+    source.kind === 'project' ? state.projects.find((project) => project.id === source.projectId) ?? null : null,
+  )
+  const [fileSyncBusy, setFileSyncBusy] = useState(false)
+  const [fileSyncStatus, setFileSyncStatus] = useState<string | null>(null)
+  const syncProjectNow = async () => {
+    if (!otherMember || source.kind !== 'project' || !localProject?.defaultCwd) return
+    setFileSyncBusy(true)
+    setFileSyncStatus(null)
+    try {
+      await syncFilePipelineOfferProject(otherMember.accountRoute, localProject.defaultCwd)
+      setFileSyncStatus(t('chat.fileSync.offered'))
+    } catch (cause) {
+      console.error('[chat] syncFilePipelineOfferProject failed', cause)
+      setFileSyncStatus(t('chat.fileSync.error'))
+    } finally {
+      setFileSyncBusy(false)
+    }
+  }
   const [draft, setDraft] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -386,9 +411,23 @@ export function ChatPanel({ source }: { source: ChatSource }) {
           const frames = await p2pDrainFrames(accountRoute)
           if (frames.length > 0) console.info('[chat] p2p frames received', frames.length)
           for (const frame of frames) {
-            await syncIngestChatTransportFrame(conversationId, frame).catch((cause) => {
-              console.error('[chat] failed to ingest p2p frame', cause)
-            })
+            const untagged = untagFrame(frame)
+            if (!untagged) continue
+            if (untagged.tag === P2P_CHANNEL_CHAT) {
+              await syncIngestChatTransportFrame(conversationId, untagged.payload).catch((cause) => {
+                console.error('[chat] failed to ingest p2p frame', cause)
+              })
+            } else if (untagged.tag === P2P_CHANNEL_FILE_SYNC) {
+              await syncFilePipelineIngestFrame(accountRoute, untagged.payload)
+                .then((event) => {
+                  if (event.type === 'stagingStarted') setFileSyncStatus(t('chat.fileSync.receiving'))
+                  else if (event.type === 'syncCompleted') setFileSyncStatus(t('chat.fileSync.received', { path: event.destination }))
+                })
+                .catch((cause) => {
+                  console.error('[chat] failed to ingest file-sync frame', cause)
+                  setFileSyncStatus(t('chat.fileSync.error'))
+                })
+            }
           }
         } catch (cause) {
           console.error('[chat] p2pDrainFrames failed', cause)
@@ -623,9 +662,28 @@ export function ChatPanel({ source }: { source: ChatSource }) {
             <span className={styles.headerTitle}>
               {source.kind === 'direct' ? source.contactDisplayLabel : source.projectName}
             </span>
-            <span className={`${styles.e2eBadge} ${styles[`e2eBadge_${connectionState}`]}`}>
+            <span
+              className={`${styles.e2eBadge} ${styles[`e2eBadge_${connectionState}`]}`}
+              title={
+                connectionState === 'relay' && p2p.natInfo?.local === 'symmetric'
+                  ? t('chat.connectionState.symmetricNatHint')
+                  : undefined
+              }
+            >
               {t(`chat.connectionState.${connectionState}`)}
             </span>
+            {source.kind === 'project' && p2p.state === 'p2p' && localProject?.defaultCwd ? (
+              <button
+                type="button"
+                className={styles.headerAction}
+                disabled={fileSyncBusy}
+                title={fileSyncStatus ?? undefined}
+                onClick={() => void syncProjectNow()}
+              >
+                {fileSyncBusy ? <Loader2 size={13} className={styles.spin} /> : null}
+                {t('chat.fileSync.syncNow')}
+              </button>
+            ) : null}
             {source.kind === 'project' && otherMembers.length > 0 ? (
               <div className={styles.headerMembers} title={t('chat.headerMembersTitle', { count: otherMembers.length })}>
                 {otherMembers.slice(0, 4).map((member) => (

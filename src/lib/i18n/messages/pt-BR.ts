@@ -40,6 +40,13 @@ export const ptBR: Record<MessageKey, string> = {
   'chat.connectionState.connecting': 'Conectando…',
   'chat.connectionState.p2p': 'P2P direto · criptografado',
   'chat.connectionState.relay': 'Via Cloudflare · criptografado',
+  'chat.connectionState.symmetricNatHint':
+    'Sua rede não permite conexão direta com este contato (NAT simétrico/CGNAT) — as mensagens continuam funcionando pelo relay, mas uma conexão direta não é possível a partir desta rede.',
+  'chat.fileSync.syncNow': 'Sincronizar projeto agora',
+  'chat.fileSync.offered': 'Projeto oferecido — aguardando a transferência terminar…',
+  'chat.fileSync.receiving': 'Recebendo o projeto…',
+  'chat.fileSync.received': 'Projeto recebido em {path}',
+  'chat.fileSync.error': 'Algo deu errado sincronizando o projeto — confira os logs para detalhes.',
   'chat.syncNotice.local':
     'Ainda ninguém entrou nessa conversa — as mensagens ficam só neste dispositivo.',
   'chat.syncNotice.connecting': 'Tentando conectar com o outro dispositivo…',
@@ -2699,6 +2706,18 @@ export const ptBR: Record<MessageKey, string> = {
   'collaboration.editManually': 'Editar manualmente',
   'collaboration.enableHint':
     'Ativar inicia uma tentativa de conexão usando a opção selecionada acima. Você pode desligar quando quiser — nada é enviado enquanto não estiver ativado.',
+  'collaboration.githubSignaling.title': 'Sinalização alternativa via GitHub',
+  'collaboration.githubSignaling.description':
+    'Um canal adicional e opcional para troca de candidatos de conexão, caso o Cloudflare esteja inacessível. Nunca substitui — o Cloudflare continua sendo a via primária.',
+  'collaboration.githubSignaling.explainer':
+    'Usa um Gist privado na sua própria conta do GitHub como caixa de correio alternativa. Carrega apenas o mesmo candidato de conexão pequeno e já criptografado — nunca arquivos do projeto ou conteúdo do chat.',
+  'collaboration.githubSignaling.statusLabel': 'Status',
+  'collaboration.githubSignaling.configured': 'Configurado',
+  'collaboration.githubSignaling.notConfigured': 'Não configurado',
+  'collaboration.githubSignaling.tokenLabel': 'Token de acesso pessoal (escopo: gist)',
+  'collaboration.githubSignaling.save': 'Salvar',
+  'collaboration.githubSignaling.remove': 'Remover',
+  'collaboration.githubSignaling.error': 'Não foi possível validar ou salvar este token — confira e tente novamente.',
   'collaboration.privacyTitle': 'O que esse serviço consegue ver e o que não consegue',
   'collaboration.privacyVisible':
     'Ele consegue ver: IDs anônimos dos dispositivos, chaves públicas, se um dispositivo está online e o tamanho dos dados criptografados — nunca o conteúdo deles.',

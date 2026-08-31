@@ -70,13 +70,17 @@ pub mod sync_chat;
 pub mod sync_cloudflare_deploy;
 pub mod sync_crypto;
 pub mod sync_engine;
+pub mod sync_file_pipeline;
+pub mod sync_file_pipeline_session;
 pub mod sync_invitation_bridge;
 pub mod sync_manifest;
 pub mod sync_mesh;
+pub mod project_file_watcher;
 pub mod sync_p2p_bridge;
 pub mod sync_protocol;
 pub mod sync_remote_invitation;
 pub mod sync_rendezvous;
+pub mod sync_rendezvous_git;
 pub mod sync_security;
 pub mod sync_staging;
 pub mod sync_subscription;
@@ -175,6 +179,7 @@ pub fn run() {
         .manage(cli_launch::PendingOpen::default())
         .manage(std::sync::Arc::new(sync_rendezvous::RendezvousRuntime::default()))
         .manage(std::sync::Arc::new(sync_p2p_bridge::P2pSessionRegistry::default()))
+        .manage(std::sync::Arc::new(sync_file_pipeline_session::FileSyncSessionRegistry::default()))
         .manage(orchestrator::OrchestratorState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -637,6 +642,15 @@ pub fn run() {
             sync_p2p_bridge::p2p_send_frame,
             sync_p2p_bridge::p2p_drain_frames,
             sync_p2p_bridge::p2p_session_state,
+            sync_file_pipeline_session::sync_file_pipeline_offer_project,
+            sync_file_pipeline_session::sync_file_pipeline_ingest_frame,
+            sync_rendezvous_git::sync_github_signaling_set_token,
+            sync_rendezvous_git::sync_github_signaling_clear_token,
+            sync_rendezvous_git::sync_github_signaling_has_token,
+            sync_rendezvous_git::sync_github_signaling_create_gist,
+            sync_rendezvous_git::sync_github_signaling_publish_candidate,
+            sync_rendezvous_git::sync_github_signaling_poll_candidate,
+            sync_rendezvous_git::sync_github_signaling_cleanup_session,
             sync_remote_invitation::sync_export_pairing_code,
             sync_remote_invitation::sync_regenerate_pairing_code,
             sync_remote_invitation::sync_parse_pairing_code,

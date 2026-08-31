@@ -23,6 +23,9 @@ src-tauri/target/
 # Build isolada do harness de E2E — nunca compartilha target/ com o `tauri dev`
 # interativo (lock e binário de saída próprios).
 src-tauri/target-e2e/
+# Build isolada usada para rodar `cargo test`/`cargo check` em paralelo com o `tauri dev`
+# ativo, sem disputar o lock do target/ principal.
+src-tauri/target_test/
 src-tauri/gen/
 
 # Artefatos gerados a cada rodada do suite E2E (screenshots/relatórios de
