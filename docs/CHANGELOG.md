@@ -32,6 +32,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Fixed pasting/picking multiple images overwriting each other**: the pinned-attachment slot only ever held one file — pasting or picking a second one silently replaced the first instead of adding to it. Now a list: every pasted/picked file gets its own chip, sent together when you press Enter/Send (a typed caption goes on the first one only).
 - **Fixed the pinned attachment chip squeezing the composer's text field**: it used to sit in the same row as the input, narrowing it every time a file was pinned — now stacks on its own row above the input, same as the active-content-type pill.
 - **The pinned attachment chip is now clickable** (not just a static preview) to view it full-size before sending, with a hover highlight on the whole chip so it reads as clickable.
 - **Click-to-zoom in the full-screen image viewer**: clicking a spot on the image zooms in centered on exactly that point (click again to zoom back out) — the previous viewer only ever showed the image at a single fit-to-screen size, with no way to look closer at a detail.

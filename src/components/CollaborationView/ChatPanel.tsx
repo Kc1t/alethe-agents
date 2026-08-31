@@ -245,12 +245,13 @@ export function ChatPanel({
   const [contentType, setContentType] = useState<MessageContentType>('text')
   const [sending, setSending] = useState(false)
   const [attaching, setAttaching] = useState(false)
-  // A file pasted/picked is staged here instead of uploading immediately — pinned as a small
-  // preview above the composer so the caption (the `draft` text) can still be typed before it's
-  // actually sent, instead of the file going out the instant it's pasted with no way to say
-  // anything alongside it.
-  const [pendingAttachment, setPendingAttachment] = useState<{ file: File; previewUrl: string | null } | null>(null)
-  const [pendingLightboxOpen, setPendingLightboxOpen] = useState(false)
+  // Files pasted/picked are staged here instead of uploading immediately — pinned as small
+  // previews above the composer so the caption (the `draft` text) can still be typed before
+  // they're actually sent, instead of each file going out the instant it's pasted with no way to
+  // say anything alongside it. A list, not a single slot — pasting/picking several at once used to
+  // silently overwrite whichever one was already pinned (reported live).
+  const [pendingAttachments, setPendingAttachments] = useState<{ file: File; previewUrl: string | null }[]>([])
+  const [pendingLightboxIndex, setPendingLightboxIndex] = useState<number | null>(null)
   const [slashHighlight, setSlashHighlight] = useState(0)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
@@ -529,28 +530,41 @@ export function ChatPanel({
     })
   }, [conversation, otherMember])
 
-  const clearPendingAttachment = () => {
-    setPendingAttachment((current) => {
-      if (current?.previewUrl) URL.revokeObjectURL(current.previewUrl)
-      return null
+  const removePendingAttachment = (index: number) => {
+    setPendingAttachments((current) => {
+      const removed = current[index]
+      if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl)
+      return current.filter((_, i) => i !== index)
     })
-    setPendingLightboxOpen(false)
+    setPendingLightboxIndex(null)
   }
 
-  // Pins the file above the composer instead of uploading it right away — see `pendingAttachment`.
+  const clearAllPendingAttachments = () => {
+    setPendingAttachments((current) => {
+      for (const item of current) if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
+      return []
+    })
+    setPendingLightboxIndex(null)
+  }
+
+  // Pins the file above the composer instead of uploading it right away — see
+  // `pendingAttachments`. Appends, so pasting/picking several files in a row stages all of them.
   const stageAttachment = (file: File) => {
-    clearPendingAttachment()
     const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : null
-    setPendingAttachment({ file, previewUrl })
+    setPendingAttachments((current) => [...current, { file, previewUrl }])
     textInputRef.current?.focus()
   }
 
   const send = async () => {
     if (!conversation) return
-    if (pendingAttachment) {
-      const { file } = pendingAttachment
-      clearPendingAttachment()
-      await attachFile(file, draft)
+    if (pendingAttachments.length > 0) {
+      const staged = pendingAttachments
+      clearAllPendingAttachments()
+      // The typed caption (if any) goes on the first attachment only — sending N separate
+      // messages each repeating the same caption would read as spam, not a caption.
+      for (const [index, { file }] of staged.entries()) {
+        await attachFile(file, index === 0 ? draft : undefined)
+      }
       return
     }
     if (!draft.trim()) return
@@ -990,34 +1004,42 @@ export function ChatPanel({
             </button>
           </span>
         ) : null}
-        {pendingAttachment ? (
-          <div className={styles.pendingAttachment}>
-            <button
-              type="button"
-              className={styles.pendingAttachmentPreviewTrigger}
-              disabled={!pendingAttachment.previewUrl}
-              onClick={() => setPendingLightboxOpen(true)}
-              title={pendingAttachment.previewUrl ? t('chat.viewFullSize') : undefined}
-            >
-              {pendingAttachment.previewUrl ? (
-                <img src={pendingAttachment.previewUrl} alt="" className={styles.pendingAttachmentThumb} />
-              ) : (
-                <Paperclip size={14} />
-              )}
-              <span className={styles.pendingAttachmentName}>{pendingAttachment.file.name}</span>
-            </button>
-            <button
-              type="button"
-              className={styles.pendingAttachmentClear}
-              onClick={clearPendingAttachment}
-              title={t('common.remove')}
-            >
-              <X size={12} />
-            </button>
+        {pendingAttachments.length > 0 ? (
+          <div className={styles.pendingAttachmentRow}>
+            {pendingAttachments.map((pending, index) => (
+              <div key={index} className={styles.pendingAttachment}>
+                <button
+                  type="button"
+                  className={styles.pendingAttachmentPreviewTrigger}
+                  disabled={!pending.previewUrl}
+                  onClick={() => setPendingLightboxIndex(index)}
+                  title={pending.previewUrl ? t('chat.viewFullSize') : undefined}
+                >
+                  {pending.previewUrl ? (
+                    <img src={pending.previewUrl} alt="" className={styles.pendingAttachmentThumb} />
+                  ) : (
+                    <Paperclip size={14} />
+                  )}
+                  <span className={styles.pendingAttachmentName}>{pending.file.name}</span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.pendingAttachmentClear}
+                  onClick={() => removePendingAttachment(index)}
+                  title={t('common.remove')}
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
           </div>
         ) : null}
-        {pendingLightboxOpen && pendingAttachment?.previewUrl ? (
-          <Lightbox src={pendingAttachment.previewUrl} kind="image" onClose={() => setPendingLightboxOpen(false)} />
+        {pendingLightboxIndex !== null && pendingAttachments[pendingLightboxIndex]?.previewUrl ? (
+          <Lightbox
+            src={pendingAttachments[pendingLightboxIndex].previewUrl!}
+            kind="image"
+            onClose={() => setPendingLightboxIndex(null)}
+          />
         ) : null}
         <div className={styles.composerRow}>
         <div className={styles.inputPill}>
@@ -1109,19 +1131,21 @@ export function ChatPanel({
                 .filter((file): file is File => file !== null)
               if (files.length === 0) return
               // A pasted image has no filename from the clipboard — text keeps flowing into the
-              // draft as usual, only the image itself is intercepted and pinned above the
-              // composer (see `stageAttachment`) instead of uploading immediately.
+              // draft as usual, only the image(s) themselves are intercepted and pinned above the
+              // composer (see `stageAttachment`) instead of uploading immediately. Every pasted
+              // image is staged, not just the first — pasting several at once used to silently
+              // overwrite whichever one was already pinned.
               event.preventDefault()
-              stageAttachment(files[0])
+              for (const file of files) stageAttachment(file)
             }}
           />
           <input
             ref={fileInputRef}
             type="file"
+            multiple
             className={styles.hiddenFileInput}
             onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (file) stageAttachment(file)
+              for (const file of Array.from(event.target.files ?? [])) stageAttachment(file)
               event.target.value = ''
             }}
           />
@@ -1138,7 +1162,7 @@ export function ChatPanel({
         <button
           type="button"
           className={styles.sendButton}
-          disabled={sending || attaching || (!draft.trim() && !pendingAttachment) || !conversation}
+          disabled={sending || attaching || (!draft.trim() && pendingAttachments.length === 0) || !conversation}
           onClick={() => void send()}
         >
           {sending || attaching ? <Loader2 size={14} className={styles.spin} /> : <Send size={14} />}
