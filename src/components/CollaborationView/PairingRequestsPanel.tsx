@@ -9,6 +9,7 @@ import {
   syncResolvePendingChatContactRequest,
 } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
+import { DEFAULT_PROFILE_IMAGE_URL } from '../../lib/profile'
 import {
   EXPIRY_CHOICES_MS,
   type ExpiryChoiceId,
@@ -100,7 +101,7 @@ export function PairingRequestsPanel({ onClose }: { onClose: () => void }) {
                 onClick={() => setActiveRequestId(request.requestId)}
               >
                 <Avatar
-                  src={request.avatarThumbnail}
+                  src={request.avatarThumbnail || DEFAULT_PROFILE_IMAGE_URL}
                   initial={request.displayLabel.slice(0, 2).toUpperCase()}
                   className={styles.listItemAvatar}
                 />
@@ -189,7 +190,7 @@ function RequestDecision({
     <div className={styles.decision}>
       <div className={styles.decisionHeader}>
         <Avatar
-          src={request.avatarThumbnail}
+          src={request.avatarThumbnail || DEFAULT_PROFILE_IMAGE_URL}
           initial={request.displayLabel.slice(0, 2).toUpperCase()}
           className={styles.decisionAvatar}
         />

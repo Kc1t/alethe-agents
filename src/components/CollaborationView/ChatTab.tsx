@@ -14,7 +14,7 @@ import {
   syncRenameChatContact,
 } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
-import { getProfileInitial } from '../../lib/profile'
+import { DEFAULT_PROFILE_IMAGE_URL, getProfileInitial } from '../../lib/profile'
 import { Avatar } from '../ui/Avatar'
 import { AddChatContactModal } from './AddChatContactModal'
 import { ChatPanel, type ChatSource } from './ChatPanel'
@@ -314,7 +314,11 @@ export function ChatTab({
                   }
                 >
                   <Avatar
-                    src={contact.avatarThumbnail ?? null}
+                    // Same fallback as `ChatPanel.tsx`'s own avatar handling: the app's default
+                    // icon when there's no real photo synced yet, not a bare initial — keeps "no
+                    // photo set" looking the same everywhere instead of only in the open
+                    // conversation view.
+                    src={contact.avatarThumbnail || DEFAULT_PROFILE_IMAGE_URL}
                     initial={getProfileInitial(contact.displayLabel)}
                     className={styles.contactAvatar}
                   />
