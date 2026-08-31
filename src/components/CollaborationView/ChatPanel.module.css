@@ -599,7 +599,12 @@
 .pendingAttachmentRow {
   display: flex;
   flex-wrap: wrap;
+  align-content: flex-start;
   gap: 6px;
+  /* Bounded so pasting/picking many files at once can't grow the composer (`flex-shrink: 0`)
+   * without limit and squeeze the message list out of view — it scrolls internally instead. */
+  max-height: 160px;
+  overflow-y: auto;
 }
 
 .pendingAttachment {

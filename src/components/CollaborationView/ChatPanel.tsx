@@ -56,6 +56,10 @@ export type ChatContactActions = {
 }
 
 const POLL_INTERVAL_MS = 4_000
+/// Ceiling on files pinned above the composer at once — a paste/selection with more than this
+/// (e.g. an entire folder) is silently truncated rather than staging all of them, both to keep
+/// the pinned-chip row usable and to avoid `send()` firing that many sequential uploads at once.
+const MAX_PENDING_ATTACHMENTS = 10
 
 // Cross-device delivery (relay/P2P) can land messages out of order — a locally-sent message
 // appends immediately, while a peer's message might arrive moments later but with an earlier
@@ -548,10 +552,15 @@ export function ChatPanel({
   }
 
   // Pins the file above the composer instead of uploading it right away — see
-  // `pendingAttachments`. Appends, so pasting/picking several files in a row stages all of them.
+  // `pendingAttachments`. Appends, so pasting/picking several files in a row stages all of them —
+  // capped, so a clipboard/selection with dozens of files doesn't queue up a huge sequential
+  // upload run (`send` uploads them one at a time) or overwhelm the pinned-chip row.
   const stageAttachment = (file: File) => {
-    const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : null
-    setPendingAttachments((current) => [...current, { file, previewUrl }])
+    setPendingAttachments((current) => {
+      if (current.length >= MAX_PENDING_ATTACHMENTS) return current
+      const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : null
+      return [...current, { file, previewUrl }]
+    })
     textInputRef.current?.focus()
   }
 
