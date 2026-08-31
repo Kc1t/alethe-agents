@@ -89,7 +89,7 @@ export const useGraphifyStore = create<GraphifyState>((set, get) => ({
             return
           }
         } catch {
-                                                                               
+          /* ignore unreadable graph */
         }
       }
 

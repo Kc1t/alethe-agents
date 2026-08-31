@@ -57,7 +57,7 @@ function saveLastTrack(np: NowPlaying): void {
   try {
     writeScopedStorage(LAST_TRACK_KEY, JSON.stringify(np))
   } catch {
-                                             
+    /* ignore storage write failures */
   }
 }
 

@@ -359,7 +359,9 @@ export function useXtermSession(params: {
               : undefined,
           )
           clampHorizontalScroll()
-        } catch {}
+        } catch {
+          /* ignore */
+        }
       }
       if (pendingWriteLength > 0) {
         writeFrame = window.requestAnimationFrame(flushPendingWrite)
@@ -393,7 +395,9 @@ export function useXtermSession(params: {
           terminal.write(replay, () => {
             try {
               terminal.scrollToBottom()
-            } catch {}
+            } catch {
+          /* ignore */
+        }
             resolve()
           })
         } catch {
@@ -418,7 +422,9 @@ export function useXtermSession(params: {
       event.stopPropagation()
       try {
         terminal.scrollLines(lines)
-      } catch {}
+      } catch {
+          /* ignore */
+        }
     }
     container.addEventListener('wheel', onWheel, { passive: false, capture: true })
 
@@ -927,7 +933,9 @@ export function useXtermSession(params: {
         try {
           const rect = container?.getBoundingClientRect()
           if (rect && rect.width >= 50 && rect.height >= 30) fitAddon.fit()
-        } catch {}
+        } catch {
+          /* ignore */
+        }
         setCommandNotFound(null)
         setBootPhase('preparing')
 
@@ -1032,7 +1040,9 @@ export function useXtermSession(params: {
               removeSession(sessionPersistenceKey)
               onSessionIdRef.current?.(undefined)
             }
-          } catch {}
+          } catch {
+          /* ignore */
+        }
           if (disposed) return
         }
 
@@ -1050,7 +1060,9 @@ export function useXtermSession(params: {
             const candidates = gsdChildId ? sessions.filter((s) => s.id !== gsdChildId) : sessions
             const claimed = claimMostRecentSession('opencode', cwd, candidates)
             if (claimed) resumeId = claimed.id
-          } catch {}
+          } catch {
+          /* ignore */
+        }
           if (disposed) return
         }
         const preparedRuntime = command

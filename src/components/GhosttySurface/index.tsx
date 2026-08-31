@@ -195,7 +195,9 @@ export function GhosttySurface({
           window.clearInterval(iv)
           onExitRef.current?.()
         }
-      } catch {}
+      } catch {
+          /* ignore */
+        }
     }, EXIT_POLL_MS)
     return () => {
       stopped = true
