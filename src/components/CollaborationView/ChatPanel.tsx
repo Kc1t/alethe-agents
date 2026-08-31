@@ -22,7 +22,7 @@ import {
 } from '../../lib/api/syncChat'
 import { connectRendezvous, getRendezvousStatus, sendRendezvousFrame } from '../../lib/api/syncRendezvous'
 import { useT } from '../../lib/i18n'
-import { getProfileImageUrl, getProfileInitial } from '../../lib/profile'
+import { DEFAULT_PROFILE_IMAGE_URL, getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { syncLocalIdentity } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { Avatar } from '../ui/Avatar'
@@ -157,7 +157,11 @@ export function ChatPanel({ source }: { source: ChatSource }) {
   const ownAvatarUrl = getProfileImageUrl(preferences)
   const ownInitial = getProfileInitial(ownDisplayName)
   const otherDisplayLabel = source.kind === 'direct' ? source.contactDisplayLabel : null
-  const otherAvatarUrl = source.kind === 'direct' ? (source.contactAvatarThumbnail ?? null) : null
+  // Same fallback as `ownAvatarUrl` (the app's bundled default icon, not the bare initial) when
+  // the contact has no real photo synced yet — keeps "no photo set" looking identical on both
+  // sides instead of one showing a generic icon and the other a plain initial.
+  const otherAvatarUrl =
+    source.kind === 'direct' ? (source.contactAvatarThumbnail || DEFAULT_PROFILE_IMAGE_URL) : null
   const [conversation, setConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<DecryptedMessage[]>([])
   const [localDeviceId, setLocalDeviceId] = useState<string | null>(null)
