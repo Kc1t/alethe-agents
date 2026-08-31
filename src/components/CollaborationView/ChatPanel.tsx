@@ -1,4 +1,4 @@
-import { Loader2, MessageSquare, Paperclip, Search, Send, Terminal, X } from 'lucide-react'
+import { Eraser, Loader2, MessageSquare, Paperclip, Pencil, Search, Send, Terminal, Trash2, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useP2pAutoConnect } from '../../hooks/useP2pAutoConnect'
@@ -36,6 +36,17 @@ export type ChatSource =
       contactDisplayLabel: string
       contactAvatarThumbnail?: string | null
     }
+
+/** Only meaningful for a `'direct'` source — the actions that used to live as three small icon
+ * buttons inline in the contact list row now live in the contact-info panel opened from the chat
+ * header instead (see `syncProjectNow`'s sibling, the header-click handler below), one level
+ * closer to the conversation they act on. Owned by `ChatTab.tsx` (it already holds the contact
+ * list and the prompts/confirmations for these), just rendered from here. */
+export type ChatContactActions = {
+  onRename: () => void
+  onRemove: () => void
+  onDeleteAll: () => void
+}
 
 const POLL_INTERVAL_MS = 4_000
 
@@ -150,7 +161,13 @@ function renderMessageText(text: string, searchQuery: string) {
   })
 }
 
-export function ChatPanel({ source }: { source: ChatSource }) {
+export function ChatPanel({
+  source,
+  contactActions,
+}: {
+  source: ChatSource
+  contactActions?: ChatContactActions
+}) {
   const t = useT()
   const preferences = useProjectsStore((s) => s.preferences)
   const ownDisplayName = preferences.displayName || t('profile.fallbackName')
@@ -206,6 +223,7 @@ export function ChatPanel({ source }: { source: ChatSource }) {
   }
   const [draft, setDraft] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
+  const [contactInfoOpen, setContactInfoOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const visibleMessages = useMemo(() => {
     if (!searchOpen || !searchQuery.trim()) return messages
@@ -328,6 +346,12 @@ export function ChatPanel({ source }: { source: ChatSource }) {
     p2p.connect(bytesToBase64(otherMember.x25519PublicKey))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [otherMember?.accountRoute])
+
+  // Closes the contact-info panel when switching to a different conversation — it should never
+  // carry over and silently show the previous contact's details on top of a new chat.
+  useEffect(() => {
+    setContactInfoOpen(false)
+  }, [source.kind === 'direct' ? source.contactAccountRoute : source.kind === 'project' ? source.projectId : null])
 
   // Backfills this device's own avatar to the other member every time a direct conversation with
   // them opens — `broadcastAvatarUpdate` (Preferences) only fires the instant the picture is
@@ -665,29 +689,48 @@ export function ChatPanel({ source }: { source: ChatSource }) {
         ) : (
           <>
             {source.kind === 'direct' ? (
-              <Avatar
-                src={otherAvatarUrl}
-                initial={
-                  otherDisplayLabel
-                    ? getProfileInitial(otherDisplayLabel)
-                    : initialsFor(otherMember?.accountRoute ?? '')
-                }
-                className={styles.headerDirectAvatar}
-              />
-            ) : null}
-            <span className={styles.headerTitle}>
-              {source.kind === 'direct' ? source.contactDisplayLabel : source.projectName}
-            </span>
-            <span
-              className={`${styles.e2eBadge} ${styles[`e2eBadge_${connectionState}`]}`}
-              title={
-                connectionState === 'relay' && p2p.natInfo?.local === 'symmetric'
-                  ? t('chat.connectionState.symmetricNatHint')
-                  : undefined
-              }
-            >
-              {t(`chat.connectionState.${connectionState}`)}
-            </span>
+              <button
+                type="button"
+                className={styles.headerContactTrigger}
+                title={t('chat.contactInfo.open')}
+                onClick={() => setContactInfoOpen((open) => !open)}
+              >
+                <Avatar
+                  src={otherAvatarUrl}
+                  initial={
+                    otherDisplayLabel
+                      ? getProfileInitial(otherDisplayLabel)
+                      : initialsFor(otherMember?.accountRoute ?? '')
+                  }
+                  className={styles.headerDirectAvatar}
+                />
+                <span className={styles.headerTitle}>{source.contactDisplayLabel}</span>
+                <span
+                  className={`${styles.e2eBadge} ${styles[`e2eBadge_${connectionState}`]}`}
+                  title={
+                    connectionState === 'relay' && p2p.natInfo?.local === 'symmetric'
+                      ? t('chat.connectionState.symmetricNatHint')
+                      : undefined
+                  }
+                >
+                  {t(`chat.connectionState.${connectionState}`)}
+                </span>
+              </button>
+            ) : (
+              <>
+                <span className={styles.headerTitle}>{source.projectName}</span>
+                <span
+                  className={`${styles.e2eBadge} ${styles[`e2eBadge_${connectionState}`]}`}
+                  title={
+                    connectionState === 'relay' && p2p.natInfo?.local === 'symmetric'
+                      ? t('chat.connectionState.symmetricNatHint')
+                      : undefined
+                  }
+                >
+                  {t(`chat.connectionState.${connectionState}`)}
+                </span>
+              </>
+            )}
             {source.kind === 'project' && p2p.state === 'p2p' && localProject?.defaultCwd ? (
               <button
                 type="button"
@@ -994,6 +1037,65 @@ export function ChatPanel({ source }: { source: ChatSource }) {
           {sending ? <Loader2 size={14} className={styles.spin} /> : <Send size={14} />}
         </button>
       </div>
+
+      {contactInfoOpen && source.kind === 'direct' ? (
+        <div className={styles.contactInfoOverlay}>
+          <div className={styles.contactInfoHeader}>
+            <span className={styles.contactInfoTitle}>{t('chat.contactInfo.title')}</span>
+            <button
+              type="button"
+              className={styles.iconButton}
+              title={t('common.close')}
+              onClick={() => setContactInfoOpen(false)}
+            >
+              <X size={14} />
+            </button>
+          </div>
+          <div className={styles.contactInfoIdentity}>
+            <Avatar
+              src={otherAvatarUrl}
+              initial={otherDisplayLabel ? getProfileInitial(otherDisplayLabel) : initialsFor(otherMember?.accountRoute ?? '')}
+              className={styles.contactInfoAvatar}
+            />
+            <span className={styles.contactInfoName}>{source.contactDisplayLabel}</span>
+            <span className={styles.contactInfoStatus}>{t(`chat.connectionState.${connectionState}`)}</span>
+          </div>
+          {contactActions ? (
+            <div className={styles.contactInfoActions}>
+              <button
+                type="button"
+                className={styles.contactInfoAction}
+                onClick={() => {
+                  contactActions.onRename()
+                }}
+              >
+                <Pencil size={14} />
+                {t('chat.contacts.rename')}
+              </button>
+              <button
+                type="button"
+                className={styles.contactInfoAction}
+                onClick={() => {
+                  contactActions.onRemove()
+                }}
+              >
+                <Trash2 size={14} />
+                {t('chat.contacts.remove')}
+              </button>
+              <button
+                type="button"
+                className={`${styles.contactInfoAction} ${styles.contactInfoActionDanger}`}
+                onClick={() => {
+                  contactActions.onDeleteAll()
+                }}
+              >
+                <Eraser size={14} />
+                {t('chat.contacts.deleteAll')}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }

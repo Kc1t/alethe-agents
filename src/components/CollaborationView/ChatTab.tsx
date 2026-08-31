@@ -1,4 +1,4 @@
-import { Bell, Eraser, Hash, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Bell, Hash, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { subscribeToRendezvousEvents } from '../../lib/api/rendezvousEventBus'
@@ -324,30 +324,6 @@ export function ChatTab({
                   />
                   <span className={styles.conversationName}>{contact.displayLabel}</span>
                 </button>
-                <button
-                  type="button"
-                  className={styles.removeContactButton}
-                  title={t('chat.contacts.rename')}
-                  onClick={() => void renameContact(contact)}
-                >
-                  <Pencil size={11} />
-                </button>
-                <button
-                  type="button"
-                  className={styles.removeContactButton}
-                  title={t('chat.contacts.remove')}
-                  onClick={() => void removeContact(contact)}
-                >
-                  <Trash2 size={12} />
-                </button>
-                <button
-                  type="button"
-                  className={styles.removeContactButton}
-                  title={t('chat.contacts.deleteAll')}
-                  onClick={() => void deleteContactAndHistory(contact)}
-                >
-                  <Eraser size={12} />
-                </button>
               </li>
             )
           })}
@@ -362,6 +338,24 @@ export function ChatTab({
           <ChatPanel
             key={selected.kind === 'project' ? 'project' : selected.contactAccountRoute}
             source={selected}
+            contactActions={
+              selected.kind === 'direct'
+                ? {
+                    onRename: () => {
+                      const contact = contacts.find((item) => item.accountRoute === selected.contactAccountRoute)
+                      if (contact) void renameContact(contact)
+                    },
+                    onRemove: () => {
+                      const contact = contacts.find((item) => item.accountRoute === selected.contactAccountRoute)
+                      if (contact) void removeContact(contact)
+                    },
+                    onDeleteAll: () => {
+                      const contact = contacts.find((item) => item.accountRoute === selected.contactAccountRoute)
+                      if (contact) void deleteContactAndHistory(contact)
+                    },
+                  }
+                : undefined
+            }
           />
         ) : (
           <div className={styles.emptyChat}>{t('chat.contacts.empty')}</div>

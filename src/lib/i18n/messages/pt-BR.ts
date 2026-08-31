@@ -104,6 +104,8 @@ export const ptBR: Record<MessageKey, string> = {
   'chat.contacts.confirmTimedOut': 'O outro dispositivo não confirmou a tempo — confirme que o app dele está aberto e tente de novo.',
   'chat.contacts.listFailed': 'Não foi possível carregar seus contatos de chat.',
   'chat.contacts.empty': 'Adicione um contato de chat para começar a conversar — sem precisar de projeto.',
+  'chat.contactInfo.open': 'Dados do contato',
+  'chat.contactInfo.title': 'Dados do contato',
   'chat.contacts.rename': 'Renomear contato',
   'chat.contacts.renamePrompt': 'Novo nome para este contato:',
   'chat.contacts.remove': 'Remover contato (mantém histórico)',

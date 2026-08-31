@@ -6,6 +6,121 @@
   width: 100%;
   height: 100%;
   background: var(--bg-elevated);
+  position: relative;
+}
+
+.headerContactTrigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.headerContactTrigger:hover .headerTitle {
+  color: var(--accent);
+}
+
+.contactInfoOverlay {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 260px;
+  max-width: 85%;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  box-shadow: -12px 0 28px rgba(0, 0, 0, 0.28);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.contactInfoHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.contactInfoTitle {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--fg-muted);
+}
+
+.contactInfoIdentity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 24px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.contactInfoAvatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--fg);
+  font-size: 24px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.contactInfoName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+  text-align: center;
+}
+
+.contactInfoStatus {
+  font-size: 10.5px;
+  color: var(--fg-muted);
+}
+
+.contactInfoActions {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  gap: 2px;
+}
+
+.contactInfoAction {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--fg);
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.contactInfoAction:hover {
+  background: var(--bg-sunken);
+}
+
+.contactInfoActionDanger {
+  color: var(--status-offline);
 }
 
 .header {

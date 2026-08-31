@@ -102,6 +102,8 @@ export const en = {
   'chat.contacts.confirmTimedOut': 'The other device did not confirm in time — make sure their app is open and try again.',
   'chat.contacts.listFailed': 'Could not load your chat contacts.',
   'chat.contacts.empty': 'Add a chat contact to start a conversation — no project required.',
+  'chat.contactInfo.open': 'Contact info',
+  'chat.contactInfo.title': 'Contact info',
   'chat.contacts.rename': 'Rename contact',
   'chat.contacts.renamePrompt': 'New name for this contact:',
   'chat.contacts.remove': 'Remove contact (keeps message history)',
