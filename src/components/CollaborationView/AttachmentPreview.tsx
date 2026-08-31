@@ -5,6 +5,7 @@ import { syncDownloadAttachment } from '../../lib/api/syncChat'
 import { guessMimeFromName } from '../../lib/attachmentReference'
 import { useT } from '../../lib/i18n'
 import styles from './AttachmentPreview.module.css'
+import { useInView } from './useInView'
 import { Lightbox } from './Lightbox'
 import { useAttachmentPreviewUrl } from './useAttachmentPreviewUrl'
 
@@ -27,7 +28,8 @@ export function AttachmentPreview({
   caption?: string
 }) {
   const t = useT()
-  const { kind, url, failed } = useAttachmentPreviewUrl(conversationId, attachmentId, name)
+  const { ref: inViewRef, inView } = useInView<HTMLDivElement>()
+  const { kind, url, failed } = useAttachmentPreviewUrl(conversationId, attachmentId, name, inView)
   const [downloading, setDownloading] = useState(false)
   const [lightboxOpen, setLightboxOpen] = useState(false)
 
@@ -35,7 +37,7 @@ export function AttachmentPreview({
     setDownloading(true)
     try {
       const bytes = await syncDownloadAttachment(conversationId, attachmentId)
-      const blob = new Blob([new Uint8Array(bytes)], { type: guessMimeFromName(name) })
+      const blob = new Blob([bytes.buffer as ArrayBuffer], { type: guessMimeFromName(name) })
       const objectUrl = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = objectUrl
@@ -64,7 +66,7 @@ export function AttachmentPreview({
 
   if (!url) {
     return (
-      <div className={styles.loadingPreview}>
+      <div ref={inViewRef} className={styles.loadingPreview}>
         <Loader2 size={16} className={styles.spin} />
       </div>
     )

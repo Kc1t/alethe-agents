@@ -78,6 +78,20 @@ function sortMessages(list: DecryptedMessage[]): DecryptedMessage[] {
   return [...list].sort((a, b) => a.createdAtMs - b.createdAtMs || a.sequence - b.sequence)
 }
 
+/** Cheap "did anything actually change?" check for the 4s poll. The poll re-reads the whole
+ * conversation every tick, so without this it replaced the message array with a fresh (but
+ * identical) one every 4 seconds, re-rendering every bubble and every attachment component in a
+ * long conversation forever. Comparing ids/edit stamps is far cheaper than that re-render. */
+function sameMessages(a: DecryptedMessage[], b: DecryptedMessage[]): boolean {
+  if (a.length !== b.length) return false
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index].messageId !== b[index].messageId) return false
+    if (a[index].editedAtMs !== b[index].editedAtMs) return false
+    if (a[index].text !== b[index].text) return false
+  }
+  return true
+}
+
 function bytesToBase64(bytes: number[]): string {
   let binary = ''
   for (const byte of bytes) binary += String.fromCharCode(byte)
@@ -401,7 +415,8 @@ export function ChatPanel({
       try {
         const list = await syncListDecryptedMessages(conversationId)
         if (active) {
-          setMessages(sortMessages(list))
+          const sorted = sortMessages(list)
+          setMessages((current) => (sameMessages(current, sorted) ? current : sorted))
           setError(false)
         }
       } catch (cause) {

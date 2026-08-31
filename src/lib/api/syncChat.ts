@@ -134,15 +134,24 @@ export async function syncUploadAttachment(
   })
 }
 
+/** Attachment bytes go through Tauri's raw binary IPC response (`tauri::ipc::Response` on the
+ * Rust side), not the default JSON-array-of-numbers path — a multi-MB image serialized as a JSON
+ * array of numbers means a multi-million-element `JSON.parse` blocking the main thread on every
+ * download, which is what froze the whole app and made the message list unscrollable whenever a
+ * few image messages loaded at once. The web/server_main path still goes over JSON (a separate,
+ * lower-traffic code path), so it's normalized to `Uint8Array` here for a single caller-facing
+ * type either way. */
 export async function syncDownloadAttachment(
   conversationId: string,
   attachmentId: string,
-): Promise<number[]> {
+): Promise<Uint8Array> {
   if (isTauriEnv()) {
-    return invoke<number[]>('sync_download_attachment', { conversationId, attachmentId })
+    const buffer = await invoke<ArrayBuffer>('sync_download_attachment', { conversationId, attachmentId })
+    return new Uint8Array(buffer)
   }
   const params = new URLSearchParams({ conversationId, attachmentId })
-  return webApiFetch<number[]>(`/api/sync/chat/attachments/download?${params.toString()}`)
+  const bytes = await webApiFetch<number[]>(`/api/sync/chat/attachments/download?${params.toString()}`)
+  return new Uint8Array(bytes)
 }
 
 /**

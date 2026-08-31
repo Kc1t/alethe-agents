@@ -333,14 +333,25 @@ async fn list_decrypted_messages(
             let messages =
                 crate::sync_chat::list_messages_at(&data_root, &conversation_id).map_err(|error| error.to_string())?;
             let mut decrypted = Vec::with_capacity(messages.len());
+            // One key resolution per epoch, not per message — see the same cache in
+            // `sync_chat::sync_list_decrypted_messages` for why (each resolution is an OS keyring
+            // read plus an X25519 exchange).
+            let mut epoch_keys: std::collections::HashMap<u64, [u8; 32]> = std::collections::HashMap::new();
             for message in messages {
-                let epoch_key = crate::sync_chat::resolve_epoch_key(
-                    &conversation,
-                    message.epoch,
-                    &account_route,
-                    &device_id,
-                )
-                .map_err(|error| error.to_string())?;
+                let epoch_key = match epoch_keys.get(&message.epoch) {
+                    Some(key) => *key,
+                    None => {
+                        let key = crate::sync_chat::resolve_epoch_key(
+                            &conversation,
+                            message.epoch,
+                            &account_route,
+                            &device_id,
+                        )
+                        .map_err(|error| error.to_string())?;
+                        epoch_keys.insert(message.epoch, key);
+                        key
+                    }
+                };
                 let plaintext = crate::sync_chat::decrypt_message(&message, &epoch_key)
                     .map_err(|error| error.to_string())?;
                 decrypted.push(crate::sync_chat::DecryptedMessage {

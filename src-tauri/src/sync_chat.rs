@@ -1153,9 +1153,25 @@ pub fn sync_list_decrypted_messages(
     let conversation = load_conversation_at(&data_root, &conversation_id).map_err(|e| e.to_string())?;
     let messages = list_messages_at(&data_root, &conversation_id).map_err(|e| e.to_string())?;
     let mut decrypted = Vec::with_capacity(messages.len());
+    // Epoch keys are resolved once per epoch, not once per message. `resolve_epoch_key` reads the
+    // device secret out of the OS keyring and then runs an X25519 exchange + HKDF — tens of
+    // milliseconds of work each. Doing that per message meant a conversation with a few hundred
+    // messages made a few hundred keyring reads and elliptic-curve operations *every time the list
+    // was loaded*, which the frontend does every 4s on a poll: more work than fits in the poll
+    // interval, which is what made a busy conversation slow enough to bog the whole machine down.
+    // Every message in the same epoch shares one key, so in practice this collapses to a single
+    // resolution per load.
+    let mut epoch_keys: std::collections::HashMap<u64, [u8; 32]> = std::collections::HashMap::new();
     for message in messages {
-        let epoch_key = resolve_epoch_key(&conversation, message.epoch, &account_route, &device_id)
-            .map_err(|e| e.to_string())?;
+        let epoch_key = match epoch_keys.get(&message.epoch) {
+            Some(key) => *key,
+            None => {
+                let key = resolve_epoch_key(&conversation, message.epoch, &account_route, &device_id)
+                    .map_err(|e| e.to_string())?;
+                epoch_keys.insert(message.epoch, key);
+                key
+            }
+        };
         let plaintext = decrypt_message(&message, &epoch_key).map_err(|e| e.to_string())?;
         decrypted.push(DecryptedMessage {
             message_id: message.message_id,
@@ -1267,11 +1283,16 @@ pub fn sync_download_attachment(
     app: tauri::AppHandle,
     conversation_id: String,
     attachment_id: String,
-) -> Result<Vec<u8>, String> {
+) -> Result<tauri::ipc::Response, String> {
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     let (device_id, account_route) = local_chat_identity(&data_root)?;
-    download_attachment_plaintext(&data_root, &conversation_id, &attachment_id, &device_id, &account_route)
-        .map_err(|e| e.to_string())
+    // Raw binary IPC response, not the default JSON-array-of-numbers one — a multi-MB attachment
+    // serialized as a JSON array of numbers means the frontend has to `JSON.parse` a
+    // multi-million-element array on its main thread for every single download, which is what was
+    // freezing the whole app.
+    let bytes = download_attachment_plaintext(&data_root, &conversation_id, &attachment_id, &device_id, &account_route)
+        .map_err(|e| e.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 pub(crate) fn pack_sealed(envelope: &SealedEnvelope) -> Vec<u8> {

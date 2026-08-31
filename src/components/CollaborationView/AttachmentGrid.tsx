@@ -5,6 +5,7 @@ import type { AttachmentReference } from '../../lib/attachmentReference'
 import styles from './AttachmentGrid.module.css'
 import { Lightbox, type LightboxItem } from './Lightbox'
 import { useAttachmentPreviewUrl } from './useAttachmentPreviewUrl'
+import { useInView } from './useInView'
 
 const VISIBLE_TILE_COUNT = 4
 
@@ -23,9 +24,10 @@ function GridTile({
   onOpen: () => void
   overlayCount?: number
 }) {
-  const { kind, url } = useAttachmentPreviewUrl(conversationId, attachment.attachmentId, attachment.name)
+  const { ref: inViewRef, inView } = useInView<HTMLButtonElement>()
+  const { kind, url } = useAttachmentPreviewUrl(conversationId, attachment.attachmentId, attachment.name, inView)
   return (
-    <button type="button" className={styles.tile} onClick={onOpen}>
+    <button ref={inViewRef} type="button" className={styles.tile} onClick={onOpen}>
       {kind === 'image' && url ? (
         <img src={url} alt={attachment.name} className={styles.tileMedia} draggable={false} />
       ) : kind === 'video' && url ? (

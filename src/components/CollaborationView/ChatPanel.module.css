@@ -3,6 +3,7 @@
   flex-direction: column;
   flex: 1;
   min-width: 0;
+  min-height: 0;
   width: 100%;
   height: 100%;
   background: var(--bg-elevated);
@@ -23,6 +24,7 @@
   flex-direction: column;
   flex: 1;
   min-width: 0;
+  min-height: 0;
 }
 
 .contactInfoPanel {
@@ -350,9 +352,18 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
   gap: 3px;
   padding: 16px 20px;
+}
+
+/* Keeps a short conversation pinned to the bottom of the panel (what `justify-content: flex-end`
+ * used to do here) WITHOUT breaking the scroll: in a scroll container, content overflowing past a
+ * `flex-end`/`center` justification spills out the top edge, and overflow in the "start" direction
+ * generates no scrollable area at all — the older messages were rendered, just physically
+ * unreachable. `margin-top: auto` on the first child gives the same pinning when content is short
+ * and collapses to zero once it overflows, so scrolling up works. */
+.messages > *:first-child {
+  margin-top: auto;
 }
 
 .loading {
