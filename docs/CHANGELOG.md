@@ -12,6 +12,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- Right-click on a terminal opens a context menu with Copy, Paste, Select All, Copy Context, and
+  Clear Screen, plus pane actions (Rename, Focus mode, Restart, Recent chats, Handoff, Open in
+  Explorer / VS Code, Delete). Ctrl+right-click still does the previous terminal-style shortcut
+  (copy selection or paste).
+
 - Local voice dictation with on-device Parakeet TDT v3 (sherpa-onnx). Enable it under Preferences →
   Integrations, download the model once (~640 MB), then press Ctrl+E (⌘E on macOS) to dictate into
   the active terminal. The mic indicator appears only while listening or while the model is
@@ -19,6 +24,16 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   mode and pick a microphone; System default follows the OS input device. Mic capture uses the
   native audio stack (cpal/PipeWire), not WebKit getUserMedia, so AppImages still see microphones.
   On Linux, Alethe also enables WebKitGTK media-stream as a fallback path for other features.
+
+- Window minimize / maximize / close follow the desktop layout on Linux: Alethe reads GNOME's
+  `button-layout` (so Pop!_OS / Ubuntu left-hand chrome is mirrored) and places the buttons on
+  that side in the matching order. Preferences → Appearance can still force left, right, or
+  System. Windows stays right-hand; macOS uses traffic-light order on the left.
+
+- Cursor Agent is available as a coding-agent CLI alongside Claude, Codex, Copilot and the rest.
+  Alethe detects `cursor-agent` on Windows (`%LOCALAPPDATA%\cursor-agent`), macOS and Linux, can
+  install it from Preferences / Onboarding, and the unrestricted toggle maps to `--force`. Model
+  discovery uses `cursor-agent --list-models`.
 
 - Agent orchestration, off by default under a new preference. When it is on, Claude Code terminals
   get a set of Alethe tools for handing independent units of work to Codex workers that Alethe runs
@@ -124,6 +139,19 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- Choosing a folder or file on Linux no longer crashes the AppImage. File dialogs now use the
+  desktop portal (the real OS picker) instead of an in-process GTK chooser that aborted when SVG
+  icon loaders were missing from the bundle. The in-app browser remains only for non-Tauri
+  environments and as a fallback if the portal is unavailable, and it still stacks over the
+  dialog that opened it.
+- The undecorated main window can be resized again by dragging its edges and corners. Without OS
+  decorations there was no native resize border (especially on Linux), so thin in-window handles
+  now start Tauri's resize drag for each edge and corner, and hide while the window is maximized
+  or fullscreen.
+- Deleting a terminal on Linux no longer terminates the whole app. Closing a pane used
+  `kill -TERM -{pid}` against the PTY process group; when that group was (or collided with)
+  Alethe's own PGID, the AppImage exited with SIGTERM. Terminal teardown now walks the PTY's
+  process tree and signals each PID individually, and refuses to signal the app's own pid.
 - The Source Control panel in the right sidebar no longer stays empty for a selected project that
   has no open terminal — it now falls back to the project's default working directory.
 - The ephemeral conflict-resolution agent's initial prompt is now delivered reliably to OpenCode.

@@ -46,6 +46,7 @@ import { ProjectSidebar } from './components/ProjectSidebar'
 import { RightSidebar } from './components/RightSidebar'
 import { TitleBar } from './components/TitleBar'
 import { TokenHud } from './components/TokenHud'
+import { WindowResizeHandles } from './components/WindowResizeHandles'
 import { AsciiEffect } from './components/ui/ascii-effect'
 import { WorkspaceView } from './components/WorkspaceView'
 import { useAgentBrowserOffers } from './hooks/useAgentBrowserOffers'
@@ -513,11 +514,17 @@ export default function App() {
 
   if (!hydrated) {
     // Persisted preferences are not known yet, so keep startup decorative motion static.
-    return <LoadingScreen reducedMotion />
+    return (
+      <>
+        <WindowResizeHandles />
+        <LoadingScreen reducedMotion />
+      </>
+    )
   }
 
   return (
     <>
+      <WindowResizeHandles />
       <div className={styles.appShell} id={APP_SHELL_ID} tabIndex={-1}>
         <TitleBar />
         <PanelGroup

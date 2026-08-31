@@ -222,9 +222,13 @@ fn run_with_timeout(mut command: std::process::Command, timeout: Duration) {
     }
 }
 
-/// Mata um PID (Windows via taskkill /F, Unix via SIGKILL). Descarta
+/// Kill a single PID (Windows via taskkill /F, Unix via SIGKILL). Errors ignored.
 
 fn kill_pid(pid: u32) {
+    // Never signal PID 0 (would mean "our process group" to kill(2)) or ourselves.
+    if pid == 0 || pid == std::process::id() {
+        return;
+    }
     #[cfg(windows)]
     {
         let mut command = std::process::Command::new("taskkill");
@@ -244,6 +248,29 @@ fn kill_pid(pid: u32) {
     }
 }
 
+/// Kill `root` and every descendant found via parent links.
+///
+/// Uses per-PID signals only — never `kill(-pgid)`. Process-group kills were
+/// terminating the whole Alethe process on Linux when a PTY shared (or its PID
+/// collided with) the app's PGID, which surfaces as the AppImage exiting with
+/// SIGTERM when the user deletes a terminal.
+pub fn kill_pid_tree(root: u32) {
+    let self_pid = std::process::id();
+    if root == 0 || root == self_pid {
+        return;
+    }
+
+    let parent_map = get_parent_map();
+    let mut all = collect_descendants(root, &parent_map);
+    all.retain(|&pid| pid != 0 && pid != self_pid);
+    all.reverse();
+    all.push(root);
+
+    for pid in all {
+        kill_pid(pid);
+    }
+}
+
 pub fn kill_pty_tree(pty_id: &str) -> Result<Vec<u32>, String> {
     let root_pid = {
         let guard = roots().lock().map_err(|_| "PTY roots lock poisoned")?;
@@ -252,8 +279,9 @@ pub fn kill_pty_tree(pty_id: &str) -> Result<Vec<u32>, String> {
     let root = root_pid.ok_or_else(|| format!("No root PID registered for PTY: {pty_id}"))?;
 
     let parent_map = get_parent_map();
+    let self_pid = std::process::id();
     let mut all = collect_descendants(root, &parent_map);
-
+    all.retain(|&pid| pid != 0 && pid != self_pid);
     all.reverse();
     all.push(root);
 

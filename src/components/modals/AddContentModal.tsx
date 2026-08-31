@@ -1,7 +1,7 @@
-import { open as openFileDialog } from '@tauri-apps/plugin-dialog'
 import { FileText, Globe2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { pickFile } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -34,12 +34,11 @@ export function AddContentModal() {
   const chooseReadme = async () => {
     setKind('readme')
     if (!projectId) return
-    const selected = await openFileDialog({
-      multiple: false,
+    const selected = await pickFile({
       title: t('addContent.readmePickerTitle'),
       filters: [{ name: 'Markdown', extensions: ['md', 'markdown', 'mdx'] }],
     })
-    if (typeof selected !== 'string') {
+    if (!selected) {
       setKind(null)
       return
     }

@@ -69,6 +69,7 @@ mod supervisor;
 mod telemetry;
 mod validation;
 mod webview_media;
+mod window_controls;
 mod window_style;
 #[cfg(windows)]
 mod windows_webview;
@@ -408,6 +409,7 @@ pub fn run() {
             crash_watch::get_last_crash_report,
             crash_watch::get_job_guard_status,
             set_window_opacity,
+            window_controls::desktop_window_controls,
             speech::speech_list_models,
             speech::speech_list_input_devices,
             speech::speech_model_states,

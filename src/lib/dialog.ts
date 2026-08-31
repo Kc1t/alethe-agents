@@ -17,23 +17,37 @@ export function resolvePendingFsBrowser(path: string | null) {
   }
 }
 
+/** In-app picker for non-Tauri (browser) and as a last-resort fallback. */
+function openInAppFsBrowser(opts: {
+  mode: 'folder' | 'file'
+  title?: string
+  defaultPath?: string
+}): Promise<string | null> {
+  return new Promise<string | null>((resolve) => {
+    pendingFsResolver = resolve
+    useUiStore.getState().openFsBrowser({
+      mode: opts.mode,
+      title: opts.title,
+      defaultPath: opts.defaultPath,
+    })
+  })
+}
+
 export async function pickDirectory(opts?: { defaultPath?: string }): Promise<string | null> {
   if (!isTauriEnv()) {
-    return new Promise<string | null>((resolve) => {
-      pendingFsResolver = resolve
-      useUiStore.getState().openModal_('fsBrowser', {
-        mode: 'folder',
-        defaultPath: opts?.defaultPath,
-      })
-    })
+    return openInAppFsBrowser({ mode: 'folder', defaultPath: opts?.defaultPath })
   }
-  const result = await open({
-    directory: true,
-    multiple: false,
-    defaultPath: opts?.defaultPath,
-  })
-  if (typeof result === 'string') return result
-  return null
+  try {
+    const result = await open({
+      directory: true,
+      multiple: false,
+      defaultPath: opts?.defaultPath,
+    })
+    if (typeof result === 'string') return result
+    return null
+  } catch {
+    return openInAppFsBrowser({ mode: 'folder', defaultPath: opts?.defaultPath })
+  }
 }
 
 export async function pickFile(opts?: {
@@ -42,24 +56,29 @@ export async function pickFile(opts?: {
   defaultPath?: string
 }): Promise<string | null> {
   if (!isTauriEnv()) {
-    return new Promise<string | null>((resolve) => {
-      pendingFsResolver = resolve
-      useUiStore.getState().openModal_('fsBrowser', {
-        mode: 'file',
-        title: opts?.title,
-        defaultPath: opts?.defaultPath,
-      })
+    return openInAppFsBrowser({
+      mode: 'file',
+      title: opts?.title,
+      defaultPath: opts?.defaultPath,
     })
   }
-  const result = await open({
-    directory: false,
-    multiple: false,
-    title: opts?.title,
-    filters: opts?.filters,
-    defaultPath: opts?.defaultPath,
-  })
-  if (typeof result === 'string') return result
-  return null
+  try {
+    const result = await open({
+      directory: false,
+      multiple: false,
+      title: opts?.title,
+      filters: opts?.filters,
+      defaultPath: opts?.defaultPath,
+    })
+    if (typeof result === 'string') return result
+    return null
+  } catch {
+    return openInAppFsBrowser({
+      mode: 'file',
+      title: opts?.title,
+      defaultPath: opts?.defaultPath,
+    })
+  }
 }
 
 export async function saveFile(opts: {
@@ -68,19 +87,24 @@ export async function saveFile(opts: {
   filters?: DialogFilter[]
 }): Promise<string | null> {
   if (!isTauriEnv()) {
-    return new Promise<string | null>((resolve) => {
-      pendingFsResolver = resolve
-      useUiStore.getState().openModal_('fsBrowser', {
-        mode: 'file',
-        title: opts.title,
-        defaultPath: opts.defaultPath,
-      })
+    return openInAppFsBrowser({
+      mode: 'file',
+      title: opts.title,
+      defaultPath: opts.defaultPath,
     })
   }
-  const result = await save({
-    title: opts.title,
-    defaultPath: opts.defaultPath,
-    filters: opts.filters,
-  })
-  return result ?? null
+  try {
+    const result = await save({
+      title: opts.title,
+      defaultPath: opts.defaultPath,
+      filters: opts.filters,
+    })
+    return result ?? null
+  } catch {
+    return openInAppFsBrowser({
+      mode: 'file',
+      title: opts.title,
+      defaultPath: opts.defaultPath,
+    })
+  }
 }

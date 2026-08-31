@@ -108,6 +108,11 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     motionPreference: raw?.motionPreference === 'reduced' ? 'reduced' : 'animated',
     accountCreated: legacyAccountCreated,
     topbarStyle: preferences.topbarStyle === 'three-areas' ? 'three-areas' : 'classic',
+    windowControlsPlacement:
+      preferences.windowControlsPlacement === 'left' ||
+      preferences.windowControlsPlacement === 'right'
+        ? preferences.windowControlsPlacement
+        : 'system',
     gitControlPlacement: preferences.gitControlPlacement === 'right' ? 'right' : 'left',
     mcpDefaultScope: preferences.mcpDefaultScope === 'project' ? 'project' : 'global',
     mcpOnboardingSeen: Boolean(preferences.mcpOnboardingSeen),

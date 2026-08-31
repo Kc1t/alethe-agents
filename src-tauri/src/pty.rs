@@ -758,22 +758,11 @@ pub(crate) fn kill_process_tree(pid: u32) {
 
 #[cfg(not(windows))]
 pub(crate) fn kill_process_tree(pid: u32) {
-    // portable-pty calls setsid() on Linux, so the shell owns its own process
-    // group. Sending a signal to the negative PID targets the entire group.
-    let _ = std::process::Command::new("kill")
-        .args(["-TERM", &format!("-{pid}")])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .and_then(|mut child| child.wait());
-    // Give well-behaved processes a moment to exit cleanly, then escalate.
-    std::thread::sleep(std::time::Duration::from_millis(200));
-    let _ = std::process::Command::new("kill")
-        .args(["-9", &format!("-{pid}")])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .and_then(|mut child| child.wait());
+    // Walk the parent/child tree and SIGKILL each PID individually.
+    // Do NOT use `kill -TERM -{pid}` (process-group signal): when the PTY
+    // shares Alethe's PGID, or when `pid` equals our PGID, that terminates
+    // the whole app (AppImage exits with "terminated" on delete-terminal).
+    process_tree::kill_pid_tree(pid);
 }
 
 #[tauri::command]
@@ -1637,9 +1626,9 @@ pub fn install_kill_on_close_guard() {
 pub fn install_kill_on_close_guard() {
     // On Linux there is no equivalent of a Windows Job Object. Instead, the shutdown
     // handler in lib.rs calls kill_all_sessions_background() on ExitRequested, which
-    // now works thanks to the SIGTERM/SIGKILL process-group kill in kill_process_tree.
-    // On the next startup, sweep_orphans_from_previous_session() kills any grandchild
-    // processes that escaped the previous shutdown.
+    // walks each PTY's process tree with per-PID signals. On the next startup,
+    // sweep_orphans_from_previous_session() kills any grandchild processes that
+    // escaped the previous shutdown.
     let _ = JOB_GUARD_ACTIVE.set(true);
 }
 
