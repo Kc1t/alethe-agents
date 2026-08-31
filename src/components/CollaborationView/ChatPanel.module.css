@@ -586,6 +586,54 @@
   background: rgba(0, 0, 0, 0.15);
 }
 
+.pendingAttachment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  margin: 0 16px 6px;
+}
+
+.pendingAttachmentThumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.pendingAttachmentName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--fg-muted);
+}
+
+.pendingAttachmentClear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.pendingAttachmentClear:hover {
+  background: var(--bg-elevated);
+  color: var(--fg);
+}
+
 .slashMenu {
   position: absolute;
   left: 16px;

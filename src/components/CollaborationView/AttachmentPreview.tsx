@@ -1,4 +1,4 @@
-import { Download, File as FileIcon, Loader2 } from 'lucide-react'
+import { Download, File as FileIcon, Loader2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { syncDownloadAttachment } from '../../lib/api/syncChat'
@@ -15,21 +15,27 @@ const objectUrlCache = new Map<string, string>()
 /** Renders an inline image/video preview for a chat attachment (decrypted on demand via
  * `syncDownloadAttachment`), or a clickable "download" file chip for anything else — instead of
  * the plain "Shared a file: name.png (id ...)" text every attachment message used to show
- * regardless of what it actually was. */
+ * regardless of what it actually was. Clicking an image/video preview opens it full-screen (see
+ * `Lightbox` below) — the inline thumbnail is deliberately small (fits the message bubble), so
+ * there has to be a way to actually see the thing at size. */
 export function AttachmentPreview({
   conversationId,
   attachmentId,
   name,
+  caption,
 }: {
   conversationId: string
   attachmentId: string
   name: string
+  /** Text the sender typed alongside the attachment, if any — shown below the preview. */
+  caption?: string
 }) {
   const t = useT()
   const kind = previewKindFor(name)
   const [url, setUrl] = useState<string | null>(objectUrlCache.get(attachmentId) ?? null)
   const [failed, setFailed] = useState(false)
   const [downloading, setDownloading] = useState(false)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
 
   useEffect(() => {
     if (!kind || url) return
@@ -50,6 +56,15 @@ export function AttachmentPreview({
       active = false
     }
   }, [conversationId, attachmentId, kind, url, name])
+
+  useEffect(() => {
+    if (!lightboxOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setLightboxOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [lightboxOpen])
 
   const downloadToDisk = async () => {
     setDownloading(true)
@@ -88,9 +103,45 @@ export function AttachmentPreview({
     )
   }
 
-  return kind === 'image' ? (
-    <img src={url} alt={name} className={styles.imagePreview} draggable={false} />
-  ) : (
-    <video src={url} controls className={styles.videoPreview} />
+  return (
+    <div className={styles.previewWrap}>
+      {kind === 'image' ? (
+        <img
+          src={url}
+          alt={name}
+          className={styles.imagePreview}
+          draggable={false}
+          onClick={() => setLightboxOpen(true)}
+        />
+      ) : (
+        // A click anywhere except the native controls strip opens the lightbox — `<video>`'s own
+        // controls need their clicks to reach the element, so this can't just be a wrapping button.
+        <video src={url} controls className={styles.videoPreview} onClick={() => setLightboxOpen(true)} />
+      )}
+      {caption ? <p className={styles.caption}>{caption}</p> : null}
+      {lightboxOpen ? (
+        <div className={styles.lightboxOverlay} onClick={() => setLightboxOpen(false)}>
+          <button
+            type="button"
+            className={styles.lightboxClose}
+            onClick={() => setLightboxOpen(false)}
+            title={t('common.close')}
+          >
+            <X size={20} />
+          </button>
+          {kind === 'image' ? (
+            <img src={url} alt={name} className={styles.lightboxMedia} onClick={(event) => event.stopPropagation()} />
+          ) : (
+            <video
+              src={url}
+              controls
+              autoPlay
+              className={styles.lightboxMedia}
+              onClick={(event) => event.stopPropagation()}
+            />
+          )}
+        </div>
+      ) : null}
+    </div>
   )
 }

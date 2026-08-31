@@ -244,6 +244,11 @@ export function ChatPanel({
   const [contentType, setContentType] = useState<MessageContentType>('text')
   const [sending, setSending] = useState(false)
   const [attaching, setAttaching] = useState(false)
+  // A file pasted/picked is staged here instead of uploading immediately — pinned as a small
+  // preview above the composer so the caption (the `draft` text) can still be typed before it's
+  // actually sent, instead of the file going out the instant it's pasted with no way to say
+  // anything alongside it.
+  const [pendingAttachment, setPendingAttachment] = useState<{ file: File; previewUrl: string | null } | null>(null)
   const [slashHighlight, setSlashHighlight] = useState(0)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
@@ -522,8 +527,30 @@ export function ChatPanel({
     })
   }, [conversation, otherMember])
 
+  const clearPendingAttachment = () => {
+    setPendingAttachment((current) => {
+      if (current?.previewUrl) URL.revokeObjectURL(current.previewUrl)
+      return null
+    })
+  }
+
+  // Pins the file above the composer instead of uploading it right away — see `pendingAttachment`.
+  const stageAttachment = (file: File) => {
+    clearPendingAttachment()
+    const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : null
+    setPendingAttachment({ file, previewUrl })
+    textInputRef.current?.focus()
+  }
+
   const send = async () => {
-    if (!conversation || !draft.trim()) return
+    if (!conversation) return
+    if (pendingAttachment) {
+      const { file } = pendingAttachment
+      clearPendingAttachment()
+      await attachFile(file, draft)
+      return
+    }
+    if (!draft.trim()) return
     setSending(true)
     const startedAt = performance.now()
     const elapsed = () => `${Math.round(performance.now() - startedAt)}ms`
@@ -620,7 +647,7 @@ export function ChatPanel({
     }
   }
 
-  const attachFile = async (file: File) => {
+  const attachFile = async (file: File, caption?: string) => {
     if (!conversation) return
     setAttaching(true)
     try {
@@ -633,14 +660,23 @@ export function ChatPanel({
       )
       // The attachment binary itself only ever goes through `syncUploadAttachment` above (never
       // the relay — see `MAX_CIPHERTEXT_BYTES`/16KB in `sync_rendezvous.rs`); only this short
-      // pointer text is eligible for live P2P/relay delivery, same as any other text message.
+      // pointer text is eligible for live P2P/relay delivery, same as any other text message. When
+      // there's no caption, the same localized fallback text as before is embedded instead — the
+      // renderer treats that exact string as "no caption" (see `renderMessageBody`) rather than
+      // showing it as a redundant caption underneath the preview.
+      const trimmedCaption = caption?.trim()
       const [message, frame] = await syncSendMessageForTransport(
         conversation.conversationId,
         'text',
         encodeAttachmentReference(attachment.attachmentId, file.name) +
-          t('chat.attachmentMessage', { name: file.name, id: attachment.attachmentId }),
+          (trimmedCaption || t('chat.attachmentMessage', { name: file.name, id: attachment.attachmentId })),
       )
       setMessages((current) => sortMessages([...current, message]))
+      setDraft('')
+      setContentType('text')
+      setSlashToken(null)
+      setMentionToken(null)
+      setPendingMentionRoutes(new Set())
       if (otherMember && frame.length > 0) {
         if (p2p.state === 'p2p') {
           await p2p.send(frame).catch(async () => {
@@ -862,11 +898,16 @@ export function ChatPanel({
                   ) : message.contentType === 'text' && parseAttachmentReference(message.text) && conversation ? (
                     (() => {
                       const attachment = parseAttachmentReference(message.text)!
+                      // The auto-generated fallback text (no real caption typed) must not be
+                      // shown again as a redundant caption line under a preview that already
+                      // displays the filename itself.
+                      const fallback = t('chat.attachmentMessage', { name: attachment.name, id: attachment.attachmentId })
                       return (
                         <AttachmentPreview
                           conversationId={conversation.conversationId}
                           attachmentId={attachment.attachmentId}
                           name={attachment.name}
+                          caption={attachment.rest !== fallback ? attachment.rest : undefined}
                         />
                       )
                     })()
@@ -945,6 +986,24 @@ export function ChatPanel({
               <X size={11} />
             </button>
           </span>
+        ) : null}
+        {pendingAttachment ? (
+          <div className={styles.pendingAttachment}>
+            {pendingAttachment.previewUrl ? (
+              <img src={pendingAttachment.previewUrl} alt="" className={styles.pendingAttachmentThumb} />
+            ) : (
+              <Paperclip size={14} />
+            )}
+            <span className={styles.pendingAttachmentName}>{pendingAttachment.file.name}</span>
+            <button
+              type="button"
+              className={styles.pendingAttachmentClear}
+              onClick={clearPendingAttachment}
+              title={t('common.remove')}
+            >
+              <X size={12} />
+            </button>
+          </div>
         ) : null}
         <div className={styles.inputPill}>
           <input
@@ -1035,9 +1094,10 @@ export function ChatPanel({
                 .filter((file): file is File => file !== null)
               if (files.length === 0) return
               // A pasted image has no filename from the clipboard — text keeps flowing into the
-              // draft as usual, only the image itself is intercepted and attached.
+              // draft as usual, only the image itself is intercepted and pinned above the
+              // composer (see `stageAttachment`) instead of uploading immediately.
               event.preventDefault()
-              for (const file of files) void attachFile(file)
+              stageAttachment(files[0])
             }}
           />
           <input
@@ -1046,7 +1106,7 @@ export function ChatPanel({
             className={styles.hiddenFileInput}
             onChange={(event) => {
               const file = event.target.files?.[0]
-              if (file) void attachFile(file)
+              if (file) stageAttachment(file)
               event.target.value = ''
             }}
           />
@@ -1063,10 +1123,10 @@ export function ChatPanel({
         <button
           type="button"
           className={styles.sendButton}
-          disabled={sending || !draft.trim() || !conversation}
+          disabled={sending || attaching || (!draft.trim() && !pendingAttachment) || !conversation}
           onClick={() => void send()}
         >
-          {sending ? <Loader2 size={14} className={styles.spin} /> : <Send size={14} />}
+          {sending || attaching ? <Loader2 size={14} className={styles.spin} /> : <Send size={14} />}
         </button>
       </div>
         </div>
