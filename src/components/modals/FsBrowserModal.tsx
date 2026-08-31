@@ -48,13 +48,14 @@ function highlightMatch(name: string, query: string) {
 
 export function FsBrowserModal() {
   const t = useT()
-  const open = useUiStore((s) => s.openModal === 'fsBrowser')
-  const closeModal = useUiStore((s) => s.closeModal)
-  const modalContext = useUiStore((s) => s.modalContext)
+  const request = useUiStore((s) => s.fsBrowser)
+  const parentModalOpen = useUiStore((s) => s.openModal !== null)
+  const closeFsBrowser = useUiStore((s) => s.closeFsBrowser)
 
-  const mode = (modalContext?.mode as 'folder' | 'file') || 'folder'
-  const customTitle = modalContext?.title as string | undefined
-  const initialDefaultPath = (modalContext?.defaultPath as string) || ''
+  const open = request !== null
+  const mode = request?.mode || 'folder'
+  const customTitle = request?.title
+  const initialDefaultPath = request?.defaultPath || ''
 
   const [currentPath, setCurrentPath] = useState('')
   const [parentPath, setParentPath] = useState<string | null>(null)
@@ -150,13 +151,13 @@ export function FsBrowserModal() {
 
   const handleClose = () => {
     resolvePendingFsBrowser(null)
-    closeModal()
+    closeFsBrowser()
   }
 
   const handleConfirm = () => {
     const finalChoice = selectedPath || currentPath
     resolvePendingFsBrowser(finalChoice)
-    closeModal()
+    closeFsBrowser()
   }
 
   const handleEntryClick = (entry: BrowseDirectoryEntry, index: number) => {
@@ -226,6 +227,7 @@ export function FsBrowserModal() {
       onClose={handleClose}
       title={titleText}
       width={640}
+      nested={parentModalOpen}
       footer={
         <div className={styles.footerInner}>
           <span className={styles.selectedPathText} title={selectedPath || currentPath}>

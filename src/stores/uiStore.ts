@@ -44,12 +44,18 @@ type ModalKind =
   | 'whatsNew'
   | 'remoteControl'
   | 'audit'
-  | 'fsBrowser'
   | 'recentChats'
   | 'handoff'
   | 'mcpManager'
   | 'mcpIntro'
   | null
+
+/** In-app folder/file picker — separate from `openModal` so it can stack over another dialog. */
+export type FsBrowserRequest = {
+  mode: 'folder' | 'file'
+  title?: string
+  defaultPath?: string
+}
 
 export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox'
 export type RightSidebarMode = 'todo' | 'markdown' | 'git' | 'gsdSync' | 'mcp'
@@ -82,6 +88,8 @@ const DUPLICATE_TOAST_WINDOW_MS = 5_000
 type UiState = {
   openModal: ModalKind
   modalContext: Record<string, unknown> | null
+  /** Layered over `openModal` when set — does not dismiss the parent dialog. */
+  fsBrowser: FsBrowserRequest | null
   showMainMenu: boolean
   ramMb: number | null
   memoryStats: MemoryStats | null
@@ -130,6 +138,8 @@ type UiState = {
 
   openModal_: (kind: Exclude<ModalKind, null>, context?: Record<string, unknown>) => void
   closeModal: () => void
+  openFsBrowser: (request: FsBrowserRequest) => void
+  closeFsBrowser: () => void
   closeMainMenu: () => void
   toggleMainMenu: () => void
   setKeptAlivePanes: (ids: string[]) => void
@@ -179,6 +189,7 @@ type UiState = {
 export const useUiStore = create<UiState>((set) => ({
   openModal: null,
   modalContext: null,
+  fsBrowser: null,
   showMainMenu: false,
   ramMb: null,
   memoryStats: null,
@@ -208,6 +219,8 @@ export const useUiStore = create<UiState>((set) => ({
   openModal_: (kind, context) =>
     set({ openModal: kind, modalContext: context ?? null, showMainMenu: false }),
   closeModal: () => set({ openModal: null, modalContext: null }),
+  openFsBrowser: (request) => set({ fsBrowser: request, showMainMenu: false }),
+  closeFsBrowser: () => set({ fsBrowser: null }),
   closeMainMenu: () => set({ showMainMenu: false }),
   toggleMainMenu: () => set((s) => ({ showMainMenu: !s.showMainMenu })),
   setKeptAlivePanes: (ids) =>

@@ -34,7 +34,7 @@ serde = { version = "1", features = ["derive"] }
 # key of ~/.claude.json would alphabetise its other 80+ top-level keys.
 serde_json = { version = "1", features = ["preserve_order"] }
 tauri = { version = "2", features = ["image-png", "unstable"] }
-tauri-plugin-dialog = "2"
+tauri-plugin-dialog = { version = "2", default-features = false, features = ["xdg-portal"] }
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
