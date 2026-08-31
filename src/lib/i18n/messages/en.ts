@@ -691,6 +691,9 @@ export const en = {
   'prefs.chatsProjects.kindProject': 'Project',
   'prefs.chatsProjects.kindDirect': 'Direct',
   'prefs.chatsProjects.categoryMessages': 'Messages',
+  'prefs.chatsProjects.clearMessages': 'Clear messages',
+  'prefs.chatsProjects.clearMessagesConfirm':
+    'Delete this conversation\'s entire message history? Attachments are not affected. This cannot be undone.',
   'prefs.chatsProjects.categoryImage': 'Images',
   'prefs.chatsProjects.categoryVideo': 'Videos',
   'prefs.chatsProjects.categoryOther': 'Other files',

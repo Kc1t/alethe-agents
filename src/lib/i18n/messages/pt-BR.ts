@@ -693,6 +693,9 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.chatsProjects.kindProject': 'Projeto',
   'prefs.chatsProjects.kindDirect': 'Direto',
   'prefs.chatsProjects.categoryMessages': 'Mensagens',
+  'prefs.chatsProjects.clearMessages': 'Apagar mensagens',
+  'prefs.chatsProjects.clearMessagesConfirm':
+    'Apagar todo o histórico de mensagens desta conversa? Os anexos não são afetados. Isso não pode ser desfeito.',
   'prefs.chatsProjects.categoryImage': 'Imagens',
   'prefs.chatsProjects.categoryVideo': 'Vídeos',
   'prefs.chatsProjects.categoryOther': 'Outros arquivos',

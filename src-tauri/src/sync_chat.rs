@@ -1524,6 +1524,21 @@ pub fn storage_usage_at(data_root: &Path, local_account_route: &str) -> Vec<Conv
         .collect()
 }
 
+/// Clears every message from one conversation (text history only — `attachments` are untouched,
+/// use `cleanup_attachments_by_category_at` for those), returning the number of bytes freed.
+/// Unlike attachment cleanup, this is a deliberate, explicit choice the storage tab offers
+/// alongside it — message text is conversation history, but the user gets the same say over it as
+/// over attachments once they're looking at "what's using space here". The conversation itself
+/// (membership, epochs) is untouched, so sending a new message afterward works exactly as before;
+/// only its prior text history is gone.
+pub fn clear_messages_at(data_root: &Path, conversation_id: &str) -> Result<u64, ChatError> {
+    let mut document = load_at(data_root, conversation_id)?;
+    let freed_bytes: u64 = document.messages.iter().map(|message| message.ciphertext.len() as u64).sum();
+    document.messages.clear();
+    save_at(data_root, &document)?;
+    Ok(freed_bytes)
+}
+
 /// Strips every attachment of `category` from one conversation, returning the number of bytes
 /// freed. Never touches `messages` — the message text/history is untouched; only the referenced
 /// attachment's bytes are removed, so a later download attempt for it fails closed with "not
@@ -1553,6 +1568,12 @@ pub async fn sync_storage_usage(app: tauri::AppHandle) -> Result<Vec<Conversatio
     tokio::task::spawn_blocking(move || storage_usage_at(&data_root, &local_account_route))
         .await
         .map_err(|_| "storage_usage_task_failed".to_string())
+}
+
+#[tauri::command]
+pub fn sync_storage_clear_messages(app: tauri::AppHandle, conversation_id: String) -> Result<u64, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    clear_messages_at(&data_root, &conversation_id).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -2097,6 +2118,39 @@ mod tests {
         assert_eq!(document.attachments[0].declared_content_type, "video/mp4");
         assert_eq!(document.messages.len(), 1, "cleanup must never remove message history");
         assert!(!document.messages[0].deleted);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn clear_messages_empties_history_and_never_touches_attachments() {
+        let root = temp_root("clear-messages");
+        let alice_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let conversation = create_conversation_at(
+            &root, None, ConversationKind::PrivateGroup, None, vec![member("route-alice", &alice_secret)], 1_000,
+        )
+        .unwrap();
+        let alice_wrap = current_epoch_wrap_for(&conversation, "route-alice").unwrap();
+        let alice_key = unwrap_key(alice_wrap, &alice_secret, &conversation.conversation_id, 0).unwrap();
+        send_message_at(
+            &root, &conversation.conversation_id, "dev-alice", "route-alice", &alice_key,
+            MessageContentType::Text, b"gone soon", vec![], &AllowAll, 1_500,
+        )
+        .unwrap();
+        upload_attachment_at(&root, &conversation.conversation_id, "image/png", 4, &[0_u8; 4], 2_000).unwrap();
+
+        let freed = clear_messages_at(&root, &conversation.conversation_id).unwrap();
+        assert!(freed > 0);
+
+        let document = load_at(&root, &conversation.conversation_id).unwrap();
+        assert!(document.messages.is_empty(), "message history should be fully cleared");
+        assert_eq!(document.attachments.len(), 1, "clearing messages must never remove attachments");
+
+        // The conversation still works afterward — sending a new message doesn't error.
+        send_message_at(
+            &root, &conversation.conversation_id, "dev-alice", "route-alice", &alice_key,
+            MessageContentType::Text, b"fresh start", vec![], &AllowAll, 3_000,
+        )
+        .unwrap();
         fs::remove_dir_all(root).unwrap();
     }
 }

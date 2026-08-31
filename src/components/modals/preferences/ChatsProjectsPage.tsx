@@ -7,6 +7,7 @@ import {
   type AttachmentCategory,
   type ConversationStorageUsage,
   syncStorageCleanupAttachments,
+  syncStorageClearMessages,
   syncStorageUsage,
 } from '../../../lib/api/syncStorageUsage'
 import { useProjectsStore } from '../../../stores/projectsStore'
@@ -113,15 +114,40 @@ export function ChatsProjectsPage() {
     }
   }
 
-  // Informational only, deliberately no delete action here — unlike attachments, message text is
-  // conversation history, not disposable storage; this tab only ever offers to clear attachments.
-  const messageRow = (bytes: number) => {
+  const clearMessages = async (group: StorageGroup) => {
+    if (!window.confirm(t('prefs.chatsProjects.clearMessagesConfirm'))) return
+    setBusyKey(`${group.key}:messages`)
+    setError(false)
+    try {
+      await Promise.all(group.conversationIds.map((conversationId) => syncStorageClearMessages(conversationId)))
+      await refresh()
+    } catch {
+      setError(true)
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  // Deliberately gated behind a confirmation (see `clearMessages`) — unlike attachments, this
+  // clears conversation history, not disposable media, so a plain click is one step too easy for
+  // something this hard to undo.
+  const messageRow = (group: StorageGroup, bytes: number) => {
     if (bytes === 0) return null
+    const busy = busyKey === `${group.key}:messages`
     return (
       <div className={styles.categoryRow}>
         <MessageSquare size={13} aria-hidden="true" />
         <span className={styles.categoryLabel}>{t('prefs.chatsProjects.categoryMessages')}</span>
         <span className={styles.categoryBytes}>{formatBytes(bytes)}</span>
+        <button
+          type="button"
+          className={styles.categoryClear}
+          disabled={busy}
+          title={t('prefs.chatsProjects.clearMessages')}
+          onClick={() => void clearMessages(group)}
+        >
+          {busy ? <Loader2 size={12} className={styles.spin} /> : <Trash2 size={12} />}
+        </button>
       </div>
     )
   }
@@ -179,7 +205,7 @@ export function ChatsProjectsPage() {
                   <span className={styles.groupTotal}>{formatBytes(totalBytes(group))}</span>
                 </div>
                 <div className={styles.categories}>
-                  {messageRow(group.messageBytes)}
+                  {messageRow(group, group.messageBytes)}
                   {categoryRow(group, 'image', group.imageBytes, ImageIcon, t('prefs.chatsProjects.categoryImage'))}
                   {categoryRow(group, 'video', group.videoBytes, Film, t('prefs.chatsProjects.categoryVideo'))}
                   {categoryRow(group, 'other', group.otherBytes, Paperclip, t('prefs.chatsProjects.categoryOther'))}

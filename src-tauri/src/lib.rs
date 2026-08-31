@@ -604,6 +604,7 @@ pub fn run() {
             sync_chat::sync_react_to_message,
             sync_chat::sync_mark_conversation_read,
             sync_chat::sync_storage_usage,
+            sync_chat::sync_storage_clear_messages,
             sync_chat::sync_storage_cleanup_attachments,
             sync_chat::sync_ensure_project_conversation,
             sync_chat::sync_start_direct_conversation,

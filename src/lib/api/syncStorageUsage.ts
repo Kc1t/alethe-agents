@@ -37,3 +37,11 @@ export async function syncStorageCleanupAttachments(
   if (!isTauriEnv()) throw new Error('storage_cleanup_desktop_only')
   return invoke('sync_storage_cleanup_attachments', { conversationId, category })
 }
+
+/** Clears every message from one conversation's text history — attachments are untouched (use
+ * `syncStorageCleanupAttachments` for those). The conversation itself keeps working afterward;
+ * only its prior message history is gone. Returns the number of bytes freed. */
+export async function syncStorageClearMessages(conversationId: string): Promise<number> {
+  if (!isTauriEnv()) throw new Error('storage_cleanup_desktop_only')
+  return invoke('sync_storage_clear_messages', { conversationId })
+}
