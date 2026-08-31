@@ -377,7 +377,31 @@ export function useP2pAutoConnect(
       if (now - attemptedAtRef.current < CONNECT_RETRY_MS) return
       attemptedAtRef.current = now
       setRemoteAgreementPublicKey(peerAgreementPublicKey)
-      void attempt(remotePeerAccountRoute, peerAgreementPublicKey)
+      void (async () => {
+        // The backend's `P2pSessionRegistry` lives independently of this hook's lifetime — a
+        // session that was already punched through and authenticated stays alive across this
+        // component unmounting and remounting (e.g. navigating away from the chat and back). This
+        // hook's own state, on the other hand, always starts a fresh instance at `'idle'` on
+        // mount (see the effect above) with no memory of that. Without this check, every remount
+        // discarded a perfectly live session and started a brand new discovery+punch cycle from
+        // scratch (a fresh local UDP port, a fresh candidate exchange, up to ~45s), which — from
+        // either peer's perspective — looked exactly like "P2P drops when I navigate the app" or
+        // "P2P falls back to relay after being idle a while": the other side doing this to *its*
+        // hook silently orphaned this side's belief that the old session was still good, noticed
+        // only once a send failed or the liveness poll caught up. Checking first and resuming
+        // directly into `'p2p'` when a session is already live avoids all of that churn.
+        try {
+          const existing = await p2pSessionState(remotePeerAccountRoute)
+          if (existing === 'connected' && !cancelledRef.current) {
+            console.info(`[p2p] peer=${remotePeerAccountRoute} resuming an already-live backend session — skipping rediscovery/punch`)
+            setState('p2p')
+            return
+          }
+        } catch (cause) {
+          console.info(`[p2p] peer=${remotePeerAccountRoute} liveness check before connect failed, attempting fresh`, cause)
+        }
+        void attempt(remotePeerAccountRoute, peerAgreementPublicKey)
+      })()
     },
     [remotePeerAccountRoute, attempt],
   )
