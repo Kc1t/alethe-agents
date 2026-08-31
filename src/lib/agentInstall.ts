@@ -61,9 +61,7 @@ export const AGENT_INSTALL_CATALOG: Partial<Record<AgentType, AgentInstallCatalo
   },
   cursor: {
     docsUrl: 'https://cursor.com/docs/cli/installation',
-    methods: [
-      { id: 'native', command: "irm 'https://cursor.com/install?win32=true' | iex" },
-    ],
+    methods: [{ id: 'native', command: "irm 'https://cursor.com/install?win32=true' | iex" }],
   },
   antigravity: {
     docsUrl: 'https://antigravity.google/docs/cli/install',

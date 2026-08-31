@@ -189,8 +189,7 @@
 .groupTabClose {
   display: grid;
   place-items: center;
-                                                                           
-                                                                  
+
   width: 0;
   height: 18px;
   margin-left: 0;
@@ -274,8 +273,6 @@
 }
 
 .spacer {
-                                                                             
-                                                                               
   flex: 1 1 0;
   height: 100%;
   min-width: 12px;

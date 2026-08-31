@@ -50,7 +50,6 @@ function totalAndDelta(days: ActivityDay[]): { total: number; deltaPct: number |
   return { total, deltaPct: ((recent - prev) / prev) * 100 }
 }
 
-                                                                                       
 export function computeStreak(days: ActivityDay[]): number {
   let i = days.length - 1
   while (i >= 0 && days[i].count === 0) i--

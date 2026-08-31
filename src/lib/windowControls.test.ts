@@ -10,23 +10,23 @@ describe('resolveWindowControlsLayout', () => {
   }
 
   it('keeps the detected GNOME left layout when preference is system', () => {
-    expect(resolveWindowControlsLayout({ ...gnomeLeft, buttons: [...gnomeLeft.buttons] }, 'system')).toEqual(
-      {
-        side: 'left',
-        buttons: ['close', 'minimize', 'maximize'],
-        source: 'gnome',
-      },
-    )
+    expect(
+      resolveWindowControlsLayout({ ...gnomeLeft, buttons: [...gnomeLeft.buttons] }, 'system'),
+    ).toEqual({
+      side: 'left',
+      buttons: ['close', 'minimize', 'maximize'],
+      source: 'gnome',
+    })
   })
 
   it('forces right-hand Windows-like order when preference is right', () => {
-    expect(resolveWindowControlsLayout({ ...gnomeLeft, buttons: [...gnomeLeft.buttons] }, 'right')).toEqual(
-      {
-        side: 'right',
-        buttons: ['minimize', 'maximize', 'close'],
-        source: 'gnome',
-      },
-    )
+    expect(
+      resolveWindowControlsLayout({ ...gnomeLeft, buttons: [...gnomeLeft.buttons] }, 'right'),
+    ).toEqual({
+      side: 'right',
+      buttons: ['minimize', 'maximize', 'close'],
+      source: 'gnome',
+    })
   })
 
   it('falls back to right when detection is missing', () => {

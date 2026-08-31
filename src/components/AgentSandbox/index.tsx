@@ -1,4 +1,15 @@
-import { Focus, Maximize2, MessageCircle, Play, Plus, RotateCcw, Send, Square, Terminal, X } from 'lucide-react'
+import {
+  Focus,
+  Maximize2,
+  MessageCircle,
+  Play,
+  Plus,
+  RotateCcw,
+  Send,
+  Square,
+  Terminal,
+  X,
+} from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
@@ -13,20 +24,28 @@ export function AgentSandbox() {
   const t = useT()
   const statusLabel = (status: 'starting' | 'idle' | 'working' | 'done' | 'error') => {
     switch (status) {
-      case 'starting': return t('sandbox.statusStarting')
-      case 'idle': return t('sandbox.statusIdle')
-      case 'working': return t('sandbox.statusWorking')
-      case 'done': return t('sandbox.statusDone')
-      case 'error': return t('sandbox.statusError')
+      case 'starting':
+        return t('sandbox.statusStarting')
+      case 'idle':
+        return t('sandbox.statusIdle')
+      case 'working':
+        return t('sandbox.statusWorking')
+      case 'done':
+        return t('sandbox.statusDone')
+      case 'error':
+        return t('sandbox.statusError')
     }
   }
   const activeProjectId = useProjectsStore((state) => state.activeProjectId)
   const projects = useProjectsStore((state) => state.projects)
   const setActiveProject = useProjectsStore((state) => state.setActiveProject)
-  const terminalTheme = useProjectsStore((state) => state.preferences.terminalTheme ?? state.preferences.uiTheme)
+  const terminalTheme = useProjectsStore(
+    (state) => state.preferences.terminalTheme ?? state.preferences.uiTheme,
+  )
   const setActiveView = useUiStore((state) => state.setActiveView)
-  const project = projects.find((item) => item.id === activeProjectId && item.mode === 'agentSandbox')
-    ?? projects.find((item) => item.mode === 'agentSandbox' && !item.archived)
+  const project =
+    projects.find((item) => item.id === activeProjectId && item.mode === 'agentSandbox') ??
+    projects.find((item) => item.mode === 'agentSandbox' && !item.archived)
   const active = useAgentSandboxStore((state) => state.active)
   const nodes = useAgentSandboxStore((state) => state.nodes)
   const messages = useAgentSandboxStore((state) => state.messages)
@@ -43,13 +62,22 @@ export function AgentSandbox() {
   const groupNodes = useAgentSandboxStore((state) => state.groupNodes)
   const ungroupNodes = useAgentSandboxStore((state) => state.ungroupNodes)
   const [drag, setDrag] = useState<{ id: string; dx: number; dy: number } | null>(null)
-  const [resize, setResize] = useState<{ id: string; width: number; height: number; x: number; y: number } | null>(null)
+  const [resize, setResize] = useState<{
+    id: string
+    width: number
+    height: number
+    x: number
+    y: number
+  } | null>(null)
   const [from, setFrom] = useState('lead')
   const [to, setTo] = useState('')
   const [text, setText] = useState('')
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>(['lead'])
   const [focused, setFocused] = useState(false)
-  const previousLayoutRef = useRef<Map<string, { x: number; y: number; width: number; height: number }> | null>(null)
+  const previousLayoutRef = useRef<Map<
+    string,
+    { x: number; y: number; width: number; height: number }
+  > | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
   const startedProjectRef = useRef<string | null>(null)
 
@@ -75,7 +103,10 @@ export function AgentSandbox() {
         resize.height + event.clientY - resize.y,
       )
     }
-    const onUp = () => { setDrag(null); setResize(null) }
+    const onUp = () => {
+      setDrag(null)
+      setResize(null)
+    }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointermove', onResize)
     window.addEventListener('pointerup', onUp)
@@ -88,7 +119,11 @@ export function AgentSandbox() {
 
   useEffect(() => {
     if (!project?.id || !project.defaultCwd || startedProjectRef.current === project.id) return
-    const sameSession = active && sandboxCwd && sandboxCwd.replace(/[\\/]+$/, '').toLowerCase() === project.defaultCwd.replace(/[\\/]+$/, '').toLowerCase()
+    const sameSession =
+      active &&
+      sandboxCwd &&
+      sandboxCwd.replace(/[\\/]+$/, '').toLowerCase() ===
+        project.defaultCwd.replace(/[\\/]+$/, '').toLowerCase()
     if (sameSession) {
       startedProjectRef.current = project.id
       return
@@ -100,26 +135,30 @@ export function AgentSandbox() {
   }, [active, project?.defaultCwd, project?.id, sandboxCwd, startDemo])
 
   useEffect(() => {
-    syncProjectTerminals((project?.terminals ?? [])
-      .filter((terminal) => !terminal.kind || terminal.kind === 'terminal')
-      .map((terminal) => {
-        const tab = terminal.tabs.find((item) => item.id === terminal.activeTabId) ?? terminal.tabs[0]
-        const command = tab?.type
-        const sandboxCommand = command === 'claude'
-          ? 'claude'
-          : command === 'codex'
-            ? 'codex'
-            : command === 'opencode'
-              ? 'opencode'
-              : 'shell'
-        return {
-          id: terminal.id,
-          label: terminal.name,
-          command: sandboxCommand,
-          ptyId: tab?.ptyId ?? null,
-          cwd: tab?.cwd ?? terminal.cwd,
-        }
-      }))
+    syncProjectTerminals(
+      (project?.terminals ?? [])
+        .filter((terminal) => !terminal.kind || terminal.kind === 'terminal')
+        .map((terminal) => {
+          const tab =
+            terminal.tabs.find((item) => item.id === terminal.activeTabId) ?? terminal.tabs[0]
+          const command = tab?.type
+          const sandboxCommand =
+            command === 'claude'
+              ? 'claude'
+              : command === 'codex'
+                ? 'codex'
+                : command === 'opencode'
+                  ? 'opencode'
+                  : 'shell'
+          return {
+            id: terminal.id,
+            label: terminal.name,
+            command: sandboxCommand,
+            ptyId: tab?.ptyId ?? null,
+            cwd: tab?.cwd ?? terminal.cwd,
+          }
+        }),
+    )
   }, [active, project, syncProjectTerminals])
 
   useEffect(() => {
@@ -131,13 +170,26 @@ export function AgentSandbox() {
 
   const nodeMap = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes])
   const groupBoxes = groups.map((group) => {
-    const groupNodes = group.nodeIds.map((id) => nodeMap.get(id)).filter((node) => node !== undefined)
+    const groupNodes = group.nodeIds
+      .map((id) => nodeMap.get(id))
+      .filter((node) => node !== undefined)
     if (groupNodes.length < 2) return null
     const left = Math.min(...groupNodes.map((node) => node!.x)) - 14
     const top = Math.min(...groupNodes.map((node) => node!.y)) - 28
     const right = Math.max(...groupNodes.map((node) => node!.x + node!.width)) + 14
     const bottom = Math.max(...groupNodes.map((node) => node!.y + node!.height)) + 14
-    return <div key={group.id} className={styles.groupBox} style={{ left, top, width: right - left, height: bottom - top }}><span>{group.label}</span><button type="button" onClick={() => ungroupNodes(group.id)}>×</button></div>
+    return (
+      <div
+        key={group.id}
+        className={styles.groupBox}
+        style={{ left, top, width: right - left, height: bottom - top }}
+      >
+        <span>{group.label}</span>
+        <button type="button" onClick={() => ungroupNodes(group.id)}>
+          ×
+        </button>
+      </div>
+    )
   })
   const edges = messages.map((message) => {
     const source = nodeMap.get(message.from)
@@ -199,16 +251,26 @@ export function AgentSandbox() {
 
     const rect = canvasRef.current.getBoundingClientRect()
     previousLayoutRef.current = new Map(
-      nodes.map((node) => [node.id, { x: node.x, y: node.y, width: node.width, height: node.height }]),
+      nodes.map((node) => [
+        node.id,
+        { x: node.x, y: node.y, width: node.width, height: node.height },
+      ]),
     )
     const padding = 28
     const gap = 14
     const columns = 2
     const rows = Math.ceil(nodes.length / columns)
     const width = Math.max(280, Math.floor((rect.width - padding * 2 - gap) / columns))
-    const height = Math.max(180, Math.floor((rect.height - padding * 2 - gap * (rows - 1) - 32) / rows))
+    const height = Math.max(
+      180,
+      Math.floor((rect.height - padding * 2 - gap * (rows - 1) - 32) / rows),
+    )
     nodes.forEach((node, index) => {
-      moveNode(node.id, padding + (index % columns) * (width + gap), padding + Math.floor(index / columns) * (height + gap))
+      moveNode(
+        node.id,
+        padding + (index % columns) * (width + gap),
+        padding + Math.floor(index / columns) * (height + gap),
+      )
       resizeNode(node.id, width, height)
     })
     setFocused(true)
@@ -223,16 +285,35 @@ export function AgentSandbox() {
           <p>{t('sandbox.subtitle')}</p>
         </div>
         <div className={styles.headerActions}>
-          <button type="button" className={styles.secondaryButton} onClick={() => setActiveView('workspace')}>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => setActiveView('workspace')}
+          >
             <X size={14} /> {t('sandbox.close')}
           </button>
-          <button type="button" className={styles.secondaryButton} onClick={() => groupNodes(selectedNodeIds)} disabled={selectedNodeIds.length < 2}>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={() => groupNodes(selectedNodeIds)}
+            disabled={selectedNodeIds.length < 2}
+          >
             <Plus size={14} /> {t('sandbox.groupSelected')}
           </button>
-          <button type="button" className={styles.secondaryButton} onClick={toggleFocus} disabled={!active}>
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            onClick={toggleFocus}
+            disabled={!active}
+          >
             <Focus size={14} /> {focused ? t('sandbox.exitFocus') : t('sandbox.focus')}
           </button>
-          <button type="button" className={styles.primaryButton} onClick={start} disabled={!project || runningDemo}>
+          <button
+            type="button"
+            className={styles.primaryButton}
+            onClick={start}
+            disabled={!project || runningDemo}
+          >
             <Play size={14} /> {active ? t('sandbox.restart') : t('sandbox.start')}
           </button>
         </div>
@@ -242,10 +323,17 @@ export function AgentSandbox() {
         <div className={styles.grid} aria-hidden="true" />
         {!active && nodes.length === 0 ? (
           <div className={styles.emptyState}>
-            <div className={styles.emptyIcon}><Plus size={18} /></div>
+            <div className={styles.emptyIcon}>
+              <Plus size={18} />
+            </div>
             <strong>{t('sandbox.emptyTitle')}</strong>
             <span>{project ? t('sandbox.emptyBody') : t('sandbox.noProject')}</span>
-            <button type="button" className={styles.primaryButton} onClick={start} disabled={!project}>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={start}
+              disabled={!project}
+            >
               <Play size={14} /> {t('sandbox.startDemo')}
             </button>
           </div>
@@ -264,10 +352,20 @@ export function AgentSandbox() {
                 onPointerDown={(event) => {
                   if ((event.target as HTMLElement).closest(`.${styles.terminalSurface}`)) return
                   const rect = event.currentTarget.getBoundingClientRect()
-                  setDrag({ id: node.id, dx: event.clientX - rect.left, dy: event.clientY - rect.top })
+                  setDrag({
+                    id: node.id,
+                    dx: event.clientX - rect.left,
+                    dy: event.clientY - rect.top,
+                  })
                 }}
                 onClick={(event) => {
-                  setSelectedNodeIds((current) => event.shiftKey ? (current.includes(node.id) ? current.filter((id) => id !== node.id) : [...current, node.id]) : [node.id])
+                  setSelectedNodeIds((current) =>
+                    event.shiftKey
+                      ? current.includes(node.id)
+                        ? current.filter((id) => id !== node.id)
+                        : [...current, node.id]
+                      : [node.id],
+                  )
                   if (node.id !== from) setTo(node.id)
                 }}
               >
@@ -281,9 +379,21 @@ export function AgentSandbox() {
                   </span>
                 </div>
                 <div className={styles.nodeMeta}>
-                  <span>{node.transport === 'app-server' ? t('sandbox.protocol') : t('sandbox.terminal')}</span>
-                  {node.jobId && <span>{t('sandbox.job')} {node.jobId.slice(-8)}</span>}
-                  {node.threadId && <span>{t('sandbox.thread')} {node.threadId.slice(0, 8)}</span>}
+                  <span>
+                    {node.transport === 'app-server'
+                      ? t('sandbox.protocol')
+                      : t('sandbox.terminal')}
+                  </span>
+                  {node.jobId && (
+                    <span>
+                      {t('sandbox.job')} {node.jobId.slice(-8)}
+                    </span>
+                  )}
+                  {node.threadId && (
+                    <span>
+                      {t('sandbox.thread')} {node.threadId.slice(0, 8)}
+                    </span>
+                  )}
                 </div>
                 <div className={styles.terminalSurface}>
                   {node.transport === 'app-server' ? (
@@ -311,7 +421,13 @@ export function AgentSandbox() {
                   title={t('sandbox.resizeTerminal')}
                   onPointerDown={(event) => {
                     event.stopPropagation()
-                    setResize({ id: node.id, width: node.width, height: node.height, x: event.clientX, y: event.clientY })
+                    setResize({
+                      id: node.id,
+                      width: node.width,
+                      height: node.height,
+                      x: event.clientX,
+                      y: event.clientY,
+                    })
                   }}
                 >
                   <Maximize2 size={11} />
@@ -320,7 +436,9 @@ export function AgentSandbox() {
             ))}
           </>
         )}
-        <div className={styles.zoomBadge}>{nodes.length} {t('sandbox.agents')}</div>
+        <div className={styles.zoomBadge}>
+          {nodes.length} {t('sandbox.agents')}
+        </div>
       </div>
 
       <footer className={styles.composer}>
@@ -340,20 +458,40 @@ export function AgentSandbox() {
           ariaLabel="Message target agent"
           options={nodes.map((node) => ({ value: node.id, label: node.label }))}
         />
-          <input
+        <input
           value={text}
           onChange={(event) => setText(event.target.value)}
-          onKeyDown={(event) => { if (event.key === 'Enter') send() }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') send()
+          }}
           placeholder={t('sandbox.messagePlaceholder')}
           disabled={!active || !to || from === to}
         />
-        <button type="button" className={styles.iconButton} onClick={send} disabled={!active || !to || from === to || !text.trim()} title={t('sandbox.send')}>
+        <button
+          type="button"
+          className={styles.iconButton}
+          onClick={send}
+          disabled={!active || !to || from === to || !text.trim()}
+          title={t('sandbox.send')}
+        >
           <Send size={14} />
         </button>
-        <button type="button" className={styles.iconButton} onClick={() => void startDemo(project?.defaultCwd ?? '')} disabled={!project} title={t('sandbox.reset')}>
+        <button
+          type="button"
+          className={styles.iconButton}
+          onClick={() => void startDemo(project?.defaultCwd ?? '')}
+          disabled={!project}
+          title={t('sandbox.reset')}
+        >
           <RotateCcw size={14} />
         </button>
-        <button type="button" className={`${styles.iconButton} ${styles.dangerButton}`} onClick={stop} disabled={!active} title={t('sandbox.stop')}>
+        <button
+          type="button"
+          className={`${styles.iconButton} ${styles.dangerButton}`}
+          onClick={stop}
+          disabled={!active}
+          title={t('sandbox.stop')}
+        >
           <Square size={13} />
         </button>
       </footer>

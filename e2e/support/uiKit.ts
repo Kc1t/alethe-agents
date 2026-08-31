@@ -108,7 +108,8 @@ export async function clickByText(
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const fresh = (await findCandidates())[index]
-      if (!fresh) throw new Error(`clickByText: "${text}" disappeared from the screen between click attempts`)
+      if (!fresh)
+        throw new Error(`clickByText: "${text}" disappeared from the screen between click attempts`)
       await markScreenshotAndClick(fresh, nextShotName(`click-${text.slice(0, 30)}`))
       return
     } catch (err) {
@@ -135,9 +136,7 @@ export async function clickNearLabel(labelText: string, nth = 0): Promise<void> 
   const buttons = await container.$$('button')
   const target = buttons[nth]
   if (!target) {
-    throw new Error(
-      `clickNearLabel: no <button> (index ${nth}) found near label "${labelText}"`,
-    )
+    throw new Error(`clickNearLabel: no <button> (index ${nth}) found near label "${labelText}"`)
   }
   await markScreenshotAndClick(target, nextShotName(`click-near-label-${labelText.slice(0, 30)}`))
 }

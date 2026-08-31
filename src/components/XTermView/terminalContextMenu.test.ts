@@ -6,9 +6,7 @@ function makeBuffer(lines: string[]) {
   return {
     length: lines.length,
     getLine: (index: number) =>
-      index >= 0 && index < lines.length
-        ? { translateToString: () => lines[index] }
-        : undefined,
+      index >= 0 && index < lines.length ? { translateToString: () => lines[index] } : undefined,
   }
 }
 

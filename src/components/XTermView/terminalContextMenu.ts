@@ -6,7 +6,9 @@ export function collectTerminalContextText(
     buffer: {
       active: {
         length: number
-        getLine: (index: number) => { translateToString: (trimRight?: boolean) => string } | undefined
+        getLine: (
+          index: number,
+        ) => { translateToString: (trimRight?: boolean) => string } | undefined
       }
     }
   },

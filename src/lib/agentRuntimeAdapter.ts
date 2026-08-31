@@ -10,18 +10,23 @@ export type AgentRuntimeAdapter = {
   agents: AgentType[]
 }
 
-   
-                                                                             
-                                                                           
-                                                          
-   
 export const AGENT_RUNTIME_ADAPTERS: AgentRuntimeAdapter[] = [
   {
     id: 'pty',
     label: 'PTY / ConPTY',
     experimental: false,
     available: true,
-    agents: ['shell', 'claude', 'codex', 'copilot', 'cursor', 'opencode', 'freebuff', 'mimo', 'antigravity'],
+    agents: [
+      'shell',
+      'claude',
+      'codex',
+      'copilot',
+      'cursor',
+      'opencode',
+      'freebuff',
+      'mimo',
+      'antigravity',
+    ],
   },
   {
     id: 'codex-app-server',
@@ -69,8 +74,6 @@ export function preparePtyRuntimeLaunch(
   }
 
   if (agent === 'codex') {
-                                                                              
-                                                                        
     addArg(args, '--no-alt-screen')
   }
 

@@ -317,7 +317,12 @@ export const useUiStore = create<UiState>((set) => ({
     set((s) => {
       const now = Date.now()
       const last = s.notifications[0]
-      if (last && last.title === title && last.body === body && now - last.createdAt < DUPLICATE_TOAST_WINDOW_MS) {
+      if (
+        last &&
+        last.title === title &&
+        last.body === body &&
+        now - last.createdAt < DUPLICATE_TOAST_WINDOW_MS
+      ) {
         return s
       }
       const entry: InAppToast = {

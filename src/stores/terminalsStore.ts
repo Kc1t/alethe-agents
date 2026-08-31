@@ -4,16 +4,6 @@ import type { PtyStatus } from '../lib/types'
 
 export const IO_TIMESTAMP_THROTTLE_MS = 250
 
-   
-                                                                   
-                                                                         
-                                        
-  
-                                                                      
-                                                                     
-                                                     
-   
-
 export type TerminalSnapshot = {
   ansiBuffer: string
   scrollTop: number
@@ -25,23 +15,17 @@ export type TerminalSnapshot = {
 export type PtyRuntime = {
   ptyId: string
   status: PtyStatus
-                                                                                       
+
   lastTransitionAt: number
-                                                        
+
   alive: boolean
-                                                                                        
+
   parked: boolean
-                                                                                
+
   spawnedAt: number
-                                                        
+
   lastIoAt: number
-     
-                                                                            
-                                                                            
-                                                                             
-                                                                            
-                  
-     
+
   expectedOldExits: number
   lastFocusedAt?: number
   poolState?: 'ACTIVE' | 'HIBERNATING' | 'HIBERNATED' | 'RESTORING' | 'FAILED'
@@ -53,7 +37,7 @@ type TerminalsState = {
 
   reset: () => void
   registerPty: (ptyId: string) => void
-                                                                                   
+
   beginRestart: (ptyId: string) => void
   setStatus: (ptyId: string, status: PtyStatus) => void
   recordIo: (ptyId: string) => void
@@ -146,7 +130,7 @@ export const useTerminalsStore = create<TerminalsState>((set) => ({
     set((state) => {
       const current = state.byPtyId[ptyId]
       if (!current) return state
-                                                                                     
+
       if (current.expectedOldExits > 0) {
         return {
           byPtyId: {

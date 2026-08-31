@@ -628,7 +628,16 @@ export function SidebarMergePanel() {
         const match = /["'`](.+?)["'`]/.exec(step.description)
         return match ? match[1].trim() : null
       })
-      .find((cmd): cmd is string => Boolean(cmd) && (cmd!.startsWith('go run') || cmd!.startsWith('npm') || cmd!.startsWith('cargo run') || cmd!.startsWith('python') || cmd!.startsWith('make') || cmd!.startsWith('go build')))
+      .find(
+        (cmd): cmd is string =>
+          Boolean(cmd) &&
+          (cmd!.startsWith('go run') ||
+            cmd!.startsWith('npm') ||
+            cmd!.startsWith('cargo run') ||
+            cmd!.startsWith('python') ||
+            cmd!.startsWith('make') ||
+            cmd!.startsWith('go build')),
+      )
 
     if (runCommand && runCommand.startsWith('go build')) {
       // If it's "go build ./cmd/animego", chain the generated binary's execution right after

@@ -17,8 +17,12 @@ import { lazy, Suspense } from 'react'
 
 import { GridCellHandles } from '../GridCellHandles'
 
-const GraphifyView = lazy(() => import('../GraphifyView').then(m => ({ default: m.GraphifyView })))
-const MarkdownPane = lazy(() => import('../MarkdownPane').then(m => ({ default: m.MarkdownPane })))
+const GraphifyView = lazy(() =>
+  import('../GraphifyView').then((m) => ({ default: m.GraphifyView })),
+)
+const MarkdownPane = lazy(() =>
+  import('../MarkdownPane').then((m) => ({ default: m.MarkdownPane })),
+)
 import { TerminalPane } from '../TerminalPane'
 import { VideoPane } from '../VideoPane'
 import { WebPane } from '../WebPane'

@@ -1668,19 +1668,60 @@ mod tests {
     fn a_kill_never_runs_while_the_child_lock_is_held() {
         let source = include_str!("pty.rs");
         for (index, _) in source.match_indices("child.lock()") {
+            let head = &source[index.saturating_sub(96)..index];
             let tail = &source[index..];
-            let block_end = tail
-                .find(
-                    "
-    }",
-                )
-                .unwrap_or(tail.len().min(600));
-            let block = &tail[..block_end.min(600)];
+
+            // `.lock().ok().and_then(|...| ...)` — lock ends when the closure returns.
+            if let Some(rest) = tail.strip_prefix(".ok().and_then(") {
+                let closure_body = rest
+                    .split_once('|')
+                    .map(|(_, body)| body)
+                    .and_then(|body| body.find(')').map(|end| &body[..end]))
+                    .unwrap_or("");
+                assert!(
+                    !closure_body.contains("kill_process_tree("),
+                    "kill_process_tree inside child.lock and_then near byte {index}; read the pid, release the lock, then kill"
+                );
+                continue;
+            }
+
+            // `if let ... = child.lock() { ... }` — lock held for the whole block.
+            if head.contains("if let") {
+                if let Some(brace) = tail.find('{') {
+                    let block = child_lock_brace_block(&tail[brace..]);
+                    assert!(
+                        !block.contains("kill_process_tree("),
+                        "kill_process_tree while child.lock if-let block near byte {index}; read the pid, release the lock, then kill"
+                    );
+                    continue;
+                }
+            }
+
+            // Fallback: same statement only (until the next semicolon).
+            let stmt_end = tail.find(";\n").unwrap_or(tail.len().min(200));
+            let stmt = &tail[..stmt_end];
             assert!(
-                !block.contains("kill_process_tree("),
-                "a child lock is held across kill_process_tree near byte {index};                  read the pid, release the lock, then kill"
+                !stmt.contains("kill_process_tree("),
+                "kill_process_tree in the same statement as child.lock near byte {index}; read the pid, release the lock, then kill"
             );
         }
+    }
+
+    fn child_lock_brace_block(source: &str) -> &str {
+        let mut depth = 0;
+        for (i, ch) in source.char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return &source[..=i];
+                    }
+                }
+                _ => {}
+            }
+        }
+        source
     }
 
     /// The snapshot paths run under the global session lock, so they must never wait on a child.

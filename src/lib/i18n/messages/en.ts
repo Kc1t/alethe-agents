@@ -623,7 +623,8 @@ export const en = {
   'dictation.tooShort': 'Recording was too short — hold a bit longer, then release.',
   'dictation.silentMic':
     'No audio captured. Check the microphone permission for Alethe and the selected input device.',
-  'dictation.emptyTranscript': 'Heard audio, but the model returned no text. Try speaking more clearly.',
+  'dictation.emptyTranscript':
+    'Heard audio, but the model returned no text. Try speaking more clearly.',
   'dictation.noActiveTerminal': 'Focus a terminal pane before dictating.',
   'dictation.unsupported': 'Voice input is not available in this build.',
   'prefs.terminalTheme': 'Terminal theme',
@@ -1052,7 +1053,8 @@ export const en = {
   'crud.cloningRepoTitle': 'Cloning repository',
   'crud.cloningRepoBody': 'Starting the clone of {url} and generating the AI context briefing…',
   'crud.repoClonedTitle': 'Repository cloned',
-  'crud.repoClonedBody': 'Clone completed successfully. AI context injected into AGENTS.md and CLAUDE.md.',
+  'crud.repoClonedBody':
+    'Clone completed successfully. AI context injected into AGENTS.md and CLAUDE.md.',
   'crud.cloneErrorTitle': 'Clone error',
   'crud.createAgentSandboxProject': 'Create Agent Sandbox project',
   'crud.firstTerminalLabel': 'First terminal',

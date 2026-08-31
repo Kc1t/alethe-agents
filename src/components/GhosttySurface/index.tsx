@@ -196,8 +196,8 @@ export function GhosttySurface({
           onExitRef.current?.()
         }
       } catch {
-          /* ignore */
-        }
+        /* ignore */
+      }
     }, EXIT_POLL_MS)
     return () => {
       stopped = true

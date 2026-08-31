@@ -57,10 +57,6 @@ export function NormalProjectNode({
           ? styles.dropInside
           : ''
 
-                                                                              
-                                                                          
-                                                                             
-                                                           
   const visibleTerminals = project.terminals.filter((term) => !term.gsdSyncViewer)
   const isEmpty = visibleTerminals.length === 0
 

@@ -396,8 +396,8 @@ export function useXtermSession(params: {
             try {
               terminal.scrollToBottom()
             } catch {
-          /* ignore */
-        }
+              /* ignore */
+            }
             resolve()
           })
         } catch {
@@ -423,8 +423,8 @@ export function useXtermSession(params: {
       try {
         terminal.scrollLines(lines)
       } catch {
-          /* ignore */
-        }
+        /* ignore */
+      }
     }
     container.addEventListener('wheel', onWheel, { passive: false, capture: true })
 
@@ -1041,8 +1041,8 @@ export function useXtermSession(params: {
               onSessionIdRef.current?.(undefined)
             }
           } catch {
-          /* ignore */
-        }
+            /* ignore */
+          }
           if (disposed) return
         }
 
@@ -1061,8 +1061,8 @@ export function useXtermSession(params: {
             const claimed = claimMostRecentSession('opencode', cwd, candidates)
             if (claimed) resumeId = claimed.id
           } catch {
-          /* ignore */
-        }
+            /* ignore */
+          }
           if (disposed) return
         }
         const preparedRuntime = command
