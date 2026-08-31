@@ -2,6 +2,7 @@ import { Loader2, MessageSquare, Paperclip, Search, Send, Terminal, X } from 'lu
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useP2pAutoConnect } from '../../hooks/useP2pAutoConnect'
+import { sendAvatarUpdateTo } from '../../lib/api/avatarSync'
 import { p2pDrainFrames } from '../../lib/api/p2pBridge'
 import { P2P_CHANNEL_CHAT, P2P_CHANNEL_FILE_SYNC, untagFrame } from '../../lib/api/p2pChannel'
 import { subscribeToRendezvousEvents } from '../../lib/api/rendezvousEventBus'
@@ -323,6 +324,17 @@ export function ChatPanel({ source }: { source: ChatSource }) {
     p2p.connect(bytesToBase64(otherMember.x25519PublicKey))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [otherMember?.accountRoute])
+
+  // Backfills this device's own avatar to the other member every time a direct conversation with
+  // them opens — `broadcastAvatarUpdate` (Preferences) only fires the instant the picture is
+  // *changed*, so a contact who was offline that moment, or paired afterward, never received it
+  // otherwise and stayed stuck on an empty/stale thumbnail forever. Throttled per contact inside
+  // `sendAvatarUpdateTo` itself, so this being safe to call on every mount doesn't spam the relay.
+  useEffect(() => {
+    if (source.kind !== 'direct' || !otherMember) return
+    void sendAvatarUpdateTo(preferences.profileImageUrl, otherMember.accountRoute, bytesToBase64(otherMember.x25519PublicKey))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source.kind, otherMember?.accountRoute, preferences.profileImageUrl])
 
   useEffect(() => {
     let active = true
