@@ -214,7 +214,10 @@ export function createGroupsSlice({ update }: SliceCtx): GroupsSlice {
               (tab) =>
                 !(tab.kind === 'group' && groupsToRemove.has(tab.sourceId ?? tab.id)) &&
                 !(tab.kind === 'project' && projectsToRemove.has(tab.sourceId ?? tab.id)) &&
-                !(tab.kind === 'terminal' && projectsToRemove.has(tab.sourceProjectId ?? '')),
+                !(
+                  (tab.kind === 'terminal' || tab.kind === 'browser') &&
+                  projectsToRemove.has(tab.sourceProjectId ?? '')
+                ),
             )
             .map((tab) => ({
               ...tab,
@@ -858,7 +861,7 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
           .filter(
             (tab) =>
               !(tab.kind === 'project' && tab.sourceId === id) &&
-              !(tab.kind === 'terminal' && tab.sourceProjectId === id),
+              !((tab.kind === 'terminal' || tab.kind === 'browser') && tab.sourceProjectId === id),
           )
           .map((tab) => ({
             ...tab,

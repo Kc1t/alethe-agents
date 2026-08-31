@@ -1206,11 +1206,17 @@ export const ptBR: Record<MessageKey, string> = {
   'browser.resourceModeDescription.keep-alive':
     'Mantém páginas ocultas carregadas, mas ainda as libera se o Alethe detectar pressão de memória.',
   'browser.addToGrid': 'Adicionar ao grid',
+  'browser.openTab': 'Abrir aba de browser',
+  'browser.openInGridOption': 'Adicionar ao lado dos terminais',
+  'browser.openInGridOptionDescription':
+    'Coloca a página no grid do projeto. Deixe desmarcado para abrir uma aba dedicada de browser.',
   'browser.privateTitle': 'Sessão privada sempre ativa',
   'browser.privateDescription':
     'O Alethe abre este pane em uma webview nativa anônima. Cookies, logins, cache, preenchimento automático e dados dos sites não são mantidos depois que o pane é fechado.',
   'browser.privateBadge': 'Privado',
   'browser.destination': 'Este browser será adicionado a {project}.',
+  'browser.destinationTab': 'Abre como aba própria de {project}, separada do grid de terminais.',
+  'browser.destinationGrid': 'Este browser será adicionado ao grid de {project}.',
   'browser.embedHint':
     'Abre dentro do Alethe. Alguns sites podem bloquear a visualização incorporada.',
   'term.suspendGroupTitle': 'Suspender grupo',
@@ -1823,6 +1829,7 @@ export const ptBR: Record<MessageKey, string> = {
   /* ---- xterm link actions ---- */
   'xterm.linkMenu': 'Ações do link',
   'xterm.openInGrid': 'Abrir no grid',
+  'xterm.openInBrowserTab': 'Abrir em aba de browser',
   'xterm.addMarkdownToGroupView': 'Adicionar Markdown à view do grupo',
   'xterm.openInFolder': 'Abrir na pasta',
   'xterm.copy': 'Copiar',
@@ -1876,6 +1883,9 @@ export const ptBR: Record<MessageKey, string> = {
   'addContent.websiteHint': 'A página será inserida como pane no canvas, não dentro deste modal.',
   'addContent.addToCanvas': 'Adicionar ao canvas',
   'webPane.reload': 'Recarregar página',
+  'webPane.back': 'Voltar',
+  'webPane.forward': 'Avançar',
+  'webPane.addressBar': 'Barra de endereço',
   'webPane.close': 'Fechar pane do site',
   'webPane.confirmClose': 'Fechar o pane do site "{name}"?',
   'webPane.invalidUrl': 'O endereço deste site é inválido.',
@@ -1885,7 +1895,7 @@ export const ptBR: Record<MessageKey, string> = {
   'webPane.agentOpenedBody': '{page} está aberta no navegador compartilhado.',
   'webPane.agentOpenedOutside': 'Abrir no meu navegador',
   'webPane.agentOpenedDismiss': 'Deixar em segundo plano',
-  'webPane.agentOpenedAction': 'Ver aqui dentro',
+  'webPane.agentOpenedAction': 'Mostrar na aba de browser',
   'webPane.cdpCloseTab': 'Fechar aba',
   'webPane.cdpTabs': 'Abas abertas',
   'webPane.cdpLoading': 'Conectando ao navegador...',

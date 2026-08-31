@@ -3,12 +3,14 @@
 import { nanoid } from 'nanoid'
 
 import {
+  makeWebPane,
   newContainer,
   rememberProjectTab,
   rememberWorkspaceTab,
   touchTerminalUsage,
 } from '../lib/terminalFactory'
 import type {
+  BrowserPaneOptions,
   GridLayout,
   GridLayoutHistoryEntry,
   Preferences,
@@ -80,6 +82,7 @@ type WorkspaceSlice = Pick<
   | 'addProjectToWorkspace'
   | 'openGroupWorkspace'
   | 'openTerminalWorkspace'
+  | 'openBrowserWorkspace'
   | 'addTerminalToWorkspace'
   | 'addWorkspaceTabToCurrent'
   | 'focusWorkspaceTerminal'
@@ -427,7 +430,7 @@ export function createWorkspaceSlice({
       navigationUpdate((state) => {
         const existing = state.workspace.tabs.find(
           (tab) =>
-            tab.kind === 'terminal' &&
+            (tab.kind === 'terminal' || tab.kind === 'browser') &&
             tab.sourceId === terminalId &&
             tab.sourceProjectId === projectId,
         )
@@ -459,12 +462,12 @@ export function createWorkspaceSlice({
         const now = Date.now()
         const tab: WorkspaceTab = {
           id: nanoid(),
-          kind: 'terminal',
+          kind: terminal.kind === 'web' ? 'browser' : 'terminal',
           sourceId: terminal.id,
           sourceProjectId: project.id,
           label: terminal.name,
           color: project.color,
-          iconUrl: project.iconUrl,
+          iconUrl: terminal.kind === 'web' ? undefined : project.iconUrl,
           snapshot,
           createdAt: now,
           updatedAt: now,
@@ -474,6 +477,57 @@ export function createWorkspaceSlice({
           ...applyTabNavigation({ ...state, projects } as ProjectsState, tab, { addTab: true }),
         }
       }),
+
+    /**
+     * Opens a website in its own workspace tab — not as a cell in the terminal grid.
+     * The pane is still owned by the project for persistence/sidebar, but the live
+     * multi-pane containers are left alone so agents and shells keep their layout.
+     */
+    openBrowserWorkspace: (projectId, args: BrowserPaneOptions) => {
+      const pane = makeWebPane(args)
+      navigationUpdate((state) => {
+        const project = state.projects.find((item) => item.id === projectId)
+        if (!project) return
+        const projects = state.projects.map((item) =>
+          item.id === projectId ? { ...item, terminals: [...item.terminals, pane] } : item,
+        )
+        const existing = state.workspace.tabs.find(
+          (tab) =>
+            tab.kind === 'browser' && tab.sourceId === pane.id && tab.sourceProjectId === projectId,
+        )
+        if (existing) {
+          return {
+            projects,
+            ...applyTabNavigation({ ...state, projects } as ProjectsState, existing),
+          }
+        }
+        const snapshot = makeSnapshot(
+          { ...state, projects } as ProjectsState,
+          [newContainer(projectId, [pane.id], 'auto')],
+          projectId,
+          null,
+          pane.id,
+          { workspaceGridLayout: undefined, workspaceFlat: false, fullscreenContainerId: null },
+        )
+        const now = Date.now()
+        const tab: WorkspaceTab = {
+          id: nanoid(),
+          kind: 'browser',
+          sourceId: pane.id,
+          sourceProjectId: projectId,
+          label: pane.name,
+          color: project.color,
+          snapshot,
+          createdAt: now,
+          updatedAt: now,
+        }
+        return {
+          projects,
+          ...applyTabNavigation({ ...state, projects } as ProjectsState, tab, { addTab: true }),
+        }
+      })
+      return pane
+    },
 
     addTerminalToWorkspace: (projectId, terminalId) => {
       if (!get().workspace.activeTabId) {

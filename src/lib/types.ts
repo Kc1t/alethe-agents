@@ -370,7 +370,7 @@ export type WorkspaceRecentTab = {
   id: string
 }
 
-export type WorkspaceTabKind = 'project' | 'group' | 'terminal' | 'composition'
+export type WorkspaceTabKind = 'project' | 'group' | 'terminal' | 'browser' | 'composition'
 
 export type WorkspaceViewSnapshot = {
   containers: WorkspaceContainer[]

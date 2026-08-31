@@ -12,6 +12,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- Browser pages open in a dedicated workspace tab (with globe icon in the top bar), separate from
+  the terminal grid. Add Browser, terminal link actions, and agent page offers use that tab by
+  default; “Add beside terminals” remains available when you want a grid cell. The browser chrome
+  now includes an address bar plus back / forward / reload.
+
 - Right-click on a terminal opens a context menu with Copy, Paste, Select All, Copy Context, and
   Clear Screen, plus pane actions (Rename, Focus mode, Restart, Recent chats, Handoff, Open in
   Explorer / VS Code, Delete). Ctrl+right-click still does the previous terminal-style shortcut

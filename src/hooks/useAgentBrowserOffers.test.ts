@@ -1,7 +1,8 @@
 import { renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const createWebPane = vi.fn()
+const openBrowserWorkspace = vi.fn()
+const setActiveView = vi.fn()
 const pushToast = vi.fn()
 let emit: ((page: unknown) => void) | null = null
 const unlisten = vi.fn()
@@ -24,11 +25,11 @@ vi.mock('../lib/i18n', () => ({
 }))
 
 vi.mock('../stores/projectsStore', () => ({
-  useProjectsStore: { getState: () => ({ activeProjectId: 'proj-1', createWebPane }) },
+  useProjectsStore: { getState: () => ({ activeProjectId: 'proj-1', openBrowserWorkspace }) },
 }))
 
 vi.mock('../stores/uiStore', () => ({
-  useUiStore: { getState: () => ({ pushToast }) },
+  useUiStore: { getState: () => ({ pushToast, setActiveView }) },
 }))
 
 const { useAgentBrowserOffers } = await import('./useAgentBrowserOffers')
@@ -37,7 +38,8 @@ const page = { targetId: 'T7', url: 'https://example.test/docs', title: 'Docs' }
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 beforeEach(() => {
-  createWebPane.mockClear()
+  openBrowserWorkspace.mockClear()
+  setActiveView.mockClear()
   openInBrowser.mockClear()
   pushToast.mockClear()
   unlisten.mockClear()
@@ -52,24 +54,25 @@ describe('useAgentBrowserOffers', () => {
 
     expect(pushToast).toHaveBeenCalledTimes(1)
     expect(
-      createWebPane,
+      openBrowserWorkspace,
       'a page appearing must not take over the layout by itself',
     ).not.toHaveBeenCalled()
   })
 
-  it('shows the page in the pane that already exists once accepted', async () => {
+  it('shows the page in a dedicated browser tab once accepted', async () => {
     renderHook(() => useAgentBrowserOffers(true))
     await flush()
     emit?.(page)
 
     pushToast.mock.calls[0]![0].actions[0].run()
 
-    expect(createWebPane).toHaveBeenCalledWith('proj-1', {
+    expect(openBrowserWorkspace).toHaveBeenCalledWith('proj-1', {
       url: 'https://example.test/docs',
       name: 'Docs',
       engine: 'cdp',
       watchTargetId: 'T7',
     })
+    expect(setActiveView).toHaveBeenCalledWith('workspace')
   })
 
   it('names an untitled page by its host', async () => {
@@ -97,7 +100,10 @@ describe('useAgentBrowserOffers', () => {
     pushToast.mock.calls[0]![0].actions[1].run()
 
     expect(openInBrowser).toHaveBeenCalledWith('https://example.test/docs')
-    expect(createWebPane, 'opening outside must not also take grid space').not.toHaveBeenCalled()
+    expect(
+      openBrowserWorkspace,
+      'opening outside must not also take workspace tab space',
+    ).not.toHaveBeenCalled()
   })
 
   it('offers leaving it in the background as a real choice', async () => {
@@ -107,7 +113,7 @@ describe('useAgentBrowserOffers', () => {
 
     const actions = pushToast.mock.calls[0]![0].actions
     actions[actions.length - 1].run()
-    expect(createWebPane, 'declining must not create anything').not.toHaveBeenCalled()
+    expect(openBrowserWorkspace, 'declining must not create anything').not.toHaveBeenCalled()
     expect(openInBrowser, 'declining must not open anything either').not.toHaveBeenCalled()
   })
 

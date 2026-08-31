@@ -9,6 +9,7 @@ import {
   Eraser,
   ExternalLink,
   FolderOpen,
+  Globe2,
   LayoutGrid,
   Maximize2,
   PanelRight,
@@ -279,6 +280,17 @@ export function XTermView({
     (target: string) => {
       if (!projectId) return
       useProjectsStore.getState().createFilePane(projectId, { filePath: target })
+    },
+    [projectId],
+  )
+
+  const openUrlInBrowserTab = useCallback(
+    (target: string) => {
+      if (!projectId) return
+      const url = normalizeBrowserUrl(target)
+      if (!url) return
+      useProjectsStore.getState().openBrowserWorkspace(projectId, { url })
+      useUiStore.getState().setActiveView('workspace')
     },
     [projectId],
   )
@@ -567,18 +579,32 @@ export function XTermView({
               </button>
             ) : null}
             {linkActions.kind === 'url' && projectId ? (
-              <button
-                type="button"
-                className={styles.linkMenuItem}
-                role="menuitem"
-                onClick={() => {
-                  openUrlInGrid(linkActions.target)
-                  hideLinkActions()
-                }}
-              >
-                <LayoutGrid size={15} />
-                <span>{t('xterm.openInGrid')}</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  className={styles.linkMenuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    openUrlInBrowserTab(linkActions.target)
+                    hideLinkActions()
+                  }}
+                >
+                  <Globe2 size={15} />
+                  <span>{t('xterm.openInBrowserTab')}</span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.linkMenuItem}
+                  role="menuitem"
+                  onClick={() => {
+                    openUrlInGrid(linkActions.target)
+                    hideLinkActions()
+                  }}
+                >
+                  <LayoutGrid size={15} />
+                  <span>{t('xterm.openInGrid')}</span>
+                </button>
+              </>
             ) : null}
             {linkActions.kind === 'url' || linkActions.fileKind === 'video' ? (
               <button

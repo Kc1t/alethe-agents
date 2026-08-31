@@ -49,12 +49,13 @@ export function useAgentBrowserOffers(enabled: boolean): void {
           {
             label: translate(getLocale(), 'webPane.agentOpenedAction'),
             run: () => {
-              useProjectsStore.getState().createWebPane(projectId, {
+              useProjectsStore.getState().openBrowserWorkspace(projectId, {
                 url: page.url,
                 name: labelFor(page),
                 engine: 'cdp',
                 watchTargetId: page.targetId,
               })
+              useUiStore.getState().setActiveView('workspace')
             },
           },
           {

@@ -13,6 +13,7 @@ import {
   Pin,
   RefreshCw,
   Newspaper,
+  Globe2,
   Smartphone,
   Users,
   Workflow,
@@ -548,6 +549,8 @@ export function TitleBar() {
                   {tab.pinned ? <Pin size={11} className={styles.groupTabPinIcon} /> : null}
                   {tab.iconUrl ? (
                     <img src={tab.iconUrl} alt="" className={styles.groupTabIcon} />
+                  ) : tab.kind === 'browser' ? (
+                    <Globe2 size={14} className={styles.groupTabIconSvg} />
                   ) : tab.kind === 'composition' ? (
                     <Workflow size={14} className={styles.groupTabIconSvg} />
                   ) : (
