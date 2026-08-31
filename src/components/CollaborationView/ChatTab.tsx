@@ -67,20 +67,6 @@ export function ChatTab({
     }
   }
 
-  // "Remove" keeps message history and only revokes future auto-connect/trust — see
-  // `remove_chat_contact_at`'s own doc comment. "Delete everything" (below) additionally wipes the
-  // Direct conversation itself, for someone who explicitly wants that instead.
-  const removeContact = async (contact: SyncChatContact) => {
-    if (!window.confirm(t('chat.contacts.removeConfirm'))) return
-    try {
-      await syncRemoveChatContact(contact.accountRoute)
-      clearSelectionIfCurrent(contact.accountRoute)
-      reloadContacts()
-    } catch {
-      setContactsError(true)
-    }
-  }
-
   const deleteContactAndHistory = async (contact: SyncChatContact) => {
     if (!window.confirm(t('chat.contacts.deleteAllConfirm'))) return
     try {
@@ -344,10 +330,6 @@ export function ChatTab({
                     onRename: () => {
                       const contact = contacts.find((item) => item.accountRoute === selected.contactAccountRoute)
                       if (contact) void renameContact(contact)
-                    },
-                    onRemove: () => {
-                      const contact = contacts.find((item) => item.accountRoute === selected.contactAccountRoute)
-                      if (contact) void removeContact(contact)
                     },
                     onDeleteAll: () => {
                       const contact = contacts.find((item) => item.accountRoute === selected.contactAccountRoute)

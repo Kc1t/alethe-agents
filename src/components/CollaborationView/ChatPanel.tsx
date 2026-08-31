@@ -1,4 +1,4 @@
-import { Eraser, Loader2, MessageSquare, Paperclip, Pencil, Search, Send, Terminal, Trash2, X } from 'lucide-react'
+import { Eraser, Loader2, MessageSquare, Paperclip, Pencil, Search, Send, Terminal, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useP2pAutoConnect } from '../../hooks/useP2pAutoConnect'
@@ -39,12 +39,12 @@ export type ChatSource =
 
 /** Only meaningful for a `'direct'` source — the actions that used to live as three small icon
  * buttons inline in the contact list row now live in the contact-info panel opened from the chat
- * header instead (see `syncProjectNow`'s sibling, the header-click handler below), one level
- * closer to the conversation they act on. Owned by `ChatTab.tsx` (it already holds the contact
- * list and the prompts/confirmations for these), just rendered from here. */
+ * header instead (rename moved into the panel's own header; "remove" and "delete everything" were
+ * two separate destructive actions that both ended a contact relationship — consolidated into the
+ * one `onDeleteAll` action instead of keeping both). Owned by `ChatTab.tsx` (it already holds the
+ * contact list and the prompts/confirmations for these), just rendered from here. */
 export type ChatContactActions = {
   onRename: () => void
-  onRemove: () => void
   onDeleteAll: () => void
 }
 
@@ -656,9 +656,13 @@ export function ChatPanel({
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
+      <div
+        className={`${styles.header} ${source.kind === 'direct' ? styles.headerClickable : ''}`}
+        onClick={source.kind === 'direct' ? () => setContactInfoOpen((open) => !open) : undefined}
+        title={source.kind === 'direct' ? t('chat.contactInfo.open') : undefined}
+      >
         {searchOpen ? (
-          <div className={styles.searchBar}>
+          <div className={styles.searchBar} onClick={(event) => event.stopPropagation()}>
             <Search size={13} className={styles.searchIcon} />
             <input
               autoFocus
@@ -689,12 +693,7 @@ export function ChatPanel({
         ) : (
           <>
             {source.kind === 'direct' ? (
-              <button
-                type="button"
-                className={styles.headerContactTrigger}
-                title={t('chat.contactInfo.open')}
-                onClick={() => setContactInfoOpen((open) => !open)}
-              >
+              <>
                 <Avatar
                   src={otherAvatarUrl}
                   initial={
@@ -715,7 +714,7 @@ export function ChatPanel({
                 >
                   {t(`chat.connectionState.${connectionState}`)}
                 </span>
-              </button>
+              </>
             ) : (
               <>
                 <span className={styles.headerTitle}>{source.projectName}</span>
@@ -737,7 +736,10 @@ export function ChatPanel({
                 className={styles.headerAction}
                 disabled={fileSyncBusy}
                 title={fileSyncStatus ?? undefined}
-                onClick={() => void syncProjectNow()}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  void syncProjectNow()
+                }}
               >
                 {fileSyncBusy ? <Loader2 size={13} className={styles.spin} /> : null}
                 {t('chat.fileSync.syncNow')}
@@ -763,7 +765,10 @@ export function ChatPanel({
               className={styles.headerSearchButton}
               title={t('chat.searchMessages')}
               disabled={!conversation}
-              onClick={() => setSearchOpen(true)}
+              onClick={(event) => {
+                event.stopPropagation()
+                setSearchOpen(true)
+              }}
             >
               <Search size={14} />
             </button>
@@ -771,6 +776,8 @@ export function ChatPanel({
         )}
       </div>
 
+      <div className={styles.body}>
+        <div className={styles.bodyMain}>
       <div className={styles.messages}>
         {!conversation && !error ? (
           <div className={styles.loading}>
@@ -1037,65 +1044,57 @@ export function ChatPanel({
           {sending ? <Loader2 size={14} className={styles.spin} /> : <Send size={14} />}
         </button>
       </div>
-
-      {contactInfoOpen && source.kind === 'direct' ? (
-        <div className={styles.contactInfoOverlay}>
-          <div className={styles.contactInfoHeader}>
-            <span className={styles.contactInfoTitle}>{t('chat.contactInfo.title')}</span>
-            <button
-              type="button"
-              className={styles.iconButton}
-              title={t('common.close')}
-              onClick={() => setContactInfoOpen(false)}
-            >
-              <X size={14} />
-            </button>
-          </div>
-          <div className={styles.contactInfoIdentity}>
-            <Avatar
-              src={otherAvatarUrl}
-              initial={otherDisplayLabel ? getProfileInitial(otherDisplayLabel) : initialsFor(otherMember?.accountRoute ?? '')}
-              className={styles.contactInfoAvatar}
-            />
-            <span className={styles.contactInfoName}>{source.contactDisplayLabel}</span>
-            <span className={styles.contactInfoStatus}>{t(`chat.connectionState.${connectionState}`)}</span>
-          </div>
-          {contactActions ? (
-            <div className={styles.contactInfoActions}>
-              <button
-                type="button"
-                className={styles.contactInfoAction}
-                onClick={() => {
-                  contactActions.onRename()
-                }}
-              >
-                <Pencil size={14} />
-                {t('chat.contacts.rename')}
-              </button>
-              <button
-                type="button"
-                className={styles.contactInfoAction}
-                onClick={() => {
-                  contactActions.onRemove()
-                }}
-              >
-                <Trash2 size={14} />
-                {t('chat.contacts.remove')}
-              </button>
-              <button
-                type="button"
-                className={`${styles.contactInfoAction} ${styles.contactInfoActionDanger}`}
-                onClick={() => {
-                  contactActions.onDeleteAll()
-                }}
-              >
-                <Eraser size={14} />
-                {t('chat.contacts.deleteAll')}
-              </button>
-            </div>
-          ) : null}
         </div>
-      ) : null}
+
+        {contactInfoOpen && source.kind === 'direct' ? (
+          <div className={styles.contactInfoPanel}>
+            <div className={styles.contactInfoHeader}>
+              <button
+                type="button"
+                className={styles.iconButton}
+                title={t('common.close')}
+                onClick={() => setContactInfoOpen(false)}
+              >
+                <X size={14} />
+              </button>
+              <span className={styles.contactInfoTitle}>{t('chat.contactInfo.title')}</span>
+              {contactActions ? (
+                <button
+                  type="button"
+                  className={styles.iconButton}
+                  title={t('chat.contacts.rename')}
+                  onClick={() => contactActions.onRename()}
+                >
+                  <Pencil size={14} />
+                </button>
+              ) : (
+                <span className={styles.iconButtonSpacer} />
+              )}
+            </div>
+            <div className={styles.contactInfoIdentity}>
+              <Avatar
+                src={otherAvatarUrl}
+                initial={otherDisplayLabel ? getProfileInitial(otherDisplayLabel) : initialsFor(otherMember?.accountRoute ?? '')}
+                className={styles.contactInfoAvatar}
+              />
+              <span className={styles.contactInfoName}>{source.contactDisplayLabel}</span>
+              <span className={styles.contactInfoStatus}>{t(`chat.connectionState.${connectionState}`)}</span>
+            </div>
+            {contactActions ? (
+              <div className={styles.contactInfoActions}>
+                <button
+                  type="button"
+                  className={`${styles.contactInfoAction} ${styles.contactInfoActionDanger}`}
+                  onClick={() => contactActions.onDeleteAll()}
+                >
+                  <Eraser size={14} />
+                  {t('chat.contacts.deleteAll')}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }
