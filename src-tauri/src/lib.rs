@@ -550,6 +550,8 @@ pub fn run() {
             sync_security::sync_open_chat_contact_ack,
             sync_security::sync_seal_avatar_update,
             sync_security::sync_open_avatar_update,
+            sync_security::sync_seal_bio_update,
+            sync_security::sync_open_bio_update,
             sync_security::sync_open_chat_contact_confirm,
             sync_security::sync_list_pending_chat_contact_requests,
             sync_security::sync_resolve_pending_chat_contact_request,

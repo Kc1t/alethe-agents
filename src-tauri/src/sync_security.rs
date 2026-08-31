@@ -288,6 +288,13 @@ pub struct ChatContactRecord {
     /// they have no picture set, or none has been received yet.
     #[serde(default)]
     pub avatar_thumbnail: Option<String>,
+    /// This contact's short self-written bio, if known — unlike `avatar_thumbnail`, never seeded
+    /// from the pairing code (bios are set later, in Preferences, not at pairing time); only ever
+    /// arrives via a `"bio_update"` envelope from them (see `sync_open_bio_update`). Read-only from
+    /// this side by construction — nothing on this device ever writes another contact's `bio`,
+    /// only its own, which lives in local `Preferences`, not here.
+    #[serde(default)]
+    pub bio: Option<String>,
 }
 
 /// An invite ticket embedded in an exported pairing code (`sync_export_pairing_code`). Generating a
@@ -1652,6 +1659,7 @@ pub fn sync_add_chat_contact(
             display_label,
             added_at_ms: crate::provider_common::now_ms(),
             avatar_thumbnail,
+            bio: None,
         },
     )
 }
@@ -1678,6 +1686,22 @@ pub(crate) fn update_chat_contact_avatar_at(
         return Ok(());
     };
     contact.avatar_thumbnail = avatar_thumbnail;
+    save_at(data_root, &document)
+}
+
+/// Same shape as `update_chat_contact_avatar_at`, for `bio` instead of `avatar_thumbnail` — see
+/// `sync_open_bio_update`.
+pub(crate) fn update_chat_contact_bio_at(
+    data_root: &Path,
+    account_route: &str,
+    bio: Option<String>,
+) -> Result<(), String> {
+    let mut document = load_at(data_root)?;
+    let Some(contact) = document.chat_contacts.iter_mut().find(|contact| contact.account_route == account_route)
+    else {
+        return Ok(());
+    };
+    contact.bio = bio;
     save_at(data_root, &document)
 }
 
@@ -2011,6 +2035,7 @@ pub(crate) fn resolve_pending_chat_contact_request_at(
         display_label: request.display_label.clone(),
         added_at_ms: now_ms,
         avatar_thumbnail: request.avatar_thumbnail.clone(),
+        bio: None,
     };
     add_chat_contact_at(data_root, contact.clone())?;
 
@@ -2265,6 +2290,71 @@ pub fn sync_open_avatar_update(app: tauri::AppHandle, ciphertext: String) -> Res
         return Ok(None);
     }
     update_chat_contact_avatar_at(&data_root, &account_route, avatar_thumbnail)?;
+    Ok(Some(account_route))
+}
+
+const BIO_UPDATE_INFO: &[u8] = b"alethe-bio-update-v1";
+/// Discord's own "About Me" cap is 190 characters — matched here rather than invented, since it's
+/// a well-tested size for a short bio: long enough to say something, short enough to never wrap
+/// into a wall of text in a narrow side panel.
+pub const MAX_BIO_LEN: usize = 190;
+
+/// Seals `{ accountRoute, bio }` for a specific chat contact — same seal/open/live-update shape as
+/// `sync_seal_avatar_update`, for the bio field instead. `bio: None` clears it on the receiving
+/// side (the user cleared their own bio).
+#[tauri::command]
+pub fn sync_seal_bio_update(
+    account_route: String,
+    bio: Option<String>,
+    recipient_agreement_public_key: String,
+) -> Result<String, String> {
+    if bio.as_deref().is_some_and(|value| value.chars().count() > MAX_BIO_LEN) {
+        return Err("bio_update_too_long".to_string());
+    }
+    let recipient_public_key = URL_SAFE_NO_PAD
+        .decode(&recipient_agreement_public_key)
+        .map_err(|_| "bio_update_recipient_key_invalid".to_string())?;
+    let payload = serde_json::json!({
+        "accountRoute": account_route,
+        "bio": bio,
+    });
+    let plaintext = serde_json::to_vec(&payload).map_err(|_| "bio_update_encode_failed".to_string())?;
+    let sealed = crate::sync_crypto::seal_for_recipient(&plaintext, &recipient_public_key, BIO_UPDATE_INFO)
+        .map_err(|_| "bio_update_recipient_key_invalid".to_string())?;
+    let packed = crate::sync_chat::pack_sealed(&sealed);
+    if packed.len() > 16 * 1024 {
+        return Err("bio_update_too_large".to_string());
+    }
+    Ok(URL_SAFE_NO_PAD.encode(packed))
+}
+
+/// Decrypts a delivered `bio_update` envelope and, if the sender is a known chat contact, updates
+/// their stored bio. Returns the sender's account route on success, `None` if the sender isn't a
+/// known contact (nothing to update).
+#[tauri::command]
+pub fn sync_open_bio_update(app: tauri::AppHandle, ciphertext: String) -> Result<Option<String>, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let local_device_id = load_at(&data_root)?.local_device_id.ok_or_else(|| "security_device_missing".to_string())?;
+    let recipient_secret = load_device_agreement_secret(&local_device_id)?;
+    let packed = URL_SAFE_NO_PAD.decode(&ciphertext).map_err(|_| "bio_update_invalid".to_string())?;
+    let sealed = crate::sync_chat::unpack_sealed(&packed)?;
+    let plaintext = crate::sync_crypto::open_sealed(&sealed, &recipient_secret, BIO_UPDATE_INFO)
+        .map_err(|_| "bio_update_decrypt_failed".to_string())?;
+    let payload: serde_json::Value =
+        serde_json::from_slice(&plaintext).map_err(|_| "bio_update_invalid".to_string())?;
+    let account_route = payload.get("accountRoute").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    if account_route.is_empty() {
+        return Err("bio_update_invalid".to_string());
+    }
+    let bio = payload
+        .get("bio")
+        .and_then(|v| v.as_str())
+        .map(|s| s.chars().take(MAX_BIO_LEN).collect::<String>());
+    let document = load_at(&data_root)?;
+    if !document.chat_contacts.iter().any(|contact| contact.account_route == account_route) {
+        return Ok(None);
+    }
+    update_chat_contact_bio_at(&data_root, &account_route, bio)?;
     Ok(Some(account_route))
 }
 
@@ -2787,6 +2877,7 @@ mod tests {
                 display_label: "Friend".to_string(),
                 added_at_ms: 1_000,
                 avatar_thumbnail: None,
+                bio: None,
             },
         )
         .unwrap();
@@ -2812,6 +2903,7 @@ mod tests {
                 display_label: "Friend".to_string(),
                 added_at_ms: 1_000,
                 avatar_thumbnail: None,
+                bio: None,
             },
         )
         .unwrap();
@@ -2835,6 +2927,7 @@ mod tests {
                     display_label: label.to_string(),
                     added_at_ms: 1_000,
                     avatar_thumbnail: None,
+                    bio: None,
                 },
             )
             .unwrap();
@@ -3014,6 +3107,7 @@ mod tests {
                 display_label: parsed["displayLabel"].as_str().unwrap().to_string(),
                 added_at_ms: 2_000,
                 avatar_thumbnail: None,
+                bio: None,
             },
         )
         .unwrap();

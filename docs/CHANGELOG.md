@@ -31,6 +31,7 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Discord-style bio**: set a short "About me" (up to 190 characters) in Preferences → Account, shown to your chat contacts in the contact info panel. Read-only for everyone but you — synced the same way avatars already were (live update on change, plus a backfill send when opening a conversation with someone who missed it).
 - **Renaming a chat contact no longer opens a raw browser prompt** ("localhost:1422 diz…", which read as a bug in a desktop app) — the rename button in the contact info panel now edits the name inline, right below the avatar.
 - **Contact info panel**: clicking a direct chat's header (avatar, name, connection badge) now opens a right-side panel with the contact's details and the action that used to be three small icon buttons crowded into the sidebar contact list row — one click closer to the conversation they act on, instead of easy-to-misread icons next to every contact in the list. "Remove contact" and "delete everything" were two separate destructive actions with overlapping intent; consolidated into one "delete conversation" action. The panel now pushes the conversation to the side instead of floating on top of it, the whole header opens it (not just the avatar), and its close button/rename button sit at opposite top corners instead of both on the right.
 

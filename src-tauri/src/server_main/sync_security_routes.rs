@@ -60,10 +60,11 @@ async fn add_chat_contact(
                     agreement_public_key: body.agreement_public_key,
                     display_label: body.display_label,
                     added_at_ms: now_ms(),
-                    // Avatar sync (pairing-time snapshot + live `avatar_update` envelopes) is
-                    // Desktop-only for now, same reasoning as the rest of the P2P/relay chat
-                    // stack — the Web route has no thumbnail to carry yet.
+                    // Avatar/bio sync (pairing-time snapshot + live `avatar_update`/`bio_update`
+                    // envelopes) is Desktop-only for now, same reasoning as the rest of the P2P/
+                    // relay chat stack — the Web route has nothing to carry yet for either.
                     avatar_thumbnail: None,
+                    bio: None,
                 },
             )
         })

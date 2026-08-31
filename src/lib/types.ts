@@ -442,6 +442,10 @@ export type Preferences = {
   displayName: string
   /** URL da foto de perfil escolhida no cadastro local. */
   profileImageUrl: string
+  /** Short self-written bio (Discord-style "About Me"), shown to chat contacts — see
+   * `bioSync.ts`. Editable only here, by the account owner; a contact's own bio is read-only,
+   * received via `SyncChatContact.bio`. */
+  bio: string
 
   accountCreated: boolean
 
@@ -587,6 +591,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   firstLaunchAt: null,
   displayName: '',
   profileImageUrl: '',
+  bio: '',
   accountCreated: false,
   alwaysStartOnHome: false,
   alwaysStartUnrestricted: false,

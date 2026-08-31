@@ -115,6 +115,16 @@
   color: var(--fg-muted);
 }
 
+.contactInfoBio {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+  text-align: center;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .contactInfoActions {
   display: flex;
   flex-direction: column;

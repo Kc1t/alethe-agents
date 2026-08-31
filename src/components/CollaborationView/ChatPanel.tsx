@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useP2pAutoConnect } from '../../hooks/useP2pAutoConnect'
 import { sendAvatarUpdateTo } from '../../lib/api/avatarSync'
+import { sendBioUpdateTo } from '../../lib/api/bioSync'
 import { p2pDrainFrames } from '../../lib/api/p2pBridge'
 import { P2P_CHANNEL_CHAT, P2P_CHANNEL_FILE_SYNC, untagFrame } from '../../lib/api/p2pChannel'
 import { subscribeToRendezvousEvents } from '../../lib/api/rendezvousEventBus'
@@ -35,6 +36,9 @@ export type ChatSource =
       contactAccountRoute: string
       contactDisplayLabel: string
       contactAvatarThumbnail?: string | null
+      /** Read-only here — nothing on this device ever writes another contact's bio, only its own
+       * (edited in Preferences, see `bioSync.ts`). */
+      contactBio?: string | null
     }
 
 /** Only meaningful for a `'direct'` source — the actions that used to live as three small icon
@@ -367,8 +371,9 @@ export function ChatPanel({
   useEffect(() => {
     if (source.kind !== 'direct' || !otherMember) return
     void sendAvatarUpdateTo(preferences.profileImageUrl, otherMember.accountRoute, bytesToBase64(otherMember.x25519PublicKey))
+    void sendBioUpdateTo(preferences.bio, otherMember.accountRoute, bytesToBase64(otherMember.x25519PublicKey))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source.kind, otherMember?.accountRoute, preferences.profileImageUrl])
+  }, [source.kind, otherMember?.accountRoute, preferences.profileImageUrl, preferences.bio])
 
   useEffect(() => {
     let active = true
@@ -1115,6 +1120,7 @@ export function ChatPanel({
                 <span className={styles.contactInfoName}>{source.contactDisplayLabel}</span>
               )}
               <span className={styles.contactInfoStatus}>{t(`chat.connectionState.${connectionState}`)}</span>
+              {source.contactBio ? <p className={styles.contactInfoBio}>{source.contactBio}</p> : null}
             </div>
             {contactActions ? (
               <div className={styles.contactInfoActions}>

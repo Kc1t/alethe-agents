@@ -356,18 +356,18 @@ async fn connect_once(
                     if let Ok(value) = serde_json::from_str::<Value>(&text) {
                         let event_type = value.get("type").and_then(Value::as_str).unwrap_or("unknown").to_string();
                         if matches!(event_type.as_str(), "delivery" | "devices" | "error") {
-                            // `candidate`/`avatar_update` deliveries are deliberately excluded
-                            // below: pure automatic machinery (connection setup, profile-picture
+                            // `candidate`/`avatar_update`/`bio_update` deliveries are deliberately
+                            // excluded below: pure automatic machinery (connection setup, profile
                             // sync), never something a person took an action on or needs to be
                             // told about. `candidate` recording used to produce a notification
                             // every single P2P retry cycle once signaling started retrying on a
-                            // timer — same class of problem for `avatar_update`, sent to every
-                            // contact any time the profile picture changes.
+                            // timer — same class of problem for `avatar_update`/`bio_update`, sent
+                            // to every contact any time the profile picture or bio changes.
                             let envelope_kind = value.get("kind").and_then(Value::as_str);
                             if event_type == "delivery"
                                 && !matches!(
                                     envelope_kind,
-                                    Some("candidate") | Some("avatar_update") | Some("chat_contact_confirm")
+                                    Some("candidate") | Some("avatar_update") | Some("bio_update") | Some("chat_contact_confirm")
                                 )
                             {
                                 if let Some(subject) = value.get("id").and_then(Value::as_str) {
@@ -662,6 +662,7 @@ fn sanitize_outgoing_frame(frame: Value, now_ms: u64) -> Result<Value, String> {
                         | "chat_contact_ack"
                         | "chat_contact_confirm"
                         | "avatar_update"
+                        | "bio_update"
                 )
                 || !is_account_route(recipient_account_route)
                 || expires_at_ms <= now_ms

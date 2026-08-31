@@ -268,6 +268,9 @@ export type SyncChatContact = {
   /** Small downscaled profile-picture thumbnail (`data:image/jpeg;base64,...`), if known — set at
    * pairing time and refreshed live via `syncOpenAvatarUpdate`. `null`/absent if none is known. */
   avatarThumbnail?: string | null
+  /** This contact's short self-written bio, if known — unlike the avatar, never seeded from the
+   * pairing code; only ever arrives via `syncOpenBioUpdate`. `null`/absent if none is known yet. */
+  bio?: string | null
 }
 
 export async function syncAddChatContact(
@@ -458,6 +461,28 @@ export async function syncSealAvatarUpdate(
 export async function syncOpenAvatarUpdate(ciphertext: string): Promise<string | null> {
   if (!isTauriEnv()) throw new Error('avatar_update_desktop_only')
   return invoke<string | null>('sync_open_avatar_update', { ciphertext })
+}
+
+/** Discord's own "About Me" cap — matched here, not invented (see `sync_security.rs`'s
+ * `MAX_BIO_LEN`, the source of truth this mirrors for the input's `maxLength`). */
+export const MAX_BIO_LEN = 190
+
+/** Same seal/open/live-update shape as `syncSealAvatarUpdate`, for the bio field instead. */
+export async function syncSealBioUpdate(
+  accountRoute: string,
+  bio: string | null,
+  recipientAgreementPublicKey: string,
+): Promise<string> {
+  if (!isTauriEnv()) throw new Error('bio_update_desktop_only')
+  return invoke<string>('sync_seal_bio_update', { accountRoute, bio, recipientAgreementPublicKey })
+}
+
+/** Decrypts a delivered `bio_update` envelope and, if the sender is a known chat contact, updates
+ * their stored bio. Returns the sender's account route on success, or `null` if they aren't a
+ * known contact (nothing to update). */
+export async function syncOpenBioUpdate(ciphertext: string): Promise<string | null> {
+  if (!isTauriEnv()) throw new Error('bio_update_desktop_only')
+  return invoke<string | null>('sync_open_bio_update', { ciphertext })
 }
 
 export type CollaboratorSuggestionEnvelope = {

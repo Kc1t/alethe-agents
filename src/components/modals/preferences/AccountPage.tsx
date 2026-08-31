@@ -2,6 +2,8 @@ import { Check, ChevronRight, Loader2, UserRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { broadcastAvatarUpdate } from '../../../lib/api/avatarSync'
+import { broadcastBioUpdate } from '../../../lib/api/bioSync'
+import { MAX_BIO_LEN } from '../../../lib/api/syncSecurity'
 import { LOCALES, useT } from '../../../lib/i18n'
 import {
   configureGoogleSync,
@@ -117,6 +119,27 @@ export function AccountPage({
               placeholder={t('prefs.photoPlaceholder')}
               hint={t('image.urlOrUpload')}
             />
+            <label>
+              <span>
+                {t('prefs.bio')}
+                <span className={styles.bioCounter}>
+                  {preferences.bio.length}/{MAX_BIO_LEN}
+                </span>
+              </span>
+              <textarea
+                className={`${controls.input} ${styles.bioTextarea}`}
+                value={preferences.bio}
+                onChange={(event) => setPreferences({ bio: event.target.value.slice(0, MAX_BIO_LEN) })}
+                // Only sent to contacts on blur (not every keystroke) — this field is otherwise
+                // identical to the avatar's own "broadcast on change" pattern, just batched so
+                // typing a bio doesn't queue a relay envelope per character.
+                onBlur={() => void broadcastBioUpdate(preferences.bio)}
+                placeholder={t('prefs.bioPlaceholder')}
+                rows={3}
+                maxLength={MAX_BIO_LEN}
+              />
+              <span className={styles.bioHint}>{t('prefs.bioHint')}</span>
+            </label>
           </div>
         </div>
       </SettingsSection>

@@ -9,6 +9,7 @@ import {
   syncListChatContacts,
   syncListPendingChatContactRequests,
   syncOpenAvatarUpdate,
+  syncOpenBioUpdate,
   syncOpenChatContactAck,
   syncRemoveChatContact,
   syncRenameChatContact,
@@ -117,6 +118,7 @@ export function ChatTab({
         contactAccountRoute: contact.accountRoute,
         contactDisplayLabel: contact.displayLabel,
         contactAvatarThumbnail: contact.avatarThumbnail,
+        contactBio: contact.bio,
       })
     }
   }, [projectId, selected, contacts])
@@ -197,17 +199,22 @@ export function ChatTab({
   useEffect(() => {
     let active = true
     const unsubscribe = subscribeToRendezvousEvents((events) => {
-      const avatarEvents = events.filter((event) => event.envelopeKind === 'avatar_update')
-      if (avatarEvents.length === 0) return
+      const profileEvents = events.filter(
+        (event) => event.envelopeKind === 'avatar_update' || event.envelopeKind === 'bio_update',
+      )
+      if (profileEvents.length === 0) return
       void (async () => {
         let updated = false
-        for (const event of avatarEvents) {
+        for (const event of profileEvents) {
           if (event.eventType !== 'delivery' || !event.ciphertext) continue
           try {
-            const accountRoute = await syncOpenAvatarUpdate(event.ciphertext)
+            const accountRoute =
+              event.envelopeKind === 'avatar_update'
+                ? await syncOpenAvatarUpdate(event.ciphertext)
+                : await syncOpenBioUpdate(event.ciphertext)
             if (accountRoute) updated = true
           } catch (cause) {
-            console.warn('[chat-contact] avatar_update could not be opened', cause)
+            console.warn(`[chat-contact] ${event.envelopeKind} could not be opened`, cause)
           }
         }
         if (active && updated) reloadContacts()
@@ -226,13 +233,15 @@ export function ChatTab({
       if (
         match &&
         (match.displayLabel !== selected.contactDisplayLabel ||
-          match.avatarThumbnail !== selected.contactAvatarThumbnail)
+          match.avatarThumbnail !== selected.contactAvatarThumbnail ||
+          match.bio !== selected.contactBio)
       ) {
         setSelected({
           kind: 'direct',
           contactAccountRoute: match.accountRoute,
           contactDisplayLabel: match.displayLabel,
           contactAvatarThumbnail: match.avatarThumbnail,
+          contactBio: match.bio,
         })
       }
     }
@@ -294,6 +303,7 @@ export function ChatTab({
                       contactAccountRoute: contact.accountRoute,
                       contactDisplayLabel: contact.displayLabel,
                       contactAvatarThumbnail: contact.avatarThumbnail,
+                      contactBio: contact.bio,
                     })
                   }
                 >
