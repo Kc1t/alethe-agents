@@ -16,8 +16,12 @@ import styles from './GitGraph.module.css'
 // histories with several short branches stacked in sequence. Raising
 // ROW_HEIGHT and lowering LANE_WIDTH a bit makes the curve noticeably
 // smoother without changing the drawing logic.
-export const ROW_HEIGHT = 28
-const LANE_WIDTH = 13
+// Two text lines per row (subject above, author/date below) — see `.info` in the stylesheet. On a
+// narrow sidebar a single line forced the subject to share its width with the ref badges and the
+// author/date, and the subject lost: it was clipped to a few characters ("fix(u…", "Merg…") while
+// the row's most important information sat off screen. Stacking gives the subject the full width.
+export const ROW_HEIGHT = 40
+const LANE_WIDTH = 14
 const DOT_RADIUS = 4
 const OVERSCAN = 8
 
@@ -29,7 +33,16 @@ const OVERSCAN = 8
  *  read as "the graph throws everything off screen". Lanes past this limit are drawn collapsed
  *  onto the last column: overlapping strands in a deep history are a fair trade for a layout that
  *  always leaves room for the message. */
-const MAX_RENDERED_LANES = 4
+const MAX_RENDERED_LANES = 3
+
+/** Lanes past the cap are omitted from the drawing entirely rather than collapsed onto the last
+ *  column. Collapsing them (the first attempt at bounding the width) drew several unrelated
+ *  strands at the exact same x, so they overlapped into what looked like one thick smeared line
+ *  instead of distinct branches. The one exception is the row's own commit, which is clamped into
+ *  the last column so that the commit itself always has a visible dot. */
+function isRenderedLane(lane: number): boolean {
+  return lane < MAX_RENDERED_LANES
+}
 
 function laneX(lane: number): number {
   return Math.min(lane, MAX_RENDERED_LANES - 1) * LANE_WIDTH + LANE_WIDTH / 2
@@ -312,12 +325,14 @@ function GraphRowView({
   // Two lines rather than one long one: the native tooltip cannot be repositioned, so a single
   // wide string gets clipped by the window edge on a right-docked sidebar.
   const rowTooltip = `${row.commit.hash.slice(0, 7)}\n${row.commit.subject}`
+  const dotColor = laneColorForId(row.lane, row.laneId)
+  const dotRadius = row.lane === MAIN_LANE ? DOT_RADIUS + 1.5 : DOT_RADIUS
 
   const elements: React.ReactNode[] = []
 
   // 1. Process the top half (0 -> cy)
   for (let l = 0; l < row.lanesBefore.length; l++) {
-    if (row.lanesBefore[l] != null) {
+    if (row.lanesBefore[l] != null && (isRenderedLane(l) || l === row.lane)) {
       const fromX = laneX(l)
       const color = laneColorForId(l, row.laneIdsBefore[l] ?? null)
 
@@ -372,7 +387,7 @@ function GraphRowView({
   if (!row.isLastRow) {
     for (let l = 0; l < row.lanesAfter.length; l++) {
       const parent = row.lanesAfter[l]
-      if (parent != null) {
+      if (parent != null && (isRenderedLane(l) || l === row.lane)) {
         const toX = laneX(l)
         const color = laneColorForId(l, row.laneIdsAfter[l] ?? null)
 
@@ -441,20 +456,32 @@ function GraphRowView({
             in the background color visually "cuts" the lines that pass
             behind the dot, GitLens/GitKraken style. */}
         <circle
+          className={styles.dot}
           cx={cx}
           cy={cy}
-          r={row.lane === MAIN_LANE ? DOT_RADIUS + 1.5 : DOT_RADIUS}
-          fill={laneColorForId(row.lane, row.laneId)}
+          fill={dotColor}
           stroke="var(--bg)"
           strokeWidth={2}
+          style={
+            {
+              // `color` feeds the hover glow's `drop-shadow(... currentColor)`, and the two radii
+              // drive the grow-on-hover — both live in CSS so the transition is the compositor's
+              // job rather than React's. Chromium resolves the SVG geometry property `r` from CSS.
+              color: dotColor,
+              '--dot-r': `${dotRadius}px`,
+              '--dot-r-hover': `${dotRadius + 2}px`,
+            } as React.CSSProperties
+          }
         />
       </svg>
 
       <div className={styles.info}>
         <span className={styles.subject}>{row.commit.subject}</span>
-        <RefBadges refs={row.commit.refs} />
-        <span className={styles.meta}>
-          {row.commit.authorName} · {relativeTime(row.commit.timestamp, t)}
+        <span className={styles.infoBottom}>
+          <span className={styles.meta}>
+            {row.commit.authorName} · {relativeTime(row.commit.timestamp, t)}
+          </span>
+          <RefBadges refs={row.commit.refs} />
         </span>
       </div>
     </div>
