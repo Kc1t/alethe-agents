@@ -65,6 +65,7 @@ export const en = {
   'chat.projectInvite.accept': 'Accept',
   'chat.projectInvite.decline': 'Decline',
   'chat.projectInvite.awaitingGrant': 'Accepted “{project}” — waiting for access to arrive…',
+  'chat.projectInvite.accessGranted': 'Project access granted.',
   'chat.projectInvite.accepted': 'You joined “{project}”.',
   'chat.projectInvite.declined': 'Invite declined.',
   'chat.attachmentMessage': 'Shared a file: {name} (id {id})',

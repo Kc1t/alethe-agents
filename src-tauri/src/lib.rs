@@ -579,6 +579,8 @@ pub fn run() {
             sync_project_invite::sync_seal_project_invite_response,
             sync_project_invite::sync_open_project_invite_response,
             sync_project_invite::sync_grant_project_to_invitee,
+            sync_security::sync_remember_sent_project_invite,
+            sync_security::sync_take_sent_project_invite,
             sync_security::sync_revoke_grant,
             sync_security::sync_update_grant,
             sync_security::sync_list_project_grants,

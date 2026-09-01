@@ -79,3 +79,30 @@ export async function grantProjectToInvitee(params: {
 }): Promise<string> {
   return invoke<string>('sync_grant_project_to_invitee', params)
 }
+
+export type SentProjectInvite = {
+  inviteId: string
+  projectId: string
+  recipientAccountRoute: string
+  sentAtMs: number
+}
+
+/**
+ * Records an invite that has just been sent.
+ *
+ * Persisted rather than held in memory: the invite stays answerable in the relay mailbox for a
+ * day, and the answer alone doesn't say which project it was for — so forgetting it when the app
+ * closes meant an invite answered the next morning could never be completed.
+ */
+export async function rememberSentProjectInvite(params: {
+  inviteId: string
+  projectId: string
+  recipientAccountRoute: string
+}): Promise<void> {
+  await invoke('sync_remember_sent_project_invite', params)
+}
+
+/** Consumes the record for `inviteId`; `null` if it was already answered, expired, or not ours. */
+export async function takeSentProjectInvite(inviteId: string): Promise<SentProjectInvite | null> {
+  return invoke<SentProjectInvite | null>('sync_take_sent_project_invite', { inviteId })
+}

@@ -1,8 +1,8 @@
 import { FolderSync, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 
-import { sealProjectInvite } from '../../lib/api/projectInvite'
-import { rememberSentInvite } from './ProjectInvitesPanel'
+import { rememberSentProjectInvite, sealProjectInvite } from '../../lib/api/projectInvite'
+
 import { sendRendezvousFrame } from '../../lib/api/syncRendezvous'
 import { syncListChatContacts, syncLocalIdentity } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
@@ -40,9 +40,14 @@ export function InviteToProject({ contactAccountRoute }: { contactAccountRoute: 
       const contact = contacts.find((entry) => entry.accountRoute === contactAccountRoute)
       if (!contact) throw new Error('contact_not_found')
       const inviteId = `pinv_${crypto.randomUUID()}`
-      // Recorded before sending: the answer decides which project to grant, and it can
-      // come back before this function has finished awaiting the enqueue.
-      rememberSentInvite(inviteId, project.id, contactAccountRoute)
+      // Recorded before sending, and on disk: the answer decides which project to grant, it can
+      // arrive before this function finishes awaiting the enqueue, and it can arrive days later
+      // after a restart.
+      await rememberSentProjectInvite({
+        inviteId,
+        projectId: project.id,
+        recipientAccountRoute: contactAccountRoute,
+      })
       const ciphertext = await sealProjectInvite({
         inviteId,
         projectId: project.id,

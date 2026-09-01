@@ -7,6 +7,7 @@ import {
   openProjectInviteResponse,
   type ProjectInvitePayload,
   sealProjectInviteResponse,
+  takeSentProjectInvite,
 } from '../../lib/api/projectInvite'
 import { subscribeToRendezvousEvents } from '../../lib/api/rendezvousEventBus'
 import { sendRendezvousFrame } from '../../lib/api/syncRendezvous'
@@ -62,7 +63,9 @@ export function ProjectInvitesPanel() {
             }
             // They accepted and sent the identity the grant needs. Issue it and send it back.
             try {
-              const sent = pendingProjects.get(answer.inviteId)
+              // Consumed from disk, so an answer that arrives after a restart still
+              // completes, and a duplicate delivery cannot issue a second grant.
+              const sent = await takeSentProjectInvite(answer.inviteId)
               if (!sent) continue
               const confirmCiphertext = await grantProjectToInvitee({
                 projectId: sent.projectId,
@@ -77,29 +80,36 @@ export function ProjectInvitesPanel() {
                 type: 'enqueue',
                 kind: 'chat_contact_confirm',
                 id: `pinv_grant_${crypto.randomUUID()}`,
-                recipientAccountRoute: sent.accountRoute,
+                recipientAccountRoute: sent.recipientAccountRoute,
                 expiresAtMs: Date.now() + RESPONSE_TTL_MS,
                 ciphertext: confirmCiphertext,
               })
-              pendingProjects.delete(answer.inviteId)
             } catch (cause) {
               console.error('[project-invite] failed to issue grant', cause)
             }
             continue
           }
 
-          if (event.envelopeKind === 'chat_contact_confirm' && awaitingGrant.size > 0) {
+          if (event.envelopeKind === 'chat_contact_confirm') {
             // This is the envelope that carries the grant back after we accepted an invite, and
             // it has to be opened here: the pairing flow's own listener only runs while the "add
             // contact" modal is open and waiting, so outside that modal nothing would materialize
             // the grant and accepting would silently do nothing. Sharing the envelope kind with
             // that listener is safe — the event bus fans every event out to every subscriber
             // precisely so no consumer can steal another's (see rendezvousEventBus.ts).
+            // Deliberately not gated on having accepted something in this session: the grant can
+            // land after a restart, and needing to remember the acceptance to accept the grant
+            // would reintroduce exactly the bug this listener exists to fix. A confirm carrying a
+            // grant is always ours to materialize. The bearer token inside is single-use, so the
+            // pairing flow's listener opening the same envelope cannot double-issue anything.
             const opened = await syncOpenChatContactConfirm(event.ciphertext).catch(() => null)
             if (opened?.grant) {
-              const projectName = awaitingGrant.get(opened.grant.projectId)
-              awaitingGrant.delete(opened.grant.projectId)
-              setNotice(t('chat.projectInvite.accepted', { project: projectName ?? '' }))
+              const project = projectNameFor(opened.grant.projectId)
+              setNotice(
+                project
+                  ? t('chat.projectInvite.accepted', { project })
+                  : t('chat.projectInvite.accessGranted'),
+              )
             }
           }
         }
@@ -131,7 +141,7 @@ export function ProjectInvitesPanel() {
       if (accepted) {
         // The grant arrives in a separate envelope moments later; until it does, nothing has
         // actually been shared yet, so say so rather than claiming the project is already joined.
-        awaitingGrant.set(invite.projectId, invite.projectName)
+        rememberProjectName(invite.projectId, invite.projectName)
         setNotice(t('chat.projectInvite.awaitingGrant', { project: invite.projectName }))
       } else {
         setNotice(t('chat.projectInvite.declined'))
@@ -181,19 +191,14 @@ export function ProjectInvitesPanel() {
   )
 }
 
-/**
- * Which project each invite we sent was for, so the grant can be issued when the answer comes
- * back. Kept in module scope rather than component state because the answer can arrive after the
- * panel has re-mounted, and it is never persisted: an invite whose answer arrives after a restart
- * is simply re-sent, which is safer than writing pending grants to disk.
- */
-const pendingProjects = new Map<string, { projectId: string; accountRoute: string }>()
+/** Project names seen on invites, purely so the "you joined X" notice can name the project. Losing
+ *  this on restart costs nothing but a less specific message — never whether the grant applies. */
+const projectNames = new Map<string, string>()
 
-/** Called by the sender when an invite goes out. */
-export function rememberSentInvite(inviteId: string, projectId: string, accountRoute: string) {
-  pendingProjects.set(inviteId, { projectId, accountRoute })
+function rememberProjectName(projectId: string, name: string) {
+  projectNames.set(projectId, name)
 }
 
-/** Projects this device has accepted an invite for and is waiting the grant envelope for, by
- *  project id — so the confirm that arrives can be recognised as ours and reported by name. */
-const awaitingGrant = new Map<string, string>()
+function projectNameFor(projectId: string): string | null {
+  return projectNames.get(projectId) ?? null
+}

@@ -323,6 +323,22 @@ pub struct ChatInviteToken {
 /// decide, per person, whether to just add them as a chat contact or also grant them access to one
 /// of their projects, and scales to several people asking at once (a queue, not a single blocking
 /// prompt) — see `PairingRequestsPanel.tsx`.
+/// A project invite this device has sent and is still waiting an answer to.
+///
+/// Persisted rather than kept in memory because the invite is valid in the relay mailbox for a
+/// day: forgetting it when the app closes meant an invite answered the next morning could not be
+/// completed, since the answer alone does not say which project it was for. Nothing sensitive is
+/// recorded here — which project was offered to which contact route, both of which this device
+/// already stores — and no grant exists until the answer actually arrives.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SentProjectInvite {
+    pub invite_id: String,
+    pub project_id: String,
+    pub recipient_account_route: String,
+    pub sent_at_ms: u64,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PendingChatContactRequest {
@@ -363,6 +379,9 @@ pub struct SyncSecurityDocument {
     /// See `PendingChatContactRequest`.
     #[serde(default)]
     pub pending_chat_contact_requests: Vec<PendingChatContactRequest>,
+    /// See `SentProjectInvite`.
+    #[serde(default)]
+    pub sent_project_invites: Vec<SentProjectInvite>,
     pub audit: Vec<SecurityAuditEvent>,
 }
 
@@ -378,6 +397,7 @@ impl Default for SyncSecurityDocument {
             chat_contacts: Vec::new(),
             chat_invite_tokens: Vec::new(),
             pending_chat_contact_requests: Vec::new(),
+            sent_project_invites: Vec::new(),
             audit: Vec::new(),
         }
     }
@@ -2461,6 +2481,56 @@ pub fn grant_project_to_account(
     seal_chat_contact_confirm(recipient_agreement_public_key, payload)
 }
 
+/// How long a sent invite is kept before it is dropped as stale. Matches the relay mailbox TTL the
+/// invite itself is enqueued with — past that the recipient could not answer it anyway.
+const SENT_PROJECT_INVITE_TTL_MS: u64 = 24 * 60 * 60 * 1000;
+
+/// Records an invite so a later answer can be matched back to its project, dropping any that have
+/// outlived the mailbox entry they refer to.
+#[tauri::command]
+pub fn sync_remember_sent_project_invite(
+    app: tauri::AppHandle,
+    invite_id: String,
+    project_id: String,
+    recipient_account_route: String,
+) -> Result<(), String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let now_ms = crate::provider_common::now_ms();
+    let mut document = load_at(&data_root)?;
+    document
+        .sent_project_invites
+        .retain(|invite| now_ms.saturating_sub(invite.sent_at_ms) < SENT_PROJECT_INVITE_TTL_MS);
+    document.sent_project_invites.push(SentProjectInvite {
+        invite_id,
+        project_id,
+        recipient_account_route,
+        sent_at_ms: now_ms,
+    });
+    save_at(&data_root, &document)
+}
+
+/// Consumes the invite matching `invite_id`, or `None` when there is none — already answered,
+/// expired, or never sent from this device. Removing it on read is what stops one answer from
+/// issuing two grants.
+#[tauri::command]
+pub fn sync_take_sent_project_invite(
+    app: tauri::AppHandle,
+    invite_id: String,
+) -> Result<Option<SentProjectInvite>, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let mut document = load_at(&data_root)?;
+    let Some(index) = document
+        .sent_project_invites
+        .iter()
+        .position(|invite| invite.invite_id == invite_id)
+    else {
+        return Ok(None);
+    };
+    let invite = document.sent_project_invites.remove(index);
+    save_at(&data_root, &document)?;
+    Ok(Some(invite))
+}
+
 /// Whether `account_route` belongs to someone already paired with this device.
 pub fn has_chat_contact_at(data_root: &Path, account_route: &str) -> Result<bool, String> {
     Ok(load_at(data_root)?
@@ -3459,6 +3529,7 @@ mod tests {
             chat_contacts: vec![],
             chat_invite_tokens: vec![],
             pending_chat_contact_requests: vec![],
+            sent_project_invites: vec![],
             audit: vec![],
         };
         assert_eq!(

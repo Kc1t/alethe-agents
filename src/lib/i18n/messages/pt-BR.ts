@@ -67,6 +67,7 @@ export const ptBR: Record<MessageKey, string> = {
   'chat.projectInvite.accept': 'Aceitar',
   'chat.projectInvite.decline': 'Recusar',
   'chat.projectInvite.awaitingGrant': 'Aceito “{project}” — aguardando o acesso chegar…',
+  'chat.projectInvite.accessGranted': 'Acesso ao projeto concedido.',
   'chat.projectInvite.accepted': 'Você entrou em “{project}”.',
   'chat.projectInvite.declined': 'Convite recusado.',
   'chat.attachmentMessage': 'Compartilhou um arquivo: {name} (id {id})',
