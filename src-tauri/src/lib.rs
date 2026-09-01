@@ -73,6 +73,7 @@ mod window_style;
 #[cfg(windows)]
 mod windows_webview;
 mod worktrees;
+mod wsl;
 
 use crate::pty::{PtySession, PtySessions};
 use std::collections::HashMap;
@@ -330,6 +331,10 @@ pub fn run() {
             profiles::rename_profile,
             profiles::delete_profile,
             cli_resolver::find_cli_launcher,
+            wsl::list_wsl_distros,
+            wsl::find_wsl_cli,
+            wsl::wsl_distro_home,
+            wsl::set_wsl_integration_enabled,
             cli_resolver::probe_install_toolchain,
             cli_resolver::agent_cli_version,
             cli_launch::cli_take_pending_open,

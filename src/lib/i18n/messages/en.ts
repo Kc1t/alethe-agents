@@ -276,8 +276,11 @@ export const en = {
   'agentInstall.docs': 'Docs',
   'agentInstall.installTitle': 'Install {agent}',
   'agentInstall.chooseMethod': 'Choose how to install {agent} on this machine.',
+  'agentInstall.chooseMethodWsl': 'Choose how to install {agent} inside {distro}.',
   'agentInstall.probing': 'Checking what is available on this machine…',
   'agentInstall.noMethod': 'No automatic installer for this agent on this machine.',
+  'agentInstall.noMethodWsl':
+    'No installer for this agent works inside {distro}. Install it manually in the distro.',
   'agentInstall.uninstall': 'Uninstall',
   'agentInstall.uninstalling': 'Uninstalling…',
   'agentInstall.uninstallFailed': 'Uninstall did not complete',
@@ -531,6 +534,9 @@ export const en = {
   'features.orchestrator.title': 'Agent orchestration',
   'features.orchestrator.description':
     'Gives Claude Code a set of Alethe tools for handing work to Codex workers that run in parallel. Alethe owns the sandbox, the concurrency limit and the workers themselves, and can steer or cancel one mid-run.',
+  'features.wsl.title': 'WSL integration',
+  'features.wsl.description':
+    'On Windows, a folder inside a WSL distro opens the distro\u2019s own shell, runs the CLI installed there and resumes the sessions stored there. Turn it off to treat every folder as a Windows one.',
   'features.mcp.title': 'MCP & Skills',
   'features.mcp.description':
     'Inspect and manage the MCP servers and skills of every coding agent from one panel.',
@@ -694,7 +700,7 @@ export const en = {
   'prefs.agentsDesc': 'Choose which agents are available when creating terminals and sub-tabs.',
   'prefs.cliPaths': 'Agent CLI paths',
   'prefs.cliPathsDesc':
-    'Alethe finds each agent CLI on its own. Override it only when the CLI lives somewhere unusual — and point it at the command-line tool, not at a desktop app.',
+    'Alethe finds each agent CLI on its own. Override it only when the CLI lives somewhere unusual — and point it at the command-line tool, not at a desktop app. These are Windows paths: terminals whose folder is inside WSL ignore them and resolve the CLI inside the distro.',
   'prefs.cliPathAuto': 'Detected automatically',
   'prefs.cliPathSet': 'Set path',
   'prefs.cliPathReset': 'Reset',
@@ -1045,7 +1051,8 @@ export const en = {
   'crud.cloningRepoTitle': 'Cloning repository',
   'crud.cloningRepoBody': 'Starting the clone of {url} and generating the AI context briefing…',
   'crud.repoClonedTitle': 'Repository cloned',
-  'crud.repoClonedBody': 'Clone completed successfully. AI context injected into AGENTS.md and CLAUDE.md.',
+  'crud.repoClonedBody':
+    'Clone completed successfully. AI context injected into AGENTS.md and CLAUDE.md.',
   'crud.cloneErrorTitle': 'Clone error',
   'crud.createAgentSandboxProject': 'Create Agent Sandbox project',
   'crud.firstTerminalLabel': 'First terminal',
@@ -1063,6 +1070,7 @@ export const en = {
   'crud.projectPathLabel': 'Project folder',
   'crud.projectPathPlaceholder': 'Choose the project folder',
   'crud.projectPathHint': 'New terminals will start in this folder.',
+  'crud.wslHint': 'Running inside WSL · {distro}',
   'crud.groupLabel': 'Group',
   'crud.noGroup': 'Loose (no group)',
   'crud.colorLabel': 'Color',
@@ -1120,6 +1128,11 @@ export const en = {
   'term.stepTerminal': '1. Terminal',
   'term.stepFolder': '2. Folder',
   'term.browse': 'Browse',
+  'term.wslBadgeLabel': 'Running inside WSL · {distro}',
+  'term.wslPick': 'WSL',
+  'term.wslPickTitle': 'Open a folder inside a WSL distro',
+  'term.wslPickFailed': 'Could not reach WSL',
+  'term.wslPickFailedBody': 'Alethe could not read the home directory of {distro}.',
   'term.recentFolders': 'Recent folders',
   'term.autoNameHint': 'Name will be generated automatically.',
   'term.advancedOptions': 'Advanced options',

@@ -5,7 +5,7 @@ use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::provider_common::{file_modified_ms, provider_home_dir};
+use crate::provider_common::{file_modified_ms, provider_home_dir, provider_scope};
 
 #[derive(Serialize)]
 pub struct ClaudeSessionMeta {
@@ -214,11 +214,14 @@ pub(crate) fn project_dirs_for_cwd(cwd: &str) -> Result<Vec<PathBuf>, String> {
     if cwd_trimmed.is_empty() {
         return Ok(Vec::new());
     }
-    let Some(root) = claude_projects_dir() else {
-        return Err("USERPROFILE/HOME nao definido".to_string());
+    let Some(scope) = provider_scope(cwd_trimmed, &[".claude", "projects"]) else {
+        if crate::wsl::wsl_target(cwd_trimmed).is_some() {
+            return Ok(Vec::new());
+        }
+        return Err("USERPROFILE/HOME is not set".to_string());
     };
-    let encoded = encode_cwd_for_claude(cwd_trimmed);
-    Ok(matching_project_dirs(&root, &encoded))
+    let encoded = encode_cwd_for_claude(&scope.match_cwd);
+    Ok(matching_project_dirs(&scope.root, &encoded))
 }
 
 #[tauri::command]
@@ -696,6 +699,14 @@ mod encode_cwd_tests {
     #[test]
     fn a_path_without_a_dot_is_unaffected() {
         assert_eq!(encode_cwd_for_claude("/home/user/repo"), "-home-user-repo");
+    }
+
+    #[test]
+    fn a_guest_path_encodes_the_way_the_distro_side_claude_wrote_it() {
+        assert_eq!(
+            encode_cwd_for_claude("/home/dev/projects/app"),
+            "-home-dev-projects-app"
+        );
     }
 
     #[test]

@@ -1,0 +1,85 @@
+.root {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 100ms,
+    border-color 100ms;
+}
+
+.trigger:hover:not(:disabled),
+.trigger[aria-expanded='true'] {
+  background: var(--panel-hover);
+  border-color: var(--border-strong);
+}
+
+.trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 160px;
+  max-height: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
+  overflow-y: auto;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--bg) 60%, transparent);
+}
+
+.item {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  padding: 0 8px;
+  overflow: hidden;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  font-size: 11px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.item:hover:not(:disabled),
+.item:focus-visible {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.triggerCompact {
+  padding: 6px 11px;
+  color: var(--fg-muted);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.triggerCompact:hover:not(:disabled) {
+  color: var(--fg);
+}

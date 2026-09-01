@@ -20,6 +20,28 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   native audio stack (cpal/PipeWire), not WebKit getUserMedia, so AppImages still see microphones.
   On Linux, Alethe also enables WebKitGTK media-stream as a fallback path for other features.
 
+- Native WSL support on Windows: a project whose folder lives under `\\wsl.localhost\<distro>\…`
+  now opens the distro's login shell already in the right Linux directory, and its agent tabs run
+  the CLI installed **inside** the distro instead of the Windows one — so a missing CLI is reported
+  against the distro, not the host. The New Project and New Terminal dialogs get a **WSL** button
+  next to Browse that opens the folder picker inside the chosen distro, so a WSL project folder can
+  be picked without typing the UNC path. Both dialogs also state which distro a terminal will run
+  inside once the folder points at one, and an open terminal carries a badge in its pane header
+  naming the distro it is running in. The CLI lookup runs the distro account's own login shell
+  interactively, so an agent installed by a modern installer — one that writes PATH only into
+  `~/.zshrc` or `~/.bashrc` — is found instead of reported missing; and installing a missing agent
+  from a WSL terminal runs the installer inside that distro, offering only the methods that work
+  there. Agent conversations
+  started inside a distro are also found now: Claude Code, Codex and Antigravity sessions are read
+  from the distro's own home and matched by the Linux path the agent recorded, so a WSL terminal
+  resumes its conversation and lists its history exactly like a Windows one. Git actions work on
+  those projects too — status, staging, commit, push/pull, worktrees and cloning no longer fail
+  with git's *dubious ownership* error on a repository that lives inside a distro. The whole
+  integration sits behind a **WSL integration** switch under Preferences → Features, on by
+  default; turning it off makes every folder behave as a Windows one again — Windows shell,
+  Windows CLI resolution with the *Agent CLI paths* overrides back in force, and sessions read
+  from the Windows home.
+
 - Agent orchestration, off by default under a new preference. When it is on, Claude Code terminals
   get a set of Alethe tools for handing independent units of work to Codex workers that Alethe runs
   in parallel, up to a concurrency limit it enforces itself. The lead gets job ids back immediately

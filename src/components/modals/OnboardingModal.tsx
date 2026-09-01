@@ -8,6 +8,7 @@ import {
   ListTodo,
   Network,
   Plug,
+  SquareTerminal,
   Workflow,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -71,6 +72,7 @@ const FEATURE_ICONS = {
   mcp: Plug,
   playwright: Bot,
   orchestrator: Workflow,
+  wsl: SquareTerminal,
 } as const
 
 export function OnboardingModal() {

@@ -4,11 +4,10 @@ use serde_json::Value;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::OnceLock;
 use tauri::AppHandle;
 
-use crate::provider_common::normalize_cwd;
+use crate::provider_common::{normalize_cwd, provider_scope, ProviderScope};
 
 const MAX_SOURCE_LINE_BYTES: usize = 2 * 1024 * 1024;
 const DRAFT_CHAR_LIMIT: usize = 48_000;
@@ -259,6 +258,10 @@ fn codex_session_meta(path: &Path) -> Option<(String, String)> {
     ))
 }
 
+fn session_matches_scope(scope: &ProviderScope, session_cwd: &str) -> bool {
+    scope.normalize(session_cwd) == scope.match_key()
+}
+
 fn resolve_source_file(
     provider: Provider,
     cwd: &str,
@@ -295,22 +298,26 @@ fn resolve_source_file(
             }
         }
         Provider::Codex => {
-            let Some(root) = crate::codex_sessions::codex_sessions_dir() else {
-                return Err("Codex sessions directory is unavailable".to_string());
-            };
-            let mut files = Vec::new();
-            crate::codex_sessions::collect_jsonl_files(&root, &mut files);
-            for path in files {
-                let Some((id, session_cwd)) = codex_session_meta(&path) else {
-                    continue;
-                };
-                if normalize_cwd(&session_cwd) != normalized {
-                    continue;
+            let scope = provider_scope(cwd, &[".codex", "sessions"]);
+            match scope {
+                Some(scope) => {
+                    let mut files = Vec::new();
+                    crate::codex_sessions::collect_jsonl_files(&scope.root, &mut files);
+                    for path in files {
+                        let Some((id, session_cwd)) = codex_session_meta(&path) else {
+                            continue;
+                        };
+                        if !session_matches_scope(&scope, &session_cwd) {
+                            continue;
+                        }
+                        let modified = fs::metadata(&path)
+                            .and_then(|metadata| metadata.modified())
+                            .unwrap_or(std::time::UNIX_EPOCH);
+                        candidates.push((id, path, modified));
+                    }
                 }
-                let modified = fs::metadata(&path)
-                    .and_then(|metadata| metadata.modified())
-                    .unwrap_or(std::time::UNIX_EPOCH);
-                candidates.push((id, path, modified));
+                None if crate::wsl::wsl_target(cwd).is_some() => {}
+                None => return Err("Codex sessions directory is unavailable".to_string()),
             }
         }
     }
@@ -332,7 +339,7 @@ fn resolve_source_file(
 }
 
 fn run_git(cwd: &str, args: &[&str]) -> Option<String> {
-    let output = Command::new("git")
+    let output = crate::git_control::git_process(cwd, &[])
         .arg("-C")
         .arg(cwd)
         .args(args)
@@ -621,5 +628,47 @@ mod tests {
         assert!(validate_handoff_id("safe_123-id").is_ok());
         assert!(validate_handoff_id("../outside").is_err());
         assert!(validate_handoff_id("").is_err());
+    }
+}
+
+#[cfg(test)]
+mod session_scope_tests {
+    use super::*;
+    use crate::provider_common::provider_scope_from;
+
+    fn windows_scope(cwd: &str) -> ProviderScope {
+        provider_scope_from(
+            cwd,
+            Some(Path::new(r"C:\Users\dev")),
+            None,
+            None,
+            &[".codex", "sessions"],
+        )
+        .expect("a windows cwd with a windows home resolves")
+    }
+
+    #[test]
+    fn a_windows_cwd_matches_a_session_recorded_with_another_case_or_slashes() {
+        let scope = windows_scope(r"C:\projects\acme");
+        if cfg!(windows) {
+            assert!(session_matches_scope(&scope, r"C:/Projects/Acme"));
+        }
+        assert!(session_matches_scope(&scope, r"C:\projects\acme"));
+        assert!(!session_matches_scope(&scope, r"C:\projects\other"));
+    }
+
+    #[test]
+    fn a_guest_cwd_matches_only_the_exact_guest_path_the_agent_recorded() {
+        let scope = provider_scope_from(
+            r"\\wsl.localhost\Ubuntu\home\dev\projects\app",
+            Some(Path::new(r"C:\Users\dev")),
+            Some(Path::new(r"\\wsl.localhost\Ubuntu\home\dev")),
+            Some("/home/dev/projects/app"),
+            &[".codex", "sessions"],
+        )
+        .expect("a wsl cwd with a resolved distro home resolves");
+
+        assert!(session_matches_scope(&scope, "/home/dev/projects/app"));
+        assert!(!session_matches_scope(&scope, "/home/dev/projects/App"));
     }
 }
