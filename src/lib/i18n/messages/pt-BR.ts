@@ -247,10 +247,10 @@ export const ptBR: Record<MessageKey, string> = {
   'vault.hub.title': 'Cofre & Pastas',
   'vault.hub.description':
     'Gerencie permissões de acesso, pastas compartilhadas e backups de cada projeto.',
-  'vault.hub.activeCollaborators':
-    '{count, plural, =1 {1 pessoa com acesso} other {# pessoas com acesso}}',
-  'vault.hub.pendingInvites':
-    '{count, plural, =1 {1 convite pendente} other {# convites pendentes}}',
+  'vault.hub.activeCollaboratorsOne': '1 pessoa com acesso',
+  'vault.hub.activeCollaboratorsMany': '{count} pessoas com acesso',
+  'vault.hub.pendingInvitesOne': '1 convite pendente',
+  'vault.hub.pendingInvitesMany': '{count} convites pendentes',
   'vault.hub.noProjects': 'Nenhum projeto encontrado',
   'vault.backToProjects': 'Voltar aos projetos',
   'vault.pendingInvitations': 'Convites pendentes',

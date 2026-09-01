@@ -244,10 +244,10 @@ export const en = {
   'vault.hub.title': 'Vault & Folders',
   'vault.hub.description':
     'Manage access permissions, shared folders, and backups across your projects.',
-  'vault.hub.activeCollaborators':
-    '{count, plural, =1 {1 person with access} other {# people with access}}',
-  'vault.hub.pendingInvites':
-    '{count, plural, =1 {1 pending invite} other {# pending invites}}',
+  'vault.hub.activeCollaboratorsOne': '1 person with access',
+  'vault.hub.activeCollaboratorsMany': '{count} people with access',
+  'vault.hub.pendingInvitesOne': '1 pending invite',
+  'vault.hub.pendingInvitesMany': '{count} pending invites',
   'vault.hub.noProjects': 'No projects found',
   'vault.backToProjects': 'Back to projects',
   'vault.pendingInvitations': 'Pending invitations',

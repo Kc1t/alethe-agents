@@ -77,6 +77,7 @@ pub mod sync_manifest;
 pub mod sync_mesh;
 pub mod project_file_watcher;
 pub mod sync_p2p_bridge;
+pub mod sync_project_invite;
 pub mod sync_protocol;
 pub mod sync_remote_invitation;
 pub mod sync_rendezvous;
@@ -573,6 +574,11 @@ pub fn run() {
             sync_security::sync_revoke_device,
             sync_security::sync_remove_device,
             sync_security::sync_revoke_invitation,
+            sync_project_invite::sync_seal_project_invite,
+            sync_project_invite::sync_open_project_invite,
+            sync_project_invite::sync_seal_project_invite_response,
+            sync_project_invite::sync_open_project_invite_response,
+            sync_project_invite::sync_grant_project_to_invitee,
             sync_security::sync_revoke_grant,
             sync_security::sync_update_grant,
             sync_security::sync_list_project_grants,

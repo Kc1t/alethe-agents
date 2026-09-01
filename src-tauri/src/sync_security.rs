@@ -494,7 +494,7 @@ pub fn sync_security_snapshot(app: tauri::AppHandle) -> Result<SyncSecuritySnaps
     snapshot_at(&data_root)
 }
 
-fn local_device_id_at(data_root: &Path) -> Result<String, String> {
+pub fn local_device_id_at(data_root: &Path) -> Result<String, String> {
     load_at(data_root)?
         .local_device_id
         .ok_or_else(|| "local_device_unknown".to_string())
@@ -2391,6 +2391,117 @@ pub(crate) fn prepare_collaborator_suggestion_at(
     Ok(CollaboratorSuggestionEnvelope {
         owner_account_route: crate::sync_protocol::account_route_id(&owner_account_id),
         ciphertext: URL_SAFE_NO_PAD.encode(packed),
+    })
+}
+
+/// Issues and immediately redeems a project invitation on behalf of an account that has just
+/// accepted an invite, returning the sealed `chat_contact_confirm` envelope for them to
+/// materialize the grant locally.
+///
+/// The same two steps the pairing flow performs when a project is attached to an approval — kept
+/// here, beside `resolve_pending_chat_contact_request_at`, so both paths issue grants through one
+/// implementation rather than two that can drift.
+pub fn grant_project_to_account(
+    app: &tauri::AppHandle,
+    project_id: &str,
+    recipient_account_id: &str,
+    recipient_device_id: &str,
+    recipient_agreement_public_key: &str,
+    permissions: Vec<SyncPermission>,
+    path_scopes: Vec<PathScope>,
+    expires_at_ms: u64,
+) -> Result<String, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(app)?;
+    let now_ms = crate::provider_common::now_ms();
+    let local_device_id = local_device_id_at(&data_root)?;
+    let document = load_at(&data_root)?;
+    let owner_account_id = document
+        .account
+        .as_ref()
+        .ok_or_else(|| "security_account_missing".to_string())?
+        .account_id
+        .clone();
+    let owner_agreement_public_key = document
+        .devices
+        .iter()
+        .find(|device| device.device_id == local_device_id)
+        .and_then(|device| device.agreement_public_key.clone())
+        .unwrap_or_default();
+
+    let issued = issue_invitation(
+        &data_root,
+        &local_device_id,
+        project_id,
+        recipient_account_id,
+        Some(recipient_device_id.to_string()),
+        permissions.clone(),
+        path_scopes.clone(),
+        now_ms,
+        expires_at_ms,
+    )?;
+    redeem_invitation(
+        &data_root,
+        &issued.invitation.invitation_id,
+        &issued.bearer_token,
+        recipient_account_id,
+        recipient_device_id,
+        now_ms,
+    )?;
+
+    let payload = serde_json::json!({
+        "invitationId": issued.invitation.invitation_id,
+        "bearerToken": issued.bearer_token,
+        "projectId": project_id,
+        "permissions": permissions,
+        "pathScopes": path_scopes,
+        "expiresAtMs": expires_at_ms,
+        "ownerAccountId": owner_account_id,
+        "ownerAgreementPublicKey": owner_agreement_public_key,
+    });
+    seal_chat_contact_confirm(recipient_agreement_public_key, payload)
+}
+
+/// Whether `account_route` belongs to someone already paired with this device.
+pub fn has_chat_contact_at(data_root: &Path, account_route: &str) -> Result<bool, String> {
+    Ok(load_at(data_root)?
+        .chat_contacts
+        .iter()
+        .any(|contact| contact.account_route == account_route))
+}
+
+/// The identity another device needs in order to issue this device a project grant.
+///
+/// Contains the raw account id, which `account_route` is a one-way hash of (ADR-0004), so it must
+/// only ever be sent as a direct result of the user accepting a specific invitation — see
+/// `sync_project_invite.rs`. Never expose it to the frontend or write it into a contact record.
+pub struct GrantableIdentity {
+    pub account_id: String,
+    pub device_id: String,
+    pub agreement_public_key: String,
+}
+
+pub fn local_grantable_identity_at(data_root: &Path) -> Result<GrantableIdentity, String> {
+    let document = load_at(data_root)?;
+    let account_id = document
+        .account
+        .as_ref()
+        .ok_or_else(|| "security_account_missing".to_string())?
+        .account_id
+        .clone();
+    let device_id = document
+        .local_device_id
+        .clone()
+        .ok_or_else(|| "security_device_missing".to_string())?;
+    let agreement_public_key = document
+        .devices
+        .iter()
+        .find(|device| device.device_id == device_id)
+        .and_then(|device| device.agreement_public_key.clone())
+        .ok_or_else(|| "security_device_missing".to_string())?;
+    Ok(GrantableIdentity {
+        account_id,
+        device_id,
+        agreement_public_key,
     })
 }
 

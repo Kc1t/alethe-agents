@@ -33,12 +33,7 @@ export function VaultHub() {
   }, [selectedProjectId])
 
   if (selectedProjectId) {
-    return (
-      <VaultPanel
-        projectId={selectedProjectId}
-        onBack={() => setSelectedProjectId(null)}
-      />
-    )
+    return <VaultPanel projectId={selectedProjectId} onBack={() => setSelectedProjectId(null)} />
   }
 
   const grants = securitySnapshot?.grants ?? []
@@ -87,11 +82,19 @@ export function VaultHub() {
                 <div className={styles.projectStats}>
                   <span className={styles.statBadge}>
                     <Users size={12} />
-                    <span>{t('vault.hub.activeCollaborators', { count: activeGrantsCount })}</span>
+                    <span>
+                      {activeGrantsCount === 1
+                        ? t('vault.hub.activeCollaboratorsOne')
+                        : t('vault.hub.activeCollaboratorsMany', { count: activeGrantsCount })}
+                    </span>
                   </span>
                   {pendingInvitesCount > 0 ? (
                     <span className={`${styles.statBadge} ${styles.statBadgePending}`}>
-                      <span>{t('vault.hub.pendingInvites', { count: pendingInvitesCount })}</span>
+                      <span>
+                        {pendingInvitesCount === 1
+                          ? t('vault.hub.pendingInvitesOne')
+                          : t('vault.hub.pendingInvitesMany', { count: pendingInvitesCount })}
+                      </span>
                     </span>
                   ) : null}
                   <ChevronRight size={14} className={styles.chevronIcon} />
