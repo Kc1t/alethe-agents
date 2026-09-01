@@ -278,8 +278,11 @@ export const ptBR: Record<MessageKey, string> = {
   'agentInstall.docs': 'Documentação',
   'agentInstall.installTitle': 'Instalar o {agent}',
   'agentInstall.chooseMethod': 'Escolha como instalar o {agent} nesta máquina.',
+  'agentInstall.chooseMethodWsl': 'Escolha como instalar o {agent} dentro do {distro}.',
   'agentInstall.probing': 'Verificando o que está disponível nesta máquina…',
   'agentInstall.noMethod': 'Não há instalador automático para este agente nesta máquina.',
+  'agentInstall.noMethodWsl':
+    'Nenhum instalador deste agente funciona dentro do {distro}. Instale-o manualmente na distro.',
   'agentInstall.uninstall': 'Desinstalar',
   'agentInstall.uninstalling': 'Desinstalando…',
   'agentInstall.uninstallFailed': 'A desinstalação não foi concluída',
@@ -536,6 +539,9 @@ export const ptBR: Record<MessageKey, string> = {
   'features.orchestrator.title': 'Orquestração de agentes',
   'features.orchestrator.description':
     'Dá ao Claude Code um conjunto de ferramentas do Alethe para repassar trabalho a workers Codex que rodam em paralelo. O Alethe é dono do sandbox, do limite de concorrência e dos workers, e consegue corrigir ou cancelar um deles no meio da execução.',
+  'features.wsl.title': 'Integração com o WSL',
+  'features.wsl.description':
+    'No Windows, uma pasta dentro de uma distro WSL abre o shell da própria distro, roda a CLI instalada lá e retoma as sessões guardadas lá. Desligue para tratar toda pasta como pasta do Windows.',
   'features.mcp.title': 'MCP e Skills',
   'features.mcp.description':
     'Inspecione e gerencie os servidores MCP e as skills de cada agente em um só painel.',
@@ -679,7 +685,7 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.agentsDesc': 'Escolha quais agentes podem ser usados ao criar terminais e sub-tabs.',
   'prefs.cliPaths': 'Caminhos dos CLIs',
   'prefs.cliPathsDesc':
-    'O Alethe encontra o CLI de cada agente sozinho. Só defina um caminho se o CLI estiver num lugar fora do comum — e aponte para a ferramenta de linha de comando, não para o aplicativo gráfico.',
+    'O Alethe encontra o CLI de cada agente sozinho. Só defina um caminho se o CLI estiver num lugar fora do comum — e aponte para a ferramenta de linha de comando, não para o aplicativo gráfico. Esses caminhos são do Windows: terminais cuja pasta está dentro do WSL os ignoram e resolvem o CLI dentro da distro.',
   'prefs.cliPathAuto': 'Detectado automaticamente',
   'prefs.cliPathSet': 'Definir caminho',
   'prefs.cliPathReset': 'Limpar',
@@ -1034,7 +1040,8 @@ export const ptBR: Record<MessageKey, string> = {
   'crud.cloningRepoTitle': 'Clonando Repositório',
   'crud.cloningRepoBody': 'Iniciando clone de {url} e gerando briefing de contexto de IA…',
   'crud.repoClonedTitle': 'Repositório Clonado',
-  'crud.repoClonedBody': 'Clone concluído com sucesso. Contexto de IA injetado em AGENTS.md e CLAUDE.md.',
+  'crud.repoClonedBody':
+    'Clone concluído com sucesso. Contexto de IA injetado em AGENTS.md e CLAUDE.md.',
   'crud.cloneErrorTitle': 'Erro no Clone',
   'crud.createAgentSandboxProject': 'Criar projeto Agent Sandbox',
   'crud.firstTerminalLabel': 'Primeiro terminal',
@@ -1052,6 +1059,7 @@ export const ptBR: Record<MessageKey, string> = {
   'crud.projectPathLabel': 'Pasta do projeto',
   'crud.projectPathPlaceholder': 'Escolha a pasta do projeto',
   'crud.projectPathHint': 'Novos terminais começarão nesta pasta.',
+  'crud.wslHint': 'Rodando dentro do WSL · {distro}',
   'crud.groupLabel': 'Grupo',
   'crud.noGroup': 'Solto (sem grupo)',
   'crud.colorLabel': 'Cor',
@@ -1110,6 +1118,11 @@ export const ptBR: Record<MessageKey, string> = {
   'term.stepTerminal': '1. Terminal',
   'term.stepFolder': '2. Pasta',
   'term.browse': 'Procurar',
+  'term.wslBadgeLabel': 'Rodando dentro do WSL · {distro}',
+  'term.wslPick': 'WSL',
+  'term.wslPickTitle': 'Abrir uma pasta dentro de uma distro WSL',
+  'term.wslPickFailed': 'Não foi possível acessar o WSL',
+  'term.wslPickFailedBody': 'O Alethe não conseguiu ler a pasta home da distro {distro}.',
   'term.recentFolders': 'Pastas recentes',
   'term.autoNameHint': 'O nome será gerado automaticamente.',
   'term.advancedOptions': 'Opções avançadas',
