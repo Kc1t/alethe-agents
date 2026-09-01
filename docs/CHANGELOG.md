@@ -10,6 +10,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Não lançado]
 
+### Added
+
+- **The commit detail screen now shows per-file line counts**: added lines in green, removed in red, plus a GitHub-style five-block bar showing the proportion between them, and a commit-wide total beside the "changed files" heading. Previously the screen only said *that* a file had changed (`M README.md`), never how much. Binary files are labelled as such rather than reported as zero, since they carry no line counts.
+- **The commit graph and the commit detail panel can be resized by dragging** their bottom edge, and both start taller. How much history — or how many changed files — is worth showing depends on the commit, not on a fixed height.
+
 ### Fixed
 
 - **Reformatted the commit graph rows to two lines** (subject on top, author/date and ref badges below). On a narrow sidebar a single row forced the subject to share its width with the badges and the author line, and the subject lost — commits showed as `fix(u…` or `Merg…` while the row's most important text sat off screen. The subject now gets the row's full width.

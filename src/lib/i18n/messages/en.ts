@@ -1787,6 +1787,7 @@ export const en = {
   'git.graph.filesEmpty': 'No file changes (empty or merge commit).',
   'git.graph.detail.loadingMessage': 'Loading commit message…',
   'git.graph.detail.filesTitle': 'Changed files',
+  'git.graph.detail.binaryFile': 'binary',
   'git.graph.menu.copyHash': 'Copy commit hash',
   'git.graph.menu.createBranch': 'Create branch here',
   'git.graph.menu.createBranchPrompt': 'New branch name',

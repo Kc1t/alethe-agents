@@ -23,12 +23,19 @@
   color: var(--fg);
 }
 
+/* `resize: vertical` gives both panels a native drag handle at their bottom edge — the graph and
+   the commit detail are the two places in the sidebar where a fixed height is genuinely limiting,
+   since how much history or how many changed files you want visible depends on the commit, not on
+   a number picked here. `height` (not `max-height`) is what `resize` acts on. The list virtualizer
+   already tracks the panel with a ResizeObserver, so dragging just works. */
 .body {
   display: flex;
   flex-direction: column;
   padding: 4px 0 8px;
   gap: 0;
-  max-height: 380px;
+  height: 460px;
+  min-height: 160px;
+  resize: vertical;
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -198,6 +205,61 @@
   overflow: hidden;
 }
 
+/* Added/removed counts and the proportion bar, pinned to the end of the row so every file's
+   numbers line up in a column instead of drifting with the path length. */
+.fileStats {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.diffAdded {
+  color: var(--status-ok, var(--agent-opencode));
+}
+
+.diffRemoved {
+  color: var(--status-offline);
+}
+
+.diffBinary {
+  color: var(--fg-faint);
+}
+
+.diffBar {
+  display: flex;
+  gap: 1.5px;
+  flex-shrink: 0;
+}
+
+.diffBlock {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+}
+
+.diffBlockAdded {
+  background: var(--status-ok, var(--agent-opencode));
+}
+
+.diffBlockRemoved {
+  background: var(--status-offline);
+}
+
+.diffBlockEmpty {
+  background: var(--border-strong);
+}
+
+.detailFilesHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .fileStatus {
   flex-shrink: 0;
   width: 14px;
@@ -221,7 +283,9 @@
   flex-direction: column;
   gap: 8px;
   padding: 4px 6px 10px;
-  max-height: 380px;
+  height: 460px;
+  min-height: 180px;
+  resize: vertical;
   overflow-y: auto;
 }
 

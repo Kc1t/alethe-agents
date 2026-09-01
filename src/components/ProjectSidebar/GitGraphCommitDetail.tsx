@@ -3,13 +3,49 @@ import { useEffect, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
 import {
+  type DiffSummaryEntry,
   type GitCommitEntry,
-  type GitFileChange,
-  gitShowCommitFiles,
   gitShowCommitMessage,
+  gitShowCommitStats,
 } from '../../lib/tauri'
 import styles from './GitGraph.module.css'
 import { RefBadges, relativeTime } from './GitGraphList'
+
+/** GitHub-style five-block bar showing how much of a file's change was additions vs. deletions.
+ *  Proportional to the file's own total, not the commit's — the bar answers "what kind of change
+ *  was this file", while the raw counts beside it carry the magnitude. */
+const DIFF_BAR_BLOCKS = 5
+
+function DiffStatBar({ additions, deletions }: { additions: number; deletions: number }) {
+  const total = additions + deletions
+  if (total === 0) return null
+  // At least one block for a side that changed anything at all, so a small number of additions
+  // among many deletions never renders as "no additions".
+  const addedBlocks = Math.min(
+    DIFF_BAR_BLOCKS,
+    Math.max(1, Math.round((additions / total) * DIFF_BAR_BLOCKS)),
+  )
+  const removedBlocks = Math.min(
+    DIFF_BAR_BLOCKS - addedBlocks,
+    additions === 0
+      ? DIFF_BAR_BLOCKS
+      : Math.max(deletions > 0 ? 1 : 0, DIFF_BAR_BLOCKS - addedBlocks),
+  )
+
+  return (
+    <span className={styles.diffBar} aria-hidden="true">
+      {Array.from({ length: DIFF_BAR_BLOCKS }, (_, index) => {
+        const kind =
+          index < addedBlocks
+            ? styles.diffBlockAdded
+            : index < addedBlocks + removedBlocks
+              ? styles.diffBlockRemoved
+              : styles.diffBlockEmpty
+        return <span key={index} className={`${styles.diffBlock} ${kind}`} />
+      })}
+    </span>
+  )
+}
 
 export type GitGraphCommitDetailProps = {
   repoRoot: string
@@ -27,7 +63,7 @@ export type GitGraphCommitDetailProps = {
 export function GitGraphCommitDetail({ repoRoot, commit, onBack }: GitGraphCommitDetailProps) {
   const t = useT()
   const [message, setMessage] = useState<string | null>(null)
-  const [files, setFiles] = useState<GitFileChange[] | null>(null)
+  const [files, setFiles] = useState<DiffSummaryEntry[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -38,7 +74,7 @@ export function GitGraphCommitDetail({ repoRoot, commit, onBack }: GitGraphCommi
     setError(null)
     Promise.all([
       gitShowCommitMessage(repoRoot, commit.hash),
-      gitShowCommitFiles(repoRoot, commit.hash),
+      gitShowCommitStats(repoRoot, commit.hash),
     ])
       .then(([msg, changedFiles]) => {
         if (cancelled) return
@@ -60,6 +96,20 @@ export function GitGraphCommitDetail({ repoRoot, commit, onBack }: GitGraphCommi
 
   if (!commit) return null
 
+  // Commit-wide totals, skipping binary files (they contribute no line counts). Null when nothing
+  // countable changed, so a binary-only commit doesn't advertise a meaningless "+0 −0".
+  const totals = files?.reduce(
+    (accumulated, file) =>
+      file.additions === undefined || file.deletions === undefined
+        ? accumulated
+        : {
+            additions: accumulated.additions + file.additions,
+            deletions: accumulated.deletions + file.deletions,
+          },
+    { additions: 0, deletions: 0 },
+  )
+  const hasTotals = totals !== undefined && totals.additions + totals.deletions > 0
+
   return (
     <div className={styles.detail}>
       <button type="button" className={styles.detailBack} onClick={onBack}>
@@ -79,7 +129,16 @@ export function GitGraphCommitDetail({ repoRoot, commit, onBack }: GitGraphCommi
 
       <pre className={styles.detailMessage}>{message ?? t('git.graph.detail.loadingMessage')}</pre>
 
-      <strong className={styles.detailFilesTitle}>{t('git.graph.detail.filesTitle')}</strong>
+      <div className={styles.detailFilesHeader}>
+        <strong className={styles.detailFilesTitle}>{t('git.graph.detail.filesTitle')}</strong>
+        {hasTotals && totals ? (
+          <span className={styles.fileStats}>
+            <span className={styles.diffAdded}>+{totals.additions}</span>
+            <span className={styles.diffRemoved}>−{totals.deletions}</span>
+            <DiffStatBar additions={totals.additions} deletions={totals.deletions} />
+          </span>
+        ) : null}
+      </div>
       <div className={styles.detailFiles}>
         {files === null ? (
           <p className={styles.filesLoading}>{t('git.graph.filesLoading')}</p>
@@ -90,6 +149,21 @@ export function GitGraphCommitDetail({ repoRoot, commit, onBack }: GitGraphCommi
             <div key={file.path} className={styles.fileRow} title={file.path}>
               <span className={styles.fileStatus}>{file.status}</span>
               <span className={styles.fileName}>{file.path}</span>
+              {file.additions !== undefined && file.deletions !== undefined ? (
+                <span className={styles.fileStats}>
+                  {file.additions > 0 ? (
+                    <span className={styles.diffAdded}>+{file.additions}</span>
+                  ) : null}
+                  {file.deletions > 0 ? (
+                    <span className={styles.diffRemoved}>−{file.deletions}</span>
+                  ) : null}
+                  <DiffStatBar additions={file.additions} deletions={file.deletions} />
+                </span>
+              ) : (
+                <span className={styles.fileStats}>
+                  <span className={styles.diffBinary}>{t('git.graph.detail.binaryFile')}</span>
+                </span>
+              )}
             </div>
           ))
         )}

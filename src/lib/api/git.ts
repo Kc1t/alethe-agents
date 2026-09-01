@@ -238,6 +238,16 @@ export async function gitShowCommitFiles(repo: string, hash: string): Promise<Gi
   )
 }
 
+/** Per-file added/removed line counts for one commit — the changed-file list alone only says
+ *  *that* a file changed, not how much. `additions`/`deletions` are absent for binary files,
+ *  which have no line counts to report. */
+export async function gitShowCommitStats(repo: string, hash: string): Promise<DiffSummaryEntry[]> {
+  if (isTauriEnv()) return invoke<DiffSummaryEntry[]>('git_show_commit_stats', { repo, hash })
+  return webApiFetch<DiffSummaryEntry[]>(
+    `/api/git/commit_stats?repo=${encodeURIComponent(repo)}&hash=${encodeURIComponent(hash)}`,
+  )
+}
+
 /** Mensagem COMPLETA do commit (subject + corpo) — `git_log_graph` só traz o
  *  subject; alimenta a tela de detalhe do commit no gráfico. */
 export async function gitShowCommitMessage(repo: string, hash: string): Promise<string> {

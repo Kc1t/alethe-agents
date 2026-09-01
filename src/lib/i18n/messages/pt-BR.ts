@@ -1808,6 +1808,7 @@ export const ptBR: Record<MessageKey, string> = {
   'git.graph.filesEmpty': 'Nenhum arquivo alterado (commit vazio ou de merge).',
   'git.graph.detail.loadingMessage': 'Carregando mensagem do commit…',
   'git.graph.detail.filesTitle': 'Arquivos alterados',
+  'git.graph.detail.binaryFile': 'binário',
   'git.graph.menu.copyHash': 'Copiar hash do commit',
   'git.graph.menu.createBranch': 'Criar branch aqui',
   'git.graph.menu.createBranchPrompt': 'Nome da nova branch',

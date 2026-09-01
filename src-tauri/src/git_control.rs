@@ -1032,6 +1032,105 @@ pub async fn git_show_commit_files(
         .map_err(|error| format!("git_show_commit_files: blocking task failed: {error}"))?
 }
 
+/// Parses `--numstat -z` into `path -> (additions, deletions)`.
+///
+/// Columns are tab-separated (`adds\tdels\tpath`), so the split is on tabs rather than on
+/// whitespace — a path containing spaces is one field, not several. A rename or copy leaves the
+/// path column empty and emits the old and new paths as the next two NUL-separated fields; the new
+/// path is the one that matches `--name-status`. Binary files report `-` for both counts instead
+/// of a number, and are simply left out: they have no line counts to show.
+fn parse_numstat_z(raw: &str) -> std::collections::HashMap<String, (usize, usize)> {
+    let fields: Vec<&str> = raw.split('\0').collect();
+    let mut stats = std::collections::HashMap::new();
+    let mut i = 0;
+    while i < fields.len() {
+        let record = fields[i];
+        i += 1;
+        if record.is_empty() {
+            continue;
+        }
+        let mut columns = record.splitn(3, '\t');
+        let (Some(adds_raw), Some(dels_raw), Some(path_column)) =
+            (columns.next(), columns.next(), columns.next())
+        else {
+            continue;
+        };
+        let path = if path_column.is_empty() {
+            // Rename/copy: old path, then new path.
+            let new_path = fields.get(i + 1).copied().unwrap_or_default().to_string();
+            i += 2;
+            new_path
+        } else {
+            path_column.to_string()
+        };
+        if let (Ok(adds), Ok(dels)) = (adds_raw.parse::<usize>(), dels_raw.parse::<usize>()) {
+            stats.insert(path, (adds, dels));
+        }
+    }
+    stats
+}
+
+fn git_show_commit_stats_inner(
+    repo_root: String,
+    hash: String,
+) -> Result<Vec<DiffSummaryEntry>, String> {
+    let root = repository_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    // `--root` covers the root commit (no parent), which `diff-tree` alone ignores.
+    let name_status = checked_output(
+        &root,
+        &[
+            "diff-tree",
+            "--no-commit-id",
+            "--name-status",
+            "-r",
+            "--root",
+            "-z",
+            &hash,
+        ],
+    )?;
+    let numstat = checked_output(
+        &root,
+        &[
+            "diff-tree",
+            "--no-commit-id",
+            "--numstat",
+            "-r",
+            "--root",
+            "-z",
+            &hash,
+        ],
+    )?;
+    let stats = parse_numstat_z(&String::from_utf8_lossy(&numstat.stdout));
+    Ok(parse_name_status_z(&name_status.stdout)
+        .into_iter()
+        .map(|change| {
+            let (additions, deletions) = match stats.get(&change.path) {
+                Some((adds, dels)) => (Some(*adds), Some(*dels)),
+                None => (None, None),
+            };
+            DiffSummaryEntry {
+                path: change.path,
+                status: change.status,
+                additions,
+                deletions,
+            }
+        })
+        .collect())
+}
+
+/// Per-file line counts for one commit — the changed-file list on its own only says *that* a file
+/// changed, not how much.
+#[tauri::command]
+pub async fn git_show_commit_stats(
+    repo: String,
+    hash: String,
+) -> Result<Vec<DiffSummaryEntry>, String> {
+    tokio::task::spawn_blocking(move || git_show_commit_stats_inner(repo, hash))
+        .await
+        .map_err(|error| format!("git_show_commit_stats: blocking task failed: {error}"))?
+}
+
 /// The FULL commit message (`%B` — subject + body), for the commit detail
 /// screen (`git_log_graph` only returns `%s`, a single line).
 fn git_show_commit_message_inner(repo_root: String, hash: String) -> Result<String, String> {
@@ -1207,6 +1306,36 @@ mod tests {
     use super::git_unstage_inner as git_unstage;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn numstat_parses_spaced_paths_renames_and_skips_binaries() {
+        // A plain entry, a path containing spaces, a rename (empty path column, old and new paths
+        // as the following fields) and a binary file (`-` counts, no line numbers to report).
+        let raw = "12\t3\tsrc/main.rs\0\
+                   4\t0\tdocs/my notes.md\0\
+                   7\t2\t\0old/name.rs\0new/name.rs\0\
+                   -\t-\tassets/logo.png\0";
+        let stats = parse_numstat_z(raw);
+
+        assert_eq!(stats.get("src/main.rs"), Some(&(12, 3)));
+        assert_eq!(
+            stats.get("docs/my notes.md"),
+            Some(&(4, 0)),
+            "a tab-separated path keeps its spaces"
+        );
+        assert_eq!(
+            stats.get("new/name.rs"),
+            Some(&(7, 2)),
+            "a rename is keyed by its new path, matching --name-status"
+        );
+        assert_eq!(stats.get("old/name.rs"), None);
+        assert_eq!(
+            stats.get("assets/logo.png"),
+            None,
+            "binary files report '-' and carry no line counts"
+        );
+        assert_eq!(stats.len(), 3);
+    }
 
     #[test]
     fn parses_staged_unstaged_untracked_conflict_and_rename() {
