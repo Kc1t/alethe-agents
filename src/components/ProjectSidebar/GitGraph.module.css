@@ -199,10 +199,78 @@
 .fileRow {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 2px 0;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
   font-size: 12px;
+  font-family: inherit;
+  text-align: left;
   overflow: hidden;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.fileRow:hover {
+  background: var(--panel-hover);
+}
+
+.fileRowExpanded {
+  background: var(--panel-hover);
+}
+
+.fileChevron {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--fg-faint);
+}
+
+/* The patch itself. Horizontal scrolling rather than wrapping: a wrapped diff line loses the
+   alignment that makes a patch readable, and in a narrow sidebar almost every line would wrap. */
+.diffPatch {
+  display: flex;
+  flex-direction: column;
+  margin: 2px 0 6px 16px;
+  padding: 6px 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-sunken);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.45;
+  overflow-x: auto;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.diffLine {
+  padding: 0 8px;
+  white-space: pre;
+}
+
+.diffLineAdded {
+  color: var(--status-working);
+  background: var(--status-working-soft);
+}
+
+.diffLineRemoved {
+  color: var(--status-offline);
+  background: var(--status-offline-soft);
+}
+
+.diffLineHunk {
+  color: var(--accent);
+}
+
+.diffLineMeta {
+  color: var(--fg-faint);
+}
+
+.diffLineContext {
+  color: var(--fg-muted);
 }
 
 /* Added/removed counts and the proportion bar, pinned to the end of the row so every file's
@@ -219,7 +287,7 @@
 }
 
 .diffAdded {
-  color: var(--status-ok, var(--agent-opencode));
+  color: var(--status-working);
 }
 
 .diffRemoved {
@@ -243,7 +311,7 @@
 }
 
 .diffBlockAdded {
-  background: var(--status-ok, var(--agent-opencode));
+  background: var(--status-working);
 }
 
 .diffBlockRemoved {

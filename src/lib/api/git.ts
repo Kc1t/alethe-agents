@@ -248,6 +248,18 @@ export async function gitShowCommitStats(repo: string, hash: string): Promise<Di
   )
 }
 
+/** The patch for a single file within a commit, for the expandable per-file diff. */
+export async function gitShowCommitFileDiff(
+  repo: string,
+  hash: string,
+  path: string,
+): Promise<string> {
+  if (isTauriEnv()) return invoke<string>('git_show_commit_file_diff', { repo, hash, path })
+  return webApiFetch<string>(
+    `/api/git/commit_file_diff?repo=${encodeURIComponent(repo)}&hash=${encodeURIComponent(hash)}&path=${encodeURIComponent(path)}`,
+  )
+}
+
 /** Mensagem COMPLETA do commit (subject + corpo) — `git_log_graph` só traz o
  *  subject; alimenta a tela de detalhe do commit no gráfico. */
 export async function gitShowCommitMessage(repo: string, hash: string): Promise<string> {

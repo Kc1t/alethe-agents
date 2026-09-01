@@ -438,6 +438,7 @@ pub fn run() {
             git_control::git_log_graph,
             git_control::git_show_commit_files,
             git_control::git_show_commit_stats,
+            git_control::git_show_commit_file_diff,
             git_control::git_show_commit_message,
             git_control::git_create_branch_from_commit,
             git_control::git_cherry_pick_commit,

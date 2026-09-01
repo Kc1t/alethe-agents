@@ -1,15 +1,68 @@
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
 import {
   type DiffSummaryEntry,
   type GitCommitEntry,
+  gitShowCommitFileDiff,
   gitShowCommitMessage,
   gitShowCommitStats,
 } from '../../lib/tauri'
 import styles from './GitGraph.module.css'
 import { RefBadges, relativeTime } from './GitGraphList'
+
+/** Classifies one patch line for coloring. Order matters: `+++`/`---` are file headers, not an
+ *  added and a removed line, so they have to be checked before the single-character prefixes. */
+function diffLineClass(line: string): string {
+  if (line.startsWith('+++') || line.startsWith('---')) return styles.diffLineMeta
+  if (line.startsWith('@@')) return styles.diffLineHunk
+  if (line.startsWith('+')) return styles.diffLineAdded
+  if (line.startsWith('-')) return styles.diffLineRemoved
+  if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('\\'))
+    return styles.diffLineMeta
+  return styles.diffLineContext
+}
+
+/** The patch for one file, fetched the first time it's expanded and kept afterwards. */
+function FileDiff({ repoRoot, hash, path }: { repoRoot: string; hash: string; path: string }) {
+  const t = useT()
+  const [patch, setPatch] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setPatch(null)
+    setFailed(false)
+    gitShowCommitFileDiff(repoRoot, hash, path)
+      .then((text) => {
+        if (!cancelled) setPatch(text)
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [repoRoot, hash, path])
+
+  if (failed) return <p className={styles.filesError}>{t('git.graph.detail.diffFailed')}</p>
+  if (patch === null)
+    return <p className={styles.filesLoading}>{t('git.graph.detail.diffLoading')}</p>
+  const lines = patch.replace(/\n$/, '').split('\n')
+  if (lines.length === 1 && lines[0] === '')
+    return <p className={styles.filesEmpty}>{t('git.graph.detail.diffEmpty')}</p>
+
+  return (
+    <pre className={styles.diffPatch}>
+      {lines.map((line, index) => (
+        <span key={index} className={`${styles.diffLine} ${diffLineClass(line)}`}>
+          {line || ' '}
+        </span>
+      ))}
+    </pre>
+  )
+}
 
 /** GitHub-style five-block bar showing how much of a file's change was additions vs. deletions.
  *  Proportional to the file's own total, not the commit's — the bar answers "what kind of change
@@ -65,6 +118,9 @@ export function GitGraphCommitDetail({ repoRoot, commit, onBack }: GitGraphCommi
   const [message, setMessage] = useState<string | null>(null)
   const [files, setFiles] = useState<DiffSummaryEntry[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /** One file open at a time — the panel is narrow, and several patches expanded at once turns the
+   *  file list into a wall of diff you have to scroll past to reach the next file. */
+  const [expandedPath, setExpandedPath] = useState<string | null>(null)
 
   useEffect(() => {
     if (!commit) return
@@ -72,6 +128,7 @@ export function GitGraphCommitDetail({ repoRoot, commit, onBack }: GitGraphCommi
     setMessage(null)
     setFiles(null)
     setError(null)
+    setExpandedPath(null)
     Promise.all([
       gitShowCommitMessage(repoRoot, commit.hash),
       gitShowCommitStats(repoRoot, commit.hash),
@@ -145,27 +202,44 @@ export function GitGraphCommitDetail({ repoRoot, commit, onBack }: GitGraphCommi
         ) : files.length === 0 ? (
           <p className={styles.filesEmpty}>{t('git.graph.filesEmpty')}</p>
         ) : (
-          files.map((file) => (
-            <div key={file.path} className={styles.fileRow} title={file.path}>
-              <span className={styles.fileStatus}>{file.status}</span>
-              <span className={styles.fileName}>{file.path}</span>
-              {file.additions !== undefined && file.deletions !== undefined ? (
-                <span className={styles.fileStats}>
-                  {file.additions > 0 ? (
-                    <span className={styles.diffAdded}>+{file.additions}</span>
-                  ) : null}
-                  {file.deletions > 0 ? (
-                    <span className={styles.diffRemoved}>−{file.deletions}</span>
-                  ) : null}
-                  <DiffStatBar additions={file.additions} deletions={file.deletions} />
-                </span>
-              ) : (
-                <span className={styles.fileStats}>
-                  <span className={styles.diffBinary}>{t('git.graph.detail.binaryFile')}</span>
-                </span>
-              )}
-            </div>
-          ))
+          files.map((file) => {
+            const expanded = expandedPath === file.path
+            return (
+              <div key={file.path}>
+                <button
+                  type="button"
+                  className={`${styles.fileRow} ${expanded ? styles.fileRowExpanded : ''}`}
+                  title={file.path}
+                  aria-expanded={expanded}
+                  onClick={() => setExpandedPath(expanded ? null : file.path)}
+                >
+                  <span className={styles.fileChevron} aria-hidden="true">
+                    {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                  </span>
+                  <span className={styles.fileStatus}>{file.status}</span>
+                  <span className={styles.fileName}>{file.path}</span>
+                  {file.additions !== undefined && file.deletions !== undefined ? (
+                    <span className={styles.fileStats}>
+                      {file.additions > 0 ? (
+                        <span className={styles.diffAdded}>+{file.additions}</span>
+                      ) : null}
+                      {file.deletions > 0 ? (
+                        <span className={styles.diffRemoved}>−{file.deletions}</span>
+                      ) : null}
+                      <DiffStatBar additions={file.additions} deletions={file.deletions} />
+                    </span>
+                  ) : (
+                    <span className={styles.fileStats}>
+                      <span className={styles.diffBinary}>{t('git.graph.detail.binaryFile')}</span>
+                    </span>
+                  )}
+                </button>
+                {expanded ? (
+                  <FileDiff repoRoot={repoRoot} hash={commit.hash} path={file.path} />
+                ) : null}
+              </div>
+            )
+          })
         )}
       </div>
     </div>

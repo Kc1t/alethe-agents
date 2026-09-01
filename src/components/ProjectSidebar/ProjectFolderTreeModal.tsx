@@ -29,6 +29,7 @@ import {
   scanProjectFolderTree,
   triggerProjectArchiveBackup,
 } from '../../lib/tauri'
+import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import styles from './ProjectFolderTreeModal.module.css'
@@ -69,6 +70,10 @@ export function ProjectFolderTreeModal() {
   const projects = useProjectsStore((s) => s.projects)
   const activeProjectId = useProjectsStore((s) => s.activeProjectId)
   const activeProject = projects.find((p) => p.id === activeProjectId) ?? projects[0]
+  // Prefer the terminal-derived root over the raw `defaultCwd` — a merge/conflict-resolution
+  // agent's ephemeral folder can leave `defaultCwd` pointing at a dead `.alethe/merge-envs/*`
+  // or `.alethe/worktrees/*` path; `getProjectRepoRoot` self-heals from live terminal cwds.
+  const projectRoot = (activeProject && getProjectRepoRoot(activeProject)) || activeProject?.defaultCwd || ''
 
   const [tree, setTree] = useState<FolderTreeNode[]>([])
   const [loading, setLoading] = useState(false)
@@ -83,9 +88,9 @@ export function ProjectFolderTreeModal() {
   const [creatingBackup, setCreatingBackup] = useState(false)
 
   const reloadBackups = () => {
-    if (!activeProject?.defaultCwd) return
+    if (!projectRoot) return
     setBackupsLoading(true)
-    listProjectBackups(activeProject.defaultCwd)
+    listProjectBackups(projectRoot)
       .then(setBackups)
       .catch((e) => pushToast({ title: 'Erro', body: String(e) }))
       .finally(() => setBackupsLoading(false))
@@ -97,9 +102,9 @@ export function ProjectFolderTreeModal() {
   }, [activeProject])
 
   useEffect(() => {
-    if (!activeProject?.defaultCwd) return
+    if (!projectRoot) return
     setLoading(true)
-    scanProjectFolderTree(activeProject.defaultCwd)
+    scanProjectFolderTree(projectRoot)
       .then((nodes) => {
         setTree(nodes)
         // Auto-seleciona de forma inteligente: todos os itens essenciais e leves, preservando a integridade do projeto
@@ -262,10 +267,10 @@ export function ProjectFolderTreeModal() {
   }, [tree, selectedPaths, filterMode, searchQuery])
 
   const handleCreateBackup = async () => {
-    if (!activeProject?.defaultCwd) return
+    if (!activeProject || !projectRoot) return
     setCreatingBackup(true)
     try {
-      await triggerProjectArchiveBackup(activeProject.defaultCwd, activeProject.name)
+      await triggerProjectArchiveBackup(projectRoot, activeProject.name)
       reloadBackups()
       pushToast({ title: 'Sucesso', body: 'Backup definitivo e imutável gravado no cofre!' })
     } catch (e) {
@@ -276,9 +281,9 @@ export function ProjectFolderTreeModal() {
   }
 
   const handlePurgeVault = async () => {
-    if (!activeProject?.defaultCwd) return
+    if (!activeProject || !projectRoot) return
     try {
-      await purgeProjectBackupsSecured(activeProject.defaultCwd, activeProject.name, confirmInput)
+      await purgeProjectBackupsSecured(projectRoot, activeProject.name, confirmInput)
       setBackups([])
       setConfirmDeleteModal(false)
       setConfirmInput('')

@@ -1119,6 +1119,49 @@ fn git_show_commit_stats_inner(
         .collect())
 }
 
+fn git_show_commit_file_diff_inner(
+    repo_root: String,
+    hash: String,
+    path: String,
+) -> Result<String, String> {
+    let root = repository_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    if path.is_empty() {
+        return Err("git_show_commit_file_diff: empty path".to_string());
+    }
+    // `--` separates revisions from paths, so a path is never taken for a revision or an option,
+    // whatever it happens to be named. Arguments are passed as a list (no shell), so the path
+    // needs no further quoting. `--format=` drops the commit header — the caller already shows it.
+    let output = checked_output(
+        &root,
+        &[
+            "show",
+            "--format=",
+            "--patch",
+            "--no-color",
+            "-M",
+            "--root",
+            &hash,
+            "--",
+            &path,
+        ],
+    )?;
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// The patch for a single file in a commit, for the expandable per-file diff in the commit detail
+/// screen.
+#[tauri::command]
+pub async fn git_show_commit_file_diff(
+    repo: String,
+    hash: String,
+    path: String,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || git_show_commit_file_diff_inner(repo, hash, path))
+        .await
+        .map_err(|error| format!("git_show_commit_file_diff: blocking task failed: {error}"))?
+}
+
 /// Per-file line counts for one commit — the changed-file list on its own only says *that* a file
 /// changed, not how much.
 #[tauri::command]
