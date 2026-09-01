@@ -51,19 +51,8 @@ fn worktrees_base(root: &Path) -> PathBuf {
     root.join(".alethe").join("worktrees")
 }
 
-/// Remove o prefixo verbatim `\\?\` do Windows. `repository_root` canonicaliza os
-
-/// (ex.: destino de `worktree add`/`clone`) — como `current_dir` funciona normal
-
-/// Windows).
 pub(crate) fn git_arg(path: &Path) -> String {
-    let raw = path.to_string_lossy();
-    let stripped = raw
-        .strip_prefix(r"\\?\UNC\")
-        .map(|rest| format!(r"\\{rest}"))
-        .or_else(|| raw.strip_prefix(r"\\?\").map(|rest| rest.to_string()))
-        .unwrap_or_else(|| raw.into_owned());
-    stripped
+    crate::filesystem::strip_extended_prefix(&path.to_string_lossy())
 }
 
 fn detect_mode(dir: &Path) -> Option<WorktreeMode> {

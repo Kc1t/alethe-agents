@@ -196,8 +196,16 @@ pub async fn clone_github_repo(url: String, target_dir: String) -> Result<String
         }
 
         // Executa `git clone`
-        let mut cmd = std::process::Command::new("git");
-        cmd.args(["clone", "--depth", "1", &normalized, &target_dir]);
+        let mut cmd = crate::git_control::git_process(
+            &target_dir,
+            &[
+                "clone",
+                "--depth",
+                "1",
+                normalized.as_str(),
+                target_dir.as_str(),
+            ],
+        );
         crate::git_control::hide_console(&mut cmd);
 
         let output = cmd

@@ -105,9 +105,48 @@ pub(crate) fn with_lock_awareness<T>(
     }
 }
 
-pub(crate) fn git_command(cwd: &Path, args: &[&str]) -> Result<Output, String> {
+fn safe_directory_value(cwd: &str) -> Option<String> {
+    safe_directory_value_in(cwd, |candidate| Path::new(candidate).join(".git").exists())
+}
+
+fn safe_directory_value_in(cwd: &str, is_worktree_root: impl Fn(&str) -> bool) -> Option<String> {
+    // Callers canonicalize, which on Windows yields the extended-length `\\?\UNC\…` spelling.
+    let cleaned = crate::filesystem::strip_extended_prefix(cwd.trim());
+    crate::wsl::wsl_target(&cleaned)?;
+    let normalized = cleaned.replace('\\', "/");
+    let segments: Vec<&str> = normalized
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+
+    let root = (2..=segments.len())
+        .rev()
+        .map(|depth| &segments[..depth])
+        .find(|prefix| is_worktree_root(&format!(r"\\{}", prefix.join(r"\"))))
+        .unwrap_or(&segments);
+    // Git spells a UNC path as `%(prefix)//` followed by the forward-slash path.
+    Some(format!("%(prefix)///{}", root.join("/")))
+}
+
+fn git_argv(cwd: &str, args: &[&str]) -> Vec<String> {
+    let mut argv = Vec::with_capacity(args.len() + 2);
+    if let Some(value) = safe_directory_value(cwd) {
+        argv.push("-c".to_string());
+        argv.push(format!("safe.directory={value}"));
+    }
+    argv.extend(args.iter().map(|arg| (*arg).to_string()));
+    argv
+}
+
+pub(crate) fn git_process(cwd: &str, args: &[&str]) -> Command {
     let mut command = Command::new("git");
-    command.current_dir(cwd).args(args);
+    command.args(git_argv(cwd, args));
+    command
+}
+
+pub(crate) fn git_command(cwd: &Path, args: &[&str]) -> Result<Output, String> {
+    let mut command = git_process(&cwd.to_string_lossy(), args);
+    command.current_dir(cwd);
     hide_console(&mut command);
     command.output().map_err(|error| {
         if error.kind() == std::io::ErrorKind::NotFound {
@@ -238,6 +277,10 @@ pub(crate) fn main_repository_root(path: &str) -> Result<PathBuf, String> {
         .ok_or_else(|| "not_a_git_repository".to_string())
 }
 
+fn frontend_path(path: &Path) -> String {
+    crate::filesystem::strip_extended_prefix(&path.to_string_lossy())
+}
+
 fn validated_root(path: &str) -> Result<PathBuf, String> {
     let requested =
         resolve_input_directory(path).map_err(|_| "not_a_git_repository".to_string())?;
@@ -282,8 +325,8 @@ fn validate_paths(paths: &[String]) -> Result<(), String> {
 fn run_path_command(root: &Path, args: &[&str], paths: &[String]) -> Result<(), String> {
     validate_paths(paths)?;
     with_lock_awareness(root, || {
-        let mut command = Command::new("git");
-        command.current_dir(root).args(args).arg("--");
+        let mut command = git_process(&root.to_string_lossy(), args);
+        command.current_dir(root).arg("--");
         for path in paths {
             command.arg(path);
         }
@@ -428,7 +471,7 @@ fn seed_gitignore_if_missing(dir: &Path) {
 
 fn git_init_inner(path: String) -> Result<String, String> {
     if let Ok(root) = repository_root(&path) {
-        return Ok(root.to_string_lossy().into_owned());
+        return Ok(frontend_path(&root));
     }
     let dir = resolve_input_directory(&path)?;
     checked_output(&dir, &["init", "-b", "main"])?;
@@ -448,7 +491,7 @@ fn git_init_inner(path: String) -> Result<String, String> {
         empty_args.extend(["commit", "--allow-empty", "-m", "Commit inicial (Alethe)"]);
         checked_output(&dir, &empty_args)?;
     }
-    repository_root(&path).map(|root| root.to_string_lossy().into_owned())
+    repository_root(&path).map(|root| frontend_path(&root))
 }
 
 #[tauri::command]
@@ -486,7 +529,7 @@ fn git_status_inner(path: String) -> Result<GitRepositoryStatus, String> {
     let (staged, changes, untracked, conflicts) = parse_porcelain(&status.stdout);
     let (branch, detached, ahead, behind) = branch_info(&root)?;
     Ok(GitRepositoryStatus {
-        repo_root: root.to_string_lossy().into_owned(),
+        repo_root: frontend_path(&root),
         branch,
         detached,
         ahead,
@@ -578,11 +621,8 @@ pub async fn git_commit(repo_root: String, message: String) -> Result<String, St
 
 fn remote_command(root: &Path, args: &[&str]) -> Result<String, String> {
     with_lock_awareness(root, || {
-        let mut command = Command::new("git");
-        command
-            .current_dir(root)
-            .args(args)
-            .env("GIT_TERMINAL_PROMPT", "0");
+        let mut command = git_process(&root.to_string_lossy(), args);
+        command.current_dir(root).env("GIT_TERMINAL_PROMPT", "0");
         hide_console(&mut command);
         let output = command.output().map_err(|error| {
             if error.kind() == std::io::ErrorKind::NotFound {
@@ -1328,9 +1368,14 @@ mod tests {
         let root_string = root.to_string_lossy().into_owned();
 
         let reported_root = git_init(root_string.clone()).unwrap();
-        assert_eq!(PathBuf::from(&reported_root), root.canonicalize().unwrap());
+        assert!(!reported_root.starts_with(r"\\?\"));
+        assert_eq!(
+            fs::canonicalize(&reported_root).unwrap(),
+            root.canonicalize().unwrap()
+        );
 
         let status = git_status(root_string).unwrap();
+        assert!(!status.repo_root.starts_with(r"\\?\"));
         assert!(
             status.staged.is_empty() && status.changes.is_empty() && status.untracked.is_empty()
         );
@@ -1587,5 +1632,125 @@ mod tests {
         );
 
         fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod wsl_git_argv_tests {
+    use super::{frontend_path, git_argv, safe_directory_value, safe_directory_value_in};
+    use crate::wsl::{set_integration_enabled, TOGGLE_LOCK};
+    use std::path::Path;
+
+    #[test]
+    fn a_wsl_cwd_gets_the_git_unc_safe_directory_value_for_its_own_repository() {
+        assert_eq!(
+            safe_directory_value(r"\\wsl.localhost\Ubuntu-22.04\home\dev\projects\app"),
+            Some("%(prefix)///wsl.localhost/Ubuntu-22.04/home/dev/projects/app".to_string())
+        );
+        assert_eq!(
+            safe_directory_value(r"\\wsl$\Debian\srv\app"),
+            Some("%(prefix)///wsl$/Debian/srv/app".to_string())
+        );
+    }
+
+    #[test]
+    fn a_canonicalized_extended_length_cwd_still_gets_its_safe_directory_value() {
+        assert_eq!(
+            safe_directory_value(r"\\?\UNC\wsl.localhost\Ubuntu-22.04\home\dev\projects\app"),
+            Some("%(prefix)///wsl.localhost/Ubuntu-22.04/home/dev/projects/app".to_string())
+        );
+    }
+
+    #[test]
+    fn a_path_handed_to_the_frontend_stays_parseable_as_a_wsl_unc_path() {
+        let cleaned = frontend_path(Path::new(
+            r"\\?\UNC\wsl.localhost\Ubuntu\home\dev\projects\app",
+        ));
+        assert_eq!(cleaned, r"\\wsl.localhost\Ubuntu\home\dev\projects\app");
+        assert_eq!(
+            crate::wsl::parse_wsl_unc(&cleaned).map(|target| target.distro),
+            Some("Ubuntu".to_string())
+        );
+        assert_eq!(
+            frontend_path(Path::new(r"\\?\C:\Users\dev\projects")),
+            r"C:\Users\dev\projects"
+        );
+        assert_eq!(
+            frontend_path(Path::new(r"C:\Users\dev\projects")),
+            r"C:\Users\dev\projects"
+        );
+        assert_eq!(
+            frontend_path(Path::new("/home/dev/projects")),
+            "/home/dev/projects"
+        );
+    }
+
+    #[test]
+    fn the_safe_directory_value_is_keyed_on_the_repository_root_not_the_cwd() {
+        let root = r"\\wsl.localhost\Ubuntu\home\dev\projects\app";
+        assert_eq!(
+            safe_directory_value_in(
+                r"\\?\UNC\wsl.localhost\Ubuntu\home\dev\projects\app\packages\api",
+                |candidate| candidate == root
+            ),
+            Some("%(prefix)///wsl.localhost/Ubuntu/home/dev/projects/app".to_string())
+        );
+        // The nearest root wins: a nested repository is not keyed on its parent.
+        let nested = r"\\wsl.localhost\Ubuntu\home\dev\projects\app\packages\api";
+        assert_eq!(
+            safe_directory_value_in(nested, |candidate| candidate == root || candidate == nested),
+            Some("%(prefix)///wsl.localhost/Ubuntu/home/dev/projects/app/packages/api".to_string())
+        );
+        // With no worktree root above it, the cwd stays the best value available.
+        assert_eq!(
+            safe_directory_value_in(root, |_| false),
+            Some("%(prefix)///wsl.localhost/Ubuntu/home/dev/projects/app".to_string())
+        );
+    }
+
+    #[test]
+    fn a_windows_or_empty_cwd_never_gets_a_safe_directory_value() {
+        assert_eq!(safe_directory_value(r"C:\projects\app"), None);
+        assert_eq!(safe_directory_value(""), None);
+    }
+
+    #[test]
+    fn the_safe_directory_option_precedes_the_subcommand_and_the_caller_args_survive_intact() {
+        assert_eq!(
+            git_argv(
+                r"\\wsl.localhost\Ubuntu-22.04\home\dev\projects\app",
+                &["commit", "-m", "acme release"]
+            ),
+            vec![
+                "-c",
+                "safe.directory=%(prefix)///wsl.localhost/Ubuntu-22.04/home/dev/projects/app",
+                "commit",
+                "-m",
+                "acme release",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_non_wsl_cwd_yields_exactly_the_caller_args() {
+        assert_eq!(
+            git_argv(r"C:\projects\app", &["status", "--porcelain"]),
+            vec!["status", "--porcelain"]
+        );
+    }
+
+    #[test]
+    fn no_safe_directory_value_while_the_integration_is_disabled() {
+        let _guard = TOGGLE_LOCK.lock().unwrap();
+        let wsl_cwd = r"\\wsl.localhost\Ubuntu-22.04\home\dev\projects\app";
+
+        set_integration_enabled(false);
+        assert_eq!(safe_directory_value(wsl_cwd), None);
+
+        set_integration_enabled(true);
+        assert_eq!(
+            safe_directory_value(wsl_cwd),
+            Some("%(prefix)///wsl.localhost/Ubuntu-22.04/home/dev/projects/app".to_string())
+        );
     }
 }
