@@ -12,6 +12,8 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **You can now invite an existing chat contact to a project, from the conversation itself.** Pick a project in the contact panel and send; they get an accept/decline prompt, and access is granted only if they accept. Until now this was impossible rather than merely missing a button: granting access needs a real account id, and a saved contact keeps only its one-way hash (ADR-0004), so the only moment the id was ever available was while resolving a pairing request. The invite asks for it instead of the app storing one — it travels only on an accept, for one named project, sealed to one device. A decline sends the decision and nothing else.
+
 - **The project invite panel now explains the whole flow and surfaces incoming requests.** Sharing a project always worked, but every step after handing over the pairing code lived in the Chat tab with nothing pointing at it, so the code looked like a dead end and "there is no way to accept an invite" was the honest reading. The panel now spells out the three steps and, while it is open, shows any pairing request that has arrived with a shortcut straight to the screen that approves it (where the project can be shared along with the contact).
 
 - **The commit detail screen now shows per-file line counts**: added lines in green, removed in red, plus a GitHub-style five-block bar showing the proportion between them, and a commit-wide total beside the "changed files" heading. Previously the screen only said *that* a file had changed (`M README.md`), never how much. Binary files are labelled as such rather than reported as zero, since they carry no line counts.

@@ -376,6 +376,12 @@ async fn connect_once(
                                         Some("revocation") => crate::sync_access::AccessKind::Revocation,
                                         Some("chat_message") => crate::sync_access::AccessKind::ChatMention,
                                         Some("invite_suggestion") => crate::sync_access::AccessKind::CollaboratorSuggestion,
+                                        // A project invite and its answer are both someone
+                                        // deliberately acting on project access, which is what
+                                        // RemoteInvitation already means to the access centre.
+                                        Some("project_invite") | Some("project_invite_response") => {
+                                            crate::sync_access::AccessKind::RemoteInvitation
+                                        }
                                         _ => crate::sync_access::AccessKind::ProviderAttention,
                                     };
                                     let category = if kind == crate::sync_access::AccessKind::Revocation {
@@ -663,6 +669,8 @@ fn sanitize_outgoing_frame(frame: Value, now_ms: u64) -> Result<Value, String> {
                         | "chat_contact_confirm"
                         | "avatar_update"
                         | "bio_update"
+                        | "project_invite"
+                        | "project_invite_response"
                 )
                 || !is_account_route(recipient_account_route)
                 || expires_at_ms <= now_ms

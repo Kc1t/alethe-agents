@@ -1,5 +1,15 @@
 import { getCurrentWebview } from '@tauri-apps/api/webview'
-import { Eraser, Loader2, MessageSquare, Paperclip, Pencil, Search, Send, Terminal, X } from 'lucide-react'
+import {
+  Eraser,
+  Loader2,
+  MessageSquare,
+  Paperclip,
+  Pencil,
+  Search,
+  Send,
+  Terminal,
+  X,
+} from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useP2pAutoConnect } from '../../hooks/useP2pAutoConnect'
@@ -8,7 +18,10 @@ import { sendBioUpdateTo } from '../../lib/api/bioSync'
 import { p2pDrainFrames } from '../../lib/api/p2pBridge'
 import { P2P_CHANNEL_CHAT, P2P_CHANNEL_FILE_SYNC, untagFrame } from '../../lib/api/p2pChannel'
 import { subscribeToRendezvousEvents } from '../../lib/api/rendezvousEventBus'
-import { syncFilePipelineIngestFrame, syncFilePipelineOfferProject } from '../../lib/api/syncFilePipeline'
+import {
+  syncFilePipelineIngestFrame,
+  syncFilePipelineOfferProject,
+} from '../../lib/api/syncFilePipeline'
 import { isTauriEnv } from '../../lib/api/transport'
 import {
   type Conversation,
@@ -23,7 +36,11 @@ import {
   syncStartDirectConversation,
   syncUploadAttachment,
 } from '../../lib/api/syncChat'
-import { connectRendezvous, getRendezvousStatus, sendRendezvousFrame } from '../../lib/api/syncRendezvous'
+import {
+  connectRendezvous,
+  getRendezvousStatus,
+  sendRendezvousFrame,
+} from '../../lib/api/syncRendezvous'
 import {
   encodeAttachmentReferences,
   guessMimeFromName,
@@ -37,6 +54,7 @@ import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { Avatar } from '../ui/Avatar'
 import { AttachmentGrid } from './AttachmentGrid'
+import { InviteToProject } from './InviteToProject'
 import { AttachmentPreview } from './AttachmentPreview'
 import { Lightbox } from './Lightbox'
 import styles from './ChatPanel.module.css'
@@ -212,7 +230,7 @@ export function ChatPanel({
   // the contact has no real photo synced yet — keeps "no photo set" looking identical on both
   // sides instead of one showing a generic icon and the other a plain initial.
   const otherAvatarUrl =
-    source.kind === 'direct' ? (source.contactAvatarThumbnail || DEFAULT_PROFILE_IMAGE_URL) : null
+    source.kind === 'direct' ? source.contactAvatarThumbnail || DEFAULT_PROFILE_IMAGE_URL : null
   const [conversation, setConversation] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<DecryptedMessage[]>([])
   const [localDeviceId, setLocalDeviceId] = useState<string | null>(null)
@@ -237,10 +255,13 @@ export function ChatPanel({
   // it yet, and starting a transfer of arbitrary size the instant two peers connect would be a
   // surprise, not a convenience, before this path has been proven reliable.
   const localProject = useProjectsStore((state) =>
-    source.kind === 'project' ? state.projects.find((project) => project.id === source.projectId) ?? null : null,
+    source.kind === 'project'
+      ? (state.projects.find((project) => project.id === source.projectId) ?? null)
+      : null,
   )
   // Self-heals a `defaultCwd` left pointing at a dead merge/worktree env folder.
-  const localProjectRoot = (localProject && getProjectRepoRoot(localProject)) || localProject?.defaultCwd
+  const localProjectRoot =
+    (localProject && getProjectRepoRoot(localProject)) || localProject?.defaultCwd
   const [fileSyncBusy, setFileSyncBusy] = useState(false)
   const [fileSyncStatus, setFileSyncStatus] = useState<string | null>(null)
   const syncProjectNow = async () => {
@@ -279,7 +300,9 @@ export function ChatPanel({
   // they're actually sent, instead of each file going out the instant it's pasted with no way to
   // say anything alongside it. A list, not a single slot — pasting/picking several at once used to
   // silently overwrite whichever one was already pinned (reported live).
-  const [pendingAttachments, setPendingAttachments] = useState<{ file: File; previewUrl: string | null }[]>([])
+  const [pendingAttachments, setPendingAttachments] = useState<
+    { file: File; previewUrl: string | null }[]
+  >([])
   const [pendingLightboxIndex, setPendingLightboxIndex] = useState<number | null>(null)
   const [slashHighlight, setSlashHighlight] = useState(0)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -402,7 +425,13 @@ export function ChatPanel({
   useEffect(() => {
     setContactInfoOpen(false)
     setContactRenaming(false)
-  }, [source.kind === 'direct' ? source.contactAccountRoute : source.kind === 'project' ? source.projectId : null])
+  }, [
+    source.kind === 'direct'
+      ? source.contactAccountRoute
+      : source.kind === 'project'
+        ? source.projectId
+        : null,
+  ])
 
   // Backfills this device's own avatar to the other member every time a direct conversation with
   // them opens — `broadcastAvatarUpdate` (Preferences) only fires the instant the picture is
@@ -411,8 +440,16 @@ export function ChatPanel({
   // `sendAvatarUpdateTo` itself, so this being safe to call on every mount doesn't spam the relay.
   useEffect(() => {
     if (source.kind !== 'direct' || !otherMember) return
-    void sendAvatarUpdateTo(preferences.profileImageUrl, otherMember.accountRoute, bytesToBase64(otherMember.x25519PublicKey))
-    void sendBioUpdateTo(preferences.bio, otherMember.accountRoute, bytesToBase64(otherMember.x25519PublicKey))
+    void sendAvatarUpdateTo(
+      preferences.profileImageUrl,
+      otherMember.accountRoute,
+      bytesToBase64(otherMember.x25519PublicKey),
+    )
+    void sendBioUpdateTo(
+      preferences.bio,
+      otherMember.accountRoute,
+      bytesToBase64(otherMember.x25519PublicKey),
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source.kind, otherMember?.accountRoute, preferences.profileImageUrl, preferences.bio])
 
@@ -507,14 +544,18 @@ export function ChatPanel({
             const untagged = untagFrame(frame)
             if (!untagged) continue
             if (untagged.tag === P2P_CHANNEL_CHAT) {
-              await syncIngestChatTransportFrame(conversationId, untagged.payload).catch((cause) => {
-                console.error('[chat] failed to ingest p2p frame', cause)
-              })
+              await syncIngestChatTransportFrame(conversationId, untagged.payload).catch(
+                (cause) => {
+                  console.error('[chat] failed to ingest p2p frame', cause)
+                },
+              )
             } else if (untagged.tag === P2P_CHANNEL_FILE_SYNC) {
               await syncFilePipelineIngestFrame(accountRoute, untagged.payload)
                 .then((event) => {
-                  if (event.type === 'stagingStarted') setFileSyncStatus(t('chat.fileSync.receiving'))
-                  else if (event.type === 'syncCompleted') setFileSyncStatus(t('chat.fileSync.received', { path: event.destination }))
+                  if (event.type === 'stagingStarted')
+                    setFileSyncStatus(t('chat.fileSync.receiving'))
+                  else if (event.type === 'syncCompleted')
+                    setFileSyncStatus(t('chat.fileSync.received', { path: event.destination }))
                 })
                 .catch((cause) => {
                   console.error('[chat] failed to ingest file-sync frame', cause)
@@ -555,7 +596,10 @@ export function ChatPanel({
           } catch (cause) {
             // Not addressed to this device/conversation — but could also be a real decrypt bug,
             // so log it instead of hiding it entirely.
-            console.warn('[chat] relay message could not be opened/ingested (may be for someone else)', cause)
+            console.warn(
+              '[chat] relay message could not be opened/ingested (may be for someone else)',
+              cause,
+            )
           }
         }
       })()
@@ -655,7 +699,10 @@ export function ChatPanel({
       const caption = draft
       clearAllPendingAttachments()
       setDraft('')
-      await attachFiles(staged.map((s) => s.file), caption)
+      await attachFiles(
+        staged.map((s) => s.file),
+        caption,
+      )
       return
     }
     if (!draft.trim()) return
@@ -681,7 +728,10 @@ export function ChatPanel({
         if (p2p.state === 'p2p') {
           await p2p.send(frame).catch(async (cause) => {
             // Direct delivery failed after all (session dropped mid-send) — fall back to relay.
-            console.warn(`[chat] p2p.send failed mid-send (${elapsed()}), falling back to relay`, cause)
+            console.warn(
+              `[chat] p2p.send failed mid-send (${elapsed()}), falling back to relay`,
+              cause,
+            )
             await deliverViaRelay(frame, otherMember.accountRoute, otherMember.x25519PublicKey)
           })
         } else {
@@ -742,7 +792,9 @@ export function ChatPanel({
             `[chat] deliverViaRelay attempt ${attempt + 1} failed, retrying in ${RELAY_DELIVERY_RETRY_DELAYS_MS[attempt]}ms`,
             cause,
           )
-          await new Promise((resolve) => setTimeout(resolve, RELAY_DELIVERY_RETRY_DELAYS_MS[attempt]))
+          await new Promise((resolve) =>
+            setTimeout(resolve, RELAY_DELIVERY_RETRY_DELAYS_MS[attempt]),
+          )
         }
       }
     } catch (cause) {
@@ -916,7 +968,10 @@ export function ChatPanel({
               </button>
             ) : null}
             {source.kind === 'project' && otherMembers.length > 0 ? (
-              <div className={styles.headerMembers} title={t('chat.headerMembersTitle', { count: otherMembers.length })}>
+              <div
+                className={styles.headerMembers}
+                title={t('chat.headerMembersTitle', { count: otherMembers.length })}
+              >
                 {otherMembers.slice(0, 4).map((member) => (
                   <Avatar
                     key={member.accountRoute}
@@ -948,350 +1003,394 @@ export function ChatPanel({
 
       <div className={styles.body}>
         <div className={styles.bodyMain}>
-      <div className={styles.messages}>
-        {!conversation && !error ? (
-          <div className={styles.loading}>
-            <Loader2 size={18} className={styles.spin} />
-          </div>
-        ) : messages.length === 0 ? (
-          <div className={styles.empty}>
-            <MessageSquare size={28} className={styles.emptyIcon} />
-            <span>{t('chat.empty')}</span>
-          </div>
-        ) : searchOpen && searchQuery.trim() && visibleMessages.length === 0 ? (
-          <div className={styles.empty}>
-            <Search size={28} className={styles.emptyIcon} />
-            <span>{t('chat.searchNoMatch')}</span>
-          </div>
-        ) : (
-          visibleMessages.map((message) => {
-            const own = message.senderDeviceId === localDeviceId
-            return (
-              <div
-                key={message.messageId}
-                className={`${styles.messageRow} ${own ? styles.messageRowOwn : ''}`}
-              >
-                <div className={styles.avatar}>
-                  {own ? (
-                    <Avatar src={ownAvatarUrl} initial={ownInitial} className={styles.avatarImg} />
-                  ) : (
-                    <Avatar
-                      src={otherAvatarUrl}
-                      initial={
-                        otherDisplayLabel
-                          ? getProfileInitial(otherDisplayLabel)
-                          : initialsFor(message.senderDeviceId)
-                      }
-                      className={styles.avatarImg}
-                    />
-                  )}
-                </div>
-                <div className={styles.messageBubbleWrap}>
-                  <div className={styles.messageMeta}>
-                    <span className={styles.messageAuthor}>
-                      {own ? ownDisplayName : (otherDisplayLabel ?? message.senderDeviceId)}
-                    </span>
-                    <span className={styles.messageTime}>
-                      {new Date(message.createdAtMs).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  {message.contentType === 'command' ? (
-                    <div className={`${styles.commandBlock} ${own ? styles.bubbleOwn : ''}`}>
-                      <div className={styles.commandLabel}>
-                        <Terminal size={11} />
-                        {t('chat.contentType.command')}
-                      </div>
-                      <code>{message.text}</code>
-                    </div>
-                  ) : message.contentType === 'code_block' ? (
-                    <pre className={`${styles.codeBlock} ${own ? styles.bubbleOwn : ''}`}>
-                      <code>{message.text}</code>
-                    </pre>
-                  ) : message.contentType === 'test_result' ||
-                    message.contentType === 'bug_report' ? (
-                    <div className={`${styles.structuredBlock} ${own ? styles.bubbleOwn : ''}`}>
-                      <span className={styles.structuredLabel}>
-                        {t(`chat.contentType.${message.contentType}`)}
-                      </span>
-                      <p>{message.text}</p>
-                    </div>
-                  ) : message.contentType === 'text' && parseAttachmentReferences(message.text) && conversation ? (
-                    (() => {
-                      const parsed = parseAttachmentReferences(message.text)!
-                      const [attachment] = parsed.attachments
-                      // The auto-generated fallback text (no real caption typed) must not be
-                      // shown again as a redundant caption line under a preview that already
-                      // displays the filename(s) itself.
-                      const fallback =
-                        parsed.attachments.length > 1
-                          ? t('chat.attachmentGroupMessage', { count: parsed.attachments.length })
-                          : t('chat.attachmentMessage', { name: attachment.name, id: attachment.attachmentId })
-                      const caption = parsed.rest !== fallback ? parsed.rest : undefined
-                      return parsed.attachments.length > 1 ? (
-                        <AttachmentGrid
-                          conversationId={conversation.conversationId}
-                          attachments={parsed.attachments}
-                          caption={caption}
+          <div className={styles.messages}>
+            {!conversation && !error ? (
+              <div className={styles.loading}>
+                <Loader2 size={18} className={styles.spin} />
+              </div>
+            ) : messages.length === 0 ? (
+              <div className={styles.empty}>
+                <MessageSquare size={28} className={styles.emptyIcon} />
+                <span>{t('chat.empty')}</span>
+              </div>
+            ) : searchOpen && searchQuery.trim() && visibleMessages.length === 0 ? (
+              <div className={styles.empty}>
+                <Search size={28} className={styles.emptyIcon} />
+                <span>{t('chat.searchNoMatch')}</span>
+              </div>
+            ) : (
+              visibleMessages.map((message) => {
+                const own = message.senderDeviceId === localDeviceId
+                return (
+                  <div
+                    key={message.messageId}
+                    className={`${styles.messageRow} ${own ? styles.messageRowOwn : ''}`}
+                  >
+                    <div className={styles.avatar}>
+                      {own ? (
+                        <Avatar
+                          src={ownAvatarUrl}
+                          initial={ownInitial}
+                          className={styles.avatarImg}
                         />
                       ) : (
-                        <AttachmentPreview
-                          conversationId={conversation.conversationId}
-                          attachmentId={attachment.attachmentId}
-                          name={attachment.name}
-                          caption={caption}
+                        <Avatar
+                          src={otherAvatarUrl}
+                          initial={
+                            otherDisplayLabel
+                              ? getProfileInitial(otherDisplayLabel)
+                              : initialsFor(message.senderDeviceId)
+                          }
+                          className={styles.avatarImg}
                         />
-                      )
-                    })()
-                  ) : (
-                    <p
-                      className={`${styles.messageText} ${own ? styles.bubbleOwn : styles.bubbleOther}`}
+                      )}
+                    </div>
+                    <div className={styles.messageBubbleWrap}>
+                      <div className={styles.messageMeta}>
+                        <span className={styles.messageAuthor}>
+                          {own ? ownDisplayName : (otherDisplayLabel ?? message.senderDeviceId)}
+                        </span>
+                        <span className={styles.messageTime}>
+                          {new Date(message.createdAtMs).toLocaleTimeString()}
+                        </span>
+                      </div>
+                      {message.contentType === 'command' ? (
+                        <div className={`${styles.commandBlock} ${own ? styles.bubbleOwn : ''}`}>
+                          <div className={styles.commandLabel}>
+                            <Terminal size={11} />
+                            {t('chat.contentType.command')}
+                          </div>
+                          <code>{message.text}</code>
+                        </div>
+                      ) : message.contentType === 'code_block' ? (
+                        <pre className={`${styles.codeBlock} ${own ? styles.bubbleOwn : ''}`}>
+                          <code>{message.text}</code>
+                        </pre>
+                      ) : message.contentType === 'test_result' ||
+                        message.contentType === 'bug_report' ? (
+                        <div className={`${styles.structuredBlock} ${own ? styles.bubbleOwn : ''}`}>
+                          <span className={styles.structuredLabel}>
+                            {t(`chat.contentType.${message.contentType}`)}
+                          </span>
+                          <p>{message.text}</p>
+                        </div>
+                      ) : message.contentType === 'text' &&
+                        parseAttachmentReferences(message.text) &&
+                        conversation ? (
+                        (() => {
+                          const parsed = parseAttachmentReferences(message.text)!
+                          const [attachment] = parsed.attachments
+                          // The auto-generated fallback text (no real caption typed) must not be
+                          // shown again as a redundant caption line under a preview that already
+                          // displays the filename(s) itself.
+                          const fallback =
+                            parsed.attachments.length > 1
+                              ? t('chat.attachmentGroupMessage', {
+                                  count: parsed.attachments.length,
+                                })
+                              : t('chat.attachmentMessage', {
+                                  name: attachment.name,
+                                  id: attachment.attachmentId,
+                                })
+                          const caption = parsed.rest !== fallback ? parsed.rest : undefined
+                          return parsed.attachments.length > 1 ? (
+                            <AttachmentGrid
+                              conversationId={conversation.conversationId}
+                              attachments={parsed.attachments}
+                              caption={caption}
+                            />
+                          ) : (
+                            <AttachmentPreview
+                              conversationId={conversation.conversationId}
+                              attachmentId={attachment.attachmentId}
+                              name={attachment.name}
+                              caption={caption}
+                            />
+                          )
+                        })()
+                      ) : (
+                        <p
+                          className={`${styles.messageText} ${own ? styles.bubbleOwn : styles.bubbleOther}`}
+                        >
+                          {renderMessageText(message.text, searchOpen ? searchQuery : '')}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })
+            )}
+            <div ref={bottomRef} />
+          </div>
+
+          {error ? <div className={styles.error}>{t('chat.loadFailed')}</div> : null}
+
+          <div className={styles.syncNotice}>{t(`chat.syncNotice.${connectionState}`)}</div>
+
+          <div className={styles.composer}>
+            {mentionMenuOpen && !slashMenuOpen ? (
+              <div className={styles.slashMenu}>
+                <div className={styles.slashMenuHint}>{t('chat.mentionHint')}</div>
+                {mentionMatches.length === 0 ? (
+                  <div className={styles.slashMenuEmpty}>{t('chat.mentionNoMatch')}</div>
+                ) : (
+                  mentionMatches.map((candidate, index) => (
+                    <button
+                      key={candidate.accountRoute}
+                      type="button"
+                      className={`${styles.slashOption} ${index === mentionHighlight ? styles.slashOptionActive : ''}`}
+                      onMouseEnter={() => setMentionHighlight(index)}
+                      onClick={() => applyMention(candidate)}
                     >
-                      {renderMessageText(message.text, searchOpen ? searchQuery : '')}
-                    </p>
-                  )}
-                </div>
+                      <span className={styles.slashOptionKeyword}>@{candidate.label}</span>
+                    </button>
+                  ))
+                )}
               </div>
-            )
-          })
-        )}
-        <div ref={bottomRef} />
-      </div>
-
-      {error ? <div className={styles.error}>{t('chat.loadFailed')}</div> : null}
-
-      <div className={styles.syncNotice}>{t(`chat.syncNotice.${connectionState}`)}</div>
-
-      <div className={styles.composer}>
-        {mentionMenuOpen && !slashMenuOpen ? (
-          <div className={styles.slashMenu}>
-            <div className={styles.slashMenuHint}>{t('chat.mentionHint')}</div>
-            {mentionMatches.length === 0 ? (
-              <div className={styles.slashMenuEmpty}>{t('chat.mentionNoMatch')}</div>
-            ) : (
-              mentionMatches.map((candidate, index) => (
+            ) : null}
+            {slashMenuOpen ? (
+              <div className={styles.slashMenu}>
+                <div className={styles.slashMenuHint}>{t('chat.slashHint')}</div>
+                {slashMatches.length === 0 ? (
+                  <div className={styles.slashMenuEmpty}>{t('chat.slashNoMatch')}</div>
+                ) : (
+                  slashMatches.map((option, index) => (
+                    <button
+                      key={option.keyword}
+                      type="button"
+                      className={`${styles.slashOption} ${index === slashHighlight ? styles.slashOptionActive : ''}`}
+                      onMouseEnter={() => setSlashHighlight(index)}
+                      onClick={() => applySlashCommand(option.type)}
+                    >
+                      <span className={styles.slashOptionKeyword}>/{option.keyword}</span>
+                      <span className={styles.slashOptionLabel}>
+                        {t(`chat.contentType.${option.type}`)}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+            ) : null}
+            {contentType !== 'text' ? (
+              <span className={styles.activeTypePill}>
+                {t(`chat.contentType.${contentType}`)}
                 <button
-                  key={candidate.accountRoute}
                   type="button"
-                  className={`${styles.slashOption} ${index === mentionHighlight ? styles.slashOptionActive : ''}`}
-                  onMouseEnter={() => setMentionHighlight(index)}
-                  onClick={() => applyMention(candidate)}
+                  className={styles.activeTypePillClear}
+                  onClick={() => setContentType('text')}
+                  title={t('chat.slashClear')}
                 >
-                  <span className={styles.slashOptionKeyword}>@{candidate.label}</span>
+                  <X size={11} />
                 </button>
-              ))
-            )}
-          </div>
-        ) : null}
-        {slashMenuOpen ? (
-          <div className={styles.slashMenu}>
-            <div className={styles.slashMenuHint}>{t('chat.slashHint')}</div>
-            {slashMatches.length === 0 ? (
-              <div className={styles.slashMenuEmpty}>{t('chat.slashNoMatch')}</div>
-            ) : (
-              slashMatches.map((option, index) => (
+              </span>
+            ) : null}
+            {pendingAttachments.length > 0 ? (
+              <div className={styles.pendingAttachmentRow}>
+                {pendingAttachments.map((pending, index) => (
+                  <div key={index} className={styles.pendingAttachment}>
+                    <button
+                      type="button"
+                      className={styles.pendingAttachmentPreviewTrigger}
+                      disabled={!pending.previewUrl}
+                      onClick={() => setPendingLightboxIndex(index)}
+                      title={pending.previewUrl ? t('chat.viewFullSize') : undefined}
+                    >
+                      {pending.previewUrl ? (
+                        <img
+                          src={pending.previewUrl}
+                          alt=""
+                          className={styles.pendingAttachmentThumb}
+                        />
+                      ) : (
+                        <Paperclip size={14} />
+                      )}
+                      <span className={styles.pendingAttachmentName}>{pending.file.name}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.pendingAttachmentClear}
+                      onClick={() => removePendingAttachment(index)}
+                      title={t('common.remove')}
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {pendingLightboxIndex !== null
+              ? (() => {
+                  const previewable = pendingAttachments
+                    .map((p, index) => ({ p, index }))
+                    .filter(({ p }) => p.previewUrl && previewKindFor(p.file.name))
+                  if (previewable.length === 0) return null
+                  const items = previewable.map(({ p }) => ({
+                    src: p.previewUrl!,
+                    kind: previewKindFor(p.file.name)!,
+                    alt: p.file.name,
+                  }))
+                  const targetPos = previewable.findIndex(
+                    ({ index }) => index === pendingLightboxIndex,
+                  )
+                  const clampedIndex = targetPos >= 0 ? targetPos : 0
+                  return (
+                    <Lightbox
+                      items={items}
+                      initialIndex={clampedIndex}
+                      onClose={() => setPendingLightboxIndex(null)}
+                    />
+                  )
+                })()
+              : null}
+            <div className={styles.composerRow}>
+              <div className={styles.inputPill}>
+                <input
+                  ref={textInputRef}
+                  className={styles.textInput}
+                  value={draft}
+                  placeholder={t('chat.composerPlaceholder')}
+                  onChange={(event) => {
+                    const { value, selectionStart } = event.target
+                    setDraft(value)
+                    updateSlashToken(value, selectionStart ?? value.length)
+                    updateMentionToken(value, selectionStart ?? value.length)
+                  }}
+                  onClick={(event) => {
+                    const { value, selectionStart } = event.currentTarget
+                    updateSlashToken(value, selectionStart ?? value.length)
+                    updateMentionToken(value, selectionStart ?? value.length)
+                  }}
+                  onKeyUp={(event) => {
+                    if (
+                      event.key.startsWith('Arrow') ||
+                      event.key === 'Home' ||
+                      event.key === 'End'
+                    ) {
+                      const { value, selectionStart } = event.currentTarget
+                      updateSlashToken(value, selectionStart ?? value.length)
+                      updateMentionToken(value, selectionStart ?? value.length)
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (mentionMenuOpen && !slashMenuOpen) {
+                      if (event.key === 'ArrowDown') {
+                        event.preventDefault()
+                        setMentionHighlight(
+                          (current) => (current + 1) % Math.max(mentionMatches.length, 1),
+                        )
+                        return
+                      }
+                      if (event.key === 'ArrowUp') {
+                        event.preventDefault()
+                        setMentionHighlight(
+                          (current) =>
+                            (current - 1 + Math.max(mentionMatches.length, 1)) %
+                            Math.max(mentionMatches.length, 1),
+                        )
+                        return
+                      }
+                      if (event.key === 'Escape') {
+                        event.preventDefault()
+                        setMentionToken(null)
+                        return
+                      }
+                      if (event.key === 'Enter' || event.key === 'Tab') {
+                        event.preventDefault()
+                        const match = mentionMatches[mentionHighlight]
+                        if (match) applyMention(match)
+                        return
+                      }
+                    }
+                    if (slashMenuOpen) {
+                      if (event.key === 'ArrowDown') {
+                        event.preventDefault()
+                        setSlashHighlight(
+                          (current) => (current + 1) % Math.max(slashMatches.length, 1),
+                        )
+                        return
+                      }
+                      if (event.key === 'ArrowUp') {
+                        event.preventDefault()
+                        setSlashHighlight(
+                          (current) =>
+                            (current - 1 + Math.max(slashMatches.length, 1)) %
+                            Math.max(slashMatches.length, 1),
+                        )
+                        return
+                      }
+                      if (event.key === 'Escape') {
+                        event.preventDefault()
+                        setSlashToken(null)
+                        return
+                      }
+                      if (event.key === 'Enter' || event.key === 'Tab') {
+                        event.preventDefault()
+                        const match = slashMatches[slashHighlight]
+                        if (match) applySlashCommand(match.type)
+                        return
+                      }
+                      return
+                    }
+                    if (event.key === 'Enter') void send()
+                  }}
+                  onPaste={(event) => {
+                    const files = Array.from(event.clipboardData.items)
+                      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+                      .map((item) => item.getAsFile())
+                      .filter((file): file is File => file !== null)
+                    if (files.length === 0) return
+                    // A pasted image has no filename from the clipboard — text keeps flowing into the
+                    // draft as usual, only the image(s) themselves are intercepted and pinned above the
+                    // composer (see `stageAttachment`) instead of uploading immediately. Every pasted
+                    // image is staged, not just the first — pasting several at once used to silently
+                    // overwrite whichever one was already pinned.
+                    event.preventDefault()
+                    for (const file of files) stageAttachment(file)
+                  }}
+                />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className={styles.hiddenFileInput}
+                  onChange={(event) => {
+                    for (const file of Array.from(event.target.files ?? [])) stageAttachment(file)
+                    event.target.value = ''
+                  }}
+                />
                 <button
-                  key={option.keyword}
                   type="button"
-                  className={`${styles.slashOption} ${index === slashHighlight ? styles.slashOptionActive : ''}`}
-                  onMouseEnter={() => setSlashHighlight(index)}
-                  onClick={() => applySlashCommand(option.type)}
+                  className={styles.iconButton}
+                  disabled={attaching || !conversation}
+                  onClick={() => fileInputRef.current?.click()}
+                  title={t('chat.attachFile')}
                 >
-                  <span className={styles.slashOptionKeyword}>/{option.keyword}</span>
-                  <span className={styles.slashOptionLabel}>
-                    {t(`chat.contentType.${option.type}`)}
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-        ) : null}
-        {contentType !== 'text' ? (
-          <span className={styles.activeTypePill}>
-            {t(`chat.contentType.${contentType}`)}
-            <button
-              type="button"
-              className={styles.activeTypePillClear}
-              onClick={() => setContentType('text')}
-              title={t('chat.slashClear')}
-            >
-              <X size={11} />
-            </button>
-          </span>
-        ) : null}
-        {pendingAttachments.length > 0 ? (
-          <div className={styles.pendingAttachmentRow}>
-            {pendingAttachments.map((pending, index) => (
-              <div key={index} className={styles.pendingAttachment}>
-                <button
-                  type="button"
-                  className={styles.pendingAttachmentPreviewTrigger}
-                  disabled={!pending.previewUrl}
-                  onClick={() => setPendingLightboxIndex(index)}
-                  title={pending.previewUrl ? t('chat.viewFullSize') : undefined}
-                >
-                  {pending.previewUrl ? (
-                    <img src={pending.previewUrl} alt="" className={styles.pendingAttachmentThumb} />
+                  {attaching ? (
+                    <Loader2 size={14} className={styles.spin} />
                   ) : (
                     <Paperclip size={14} />
                   )}
-                  <span className={styles.pendingAttachmentName}>{pending.file.name}</span>
-                </button>
-                <button
-                  type="button"
-                  className={styles.pendingAttachmentClear}
-                  onClick={() => removePendingAttachment(index)}
-                  title={t('common.remove')}
-                >
-                  <X size={12} />
                 </button>
               </div>
-            ))}
+              <button
+                type="button"
+                className={styles.sendButton}
+                disabled={
+                  sending ||
+                  attaching ||
+                  (!draft.trim() && pendingAttachments.length === 0) ||
+                  !conversation
+                }
+                onClick={() => void send()}
+              >
+                {sending || attaching ? (
+                  <Loader2 size={14} className={styles.spin} />
+                ) : (
+                  <Send size={14} />
+                )}
+              </button>
+            </div>
           </div>
-        ) : null}
-        {pendingLightboxIndex !== null
-          ? (() => {
-              const previewable = pendingAttachments
-                .map((p, index) => ({ p, index }))
-                .filter(({ p }) => p.previewUrl && previewKindFor(p.file.name))
-              if (previewable.length === 0) return null
-              const items = previewable.map(({ p }) => ({
-                src: p.previewUrl!,
-                kind: previewKindFor(p.file.name)!,
-                alt: p.file.name,
-              }))
-              const targetPos = previewable.findIndex(({ index }) => index === pendingLightboxIndex)
-              const clampedIndex = targetPos >= 0 ? targetPos : 0
-              return <Lightbox items={items} initialIndex={clampedIndex} onClose={() => setPendingLightboxIndex(null)} />
-            })()
-          : null}
-        <div className={styles.composerRow}>
-        <div className={styles.inputPill}>
-          <input
-            ref={textInputRef}
-            className={styles.textInput}
-            value={draft}
-            placeholder={t('chat.composerPlaceholder')}
-            onChange={(event) => {
-              const { value, selectionStart } = event.target
-              setDraft(value)
-              updateSlashToken(value, selectionStart ?? value.length)
-              updateMentionToken(value, selectionStart ?? value.length)
-            }}
-            onClick={(event) => {
-              const { value, selectionStart } = event.currentTarget
-              updateSlashToken(value, selectionStart ?? value.length)
-              updateMentionToken(value, selectionStart ?? value.length)
-            }}
-            onKeyUp={(event) => {
-              if (event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') {
-                const { value, selectionStart } = event.currentTarget
-                updateSlashToken(value, selectionStart ?? value.length)
-                updateMentionToken(value, selectionStart ?? value.length)
-              }
-            }}
-            onKeyDown={(event) => {
-              if (mentionMenuOpen && !slashMenuOpen) {
-                if (event.key === 'ArrowDown') {
-                  event.preventDefault()
-                  setMentionHighlight((current) => (current + 1) % Math.max(mentionMatches.length, 1))
-                  return
-                }
-                if (event.key === 'ArrowUp') {
-                  event.preventDefault()
-                  setMentionHighlight(
-                    (current) =>
-                      (current - 1 + Math.max(mentionMatches.length, 1)) %
-                      Math.max(mentionMatches.length, 1),
-                  )
-                  return
-                }
-                if (event.key === 'Escape') {
-                  event.preventDefault()
-                  setMentionToken(null)
-                  return
-                }
-                if (event.key === 'Enter' || event.key === 'Tab') {
-                  event.preventDefault()
-                  const match = mentionMatches[mentionHighlight]
-                  if (match) applyMention(match)
-                  return
-                }
-              }
-              if (slashMenuOpen) {
-                if (event.key === 'ArrowDown') {
-                  event.preventDefault()
-                  setSlashHighlight((current) => (current + 1) % Math.max(slashMatches.length, 1))
-                  return
-                }
-                if (event.key === 'ArrowUp') {
-                  event.preventDefault()
-                  setSlashHighlight(
-                    (current) =>
-                      (current - 1 + Math.max(slashMatches.length, 1)) %
-                      Math.max(slashMatches.length, 1),
-                  )
-                  return
-                }
-                if (event.key === 'Escape') {
-                  event.preventDefault()
-                  setSlashToken(null)
-                  return
-                }
-                if (event.key === 'Enter' || event.key === 'Tab') {
-                  event.preventDefault()
-                  const match = slashMatches[slashHighlight]
-                  if (match) applySlashCommand(match.type)
-                  return
-                }
-                return
-              }
-              if (event.key === 'Enter') void send()
-            }}
-            onPaste={(event) => {
-              const files = Array.from(event.clipboardData.items)
-                .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
-                .map((item) => item.getAsFile())
-                .filter((file): file is File => file !== null)
-              if (files.length === 0) return
-              // A pasted image has no filename from the clipboard — text keeps flowing into the
-              // draft as usual, only the image(s) themselves are intercepted and pinned above the
-              // composer (see `stageAttachment`) instead of uploading immediately. Every pasted
-              // image is staged, not just the first — pasting several at once used to silently
-              // overwrite whichever one was already pinned.
-              event.preventDefault()
-              for (const file of files) stageAttachment(file)
-            }}
-          />
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            className={styles.hiddenFileInput}
-            onChange={(event) => {
-              for (const file of Array.from(event.target.files ?? [])) stageAttachment(file)
-              event.target.value = ''
-            }}
-          />
-          <button
-            type="button"
-            className={styles.iconButton}
-            disabled={attaching || !conversation}
-            onClick={() => fileInputRef.current?.click()}
-            title={t('chat.attachFile')}
-          >
-            {attaching ? <Loader2 size={14} className={styles.spin} /> : <Paperclip size={14} />}
-          </button>
-        </div>
-        <button
-          type="button"
-          className={styles.sendButton}
-          disabled={sending || attaching || (!draft.trim() && pendingAttachments.length === 0) || !conversation}
-          onClick={() => void send()}
-        >
-          {sending || attaching ? <Loader2 size={14} className={styles.spin} /> : <Send size={14} />}
-        </button>
-        </div>
-      </div>
         </div>
 
         {contactInfoOpen && source.kind === 'direct' ? (
@@ -1325,7 +1424,11 @@ export function ChatPanel({
             <div className={styles.contactInfoIdentity}>
               <Avatar
                 src={otherAvatarUrl}
-                initial={otherDisplayLabel ? getProfileInitial(otherDisplayLabel) : initialsFor(otherMember?.accountRoute ?? '')}
+                initial={
+                  otherDisplayLabel
+                    ? getProfileInitial(otherDisplayLabel)
+                    : initialsFor(otherMember?.accountRoute ?? '')
+                }
                 className={styles.contactInfoAvatar}
               />
               {contactRenaming && contactActions ? (
@@ -1334,7 +1437,8 @@ export function ChatPanel({
                   onSubmit={(event) => {
                     event.preventDefault()
                     const trimmed = contactRenameDraft.trim()
-                    if (trimmed && trimmed !== source.contactDisplayLabel) contactActions.onRename(trimmed)
+                    if (trimmed && trimmed !== source.contactDisplayLabel)
+                      contactActions.onRename(trimmed)
                     setContactRenaming(false)
                   }}
                 >
@@ -1356,11 +1460,16 @@ export function ChatPanel({
               ) : (
                 <span className={styles.contactInfoName}>{source.contactDisplayLabel}</span>
               )}
-              <span className={styles.contactInfoStatus}>{t(`chat.connectionState.${connectionState}`)}</span>
-              {source.contactBio ? <p className={styles.contactInfoBio}>{source.contactBio}</p> : null}
+              <span className={styles.contactInfoStatus}>
+                {t(`chat.connectionState.${connectionState}`)}
+              </span>
+              {source.contactBio ? (
+                <p className={styles.contactInfoBio}>{source.contactBio}</p>
+              ) : null}
             </div>
             {contactActions ? (
               <div className={styles.contactInfoActions}>
+                <InviteToProject contactAccountRoute={source.contactAccountRoute} />
                 <button
                   type="button"
                   className={`${styles.contactInfoAction} ${styles.contactInfoActionDanger}`}

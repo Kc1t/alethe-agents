@@ -21,6 +21,7 @@ import { AddChatContactModal } from './AddChatContactModal'
 import { ChatPanel, type ChatSource } from './ChatPanel'
 import styles from './ChatTab.module.css'
 import { PairingRequestsPanel } from './PairingRequestsPanel'
+import { ProjectInvitesPanel } from './ProjectInvitesPanel'
 
 const CONTACT_ACK_POLL_INTERVAL_MS = 4_000
 
@@ -173,7 +174,10 @@ export function ChatTab({
             }
           } catch (cause) {
             // Not addressed to this device — but could also be a real bug, so log instead of hiding.
-            console.warn('[chat-contact] ack could not be opened (may be addressed to someone else)', cause)
+            console.warn(
+              '[chat-contact] ack could not be opened (may be addressed to someone else)',
+              cause,
+            )
           }
         }
         if (active && queued) reloadPendingRequestCount()
@@ -336,11 +340,15 @@ export function ChatTab({
               selected.kind === 'direct'
                 ? {
                     onRename: (newDisplayLabel: string) => {
-                      const contact = contacts.find((item) => item.accountRoute === selected.contactAccountRoute)
+                      const contact = contacts.find(
+                        (item) => item.accountRoute === selected.contactAccountRoute,
+                      )
                       if (contact) void renameContact(contact, newDisplayLabel)
                     },
                     onDeleteAll: () => {
-                      const contact = contacts.find((item) => item.accountRoute === selected.contactAccountRoute)
+                      const contact = contacts.find(
+                        (item) => item.accountRoute === selected.contactAccountRoute,
+                      )
                       if (contact) void deleteContactAndHistory(contact)
                     },
                   }
@@ -360,6 +368,9 @@ export function ChatTab({
           }}
         />
       ) : null}
+      {/* Always mounted, not behind a toggle: it is what listens for an incoming project invite,
+          and for the answer to one we sent. It renders nothing until either arrives. */}
+      <ProjectInvitesPanel />
       {showPairingRequests ? (
         <PairingRequestsPanel
           onClose={() => {

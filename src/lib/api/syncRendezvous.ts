@@ -132,6 +132,8 @@ export type RendezvousEvent = {
     | 'chat_contact_confirm'
     | 'avatar_update'
     | 'bio_update'
+    | 'project_invite'
+    | 'project_invite_response'
     | null
   senderDeviceId: string | null
   ciphertext: string | null

@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { readableError } from '../../lib/errors'
 import { type MessageKey, useT } from '../../lib/i18n'
+import { notifyGitChanged } from '../../hooks/useGitStatusSummary'
 import {
   getPtyCwd,
   gitCommit,
@@ -133,6 +134,7 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
       await action()
       if (success) pushToast({ title: success, body: '' })
       await refresh(true)
+      notifyGitChanged()
     } catch (cause) {
       pushToast({ title: t('git.error.action'), body: readableError(cause) })
     } finally {
@@ -178,6 +180,7 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
       await gitInit(liveCwd)
       pushToast({ title: t('git.initOffer.successTitle'), body: t('git.initOffer.successBody') })
       await refresh()
+      notifyGitChanged()
     } catch (cause) {
       pushToast({ title: t('git.error.action'), body: readableError(cause) })
     } finally {
