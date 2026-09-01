@@ -10,6 +10,7 @@ import {
 } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
 import { DEFAULT_PROFILE_IMAGE_URL } from '../../lib/profile'
+import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import {
   EXPIRY_CHOICES_MS,
   type ExpiryChoiceId,
@@ -136,6 +137,8 @@ function RequestDecision({
   const [error, setError] = useState(false)
 
   const project = projects.find((candidate) => candidate.id === projectId)
+  // Self-heals a `defaultCwd` left pointing at a dead merge/worktree env folder.
+  const projectPath = (project && getProjectRepoRoot(project)) || project?.defaultCwd
 
   const confirm = async () => {
     setBusy(true)
@@ -255,9 +258,9 @@ function RequestDecision({
               {t('mesh.folderScopesMode.specific')}
             </button>
           </div>
-          {scopeMode === 'specific' && project?.defaultCwd ? (
+          {scopeMode === 'specific' && projectPath ? (
             <FolderScopePicker
-              projectPath={project.defaultCwd}
+              projectPath={projectPath}
               selectedPaths={selectedPaths}
               onChange={setSelectedPaths}
             />

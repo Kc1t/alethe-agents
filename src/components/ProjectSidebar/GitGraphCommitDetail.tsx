@@ -1,7 +1,9 @@
-import { ArrowLeft, ChevronDown, ChevronRight } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronRight, Languages, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { useT } from '../../lib/i18n'
+import { translationHasApiKey, translationTranslate } from '../../lib/api/translation'
+import { detectLanguage } from '../../lib/detectLanguage'
+import { getLocale, useT } from '../../lib/i18n'
 import {
   type DiffSummaryEntry,
   type GitCommitEntry,
@@ -61,6 +63,120 @@ function FileDiff({ repoRoot, hash, path }: { repoRoot: string; hash: string; pa
         </span>
       ))}
     </pre>
+  )
+}
+
+/**
+ * Offers to translate a commit message that isn't in the app's language.
+ *
+ * The detection is local and offline; the translation is not. Since translating sends the message
+ * to a third-party service, the button never fires on its own: the first use in a session shows
+ * what will happen and waits for a second, deliberate confirmation. Consent is per session and per
+ * commit — it is not remembered across restarts, because "I agreed once" is a poor reason to keep
+ * shipping repository text off the machine silently.
+ */
+function TranslateMessage({ message }: { message: string }) {
+  const t = useT()
+  const locale = getLocale()
+  const [available, setAvailable] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [translated, setTranslated] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    translationHasApiKey()
+      .then((has) => {
+        if (!cancelled) setAvailable(has)
+      })
+      .catch(() => {
+        if (!cancelled) setAvailable(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    setTranslated(null)
+    setConfirming(false)
+    setFailed(false)
+  }, [message])
+
+  const sourceLanguage = detectLanguage(message)
+  // `null` means the text carried too little signal to tell — offering to translate then would be
+  // guessing, so the button simply doesn't appear.
+  if (!available || sourceLanguage === null || sourceLanguage === locale) return null
+
+  const translate = async () => {
+    setBusy(true)
+    setFailed(false)
+    try {
+      const result = await translationTranslate(message, locale)
+      setTranslated(result.text)
+      setConfirming(false)
+    } catch {
+      setFailed(true)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (translated !== null) {
+    return (
+      <div className={styles.translation}>
+        <span className={styles.translationLabel}>
+          <Languages size={11} />
+          {t('git.graph.detail.translatedFrom', { language: sourceLanguage })}
+        </span>
+        <pre className={styles.detailMessage}>{translated}</pre>
+        <button
+          type="button"
+          className={styles.translateButton}
+          onClick={() => setTranslated(null)}
+        >
+          {t('git.graph.detail.showOriginal')}
+        </button>
+      </div>
+    )
+  }
+
+  if (confirming) {
+    return (
+      <div className={styles.translationNotice}>
+        <p className={styles.translationWarning}>{t('git.graph.detail.translateWarning')}</p>
+        <div className={styles.translationActions}>
+          <button
+            type="button"
+            className={styles.translateButton}
+            disabled={busy}
+            onClick={() => void translate()}
+          >
+            {busy ? <Loader2 size={11} className={styles.spin} /> : <Languages size={11} />}
+            {t('git.graph.detail.translateConfirm')}
+          </button>
+          <button
+            type="button"
+            className={styles.translateButton}
+            disabled={busy}
+            onClick={() => setConfirming(false)}
+          >
+            {t('common.cancel')}
+          </button>
+        </div>
+        {failed ? (
+          <p className={styles.filesError}>{t('git.graph.detail.translateFailed')}</p>
+        ) : null}
+      </div>
+    )
+  }
+
+  return (
+    <button type="button" className={styles.translateButton} onClick={() => setConfirming(true)}>
+      <Languages size={11} />
+      {t('git.graph.detail.translate')}
+    </button>
   )
 }
 
@@ -185,6 +301,7 @@ export function GitGraphCommitDetail({ repoRoot, commit, onBack }: GitGraphCommi
       {error ? <p className={styles.error}>{error}</p> : null}
 
       <pre className={styles.detailMessage}>{message ?? t('git.graph.detail.loadingMessage')}</pre>
+      {message ? <TranslateMessage message={message} /> : null}
 
       <div className={styles.detailFilesHeader}>
         <strong className={styles.detailFilesTitle}>{t('git.graph.detail.filesTitle')}</strong>

@@ -2369,27 +2369,28 @@ export function useXtermSession(params: {
               } catch {
                 /* painel pode já estar desmontando — ignora */
               }
-              if (isOpencode) {
-                // Em vez de adivinhar "prontidão" por tempo ou vasculhar o
-                // stream cru de bytes (o \x1b intercalado com o texto
-                // quebrava qualquer match de string), lê a TELA já
-                // renderizada pelo próprio xterm.js — o mesmo buffer que ele
-                // usa pra desenhar, já com todos os códigos ANSI aplicados e
-                // resolvidos em texto puro. Lógica de digitação/confirmação
-                // em si mora em `agentPromptDelivery.ts` (extraída pra ser
-                // reaproveitada fora deste componente, ex. pela suíte e2e —
-                // ver `e2e/support/openCodePrompt.ts` — sem duplicar nem
-                // reinventar algo já testado ao vivo).
-                const readVisibleScreenText = (rows = 200): string => {
-                  const buffer = terminal.buffer.active
-                  const start = Math.max(0, buffer.length - rows)
-                  const lines: string[] = []
-                  for (let y = start; y < buffer.length; y++) {
-                    const line = buffer.getLine(y)
-                    if (line) lines.push(line.translateToString(true))
-                  }
-                  return lines.join('\n')
+              // Lê a TELA já renderizada pelo próprio xterm.js — o mesmo
+              // buffer que ele usa pra desenhar, já com todos os códigos
+              // ANSI aplicados e resolvidos em texto puro. Usado tanto pela
+              // confirmação de digitação do OpenCode (`agentPromptDelivery.ts`)
+              // quanto pela confirmação mínima de Enter dos outros providers
+              // logo abaixo.
+              const readVisibleScreenText = (rows = 200): string => {
+                const buffer = terminal.buffer.active
+                const start = Math.max(0, buffer.length - rows)
+                const lines: string[] = []
+                for (let y = start; y < buffer.length; y++) {
+                  const line = buffer.getLine(y)
+                  if (line) lines.push(line.translateToString(true))
                 }
+                return lines.join('\n')
+              }
+              if (isOpencode) {
+                // Lógica de digitação/confirmação em si mora em
+                // `agentPromptDelivery.ts` (extraída pra ser reaproveitada
+                // fora deste componente, ex. pela suíte e2e — ver
+                // `e2e/support/openCodePrompt.ts` — sem duplicar nem
+                // reinventar algo já testado ao vivo).
                 const delivered = await deliverOpenCodePrompt(prompt, deadline, {
                   readScreenText: readVisibleScreenText,
                   write: (data) => writePty(response.id, data, activeProfileId),
@@ -2413,10 +2414,23 @@ export function useXtermSession(params: {
                 await writePtyChunked(response.id, prompt, terminal.modes.bracketedPasteMode)
                 await new Promise((resolve) => window.setTimeout(resolve, 150))
                 await writePty(response.id, '\r', activeProfileId)
-                window.setTimeout(
-                  () => void writePty(response.id, '\r', activeProfileId).catch(() => {}),
-                  1_200,
-                )
+                // Mesmo critério de segurança já usado pelo OpenCode em
+                // `agentPromptDelivery.ts`: nunca reenviar Enter às cegas.
+                // Compara a tela antes/depois — só reenvia se ficar
+                // EXATAMENTE igual (o primeiro Enter não registrou). Sem
+                // isso, um segundo `\r` sempre disparava 1200ms depois
+                // mesmo quando o primeiro já tinha funcionado, arriscando
+                // confirmar um envio em cima de uma resposta que o agente
+                // já tinha começado a escrever.
+                await new Promise((resolve) => window.setTimeout(resolve, 1_200))
+                if (!disposed && ptyIdRef.current === response.id) {
+                  const beforeRetry = readVisibleScreenText()
+                  await new Promise((resolve) => window.setTimeout(resolve, 300))
+                  const stillUnchanged = !disposed && readVisibleScreenText() === beforeRetry
+                  if (stillUnchanged) {
+                    void writePty(response.id, '\r', activeProfileId).catch(() => {})
+                  }
+                }
               }
               console.info(
                 `[pty-launch] ${command ?? 'shell'} prompt inicial enviado id=${response.id}`,

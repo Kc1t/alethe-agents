@@ -19,6 +19,7 @@ import { ImageInput } from '../ImageInput'
 import styles from '../PreferencesModal.module.css'
 import { CollaborationSettings } from './CollaborationSettings'
 import { Avatar, SettingsSection } from './primitives'
+import { TranslationSettings } from './TranslationSettings'
 
 export function AccountPage({
   avatarUrl,
@@ -129,7 +130,9 @@ export function AccountPage({
               <textarea
                 className={`${controls.input} ${styles.bioTextarea}`}
                 value={preferences.bio}
-                onChange={(event) => setPreferences({ bio: event.target.value.slice(0, MAX_BIO_LEN) })}
+                onChange={(event) =>
+                  setPreferences({ bio: event.target.value.slice(0, MAX_BIO_LEN) })
+                }
                 // Only sent to contacts on blur (not every keystroke) — this field is otherwise
                 // identical to the avatar's own "broadcast on change" pattern, just batched so
                 // typing a bio doesn't queue a relay envelope per character.
@@ -165,6 +168,8 @@ export function AccountPage({
           ))}
         </div>
       </SettingsSection>
+
+      <TranslationSettings />
 
       <SettingsSection
         id="google-sync"

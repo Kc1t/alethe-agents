@@ -457,7 +457,7 @@ export function EditProjectModal() {
             <div>
               <EditProjectAgentSettings
                 projectId={project.id}
-                cwd={project.terminals[0]?.cwd ?? project.defaultCwd ?? ''}
+                cwd={getProjectRepoRoot(project) || project.terminals[0]?.cwd || project.defaultCwd || ''}
                 worktreeMode={worktreeMode}
                 onWorktreeModeChange={setWorktreeModeState}
                 validationCommandsStr={validationCommandsStr}

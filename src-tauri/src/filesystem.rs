@@ -225,6 +225,26 @@ pub fn read_text_file(path: String) -> Result<String, String> {
     fs::read_to_string(&file).map_err(|error| error.to_string())
 }
 
+/// Reads a file as raw bytes — used for turning a natively-dragged file path
+/// (Tauri's `onDragDropEvent`, which only ever gives paths, never `File`
+/// objects/bytes like the browser's own drag API) into an attachment the
+/// same way a picked/pasted file already is. Capped at the same ceiling
+/// `sync_chat::MAX_ATTACHMENT_BYTES` enforces server-side, so a huge file
+/// dropped by mistake fails fast here instead of loading it fully into
+/// memory just to have the upload reject it a moment later.
+#[tauri::command]
+pub fn read_binary_file(path: String) -> Result<Vec<u8>, String> {
+    let file = PathBuf::from(path.trim());
+    if !file.is_file() {
+        return Err("file not found".to_string());
+    }
+    let metadata = fs::metadata(&file).map_err(|error| error.to_string())?;
+    if metadata.len() as usize > crate::sync_chat::MAX_ATTACHMENT_BYTES {
+        return Err("file too large".to_string());
+    }
+    fs::read(&file).map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub fn write_text_file(path: String, content: String) -> Result<(), String> {
     let file = PathBuf::from(path.trim());

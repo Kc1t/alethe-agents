@@ -322,6 +322,83 @@
   background: var(--border-strong);
 }
 
+.translateButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--fg-muted);
+  font-size: 10.5px;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.translateButton:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--border-strong);
+  background: var(--panel-hover);
+}
+
+.translateButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* The consent step before anything is sent to a third party. Styled as a warning rather than a
+   neutral prompt because the decision it is asking about is a privacy one. */
+.translationNotice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--status-waiting);
+  border-radius: 4px;
+  background: var(--status-waiting-soft);
+}
+
+.translationWarning {
+  margin: 0;
+  color: var(--fg);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.translationActions {
+  display: flex;
+  gap: 6px;
+}
+
+.translation {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.translationLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--fg-faint);
+  font-size: 10px;
+}
+
+.spin {
+  animation: gitGraphSpin 0.8s linear infinite;
+}
+
+@keyframes gitGraphSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .detailFilesHeader {
   display: flex;
   align-items: center;

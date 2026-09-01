@@ -29,6 +29,7 @@ import { hasFileDragPayload, readFileDragPayload } from '../../lib/fileDrag'
 import { useT } from '../../lib/i18n'
 import { isMarkdownPath } from '../../lib/markdownSidebarHistory'
 import { basename } from '../../lib/paths'
+import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import {
   listProjectPlans,
   type PlanningStatus,
@@ -320,7 +321,11 @@ function GitSidebarContent({
   // with the SELECTED project, not require an open terminal. Without this
   // fallback, a project with no open terminal never showed any git status
   // even while selected.
-  const cwd = sidebarSubTab?.cwd || sidebarTerminal?.cwd || activeProject?.defaultCwd
+  const cwd =
+    sidebarSubTab?.cwd ||
+    sidebarTerminal?.cwd ||
+    (activeProject && getProjectRepoRoot(activeProject)) ||
+    activeProject?.defaultCwd
   const ptyId = sidebarSubTab && sidebarTerminal ? sidebarSubTab.ptyId : null
   const terminalName = sidebarTerminal?.name ?? activeProject?.name ?? ''
   return (
@@ -377,7 +382,7 @@ function MarkdownSidebarViewer() {
 
   useEffect(() => {
     const project = projects.find((item) => item.id === activeProjectId)
-    const projectPath = project?.defaultCwd
+    const projectPath = (project && getProjectRepoRoot(project)) || project?.defaultCwd
     if (!projectPath || !project?.id) {
       setPlans([])
       return

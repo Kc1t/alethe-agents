@@ -28,6 +28,15 @@ export async function readTextFile(path: string): Promise<string> {
   return webApiFetch<string>(`/api/fs/read?path=${encodeURIComponent(path)}`)
 }
 
+/** Reads a file's raw bytes — used to turn a natively-dragged file path (Tauri's
+ * `onDragDropEvent`, which only ever gives paths, never `File` objects the way the browser's own
+ * drag API does) into a `File` the same attachment pipeline (`stageAttachment`) already accepts. */
+export async function readBinaryFile(path: string): Promise<Uint8Array> {
+  if (isTauriEnv()) return new Uint8Array(await invoke<number[]>('read_binary_file', { path }))
+  const bytes = await webApiFetch<number[]>(`/api/fs/read_binary?path=${encodeURIComponent(path)}`)
+  return new Uint8Array(bytes)
+}
+
 export async function writeTextFile(path: string, content: string): Promise<void> {
   if (isTauriEnv()) return invoke('write_text_file', { path, content })
   await webApiFetch('/api/fs/write', { method: 'POST', body: JSON.stringify({ path, content }) })

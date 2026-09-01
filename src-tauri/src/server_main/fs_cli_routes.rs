@@ -16,6 +16,7 @@ pub fn router() -> Router {
     Router::new()
         .route("/api/fs/list", get(list))
         .route("/api/fs/read", get(read))
+        .route("/api/fs/read_binary", get(read_binary))
         .route("/api/fs/write", post(write))
         .route("/api/fs/rename", post(rename))
         .route("/api/fs/delete", post(delete))
@@ -68,6 +69,14 @@ async fn read(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
         Err(e) => return e.into_response(),
     };
     respond(filesystem::read_text_file(path))
+}
+
+async fn read_binary(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
+    let path = match q(&p, "path") {
+        Ok(v) => v,
+        Err(e) => return e.into_response(),
+    };
+    respond(filesystem::read_binary_file(path))
 }
 
 #[derive(Deserialize)]

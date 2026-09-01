@@ -5,6 +5,7 @@ import { useT } from '../../lib/i18n'
 import { groupServersByName, matchesQuery, mcpErrorKey } from '../../lib/mcp'
 import { groupSkillsByName, matchesSkillQuery } from '../../lib/skills'
 import { skillsScan, type SkillAgentSnapshot } from '../../lib/tauri'
+import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import type { AgentType, McpAgent, McpAgentSnapshot, McpScope } from '../../lib/types'
 import { AGENT_TYPE_LABELS, MCP_AGENTS } from '../../lib/types'
 import { useMcpStore } from '../../stores/mcpStore'
@@ -44,6 +45,9 @@ export function McpPanel() {
   const repo = useMemo(() => {
     const project = projects.find((item) => item.id === activeProjectId) ?? projects[0]
     if (!project) return null
+    // Self-heals a `defaultCwd` left pointing at a dead merge/worktree env folder.
+    const fromTerminals = getProjectRepoRoot(project)
+    if (fromTerminals) return fromTerminals
     const fromProject = project.defaultCwd?.trim()
     if (fromProject) return fromProject
     return project.terminals.find((terminal) => terminal.cwd)?.cwd ?? null

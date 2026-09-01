@@ -1,3 +1,4 @@
+import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { Eraser, Loader2, MessageSquare, Paperclip, Pencil, Search, Send, Terminal, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -8,6 +9,7 @@ import { p2pDrainFrames } from '../../lib/api/p2pBridge'
 import { P2P_CHANNEL_CHAT, P2P_CHANNEL_FILE_SYNC, untagFrame } from '../../lib/api/p2pChannel'
 import { subscribeToRendezvousEvents } from '../../lib/api/rendezvousEventBus'
 import { syncFilePipelineIngestFrame, syncFilePipelineOfferProject } from '../../lib/api/syncFilePipeline'
+import { isTauriEnv } from '../../lib/api/transport'
 import {
   type Conversation,
   type DecryptedMessage,
@@ -22,10 +24,16 @@ import {
   syncUploadAttachment,
 } from '../../lib/api/syncChat'
 import { connectRendezvous, getRendezvousStatus, sendRendezvousFrame } from '../../lib/api/syncRendezvous'
-import { encodeAttachmentReferences, parseAttachmentReferences, previewKindFor } from '../../lib/attachmentReference'
+import {
+  encodeAttachmentReferences,
+  guessMimeFromName,
+  parseAttachmentReferences,
+  previewKindFor,
+} from '../../lib/attachmentReference'
 import { useT } from '../../lib/i18n'
 import { DEFAULT_PROFILE_IMAGE_URL, getProfileImageUrl, getProfileInitial } from '../../lib/profile'
-import { syncLocalIdentity } from '../../lib/tauri'
+import { readBinaryFile, syncLocalIdentity } from '../../lib/tauri'
+import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { Avatar } from '../ui/Avatar'
 import { AttachmentGrid } from './AttachmentGrid'
@@ -231,14 +239,16 @@ export function ChatPanel({
   const localProject = useProjectsStore((state) =>
     source.kind === 'project' ? state.projects.find((project) => project.id === source.projectId) ?? null : null,
   )
+  // Self-heals a `defaultCwd` left pointing at a dead merge/worktree env folder.
+  const localProjectRoot = (localProject && getProjectRepoRoot(localProject)) || localProject?.defaultCwd
   const [fileSyncBusy, setFileSyncBusy] = useState(false)
   const [fileSyncStatus, setFileSyncStatus] = useState<string | null>(null)
   const syncProjectNow = async () => {
-    if (!otherMember || source.kind !== 'project' || !localProject?.defaultCwd) return
+    if (!otherMember || source.kind !== 'project' || !localProjectRoot) return
     setFileSyncBusy(true)
     setFileSyncStatus(null)
     try {
-      await syncFilePipelineOfferProject(otherMember.accountRoute, localProject.defaultCwd)
+      await syncFilePipelineOfferProject(otherMember.accountRoute, localProjectRoot)
       setFileSyncStatus(t('chat.fileSync.offered'))
     } catch (cause) {
       console.error('[chat] syncFilePipelineOfferProject failed', cause)
@@ -275,6 +285,8 @@ export function ChatPanel({
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const textInputRef = useRef<HTMLInputElement | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const [dropActive, setDropActive] = useState(false)
 
   const [slashToken, setSlashToken] = useState<SlashToken | null>(null)
   const slashMatches = useMemo(() => {
@@ -580,6 +592,62 @@ export function ChatPanel({
     textInputRef.current?.focus()
   }
 
+  // Native OS drag-and-drop (e.g. dragging an image straight from Explorer or another app window)
+  // — previously the only ways to attach an image were the file picker or Ctrl+V. Tauri's own
+  // `onDragDropEvent` is required here, not the browser's HTML5 `DataTransfer`/`onDrop`: the
+  // webview only ever gives real paths through this native event, never `File` objects with
+  // bytes already attached (see the same pattern already used for markdown files in
+  // `RightSidebar/index.tsx` and for terminal drops in `useXtermSession.ts`). Each dropped path is
+  // read into bytes via `read_binary_file` and wrapped into a `File` so it flows through the exact
+  // same `stageAttachment` pipeline as a pasted/picked file.
+  useEffect(() => {
+    if (!isTauriEnv()) return
+    let disposed = false
+    let unlisten: (() => void) | undefined
+    const isOverPanel = (position: { x: number; y: number }) => {
+      const dpr = window.devicePixelRatio || 1
+      const element = document.elementFromPoint(position.x / dpr, position.y / dpr)
+      return Boolean(element && panelRef.current?.contains(element))
+    }
+    void getCurrentWebview()
+      .onDragDropEvent((event) => {
+        const payload = event.payload
+        if (payload.type === 'enter' || payload.type === 'over') {
+          setDropActive(isOverPanel(payload.position))
+          return
+        }
+        if (payload.type === 'leave') {
+          setDropActive(false)
+          return
+        }
+        const overPanel = isOverPanel(payload.position)
+        setDropActive(false)
+        if (!overPanel) return
+        for (const path of payload.paths) {
+          const name = path.split(/[\\/]/).pop() || path
+          void readBinaryFile(path)
+            .then((bytes) => {
+              stageAttachment(
+                new File([bytes.buffer as ArrayBuffer], name, { type: guessMimeFromName(name) }),
+              )
+            })
+            .catch((cause) => {
+              console.error('[chat] failed to read dropped file', path, cause)
+            })
+        }
+      })
+      .then((dispose) => {
+        if (disposed) dispose()
+        else unlisten = dispose
+      })
+      .catch(() => undefined)
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const send = async () => {
     if (!conversation) return
     if (pendingAttachments.length > 0) {
@@ -757,7 +825,7 @@ export function ChatPanel({
           : 'local'
 
   return (
-    <div className={styles.container}>
+    <div ref={panelRef} className={`${styles.container} ${dropActive ? styles.dropActive : ''}`}>
       <div
         className={`${styles.header} ${source.kind === 'direct' ? styles.headerClickable : ''}`}
         onClick={source.kind === 'direct' ? () => setContactInfoOpen((open) => !open) : undefined}
@@ -832,7 +900,7 @@ export function ChatPanel({
                 </span>
               </>
             )}
-            {source.kind === 'project' && p2p.state === 'p2p' && localProject?.defaultCwd ? (
+            {source.kind === 'project' && p2p.state === 'p2p' && localProjectRoot ? (
               <button
                 type="button"
                 className={styles.headerAction}

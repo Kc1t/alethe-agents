@@ -87,6 +87,7 @@ pub mod sync_subscription;
 pub mod sync_tasks;
 pub mod sync_transport;
 pub mod telemetry;
+pub mod translation;
 pub mod validation;
 pub mod window_style;
 #[cfg(windows)]
@@ -439,6 +440,10 @@ pub fn run() {
             git_control::git_show_commit_files,
             git_control::git_show_commit_stats,
             git_control::git_show_commit_file_diff,
+            translation::translation_has_api_key,
+            translation::translation_set_api_key,
+            translation::translation_clear_api_key,
+            translation::translation_translate,
             git_control::git_show_commit_message,
             git_control::git_create_branch_from_commit,
             git_control::git_cherry_pick_commit,

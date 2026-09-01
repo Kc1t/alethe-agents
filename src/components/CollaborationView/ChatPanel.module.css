@@ -9,6 +9,13 @@
   background: var(--bg-elevated);
 }
 
+/* Dragging an image (or any file) from Explorer/another app over the chat — same visual language
+ * as the markdown-viewer drop target in RightSidebar.module.css. */
+.dropActive {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 /* Horizontal row below the header: the conversation itself, plus — when open — the contact-info
  * panel as a normal flex sibling (not an overlay). This is what makes the panel push the
  * conversation to the left and shrink it, instead of floating on top and hiding whatever was

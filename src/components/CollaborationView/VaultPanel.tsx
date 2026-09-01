@@ -25,6 +25,7 @@ import {
 import { useT } from '../../lib/i18n'
 import { downscaleAvatar } from '../../lib/image/downscaleAvatar'
 import { getProfileInitial } from '../../lib/profile'
+import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { Avatar } from '../ui/Avatar'
@@ -68,7 +69,8 @@ export function VaultPanel({
   const openModal = useUiStore((s) => s.openModal_)
   const preferences = useProjectsStore((s) => s.preferences)
   const project = useProjectsStore((s) => s.projects.find((p) => p.id === projectId))
-  const projectPath = project?.defaultCwd
+  // Self-heals a `defaultCwd` left pointing at a dead merge/worktree env folder.
+  const projectPath = (project && getProjectRepoRoot(project)) || project?.defaultCwd
   const [grants, setGrants] = useState<SyncGrantRecord[]>([])
   const [invitations, setInvitations] = useState<SyncInvitationSummary[]>([])
   const [loading, setLoading] = useState(true)

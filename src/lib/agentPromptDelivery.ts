@@ -71,6 +71,17 @@ export async function deliverOpenCodePrompt(
   const normalizedPrompt = normalizeForMatch(prompt)
   const fingerprintStart = normalizedPrompt.slice(0, 20)
   const fingerprintEnd = normalizedPrompt.slice(-20)
+  // Impressão digital do MEIO do prompt também: confirmar só start OU end
+  // deixava passar um prompt cortado pela metade se um trecho do meio se
+  // perdesse durante a digitação em pedaços (redraw da caixa, race de
+  // escrita) — o início e o fim ainda batiam, mas o conteúdo real estava
+  // truncado. O meio é o único ponto que garante que nada sumiu entre as
+  // duas pontas.
+  const midPoint = Math.floor(normalizedPrompt.length / 2)
+  const fingerprintMid = normalizedPrompt.slice(
+    Math.max(0, midPoint - 10),
+    Math.max(0, midPoint - 10) + 20,
+  )
   const boxLooksEmpty = async () => {
     const screenNorm = normalizeForMatch(await io.readScreenText())
     return (
@@ -102,10 +113,14 @@ export async function deliverOpenCodePrompt(
     const roundDeadline = Math.min(deadline, Date.now() + CONFIRM_ROUND_BUDGET_MS)
     while (!io.isCancelled() && Date.now() < roundDeadline) {
       const screenNorm = normalizeForMatch(await io.readScreenText())
-      if (
-        (fingerprintStart.length > 0 && screenNorm.includes(fingerprintStart)) ||
-        (fingerprintEnd.length > 0 && screenNorm.includes(fingerprintEnd))
-      ) {
+      // O fim sozinho não basta pra provar que o prompt inteiro chegou — só
+      // que a digitação terminou de escrever ALGO. Exige também o meio
+      // (quando existir, fingerprintMid vazio pra prompts curtos demais pra
+      // ter um meio distinto) antes de considerar confirmado, pra pegar o
+      // caso de truncamento no meio que passava batido antes.
+      const endMatches = fingerprintEnd.length > 0 && screenNorm.includes(fingerprintEnd)
+      const midMatches = fingerprintMid.length === 0 || screenNorm.includes(fingerprintMid)
+      if (endMatches && midMatches) {
         confirmedOnScreen = true
         break
       }
