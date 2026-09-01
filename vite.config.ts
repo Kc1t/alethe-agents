@@ -7,14 +7,22 @@ export default defineConfig({
   plugins: [react()],
   clearScreen: false,
   server: {
-    port: 1422,
-    // The core's Origin/Host allowlist only accepts 1422/1424. Falling back
-    // to a different port would silently start a UI the core rejects on
-    // every request instead of failing loudly at boot.
+    // `scripts/dev-instance.mjs` (the `npm run app` entry point) picks a free
+    // port per checkout and passes it here so Vite and Tauri's `devUrl`
+    // always agree; running Vite directly (`npm run dev`) still defaults to
+    // 1422.
+    port: Number(process.env.ALETHE_DEV_PORT) || 1422,
+    // Keeps the dev UI's port predictable once chosen (referenced by the
+    // storage-identity contract test) instead of silently drifting to
+    // another one if it's somehow taken after `dev-instance.mjs` already
+    // picked it.
     strictPort: true,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:1423',
+        // ALETHE_SERVER_PORT lets the standalone/Web-mode core (see
+        // `bind_server_listener` in server_main/mod.rs) be pinned to a
+        // specific port when 1423 is already taken by another Alethe.
+        target: `http://127.0.0.1:${process.env.ALETHE_SERVER_PORT || '1423'}`,
         ws: true,
         changeOrigin: true,
         configure: (proxy) => {

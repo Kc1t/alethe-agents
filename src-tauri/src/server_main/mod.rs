@@ -36,21 +36,72 @@ use tokio::sync::broadcast;
 use tauri::Manager;
 use tower_http::cors::CorsLayer;
 
+/// Preferred port. Only a starting point: a second Alethe (a dev build
+/// alongside the installed one, say) takes the next free port in
+/// `SERVER_PORT_RANGE` instead of failing to start. `ALETHE_SERVER_PORT` pins
+/// it explicitly and disables the scan.
+pub const SERVER_HOST: &str = "127.0.0.1";
+pub const SERVER_DEFAULT_PORT: u16 = 1423;
+pub const SERVER_PORT_RANGE: u16 = 20;
 pub const SERVER_BIND_ADDRESS: &str = "127.0.0.1:1423";
 
-const ALLOWED_WEB_ORIGINS: [&str; 9] = [
-    "http://localhost:1422",
-    "http://127.0.0.1:1422",
-    "http://localhost:1423",
-    "http://127.0.0.1:1423",
-    "http://localhost:1424",
-    "http://127.0.0.1:1424",
+/// Port this process actually bound. 0 until the listener is up.
+static LISTEN_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
+
+pub fn listen_port() -> u16 {
+    LISTEN_PORT.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// `127.0.0.1:<port>` the core is serving on, for the frontend to target.
+pub fn listen_address() -> String {
+    format!("{SERVER_HOST}:{}", listen_port())
+}
+
+/// Exposes the bound port to the frontend, which cannot otherwise know it —
+/// the core no longer always sits on a fixed one (see `bind_server_listener`).
+#[tauri::command]
+pub fn get_core_port() -> u16 {
+    listen_port()
+}
+
+/// Binds the preferred port, falling back to the next free one in the range.
+/// Returns the listener plus the port it landed on.
+pub async fn bind_server_listener() -> Result<(tokio::net::TcpListener, u16), String> {
+    let pinned = std::env::var("ALETHE_SERVER_PORT")
+        .ok()
+        .and_then(|value| value.trim().parse::<u16>().ok());
+    let first = pinned.unwrap_or(SERVER_DEFAULT_PORT);
+    let last = if pinned.is_some() {
+        first
+    } else {
+        first.saturating_add(SERVER_PORT_RANGE)
+    };
+
+    let mut last_error = String::new();
+    for port in first..=last {
+        match tokio::net::TcpListener::bind(format!("{SERVER_HOST}:{port}")).await {
+            Ok(listener) => {
+                LISTEN_PORT.store(port, std::sync::atomic::Ordering::SeqCst);
+                return Ok((listener, port));
+            }
+            Err(error) => last_error = error.to_string(),
+        }
+    }
+    Err(format!(
+        "no free port for the core between {first} and {last}: {last_error}"
+    ))
+}
+
+const ALLOWED_WEB_ORIGINS: [&str; 3] = [
     "http://tauri.localhost",
     "https://tauri.localhost",
     "tauri://localhost",
 ];
 
-const ALLOWED_HOSTS: [&str; 4] = ["127.0.0.1:1423", "localhost:1423", "127.0.0.1", "localhost"];
+/// Loopback host names accepted with any port. Only these literals: an
+/// attacker-controlled name that resolves to 127.0.0.1 still gets rejected,
+/// which is what keeps DNS rebinding out.
+const LOOPBACK_HOSTS: [&str; 2] = ["127.0.0.1", "localhost"];
 
 const LOCAL_SESSION_TTL_MS: u64 = 15 * 60 * 1000;
 const LOCAL_SESSION_REFRESH_WINDOW_MS: u64 = 60 * 1000;
@@ -363,7 +414,7 @@ fn runtime_payload(runtime: &ServerRuntime) -> serde_json::Value {
         "pid": runtime.pid,
         "appIdentifier": runtime.app_identifier,
         "dataRootId": runtime.data_root_id,
-        "listenAddress": SERVER_BIND_ADDRESS,
+        "listenAddress": listen_address(),
         "eventStream": "/api/events/ws",
         "sessionTtlMs": LOCAL_SESSION_TTL_MS,
     })
@@ -401,16 +452,39 @@ async fn not_implemented(uri: axum::http::Uri) -> impl IntoResponse {
     )
 }
 
+fn is_loopback_authority(authority: &str) -> bool {
+    let name = match authority.rsplit_once(':') {
+        Some((name, port)) => {
+            if port.is_empty() || !port.bytes().all(|b| b.is_ascii_digit()) {
+                return false;
+            }
+            name
+        }
+        None => authority,
+    };
+    LOOPBACK_HOSTS
+        .iter()
+        .any(|allowed| name.eq_ignore_ascii_case(allowed))
+}
+
 fn origin_is_allowed(origin: &HeaderValue) -> bool {
-    ALLOWED_WEB_ORIGINS
+    if ALLOWED_WEB_ORIGINS
         .iter()
         .any(|allowed| origin.as_bytes() == allowed.as_bytes())
+    {
+        return true;
+    }
+    let Ok(origin) = origin.to_str() else {
+        return false;
+    };
+    let Some(authority) = origin.strip_prefix("http://") else {
+        return false;
+    };
+    is_loopback_authority(authority)
 }
 
 fn host_is_allowed(host: &HeaderValue) -> bool {
-    ALLOWED_HOSTS
-        .iter()
-        .any(|allowed| host.as_bytes().eq_ignore_ascii_case(allowed.as_bytes()))
+    host.to_str().ok().is_some_and(is_loopback_authority)
 }
 
 async fn validate_request_origin(request: Request, next: Next) -> Response {
@@ -588,18 +662,14 @@ pub fn run_standalone() -> Result<(), String> {
     let rt = tokio::runtime::Runtime::new()
         .map_err(|error| format!("Failed to create Tokio runtime: {error}"))?;
     rt.block_on(async {
-        let listener = tokio::net::TcpListener::bind(SERVER_BIND_ADDRESS)
-            .await
-            .map_err(|error| {
-                format!(
-                    "Failed to bind http://{SERVER_BIND_ADDRESS}; the standalone API did not start: {error}"
-                )
-            })?;
+        let (listener, port) = bind_server_listener().await.map_err(|error| {
+            format!("Failed to bind the standalone API; it did not start: {error}")
+        })?;
 
         let runtime = ServerRuntime::standalone()
             .map_err(|error| format!("Failed to resolve the data root: {error}"))?;
         println!(
-            "[Alethe Web Server] Listening on http://{SERVER_BIND_ADDRESS} (instance {}).",
+            "[Alethe Web Server] Listening on http://{SERVER_HOST}:{port} (instance {}).",
             runtime.instance_id()
         );
         let app = build_router(runtime);

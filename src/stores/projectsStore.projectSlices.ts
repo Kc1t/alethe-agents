@@ -643,7 +643,7 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
             )
           } catch (restartErr) {
             console.warn(
-              '[projectsStore] falha reiniciando terminal de merge na worktree nova:',
+              '[projectsStore] failed restarting merge terminal in the new worktree:',
               restartErr,
             )
           }
@@ -655,17 +655,17 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
       }
     },
 
-    migrateProjectTerminalsToWorktrees: async (projectId, gsdWatcherEnabledOverride) => {
-      if (migratingWorktreeProjectIds.has(projectId)) return
+    migrateProjectTerminalsToWorktrees: async (projectId, gsdWatcherEnabledOverride, opts) => {
+      if (migratingWorktreeProjectIds.has(projectId)) return { status: 'aborted' }
       const project = get().projects.find((p) => p.id === projectId)
-      if (!project) return
+      if (!project) return { status: 'aborted' }
       const repo = getProjectRepoRoot(project)
       if (!repo) {
         useUiStore.getState().pushToast({
           title: t('multiAgent.migrateNoRepoTitle'),
           body: t('multiAgent.migrateNoRepoBody'),
         })
-        return
+        return { status: 'aborted' }
       }
 
       migratingWorktreeProjectIds.add(projectId)
@@ -673,7 +673,8 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
         const { worktreeProvision, gitStatus, gsdOpenCodePluginWrite } =
           await import('../lib/tauri')
 
-        // o erro cru not_a_git_repository vazando pro toast final).
+        // Probed up front so a non-repo is reported as such, instead of the raw
+        // not_a_git_repository error leaking into the final toast.
         let status: Awaited<ReturnType<typeof gitStatus>> | null = null
         try {
           status = await gitStatus(repo)
@@ -682,15 +683,16 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
             title: t('multiAgent.migrateNoRepoTitle'),
             body: t('multiAgent.migrateNoRepoBody'),
           })
-          return
+          return { status: 'aborted' }
         }
-        const dirty = status.staged.length + status.changes.length + status.untracked.length > 0
-        if (dirty) {
-          useUiStore.getState().pushToast({
-            title: t('multiAgent.migrateDirtyTitle'),
-            body: t('multiAgent.migrateDirtyBody'),
-          })
-          return
+        // Uncommitted work does NOT block the migration: every worktree is
+        // created from HEAD (or a --local clone), so pending changes simply
+        // stay in the main repository, untouched. The caller confirms once and
+        // calls back with `allowDirty` — see `migrateDirtyConfirm`.
+        const pending =
+          status.staged.length + status.changes.length + status.untracked.length
+        if (pending > 0 && !opts?.allowDirty) {
+          return { status: 'dirty', pending }
         }
 
         const targets = project.terminals.filter(
@@ -712,27 +714,26 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
               project.worktreeMode ?? 'gitWorktree',
             )
 
-            // Terminal migrado com watcher GSD ligado e rodando OpenCode nunca
-
+            // A migrated terminal running OpenCode with the GSD watcher on
+            // would otherwise start without the plugin — write it up front.
             const gsdWatcherEnabled = gsdWatcherEnabledOverride ?? project.gsdWatcherEnabled
             if (gsdWatcherEnabled && terminal.tabs.some((tab) => tab.type === 'opencode')) {
               const modelChain = get().preferences.gsdSyncModelChain ?? []
               await gsdOpenCodePluginWrite(info.path, modelChain).catch((error) => {
                 console.error(
-                  `[projectsStore] gsdOpenCodePluginWrite falhou pra ${info.path}:`,
+                  `[projectsStore] gsdOpenCodePluginWrite failed for ${info.path}:`,
                   error,
                 )
               })
             }
 
-            // Atualiza cwd/worktreeAgentId/sessionId (limpo — a nova sessão
-            // ainda não tem ID conhecido) ANTES de reiniciar as abas. Ordem
-            // importa: `onSessionId` abaixo escreve o ID novo (síncrono pro
-            // Claude, assíncrono pros outros 3 via
-            // `watchAndPersistDiscoveredSession`) sempre DEPOIS desta
-            // limpeza, nunca antes — sem essa ordem garantida, uma escrita
-            // síncrona correria o risco de ser sobrescrita de volta por um
-            // "clear" tardio.
+            // Update cwd/worktreeAgentId/sessionId (cleared — the new session
+            // has no known ID yet) BEFORE restarting the tabs. Order matters:
+            // `onSessionId` below writes the new ID (synchronously for Claude,
+            // asynchronously for the other 3 via
+            // `watchAndPersistDiscoveredSession`) always AFTER this clear,
+            // never before — without that guaranteed order a synchronous write
+            // could be overwritten back by a late "clear".
             updateProject(projectId, (p) => ({
               ...p,
               terminals: p.terminals.map((t) => {
@@ -746,22 +747,22 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
               }),
             }))
 
-            // O pane de cada aba já está montado (`key={tab.id}`, estável) e o
-            // efeito de mount do XTermView só reage a `sessionPersistenceKey`/
-            // `retryKey` — mudar `cwd` no store sozinho não faz o painel notar
-            // nada, ele continua mostrando a sessão antiga na pasta antiga (bug
-            // real, visto direto: toast dizia "concluído" mas o terminal nunca
-            // saía do lugar). Reinicia CADA aba com PTY vivo NO MESMO ptyId
-            // (mesmo mecanismo do botão "Reiniciar" do menu de contexto, via
-            // `restartAgentPty`) — o painel já escuta esse canal, então não
-            // precisa remontar. O storage de sessão de cada provider é global
-            // por usuário, não por pasta — a conversa antiga PODE existir de
-            // verdade na worktree nova; tenta reaproveitar só pros providers
-            // com resume cross-cwd confirmado (`CROSS_CWD_RESUME_OK`, vazio
-            // hoje — nenhum testado como seguro ainda), com guarda contra
-            // hang (`restartAgentPtyWithHangGuard`). Abas sem PTY (nunca
-            // abertas) só precisam do cwd atualizado — o primeiro mount já
-            // nasce no lugar certo.
+            // Each tab's pane is already mounted (`key={tab.id}`, stable) and
+            // the XTermView mount effect only reacts to `sessionPersistenceKey`/
+            // `retryKey` — changing `cwd` in the store alone makes the pane
+            // notice nothing, it keeps showing the old session in the old folder
+            // (a real bug, seen directly: the toast said "done" but the terminal
+            // never moved). Restart EVERY tab with a live PTY ON THE SAME ptyId
+            // (the same mechanism as the context menu's "Restart", via
+            // `restartAgentPty`) — the pane already listens on that channel, so
+            // it does not need to remount. Each provider's session storage is
+            // global per user, not per folder — the old conversation MAY really
+            // exist in the new worktree; only reuse it for providers with
+            // confirmed cross-cwd resume (`CROSS_CWD_RESUME_OK`, empty today —
+            // none proven safe yet), guarded against hangs
+            // (`restartAgentPtyWithHangGuard`). Tabs without a PTY (never
+            // opened) only need the updated cwd — their first mount already
+            // starts in the right place.
             for (const tab of terminal.tabs) {
               if (!tab.ptyId) continue
               const activeSessions = getActiveSessions()
@@ -802,7 +803,7 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
                 )
               } catch (restartErr) {
                 console.warn(
-                  `[projectsStore] falha reiniciando aba na worktree nova (${terminal.name}):`,
+                  `[projectsStore] failed restarting tab in the new worktree (${terminal.name}):`,
                   restartErr,
                 )
               }
@@ -839,6 +840,7 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
             }),
           })
         }
+        return { status: 'done' }
       } finally {
         migratingWorktreeProjectIds.delete(projectId)
       }

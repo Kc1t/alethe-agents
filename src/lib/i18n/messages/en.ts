@@ -2307,9 +2307,8 @@ export const en = {
     'This will suspend and move every eligible terminal in this project into its own worktree. Each agent restarts from scratch (no conversation continuity). Continue?',
   'multiAgent.migrateNoRepoTitle': 'Isolation unavailable',
   'multiAgent.migrateNoRepoBody': 'No detectable Git repository in this project.',
-  'multiAgent.migrateDirtyTitle': 'Migration postponed',
-  'multiAgent.migrateDirtyBody':
-    'There are uncommitted changes in the repository — commit or discard them before isolating agents, so in-progress work isn’t lost.',
+  'multiAgent.migrateDirtyConfirm':
+    'This repository has {count} uncommitted change(s). They stay in the main repository — each worktree is created from the last commit (HEAD), so work in progress is never moved or lost, it just doesn’t come along to the new worktrees. Continue?',
   'multiAgent.migrateEmptyTitle': 'Nothing to migrate',
   'multiAgent.migrateEmptyBody': 'No eligible terminals found (already isolated or no PTY).',
   'multiAgent.migrateDoneTitle': 'Agent isolation enabled',

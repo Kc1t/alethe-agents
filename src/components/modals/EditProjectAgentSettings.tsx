@@ -307,9 +307,24 @@ export function EditProjectAgentSettings({
             if (migratingWorktrees) return
             if (!confirm(t('multiAgent.migrateExistingConfirm'))) return
             setMigratingWorktrees(true)
-            void migrateProjectTerminalsToWorktrees(projectId, gsdWatcherEnabled).finally(() =>
-              setMigratingWorktrees(false),
-            )
+            void (async () => {
+              try {
+                const result = await migrateProjectTerminalsToWorktrees(
+                  projectId,
+                  gsdWatcherEnabled,
+                )
+                // Uncommitted work is a warning, never a block: it stays in the
+                // main repository (worktrees branch off HEAD).
+                if (result.status !== 'dirty') return
+                if (!confirm(t('multiAgent.migrateDirtyConfirm', { count: result.pending })))
+                  return
+                await migrateProjectTerminalsToWorktrees(projectId, gsdWatcherEnabled, {
+                  allowDirty: true,
+                })
+              } finally {
+                setMigratingWorktrees(false)
+              }
+            })()
           }}
         >
           {migratingWorktrees

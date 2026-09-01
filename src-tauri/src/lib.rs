@@ -253,23 +253,25 @@ pub fn run() {
                 data_root,
                 app.handle().clone(),
             );
+            // Bound synchronously, before `setup()` returns, so the port is
+            // already settled by the time the frontend runs its first probe —
+            // a second Alethe (e.g. a dev build next to the installed one)
+            // takes the next free port instead of failing to start.
+            let (listener, port) = tauri::async_runtime::block_on(
+                server_main::bind_server_listener(),
+            )
+            .map_err(|error| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("[Alethe Embedded Server] {error}"),
+                )
+            })?;
+            println!(
+                "[Alethe Embedded Server] Listening on http://{}:{port} (instance {}).",
+                server_main::SERVER_HOST,
+                runtime.instance_id()
+            );
             tauri::async_runtime::spawn(async move {
-                let listener =
-                    match tokio::net::TcpListener::bind(server_main::SERVER_BIND_ADDRESS).await {
-                        Ok(listener) => listener,
-                        Err(error) => {
-                            eprintln!(
-                                "[Alethe Embedded Server] Failed to bind http://{}; another core may already own this data root: {error}",
-                                server_main::SERVER_BIND_ADDRESS
-                            );
-                            return;
-                        }
-                    };
-                println!(
-                    "[Alethe Embedded Server] Listening on http://{} (instance {}).",
-                    server_main::SERVER_BIND_ADDRESS,
-                    runtime.instance_id()
-                );
                 let router = server_main::build_router(runtime);
                 if let Err(error) = axum::serve(listener, router).await {
                     eprintln!("[Alethe Embedded Server] Server stopped with an error: {error}");
@@ -399,6 +401,7 @@ pub fn run() {
             cli_resolver::discover_provider_models,
             profiles::list_profiles,
             profiles::get_core_storage_identity,
+            server_main::get_core_port,
             profiles::list_profile_summaries,
             profiles::get_active_profile,
             profiles::set_active_profile,

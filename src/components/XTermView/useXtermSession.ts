@@ -427,7 +427,14 @@ export function useXtermSession(params: {
     // Intercepting the keystroke here would force us to fake that rendering
     // locally while the CLI's own redraw shows the real bytes it received,
     // producing a mismatched/garbled display.
-    const NATIVE_CLIPBOARD_IMAGE_AGENTS = new Set(['opencode', 'claude', 'codex', 'antigravity'])
+    // Claude Code is deliberately NOT in this set: its CLI has no image-paste
+    // support at all over the terminal (unlike the three below), so leaving
+    // it here would silently drop every pasted image. It falls through to
+    // the default path instead, which resolves an image clipboard payload to
+    // its file path and types that — the same fallback already used for
+    // dropping a file onto the terminal (see `onDragDropEvent` below), which
+    // Claude Code reads from disk just fine.
+    const NATIVE_CLIPBOARD_IMAGE_AGENTS = new Set(['opencode', 'codex', 'antigravity'])
 
     const resourcePolicy = useProjectsStore.getState().preferences.resourcePolicy
     const terminal = new Terminal({
@@ -820,13 +827,29 @@ export function useXtermSession(params: {
         if (!raw) return
         const id = ptyIdRef.current
         if (!id) return
+        if (writeRecoveryPending) return
         const text = normalizePastedText(raw)
         currentLineBuffer += text
         lastPasteBlock = text
         useTerminalsStore.getState().recordIo(id)
         recordPromptInput(text)
-        terminal.write(text)
-        queueInput(id, text)
+        // A paste must go out wrapped in the bracketed-paste markers whenever
+        // the app asked for them (DECSET 2004). Sent raw, every internal CR of
+        // the pasted text arrives as a plain Enter, so a TUI prompt (Claude,
+        // Codex, a REPL) submits the first line instead of inserting the block
+        // — the paste "typed and sent the message" rather than pasting it.
+        // `writePtyChunked` also splits very large pastes without breaking
+        // surrogate pairs, which the plain queued write did not do.
+        const bracketed = terminal.modes.bracketedPasteMode
+        // In bracketed mode the app redraws the prompt itself; echoing locally
+        // would paint raw characters underneath its own rendering.
+        if (!bracketed) terminal.write(text)
+        // Flush anything typed in this same tick first, so the paste can never
+        // overtake it in the write chain.
+        if (queuedInput) flushInput()
+        inputWriteChain = inputWriteChain
+          .then(() => writePtyChunked(id, text, bracketed))
+          .catch((error) => requestWriteRecovery(id, 'paste', error))
       } catch (err) {
         console.warn('[pty-paste] ignored invalid clipboard payload:', err)
       }

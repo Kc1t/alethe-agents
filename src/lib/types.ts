@@ -248,6 +248,15 @@ export type PaneGroup = {
   paneIds: string[]
 }
 
+/** Outcome of migrating a project's existing terminals into isolated worktrees.
+ *  `dirty` is not a failure: the repository has uncommitted work and the caller
+ *  must confirm before the migration runs (those changes stay in the main
+ *  repository — worktrees are always created from HEAD). */
+export type MigrateWorktreesResult =
+  | { status: 'done' }
+  | { status: 'aborted' }
+  | { status: 'dirty'; pending: number }
+
 export type OrphanWorktree = {
   path: string
   mode: 'gitWorktree' | 'localCopy'

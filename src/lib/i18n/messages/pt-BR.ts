@@ -2326,9 +2326,8 @@ export const ptBR: Record<MessageKey, string> = {
     'Isso vai suspender e mover todos os terminais elegíveis deste projeto pra worktrees próprias. O agente reinicia do zero em cada um (sem continuar a conversa). Continuar?',
   'multiAgent.migrateNoRepoTitle': 'Isolamento indisponível',
   'multiAgent.migrateNoRepoBody': 'Nenhum repositório Git detectável neste projeto.',
-  'multiAgent.migrateDirtyTitle': 'Migração adiada',
-  'multiAgent.migrateDirtyBody':
-    'Há mudanças não commitadas no repositório — faça commit ou descarte antes de isolar os agentes, pra não perder trabalho em progresso.',
+  'multiAgent.migrateDirtyConfirm':
+    'Este repositório tem {count} mudança(s) não commitada(s). Elas ficam no repositório principal — cada worktree é criada a partir do último commit (HEAD), então o trabalho em progresso não é movido nem perdido, só não vai junto pras worktrees novas. Continuar?',
   'multiAgent.migrateEmptyTitle': 'Nada pra migrar',
   'multiAgent.migrateEmptyBody': 'Nenhum terminal elegível encontrado (já isolados ou sem PTY).',
   'multiAgent.migrateDoneTitle': 'Isolamento de agentes ativado',

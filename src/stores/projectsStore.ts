@@ -26,6 +26,7 @@ import {
   type Group,
   type LayoutMode,
   type Locale,
+  type MigrateWorktreesResult,
   type OrphanWorktree,
   type Preferences,
   type Project,
@@ -150,7 +151,8 @@ export type ProjectsState = ProjectsFile & {
   migrateProjectTerminalsToWorktrees: (
     projectId: string,
     gsdWatcherEnabledOverride?: boolean,
-  ) => Promise<void>
+    opts?: { allowDirty?: boolean },
+  ) => Promise<MigrateWorktreesResult>
 
   addOrphanWorktree: (projectId: string, entry: OrphanWorktree) => void
   removeOrphanWorktree: (projectId: string, path: string) => void

@@ -16,17 +16,60 @@ export function isTauriEnv(): boolean {
   )
 }
 
-const getTargetServerUrl = (): string => {
-  if (typeof window === 'undefined') return 'http://127.0.0.1:1423'
-  // Native-only capabilities still use IPC, but shared core domains use the
-  // same loopback authority as browser clients.
-  if (isTauriEnv()) return 'http://127.0.0.1:1423'
-  // Both Vite entry points proxy /api, including WebSocket upgrades.
-  if (window.location.port === '1422' || window.location.port === '1424') return ''
-  return window.location.origin
+/// Fallback used only before the real port is known (module init, or a
+/// non-Tauri context where the port cannot be queried at all) and until a
+/// `resolveServerBaseUrl()` caller populates the cache below.
+const DEFAULT_CORE_PORT = 1423
+
+let cachedServerBaseUrl: string | null = null
+let corePortRequest: Promise<string> | null = null
+
+/**
+ * The core no longer always sits on a fixed port: a second Alethe instance
+ * (a dev build running alongside the installed one, say) takes the next free
+ * port instead of failing to start (see `bind_server_listener` in
+ * `server_main/mod.rs`). In Tauri, the actual port is asked for over IPC —
+ * which works regardless of which port the HTTP core landed on — and cached
+ * for the rest of the session; a fresh core on a new port only ever appears
+ * after a full app restart, so re-querying per request would be pure waste.
+ */
+async function resolveServerBaseUrl(): Promise<string> {
+  if (typeof window === 'undefined') return `http://127.0.0.1:${DEFAULT_CORE_PORT}`
+  if (!isTauriEnv()) {
+    // Both Vite entry points proxy /api, including WebSocket upgrades.
+    if (window.location.port === '1422' || window.location.port === '1424') return ''
+    return window.location.origin
+  }
+  if (cachedServerBaseUrl) return cachedServerBaseUrl
+  if (corePortRequest) return corePortRequest
+
+  corePortRequest = (async () => {
+    let port = DEFAULT_CORE_PORT
+    try {
+      const resolved = await invoke<number>('get_core_port')
+      if (resolved > 0) port = resolved
+    } catch (error) {
+      log('warn', 'Core', 'Failed to resolve the core port over IPC, falling back to the default', error)
+    }
+    const url = `http://127.0.0.1:${port}`
+    cachedServerBaseUrl = url
+    return url
+  })()
+
+  try {
+    return await corePortRequest
+  } finally {
+    corePortRequest = null
+  }
 }
 
-const SERVER_BASE_URL = getTargetServerUrl()
+/** Synchronous best-effort host for contexts (like the WebSocket URL builder)
+ *  that need a value immediately; callers that can await should prefer
+ *  `resolveServerBaseUrl()` so a resolved port is never missed. */
+function cachedOrDefaultCoreHost(): string {
+  if (cachedServerBaseUrl) return cachedServerBaseUrl.replace(/^https?:\/\//, '')
+  return `127.0.0.1:${DEFAULT_CORE_PORT}`
+}
 let coreAvailability: { available: boolean; expiresAt: number } | null = null
 let coreAvailabilityRequest: Promise<boolean> | null = null
 let coreSessionToken: string | null = null
@@ -96,7 +139,9 @@ export async function canUseSharedCoreTransport(): Promise<boolean> {
         isTauriEnv()
           ? invoke<CoreStorageIdentity>('get_core_storage_identity')
           : Promise.resolve<CoreStorageIdentity | null>(null),
-        fetch(`${SERVER_BASE_URL}/api/health`, { signal: controller.signal, cache: 'no-store' }),
+        resolveServerBaseUrl().then((base) =>
+          fetch(`${base}/api/health`, { signal: controller.signal, cache: 'no-store' }),
+        ),
       ])
       if (!response.ok) return unavailableOrThrow()
       const payload = (await response.json()) as CoreHealthPayload
@@ -171,7 +216,7 @@ async function getCoreSessionToken(): Promise<string> {
       coreAvailability = null
       if (!(await canUseSharedCoreTransport())) throw new Error(CORE_UNAVAILABLE)
     }
-    const response = await fetch(`${SERVER_BASE_URL}/api/session`, {
+    const response = await fetch(`${await resolveServerBaseUrl()}/api/session`, {
       headers: { Accept: 'application/json' },
       cache: 'no-store',
     })
@@ -239,7 +284,7 @@ export function resetCoreTransportStateForTests(): void {
  */
 export async function webApiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   if (!(await canUseSharedCoreTransport())) throw new Error(CORE_UNAVAILABLE)
-  const url = `${SERVER_BASE_URL}${path}`
+  const url = `${await resolveServerBaseUrl()}${path}`
   log('debug', 'HTTP', `${options?.method || 'GET'} ${path}`)
 
   try {
@@ -295,10 +340,10 @@ export async function createWebSocketStream(path: string): Promise<WebSocket> {
   const directCore = isTauriEnv()
   const protocol = !directCore && window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   const host = directCore
-    ? '127.0.0.1:1423'
+    ? cachedOrDefaultCoreHost()
     : throughVite
       ? window.location.host
-      : window.location.host || '127.0.0.1:1423'
+      : window.location.host || cachedOrDefaultCoreHost()
   const wsUrl = `${protocol}//${host}${path}`
   log('info', 'WS', `Connecting WebSocket to ${wsUrl}`)
   const token = await getCoreSessionToken()

@@ -34,7 +34,7 @@ describe('shared core storage identity configuration', () => {
   it('routes both Vite entry ports to the single loopback authority', () => {
     const viteConfig = readFileSync(resolve(process.cwd(), 'vite.config.ts'), 'utf8')
 
-    expect(viteConfig).toContain("target: 'http://127.0.0.1:1423'")
-    expect(viteConfig).toContain('port: 1422')
+    expect(viteConfig).toContain("ALETHE_SERVER_PORT || '1423'")
+    expect(viteConfig).toContain("Number(process.env.ALETHE_DEV_PORT) || 1422")
   })
 })
