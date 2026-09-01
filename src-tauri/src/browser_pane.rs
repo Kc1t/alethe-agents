@@ -695,6 +695,251 @@ pub async fn browser_pane_key(
     Ok(())
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserInspectResult {
+    pub tag_name: String,
+    pub selector: String,
+    pub text_snippet: String,
+    pub html_snippet: String,
+    pub href: Option<String>,
+    pub aria_label: Option<String>,
+    pub page_url: String,
+    pub page_title: String,
+    pub rect: BrowserInspectRect,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserInspectRect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserCaptureResult {
+    pub path: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+const INSPECT_EXPRESSION: &str = r#"(function(x, y) {
+  function cssPath(el) {
+    if (!(el instanceof Element)) return '';
+    var parts = [];
+    while (el && el.nodeType === 1 && parts.length < 6) {
+      var part = el.nodeName.toLowerCase();
+      if (el.id) {
+        part += '#' + el.id;
+        parts.unshift(part);
+        break;
+      }
+      var parent = el.parentElement;
+      if (parent) {
+        var siblings = parent.children;
+        var same = 0;
+        var index = 0;
+        for (var i = 0; i < siblings.length; i++) {
+          if (siblings[i].nodeName === el.nodeName) {
+            same++;
+            if (siblings[i] === el) index = same;
+          }
+        }
+        if (same > 1) part += ':nth-of-type(' + index + ')';
+      }
+      if (el.classList && el.classList.length) {
+        part += '.' + Array.prototype.slice.call(el.classList, 0, 2).join('.');
+      }
+      parts.unshift(part);
+      el = parent;
+    }
+    return parts.join(' > ');
+  }
+  function clampText(value, max) {
+    var text = String(value || '').replace(/\s+/g, ' ').trim();
+    return text.length > max ? text.slice(0, max - 1) + '…' : text;
+  }
+  var el = document.elementFromPoint(x, y);
+  if (!el) return null;
+  while (el && (el === document.documentElement || el === document.body || el.nodeType !== 1)) {
+    el = el.parentElement;
+  }
+  if (!el) return null;
+  var rect = el.getBoundingClientRect();
+  var html = '';
+  try {
+    var clone = el.cloneNode(true);
+    var scripts = clone.querySelectorAll ? clone.querySelectorAll('script,style') : [];
+    for (var i = 0; i < scripts.length; i++) scripts[i].remove();
+    html = String(clone.outerHTML || '').slice(0, 4000);
+  } catch (e) {
+    html = '';
+  }
+  return {
+    tagName: el.tagName ? el.tagName.toLowerCase() : 'element',
+    selector: cssPath(el),
+    textSnippet: clampText(el.innerText || el.textContent || '', 500),
+    htmlSnippet: html,
+    href: el.href || el.getAttribute && el.getAttribute('href') || null,
+    ariaLabel: el.getAttribute && (el.getAttribute('aria-label') || el.getAttribute('title')) || null,
+    pageUrl: location.href,
+    pageTitle: document.title || '',
+    rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+  };
+})"#;
+
+/// Inspect the DOM element under page coordinates (CSS pixels of the emulated viewport).
+#[tauri::command]
+pub async fn browser_pane_inspect_at(
+    app: AppHandle,
+    state: State<'_, BrowserPaneState>,
+    pane_id: String,
+    x: f64,
+    y: f64,
+) -> Result<BrowserInspectResult, String> {
+    let pane = attachment(&state.panes, &pane_id)?;
+    let client = ensure_client(&app, &state).await?;
+    let expression = format!("({INSPECT_EXPRESSION})({x}, {y})");
+    let result = client
+        .call(
+            "Runtime.evaluate",
+            json!({
+                "expression": expression,
+                "returnByValue": true,
+                "awaitPromise": false,
+            }),
+            Some(&pane.session_id),
+        )
+        .await?;
+    let value = result
+        .get("result")
+        .and_then(|r| r.get("value"))
+        .ok_or_else(|| "no element at that point".to_string())?;
+    if value.is_null() {
+        return Err("no element at that point".into());
+    }
+    parse_inspect_result(value)
+}
+
+pub fn parse_inspect_result(value: &Value) -> Result<BrowserInspectResult, String> {
+    let rect = value
+        .get("rect")
+        .ok_or_else(|| "inspect result missing rect".to_string())?;
+    Ok(BrowserInspectResult {
+        tag_name: value
+            .get("tagName")
+            .and_then(Value::as_str)
+            .unwrap_or("element")
+            .to_string(),
+        selector: value
+            .get("selector")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        text_snippet: value
+            .get("textSnippet")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        html_snippet: value
+            .get("htmlSnippet")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        href: value
+            .get("href")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .filter(|s| !s.is_empty()),
+        aria_label: value
+            .get("ariaLabel")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .filter(|s| !s.is_empty()),
+        page_url: value
+            .get("pageUrl")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        page_title: value
+            .get("pageTitle")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        rect: BrowserInspectRect {
+            x: rect.get("x").and_then(Value::as_f64).unwrap_or(0.0),
+            y: rect.get("y").and_then(Value::as_f64).unwrap_or(0.0),
+            width: rect.get("width").and_then(Value::as_f64).unwrap_or(0.0),
+            height: rect.get("height").and_then(Value::as_f64).unwrap_or(0.0),
+        },
+    })
+}
+
+/// Capture a PNG of the page (or a clip in CSS pixels) and write it to a temp file.
+#[tauri::command]
+pub async fn browser_pane_capture(
+    app: AppHandle,
+    state: State<'_, BrowserPaneState>,
+    pane_id: String,
+    clip: Option<BrowserInspectRect>,
+) -> Result<BrowserCaptureResult, String> {
+    let pane = attachment(&state.panes, &pane_id)?;
+    let client = ensure_client(&app, &state).await?;
+    let mut params = json!({ "format": "png", "fromSurface": true });
+    if let Some(rect) = &clip {
+        let width = rect.width.max(1.0);
+        let height = rect.height.max(1.0);
+        params["clip"] = json!({
+            "x": rect.x.max(0.0),
+            "y": rect.y.max(0.0),
+            "width": width,
+            "height": height,
+            "scale": 1
+        });
+    }
+    let result = client
+        .call("Page.captureScreenshot", params, Some(&pane.session_id))
+        .await?;
+    let data = result
+        .get("data")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "screenshot response missing data".to_string())?;
+    let bytes = base64_decode(data)?;
+    let dir = std::env::temp_dir().join("alethe-browser-grabs");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(format!("grab-{}.png", nanoid_simple()));
+    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    let (width, height) = match &clip {
+        Some(rect) => (rect.width.max(1.0) as u32, rect.height.max(1.0) as u32),
+        None => (0, 0),
+    };
+    let _ = app;
+    Ok(BrowserCaptureResult {
+        path: path.to_string_lossy().to_string(),
+        width,
+        height,
+    })
+}
+
+fn base64_decode(data: &str) -> Result<Vec<u8>, String> {
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD
+        .decode(data)
+        .map_err(|e| e.to_string())
+}
+
+fn nanoid_simple() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("{nanos:x}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -710,6 +955,27 @@ mod tests {
             delta_y: None,
             modifiers: None,
         }
+    }
+
+    #[test]
+    fn parse_inspect_result_reads_element_fields() {
+        let value = json!({
+            "tagName": "button",
+            "selector": "form > button.submit",
+            "textSnippet": "Save",
+            "htmlSnippet": "<button class=\"submit\">Save</button>",
+            "href": null,
+            "ariaLabel": "Save changes",
+            "pageUrl": "https://example.test/edit",
+            "pageTitle": "Edit",
+            "rect": { "x": 10.0, "y": 20.0, "width": 80.0, "height": 32.0 }
+        });
+        let parsed = parse_inspect_result(&value).expect("parse");
+        assert_eq!(parsed.tag_name, "button");
+        assert_eq!(parsed.selector, "form > button.submit");
+        assert_eq!(parsed.text_snippet, "Save");
+        assert_eq!(parsed.aria_label.as_deref(), Some("Save changes"));
+        assert_eq!(parsed.rect.width, 80.0);
     }
 
     #[test]

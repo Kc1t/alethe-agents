@@ -85,6 +85,48 @@ export async function browserPaneKey(paneId: string, input: BrowserKeyInput): Pr
   await invoke('browser_pane_key', { paneId, input })
 }
 
+export type BrowserInspectRect = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export type BrowserInspectResult = {
+  tagName: string
+  selector: string
+  textSnippet: string
+  htmlSnippet: string
+  href: string | null
+  ariaLabel: string | null
+  pageUrl: string
+  pageTitle: string
+  rect: BrowserInspectRect
+}
+
+export type BrowserCaptureResult = {
+  path: string
+  width: number
+  height: number
+}
+
+/** Inspect the DOM element under page coordinates in the shared browser pane. */
+export async function browserPaneInspectAt(
+  paneId: string,
+  x: number,
+  y: number,
+): Promise<BrowserInspectResult> {
+  return invoke<BrowserInspectResult>('browser_pane_inspect_at', { paneId, x, y })
+}
+
+/** Capture a PNG of the page or a clip and write it to a temp file. */
+export async function browserPaneCapture(
+  paneId: string,
+  clip?: BrowserInspectRect | null,
+): Promise<BrowserCaptureResult> {
+  return invoke<BrowserCaptureResult>('browser_pane_capture', { paneId, clip: clip ?? null })
+}
+
 export type BrowserTarget = {
   targetId: string
   kind: string

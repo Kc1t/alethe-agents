@@ -1903,6 +1903,25 @@ export const ptBR: Record<MessageKey, string> = {
   'webPane.cdpSurface': 'Página do navegador',
   'webPane.engineCdpOn': 'Navegador embutido ligado — clique para voltar à janela nativa',
   'webPane.engineCdpOff': 'Renderizar esta página dentro do painel (compartilhada com o agente)',
+  'webPane.grabMark': 'Marcar elemento para enviar ao agente',
+  'webPane.grabCancel': 'Cancelar marcação de elemento',
+  'webPane.grabHint': 'Clique em um elemento da página para marcá-lo.',
+  'webPane.grabCopy': 'Copiar',
+  'webPane.grabSend': 'Enviar ao agente',
+  'webPane.grabCopied': 'Elemento copiado',
+  'webPane.grabSentTitle': 'Enviado ao agente',
+  'webPane.grabSentBody': 'Colado em {agent}.',
+  'webPane.grabFailed': 'Não foi possível capturar esse elemento',
+  'webPane.grabNeedsCdpTitle': 'Mudou para o navegador embutido',
+  'webPane.grabNeedsCdpBody':
+    'A marcação de elementos precisa do navegador compartilhado para inspecionar a página.',
+  'webPane.grabNoAgentTitle': 'Nenhum terminal de agente pronto',
+  'webPane.grabNoAgentBody': 'Abra antes um painel Claude, Codex ou outro agente com sessão ativa.',
+  'webPane.pageShot': 'Enviar captura da página ao agente',
+  'webPane.pageShotNeedsCdpBody':
+    'A captura da página precisa do navegador compartilhado. A troca já foi feita — tente de novo.',
+  'webPane.pageShotSentTitle': 'Captura da página enviada',
+  'webPane.pageShotFailed': 'Não foi possível capturar a página',
   'webPane.privateHint':
     'Sessão nativa privada · os dados de navegação são descartados ao fechar este pane.',
 

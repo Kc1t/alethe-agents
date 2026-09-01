@@ -12,6 +12,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- Mark a page element in the in-app browser (crosshair) and send it to an agent chat, with selector,
+  text, HTML snippet, and a cropped screenshot — similar to Orca’s grab → attach flow. Uses the
+  embedded (CDP) browser; native private panes switch over when you start marking. Hover highlights
+  the element under the cursor; Esc cancels. A camera control sends a full-page screenshot to the
+  focused agent the same way.
+
 - Browser pages open in a dedicated workspace tab (with globe icon in the top bar), separate from
   the terminal grid. Add Browser, terminal link actions, and agent page offers use that tab by
   default; “Add beside terminals” remains available when you want a grid cell. The browser chrome

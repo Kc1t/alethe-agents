@@ -2,6 +2,8 @@ import { useDraggable, useDroppable } from '@dnd-kit/core'
 import {
   ArrowLeft,
   ArrowRight,
+  Camera,
+  Crosshair,
   ExternalLink,
   GripVertical,
   Maximize2,
@@ -11,13 +13,26 @@ import {
   ShieldCheck,
   Trash2,
 } from 'lucide-react'
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
+import {
+  formatBrowserGrabMarkdown,
+  formatBrowserPageCaptureMarkdown,
+  resolveBrowserGrabTarget,
+  sendBrowserGrabToAgent,
+} from '../../lib/browserGrab'
 import { normalizeBrowserUrl } from '../../lib/browserUrl'
 import { browserHiddenEvictionDelay } from '../../lib/browserResourcePolicy'
 import { useT } from '../../lib/i18n'
 import { suspendNativeSurfaces } from '../../lib/overlayPresence'
-import { browserPaneHistory, browserPaneNavigate, openInBrowser } from '../../lib/tauri'
+import {
+  type BrowserInspectResult,
+  browserPaneCapture,
+  browserPaneHistory,
+  browserPaneNavigate,
+  openInBrowser,
+  writeClipboardText,
+} from '../../lib/tauri'
 import type { Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -49,10 +64,16 @@ export const WebPane = memo(function WebPane({
     index: 0,
   })
   const [navState, setNavState] = useState({ canGoBack: false, canGoForward: false })
+  const [grabMode, setGrabMode] = useState(false)
+  const [grab, setGrab] = useState<BrowserInspectResult | null>(null)
+  const [grabBusy, setGrabBusy] = useState(false)
   const engine = terminal.browserConfig?.engine ?? 'native'
   const setBrowserEngine = useProjectsStore((state) => state.setBrowserEngine)
   const setBrowserPaneUrl = useProjectsStore((state) => state.setBrowserPaneUrl)
+  const projects = useProjectsStore((state) => state.projects)
   const focusedTerminalId = useUiStore((state) => state.focusedTerminalId)
+  const activeTerminal = useUiStore((state) => state.activeTerminal)
+  const pushToast = useUiStore((state) => state.pushToast)
   const activeView = useUiStore((state) => state.activeView)
   const openModal = useUiStore((state) => state.openModal)
   const showMainMenu = useUiStore((state) => state.showMainMenu)
@@ -178,6 +199,147 @@ export const WebPane = memo(function WebPane({
     if (isFocusMode) setFocusedTerminal(null)
   }
 
+  const toggleGrabMode = () => {
+    if (preview) return
+    if (engine !== 'cdp') {
+      setBrowserEngine(projectId, terminal.id, 'cdp')
+      pushToast({
+        title: t('webPane.grabNeedsCdpTitle'),
+        body: t('webPane.grabNeedsCdpBody'),
+      })
+    }
+    setGrab(null)
+    setGrabMode((value) => !value)
+  }
+
+  const onGrabInspect = useCallback((result: BrowserInspectResult) => {
+    setGrab(result)
+    setGrabMode(false)
+  }, [])
+
+  const cancelGrabUi = useCallback(() => {
+    setGrabMode(false)
+    setGrab(null)
+  }, [])
+
+  useEffect(() => {
+    if (!grabMode && !grab) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      cancelGrabUi()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [cancelGrabUi, grab, grabMode])
+
+  const clearGrab = () => setGrab(null)
+
+  const copyGrab = async () => {
+    if (!grab) return
+    setGrabBusy(true)
+    try {
+      let screenshotPath: string | null = null
+      if (grab.rect.width > 0 && grab.rect.height > 0) {
+        const shot = await browserPaneCapture(terminal.id, grab.rect).catch(() => null)
+        screenshotPath = shot?.path ?? null
+      }
+      const markdown = formatBrowserGrabMarkdown(grab, screenshotPath)
+      await writeClipboardText(markdown)
+      pushToast({ title: t('webPane.grabCopied'), body: grab.selector || grab.tagName })
+    } catch (error) {
+      pushToast({
+        title: t('webPane.grabFailed'),
+        body: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setGrabBusy(false)
+    }
+  }
+
+  const sendGrab = async () => {
+    if (!grab) return
+    const target = resolveBrowserGrabTarget({
+      projects,
+      preferredTerminalId: focusedTerminalId,
+      activeTerminal,
+    })
+    if (!target) {
+      pushToast({
+        title: t('webPane.grabNoAgentTitle'),
+        body: t('webPane.grabNoAgentBody'),
+      })
+      return
+    }
+    setGrabBusy(true)
+    try {
+      let screenshotPath: string | null = null
+      if (grab.rect.width > 0 && grab.rect.height > 0) {
+        const shot = await browserPaneCapture(terminal.id, grab.rect).catch(() => null)
+        screenshotPath = shot?.path ?? null
+      }
+      const markdown = formatBrowserGrabMarkdown(grab, screenshotPath)
+      await sendBrowserGrabToAgent(target, markdown)
+      pushToast({
+        title: t('webPane.grabSentTitle'),
+        body: t('webPane.grabSentBody', { agent: target.label }),
+      })
+      setGrab(null)
+    } catch (error) {
+      pushToast({
+        title: t('webPane.grabFailed'),
+        body: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setGrabBusy(false)
+    }
+  }
+
+  const sendPageScreenshot = async () => {
+    if (preview || !url) return
+    if (engine !== 'cdp') {
+      setBrowserEngine(projectId, terminal.id, 'cdp')
+      pushToast({
+        title: t('webPane.grabNeedsCdpTitle'),
+        body: t('webPane.pageShotNeedsCdpBody'),
+      })
+      return
+    }
+    const target = resolveBrowserGrabTarget({
+      projects,
+      preferredTerminalId: focusedTerminalId,
+      activeTerminal,
+    })
+    if (!target) {
+      pushToast({
+        title: t('webPane.grabNoAgentTitle'),
+        body: t('webPane.grabNoAgentBody'),
+      })
+      return
+    }
+    setGrabBusy(true)
+    try {
+      const shot = await browserPaneCapture(terminal.id, null)
+      const markdown = formatBrowserPageCaptureMarkdown({
+        pageUrl: url,
+        pageTitle: terminal.name,
+        screenshotPath: shot.path,
+      })
+      await sendBrowserGrabToAgent(target, markdown)
+      pushToast({
+        title: t('webPane.pageShotSentTitle'),
+        body: t('webPane.grabSentBody', { agent: target.label }),
+      })
+    } catch (error) {
+      pushToast({
+        title: t('webPane.pageShotFailed'),
+        body: error instanceof Error ? error.message : String(error),
+      })
+    } finally {
+      setGrabBusy(false)
+    }
+  }
+
   return (
     <div
       ref={setRefs}
@@ -274,6 +436,26 @@ export const WebPane = memo(function WebPane({
           <div className={styles.actions}>
             <button
               type="button"
+              className={`${styles.action} ${grabMode ? styles.actionOn : ''}`}
+              onClick={toggleGrabMode}
+              title={t(grabMode ? 'webPane.grabCancel' : 'webPane.grabMark')}
+              aria-label={t(grabMode ? 'webPane.grabCancel' : 'webPane.grabMark')}
+              aria-pressed={grabMode}
+            >
+              <Crosshair size={12} />
+            </button>
+            <button
+              type="button"
+              className={styles.action}
+              onClick={() => void sendPageScreenshot()}
+              disabled={grabBusy || !url}
+              title={t('webPane.pageShot')}
+              aria-label={t('webPane.pageShot')}
+            >
+              <Camera size={12} />
+            </button>
+            <button
+              type="button"
               className={`${styles.action} ${engine === 'cdp' ? styles.actionOn : ''}`}
               onClick={() =>
                 setBrowserEngine(projectId, terminal.id, engine === 'cdp' ? 'native' : 'cdp')
@@ -336,6 +518,10 @@ export const WebPane = memo(function WebPane({
               reloadKey={reloadKey}
               visible={browserVisible}
               watchTargetId={terminal.browserConfig?.watchTargetId}
+              grabMode={grabMode}
+              highlightRect={grab?.rect ?? null}
+              onGrabInspect={onGrabInspect}
+              onGrabCancel={cancelGrabUi}
             />
           ) : (
             <PrivateBrowserSurface
@@ -353,6 +539,44 @@ export const WebPane = memo(function WebPane({
           <div className={styles.empty}>{t('webPane.invalidUrl')}</div>
         )}
       </div>
+      {grabMode ? (
+        <div className={styles.grabTray}>
+          <span className={styles.grabTrayHint}>{t('webPane.grabHint')}</span>
+          <div className={styles.grabTrayActions}>
+            <button type="button" className={styles.grabTrayBtn} onClick={() => setGrabMode(false)}>
+              {t('common.cancel')}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {grab ? (
+        <div className={styles.grabTray}>
+          <span className={styles.grabTrayMeta} title={grab.selector}>
+            {`<${grab.tagName}>`} {grab.ariaLabel || grab.textSnippet || grab.selector}
+          </span>
+          <div className={styles.grabTrayActions}>
+            <button
+              type="button"
+              className={styles.grabTrayBtn}
+              disabled={grabBusy}
+              onClick={() => void copyGrab()}
+            >
+              {t('webPane.grabCopy')}
+            </button>
+            <button
+              type="button"
+              className={`${styles.grabTrayBtn} ${styles.grabTrayBtnPrimary}`}
+              disabled={grabBusy}
+              onClick={() => void sendGrab()}
+            >
+              {t('webPane.grabSend')}
+            </button>
+            <button type="button" className={styles.grabTrayBtn} onClick={clearGrab}>
+              {t('common.close')}
+            </button>
+          </div>
+        </div>
+      ) : null}
       <div className={styles.hint}>{t('webPane.privateHint')}</div>
     </div>
   )

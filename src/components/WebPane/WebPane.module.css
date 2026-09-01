@@ -256,6 +256,76 @@
   box-shadow: inset 0 0 0 1px var(--accent);
 }
 
+.cdpGrabCursor {
+  cursor: crosshair;
+}
+
+.grabHighlight {
+  position: absolute;
+  pointer-events: none;
+  border: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+  z-index: 2;
+}
+
+.grabHighlightHover {
+  border-style: dashed;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.grabTray {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated, var(--bg));
+}
+
+.grabTrayMeta {
+  flex: 1 1 180px;
+  min-width: 0;
+  color: var(--fg);
+  font: 500 11px var(--font-sans);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grabTrayHint {
+  color: var(--fg-faint);
+  font: 11px var(--font-sans);
+}
+
+.grabTrayActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.grabTrayBtn {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 500 11px var(--font-sans);
+  cursor: pointer;
+}
+
+.grabTrayBtn:hover {
+  border-color: var(--focus-ring);
+}
+
+.grabTrayBtnPrimary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
 .cdpStatus {
   position: absolute;
   inset: 0;

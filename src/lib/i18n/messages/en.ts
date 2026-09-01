@@ -1886,6 +1886,25 @@ export const en = {
   'webPane.cdpSurface': 'Browser page',
   'webPane.engineCdpOn': 'Embedded browser on - click to go back to the native window',
   'webPane.engineCdpOff': 'Render this page inside the pane (shared with the agent)',
+  'webPane.grabMark': 'Mark element to send to an agent',
+  'webPane.grabCancel': 'Cancel element marking',
+  'webPane.grabHint': 'Click an element on the page to mark it.',
+  'webPane.grabCopy': 'Copy',
+  'webPane.grabSend': 'Send to agent',
+  'webPane.grabCopied': 'Element copied',
+  'webPane.grabSentTitle': 'Sent to agent',
+  'webPane.grabSentBody': 'Pasted into {agent}.',
+  'webPane.grabFailed': 'Could not capture that element',
+  'webPane.grabNeedsCdpTitle': 'Switched to embedded browser',
+  'webPane.grabNeedsCdpBody':
+    'Element marking needs the shared browser so it can inspect the page.',
+  'webPane.grabNoAgentTitle': 'No agent terminal ready',
+  'webPane.grabNoAgentBody': 'Open a Claude, Codex, or other agent pane with a live session first.',
+  'webPane.pageShot': 'Send page screenshot to agent',
+  'webPane.pageShotNeedsCdpBody':
+    'Page screenshots need the shared browser. Switch is done — try again.',
+  'webPane.pageShotSentTitle': 'Page screenshot sent',
+  'webPane.pageShotFailed': 'Could not capture the page',
   'webPane.privateHint':
     'Private native session · browsing data is discarded when this pane closes.',
 
