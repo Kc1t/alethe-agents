@@ -10,7 +10,7 @@ import {
 } from '../../lib/api/projectInvite'
 import { subscribeToRendezvousEvents } from '../../lib/api/rendezvousEventBus'
 import { sendRendezvousFrame } from '../../lib/api/syncRendezvous'
-import { syncListChatContacts } from '../../lib/api/syncSecurity'
+import { syncListChatContacts, syncOpenChatContactConfirm } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
 import { PERMISSION_PRESETS } from '../../lib/sync/permissionPresets'
 import styles from './ProjectInvitesPanel.module.css'
@@ -62,10 +62,10 @@ export function ProjectInvitesPanel() {
             }
             // They accepted and sent the identity the grant needs. Issue it and send it back.
             try {
-              const projectId = pendingProjects.get(answer.inviteId)
-              if (!projectId) continue
+              const sent = pendingProjects.get(answer.inviteId)
+              if (!sent) continue
               const confirmCiphertext = await grantProjectToInvitee({
-                projectId,
+                projectId: sent.projectId,
                 accountId: answer.accountId,
                 deviceId: answer.deviceId,
                 agreementPublicKey: answer.agreementPublicKey ?? '',
@@ -73,16 +73,11 @@ export function ProjectInvitesPanel() {
                 pathScopes: [],
                 expiresAtMs: Date.now() + GRANT_TTL_MS,
               })
-              const contacts = await syncListChatContacts()
-              const contact = contacts.find(
-                (entry) => entry.agreementPublicKey === answer.agreementPublicKey,
-              )
-              if (!contact) continue
               await sendRendezvousFrame({
                 type: 'enqueue',
                 kind: 'chat_contact_confirm',
                 id: `pinv_grant_${crypto.randomUUID()}`,
-                recipientAccountRoute: contact.accountRoute,
+                recipientAccountRoute: sent.accountRoute,
                 expiresAtMs: Date.now() + RESPONSE_TTL_MS,
                 ciphertext: confirmCiphertext,
               })
@@ -93,10 +88,20 @@ export function ProjectInvitesPanel() {
             continue
           }
 
-          // `chat_contact_confirm` is deliberately NOT handled here even though it is what carries
-          // the grant back. That envelope already has an owner in the pairing flow, and the event
-          // queue is drained destructively — a second consumer would race it and one of the two
-          // would silently lose the envelope.
+          if (event.envelopeKind === 'chat_contact_confirm' && awaitingGrant.size > 0) {
+            // This is the envelope that carries the grant back after we accepted an invite, and
+            // it has to be opened here: the pairing flow's own listener only runs while the "add
+            // contact" modal is open and waiting, so outside that modal nothing would materialize
+            // the grant and accepting would silently do nothing. Sharing the envelope kind with
+            // that listener is safe — the event bus fans every event out to every subscriber
+            // precisely so no consumer can steal another's (see rendezvousEventBus.ts).
+            const opened = await syncOpenChatContactConfirm(event.ciphertext).catch(() => null)
+            if (opened?.grant) {
+              const projectName = awaitingGrant.get(opened.grant.projectId)
+              awaitingGrant.delete(opened.grant.projectId)
+              setNotice(t('chat.projectInvite.accepted', { project: projectName ?? '' }))
+            }
+          }
         }
       })()
     })
@@ -123,11 +128,14 @@ export function ProjectInvitesPanel() {
         ciphertext,
       })
       setInvites((current) => current.filter((entry) => entry.inviteId !== invite.inviteId))
-      setNotice(
-        accepted
-          ? t('chat.projectInvite.accepted', { project: invite.projectName })
-          : t('chat.projectInvite.declined'),
-      )
+      if (accepted) {
+        // The grant arrives in a separate envelope moments later; until it does, nothing has
+        // actually been shared yet, so say so rather than claiming the project is already joined.
+        awaitingGrant.set(invite.projectId, invite.projectName)
+        setNotice(t('chat.projectInvite.awaitingGrant', { project: invite.projectName }))
+      } else {
+        setNotice(t('chat.projectInvite.declined'))
+      }
     } catch (cause) {
       console.error('[project-invite] failed to answer', cause)
     } finally {
@@ -179,9 +187,13 @@ export function ProjectInvitesPanel() {
  * panel has re-mounted, and it is never persisted: an invite whose answer arrives after a restart
  * is simply re-sent, which is safer than writing pending grants to disk.
  */
-const pendingProjects = new Map<string, string>()
+const pendingProjects = new Map<string, { projectId: string; accountRoute: string }>()
 
 /** Called by the sender when an invite goes out. */
-export function rememberSentInvite(inviteId: string, projectId: string) {
-  pendingProjects.set(inviteId, projectId)
+export function rememberSentInvite(inviteId: string, projectId: string, accountRoute: string) {
+  pendingProjects.set(inviteId, { projectId, accountRoute })
 }
+
+/** Projects this device has accepted an invite for and is waiting the grant envelope for, by
+ *  project id — so the confirm that arrives can be recognised as ours and reported by name. */
+const awaitingGrant = new Map<string, string>()

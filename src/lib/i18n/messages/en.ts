@@ -64,6 +64,7 @@ export const en = {
   'chat.projectInvite.incomingBody': '{name} invited you to the project “{project}”.',
   'chat.projectInvite.accept': 'Accept',
   'chat.projectInvite.decline': 'Decline',
+  'chat.projectInvite.awaitingGrant': 'Accepted “{project}” — waiting for access to arrive…',
   'chat.projectInvite.accepted': 'You joined “{project}”.',
   'chat.projectInvite.declined': 'Invite declined.',
   'chat.attachmentMessage': 'Shared a file: {name} (id {id})',
@@ -1743,6 +1744,9 @@ export const en = {
   'ui.sidebar.system': 'System',
   'ui.sidebar.files': 'Files',
   'ui.sidebar.git': 'Git Control',
+  'ui.sidebar.gitWithChanges': 'Git Control ({count} pending changes)',
+  'ui.sidebar.gitTooltipDetailed':
+    'Git Control · {total} changes ({staged} staged, {changes} modified, {untracked} untracked)',
   'ui.sidebar.sourceControl': 'Source Control',
   'files.noActiveFolder': 'This terminal does not have an active folder.',
   'files.refresh': 'Refresh files',

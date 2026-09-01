@@ -66,6 +66,7 @@ export const ptBR: Record<MessageKey, string> = {
   'chat.projectInvite.incomingBody': '{name} convidou você para o projeto “{project}”.',
   'chat.projectInvite.accept': 'Aceitar',
   'chat.projectInvite.decline': 'Recusar',
+  'chat.projectInvite.awaitingGrant': 'Aceito “{project}” — aguardando o acesso chegar…',
   'chat.projectInvite.accepted': 'Você entrou em “{project}”.',
   'chat.projectInvite.declined': 'Convite recusado.',
   'chat.attachmentMessage': 'Compartilhou um arquivo: {name} (id {id})',
@@ -1763,6 +1764,9 @@ export const ptBR: Record<MessageKey, string> = {
   'ui.sidebar.system': 'Sistema',
   'ui.sidebar.files': 'Files',
   'ui.sidebar.git': 'Controle Git',
+  'ui.sidebar.gitWithChanges': 'Controle Git ({count} alterações pendentes)',
+  'ui.sidebar.gitTooltipDetailed':
+    'Controle Git · {total} alterações ({staged} preparadas, {changes} modificadas, {untracked} não rastreadas)',
   'ui.sidebar.sourceControl': 'Controle de versão',
   'files.noActiveFolder': 'Este terminal não possui uma pasta ativa.',
   'files.refresh': 'Atualizar arquivos',

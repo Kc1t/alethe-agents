@@ -42,7 +42,7 @@ export function InviteToProject({ contactAccountRoute }: { contactAccountRoute: 
       const inviteId = `pinv_${crypto.randomUUID()}`
       // Recorded before sending: the answer decides which project to grant, and it can
       // come back before this function has finished awaiting the enqueue.
-      rememberSentInvite(inviteId, project.id)
+      rememberSentInvite(inviteId, project.id, contactAccountRoute)
       const ciphertext = await sealProjectInvite({
         inviteId,
         projectId: project.id,

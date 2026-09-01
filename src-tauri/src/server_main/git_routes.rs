@@ -40,6 +40,8 @@ pub fn router() -> Router {
         .route("/api/git/log_graph", get(git_log_graph))
         .route("/api/git/commit_files", get(git_commit_files))
         .route("/api/git/commit_message", get(git_commit_message))
+        .route("/api/git/commit_stats", get(git_commit_stats))
+        .route("/api/git/commit_file_diff", get(git_commit_file_diff))
         .route("/api/git/create_branch", post(git_create_branch))
         .route("/api/git/cherry_pick", post(git_cherry_pick))
         .route("/api/git/revert", post(git_revert))
@@ -209,6 +211,40 @@ async fn git_commit_files(Query(p): Query<HashMap<String, String>>) -> impl Into
         Err(e) => return e.into_response(),
     };
     match git_control::git_show_commit_files(repo, hash).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => AppError::from(e).into_response(),
+    }
+}
+
+async fn git_commit_stats(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
+    let repo = match q(&p, "repo") {
+        Ok(v) => v,
+        Err(e) => return e.into_response(),
+    };
+    let hash = match q(&p, "hash") {
+        Ok(v) => v,
+        Err(e) => return e.into_response(),
+    };
+    match git_control::git_show_commit_stats(repo, hash).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => AppError::from(e).into_response(),
+    }
+}
+
+async fn git_commit_file_diff(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
+    let repo = match q(&p, "repo") {
+        Ok(v) => v,
+        Err(e) => return e.into_response(),
+    };
+    let hash = match q(&p, "hash") {
+        Ok(v) => v,
+        Err(e) => return e.into_response(),
+    };
+    let path = match q(&p, "path") {
+        Ok(v) => v,
+        Err(e) => return e.into_response(),
+    };
+    match git_control::git_show_commit_file_diff(repo, hash, path).await {
         Ok(v) => Json(v).into_response(),
         Err(e) => AppError::from(e).into_response(),
     }
