@@ -179,12 +179,41 @@ pub(crate) fn merge_prepare_inner(
         &root,
         &["worktree", "add", "-b", &branch, &env_arg, &target],
     )?;
-    let merge = git_command(&env, &["merge", "--no-commit", "--no-ff", &source])?;
+
+    // From here on, any failure must tear the freshly created worktree back
+    // down. Left alone, it becomes an orphan: not reported to the user as a
+    // conflict, not cleaned up, and an obstacle the next merge attempt trips
+    // over (its directory still exists, its branch name is still taken).
+    // `merge_analyze`, the read-only trial, always cleans up after itself;
+    // this one used to only clean up on the happy path.
+    match merge_prepare_body(&root, &env, &id, source, target, project_id, branch.clone()) {
+        Ok(result) => Ok(result),
+        Err(error) => {
+            let _ = git_command(&env, &["merge", "--abort"]);
+            let _ = git_command(&root, &["worktree", "remove", "--force", &env_arg]);
+            let _ = git_command(&root, &["branch", "-D", &branch]);
+            let _ = std::fs::remove_file(meta_path(&root, &id));
+            Err(error)
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn merge_prepare_body(
+    root: &Path,
+    env: &Path,
+    id: &str,
+    source: String,
+    target: String,
+    project_id: Option<String>,
+    branch: String,
+) -> Result<ConflictEnv, String> {
+    let merge = git_command(env, &["merge", "--no-commit", "--no-ff", &source])?;
     let clean = merge.status.success();
     let conflicts: Vec<ConflictFile> = if clean {
         Vec::new()
     } else {
-        unmerged_files(&env)?
+        unmerged_files(env)?
             .into_iter()
             .map(|path| ConflictFile {
                 class: classify_path(&path),
@@ -194,14 +223,14 @@ pub(crate) fn merge_prepare_inner(
     };
 
     let meta = MergeMeta {
-        id: id.clone(),
+        id: id.to_string(),
         source,
         target,
         project_id,
         conflict_paths: conflicts.iter().map(|c| c.path.clone()).collect(),
     };
     let meta_body = serde_json::to_string_pretty(&meta).map_err(|e| e.to_string())?;
-    std::fs::write(meta_path(&root, &id), meta_body).map_err(|e| format!("write_failed:{e}"))?;
+    std::fs::write(meta_path(root, id), meta_body).map_err(|e| format!("write_failed:{e}"))?;
 
     let prompt_path = if clean {
         None
@@ -226,13 +255,13 @@ pub(crate) fn merge_prepare_inner(
     }
 
     Ok(ConflictEnv {
-        id,
-        // `env` comes from a `root` that's already canonicalized (`\\?\`
-        // prefix on Windows) — without stripping it here, the frontend uses
+        id: id.to_string(),
+        // `env` comes from a `root` that's already canonicalized (a `\\?\`
+        // prefix on Windows) - without stripping it here, the frontend uses
         // this `path` as the cwd to spawn the conflict resolution agent, and
         // not every CLI tolerates that prefix as a working directory (same
         // root cause fixed in `worktrees::worktree_provision`/`worktree_list`).
-        path: git_arg(&env),
+        path: git_arg(env),
         branch,
         clean,
         conflicts,

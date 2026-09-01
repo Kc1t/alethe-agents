@@ -66,11 +66,27 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
             cwd: args.firstTab.cwd.trim() || finalCwd,
           },
         })
+        // Mirrors the exact exclusion `getProjectRepoRoot` (terminalFactory.ts)
+        // already applies when READING the project's root: a terminal whose
+        // cwd is its own worktree-agent folder, a GSD sync viewer, an
+        // ephemeral conflict-resolution agent, or another ephemeral utility
+        // is never a legitimate "project root" candidate. Missing this same
+        // exclusion on the WRITE side let e.g. a merge conflict's throwaway
+        // trial folder (`.alethe/merge-envs/<id>`, deleted once the merge
+        // resolves) silently become the project's `defaultCwd` — poisoning
+        // every later merge/terminal spawn that falls back to it, since that
+        // folder is gone by then (confirmed live: a project's `defaultCwd`
+        // ended up pointing at a deleted merge-env directory).
+        const isPureCandidate =
+          !args.worktreeAgentId &&
+          !args.gsdSyncViewer &&
+          !args.ephemeralConflictAgent &&
+          !args.ephemeralUtility
         const projects = state.projects.map((p) =>
           p.id === projectId
             ? {
                 ...p,
-                ...(!args.worktreeAgentId && finalCwd ? { defaultCwd: finalCwd } : {}),
+                ...(isPureCandidate && finalCwd ? { defaultCwd: finalCwd } : {}),
                 terminals: [...p.terminals, terminal],
               }
             : p,
