@@ -16,10 +16,24 @@ import styles from './GitGraph.module.css'
 // histories with several short branches stacked in sequence. Raising
 // ROW_HEIGHT and lowering LANE_WIDTH a bit makes the curve noticeably
 // smoother without changing the drawing logic.
-export const ROW_HEIGHT = 34
-const LANE_WIDTH = 18
-const DOT_RADIUS = 5
+export const ROW_HEIGHT = 28
+const LANE_WIDTH = 13
+const DOT_RADIUS = 4
 const OVERSCAN = 8
+
+/** Hard ceiling on how many lanes are ever drawn, and therefore on how wide the graph gutter can
+ *  get. The SVG is `flex-shrink: 0`, so its width is taken out of the row before the commit text
+ *  gets any — and the width used to be the GLOBAL maximum lane count across the entire history.
+ *  A repository with a dozen concurrent branches produced a gutter wider than the sidebar itself,
+ *  pushing the subject, badges and author line clean off the panel (the row clips them), which
+ *  read as "the graph throws everything off screen". Lanes past this limit are drawn collapsed
+ *  onto the last column: overlapping strands in a deep history are a fair trade for a layout that
+ *  always leaves room for the message. */
+const MAX_RENDERED_LANES = 4
+
+function laneX(lane: number): number {
+  return Math.min(lane, MAX_RENDERED_LANES - 1) * LANE_WIDTH + LANE_WIDTH / 2
+}
 
 /** Lane colors — cycles through the `--agent-*` palette already defined in
  *  the theme (never a new hardcoded hex, per design-system rules). Excludes
@@ -293,15 +307,18 @@ function GraphRowView({
   onSelect: () => void
   onOpenMenu: (x: number, y: number) => void
 }) {
-  const cx = row.lane * LANE_WIDTH + LANE_WIDTH / 2
+  const cx = laneX(row.lane)
   const cy = ROW_HEIGHT / 2
+  // Two lines rather than one long one: the native tooltip cannot be repositioned, so a single
+  // wide string gets clipped by the window edge on a right-docked sidebar.
+  const rowTooltip = `${row.commit.hash.slice(0, 7)}\n${row.commit.subject}`
 
   const elements: React.ReactNode[] = []
 
   // 1. Process the top half (0 -> cy)
   for (let l = 0; l < row.lanesBefore.length; l++) {
     if (row.lanesBefore[l] != null) {
-      const fromX = l * LANE_WIDTH + LANE_WIDTH / 2
+      const fromX = laneX(l)
       const color = laneColorForId(l, row.laneIdsBefore[l] ?? null)
 
       if (l === row.lane) {
@@ -356,7 +373,7 @@ function GraphRowView({
     for (let l = 0; l < row.lanesAfter.length; l++) {
       const parent = row.lanesAfter[l]
       if (parent != null) {
-        const toX = l * LANE_WIDTH + LANE_WIDTH / 2
+        const toX = laneX(l)
         const color = laneColorForId(l, row.laneIdsAfter[l] ?? null)
 
         if (l === row.lane) {
@@ -405,7 +422,7 @@ function GraphRowView({
   return (
     <div
       className={`${styles.row} ${dimmed ? styles.rowDimmed : ''}`}
-      title={`${row.commit.hash.slice(0, 10)} — ${row.commit.subject}`}
+      title={rowTooltip}
       onClick={onSelect}
       onContextMenu={(e) => {
         e.preventDefault()
@@ -482,7 +499,10 @@ export function GitGraphList({
     for (const row of rows) {
       max = Math.max(max, row.lanesBefore.length, row.lanesAfter.length, row.lane + 1)
     }
-    return max
+    // Capped so the gutter can never grow past what the sidebar can spare — see
+    // `MAX_RENDERED_LANES`. Without this the width tracked the deepest point of the whole
+    // history, so one busy stretch widened the gutter for every row in the list.
+    return Math.min(max, MAX_RENDERED_LANES)
   }, [rows])
 
   // null = no active search (nothing gets dimmed). Never shrinks `rows` —

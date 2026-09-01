@@ -43,6 +43,9 @@ export function ModelSearchablePicker({
       options={cleanOptions.map((option) => ({
         value: option.id,
         label: option.label,
+        // The id is what actually gets passed as `--model`, but a friendly label hides it — show
+        // it unless the label already is the id.
+        description: option.label === option.id ? undefined : option.id,
         searchText: `${option.label} ${option.id}`,
       }))}
       ariaLabel={t('merge.modelLabel', { provider: providerName })}

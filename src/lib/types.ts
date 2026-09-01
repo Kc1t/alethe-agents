@@ -690,11 +690,14 @@ export const GROUP_COLORS = [
 ] as const
 
 export const PROVIDER_MODELS: Record<AgentType, { id: string; label: string }[]> = {
+  // Kept in sync with the `"claude"` fallback list in `src-tauri/src/cli_resolver.rs` — this one
+  // is used when the backend discovery call itself fails, that one when it succeeds but the CLI
+  // reports nothing (which is always, since the Claude CLI has no `models` subcommand).
   claude: [
-    { id: 'claude-3-7-sonnet', label: 'Claude 3.7 Sonnet (Padrão)' },
-    { id: 'claude-3-5-sonnet', label: 'Claude 3.5 Sonnet' },
-    { id: 'claude-3-5-haiku', label: 'Claude 3.5 Haiku' },
-    { id: 'claude-3-opus', label: 'Claude 3 Opus' },
+    { id: 'claude-opus-5', label: 'Claude Opus 5' },
+    { id: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
+    { id: 'claude-opus-4-8', label: 'Claude Opus 4.8' },
+    { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' },
   ],
   codex: [
     { id: 'gpt-4o', label: 'GPT-4o (Padrão)' },

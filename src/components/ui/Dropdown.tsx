@@ -1,4 +1,4 @@
-import { ChevronDown, Search } from 'lucide-react'
+import { Check, ChevronDown, Search } from 'lucide-react'
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -15,6 +15,9 @@ import styles from './Dropdown.module.css'
 export type DropdownOption = {
   value: string
   label: ReactNode
+  /** Secondary line under the label — for the literal value behind a friendly label (a model id,
+   * say), which is otherwise invisible even though it is what actually gets used. */
+  description?: ReactNode
   disabled?: boolean
   searchText?: string
 }
@@ -59,6 +62,7 @@ export function Dropdown({
   const [position, setPosition] = useState({ left: 0, top: 0, width: 220, maxHeight: 240 })
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const optionsRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const listboxId = useId()
   const selected = options.find((option) => option.value === value)
@@ -90,7 +94,10 @@ export function Dropdown({
 
   useLayoutEffect(() => {
     if (!open) return
-    const updatePosition = () => {
+    const updatePosition = (event?: Event) => {
+      // The scroll listener below is capturing, so it also sees the menu's own list scrolling.
+      // Repositioning against the (unmoved) trigger on every one of those ticks is pure churn.
+      if (event && menuRef.current?.contains(event.target as Node)) return
       const rect = triggerRef.current?.getBoundingClientRect()
       if (!rect) return
       const width = Math.min(320, Math.max(220, rect.width), window.innerWidth - 16)
@@ -142,6 +149,26 @@ export function Dropdown({
       if (focusFrame !== null) window.cancelAnimationFrame(focusFrame)
     }
   }, [open, searchable])
+
+  // Scrolls the option list itself instead of relying on the browser's native wheel handling.
+  // This menu is portalled to `document.body`, so when it is opened from inside a modal it sits
+  // outside the Radix dialog's content — and a modal Radix dialog mounts `react-remove-scroll`,
+  // which cancels wheel events originating outside that content. The list could be clicked (the
+  // menu already opts back into pointer events) but never scrolled, so any option past the
+  // visible few was unreachable. Registered natively because React routes `onWheel` through a
+  // passive listener, where `preventDefault` is a no-op.
+  useEffect(() => {
+    const list = optionsRef.current
+    if (!open || !list) return
+    const scrollOnWheel = (event: WheelEvent) => {
+      const { scrollTop, scrollHeight, clientHeight } = list
+      if (scrollHeight <= clientHeight) return
+      event.preventDefault()
+      list.scrollTop = Math.max(0, Math.min(scrollHeight - clientHeight, scrollTop + event.deltaY))
+    }
+    list.addEventListener('wheel', scrollOnWheel, { passive: false })
+    return () => list.removeEventListener('wheel', scrollOnWheel)
+  }, [open])
 
   const choose = (nextValue: string) => {
     onChange(nextValue)
@@ -218,7 +245,13 @@ export function Dropdown({
                   />
                 </div>
               ) : null}
-              <div className={styles.options} id={listboxId} role="listbox" aria-label={ariaLabel}>
+              <div
+                ref={optionsRef}
+                className={styles.options}
+                id={listboxId}
+                role="listbox"
+                aria-label={ariaLabel}
+              >
                 {visibleOptions.map((option) => (
                   <button
                     key={option.value}
@@ -233,7 +266,15 @@ export function Dropdown({
                       if (!option.disabled) choose(option.value)
                     }}
                   >
-                    <span>{option.label}</span>
+                    <span className={styles.optionText}>
+                      <span className={styles.optionLabel}>{option.label}</span>
+                      {option.description ? (
+                        <span className={styles.optionDescription}>{option.description}</span>
+                      ) : null}
+                    </span>
+                    {option.value === value ? (
+                      <Check className={styles.optionCheck} size={13} aria-hidden="true" />
+                    ) : null}
                   </button>
                 ))}
                 {showCustomOption ? (

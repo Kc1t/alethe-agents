@@ -843,22 +843,28 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                     }
                 }
             }
+            // The Claude CLI has no `models` subcommand, so this fallback is what the picker
+            // actually shows in practice — it is the model list, not a rarely-hit backstop, and
+            // every id here is passed straight through as `--model <id>`. Keep it current: the
+            // previous entries (`claude-3-7-sonnet`, `claude-3-5-sonnet`, `claude-3-5-haiku`,
+            // `claude-3-opus`) were both long superseded and never valid ids to begin with —
+            // that generation's real ids carried a date suffix.
             if models.is_empty() {
                 models.push(ModelOption {
-                    id: "claude-3-7-sonnet".into(),
-                    label: "Claude 3.7 Sonnet (Anthropic)".into(),
+                    id: "claude-opus-5".into(),
+                    label: "Claude Opus 5 (Anthropic)".into(),
                 });
                 models.push(ModelOption {
-                    id: "claude-3-5-sonnet".into(),
-                    label: "Claude 3.5 Sonnet (Anthropic)".into(),
+                    id: "claude-sonnet-5".into(),
+                    label: "Claude Sonnet 5 (Anthropic)".into(),
                 });
                 models.push(ModelOption {
-                    id: "claude-3-5-haiku".into(),
-                    label: "Claude 3.5 Haiku (Anthropic)".into(),
+                    id: "claude-opus-4-8".into(),
+                    label: "Claude Opus 4.8 (Anthropic)".into(),
                 });
                 models.push(ModelOption {
-                    id: "claude-3-opus".into(),
-                    label: "Claude 3 Opus (Anthropic)".into(),
+                    id: "claude-haiku-4-5".into(),
+                    label: "Claude Haiku 4.5 (Anthropic)".into(),
                 });
             }
         }

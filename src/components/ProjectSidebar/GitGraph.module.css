@@ -49,11 +49,11 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   /* Must match ROW_HEIGHT in GitGraphList.tsx — CSS can't import a TS
      constant, so the two must be changed together. */
-  height: 34px;
-  padding: 0 6px;
+  height: 28px;
+  padding: 0 4px;
   width: 100%;
   box-sizing: border-box;
   overflow: hidden;
@@ -98,12 +98,16 @@
   min-width: 0;
 }
 
+/* Allowed to shrink, unlike before: pinned at a non-shrinking 160px these badges claimed most of
+   a narrow sidebar's width before the subject got any, which is what squeezed the commit message
+   down to nothing. The subject is the point of the row, so the badges yield to it. */
 .refs {
   display: flex;
   align-items: center;
   gap: 3px;
-  flex-shrink: 0;
-  max-width: 160px;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 96px;
   overflow: hidden;
 }
 
@@ -135,7 +139,11 @@
 }
 
 .meta {
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 104px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 10px;
   color: var(--fg-faint);
   white-space: nowrap;
