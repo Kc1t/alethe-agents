@@ -7,7 +7,7 @@ import styles from './AgentCanvasPOC.module.css'
 
 export type UsageTab = 'claude' | 'codex'
 
-/** Tempo até o reset (epoch ms) em formato curto; `now` quando já passou. */
+                                                                             
 function fmtReset(ms: number, nowLabel: string): string {
   if (!Number.isFinite(ms) || ms <= 0) return '—'
   const diff = ms - Date.now()
@@ -18,7 +18,7 @@ function fmtReset(ms: number, nowLabel: string): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`
 }
 
-/** Cor da barra: base até 50%, âmbar até 80%, vermelho acima (tokens do tema). */
+                                                                                  
 function meterColor(util: number): string {
   if (util >= 80) return 'var(--status-offline)'
   if (util >= 50) return 'var(--status-waiting)'

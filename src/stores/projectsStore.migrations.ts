@@ -1,17 +1,19 @@
-/**
- * Migração e normalização do arquivo persistido (`projects.json`). Puro: recebe
- * o parsed cru e devolve um ProjectsFile válido na versão corrente (6). Mantido
- * separado do store pra isolar a lógica de compatibilidade de schema.
- */
+   
+                                                                                
+                                                                                    
+                                                                      
+   
 
 import { nanoid } from 'nanoid'
 
 import { normalizeEnabledFeatures } from '../lib/features'
+import { normalizeAppIconTheme } from '../lib/themeIcons'
 import { normalizeTodoTags, normalizeTodoTitle } from '../lib/todos'
 import {
   DEFAULT_PREFERENCES,
   EMPTY_PROJECTS_FILE,
   type Group,
+  GROUP_COLORS,
   type Preferences,
   type Project,
   type ProjectsFile,
@@ -21,9 +23,9 @@ import {
   type WorkspaceTab,
 } from '../lib/types'
 import {
-  MAX_WORKSPACE_TABS,
   captureWorkspaceSnapshot,
   cloneWorkspaceSnapshot,
+  MAX_WORKSPACE_TABS,
   sanitizeWorkspaceSnapshot,
 } from '../lib/workspaceNavigation'
 import {
@@ -33,6 +35,35 @@ import {
 } from './projectsStore.constants'
 
 type LegacyPreferences = Partial<Preferences> & { showGitControl?: boolean }
+
+function normalizeStoredAccent(value: unknown, fallback?: string): string | undefined {
+  if (typeof value !== 'string') return fallback
+  return /^#(?:[\da-f]{3,4}|[\da-f]{6}|[\da-f]{8})$/i.test(value) ? value : fallback
+}
+
+function normalizeStoredAccents(file: ProjectsFile): ProjectsFile {
+  const normalizeTab = (tab: WorkspaceTab): WorkspaceTab => ({
+    ...tab,
+    color: normalizeStoredAccent(tab.color),
+  })
+
+  return {
+    ...file,
+    groups: file.groups.map((group) => ({
+      ...group,
+      color: normalizeStoredAccent(group.color, GROUP_COLORS[0])!,
+    })),
+    projects: file.projects.map((project) => ({
+      ...project,
+      color: normalizeStoredAccent(project.color),
+    })),
+    workspace: {
+      ...file.workspace,
+      tabs: file.workspace.tabs.map(normalizeTab),
+      closedTabs: file.workspace.closedTabs?.map(normalizeTab),
+    },
+  }
+}
 
 export function normalizePreferences(raw: LegacyPreferences | undefined): Preferences {
   const preferences = {
@@ -45,7 +76,6 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     ...DEFAULT_PREFERENCES.resourcePolicy,
     ...(rawResourcePolicy ?? {}),
   }
-  const automaticParkingOptIn = rawResourcePolicy?.automaticParkingOptIn === true
   const memoryBudgetMb = Math.min(8192, Math.max(768, Math.round(resourcePolicy.memoryBudgetMb)))
   const warningThresholdMb = Math.min(
     memoryBudgetMb - 64,
@@ -64,31 +94,52 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     windowOpacity: Number.isFinite(rawWindowOpacity)
       ? Math.min(1, Math.max(0.6, rawWindowOpacity))
       : 1,
-    // Backfill: instalações antigas não têm os agentes novos em enabledAgents;
-    // preserva os toggles do usuário e habilita os que faltam pelo default.
+                                                                               
+                                                                            
     enabledAgents: { ...DEFAULT_PREFERENCES.enabledAgents, ...preferences.enabledAgents },
-    // Todo não existia nas instalações antigas: não muda a UI sem consentimento.
+                                                                                 
     enabledFeatures: normalizeEnabledFeatures(raw),
     leftSidebarVisible: raw?.leftSidebarVisible ?? true,
     rightSidebarVisible: raw?.rightSidebarVisible ?? true,
     leftSidebarWidth: Math.min(380, Math.max(220, Math.round(raw?.leftSidebarWidth ?? 286))),
     rightSidebarWidth: Math.min(420, Math.max(260, Math.round(raw?.rightSidebarWidth ?? 300))),
     language: preferences.language === 'pt-BR' ? 'pt-BR' : 'en',
+    visualStyle: raw?.visualStyle === 'clean' ? 'clean' : 'normal',
+    motionPreference: raw?.motionPreference === 'reduced' ? 'reduced' : 'animated',
     accountCreated: legacyAccountCreated,
     topbarStyle: preferences.topbarStyle === 'three-areas' ? 'three-areas' : 'classic',
     gitControlPlacement: preferences.gitControlPlacement === 'right' ? 'right' : 'left',
+    mcpDefaultScope: preferences.mcpDefaultScope === 'project' ? 'project' : 'global',
+    mcpOnboardingSeen: Boolean(preferences.mcpOnboardingSeen),
     displayName: preferences.displayName.trim(),
     profileImageUrl: preferences.profileImageUrl.trim(),
     todoStoragePath: preferences.todoStoragePath.trim(),
     spotifyClientId: preferences.spotifyClientId.trim(),
     spotifyClientSecret: preferences.spotifyClientSecret.trim(),
     uiZoom: clampUiZoom(preferences.uiZoom),
+    appIconTheme: normalizeAppIconTheme(preferences.appIconTheme),
     spawnConcurrency: clampSpawnConcurrency(preferences.spawnConcurrency),
+    dictationEnabled: Boolean(preferences.dictationEnabled),
+    dictationMode: preferences.dictationMode === 'hold' ? 'hold' : 'toggle',
+    dictationModelId:
+      typeof preferences.dictationModelId === 'string' && preferences.dictationModelId.trim()
+        ? preferences.dictationModelId.trim()
+        : DEFAULT_PREFERENCES.dictationModelId,
+    dictationMicrophoneId:
+      typeof preferences.dictationMicrophoneId === 'string' &&
+      preferences.dictationMicrophoneId.trim()
+        ? preferences.dictationMicrophoneId.trim()
+        : null,
+    dictationMicrophoneLabel:
+      typeof preferences.dictationMicrophoneLabel === 'string' &&
+      preferences.dictationMicrophoneLabel.trim()
+        ? preferences.dictationMicrophoneLabel.trim()
+        : null,
     resourcePolicy: {
-      // Older installs inherited Smart LRU without an explicit choice. Migrate
-      // them to monitor-only so an update never starts terminating PTYs.
-      mode: automaticParkingOptIn && resourcePolicy.mode === 'smart-lru' ? 'smart-lru' : 'manual',
-      automaticParkingOptIn,
+      // Automatic parking was removed. Keep the legacy shape for file
+      // compatibility, but normalize every installation to monitoring only.
+      mode: 'manual',
+      automaticParkingOptIn: false,
       memoryBudgetMb,
       warningThresholdMb,
       recoveryTargetMb,
@@ -257,26 +308,44 @@ export function migrateWorkspaceNavigation(base: {
   }
 }
 
-/** Migra arquivos antigos e normaliza snapshots restauráveis. */
+function migrateToV7(parsed: any): ProjectsFile {
+  return normalizeStoredAccents({
+    ...parsed,
+    version: 7,
+    projects: (parsed.projects ?? []).map((project: any) => ({
+      ...project,
+      gridLayoutHistory: project.gridLayoutHistory ?? [],
+    })),
+    groups: (parsed.groups ?? []).map((group: any) => ({
+      ...group,
+      gridLayoutHistory: group.gridLayoutHistory ?? [],
+    })),
+    preferences: {
+      ...normalizePreferences(parsed.preferences),
+      workspaceGridLayoutHistory: parsed.preferences?.workspaceGridLayoutHistory ?? [],
+    },
+  })
+}
+
+/** Migrates older files and normalizes restorable snapshots. */
 export function migrate(parsed: any): ProjectsFile {
-  if (parsed.version === 6) {
-    return { ...parsed, preferences: normalizePreferences(parsed.preferences) }
-  }
+  if (parsed.version === 7) return migrateToV7(parsed)
+  if (parsed.version === 6) return migrateToV7(parsed)
 
   const v5Result = parsed.version === 5 ? parsed : migrateToV5(parsed)
 
-  // Migrate v5 -> v6: orphanWorktrees (rastreamento de limpeza inacabada de worktrees).
+  // Migrate v5 -> v6: track worktrees whose cleanup did not finish.
   const v6Projects = (v5Result.projects ?? []).map((p: any) => ({
     ...p,
     orphanWorktrees: p.orphanWorktrees ?? [],
   }))
 
-  return {
+  return migrateToV7({
     ...v5Result,
     version: 6,
     projects: v6Projects,
     preferences: normalizePreferences(v5Result.preferences),
-  }
+  })
 }
 
 function migrateToV5(parsed: any): any {
@@ -372,7 +441,7 @@ function migrateToV5(parsed: any): any {
   }
 }
 
-/** Coleta todos os projectIds de um grupo e seus subgrupos recursivamente. */
+                                                                              
 export function collectGroupProjectIds(groupId: string, groups: Group[]): Set<string> {
   const result = new Set<string>()
   const queue = [groupId]

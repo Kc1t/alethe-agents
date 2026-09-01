@@ -1,12 +1,12 @@
-/**
- * Fase 4 — biblioteca de agents do Alethe.
- *
- * Cada template é uma subagent definition completa (frontmatter + system
- * prompt). O mesmo formato serve pros dois modos: subagent delegável e papel
- * de teammate ("Spawn a teammate using the <name> agent type…"). Os campos
- * `skills`/`mcpServers` não valem em modo teammate — por isso nenhum template
- * depende deles.
- */
+   
+                                           
+  
+                                                                         
+                                                                             
+                                                                           
+                                                                              
+                 
+   
 
 export type AgentTemplate = {
   name: string

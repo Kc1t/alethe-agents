@@ -4,16 +4,16 @@ import { ptBR } from './messages/pt-BR'
 
 export type { MessageKey }
 
-/** Idiomas suportados. `en` é o default e a fonte-de-verdade das chaves. */
+                                                                            
 export type Locale = 'en' | 'pt-BR'
 
 export const DEFAULT_LOCALE: Locale = 'en'
 
 export type LocaleMeta = {
   id: Locale
-  /** Nome no próprio idioma, pra mostrar no seletor. */
+                                                        
   nativeName: string
-  /** Locale BCP-47 pra Intl (datas/números). */
+                                                
   intl: string
 }
 
@@ -40,26 +40,26 @@ function interpolate(message: string, params?: Params): string {
   )
 }
 
-/**
- * Tradução pura (sem hook). Usa o dicionário do `locale`, com fallback pra
- * `en` e, em último caso, pra própria chave. Interpola `{placeholder}`.
- */
+   
+                                                                           
+                                                                        
+   
 export function translate(locale: Locale, key: MessageKey, params?: Params): string {
   const dict = DICTIONARIES[locale] ?? en
   const message = dict[key] ?? en[key] ?? key
   return interpolate(message, params)
 }
 
-/** Locale atual lido direto do store — pra uso fora de componentes React. */
+                                                                             
 export function getLocale(): Locale {
   return useProjectsStore.getState().preferences.language
 }
 
 export type TFunction = (key: MessageKey, params?: Params) => string
 
-/**
- * Hook de tradução. Re-renderiza o componente quando o idioma muda.
- */
+   
+                                                                    
+   
 export function useT(): TFunction {
   const locale = useProjectsStore((s) => s.preferences.language)
   return (key, params) => translate(locale, key, params)

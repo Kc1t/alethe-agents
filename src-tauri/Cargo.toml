@@ -1,10 +1,14 @@
 [package]
 name = "alethe"
-version = "1.5.0"
+version = "1.6.0"
 description = "Alethe — terminal multiplexer GUI"
 authors = ["Kauã Miguel"]
 license = "AGPL-3.0-or-later"
 edition = "2021"
+# Two binaries in this crate (alethe + alethe-orchestrator-mcp). Without
+# default-run, the bare `cargo run` that `tauri dev` issues cannot pick one and
+# aborts before the app ever starts.
+default-run = "alethe"
 
 [lib]
 name = "alethe_lib"
@@ -26,19 +30,28 @@ cc = "1"
 nanoid = "0.4"
 portable-pty = "0.8"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tauri = { version = "2", features = [] }
+# preserve_order keeps a round-tripped Value in file order. Without it, rewriting one
+# key of ~/.claude.json would alphabetise its other 80+ top-level keys.
+serde_json = { version = "1", features = ["preserve_order"] }
+tauri = { version = "2", features = ["image-png", "unstable"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "net", "time", "process", "io-util", "macros"] }
 tungstenite = { version = "0.26", default-features = false, features = ["handshake"] }
+tokio-tungstenite = "0.26"
+futures-util = "0.3"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 which = "6"
 zip = "0.6"
 sysinfo = "0.31"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+sha2 = "0.10"
+hex = "0.4"
+cpal = "0.15"
+# On-device STT (Parakeet / Whisper / …). Build script downloads prebuilt libs when unset.
+sherpa-onnx = "1.13.6"
 tiny_http = "0.12"
 # keyring v3 não habilita NENHUM backend de plataforma por padrão — sem uma
 # feature explícita ele usa um store mock e todo get_password() falha. Os
@@ -54,6 +67,10 @@ discord-rich-presence = "1.1.0"
 notify = "6"
 rusqlite = { version = "0.31", features = ["bundled"] }
 regex = "1"
+# toml_edit, not toml: it preserves comments, key order and formatting, which is
+# required to change one `[mcp_servers.*]` table inside a user's ~/.codex/config.toml
+# without rewriting the credentials, hooks and project tables around it.
+toml_edit = "0.22"
 
 # Impede execuções paralelas do Alethe (pré-requisito da guarda de
 # monotonicidade de `save_projects` em projects.rs). Só compila em desktop —
@@ -94,6 +111,9 @@ windows-sys = { version = "0.61", features = [
 # sistema pra criptografia da sessão D-Bus.
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3", default-features = false, features = ["sync-secret-service", "crypto-rust"] }
+# Match the webkit2gtk version Tauri already pulls so we can enable media-stream
+# and answer permission-request for getUserMedia (voice dictation).
+webkit2gtk = { version = "2.0.1", features = ["v2_40"] }
 
 # Em dev, unwind permite que um panic de comando vire Err em vez de derrubar o
 # app inteiro durante uma sessão de HMR. Release segue abort (binário menor).

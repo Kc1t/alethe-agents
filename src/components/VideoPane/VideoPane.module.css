@@ -102,3 +102,16 @@
   height: 18px;
   cursor: nwse-resize;
 }
+
+:global([data-visual-style='clean']) .pane {
+  border-radius: var(--clean-surface-radius);
+}
+
+:global([data-visual-style='clean']) .paneFocus {
+  border-color: var(--clean-focus-border);
+  box-shadow: var(--clean-shadow);
+}
+
+:global([data-visual-style='clean']) .header {
+  min-height: var(--clean-row-height);
+}

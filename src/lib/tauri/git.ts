@@ -22,7 +22,7 @@ export async function gitStatus(path: string): Promise<GitRepositoryStatus> {
   return invoke<GitRepositoryStatus>('git_status', { path })
 }
 
-/** Inicializa um repositório Git na pasta (com commit inicial) — devolve a raiz do repo. Idempotente. */
+                                                                                                         
 export async function gitInit(path: string): Promise<string> {
   return invoke<string>('git_init', { path })
 }
@@ -69,9 +69,9 @@ export async function cloneGithubRepo(url: string, targetDir: string): Promise<s
 
 export type DiffSummaryEntry = { path: string; status: string }
 
-/** Diff real (`--name-status`, three-dot) entre `source` e `target`, unido com o estado não
- * commitado da worktree quando `worktreePath` é informado (senão trabalho ainda não commitado
- * fica invisível) — alimenta o Briefing de Testes e o Gate de Verificação da Central de Merges. */
+                                                                                            
+                                                                                              
+                                                                                                   
 export async function gitDiffSummary(
   repoRoot: string,
   source: string,
@@ -113,7 +113,7 @@ export async function worktreeCleanup(repo: string): Promise<void> {
   await invoke('worktree_cleanup', { repo })
 }
 
-/** LocalCopy: traz o branch do clone para o repo principal antes do merge. No-op em gitWorktree. */
+                                                                                                    
 export async function worktreeFetchBranch(repo: string, agentId: string): Promise<void> {
   await invoke('worktree_fetch_branch', { repo, agentId })
 }
@@ -127,15 +127,104 @@ export async function worktreeUnlock(repo: string, agentId: string): Promise<voi
   await invoke('worktree_unlock', { repo, agentId })
 }
 
-// --- RFC-006/007/008 — Ciclo de merge seguro ---
+export type WorktreePendingChange = { path: string; status: string }
+
+export async function worktreeCommitPending(repo: string, agentId: string): Promise<boolean> {
+  return invoke<boolean>('worktree_commit_pending', { repo, agentId })
+}
+
+export async function worktreePendingChanges(
+  repo: string,
+  agentId: string,
+): Promise<WorktreePendingChange[]> {
+  return invoke<WorktreePendingChange[]>('worktree_pending_changes', { repo, agentId })
+}
+
+export async function worktreeCommitWorktree(
+  repo: string,
+  agentId: string,
+  message: string,
+): Promise<boolean> {
+  return invoke<boolean>('worktree_commit_worktree', { repo, agentId, message })
+}
+
+// --- Git graph ---
+
+export type GitCommitEntry = {
+  hash: string
+  parents: string[]
+  authorName: string
+  authorEmail: string
+  timestamp: number
+  subject: string
+  refs: string[]
+}
+
+export type GitResetMode = 'soft' | 'mixed' | 'hard'
+
+export type IncomingOutgoing = {
+  incoming: GitFileChange[]
+  outgoing: GitFileChange[]
+  hasUpstream: boolean
+}
+
+export async function gitLogGraph(repo: string, maxCount: number): Promise<GitCommitEntry[]> {
+  return invoke<GitCommitEntry[]>('git_log_graph', { repo, maxCount })
+}
+
+export async function gitShowCommitFiles(repo: string, hash: string): Promise<GitFileChange[]> {
+  return invoke<GitFileChange[]>('git_show_commit_files', { repo, hash })
+}
+
+export async function gitShowCommitMessage(repo: string, hash: string): Promise<string> {
+  return invoke<string>('git_show_commit_message', { repo, hash })
+}
+
+export async function gitCreateBranchFromCommit(
+  repo: string,
+  hash: string,
+  branchName: string,
+): Promise<void> {
+  await invoke('git_create_branch_from_commit', { repo, hash, branchName })
+}
+
+export async function gitCherryPickCommit(repo: string, hash: string): Promise<string> {
+  return invoke<string>('git_cherry_pick_commit', { repo, hash })
+}
+
+export async function gitRevertCommit(repo: string, hash: string): Promise<string> {
+  return invoke<string>('git_revert_commit', { repo, hash })
+}
+
+export async function gitResetToCommit(
+  repo: string,
+  hash: string,
+  mode: GitResetMode,
+): Promise<void> {
+  await invoke('git_reset_to_commit', { repo, hash, mode })
+}
+
+export async function gitIncomingOutgoing(repo: string): Promise<IncomingOutgoing> {
+  return invoke<IncomingOutgoing>('git_incoming_outgoing', { repo })
+}
+
+// --- Merge / conflict resolution ---
 
 export type ConflictClass =
-  'rust' | 'typeScript' | 'ui' | 'cargo' | 'package' | 'asset' | 'config' | 'gsd' | 'unknown'
+  | 'rust'
+  | 'typeScript'
+  | 'ui'
+  | 'cargo'
+  | 'package'
+  | 'json'
+  | 'config'
+  | 'asset'
+  | 'planning'
+  | 'sentinel'
+  | 'graph'
+  | 'other'
 
-export type ConflictFile = {
-  path: string
-  class: ConflictClass
-}
+export type ConflictFile = { path: string; class: ConflictClass }
 
 export type MergeAnalysis = {
   clean: boolean
@@ -158,10 +247,14 @@ export type MergeOutcome = {
   merged: boolean
   stage: string
   output: string
-  /** Camada 3 do Escudo (aviso, nunca bloqueia): endpoints chamados pelo
-   *  frontend sem rota de backend correspondente encontrada. */
   contractWarnings: ContractWarning[]
+  /** `false` when the project had no `validationCommands` configured — nothing was checked. */
+  validationRan: boolean
+  /** Shield layer 4 (a warning, never blocking) — only present if `healthCheckCommand` was configured. */
+  healthProbe: HealthProbeResult | null
 }
+
+export type MergeForceCleanupResult = { deleted: boolean; pruned: boolean }
 
 export async function mergeAnalyze(
   repo: string,
@@ -181,34 +274,42 @@ export async function mergePrepare(
   return invoke<ConflictEnv>('merge_prepare', { repo, source, target, projectId })
 }
 
-export async function mergeFinalize(
+export async function mergeValidate(
   repo: string,
   envId: string,
   validationCommands: string[],
 ): Promise<MergeOutcome> {
-  return invoke<MergeOutcome>('merge_finalize', { repo, envId, validationCommands })
+  return invoke<MergeOutcome>('merge_validate', { repo, envId, validationCommands })
+}
+
+export async function mergeFinalize(
+  repo: string,
+  envId: string,
+  validationCommands: string[],
+  healthCheckCommand?: string,
+  healthCheckPath?: string,
+): Promise<MergeOutcome> {
+  return invoke<MergeOutcome>('merge_finalize', {
+    repo,
+    envId,
+    validationCommands,
+    healthCheckCommand,
+    healthCheckPath,
+  })
 }
 
 export async function mergeAbort(repo: string, envId: string): Promise<void> {
   await invoke('merge_abort', { repo, envId })
 }
 
-/** Abort preventivo no worktree EFÊMERO antes de um retry — no-op se nada em progresso. */
 export async function mergePreflightAbort(repo: string, envId: string): Promise<void> {
   await invoke('merge_preflight_abort', { repo, envId })
 }
 
-/** Reconcilia a branch efêmera (já resolvida) com a ponta atual do alvo, quando `stage === 'branch_diverged'`. */
 export async function mergeRebaseOntoTarget(repo: string, envId: string): Promise<MergeOutcome> {
   return invoke<MergeOutcome>('merge_rebase_onto_target', { repo, envId })
 }
 
-export type MergeForceCleanupResult = {
-  deleted: boolean
-  pruned: boolean
-}
-
-/** Limpeza bruta de um ambiente de merge irrecuperável (fase `terminal_error`). */
 export async function mergeForceCleanup(
   repo: string,
   envId: string,
@@ -216,7 +317,6 @@ export async function mergeForceCleanup(
   return invoke<MergeForceCleanupResult>('merge_force_cleanup', { repo, envId })
 }
 
-// --- Bloco 2 da Central de Merges — motor multi-stack, contrato de API, probe de saúde ---
 
 export type ProjectStack = 'web' | 'cli' | 'desktop' | 'fullstack' | 'unknown'
 
@@ -228,9 +328,9 @@ export type StackDetection = {
   suggestedCommands: string[]
 }
 
-/** Heurística por arquivo-marcador (sem AST) — só pra pré-preencher sugestão
- *  de comandos de validação, nunca roda sozinha nem substitui o que o
- *  usuário já escreveu. */
+                                                                             
+                                                                      
+                           
 export async function detectProjectStack(repo: string): Promise<StackDetection> {
   return invoke<StackDetection>('detect_project_stack', { repo })
 }
@@ -247,8 +347,8 @@ export type ContractWarning = {
   reason: string
 }
 
-/** Camada de AVISO (nunca bloqueia sozinha): roda no ambiente efêmero de
- *  merge_prepare, nunca no worktree do usuário. */
+                                                                         
+                                                   
 export async function contractCheck(envPath: string): Promise<ContractWarning[]> {
   return invoke<ContractWarning[]>('contract_check', { envPath })
 }
@@ -259,11 +359,12 @@ export type HealthProbeResult = {
   statusCode: number | null
   elapsedMs: number
   outputTail: string
+  terminalVerified: boolean | null
 }
 
-/** Sobe `startCommand` no ambiente efêmero numa porta isolada e testa `path`
- *  até responder ou estourar `timeoutMs`. Mata a árvore de processo sempre,
- *  não importa o resultado. Camada de AVISO — nunca bloqueia sozinha. */
+                                                                             
+                                                                            
+                                                                         
 export async function healthProbe(
   envPath: string,
   startCommand: string,

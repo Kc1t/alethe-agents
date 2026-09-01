@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react'
 
 import { gitStatus } from '../../lib/tauri'
 
-// cache por cwd + dedup de chamadas concorrentes (git_status é caro)
+                                                                     
 const branchCache = new Map<string, string | null>()
 const branchInflight = new Map<string, Promise<void>>()
 
-/** Lê o branch do repo no cwd via gitStatus (já existente). Defensivo: null se não for repo. */
+                                                                                                
 export function useProjectBranch(cwd?: string): string | null {
   const [branch, setBranch] = useState<string | null>(() =>
     cwd ? (branchCache.get(cwd) ?? null) : null,

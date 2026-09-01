@@ -11,6 +11,7 @@ use crate::stats::MemoryStats;
 
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 const META_STALE_MS: u64 = 30_000;
+const RESOURCE_LOG_INTERVAL_MS: u64 = 60_000;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -137,8 +138,8 @@ struct ResourceState {
     policy: ResourcePolicy,
     metas: HashMap<String, PtyRuntimeMeta>,
     latest: Option<RuntimeSnapshot>,
-    pressure_active: bool,
     last_level: &'static str,
+    last_log_at_ms: u64,
 }
 
 pub struct ResourceSupervisor {
@@ -153,8 +154,8 @@ impl Default for ResourceSupervisor {
                 policy: ResourcePolicy::default(),
                 metas: HashMap::new(),
                 latest: None,
-                pressure_active: false,
                 last_level: "normal",
+                last_log_at_ms: 0,
             }),
             system: Mutex::new(System::new()),
         }
@@ -174,11 +175,7 @@ fn process_private_commit_bytes(pid: u32, fallback: u64) -> u64 {
         };
 
         unsafe {
-            let process = OpenProcess(
-                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ,
-                0,
-                pid,
-            );
+            let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, 0, pid);
             if process.is_null() {
                 return fallback;
             }
@@ -186,7 +183,8 @@ fn process_private_commit_bytes(pid: u32, fallback: u64) -> u64 {
             counters.cb = size_of::<PROCESS_MEMORY_COUNTERS_EX>() as u32;
             let ok = K32GetProcessMemoryInfo(
                 process,
-                (&mut counters as *mut PROCESS_MEMORY_COUNTERS_EX).cast::<PROCESS_MEMORY_COUNTERS>(),
+                (&mut counters as *mut PROCESS_MEMORY_COUNTERS_EX)
+                    .cast::<PROCESS_MEMORY_COUNTERS>(),
                 counters.cb,
             );
             let _ = CloseHandle(process);
@@ -197,10 +195,6 @@ fn process_private_commit_bytes(pid: u32, fallback: u64) -> u64 {
     }
     #[cfg(target_os = "linux")]
     {
-        // smaps_rollup já vem agregado pelo kernel (rápido, sem parsear o
-        // /proc/<pid>/smaps inteiro). Private_Clean + Private_Dirty é a
-        // memória exclusiva do processo — soma entre processos sem contar
-        // páginas compartilhadas (libs, forks) mais de uma vez, ao contrário
         // do RSS bruto do sysinfo.
         if let Ok(content) = std::fs::read_to_string(format!("/proc/{pid}/smaps_rollup")) {
             let mut private_kb = 0_u64;
@@ -210,7 +204,12 @@ fn process_private_commit_bytes(pid: u32, fallback: u64) -> u64 {
                     .strip_prefix("Private_Clean:")
                     .or_else(|| line.strip_prefix("Private_Dirty:"));
                 if let Some(rest) = value {
-                    if let Some(kb) = rest.trim().split_whitespace().next().and_then(|v| v.parse::<u64>().ok()) {
+                    if let Some(kb) = rest
+                        .trim()
+                        .split_whitespace()
+                        .next()
+                        .and_then(|v| v.parse::<u64>().ok())
+                    {
                         private_kb += kb;
                         found = true;
                     }
@@ -249,7 +248,13 @@ impl ResourceSupervisor {
                     .map(|(id, session)| {
                         (
                             id.clone(),
-                            session.child.lock().ok().and_then(|child| child.process_id()),
+                            // try_lock: taken while the global session lock is held, and that
+                            // lock is what every keystroke goes through.
+                            session
+                                .child
+                                .try_lock()
+                                .ok()
+                                .and_then(|mut child| child.process_id()),
                             session.command.clone(),
                             session.cwd.clone(),
                         )
@@ -264,12 +269,6 @@ impl ResourceSupervisor {
 
         let mut children = HashMap::<u32, Vec<u32>>::new();
         for (pid, process) in system.processes() {
-            // No Linux, sysinfo lista as threads de /proc/<pid>/task/<tid> como
-            // entradas próprias no mesmo mapa de processos (cada uma com o pid
-            // real como "parent"). thread_kind() é Some(..) só pra essas —
-            // sem filtrar, cada thread reconta a memória inteira do processo
-            // (RSS/privada é por processo, compartilhada entre threads), o que
-            // infla processo e memória em várias vezes (WebKitWebProcess por
             // ex. roda ~30 threads).
             if process.thread_kind().is_some() {
                 continue;
@@ -293,10 +292,7 @@ impl ResourceSupervisor {
                 continue;
             };
             let working = process.memory();
-            // Soma de working-set/RSS bruto conta páginas compartilhadas
-            // (libs, forks) uma vez POR PROCESSO — com dezenas de processos
-            // isso infla o total muito além da RAM física real. A memória
-            // privada (não-compartilhada) é a que soma corretamente entre
+
             // processos.
             let private = process_private_commit_bytes(*pid, working);
             private_total += private;
@@ -347,10 +343,7 @@ impl ResourceSupervisor {
                         })
                     })
                     .collect::<Vec<_>>();
-                processes.sort_by(|a, b| {
-                    b.effective_memory()
-                        .total_cmp(&a.effective_memory())
-                });
+                processes.sort_by(|a, b| b.effective_memory().total_cmp(&a.effective_memory()));
                 PtyResourceStats {
                     id,
                     root_pid,
@@ -376,7 +369,7 @@ impl ResourceSupervisor {
             pressure: PressureState {
                 level: "normal",
                 spawn_blocked: false,
-                automatic: true,
+                automatic: false,
                 candidate_count: 0,
                 last_suspended_id: None,
             },
@@ -388,6 +381,12 @@ impl RuntimeProcess {
     fn effective_memory(&self) -> f64 {
         self.working_set_mb.max(self.private_commit_mb)
     }
+}
+
+/// Whether this cycle is allowed to terminate a session. Manual mode means the app never does it
+/// on its own, at any pressure level; the warning is what it offers instead.
+fn may_suspend(level: &str, policy: &ResourcePolicy) -> bool {
+    level == "critical" && policy.mode != "manual"
 }
 
 fn eligible_candidates(
@@ -438,80 +437,94 @@ fn eligible_candidates(
     candidates.into_iter().map(|entry| entry.0).collect()
 }
 
-fn run_cycle(
-    app: &AppHandle,
-    sessions: &PtySessions,
-    supervisor: &ResourceSupervisor,
-) {
+fn pressure_level(memory: &MemoryStats, previous: &'static str) -> &'static str {
+    let total = memory.system_total_mb.max(1.0);
+    let available = memory.system_available_mb;
+    let critical_at = (total * 0.05).max(512.0);
+    let warning_at = (total * 0.10).max(1024.0);
+
+    if available <= critical_at || (previous == "critical" && available <= critical_at * 1.25) {
+        "critical"
+    } else if available <= warning_at || (previous == "warning" && available <= warning_at * 1.25) {
+        "warning"
+    } else {
+        "normal"
+    }
+}
+
+fn run_cycle(app: &AppHandle, sessions: &PtySessions, supervisor: &ResourceSupervisor) {
     let mut snapshot = supervisor.collect(sessions);
     let now = snapshot.sampled_at_ms;
-    let (policy, metas, was_active, previous_level) = {
+    let (policy, metas, previous_level, last_log_at_ms) = {
         let state = supervisor.state.lock().unwrap_or_else(|p| p.into_inner());
         (
             state.policy.clone(),
             state.metas.clone(),
-            state.pressure_active,
             state.last_level,
+            state.last_log_at_ms,
         )
     };
-    let automatic = policy.mode == "smart-lru";
-    // Histerese: sem isso, uso oscilando perto do orçamento vira "critical" e
-    // volta pra "warning"/"normal" a cada ciclo (5s), disparando uma
-    // notificação nova a cada troca — nunca "assenta". Uma vez crítico, só
-    // sai desse nível quando cair abaixo do recovery_target_mb (mesma lógica
-    // que pressure_active já usa).
-    let was_critical = previous_level == "critical";
-    let critical = snapshot.effective_total_mb >= policy.memory_budget_mb
-        || (was_critical && snapshot.effective_total_mb > policy.recovery_target_mb);
-    let pressure_active = critical
-        || (was_active && snapshot.effective_total_mb > policy.recovery_target_mb);
     let candidates = eligible_candidates(&snapshot, &metas, &policy, now);
-    let mut suspended_id = None;
-    if automatic && pressure_active {
-        if let Some(id) = candidates.first() {
-            if pty::suspend_session(app, sessions, id).unwrap_or(false) {
-                suspended_id = Some(id.clone());
+    let level = pressure_level(&snapshot.memory, previous_level);
+    // Suspending is not a pause: the process tree is killed and nothing ever brings it back, so a
+    // terminal loses its running agent until it is started again by hand. Doing that to someone who
+    // never asked for it is why manual mode has to be honoured even under critical pressure — the
+    // warning is what manual mode offers instead.
+    let suspended_id = if may_suspend(level, &policy) {
+        candidates.first().and_then(|id| {
+            match pty::suspend_session_with_reason(app, sessions, id, "memory-pressure") {
+                Ok(true) => Some(id.clone()),
+                _ => None,
             }
-        }
-    }
-    // O modo manual desativa apenas o estacionamento automático; não deve
-    // permitir que novos PTYs agravem uma pressão crítica e congelem o sistema.
-    // Sessões já abertas continuam intactas para o usuário decidir o que
-    // suspender/encerrar.
-    let spawn_blocked = critical;
-    let level = if critical {
-        "critical"
-    } else if snapshot.effective_total_mb >= policy.warning_threshold_mb || pressure_active {
-        "warning"
+        })
     } else {
-        "normal"
+        None
     };
     snapshot.pressure = PressureState {
         level,
-        spawn_blocked,
-        automatic,
+        spawn_blocked: false,
+        automatic: suspended_id.is_some(),
         candidate_count: candidates.len(),
         last_suspended_id: suspended_id.clone(),
     };
 
+    let should_log = previous_level != level
+        || suspended_id.is_some()
+        || now.saturating_sub(last_log_at_ms) >= RESOURCE_LOG_INTERVAL_MS;
     {
         let mut state = supervisor.state.lock().unwrap_or_else(|p| p.into_inner());
-        state.pressure_active = pressure_active && level != "normal";
         state.last_level = level;
         if let Some(id) = &suspended_id {
             state.metas.remove(id);
         }
+        if should_log {
+            state.last_log_at_ms = now;
+        }
         state.latest = Some(snapshot.clone());
     }
 
-    if previous_level != level || suspended_id.is_some() || spawn_blocked {
+    if should_log {
+        crate::logging::record_resource_snapshot(
+            app,
+            level,
+            &snapshot,
+            candidates.len(),
+            if suspended_id.is_some() {
+                "emergency-suspend"
+            } else {
+                "none"
+            },
+        );
+    }
+
+    if previous_level != level || suspended_id.is_some() {
         let _ = app.emit(
             "resource://pressure",
             ResourcePressurePayload {
                 level,
                 total_mb: snapshot.effective_total_mb,
                 budget_mb: policy.memory_budget_mb,
-                spawn_blocked,
+                spawn_blocked: false,
                 candidate_count: candidates.len(),
                 suspended_id,
             },
@@ -541,9 +554,35 @@ pub fn set_resource_policy(
 
 #[tauri::command]
 pub fn update_pty_runtime_meta(
+    sessions: State<'_, PtySessions>,
     supervisor: State<'_, std::sync::Arc<ResourceSupervisor>>,
     metas: Vec<PtyRuntimeMeta>,
 ) {
+    // Visibility is reconciled from this report instead of relying only on set_pty_visible.
+    // That call is a no-op when it lands while the session is still spawning or restarting, and
+    // an output stream left switched off stays off — the pane accepts keystrokes and renders
+    // nothing until it is restarted. Re-asserting the flag every tick heals that within a sample.
+    if let Ok(sessions) = sessions.lock() {
+        for meta in &metas {
+            if let Some(session) = sessions.get(&meta.id) {
+                // A silenced pane is indistinguishable from a frozen one, so every flip is
+                // recorded: it is the only trace left when a terminal stops showing output.
+                let was = session
+                    .visible
+                    .swap(meta.visible, std::sync::atomic::Ordering::Relaxed);
+                if was != meta.visible {
+                    let _ = crate::logging::record_app_event(
+                        "pty.visibility".to_string(),
+                        format!(
+                            "id={} visible={} focused={} status={}",
+                            meta.id, meta.visible, meta.focused, meta.status
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
     let mut state = supervisor.state.lock().unwrap_or_else(|p| p.into_inner());
     let ids = metas
         .iter()
@@ -604,11 +643,34 @@ mod tests {
             pressure: PressureState {
                 level: "normal",
                 spawn_blocked: false,
-                automatic: true,
+                automatic: false,
                 candidate_count: 0,
                 last_suspended_id: None,
             },
         }
+    }
+
+    #[test]
+    fn manual_mode_never_terminates_a_session() {
+        let policy = ResourcePolicy::default();
+        assert_eq!(policy.mode, "manual", "manual is the shipped default");
+        for level in ["normal", "warning", "critical"] {
+            assert!(
+                !may_suspend(level, &policy),
+                "at {level} pressure manual mode must warn, never kill"
+            );
+        }
+    }
+
+    #[test]
+    fn opting_in_allows_termination_only_when_critical() {
+        let policy = ResourcePolicy {
+            mode: "smart-lru".to_string(),
+            ..ResourcePolicy::default()
+        };
+        assert!(!may_suspend("normal", &policy));
+        assert!(!may_suspend("warning", &policy));
+        assert!(may_suspend("critical", &policy));
     }
 
     fn meta(id: &str) -> PtyRuntimeMeta {
@@ -658,7 +720,7 @@ mod tests {
     }
 
     #[test]
-    fn idle_shells_are_parked_before_agents() {
+    fn idle_shells_are_recommended_before_agents() {
         let policy = ResourcePolicy::default();
         let mut sample = snapshot("agent");
         let mut shell_stats = sample.ptys[0].clone();
@@ -669,13 +731,64 @@ mod tests {
         shell.reported_at_ms = 2_000_000;
         let mut agent = meta("agent");
         agent.reported_at_ms = 2_000_000;
-        let metas = HashMap::from([
-            ("agent".to_string(), agent),
-            ("shell".to_string(), shell),
-        ]);
+        let metas = HashMap::from([("agent".to_string(), agent), ("shell".to_string(), shell)]);
         assert_eq!(
             eligible_candidates(&sample, &metas, &policy, 2_000_000),
             vec!["shell".to_string(), "agent".to_string()]
         );
+    }
+
+    #[test]
+    fn pressure_uses_available_system_memory_not_app_usage() {
+        let sample = snapshot("a");
+        assert_eq!(pressure_level(&sample.memory, "normal"), "normal");
+    }
+
+    #[test]
+    fn pressure_warns_only_when_windows_memory_is_low() {
+        let mut sample = snapshot("a");
+        sample.memory.system_available_mb = 1200.0;
+        assert_eq!(pressure_level(&sample.memory, "normal"), "warning");
+        sample.memory.system_available_mb = 600.0;
+        assert_eq!(pressure_level(&sample.memory, "normal"), "critical");
+    }
+
+    #[test]
+    fn candidate_selection_handles_thousands_of_idle_runtimes() {
+        const RUNTIME_COUNT: usize = 5_000;
+        let policy = ResourcePolicy::default();
+        let mut sample = snapshot("seed");
+        sample.ptys.clear();
+        let mut metas = HashMap::with_capacity(RUNTIME_COUNT);
+
+        for index in 0..RUNTIME_COUNT {
+            let id = if index % 2 == 0 {
+                format!("shell-{index}")
+            } else {
+                format!("agent-{index}")
+            };
+            let mut runtime_meta = meta(&id);
+            runtime_meta.reported_at_ms = 2_000_000;
+            runtime_meta.kind = if index % 2 == 0 {
+                "shell".to_string()
+            } else {
+                "agent".to_string()
+            };
+            let mut stats = snapshot(&id).ptys.remove(0);
+            stats.id = id.clone();
+            stats.effective_memory_mb = 100.0 + (index % 100) as f64;
+            sample.ptys.push(stats);
+            metas.insert(id, runtime_meta);
+        }
+
+        let candidates = eligible_candidates(&sample, &metas, &policy, 2_000_000);
+
+        assert_eq!(candidates.len(), RUNTIME_COUNT);
+        assert!(candidates[..RUNTIME_COUNT / 2]
+            .iter()
+            .all(|id| id.starts_with("shell-")));
+        assert!(candidates[RUNTIME_COUNT / 2..]
+            .iter()
+            .all(|id| id.starts_with("agent-")));
     }
 }

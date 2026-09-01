@@ -1,10 +1,3 @@
-//! Bloco 2.1 do plano da Central de Merges — detecção LEVE de stack do
-//! projeto, por arquivo-marcador (sem parsing de AST/gramática). O resultado
-//! só PRÉ-PREENCHE sugestão de comandos de validação no EditProjectModal
-//! quando o campo está vazio — nunca roda sozinho, nunca substitui o que o
-//! usuário já escreveu, e nunca entra no caminho crítico do merge (que
-//! continua sendo só `validation::run_validation` com a lista final).
-
 use serde::Serialize;
 use std::path::Path;
 
@@ -36,10 +29,6 @@ fn has_tauri_conf(root: &Path) -> bool {
     has_file(root, "tauri.conf.json") || root.join("src-tauri").join("tauri.conf.json").is_file()
 }
 
-/// `package.json` conta como sinal de frontend só se tiver scripts típicos de
-/// dev/build OU alguma dependência de framework de UI conhecida — um
-/// `package.json` de ferramenta CLI Node pura (sem "dev"/"build"/"start" e sem
-/// framework) não conta.
 fn package_json_has_frontend_signal(root: &Path) -> bool {
     let Ok(content) = std::fs::read_to_string(root.join("package.json")) else {
         return false;
@@ -51,7 +40,9 @@ fn package_json_has_frontend_signal(root: &Path) -> bool {
         .get("scripts")
         .and_then(|s| s.as_object())
         .map(|scripts| {
-            scripts.contains_key("dev") || scripts.contains_key("build") || scripts.contains_key("start")
+            scripts.contains_key("dev")
+                || scripts.contains_key("build")
+                || scripts.contains_key("start")
         })
         .unwrap_or(false);
     const FRONTEND_DEPS: &[&str] = &["react", "vue", "svelte", "next", "vite", "@angular/core"];
@@ -69,8 +60,6 @@ fn package_json_has_frontend_signal(root: &Path) -> bool {
 }
 
 fn has_rust_backend_bin(root: &Path) -> bool {
-    // Cargo.toml presente sem tauri.conf.json ao lado é sinal de backend/CLI
-    // Rust "puro" — o caso Tauri já é coberto por has_tauri_conf antes.
     has_file(root, "Cargo.toml") && !has_tauri_conf(root)
 }
 
@@ -164,11 +153,7 @@ mod tests {
         let root = temp_repo("desktop");
         fs::create_dir_all(root.join("src-tauri")).unwrap();
         fs::write(root.join("src-tauri").join("tauri.conf.json"), "{}").unwrap();
-        fs::write(
-            root.join("package.json"),
-            r#"{"scripts":{"dev":"vite"}}"#,
-        )
-        .unwrap();
+        fs::write(root.join("package.json"), r#"{"scripts":{"dev":"vite"}}"#).unwrap();
         let detection = detect_project_stack(root.to_string_lossy().into_owned()).unwrap();
         assert_eq!(detection.stack, ProjectStack::Desktop);
         assert!(detection.has_tauri);

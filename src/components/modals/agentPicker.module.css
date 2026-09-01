@@ -1,5 +1,5 @@
-/* Lista vertical de agentes — bate com a estrutura mostrada pelo user
-   (icon left + label + folder icon right). Cada row é clicável. */
+                                                                      
+                                                                   
 
 .list {
   display: flex;
@@ -79,13 +79,13 @@
 }
 
 .bolt {
-  color: #fbbf24;
-  fill: #fbbf24;
+  color: var(--status-waiting);
+  fill: var(--status-waiting);
 }
 
 .boltActive {
   background: rgba(251, 191, 36, 0.18);
-  color: #fbbf24;
+  color: var(--status-waiting);
   outline: 1px solid rgba(251, 191, 36, 0.5);
 }
 .boltActive:hover {

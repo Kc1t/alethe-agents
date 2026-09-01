@@ -1,19 +1,11 @@
 // Fase 3 do agent canvas — "modo economia".
 //
-// Liga/desliga agents customizados baratos num projeto escrevendo arquivos
-// `.claude/agents/*.md` na pasta escolhida. Como são subagents, disparam os
-// mesmos hooks da Fase 2 e aparecem no canvas sem mudança nenhuma lá.
+
 //
-// A delegação é probabilística: o campo `description` é o gatilho — o Claude
-// decide delegar com base nele (ou quando o usuário pede "use o agent X").
-// Os arquivos carregam no INÍCIO da sessão do claude; depois de togglar,
-// reinicie o claude do dock (botão ↻).
 
 use std::fs;
 use std::path::PathBuf;
 
-/// Marca de autoria — só deletamos no toggle-off arquivos que contêm isso,
-/// pra nunca apagar um agent que o usuário criou por conta própria.
 const MARKER: &str = "gerado pelo Alethe (modo economia)";
 
 const AGENTS: &[(&str, &str)] = &[
@@ -57,12 +49,11 @@ Regras:
 "#,
     ),
     (
-        // Guard: Haiku ignora a restrição "só codex exec" por instrução
         // (validado na POC — ele roda find/grep por conta). O hook PreToolUse
-        // do próprio agent bloqueia (exit 2) qualquer Bash que não seja
+
         // `codex exec`, devolvendo o motivo pro modelo tentar de novo certo.
         "codex-only-guard.cjs",
-        r#"// gerado pelo Alethe (modo economia) — guard do codex-executor
+        r#"                                                               
 let raw = ''
 process.stdin.on('data', (d) => (raw += d))
 process.stdin.on('end', () => {
@@ -114,8 +105,6 @@ pub fn economy_agents_enabled(folder: String) -> bool {
     AGENTS.iter().all(|(name, _)| dir.join(name).is_file())
 }
 
-/// Liga (escreve) ou desliga (remove só os nossos) os agents de economia.
-/// Retorna os paths afetados.
 #[tauri::command]
 pub fn set_economy_agents(folder: String, enabled: bool) -> Result<Vec<String>, String> {
     let dir = agents_dir(&folder);

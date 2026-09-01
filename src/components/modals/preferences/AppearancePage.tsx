@@ -1,12 +1,13 @@
-import { Check, Minus, Plus, RotateCcw } from 'lucide-react'
+import { Check, Minus, Pause, Plus, RotateCcw, Waves } from 'lucide-react'
 
 import { useT } from '../../../lib/i18n'
+import { APP_ICON_OPTIONS, getThemeIcon } from '../../../lib/themeIcons'
 import { THEME_OPTIONS, themeDescription, themeLabel } from '../../../lib/themes'
-import type { AppIconTheme } from '../../../lib/types'
+import type { MotionPreference, VisualStyle } from '../../../lib/types'
 import { UI_ZOOM_LIMITS, useProjectsStore } from '../../../stores/projectsStore'
+import { Dropdown } from '../../ui/Dropdown'
 import styles from '../PreferencesModal.module.css'
 import { SettingsSection } from './primitives'
-import { Dropdown } from '../../ui/Dropdown'
 
 export function AppearancePage() {
   const t = useT()
@@ -17,6 +18,114 @@ export function AppearancePage() {
   const setPreferences = useProjectsStore((state) => state.setPreferences)
   return (
     <>
+      <SettingsSection
+        id="visual-style"
+        title={t('prefs.visualStyle')}
+        description={t('prefs.visualStyleDesc')}
+      >
+        <div className={styles.visualStyleGrid}>
+          {(['normal', 'clean'] as VisualStyle[]).map((visualStyle) => {
+            const active = (preferences.visualStyle ?? 'normal') === visualStyle
+            return (
+              <button
+                key={visualStyle}
+                type="button"
+                className={`${styles.visualStyleOption} ${active ? styles.visualStyleActive : ''}`}
+                onClick={() => setPreferences({ visualStyle })}
+                aria-pressed={active}
+              >
+                <span
+                  className={`${styles.visualStylePreview} ${
+                    visualStyle === 'clean'
+                      ? styles.visualStylePreviewClean
+                      : styles.visualStylePreviewNormal
+                  }`}
+                  aria-hidden
+                >
+                  <span className={styles.previewToolbar} />
+                  <span className={styles.previewSidebar}>
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                  <span className={styles.previewWorkspace}>
+                    <span />
+                    <span />
+                  </span>
+                </span>
+                <span className={styles.visualStyleCopy}>
+                  <strong>
+                    {t(
+                      visualStyle === 'clean'
+                        ? 'prefs.visualStyleClean'
+                        : 'prefs.visualStyleNormal',
+                    )}
+                  </strong>
+                  <small>
+                    {t(
+                      visualStyle === 'clean'
+                        ? 'prefs.visualStyleCleanDesc'
+                        : 'prefs.visualStyleNormalDesc',
+                    )}
+                  </small>
+                </span>
+                {active ? <Check size={15} /> : null}
+              </button>
+            )
+          })}
+        </div>
+      </SettingsSection>
+
+      <SettingsSection id="motion" title={t('prefs.motion')} description={t('prefs.motionDesc')}>
+        <div className={styles.visualStyleGrid}>
+          {(['animated', 'reduced'] as MotionPreference[]).map((motionPreference) => {
+            const active = preferences.motionPreference === motionPreference
+            return (
+              <button
+                key={motionPreference}
+                type="button"
+                className={`${styles.visualStyleOption} ${active ? styles.visualStyleActive : ''}`}
+                onClick={() => setPreferences({ motionPreference })}
+                aria-pressed={active}
+              >
+                <span
+                  className={`${styles.motionPreview} ${
+                    motionPreference === 'animated'
+                      ? styles.motionPreviewAnimated
+                      : styles.motionPreviewReduced
+                  }`}
+                  aria-hidden
+                >
+                  <span className={styles.motionPreviewLines}>
+                    <span>··::==++**##</span>
+                    <span>::--==++##%%</span>
+                    <span>..::--++**@@</span>
+                  </span>
+                  {motionPreference === 'animated' ? <Waves size={18} /> : <Pause size={18} />}
+                </span>
+                <span className={styles.visualStyleCopy}>
+                  <strong>
+                    {t(
+                      motionPreference === 'animated'
+                        ? 'prefs.motionAnimated'
+                        : 'prefs.motionReduced',
+                    )}
+                  </strong>
+                  <small>
+                    {t(
+                      motionPreference === 'animated'
+                        ? 'prefs.motionAnimatedDesc'
+                        : 'prefs.motionReducedDesc',
+                    )}
+                  </small>
+                </span>
+                {active ? <Check size={15} /> : null}
+              </button>
+            )
+          })}
+        </div>
+      </SettingsSection>
+
       <SettingsSection
         id="ui-theme"
         title={t('prefs.uiTheme')}
@@ -50,20 +159,34 @@ export function AppearancePage() {
 
       <SettingsSection
         id="app-icon-theme"
-        title="App icon theme"
-        description="Choose the native desktop icon independently from the interface theme."
+        title={t('prefs.appIconTheme')}
+        description={t('prefs.appIconThemeDesc')}
       >
-        <Dropdown
-          className={styles.select}
-          value={preferences.appIconTheme}
-          onChange={(value) => setPreferences({ appIconTheme: value as AppIconTheme })}
-          ariaLabel="App icon theme"
-          options={[
-            ...THEME_OPTIONS.map((theme) => ({ value: theme.id, label: themeLabel(t, theme.id) })),
-            { value: 'alethe-blue-gradient', label: 'Alethe Blue Gradient' },
-            { value: 'alethe-pink-gradient', label: 'Alethe Pink Gradient' },
-          ]}
-        />
+        <div className={styles.appIconGrid}>
+          {APP_ICON_OPTIONS.map((icon) => {
+            const active = preferences.appIconTheme === icon.id
+            return (
+              <button
+                key={icon.id}
+                type="button"
+                className={[styles.appIconOption, active ? styles.appIconOptionActive : '']
+                  .filter(Boolean)
+                  .join(' ')}
+                onClick={() => setPreferences({ appIconTheme: icon.id })}
+                aria-pressed={active}
+              >
+                <img
+                  className={styles.appIconThumb}
+                  src={getThemeIcon(icon.id, 64)}
+                  alt=""
+                  draggable={false}
+                />
+                <span className={styles.appIconLabel}>{icon.label}</span>
+                {active ? <Check size={13} className={styles.appIconCheck} /> : null}
+              </button>
+            )
+          })}
+        </div>
       </SettingsSection>
 
       <SettingsSection
@@ -75,12 +198,13 @@ export function AppearancePage() {
           className={styles.select}
           value={preferences.terminalTheme ?? ''}
           onChange={(value) =>
-            setTerminalTheme(
-              value ? (value as typeof preferences.uiTheme) : null,
-            )
+            setTerminalTheme(value ? (value as typeof preferences.uiTheme) : null)
           }
           ariaLabel={t('prefs.terminalTheme')}
-          options={[{ value: '', label: t('common.followUi') }, ...THEME_OPTIONS.map((theme) => ({ value: theme.id, label: themeLabel(t, theme.id) }))]}
+          options={[
+            { value: '', label: t('common.followUi') },
+            ...THEME_OPTIONS.map((theme) => ({ value: theme.id, label: themeLabel(t, theme.id) })),
+          ]}
         />
       </SettingsSection>
 
@@ -121,9 +245,7 @@ export function AppearancePage() {
       >
         <Dropdown
           value={preferences.topbarStyle}
-          onChange={(value) =>
-            setPreferences({ topbarStyle: value as 'classic' | 'three-areas' })
-          }
+          onChange={(value) => setPreferences({ topbarStyle: value as 'classic' | 'three-areas' })}
           ariaLabel={t('prefs.topbarStyle')}
           options={[
             { value: 'classic', label: t('prefs.topbarStyleClassic') },
@@ -139,9 +261,7 @@ export function AppearancePage() {
       >
         <Dropdown
           value={preferences.gitControlPlacement}
-          onChange={(value) =>
-            setPreferences({ gitControlPlacement: value as 'left' | 'right' })
-          }
+          onChange={(value) => setPreferences({ gitControlPlacement: value as 'left' | 'right' })}
           ariaLabel={t('prefs.gitControlPlacement')}
           options={[
             { value: 'left', label: t('prefs.gitControlPlacementLeft') },

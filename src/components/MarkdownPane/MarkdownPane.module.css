@@ -247,7 +247,7 @@
   overflow: auto;
 }
 
-/* Viewer de texto puro (kind: 'file') — arquivos não-markdown em monospace. */
+                                                                               
 .textView {
   margin: 0;
   padding: 14px 16px;
@@ -272,7 +272,7 @@
   tab-size: 2;
 }
 
-/* ---- Tipografia do markdown — só tokens, sem cor literal ---- */
+                                                                   
 .markdownBody {
   padding: 20px 24px;
   color: var(--fg);
@@ -411,4 +411,21 @@
   font-size: 11px;
   white-space: pre-wrap;
   margin: 0 0 1em;
+}
+
+:global([data-visual-style='clean']) .pane:focus-within:not(.paneFocus) {
+  outline: 0;
+  border-color: var(--clean-focus-border);
+  box-shadow: inset 0 0 0 1px var(--clean-focus-border);
+}
+
+:global([data-visual-style='clean']) .paneFocus {
+  border-color: var(--clean-focus-border) !important;
+  box-shadow: var(--clean-shadow);
+  animation: none;
+}
+
+:global([data-visual-style='clean']) .header {
+  height: var(--clean-row-height);
+  flex-basis: var(--clean-row-height);
 }

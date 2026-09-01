@@ -17,17 +17,17 @@ export function getTerminalScrollbackRows(options?: {
   return options.agent ? 10_000 : 6_000
 }
 
-/**
- * Decide se o wheel deve rolar o scrollback do host (xterm) ou ser repassado
- * pra app que está rodando no PTY.
- *
- * Shell puro fica no buffer `normal` → rolamos o scrollback local. TUIs como o
- * `claude`/`codex` trocam pro buffer `alternate`, que NÃO tem scrollback, então
- * `terminal.scrollLines()` é no-op; ali deixamos o evento seguir pro xterm, que
- * repassa o wheel pra app (mouse tracking / alternate-scroll) e ela rola sozinha.
- * `Shift+wheel` força o scrollback do host mesmo assim — convenção de iTerm2 /
- * Windows Terminal.
- */
+   
+                                                                             
+                                   
+  
+                                                                               
+                                                                                
+                                                                                
+                                                                                  
+                                                                               
+                    
+   
 export function shouldScrollHostScrollback(
   bufferType: 'normal' | 'alternate',
   shiftKey: boolean,
@@ -40,11 +40,11 @@ export function normalizePastedText(text: string): string {
   return text.replace(/\r\n?/g, '\n').replace(/\n/g, '\r')
 }
 
-/**
- * Formata caminhos arrastados do SO pro terminal: aspas só quando o path tem
- * espaço, múltiplos separados por espaço, e um espaço no fim pra continuar
- * digitando. Strings vazias são descartadas; sem paths válidos retorna ''.
- */
+   
+                                                                             
+                                                                           
+                                                                           
+   
 export function formatDroppedPaths(paths: string[]): string {
   const formatted = paths
     .filter(Boolean)

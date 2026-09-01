@@ -1,11 +1,12 @@
 import { useState } from 'react'
 
-import { GROUP_COLORS } from '../../lib/types'
 import { useT } from '../../lib/i18n'
+import { GROUP_COLORS } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { Modal } from './Modal'
 import controls from './controls.module.css'
+import { GroupFields } from './GroupFields'
+import { Modal } from './Modal'
 
 export function NewGroupModal() {
   const t = useT()
@@ -17,19 +18,24 @@ export function NewGroupModal() {
   )
   const closeModal = useUiStore((s) => s.closeModal)
   const createGroup = useProjectsStore((s) => s.createGroup)
+  const setGroupIconUrl = useProjectsStore((s) => s.setGroupIconUrl)
 
   const [name, setName] = useState('')
   const [color, setColor] = useState<string>(GROUP_COLORS[0])
+  const [iconUrl, setIconUrl] = useState('')
 
   const reset = () => {
     setName('')
     setColor(GROUP_COLORS[0])
+    setIconUrl('')
   }
 
   const submit = () => {
     const trimmed = name.trim()
     if (!trimmed) return
-    createGroup(trimmed, color, parentGroupId)
+    const group = createGroup(trimmed, color, parentGroupId)
+    const trimmedIconUrl = iconUrl.trim()
+    if (trimmedIconUrl) setGroupIconUrl(group.id, trimmedIconUrl)
     reset()
     closeModal()
   }
@@ -62,38 +68,21 @@ export function NewGroupModal() {
         </>
       }
     >
-      <div className={controls.field}>
-        <label className={controls.label}>{t('crud.nameLabel')}</label>
-        <input
-          className={controls.input}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-          placeholder={t('crud.groupNamePlaceholder')}
-        />
-      </div>
-
-      <div className={controls.field}>
-        <label className={controls.label}>{t('crud.groupColorLabel')}</label>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {GROUP_COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setColor(c)}
-              aria-label={t('crud.colorSwatch', { color: c })}
-              style={{
-                width: 24,
-                height: 24,
-                borderRadius: '50%',
-                background: c,
-                border: color === c ? '2px solid var(--fg)' : '2px solid transparent',
-                cursor: 'pointer',
-              }}
-            />
-          ))}
-        </div>
-      </div>
+      <GroupFields
+        name={name}
+        color={color}
+        iconUrl={iconUrl}
+        onNameChange={setName}
+        onColorChange={setColor}
+        onIconUrlChange={setIconUrl}
+        onSubmit={submit}
+        nameLabel={t('crud.nameLabel')}
+        namePlaceholder={t('crud.groupNamePlaceholder')}
+        colorLabel={t('crud.groupColorLabel')}
+        colorSwatchLabel={(candidate) => t('crud.colorSwatch', { color: candidate })}
+        iconLabel={t('crud.groupLogoLabel')}
+        iconHint={t('crud.groupIconHint')}
+      />
     </Modal>
   )
 }

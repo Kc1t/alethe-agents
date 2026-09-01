@@ -6,11 +6,11 @@ import { useT } from '../../lib/i18n'
 import styles from './AgentCanvasPOC.module.css'
 import { AgentChip } from './AgentChip'
 
-/**
- * Item da biblioteca — draggable via dnd-kit (HTML5 DnD não funciona dentro
- * da webview Tauri no Windows: o file-drop handler intercepta os eventos).
- * O botão "+ instalar" é o fallback de clique.
- */
+   
+                                                                            
+                                                                           
+                                               
+   
 export function LibraryItem({
   template,
   installed,

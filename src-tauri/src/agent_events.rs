@@ -1,16 +1,12 @@
 // Listener da POC do canvas de subagents (Fase 1).
 //
 // O Claude Code dispara hooks `SubagentStart`/`SubagentStop` como POST HTTP
-// (hook type "http" no settings do projeto de teste). Este módulo sobe um
-// servidor mínimo em 127.0.0.1:9123, lê o JSON de cada POST e re-emite pro
-// frontend como evento Tauri `agent-hook`. Fluxo novo e isolado — não toca
-// em PTY, projects nem em nenhum fluxo existente.
 
 use std::io::Read;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 const HOST: &str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 9123;
@@ -69,16 +65,14 @@ pub fn agent_hooks_token() -> String {
     init_token().to_string()
 }
 
-/// Escreve (idempotente) um settings JSON só com os hooks HTTP de subagent e
-/// retorna o path. O frontend injeta via `claude --settings <path>` no
-/// terminal do canvas — assim os hooks valem só pra ESSA sessão, sem tocar
-/// no `.claude/` da pasta que o usuário escolheu.
 #[tauri::command]
 pub fn agent_hooks_settings_path() -> Result<String, String> {
     let port = wait_for_listener_port()
         .ok_or_else(|| "listener de agents ainda nao esta disponivel".to_string())?;
     let endpoint = listener_endpoint(port);
-    let path = std::env::temp_dir().join("alethe-agent-hooks.json");
+    // Namespaced by port so a second instance cannot overwrite the first one's endpoint and
+    // silently redirect its agents.
+    let path = std::env::temp_dir().join(format!("alethe-agent-hooks-{port}.json"));
     let token = init_token();
     let hook = serde_json::json!([
         { "hooks": [ {
@@ -89,18 +83,18 @@ pub fn agent_hooks_settings_path() -> Result<String, String> {
         } ] }
     ]);
     let settings = serde_json::json!({
-        // Fase 4: split-pane de teams não existe no Windows — in-process faz o
-        // canvas do Alethe ser a visualização do time.
+
+
         "teammateMode": "in-process",
         "hooks": {
             "SubagentStart": hook.clone(),
             "SubagentStop": hook.clone(),
             // Fase 2: tool calls em tempo real. PreToolUse dentro de subagent
-            // carrega agent_id (sessão principal não) — o store filtra por isso.
+
             "PreToolUse": hook.clone(),
             "PostToolUse": hook.clone(),
-            // Fase 4: eventos de Agent Teams (in-process roda na sessão do
-            // lead, então estes hooks via --settings pegam o time inteiro).
+
+
             "TeammateIdle": hook.clone(),
             "TaskCreated": hook.clone(),
             "TaskCompleted": hook
@@ -153,17 +147,41 @@ pub fn start_listener(app: AppHandle) {
             }
 
             let mut body = String::new();
-            if let Err(e) = request.as_reader().take(BODY_LIMIT).read_to_string(&mut body) {
+            if let Err(e) = request
+                .as_reader()
+                .take(BODY_LIMIT)
+                .read_to_string(&mut body)
+            {
                 eprintln!("[agent_events] erro lendo corpo: {e}");
                 let _ = request.respond(tiny_http::Response::empty(400));
                 continue;
             }
 
-            // Ponte de dispatch genérica: o control plane (lead) spawna um
             // processo real (claude/codex/opencode) via
             // `curl -X POST /spawn -d '{"agent":"codex","task":"...","mode":"exec"}'`.
             // O Alethe emite `agent-spawn`; o front sobe um PTY worker. Campos:
-            // agent (obrigatório), task, cwd?, mode? ("exec" default | "interactive").
+
+            if url.starts_with("/mcp") {
+                let app = app.clone();
+                std::thread::spawn(move || {
+                    let state = app.state::<crate::orchestrator::OrchestratorState>();
+                    match crate::orchestrator::handle_mcp_body(Some(&app), &state, &body) {
+                        Some(payload) => {
+                            let header =
+                                tiny_http::Header::from_bytes("Content-Type", "application/json")
+                                    .expect("static header");
+                            let _ = request.respond(
+                                tiny_http::Response::from_string(payload).with_header(header),
+                            );
+                        }
+                        None => {
+                            let _ = request.respond(tiny_http::Response::empty(202));
+                        }
+                    }
+                });
+                continue;
+            }
+
             if url.starts_with("/spawn") {
                 match serde_json::from_str::<serde_json::Value>(&body) {
                     Ok(payload) => {
@@ -173,9 +191,12 @@ pub fn start_listener(app: AppHandle) {
                             .unwrap_or("")
                             .to_string();
                         if !matches!(agent.as_str(), "shell" | "claude" | "codex" | "opencode") {
-                            let _ = request.respond(tiny_http::Response::from_string(
-                                "agent invalido (use claude|codex|opencode)",
-                            ).with_status_code(400));
+                            let _ = request.respond(
+                                tiny_http::Response::from_string(
+                                    "agent invalido (use claude|codex|opencode)",
+                                )
+                                .with_status_code(400),
+                            );
                             continue;
                         }
                         let job_id = payload
@@ -185,7 +206,10 @@ pub fn start_listener(app: AppHandle) {
                             .unwrap_or_else(|| format!("sandbox-job-{}", nanoid::nanoid!(10)));
                         let mut event_payload = payload;
                         if let Some(object) = event_payload.as_object_mut() {
-                            object.insert("job_id".to_string(), serde_json::Value::String(job_id.clone()));
+                            object.insert(
+                                "job_id".to_string(),
+                                serde_json::Value::String(job_id.clone()),
+                            );
                         }
                         eprintln!("[agent_events] /spawn agent={agent} job_id={job_id}");
                         let _ = app.emit("agent-spawn", &event_payload);
@@ -195,20 +219,25 @@ pub fn start_listener(app: AppHandle) {
                             "agent": agent,
                             "status": "queued"
                         });
-                        let _ = request.respond(tiny_http::Response::from_string(response.to_string())
-                            .with_header(tiny_http::Header::from_bytes("Content-Type", "application/json").unwrap()));
+                        let _ = request.respond(
+                            tiny_http::Response::from_string(response.to_string()).with_header(
+                                tiny_http::Header::from_bytes("Content-Type", "application/json")
+                                    .unwrap(),
+                            ),
+                        );
                     }
                     Err(e) => {
-                        let _ = request.respond(tiny_http::Response::from_string(format!(
-                            "/spawn espera JSON: {e}"
-                        )).with_status_code(400));
+                        let _ = request.respond(
+                            tiny_http::Response::from_string(format!("/spawn espera JSON: {e}"))
+                                .with_status_code(400),
+                        );
                     }
                 }
                 continue;
             }
 
             // Alias legado: o control plane antigo despacha texto cru pro codex
-            // via `curl -X POST /codex -d '<tarefa>'`. Encaminha pro mesmo fluxo
+
             // emitindo agent-spawn com agent=codex.
             if url.starts_with("/codex") {
                 let task = body.trim().to_string();
@@ -223,7 +252,7 @@ pub fn start_listener(app: AppHandle) {
 
             // Bridge do plugin OpenCode (opencode_bridge.rs) — reporta
             // working/idle real de sessoes OpenCode. Campos: directory
-            // (cwd da sessao, usado pro front correlacionar com o ptyId certo),
+
             // state ("working" | "idle").
             if url.starts_with("/opencode-status") {
                 match serde_json::from_str::<serde_json::Value>(&body) {
@@ -251,8 +280,7 @@ pub fn start_listener(app: AppHandle) {
                         get("agent_id"),
                         get("agent_type"),
                     );
-                    // Dump truncado pra inspecionar campos reais do payload
-                    // durante a POC (Etapa 0 do plano).
+
                     let preview: String = body.chars().take(600).collect();
                     eprintln!("[agent_events] payload: {preview}");
                     if let Err(e) = app.emit("agent-hook", &payload) {

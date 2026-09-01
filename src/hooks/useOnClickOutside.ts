@@ -1,13 +1,13 @@
 import { useEffect, useRef } from 'react'
 
-/**
- * Chama `handler` quando um pointerdown acontece fora do elemento referenciado.
- * Usado pra fechar menus/popovers ao clicar fora. `enabled: false` remove o
- * listener (ex.: só escuta quando o menu está aberto).
- *
- * Centraliza o boilerplate de addEventListener('pointerdown') + hit-test +
- * cleanup antes repetido em vários componentes.
- */
+   
+                                                                                
+                                                                            
+                                                       
+  
+                                                                           
+                                                
+   
 export function useOnClickOutside<T extends HTMLElement>(
   ref: React.RefObject<T | null>,
   handler: (event: PointerEvent) => void,

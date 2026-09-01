@@ -16,10 +16,10 @@ type AgentLibraryPaletteProps = {
   onInstall: (name: string) => void
 }
 
-/**
- * Paleta flutuante da biblioteca de agents (draggable). Colapsada vira um
- * launcher; aberta lista os templates instaláveis por clique/drag.
- */
+   
+                                                                          
+                                                                   
+   
 export function AgentLibraryPalette({
   open,
   setOpen,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type HTMLAttributes, type PointerEvent } from 'react'
+import { type HTMLAttributes, type PointerEvent, useEffect, useRef } from 'react'
 
 import styles from './AsciiEffect.module.css'
 
@@ -34,6 +34,17 @@ export interface AsciiEffectProps extends Omit<HTMLAttributes<HTMLDivElement>, '
   glitchIntensity?: number
   glitchFrequency?: number
   revealDuration?: number
+  frameRate?: number
+  reducedMotion?: boolean
+}
+
+type SampleCache = {
+  columns: number
+  rows: number
+  cellWidth: number
+  cellHeight: number
+  pixels: Uint8ClampedArray
+  luminance: Float32Array
 }
 
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value))
@@ -101,6 +112,8 @@ export function AsciiEffect({
   glitchIntensity = 0.65,
   glitchFrequency = 1.4,
   revealDuration = 1400,
+  frameRate = 30,
+  reducedMotion = false,
   className,
   onPointerMove,
   onPointerLeave,
@@ -109,6 +122,8 @@ export function AsciiEffect({
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pointer = useRef({ x: 0, y: 0, targetX: 0, targetY: 0, active: false })
+  const pointerIdleTimer = useRef<number | null>(null)
+  const colorSignature = colors.join('\u0000')
 
   useEffect(() => {
     const container = containerRef.current
@@ -118,25 +133,47 @@ export function AsciiEffect({
     const sampleCanvas = document.createElement('canvas')
     const sampleContext = sampleCanvas.getContext('2d', { willReadFrequently: true })
     if (!context || !sampleContext) return
+    const pointerState = pointer.current
 
     const image = new Image()
     image.crossOrigin = 'anonymous'
+    const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const effectColors = colorSignature.split('\u0000')
+    const targetFrameMs = 1000 / Math.min(60, Math.max(1, frameRate))
+    const supportsIntersectionObserver = typeof IntersectionObserver !== 'undefined'
     let frame = 0
     let width = 0
     let height = 0
+    let dpr = 1
     let loaded = false
+    let isIntersecting = !supportsIntersectionObserver
+    let systemReducedMotion = motionQuery.matches
     let startedAt = 0
     let lastFrameAt = 0
     let nextGlitchAt = 0
     let glitchUntil = 0
     let glitchBands = new Map<number, number>()
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    let sampleCache: SampleCache | null = null
+    let sampleDirty = true
+    let resolvedColors: string[] = []
+    let resolvedBackground = 'transparent'
 
-    const draw = (now: number) => {
+    const isMotionReduced = () => reducedMotion || systemReducedMotion
+    const canAnimate = () =>
+      loaded &&
+      sampleCache !== null &&
+      !isMotionReduced() &&
+      variant !== 'image' &&
+      document.visibilityState !== 'hidden' &&
+      isIntersecting
+
+    const refreshColors = () => {
+      resolvedColors = effectColors.map((color) => resolveColor(container, color))
+      resolvedBackground = resolveColor(container, backgroundColor)
+    }
+
+    const rebuildSample = () => {
       if (!loaded || !width || !height) return
-      pointer.current.x += (pointer.current.targetX - pointer.current.x) * 0.08
-      pointer.current.y += (pointer.current.targetY - pointer.current.y) * 0.08
-
       const cellHeight = Math.max(4, fontSize * Math.max(0.5, lineHeight))
       context.font = `${fontWeight} ${fontSize}px ${fontFamily}`
       const cellWidth = Math.max(
@@ -184,9 +221,9 @@ export function AsciiEffect({
         const matrix = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
         luminance.forEach((value, index) => {
           const row = Math.floor(index / columns)
-          const col = index % columns
+          const column = index % columns
           luminance[index] = clamp(
-            value + ((matrix[(row % 4) * 4 + (col % 4)] / 16 - 0.5) * clamp(ditherStrength)) / 4,
+            value + ((matrix[(row % 4) * 4 + (column % 4)] / 16 - 0.5) * clamp(ditherStrength)) / 4,
           )
         })
       } else {
@@ -199,7 +236,20 @@ export function AsciiEffect({
         })
       }
 
-      if (variant === 'glitch' && !reduceMotion && glitchFrequency > 0 && now >= nextGlitchAt) {
+      sampleCache = { columns, rows, cellWidth, cellHeight, pixels, luminance }
+      sampleDirty = false
+    }
+
+    const draw = (now: number) => {
+      const cache = sampleCache
+      if (!loaded || !width || !height || !cache) return
+      const { columns, rows, cellWidth, cellHeight, pixels, luminance } = cache
+      const motionReduced = isMotionReduced()
+      pointerState.x += (pointerState.targetX - pointerState.x) * 0.08
+      pointerState.y += (pointerState.targetY - pointerState.y) * 0.08
+      context.font = `${fontWeight} ${fontSize}px ${fontFamily}`
+
+      if (variant === 'glitch' && !motionReduced && glitchFrequency > 0 && now >= nextGlitchAt) {
         glitchBands = new Map()
         const count = Math.max(1, Math.round(clamp(glitchIntensity) * 4))
         for (let i = 0; i < count; i += 1) {
@@ -211,8 +261,6 @@ export function AsciiEffect({
       }
       if (now > glitchUntil) glitchBands.clear()
 
-      const resolvedColors = colors.map((color) => resolveColor(container, color))
-      const resolvedBackground = resolveColor(container, backgroundColor)
       context.clearRect(0, 0, width, height)
       if (resolvedBackground !== 'transparent') {
         context.fillStyle = resolvedBackground
@@ -220,7 +268,7 @@ export function AsciiEffect({
       }
       context.textBaseline = 'top'
       const reveal =
-        variant === 'glitch' && !reduceMotion && revealDuration > 0
+        variant === 'glitch' && !motionReduced && revealDuration > 0
           ? clamp((now - startedAt) / revealDuration)
           : 1
       const radians = (flowDirection * Math.PI) / 180
@@ -234,7 +282,7 @@ export function AsciiEffect({
           if (Math.hypot(dx, dy) > reveal * 0.72) continue
           let sourceColumn = column
           let sourceRow = row
-          if (variant === 'flow' && !reduceMotion) {
+          if (variant === 'flow' && !motionReduced) {
             const x = column * cellWidth
             const y = row * cellHeight
             const phase =
@@ -242,9 +290,9 @@ export function AsciiEffect({
             const drift = Math.sin(phase) * flowStrength
             sourceColumn -= (directionX * drift) / cellWidth
             sourceRow -= (directionY * drift) / cellHeight
-            if (pointer.current.active && mouseRadius > 0) {
-              const mouseX = x - pointer.current.x
-              const mouseY = y - pointer.current.y
+            if (pointerState.active && mouseRadius > 0) {
+              const mouseX = x - pointerState.x
+              const mouseY = y - pointerState.y
               const distance = Math.hypot(mouseX, mouseY)
               const influence = clamp(1 - distance / mouseRadius)
               if (distance > 0 && influence > 0) {
@@ -277,41 +325,110 @@ export function AsciiEffect({
       }
     }
 
-    const resize = () => {
-      const rect = container.getBoundingClientRect()
-      const dpr = Math.min(window.devicePixelRatio || 1, 2)
-      width = Math.max(1, rect.width)
-      height = Math.max(1, rect.height)
-      canvas.width = Math.round(width * dpr)
-      canvas.height = Math.round(height * dpr)
-      context.setTransform(dpr, 0, 0, dpr, 0, 0)
-      draw(performance.now())
+    const cancelLoop = () => {
+      if (!frame) return
+      cancelAnimationFrame(frame)
+      frame = 0
     }
 
     const animate = (now: number) => {
-      if (now - lastFrameAt >= 1000 / 30) {
+      frame = 0
+      if (!canAnimate()) return
+      if (now - lastFrameAt >= targetFrameMs) {
         lastFrameAt = now
         draw(now)
       }
       frame = requestAnimationFrame(animate)
     }
 
+    const updatePlayback = (redrawStatic = true) => {
+      const canRender = loaded && document.visibilityState !== 'hidden' && isIntersecting
+      if (!canRender) {
+        cancelLoop()
+        return
+      }
+      const rebuilt = sampleDirty || sampleCache === null
+      if (rebuilt) rebuildSample()
+      if (canAnimate()) {
+        if (rebuilt) draw(performance.now())
+        if (!frame) frame = requestAnimationFrame(animate)
+        return
+      }
+      cancelLoop()
+      if ((redrawStatic || rebuilt) && sampleCache) {
+        draw(performance.now())
+      }
+    }
+
+    const resize = () => {
+      const rect = container.getBoundingClientRect()
+      const nextWidth = Math.max(1, rect.width)
+      const nextHeight = Math.max(1, rect.height)
+      const nextDpr = Math.min(window.devicePixelRatio || 1, 2)
+      if (sampleCache && nextWidth === width && nextHeight === height && nextDpr === dpr) {
+        return
+      }
+      width = nextWidth
+      height = nextHeight
+      dpr = nextDpr
+      canvas.width = Math.round(width * dpr)
+      canvas.height = Math.round(height * dpr)
+      context.setTransform(dpr, 0, 0, dpr, 0, 0)
+      if (!loaded) return
+      sampleDirty = true
+      updatePlayback()
+    }
+
     const start = () => {
-      if (loaded) return
+      if (loaded || !image.naturalWidth || !image.naturalHeight) return
       loaded = true
       startedAt = performance.now()
+      refreshColors()
       resize()
-      if (!reduceMotion && variant !== 'image') frame = requestAnimationFrame(animate)
     }
+    const handleVisibilityChange = () => updatePlayback()
+    const handleMotionChange = (event: MediaQueryListEvent) => {
+      systemReducedMotion = event.matches
+      updatePlayback()
+    }
+
     image.onload = start
     image.src = imageSrc
     if (image.complete) start()
-    const observer = new ResizeObserver(resize)
-    observer.observe(container)
+
+    const resizeObserver = new ResizeObserver(resize)
+    resizeObserver.observe(container)
+    const intersectionObserver = !supportsIntersectionObserver
+      ? null
+      : new IntersectionObserver(([entry]) => {
+          isIntersecting = entry?.isIntersecting ?? true
+          updatePlayback()
+        })
+    intersectionObserver?.observe(container)
+    const themeObserver = new MutationObserver(() => {
+      refreshColors()
+      updatePlayback()
+    })
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    })
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    motionQuery.addEventListener('change', handleMotionChange)
+
     return () => {
-      cancelAnimationFrame(frame)
-      observer.disconnect()
+      cancelLoop()
+      resizeObserver.disconnect()
+      intersectionObserver?.disconnect()
+      themeObserver.disconnect()
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      motionQuery.removeEventListener('change', handleMotionChange)
       image.onload = null
+      pointerState.active = false
+      if (pointerIdleTimer.current !== null) {
+        window.clearTimeout(pointerIdleTimer.current)
+        pointerIdleTimer.current = null
+      }
     }
   }, [
     backgroundColor,
@@ -319,7 +436,7 @@ export function AsciiEffect({
     characterSpacing,
     chars,
     colorMode,
-    colors,
+    colorSignature,
     contrast,
     dither,
     ditherStrength,
@@ -331,6 +448,7 @@ export function AsciiEffect({
     fontFamily,
     fontSize,
     fontWeight,
+    frameRate,
     glitchFrequency,
     glitchIntensity,
     imageSrc,
@@ -340,6 +458,7 @@ export function AsciiEffect({
     mouseStrength,
     mouseWaveSpeed,
     posterize,
+    reducedMotion,
     revealDuration,
     scale,
     threshold,
@@ -348,7 +467,7 @@ export function AsciiEffect({
 
   const trackPointer = (event: PointerEvent<HTMLDivElement>) => {
     onPointerMove?.(event)
-    if (variant !== 'flow') return
+    if (variant !== 'flow' || reducedMotion) return
     const rect = event.currentTarget.getBoundingClientRect()
     const x = event.clientX - rect.left
     const y = event.clientY - rect.top
@@ -359,11 +478,20 @@ export function AsciiEffect({
     pointer.current.active = true
     pointer.current.targetX = x
     pointer.current.targetY = y
+    if (pointerIdleTimer.current !== null) window.clearTimeout(pointerIdleTimer.current)
+    pointerIdleTimer.current = window.setTimeout(() => {
+      pointer.current.active = false
+      pointerIdleTimer.current = null
+    }, 700)
   }
 
   const resetPointer = (event: PointerEvent<HTMLDivElement>) => {
     onPointerLeave?.(event)
     pointer.current.active = false
+    if (pointerIdleTimer.current !== null) {
+      window.clearTimeout(pointerIdleTimer.current)
+      pointerIdleTimer.current = null
+    }
   }
 
   return (

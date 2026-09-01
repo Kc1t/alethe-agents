@@ -5,10 +5,30 @@ export type DirectoryEntry = {
   name: string
   path: string
   is_dir: boolean
+  size: number | null
 }
 
 export async function listDirectory(path: string): Promise<DirectoryEntry[]> {
   return invoke<DirectoryEntry[]>('list_directory', { path })
+}
+
+export type BrowseDirectoryEntry = {
+  name: string
+  path: string
+  isDir: boolean
+  sizeBytes: number | null
+}
+
+export type DirectoryListing = {
+  currentPath: string
+  parentPath: string | null
+  homePath: string
+  systemRoots: string[]
+  entries: BrowseDirectoryEntry[]
+}
+
+export async function browseDirectory(path: string): Promise<DirectoryListing> {
+  return invoke<DirectoryListing>('browse_directory', { path })
 }
 
 export async function readTextFile(path: string): Promise<string> {
@@ -17,6 +37,22 @@ export async function readTextFile(path: string): Promise<string> {
 
 export async function writeTextFile(path: string, content: string): Promise<void> {
   await invoke('write_text_file', { path, content })
+}
+
+export async function writeProjectMarker(projectDir: string, content: string): Promise<void> {
+  await invoke('write_project_marker', { projectDir, content })
+}
+
+export async function readProjectMarker(projectDir: string): Promise<string | null> {
+  return invoke<string | null>('read_project_marker', { projectDir })
+}
+
+export async function renameFilesystemEntry(path: string, newName: string): Promise<string> {
+  return invoke<string>('rename_filesystem_entry', { path, newName })
+}
+
+export async function deleteFilesystemEntry(path: string): Promise<void> {
+  await invoke('delete_filesystem_entry', { path })
 }
 
 export async function ensureTodoTemplate(directory: string): Promise<string> {
@@ -31,7 +67,7 @@ export async function unwatchFile(path: string): Promise<void> {
   await invoke('unwatch_file', { path })
 }
 
-/** Acorda quando um arquivo observado por `watchFile` muda no disco. */
+                                                                        
 export function listenFileChanged(handler: (path: string) => void): Promise<UnlistenFn> {
   return listen<{ path: string }>('md://changed', (event) => handler(event.payload.path))
 }

@@ -1,0 +1,195 @@
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/*
+ * Every action in a row — install, docs, update, uninstall — is the same control at the same size.
+ * Only colour separates them, so the primary action reads as primary without changing the rhythm.
+ */
+.installBtn,
+.linkBtn,
+.dangerBtn,
+.quietBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 28px;
+  min-width: 96px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg-muted);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.installBtn:disabled,
+.linkBtn:disabled,
+.dangerBtn:disabled,
+.quietBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.installBtn {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-on);
+}
+.installBtn:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.linkBtn:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.dangerBtn:hover:not(:disabled) {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.quietBtn {
+  border-color: transparent;
+  background: none;
+}
+.quietBtn:hover:not(:disabled) {
+  color: var(--fg);
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+
+.modalText {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg);
+}
+
+.status {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+.statusSuccess {
+  color: var(--status-working);
+}
+.statusFailed {
+  color: var(--danger);
+}
+
+.command {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--fg-muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.toolchain {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.log {
+  margin: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.methodList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.method {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  cursor: pointer;
+}
+
+.method:hover {
+  border-color: var(--border-strong);
+}
+
+.methodActive {
+  border-color: var(--accent);
+  background: var(--accent-soft, var(--bg-elevated));
+}
+
+.method input {
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+
+.methodBody {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.methodBody b {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.methodBody code {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--fg-muted);
+  word-break: break-all;
+}
+
+.docsLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.docsLink:hover {
+  text-decoration: underline;
+}

@@ -1,0 +1,79 @@
+.group {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 2px;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.groupHeader:hover {
+  color: var(--fg);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0 8px;
+}
+
+.loading,
+.empty,
+.error {
+  margin: 4px 2px;
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+
+.error {
+  color: var(--status-offline);
+}
+
+.sub {
+  display: flex;
+  flex-direction: column;
+}
+
+.subLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--fg-faint);
+  padding: 4px 2px;
+}
+
+.file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 2px;
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.status {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--fg-faint);
+}
+
+.fileName {
+  color: var(--fg-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

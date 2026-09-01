@@ -7,21 +7,29 @@ import type { AgentType } from '../lib/types'
 import { useProjectsStore } from '../stores/projectsStore'
 import { useUiStore } from '../stores/uiStore'
 
-/**
- * Abre no workspace o diretório pedido pelo terminal (`alethe`, `alethe .`,
- * `alethe <path>` — ver `src-tauri/src/cli_launch.rs`).
- *
- * Duas origens, mesma ação:
- * - cold start → `cliTakePendingOpen()` (o backend entrega uma vez só);
- * - app já aberto → evento da segunda instância.
- */
+   
+                                                                            
+                                                        
+  
+                            
+                                                                        
+                                                 
+   
 
-/** Ordem de preferência do agente do primeiro terminal; cai em `shell`. */
-const AGENT_PREFERENCE: AgentType[] = ['claude', 'codex', 'antigravity', 'opencode', 'shell']
+                                                                           
+const AGENT_PREFERENCE: AgentType[] = [
+  'claude',
+  'codex',
+  'copilot',
+  'antigravity',
+  'opencode',
+  'shell',
+]
 
 const AGENT_LABEL: Record<AgentType, string> = {
   claude: 'Claude',
   codex: 'Codex',
+  copilot: 'GitHub Copilot',
   antigravity: 'Antigravity',
   opencode: 'OpenCode',
   shell: 'Shell',
@@ -33,8 +41,8 @@ export function useCliOpenRequests(hydrated: boolean) {
   const t = useT()
 
   useEffect(() => {
-    // Só depois da hidratação: agir antes de `projects.json` carregar faria
-    // `planCliOpen` não achar o projeto existente e duplicar a pasta.
+                                                                            
+                                                                      
     if (!hydrated) return
     let disposed = false
 
@@ -60,14 +68,14 @@ export function useCliOpenRequests(hydrated: boolean) {
       useUiStore.getState().pushToast({ title: t('notif.cliProjectCreated'), body: plan.name })
     }
 
-    // Reexecutar este efeito (troca de idioma) é seguro: o backend já consumiu
-    // o pendente e devolve `null` daqui em diante.
+                                                                               
+                                                   
     void cliTakePendingOpen()
       .then((path) => {
         if (!disposed && path) openFromCli(path)
       })
       .catch(() => {
-        /* best-effort: sem CLI o app abre normal */
+                                                    
       })
 
     const unlisten = listenCliOpenPath((path) => {

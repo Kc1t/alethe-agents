@@ -39,10 +39,10 @@ let started = false
 let lastInteractionAt = Date.now()
 let lastSampleAt = Date.now()
 
-/** ptyIds que já receberam pelo menos um sinal real do plugin do OpenCode
- * (opencode_bridge.rs) — a partir daí a heurística de PTY
- * (AgentCompletionMonitor) para de mandar status pra esse ptyId, pro sinal
- * real não ficar competindo/flicando com o palpite. */
+                                                                          
+                                                          
+                                                                           
+                                                       
 const bridgeActivePtyIds = new Set<string>()
 
 function applyOpenCodeBridgeStatus({ directory, state }: OpenCodeBridgeStatus): void {
@@ -109,8 +109,8 @@ function syncTrackedAgents(): void {
       cwd: meta.cwd,
       notifyOnComplete: false,
       onStatusChange: (status) => {
-        // Sinal real do bridge (OpenCode) já assumiu esse ptyId — não deixa a
-        // heurística de PTY brigar com ele.
+                                                                              
+                                            
         if (bridgeActivePtyIds.has(ptyId)) return
         useTerminalsStore.getState().setStatus(ptyId, status)
       },
@@ -123,9 +123,9 @@ function syncTrackedAgents(): void {
         else entry.unlisten = unlisten
       })
       .catch(() => tracked.delete(ptyId))
-    // O backend para de emitir `pty://data` enquanto o painel está invisível.
-    // Sem escutar `activity` também, o status de um agente em segundo plano
-    // (justamente o caso que o badge existe pra cobrir) nunca mais atualiza.
+    // O backend para de emitir `pty:                                         
+                                                                            
+                                                                             
     void listenPtyActivity(ptyId, (chunk) => monitor.handleOutput(chunk))
       .then((unlisten) => {
         if (tracked.get(ptyId) !== entry) unlisten()
@@ -144,9 +144,9 @@ function syncTrackedAgents(): void {
   }
 }
 
-// Debounce do sync disparado por mudanças de store: coalesce rajadas de mutações
-// numa única reconstrução de metadados (antes era 1 rebuild por mutação). O
-// sample() de 5s continua chamando syncTrackedAgents() direto, então é o piso.
+                                                                                 
+                                                                            
+                                                                               
 let syncDebounceTimer: number | null = null
 function scheduleSyncTrackedAgents(): void {
   if (syncDebounceTimer !== null) return
@@ -252,7 +252,7 @@ export function startActivityTracker(): () => void {
       else unlistenBridge = unlisten
     })
     .catch(() => {
-      /* sem o bridge, a heurística de PTY continua sendo a única fonte */
+                                                                          
     })
 
   const flushOnHide = () => {

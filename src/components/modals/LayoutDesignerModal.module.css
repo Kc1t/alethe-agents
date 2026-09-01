@@ -2,10 +2,10 @@
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.55);
-  /* Essa modal ficava com z-index 80/81, bem abaixo da escala 100/101 que o
-     resto dos modais do app usa (Modal.tsx, Preferences, Onboarding...) —
-     qualquer widget com z-index nesse meio (ex.: SidebarNowPlaying) vazava
-     por cima dela. */
+                                                                            
+                                                                          
+                                                                           
+                      
   z-index: 100;
 }
 
@@ -119,6 +119,80 @@
   min-height: 0;
 }
 
+.designerBody {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+}
+
+.library {
+  width: 196px;
+  flex: 0 0 196px;
+  overflow-y: auto;
+  padding: 14px 10px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-sunken);
+}
+
+.libraryHeading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 4px 7px;
+  color: var(--fg-faint);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.libraryHeading:not(:first-child) {
+  margin-top: 18px;
+}
+
+.libraryList {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.libraryItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 30px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  font-size: 11px;
+  text-align: left;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.libraryItem:hover,
+.libraryItem:focus-visible {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.libraryMeta {
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  flex: none;
+}
+
+.libraryEmpty {
+  margin: 2px 8px 0;
+  color: var(--fg-faint);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
 .slot {
   background: var(--bg-sunken);
   border: 1px dashed var(--border);
@@ -140,9 +214,13 @@
   border-radius: var(--radius-md);
   cursor: grab;
   user-select: none;
+  touch-action: none;
   position: relative;
   z-index: 2;
   overflow: hidden;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
 }
 .box:active {
   cursor: grabbing;
@@ -153,11 +231,19 @@
 }
 
 .boxDragging {
-  opacity: 0.55;
+  opacity: 0.4;
   cursor: grabbing;
-  box-shadow:
-    0 0 0 2px var(--accent),
-    0 12px 28px rgba(0, 0, 0, 0.3);
+}
+
+.boxDropTarget {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.boxOverlay {
+  cursor: grabbing;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  pointer-events: none;
 }
 
 .boxHeader {
@@ -200,60 +286,6 @@
   flex-shrink: 0;
 }
 
-/* Handle de resize no canto inferior-direito do card */
-.resizeHandle {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 14px;
-  height: 14px;
-  cursor: nwse-resize;
-  background: linear-gradient(
-    135deg,
-    transparent 0,
-    transparent 6px,
-    var(--fg-muted) 6px,
-    var(--fg-muted) 7px,
-    transparent 7px,
-    transparent 9px,
-    var(--fg-muted) 9px,
-    var(--fg-muted) 10px,
-    transparent 10px
-  );
-  opacity: 0.5;
-  z-index: 4;
-}
-.resizeHandle:hover {
-  opacity: 1;
-}
-
-/* Resizers entre cols/rows pra ajustar fração */
-.colResizer {
-  z-index: 3;
-  cursor: ew-resize;
-  margin-left: -3px;
-  width: 7px;
-  background: transparent;
-  align-self: stretch;
-  pointer-events: auto;
-}
-.colResizer:hover {
-  background: var(--accent-faint);
-}
-
-.rowResizer {
-  z-index: 3;
-  cursor: ns-resize;
-  margin-top: -3px;
-  height: 7px;
-  background: transparent;
-  justify-self: stretch;
-  pointer-events: auto;
-}
-.rowResizer:hover {
-  background: var(--accent-faint);
-}
-
 .footer {
   display: flex;
   justify-content: flex-end;
@@ -261,4 +293,22 @@
   padding: 12px 18px;
   border-top: 1px solid var(--border);
   background: var(--bg-sunken);
+}
+
+@media (max-width: 720px) {
+  .library {
+    width: 156px;
+    flex-basis: 156px;
+  }
+
+  .hint {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .box,
+  .libraryItem {
+    transition: none;
+  }
 }

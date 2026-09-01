@@ -17,7 +17,7 @@ export type AgentCompletionMonitorOptions = {
   cwd?: string | null
   onStatusChange?: (status: 'working' | 'waiting') => void
   onComplete?: () => void
-  /** O rastreador global reutiliza a heurística sem duplicar notificações da UI. */
+                                                                                    
   notifyOnComplete?: boolean
 }
 

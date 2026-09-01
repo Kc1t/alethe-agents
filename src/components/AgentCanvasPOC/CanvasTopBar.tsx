@@ -41,7 +41,7 @@ type CanvasTopBarProps = {
   onUsageTab: (tab: UsageTab) => void
   usageAnchorRef: MutableRefObject<HTMLDivElement | null>
   onForceFallback: () => void
-  // Custo / orçamento
+                      
   hasCost: boolean
   sessionTokens: number
   sessionCostUsd: number
@@ -53,7 +53,7 @@ type CanvasTopBarProps = {
   done: number
   lastEventAt: number | null
   hooksEndpoint: string | null
-  // Ações
+          
   onOpenCodexWorker: () => void
   onClear: () => void
   clearDisabled: boolean

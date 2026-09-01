@@ -136,12 +136,8 @@ fn hysteresis_reset(current: MemoryPressureLevel, available_mb: f64) -> MemoryPr
         MemoryPressureLevel::Critical if available_mb >= MEM_CRITICAL_RESET => {
             MemoryPressureLevel::High
         }
-        MemoryPressureLevel::High if available_mb >= MEM_HIGH_RESET => {
-            MemoryPressureLevel::Medium
-        }
-        MemoryPressureLevel::Medium if available_mb >= MEM_MEDIUM_RESET => {
-            MemoryPressureLevel::Low
-        }
+        MemoryPressureLevel::High if available_mb >= MEM_HIGH_RESET => MemoryPressureLevel::Medium,
+        MemoryPressureLevel::Medium if available_mb >= MEM_MEDIUM_RESET => MemoryPressureLevel::Low,
         MemoryPressureLevel::Low if available_mb >= MEM_OK_RESET => MemoryPressureLevel::Ok,
         _ => current,
     }
@@ -163,7 +159,8 @@ pub fn enqueue_task(task: ScheduledTask) {
     if let Ok(mut s) = state().lock() {
         // Cancela tarefa obsoleta com a mesma cancel_key
         if let Some(ref key) = task.cancel_key {
-            s.task_queue.retain(|t| t.cancel_key.as_deref() != Some(key));
+            s.task_queue
+                .retain(|t| t.cancel_key.as_deref() != Some(key));
         }
         s.task_queue.push_back(task);
     }
@@ -206,8 +203,6 @@ fn publish_metrics(app: &AppHandle, metrics: &ResourceMetrics) {
     );
 }
 
-// ── Tick (chamado a cada POLL_INTERVAL_MS) ───────────────────────────────
-
 fn tick(app: &AppHandle) {
     let mem = stats::collect_memory_stats();
     let available_mb = mem.system_available_mb;
@@ -219,11 +214,10 @@ fn tick(app: &AppHandle) {
     } else {
         raw
     };
-    // Hysteresis: sobe imediatamente, desce só se o reset for mais baixo
+
     let new_pressure = if (candidate as u8) > (s.pressure as u8) {
         candidate
     } else if (candidate as u8) < (s.pressure as u8) {
-        // Tentou descer — só aceita se o raw também estiver abaixo do reset
         if (raw as u8) < (s.pressure as u8) {
             candidate
         } else {
@@ -246,7 +240,6 @@ fn tick(app: &AppHandle) {
         s.cooldowns
             .insert(new_pressure, now + cooldown_for(new_pressure));
 
-        // Ações por nível
         let handle = app.clone();
         match new_pressure {
             MemoryPressureLevel::Low => {
@@ -263,41 +256,29 @@ fn tick(app: &AppHandle) {
             }
             MemoryPressureLevel::Medium => {
                 enqueue_task(
-                    ScheduledTask::new(
-                        TaskPriority::High,
-                        "webview-low-memory",
-                        move || {
-                            #[cfg(windows)]
-                            if let Err(e) = crate::windows_webview::set_memory_mode(true) {
-                                eprintln!("[ResourceManager] WebView low-memory failed: {e}");
-                            }
-                            let _ = handle.emit("resource://webview-low-memory", "");
-                        },
-                    )
+                    ScheduledTask::new(TaskPriority::High, "webview-low-memory", move || {
+                        #[cfg(windows)]
+                        if let Err(e) = crate::windows_webview::set_memory_mode(true) {
+                            eprintln!("[ResourceManager] WebView low-memory failed: {e}");
+                        }
+                        let _ = handle.emit("resource://webview-low-memory", "");
+                    })
                     .with_cancel_key("webview-low-memory"),
                 );
             }
             MemoryPressureLevel::High => {
                 enqueue_task(
-                    ScheduledTask::new(
-                        TaskPriority::High,
-                        "reduce-pool-limit",
-                        move || {
-                            let _ = handle.emit("resource://reduce-pool", "");
-                        },
-                    )
+                    ScheduledTask::new(TaskPriority::High, "reduce-pool-limit", move || {
+                        let _ = handle.emit("resource://reduce-pool", "");
+                    })
                     .with_cancel_key("reduce-pool"),
                 );
             }
             MemoryPressureLevel::Critical => {
                 enqueue_task(
-                    ScheduledTask::new(
-                        TaskPriority::High,
-                        "drop-caches-gc",
-                        move || {
-                            let _ = handle.emit("resource::drop-caches", "");
-                        },
-                    )
+                    ScheduledTask::new(TaskPriority::High, "drop-caches-gc", move || {
+                        let _ = handle.emit("resource://drop-caches", "");
+                    })
                     .with_cancel_key("drop-caches"),
                 );
             }

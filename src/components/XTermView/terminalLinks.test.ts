@@ -16,6 +16,37 @@ describe('terminal links', () => {
     expect(detectTerminalLinks('D:\\public launch\\src\\file.ts')).toEqual([
       expect.objectContaining({ text: 'D:\\public launch\\src\\file.ts', kind: 'path' }),
     ])
+    expect(
+      detectTerminalLinks('"D:\\tmp\\shot-lab-strips\\ um PNG por shot, nome = slug."')[0],
+    ).toEqual(
+      expect.objectContaining({
+        text: 'D:\\tmp\\shot-lab-strips\\',
+        target: 'D:\\tmp\\shot-lab-strips\\',
+        kind: 'path',
+      }),
+    )
+  })
+
+  it('detects mixed-case protocols and bare deployment domains', () => {
+    const links = detectTerminalLinks(
+      'Deploy em verzel-elite-dev-painel.vercel.app (Https://verzel-elite-dev-painel.vercel.app).',
+    )
+
+    expect(links).toEqual([
+      expect.objectContaining({
+        text: 'verzel-elite-dev-painel.vercel.app',
+        target: 'https://verzel-elite-dev-painel.vercel.app',
+        kind: 'url',
+      }),
+      expect.objectContaining({
+        text: 'Https://verzel-elite-dev-painel.vercel.app',
+        target: 'https://verzel-elite-dev-painel.vercel.app',
+        kind: 'url',
+      }),
+    ])
+    expect(detectTerminalLinks('localhost:5173/dashboard')[0]).toEqual(
+      expect.objectContaining({ target: 'http://localhost:5173/dashboard', kind: 'url' }),
+    )
   })
 
   it('reconstructs viewport-wrapped lines and creates a multiline range', () => {
@@ -64,9 +95,45 @@ describe('terminal links', () => {
     expect(detectTerminalLinks('https://example.com/x')[0].fileKind).toBeUndefined()
   })
 
+  it('stops an extensionless path at the first space instead of eating the sentence', () => {
+    const [link] = detectTerminalLinks(
+      '/pt-br/vitrine-dupla/trajetoria — 5 variações de trajetória',
+    )
+    expect(link.text).toBe('/pt-br/vitrine-dupla/trajetoria')
+
+    expect(detectTerminalLinks('/api/users retorna 401 quando o token expira')[0].text).toBe(
+      '/api/users',
+    )
+    expect(detectTerminalLinks('~/projetos/alethe roda em dev e em prod')[0].text).toBe(
+      '~/projetos/alethe',
+    )
+  })
+
+  it('still crosses a space when a file extension is waiting on the other side', () => {
+    expect(detectTerminalLinks('/tmp/my folder/readme.md')[0].text).toBe('/tmp/my folder/readme.md')
+    expect(detectTerminalLinks('D:\\public launch\\src\\file.ts')[0].text).toBe(
+      'D:\\public launch\\src\\file.ts',
+    )
+  })
+
   it('does not turn prose slashes into links', () => {
     expect(detectTerminalLinks('/ Zambia / India')).toEqual([])
     expect(detectTerminalLinks('IP residencial/mobile + UA')).toEqual([])
     expect(detectTerminalLinks('foo/bar')).toEqual([])
+    expect(detectTerminalLinks('src/file.ts package.json user@example.com')).toEqual([])
+  })
+
+  it('keeps two bracketed paths apart instead of linking the whole parenthetical', () => {
+    expect(
+      detectTerminalLinks('(/pt-br/vitrine-dupla/projetos e /en/double-showcase/projects)').map(
+        (link) => link.text,
+      ),
+    ).toEqual(['/pt-br/vitrine-dupla/projetos', '/en/double-showcase/projects'])
+  })
+
+  it('still stops a bracketed path at the closing bracket', () => {
+    expect(detectTerminalLinks('see (/tmp/my folder/readme.md) now')[0].text).toBe(
+      '/tmp/my folder/readme.md',
+    )
   })
 })

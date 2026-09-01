@@ -1,61 +1,73 @@
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Bell, X } from 'lucide-react'
-import { lazy, Suspense, type CSSProperties, useEffect, useRef } from 'react'
+import { type CSSProperties, lazy, Suspense, useEffect, useRef } from 'react'
 import { Group as PanelGroup, Panel, Separator, usePanelRef } from 'react-resizable-panels'
 
-import { ghosttyKillAll, setWindowOpacity } from './lib/tauri'
-import { getThemeIcon } from './lib/themeIcons'
-
-import { AgentIcon } from './components/icons/AgentIcons'
+import styles from './App.module.css'
+import homeBackground from './assets/home-bg-right.png'
 import { AgentSandbox } from './components/AgentSandbox'
+import { DictationButton } from './components/DictationButton'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { FocusOverlay } from './components/FocusOverlay'
+import { GsdSyncActivityView } from './components/GsdSyncActivityView'
+import { AgentIcon } from './components/icons/AgentIcons'
 import { LinkViewerOverlay } from './components/LinkViewerOverlay'
-import { DictationButton } from './components/DictationButton'
 import { MainMenu } from './components/MainMenu'
-import { ProjectSidebar } from './components/ProjectSidebar'
-import { TitleBar } from './components/TitleBar'
-import { RightSidebar } from './components/RightSidebar'
-import { TokenHud } from './components/TokenHud'
-import { WorkspaceView } from './components/WorkspaceView'
-import { FindJumpModal } from './components/modals/FindJumpModal'
+import { AddBrowserModal } from './components/modals/AddBrowserModal'
+import { AddContentModal } from './components/modals/AddContentModal'
+import { AiUsageModal } from './components/modals/AiUsageModal'
+import { AuditModal } from './components/modals/AuditModal'
+import { FsBrowserModal } from './components/modals/FsBrowserModal'
 import { EditGroupModal } from './components/modals/EditGroupModal'
 import { EditProjectModal } from './components/modals/EditProjectModal'
+import { FindJumpModal } from './components/modals/FindJumpModal'
+import { HandoffModal } from './components/modals/HandoffModal'
+import { McpIntroModal } from './components/modals/McpIntroModal'
+import { McpManagerModal } from './components/modals/McpManagerModal'
 import { NewGroupModal } from './components/modals/NewGroupModal'
 import { NewProjectModal } from './components/modals/NewProjectModal'
 import { NewSubTabModal } from './components/modals/NewSubTabModal'
 import { NewTerminalModal } from './components/modals/NewTerminalModal'
-import { AddContentModal } from './components/modals/AddContentModal'
-import { AiUsageModal } from './components/modals/AiUsageModal'
 import { OnboardingModal } from './components/modals/OnboardingModal'
-import { ProfilesModal } from './components/modals/ProfilesModal'
 import { PreferencesModal } from './components/modals/PreferencesModal'
-import { SyncModal } from './components/modals/SyncModal'
+import { ProfilesModal } from './components/modals/ProfilesModal'
+import { RecentChatsModal } from './components/modals/RecentChatsModal'
+import { RemoteControlModal } from './components/modals/RemoteControlModal'
 import { SuspendGroupModal } from './components/modals/SuspendGroupModal'
+import { SyncModal } from './components/modals/SyncModal'
 import { ThemePickerModal } from './components/modals/ThemePickerModal'
 import { TodoSettingsModal } from './components/modals/TodoSettingsModal'
 import { TopbarSettingsModal } from './components/modals/TopbarSettingsModal'
 import { UpdateModal } from './components/modals/UpdateModal'
-import { WhatsNewModal } from './components/modals/WhatsNewModal'
-import { RemoteControlModal } from './components/modals/RemoteControlModal'
 import { WelcomeModal } from './components/modals/WelcomeModal'
-import { useKeybindings } from './hooks/useKeybindings'
-import { useDiscordPresence } from './hooks/useDiscordPresence'
+import { WhatsNewModal } from './components/modals/WhatsNewModal'
+import { ProjectSidebar } from './components/ProjectSidebar'
+import { RightSidebar } from './components/RightSidebar'
+import { TitleBar } from './components/TitleBar'
+import { TokenHud } from './components/TokenHud'
+import { AsciiEffect } from './components/ui/ascii-effect'
+import { WorkspaceView } from './components/WorkspaceView'
+import { useAgentBrowserOffers } from './hooks/useAgentBrowserOffers'
 import { useCliOpenRequests } from './hooks/useCliOpenRequests'
 import { useCloseConfirmation } from './hooks/useCloseConfirmation'
+import { useDiscordPresence } from './hooks/useDiscordPresence'
+import { useKeybindings } from './hooks/useKeybindings'
+import { useMcpIntroPrompt } from './hooks/useMcpIntroPrompt'
+import { useRemoteControlService } from './hooks/useRemoteControlService'
 import { useResourceSupervisor } from './hooks/useResourceSupervisor'
 import { startActivityTracker } from './lib/activityTracker'
+import { APP_SHELL_ID } from './lib/appShell'
+import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
 import { intlLocale, translate, useT } from './lib/i18n'
+import { visibilityFromPanelResize, widthFromPanelResize } from './lib/sidebarPanelState'
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
+import { ghosttyKillAll, setWindowOpacity } from './lib/tauri'
 import { getLastCrashReport } from './lib/tauri'
+import { loadThemeIconBytes } from './lib/themeIcons'
 import { checkForUpdate } from './lib/updater'
 import { useProjectsStore } from './stores/projectsStore'
 import { type InAppToast, useUiStore } from './stores/uiStore'
-import { AsciiEffect } from './components/ui/ascii-effect'
-import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
-import homeBackground from './assets/home-bg-right.png'
-import styles from './App.module.css'
 
 const AgentCanvasPOC = lazy(() =>
   import('./components/AgentCanvasPOC').then((module) => ({ default: module.AgentCanvasPOC })),
@@ -74,7 +86,13 @@ const MemoryAnalyticsModal = lazy(() =>
   })),
 )
 
-function LoadingScreen() {
+const LEFT_SIDEBAR_MIN_PX = 220
+const LEFT_SIDEBAR_MAX_PX = 380
+const RIGHT_SIDEBAR_MIN_PX = 260
+const RIGHT_SIDEBAR_MAX_PX = 420
+const WORKSPACE_MIN_PX = 240
+
+function LoadingScreen({ reducedMotion = false }: { reducedMotion?: boolean }) {
   const t = useT()
   return (
     <div className={styles.loadingScreen} role="status" aria-label={t('loading.initializing')}>
@@ -84,6 +102,7 @@ function LoadingScreen() {
           alt=""
           variant="flow"
           fontSize={8}
+          reducedMotion={reducedMotion}
           brightnessBoost={2.25}
           contrast={1.15}
           threshold={0.02}
@@ -121,9 +140,13 @@ function ToastItem({ toast }: { toast: InAppToast }) {
   const uiTheme = useProjectsStore((s) => s.preferences.uiTheme)
 
   useEffect(() => {
-    const timer = window.setTimeout(() => dismissToast(toast.id), 6500)
+    // A toast that asks something has to outlive a glance, or the offer is gone before it is read.
+    const timer = window.setTimeout(
+      () => dismissToast(toast.id),
+      toast.actions?.length ? 20000 : 6500,
+    )
     return () => window.clearTimeout(timer)
-  }, [dismissToast, toast.id])
+  }, [dismissToast, toast.id, toast.actions])
 
   const accentStyle = {
     '--toast-accent': toast.agent ? `var(--agent-${toast.agent})` : 'var(--accent)',
@@ -140,7 +163,30 @@ function ToastItem({ toast }: { toast: InAppToast }) {
       </div>
       <div className={styles.toastText}>
         <strong>{toast.title}</strong>
-        <span>{toast.body}</span>
+        <span title={toast.body}>{toast.body}</span>
+        {toast.actions?.length ? (
+          <div className={styles.toastActions}>
+            {toast.actions.map((action, index) => (
+              <button
+                key={action.label}
+                type="button"
+                className={
+                  action.quiet
+                    ? styles.toastActionQuiet
+                    : index === 0
+                      ? styles.toastAction
+                      : styles.toastActionSecondary
+                }
+                onClick={() => {
+                  action.run()
+                  dismissToast(toast.id)
+                }}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
       <button
         type="button"
@@ -172,6 +218,8 @@ export default function App() {
   const hydrate = useProjectsStore((s) => s.hydrate)
   const hydrated = useProjectsStore((s) => s.hydrated)
   const uiTheme = useProjectsStore((s) => s.preferences.uiTheme)
+  const visualStyle = useProjectsStore((s) => s.preferences.visualStyle ?? 'normal')
+  const motionPreference = useProjectsStore((s) => s.preferences.motionPreference)
   const appIconTheme = useProjectsStore((s) => s.preferences.appIconTheme)
   const uiZoom = useProjectsStore((s) => s.preferences.uiZoom)
   const windowOpacity = useProjectsStore((s) => s.preferences.windowOpacity)
@@ -179,32 +227,61 @@ export default function App() {
   const spawnConcurrency = useProjectsStore((s) => s.preferences.spawnConcurrency)
   const activeView = useUiStore((s) => s.activeView)
   const openModal = useUiStore((s) => s.openModal)
+  const restoreMarkdownSidebarHistory = useUiStore((s) => s.restoreMarkdownSidebarHistory)
+  const activeProfileId = useProjectsStore((s) => s.activeProfileId)
   const leftSidebarVisible = useProjectsStore((s) => s.preferences.leftSidebarVisible)
   const rightSidebarVisible = useProjectsStore((s) => s.preferences.rightSidebarVisible)
   const leftSidebarWidth = useProjectsStore((s) => s.preferences.leftSidebarWidth)
   const rightSidebarWidth = useProjectsStore((s) => s.preferences.rightSidebarWidth)
-  const todoEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.todos)
+  const todosEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.todos)
+  const playwrightEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.playwright)
+  const gitEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.git)
+  const mcpEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.mcp)
+  const gitControlPlacement = useProjectsStore((s) => s.preferences.gitControlPlacement)
+  const rightPanelEnabled =
+    todosEnabled || mcpEnabled || (gitEnabled && gitControlPlacement === 'right')
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   // Keep panel defaults stable while dragging. Updating defaultSize on every
   // resize event can make react-resizable-panels rebuild the layout mid-drag.
   const leftSidebarDefaultRef = useRef(leftSidebarWidth)
   const rightSidebarDefaultRef = useRef(rightSidebarWidth)
+  const sidebarDefaultsHydratedRef = useRef(false)
   const leftPanelRef = usePanelRef()
   const rightPanelRef = usePanelRef()
   const leftSidebarSaveTimerRef = useRef<number | null>(null)
   const rightSidebarSaveTimerRef = useRef<number | null>(null)
+  const leftSidebarLayoutReadyRef = useRef(false)
+  const rightSidebarLayoutReadyRef = useRef(false)
+  const leftSidebarResizeActiveRef = useRef(false)
+  const rightSidebarResizeActiveRef = useRef(false)
+  const windowHiddenRef = useRef(false)
   const leftPanelElementRef = useRef<HTMLDivElement>(null)
   const rightPanelElementRef = useRef<HTMLDivElement>(null)
 
+  // Hydration completes before the panels mount. Capture the persisted widths
+  // on that render so their first layout does not fall back to store defaults.
+  if (hydrated && !sidebarDefaultsHydratedRef.current) {
+    leftSidebarDefaultRef.current = leftSidebarWidth
+    rightSidebarDefaultRef.current = rightSidebarWidth
+    sidebarDefaultsHydratedRef.current = true
+  }
+
   useKeybindings()
   useDiscordPresence()
+  useMcpIntroPrompt()
+  useRemoteControlService()
   useCloseConfirmation()
   useResourceSupervisor(hydrated)
+  useAgentBrowserOffers(playwrightEnabled)
   useCliOpenRequests(hydrated)
 
   useEffect(() => {
     void hydrate()
   }, [hydrate])
+
+  useEffect(() => {
+    if (hydrated) restoreMarkdownSidebarHistory()
+  }, [activeProfileId, hydrated, restoreMarkdownSidebarHistory])
 
   useEffect(() => {
     void ghosttyKillAll().catch(() => {
@@ -217,10 +294,16 @@ export default function App() {
   }, [uiTheme])
 
   useEffect(() => {
+    document.documentElement.dataset.visualStyle = visualStyle
+  }, [visualStyle])
+
+  useEffect(() => {
     if (!hydrated) return
-    void getCurrentWindow().setIcon(getThemeIcon(appIconTheme)).catch(() => {
-      // Browser/test environments do not expose the native window icon API.
-    })
+    void loadThemeIconBytes(appIconTheme)
+      .then((bytes) => getCurrentWindow().setIcon(bytes))
+      .catch((error) => {
+        console.error('[app-icon] failed to apply window icon', error)
+      })
   }, [appIconTheme, hydrated])
 
   useEffect(() => {
@@ -251,8 +334,82 @@ export default function App() {
     })
   }, [hydrated, windowOpacity])
 
+  // Dragging a separator until the sidebar collapses gives it `pointer-events: none`, so
+  // its own pointerup never fires and the flag would stay on for the rest of the session —
+  // after which any reflow that momentarily reports 0px is persisted as "user closed it".
+  useEffect(() => {
+    const clearResizeFlags = () => {
+      leftSidebarResizeActiveRef.current = false
+      rightSidebarResizeActiveRef.current = false
+    }
+    const markHidden = () => {
+      windowHiddenRef.current = true
+      clearResizeFlags()
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') markHidden()
+      else windowHiddenRef.current = false
+    }
+    window.addEventListener('pointerup', clearResizeFlags)
+    window.addEventListener('pointercancel', clearResizeFlags)
+    window.addEventListener('blur', clearResizeFlags)
+    window.addEventListener('beforeunload', markHidden)
+    window.addEventListener('pagehide', markHidden)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      window.removeEventListener('pointerup', clearResizeFlags)
+      window.removeEventListener('pointercancel', clearResizeFlags)
+      window.removeEventListener('blur', clearResizeFlags)
+      window.removeEventListener('beforeunload', markHidden)
+      window.removeEventListener('pagehide', markHidden)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [])
+
+  // A collapsible panel auto-collapses whenever the group squeezes it below `minSize`,
+  // which is what a minimize or a narrow window does to both sidebars at once. Nothing
+  // brought them back, because the effects below only run when the preference changes —
+  // so the panels stayed shut while the stored preference still said "visible".
   useEffect(() => {
     if (!hydrated) return
+    let timer: number | null = null
+    const reconcile = () => {
+      if (windowHiddenRef.current) return
+      if (leftSidebarResizeActiveRef.current || rightSidebarResizeActiveRef.current) return
+      const wantLeft = leftSidebarVisible
+      const wantRight = rightPanelEnabled && rightSidebarVisible
+      const required =
+        (wantLeft ? LEFT_SIDEBAR_MIN_PX : 0) +
+        (wantRight ? RIGHT_SIDEBAR_MIN_PX : 0) +
+        WORKSPACE_MIN_PX
+      if (window.innerWidth < required) return
+      if (wantLeft && leftPanelRef.current?.isCollapsed()) leftPanelRef.current.expand()
+      if (wantRight && rightPanelRef.current?.isCollapsed()) rightPanelRef.current.expand()
+    }
+    const schedule = () => {
+      if (timer !== null) window.clearTimeout(timer)
+      timer = window.setTimeout(reconcile, 240)
+    }
+    window.addEventListener('resize', schedule)
+    document.addEventListener('visibilitychange', schedule)
+    schedule()
+    return () => {
+      if (timer !== null) window.clearTimeout(timer)
+      window.removeEventListener('resize', schedule)
+      document.removeEventListener('visibilitychange', schedule)
+    }
+  }, [
+    hydrated,
+    leftPanelRef,
+    rightPanelRef,
+    leftSidebarVisible,
+    rightSidebarVisible,
+    rightPanelEnabled,
+  ])
+
+  useEffect(() => {
+    if (!hydrated) return
+    leftSidebarLayoutReadyRef.current = false
     const element = leftPanelElementRef.current
     if (element) element.style.transition = 'flex-grow 180ms ease, flex-basis 180ms ease'
     const frame = window.requestAnimationFrame(() => {
@@ -261,6 +418,7 @@ export default function App() {
     })
     const timer = window.setTimeout(() => {
       if (element) element.style.transition = ''
+      leftSidebarLayoutReadyRef.current = true
     }, 220)
     return () => {
       window.cancelAnimationFrame(frame)
@@ -271,21 +429,23 @@ export default function App() {
 
   useEffect(() => {
     if (!hydrated) return
+    rightSidebarLayoutReadyRef.current = false
     const element = rightPanelElementRef.current
     if (element) element.style.transition = 'flex-grow 180ms ease, flex-basis 180ms ease'
     const frame = window.requestAnimationFrame(() => {
-      if (todoEnabled && rightSidebarVisible) rightPanelRef.current?.expand()
+      if (rightPanelEnabled && rightSidebarVisible) rightPanelRef.current?.expand()
       else rightPanelRef.current?.collapse()
     })
     const timer = window.setTimeout(() => {
       if (element) element.style.transition = ''
+      rightSidebarLayoutReadyRef.current = true
     }, 220)
     return () => {
       window.cancelAnimationFrame(frame)
       window.clearTimeout(timer)
       if (element) element.style.transition = ''
     }
-  }, [hydrated, rightPanelRef, rightSidebarVisible, todoEnabled])
+  }, [hydrated, rightPanelRef, rightSidebarVisible, rightPanelEnabled])
 
   useEffect(() => {
     if (!hydrated) return
@@ -322,10 +482,6 @@ export default function App() {
         if (!cancelled) useUiStore.getState().setUpdateInfo(info)
       })
       .catch((error) => {
-        // Checagem de fundo no boot — silenciosa de propósito (não vale
-        // interromper o usuário por causa de uma falha de rede aqui; a tela
-        // "Sobre & Atualizações" já oferece checagem sob demanda com erro
-        // visível). Só loga pra não ficar indistinguível de "sem update".
         console.error('[update] checagem de fundo falhou:', error)
       })
     return () => {
@@ -356,12 +512,13 @@ export default function App() {
   }, [hydrated])
 
   if (!hydrated) {
-    return <LoadingScreen />
+    // Persisted preferences are not known yet, so keep startup decorative motion static.
+    return <LoadingScreen reducedMotion />
   }
 
   return (
     <>
-      <div className={styles.appShell}>
+      <div className={styles.appShell} id={APP_SHELL_ID} tabIndex={-1}>
         <TitleBar />
         <PanelGroup
           orientation="horizontal"
@@ -373,22 +530,37 @@ export default function App() {
             panelRef={leftPanelRef}
             elementRef={leftPanelElementRef}
             defaultSize={leftSidebarVisible ? `${leftSidebarDefaultRef.current}px` : '0px'}
-            minSize="220px"
-            maxSize="380px"
+            minSize={`${LEFT_SIDEBAR_MIN_PX}px`}
+            maxSize={`${LEFT_SIDEBAR_MAX_PX}px`}
             collapsedSize="0px"
             collapsible
             groupResizeBehavior="preserve-pixel-size"
             onResize={(size, _id, previous) => {
-              if (
-                size.inPixels >= 220 &&
-                previous &&
-                Math.abs(size.inPixels - previous.inPixels) >= 1
-              ) {
-                const nextWidth = Math.max(220, Math.min(380, Math.round(size.inPixels)))
+              const currentVisible = useProjectsStore.getState().preferences.leftSidebarVisible
+              const nextVisible = visibilityFromPanelResize(
+                leftSidebarLayoutReadyRef.current,
+                leftSidebarResizeActiveRef.current,
+                windowHiddenRef.current,
+                size,
+                previous,
+                currentVisible,
+              )
+              if (nextVisible !== null) setPreferences({ leftSidebarVisible: nextVisible })
+              const nextWidth = widthFromPanelResize(
+                leftSidebarLayoutReadyRef.current,
+                leftSidebarResizeActiveRef.current,
+                windowHiddenRef.current,
+                size,
+                previous,
+                LEFT_SIDEBAR_MIN_PX,
+                LEFT_SIDEBAR_MAX_PX,
+              )
+              if (nextWidth !== null) {
                 if (leftSidebarSaveTimerRef.current !== null)
                   window.clearTimeout(leftSidebarSaveTimerRef.current)
                 leftSidebarSaveTimerRef.current = window.setTimeout(() => {
                   leftSidebarSaveTimerRef.current = null
+                  leftSidebarDefaultRef.current = nextWidth
                   setPreferences({ leftSidebarWidth: nextWidth })
                 }, 180)
               }
@@ -400,12 +572,35 @@ export default function App() {
           </Panel>
           <Separator
             className={`${styles.shellSeparator} ${leftSidebarVisible ? '' : styles.shellSeparatorHidden}`}
+            onPointerDown={() => {
+              leftSidebarResizeActiveRef.current = true
+            }}
+            onPointerUp={() => {
+              leftSidebarResizeActiveRef.current = false
+            }}
+            onPointerCancel={() => {
+              leftSidebarResizeActiveRef.current = false
+            }}
+            onLostPointerCapture={() => {
+              leftSidebarResizeActiveRef.current = false
+            }}
+            onKeyDown={() => {
+              leftSidebarResizeActiveRef.current = true
+            }}
+            onKeyUp={() => {
+              leftSidebarResizeActiveRef.current = false
+            }}
+            onBlur={() => {
+              leftSidebarResizeActiveRef.current = false
+            }}
           />
 
           <Panel id="alethe-main" minSize="360px">
             <main className={styles.mainView}>
               <ErrorBoundary label="view">
-                <Suspense fallback={<LoadingScreen />}>
+                <Suspense
+                  fallback={<LoadingScreen reducedMotion={motionPreference === 'reduced'} />}
+                >
                   {activeView === 'home' ? (
                     <HomeView />
                   ) : activeView === 'agentSandbox' && AGENT_SANDBOX_ENABLED ? (
@@ -420,32 +615,68 @@ export default function App() {
             </main>
           </Panel>
 
-          {todoEnabled ? (
+          {rightPanelEnabled ? (
             <>
               <Separator
                 className={`${styles.shellSeparator} ${rightSidebarVisible ? '' : styles.shellSeparatorHidden}`}
+                onPointerDown={() => {
+                  rightSidebarResizeActiveRef.current = true
+                }}
+                onPointerUp={() => {
+                  rightSidebarResizeActiveRef.current = false
+                }}
+                onPointerCancel={() => {
+                  rightSidebarResizeActiveRef.current = false
+                }}
+                onLostPointerCapture={() => {
+                  rightSidebarResizeActiveRef.current = false
+                }}
+                onKeyDown={() => {
+                  rightSidebarResizeActiveRef.current = true
+                }}
+                onKeyUp={() => {
+                  rightSidebarResizeActiveRef.current = false
+                }}
+                onBlur={() => {
+                  rightSidebarResizeActiveRef.current = false
+                }}
               />
               <Panel
                 id="alethe-todo-sidebar"
                 panelRef={rightPanelRef}
                 elementRef={rightPanelElementRef}
                 defaultSize={rightSidebarVisible ? `${rightSidebarDefaultRef.current}px` : '0px'}
-                minSize="260px"
-                maxSize="420px"
+                minSize={`${RIGHT_SIDEBAR_MIN_PX}px`}
+                maxSize={`${RIGHT_SIDEBAR_MAX_PX}px`}
                 collapsedSize="0px"
                 collapsible
                 groupResizeBehavior="preserve-pixel-size"
                 onResize={(size, _id, previous) => {
-                  if (
-                    size.inPixels >= 260 &&
-                    previous &&
-                    Math.abs(size.inPixels - previous.inPixels) >= 1
-                  ) {
-                    const nextWidth = Math.max(260, Math.min(420, Math.round(size.inPixels)))
+                  const currentVisible = useProjectsStore.getState().preferences.rightSidebarVisible
+                  const nextVisible = visibilityFromPanelResize(
+                    rightSidebarLayoutReadyRef.current,
+                    rightSidebarResizeActiveRef.current,
+                    windowHiddenRef.current,
+                    size,
+                    previous,
+                    currentVisible,
+                  )
+                  if (nextVisible !== null) setPreferences({ rightSidebarVisible: nextVisible })
+                  const nextWidth = widthFromPanelResize(
+                    rightSidebarLayoutReadyRef.current,
+                    rightSidebarResizeActiveRef.current,
+                    windowHiddenRef.current,
+                    size,
+                    previous,
+                    RIGHT_SIDEBAR_MIN_PX,
+                    RIGHT_SIDEBAR_MAX_PX,
+                  )
+                  if (nextWidth !== null) {
                     if (rightSidebarSaveTimerRef.current !== null)
                       window.clearTimeout(rightSidebarSaveTimerRef.current)
                     rightSidebarSaveTimerRef.current = window.setTimeout(() => {
                       rightSidebarSaveTimerRef.current = null
+                      rightSidebarDefaultRef.current = nextWidth
                       setPreferences({ rightSidebarWidth: nextWidth })
                     }, 180)
                   }
@@ -460,6 +691,7 @@ export default function App() {
         </PanelGroup>
       </div>
       <FocusOverlay />
+      <GsdSyncActivityView />
       <LinkViewerOverlay />
       <DictationButton />
       <MainMenu />
@@ -470,6 +702,7 @@ export default function App() {
         <EditProjectModal />
         <NewTerminalModal />
         <AddContentModal />
+        <AddBrowserModal />
         <NewSubTabModal />
         <PreferencesModal />
         <ProfilesModal />
@@ -494,7 +727,13 @@ export default function App() {
         <AiUsageModal />
         <UpdateModal />
         <WhatsNewModal />
+        <RecentChatsModal />
+        <HandoffModal />
+        <McpManagerModal />
+        <McpIntroModal />
         <RemoteControlModal />
+        <AuditModal />
+        <FsBrowserModal />
       </ErrorBoundary>
       <InAppNotifications />
       {activeView === 'agentCanvas' ? <TokenHud /> : null}

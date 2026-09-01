@@ -1,18 +1,18 @@
 //! RFC-006 — Merge Analyzer + Conflict Classifier.
 //!
-//! Primeiro estágio do ciclo de merge seguro: **quem decide se existe conflito é
-//! este módulo**, nunca o agente. O ensaio de merge acontece num worktree
-//! temporário e descartável (`.alethe/merge-envs/analyze-<id>`), então o
-//! working tree do usuário NUNCA é tocado.
+//! First stage of the safe merge cycle: **this module is the one that decides
+//! whether a conflict exists**, never the agent. The merge trial runs in a
+//! temporary, disposable worktree (`.alethe/merge-envs/analyze-<id>`), so the
+//! user's working tree is NEVER touched.
 //!
-//! Fluxo (blueprint):
-//! `Agent A/B done → Merge Analyzer → conflito? ─não→ Validation → Merge
-//!                                        └sim→ Classifier → skill → Resolution Agent`
+//! Flow (blueprint):
+//! `Agent A/B done → Merge Analyzer → conflict? ─no→ Validation → Merge
+//!                                        └yes→ Classifier → skill → Resolution Agent`
 //!
-//! O Classifier mapeia cada arquivo em conflito para uma classe (Rust, TS, UI,
-//! Cargo, Package, JSON, Config, Asset, Planning, Graph, Other) e cada classe
-//! carrega uma estratégia — é isso que o Conflict Resolution Agent (RFC-007)
-//! recebe como contexto mínimo.
+//! The Classifier maps each conflicted file to a class (Rust, TS, UI, Cargo,
+//! Package, JSON, Config, Asset, Planning, Graph, Other) and each class
+//! carries a strategy — that's what the Conflict Resolution Agent (RFC-007)
+//! receives as minimal context.
 
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -32,6 +32,9 @@ pub enum ConflictClass {
     Config,
     Asset,
     Planning,
+    /// Sentinel for ephemeral machine state (e.g. `.gsd-child-session`) — an
+    /// opaque value (session ID, busy flag), not mergeable prose.
+    Sentinel,
     Graph,
     Other,
 }
@@ -53,14 +56,28 @@ pub struct MergeAnalysis {
     pub classes: Vec<ConflictClass>,
 }
 
-/// Classifica pelo caminho/extensão. Lockfiles e manifests têm classe própria
-/// porque a estratégia de resolução é diferente de código (ex.: regenerar
-/// lockfile em vez de editar na mão).
+/// Classifies by path/extension. Lockfiles and manifests get their own class
+/// because the resolution strategy differs from regular code (e.g. regenerate
+/// the lockfile instead of hand-editing it).
 pub fn classify_path(path: &str) -> ConflictClass {
     let normalized = path.replace('\\', "/");
     let lower = normalized.to_lowercase();
     let file_name = lower.rsplit('/').next().unwrap_or(&lower).to_string();
 
+    // Ephemeral machine-state sentinels from GSD Sync (session ID, busy flag,
+    // error message) — checked BEFORE the generic `.planning/` fallback:
+    // they're opaque, single-line values with no cross-branch "intent" to
+    // preserve. Confirmed live: treating them as `Planning` ("preserve both
+    // branches' history") led the agent to paste both values together with
+    // a real conflict marker inside the file — which was then read raw as if
+    // it were a valid session ID
+    // (`--session <<<<<<< HEAD\nses_...\n=======\n...`), breaking the spawn.
+    if file_name == ".gsd-child-session"
+        || file_name == ".gsd-child-busy"
+        || file_name == ".gsd-child-error"
+    {
+        return ConflictClass::Sentinel;
+    }
     if lower.starts_with(".planning/") || lower.contains("/.planning/") {
         return ConflictClass::Planning;
     }
@@ -88,50 +105,61 @@ pub fn classify_path(path: &str) -> ConflictClass {
     }
 }
 
-/// Estratégia (texto) por classe — vira parte do contexto mínimo do Resolution
-/// Agent. Mantido aqui para o Classifier e o prompt nunca divergirem.
+/// Strategy text per class — becomes part of the Resolution Agent's minimal
+/// context. Kept here so the Classifier and the prompt never diverge.
 pub fn class_strategy(class: ConflictClass) -> &'static str {
     match class {
         ConflictClass::Rust => {
-            "Código Rust: preserve as duas intenções; após resolver, o código deve compilar (cargo check)."
+            "Rust code: preserve both intentions; after resolving, the code must compile (cargo check)."
         }
         ConflictClass::TypeScript => {
-            "Código TypeScript/JS: preserve as duas intenções; imports/exports duplicados são a causa comum; tsc deve passar."
+            "TypeScript/JS code: preserve both intentions; duplicate imports/exports are the common cause; tsc must pass."
         }
         ConflictClass::Ui => {
-            "Estilos: una as regras das duas branches; nunca invente cores novas — use os tokens de tema existentes."
+            "Styles: merge the rules from both branches; never invent new colors — use the existing theme tokens."
         }
         ConflictClass::Cargo => {
-            "Cargo.toml/lock: una as dependências das duas branches; em conflito de Cargo.lock prefira regenerar (cargo update -p / cargo check) a editar na mão."
+            "Cargo.toml/lock: merge the dependencies from both branches; on a Cargo.lock conflict, prefer regenerating (cargo update -p / cargo check) over hand-editing."
         }
         ConflictClass::Package => {
-            "package.json/lockfile: una as dependências; em conflito de lockfile prefira regenerar (npm install) a editar na mão."
+            "package.json/lockfile: merge the dependencies; on a lockfile conflict, prefer regenerating (npm install) over hand-editing."
         }
         ConflictClass::Json => {
-            "JSON: resultado precisa ser JSON válido; una as chaves das duas branches; atenção a vírgulas."
+            "JSON: the result must be valid JSON; merge the keys from both branches; watch out for commas."
         }
         ConflictClass::Config => {
-            "Configuração: una as entradas; em chaves duplicadas com valores diferentes, entenda a intenção de cada branch antes de escolher."
+            "Configuration: merge the entries; for duplicate keys with different values, understand each branch's intent before choosing."
         }
         ConflictClass::Asset => {
-            "Binário/asset: não há merge textual — escolha a versão correta (geralmente a mais nova) via git checkout --theirs/--ours."
+            "Binary/asset: there is no textual merge — pick the correct version (usually the newest) via git checkout --theirs/--ours."
         }
         ConflictClass::Planning => {
-            "Planejamento (.planning/): preserve o histórico das duas branches; nunca descarte tarefas de nenhum lado."
+            "Planning (.planning/): preserve both branches' history; never discard tasks from either side."
+        }
+        ConflictClass::Sentinel => {
+            "Ephemeral machine state from GSD Sync (session ID, busy/error flag) — this is NOT content to merge, it's a single-line opaque value. NEVER paste both values together nor leave any conflict marker (<<<<<<<, =======, >>>>>>>) in the file. Resolve by deleting the file entirely (it is recreated on its own on the next GSD Sync cycle) — never pick a 'middle ground' value."
         }
         ConflictClass::Graph => {
-            "Grafo (graphify-out/): não resolva na mão — o grafo é gerado; escolha qualquer lado e regenere com o Graphify depois."
+            "Graph (graphify-out/): don't resolve by hand — the graph is generated; pick either side and regenerate with Graphify afterward."
         }
         ConflictClass::Other => {
-            "Preserve as duas intenções; se não tiver certeza, mantenha os dois trechos e sinalize no commit."
+            "Preserve both intentions; if unsure, keep both snippets and flag it in the commit."
         }
     }
 }
 
 fn ensure_branch(root: &Path, branch: &str) -> Result<(), String> {
-    let ok = git_command(root, &["rev-parse", "--verify", "--quiet", &format!("refs/heads/{branch}")])
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+    let ok = git_command(
+        root,
+        &[
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            &format!("refs/heads/{branch}"),
+        ],
+    )
+    .map(|o| o.status.success())
+    .unwrap_or(false);
     if ok {
         Ok(())
     } else {
@@ -143,7 +171,7 @@ pub(crate) fn merge_envs_dir(root: &Path) -> PathBuf {
     root.join(".alethe").join("merge-envs")
 }
 
-/// Lista os paths não-mergeados (`--diff-filter=U`) de um worktree em conflito.
+/// Lists the non-merged paths (`--diff-filter=U`) of a worktree in conflict.
 pub(crate) fn unmerged_files(dir: &Path) -> Result<Vec<String>, String> {
     let output = checked_output(dir, &["diff", "--name-only", "--diff-filter=U", "-z"])?;
     Ok(String::from_utf8_lossy(&output.stdout)
@@ -153,8 +181,8 @@ pub(crate) fn unmerged_files(dir: &Path) -> Result<Vec<String>, String> {
         .collect())
 }
 
-/// Ensaio de merge `source → target` num worktree descartável. Nunca toca o
-/// working tree do usuário. Publica `MergeClean`/`MergeConflict` no Event Bus.
+/// Trial merge `source → target` in a disposable worktree. Never touches the
+/// user's working tree. Publishes `MergeClean`/`MergeConflict` on the Event Bus.
 #[tauri::command]
 pub fn merge_analyze(
     repo: String,
@@ -171,7 +199,7 @@ pub fn merge_analyze(
     let env = envs.join(format!("analyze-{}", nanoid::nanoid!(8)));
     let env_arg = git_arg(&env);
 
-    // Worktree detached no target: o ensaio acontece aqui dentro.
+    // Detached worktree on the target: the trial happens in here.
     checked_output(&root, &["worktree", "add", "--detach", &env_arg, &target])?;
 
     let merge = git_command(&env, &["merge", "--no-commit", "--no-ff", &source])?;
@@ -188,8 +216,8 @@ pub fn merge_analyze(
             .collect::<Vec<_>>()
     };
 
-    // Teardown do ensaio (abort é best-effort: merge limpo sem commit também
-    // deixa estado staged que o worktree remove --force descarta).
+    // Trial teardown (abort is best-effort: a clean merge without a commit
+    // also leaves staged state that worktree remove --force discards).
     let _ = git_command(&env, &["merge", "--abort"]);
     let _ = git_command(&root, &["worktree", "remove", "--force", &env_arg]);
 
@@ -234,10 +262,16 @@ pub(crate) mod tests {
         assert_eq!(classify_path("tauri.conf.json"), ConflictClass::Json);
         assert_eq!(classify_path("config/settings.yml"), ConflictClass::Config);
         assert_eq!(classify_path("assets/logo.png"), ConflictClass::Asset);
-        assert_eq!(classify_path(".planning/roadmap.md"), ConflictClass::Planning);
-        assert_eq!(classify_path("graphify-out/graph.json"), ConflictClass::Graph);
+        assert_eq!(
+            classify_path(".planning/roadmap.md"),
+            ConflictClass::Planning
+        );
+        assert_eq!(
+            classify_path("graphify-out/graph.json"),
+            ConflictClass::Graph
+        );
         assert_eq!(classify_path("README.md"), ConflictClass::Other);
-        // Separador Windows também classifica.
+        // Windows path separator also classifies correctly.
         assert_eq!(classify_path("src\\main.rs"), ConflictClass::Rust);
     }
 
@@ -252,11 +286,11 @@ pub(crate) mod tests {
         fs::write(root.join("other.rs"), "fn base() {}\n").unwrap();
         run(&["add", "."]);
         run(&["commit", "-m", "base"]);
-        // Branch A muda shared.ts
+        // Branch A changes shared.ts
         run(&["checkout", "-b", "agent-a"]);
         fs::write(root.join("shared.ts"), "export const value = 'from-a'\n").unwrap();
         run(&["commit", "-am", "a"]);
-        // Branch B muda o MESMO arquivo (conflito) e o other.rs (limpo)
+        // Branch B changes the SAME file (conflict) and other.rs (clean)
         run(&["checkout", "main"]);
         run(&["checkout", "-b", "agent-b"]);
         fs::write(root.join("shared.ts"), "export const value = 'from-b'\n").unwrap();
@@ -271,13 +305,13 @@ pub(crate) mod tests {
     fn detects_conflict_and_clean_merges() {
         let (root, root_str) = conflicting_repo();
 
-        // agent-a → main: limpo (main não divergiu de shared.ts base... na
-        // verdade main é o ancestral, então é sempre limpo).
+        // agent-a → main: clean (main didn't diverge from the shared.ts base...
+        // actually main is the ancestor, so it's always clean).
         let clean = merge_analyze(root_str.clone(), "agent-a".into(), "main".into(), None).unwrap();
         assert!(clean.clean);
         assert!(clean.conflicts.is_empty());
 
-        // agent-b → agent-a: ambos mudaram shared.ts → conflito TypeScript.
+        // agent-b → agent-a: both changed shared.ts → TypeScript conflict.
         let conflicted =
             merge_analyze(root_str.clone(), "agent-b".into(), "agent-a".into(), None).unwrap();
         assert!(!conflicted.clean);
@@ -286,14 +320,14 @@ pub(crate) mod tests {
         assert_eq!(conflicted.conflicts[0].class, ConflictClass::TypeScript);
         assert_eq!(conflicted.classes, vec![ConflictClass::TypeScript]);
 
-        // O ensaio não deixa worktree para trás.
+        // The trial doesn't leave a worktree behind.
         assert!(!merge_envs_dir(&root).join("analyze").exists());
         let leftovers = fs::read_dir(merge_envs_dir(&root))
             .map(|d| d.count())
             .unwrap_or(0);
         assert_eq!(leftovers, 0);
 
-        // Branch inexistente falha limpo.
+        // Nonexistent branch fails cleanly.
         assert!(merge_analyze(root_str, "nope".into(), "main".into(), None).is_err());
         fs::remove_dir_all(root).unwrap();
     }

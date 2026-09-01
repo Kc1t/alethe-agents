@@ -1,31 +1,30 @@
 import { useEffect } from 'react'
 
+import { getLocale, translate } from '../lib/i18n'
+import { computeVisibleFocusedPtyIds } from '../lib/ptyVisibility'
 import {
   getMemoryStats,
   getRuntimeSnapshot,
+  listenMemoryRelief,
   listenPtySuspended,
-  listenResourcePressure,
-  setResourcePolicy,
-  updatePtyRuntimeMeta,
+  type MemoryReliefLevel,
   type PtyRuntimeMeta,
   type ResourcePolicyInput,
+  setResourcePolicy,
+  updatePtyRuntimeMeta,
 } from '../lib/tauri'
-import { getLocale, translate } from '../lib/i18n'
-import { computeVisibleFocusedPtyIds } from '../lib/ptyVisibility'
-import { ensureSpawnQueueProgress, setSpawnPressureBlocked } from '../lib/spawnQueue'
+import { clearAllTtlCaches } from '../lib/ttlCache'
 import { useProjectsStore } from '../stores/projectsStore'
 import { useTerminalsStore } from '../stores/terminalsStore'
 import { useUiStore } from '../stores/uiStore'
 
 const SAMPLE_INTERVAL_MS = 5_000
+const MEMORY_WARNING_INTERVAL_MS = 120_000
 
 function currentPolicy(): ResourcePolicyInput {
   const policy = useProjectsStore.getState().preferences.resourcePolicy
   return {
-    // Hydrated stores created before automaticParkingOptIn existed can remain
-    // alive across HMR. Treat them as monitor-only immediately as well.
-    mode:
-      policy.automaticParkingOptIn === true && policy.mode === 'smart-lru' ? 'smart-lru' : 'manual',
+    mode: 'manual',
     memoryBudgetMb: policy.memoryBudgetMb,
     warningThresholdMb: policy.warningThresholdMb,
     recoveryTargetMb: policy.recoveryTargetMb,
@@ -35,12 +34,23 @@ function currentPolicy(): ResourcePolicyInput {
   }
 }
 
+function terminalNameForPty(ptyId: string): string {
+  for (const project of useProjectsStore.getState().projects) {
+    for (const terminal of project.terminals) {
+      if (terminal.tabs.some((tab) => tab.ptyId === ptyId)) return terminal.name
+    }
+  }
+  return ptyId
+}
+
 function collectRuntimeMetas(): PtyRuntimeMeta[] {
   const projectsState = useProjectsStore.getState()
   const terminalsState = useTerminalsStore.getState()
   const ui = useUiStore.getState()
   const now = Date.now()
   const { visible: visiblePtys, focused: focusedPtys } = computeVisibleFocusedPtyIds()
+  // Mounted tabs are one Ctrl+Tab away. Suspending them turns a switch back into a restart.
+  const mountedPaneIds = new Set(ui.mountedPaneIds)
   const known = new Set<string>()
   const metas: PtyRuntimeMeta[] = []
 
@@ -59,7 +69,7 @@ function collectRuntimeMetas(): PtyRuntimeMeta[] {
           status: runtime?.status ?? 'waiting',
           visible,
           focused,
-          protected: visible || focused,
+          protected: visible || focused || mountedPaneIds.has(terminal.id),
           lastIoAtMs: runtime?.lastIoAt ?? lastUsedAt,
           spawnedAtMs: runtime?.spawnedAt ?? now,
           lastUsedAtMs: lastUsedAt,
@@ -107,27 +117,7 @@ function collectRuntimeMetas(): PtyRuntimeMeta[] {
   return metas
 }
 
-function notifyPressure(level: 'normal' | 'warning' | 'critical', totalMb: number): void {
-  const locale = getLocale()
-  const pushToast = useUiStore.getState().pushToast
-  if (level === 'normal') {
-    pushToast({
-      title: translate(locale, 'resource.normal.title'),
-      body: translate(locale, 'resource.normal.body'),
-    })
-    return
-  }
-  pushToast({
-    title: translate(locale, `resource.${level}.title`),
-    body: translate(locale, `resource.${level}.body`, { total: Math.round(totalMb) }),
-  })
-}
-
-/**
- * Mantém uma única coleta de recursos para toda a UI. Em uma instância antiga
- * do backend (HMR sem restart), cai para a métrica legada e apenas bloqueia
- * crescimento acima do orçamento; o supervisor nativo entra no próximo boot.
- */
+/** Keeps one resource sampler for the UI without suspending or blocking runtimes. */
 export function useResourceSupervisor(hydrated: boolean): void {
   useEffect(() => {
     if (!hydrated) return
@@ -136,21 +126,21 @@ export function useResourceSupervisor(hydrated: boolean): void {
     let running = false
     let nativeAvailable: boolean | null = null
     let lastPolicy = ''
-    let lastLevel: 'normal' | 'warning' | 'critical' | null = null
-    let lastSuspendedId: string | null = null
     const unlisteners: Array<() => void> = []
 
-    const onLevel = (level: 'normal' | 'warning' | 'critical', totalMb: number) => {
-      if (level !== lastLevel) {
-        if (lastLevel !== null || level !== 'normal') notifyPressure(level, totalMb)
-        lastLevel = level
-      }
+    // Parking kills the process tree, so the pane simply falls silent. Without a word about it a
+    // terminal that stopped on its own is indistinguishable from one that froze, and the way back
+    // is a restart the reader has no reason to try.
+    const onSuspended = (id: string) => {
+      useTerminalsStore.getState().markSuspended(id)
+      const name = terminalNameForPty(id)
+      useUiStore.getState().pushToast({
+        title: translate(getLocale(), 'resources.parkedTitle'),
+        body: translate(getLocale(), 'resources.parkedBody', { name }),
+      })
     }
 
     const tick = async () => {
-      // A pressão pode nunca chegar ao recovery target quando todos os PTYs são
-      // visíveis/protegidos. Libera progresso controlado após espera excessiva.
-      ensureSpawnQueueProgress()
       if (running || cancelled) return
       running = true
       const policy = currentPolicy()
@@ -170,11 +160,6 @@ export function useResourceSupervisor(hydrated: boolean): void {
           useUiStore.getState().setRuntimeSnapshot(snapshot)
           useUiStore.getState().addMemorySample(snapshot.memory)
           useUiStore.getState().setRamMb(snapshot.effectiveTotalMb)
-          setSpawnPressureBlocked(
-            snapshot.pressure.spawnBlocked,
-            snapshot.pressure.spawnBlocked ? 'memory-pressure' : null,
-          )
-          onLevel(snapshot.pressure.level, snapshot.effectiveTotalMb)
           return
         }
       } catch {
@@ -186,47 +171,43 @@ export function useResourceSupervisor(hydrated: boolean): void {
       try {
         const stats = await getMemoryStats()
         if (cancelled) return
-        // Mesmo no modo manual, não deixe criar novos PTYs quando o orçamento
-        // crítico já foi atingido. Manual controla o estacionamento automático,
-        // não a segurança contra uma nova explosão de memória.
-        const blocked = stats.total_mb >= policy.memoryBudgetMb
         useUiStore.getState().setRuntimeSnapshot(null)
         useUiStore.getState().addMemorySample(stats)
-        setSpawnPressureBlocked(blocked, blocked ? 'memory-pressure' : null)
-        const level =
-          stats.total_mb >= policy.memoryBudgetMb
-            ? 'critical'
-            : stats.total_mb >= policy.warningThresholdMb
-              ? 'warning'
-              : 'normal'
-        onLevel(level, stats.total_mb)
+        useUiStore.getState().setRamMb(stats.total_mb)
       } catch {
-        // Coleta best-effort: falhar aqui nunca deve afetar os terminais.
+        // Sampling is best effort: a failed poll must not take the UI down with it.
       }
     }
 
-    void listenResourcePressure((payload) => {
-      if (cancelled) return
-      setSpawnPressureBlocked(payload.spawnBlocked, payload.spawnBlocked ? 'memory-pressure' : null)
-      onLevel(payload.level, payload.totalMb)
-      if (payload.suspendedId && payload.suspendedId !== lastSuspendedId) {
-        lastSuspendedId = payload.suspendedId
-      }
-    }).then((unlisten) => {
+    // The resource manager raises these as free memory falls. Nothing listened to them, so every
+    // relief level was a no-op and the app watched the machine run out of RAM.
+    let lastWarnedAt = 0
+    const onRelief = (level: MemoryReliefLevel) => {
+      if (cancelled || level === 'low') return
+      clearAllTtlCaches()
+      if (level !== 'critical') return
+      // A freeze with no warning is the part that costs the user work; rate-limit but do tell them.
+      const now = Date.now()
+      if (now - lastWarnedAt < MEMORY_WARNING_INTERVAL_MS) return
+      lastWarnedAt = now
+      const stats = useUiStore.getState().runtimeSnapshot
+      useUiStore.getState().pushToast({
+        title: translate(getLocale(), 'resources.criticalTitle'),
+        body: translate(getLocale(), 'resources.criticalBody', {
+          free: String(stats?.memory.system_available_mb ?? 0),
+          ptys: String(stats?.memory.ptys_mb ?? 0),
+        }),
+      })
+    }
+
+    void listenMemoryRelief(onRelief).then((unlisten) => {
       if (cancelled) unlisten()
       else unlisteners.push(unlisten)
     })
 
     void listenPtySuspended((payload) => {
       if (cancelled) return
-      useTerminalsStore.getState().markSuspended(payload.id)
-      if (payload.id === lastSuspendedId) return
-      lastSuspendedId = payload.id
-      const locale = getLocale()
-      useUiStore.getState().pushToast({
-        title: translate(locale, 'resource.suspended.title'),
-        body: translate(locale, 'resource.suspended.body'),
-      })
+      onSuspended(payload.id)
     }).then((unlisten) => {
       if (cancelled) unlisten()
       else unlisteners.push(unlisten)
@@ -238,7 +219,6 @@ export function useResourceSupervisor(hydrated: boolean): void {
       cancelled = true
       window.clearInterval(interval)
       for (const unlisten of unlisteners) unlisten()
-      setSpawnPressureBlocked(false)
     }
   }, [hydrated])
 }

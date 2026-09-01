@@ -10,26 +10,26 @@ import { useUiStore } from '../../../stores/uiStore'
 
 type Session = { folder: string; ptyId: string }
 
-/**
- * Gerência dos workers REAIS (PTYs claude/codex/opencode) do canvas: spawn,
- * kill, dispatch pelo control plane e limpeza. Owner do estado de workers e dos
- * refs de cleanup (pra matar PTYs sem virar dependência de effects).
- */
+   
+                                                                            
+                                                                                
+                                                                     
+   
 export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
   const t = useT()
   const [codexWorkers, setCodexWorkers] = useState<CodexWorker[]>([])
   const [expandedCodexId, setExpandedCodexId] = useState<string | null>(null)
-  // Refs pra cleanup matar PTYs sem virar dependência dos effects.
+                                                                   
   const codexWorkersRef = useRef<CodexWorker[]>([])
   const workerExitUnlistenersRef = useRef(new Map<string, () => void>())
   useEffect(() => {
     codexWorkersRef.current = codexWorkers
   }, [codexWorkers])
 
-  // Cria um worker REAL de um agente (claude/codex/opencode). O PTY sobe JÁ em
-  // background (sem abrir o terminal); o usuário abre quando quiser (opts.open).
-  // Se opts.task vier, roda one-shot via execArgsFor (determinístico, não depende
-  // da TUI); senão, agente interativo pro usuário mexer.
+                                                                               
+                                                                                 
+                                                                                  
+                                                         
   const spawnAgentWorker = useCallback(
     (
       agent: AgentType,
@@ -62,8 +62,8 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
         extraArgs: args,
       })
         .then(() => {
-          // Captura o término mesmo com o terminal fechado — senão o card de um
-          // one-shot ficaria "running" pra sempre.
+                                                                                
+                                                   
           let unlistenExit: (() => void) | null = null
           let exited = false
           void listenPtyExit(ptyId, (payload) => {
@@ -75,8 +75,8 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
             setCodexWorkers((prev) =>
               prev.map((w) => (w.ptyId === ptyId ? { ...w, exitedCode: code ?? 0 } : w)),
             )
-            // Fecha o loop fire-and-forget: puxa a cauda do scrollback como
-            // resumo do que o worker terminou fazendo, pra aparecer no card.
+                                                                            
+                                                                             
             void attachPty(ptyId)
               .then((scrollback) => {
                 const result = tailSummary(scrollback)
@@ -89,8 +89,8 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
           })
             .then((unlisten) => {
               unlistenExit = unlisten
-              // Se o exit já disparou antes do promise resolver, desfaz agora e NÃO
-              // guarda (senão ficaria um listener órfão já-disparado no ref).
+                                                                                    
+                                                                              
               if (exited) unlisten()
               else workerExitUnlistenersRef.current.set(ptyId, unlisten)
             })
@@ -103,7 +103,7 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
     [sessionRef],
   )
 
-  // Atalho legado pros botões manuais (worker codex interativo).
+                                                                 
   const spawnCodexWorker = useCallback(
     (title: string, opts: { open?: boolean; task?: string } = {}): string | null =>
       spawnAgentWorker('codex', title, opts),
@@ -120,23 +120,23 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
   }, [])
 
   // Ponte de dispatch: o control plane spawna um processo real via POST /spawn
-  // (ou /codex legado). Cada despacho = um card. O usuário abre pra acompanhar;
-  // o worker sai quando termina (card vira "exit N").
+                                                                                
+                                                      
   const dispatchToAgent = useCallback(
     (payload: { agent?: string; task?: string; mode?: string }) => {
       const agent = payload.agent as AgentType | undefined
       if (agent !== 'claude' && agent !== 'codex' && agent !== 'opencode') return
       const rawTask = payload.task ?? ''
       // A task vira arg via PowerShell -> *.cmd (batch). Aspas duplas e newlines
-      // quebram o batch — então sanitiza: aspas duplas viram simples (o
-      // command_builder escapa simples com segurança) e newlines viram espaço.
+                                                                        
+                                                                               
       const safe = rawTask
         .replace(/"/g, "'")
         .replace(/\s*[\r\n]+\s*/g, ' ')
         .trim()
       const interactive = payload.mode === 'interactive' || !safe
-      // Teto de workers vivos: cada um é um processo pesado. Acima disso, recusa
-      // (lê do ref pra não pegar contagem velha do closure) — evita a IA estourar
+                                                                                 
+                                                                                  
       // a RAM spawnando dezenas de claude/codex.
       const liveWorkers = codexWorkersRef.current.filter((w) => w.exitedCode === null).length
       if (liveWorkers >= MAX_LIVE_WORKERS) {
@@ -173,7 +173,7 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
     }
   }, [dispatchToAgent])
 
-  // Mata todos os workers vivos (PTYs) e limpa os listeners de exit. Usado ao
+                                                                              
   // sair do canvas e ao "limpar tudo".
   const killAllWorkers = useCallback(() => {
     for (const w of codexWorkersRef.current) {
@@ -183,8 +183,8 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
     workerExitUnlistenersRef.current.clear()
   }, [])
 
-  // Ao desmontar a view, mata todos os codex workers (PTYs órfãos senão ficam
-  // vivos no backend). exitCanvas já cobre o "voltar"; isto cobre os demais.
+                                                                              
+                                                                             
   useEffect(() => {
     return () => {
       killAllWorkers()

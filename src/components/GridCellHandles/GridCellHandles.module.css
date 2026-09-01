@@ -1,0 +1,103 @@
+.handle {
+  position: absolute;
+  z-index: 5;
+  touch-action: none;
+  background: transparent;
+  transition: background var(--anim-fast, 0.12s) ease;
+}
+
+.handle::after {
+  content: '';
+  position: absolute;
+  background: var(--accent);
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity var(--anim-fast, 0.12s) ease;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.handle:hover {
+  background: var(--accent-soft);
+}
+
+.handle:hover::after {
+  opacity: 1;
+}
+
+.left,
+.right {
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+}
+
+.left::after,
+.right::after {
+  width: 3px;
+  height: 36px;
+}
+
+.left {
+  left: 0;
+}
+
+.right {
+  right: 0;
+}
+
+.top,
+.bottom {
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: row-resize;
+}
+
+.top::after,
+.bottom::after {
+  height: 3px;
+  width: 36px;
+}
+
+.top {
+  top: 0;
+}
+
+.bottom {
+  bottom: 0;
+}
+
+.fillBtn {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 6;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--panel);
+  color: var(--fg-muted);
+  opacity: 0;
+  cursor: pointer;
+  transition:
+    opacity var(--anim-fast, 0.12s) ease,
+    color var(--anim-fast, 0.12s) ease,
+    border-color var(--anim-fast, 0.12s) ease;
+}
+
+*:hover > .fillBtn,
+.fillBtn:focus-visible {
+  opacity: 1;
+}
+
+.fillBtn:hover {
+  color: var(--accent);
+  border-color: var(--border-accent);
+}

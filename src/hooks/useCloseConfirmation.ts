@@ -2,9 +2,10 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { confirm } from '@tauri-apps/plugin-dialog'
 import { useEffect } from 'react'
 
-import { createCloseCoordinator, type CloseFailureStage } from '../lib/closeCoordinator'
+import { type CloseFailureStage,createCloseCoordinator } from '../lib/closeCoordinator'
 import { getLocale, translate } from '../lib/i18n'
 import { quitApp, recordFrontendError } from '../lib/tauri'
+import { flushProjectsState } from '../stores/projectsStore'
 import { useUiStore } from '../stores/uiStore'
 
 function errorDetails(error: unknown): { message: string; stack: string | null } {
@@ -42,6 +43,7 @@ const closeCoordinator = createCloseCoordinator({
     })
   },
   confirmFallback: () => window.confirm(translate(getLocale(), 'appClose.message')),
+  beforeClose: flushProjectsState,
   destroyWindow: () => appWindow.destroy(),
   quitApp: () => quitApp(),
   onFailure: reportCloseFailure,
@@ -51,7 +53,7 @@ export function requestAppClose(): Promise<void> {
   return closeCoordinator.handleCloseRequest({ preventDefault: () => {} })
 }
 
-/** Instala uma única confirmação para todos os caminhos de fechamento da janela. */
+                                                                                    
 export function useCloseConfirmation(): void {
   useEffect(() => {
     let cancelled = false

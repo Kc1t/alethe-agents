@@ -8,25 +8,41 @@ import styles from './Modal.module.css'
 type Props = {
   open: boolean
   onClose: () => void
-  title: string
+  title: ReactNode
   children: ReactNode
   footer?: ReactNode
   width?: number
+  /** Set when this modal is opened from inside another one, so it layers above it. */
+  nested?: boolean
 }
 
-/** Wrapper Radix Dialog padronizado pra todos os modais do app. */
-export function Modal({ open, onClose, title, children, footer, width = 440 }: Props) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  footer,
+  width = 440,
+  nested = false,
+}: Props) {
   const t = useT()
   return (
     <Dialog.Root open={open} onOpenChange={(v) => !v && open && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className={styles.overlay} />
+        <Dialog.Overlay className={`${styles.overlay} ${nested ? styles.overlayNested : ''}`} />
         <Dialog.Content
-          className={styles.content}
+          data-alethe-modal-content=""
+          className={`${styles.content} ${nested ? styles.contentNested : ''}`}
           style={{ width }}
           aria-describedby={undefined}
+          onInteractOutside={(event) => {
+            const target = event.target as Element | null
+            if (target?.closest('[data-alethe-dropdown-menu]')) event.preventDefault()
+          }}
+          onEscapeKeyDown={(event) => {
+            if (document.querySelector('[data-alethe-dropdown-menu]')) event.preventDefault()
+          }}
           onOpenAutoFocus={(e) => {
-            // foca o primeiro input ao invés do botão close
             const root = e.currentTarget as HTMLElement | null
             const input = root?.querySelector<HTMLElement>('input,textarea,[data-autofocus]')
             if (input) {

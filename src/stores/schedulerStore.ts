@@ -53,7 +53,7 @@ export const useSchedulerStore = create<SchedulerState>((set, get) => ({
 
   tick: async (projectId, repoPath) => {
     try {
-      // 2.3b — informa o modo de worktree do projeto ao scheduler backend.
+                                                                           
       const project = useProjectsStore.getState().projects.find((p) => p.id === projectId)
       await triggerSchedulerTick(projectId, repoPath, project?.worktreeMode)
       const list = await getSchedulerTasks(projectId)
@@ -77,7 +77,7 @@ export const useSchedulerStore = create<SchedulerState>((set, get) => ({
           return { taskTerminals: next }
         })
       }
-      // Atualiza status localmente para 'failed' enquanto o evento de retorno não chega
+                                                                                        
       set((state) => ({
         tasks: state.tasks.map((t) =>
           t.id === taskId
@@ -95,8 +95,8 @@ export const useSchedulerStore = create<SchedulerState>((set, get) => ({
     const unlistenPromise = listenEventBus((event) => {
       if (!active) return
 
-      // 2.3 — o backend provisionou a worktree e PEDE o spawn; o front cria um
-      // terminal VISÍVEL no projeto (humano-no-terminal), como no mergeStore.
+                                                                               
+                                                                              
       if (event.event_type === 'AgentSpawnRequested') {
         const projectId = event.task_id ?? null // scheduler publica project em task_id
         const taskId = String(event.agent_id ?? event.data?.task_id ?? '')
@@ -108,7 +108,7 @@ export const useSchedulerStore = create<SchedulerState>((set, get) => ({
         const projects = useProjectsStore.getState()
         const project = projects.projects.find((p) => p.id === projectId)
         if (!project) return
-        if (get().taskTerminals[realTaskId]) return // já spawnado
+        if (get().taskTerminals[realTaskId]) return               
         const provider = project.conflictAgentProvider ?? 'claude'
         const terminal = projects.createTerminal(projectId, {
           name: taskTitle.slice(0, 40),
@@ -136,17 +136,17 @@ export const useSchedulerStore = create<SchedulerState>((set, get) => ({
       }
 
       const { activeProjectId } = get()
-      // Se o evento é relacionado a tarefas e ao projeto ativo
+                                                               
       if (
         event.event_type.startsWith('Task') ||
         event.event_type.startsWith('Agent') ||
         event.event_type === 'PlanningUpdated'
       ) {
         if (activeProjectId && event.task_id === activeProjectId) {
-          // Recarrega lista
+                            
           void get().loadTasks(activeProjectId)
         } else if (activeProjectId) {
-          // Se o evento carrega o ID de projeto no payload data
+                                                                
           const projId = event.data?.project_id || event.data?.projectId
           if (projId === activeProjectId) {
             void get().loadTasks(activeProjectId)

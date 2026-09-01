@@ -26,9 +26,6 @@ pub struct GitRepositoryStatus {
     conflicts: Vec<GitFileChange>,
 }
 
-/// Aplica CREATE_NO_WINDOW no Windows pra que `git.exe` NÃO abra uma janela de
-/// console a cada chamada. O GitControl faz polling de status a cada 3s (+ no
-/// focus), então sem isso o usuário vê um festival de "terminais" piscando —
 /// janelas de console abrindo e fechando sozinhas. No-op fora do Windows.
 #[cfg(windows)]
 pub(crate) fn hide_console(command: &mut Command) {
@@ -40,16 +37,8 @@ pub(crate) fn hide_console(command: &mut Command) {
 #[cfg(not(windows))]
 pub(crate) fn hide_console(_command: &mut Command) {}
 
-/// Delays de backoff incremental pro retry de `index.lock` transitório.
 const INDEX_LOCK_RETRY_DELAYS_MS: [u64; 3] = [200, 400, 800];
 
-/// Resolve o "diretório administrativo" do git para o checkout em `dir`:
-/// - Repo/clone normal (`.git` é DIRETÓRIO) ⇒ o próprio `.git` (nunca carrega o
-///   marcador `locked` de worktree secundária — lock check aqui sempre reporta
-///   "não travado").
-/// - Worktree (`.git` é ARQUIVO, contém `gitdir: <path>`) ⇒ o `<path>` apontado,
-///   que é `<repo-principal>/.git/worktrees/<id>` — é lá que vivem `locked` e
-///   `index.lock` desse worktree específico.
 fn git_admin_dir(dir: &Path) -> Option<PathBuf> {
     let dot_git = dir.join(".git");
     if dot_git.is_dir() {
@@ -57,15 +46,14 @@ fn git_admin_dir(dir: &Path) -> Option<PathBuf> {
     }
     if dot_git.is_file() {
         let content = std::fs::read_to_string(&dot_git).ok()?;
-        let gitdir = content.lines().find_map(|line| line.trim().strip_prefix("gitdir:"))?;
+        let gitdir = content
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("gitdir:"))?;
         return Some(PathBuf::from(gitdir.trim()));
     }
     None
 }
 
-/// Lê o motivo do lock ADMINISTRATIVO (`git worktree lock`), se o checkout em
-/// `dir` estiver travado dessa forma. `None` = não travado administrativamente
-/// (pode ainda ter um `index.lock` transitório — ver `index_lock_present`).
 fn admin_lock_reason(dir: &Path) -> Option<String> {
     let locked_file = git_admin_dir(dir)?.join("locked");
     if !locked_file.is_file() {
@@ -86,21 +74,12 @@ fn index_lock_present(dir: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Prefixo de erro estruturado pra lock administrativo — o front (`mergeStore`,
-/// `projectsStore`) distingue isso de `git_command_failed:` pra não incrementar
-/// `retryCount` nem tratar como corrupção (`TerminalError`) por engano.
 pub(crate) fn admin_locked_error(reason: &str) -> String {
     format!("admin_locked:{reason}")
 }
 
-/// Camada de consciência de locks em cima de uma chamada git que já interpreta
-/// código de saída (`Result<T, String>`). Precedência ABSOLUTA: lock
-/// administrativo nunca tenta de novo — falha imediato com o motivo. Só
-/// `index.lock` (transitório) aciona o retry com backoff 200/400/800ms.
 ///
-/// `lock_target` é o checkout cujo estado de lock importa — nem sempre é o
-/// mesmo diretório onde o comando roda (ex.: remover um worktree a partir da
-/// raiz do repo principal, mas quem pode estar travado é o worktree-alvo).
+
 pub(crate) fn with_lock_awareness<T>(
     lock_target: &Path,
     mut run: impl FnMut() -> Result<T, String>,
@@ -113,8 +92,6 @@ pub(crate) fn with_lock_awareness<T>(
         match run() {
             Ok(value) => return Ok(value),
             Err(error) => {
-                // Corrida rara: o lock administrativo pode ter aparecido entre a
-                // checagem inicial e esta falha — reavalia antes de decidir retry.
                 if let Some(reason) = admin_lock_reason(lock_target) {
                     return Err(admin_locked_error(&reason));
                 }
@@ -162,7 +139,10 @@ fn resolve_input_directory(path: &str) -> Result<PathBuf, String> {
 
     let expanded = if trimmed == "~" {
         dirs_next::home_dir().unwrap_or_else(|| PathBuf::from(trimmed))
-    } else if let Some(rest) = trimmed.strip_prefix("~/").or_else(|| trimmed.strip_prefix("~\\")) {
+    } else if let Some(rest) = trimmed
+        .strip_prefix("~/")
+        .or_else(|| trimmed.strip_prefix("~\\"))
+    {
         dirs_next::home_dir()
             .unwrap_or_else(|| PathBuf::from("~"))
             .join(rest.replace('/', "\\"))
@@ -177,16 +157,22 @@ fn resolve_input_directory(path: &str) -> Result<PathBuf, String> {
     }
 
     let mut candidates = Vec::new();
-    let looks_unix_root = trimmed.starts_with('/') && !trimmed.starts_with("//") && !trimmed.starts_with("/mnt/");
+    let looks_unix_root =
+        trimmed.starts_with('/') && !trimmed.starts_with("//") && !trimmed.starts_with("/mnt/");
     if looks_unix_root {
         let relative = trimmed.trim_start_matches('/').replace('/', "\\");
-        let username = dirs_next::home_dir()
-            .and_then(|home| home.file_name().map(|name| name.to_string_lossy().into_owned()));
+        let username = dirs_next::home_dir().and_then(|home| {
+            home.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        });
         for drive in drive_roots() {
             push_if_dir(&mut candidates, drive.join(&relative));
             if let Some(name) = username.as_deref() {
                 push_if_dir(&mut candidates, drive.join(name).join(&relative));
-                push_if_dir(&mut candidates, drive.join("Users").join(name).join(&relative));
+                push_if_dir(
+                    &mut candidates,
+                    drive.join("Users").join(name).join(&relative),
+                );
             }
         }
     }
@@ -229,17 +215,13 @@ pub(crate) fn repository_root(path: &str) -> Result<PathBuf, String> {
 }
 
 /// Como `repository_root`, mas resolve pro checkout PRINCIPAL compartilhado,
-/// não pro toplevel do checkout específico em `path`. Necessário porque
-/// `path` pode ser uma worktree já isolada: worktrees vinculadas não têm seu
-/// próprio `.git` real (é um arquivo apontando pro repo principal), mas
-/// `--show-toplevel` chamado nelas devolve a PRÓPRIA worktree, não o repo
-/// principal — usar isso como base pra criar uma worktree nova resultaria
-/// numa worktree aninhada dentro da outra. `--git-common-dir` sempre aponta
-/// pro `.git` do checkout principal, mesmo chamado de dentro de uma worktree
-/// vinculada; o pai desse diretório é a raiz principal real.
+
 pub(crate) fn main_repository_root(path: &str) -> Result<PathBuf, String> {
     let cwd = resolve_input_directory(path)?;
-    let output = git_command(&cwd, &["rev-parse", "--path-format=absolute", "--git-common-dir"])?;
+    let output = git_command(
+        &cwd,
+        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+    )?;
     if !output.status.success() {
         return Err("not_a_git_repository".to_string());
     }
@@ -257,7 +239,8 @@ pub(crate) fn main_repository_root(path: &str) -> Result<PathBuf, String> {
 }
 
 fn validated_root(path: &str) -> Result<PathBuf, String> {
-    let requested = resolve_input_directory(path).map_err(|_| "not_a_git_repository".to_string())?;
+    let requested =
+        resolve_input_directory(path).map_err(|_| "not_a_git_repository".to_string())?;
     let actual = repository_root(path)?;
     if requested != actual {
         return Err("invalid_repository_root".to_string());
@@ -418,15 +401,6 @@ fn branch_info(root: &Path) -> Result<(String, bool, u32, u32), String> {
     Ok((branch, detached, ahead, behind))
 }
 
-/// Diretórios/arquivos pesados ou gerados que nunca deveriam entrar no
-/// primeiro commit de um `git init` automático — mesma lista de propósito
-/// (embora não o mesmo array em memória) de `contract_check::SKIP_DIRS`.
-/// Sem isso, `git add -A` num projeto real (ex.: um app com
-/// `node_modules` de dependências) trava a UI por minutos escaneando e
-/// hasheando dezenas de milhares de arquivos que ninguém quer versionados —
-/// foi exatamente o que aconteceu testando num monorepo com >20k arquivos só
-/// em `node_modules`. `.alethe/` entra porque é onde as PRÓPRIAS worktrees de
-/// agente vão morar a partir de agora (não faz sentido commitar um checkout
 /// git dentro de outro).
 const GITIGNORE_SEED: &str = "\
 node_modules/
@@ -442,8 +416,6 @@ __pycache__/
 .env.local
 ";
 
-/// Só escreve o `.gitignore` semente se a pasta ainda não tiver um — nunca
-/// sobrescreve um `.gitignore` que o usuário já mantém.
 fn seed_gitignore_if_missing(dir: &Path) {
     let path = dir.join(".gitignore");
     if path.exists() {
@@ -452,13 +424,8 @@ fn seed_gitignore_if_missing(dir: &Path) {
     let _ = std::fs::write(&path, GITIGNORE_SEED);
 }
 
-/// Inicializa um repositório Git na pasta, com um commit inicial — `git
 /// worktree add`/`git clone --local` (isolamento por agente) exigem um HEAD
-/// válido pra funcionar, então só rodar `git init` não basta. Usado pela
-/// oferta "Inicializar Git" quando o modal de projeto detecta que a pasta
-/// ainda não é um repositório. Identidade do commit é fixa via `-c` (não
-/// depende de `user.name`/`user.email` global do usuário estarem configurados).
-/// Idempotente: se já for um repo, só devolve a raiz existente sem tocar em nada.
+
 fn git_init_inner(path: String) -> Result<String, String> {
     if let Ok(root) = repository_root(&path) {
         return Ok(root.to_string_lossy().into_owned());
@@ -467,11 +434,15 @@ fn git_init_inner(path: String) -> Result<String, String> {
     checked_output(&dir, &["init", "-b", "main"])?;
     seed_gitignore_if_missing(&dir);
     checked_output(&dir, &["add", "-A"])?;
-    let identity = ["-c", "user.name=Alethe", "-c", "user.email=alethe@localhost"];
+    let identity = [
+        "-c",
+        "user.name=Alethe",
+        "-c",
+        "user.email=alethe@localhost",
+    ];
     let mut commit_args: Vec<&str> = identity.to_vec();
     commit_args.extend(["commit", "-m", "Commit inicial (Alethe)"]);
-    // Pasta vazia (nada pra adicionar) faz o commit normal falhar por "nothing
-    // to commit" — cai pro --allow-empty só nesse caso, só pra garantir HEAD.
+
     if checked_output(&dir, &commit_args).is_err() {
         let mut empty_args: Vec<&str> = identity.to_vec();
         empty_args.extend(["commit", "--allow-empty", "-m", "Commit inicial (Alethe)"]);
@@ -480,11 +451,6 @@ fn git_init_inner(path: String) -> Result<String, String> {
     repository_root(&path).map(|root| root.to_string_lossy().into_owned())
 }
 
-/// `async` + `spawn_blocking` pra todos os comandos deste módulo abaixo:
-/// cada um faz shell-out bloqueante de `git` direto no corpo, e como `fn`
-/// síncrona isso travaria a thread de despacho de IPC do Tauri — mesmo bug
-/// já corrigido em `cli_resolver.rs`/`graphify.rs`. `git_status` em
-/// particular é chamado a cada 3s pelo polling do `GitControl.tsx`.
 #[tauri::command]
 pub fn git_diff(repo_root: String, path: String, staged: bool) -> Result<String, String> {
     let mut args = vec!["diff"];
@@ -581,7 +547,11 @@ fn git_discard_inner(repo_root: String, paths: Vec<String>, untracked: bool) -> 
 }
 
 #[tauri::command]
-pub async fn git_discard(repo_root: String, paths: Vec<String>, untracked: bool) -> Result<(), String> {
+pub async fn git_discard(
+    repo_root: String,
+    paths: Vec<String>,
+    untracked: bool,
+) -> Result<(), String> {
     tokio::task::spawn_blocking(move || git_discard_inner(repo_root, paths, untracked))
         .await
         .map_err(|error| format!("git_discard: falha na task bloqueante: {error}"))?
@@ -605,10 +575,7 @@ pub async fn git_commit(repo_root: String, message: String) -> Result<String, St
 }
 
 /// Comando git que fala com o remoto (push/pull). `GIT_TERMINAL_PROMPT=0` faz o
-/// git FALHAR rápido em vez de TRAVAR esperando credenciais num prompt que não
-/// existe (sem TTY no PTY oculto) — usa o credential helper / SSH agent já
-/// configurados na máquina. stdout+stderr são combinados porque o git escreve o
-/// progresso de rede no stderr mesmo em sucesso.
+
 fn remote_command(root: &Path, args: &[&str]) -> Result<String, String> {
     with_lock_awareness(root, || {
         let mut command = Command::new("git");
@@ -627,7 +594,9 @@ fn remote_command(root: &Path, args: &[&str]) -> Result<String, String> {
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             let stderr = String::from_utf8_lossy(&output.stderr);
-            Ok(format!("{} {}", stdout.trim(), stderr.trim()).trim().to_string())
+            Ok(format!("{} {}", stdout.trim(), stderr.trim())
+                .trim()
+                .to_string())
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             Err(format!("git_command_failed:{stderr}"))
@@ -638,8 +607,6 @@ fn remote_command(root: &Path, args: &[&str]) -> Result<String, String> {
 fn git_push_inner(repo_root: String) -> Result<String, String> {
     let root = validated_root(&repo_root)?;
     match remote_command(&root, &["push"]) {
-        // Branch sem upstream: publica em origin/<branch> (equivalente ao
-        // "Publish Branch" do VSCode). Falha se o remoto não se chamar 'origin'.
         Err(error) if error.contains("no upstream") || error.contains("has no upstream") => {
             remote_command(&root, &["push", "--set-upstream", "origin", "HEAD"])
         }
@@ -654,7 +621,6 @@ pub async fn git_push(repo_root: String) -> Result<String, String> {
         .map_err(|error| format!("git_push: falha na task bloqueante: {error}"))?
 }
 
-/// Lista os branches locais (nome curto). Usado pelo ciclo de merge (RFC-006)
 /// para escolher source/target.
 fn git_list_branches_inner(repo_root: String) -> Result<Vec<String>, String> {
     let root = repository_root(&repo_root)?;
@@ -679,27 +645,21 @@ pub struct DiffSummaryEntry {
     pub path: String,
     /// Primeira letra do `--name-status` do git: A(dded)/M(odified)/D(eleted)/R(enamed)/...
     pub status: String,
+    pub additions: Option<usize>,
+    pub deletions: Option<usize>,
 }
 
-/// Um path é infraestrutura do próprio Alethe, não trabalho real do usuário,
-/// se estiver em `.planning/` (estado do plugin GSD Sync) ou `.opencode/`/
 /// `opencode.json` (MCP do Graphify + plugin GSD, escritos automaticamente a
-/// cada spawn). Mesma exclusão já aplicada em `getChangedFiles` do plugin
-/// GSD (`alethe-gsd-state.ts`) — sem ela, o Briefing de Testes listava
+
 /// `.opencode/alethe-gsd-config.json`, `.planning/goal.md` etc. como se
-/// fossem "alterações" feitas pelo agente, quando na verdade é o próprio
+
 /// Alethe escrevendo essa infraestrutura na worktree.
 fn is_alethe_infra_path(path: &str) -> bool {
     path.starts_with(".planning/") || path.starts_with(".opencode/") || path == "opencode.json"
 }
 
-/// Lê o que ainda não foi commitado na PRÓPRIA worktree (`git status
 /// --porcelain`, working-tree aware — cobre staged/unstaged/untracked).
-/// Complementa o diff por range de commits abaixo: sem isso, um arquivo
-/// criado/editado na worktree e nunca commitado não aparece em nenhum commit
-/// de `source`, então some do resumo de alterações mesmo sendo trabalho real
-/// (foi exatamente o que o Gate de Verificação da Central de Merges reportava
-/// como "não há alterações de código" com um arquivo de verdade na worktree).
+
 fn uncommitted_entries(worktree_path: &Path) -> Vec<DiffSummaryEntry> {
     if !worktree_path.is_dir() {
         return Vec::new();
@@ -724,9 +684,9 @@ fn uncommitted_entries(worktree_path: &Path) -> Vec<DiffSummaryEntry> {
         let path = String::from_utf8_lossy(&field[3..]).into_owned();
         let renamed = matches!(x, 'R' | 'C') || matches!(y, 'R' | 'C');
         if renamed && i < fields.len() {
-            i += 1; // pula o nome antigo — só o path atual importa aqui
+            i += 1;
         }
-        // Reduz XY porcelain a uma letra representativa: prioriza o lado
+
         // "working tree" (y); untracked ("??") vira "A" (adicionado).
         let status = if x == '?' && y == '?' {
             'A'
@@ -735,17 +695,16 @@ fn uncommitted_entries(worktree_path: &Path) -> Vec<DiffSummaryEntry> {
         } else {
             x
         };
-        entries.push(DiffSummaryEntry { path, status: status.to_string() });
+        entries.push(DiffSummaryEntry {
+            path,
+            status: status.to_string(),
+            additions: None,
+            deletions: None,
+        });
     }
     entries
 }
 
-/// Resumo real (arquivos alterados, não-conflito) do que `source` mudou em
-/// relação a `target` — alimenta o "Briefing de Testes" da Central de Merges
-/// com dado de verdade em vez de texto fixo. Three-dot (`target...source`,
-/// mesmo espírito do `git diff` que o Revisor de Branch já roda no prompt),
-/// **unido** com o estado não commitado da worktree (`uncommitted_entries`
-/// acima) — só o range de commits ignora trabalho real ainda não commitado.
 fn git_diff_summary_inner(
     repo_root: String,
     source: String,
@@ -756,9 +715,33 @@ fn git_diff_summary_inner(
     let range = format!("{target}...{source}");
     let output = checked_output(&root, &["diff", "--name-status", "-z", &range])?;
     let raw = String::from_utf8_lossy(&output.stdout);
-    // Saída "-z": campos separados por NUL. Cada entrada normal é
-    // "status\0path\0"; renomeações ("R100\0old\0new\0") têm um campo extra
-    // (o nome novo) que também vira `path` — o nome antigo é descartado.
+
+    // Coleta numstat para contagem exata de linhas adicionadas e removidas
+    let mut numstat_map: std::collections::HashMap<String, (usize, usize)> =
+        std::collections::HashMap::new();
+    if let Ok(numstat_output) = checked_output(&root, &["diff", "--numstat", "-z", &range]) {
+        let numstat_raw = String::from_utf8_lossy(&numstat_output.stdout);
+        let parts: Vec<&str> = numstat_raw.split('\0').filter(|s| !s.is_empty()).collect();
+        let mut idx = 0;
+        while idx < parts.len() {
+            let line = parts[idx];
+            idx += 1;
+            let tokens: Vec<&str> = line.split_whitespace().collect();
+            if tokens.len() >= 3 {
+                let adds = tokens[0].parse::<usize>().unwrap_or(0);
+                let dels = tokens[1].parse::<usize>().unwrap_or(0);
+                let file_path = tokens[2..].join(" ");
+                numstat_map.insert(file_path, (adds, dels));
+            } else if tokens.len() == 2 && idx < parts.len() {
+                let adds = tokens[0].parse::<usize>().unwrap_or(0);
+                let dels = tokens[1].parse::<usize>().unwrap_or(0);
+                let file_path = parts[idx].to_string();
+                idx += 1;
+                numstat_map.insert(file_path, (adds, dels));
+            }
+        }
+    }
+
     let fields: Vec<&str> = raw.split('\0').filter(|s| !s.is_empty()).collect();
     let mut entries = Vec::new();
     let mut i = 0;
@@ -777,7 +760,16 @@ fn git_diff_summary_inner(
             path = fields[i].to_string();
             i += 1;
         }
-        entries.push(DiffSummaryEntry { path, status });
+        let (additions, deletions) = numstat_map
+            .get(&path)
+            .map(|(a, d)| (Some(*a), Some(*d)))
+            .unwrap_or((None, None));
+        entries.push(DiffSummaryEntry {
+            path,
+            status,
+            additions,
+            deletions,
+        });
     }
 
     if let Some(worktree) = worktree_path {
@@ -806,13 +798,392 @@ pub async fn git_diff_summary(
         git_diff_summary_inner(repo_root, source, target, worktree_path)
     })
     .await
-    .map_err(|error| format!("git_diff_summary: falha na task bloqueante: {error}"))?
+    .map_err(|error| format!("git_diff_summary: blocking task failed: {error}"))?
+}
+
+/// A commit from history, for the commit graph on the Version Control panel
+/// — the lane/column calculation is always client-side (`git log` itself
+/// doesn't return ready-made graph coordinates; VSCode/gitk do the same
+/// calculation on the client from hash→parents), so here we just return the
+/// raw data.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitCommitEntry {
+    pub hash: String,
+    pub parents: Vec<String>,
+    pub author_name: String,
+    pub author_email: String,
+    /// Seconds since epoch (`%at`, the same format `git log` uses).
+    pub timestamp: i64,
+    pub subject: String,
+    /// Branches/tags pointing at this commit (`%D`), empty when none.
+    pub refs: Vec<String>,
+}
+
+/// Field separator unlikely to appear in a commit's name/e-mail/subject —
+/// same problem as the `-z` on `git diff --name-status` above, except here
+/// `-z` would also replace the separator BETWEEN commits, and `%s` (subject)
+/// is already guaranteed to be a single line by git's own convention, so a
+/// plain (non-NUL) field separator combined with a normal newline between
+/// commits already resolves this without ambiguity.
+const LOG_GRAPH_FIELD_SEP: char = '\u{1f}';
+
+/// Recognizes `alethe/agent-<id>` and `alethe/merge-<id>` (with or without a
+/// decoration prefix like `HEAD -> `/`tag: `/`origin/`) — the ephemeral
+/// branches that Alethe itself creates and deletes in worktree/merge flows,
+/// never real branches from the user's point of view.
+fn is_ephemeral_ref(raw: &str) -> bool {
+    let name = raw
+        .strip_prefix("HEAD -> ")
+        .or_else(|| raw.strip_prefix("tag: "))
+        .unwrap_or(raw);
+    let name = name.strip_prefix("origin/").unwrap_or(name);
+    name.starts_with("alethe/agent-") || name.starts_with("alethe/merge-")
+}
+
+fn git_log_graph_inner(repo: String, max_count: u32) -> Result<Vec<GitCommitEntry>, String> {
+    let root = repository_root(&repo)?;
+    let format_arg = format!(
+        "--format=%H{sep}%P{sep}%an{sep}%ae{sep}%at{sep}%s{sep}%D",
+        sep = LOG_GRAPH_FIELD_SEP
+    );
+    // `--branches --tags` (not `--all`): shows the user's real branches/tags
+    // in the graph — without this, the log falls back to just HEAD's history
+    // and any other branch simply disappears from the UI. The `--exclude`
+    // flags strip out only the EPHEMERAL branches that Alethe itself creates
+    // and discards for worktree/merge flows (`alethe/agent-<id>`,
+    // `alethe/merge-<id>` — see worktrees.rs/conflict_resolution.rs), which
+    // aren't real branches from the user's point of view and would only
+    // pollute the graph with isolated lanes with no connecting line.
+    //
+    // `--topo-order`: WITHOUT this, `git log` orders by commit DATE, not
+    // topologically — a commit can appear in the list before its own parent
+    // whenever there's any timestamp discrepancy between them (common here:
+    // AI agents running at different times, rebases, diverging machine
+    // clocks). The frontend's lane algorithm (`buildGraphRows`,
+    // GitGraphList.tsx) assumes a commit ALWAYS appears before any of its
+    // parents in the list — when that breaks, that branch's lane never finds
+    // its still-"pending" parent and the line simply stops, looking like an
+    // isolated stub that "goes back to main" without ever truly connecting.
+    // `--topo-order` guarantees that invariant (children always before
+    // parents), the same way GitLens/gitk do.
+    let mut args = vec![
+        "log",
+        "--topo-order",
+        "--exclude=refs/heads/alethe/agent-*",
+        "--exclude=refs/heads/alethe/merge-*",
+        "--branches",
+        "--tags",
+        &format_arg,
+    ];
+    let max_count_str;
+    if max_count > 0 {
+        max_count_str = format!("--max-count={max_count}");
+        args.push(&max_count_str);
+    }
+    let output = checked_output(&root, &args)?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    let entries = stdout
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .filter_map(|line| {
+            let mut fields = line.split(LOG_GRAPH_FIELD_SEP);
+            let hash = fields.next()?.to_string();
+            let parents = fields
+                .next()?
+                .split_whitespace()
+                .map(|s| s.to_string())
+                .collect();
+            let author_name = fields.next()?.to_string();
+            let author_email = fields.next()?.to_string();
+            let timestamp = fields.next()?.trim().parse().ok()?;
+            let subject = fields.next()?.to_string();
+            let refs_raw = fields.next().unwrap_or("").trim();
+            // `--exclude` only affects which commits `log` TRAVERSES, not the
+            // decoration (`%D`) of a commit that's still reachable through
+            // another included ref — if an ephemeral Alethe branch points at
+            // the SAME commit that's already on `main` (common after a
+            // --ff-only merge, where no new commit is created), its name
+            // still shows up as a badge even though it was excluded from the
+            // traversal. Filter it out again here, on the decoration itself.
+            let refs = if refs_raw.is_empty() {
+                Vec::new()
+            } else {
+                refs_raw
+                    .split(", ")
+                    .map(|s| s.trim().to_string())
+                    .filter(|r| !is_ephemeral_ref(r))
+                    .collect()
+            };
+            Some(GitCommitEntry {
+                hash,
+                parents,
+                author_name,
+                author_email,
+                timestamp,
+                subject,
+                refs,
+            })
+        })
+        .collect();
+
+    Ok(entries)
+}
+
+#[tauri::command]
+pub async fn git_log_graph(repo: String, max_count: u32) -> Result<Vec<GitCommitEntry>, String> {
+    tokio::task::spawn_blocking(move || git_log_graph_inner(repo, max_count))
+        .await
+        .map_err(|error| format!("git_log_graph: blocking task failed: {error}"))?
+}
+
+// --- Per-commit actions from the graph (context menu) ---
+
+/// Only accepts a hexadecimal hash — rejects anything that looks like a flag
+/// (`-...`) or an arbitrary ref, since this value should always come from a
+/// `hash` WE generate via `git log` (git_log_graph), never typed freely by
+/// the user. Defense in depth against argument injection in the commands
+/// below (some of which are destructive: reset --hard).
+fn validate_commit_hash(hash: &str) -> Result<(), String> {
+    if hash.is_empty() || hash.len() > 40 || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("invalid_commit_hash".to_string());
+    }
+    Ok(())
+}
+
+/// Rejects an empty branch name, one that looks like a flag, or one with a
+/// whitespace/control character — same defense-in-depth as the hash above.
+fn validate_branch_name(name: &str) -> Result<(), String> {
+    if name.is_empty()
+        || name.starts_with('-')
+        || name.chars().any(|c| c.is_whitespace() || c.is_control())
+    {
+        return Err("invalid_branch_name".to_string());
+    }
+    Ok(())
+}
+
+/// Parses the output of `--name-status -z` (git diff/diff-tree) into
+/// `GitFileChange` — the same format used by `git_status`/`git_diff_summary`,
+/// extracted here to be reused by the 3 new functions below (files of a
+/// commit, incoming, outgoing) without duplicating the parsing.
+fn parse_name_status_z(raw: &[u8]) -> Vec<GitFileChange> {
+    let text = String::from_utf8_lossy(raw);
+    let fields: Vec<&str> = text.split('\0').filter(|s| !s.is_empty()).collect();
+    let mut entries = Vec::new();
+    let mut i = 0;
+    while i < fields.len() {
+        let status = fields[i].chars().next().unwrap_or('M').to_string();
+        i += 1;
+        if i >= fields.len() {
+            break;
+        }
+        let mut path = fields[i].to_string();
+        i += 1;
+        let mut original_path = None;
+        if status.starts_with('R') || status.starts_with('C') {
+            if i >= fields.len() {
+                break;
+            }
+            original_path = Some(path.clone());
+            path = fields[i].to_string();
+            i += 1;
+        }
+        entries.push(GitFileChange {
+            path,
+            original_path,
+            status,
+        });
+    }
+    entries
+}
+
+fn git_show_commit_files_inner(
+    repo_root: String,
+    hash: String,
+) -> Result<Vec<GitFileChange>, String> {
+    let root = repository_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    // `--root` covers the root commit (no parent), which `diff-tree` alone
+    // ignores.
+    let output = checked_output(
+        &root,
+        &[
+            "diff-tree",
+            "--no-commit-id",
+            "--name-status",
+            "-r",
+            "--root",
+            "-z",
+            &hash,
+        ],
+    )?;
+    Ok(parse_name_status_z(&output.stdout))
+}
+
+#[tauri::command]
+pub async fn git_show_commit_files(
+    repo: String,
+    hash: String,
+) -> Result<Vec<GitFileChange>, String> {
+    tokio::task::spawn_blocking(move || git_show_commit_files_inner(repo, hash))
+        .await
+        .map_err(|error| format!("git_show_commit_files: blocking task failed: {error}"))?
+}
+
+/// The FULL commit message (`%B` — subject + body), for the commit detail
+/// screen (`git_log_graph` only returns `%s`, a single line).
+fn git_show_commit_message_inner(repo_root: String, hash: String) -> Result<String, String> {
+    let root = repository_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    let output = checked_output(&root, &["show", "-s", "--format=%B", &hash])?;
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .trim_end()
+        .to_string())
+}
+
+#[tauri::command]
+pub async fn git_show_commit_message(repo: String, hash: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || git_show_commit_message_inner(repo, hash))
+        .await
+        .map_err(|error| format!("git_show_commit_message: blocking task failed: {error}"))?
+}
+
+fn git_create_branch_from_commit_inner(
+    repo_root: String,
+    hash: String,
+    branch_name: String,
+) -> Result<(), String> {
+    let root = validated_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    validate_branch_name(&branch_name)?;
+    checked_output(&root, &["branch", &branch_name, &hash])?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn git_create_branch_from_commit(
+    repo: String,
+    hash: String,
+    branch_name: String,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        git_create_branch_from_commit_inner(repo, hash, branch_name)
+    })
+    .await
+    .map_err(|error| format!("git_create_branch_from_commit: blocking task failed: {error}"))?
+}
+
+fn git_cherry_pick_commit_inner(repo_root: String, hash: String) -> Result<String, String> {
+    let root = validated_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    let output = checked_output(&root, &["cherry-pick", &hash])?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[tauri::command]
+pub async fn git_cherry_pick_commit(repo: String, hash: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || git_cherry_pick_commit_inner(repo, hash))
+        .await
+        .map_err(|error| format!("git_cherry_pick_commit: blocking task failed: {error}"))?
+}
+
+fn git_revert_commit_inner(repo_root: String, hash: String) -> Result<String, String> {
+    let root = validated_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    let output = checked_output(&root, &["revert", "--no-edit", &hash])?;
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[tauri::command]
+pub async fn git_revert_commit(repo: String, hash: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || git_revert_commit_inner(repo, hash))
+        .await
+        .map_err(|error| format!("git_revert_commit: blocking task failed: {error}"))?
+}
+
+fn git_reset_to_commit_inner(repo_root: String, hash: String, mode: String) -> Result<(), String> {
+    let root = validated_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    let flag = match mode.as_str() {
+        "soft" => "--soft",
+        "mixed" => "--mixed",
+        "hard" => "--hard",
+        _ => return Err("invalid_reset_mode".to_string()),
+    };
+    checked_output(&root, &["reset", flag, &hash])?;
+    Ok(())
+}
+
+/// `mode`: "soft" (keeps changes staged), "mixed" (keeps changes in the
+/// working tree, unstaged), or "hard" (discards everything — destructive,
+/// the UI confirms before calling).
+#[tauri::command]
+pub async fn git_reset_to_commit(repo: String, hash: String, mode: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || git_reset_to_commit_inner(repo, hash, mode))
+        .await
+        .map_err(|error| format!("git_reset_to_commit: blocking task failed: {error}"))?
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IncomingOutgoing {
+    /// Files that change in the working tree when pulling in `@{upstream}` (pull).
+    pub incoming: Vec<GitFileChange>,
+    /// Files that change on the remote when sending HEAD there (push).
+    pub outgoing: Vec<GitFileChange>,
+    /// `false` when the current branch has no upstream configured — in that
+    /// case `incoming`/`outgoing` come back empty (not an error, it's normal
+    /// for a local branch that was never published).
+    pub has_upstream: bool,
+}
+
+fn git_incoming_outgoing_inner(repo_root: String) -> Result<IncomingOutgoing, String> {
+    let root = repository_root(&repo_root)?;
+    let has_upstream = git_command(
+        &root,
+        &[
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ],
+    )
+    .map(|output| output.status.success())
+    .unwrap_or(false);
+    if !has_upstream {
+        return Ok(IncomingOutgoing {
+            incoming: Vec::new(),
+            outgoing: Vec::new(),
+            has_upstream: false,
+        });
+    }
+    let incoming_output = checked_output(
+        &root,
+        &["diff", "--name-status", "-z", "HEAD", "@{upstream}"],
+    )?;
+    let outgoing_output = checked_output(
+        &root,
+        &["diff", "--name-status", "-z", "@{upstream}", "HEAD"],
+    )?;
+    Ok(IncomingOutgoing {
+        incoming: parse_name_status_z(&incoming_output.stdout),
+        outgoing: parse_name_status_z(&outgoing_output.stdout),
+        has_upstream: true,
+    })
+}
+
+#[tauri::command]
+pub async fn git_incoming_outgoing(repo: String) -> Result<IncomingOutgoing, String> {
+    tokio::task::spawn_blocking(move || git_incoming_outgoing_inner(repo))
+        .await
+        .map_err(|error| format!("git_incoming_outgoing: blocking task failed: {error}"))?
 }
 
 fn git_pull_inner(repo_root: String) -> Result<String, String> {
     let root = validated_root(&repo_root)?;
-    // --ff-only evita merge commit/conflito surpresa: se a branch divergiu, erra
-    // limpo em vez de criar um merge automático.
+
     remote_command(&root, &["pull", "--ff-only"])
 }
 
@@ -826,9 +1197,7 @@ pub async fn git_pull(repo_root: String) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // Testes chamam a lógica direto, fora de um runtime async — usam as
-    // versões `_inner` (síncronas) por trás dos wrappers `async fn` que os
-    // comandos IPC expõem, mesmo padrão de `worktrees.rs`/`graphify.rs`.
+
     use super::git_commit_inner as git_commit;
     use super::git_diff_summary_inner as git_diff_summary;
     use super::git_discard_inner as git_discard;
@@ -860,7 +1229,10 @@ mod tests {
 
     #[test]
     fn main_repository_root_resolves_same_root_from_a_linked_worktree() {
-        let suffix = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let root = std::env::temp_dir().join(format!("alethe-main-repo-root-{suffix}"));
         fs::create_dir_all(&root).unwrap();
         checked_output(&root, &["init", "-b", "main"]).unwrap();
@@ -873,15 +1245,25 @@ mod tests {
         let worktree = root.join("wt");
         checked_output(
             &root,
-            &["worktree", "add", "-b", "agent-branch", worktree.to_str().unwrap(), "HEAD"],
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "agent-branch",
+                worktree.to_str().unwrap(),
+                "HEAD",
+            ],
         )
         .unwrap();
 
         let from_main = main_repository_root(&root.to_string_lossy()).unwrap();
         let from_worktree = main_repository_root(&worktree.to_string_lossy()).unwrap();
-        assert_eq!(from_main, from_worktree, "deve resolver a mesma raiz principal a partir de qualquer worktree");
+        assert_eq!(
+            from_main, from_worktree,
+            "deve resolver a mesma raiz principal a partir de qualquer worktree"
+        );
         // `repository_root` (--show-toplevel), em contraste, devolveria a
-        // PRÓPRIA worktree quando chamado de dentro dela — diferente da main.
+
         let toplevel_from_worktree = repository_root(&worktree.to_string_lossy()).unwrap();
         assert_ne!(from_worktree, toplevel_from_worktree);
 
@@ -894,8 +1276,7 @@ mod tests {
         assert!(validate_paths(&["..\\secret".to_string()]).is_err());
         // Caminho absoluto Unix — rejeitado em qualquer plataforma.
         assert!(validate_paths(&["/etc/secret".to_string()]).is_err());
-        // O prefixo de drive do Windows só é reconhecido como `Component::Prefix`
-        // no próprio Windows; em Unix `C:\secret` é um nome relativo válido.
+
         #[cfg(windows)]
         assert!(validate_paths(&["C:\\secret".to_string()]).is_err());
         assert!(validate_paths(&["/secret".to_string()]).is_err());
@@ -949,10 +1330,10 @@ mod tests {
         let reported_root = git_init(root_string.clone()).unwrap();
         assert_eq!(PathBuf::from(&reported_root), root.canonicalize().unwrap());
 
-        // O worktree/clone que consome isso precisa de um HEAD com os arquivos
-        // já commitados — não um repo vazio.
         let status = git_status(root_string).unwrap();
-        assert!(status.staged.is_empty() && status.changes.is_empty() && status.untracked.is_empty());
+        assert!(
+            status.staged.is_empty() && status.changes.is_empty() && status.untracked.is_empty()
+        );
         let log = checked_output(&root, &["log", "--oneline"]).unwrap();
         assert_eq!(String::from_utf8_lossy(&log.stdout).lines().count(), 1);
 
@@ -964,7 +1345,11 @@ mod tests {
         let root = temp_dir("init-gitignore");
         fs::write(root.join("src.txt"), "real code\n").unwrap();
         fs::create_dir_all(root.join("node_modules").join("some-dep")).unwrap();
-        fs::write(root.join("node_modules").join("some-dep").join("index.js"), "// dep\n").unwrap();
+        fs::write(
+            root.join("node_modules").join("some-dep").join("index.js"),
+            "// dep\n",
+        )
+        .unwrap();
         let root_string = root.to_string_lossy().into_owned();
 
         git_init(root_string.clone()).unwrap();
@@ -991,7 +1376,6 @@ mod tests {
         let root_string = root.to_string_lossy().into_owned();
         git_init(root_string.clone()).unwrap();
 
-        // Não deve ter criado um segundo commit nem tocado no repo existente.
         let log = checked_output(&root, &["log", "--oneline"]).unwrap();
         assert_eq!(String::from_utf8_lossy(&log.stdout).lines().count(), 1);
 
@@ -1023,19 +1407,20 @@ mod tests {
         let find = |path: &str| entries.iter().find(|e| e.path == path);
         assert!(find("kept.txt").is_some_and(|e| e.status == "M"));
         assert!(find("new.txt").is_some_and(|e| e.status == "A"));
-        assert!(find("new-name.txt").is_some(), "rename deveria aparecer com o nome novo: {entries:?}");
-        assert!(find("old-name.txt").is_none(), "rename não deveria duplicar o nome antigo: {entries:?}");
+        assert!(
+            find("new-name.txt").is_some(),
+            "rename should show up under the new name: {entries:?}"
+        );
+        assert!(
+            find("old-name.txt").is_none(),
+            "rename should not duplicate the old name: {entries:?}"
+        );
 
         fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
     fn git_diff_summary_includes_uncommitted_worktree_changes() {
-        // Reproduz o bug: um arquivo criado na worktree e NUNCA commitado não
-        // aparece em nenhum commit de "feature", então o diff por range de
-        // commits sozinho devolve lista vazia mesmo com trabalho real feito —
-        // exatamente o "não há alterações de código" que o Gate de
-        // Verificação da Central de Merges reportava incorretamente.
         let root = temp_dir("diff-summary-uncommitted");
         checked_output(&root, &["init", "-b", "main"]).unwrap();
         checked_output(&root, &["config", "user.name", "Alethe Test"]).unwrap();
@@ -1045,7 +1430,6 @@ mod tests {
         checked_output(&root, &["commit", "-m", "base"]).unwrap();
         checked_output(&root, &["checkout", "-b", "feature"]).unwrap();
 
-        // Sem worktree_path: comportamento antigo, cego a não commitado.
         let root_string = root.to_string_lossy().into_owned();
         let without_worktree = git_diff_summary(
             root_string.clone(),
@@ -1054,16 +1438,23 @@ mod tests {
             None,
         )
         .unwrap();
-        assert!(without_worktree.is_empty(), "sem worktree_path, diff de commits deve ficar vazio");
+        assert!(
+            without_worktree.is_empty(),
+            "without worktree_path, the commit diff should be empty"
+        );
 
         fs::write(root.join("novo.txt"), "").unwrap();
-        // Infraestrutura escrita automaticamente pelo próprio Alethe (plugin
-        // GSD, MCP do Graphify) — nunca deve aparecer como "alteração" do
-        // agente, mesmo estando não commitada como qualquer outro arquivo.
+
         fs::create_dir_all(root.join(".planning")).unwrap();
         fs::write(root.join(".planning").join("goal.md"), "").unwrap();
         fs::create_dir_all(root.join(".opencode").join("plugins")).unwrap();
-        fs::write(root.join(".opencode").join("plugins").join("alethe-gsd-state.ts"), "").unwrap();
+        fs::write(
+            root.join(".opencode")
+                .join("plugins")
+                .join("alethe-gsd-state.ts"),
+            "",
+        )
+        .unwrap();
         fs::write(root.join("opencode.json"), "{}").unwrap();
 
         let with_worktree = git_diff_summary(
@@ -1075,11 +1466,11 @@ mod tests {
         .unwrap();
         assert!(
             with_worktree.iter().any(|e| e.path == "novo.txt"),
-            "com worktree_path, arquivo não commitado deve aparecer: {with_worktree:?}"
+            "with worktree_path, an uncommitted file should show up: {with_worktree:?}"
         );
         assert!(
             with_worktree.iter().all(|e| !e.path.starts_with(".planning/") && !e.path.starts_with(".opencode/") && e.path != "opencode.json"),
-            "infraestrutura do Alethe (.planning/, .opencode/, opencode.json) nunca deve aparecer: {with_worktree:?}"
+            "Alethe infrastructure (.planning/, .opencode/, opencode.json) should never show up: {with_worktree:?}"
         );
 
         fs::remove_dir_all(root).unwrap();
@@ -1097,16 +1488,13 @@ mod tests {
 
     #[test]
     fn admin_lock_takes_precedence_and_is_never_retried() {
-        // Repo comum (não-worktree): `.git` é diretório — o `locked` físico fica
-        // direto dentro dele, simulando o mesmo layout que `.git/worktrees/<id>/`
-        // teria para um worktree secundário.
         let root = temp_dir("adminlock");
         checked_output(&root, &["init"]).unwrap();
         fs::write(root.join(".git").join("locked"), "Aguardando homologacao\n").unwrap();
 
         let start = std::time::Instant::now();
         let error = checked_output(&root, &["status"]).unwrap_err();
-        // Sem retry: falha imediata, bem abaixo do menor delay de backoff (200ms).
+
         assert!(start.elapsed() < Duration::from_millis(150));
         assert_eq!(error, "admin_locked:Aguardando homologacao");
 
@@ -1120,19 +1508,19 @@ mod tests {
         let lock_file = root.join(".git").join("index.lock");
         fs::write(&lock_file, b"").unwrap();
 
-        // Simula outro processo git segurando o index.lock brevemente — some
-        // antes do teto de 3 tentativas (200+400+800ms).
+        // Simulates another git process briefly holding index.lock — it goes away
+
         let lock_file_clone = lock_file.clone();
         std::thread::spawn(move || {
             sleep(Duration::from_millis(250));
             let _ = fs::remove_file(&lock_file_clone);
         });
 
-        // git recusa operações com index.lock presente — a chamada real falha até
-        // o arquivo sumir; o retry do with_lock_awareness é o que faz isso
-        // eventualmente ter sucesso sem o chamador precisar saber disso.
         let result = checked_output(&root, &["status"]);
-        assert!(result.is_ok(), "esperava sucesso após o lock transitório sumir: {result:?}");
+        assert!(
+            result.is_ok(),
+            "expected success after the transient lock disappears: {result:?}"
+        );
 
         fs::remove_dir_all(root).unwrap();
     }
@@ -1142,6 +1530,8 @@ mod tests {
         let root = temp_dir("diff-unstaged");
         let root_string = root.to_string_lossy().into_owned();
         checked_output(&root, &["init"]).unwrap();
+        checked_output(&root, &["config", "user.name", "Alethe Test"]).unwrap();
+        checked_output(&root, &["config", "user.email", "alethe@example.invalid"]).unwrap();
         fs::write(root.join("file.txt"), "line1\n").unwrap();
         checked_output(&root, &["add", "file.txt"]).unwrap();
         checked_output(&root, &["commit", "-m", "initial"]).unwrap();
@@ -1158,6 +1548,8 @@ mod tests {
         let root = temp_dir("diff-staged");
         let root_string = root.to_string_lossy().into_owned();
         checked_output(&root, &["init"]).unwrap();
+        checked_output(&root, &["config", "user.name", "Alethe Test"]).unwrap();
+        checked_output(&root, &["config", "user.email", "alethe@example.invalid"]).unwrap();
         fs::write(root.join("file.txt"), "line1\n").unwrap();
         checked_output(&root, &["add", "file.txt"]).unwrap();
         checked_output(&root, &["commit", "-m", "initial"]).unwrap();
@@ -1165,7 +1557,10 @@ mod tests {
         checked_output(&root, &["add", "file.txt"]).unwrap();
 
         let diff = git_diff(root_string.clone(), "file.txt".to_string(), true).unwrap();
-        assert!(diff.contains("+line2"), "staged diff must contain the added line");
+        assert!(
+            diff.contains("+line2"),
+            "staged diff must contain the added line"
+        );
 
         fs::remove_dir_all(root).unwrap();
     }
@@ -1175,6 +1570,8 @@ mod tests {
         let root = temp_dir("diff-binary");
         let root_string = root.to_string_lossy().into_owned();
         checked_output(&root, &["init"]).unwrap();
+        checked_output(&root, &["config", "user.name", "Alethe Test"]).unwrap();
+        checked_output(&root, &["config", "user.email", "alethe@example.invalid"]).unwrap();
         fs::write(root.join("bin.dat"), &0u8.to_le_bytes()).unwrap();
         checked_output(&root, &["add", "bin.dat"]).unwrap();
         checked_output(&root, &["commit", "-m", "initial"]).unwrap();

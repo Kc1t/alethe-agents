@@ -1,14 +1,7 @@
-// Sincronização dos dados do usuário via GitHub Gist privado.
 //
-// Sobe `projects.json` (estrutura/localização dos projetos + preferências) e
-// `activity-stats.json` (horas) como arquivos de um único Gist privado da conta
-// do próprio usuário. Sem servidor de OAuth: o usuário cola um Personal Access
-// Token (escopo `gist`) uma vez.
+
 //
 // Config (token + id do gist + timestamps + login) persiste em
-// `app_data_dir/github_sync.json`. Esse arquivo NÃO entra no conjunto
-// sincronizado — só `projects.json` e `activity-stats.json` sobem pro gist —
-// então o token nunca vaza pro Gist.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -86,9 +79,6 @@ fn status_from(cfg: &SyncConfig) -> GithubSyncStatus {
     }
 }
 
-/// Lê os arquivos locais que devem ser sincronizados. `projects.json` é
-/// obrigatório; `activity-stats.json` é opcional. Pula arquivos vazios — o
-/// Gist rejeita conteúdo vazio com 422.
 fn collect_files(app: &AppHandle) -> Result<Vec<(String, String)>, String> {
     let mut files = Vec::new();
     let projects = projects_file_path(app)?;
@@ -108,7 +98,6 @@ fn collect_files(app: &AppHandle) -> Result<Vec<(String, String)>, String> {
     Ok(files)
 }
 
-/// Escrita atômica (tmp → rename), preservando o padrão do `projects.json`.
 fn write_atomic(path: &Path, content: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -158,7 +147,6 @@ async fn create_gist(
         .ok_or_else(|| "gist response missing id".to_string())
 }
 
-/// Resolve o conteúdo de um arquivo do gist, buscando o `raw_url` se o GitHub
 /// truncou o inline (arquivos > 1MB).
 async fn gist_file_content(
     client: &reqwest::Client,
@@ -193,13 +181,11 @@ async fn gist_file_content(
     Ok(Some(text))
 }
 
-/// Status atual (offline — não bate na rede). Usado ao abrir o modal.
 #[tauri::command]
 pub fn github_sync_status(app: AppHandle) -> Result<GithubSyncStatus, String> {
     Ok(status_from(&load_config(&app)))
 }
 
-/// Valida o PAT contra `/user` e guarda token + login. Retorna o status novo.
 #[tauri::command]
 pub async fn github_sync_set_token(
     app: AppHandle,
@@ -233,8 +219,6 @@ pub async fn github_sync_set_token(
     Ok(status_from(&cfg))
 }
 
-/// Desconecta: limpa token e login. Mantém o `gist_id` pra reconectar e
-/// reaproveitar o mesmo gist depois.
 #[tauri::command]
 pub fn github_sync_logout(app: AppHandle) -> Result<GithubSyncStatus, String> {
     let mut cfg = load_config(&app);
@@ -244,7 +228,6 @@ pub fn github_sync_logout(app: AppHandle) -> Result<GithubSyncStatus, String> {
     Ok(status_from(&cfg))
 }
 
-/// Sobe os JSONs locais pro gist (cria na 1ª vez, depois `PATCH`). Se o gist
 /// guardado sumiu (404/422), recria.
 #[tauri::command]
 pub async fn github_sync_push(app: AppHandle) -> Result<GithubSyncStatus, String> {
@@ -269,7 +252,6 @@ pub async fn github_sync_push(app: AppHandle) -> Result<GithubSyncStatus, String
         let code = resp.status().as_u16();
         if !resp.status().is_success() {
             if code == 404 || code == 422 {
-                // gist removido ou inválido → recria
                 new_id = Some(create_gist(&client, &cfg.token, &body).await?);
             } else {
                 return Err(format!("github returned {}", resp.status()));
@@ -287,8 +269,6 @@ pub async fn github_sync_push(app: AppHandle) -> Result<GithubSyncStatus, String
     Ok(status_from(&cfg))
 }
 
-/// Baixa o gist e regrava os JSONs locais (escrita atômica). O frontend deve
-/// re-hidratar o store depois.
 #[tauri::command]
 pub async fn github_sync_pull(app: AppHandle) -> Result<GithubSyncStatus, String> {
     let mut cfg = load_config(&app);

@@ -1,11 +1,10 @@
 export type AgentType =
-  'shell' | 'claude' | 'codex' | 'opencode' | 'freebuff' | 'mimo' | 'antigravity'
+  'shell' | 'claude' | 'codex' | 'copilot' | 'opencode' | 'freebuff' | 'mimo' | 'antigravity'
 
-/** Rótulo de exibição de cada agente — fonte única, evita listas paralelas
- * divergentes por componente (ex.: "Claude" vs "Claude Code" pro mesmo tipo). */
 export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
+  copilot: 'GitHub Copilot',
   antigravity: 'Antigravity',
   opencode: 'OpenCode',
   mimo: 'Mimo',
@@ -13,12 +12,10 @@ export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
   shell: 'Shell',
 }
 
-/** Ordem canônica de exibição dos tipos de agente — fonte única, evita duas
- * listas paralelas divergindo (ex.: posição do Shell diferente entre o
- * seletor de novo terminal e o de agente de conflito). */
 export const ALL_AGENT_TYPES: AgentType[] = [
   'claude',
   'codex',
+  'copilot',
   'antigravity',
   'opencode',
   'mimo',
@@ -26,19 +23,15 @@ export const ALL_AGENT_TYPES: AgentType[] = [
   'shell',
 ]
 
-/** Executável real de cada agente. O Antigravity desktop usa `antigravity`,
- * enquanto o agente de terminal oficial usa `agy`. */
 export function agentCliCommand(agent: AgentType): string | undefined {
   if (agent === 'shell') return undefined
   return agent === 'antigravity' ? 'agy' : agent
 }
 
-/** Idiomas suportados pela UI. `en` é o default. */
 export type Locale = 'en' | 'pt-BR'
 
 export type LayoutMode = 'auto' | 'spotlight' | 'sidebar' | 'grid'
 
-/** Posição/tamanho de uma Célula no grid. Coordenadas 1-based (CSS Grid style). */
 export type GridCell = {
   col: number
   row: number
@@ -46,16 +39,21 @@ export type GridCell = {
   rowSpan: number
 }
 
-/** Layout 'grid' — cols/rows fixas, cada filho colocado por id em uma Cell. */
 export type GridLayout = {
   cols: number
   rows: number
-  /** childId → posição. childId é Terminal.id (em projeto) ou Project.id (em grupo). */
+
   cells: Record<string, GridCell>
-  /** Largura proporcional de cada coluna em `fr`. Default = todos `1` (iguais). */
+
   colSizes?: number[]
-  /** Altura proporcional de cada linha em `fr`. Default = todos `1` (iguais). */
+
   rowSizes?: number[]
+}
+
+export type GridLayoutHistoryEntry = {
+  id: string
+  savedAt: number
+  layout: GridLayout
 }
 
 export type Theme =
@@ -71,20 +69,36 @@ export type Theme =
   | 'min-light'
   | 'dark-lemon'
   | 'orca'
+  | 'ember'
+  | 'golden-premium'
+  | 'elite-original'
+  | 'elite-pure-black'
+  | 'elite-indigo'
+  | 'elite-blush'
 
 /** Native desktop icon variants. The UI theme and app icon theme are independent. */
-export type AppIconTheme = Theme | 'alethe-blue-gradient' | 'alethe-pink-gradient'
+export type AppIconTheme = 'elite-original' | 'elite-pure-black' | 'elite-indigo' | 'elite-blush'
 
-/** Módulos opcionais que podem ser ativados no onboarding ou nas Preferências. */
-export type FeatureId = 'todos' | 'git' | 'browser' | 'graphify' | 'aiMemory'
+export type VisualStyle = 'normal' | 'clean'
 
-/** Item da lista pessoal global. A ordem do array é a ordem escolhida pelo usuário. */
+export type MotionPreference = 'animated' | 'reduced'
+
+export type FeatureId =
+  | 'todos'
+  | 'git'
+  | 'browser'
+  | 'graphify'
+  | 'aiMemory'
+  | 'mcp'
+  | 'playwright'
+  | 'orchestrator'
+
 export type TodoItem = {
   id: string
   title: string
   completed: boolean
   tags: string[]
-  /** Projeto ao qual a tarefa está vinculada, quando aplicável. */
+
   projectId?: string
 }
 
@@ -93,20 +107,30 @@ export type SubTab = {
   type: AgentType
   name: string
   cwd: string
-  /** Última vez que esta sub-tab foi ativada. Usada pra restaurar o último chat. */
+
   lastUsedAt?: number
-  /** ID do PTY no backend. null quando o terminal está disabled ou ainda não foi spawnado. */
+
   ptyId: string | null
-  /** Resposta concluída e notificada, ainda não vista pelo usuário. */
+
   completionUnread?: boolean
-  /** ID de sessão pra Claude/Codex/OpenCode (--continue / resume). */
+
   sessionId?: string
   /** Args extras passados pro launcher (ex: --dangerously-skip-permissions). */
   extraArgs?: string[]
-  /** Prompt enviado uma única vez assim que o processo novo fica pronto. */
+
   initialInput?: string
-  /** Perfil de custo do runtime. Ausente preserva o comportamento completo legado. */
+  /** One-shot context packet used to bootstrap a cross-provider session. */
+  handoff?: AgentHandoffBootstrap
+
   runtimeProfile?: AgentRuntimeProfile
+}
+
+export type AgentHandoffBootstrap = {
+  id: string
+  contextDir: string
+  contextPath: string
+  sourceProvider: 'claude' | 'codex'
+  sourceSessionId: string
 }
 
 export type AgentRuntimeProfile = 'full' | 'lean' | 'diagnostic'
@@ -118,19 +142,45 @@ export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
   shell: null,
   claude: '--dangerously-skip-permissions',
   codex: '--dangerously-bypass-approvals-and-sandbox',
+  copilot: '--allow-all',
   opencode: '--dangerously-skip-permissions',
-  // freebuff/mimo não documentam flag de skip-permissions própria.
+
   freebuff: null,
   mimo: null,
   antigravity: '--dangerously-skip-permissions',
 }
 
-/**
- * Tipo de pane. Ausente = 'terminal' (back-compat, sem migração).
- * Viewers usam `tabs: []`; arquivos usam `filePath` e páginas web usam `url`.
- */
 export type PaneKind =
   'terminal' | 'markdown' | 'file' | 'image' | 'video' | 'web' | 'graphify' | 'diff'
+
+export type BrowserResourceMode = 'app-first' | 'balanced' | 'keep-alive'
+
+/**
+ * `native` is a child webview positioned over the pane; `cdp` paints screencast frames from the
+ * automation browser onto a canvas, which is ordinary DOM and is the same browser an agent drives.
+ */
+export type BrowserEngine = 'native' | 'cdp'
+
+export type BrowserPaneConfig = {
+  /** Whether scripts may run in the private webview. Defaults to true. */
+  javascriptEnabled?: boolean
+  /** Page zoom applied to the private webview. Defaults to 1. */
+  zoom?: number
+  /** How aggressively a hidden native webview is released. Defaults to app-first. */
+  resourceMode?: BrowserResourceMode
+  /** Which surface renders the page. Defaults to native. */
+  engine?: BrowserEngine
+  /**
+   * Attach to this tab in the shared browser instead of opening a new one. Set when a pane is
+   * created to watch a page an agent opened, so the pane shows that page rather than a copy.
+   */
+  watchTargetId?: string
+}
+
+export type BrowserPaneOptions = BrowserPaneConfig & {
+  url: string
+  name?: string
+}
 
 export type Terminal = {
   id: string
@@ -140,50 +190,64 @@ export type Terminal = {
   activeTabId: string
   disabled: boolean
   laneVisible: boolean | null
-  /** Última vez que esse terminal foi aberto/focado. Usado pra ordenar a Home. */
+  /** Keeps terminal controls in a fixed topbar instead of revealing them on hover. */
+  topbarPinned?: boolean
+
   lastUsedAt?: number
-  /** Discriminador de pane. Ausente/undefined = 'terminal'. Viewers de arquivo usam `tabs: []`. */
+
   kind?: PaneKind
-  /** Caminho absoluto do arquivo quando o pane é um viewer (markdown/file/image). */
+
   filePath?: string
-  /** URL http(s) normalizada quando kind === 'web'. */
+
   url?: string
-  /** RFC-003 — id da worktree onde este pane vive (habilita o botão "Integrar"). */
+  /** Runtime settings for a private native browser pane. */
+  browserConfig?: BrowserPaneConfig
+
   worktreeAgentId?: string
-  /** Argumento específico para diff viewer, true se staged. */
+
   staged?: boolean
-  /**
-   * Marca este terminal como o "viewer" (só leitura) de uma sessão-filha GSD
-   * Sync (criado por `useGsdSyncSessionsWatcher`). Nunca deve ser inserido
-   * em `paneIds` — o único jeito de abrir é pela gaveta GSD Sync, que usa o
-   * fullscreen de container isolando essa pane (`isolatedPaneId`), nunca a
-   * grade normal do projeto. Também escondido da árvore de terminais da
-   * Sidebar de Projetos (esquerda) — sem como digitar nela, não faz sentido
-   * misturada com terminais interativos normais.
-   */
+
   gsdSyncViewer?: boolean
+  /**
+   * Marks this terminal as the EPHEMERAL conflict-resolution agent
+   * (`mergeStore.ts` — "born, resolves, dies"). Must never be treated as a
+   * trackable agent worktree: excluded from the GSD Sync watcher/plugin
+   * (`useGsdSyncSessionsWatcher`/`gsdOpenCodePluginWrite`) — without this
+   * exclusion the GSD plugin got installed on this disposable terminal like
+   * any normal worktree, creating a real child session that went orphaned
+   * (pointing at an already-deleted folder) the moment the ephemeral agent
+   * was torn down at the end of the merge.
+   */
+  ephemeralConflictAgent?: boolean
+  /**
+   * Marks a disposable utility terminal (a "Review"/"Test" session from the
+   * Merge Center — born, serves manual review, dies) that must NEVER be
+   * treated as a candidate "pure repository root" in `getProjectRepoRoot`.
+   * These terminals have `cwd` = the worktree of the agent under review, but
+   * no `worktreeAgentId`/`gsdSyncViewer`, so the root heuristic picked them
+   * as a reference by mistake, contaminating `repo` with the worktree path
+   * instead of the real root, and the agent's card vanished from the Merge
+   * Center while the review/test session was open (same bug class already
+   * fixed for `gsdSyncViewer`).
+   */
+  ephemeralUtility?: boolean
+  /** Hides this terminal and its output from every paired remote device. */
+  remoteExcluded?: boolean
 }
 
-/** Bloco visual persistente que reúne panes independentes dentro de um projeto. */
 export type PaneGroup = {
   id: string
   paneIds: string[]
 }
 
-/**
- * Registro de worktree "órfã" — uma pasta/registro que sobrou de uma limpeza
- * que não terminou (deleção física falhou, ou `git worktree prune` falhou
- * depois da deleção física ter dado certo). Rastreado em `Project.orphanWorktrees`
- * pra sobreviver a reloads e ser retentado/exibido pela UI.
- */
 export type OrphanWorktree = {
   path: string
   mode: 'gitWorktree' | 'localCopy'
-  /** Deleção física da pasta falhou/ficou parcial — tenta de novo antes de prune. */
+
   requiresRawDeletion?: boolean
-  /** Pasta já foi apagada fisicamente; só falta `git worktree prune` no repo pai. */
+
   pruneOnly?: boolean
-  /** Tentativas de limpeza sem avanço real. >=3 mostra alerta de remoção manual. */
+
   cleanAttempts?: number
   /** Motivo do lock administrativo (`git worktree lock`), se for esse o bloqueio atual. */
   adminLockReason?: string
@@ -195,20 +259,22 @@ export type Project = {
   /** Determines which workspace opens when the project is selected. */
   mode?: 'standard' | 'agentSandbox'
   color?: string
-  /** URL de imagem pequena pra representar o projeto na sidebar/topbar/container. */
+
   iconUrl?: string
-  /** ID do grupo. null = solto (sem grupo). v2. */
+
   groupId: string | null
-  /** Pasta padrão usada ao criar novos terminais neste projeto. */
+
   defaultCwd?: string
   terminals: Terminal[]
   /** Blocos visuais criados selecionando panes com Shift. */
   paneGroups?: PaneGroup[]
-  /** Comentários locais ancorados em trechos de arquivos Markdown do projeto. */
+
   markdownComments?: MarkdownComment[]
   layoutMode: LayoutMode
-  /** Definição do grid quando layoutMode === 'grid'. Persistida pra restaurar. */
+
   gridLayout?: GridLayout
+  /** Most recently saved custom layouts for this project. */
+  gridLayoutHistory?: GridLayoutHistoryEntry[]
   collapsed: boolean
   /** Hidden from the sidebar until restored from Preferences. */
   archived?: boolean
@@ -216,26 +282,33 @@ export type Project = {
   // --- RFC-009 / RFC-003 — Multi-Agent settings ---
   worktreeMode?: 'gitWorktree' | 'localCopy'
   validationCommands?: string[]
+  /** Command that boots the app for the live health probe (Test/Integrate). Must
+   *  respect the PORT env var (health_probe injects a free port into it).
+   *  Empty/undefined = probe disabled. */
+  healthCheckCommand?: string
+  /** HTTP path checked by the probe (e.g. "/", "/health"). Defaults to '/' when empty. */
+  healthCheckPath?: string
   gsdWatcherEnabled?: boolean
-  /** RFC-007 — CLI que resolve conflitos de merge (provider-agnóstico). Default 'claude'. */
+
   conflictAgentProvider?: AgentType
-  /** Modelo específico do provedor para resolução de conflitos. */
+
   conflictAgentModel?: string
-  /** CLI que revisa a branch antes do merge (botão "Revisar" da Central de Merges). Default 'claude'. */
+
   reviewAgentProvider?: AgentType
-  /** Modelo específico do provedor para revisão de branch. */
+
   reviewAgentModel?: string
-  /** RFC-004 — injeta o MCP do Graphify (--mcp-config) nos agentes deste projeto. */
+
   graphifyEnabled?: boolean
-  /** RFC-003 — todo terminal de agente novo nasce numa worktree própria. */
+
   autoWorktree?: boolean
-  /** URL do repositório de origem no GitHub. */
+
   githubUrl?: string
-  /** Indica se a workspace precisa disparar a injeção inicial de contexto pós-clone. */
+
   firstBootPending?: boolean
-  /** Comportamento do terminal após aceitar o merge (relocalizar em nova branch ou fechar). */
-  mergePostAction?: 'relocateToNewBranch' | 'closeTerminal'
-  /** Worktrees com limpeza inacabada (deleção física ou `prune` falhados). */
+
+  /** Terminal behavior after a merge is accepted (relocate to a new branch or close). */
+  mergePostAction?: 'relocateToNewBranch' | 'relocateKeepSession' | 'closeTerminal'
+
   orphanWorktrees?: OrphanWorktree[]
 }
 
@@ -253,32 +326,33 @@ export type Group = {
   id: string
   name: string
   color: string
-  /** URL de imagem pequena pra usar como ícone do grupo no lugar do bullet colorido. */
+
   iconUrl?: string
   collapsed: boolean
-  /** Ordem manual dos projetos dentro do grupo. */
+
   projectIds: string[]
-  /** v2.1 — null = grupo raiz; senão o ID do grupo pai (subgrupo). */
+
   parentGroupId: string | null
-  /** v2.2 — modo de layout pros projetos quando o grupo é o "ativo" da workspace. */
+
   layoutMode?: LayoutMode
-  /** Definição do grid quando layoutMode === 'grid'. */
+
   gridLayout?: GridLayout
-  /** v2.3 — grupo suspenso: todos os terminais ficam disabled e containers fechados pra liberar RAM. */
+  /** Most recently saved custom layouts for this group. */
+  gridLayoutHistory?: GridLayoutHistoryEntry[]
+
   suspended?: boolean
-  /** Grupo preservado, mas oculto da sidebar até ser restaurado em Configurações. */
+
   archived?: boolean
   createdAt: number
 }
 
-/** Estado de um projeto aberto na workspace. 1:1 com Project enquanto existe. */
 export type WorkspaceContainer = {
   projectId: string
-  /** Panes (terminais) visíveis nesse container. Ordem = posição dos panes. */
+
   paneIds: string[]
-  /** Última vez que esse container/projeto foi aberto/focado. Usado nas tabs da topbar. */
+
   lastUsedAt?: number
-  /** Proporção (0..1) entre containers no eixo externo. Defaults serão recalculados se 0. */
+
   size: number
   internalLayout: LayoutMode
   collapsed: boolean
@@ -291,7 +365,6 @@ export type WorkspaceRecentTab = {
 
 export type WorkspaceTabKind = 'project' | 'group' | 'terminal' | 'composition'
 
-/** Estado visual restaurável. PTYs e conteúdo dos terminais permanecem globais. */
 export type WorkspaceViewSnapshot = {
   containers: WorkspaceContainer[]
   activeProjectId: string | null
@@ -310,7 +383,7 @@ export type WorkspaceTab = {
   label: string
   color?: string
   iconUrl?: string
-  /** Tab fixada — não é evictada pelo limite e fica antes das demais. */
+
   pinned?: boolean
   snapshot: WorkspaceViewSnapshot
   createdAt: number
@@ -325,46 +398,55 @@ export type WorkspaceHistoryEntry = {
   visitedAt: number
 }
 
+export type TerminalCreationPreset = {
+  name: string
+  cwd: string
+  firstTab: {
+    type: AgentType
+    cwd: string
+    extraArgs?: string[]
+    runtimeProfile?: AgentRuntimeProfile
+  }
+}
+
 export type Preferences = {
   /** Idioma da UI. Default 'en'. */
   language: Locale
   uiTheme: Theme
+  /** Application-wide visual language. Normal preserves the production UI. */
+  visualStyle: VisualStyle
+  /** Controls decorative motion while preserving static artwork. */
+  motionPreference: MotionPreference
   /** Native desktop icon theme. Defaults to Dark independently from the UI theme. */
   appIconTheme: AppIconTheme
   /** Zoom global da WebView. 1 = 100%. */
   uiZoom: number
-  /** Opacidade da janela nativa. 1 = totalmente opaca. */
+
   windowOpacity: number
   terminalTheme: Theme | null
   enabledAgents: Record<AgentType, boolean>
   onboardingDone: boolean
-  /** v2 — modo flat ignora os containers e mostra panes soltos como antes. */
+
   workspaceFlat: boolean
-  /** v2 — projeto-container que está em fullscreen na workspace. */
+
   fullscreenContainerId: string | null
-  /**
-   * Isola UM terminal específico dentro do fullscreen de container acima —
-   * `ProjectContainer` mostra só essa pane em vez da grade inteira, mas
-   * continua sendo o MESMO fullscreen de sempre (Sidebar de Projetos e
-   * gaveta GSD Sync continuam visíveis). Só faz sentido junto de
-   * `fullscreenContainerId` setado; sempre limpo junto dele. Acionado pela
-   * gaveta GSD Sync (o único jeito de ver a pane "GSD Sync" — ela nunca
-   * entra na grade normal do projeto).
-   */
+
   isolatedPaneId: string | null
-  /** Timestamp da primeira abertura do app (pra contagem de dias no welcome). */
+
   firstLaunchAt: number | null
   /** Nome exibido no welcome modal. */
   displayName: string
   /** URL da foto de perfil escolhida no cadastro local. */
   profileImageUrl: string
-  /** True quando o cadastro local de perfil foi concluido. */
+
   accountCreated: boolean
-  /** Se true, abre na Home mesmo se havia projeto ativo na última sessão. */
+
   alwaysStartOnHome: boolean
-  /** Se true, novos terminais começam com o modo irrestrito ativado. */
+
   alwaysStartUnrestricted: boolean
-  /** Organização visual da faixa superior. */
+  /** Last terminal configuration submitted through the creation modal. */
+  lastTerminalCreation: TerminalCreationPreset | null
+
   topbarStyle: 'classic' | 'three-areas'
   /** Local do controle Git: sidebar esquerda ou direita. */
   gitControlPlacement: 'left' | 'right'
@@ -381,47 +463,57 @@ export type Preferences = {
   topbarShowSync: boolean
   topbarShowProfile: boolean
   topbarShowMemory: boolean
+  /** Starts the LAN remote listener on launch. Off until the user opts in. */
+  remoteEnabled: boolean
   /** Maximum number of authenticated LAN remote devices. Default 1. */
   remoteMaxDevices: number
   /** Remote session lifetime in seconds. Default 1 hour. */
   remoteSessionExpirySecs: number
-  /** Módulos opcionais habilitados para este perfil. */
+  /** Paired devices can read terminals but never send input. Default true. */
+  remoteReadOnly: boolean
+  /** Allows remote input on plain shell tabs, not only agent tabs. Default false. */
+  remoteAllowShellInput: boolean
+
   enabledFeatures: Record<FeatureId, boolean>
   /** Folder configured as the base location for the global Todo list. */
   todoStoragePath: string
-  /** Estado persistente do shell principal. */
+  /** Scope the MCP panel opens on. */
+  mcpDefaultScope: McpScope
+  /** True once the MCP setup prompt has been shown or dismissed. */
+  mcpOnboardingSeen: boolean
+
   leftSidebarVisible: boolean
   rightSidebarVisible: boolean
   leftSidebarWidth: number
   rightSidebarWidth: number
-  /** Notifica quando uma janela de uso do Claude/Codex reseta, indicando qual. Default true. */
+
   notifyOnLimitReset: boolean
-  /** Ditado por voz (speech-to-text) escreve no terminal ativo. Default false. */
+  /** Local speech-to-text into the active terminal. Off by default. */
   dictationEnabled: boolean
-  /** Quantos PTYs podem ser spawnados em paralelo (fila global). Default 3. */
+  /** Toggle = press Ctrl+E to start/stop; Hold = dictate while Ctrl+E is held. */
+  dictationMode: 'toggle' | 'hold'
+  /** Selected on-device STT model id (Parakeet TDT v3 by default). */
+  dictationModelId: string
+  /** Preferred microphone deviceId, or null for the OS default. */
+  dictationMicrophoneId: string | null
+  /** Cached microphone label when the preferred device is unplugged. */
+  dictationMicrophoneLabel: string | null
+  /** How many PTYs may spawn in parallel (global queue). Default 3. */
   spawnConcurrency: number
-  /** Limites de RAM e política de estacionamento automático dos runtimes. */
+
   resourcePolicy: ResourcePolicyPreferences
-  /** v2.2 — grid layout custom da workspace inteira (cross-grupo). */
+
   workspaceGridLayout?: GridLayout
-  /**
-   * v2.4 — backend de terminal nativo (libghostty) no macOS. Opt-in.
-   * Só tem efeito no macOS; Windows/Linux ignoram e seguem no xterm.js.
-   * Default false até a feature sair do estágio experimental.
-   */
+  /** Most recently saved custom layouts for the workspace. */
+  workspaceGridLayoutHistory?: GridLayoutHistoryEntry[]
+
   nativeTerminalMacos?: boolean
   /**
    * v3 — perfil de heap do Node.js para agentes (Claude, Codex, OpenCode).
    * Injeta --max-old-space-size e UV_THREADPOOL_SIZE no ambiente do PTY.
    */
   nodeHeapProfile?: 'conservative' | 'balanced' | 'performance'
-  /**
-   * Cadeia de fallback de modelos (ids do provider `opencode`) pra sessão-
-   * filha do GSD Sync — tentados em ordem, automaticamente, APÓS o modelo
-   * que a sessão principal acabou de usar (sempre tentado primeiro,
-   * implícito, nunca precisa estar nesta lista). Vazio (default) = sem rede
-   * de segurança configurada.
-   */
+
   gsdSyncModelChain?: string[]
 }
 
@@ -440,24 +532,24 @@ export type ResourcePolicyPreferences = {
 }
 
 export type ProjectsFile = {
-  version: 6
+  version: 7
   groups: Group[]
-  /** Ordem manual dos projetos sem grupo (Solto). */
+
   ungroupedOrder: string[]
   projects: Project[]
-  /** Lista pessoal global, independente do projeto ativo. */
+
   todos: TodoItem[]
   activeProjectId: string | null
-  /** Estado da workspace — quais containers estão abertos e em que ordem. */
+
   workspace: {
     containers: WorkspaceContainer[]
-    /** Projetos acessados recentemente, mais recente primeiro, para tabs rápidas da topbar. */
+
     recentProjectIds: string[]
-    /** Tabs recentes da topbar, com escopo de projeto ou grupo/subgrupo. */
+
     recentTabs: WorkspaceRecentTab[]
-    /** Tabs restauráveis da workspace. */
+
     tabs: WorkspaceTab[]
-    /** Pilha das tabs removidas da topbar, da mais recente para a mais antiga. */
+
     closedTabs?: WorkspaceTab[]
     activeTabId: string | null
     activeGroupId: string | null
@@ -471,8 +563,10 @@ export type ProjectsFile = {
 
 export const DEFAULT_PREFERENCES: Preferences = {
   language: 'en',
-  uiTheme: 'dark',
-  appIconTheme: 'dark',
+  uiTheme: 'elite-indigo',
+  visualStyle: 'normal',
+  motionPreference: 'animated',
+  appIconTheme: 'elite-indigo',
   uiZoom: 1,
   windowOpacity: 1,
   terminalTheme: null,
@@ -480,6 +574,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
     shell: true,
     claude: true,
     codex: true,
+    copilot: true,
     antigravity: true,
     opencode: true,
     freebuff: true,
@@ -495,27 +590,46 @@ export const DEFAULT_PREFERENCES: Preferences = {
   accountCreated: false,
   alwaysStartOnHome: false,
   alwaysStartUnrestricted: false,
+  lastTerminalCreation: null,
   topbarStyle: 'classic',
   gitControlPlacement: 'left',
   spotifyClientId: '',
   spotifyClientSecret: '',
-  discordRichPresenceEnabled: true,
+  discordRichPresenceEnabled: false,
   topbarShowClaudeUsage: true,
   topbarShowCodexUsage: true,
   topbarShowAntigravityUsage: true,
   topbarShowSync: true,
   topbarShowProfile: true,
   topbarShowMemory: true,
+  remoteEnabled: false,
   remoteMaxDevices: 1,
   remoteSessionExpirySecs: 3600,
-  enabledFeatures: { todos: true, git: true, browser: true, graphify: true, aiMemory: false },
+  remoteReadOnly: true,
+  remoteAllowShellInput: false,
+  enabledFeatures: {
+    todos: true,
+    git: true,
+    browser: true,
+    graphify: true,
+    aiMemory: false,
+    mcp: true,
+    playwright: false,
+    orchestrator: false,
+  },
   todoStoragePath: '',
+  mcpDefaultScope: 'global',
+  mcpOnboardingSeen: false,
   leftSidebarVisible: true,
   rightSidebarVisible: true,
   leftSidebarWidth: 286,
   rightSidebarWidth: 300,
   notifyOnLimitReset: true,
   dictationEnabled: false,
+  dictationMode: 'toggle',
+  dictationModelId: 'parakeet-tdt-0.6b-v3-int8',
+  dictationMicrophoneId: null,
+  dictationMicrophoneLabel: null,
   spawnConcurrency: 3,
   resourcePolicy: {
     mode: 'manual',
@@ -531,7 +645,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
 }
 
 export const EMPTY_PROJECTS_FILE: ProjectsFile = {
-  version: 6,
+  version: 7,
   groups: [],
   ungroupedOrder: [],
   projects: [],
@@ -553,10 +667,8 @@ export const EMPTY_PROJECTS_FILE: ProjectsFile = {
   cliPaths: {},
 }
 
-/** Status runtime de um PTY (não persistido). */
 export type PtyStatus = 'working' | 'waiting' | 'stopped' | 'disabled' | 'offline'
 
-/** Cores predefinidas pra grupos e projetos. */
 export const GROUP_COLORS = [
   '#6ea8ff',
   '#22d3ee',
@@ -568,7 +680,6 @@ export const GROUP_COLORS = [
   '#10b981',
 ] as const
 
-/** Catálogo de modelos suportados por provedor/CLI. */
 export const PROVIDER_MODELS: Record<AgentType, { id: string; label: string }[]> = {
   claude: [
     { id: 'claude-3-7-sonnet', label: 'Claude 3.7 Sonnet (Padrão)' },
@@ -582,6 +693,7 @@ export const PROVIDER_MODELS: Record<AgentType, { id: string; label: string }[]>
     { id: 'o1', label: 'o1 (Avançado)' },
     { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
   ],
+  copilot: [],
   opencode: [
     { id: 'deepseek/deepseek-r1', label: 'DeepSeek R1 (Raciocínio)' },
     { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3' },
@@ -597,11 +709,78 @@ export const PROVIDER_MODELS: Record<AgentType, { id: string; label: string }[]>
     { id: 'mimo-pro', label: 'Mimo Pro' },
     { id: 'mimo-flash', label: 'Mimo Flash' },
   ],
-  freebuff: [
-    { id: 'freebuff-auto', label: 'Freebuff Auto' },
-  ],
-  shell: [
-    { id: 'default', label: 'Shell Padrão' },
-  ],
+  freebuff: [{ id: 'freebuff-auto', label: 'Freebuff Auto' }],
+  shell: [{ id: 'default', label: 'Shell Padrão' }],
 }
 
+export type McpScope = 'global' | 'project'
+
+export type McpAgent = Extract<AgentType, 'claude' | 'codex' | 'opencode' | 'antigravity'>
+
+export const MCP_AGENTS: McpAgent[] = ['claude', 'codex', 'opencode', 'antigravity']
+
+/** Literal values never leave Rust: `preview` is masked, use mcpRevealEnv for the real one. */
+export type McpEnvEntry = {
+  literal: { preview: string; empty: boolean } | null
+  passthroughFrom: string | null
+}
+
+export type McpTransport =
+  | { kind: 'stdio'; command: string; args: string[]; cwd: string | null }
+  | { kind: 'http'; url: string; headers: Record<string, McpEnvEntry> }
+  | { kind: 'sse'; url: string; headers: Record<string, McpEnvEntry> }
+
+export type McpTimeouts = {
+  startupSecs: number | null
+  toolSecs: number | null
+}
+
+export type McpServer = {
+  name: string
+  transport: McpTransport
+  env: Record<string, McpEnvEntry>
+  enabled: boolean
+  timeouts: McpTimeouts
+  bearerTokenEnvVar: string | null
+}
+
+/**
+ * `local` is Claude's default `claude mcp add` target: the servers it keeps inside
+ * `~/.claude.json` under `projects.<cwd>` rather than in the repo's `.mcp.json`.
+ */
+export type McpSourceKind = 'user' | 'local' | 'project'
+
+export type McpSourceState = {
+  kind: McpSourceKind
+  path: string
+  exists: boolean
+  writable: boolean
+  parseError: string | null
+  mtimeMs: number
+}
+
+export type McpServerRecord = {
+  server: McpServer
+  agent: McpAgent
+  scope: McpScope
+  sourceKind: McpSourceKind
+  sourcePath: string
+  managedByImport: string | null
+}
+
+export type McpAgentSnapshot = {
+  agent: McpAgent
+  scope: McpScope
+  sources: McpSourceState[]
+  servers: McpServerRecord[]
+}
+
+export type McpCapability = {
+  agent: McpAgent
+  projectScope: boolean
+  enabledFlag: boolean
+  envPassthrough: boolean
+  timeouts: boolean
+  headers: boolean
+  remote: boolean
+}

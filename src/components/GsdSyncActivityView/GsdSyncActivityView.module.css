@@ -1,0 +1,243 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 92;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 24px 32px;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  max-width: 980px;
+  background: var(--surface-modal);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.headerTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.headerMeta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+
+.closeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-faint);
+  cursor: pointer;
+}
+
+.closeBtn:hover {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-faint);
+  font-size: 13px;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.errorText {
+  color: var(--status-offline);
+  font-size: 13px;
+}
+
+/* Agent's colored rail — always expanded, this is the "main" content of the
+ * feed. Uses --agent-opencode since it's always an OpenCode session being
+ * read. */
+.agentMessage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 10px 14px;
+  border-left: 3px solid var(--agent-opencode);
+  border-radius: 4px;
+  background: var(--agent-opencode-soft);
+}
+
+.messageRoleAgent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--agent-opencode);
+}
+
+/* Instruction block (what WAS SENT to the agent) — collapsed by default,
+ * neutral dashed rail, to make clear at a glance it isn't the agent
+ * speaking. Opening it shows the full text when you need to check it. */
+.instructionBlock {
+  border-left: 3px dashed var(--border);
+  padding: 6px 12px 6px 14px;
+  border-radius: 4px;
+}
+
+.instructionBlock[open] {
+  background: var(--panel);
+  padding-bottom: 10px;
+}
+
+.instructionSummary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-faint);
+  cursor: pointer;
+  list-style: none;
+}
+
+.instructionSummary::-webkit-details-marker {
+  display: none;
+}
+
+.instructionHint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--fg-faint);
+  opacity: 0.75;
+}
+
+.instructionBlock .messageParts {
+  margin-top: 8px;
+}
+
+.messageParts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--fg);
+  white-space: pre-wrap;
+}
+
+.reasoningText {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-faint);
+  font-style: italic;
+  white-space: pre-wrap;
+}
+
+.toolCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.toolCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+
+.toolName {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.toolStatus {
+  margin-left: auto;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.toolPre {
+  margin: 0;
+  padding: 8px;
+  background: var(--bg-sunken);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.toolOutput {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+  white-space: pre-wrap;
+}
+
+.patchLine {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-faint);
+}

@@ -1,18 +1,60 @@
-/* Paleta portada do Alethe (poc) — segue --accent/--accent-on
-   pra superfícies destacadas e --text-primary/secondary/tertiary pra
-   hierarquia. Agent colors (shell verde, claude laranja, codex ciano,
-   opencode cinza) batem com os ícones existentes. */
+/* Terminal font embedded in the app (doesn't depend on an OS-installed font).
+   On Windows "Cascadia Mono" ships installed by default and covers the
+   Powerline/Nerd Font-style glyphs that modern TUIs (e.g. OpenCode's
+   `opentui`) use for decorative icons/separators — on Linux/macOS it
+   normally does NOT exist, and the browser falls back to the system's
+   generic fallback. That fallback covers the normal alphabet but not the
+   decorative glyphs — so, only for THOSE specific characters, the browser
+   silently switches fonts again, to a third font with different width
+   metrics. Since xterm.js's Canvas renderer draws every cell with a FIXED
+   pixel advance (measured from a single reference font), that "wrong-font"
+   glyph doesn't fit the grid — the visual result is letters/symbols
+   overlapping, worse the more compact the pane (confirmed live, and via
+   `fc-match` checking per-font charset coverage on this machine).
+   Fix: embed "Caskaydia Cove Nerd Font Mono" (the Nerd Font variant of
+   Cascadia Code itself, full glyph coverage, SIL OFL 1.1 — see
+   src/assets/fonts/LICENSE-CascadiaCode.txt) as the FIRST option for the
+   terminal font — the same visual family on every OS, guaranteed, with no
+   dependency on any fallback. */
+@font-face {
+  font-family: 'Caskaydia Cove Nerd Font Mono';
+  src: url('../assets/fonts/CaskaydiaCoveNerdFontMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Caskaydia Cove Nerd Font Mono';
+  src: url('../assets/fonts/CaskaydiaCoveNerdFontMono-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Caskaydia Cove Nerd Font Mono';
+  src: url('../assets/fonts/CaskaydiaCoveNerdFontMono-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Caskaydia Cove Nerd Font Mono';
+  src: url('../assets/fonts/CaskaydiaCoveNerdFontMono-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: block;
+}
 
-/* Transição suave ao trocar de tema (App.tsx seta
-   document.documentElement.dataset.theme = uiTheme, instantâneo por padrão).
-   Custom properties em si não são animáveis, mas as propriedades que as
-   CONSOMEM são — então transicionar essas é o que faz a troca de paleta
-   parecer suave. Curta (150ms) de propósito: rápida o bastante pra não virar
-   "delay perceptível" em feedback de hover/status que hoje é instantâneo;
-   seletores mais específicos (ex.: .activityCell:hover) continuam vencendo a
-   cascata com sua própria transição, então não é 100% universal, mas cobre a
-   grande maioria da UI sem tocar em cada componente. Desliga se o usuário
-   pediu menos animação no SO. */
+/* Smooth transition when switching theme (App.tsx sets
+   document.documentElement.dataset.theme = uiTheme, instant by default).
+   Custom properties themselves aren't animatable, but the properties that
+   CONSUME them are — so transitioning those is what makes the palette swap
+   look smooth. Short (150ms) on purpose: fast enough to not become a
+   "perceptible delay" on hover/status feedback that's instant today; more
+   specific selectors (e.g. .activityCell:hover) still win the cascade with
+   their own transition, so it's not 100% universal, but it covers most of
+   the UI without touching every component. Turns off if the user asked for
+   less animation at the OS level. */
 *,
 *::before,
 *::after {
@@ -29,7 +71,6 @@
 
 :root,
 [data-theme='dark'] {
-  /* animações e easings reativos */
   --anim-instant: 80ms;
   --anim-fast: 140ms;
   --anim-normal: 220ms;
@@ -38,7 +79,6 @@
   --ease-out-fluid: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out-fluid: cubic-bezier(0.45, 0, 0.55, 1);
 
-  /* superfícies */
   --bg: #101114;
   --bg-elevated: #1f2125;
   --bg-sunken: #1a1c1f;
@@ -67,7 +107,6 @@
   --accent-bg-soft: rgba(243, 244, 246, 0.06);
   --accent-border-soft: rgba(243, 244, 246, 0.22);
 
-  /* cards/superfícies elevadas */
   --surface-modal: #1f2125;
   --surface-card-default: #2a2d33;
   --surface-card-default-strong: #34373e;
@@ -104,6 +143,17 @@
   --agent-mimo-soft: rgba(255, 122, 26, 0.15);
   --agent-antigravity-soft: rgba(66, 133, 244, 0.15);
 
+  --project-orange: #f97316;
+  --project-pink: #ec4899;
+  --project-purple: #8b5cf6;
+  --project-blue: #0ea5e9;
+  --project-teal: #14b8a6;
+  --project-green: #84cc16;
+  --project-yellow: #eab308;
+  --project-red: #ef4444;
+  --project-gray: #64748b;
+  --project-black: #0a0a0a;
+
   /* foco dotted (Alethe focus mode) */
   --focus-ring: #38bdf8;
 
@@ -121,7 +171,7 @@
 
   --font-sans:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'Cascadia Mono', Consolas, 'Courier New', monospace;
+  --font-mono: 'Caskaydia Cove Nerd Font Mono', 'Cascadia Mono', Consolas, 'Courier New', monospace;
 }
 
 [data-theme='light'] {
@@ -628,9 +678,6 @@
   --shadow-lg: 0 12px 32px rgba(33, 33, 33, 0.18);
 }
 
-/* Dark Lemon Material (lucafluri.dark-lemon-material) — quase preto #141414
-   uniforme, texto branco e acento limão #ffff50. Sintaxe estilo Material+
-   nos ANSI do terminal. */
 [data-theme='dark-lemon'] {
   --bg: #141414;
   --bg-elevated: #1e1e1e;
@@ -693,8 +740,6 @@
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.65);
 }
 
-/* Orca — extraído da referência visual: chrome preto neutro, painéis
-   discretos, bordas finas e acentos de estado verdes. */
 [data-theme='orca'] {
   --bg: #0b0b0b;
   --bg-elevated: #181818;
@@ -762,17 +807,15 @@
 }
 
 /* ==========================================================================
-   Arco-Íris Infinito (Infinite Rainbow RGB) & Borda Infinita de Container
+   Infinite Rainbow RGB & Infinite Container Border
    ========================================================================== */
-/* `filter: hue-rotate()` foi removido de propósito: era redundante com o
-   `background-position` (o próprio gradiente já contém todas as cores, o
-   hue-rotate só duplicava o efeito de "cor girando" por cima) e é a
-   propriedade mais cara das duas — `filter` força repaint pixel a pixel do
-   elemento inteiro a cada frame, sem poder ficar só no compositor como
-   `transform`/`opacity`. Combinado com `background-position` num gradiente
-   de 300%x300%, isso travava a animação (renderiza parcial/incompleta) no
-   compositor de software do WebKitGTK no Linux — sem o `filter`, sobra só
-   o slide do gradiente, bem mais barato de manter fluido. */
+/* `filter: hue-rotate()` was removed on purpose: it was redundant with
+   `background-position` (the gradient itself already contains every color,
+   hue-rotate just duplicated the "color spinning" effect on top) and is the
+   more expensive property of the two — `filter` forces a pixel-by-pixel
+   repaint of the whole element every frame, unable to stay compositor-only
+   like `transform`/`opacity`. Without `filter`, only the gradient animation
+   is left, much cheaper to keep smooth. */
 @keyframes rainbowInfinite {
   0% {
     background-position: 0% 50%;
@@ -782,6 +825,24 @@
   }
   100% {
     background-position: 0% 50%;
+  }
+}
+
+/* Animatable angle for the container border's conic gradient — registered via
+   `@property` so the browser can smoothly interpolate an <angle> between
+   keyframes (without this, `from <var>` doesn't animate, it just steps).
+   Only used by the CONTAINER border (`.rainbow-container-border`), not the
+   color swatches (`.swatch-rgb-rainbow`), which keep the original linear
+   gradient — changing those too would also change the color preview in the
+   project color picker, out of scope for this fix. */
+@property --rainbow-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes rainbowRotate {
+  to {
+    --rainbow-angle: 360deg;
   }
 }
 
@@ -808,24 +869,34 @@
   border-radius: 12px;
 }
 
-/* Indicador de foco universal: a classe é aplicada em TODO container da
-   workspace (não só nos que têm a cor "arco-íris" escolhida no projeto) —
-   o anel só existe no DOM (`::before`) quando o container tem foco real
-   (`:focus-within`, que sobe naturalmente de qualquer terminal focado lá
-   dentro, sem precisar de estado próprio em JS). Sem foco, o container volta
-   a mostrar só a borda normal por cor de projeto (--container-accent). */
-.rainbow-container-border:focus-within::before {
+/* Project-chosen "rainbow" color theme — always visible/animating while this
+   color is selected, regardless of focus (it's not a focus indicator; it's a
+   single color option, like any other project color, just animated). Applied
+   only when `project.color === 'rgb-rainbow'` (see `isRainbow` in
+   ProjectContainer.tsx). */
+.rainbow-container-border::before {
   content: '';
   position: absolute;
-  /* `inset: 0` (não -2px) + `border-radius: inherit`: o anel precisa nascer
-     DENTRO da caixa real (que tem `overflow: hidden` e cantos quadrados via
-     ProjectContainer.module.css), senão fica todo cortado nas bordas retas
-     e só a curva de um raio hardcoded aparece nos cantos. */
+  /* `inset: 0` (not -2px) + `border-radius: inherit`: the ring needs to be
+     born INSIDE the real box (which has `overflow: hidden` and square
+     corners via ProjectContainer.module.css), otherwise it gets clipped at
+     the straight edges and only the curve of a hardcoded radius shows at
+     the corners. */
   inset: 0;
   border-radius: inherit;
   padding: 2px;
-  background: linear-gradient(
-    135deg,
+  /* Conic instead of linear: a linear gradient (even diagonal) only varies
+     along ONE straight axis — opposite corners of the rectangle (e.g.
+     top-left vs bottom-right) always show very different colors from the
+     gradient at the same time, which behind the ring cutout (mask xor
+     below) looks like a color "cutting" the outline instead of circling
+     it. Conic centered on the container's middle makes the color vary by
+     ANGLE from the center — since a rectangle's outline is, all the way
+     around its perimeter, a continuous sequence of angles seen from that
+     center, the color genuinely circles the whole border, without that
+     cut. */
+  background: conic-gradient(
+    from var(--rainbow-angle),
     #ff0055,
     #ff8800,
     #ffeb3b,
@@ -835,12 +906,382 @@
     #d500f9,
     #ff0055
   );
-  background-size: 300% 300%;
-  animation: rainbowInfinite 6s linear infinite;
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  animation: rainbowRotate 6s linear infinite;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   pointer-events: none;
-  z-index: 2;
+  /* Needs to sit above the focus ring of any pane inside the container
+     (`.pane:focus-within`, z-index: 2 in TerminalPane.module.css) — since
+     both tied at z-index: 2, the focused pane (deeper in the tree, painted
+     later) won DOM-order tiebreaking and its box-shadow (which bleeds 3px
+     outside its own border) covered exactly the stretch of the rainbow ring
+     adjacent to it, showing up as a blue line cutting the ring only where
+     there was focus. */
+  z-index: 5;
 }
 
+[data-theme='ember'] {
+  --bg: #0b0d0e;
+  --bg-elevated: #191d21;
+  --bg-sunken: #08090a;
+  --panel: #191d21;
+  --panel-hover: #232a2f;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.13);
+
+  --fg: #dfe3e6;
+  --fg-muted: #9aa3a9;
+  --fg-faint: #6d767c;
+  --text-primary: #dfe3e6;
+  --text-secondary: #9aa3a9;
+  --text-tertiary: #6d767c;
+  --text-quaternary: #525b61;
+
+  --accent: #e0873f;
+  --accent-strong: #eb9a56;
+  --accent-on: #0b0d0e;
+  --accent-soft: rgba(224, 135, 63, 0.14);
+  --accent-faint: rgba(224, 135, 63, 0.08);
+  --accent-border: rgba(224, 135, 63, 0.32);
+  --accent-ring: rgba(224, 135, 63, 0.2);
+  --accent-bg-soft: rgba(224, 135, 63, 0.1);
+  --accent-border-soft: rgba(224, 135, 63, 0.24);
+
+  --surface-modal: #191d21;
+  --surface-card-default: #14181b;
+  --surface-card-default-strong: #232a2f;
+  --surface-card-selected: rgba(224, 135, 63, 0.1);
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-accent: rgba(224, 135, 63, 0.34);
+
+  --status-working: #e0873f;
+  --status-working-soft: rgba(224, 135, 63, 0.16);
+  --status-waiting: #d9b44a;
+  --status-waiting-soft: rgba(217, 180, 74, 0.16);
+  --status-stopped: #6d767c;
+  --status-stopped-soft: rgba(109, 118, 124, 0.14);
+  --status-disabled: #343c42;
+  --status-offline: #e0605c;
+  --status-offline-soft: rgba(224, 96, 92, 0.16);
+
+  --focus-ring: #e0873f;
+  --shape-tabs-lane-bg: #101417;
+  --shape-tabs-lane-border: rgba(255, 255, 255, 0.06);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.7);
+}
+
+[data-theme='golden-premium'] {
+  --bg: #1c1815;
+  --bg-elevated: #28211c;
+  --bg-sunken: #14110e;
+  --panel: #28211c;
+  --panel-hover: #332922;
+  --border: #332922;
+  --border-strong: rgba(212, 175, 55, 0.24);
+
+  --fg: #f5eedc;
+  --fg-muted: #c9bc9e;
+  --fg-faint: #988c75;
+  --text-primary: #f5eedc;
+  --text-secondary: #c9bc9e;
+  --text-tertiary: #988c75;
+  --text-quaternary: #736754;
+
+  --accent: #d4af37;
+  --accent-strong: #ffd700;
+  --accent-on: #1c1815;
+  --accent-soft: rgba(212, 175, 55, 0.14);
+  --accent-faint: rgba(212, 175, 55, 0.08);
+  --accent-border: rgba(212, 175, 55, 0.36);
+  --accent-ring: rgba(212, 175, 55, 0.2);
+  --accent-bg-soft: rgba(212, 175, 55, 0.1);
+  --accent-border-soft: rgba(212, 175, 55, 0.24);
+
+  --surface-modal: #28211c;
+  --surface-card-default: #231c18;
+  --surface-card-default-strong: #332922;
+  --surface-card-selected: rgba(212, 175, 55, 0.1);
+  --border-subtle: #332922;
+  --border-accent: rgba(212, 175, 55, 0.36);
+
+  --status-working: #4ade80;
+  --status-working-soft: rgba(74, 222, 128, 0.16);
+  --status-waiting: #facc15;
+  --status-waiting-soft: rgba(250, 204, 21, 0.16);
+  --status-stopped: #988c75;
+  --status-stopped-soft: rgba(152, 140, 117, 0.14);
+  --status-disabled: #544a3e;
+  --status-offline: #f87171;
+  --status-offline-soft: rgba(248, 113, 113, 0.16);
+
+  --agent-shell: #4ade80;
+  --agent-claude: #f97316;
+  --agent-codex: #38bdf8;
+  --agent-opencode: #c084fc;
+  --agent-shell-soft: rgba(74, 222, 128, 0.14);
+  --agent-claude-soft: rgba(249, 115, 22, 0.15);
+  --agent-codex-soft: rgba(56, 189, 248, 0.15);
+  --agent-opencode-soft: rgba(192, 132, 252, 0.15);
+
+  --focus-ring: #d4af37;
+  --shape-tabs-lane-bg: #14110e;
+  --shape-tabs-lane-border: rgba(245, 238, 220, 0.06);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.65);
+}
+
+[data-theme='elite-pure-black'] {
+  --bg: #000000;
+  --bg-elevated: #0b0b0b;
+  --bg-sunken: #000000;
+  --panel: #171717;
+  --panel-hover: #222222;
+  --border: #242424;
+  --border-strong: rgba(255, 255, 255, 0.28);
+
+  --fg: #ffffff;
+  --fg-muted: #c4c4c4;
+  --fg-faint: #8a8a8a;
+  --text-primary: #ffffff;
+  --text-secondary: #c4c4c4;
+  --text-tertiary: #8a8a8a;
+  --text-quaternary: #6a6a6a;
+
+  --accent: #ffffff;
+  --accent-strong: #ffffff;
+  --accent-on: #000000;
+  --accent-soft: rgba(255, 255, 255, 0.08);
+  --accent-faint: rgba(255, 255, 255, 0.08);
+  --accent-border: rgba(255, 255, 255, 0.32);
+  --accent-ring: rgba(255, 255, 255, 0.14);
+  --accent-bg-soft: rgba(255, 255, 255, 0.08);
+  --accent-border-soft: rgba(255, 255, 255, 0.24);
+
+  --surface-modal: #0b0b0b;
+  --surface-card-default: #171717;
+  --surface-card-default-strong: #222222;
+  --surface-card-selected: rgba(255, 255, 255, 0.08);
+  --border-subtle: #242424;
+  --border-accent: rgba(255, 255, 255, 0.32);
+
+  --status-working: #22c55e;
+  --status-working-soft: rgba(34, 197, 94, 0.16);
+  --status-waiting: #eab308;
+  --status-waiting-soft: rgba(234, 179, 8, 0.14);
+  --status-stopped: #8a8a8a;
+  --status-stopped-soft: rgba(138, 138, 138, 0.14);
+  --status-disabled: #4a4a4a;
+  --status-offline: #ef4444;
+  --status-offline-soft: rgba(239, 68, 68, 0.16);
+
+  --agent-shell: #22c55e;
+  --agent-claude: #f59e0b;
+  --agent-codex: #38bdf8;
+  --agent-opencode: #a1a1aa;
+  --agent-shell-soft: rgba(34, 197, 94, 0.14);
+  --agent-claude-soft: rgba(245, 158, 11, 0.15);
+  --agent-codex-soft: rgba(56, 189, 248, 0.15);
+  --agent-opencode-soft: rgba(161, 161, 170, 0.15);
+
+  --focus-ring: #ffffff;
+  --shape-tabs-lane-bg: #000000;
+  --shape-tabs-lane-border: rgba(255, 255, 255, 0.08);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.6);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.7);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.8);
+}
+
+[data-theme='elite-indigo'] {
+  --bg: #0c0c0c;
+  --bg-elevated: #14141f;
+  --bg-sunken: #080810;
+  --panel: #1c1c2e;
+  --panel-hover: #262641;
+  --border: #262641;
+  --border-strong: rgba(242, 240, 255, 0.24);
+
+  --fg: #f2f0ff;
+  --fg-muted: #c3bfe6;
+  --fg-faint: #8a85b0;
+  --text-primary: #f2f0ff;
+  --text-secondary: #c3bfe6;
+  --text-tertiary: #8a85b0;
+  --text-quaternary: #6b6790;
+
+  --accent: #7d72ff;
+  --accent-strong: #9a92ff;
+  --accent-on: #0c0c0c;
+  --accent-soft: rgba(125, 114, 255, 0.14);
+  --accent-faint: rgba(125, 114, 255, 0.14);
+  --accent-border: rgba(125, 114, 255, 0.44);
+  --accent-ring: rgba(125, 114, 255, 0.2);
+  --accent-bg-soft: rgba(125, 114, 255, 0.14);
+  --accent-border-soft: rgba(125, 114, 255, 0.36);
+
+  --surface-modal: #14141f;
+  --surface-card-default: #1c1c2e;
+  --surface-card-default-strong: #262641;
+  --surface-card-selected: rgba(125, 114, 255, 0.14);
+  --border-subtle: #262641;
+  --border-accent: rgba(125, 114, 255, 0.44);
+
+  --status-working: #34d399;
+  --status-working-soft: rgba(52, 211, 153, 0.16);
+  --status-waiting: #fbbf24;
+  --status-waiting-soft: rgba(251, 191, 36, 0.14);
+  --status-stopped: #8a85b0;
+  --status-stopped-soft: rgba(138, 133, 176, 0.14);
+  --status-disabled: #4c4870;
+  --status-offline: #fb7185;
+  --status-offline-soft: rgba(251, 113, 133, 0.16);
+
+  --agent-shell: #34d399;
+  --agent-claude: #f0a75a;
+  --agent-codex: #0ae1ff;
+  --agent-opencode: #7d72ff;
+  --agent-shell-soft: rgba(52, 211, 153, 0.14);
+  --agent-claude-soft: rgba(240, 167, 90, 0.15);
+  --agent-codex-soft: rgba(10, 225, 255, 0.15);
+  --agent-opencode-soft: rgba(125, 114, 255, 0.15);
+
+  --focus-ring: #0ae1ff;
+  --shape-tabs-lane-bg: #080810;
+  --shape-tabs-lane-border: rgba(242, 240, 255, 0.08);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.7);
+}
+
+[data-theme='elite-original'] {
+  --bg: #fbfafd;
+  --bg-elevated: #ffffff;
+  --bg-sunken: #f2eff8;
+  --panel: #ede8f7;
+  --panel-hover: #e3dcf2;
+  --border: #dcd4ee;
+  --border-strong: rgba(36, 28, 51, 0.24);
+
+  --fg: #241c33;
+  --fg-muted: #5a5175;
+  --fg-faint: #8f87a8;
+  --text-primary: #241c33;
+  --text-secondary: #5a5175;
+  --text-tertiary: #8f87a8;
+  --text-quaternary: #a9a2bd;
+
+  --accent: #6157f0;
+  --accent-strong: #4c43cd;
+  --accent-on: #ffffff;
+  --accent-soft: rgba(97, 87, 240, 0.1);
+  --accent-faint: rgba(97, 87, 240, 0.1);
+  --accent-border: rgba(97, 87, 240, 0.4);
+  --accent-ring: rgba(97, 87, 240, 0.18);
+  --accent-bg-soft: rgba(97, 87, 240, 0.1);
+  --accent-border-soft: rgba(97, 87, 240, 0.32);
+
+  --surface-modal: #ffffff;
+  --surface-card-default: #ede8f7;
+  --surface-card-default-strong: #e3dcf2;
+  --surface-card-selected: rgba(97, 87, 240, 0.1);
+  --border-subtle: #dcd4ee;
+  --border-accent: rgba(97, 87, 240, 0.4);
+
+  --status-working: #2e9e6b;
+  --status-working-soft: rgba(46, 158, 107, 0.14);
+  --status-waiting: #c98a16;
+  --status-waiting-soft: rgba(201, 138, 22, 0.14);
+  --status-stopped: #8f87a8;
+  --status-stopped-soft: rgba(143, 135, 168, 0.14);
+  --status-disabled: #b9b2cc;
+  --status-offline: #d64545;
+  --status-offline-soft: rgba(214, 69, 69, 0.14);
+
+  --agent-shell: #2e9e6b;
+  --agent-claude: #c97a2e;
+  --agent-codex: #2e93a8;
+  --agent-opencode: #6157f0;
+  --agent-shell-soft: rgba(46, 158, 107, 0.14);
+  --agent-claude-soft: rgba(201, 122, 46, 0.15);
+  --agent-codex-soft: rgba(46, 147, 168, 0.15);
+  --agent-opencode-soft: rgba(97, 87, 240, 0.15);
+
+  --focus-ring: #6157f0;
+  --shape-tabs-lane-bg: #f2eff8;
+  --shape-tabs-lane-border: rgba(36, 28, 51, 0.08);
+
+  --shadow-sm: 0 1px 2px rgba(36, 28, 51, 0.1);
+  --shadow-md: 0 4px 12px rgba(36, 28, 51, 0.14);
+  --shadow-lg: 0 12px 32px rgba(36, 28, 51, 0.18);
+}
+
+[data-theme='elite-blush'] {
+  --bg: #fff7f2;
+  --bg-elevated: #ffffff;
+  --bg-sunken: #f7eae1;
+  --panel: #f3e2d6;
+  --panel-hover: #ebd5c6;
+  --border: #e5d0c1;
+  --border-strong: rgba(59, 42, 34, 0.24);
+
+  --fg: #3b2a22;
+  --fg-muted: #6e5347;
+  --fg-faint: #9c8175;
+  --text-primary: #3b2a22;
+  --text-secondary: #6e5347;
+  --text-tertiary: #9c8175;
+  --text-quaternary: #b8a094;
+
+  --accent: #7a4a3a;
+  --accent-strong: #5e3629;
+  --accent-on: #fff7f2;
+  --accent-soft: rgba(122, 74, 58, 0.1);
+  --accent-faint: rgba(122, 74, 58, 0.1);
+  --accent-border: rgba(122, 74, 58, 0.4);
+  --accent-ring: rgba(122, 74, 58, 0.18);
+  --accent-bg-soft: rgba(122, 74, 58, 0.1);
+  --accent-border-soft: rgba(122, 74, 58, 0.32);
+
+  --surface-modal: #ffffff;
+  --surface-card-default: #f3e2d6;
+  --surface-card-default-strong: #ebd5c6;
+  --surface-card-selected: rgba(122, 74, 58, 0.1);
+  --border-subtle: #e5d0c1;
+  --border-accent: rgba(122, 74, 58, 0.4);
+
+  --status-working: #3f8f63;
+  --status-working-soft: rgba(63, 143, 99, 0.14);
+  --status-waiting: #b87d1a;
+  --status-waiting-soft: rgba(184, 125, 26, 0.14);
+  --status-stopped: #9c8175;
+  --status-stopped-soft: rgba(156, 129, 117, 0.14);
+  --status-disabled: #c7b3a7;
+  --status-offline: #c0483c;
+  --status-offline-soft: rgba(192, 72, 60, 0.14);
+
+  --agent-shell: #3f8f63;
+  --agent-claude: #b5652a;
+  --agent-codex: #2c7f92;
+  --agent-opencode: #7a4a3a;
+  --agent-shell-soft: rgba(63, 143, 99, 0.14);
+  --agent-claude-soft: rgba(181, 101, 42, 0.15);
+  --agent-codex-soft: rgba(44, 127, 146, 0.15);
+  --agent-opencode-soft: rgba(122, 74, 58, 0.15);
+
+  --focus-ring: #7a4a3a;
+  --shape-tabs-lane-bg: #f7eae1;
+  --shape-tabs-lane-border: rgba(59, 42, 34, 0.08);
+
+  --shadow-sm: 0 1px 2px rgba(59, 42, 34, 0.1);
+  --shadow-md: 0 4px 12px rgba(59, 42, 34, 0.14);
+  --shadow-lg: 0 12px 32px rgba(59, 42, 34, 0.18);
+}

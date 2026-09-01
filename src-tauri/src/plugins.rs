@@ -1,17 +1,13 @@
 //! RFC-012 — Plugin System.
 //!
-//! Extensão sem tocar no núcleo: plugins são manifests JSON em
-//! `<perfil>/plugins/<id>/plugin.json`. Três tipos (`kind`):
+
 //!
-//! - `agentType` — novo tipo de agente de código (spec: comando/args/resume);
+
 //! - `skill` — habilidade customizada (spec: markdown/gatilho, ex. skills de
 //!   merge por classe da RFC-006);
-//! - `validationPipeline` — pipeline de validação (spec: lista de comandos,
-//!   consumida pelo `merge_finalize` / RFC-008).
+
 //!
-//! O `spec` é `serde_json::Value` de propósito: cada consumidor (registry de
-//! merge skills, provisioner, validation) interpreta o próprio formato — o
-//! núcleo só armazena, lista e emite eventos (`PluginInstalled`/`PluginRemoved`)
+
 //! no Event Bus para quem quiser reagir.
 
 use serde::{Deserialize, Serialize};
@@ -39,7 +35,7 @@ pub struct PluginManifest {
     pub kind: PluginKind,
     #[serde(default)]
     pub description: String,
-    /// Formato livre por `kind` — interpretado pelo consumidor, não pelo núcleo.
+
     #[serde(default)]
     pub spec: serde_json::Value,
 }
@@ -59,8 +55,6 @@ fn plugins_root(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(crate::paths::profile_data_dir(app)?.join(PLUGINS_DIR))
 }
 
-// --- Core testável (sem AppHandle) -----------------------------------------
-
 fn list_in(root: &Path) -> Result<Vec<PluginManifest>, String> {
     let mut result = Vec::new();
     if !root.is_dir() {
@@ -72,7 +66,7 @@ fn list_in(root: &Path) -> Result<Vec<PluginManifest>, String> {
         let Ok(raw) = std::fs::read_to_string(&manifest_path) else {
             continue;
         };
-        // Manifest corrompido não derruba a listagem — só é pulado.
+
         if let Ok(manifest) = serde_json::from_str::<PluginManifest>(&raw) {
             result.push(manifest);
         }
@@ -116,7 +110,10 @@ fn emit(event_type: &str, manifest_id: &str, data: serde_json::Value) {
 // --- Comandos ----------------------------------------------------------------
 
 #[tauri::command]
-pub fn plugins_list(app: AppHandle, kind: Option<PluginKind>) -> Result<Vec<PluginManifest>, String> {
+pub fn plugins_list(
+    app: AppHandle,
+    kind: Option<PluginKind>,
+) -> Result<Vec<PluginManifest>, String> {
     let root = plugins_root(&app)?;
     let all = list_in(&root)?;
     Ok(match kind {
@@ -167,9 +164,13 @@ mod tests {
 
         assert!(list_in(&root).unwrap().is_empty());
 
-        install_in(&root, &manifest("val-default", PluginKind::ValidationPipeline)).unwrap();
+        install_in(
+            &root,
+            &manifest("val-default", PluginKind::ValidationPipeline),
+        )
+        .unwrap();
         install_in(&root, &manifest("merge-rust", PluginKind::Skill)).unwrap();
-        // Reinstalar o mesmo id sobrescreve (upgrade), não duplica.
+
         install_in(&root, &manifest("merge-rust", PluginKind::Skill)).unwrap();
 
         let all = list_in(&root).unwrap();
@@ -177,10 +178,12 @@ mod tests {
         assert_eq!(all[0].id, "merge-rust");
         assert_eq!(all[0].spec["commands"][0], "echo ok");
 
-        let skills: Vec<_> = all.into_iter().filter(|p| p.kind == PluginKind::Skill).collect();
+        let skills: Vec<_> = all
+            .into_iter()
+            .filter(|p| p.kind == PluginKind::Skill)
+            .collect();
         assert_eq!(skills.len(), 1);
 
-        // Manifest corrompido é ignorado na listagem.
         let broken = root.join("broken");
         fs::create_dir_all(&broken).unwrap();
         fs::write(broken.join(MANIFEST_FILE), "{ not json").unwrap();

@@ -1,21 +1,32 @@
-import { Group, Panel, Separator } from 'react-resizable-panels'
+import { useDroppable } from '@dnd-kit/core'
 import { Ungroup } from 'lucide-react'
+import { Panel, Separator } from 'react-resizable-panels'
 
-import { useProjectsStore } from '../../stores/projectsStore'
+import {
+  autoGridLayout,
+  cellStyle,
+  freeCells,
+  gridContainerStyle,
+  reconcileGridLayout,
+} from '../../lib/gridLayout'
 import { useT } from '../../lib/i18n'
-import { cellStyle, gridContainerStyle, reconcileGridLayout } from '../../lib/gridLayout'
 import type { GridLayout, LayoutMode, Terminal } from '../../lib/types'
-import { MarkdownPane } from '../MarkdownPane'
-import { TerminalPane } from '../TerminalPane'
-import { WebPane } from '../WebPane'
+import { useProjectsStore } from '../../stores/projectsStore'
 import { DiffPane } from '../DiffPane'
-import { GraphifyView } from '../GraphifyView'
+import { lazy, Suspense } from 'react'
+
+import { GridCellHandles } from '../GridCellHandles'
+
+const GraphifyView = lazy(() => import('../GraphifyView').then(m => ({ default: m.GraphifyView })))
+const MarkdownPane = lazy(() => import('../MarkdownPane').then(m => ({ default: m.MarkdownPane })))
+import { TerminalPane } from '../TerminalPane'
 import { VideoPane } from '../VideoPane'
+import { WebPane } from '../WebPane'
+import { PersistentPanelGroup as Group } from './PersistentPanelGroup'
 import styles from './WorkspaceView.module.css'
 
 const EMPTY_PANE_GROUPS: { id: string; paneIds: string[] }[] = []
 
-/** Renderiza o pane certo conforme o tipo (terminal ou viewer de arquivo). */
 function Pane({
   projectId,
   terminal,
@@ -33,10 +44,18 @@ function Pane({
     : undefined
   if (group) return <PaneGroupView projectId={projectId} group={group} />
   if (terminal.kind === 'graphify') {
-    return <GraphifyView repo={terminal.cwd} projectId={projectId} terminalId={terminal.id} />
+    return (
+      <Suspense fallback={<div className={styles.paneLoading}>Loading graph...</div>}>
+        <GraphifyView repo={terminal.cwd} projectId={projectId} terminalId={terminal.id} />
+      </Suspense>
+    )
   }
   if (terminal.kind === 'markdown' || terminal.kind === 'file') {
-    return <MarkdownPane projectId={projectId} terminal={terminal} />
+    return (
+      <Suspense fallback={<div className={styles.paneLoading}>Loading markdown...</div>}>
+        <MarkdownPane projectId={projectId} terminal={terminal} />
+      </Suspense>
+    )
   }
   if (terminal.kind === 'web') {
     return <WebPane projectId={projectId} terminal={terminal} />
@@ -93,7 +112,7 @@ function PaneGroupView({
 
 export type PaneAreaProps = {
   projectId: string
-  /** Prefixo único pros Panel ids — vital quando vários containers coexistem. */
+
   idPrefix: string
   terminals: Terminal[]
   layoutMode: LayoutMode
@@ -132,34 +151,47 @@ function GridLayoutComponent({
   terminals: Terminal[]
 }) {
   const project = useProjectsStore((s) => s.projects.find((p) => p.id === projectId))
+  const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
   const layout: GridLayout | undefined = project?.gridLayout
   const ids = terminals.map((t) => t.id)
-  const reconciled = layout
-    ? reconcileGridLayout(layout, ids)
-    : { cols: 2, rows: Math.ceil(ids.length / 2), cells: {} as GridLayout['cells'] }
-  // se sem layout salvo, faz auto-fill posicional
-  if (!layout) {
-    ids.forEach((id, i) => {
-      reconciled.cells[id] = {
-        col: (i % reconciled.cols) + 1,
-        row: Math.floor(i / reconciled.cols) + 1,
-        colSpan: 1,
-        rowSpan: 1,
-      }
-    })
-  }
+  const reconciled = layout ? reconcileGridLayout(layout, ids) : autoGridLayout(ids, 2)
   return (
     <div style={gridContainerStyle(reconciled)}>
+      {freeCells(reconciled, ids).map((slot) => (
+        <EmptyGridSlot
+          key={`slot-${slot.col}-${slot.row}`}
+          dropId={`cell:pane:${projectId}:${slot.col}:${slot.row}`}
+          col={slot.col}
+          row={slot.row}
+        />
+      ))}
       {terminals.map((t) => {
         const cell = reconciled.cells[t.id]
         if (!cell) return null
         return (
           <div key={t.id} className={styles.gridCell} style={cellStyle(cell)}>
             <Pane projectId={projectId} terminal={t} />
+            <GridCellHandles
+              cellId={t.id}
+              childIds={ids}
+              layout={reconciled}
+              onUpdate={(next) => setProjectGridLayout(projectId, next)}
+            />
           </div>
         )
       })}
     </div>
+  )
+}
+
+function EmptyGridSlot({ dropId, col, row }: { dropId: string; col: number; row: number }) {
+  const { setNodeRef, isOver } = useDroppable({ id: dropId })
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${styles.emptySlot} ${isOver ? styles.emptySlotOver : ''}`}
+      style={{ gridColumn: col, gridRow: row }}
+    />
   )
 }
 
@@ -171,8 +203,14 @@ type LayoutProps = {
 
 function AutoLayout({ projectId, idPrefix, terminals }: LayoutProps) {
   if (terminals.length === 2) {
+    const panelIds = terminals.map((terminal) => `${idPrefix}-p-${terminal.id}`)
     return (
-      <Group orientation="horizontal" className={styles.fullSize}>
+      <Group
+        orientation="horizontal"
+        className={styles.fullSize}
+        persistenceId={`pane-${idPrefix}-auto-columns`}
+        panelIds={panelIds}
+      >
         <Panel id={`${idPrefix}-p-${terminals[0].id}`} minSize="15%">
           <Pane projectId={projectId} terminal={terminals[0]} />
         </Panel>
@@ -184,8 +222,14 @@ function AutoLayout({ projectId, idPrefix, terminals }: LayoutProps) {
     )
   }
   const rows = chunkInto(terminals, 2)
+  const rowPanelIds = rows.map((_, rowIndex) => `${idPrefix}-row-${rowIndex}`)
   return (
-    <Group orientation="vertical" className={styles.fullSize}>
+    <Group
+      orientation="vertical"
+      className={styles.fullSize}
+      persistenceId={`pane-${idPrefix}-auto-rows`}
+      panelIds={rowPanelIds}
+    >
       {rows.map((row, ri) => (
         <RowFragment
           key={ri}
@@ -219,7 +263,12 @@ function RowFragment({
         {terminals.length === 1 ? (
           <Pane projectId={projectId} terminal={terminals[0]} />
         ) : (
-          <Group orientation="horizontal" className={styles.fullSize}>
+          <Group
+            orientation="horizontal"
+            className={styles.fullSize}
+            persistenceId={`pane-${idPrefix}-columns`}
+            panelIds={terminals.map((terminal) => `${idPrefix}-p-${terminal.id}`)}
+          >
             {terminals.map((t, i) => (
               <FragmentCol
                 key={t.id}
@@ -281,14 +330,26 @@ function FragmentRow({
 
 function SpotlightLayout({ projectId, idPrefix, terminals }: LayoutProps) {
   const [main, ...rest] = terminals
+  const mainPanelId = `${idPrefix}-spot-main-${main.id}`
+  const stackPanelId = `${idPrefix}-spot-stack`
   return (
-    <Group orientation="horizontal" className={styles.fullSize}>
-      <Panel id={`${idPrefix}-spot-main-${main.id}`} defaultSize="65%" minSize="25%">
+    <Group
+      orientation="horizontal"
+      className={styles.fullSize}
+      persistenceId={`pane-${idPrefix}-spotlight`}
+      panelIds={[mainPanelId, stackPanelId]}
+    >
+      <Panel id={mainPanelId} defaultSize="65%" minSize="25%">
         <Pane projectId={projectId} terminal={main} />
       </Panel>
       <Separator className={styles.sepH} />
-      <Panel id={`${idPrefix}-spot-stack`} defaultSize="35%" minSize="15%">
-        <Group orientation="vertical" className={styles.fullSize}>
+      <Panel id={stackPanelId} defaultSize="35%" minSize="15%">
+        <Group
+          orientation="vertical"
+          className={styles.fullSize}
+          persistenceId={`pane-${idPrefix}-spotlight-stack`}
+          panelIds={rest.map((terminal) => `${idPrefix}-p-${terminal.id}`)}
+        >
           {rest.map((t, i) => (
             <FragmentRow
               key={t.id}
@@ -306,10 +367,22 @@ function SpotlightLayout({ projectId, idPrefix, terminals }: LayoutProps) {
 
 function SidebarLayout({ projectId, idPrefix, terminals }: LayoutProps) {
   const [main, ...rest] = terminals
+  const listPanelId = `${idPrefix}-side-list`
+  const mainPanelId = `${idPrefix}-side-main-${main.id}`
   return (
-    <Group orientation="horizontal" className={styles.fullSize}>
-      <Panel id={`${idPrefix}-side-list`} defaultSize="22%" minSize="15%">
-        <Group orientation="vertical" className={styles.fullSize}>
+    <Group
+      orientation="horizontal"
+      className={styles.fullSize}
+      persistenceId={`pane-${idPrefix}-sidebar`}
+      panelIds={[listPanelId, mainPanelId]}
+    >
+      <Panel id={listPanelId} defaultSize="22%" minSize="15%">
+        <Group
+          orientation="vertical"
+          className={styles.fullSize}
+          persistenceId={`pane-${idPrefix}-sidebar-list`}
+          panelIds={rest.map((terminal) => `${idPrefix}-p-${terminal.id}`)}
+        >
           {rest.map((t, i) => (
             <FragmentRow
               key={t.id}
@@ -322,7 +395,7 @@ function SidebarLayout({ projectId, idPrefix, terminals }: LayoutProps) {
         </Group>
       </Panel>
       <Separator className={styles.sepH} />
-      <Panel id={`${idPrefix}-side-main-${main.id}`} defaultSize="78%" minSize="40%">
+      <Panel id={mainPanelId} defaultSize="78%" minSize="40%">
         <Pane projectId={projectId} terminal={main} />
       </Panel>
     </Group>

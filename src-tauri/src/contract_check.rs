@@ -1,12 +1,7 @@
 //! Bloco 2.2 do plano da Central de Merges — Verificador de Contrato de API.
 //!
-//! Heurístico e deliberadamente tolerante: extrai chamadas `fetch`/`axios` do
+
 //! frontend e rotas de Express/FastAPI/Axum do backend via regex simples
-//! (nada de AST), normaliza parâmetros de rota (`:id`/`{id}`/`<id>`) e faz
-//! match por prefixo/primeiro segmento. Preferimos SILÊNCIO a alarme falso —
-//! isso é uma camada de AVISO (Camada 3 do Escudo), nunca bloqueia o merge
-//! sozinho. Roda só no ambiente efêmero de `merge_prepare`, nunca no
-//! worktree do usuário.
 
 use regex::Regex;
 use serde::Serialize;
@@ -80,12 +75,11 @@ fn relative_display(root: &Path, file: &Path) -> String {
         .replace('\\', "/")
 }
 
-/// Normaliza parâmetros de rota (`:id`, `{id}`, `<int:id>`) pra um placeholder
-/// comum, pra não perder match só por diferença de sintaxe entre frameworks.
 fn normalize_path_pattern(raw: &str) -> String {
     static PARAM_RE: OnceLock<Regex> = OnceLock::new();
-    let re = PARAM_RE
-        .get_or_init(|| Regex::new(r"(:[A-Za-z0-9_]+|\{[A-Za-z0-9_:]+\}|<[A-Za-z0-9_:]+>)").unwrap());
+    let re = PARAM_RE.get_or_init(|| {
+        Regex::new(r"(:[A-Za-z0-9_]+|\{[A-Za-z0-9_:]+\}|<[A-Za-z0-9_:]+>)").unwrap()
+    });
     let normalized = re.replace_all(raw, ":param");
     let trimmed = normalized.trim_end_matches('/');
     if trimmed.is_empty() {
@@ -95,18 +89,13 @@ fn normalize_path_pattern(raw: &str) -> String {
     }
 }
 
-/// Primeiros `n` segmentos do path — usado como fallback tolerante quando
-/// nenhum é prefixo do outro. Comparar só 1 segmento (`/api/...`) é tolerante
-/// DEMAIS: `/api/v2/users` e `/api/v1/users` cairiam no mesmo segmento "api" e
 /// nunca seriam sinalizados, justamente o caso de versionamento divergente
-/// que a checagem existe pra pegar. Com 2 segmentos, "api/v2" vs "api/v1" já
+
 /// diverge corretamente.
 fn segment_prefix(path: &str, n: usize) -> Vec<&str> {
     path.trim_start_matches('/').split('/').take(n).collect()
 }
 
-/// Match tolerante por prefixo/primeiros-2-segmentos — o objetivo é reduzir
-/// falso-positivo agressivamente, mesmo perdendo alguns problemas reais.
 fn paths_related(call: &str, route: &str) -> bool {
     if call.is_empty() || route.is_empty() {
         return false;
@@ -121,7 +110,7 @@ fn paths_related(call: &str, route: &str) -> bool {
 
 struct CallPattern {
     regex: Regex,
-    /// Índice do grupo de captura com o método HTTP (None = sem método fixo, ex. fetch).
+
     method_group: Option<usize>,
     path_group: usize,
 }
@@ -136,7 +125,8 @@ fn frontend_patterns() -> &'static [CallPattern] {
                 path_group: 1,
             },
             CallPattern {
-                regex: Regex::new(r#"axios\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)"#).unwrap(),
+                regex: Regex::new(r#"axios\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)"#)
+                    .unwrap(),
                 method_group: Some(1),
                 path_group: 2,
             },
@@ -150,8 +140,10 @@ fn backend_patterns() -> &'static [(CallPattern, &'static str)] {
         vec![
             (
                 CallPattern {
-                    regex: Regex::new(r#"(?:app|router)\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)"#)
-                        .unwrap(),
+                    regex: Regex::new(
+                        r#"(?:app|router)\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)"#,
+                    )
+                    .unwrap(),
                     method_group: Some(1),
                     path_group: 2,
                 },
@@ -159,8 +151,10 @@ fn backend_patterns() -> &'static [(CallPattern, &'static str)] {
             ),
             (
                 CallPattern {
-                    regex: Regex::new(r#"@(?:app|router)\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)"#)
-                        .unwrap(),
+                    regex: Regex::new(
+                        r#"@(?:app|router)\.(get|post|put|delete|patch)\(\s*['"`]([^'"`]+)"#,
+                    )
+                    .unwrap(),
                     method_group: Some(1),
                     path_group: 2,
                 },
@@ -188,9 +182,12 @@ fn extract_calls(files: &[PathBuf], root: &Path) -> Vec<ApiCallSite> {
         for (line_no, line) in content.lines().enumerate() {
             for pattern in frontend_patterns() {
                 if let Some(caps) = pattern.regex.captures(line) {
-                    let raw_path = caps.get(pattern.path_group).map(|m| m.as_str()).unwrap_or("");
+                    let raw_path = caps
+                        .get(pattern.path_group)
+                        .map(|m| m.as_str())
+                        .unwrap_or("");
                     if !raw_path.starts_with('/') {
-                        continue; // ignora URLs absolutas externas (http://...) e relativas sem barra
+                        continue;
                     }
                     let method = pattern
                         .method_group
@@ -219,7 +216,10 @@ fn extract_routes(files: &[PathBuf], root: &Path) -> Vec<ApiRouteSite> {
         for (line_no, line) in content.lines().enumerate() {
             for (pattern, framework) in backend_patterns() {
                 if let Some(caps) = pattern.regex.captures(line) {
-                    let raw_path = caps.get(pattern.path_group).map(|m| m.as_str()).unwrap_or("");
+                    let raw_path = caps
+                        .get(pattern.path_group)
+                        .map(|m| m.as_str())
+                        .unwrap_or("");
                     if !raw_path.starts_with('/') {
                         continue;
                     }
@@ -241,10 +241,6 @@ fn extract_routes(files: &[PathBuf], root: &Path) -> Vec<ApiRouteSite> {
     routes
 }
 
-/// Roda no ambiente efêmero de `merge_prepare` (`env_path`), nunca no
-/// worktree do usuário. Sem nenhuma rota de backend reconhecida no repo, não
-/// dá pra comparar com segurança — devolve lista vazia em vez de arriscar
-/// falso-positivo (pode ser um backend externo fora deste repositório).
 #[tauri::command]
 pub fn contract_check(env_path: String) -> Result<Vec<ContractWarning>, String> {
     let root = Path::new(&env_path);
@@ -265,7 +261,11 @@ pub fn contract_check(env_path: String) -> Result<Vec<ContractWarning>, String> 
 
     let warnings = calls
         .into_iter()
-        .filter(|call| !routes.iter().any(|route| paths_related(&call.path_pattern, &route.path_pattern)))
+        .filter(|call| {
+            !routes
+                .iter()
+                .any(|route| paths_related(&call.path_pattern, &route.path_pattern))
+        })
         .map(|call| ContractWarning {
             reason: format!(
                 "Nenhuma rota de backend encontrada para \"{}\" (verifique se o endpoint existe)",
@@ -284,7 +284,8 @@ mod tests {
     use std::fs;
 
     fn temp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("alethe-contract-{name}-{}", nanoid::nanoid!(6)));
+        let dir =
+            std::env::temp_dir().join(format!("alethe-contract-{name}-{}", nanoid::nanoid!(6)));
         fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -322,7 +323,10 @@ mod tests {
         )
         .unwrap();
         let warnings = contract_check(root.to_string_lossy().into_owned()).unwrap();
-        assert!(warnings.is_empty(), "esperava zero avisos, veio: {warnings:?}");
+        assert!(
+            warnings.is_empty(),
+            "esperava zero avisos, veio: {warnings:?}"
+        );
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -15,7 +15,6 @@ import {
 } from 'lucide-react'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
-import { useGridResize } from '../../hooks/useGridResize'
 import { pathSegments } from '../../lib/paths'
 import { useT } from '../../lib/i18n'
 import {
@@ -32,9 +31,10 @@ import { useUiStore } from '../../stores/uiStore'
 import type { Terminal as TerminalEntry } from '../../lib/types'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import styles from './MarkdownPane.module.css'
+import { isLightTheme } from '../../lib/themes'
 
-/** Temas claros conhecidos — o resto é tratado como escuro (mermaid). */
-const LIGHT_THEMES = new Set(['light', 'min-light'])
+                                                                         
+
 const markdownPaneScrollPositions = new Map<string, number>()
 
 export type MarkdownPaneProps = {
@@ -62,10 +62,9 @@ export const MarkdownPane = memo(function MarkdownPane({
 
   const focusedTerminalId = useUiStore((s) => s.focusedTerminalId)
   const isFocusMode = inFocusOverlay || focusedTerminalId === terminal.id
-  const dark = useProjectsStore((s) => !LIGHT_THEMES.has(s.preferences.uiTheme))
+  const dark = useProjectsStore((s) => !isLightTheme(s.preferences.uiTheme))
 
   const deleteTerminal = useProjectsStore((s) => s.deleteTerminal)
-  const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
   const setFocusedTerminal = useUiStore((s) => s.setFocusedTerminal)
   const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
   const selectPane = useUiStore((s) => s.selectPane)
@@ -127,7 +126,7 @@ export const MarkdownPane = memo(function MarkdownPane({
     }
   }
 
-  // Carrega + observa o arquivo. Recarrega sozinho quando muda no disco.
+                                                                         
   useEffect(() => {
     if (!filePath) return
     editingRef.current = false
@@ -158,17 +157,7 @@ export const MarkdownPane = memo(function MarkdownPane({
     paneRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
   }, [focusReq, terminal.id])
 
-  // Resize de span no grid do PROJETO (quando project.layoutMode === 'grid').
-  const projectGrid = useProjectsStore((s) => {
-    const p = s.projects.find((p) => p.id === projectId)
-    if (!p || p.layoutMode !== 'grid' || !p.gridLayout) return null
-    return p.gridLayout
-  })
-  const showGridResize = Boolean(projectGrid) && !isFocusMode && !preview
-  const startGridResize = useGridResize(terminal.id, projectGrid, (layout) =>
-    setProjectGridLayout(projectId, layout),
-  )
-
+                                                                              
   const onDelete = () => {
     if (window.confirm(t('ui.markdown.confirmClose', { name: terminal.name }))) {
       deleteTerminal(projectId, terminal.id)
@@ -384,14 +373,6 @@ export const MarkdownPane = memo(function MarkdownPane({
           </div>
         )}
       </div>
-
-      {showGridResize ? (
-        <div
-          className={styles.gridResize}
-          onPointerDown={startGridResize}
-          title={t('ui.terminal.dragToResizeSpan')}
-        />
-      ) : null}
     </div>
   )
 })

@@ -10,7 +10,7 @@ export type SpawnPtyArgs = {
   extraArgs?: string[]
   /** Path absoluto pro launcher (override do auto-detect). */
   launcherOverride?: string
-  /** Env extra só deste PTY (não vaza pra outros terminais). */
+                                                                
   env?: Record<string, string>
 }
 
@@ -35,6 +35,10 @@ export async function attachPty(id: string, maxBytes = 512 * 1024): Promise<stri
   return invoke<string>('attach_pty', { id, maxBytes })
 }
 
+export async function clearPtyScrollback(id: string): Promise<void> {
+  await invoke('clear_pty_scrollback', { id })
+}
+
 export async function writePty(id: string, data: string): Promise<void> {
   await invoke('write_pty', { id, data })
 }
@@ -51,12 +55,13 @@ export async function setPtyReadState(id: string, active: boolean): Promise<void
   await invoke('set_pty_read_state', { id, active })
 }
 
-/** Visibilidade lógica do painel (aba/grupo ativo, não colapsado) — NÃO
- * pausa o agente (isso é `setPtyReadState`, que travaria o `write()` dele).
- * Só decide se o backend manda o próximo lote pro canal `data` (render caro)
- * ou pro `activity` (throttlado, ver `listenPtyActivity`). */
-export async function setPtyVisible(id: string, visible: boolean): Promise<void> {
-  await invoke('set_pty_visible', { id, visible })
+                                                                        
+                                                                            
+                                                                             
+                                                              
+/** Resolves false when the PTY was not registered yet, so the output gate kept its old value. */
+export async function setPtyVisible(id: string, visible: boolean): Promise<boolean> {
+  return invoke<boolean>('set_pty_visible', { id, visible })
 }
 
 export async function setPtyPriority(id: string, active: boolean): Promise<void> {
@@ -100,14 +105,14 @@ export type GhosttySurfaceResponse = {
   attached: boolean
 }
 
-/** Retângulo em coordenadas da WebView (CSS px, origem topo-esquerda). */
+                                                                          
 export type WebRect = { x: number; y: number; width: number; height: number }
 
 export type GhosttySpawnArgs = {
   id: string
-  /** Diretório inicial do terminal. undefined = padrão do shell. */
+                                                                    
   cwd?: string
-  /** Linha de comando a executar (ex.: "claude --flag"). undefined = shell de login. */
+                                                                                        
   command?: string
 }
 
@@ -131,7 +136,7 @@ export async function ghosttySetFocus(id: string, focused: boolean): Promise<voi
   await invoke('ghostty_set_focus', { id, focused })
 }
 
-/** true quando o processo do terminal Ghostty já saiu (shell/agente encerrou). */
+                                                                                  
 export async function ghosttySurfaceExited(id: string): Promise<boolean> {
   return invoke<boolean>('ghostty_surface_exited', { id })
 }
@@ -140,7 +145,7 @@ export async function ghosttyKill(id: string): Promise<void> {
   await invoke('ghostty_kill', { id })
 }
 
-/** Mata todas as surfaces nativas vivas — limpeza de órfãs no boot/reload. */
+                                                                              
 export async function ghosttyKillAll(): Promise<void> {
   await invoke('ghostty_kill_all')
 }
@@ -164,10 +169,10 @@ export function listenPtyData(id: string, handler: (chunk: string) => void): Pro
   return listen<string>(`pty://data/${id}`, (event) => handler(event.payload))
 }
 
-/** Canal de baixa cadência (~450ms) que o backend usa quando o painel está
- * invisível — mesmo texto do `pty://data`, só que throttlado. Alimenta
- * `recordIo`/`AgentCompletionMonitor` sem custo de render enquanto o pane
- * não está sendo desenhado. */
+                                                                           
+                                                                       
+                                                                          
+                               
 export function listenPtyActivity(
   id: string,
   handler: (chunk: string) => void,

@@ -1,27 +1,18 @@
+use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 use tauri::AppHandle;
 use tokio::sync::Mutex as AsyncMutex;
-use serde_json::Value;
 
 use crate::paths::projects_file_path;
 use crate::provider_common::now_ms;
 
-/// Serializa gravações de `projects.json` — evita que duas chamadas concorrentes
-/// (reload do front, múltiplas abas/telas) façam `rename` fora de ordem.
 static SAVE_MUTEX: OnceLock<AsyncMutex<()>> = OnceLock::new();
 
-/// Sequência (timestamp monotônico) da última gravação física bem-sucedida.
-/// Só avança após o `fs::rename` confirmar sucesso — uma falha de I/O não
-/// avança isto, permitindo retry com a mesma sequência.
 static LAST_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
-/// Acima desse atraso (ms) entre `sequence` e o relógio local do backend, uma
-/// gravação com `sequence <= LAST_WRITE_SEQUENCE` é tratada como delay de IPC
-/// (mensagem antiga que chegou fora de ordem) e descartada. Abaixo disso, é
-/// tratada como plausível (ex.: recuo de relógio do SO) e aceita.
 const STALE_WRITE_THRESHOLD_MS: i64 = 2000;
 
 fn save_mutex() -> &'static AsyncMutex<()> {
@@ -75,16 +66,14 @@ fn save_external_todos(content: &str) -> Result<(), String> {
         "todos": parsed.get("todos").cloned().unwrap_or_else(|| Value::Array(Vec::new())),
     });
     let temporary = path.with_extension("jsonc.tmp");
-    fs::write(&temporary, serde_json::to_string_pretty(&external).map_err(|error| error.to_string())?)
-        .map_err(|error| error.to_string())?;
+    fs::write(
+        &temporary,
+        serde_json::to_string_pretty(&external).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
     fs::rename(&temporary, &path).map_err(|error| error.to_string())
 }
 
-
-/// Lê `projects.json` cru. Retorna None se o arquivo não existir (primeira
-/// abertura). Erros de leitura/parse ficam no front pra decidir se reseta ou
-/// mostra erro. Mantemos opaque (String) pra schema poder evoluir só no TS
-/// durante o MVP, sem recompilar Rust.
 #[tauri::command]
 pub fn load_projects(app: AppHandle) -> Result<Option<String>, String> {
     let path = projects_file_path(&app)?;
@@ -96,31 +85,21 @@ pub fn load_projects(app: AppHandle) -> Result<Option<String>, String> {
         .map_err(|error| error.to_string())
 }
 
-/// Persiste o JSON cru em `projects.json`. Frontend faz debounce 500ms antes
-/// de chamar, e envia `sequence` (timestamp monotônico, ver `writeSequence`
-/// em `projectsStore.ts`) pra garantir last-write-wins mesmo se duas chamadas
-/// chegarem fora de ordem (reload concorrente, IPC atrasado).
 ///
-/// Escrita atômica via tmp + rename pra não corromper o arquivo se o app
-/// crashar no meio (perde no máx. a última escrita).
+
 #[tauri::command]
 pub async fn save_projects(app: AppHandle, content: String, sequence: u64) -> Result<(), String> {
     let _guard = save_mutex().lock().await;
-    // rust_now só é lido depois do lock adquirido, imediatamente antes da
-    // comparação — evita que o tempo de espera pelo mutex conte como "atraso
-    // de IPC" da própria mensagem.
+
     let rust_now = now_ms();
     let last = LAST_WRITE_SEQUENCE.load(Ordering::SeqCst);
 
     if sequence <= last {
         let delay_ms = rust_now as i64 - sequence as i64;
         if delay_ms > STALE_WRITE_THRESHOLD_MS {
-            // Mensagem antiga chegando fora de ordem (IPC delay) — descarta
-            // silenciosamente, preservando o que já está em disco.
             return Ok(());
         }
-        // sequence <= last mas próximo do relógio atual (ex.: recuo de
-        // relógio do SO/NTP) — aceita e deixa LAST_WRITE_SEQUENCE regredir.
+
         eprintln!(
             "[projects] aviso: sequence {sequence} <= last {last}, mas dentro do limiar \
              de {STALE_WRITE_THRESHOLD_MS}ms (possível recuo de relógio) — gravando mesmo assim."
@@ -129,9 +108,7 @@ pub async fn save_projects(app: AppHandle, content: String, sequence: u64) -> Re
 
     let path = projects_file_path(&app)?;
     // I/O em spawn_blocking: escrever/renomear em disco lento (rede, AV scan)
-    // não pode bloquear sincronamente a worker thread do Tokio enquanto
-    // `_guard` está preso — outro `save_projects` concorrente ficaria preso
-    // atrás dele. Mesmo padrão já usado em `clone_github_repo` neste arquivo.
+
     tokio::task::spawn_blocking(move || -> Result<(), String> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|error| error.to_string())?;
@@ -145,15 +122,10 @@ pub async fn save_projects(app: AppHandle, content: String, sequence: u64) -> Re
     .await
     .map_err(|error| format!("save_projects: falha na task bloqueante: {error}"))??;
 
-    // Só avança a sequência após a gravação física confirmar sucesso — uma
-    // falha acima (write/rename) retorna Err antes de chegar aqui, e o
-    // próximo retry com a mesma `sequence` é aceito normalmente.
     LAST_WRITE_SEQUENCE.store(sequence, Ordering::SeqCst);
     Ok(())
 }
 
-/// Normaliza uma URL do GitHub (suporta `https://github.com/usr/repo`, `github.com/usr/repo`, `usr/repo` ou `git@...`).
-/// Nome de pasta que o `git clone` usaria: último segmento da URL, sem `.git`.
 fn repo_folder_name(normalized_url: &str) -> String {
     let name = normalized_url
         .trim_end_matches('/')
@@ -163,7 +135,13 @@ fn repo_folder_name(normalized_url: &str) -> String {
         .trim_end_matches(".git");
     let sanitized: String = name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' || c == '.' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     if sanitized.is_empty() {
         "repo".to_string()
@@ -172,11 +150,6 @@ fn repo_folder_name(normalized_url: &str) -> String {
     }
 }
 
-/// `target_dir` vazio = deixa o app escolher. Antes o frontend montava um
-/// `D:\Projetos\<nome>` fixo, que não existe na maioria das máquinas e nem faz
-/// sentido fora do Windows. O default agora é `~/Alethe/<repo>`, e um diretório
-/// escolhido pelo usuário é usado como PAI do clone (o `git clone` cria a pasta
-/// do repo dentro dele), a menos que já termine no nome do repo.
 fn resolve_clone_target(requested: &str, normalized_url: &str) -> Result<String, String> {
     let folder = repo_folder_name(normalized_url);
     let trimmed = requested.trim();
@@ -197,7 +170,10 @@ fn resolve_clone_target(requested: &str, normalized_url: &str) -> Result<String,
 
 fn normalize_github_url(raw: &str) -> String {
     let trimmed = raw.trim();
-    if trimmed.starts_with("http://") || trimmed.starts_with("https://") || trimmed.starts_with("git@") {
+    if trimmed.starts_with("http://")
+        || trimmed.starts_with("https://")
+        || trimmed.starts_with("git@")
+    {
         trimmed.to_string()
     } else if trimmed.starts_with("github.com/") {
         format!("https://{trimmed}")
@@ -208,7 +184,6 @@ fn normalize_github_url(raw: &str) -> String {
     }
 }
 
-/// Clona um repositório do GitHub no diretório de destino e gera os arquivos de contexto inicial.
 #[tauri::command]
 pub async fn clone_github_repo(url: String, target_dir: String) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
@@ -225,17 +200,20 @@ pub async fn clone_github_repo(url: String, target_dir: String) -> Result<String
         cmd.args(["clone", "--depth", "1", &normalized, &target_dir]);
         crate::git_control::hide_console(&mut cmd);
 
-        let output = cmd.output().map_err(|e| format!("Falha ao executar git clone: {e}"))?;
+        let output = cmd
+            .output()
+            .map_err(|e| format!("Falha ao executar git clone: {e}"))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("Erro ao clonar repositório ({normalized}): {stderr}"));
+            return Err(format!(
+                "Erro ao clonar repositório ({normalized}): {stderr}"
+            ));
         }
 
         // Gera os arquivos de briefing de contexto para os agentes de IA
         let _ = generate_repo_context_files(&target_dir);
 
-        // Auto-wire do Graphify se disponível
         let _ = crate::graphify::graphify_opencode_config_write_inner(target_dir.clone(), None);
 
         Ok(target_dir)
@@ -244,7 +222,6 @@ pub async fn clone_github_repo(url: String, target_dir: String) -> Result<String
     .map_err(|e| format!("Erro de concorrência na task de clone: {e}"))?
 }
 
-/// Analisa o repositório clonado e gera o arquivo `AGENTS.md` e `CLAUDE.md` com briefing inicial.
 fn generate_repo_context_files(project_dir: &str) -> Result<(), String> {
     let path = std::path::PathBuf::from(project_dir);
     if !path.exists() {
@@ -257,12 +234,24 @@ fn generate_repo_context_files(project_dir: &str) -> Result<(), String> {
         .unwrap_or_else(|| "Nenhum README encontrado.".to_string());
 
     let mut tech_stack = Vec::new();
-    if path.join("package.json").exists() { tech_stack.push("Node.js / JavaScript / TypeScript"); }
-    if path.join("Cargo.toml").exists() { tech_stack.push("Rust"); }
-    if path.join("pyproject.toml").exists() || path.join("requirements.txt").exists() { tech_stack.push("Python"); }
-    if path.join("go.mod").exists() { tech_stack.push("Go"); }
+    if path.join("package.json").exists() {
+        tech_stack.push("Node.js / JavaScript / TypeScript");
+    }
+    if path.join("Cargo.toml").exists() {
+        tech_stack.push("Rust");
+    }
+    if path.join("pyproject.toml").exists() || path.join("requirements.txt").exists() {
+        tech_stack.push("Python");
+    }
+    if path.join("go.mod").exists() {
+        tech_stack.push("Go");
+    }
 
-    let stack_str = if tech_stack.is_empty() { "Não especificada".to_string() } else { tech_stack.join(", ") };
+    let stack_str = if tech_stack.is_empty() {
+        "Não especificada".to_string()
+    } else {
+        tech_stack.join(", ")
+    };
 
     // Truncar README para os primeiros 1500 caracteres
     let truncated_readme = if readme_content.len() > 1500 {
@@ -285,4 +274,3 @@ fn generate_repo_context_files(project_dir: &str) -> Result<(), String> {
 
     Ok(())
 }
-

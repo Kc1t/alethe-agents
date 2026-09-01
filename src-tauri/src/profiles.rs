@@ -1,8 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde_json::Value;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tauri::{AppHandle, Manager};
 
 pub(crate) use crate::provider_common::now_ms;
@@ -10,8 +10,7 @@ pub(crate) use crate::provider_common::now_ms;
 const PROFILES_DIR_NAME: &str = "profiles";
 const PROFILES_REGISTRY_FILE: &str = "profiles.json";
 const DEFAULT_PROFILE_ID: &str = "default";
-/// Cache do runtime do WebView2 — fica travado enquanto o app roda e é
-/// regenerável, então NUNCA deve ser movido/migrado entre perfis.
+
 const WEBVIEW_CACHE_DIR: &str = "EBWebView";
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -68,12 +67,15 @@ fn profile_dir(root: &Path, id: &str) -> PathBuf {
 pub fn profile_data_dir_for_id(app: &AppHandle, profile_id: &str) -> Result<PathBuf, String> {
     let root = root_data_dir(app)?;
     let index = ensure_profiles_index(app)?;
-    if !index.profiles.iter().any(|profile| profile.id == profile_id) {
+    if !index
+        .profiles
+        .iter()
+        .any(|profile| profile.id == profile_id)
+    {
         return Err("profile not found".to_string());
     }
     Ok(profile_dir(&root, profile_id))
 }
-
 
 pub fn default_profiles_index() -> ProfilesIndex {
     let now = now_ms();
@@ -92,7 +94,10 @@ pub fn default_profiles_index() -> ProfilesIndex {
 pub fn parse_profiles_index(raw: &str) -> Result<ProfilesIndex, String> {
     let mut index: ProfilesIndex = serde_json::from_str(raw).map_err(|error| error.to_string())?;
     if index.version != 1 {
-        return Err(format!("unsupported profiles index version: {}", index.version));
+        return Err(format!(
+            "unsupported profiles index version: {}",
+            index.version
+        ));
     }
     if index.profiles.is_empty() {
         return Ok(default_profiles_index());
@@ -125,7 +130,9 @@ fn profiles_state_from(index: &ProfilesIndex) -> ProfilesState {
         if b.id == index.active_profile_id {
             return std::cmp::Ordering::Greater;
         }
-        b.last_used_at_ms.cmp(&a.last_used_at_ms).then_with(|| a.name.cmp(&b.name))
+        b.last_used_at_ms
+            .cmp(&a.last_used_at_ms)
+            .then_with(|| a.name.cmp(&b.name))
     });
     ProfilesState {
         active_profile_id: index.active_profile_id.clone(),
@@ -133,7 +140,11 @@ fn profiles_state_from(index: &ProfilesIndex) -> ProfilesState {
     }
 }
 
-fn profile_summary(root: &Path, profile: &ProfileMeta, active_profile_id: &str) -> Result<ProfileSummary, String> {
+fn profile_summary(
+    root: &Path,
+    profile: &ProfileMeta,
+    active_profile_id: &str,
+) -> Result<ProfileSummary, String> {
     let projects_path = profile_dir(root, &profile.id).join("projects.json");
     let (project_count, terminal_count, profile_image_url) = if projects_path.is_file() {
         let raw = fs::read_to_string(projects_path).map_err(|error| error.to_string())?;
@@ -250,7 +261,10 @@ pub fn discover_profiles(root: &Path) -> Result<Option<ProfilesIndex>, String> {
     }
 
     profiles.sort_by(|a, b| a.id.cmp(&b.id));
-    let active_profile_id = if profiles.iter().any(|profile| profile.id == DEFAULT_PROFILE_ID) {
+    let active_profile_id = if profiles
+        .iter()
+        .any(|profile| profile.id == DEFAULT_PROFILE_ID)
+    {
         DEFAULT_PROFILE_ID.to_string()
     } else {
         profiles[0].id.clone()
@@ -313,18 +327,14 @@ fn migrate_legacy_root(root: &Path) -> Result<(), String> {
         let entry = entry.map_err(|error| error.to_string())?;
         let name = entry.file_name();
         let name_str = name.to_string_lossy().into_owned();
-        // Não migrar o registro, a própria pasta de perfis, nem o cache do
-        // WebView (travado em runtime — faria a migração inteira falhar).
+
         if name_str == PROFILES_REGISTRY_FILE
             || name_str == PROFILES_DIR_NAME
             || name_str == WEBVIEW_CACHE_DIR
         {
             continue;
         }
-        // Best-effort por entrada: o `move` copia antes de remover, então um
-        // arquivo travado (app de prod aberto) ainda é copiado para o perfil;
-        // só a remoção da origem falha. Não abortamos a migração inteira por
-        // causa de uma entrada — senão o registro nunca seria escrito.
+
         if let Err(error) = move_entry_into_profile(&entry.path(), &default_dir.join(name)) {
             eprintln!("profiles: skipping legacy entry {name_str}: {error}");
         }
@@ -351,7 +361,11 @@ pub fn ensure_profiles_index(app: &AppHandle) -> Result<ProfilesIndex, String> {
     if legacy_payload_exists(&root) {
         migrate_legacy_root(&root)?;
         index.active_profile_id = DEFAULT_PROFILE_ID.to_string();
-        if !index.profiles.iter().any(|profile| profile.id == DEFAULT_PROFILE_ID) {
+        if !index
+            .profiles
+            .iter()
+            .any(|profile| profile.id == DEFAULT_PROFILE_ID)
+        {
             let now = now_ms();
             index.profiles.push(ProfileMeta {
                 id: DEFAULT_PROFILE_ID.to_string(),
@@ -374,7 +388,11 @@ pub fn list_profiles_state(app: &AppHandle) -> Result<ProfilesState, String> {
 pub fn set_active_profile_id(app: &AppHandle, profile_id: &str) -> Result<ProfilesState, String> {
     let root = root_data_dir(app)?;
     let mut index = ensure_profiles_index(app)?;
-    if !index.profiles.iter().any(|profile| profile.id == profile_id) {
+    if !index
+        .profiles
+        .iter()
+        .any(|profile| profile.id == profile_id)
+    {
         return Err(format!("profile not found: {profile_id}"));
     }
     let now = now_ms();
@@ -389,7 +407,10 @@ pub fn set_active_profile_id(app: &AppHandle, profile_id: &str) -> Result<Profil
     Ok(profiles_state_from(&index))
 }
 
-pub fn create_profile_state(app: &AppHandle, name: Option<String>) -> Result<ProfilesState, String> {
+pub fn create_profile_state(
+    app: &AppHandle,
+    name: Option<String>,
+) -> Result<ProfilesState, String> {
     let root = root_data_dir(app)?;
     let mut index = ensure_profiles_index(app)?;
     let id = nanoid::nanoid!(10);

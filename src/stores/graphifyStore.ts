@@ -12,11 +12,11 @@ import {
   type GraphifyStatus,
 } from '../lib/tauri'
 
-/**
- * RFC-004 — estado da visualização do grafo de conhecimento (Graphify).
- * O Alethe só observa/versiona: lê `graphify-out/graph.json`, gerencia snapshots
- * em `.alethe/graph-snapshots/` e aplica a memory policy (prune).
- */
+   
+                                                                        
+                                                                                 
+                                                                  
+   
 type GraphifyState = {
   repo: string | null
   status: GraphifyStatus | null
@@ -53,8 +53,8 @@ export const useGraphifyStore = create<GraphifyState>((set, get) => ({
       try {
         graph = await graphifyReadGraph(repo)
       } catch (err) {
-        // Ausência do arquivo é o estado vazio esperado; erros de leitura ou
-        // JSON inválido continuam visíveis para facilitar o diagnóstico.
+                                                                             
+                                                                         
         error = String(err) === 'graph_not_found' ? null : String(err)
       }
       set({ status, snapshots, graph, error })
@@ -77,8 +77,8 @@ export const useGraphifyStore = create<GraphifyState>((set, get) => ({
         return
       }
 
-      // O comando gera o arquivo em background. Aguarde por um período curto
-      // para que o painel se atualize sozinho, sem bloquear o terminal.
+                                                                             
+                                                                        
       const deadline = Date.now() + 60_000
       while (Date.now() < deadline) {
         await new Promise((resolve) => window.setTimeout(resolve, 500))
@@ -89,7 +89,7 @@ export const useGraphifyStore = create<GraphifyState>((set, get) => ({
             return
           }
         } catch {
-          // O arquivo ainda não existe ou está sendo escrito; tente novamente.
+                                                                               
         }
       }
 

@@ -14,6 +14,7 @@ import {
   TerminalSquare,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
 import { getCachedActivity } from '../../lib/activityCache'
 import { pickDirectory } from '../../lib/dialog'
@@ -39,12 +40,13 @@ import styles from './HomeView.module.css'
 
 const RECENT_PROJECTS_LIMIT = 6
 const NOTIFICATIONS_LIMIT = 5
-const REPOSITORY_URL = 'https://github.com/Kc1t/agent-canva'
+const REPOSITORY_URL = 'https://github.com/Kc1t/alethe-agents'
 const ISSUES_URL = `${REPOSITORY_URL}/issues`
 const RELEASES_URL = `${REPOSITORY_URL}/releases`
 const QUICK_AGENTS: Array<{ type: AgentType; label: string }> = [
   { type: 'claude', label: 'Claude' },
   { type: 'codex', label: 'Codex' },
+  { type: 'copilot', label: 'GitHub Copilot' },
   { type: 'antigravity', label: 'Antigravity' },
   { type: 'opencode', label: 'OpenCode' },
 ]
@@ -60,6 +62,7 @@ function compactWorkspacePath(path: string): string {
 const NOTIF_AGENT_CLASS: Record<AgentType, string> = {
   claude: styles.notifClaude,
   codex: styles.notifCodex,
+  copilot: styles.notifCodex,
   antigravity: styles.notifAntigravity,
   shell: styles.notifShell,
   opencode: styles.notifOpencode,
@@ -69,22 +72,47 @@ const NOTIF_AGENT_CLASS: Record<AgentType, string> = {
 
 export function HomeView() {
   const t = useT()
-  const language = useProjectsStore((s) => s.preferences.language)
-  const preferences = useProjectsStore((s) => s.preferences)
-  const projects = useProjectsStore((s) => s.projects)
-  const recentProjectIds = useProjectsStore((s) => s.workspace.recentProjectIds)
-  const containers = useProjectsStore((s) => s.workspace.containers)
-  const openContainerWithAllPanes = useProjectsStore((s) => s.openContainerWithAllPanes)
-  const setActiveProjectOnly = useProjectsStore((s) => s.setActiveProjectOnly)
-  const createAgentTerminal = useProjectsStore((s) => s.createAgentTerminal)
-  const openModal = useUiStore((s) => s.openModal_)
-  const setActiveView = useUiStore((s) => s.setActiveView)
-  const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
-  const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
-  const notifications = useUiStore((s) => s.notifications)
-  const clearNotifications = useUiStore((s) => s.clearNotifications)
+  const {
+    language,
+    preferences,
+    projects,
+    recentProjectIds,
+    containers,
+    openContainerWithAllPanes,
+    setActiveProjectOnly,
+    createAgentTerminal,
+  } = useProjectsStore(
+    useShallow((s) => ({
+      language: s.preferences.language,
+      preferences: s.preferences,
+      projects: s.projects,
+      recentProjectIds: s.workspace.recentProjectIds,
+      containers: s.workspace.containers,
+      openContainerWithAllPanes: s.openContainerWithAllPanes,
+      setActiveProjectOnly: s.setActiveProjectOnly,
+      createAgentTerminal: s.createAgentTerminal,
+    }))
+  )
 
-  // último uso de cada projeto: container aberto ou maior lastUsedAt dos terminais
+  const {
+    openModal,
+    setActiveView,
+    setActiveTerminal,
+    requestPaneFocus,
+    notifications,
+    clearNotifications,
+  } = useUiStore(
+    useShallow((s) => ({
+      openModal: s.openModal_,
+      setActiveView: s.setActiveView,
+      setActiveTerminal: s.setActiveTerminal,
+      requestPaneFocus: s.requestPaneFocus,
+      notifications: s.notifications,
+      clearNotifications: s.clearNotifications,
+    }))
+  )
+
+                                                                                   
   const lastUsedByProject = useMemo(() => {
     const map = new Map<string, number>()
     for (const c of containers) {
@@ -160,8 +188,8 @@ export function HomeView() {
   const [quickUnrestricted, setQuickUnrestricted] = useState(false)
   const quickPromptRef = useRef<HTMLInputElement>(null)
   const [quickCwd, setQuickCwd] = useState('')
-  // Agente efetivo derivado no render: se o escolhido não está mais habilitado,
-  // cai no primeiro disponível — sem precisar de um useEffect de correção.
+                                                                                
+                                                                           
   const quickAgent = quickAgents.some((agent) => agent.type === quickAgentRaw)
     ? quickAgentRaw
     : (quickAgents[0]?.type ?? 'claude')
@@ -229,6 +257,7 @@ export function HomeView() {
           alt=""
           variant="flow"
           fontSize={8}
+          reducedMotion={preferences.motionPreference === 'reduced'}
           brightnessBoost={2.25}
           contrast={1.15}
           threshold={0.02}

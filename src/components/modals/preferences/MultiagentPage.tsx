@@ -103,7 +103,7 @@ export function MultiagentPage() {
     return schedulerStore.initListener()
   }, [])
 
-  // Carrega as tarefas sempre que mudar o projeto selecionado
+                                                              
   useEffect(() => {
     if (selectedProjectId) {
       void schedulerStore.loadTasks(selectedProjectId)

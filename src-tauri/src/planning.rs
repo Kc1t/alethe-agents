@@ -1,10 +1,10 @@
+use nanoid::nanoid;
+use notify::{Config, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use notify::{Config, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
-use nanoid::nanoid;
-use serde::Serialize;
 
 use crate::git_control::{checked_output, git_command};
 
@@ -18,20 +18,28 @@ pub fn start_gsd_watcher(
     project_id: String,
     repo_path: String,
 ) -> Result<(), String> {
+    start_gsd_watcher_core(&state, project_id, repo_path)
+}
+
+/// Core without `AppHandle`/`tauri::State` — split out so the watcher logic
+/// can be driven by any owner of a `PlanningWatchers`, not just the one
+/// Tauri manages. The `State` wrapper above never used anything besides the
+/// inner map anyway.
+pub fn start_gsd_watcher_core(
+    watchers: &PlanningWatchers,
+    project_id: String,
+    repo_path: String,
+) -> Result<(), String> {
     let repo_root = crate::git_control::repository_root(&repo_path)?;
     let planning_dir = repo_root.join(".planning");
     if !planning_dir.is_dir() {
-        // Comum logo que o watcher é ligado: o plugin GSD ainda não rodou
-        // nenhum ciclo (`.planning/` só nasce na primeira sincronização da
-        // sessão-filha). Cria vazia em vez de falhar — o notify::Watcher só
-        // precisa de um diretório pra existir, o conteúdo chega depois.
         std::fs::create_dir_all(&planning_dir).map_err(|e| format!("mkdir_failed:{e}"))?;
     }
 
-    let mut map = state.0.lock().map_err(|e| e.to_string())?;
+    let mut map = watchers.0.lock().map_err(|e| e.to_string())?;
     let key = format!("{}:{}", project_id, planning_dir.to_string_lossy());
     if map.contains_key(&key) {
-        return Ok(()); // Já observando
+        return Ok(());
     }
 
     let project_id_clone = project_id.clone();
@@ -77,11 +85,19 @@ pub fn stop_gsd_watcher(
     project_id: String,
     repo_path: String,
 ) -> Result<(), String> {
+    stop_gsd_watcher_core(&state, project_id, repo_path)
+}
+
+pub fn stop_gsd_watcher_core(
+    watchers: &PlanningWatchers,
+    project_id: String,
+    repo_path: String,
+) -> Result<(), String> {
     let repo_root = crate::git_control::repository_root(&repo_path)?;
     let planning_dir = repo_root.join(".planning");
     let key = format!("{}:{}", project_id, planning_dir.to_string_lossy());
 
-    let mut map = state.0.lock().map_err(|e| e.to_string())?;
+    let mut map = watchers.0.lock().map_err(|e| e.to_string())?;
     if let Some(mut watcher) = map.remove(&key) {
         let _ = watcher.unwatch(&planning_dir);
     }
@@ -91,10 +107,7 @@ pub fn stop_gsd_watcher(
 // ---------------------------------------------------------------------------
 // RFC-005 — Auditoria do planejamento (versionamento de tarefas via Git).
 //
-// O `.planning/` é a fonte de verdade do GSD e vive no repo do usuário. A
-// auditoria responde "quem alterou, quando e por quê" commitando as mudanças do
-// `.planning/` com um trailer `Alethe-Agent:` — o histórico É o git log do
-// diretório, sem armazenamento paralelo para dessincronizar.
+
 // ---------------------------------------------------------------------------
 
 const PLANNING_DIR: &str = ".planning";
@@ -118,8 +131,6 @@ fn planning_has_changes(root: &Path) -> Result<bool, String> {
     Ok(!String::from_utf8_lossy(&output.stdout).trim().is_empty())
 }
 
-/// Commita as mudanças pendentes do `.planning/` (e SÓ dele). Retorna `None`
-/// quando não há o que commitar. Publica `PlanningCommitted` no Event Bus.
 fn audit_record(
     root: &Path,
     agent_id: Option<&str>,
@@ -136,12 +147,18 @@ fn audit_record(
     checked_output(root, &["add", "--", PLANNING_DIR])?;
     let subject = format!(
         "gsd(alethe): {}",
-        reason.map(str::trim).filter(|r| !r.is_empty()).unwrap_or("planning update")
+        reason
+            .map(str::trim)
+            .filter(|r| !r.is_empty())
+            .unwrap_or("planning update")
     );
     let trailer = format!("Alethe-Agent: {}", agent_id.unwrap_or("unknown"));
-    // Commit escopado: `commit -- .planning` garante que mudanças staged de
-    // outros diretórios NÃO entram neste commit de auditoria.
-    checked_output(root, &["commit", "-m", &subject, "-m", &trailer, "--", PLANNING_DIR])?;
+    // Scoped commit: `commit -- .planning` guarantees staged changes from
+    // other directories do NOT get pulled into this audit commit.
+    checked_output(
+        root,
+        &["commit", "-m", &subject, "-m", &trailer, "--", PLANNING_DIR],
+    )?;
 
     let hash = checked_output(root, &["rev-parse", "HEAD"])
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())?;
@@ -177,7 +194,6 @@ pub fn planning_audit_record(
     audit_record(&root, agent_id.as_deref(), reason.as_deref(), project_id)
 }
 
-/// Histórico do `.planning/` direto do git log (com o trailer `Alethe-Agent`).
 #[tauri::command]
 pub fn planning_audit_history(
     repo_path: String,
@@ -188,8 +204,18 @@ pub fn planning_audit_history(
     let format = format!(
         "%H{FIELD_SEP}%an{FIELD_SEP}%ct{FIELD_SEP}%s{FIELD_SEP}%(trailers:key=Alethe-Agent,valueonly,separator=,){RECORD_SEP}"
     );
-    // Sem commits ainda (repo novo) o log falha — devolve histórico vazio.
-    let output = match git_command(&root, &["log", "-n", &count, &format!("--pretty=format:{format}"), "--", PLANNING_DIR]) {
+    // With no commits yet (new repo) the log fails — return an empty history.
+    let output = match git_command(
+        &root,
+        &[
+            "log",
+            "-n",
+            &count,
+            &format!("--pretty=format:{format}"),
+            "--",
+            PLANNING_DIR,
+        ],
+    ) {
         Ok(output) if output.status.success() => output,
         _ => return Ok(Vec::new()),
     };
@@ -235,10 +261,6 @@ pub fn get_planning_autocommit() -> Result<bool, String> {
     Ok(AUTOCOMMIT_ENABLED.load(Ordering::SeqCst))
 }
 
-/// Loop event-driven: a cada `PlanningUpdated` (do watcher acima), espera a
-/// rajada de saves assentar (debounce por geração) e commita a auditoria.
-/// Opt-in via `set_planning_autocommit(true)` — auto-commit no repo do usuário
-/// é intrusivo demais para ser default.
 pub fn start_planning_autocommit_loop() {
     use std::sync::OnceLock;
     static GENERATIONS: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
@@ -268,7 +290,7 @@ pub fn start_planning_autocommit_loop() {
             let generations = generations;
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                // Só a última geração da rajada commita.
+
                 let latest = generations
                     .lock()
                     .unwrap()
@@ -287,6 +309,261 @@ pub fn start_planning_autocommit_loop() {
             });
         }
     });
+}
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanItem {
+    pub id: String,
+    pub project_id: String,
+    pub terminal_id: Option<String>,
+    pub title: String,
+    pub file_path: String,
+    pub relative_path: String,
+    pub created_at_ms: u64,
+    pub modified_at_ms: u64,
+    pub content: Option<String>,
+}
+
+#[tauri::command]
+pub fn list_project_plans(repo_path: String, project_id: String) -> Result<Vec<PlanItem>, String> {
+    list_project_plans_core(&repo_path, &project_id)
+}
+
+pub fn list_project_plans_core(repo_path: &str, project_id: &str) -> Result<Vec<PlanItem>, String> {
+    let repo_root = Path::new(repo_path);
+    let plans_dir = repo_root.join(".alethe").join("plans");
+    if !plans_dir.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut plans = Vec::new();
+    collect_plans_recursive(&plans_dir, &plans_dir, repo_root, project_id, &mut plans)?;
+    plans.sort_by(|a, b| b.modified_at_ms.cmp(&a.modified_at_ms));
+    Ok(plans)
+}
+
+fn collect_plans_recursive(
+    current_dir: &Path,
+    plans_root: &Path,
+    repo_root: &Path,
+    project_id: &str,
+    plans: &mut Vec<PlanItem>,
+) -> Result<(), String> {
+    let entries = match std::fs::read_dir(current_dir) {
+        Ok(e) => e,
+        Err(_) => return Ok(()),
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_plans_recursive(&path, plans_root, repo_root, project_id, plans)?;
+        } else if path.is_file() {
+            if let Some(ext) = path.extension() {
+                if ext == "md" || ext == "markdown" {
+                    let metadata = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+                    let modified_at_ms = metadata
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(0);
+                    let created_at_ms = metadata
+                        .created()
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_millis() as u64)
+                        .unwrap_or(modified_at_ms);
+
+                    let relative_path = path
+                        .strip_prefix(repo_root)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .replace('\\', "/");
+
+                    let stem = path
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "Plan".to_string());
+
+                    // Infer terminal_id if saved in .alethe/plans/<terminal_id>/...
+                    let terminal_id = path
+                        .parent()
+                        .and_then(|p| p.strip_prefix(plans_root).ok())
+                        .and_then(|p| p.iter().next())
+                        .map(|seg| seg.to_string_lossy().to_string());
+
+                    let title = extract_plan_title(&path).unwrap_or_else(|| stem.clone());
+
+                    plans.push(PlanItem {
+                        id: stem,
+                        project_id: project_id.to_string(),
+                        terminal_id,
+                        title,
+                        file_path: path.to_string_lossy().to_string(),
+                        relative_path,
+                        created_at_ms,
+                        modified_at_ms,
+                        content: None,
+                    });
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn extract_plan_title(path: &Path) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(title) = trimmed.strip_prefix("# ") {
+            let clean = title.trim();
+            if !clean.is_empty() {
+                return Some(clean.to_string());
+            }
+        }
+    }
+    None
+}
+
+#[tauri::command]
+pub fn save_project_plan(
+    repo_path: String,
+    project_id: String,
+    terminal_id: Option<String>,
+    filename: String,
+    content: String,
+) -> Result<PlanItem, String> {
+    let repo_root = Path::new(&repo_path);
+    let mut target_dir = repo_root.join(".alethe").join("plans");
+    if let Some(ref tid) = terminal_id {
+        target_dir = target_dir.join(tid);
+    }
+    std::fs::create_dir_all(&target_dir).map_err(|e| format!("failed to create plan dir: {e}"))?;
+
+    let file_stem = if filename.is_empty() {
+        format!("plan_{}", crate::provider_common::now_ms())
+    } else {
+        filename
+            .strip_suffix(".md")
+            .unwrap_or(&filename)
+            .to_string()
+    };
+
+    let target_file = target_dir.join(format!("{file_stem}.md"));
+    std::fs::write(&target_file, &content).map_err(|e| format!("failed to write plan: {e}"))?;
+
+    let title = extract_plan_title(&target_file).unwrap_or_else(|| file_stem.clone());
+    let relative_path = target_file
+        .strip_prefix(repo_root)
+        .unwrap_or(&target_file)
+        .to_string_lossy()
+        .replace('\\', "/");
+    let now = crate::provider_common::now_ms();
+
+    Ok(PlanItem {
+        id: file_stem,
+        project_id,
+        terminal_id,
+        title,
+        file_path: target_file.to_string_lossy().to_string(),
+        relative_path,
+        created_at_ms: now,
+        modified_at_ms: now,
+        content: Some(content),
+    })
+}
+
+#[tauri::command]
+pub fn patch_project_plan(
+    file_path: String,
+    target_content: String,
+    replacement_content: String,
+) -> Result<PlanItem, String> {
+    let path = Path::new(&file_path);
+    if !path.is_file() {
+        return Err(format!("plan file not found: {file_path}"));
+    }
+    let current = std::fs::read_to_string(path).map_err(|e| format!("read failed: {e}"))?;
+    if !current.contains(&target_content) {
+        return Err("target content to replace was not found in the plan".to_string());
+    }
+    let updated = current.replacen(&target_content, &replacement_content, 1);
+    std::fs::write(path, &updated).map_err(|e| format!("write failed: {e}"))?;
+
+    let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
+    let modified_at_ms = metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or_else(crate::provider_common::now_ms);
+
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Plan".to_string());
+    let title = extract_plan_title(path).unwrap_or_else(|| stem.clone());
+
+    Ok(PlanItem {
+        id: stem,
+        project_id: "".to_string(),
+        terminal_id: None,
+        title,
+        file_path: path.to_string_lossy().to_string(),
+        relative_path: path.to_string_lossy().to_string(),
+        created_at_ms: modified_at_ms,
+        modified_at_ms,
+        content: Some(updated),
+    })
+}
+
+#[tauri::command]
+pub fn append_plan_diagram(
+    file_path: String,
+    title: String,
+    mermaid_code: String,
+) -> Result<PlanItem, String> {
+    let path = Path::new(&file_path);
+    if !path.is_file() {
+        return Err(format!("plan file not found: {file_path}"));
+    }
+    let current = std::fs::read_to_string(path).map_err(|e| format!("read failed: {e}"))?;
+    let diagram_block = format!(
+        "\n\n### {}\n\n```mermaid\n{}\n```\n",
+        if title.is_empty() { "Architecture Diagram" } else { &title },
+        mermaid_code.trim()
+    );
+    let updated = format!("{}{}", current.trim_end(), diagram_block);
+    std::fs::write(path, &updated).map_err(|e| format!("write failed: {e}"))?;
+
+    let metadata = std::fs::metadata(path).map_err(|e| e.to_string())?;
+    let modified_at_ms = metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or_else(crate::provider_common::now_ms);
+
+    let stem = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Plan".to_string());
+    let title = extract_plan_title(path).unwrap_or_else(|| stem.clone());
+
+    Ok(PlanItem {
+        id: stem,
+        project_id: "".to_string(),
+        terminal_id: None,
+        title,
+        file_path: path.to_string_lossy().to_string(),
+        relative_path: path.to_string_lossy().to_string(),
+        created_at_ms: modified_at_ms,
+        modified_at_ms,
+        content: Some(updated),
+    })
 }
 
 #[cfg(test)]
@@ -313,12 +590,10 @@ mod tests {
     fn records_scoped_audit_commit_with_agent_trailer() {
         let (root, root_str) = planning_repo();
 
-        // Sem mudanças → None.
         assert!(planning_audit_record(root_str.clone(), None, None, None)
             .unwrap()
             .is_none());
 
-        // Mudança no planning + mudança fora dele: o commit de auditoria só leva o planning.
         fs::write(root.join(PLANNING_DIR).join("roadmap.md"), "- [x] task 1\n").unwrap();
         fs::write(root.join("code.txt"), "changed\n").unwrap();
         let commit = planning_audit_record(
@@ -331,19 +606,17 @@ mod tests {
         .expect("devia commitar");
         assert!(commit.subject.contains("concluiu task 1"));
 
-        // code.txt continua sujo (não entrou no commit de auditoria).
         let status = checked_output(&root, &["status", "--porcelain"]).unwrap();
         let status = String::from_utf8_lossy(&status.stdout);
         assert!(status.contains("code.txt"));
         assert!(!status.contains("roadmap.md"));
 
-        // Histórico devolve o trailer do agente.
         let history = planning_audit_history(root_str, Some(10)).unwrap();
         assert_eq!(history.len(), 2); // base + auditoria
         assert_eq!(history[0].agent_id.as_deref(), Some("agent-42"));
         assert!(history[0].subject.contains("gsd(alethe)"));
         assert!(history[0].timestamp_ms > 0);
-        assert_eq!(history[1].agent_id, None); // commit base sem trailer
+        assert_eq!(history[1].agent_id, None);
 
         fs::remove_dir_all(root).unwrap();
     }

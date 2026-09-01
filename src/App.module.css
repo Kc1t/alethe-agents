@@ -1,4 +1,5 @@
 .appShell {
+  outline: none;
   width: 100vw;
   height: 100dvh;
   max-height: 100dvh;
@@ -298,8 +299,6 @@
   }
 }
 
-/* Pill compacto centralizado no topo. Fundo sólido do tema, borda tingida
-   pela cor do agente. */
 .toastStack {
   position: fixed;
   top: 14px;
@@ -311,10 +310,7 @@
   align-items: center;
   gap: 8px;
   width: auto;
-  /* 460px cortava mensagens honestas de erro (ex.: "não é um repositório
-     Git detectável") no meio da palavra com "...", tornando o toast inútil
-     bem quando ele mais importa. 640px cobre título+corpo até ~90 chars em
-     uma linha só antes de precisar truncar. */
+
   max-width: min(640px, calc(100vw - 32px));
   pointer-events: none;
 }
@@ -393,5 +389,83 @@
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+.toastActions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  margin-left: 2px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-subtle);
+}
+
+/* Chips, not stacked buttons: the toast is a single-line pill, and a block of buttons underneath
+   would break the one shape the notification has. */
+.toastAction,
+.toastActionSecondary,
+.toastActionQuiet {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--anim-fast) var(--ease-out-fluid),
+    color var(--anim-fast) var(--ease-out-fluid),
+    border-color var(--anim-fast) var(--ease-out-fluid);
+}
+
+/* One filled chip carries the answer most people want; anything more competes with it. */
+.toastAction {
+  background: var(--toast-accent, var(--accent));
+  border-color: var(--toast-accent, var(--accent));
+  color: var(--accent-on);
+  font-weight: 600;
+}
+
+.toastAction:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+.toastActionSecondary {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--fg-muted);
+}
+
+.toastActionSecondary:hover {
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+
+/* Declining is a real answer, so it stays legible — just never louder than the offer. */
+.toastActionQuiet {
+  background: transparent;
+  color: var(--fg-faint);
+}
+
+.toastActionQuiet:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.toastAction:focus-visible,
+.toastActionSecondary:focus-visible,
+.toastActionQuiet:focus-visible {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
   }
 }

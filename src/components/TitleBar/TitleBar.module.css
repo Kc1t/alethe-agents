@@ -189,8 +189,8 @@
 .groupTabClose {
   display: grid;
   place-items: center;
-  /* Colapsa quando escondido pra não deixar espaço vazio à direita do tab.
-     Expande no hover/focus e fica sempre visível na aba ativa. */
+                                                                           
+                                                                  
   width: 0;
   height: 18px;
   margin-left: 0;
@@ -274,8 +274,8 @@
 }
 
 .spacer {
-  /* Mantém uma área de arraste antes das pills; cresce sozinho quando não há
-     tabs (groupTabs ausente), senão o groupTabs (flex 100) domina o espaço. */
+                                                                             
+                                                                               
   flex: 1 1 0;
   height: 100%;
   min-width: 12px;
@@ -349,7 +349,6 @@
   align-items: center;
   margin-right: 0;
 }
-
 
 .usagePill {
   display: inline-flex;
@@ -468,29 +467,35 @@
   line-height: 1.3;
 }
 
+/* Collapse the customization action until the status area is engaged so the
+   hidden control does not leave an empty slot in the topbar. */
 .editWidgets {
   width: 0;
   height: 24px;
   display: grid;
   place-items: center;
+  margin-left: -4px;
   margin-right: 0;
   border-radius: var(--radius-sm);
   color: var(--fg-muted);
   opacity: 0;
+  pointer-events: none;
   overflow: hidden;
   cursor: pointer;
   transition:
     width 120ms ease,
-    margin-right 120ms ease,
+    margin 120ms ease,
     opacity 120ms ease,
     background 120ms ease,
     color 120ms ease;
 }
-.widgets:hover .editWidgets,
+.statusGroup:hover .editWidgets,
 .editWidgets:focus-visible {
   width: 24px;
+  margin-left: 0;
   margin-right: 2px;
   opacity: 1;
+  pointer-events: auto;
 }
 .editWidgets:hover {
   color: var(--fg);
@@ -670,16 +675,117 @@
   max-width: 120px;
 }
 
-.bar[data-style='three-areas'] .editWidgets {
-  width: 24px;
-  margin-right: 0;
-  opacity: 1;
-}
-
 .bar[data-style='three-areas'] .rightSidebarBtn {
   width: 28px;
 }
 
 .bar[data-style='three-areas'] .windowBtn {
   width: 28px;
+}
+
+/* Clean tabs share the sidebar's flat, single-focus selection language. */
+:global([data-visual-style='clean']) .groupTab {
+  border-radius: 4px;
+  color: var(--fg-muted);
+  box-shadow: none;
+  transform: none;
+}
+
+:global([data-visual-style='clean']) .groupTab:hover,
+:global([data-visual-style='clean']) .groupTabActive {
+  color: var(--fg);
+  background: var(--panel-hover);
+  box-shadow: none;
+  transform: none;
+}
+
+:global([data-visual-style='clean']) .groupTabIcon,
+:global([data-visual-style='clean']) .groupTabIconSvg,
+:global([data-visual-style='clean']) .groupTabDot {
+  opacity: 0.72;
+  filter: saturate(0.82);
+}
+
+:global([data-visual-style='clean']) .groupTabActive .groupTabIcon,
+:global([data-visual-style='clean']) .groupTabActive .groupTabIconSvg,
+:global([data-visual-style='clean']) .groupTabActive .groupTabDot {
+  opacity: 1;
+  filter: none;
+}
+
+:global([data-visual-style='clean']) .groupTabPinned {
+  box-shadow: none;
+}
+
+:global([data-visual-style='clean']) .groupTabCount {
+  background: transparent;
+  font-weight: 500;
+}
+
+:global([data-visual-style='clean']) .iconBtn,
+:global([data-visual-style='clean']) .historyBtn,
+:global([data-visual-style='clean']) .rightSidebarBtn,
+:global([data-visual-style='clean']) .windowBtn {
+  border-radius: 4px;
+  color: var(--fg-faint);
+}
+
+:global([data-visual-style='clean']) .iconBtn:hover,
+:global([data-visual-style='clean']) .historyBtn:hover:not(:disabled),
+:global([data-visual-style='clean']) .rightSidebarBtn:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+  transform: none;
+}
+
+:global([data-visual-style='clean']) .iconBtnActive {
+  color: var(--fg);
+  background: var(--panel-hover);
+  box-shadow: none;
+}
+
+:global([data-visual-style='clean']) .titleMark {
+  border-color: var(--border);
+  border-radius: 4px;
+}
+
+:global([data-visual-style='clean']) .usagePill,
+:global([data-visual-style='clean']) .profilePill,
+:global([data-visual-style='clean']) .syncPill,
+:global([data-visual-style='clean']) .ramPill,
+:global([data-visual-style='clean']) .remoteDevicePill {
+  border-radius: 4px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  font-weight: 500;
+}
+
+:global([data-visual-style='clean']) .usagePill:hover,
+:global([data-visual-style='clean']) .profilePill:hover,
+:global([data-visual-style='clean']) .syncPill:hover,
+:global([data-visual-style='clean']) .ramPill:hover,
+:global([data-visual-style='clean']) .remoteDevicePill:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+  border-color: transparent;
+}
+
+:global([data-visual-style='clean']) .ramPressureLow,
+:global([data-visual-style='clean']) .ramPressureMedium {
+  border-color: transparent;
+}
+
+:global([data-visual-style='clean']) .ramPressureHigh,
+:global([data-visual-style='clean']) .ramPressureCritical {
+  color: var(--status-offline);
+  background: transparent;
+  border-color: transparent;
+  animation: none;
+}
+
+:global([data-visual-style='clean']) .usagePopover {
+  border-radius: 6px;
+  border-color: var(--border);
+  box-shadow: none;
 }

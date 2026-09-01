@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import styles from './Favicon.module.css'
 
 type FaviconProps = {
-  /** URL http(s) da página. Vazio/inválido cai no globo. */
+                                                            
   url: string
   size?: number
   className?: string

@@ -1,14 +1,11 @@
 import {
   Check,
-  CheckCircle2,
-  Circle,
+  ChevronDown,
   FolderKanban,
   GripVertical,
   ListTodo,
-  PanelRightClose,
   Pencil,
   Plus,
-  Settings,
   Tag,
   Trash2,
   X,
@@ -18,11 +15,11 @@ import { createPortal } from 'react-dom'
 
 import { type GsdSyncSession, useGsdSyncSessions } from '../../hooks/useGsdSyncSessions'
 import { useT } from '../../lib/i18n'
+import { formatShortcut } from '../../lib/platform'
 import { type PlanningStatus, readPlanningStatus } from '../../lib/tauri'
 import { TODO_TITLE_MAX_LENGTH } from '../../lib/todos'
 import type { Terminal, TodoItem } from '../../lib/types'
 import { selectActiveProject, useProjectsStore } from '../../stores/projectsStore'
-import { useUiStore } from '../../stores/uiStore'
 import { DotmCircular2 } from '../ui/dotm-circular-2'
 import styles from './TodoSidebar.module.css'
 
@@ -45,14 +42,14 @@ function GsdSyncSection() {
       </div>
       <div className={styles.list}>
         {projectSessions.map((session) => {
-          const terminal = activeProject.terminals.find((term) => term.id === session.terminalId)
+          const terminal = activeProject.terminals.find((term) => term.cwd === session.worktreePath)
           if (!terminal) return null
           return (
             <GsdSyncRow
               key={session.id}
               terminal={terminal}
               session={session}
-              onOpen={() => setFullscreenPane(session.terminalId)}
+              onOpen={() => setFullscreenPane(terminal.id)}
             />
           )
         })}
@@ -127,8 +124,6 @@ export function TodoSidebar() {
   const toggleTodo = useProjectsStore((state) => state.toggleTodo)
   const deleteTodo = useProjectsStore((state) => state.deleteTodo)
   const reorderTodo = useProjectsStore((state) => state.reorderTodo)
-  const setPreferences = useProjectsStore((state) => state.setPreferences)
-  const openModal = useUiStore((state) => state.openModal_)
   const [title, setTitle] = useState('')
   const [tagDraft, setTagDraft] = useState('')
   const [projectDraft, setProjectDraft] = useState('')
@@ -136,15 +131,60 @@ export function TodoSidebar() {
   const [editTitle, setEditTitle] = useState('')
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dropTargetId, setDropTargetId] = useState<string | null>(null)
+  const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all')
+  const [composerExpanded, setComposerExpanded] = useState(false)
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
+    () => new Set(['completed']),
+  )
+  const addInputRef = useRef<HTMLInputElement>(null)
 
   const active = todos.filter((todo) => !todo.completed)
   const completed = todos.filter((todo) => todo.completed)
+  const progress = todos.length > 0 ? Math.round((completed.length / todos.length) * 100) : 0
+  const activeProjectSections = projects
+    .map((project) => ({
+      key: `project:${project.id}`,
+      label: project.name,
+      projectId: project.id,
+      iconUrl: project.iconUrl,
+      items: active.filter((todo) => todo.projectId === project.id),
+    }))
+    .filter((section) => section.items.length > 0)
+  const unassigned = active.filter((todo) => !todo.projectId)
+
+  useEffect(() => {
+    const focusComposer = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return
+      if (event.key.toLowerCase() !== 'n') return
+      event.preventDefault()
+      setComposerExpanded(true)
+      addInputRef.current?.focus()
+    }
+    window.addEventListener('keydown', focusComposer, true)
+    return () => window.removeEventListener('keydown', focusComposer, true)
+  }, [])
 
   const submit = () => {
     if (!createTodo(title, parseTags(tagDraft), projectDraft || undefined)) return
     setTitle('')
     setTagDraft('')
     setProjectDraft('')
+    setComposerExpanded(false)
+  }
+
+  const toggleSection = (key: string) => {
+    setCollapsedSections((current) => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  const startProjectTodo = (projectId = '') => {
+    setProjectDraft(projectId)
+    setComposerExpanded(true)
+    window.requestAnimationFrame(() => addInputRef.current?.focus())
   }
 
   const startEditing = (todo: TodoItem) => {
@@ -165,13 +205,53 @@ export function TodoSidebar() {
     updateTodoTags(todo.id, parseTags(value))
   }
 
-  const renderSection = (items: TodoItem[], completedSection: boolean) => (
-    <section className={styles.section}>
+  const renderSection = ({
+    key,
+    label,
+    items,
+    completedSection = false,
+    projectId,
+    iconUrl,
+  }: {
+    key: string
+    label: string
+    items: TodoItem[]
+    completedSection?: boolean
+    projectId?: string
+    iconUrl?: string
+  }) => {
+    const collapsed = collapsedSections.has(key)
+    return (
+    <section key={key} className={styles.section}>
       <div className={styles.sectionHeader}>
-        <span>{completedSection ? t('todo.completed') : t('todo.active')}</span>
-        <span className={styles.sectionCount}>{items.length}</span>
+        <button
+          type="button"
+          className={styles.sectionToggle}
+          onClick={() => toggleSection(key)}
+          aria-expanded={!collapsed}
+        >
+          <ChevronDown
+            size={13}
+            className={`${styles.sectionChevron} ${collapsed ? styles.sectionChevronClosed : ''}`}
+          />
+          {iconUrl ? <img src={iconUrl} alt="" className={styles.sectionIcon} /> : null}
+          <span className={styles.sectionName}>{label}</span>
+          <span className={styles.sectionCount}>{items.length}</span>
+          <span className={styles.sectionRule} />
+        </button>
+        {!completedSection ? (
+          <button
+            type="button"
+            className={styles.sectionAdd}
+            onClick={() => startProjectTodo(projectId)}
+            title={t('todo.add')}
+            aria-label={t('todo.add')}
+          >
+            <Plus size={13} />
+          </button>
+        ) : null}
       </div>
-      {items.length > 0 ? (
+      {!collapsed && items.length > 0 ? (
         <div className={styles.list}>
           {items.map((todo) => {
             const editing = editingId === todo.id
@@ -231,7 +311,7 @@ export function TodoSidebar() {
                   title={todo.completed ? t('todo.reopen') : t('todo.complete')}
                   aria-label={todo.completed ? t('todo.reopen') : t('todo.complete')}
                 >
-                  {todo.completed ? <CheckCircle2 size={16} /> : <Circle size={16} />}
+                  {todo.completed ? <Check size={12} /> : null}
                 </button>
 
                 {editing ? (
@@ -351,36 +431,59 @@ export function TodoSidebar() {
         <p className={styles.sectionEmpty}>{t('todo.emptyCompleted')}</p>
       ) : null}
     </section>
-  )
+    )
+  }
 
   return (
     <aside className={styles.sidebar} aria-label={t('todo.title')}>
       <header className={styles.header}>
-        <div className={styles.heading}>
-          <ListTodo size={15} />
-          <span>{t('todo.title')}</span>
-          <span className={styles.pendingCount}>
-            {t('todo.pendingCount', { count: active.length })}
+        <div className={styles.headerTop}>
+          <div className={styles.heading}>
+            <ListTodo size={17} />
+            <span>{t('todo.title')}</span>
+          </div>
+        </div>
+        <div
+          className={styles.progress}
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={todos.length}
+          aria-valuenow={completed.length}
+        >
+          <span className={styles.progressTrack}>
+            <span className={styles.progressFill} style={{ width: `${progress}%` }} />
+          </span>
+          <span className={styles.progressCount}>
+            {completed.length} / {todos.length}
           </span>
         </div>
-        <div className={styles.headerActions}>
+        <div className={styles.filters} role="tablist" aria-label={t('todo.filters')}>
           <button
             type="button"
-            className={styles.headerAction}
-            onClick={() => openModal('todoSettings')}
-            title={t('todo.openSettings')}
-            aria-label={t('todo.openSettings')}
+            role="tab"
+            aria-selected={filter === 'all'}
+            className={`${styles.filterButton} ${filter === 'all' ? styles.filterButtonActive : ''}`}
+            onClick={() => setFilter('all')}
           >
-            <Settings size={15} />
+            {t('todo.all')}
           </button>
           <button
             type="button"
-            className={styles.headerAction}
-            onClick={() => setPreferences({ rightSidebarVisible: false })}
-            title={t('todo.closeSidebar')}
-            aria-label={t('todo.closeSidebar')}
+            role="tab"
+            aria-selected={filter === 'active'}
+            className={`${styles.filterButton} ${filter === 'active' ? styles.filterButtonActive : ''}`}
+            onClick={() => setFilter('active')}
           >
-            <PanelRightClose size={15} />
+            {t('todo.active')}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={filter === 'completed'}
+            className={`${styles.filterButton} ${filter === 'completed' ? styles.filterButtonActive : ''}`}
+            onClick={() => setFilter('completed')}
+          >
+            {t('todo.completed')}
           </button>
         </div>
       </header>
@@ -392,44 +495,56 @@ export function TodoSidebar() {
           submit()
         }}
       >
-        <input
-          className={styles.addInput}
-          value={title}
-          maxLength={TODO_TITLE_MAX_LENGTH}
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder={t('todo.addPlaceholder')}
-          aria-label={t('todo.addPlaceholder')}
-        />
-        <div className={styles.tagInputWrap}>
-          <Tag size={13} aria-hidden="true" />
+        <div className={styles.composerBox}>
+          <button
+            type="submit"
+            className={styles.composerSubmit}
+            disabled={!title.trim()}
+            title={t('todo.add')}
+            aria-label={t('todo.add')}
+          >
+            <Plus size={15} />
+          </button>
           <input
-            className={`${styles.addInput} ${styles.addTagInput}`}
-            value={tagDraft}
-            onChange={(event) => setTagDraft(event.target.value)}
-            placeholder={t('todo.tagsPlaceholder')}
-            aria-label={t('todo.tagsPlaceholder')}
+            ref={addInputRef}
+            className={styles.composerInput}
+            value={title}
+            maxLength={TODO_TITLE_MAX_LENGTH}
+            onFocus={() => setComposerExpanded(true)}
+            onChange={(event) => setTitle(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && !title.trim()) setComposerExpanded(false)
+            }}
+            placeholder={t('todo.addPlaceholder')}
+            aria-label={t('todo.addPlaceholder')}
           />
+          <kbd className={styles.composerShortcut}>{formatShortcut('Ctrl+N')}</kbd>
         </div>
-        <ProjectPicker
-          value={projectDraft}
-          projects={projects}
-          noProjectLabel={t('todo.noProject')}
-          ariaLabel={t('todo.linkProject')}
-          onChange={setProjectDraft}
-        />
-        <button
-          type="submit"
-          className={styles.addButton}
-          disabled={!title.trim()}
-          title={t('todo.add')}
-          aria-label={t('todo.add')}
-        >
-          <Plus size={15} />
-        </button>
+        {composerExpanded ? (
+          <div className={styles.composerDetails}>
+            <div className={styles.tagInputWrap}>
+              <Tag size={13} aria-hidden="true" />
+              <input
+                className={`${styles.addInput} ${styles.addTagInput}`}
+                value={tagDraft}
+                onChange={(event) => setTagDraft(event.target.value)}
+                placeholder={t('todo.tagsPlaceholder')}
+                aria-label={t('todo.tagsPlaceholder')}
+              />
+            </div>
+            <ProjectPicker
+              value={projectDraft}
+              projects={projects}
+              noProjectLabel={t('todo.noProject')}
+              ariaLabel={t('todo.linkProject')}
+              onChange={setProjectDraft}
+            />
+          </div>
+        ) : null}
       </form>
 
       <div className={styles.content}>
-        <GsdSyncSection />
+        {filter !== 'completed' ? <GsdSyncSection /> : null}
         {todos.length === 0 ? (
           <div className={styles.empty}>
             <div className={styles.emptyIcon}>
@@ -440,8 +555,27 @@ export function TodoSidebar() {
           </div>
         ) : (
           <>
-            {renderSection(active, false)}
-            {renderSection(completed, true)}
+            {filter !== 'completed'
+              ? activeProjectSections.map((section) => renderSection(section))
+              : null}
+            {filter !== 'completed' && unassigned.length > 0
+              ? renderSection({
+                  key: 'unassigned',
+                  label: t('todo.noProject'),
+                  items: unassigned,
+                })
+              : null}
+            {filter !== 'active'
+              ? renderSection({
+                  key: 'completed',
+                  label: t('todo.completed'),
+                  items: completed,
+                  completedSection: true,
+                })
+              : null}
+            {filter === 'active' && active.length === 0 ? (
+              <p className={styles.filterEmpty}>{t('todo.emptyTitle')}</p>
+            ) : null}
           </>
         )}
       </div>

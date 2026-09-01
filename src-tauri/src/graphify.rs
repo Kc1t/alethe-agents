@@ -1,21 +1,14 @@
-//! RFC-004 — Graphify Integration (conhecimento do código).
 //!
-//! Três responsabilidades, todas tratando o Graphify como ferramenta EXTERNA
-//! (o Alethe gerencia/observa, não reimplementa):
+
 //!
-//! 1. **Integração MCP:** gera o arquivo de config MCP por projeto para injetar
-//!    o servidor do Graphify na sessão do agente (ver `graphify_mcp_config_path`
-//!    + a injeção `--mcp-config` no `buildAgentLaunch` do front).
-//! 2. **Leitura/normalização do grafo:** lê `graphify-out/graph.json` e o converte
+
 //!    para `{ nodes, edges }` prontos para o Cytoscape (parsing pesado no Rust,
-//!    com teto de nós para não matar a WebView).
+
 //! 3. **Versionamento + memory policy:** snapshot/list/diff/rollback de
 //!    `graphify-out/graph.json` em `<repo>/.alethe/graph-snapshots/`, e `prune`
-//!    (mantém os N mais novos / remove os mais velhos que X dias).
+
 //!
 //! O comando/args exatos do CLI do Graphify ainda dependem de pinar a fonte
-//! oficial (decisão em aberto no blueprint) — por isso ficam concentrados em
-//! `mcp_server_spec`, fáceis de ajustar.
 
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -28,11 +21,10 @@ use serde_json::Value;
 use crate::git_control::{hide_console, repository_root};
 use crate::provider_common::now_ms;
 
-/// Nome padrão do binário/skill do Graphify. Configurável a partir do front.
 const DEFAULT_COMMAND: &str = "graphify";
-/// Teto de nós enviados à viz — grafos enormes travam a WebView. Acima disso o
+
 /// resultado vem truncado (com a flag `truncated`), preservando os N primeiros
-/// nós e apenas as arestas cujos dois extremos sobreviveram.
+
 const MAX_VIZ_NODES: usize = 3000;
 
 const GRAPH_SUBDIR: &str = "graphify-out";
@@ -107,8 +99,6 @@ fn snapshots_dir(root: &Path) -> PathBuf {
     root.join(".alethe").join(SNAPSHOTS_SUBDIR)
 }
 
-/// Especificação do servidor MCP do Graphify. Ponto único a ajustar quando a
-/// fonte oficial for pinada (ver decisão em aberto no blueprint).
 fn mcp_server_spec(command: &str, root: &Path) -> Value {
     serde_json::json!({
         "command": command,
@@ -126,8 +116,6 @@ fn emit(event_type: &str, project_id: Option<String>, data: Value) {
     );
 }
 
-/// Repos com geração de grafo em andamento — trava o bootstrap para que só o
-/// PRIMEIRO terminal de agente dispare a geração; os demais só usam/adicionam.
 static GENERATING: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<PathBuf>>> =
     std::sync::OnceLock::new();
 
@@ -135,110 +123,102 @@ fn generating_set() -> &'static std::sync::Mutex<std::collections::HashSet<PathB
     GENERATING.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
 }
 
-/// Bootstrap único do grafo: se `graphify-out/graph.json` não existe, o primeiro
-/// chamador dispara a geração em background; chamadas concorrentes/subsequentes
-/// são no-op. Retornos: `exists` | `generating` | `started` | `unavailable`.
-// `repository_root`/`Command::new(...).output()` são chamadas de processo/SO
 // de verdade (git, probe do CLI do Graphify) — rodavam direto na thread de
-// despacho do Tauri, disparadas a CADA spawn de terminal claude/codex/opencode
-// em projetos com Graphify ligado (ver XTermView/index.tsx). Sob AV escaneando
-// o novo processo ou qualquer lentidão do SO, isso travava TODO comando IPC
-// atrás dele — o app inteiro (inclusive terminais já abertos, tentando
-// escrever/redimensionar) parecia travado até a chamada terminar. Mesma
-// classe de bug já corrigida em `pty.rs`/`worktrees.rs`; todo comando deste
-// arquivo agora roda em `spawn_blocking`.
-fn graphify_ensure_graph_inner(repo: String, command: Option<String>) -> Result<String, String> {
-        let root = repository_root(&repo)?;
-        if graph_path(&root).is_file() {
-            return Ok("exists".to_string());
-        }
 
-        // Lock primeiro: geração em andamento dispensa até o probe do CLI.
-        if generating_set()
-            .lock()
-            .map_err(|e| e.to_string())?
-            .contains(&root)
-        {
+// em projetos com Graphify ligado (ver XTermView/index.tsx). Sob AV escaneando
+
+fn graphify_ensure_graph_inner(repo: String, command: Option<String>) -> Result<String, String> {
+    let root = repository_root(&repo)?;
+    if graph_path(&root).is_file() {
+        return Ok("exists".to_string());
+    }
+
+    if generating_set()
+        .lock()
+        .map_err(|e| e.to_string())?
+        .contains(&root)
+    {
+        return Ok("generating".to_string());
+    }
+
+    let cmd = command.unwrap_or_else(|| DEFAULT_COMMAND.to_string());
+
+    let available = {
+        let mut probe = Command::new(&cmd);
+        probe.arg("--version");
+        hide_console(&mut probe);
+        probe.output().map(|o| o.status.success()).unwrap_or(false)
+    };
+    if !available {
+        return Ok("unavailable".to_string());
+    }
+
+    {
+        let mut set = generating_set().lock().map_err(|e| e.to_string())?;
+        if set.contains(&root) {
             return Ok("generating".to_string());
         }
+        set.insert(root.clone());
+    }
 
-        let cmd = command.unwrap_or_else(|| DEFAULT_COMMAND.to_string());
-        // CLI ausente → no-op silencioso (o MCP é injetado igual; sem grafo o
-        // servidor simplesmente não tem dados até o usuário instalar o Graphify).
-        let available = {
-            let mut probe = Command::new(&cmd);
-            probe.arg("--version");
-            hide_console(&mut probe);
-            probe.output().map(|o| o.status.success()).unwrap_or(false)
-        };
-        if !available {
-            return Ok("unavailable".to_string());
+    let root_for_task = root.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut generate = Command::new(&cmd);
+        generate.arg(&root_for_task).current_dir(&root_for_task);
+        hide_console(&mut generate);
+        let outcome = generate.output();
+        if let Ok(mut set) = generating_set().lock() {
+            set.remove(&root_for_task);
         }
-
-        {
-            let mut set = generating_set().lock().map_err(|e| e.to_string())?;
-            if set.contains(&root) {
-                return Ok("generating".to_string());
+        match outcome {
+            Ok(output) if output.status.success() => {
+                emit(
+                    "GraphUpdated",
+                    None,
+                    serde_json::json!({ "action": "bootstrap", "repo": root_for_task.to_string_lossy() }),
+                );
             }
-            set.insert(root.clone());
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                eprintln!("[graphify] geração falhou: {}", stderr.trim());
+            }
+            Err(error) => eprintln!("[graphify] geração não executou: {error}"),
         }
+    });
 
-        let root_for_task = root.clone();
-        tauri::async_runtime::spawn_blocking(move || {
-            let mut generate = Command::new(&cmd);
-            generate.arg(&root_for_task).current_dir(&root_for_task);
-            hide_console(&mut generate);
-            let outcome = generate.output();
-            if let Ok(mut set) = generating_set().lock() {
-                set.remove(&root_for_task);
-            }
-            match outcome {
-                Ok(output) if output.status.success() => {
-                    emit(
-                        "GraphUpdated",
-                        None,
-                        serde_json::json!({ "action": "bootstrap", "repo": root_for_task.to_string_lossy() }),
-                    );
-                }
-                Ok(output) => {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    eprintln!("[graphify] geração falhou: {}", stderr.trim());
-                }
-                Err(error) => eprintln!("[graphify] geração não executou: {error}"),
-            }
-        });
-
-        Ok("started".to_string())
+    Ok("started".to_string())
 }
 
 #[tauri::command]
-pub async fn graphify_ensure_graph(repo: String, command: Option<String>) -> Result<String, String> {
+pub async fn graphify_ensure_graph(
+    repo: String,
+    command: Option<String>,
+) -> Result<String, String> {
     tokio::task::spawn_blocking(move || graphify_ensure_graph_inner(repo, command))
         .await
         .map_err(|error| format!("graphify_ensure_graph: falha na task bloqueante: {error}"))?
 }
 
-/// Detecta se o CLI do Graphify está disponível (`<cmd> --version`).
 fn graphify_detect_inner(command: Option<String>) -> Result<GraphifyStatus, String> {
-        let cmd = command.unwrap_or_else(|| DEFAULT_COMMAND.to_string());
-        let mut probe = Command::new(&cmd);
-        probe.arg("--version");
-        hide_console(&mut probe);
-        match probe.output() {
-            Ok(output) if output.status.success() => {
-                let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                Ok(GraphifyStatus {
-                    available: true,
-                    command: cmd,
-                    version: (!version.is_empty()).then_some(version),
-                })
-            }
-            _ => Ok(GraphifyStatus {
-                available: false,
+    let cmd = command.unwrap_or_else(|| DEFAULT_COMMAND.to_string());
+    let mut probe = Command::new(&cmd);
+    probe.arg("--version");
+    hide_console(&mut probe);
+    match probe.output() {
+        Ok(output) if output.status.success() => {
+            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            Ok(GraphifyStatus {
+                available: true,
                 command: cmd,
-                version: None,
-            }),
+                version: (!version.is_empty()).then_some(version),
+            })
         }
+        _ => Ok(GraphifyStatus {
+            available: false,
+            command: cmd,
+            version: None,
+        }),
+    }
 }
 
 #[tauri::command]
@@ -248,106 +228,98 @@ pub async fn graphify_detect(command: Option<String>) -> Result<GraphifyStatus, 
         .map_err(|error| format!("graphify_detect: falha na task bloqueante: {error}"))?
 }
 
-/// Escreve (idempotente por projeto) o `.mcp` que registra o servidor do
-/// Graphify e retorna o path. O front injeta via `--mcp-config <path>` no launch
-/// do agente, sem tocar no `.claude/` do repo do usuário.
 fn graphify_mcp_config_path_inner(repo: String, command: Option<String>) -> Result<String, String> {
-        let root = repository_root(&repo)?;
-        let cmd = command.unwrap_or_else(|| DEFAULT_COMMAND.to_string());
-        let config = serde_json::json!({
-            "mcpServers": { "graphify": mcp_server_spec(&cmd, &root) }
-        });
-        let file_name = format!(
-            "alethe-graphify-mcp-{}.json",
-            short_hash(&root.to_string_lossy())
-        );
-        let path = std::env::temp_dir().join(file_name);
-        let body = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
-        std::fs::write(&path, body).map_err(|e| format!("write_failed:{e}"))?;
-        Ok(path.to_string_lossy().into_owned())
+    let root = repository_root(&repo)?;
+    let cmd = command.unwrap_or_else(|| DEFAULT_COMMAND.to_string());
+    let config = serde_json::json!({
+        "mcpServers": { "graphify": mcp_server_spec(&cmd, &root) }
+    });
+    let file_name = format!(
+        "alethe-graphify-mcp-{}.json",
+        short_hash(&root.to_string_lossy())
+    );
+    let path = std::env::temp_dir().join(file_name);
+    let body = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+    std::fs::write(&path, body).map_err(|e| format!("write_failed:{e}"))?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
-pub async fn graphify_mcp_config_path(repo: String, command: Option<String>) -> Result<String, String> {
+pub async fn graphify_mcp_config_path(
+    repo: String,
+    command: Option<String>,
+) -> Result<String, String> {
     tokio::task::spawn_blocking(move || graphify_mcp_config_path_inner(repo, command))
         .await
         .map_err(|error| format!("graphify_mcp_config_path: falha na task bloqueante: {error}"))?
 }
 
-/// Codex e OpenCode não têm um equivalente ao `--mcp-config <path>` do Claude —
-/// cada um lê MCP de um arquivo de config AMBIENTE no próprio diretório do
-/// projeto, então a "injeção" pra eles é escrever/mesclar esse arquivo antes do
-/// spawn, não passar uma flag. Fontes verificadas (não são um formato
-/// inventado): OpenCode usa `opencode.json` no root do projeto com um objeto
 /// `mcp` (schema em https://opencode.ai/docs/config/ e
 /// https://opencode.ai/docs/mcp-servers/); Codex usa `.codex/config.toml` no
-/// root do projeto (**só em "trusted projects"** — se o Codex nunca rodou
-/// nesse diretório e o usuário nunca confirmou confiança, pode ignorar esse
-/// arquivo; isso é uma limitação conhecida, não um bug daqui) com tabelas
+
 /// `[mcp_servers.<nome>]` (schema em
 /// https://developers.openai.com/codex/config-schema.json).
 
-/// Mescla (sem sobrescrever outras chaves) a entrada `mcp.graphify` em
-/// `<repo>/opencode.json`. Best-effort: chamado no spawn, nunca deve bloquear.
 ///
-/// Separado em `_inner` (síncrono) porque `projects.rs`/`worktrees.rs` chamam
-/// isso direto, de dentro do próprio `spawn_blocking` de quem está isolando o
-/// agente — nesse contexto não tem como (nem faz sentido) `.await` um segundo
+
 /// `spawn_blocking`.
-pub(crate) fn graphify_opencode_config_write_inner(repo: String, command: Option<String>) -> Result<(), String> {
-        let root = repository_root(&repo)?;
-        let cmd = command.unwrap_or_else(|| DEFAULT_COMMAND.to_string());
-        let path = root.join("opencode.json");
+pub(crate) fn graphify_opencode_config_write_inner(
+    repo: String,
+    command: Option<String>,
+) -> Result<(), String> {
+    let _guard = crate::provider_common::opencode_json_lock()
+        .lock()
+        .map_err(|_| "opencode.json lock poisoned".to_string())?;
+    let root = repository_root(&repo)?;
+    let cmd = command.unwrap_or_else(|| DEFAULT_COMMAND.to_string());
+    let path = root.join("opencode.json");
 
-        let mut config: serde_json::Map<String, Value> = if path.is_file() {
-            let raw = std::fs::read_to_string(&path).map_err(|e| format!("read_failed:{e}"))?;
-            match serde_json::from_str::<Value>(&raw) {
-                Ok(Value::Object(map)) => map,
-                // Arquivo existe mas não é o esperado (JSONC com comentários, ou
-                // corrompido) — não arrisca sobrescrever config do usuário às
-                // cegas; só desiste (best-effort).
-                _ => return Ok(()),
-            }
-        } else {
-            let mut map = serde_json::Map::new();
-            map.insert(
-                "$schema".to_string(),
-                Value::String("https://opencode.ai/config.json".to_string()),
-            );
-            map
-        };
+    let mut config: serde_json::Map<String, Value> = if path.is_file() {
+        let raw = std::fs::read_to_string(&path).map_err(|e| format!("read_failed:{e}"))?;
+        match serde_json::from_str::<Value>(&raw) {
+            Ok(Value::Object(map)) => map,
 
-        let mcp = config
-            .entry("mcp".to_string())
-            .or_insert_with(|| Value::Object(serde_json::Map::new()));
-        if let Value::Object(mcp_map) = mcp {
-            mcp_map.insert(
-                "graphify".to_string(),
-                serde_json::json!({
-                    "type": "local",
-                    "command": [cmd, root.to_string_lossy(), "--mcp"],
-                    "enabled": true,
-                }),
-            );
+            _ => return Ok(()),
         }
+    } else {
+        let mut map = serde_json::Map::new();
+        map.insert(
+            "$schema".to_string(),
+            Value::String("https://opencode.ai/config.json".to_string()),
+        );
+        map
+    };
 
-        let body = serde_json::to_string_pretty(&Value::Object(config)).map_err(|e| e.to_string())?;
-        std::fs::write(&path, body).map_err(|e| format!("write_failed:{e}"))
+    let mcp = config
+        .entry("mcp".to_string())
+        .or_insert_with(|| Value::Object(serde_json::Map::new()));
+    if let Value::Object(mcp_map) = mcp {
+        mcp_map.insert(
+            "graphify".to_string(),
+            serde_json::json!({
+                "type": "local",
+                "command": [cmd, root.to_string_lossy(), "--mcp"],
+                "enabled": true,
+            }),
+        );
+    }
+
+    let body = serde_json::to_string_pretty(&Value::Object(config)).map_err(|e| e.to_string())?;
+    std::fs::write(&path, body).map_err(|e| format!("write_failed:{e}"))
 }
 
 #[tauri::command]
-pub async fn graphify_opencode_config_write(repo: String, command: Option<String>) -> Result<(), String> {
+pub async fn graphify_opencode_config_write(
+    repo: String,
+    command: Option<String>,
+) -> Result<(), String> {
     tokio::task::spawn_blocking(move || graphify_opencode_config_write_inner(repo, command))
         .await
-        .map_err(|error| format!("graphify_opencode_config_write: falha na task bloqueante: {error}"))?
+        .map_err(|error| {
+            format!("graphify_opencode_config_write: falha na task bloqueante: {error}")
+        })?
 }
 
-/// Mescla (sem sobrescrever outras chaves) a tabela `[mcp_servers.graphify]`
-/// em `<repo>/.codex/config.toml`. Implementação manual de merge TOML (sem
-/// depender de reserializar o arquivo inteiro com uma crate de TOML, que
-/// perderia comentários/formatação do usuário): remove só o bloco
-/// `[mcp_servers.graphify]` pré-existente (se houver, delimitado até a
-/// próxima linha `[...]` ou EOF) e acrescenta o bloco atualizado no fim.
 fn graphify_codex_config_write_inner(repo: String, command: Option<String>) -> Result<(), String> {
     let root = repository_root(&repo)?;
     let cmd = command.unwrap_or_else(|| DEFAULT_COMMAND.to_string());
@@ -380,10 +352,7 @@ fn graphify_codex_config_write_inner(repo: String, command: Option<String>) -> R
     if !body.is_empty() && !body.ends_with('\n') {
         body.push('\n');
     }
-    // Escapa para string básica TOML: contrabarra e aspas (nessa ordem). Sem
-    // isso, um `command`/path do Windows (ex.: C:\Users\..\graphify.exe) vira
-    // escape TOML inválido (\U, \g) e corrompe TODO o config.toml do usuário —
-    // não só o bloco do graphify.
+
     let toml_escape = |s: &str| s.replace('\\', "\\\\").replace('"', "\\\"");
     let cmd_toml = toml_escape(&cmd);
     let args_toml = format!("\"{}\", \"--mcp\"", toml_escape(&root.to_string_lossy()));
@@ -395,10 +364,15 @@ fn graphify_codex_config_write_inner(repo: String, command: Option<String>) -> R
 }
 
 #[tauri::command]
-pub async fn graphify_codex_config_write(repo: String, command: Option<String>) -> Result<(), String> {
+pub async fn graphify_codex_config_write(
+    repo: String,
+    command: Option<String>,
+) -> Result<(), String> {
     tokio::task::spawn_blocking(move || graphify_codex_config_write_inner(repo, command))
         .await
-        .map_err(|error| format!("graphify_codex_config_write: falha na task bloqueante: {error}"))?
+        .map_err(|error| {
+            format!("graphify_codex_config_write: falha na task bloqueante: {error}")
+        })?
 }
 
 fn value_to_id(value: &Value) -> Option<String> {
@@ -410,11 +384,10 @@ fn value_to_id(value: &Value) -> Option<String> {
 }
 
 fn first_str<'a>(obj: &'a serde_json::Map<String, Value>, keys: &[&str]) -> Option<&'a str> {
-    keys.iter().find_map(|k| obj.get(*k).and_then(|v| v.as_str()))
+    keys.iter()
+        .find_map(|k| obj.get(*k).and_then(|v| v.as_str()))
 }
 
-/// Lê e normaliza `graphify-out/graph.json`. Tolera formatos NetworkX
-/// (`nodes`/`links`) e variações (`edges`), inferindo label/kind/group de vários
 /// nomes de campo comuns.
 fn graphify_read_graph_inner(repo: String) -> Result<GraphData, String> {
     let root = repository_root(&repo)?;
@@ -444,7 +417,9 @@ fn graphify_read_graph_inner(repo: String) -> Result<GraphData, String> {
     let mut nodes = Vec::new();
     let mut kept_ids = std::collections::HashSet::new();
     for node in node_values.into_iter().take(MAX_VIZ_NODES) {
-        let Some(obj) = node.as_object() else { continue };
+        let Some(obj) = node.as_object() else {
+            continue;
+        };
         let Some(id) = obj.get("id").and_then(value_to_id) else {
             continue;
         };
@@ -464,15 +439,16 @@ fn graphify_read_graph_inner(repo: String) -> Result<GraphData, String> {
 
     let mut edges = Vec::new();
     for edge in edge_values {
-        let Some(obj) = edge.as_object() else { continue };
+        let Some(obj) = edge.as_object() else {
+            continue;
+        };
         let (Some(source), Some(target)) = (
             obj.get("source").and_then(value_to_id),
             obj.get("target").and_then(value_to_id),
         ) else {
             continue;
         };
-        // Descarta arestas que apontam para nós truncados, senão o Cytoscape
-        // lança ("edge with nonexistant source/target").
+
         if !kept_ids.contains(&source) || !kept_ids.contains(&target) {
             continue;
         }
@@ -506,10 +482,11 @@ pub async fn graphify_read_graph(repo: String) -> Result<GraphData, String> {
 }
 
 /// Copia o `graph.json` atual para `.alethe/graph-snapshots/<ts>.json`.
-// Separado em `_inner` (síncrono) porque `conflict_resolution.rs` chama isso
-// direto, de dentro do próprio `spawn_blocking` do merge — nesse contexto
-// não tem como (nem faz sentido) `.await` um segundo `spawn_blocking`.
-pub(crate) fn graphify_snapshot_inner(repo: String, project_id: Option<String>) -> Result<SnapshotInfo, String> {
+
+pub(crate) fn graphify_snapshot_inner(
+    repo: String,
+    project_id: Option<String>,
+) -> Result<SnapshotInfo, String> {
     let root = repository_root(&repo)?;
     let source = graph_path(&root);
     if !source.is_file() {
@@ -537,7 +514,10 @@ pub(crate) fn graphify_snapshot_inner(repo: String, project_id: Option<String>) 
 }
 
 #[tauri::command]
-pub async fn graphify_snapshot(repo: String, project_id: Option<String>) -> Result<SnapshotInfo, String> {
+pub async fn graphify_snapshot(
+    repo: String,
+    project_id: Option<String>,
+) -> Result<SnapshotInfo, String> {
     tokio::task::spawn_blocking(move || graphify_snapshot_inner(repo, project_id))
         .await
         .map_err(|error| format!("graphify_snapshot: falha na task bloqueante: {error}"))?
@@ -585,7 +565,15 @@ pub async fn graphify_list_snapshots(repo: String) -> Result<Vec<SnapshotInfo>, 
         .map_err(|error| format!("graphify_list_snapshots: falha na task bloqueante: {error}"))?
 }
 
-fn id_sets(path: &Path) -> Result<(std::collections::HashSet<String>, std::collections::HashSet<String>), String> {
+fn id_sets(
+    path: &Path,
+) -> Result<
+    (
+        std::collections::HashSet<String>,
+        std::collections::HashSet<String>,
+    ),
+    String,
+> {
     let raw = std::fs::read_to_string(path).map_err(|e| format!("read_failed:{e}"))?;
     let value: Value = serde_json::from_str(&raw).map_err(|e| format!("invalid_graph_json:{e}"))?;
     let mut node_ids = std::collections::HashSet::new();
@@ -615,7 +603,6 @@ fn id_sets(path: &Path) -> Result<(std::collections::HashSet<String>, std::colle
 }
 
 fn snapshot_file(root: &Path, id: &str) -> Result<PathBuf, String> {
-    // `id` vem do nome do snapshot (timestamp). Valida que é numérico para não
     // permitir path traversal via id forjado.
     if id.is_empty() || !id.chars().all(|c| c.is_ascii_digit()) {
         return Err("invalid_snapshot_id".to_string());
@@ -627,7 +614,6 @@ fn snapshot_file(root: &Path, id: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-/// Diff entre um snapshot e o grafo atual (default) ou outro snapshot.
 fn graphify_diff_snapshot_inner(
     repo: String,
     base_id: String,
@@ -692,9 +678,6 @@ pub async fn graphify_rollback(
         .map_err(|error| format!("graphify_rollback: falha na task bloqueante: {error}"))?
 }
 
-/// Memory policy: mantém os `keep_last` snapshots mais novos e remove os mais
-/// velhos que `max_age_days` (se informado). Evita o grafo/snapshots crescerem
-/// sem limite em projetos longos.
 fn graphify_prune_snapshots_inner(
     repo: String,
     keep_last: usize,
@@ -702,7 +685,7 @@ fn graphify_prune_snapshots_inner(
     project_id: Option<String>,
 ) -> Result<usize, String> {
     let root = repository_root(&repo)?;
-    let snapshots = read_snapshots(&root)?; // já ordenado do mais novo pro mais velho
+    let snapshots = read_snapshots(&root)?;
     let now = now_ms();
     let max_age_ms = max_age_days.map(|d| d.saturating_mul(24 * 60 * 60 * 1000));
     let mut removed = 0usize;
@@ -746,9 +729,7 @@ pub async fn graphify_prune_snapshots(
 #[cfg(test)]
 mod tests {
     use super::*;
-    // Testes chamam a lógica direto (síncrona), sem passar pelo wrapper
-    // `#[tauri::command] async fn` + `spawn_blocking` — mesmo padrão já usado
-    // em `worktrees.rs`/`conflict_resolution.rs`.
+
     use super::graphify_codex_config_write_inner as graphify_codex_config_write;
     use super::graphify_diff_snapshot_inner as graphify_diff_snapshot;
     use super::graphify_ensure_graph_inner as graphify_ensure_graph;
@@ -795,7 +776,7 @@ mod tests {
         assert_eq!(data.nodes.len(), 3);
         assert_eq!(data.edges.len(), 2);
         assert!(!data.truncated);
-        // label cai pro id quando não há label/name/title.
+
         let c = data.nodes.iter().find(|n| n.id == "c").unwrap();
         assert_eq!(c.label, "c");
         let a = data.nodes.iter().find(|n| n.id == "a").unwrap();
@@ -812,7 +793,6 @@ mod tests {
         assert!(snap.size_bytes > 0);
         assert_eq!(graphify_list_snapshots(root_str.clone()).unwrap().len(), 1);
 
-        // Altera o grafo atual (remove um nó) e confere o diff vs snapshot.
         let out = root.join(GRAPH_SUBDIR).join(GRAPH_FILE);
         let smaller = serde_json::json!({
             "nodes": [ { "id": "a" }, { "id": "b" } ],
@@ -823,7 +803,6 @@ mod tests {
         assert_eq!(diff.nodes_removed, 1); // 'c' sumiu
         assert_eq!(diff.edges_removed, 1);
 
-        // Rollback restaura o grafo de 3 nós.
         graphify_rollback(root_str.clone(), snap.id.clone(), None).unwrap();
         assert_eq!(graphify_read_graph(root_str.clone()).unwrap().node_count, 3);
 
@@ -837,13 +816,10 @@ mod tests {
 
     #[test]
     fn ensure_graph_bootstrap_states() {
-        // Com graph.json presente → "exists" (ninguém re-gera).
         let root = temp_repo_with_graph();
         let root_str = root.to_string_lossy().into_owned();
         assert_eq!(graphify_ensure_graph(root_str, None).unwrap(), "exists");
 
-        // Sem grafo + repo marcado como em geração → "generating" (lock vence
-        // antes do probe do CLI — segundo terminal nunca re-gera).
         let bare = std::env::temp_dir().join(format!("alethe-graphify-lock-{}", nanoid!(6)));
         fs::create_dir_all(&bare).unwrap();
         let run = |args: &[&str]| checked_output(&bare, args).unwrap();
@@ -851,10 +827,12 @@ mod tests {
         let canon = bare.canonicalize().unwrap();
         generating_set().lock().unwrap().insert(canon.clone());
         let bare_str = bare.to_string_lossy().into_owned();
-        assert_eq!(graphify_ensure_graph(bare_str.clone(), None).unwrap(), "generating");
+        assert_eq!(
+            graphify_ensure_graph(bare_str.clone(), None).unwrap(),
+            "generating"
+        );
         generating_set().lock().unwrap().remove(&canon);
 
-        // Sem grafo, sem lock e sem CLI instalado → "unavailable" (no-op).
         let status = graphify_ensure_graph(
             bare_str,
             Some("alethe-nonexistent-graphify-cli".to_string()),
@@ -888,7 +866,6 @@ mod tests {
         assert_eq!(parsed["mcp"]["graphify"]["command"][0], "graphify");
         assert_eq!(parsed["mcp"]["graphify"]["enabled"], true);
 
-        // Config pré-existente com outras chaves do usuário — precisa sobreviver.
         fs::write(&path, r#"{"model": "anthropic/claude-sonnet-4-5", "mcp": {"other": {"type": "local", "command": ["x"]}}}"#).unwrap();
         graphify_opencode_config_write(root_str, None).unwrap();
         let merged: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
@@ -904,7 +881,6 @@ mod tests {
         let root = temp_repo_with_graph();
         let root_str = root.to_string_lossy().into_owned();
 
-        // Config pré-existente do usuário com outro servidor MCP e uma chave solta.
         let codex_dir = root.join(".codex");
         fs::create_dir_all(&codex_dir).unwrap();
         fs::write(
@@ -915,13 +891,18 @@ mod tests {
 
         graphify_codex_config_write(root_str.clone(), None).unwrap();
         let body = fs::read_to_string(codex_dir.join("config.toml")).unwrap();
-        assert!(body.contains("model = \"gpt-5\""), "chave do usuário deve sobreviver: {body}");
-        assert!(body.contains("[mcp_servers.other]"), "outro servidor MCP deve sobreviver: {body}");
+        assert!(
+            body.contains("model = \"gpt-5\""),
+            "chave do usuário deve sobreviver: {body}"
+        );
+        assert!(
+            body.contains("[mcp_servers.other]"),
+            "outro servidor MCP deve sobreviver: {body}"
+        );
         assert!(body.contains("command = \"other-cmd\""));
         assert!(body.contains("[mcp_servers.graphify]"));
         assert!(body.contains("command = \"graphify\""));
 
-        // Rodar de novo não deve duplicar o bloco graphify.
         graphify_codex_config_write(root_str, None).unwrap();
         let body2 = fs::read_to_string(codex_dir.join("config.toml")).unwrap();
         assert_eq!(body2.matches("[mcp_servers.graphify]").count(), 1);

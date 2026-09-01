@@ -1,4 +1,5 @@
 import { Plus, X } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 import { useT } from '../../lib/i18n'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -12,9 +13,17 @@ export type SubTabsLaneProps = {
   onActivate: (tabId: string) => void
   onClose: (tabId: string) => void
   onAdd: () => void
+  leadingControl?: ReactNode
 }
 
-export function SubTabsLane({ tabs, activeTabId, onActivate, onClose, onAdd }: SubTabsLaneProps) {
+export function SubTabsLane({
+  tabs,
+  activeTabId,
+  onActivate,
+  onClose,
+  onAdd,
+  leadingControl,
+}: SubTabsLaneProps) {
   const t = useT()
   const terminalTheme = useProjectsStore(
     (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,
@@ -22,6 +31,7 @@ export function SubTabsLane({ tabs, activeTabId, onActivate, onClose, onAdd }: S
 
   return (
     <div className={styles.lane}>
+      {leadingControl ? <div className={styles.leadingControl}>{leadingControl}</div> : null}
       {tabs.map((tab) => {
         const isActive = tab.id === activeTabId
         return (

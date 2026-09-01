@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Alethe",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "identifier": "com.kc1t.alethe",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -22,7 +22,28 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": ["'none'"],
+        "object-src": ["'none'"],
+        "base-uri": ["'none'"],
+        "form-action": ["'none'"],
+        "frame-ancestors": ["'none'"],
+        "script-src": ["'self'"],
+        "style-src": ["'self'", "'unsafe-inline'"],
+        "img-src": ["'self'", "data:", "asset:", "http://asset.localhost", "http:", "https:"],
+        "media-src": ["'self'", "asset:", "http://asset.localhost", "mediastream:", "blob:"],
+        "font-src": ["'self'"],
+        "connect-src": [
+          "'self'",
+          "ipc:",
+          "http://ipc.localhost",
+          "https://registry.npmjs.org",
+          "https://api.github.com"
+        ],
+        "worker-src": ["'none'"],
+        "frame-src": ["asset:", "http://asset.localhost", "http:", "https:"]
+      },
+      "devCsp": null
     }
   },
   "bundle": {
@@ -40,8 +61,13 @@
       "icons/icon.ico"
     ],
     "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
       "nsis": {
-        "installerIcon": "icons/icon.ico"
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "installer/header.bmp",
+        "sidebarImage": "installer/sidebar.bmp"
       }
     }
   },

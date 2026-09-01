@@ -1,21 +1,34 @@
 import {
-  FileText,
   Archive,
+  Download,
+  FileText,
   FolderOpen,
+  Globe2,
   Layout,
   MoveRight,
   PanelTopOpen,
   Pencil,
   Plus,
   Power,
+  Smartphone,
+  SmartphoneNfc,
   Trash2,
+  Upload,
 } from 'lucide-react'
 
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
+import { pickFile, saveFile } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
+import {
+  getPtyCwd,
+  openInFileExplorer,
+  openInVscode,
+  readTextFile,
+  restartPty,
+  writeTextFile,
+} from '../../lib/tauri'
 import { agentCliCommand, type Group, type Project, type Terminal } from '../../lib/types'
-import { getPtyCwd, openInFileExplorer, openInVscode, restartPty } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -25,7 +38,7 @@ import { collectDescendants } from './GroupNode'
 type ProjectsState = ReturnType<typeof useProjectsStore.getState>
 type UiState = ReturnType<typeof useUiStore.getState>
 
-/** Ações do store necessárias pra construir os menus de contexto da sidebar. */
+                                                                                
 type MenuActions = Pick<
   ProjectsState,
   | 'openProjectWorkspace'
@@ -51,6 +64,7 @@ type MenuActions = Pick<
   | 'setTerminalDisabled'
   | 'killTerminal'
   | 'setLaneVisible'
+  | 'setTerminalRemoteExcluded'
   | 'deleteTerminal'
   | 'deleteTerminalWithWorktreeCleanup'
   | 'setPreferences'
@@ -59,6 +73,7 @@ type MenuActions = Pick<
 export type SidebarMenuDeps = {
   t: ReturnType<typeof useT>
   graphifyEnabled: boolean
+  browserEnabled: boolean
   groups: Group[]
   openPaneSets: Record<string, Set<string>>
   actions: MenuActions
@@ -70,16 +85,17 @@ export type SidebarMenuDeps = {
   openMarkdownSidebar: UiState['openMarkdownSidebar']
 }
 
-/** Terminais "reais" de um projeto, sem o viewer somente-leitura da gaveta GSD Sync. */
+                                                                                        
 function visibleProjectTerminals(project: Project): Terminal[] {
   return project.terminals.filter((term) => !term.gsdSyncViewer)
 }
 
-/** Fábrica dos menus de contexto (projeto/grupo/terminal) da sidebar. */
+                                                                         
 export function createSidebarMenus(deps: SidebarMenuDeps) {
   const {
     t,
     graphifyEnabled,
+    browserEnabled,
     groups,
     openPaneSets,
     actions,
@@ -119,6 +135,54 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
     },
     {
       kind: 'item',
+      label: t('ui.sidebar.exportProjectConfig'),
+      icon: <Download size={14} />,
+      onClick: () =>
+        void (async () => {
+          const target = await saveFile({
+            title: t('ui.sidebar.exportProjectConfigTitle'),
+            defaultPath: `${project.name.replace(/[^A-Za-z0-9_-]/g, '-')}.alethe-project.json`,
+            filters: [{ name: t('ui.sidebar.projectConfigFilter'), extensions: ['json'] }],
+          })
+          if (!target) return
+          await writeTextFile(target, JSON.stringify(project, null, 2))
+          useUiStore
+            .getState()
+            .pushToast({ title: t('ui.sidebar.exportProjectConfigDone'), body: '' })
+        })(),
+    },
+    {
+      kind: 'item',
+      label: t('ui.sidebar.importProjectConfig'),
+      icon: <Upload size={14} />,
+      onClick: () =>
+        void (async () => {
+          const source = await pickFile({
+            title: t('ui.sidebar.importProjectConfigTitle'),
+            filters: [{ name: t('ui.sidebar.projectConfigFilter'), extensions: ['json'] }],
+          })
+          if (!source) return
+          try {
+            const raw = await readTextFile(source)
+            const data = JSON.parse(raw) as Partial<Project>
+            if (!data || typeof data.name !== 'string' || !Array.isArray(data.terminals)) {
+              throw new Error('invalid_project_config')
+            }
+            useProjectsStore.getState().importProjectFromFile(data as Project, project.groupId)
+            useUiStore
+              .getState()
+              .pushToast({ title: t('ui.sidebar.importProjectConfigDone'), body: '' })
+          } catch (error) {
+            console.error('[sidebarMenus] failed importing project config:', error)
+            useUiStore.getState().pushToast({
+              title: t('ui.sidebar.importProjectConfigFailed'),
+              body: String(error),
+            })
+          }
+        })(),
+    },
+    {
+      kind: 'item',
       label: t('ui.sidebar.quickRename'),
       icon: <Pencil size={14} />,
       onClick: () => {
@@ -132,6 +196,16 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
       icon: <Plus size={14} />,
       onClick: () => openModal('newTerminal', { projectId: project.id }),
     },
+    ...(browserEnabled
+      ? [
+          {
+            kind: 'item' as const,
+            label: t('menu.addBrowser'),
+            icon: <Globe2 size={14} />,
+            onClick: () => openModal('addBrowser', { projectId: project.id }),
+          },
+        ]
+      : []),
     {
       kind: 'item',
       label: t('ui.sidebar.designLayout'),
@@ -506,6 +580,19 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
                 openMarkdownSidebar(term.filePath!, term.name)
                 actions.setPreferences({ rightSidebarVisible: true })
               },
+            },
+          ]
+        : []),
+      ...(isTerminalPane
+        ? [
+            {
+              kind: 'item' as const,
+              label: term.remoteExcluded
+                ? t('ui.terminal.shareWithRemote')
+                : t('ui.terminal.hideFromRemote'),
+              icon: term.remoteExcluded ? <Smartphone size={14} /> : <SmartphoneNfc size={14} />,
+              onClick: () =>
+                actions.setTerminalRemoteExcluded(projectId, term.id, !term.remoteExcluded),
             },
           ]
         : []),

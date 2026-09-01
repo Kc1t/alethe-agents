@@ -9,7 +9,7 @@ import styles from './AgentCanvasPOC.module.css'
 type CodexWorkerCardProps = {
   worker: CodexWorker
   onOpen: (ptyId: string) => void
-  /** Mapa de refs compartilhado com o cálculo de arestas do canvas. */
+                                                                       
   cardRefs: MutableRefObject<Map<string, HTMLDivElement>>
 }
 

@@ -1,18 +1,18 @@
 import { Folder, GitBranch, Network, Palette, Terminal } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { useUiStore } from '../../stores/uiStore'
-import { useProjectsStore } from '../../stores/projectsStore'
-import { AGENT_SANDBOX_ENABLED } from '../../lib/featureFlags'
-import { GROUP_COLORS } from '../../lib/types'
-import { useT } from '../../lib/i18n'
 import { pickDirectory } from '../../lib/dialog'
-import { cloneGithubRepo } from '../../lib/tauri'
+import { AGENT_SANDBOX_ENABLED } from '../../lib/featureFlags'
+import { useT } from '../../lib/i18n'
+import { cloneGithubRepo, readProjectMarker } from '../../lib/tauri'
+import { GROUP_COLORS, type Project } from '../../lib/types'
+import { useProjectsStore } from '../../stores/projectsStore'
+import { useUiStore } from '../../stores/uiStore'
+import { Dropdown } from '../ui/Dropdown'
 import { ColorPalettePopover } from './ColorPalettePopover'
+import controls from './controls.module.css'
 import { ImageInput } from './ImageInput'
 import { Modal } from './Modal'
-import controls from './controls.module.css'
-import { Dropdown } from '../ui/Dropdown'
 
 export function NewProjectModal() {
   const t = useT()
@@ -25,8 +25,8 @@ export function NewProjectModal() {
   const createProject = useProjectsStore((s) => s.createProject)
   const setActiveProject = useProjectsStore((s) => s.setActiveProject)
   const openModal = useUiStore((s) => s.openModal_)
-  const pushToast = useUiStore((s) => s.pushToast)
   const setActiveView = useUiStore((s) => s.setActiveView)
+  const pushToast = useUiStore((s) => s.pushToast)
   const groups = useProjectsStore((s) => s.groups)
 
   const [name, setName] = useState('')
@@ -37,10 +37,8 @@ export function NewProjectModal() {
   const [mode, setMode] = useState<'standard' | 'agentSandbox'>('standard')
   const [groupId, setGroupId] = useState<string | null>(context?.groupId ?? null)
   const [isColorPopoverOpen, setIsColorPopoverOpen] = useState(false)
+  const [detectedConfig, setDetectedConfig] = useState<Project | null>(null)
 
-  // Herda a pasta já escolhida na tela "Nenhum projeto aberto" quando o
-  // usuário troca pro formulário completo em vez de perder a seleção e
-  // obrigar a escolher a pasta de novo.
   useEffect(() => {
     if (open && context?.defaultCwd) setDefaultCwd(context.defaultCwd)
   }, [open, context?.defaultCwd])
@@ -54,19 +52,42 @@ export function NewProjectModal() {
     setMode('standard')
     setGroupId(context?.groupId ?? null)
     setIsColorPopoverOpen(false)
+    setDetectedConfig(null)
+  }
+
+  const checkForDetectedConfig = async (directory: string) => {
+    setDetectedConfig(null)
+    try {
+      const raw = await readProjectMarker(directory)
+      if (!raw) return
+      const parsed = JSON.parse(raw) as Partial<Project>
+      if (parsed && typeof parsed.name === 'string' && Array.isArray(parsed.terminals)) {
+        setDetectedConfig(parsed as Project)
+      }
+    } catch {
+      /* marker missing/corrupted — falls back to the normal creation flow */
+    }
   }
 
   const browse = async () => {
     const directory = await pickDirectory({ defaultPath: defaultCwd || undefined })
-    if (directory) setDefaultCwd(directory)
+    if (!directory) return
+    setDefaultCwd(directory)
+    void checkForDetectedConfig(directory)
+  }
+
+  const restoreDetected = () => {
+    if (!detectedConfig) return
+    const project = useProjectsStore.getState().importProjectFromFile(detectedConfig, groupId)
+    setActiveProject(project.id)
+    closeModal()
+    reset()
   }
 
   const submit = async () => {
     const trimmed = name.trim()
     if (!trimmed) return
     if (mode === 'agentSandbox' && !defaultCwd.trim()) return
-    // Clone e Agent Sandbox são mutuamente exclusivos: o sandbox exige uma
-    // pasta que já exista no disco.
     const trimmedGithub = mode === 'agentSandbox' ? '' : githubUrl.trim()
     const project = createProject({
       name: trimmed,
@@ -74,7 +95,7 @@ export function NewProjectModal() {
       color,
       iconUrl: iconUrl.trim() || undefined,
       groupId,
-      // Clonar dita a pasta do projeto — ignora o path escolhido manualmente.
+      // Cloning dictates the project's folder — ignores the manually chosen path.
       defaultCwd: trimmedGithub ? undefined : defaultCwd.trim() || undefined,
       githubUrl: trimmedGithub || undefined,
       firstBootPending: Boolean(trimmedGithub),
@@ -82,36 +103,37 @@ export function NewProjectModal() {
     reset()
     setActiveProject(project.id)
 
-    if (mode === 'agentSandbox') {
-      setActiveView('agentSandbox')
-      closeModal()
-      return
-    }
-
     if (trimmedGithub) {
       closeModal()
       pushToast({
-        title: 'Clonando Repositório',
-        body: `Iniciando clone de ${trimmedGithub} e gerando briefing de contexto de IA...`,
+        title: t('crud.cloningRepoTitle'),
+        body: t('crud.cloningRepoBody', { url: trimmedGithub }),
         agent: 'claude',
       })
       try {
-        // A pasta escolhida (se houver) vira o pai do clone; string vazia deixa
-        // o backend resolver o padrao. O nome da pasta sai da URL do repo.
+        // The chosen folder (if any) becomes the clone's parent; an empty
+        // string lets the backend resolve the default. The folder name comes
+        // from the repo URL.
         await cloneGithubRepo(trimmedGithub, defaultCwd.trim())
         pushToast({
-          title: 'Repositório Clonado',
-          body: 'Clone concluído com sucesso. Contexto de IA injetado em AGENTS.md e CLAUDE.md.',
+          title: t('crud.repoClonedTitle'),
+          body: t('crud.repoClonedBody'),
           agent: 'claude',
         })
       } catch (err) {
-        console.error('Falha ao clonar repositório GitHub:', err)
+        console.error('[NewProjectModal] failed cloning GitHub repo:', err)
         pushToast({
-          title: 'Erro no Clone',
+          title: t('crud.cloneErrorTitle'),
           body: String(err),
           agent: 'claude',
         })
       }
+      return
+    }
+
+    if (mode === 'agentSandbox') {
+      setActiveView('agentSandbox')
+      closeModal()
       return
     }
 
@@ -137,7 +159,9 @@ export function NewProjectModal() {
             disabled={!name.trim() || (mode === 'agentSandbox' && !defaultCwd.trim())}
             onClick={() => void submit()}
           >
-            {mode === 'agentSandbox' ? t('crud.createAgentSandboxProject') : t('crud.create')}
+            {mode === 'agentSandbox'
+              ? t('crud.createAgentSandboxProject')
+              : t('crud.createProjectAndOpenTerminal')}
           </button>
         </>
       }
@@ -156,7 +180,11 @@ export function NewProjectModal() {
       {AGENT_SANDBOX_ENABLED ? (
         <div className={controls.field}>
           <label className={controls.label}>{t('crud.projectModeLabel')}</label>
-          <div className={controls.modeChoices} role="radiogroup" aria-label={t('crud.projectModeLabel')}>
+          <div
+            className={controls.modeChoices}
+            role="radiogroup"
+            aria-label={t('crud.projectModeLabel')}
+          >
             <button
               type="button"
               role="radio"
@@ -186,9 +214,7 @@ export function NewProjectModal() {
               <span className={controls.modeChoiceIndicator} aria-hidden="true" />
             </button>
           </div>
-          <span className={controls.hint}>
-            {t('crud.projectModeSelectionHint')}
-          </span>
+          <span className={controls.hint}>{t('crud.projectModeSelectionHint')}</span>
         </div>
       ) : null}
 
@@ -200,7 +226,10 @@ export function NewProjectModal() {
             value={groupId ?? ''}
             onChange={(value) => setGroupId(value || null)}
             ariaLabel={t('crud.groupLabel')}
-            options={[{ value: '', label: t('crud.noGroup') }, ...groups.map((g) => ({ value: g.id, label: g.name }))]}
+            options={[
+              { value: '', label: t('crud.noGroup') },
+              ...groups.map((g) => ({ value: g.id, label: g.name })),
+            ]}
           />
         </div>
       ) : null}
@@ -223,21 +252,47 @@ export function NewProjectModal() {
           </button>
         </div>
         <span className={controls.hint}>{t('crud.projectPathHint')}</span>
+        {detectedConfig ? (
+          <div
+            style={{
+              marginTop: 8,
+              padding: '8px 10px',
+              borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--accent)',
+              background: 'var(--accent-faint)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              fontSize: 11,
+            }}
+          >
+            <span>{t('crud.detectedConfigFound', { name: detectedConfig.name })}</span>
+            <button type="button" className={controls.btn} onClick={restoreDetected}>
+              {t('crud.detectedConfigRestore')}
+            </button>
+          </div>
+        ) : null}
       </div>
 
-      <div className={controls.field}>
-        <label className={controls.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <GitBranch size={12} />
-          <span>{t('crud.githubUrlLabel')}</span>
-        </label>
-        <input
-          className={controls.input}
-          value={githubUrl}
-          onChange={(e) => setGithubUrl(e.target.value)}
-          placeholder="https://github.com/usuario/repositorio"
-        />
-        <span className={controls.hint}>{t('crud.githubUrlHint')}</span>
-      </div>
+      {mode === 'agentSandbox' ? null : (
+        <div className={controls.field}>
+          <label
+            className={controls.label}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <GitBranch size={12} />
+            <span>{t('crud.githubUrlLabel')}</span>
+          </label>
+          <input
+            className={controls.input}
+            value={githubUrl}
+            onChange={(e) => setGithubUrl(e.target.value)}
+            placeholder="https://github.com/user/repository"
+          />
+          <span className={controls.hint}>{t('crud.githubUrlHint')}</span>
+        </div>
+      )}
 
       <div className={controls.field}>
         <label className={controls.label}>{t('crud.colorLabel')}</label>
@@ -259,8 +314,7 @@ export function NewProjectModal() {
             />
           ))}
 
-          {/* Cor customizada ativa (se não estiver nos presets do GROUP_COLORS e não for rainbow) */}
-          {color && !GROUP_COLORS.includes(color as any) && color !== 'rgb-rainbow' && (
+          {color && !GROUP_COLORS.some((preset) => preset === color) && (
             <button
               type="button"
               onClick={() => setIsColorPopoverOpen(true)}
@@ -278,7 +332,7 @@ export function NewProjectModal() {
             />
           )}
 
-          {/* Botão de Paleta Completa / Mais Cores */}
+          {/* Full Palette / More Colors button */}
           <button
             type="button"
             onClick={() => setIsColorPopoverOpen(true)}
@@ -298,21 +352,6 @@ export function NewProjectModal() {
           >
             <Palette size={13} />
           </button>
-
-          {/* Opção Arco-Íris Infinito (Rainbow RGB) */}
-          <button
-            type="button"
-            onClick={() => setColor('rgb-rainbow')}
-            title="Arco-Íris Infinito (RGB)"
-            className="swatch-rgb-rainbow"
-            style={{
-              width: 24,
-              height: 24,
-              borderRadius: '50%',
-              border: color === 'rgb-rainbow' ? '2px solid var(--fg)' : '2px solid transparent',
-              cursor: 'pointer',
-            }}
-          />
         </div>
       </div>
 

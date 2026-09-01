@@ -66,6 +66,40 @@
   color: var(--fg);
 }
 
+:global([data-visual-style='clean']) .button {
+  gap: 8px;
+  height: 40px;
+  padding: 0 10px;
+}
+
+:global([data-visual-style='clean']) .avatar {
+  width: 24px;
+  height: 24px;
+  font-size: 9px;
+}
+
+:global([data-visual-style='clean']) .identity {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+
+:global([data-visual-style='clean']) .name {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+}
+
+:global([data-visual-style='clean']) .email {
+  max-width: none;
+  flex: none;
+  font-size: 10px;
+}
+
+:global([data-visual-style='clean']) .gear {
+  display: block;
+}
+
 .popover {
   position: absolute;
   bottom: calc(100% + 6px);
@@ -162,4 +196,40 @@
 }
 .dangerItem:hover {
   background: var(--status-offline-soft);
+}
+
+:global([data-visual-style='clean']) .popover {
+  bottom: calc(100% + 4px);
+  left: 6px;
+  right: 6px;
+  border-radius: var(--clean-popover-radius);
+  box-shadow: var(--clean-shadow);
+  transform-origin: bottom center;
+  animation: var(--clean-popover-animation);
+}
+
+:global([data-visual-style='clean']) .popHeader {
+  gap: 8px;
+  padding: 7px 8px 5px;
+}
+
+:global([data-visual-style='clean']) .popAvatar {
+  width: 28px;
+  height: 28px;
+  font-size: 11px;
+}
+
+:global([data-visual-style='clean']) .popName {
+  font-size: 12px;
+}
+
+:global([data-visual-style='clean']) .popEmail {
+  font-size: 10px;
+}
+
+:global([data-visual-style='clean']) .item {
+  min-height: var(--clean-row-height);
+  padding: 0 8px;
+  border-radius: var(--clean-row-radius);
+  font-size: 12px;
 }

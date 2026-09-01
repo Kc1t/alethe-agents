@@ -11,12 +11,13 @@ import { useProjectsStore } from '../../../stores/projectsStore'
 import controls from '../controls.module.css'
 import styles from '../PreferencesModal.module.css'
 import { SettingsSection } from './primitives'
+import { VoiceDictationSection } from './VoiceDictationSection'
 
-/**
- * Instalação do comando `alethe` no PATH (ver `src-tauri/src/cli_shim.rs`).
- * Espelha o "Install 'code' command in PATH" do VS Code: instalar é sempre
- * ação explícita do usuário, nunca automática no boot.
- */
+   
+                                                                            
+                                                                           
+                                                       
+   
 function TerminalCommandSection() {
   const t = useT()
   const [status, setStatus] = useState<CliShimStatus | null>(null)
@@ -165,29 +166,7 @@ export function IntegrationsPage() {
         </div>
       </SettingsSection>
 
-      <SettingsSection
-        id="dictation"
-        title={t('prefs.dictation')}
-        description={t('prefs.dictationDesc')}
-      >
-        <div className={styles.segmented}>
-          <button
-            type="button"
-            className={preferences.dictationEnabled ? styles.segmentActive : undefined}
-            onClick={() => setPreferences({ dictationEnabled: true })}
-          >
-            {t('prefs.dictationOn')}
-          </button>
-          <button
-            type="button"
-            className={!preferences.dictationEnabled ? styles.segmentActive : undefined}
-            onClick={() => setPreferences({ dictationEnabled: false })}
-          >
-            {t('prefs.dictationOff')}
-          </button>
-        </div>
-        <p>{t('prefs.dictationHandyHint')}</p>
-      </SettingsSection>
+      <VoiceDictationSection />
     </>
   )
 }

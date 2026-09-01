@@ -258,6 +258,14 @@
   cursor: default;
 }
 
+:global([data-visual-style='clean']) .usageDropdown {
+  border-color: var(--border);
+  border-radius: var(--clean-popover-radius);
+  box-shadow: var(--clean-shadow);
+  transform-origin: top right;
+  animation: var(--clean-popover-animation);
+}
+
 .usageTabs {
   display: flex;
   align-items: center;
@@ -721,7 +729,7 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-  /* Pan/zoom por transform → sem scroll; o overflow é recortado (canvas). */
+                                                                             
   overflow: hidden;
   cursor: grab;
   background: var(--bg);
@@ -788,9 +796,9 @@
   color: var(--fg-faint);
 }
 
-/* Stage = a árvore inteira (lead + ramos + tasks + arestas). Recebe o zoom e é
-   o sistema de coordenadas das arestas, então o svg escala junto e as linhas
-   ficam coladas nos nós em qualquer zoom. */
+                                                                               
+                                                                             
+                                             
 .stage {
   position: relative;
   display: flex;
@@ -902,7 +910,7 @@
   padding: 0 24px 40px;
 }
 
-/* Ramo da árvore: uma área por tipo de subagent (cards empilham pra baixo). */
+                                                                               
 .agentGroup {
   display: flex;
   flex-direction: column;
@@ -1149,7 +1157,7 @@
   color: var(--text-quaternary);
 }
 
-/* Rodapé de custo do card (model · tokens · $). */
+                                                   
 .cardCost {
   display: flex;
   align-items: center;
@@ -1175,7 +1183,7 @@
   font: 700 11px var(--font-mono);
 }
 
-/* Pill de custo total da sessão no top bar (lead + nós). */
+                                                            
 .costPill {
   display: inline-flex;
   align-items: center;
@@ -1188,7 +1196,7 @@
   border: 1px solid var(--border);
 }
 
-/* Faixa de gasto → cor (mesma semântica do TokenHud). */
+                                                         
 .costLow {
   color: var(--accent);
 }
@@ -1214,7 +1222,7 @@
   border: 1px solid color-mix(in srgb, var(--status-working) 40%, transparent);
 }
 
-/* Controle de teto de orçamento (input numérico inline). */
+                                                            
 .budgetControl {
   display: inline-flex;
   align-items: center;
@@ -1240,7 +1248,7 @@
   color: var(--fg-faint);
 }
 
-/* Banner crítico de orçamento (estourou o teto) — vermelho. */
+                                                               
 .budgetBannerCrit {
   border-color: var(--status-offline);
   background: color-mix(in srgb, var(--status-offline) 12%, transparent);

@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 
-import { GROUP_COLORS } from '../../lib/types'
 import { useT } from '../../lib/i18n'
+import { GROUP_COLORS } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { ImageInput } from './ImageInput'
-import { Modal } from './Modal'
 import controls from './controls.module.css'
+import { GroupFields } from './GroupFields'
+import { Modal } from './Modal'
 
 export function EditGroupModal() {
   const t = useT()
@@ -44,8 +44,6 @@ export function EditGroupModal() {
     closeModal()
   }
 
-  const previewIcon = iconUrl.trim()
-
   return (
     <Modal
       open={open}
@@ -67,85 +65,22 @@ export function EditGroupModal() {
         </>
       }
     >
-      <div className={controls.field}>
-        <label className={controls.label}>{t('crud.nameLabel')}</label>
-        <input
-          className={controls.input}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-        />
-      </div>
-
-      <div className={controls.field}>
-        <label className={controls.label}>{t('crud.colorLabel')}</label>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {GROUP_COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setColor(c)}
-              aria-label={t('crud.colorSwatch', { color: c })}
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: '50%',
-                background: c,
-                border: color === c ? '2px solid var(--fg)' : '2px solid transparent',
-                cursor: 'pointer',
-              }}
-            />
-          ))}
-        </div>
-      </div>
-
-      <ImageInput
-        label={t('crud.iconLabel')}
-        value={iconUrl}
-        onChange={setIconUrl}
-        onEnter={submit}
-        hint={t('crud.groupIconHint')}
+      <GroupFields
+        name={name}
+        color={color}
+        iconUrl={iconUrl}
+        onNameChange={setName}
+        onColorChange={setColor}
+        onIconUrlChange={setIconUrl}
+        onSubmit={submit}
+        nameLabel={t('crud.nameLabel')}
+        colorLabel={t('crud.colorLabel')}
+        colorSwatchLabel={(candidate) => t('crud.colorSwatch', { color: candidate })}
+        iconLabel={t('crud.groupLogoLabel')}
+        iconHint={t('crud.groupIconHint')}
+        previewLabel={t('crud.groupColorPreview')}
+        swatchSize={28}
       />
-
-      <div
-        style={{
-          marginTop: 6,
-          padding: '10px 12px',
-          borderRadius: 'var(--radius-md)',
-          border: `2px solid color-mix(in srgb, ${color} 50%, transparent)`,
-          fontSize: 11,
-          color: 'var(--fg-muted)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-        }}
-      >
-        {previewIcon ? (
-          <img
-            src={previewIcon}
-            alt=""
-            style={{
-              width: 14,
-              height: 14,
-              borderRadius: 3,
-              objectFit: 'cover',
-              flexShrink: 0,
-            }}
-          />
-        ) : (
-          <span
-            style={{
-              display: 'inline-block',
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              background: color,
-              flexShrink: 0,
-            }}
-          />
-        )}
-        {t('crud.groupColorPreview')}
-      </div>
     </Modal>
   )
 }

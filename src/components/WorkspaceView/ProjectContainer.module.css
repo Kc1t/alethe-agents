@@ -1,5 +1,5 @@
-/* Container do projeto na workspace — borda+tag, espelha o grupo da sidebar.
-   Cor vem da var --container-accent (Group.color ou Project.color). */
+                                                                             
+                                                                       
 
 .box {
   position: relative;
@@ -31,8 +31,8 @@
   font-weight: 600;
   color: var(--fg);
   z-index: 3;
-  /* Nome tem prioridade — ocupa todo o espaço disponível, actions só
-     aparecem ao hover do box e empurram o nome (com ellipsis se sobrar). */
+                                                                     
+                                                                            
   max-width: 100%;
   width: 100%;
   min-width: 0;
@@ -71,8 +71,8 @@
   flex-shrink: 0;
 }
 
-/* Actions só aparecem ao hover do container — quando inativo, dão lugar
-   pro nome do projeto. Width animada pra não dar "salto" ao mostrar. */
+                                                                        
+                                                                        
 .tagActions {
   display: inline-flex;
   align-items: center;
@@ -136,8 +136,8 @@
   outline-offset: 2px;
 }
 
-/* Resize handle do canto inferior-direito — só aparece quando há grid layout
-   ativo (workspace ou group). Permite esticar/encolher colSpan/rowSpan vivo. */
+                                                                             
+                                                                                
 .gridResize {
   position: absolute;
   right: 2px;
@@ -224,4 +224,19 @@
   border-radius: 9px;
   padding: 0 6px;
   line-height: 14px;
+}
+
+:global([data-visual-style='clean']) :is(.box, .collapsed) {
+  border-top-color: var(--border);
+  border-radius: var(--clean-surface-radius);
+}
+
+:global([data-visual-style='clean']) .tag {
+  height: var(--clean-row-height);
+  flex-basis: var(--clean-row-height);
+}
+
+:global([data-visual-style='clean']) .boxDropTarget {
+  outline-width: 1px;
+  outline-offset: 0;
 }

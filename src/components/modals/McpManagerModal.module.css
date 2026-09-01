@@ -1,0 +1,323 @@
+.layout[hidden] {
+  display: none;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  gap: 14px;
+  min-height: 380px;
+  max-height: 60vh;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  border-right: 1px solid var(--border-subtle);
+  padding-right: 14px;
+}
+
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search svg {
+  position: absolute;
+  left: 9px;
+  color: var(--fg-faint);
+  pointer-events: none;
+}
+
+.search input {
+  width: 100%;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 6px 10px 6px 29px;
+  color: var(--fg);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.search input:focus {
+  outline: 0;
+  border-color: var(--accent);
+}
+
+.addButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.addButton:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.addButton:disabled {
+  color: var(--fg-faint);
+  border-color: var(--border);
+  cursor: default;
+}
+
+.serverList {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.serverButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.serverButton:hover {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.serverButtonActive {
+  background: var(--surface-card-selected);
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+
+.serverButton span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count {
+  font-size: 11px;
+  color: var(--fg-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.detail {
+  min-width: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.detailHead {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.detailTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.detailName {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detailSummary {
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--fg-faint);
+  overflow-wrap: anywhere;
+}
+
+.warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  font-size: 12px;
+  color: var(--status-waiting);
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  margin-bottom: 7px;
+}
+
+
+.agentCards {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.agentCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  min-width: 0;
+}
+
+.agentCardAbsent {
+  background: none;
+  border-style: dashed;
+}
+
+.agentName {
+  flex: none;
+  min-width: 96px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.badge {
+  flex: none;
+  font-size: 10px;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+
+.badgeOk {
+  color: var(--status-working);
+}
+
+.badgeWarn {
+  color: var(--status-waiting);
+}
+
+.agentPath {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  color: var(--fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.agentActions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+
+.envTable {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.envRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 11px;
+  border-bottom: 1px solid var(--border-subtle);
+  min-width: 0;
+}
+
+.envRow:last-child {
+  border-bottom: 0;
+}
+
+.envKey {
+  flex: none;
+  min-width: 168px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.envValue {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  color: var(--fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.envPassthrough {
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.muted {
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+
+.placeholder {
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+}
+
+.footerNote {
+  flex: 1;
+  font-size: 11.5px;
+  color: var(--fg-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

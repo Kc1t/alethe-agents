@@ -1,13 +1,6 @@
-//! Bloco 2.3 do plano da Central de Merges — probe de saúde ao vivo.
 //!
-//! Sobe o comando de start do backend do projeto do usuário num ambiente
-//! efêmero (mesmo `env_path` de `merge_prepare`), numa porta isolada obtida
-//! via bind de teste (nunca colide com o dev server real do usuário), e faz
-//! poll de um endpoint de saúde até responder ou estourar o timeout. A árvore
-//! de processo é morta INCONDICIONALMENTE ao final — sucesso, falha ou
-//! timeout — nunca deixa um servidor de teste vivo em background. Camada de
-//! AVISO (Camada 4 do Escudo): o resultado nunca bloqueia o merge sozinho,
-//! só informa quem decide (Camada 5 — o usuário).
+
+//! timeout — never leaves a test server alive in the background. Layer of
 
 use serde::Serialize;
 use std::net::TcpListener;
@@ -27,6 +20,135 @@ pub struct HealthProbeResult {
     pub status_code: Option<u16>,
     pub elapsed_ms: u64,
     pub output_tail: String,
+    /// `None` = the tested project is not an Alethe core (it has no PTY API,
+    /// nothing to verify here — the majority of user projects). Only when
+    /// `/api/health` confirms `service: "alethe-core"` do we actually try to
+    /// open a terminal against the freshly-started instance — `Some` carries
+    /// whether that terminal actually came up.
+    pub terminal_verified: Option<bool>,
+}
+
+/// Only runs when `/api/health` confirms that what came up is an Alethe
+/// core — opens a real PTY against the freshly-provisioned instance and
+/// confirms an actual input/output round trip (writes a command with a
+/// unique marker, reads the scrollback back until the marker appears).
+///
+/// Spawning a process and finding it "existing" an instant later does NOT
+/// prove the terminal works — the shell could have hung on the first
+/// prompt, crashed silently, or never accepted any input at all (it was
+/// exactly this kind of shallow signal, "responded quickly = passed", that
+/// motivated this whole Merges Hub revision). Only a `write` followed by a
+/// `read` confirming the expected content comes back is actual proof.
+/// The PTY spawned here is a child of the process that `health_probe`
+/// already kills unconditionally at the end — it needs no cleanup of its own.
+async fn verify_alethe_terminal(client: &reqwest::Client, base_url: &str) -> Option<bool> {
+    let health = client
+        .get(format!("{base_url}/api/health"))
+        .send()
+        .await
+        .ok()?;
+    let body: serde_json::Value = health.json().await.ok()?;
+    if body.get("service").and_then(|v| v.as_str()) != Some("alethe-core") {
+        return None;
+    }
+
+    let session = client
+        .get(format!("{base_url}/api/session"))
+        .send()
+        .await
+        .ok()?;
+    let session_body: serde_json::Value = session.json().await.ok()?;
+    let token = session_body
+        .get("token")
+        .and_then(|v| v.as_str())?
+        .to_string();
+
+    let spawn_body = serde_json::json!({
+        "cols": 80,
+        "rows": 24,
+        "command": if cfg!(windows) { "cmd" } else { "sh" },
+        "profileId": "default",
+    });
+    let spawn_res = client
+        .post(format!("{base_url}/api/pty/spawn"))
+        .bearer_auth(&token)
+        .json(&spawn_body)
+        .send()
+        .await
+        .ok()?;
+    if !spawn_res.status().is_success() {
+        return Some(false);
+    }
+    let spawn_json: serde_json::Value = spawn_res.json().await.ok()?;
+    let pty_id = spawn_json.get("id").and_then(|v| v.as_str())?.to_string();
+
+    // Give the shell a moment to finish initializing (print the prompt)
+    // before sending input — without this, the command could arrive too
+    // early and get lost.
+    tokio::time::sleep(Duration::from_millis(800)).await;
+
+    let marker = format!("ALETHE_HEALTH_PROBE_{}", nanoid::nanoid!(8));
+    let echo_line = if cfg!(windows) {
+        format!("echo {marker}\r\n")
+    } else {
+        format!("echo {marker}\n")
+    };
+    let write_res = client
+        .post(format!("{base_url}/api/pty/write"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "id": pty_id, "data": echo_line, "profileId": "default" }))
+        .send()
+        .await
+        .ok()?;
+    if !write_res.status().is_success() {
+        return Some(false);
+    }
+
+    // Poll the scrollback instead of checking a single snapshot — a cold
+    // shell (first boot of a heavy interpreter) can take more than 1s to
+    // process and echo the command back.
+    let round_trip_deadline = Instant::now() + Duration::from_secs(6);
+    let mut echoed_back = false;
+    while Instant::now() < round_trip_deadline {
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let Ok(snapshot_res) = client
+            .get(format!(
+                "{base_url}/api/pty/snapshot/{pty_id}?maxBytes=65536&profileId=default"
+            ))
+            .bearer_auth(&token)
+            .send()
+            .await
+        else {
+            continue;
+        };
+        let Ok(snapshot) = snapshot_res.json::<serde_json::Value>().await else {
+            continue;
+        };
+        let content = snapshot
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if content.contains(&marker) {
+            echoed_back = true;
+            break;
+        }
+    }
+    if !echoed_back {
+        return Some(false);
+    }
+
+    // Confirm the terminal is still standing after the round trip — not
+    // just that it existed for an instant right after spawning.
+    let exists_res = client
+        .get(format!(
+            "{base_url}/api/pty/exists/{pty_id}?profileId=default"
+        ))
+        .bearer_auth(&token)
+        .send()
+        .await
+        .ok()?;
+    let still_alive = exists_res.json::<bool>().await.unwrap_or(false);
+    Some(still_alive)
 }
 
 const MAX_OUTPUT_TAIL: usize = 4000;
@@ -104,7 +226,11 @@ pub async fn health_probe(
     }
 
     let url = {
-        let normalized = if path.starts_with('/') { path.clone() } else { format!("/{path}") };
+        let normalized = if path.starts_with('/') {
+            path.clone()
+        } else {
+            format!("/{path}")
+        };
         format!("http://127.0.0.1:{port}{normalized}")
     };
     let client = reqwest::Client::builder()
@@ -124,15 +250,21 @@ pub async fn health_probe(
             }
             Err(_) => {
                 if let Ok(Some(_)) = child.try_wait() {
-                    break; // processo já morreu — parar de tentar, resto do tempo seria desperdiçado
+                    break;
                 }
                 tokio::time::sleep(Duration::from_millis(400)).await;
             }
         }
     }
 
-    // Kill incondicional da árvore inteira — nunca deixa o servidor de teste
-    // vivo em background, não importa como o loop acima terminou.
+    let terminal_verified = if responded {
+        verify_alethe_terminal(&client, &format!("http://127.0.0.1:{port}")).await
+    } else {
+        None
+    };
+
+    // Unconditional kill of the entire tree — never leaves the test server
+    // alive in the background, no matter how the loop above ended.
     if let Some(pid) = pid {
         kill_process_tree(pid);
     }
@@ -151,6 +283,7 @@ pub async fn health_probe(
         status_code,
         elapsed_ms,
         output_tail,
+        terminal_verified,
     })
 }
 
@@ -174,8 +307,7 @@ mod tests {
     async fn kills_process_and_reports_no_response_on_timeout() {
         let dir = std::env::temp_dir().join(format!("alethe-healthprobe-{}", nanoid::nanoid!(6)));
         std::fs::create_dir_all(&dir).unwrap();
-        // Comando que nunca abre porta nenhuma — probe deve estourar o timeout
-        // curto e voltar com responded:false, sem travar o teste.
+
         let sleep_cmd = if cfg!(windows) {
             "ping -n 30 127.0.0.1 >NUL"
         } else {
@@ -191,6 +323,10 @@ mod tests {
         .unwrap();
         assert!(!result.responded);
         assert!(result.status_code.is_none());
+        // Never tries to open a terminal against a process that didn't even
+        // respond — `terminal_verified` is only `Some` after a `responded: true`
+        // confirmed as alethe-core.
+        assert!(result.terminal_verified.is_none());
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
