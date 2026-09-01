@@ -85,6 +85,9 @@ pub enum P2pError {
     /// behavior, so spending the full punch budget only delays the (already known) fallback to
     /// relay.
     BothSidesSymmetric,
+    /// A punch to this peer failed recently and its backoff has not elapsed. Distinct from `Punch`
+    /// so the caller can tell "we tried and it failed" from "we deliberately did not try yet".
+    PunchBackoff,
 }
 
 impl std::fmt::Display for P2pError {
@@ -98,6 +101,7 @@ impl std::fmt::Display for P2pError {
             P2pError::InvalidRecipientKey => "p2p_invalid_recipient_key",
             P2pError::PayloadTooLarge => "p2p_payload_too_large",
             P2pError::BothSidesSymmetric => "p2p_both_sides_symmetric_nat",
+            P2pError::PunchBackoff => "p2p_punch_backoff",
         };
         write!(f, "{code}")
     }
@@ -934,6 +938,28 @@ fn p2p_connect_blocking(
         );
         return Err(P2pError::BothSidesSymmetric.to_string());
     }
+    // A session for this peer is already live — punching again would spend the full budget only to
+    // replace a working path with an identical one. Observed live: a successful connect was
+    // immediately followed by repeat attempts for the same peer, each burning the 8s punch timeout.
+    if let Some(remote_device_id) = registry.live_remote_device_id(&remote_account_route) {
+        eprintln!(
+            "[p2p] connect: peer={remote_account_route} already has a live session — reusing it"
+        );
+        return Ok(P2pConnectResult { connected: true, remote_device_id });
+    }
+
+    // Punching is expensive and fails slowly (rounds x 8s), so a peer that just failed is not
+    // retried immediately. Without this, a peer that is simply offline is retried back to back
+    // forever, which is what the logs showed: the same two candidates failing every few seconds
+    // with nothing changing in between. Backoff is per peer and clears on the next success.
+    if let Some(retry_in) = registry.punch_backoff_remaining(&remote_account_route) {
+        eprintln!(
+            "[p2p] connect: peer={remote_account_route} punched too recently, backing off for {}s",
+            retry_in.as_secs()
+        );
+        return Err(P2pError::PunchBackoff.to_string());
+    }
+
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     let document = crate::sync_security::load_at(&data_root)?;
     let local_device_id = document.local_device_id.clone().ok_or_else(|| "security_device_missing".to_string())?;
@@ -986,6 +1012,7 @@ fn p2p_connect_blocking(
     );
     let mut stream = punch_and_wrap_candidates(local_port, &candidates).map_err(|error| {
         eprintln!("[p2p] connect: punch failed for peer={remote_account_route}: {error}");
+        registry.note_punch_failed(&remote_account_route);
         error.to_string()
     })?;
 
@@ -1001,7 +1028,8 @@ fn p2p_connect_blocking(
     })?;
 
     eprintln!("[p2p] connect: SUCCESS peer={remote_account_route} remote_device_id={}", session.remote_device_id);
-    registry.register(remote_account_route, stream);
+    registry.note_connect_succeeded(&remote_account_route);
+    registry.register(remote_account_route, stream, Some(session.remote_device_id.clone()));
 
     Ok(P2pConnectResult { connected: true, remote_device_id: Some(session.remote_device_id) })
 }
@@ -1025,17 +1053,37 @@ struct P2pSessionHandle {
     outgoing_tx: std_mpsc::Sender<Vec<u8>>,
     incoming: Arc<Mutex<VecDeque<Vec<u8>>>>,
     closed: Arc<std::sync::atomic::AtomicBool>,
+    /// Who the handshake proved is on the other end — kept so a repeat connect can be answered
+    /// from the live session instead of re-punching to learn it again.
+    remote_device_id: Option<String>,
 }
+
+/// Backoff schedule after a failed punch, per peer. Starts short enough that a peer that was
+/// briefly unreachable reconnects quickly, and grows so a peer that is simply offline stops being
+/// retried every few seconds forever.
+const PUNCH_BACKOFF_STEPS: [Duration; 4] = [
+    Duration::from_secs(15),
+    Duration::from_secs(45),
+    Duration::from_secs(120),
+    Duration::from_secs(300),
+];
 
 #[derive(Default)]
 pub struct P2pSessionRegistry {
     sessions: Mutex<HashMap<String, P2pSessionHandle>>,
+    /// Per peer: when the last punch failed, and how many have failed in a row.
+    punch_failures: Mutex<HashMap<String, (Instant, usize)>>,
 }
 
 impl P2pSessionRegistry {
     /// Replaces any prior session for this `remote_account_route` (a fresh successful connect
     /// always wins) and starts its background reader/writer thread.
-    fn register(&self, remote_account_route: String, mut stream: ReliableUdpStream) {
+    fn register(
+        &self,
+        remote_account_route: String,
+        mut stream: ReliableUdpStream,
+        remote_device_id: Option<String>,
+    ) {
         let (outgoing_tx, outgoing_rx) = std_mpsc::channel::<Vec<u8>>();
         let incoming = Arc::new(Mutex::new(VecDeque::new()));
         let closed = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -1093,7 +1141,7 @@ impl P2pSessionRegistry {
             }
         });
 
-        let handle = P2pSessionHandle { outgoing_tx, incoming, closed };
+        let handle = P2pSessionHandle { outgoing_tx, incoming, closed, remote_device_id };
         self.sessions.lock().unwrap().insert(remote_account_route, handle);
     }
 
@@ -1117,6 +1165,42 @@ impl P2pSessionRegistry {
         match sessions.get(remote_account_route) {
             Some(handle) => handle.incoming.lock().unwrap().drain(..).collect(),
             None => Vec::new(),
+        }
+    }
+
+    /// How long is left before this peer may be punched again, or `None` when it may be tried now.
+    fn punch_backoff_remaining(&self, remote_account_route: &str) -> Option<Duration> {
+        let failures = self.punch_failures.lock().unwrap();
+        let (failed_at, consecutive) = failures.get(remote_account_route)?;
+        let step = PUNCH_BACKOFF_STEPS
+            [(consecutive.saturating_sub(1)).min(PUNCH_BACKOFF_STEPS.len() - 1)];
+        step.checked_sub(failed_at.elapsed())
+    }
+
+    fn note_punch_failed(&self, remote_account_route: &str) {
+        let mut failures = self.punch_failures.lock().unwrap();
+        let entry = failures
+            .entry(remote_account_route.to_string())
+            .or_insert((Instant::now(), 0));
+        entry.0 = Instant::now();
+        entry.1 += 1;
+    }
+
+    /// Clears the backoff — reachability is a property of the moment, so one success means the next
+    /// failure starts from the shortest delay again rather than inheriting an old streak.
+    fn note_connect_succeeded(&self, remote_account_route: &str) {
+        self.punch_failures.lock().unwrap().remove(remote_account_route);
+    }
+
+    /// The device id of a still-open session for this peer, or `None` when there is no live
+    /// session. Lets a caller skip work that only exists to establish one.
+    fn live_remote_device_id(&self, remote_account_route: &str) -> Option<Option<String>> {
+        let sessions = self.sessions.lock().unwrap();
+        match sessions.get(remote_account_route) {
+            Some(handle) if !handle.closed.load(std::sync::atomic::Ordering::Relaxed) => {
+                Some(handle.remote_device_id.clone())
+            }
+            _ => None,
         }
     }
 
@@ -1248,12 +1332,42 @@ mod tests {
     }
 
     #[test]
+    fn punch_backoff_holds_off_a_failing_peer_and_clears_on_success() {
+        let registry = P2pSessionRegistry::default();
+
+        // Nothing has failed yet, so a first attempt is allowed straight away.
+        assert!(registry.punch_backoff_remaining("route-b").is_none());
+
+        // After a failure the peer is held off — this is what stops an offline peer from being
+        // retried back to back forever, each attempt costing the full punch timeout.
+        registry.note_punch_failed("route-b");
+        let first = registry
+            .punch_backoff_remaining("route-b")
+            .expect("a peer that just failed should be held off");
+        assert!(first <= PUNCH_BACKOFF_STEPS[0]);
+
+        // Consecutive failures back off further rather than retrying at the same cadence.
+        registry.note_punch_failed("route-b");
+        let second = registry
+            .punch_backoff_remaining("route-b")
+            .expect("still held off");
+        assert!(second > PUNCH_BACKOFF_STEPS[0], "{second:?}");
+
+        // A different peer is unaffected: backoff is per peer, not global.
+        assert!(registry.punch_backoff_remaining("route-c").is_none());
+
+        // Reachability is a property of the moment, so success clears the streak entirely.
+        registry.note_connect_succeeded("route-b");
+        assert!(registry.punch_backoff_remaining("route-b").is_none());
+    }
+
+    #[test]
     fn registered_session_delivers_frames_sent_via_send_to_the_other_sides_drain() {
         let (stream_a, stream_b) = loopback_pair();
         let registry_a = P2pSessionRegistry::default();
         let registry_b = P2pSessionRegistry::default();
-        registry_a.register("route-b".to_string(), stream_a);
-        registry_b.register("route-a".to_string(), stream_b);
+        registry_a.register("route-b".to_string(), stream_a, None);
+        registry_b.register("route-a".to_string(), stream_b, None);
 
         assert!(matches!(registry_a.state("route-b"), P2pSessionState::Connected));
 
