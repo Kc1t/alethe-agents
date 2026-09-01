@@ -41,9 +41,15 @@ export function ProjectInvitesPanel() {
           if (event.eventType !== 'delivery' || !event.ciphertext) continue
 
           if (event.envelopeKind === 'project_invite') {
-            const invite = await openProjectInvite(event.ciphertext).catch(() => null)
-            // `null` means it wasn't addressed to this device, or came from someone who isn't a
-            // contact — either way, nothing to show.
+            // A thrown error and a `null` result mean completely different things, so they are
+            // not collapsed into one: `null` is the ordinary "not addressed to this device, or not
+            // from a contact" case, while a throw means the call itself failed and the invite is
+            // being dropped for a reason worth seeing. Swallowing both made a real delivery
+            // failure indistinguishable from silence during live testing.
+            const invite = await openProjectInvite(event.ciphertext).catch((cause) => {
+              console.error('[project-invite] could not open an incoming invite', cause)
+              return null
+            })
             if (invite) {
               setInvites((current) =>
                 current.some((entry) => entry.inviteId === invite.inviteId)
@@ -55,7 +61,10 @@ export function ProjectInvitesPanel() {
           }
 
           if (event.envelopeKind === 'project_invite_response') {
-            const answer = await openProjectInviteResponse(event.ciphertext).catch(() => null)
+            const answer = await openProjectInviteResponse(event.ciphertext).catch((cause) => {
+              console.error('[project-invite] could not open an invite answer', cause)
+              return null
+            })
             if (!answer) continue
             if (!answer.accepted || !answer.accountId || !answer.deviceId) {
               setNotice(t('chat.projectInvite.declined'))
@@ -102,7 +111,10 @@ export function ProjectInvitesPanel() {
             // would reintroduce exactly the bug this listener exists to fix. A confirm carrying a
             // grant is always ours to materialize. The bearer token inside is single-use, so the
             // pairing flow's listener opening the same envelope cannot double-issue anything.
-            const opened = await syncOpenChatContactConfirm(event.ciphertext).catch(() => null)
+            const opened = await syncOpenChatContactConfirm(event.ciphertext).catch((cause) => {
+              console.error('[project-invite] could not open a grant envelope', cause)
+              return null
+            })
             if (opened?.grant) {
               const project = projectNameFor(opened.grant.projectId)
               setNotice(

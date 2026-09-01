@@ -2421,8 +2421,8 @@ pub(crate) fn prepare_collaborator_suggestion_at(
 /// The same two steps the pairing flow performs when a project is attached to an approval — kept
 /// here, beside `resolve_pending_chat_contact_request_at`, so both paths issue grants through one
 /// implementation rather than two that can drift.
-pub fn grant_project_to_account(
-    app: &tauri::AppHandle,
+pub fn grant_project_to_account_at(
+    data_root: &Path,
     project_id: &str,
     recipient_account_id: &str,
     recipient_device_id: &str,
@@ -2431,10 +2431,9 @@ pub fn grant_project_to_account(
     path_scopes: Vec<PathScope>,
     expires_at_ms: u64,
 ) -> Result<String, String> {
-    let data_root = crate::profiles::resolve_tauri_data_root(app)?;
     let now_ms = crate::provider_common::now_ms();
-    let local_device_id = local_device_id_at(&data_root)?;
-    let document = load_at(&data_root)?;
+    let local_device_id = local_device_id_at(data_root)?;
+    let document = load_at(data_root)?;
     let owner_account_id = document
         .account
         .as_ref()
@@ -2449,7 +2448,7 @@ pub fn grant_project_to_account(
         .unwrap_or_default();
 
     let issued = issue_invitation(
-        &data_root,
+        data_root,
         &local_device_id,
         project_id,
         recipient_account_id,
@@ -2460,7 +2459,7 @@ pub fn grant_project_to_account(
         expires_at_ms,
     )?;
     redeem_invitation(
-        &data_root,
+        data_root,
         &issued.invitation.invitation_id,
         &issued.bearer_token,
         recipient_account_id,
@@ -2487,16 +2486,14 @@ const SENT_PROJECT_INVITE_TTL_MS: u64 = 24 * 60 * 60 * 1000;
 
 /// Records an invite so a later answer can be matched back to its project, dropping any that have
 /// outlived the mailbox entry they refer to.
-#[tauri::command]
-pub fn sync_remember_sent_project_invite(
-    app: tauri::AppHandle,
+pub fn remember_sent_project_invite_at(
+    data_root: &Path,
     invite_id: String,
     project_id: String,
     recipient_account_route: String,
 ) -> Result<(), String> {
-    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     let now_ms = crate::provider_common::now_ms();
-    let mut document = load_at(&data_root)?;
+    let mut document = load_at(data_root)?;
     document
         .sent_project_invites
         .retain(|invite| now_ms.saturating_sub(invite.sent_at_ms) < SENT_PROJECT_INVITE_TTL_MS);
@@ -2506,19 +2503,28 @@ pub fn sync_remember_sent_project_invite(
         recipient_account_route,
         sent_at_ms: now_ms,
     });
-    save_at(&data_root, &document)
+    save_at(data_root, &document)
+}
+
+#[tauri::command]
+pub fn sync_remember_sent_project_invite(
+    app: tauri::AppHandle,
+    invite_id: String,
+    project_id: String,
+    recipient_account_route: String,
+) -> Result<(), String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    remember_sent_project_invite_at(&data_root, invite_id, project_id, recipient_account_route)
 }
 
 /// Consumes the invite matching `invite_id`, or `None` when there is none — already answered,
 /// expired, or never sent from this device. Removing it on read is what stops one answer from
 /// issuing two grants.
-#[tauri::command]
-pub fn sync_take_sent_project_invite(
-    app: tauri::AppHandle,
-    invite_id: String,
+pub fn take_sent_project_invite_at(
+    data_root: &Path,
+    invite_id: &str,
 ) -> Result<Option<SentProjectInvite>, String> {
-    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
-    let mut document = load_at(&data_root)?;
+    let mut document = load_at(data_root)?;
     let Some(index) = document
         .sent_project_invites
         .iter()
@@ -2527,8 +2533,17 @@ pub fn sync_take_sent_project_invite(
         return Ok(None);
     };
     let invite = document.sent_project_invites.remove(index);
-    save_at(&data_root, &document)?;
+    save_at(data_root, &document)?;
     Ok(Some(invite))
+}
+
+#[tauri::command]
+pub fn sync_take_sent_project_invite(
+    app: tauri::AppHandle,
+    invite_id: String,
+) -> Result<Option<SentProjectInvite>, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    take_sent_project_invite_at(&data_root, &invite_id)
 }
 
 /// Whether `account_route` belongs to someone already paired with this device.

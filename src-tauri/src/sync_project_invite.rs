@@ -26,6 +26,7 @@
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 const PROJECT_INVITE_INFO: &[u8] = b"alethe-project-invite-v1";
 const PROJECT_INVITE_RESPONSE_INFO: &[u8] = b"alethe-project-invite-response-v1";
@@ -99,8 +100,7 @@ fn open<T: for<'de> Deserialize<'de>>(
 
 /// Seals an invitation for a contact. Carries nothing but the project's identity — accepting is
 /// what starts the grant, so an intercepted or ignored invite hands over no access.
-#[tauri::command]
-pub fn sync_seal_project_invite(
+pub fn seal_project_invite(
     invite_id: String,
     project_id: String,
     project_name: String,
@@ -126,16 +126,34 @@ pub fn sync_seal_project_invite(
     )
 }
 
-/// Opens an invitation addressed to this device, or `None` when it was meant for someone else.
 #[tauri::command]
-pub fn sync_open_project_invite(
-    app: tauri::AppHandle,
-    ciphertext: String,
+#[allow(clippy::too_many_arguments)]
+pub fn sync_seal_project_invite(
+    invite_id: String,
+    project_id: String,
+    project_name: String,
+    from_account_route: String,
+    recipient_agreement_public_key: String,
+    sent_at_ms: u64,
+) -> Result<String, String> {
+    seal_project_invite(
+        invite_id,
+        project_id,
+        project_name,
+        from_account_route,
+        recipient_agreement_public_key,
+        sent_at_ms,
+    )
+}
+
+/// Opens an invitation addressed to this device, or `None` when it was meant for someone else.
+pub fn open_project_invite_at(
+    data_root: &Path,
+    ciphertext: &str,
 ) -> Result<Option<ProjectInvitePayload>, String> {
-    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
-    let local_device_id = crate::sync_security::local_device_id_at(&data_root)?;
+    let local_device_id = crate::sync_security::local_device_id_at(data_root)?;
     let invite: Option<ProjectInvitePayload> = open(
-        &ciphertext,
+        ciphertext,
         &local_device_id,
         PROJECT_INVITE_INFO,
         "project_invite",
@@ -143,24 +161,31 @@ pub fn sync_open_project_invite(
     // Only from someone already paired: an invite from an unknown route would otherwise be a way
     // to put an arbitrary sender's project name in front of the user.
     let Some(invite) = invite else { return Ok(None) };
-    if !crate::sync_security::has_chat_contact_at(&data_root, &invite.from_account_route)? {
+    if !crate::sync_security::has_chat_contact_at(data_root, &invite.from_account_route)? {
         return Ok(None);
     }
     Ok(Some(invite))
 }
 
+#[tauri::command]
+pub fn sync_open_project_invite(
+    app: tauri::AppHandle,
+    ciphertext: String,
+) -> Result<Option<ProjectInvitePayload>, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    open_project_invite_at(&data_root, &ciphertext)
+}
+
 /// Seals the invitee's decision. On accept this is where the account id is handed over — see the
 /// module docs for why that is deliberate and what it is scoped to.
-#[tauri::command]
-pub fn sync_seal_project_invite_response(
-    app: tauri::AppHandle,
+pub fn seal_project_invite_response_at(
+    data_root: &Path,
     invite_id: String,
     accepted: bool,
-    recipient_agreement_public_key: String,
+    recipient_agreement_public_key: &str,
 ) -> Result<String, String> {
-    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     let payload = if accepted {
-        let identity = crate::sync_security::local_grantable_identity_at(&data_root)?;
+        let identity = crate::sync_security::local_grantable_identity_at(data_root)?;
         ProjectInviteResponsePayload {
             invite_id,
             accepted: true,
@@ -179,8 +204,32 @@ pub fn sync_seal_project_invite_response(
         }
     };
     seal(
-        &recipient_agreement_public_key,
+        recipient_agreement_public_key,
         &payload,
+        PROJECT_INVITE_RESPONSE_INFO,
+        "project_invite_response",
+    )
+}
+
+#[tauri::command]
+pub fn sync_seal_project_invite_response(
+    app: tauri::AppHandle,
+    invite_id: String,
+    accepted: bool,
+    recipient_agreement_public_key: String,
+) -> Result<String, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    seal_project_invite_response_at(&data_root, invite_id, accepted, &recipient_agreement_public_key)
+}
+
+pub fn open_project_invite_response_at(
+    data_root: &Path,
+    ciphertext: &str,
+) -> Result<Option<ProjectInviteResponsePayload>, String> {
+    let local_device_id = crate::sync_security::local_device_id_at(data_root)?;
+    open(
+        ciphertext,
+        &local_device_id,
         PROJECT_INVITE_RESPONSE_INFO,
         "project_invite_response",
     )
@@ -192,13 +241,7 @@ pub fn sync_open_project_invite_response(
     ciphertext: String,
 ) -> Result<Option<ProjectInviteResponsePayload>, String> {
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
-    let local_device_id = crate::sync_security::local_device_id_at(&data_root)?;
-    open(
-        &ciphertext,
-        &local_device_id,
-        PROJECT_INVITE_RESPONSE_INFO,
-        "project_invite_response",
-    )
+    open_project_invite_response_at(&data_root, &ciphertext)
 }
 
 /// Issues the grant once an accept has come back, and seals it for the invitee to materialize.
@@ -208,6 +251,33 @@ pub fn sync_open_project_invite_response(
 /// except that the account id it needs arrived in the accept rather than in a pairing request. The
 /// existing `chat_contact_confirm` envelope carries it, so the invitee's side already knows how to
 /// materialize a `GrantRecord` from this shape.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub fn grant_project_to_invitee_at(
+    data_root: &Path,
+    project_id: String,
+    account_id: String,
+    device_id: String,
+    agreement_public_key: String,
+    permissions: Vec<crate::sync_security::SyncPermission>,
+    path_scopes: Vec<crate::sync_security::PathScope>,
+    expires_at_ms: u64,
+) -> Result<String, String> {
+    if project_id.trim().is_empty() || account_id.trim().is_empty() || device_id.trim().is_empty() {
+        return Err("project_invite_grant_incomplete".to_string());
+    }
+    crate::sync_security::grant_project_to_account_at(
+        data_root,
+        &project_id,
+        &account_id,
+        &device_id,
+        &agreement_public_key,
+        permissions,
+        path_scopes,
+        expires_at_ms,
+    )
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub fn sync_grant_project_to_invitee(
@@ -220,15 +290,13 @@ pub fn sync_grant_project_to_invitee(
     path_scopes: Vec<crate::sync_security::PathScope>,
     expires_at_ms: u64,
 ) -> Result<String, String> {
-    if project_id.trim().is_empty() || account_id.trim().is_empty() || device_id.trim().is_empty() {
-        return Err("project_invite_grant_incomplete".to_string());
-    }
-    crate::sync_security::grant_project_to_account(
-        &app,
-        &project_id,
-        &account_id,
-        &device_id,
-        &agreement_public_key,
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    grant_project_to_invitee_at(
+        &data_root,
+        project_id,
+        account_id,
+        device_id,
+        agreement_public_key,
         permissions,
         path_scopes,
         expires_at_ms,

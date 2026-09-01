@@ -2,6 +2,15 @@ import { invoke } from '@tauri-apps/api/core'
 
 import type { PathScope } from '../sync/authorization'
 import type { SyncPermission } from '../sync/contracts'
+import { isTauriEnv, webApiFetch } from './transport'
+
+/** Both transports, always: the app runs as a Tauri desktop app and as a Web/Core client, and a
+ *  wrapper that only calls `invoke` silently does nothing in the second — which is exactly how the
+ *  first version of this file made project invites appear to vanish. */
+function post<T>(command: string, route: string, params: Record<string, unknown>): Promise<T> {
+  if (isTauriEnv()) return invoke<T>(command, params)
+  return webApiFetch<T>(route, { method: 'POST', body: JSON.stringify(params) })
+}
 
 /**
  * Inviting an existing chat contact to a project.
@@ -38,12 +47,18 @@ export async function sealProjectInvite(params: {
   recipientAgreementPublicKey: string
   sentAtMs: number
 }): Promise<string> {
-  return invoke<string>('sync_seal_project_invite', params)
+  return post<string>('sync_seal_project_invite', '/api/sync/project-invite/seal', params)
 }
 
 /** Opens an invite addressed to this device, or `null` if it wasn't (or isn't from a contact). */
 export async function openProjectInvite(ciphertext: string): Promise<ProjectInvitePayload | null> {
-  return invoke<ProjectInvitePayload | null>('sync_open_project_invite', { ciphertext })
+  return post<ProjectInvitePayload | null>(
+    'sync_open_project_invite',
+    '/api/sync/project-invite/open',
+    {
+      ciphertext,
+    },
+  )
 }
 
 /** Seals the accept/decline. On accept this is where this device hands over its account id. */
@@ -52,15 +67,21 @@ export async function sealProjectInviteResponse(params: {
   accepted: boolean
   recipientAgreementPublicKey: string
 }): Promise<string> {
-  return invoke<string>('sync_seal_project_invite_response', params)
+  return post<string>(
+    'sync_seal_project_invite_response',
+    '/api/sync/project-invite/seal-response',
+    params,
+  )
 }
 
 export async function openProjectInviteResponse(
   ciphertext: string,
 ): Promise<ProjectInviteResponsePayload | null> {
-  return invoke<ProjectInviteResponsePayload | null>('sync_open_project_invite_response', {
-    ciphertext,
-  })
+  return post<ProjectInviteResponsePayload | null>(
+    'sync_open_project_invite_response',
+    '/api/sync/project-invite/open-response',
+    { ciphertext },
+  )
 }
 
 /**
@@ -77,7 +98,7 @@ export async function grantProjectToInvitee(params: {
   pathScopes: PathScope[]
   expiresAtMs: number
 }): Promise<string> {
-  return invoke<string>('sync_grant_project_to_invitee', params)
+  return post<string>('sync_grant_project_to_invitee', '/api/sync/project-invite/grant', params)
 }
 
 export type SentProjectInvite = {
@@ -99,10 +120,16 @@ export async function rememberSentProjectInvite(params: {
   projectId: string
   recipientAccountRoute: string
 }): Promise<void> {
-  await invoke('sync_remember_sent_project_invite', params)
+  await post('sync_remember_sent_project_invite', '/api/sync/project-invite/remember', params)
 }
 
 /** Consumes the record for `inviteId`; `null` if it was already answered, expired, or not ours. */
 export async function takeSentProjectInvite(inviteId: string): Promise<SentProjectInvite | null> {
-  return invoke<SentProjectInvite | null>('sync_take_sent_project_invite', { inviteId })
+  return post<SentProjectInvite | null>(
+    'sync_take_sent_project_invite',
+    '/api/sync/project-invite/take',
+    {
+      inviteId,
+    },
+  )
 }

@@ -12,6 +12,13 @@ pub fn router() -> Router {
     Router::new()
         .route("/api/sync/security", get(snapshot))
         .route("/api/sync/security/local-identity", get(local_identity))
+        .route("/api/sync/project-invite/seal", post(seal_project_invite))
+        .route("/api/sync/project-invite/open", post(open_project_invite))
+        .route("/api/sync/project-invite/seal-response", post(seal_project_invite_response))
+        .route("/api/sync/project-invite/open-response", post(open_project_invite_response))
+        .route("/api/sync/project-invite/grant", post(grant_project_to_invitee))
+        .route("/api/sync/project-invite/remember", post(remember_sent_project_invite))
+        .route("/api/sync/project-invite/take", post(take_sent_project_invite))
         .route("/api/sync/security/devices/approve", post(approve_device))
         .route("/api/sync/security/devices/reject", post(reject_device))
         .route("/api/sync/security/devices/rename", post(rename_device))
@@ -216,6 +223,193 @@ fn local_device_id(data_root: &std::path::Path) -> Result<String, String> {
 struct TargetDeviceBody {
     #[serde(rename = "targetDeviceId")]
     target_device_id: String,
+}
+
+// ---------------------------------------------------------------------------------------------
+// Project invites. Every handler is a thin shell over the same `*_at(data_root, ...)` function the
+// Tauri command calls — the flow has to work identically in Web mode, and duplicating the logic
+// here is how the two transports drift apart.
+// ---------------------------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SealProjectInviteBody {
+    invite_id: String,
+    project_id: String,
+    project_name: String,
+    from_account_route: String,
+    recipient_agreement_public_key: String,
+    sent_at_ms: u64,
+}
+
+async fn seal_project_invite(Json(body): Json<SealProjectInviteBody>) -> Response {
+    respond(
+        tokio::task::spawn_blocking(move || {
+            crate::sync_project_invite::seal_project_invite(
+                body.invite_id,
+                body.project_id,
+                body.project_name,
+                body.from_account_route,
+                body.recipient_agreement_public_key,
+                body.sent_at_ms,
+            )
+        })
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|result| result),
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CiphertextBody {
+    ciphertext: String,
+}
+
+async fn open_project_invite(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<CiphertextBody>,
+) -> Response {
+    let data_root = runtime.data_root().to_path_buf();
+    respond(
+        tokio::task::spawn_blocking(move || {
+            crate::sync_project_invite::open_project_invite_at(&data_root, &body.ciphertext)
+        })
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|result| result),
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SealProjectInviteResponseBody {
+    invite_id: String,
+    accepted: bool,
+    recipient_agreement_public_key: String,
+}
+
+async fn seal_project_invite_response(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<SealProjectInviteResponseBody>,
+) -> Response {
+    let data_root = runtime.data_root().to_path_buf();
+    respond(
+        tokio::task::spawn_blocking(move || {
+            crate::sync_project_invite::seal_project_invite_response_at(
+                &data_root,
+                body.invite_id,
+                body.accepted,
+                &body.recipient_agreement_public_key,
+            )
+        })
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|result| result),
+    )
+}
+
+async fn open_project_invite_response(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<CiphertextBody>,
+) -> Response {
+    let data_root = runtime.data_root().to_path_buf();
+    respond(
+        tokio::task::spawn_blocking(move || {
+            crate::sync_project_invite::open_project_invite_response_at(
+                &data_root,
+                &body.ciphertext,
+            )
+        })
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|result| result),
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GrantProjectBody {
+    project_id: String,
+    account_id: String,
+    device_id: String,
+    agreement_public_key: String,
+    permissions: Vec<crate::sync_security::SyncPermission>,
+    path_scopes: Vec<crate::sync_security::PathScope>,
+    expires_at_ms: u64,
+}
+
+async fn grant_project_to_invitee(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<GrantProjectBody>,
+) -> Response {
+    let data_root = runtime.data_root().to_path_buf();
+    respond(
+        tokio::task::spawn_blocking(move || {
+            crate::sync_project_invite::grant_project_to_invitee_at(
+                &data_root,
+                body.project_id,
+                body.account_id,
+                body.device_id,
+                body.agreement_public_key,
+                body.permissions,
+                body.path_scopes,
+                body.expires_at_ms,
+            )
+        })
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|result| result),
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RememberSentInviteBody {
+    invite_id: String,
+    project_id: String,
+    recipient_account_route: String,
+}
+
+async fn remember_sent_project_invite(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<RememberSentInviteBody>,
+) -> Response {
+    let data_root = runtime.data_root().to_path_buf();
+    respond(
+        tokio::task::spawn_blocking(move || {
+            crate::sync_security::remember_sent_project_invite_at(
+                &data_root,
+                body.invite_id,
+                body.project_id,
+                body.recipient_account_route,
+            )
+        })
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|result| result),
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TakeSentInviteBody {
+    invite_id: String,
+}
+
+async fn take_sent_project_invite(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<TakeSentInviteBody>,
+) -> Response {
+    let data_root = runtime.data_root().to_path_buf();
+    respond(
+        tokio::task::spawn_blocking(move || {
+            crate::sync_security::take_sent_project_invite_at(&data_root, &body.invite_id)
+        })
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|result| result),
+    )
 }
 
 async fn approve_device(

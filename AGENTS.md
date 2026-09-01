@@ -98,6 +98,20 @@ streaming through the Tauri events `pty://data/{id}` and `pty://exit/{id}`.
 
 - One `.module.css` file per component; color/spacing always through tokens, never literals.
 - New domain types go in `src/lib/types.ts`; reuse the existing ones.
+- **Every backend feature needs BOTH transports.** The app runs as a Tauri desktop app *and* as a
+  Web/Core client, and which one is live is decided at runtime by `isTauriEnv()`. So:
+  - Put the real logic in a plain `fn something_at(data_root: &Path, ...)`. The `#[tauri::command]`
+    resolves the data root and calls it; the Axum route in `src-tauri/src/server_main/*_routes.rs`
+    resolves it from `runtime.data_root()` and calls the same function. Never write the logic
+    inside the command itself — the Web route then has nothing to reuse.
+  - The TS wrapper must branch: `if (isTauriEnv()) return invoke(...)` else `webApiFetch(...)`.
+    A wrapper that calls `invoke` unconditionally silently does nothing in Web mode.
+  - `src/lib/api/coreRouteParity.contract.test.ts` fails when a Web operation has no matching
+    route — if it starts failing on your feature, the second transport is missing, not the test.
+- **Never swallow an error with `.catch(() => null)`** on a path that can legitimately return null.
+  "Not addressed to this device", "the command doesn't exist in this build" and "it arrived but
+  failed to open" then look identical — silence — and no amount of live testing can tell them
+  apart. Log the failure, and distinguish it from the expected empty case.
 - Lean Zustand selectors to avoid rerender loops; `projects.json` is saved with debounce and atomic
   writes (tmp → rename) — preserve that pattern.
 - The `projects.json` schema is versioned with migration/backfill — when changing its shape, keep the
