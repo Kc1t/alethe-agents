@@ -274,7 +274,7 @@ export function PreferencesModal() {
         target: 'dictation',
         label: t('prefs.dictation'),
         description: t('prefs.dictationDesc'),
-        keywords: 'dictation voice mic microphone ditado voz microfone handy speech',
+        keywords: 'dictation voice mic microphone ditado voz microfone speech parakeet stt',
       },
       {
         category: 'about',

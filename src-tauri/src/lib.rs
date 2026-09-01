@@ -61,11 +61,14 @@ mod resources;
 mod scheduler;
 mod session_watcher;
 mod skills;
+mod speech;
+mod speech_capture;
 mod spotify;
 mod stats;
 mod supervisor;
 mod telemetry;
 mod validation;
+mod webview_media;
 mod window_style;
 #[cfg(windows)]
 mod windows_webview;
@@ -158,6 +161,7 @@ pub fn run() {
         .manage(planning::PlanningWatchers::default())
         .manage(cli_launch::PendingOpen::default())
         .manage(orchestrator::OrchestratorState::default())
+        .manage(speech::SpeechState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
@@ -190,6 +194,13 @@ pub fn run() {
                     }
                     Err(error) => eprintln!("[icon] falha ao decodificar ícone embutido: {error}"),
                 }
+                // Required for getUserMedia / voice dictation on WebKitGTK.
+                webview_media::grant_media_permissions(&window);
+            }
+
+            #[cfg(not(target_os = "linux"))]
+            if let Some(window) = app.get_webview_window("main") {
+                webview_media::grant_media_permissions(&window);
             }
             logging::set_logs_dir(app.handle());
             // Keep the terminal launcher available after installation.
@@ -402,6 +413,15 @@ pub fn run() {
             crash_watch::get_last_crash_report,
             crash_watch::get_job_guard_status,
             set_window_opacity,
+            speech::speech_list_models,
+            speech::speech_list_input_devices,
+            speech::speech_model_states,
+            speech::speech_download_model,
+            speech::speech_delete_model,
+            speech::speech_start_capture,
+            speech::speech_stop_capture,
+            speech::speech_stop_and_transcribe,
+            speech::speech_transcribe,
             quit_app,
             worktrees::worktree_provision,
             worktrees::worktree_list,

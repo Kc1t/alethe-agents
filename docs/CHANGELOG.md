@@ -12,6 +12,14 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- Local voice dictation with on-device Parakeet TDT v3 (sherpa-onnx). Enable it under Preferences →
+  Integrations, download the model once (~640 MB), then press Ctrl+E (⌘E on macOS) to dictate into
+  the active terminal. The mic indicator appears only while listening or while the model is
+  transcribing (spinner), so a long transcription does not look like a freeze. Choose Toggle or Hold
+  mode and pick a microphone; System default follows the OS input device. Mic capture uses the
+  native audio stack (cpal/PipeWire), not WebKit getUserMedia, so AppImages still see microphones.
+  On Linux, Alethe also enables WebKitGTK media-stream as a fallback path for other features.
+
 - Native WSL support on Windows: a project whose folder lives under `\\wsl.localhost\<distro>\…`
   now opens the distro's login shell already in the right Linux directory, and its agent tabs run
   the CLI installed **inside** the distro instead of the Windows one — so a missing CLI is reported
