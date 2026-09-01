@@ -4,13 +4,18 @@
 // clone) never collides with an instance already running elsewhere.
 //
 // Two things are scoped per checkout path:
-// - The Tauri app identifier: the single-instance guard (see `lib.rs`) is
+// - The Tauri app identifier, but ONLY for the worktrees this repo manages
+//   under `.alethe/worktrees/`. The single-instance guard (see `lib.rs`) is
 //   keyed by identifier, not by port or data root — two dev instances with
 //   the SAME identifier get treated as "one already running" and the second
-//   one is silently focused/closed, however free the ports are.
-// - The Vite dev port: `tauri.conf.json`'s `devUrl` must point at whatever
-//   port Vite actually bound, so both are derived together here instead of
-//   Vite guessing a fallback port on its own.
+//   one is silently focused/closed, however free the ports are. The primary
+//   checkout deliberately keeps the plain identifier: Tauri derives the data
+//   root from it, so suffixing it there would move an existing install onto
+//   an empty data root and strand the profile and chat history.
+// - The Vite dev port, for every checkout: `tauri.conf.json`'s `devUrl` must
+//   point at whatever port Vite actually bound, so both are derived together
+//   here instead of Vite guessing a fallback port on its own. The port is
+//   just a socket, so scoping it strands nothing.
 //
 // The mapping from checkout path to identifier/port is a stable hash, so the
 // same worktree always reopens onto its own previous data and window — this
@@ -19,13 +24,17 @@
 import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:net'
-import { realpath } from 'node:fs/promises'
+import { mkdtemp, realpath, writeFile } from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..')
 const BASE_PORT = 1422
 const PORT_SCAN_RANGE = 200
+// Kept in sync with the identifier `npm run web` pins explicitly, so both
+// entry points resolve to the same Tauri data root for the same checkout.
+const BASE_IDENTIFIER = 'com.kc1t.alethe.dev'
 
 function isPortFree(port) {
   return new Promise((resolve) => {
@@ -51,6 +60,19 @@ async function checkoutFingerprint() {
 }
 
 /**
+ * Locates the `.alethe/` directory when this checkout is one of the worktrees
+ * this repo manages under `.alethe/worktrees/<name>`, or `null` for anything
+ * else (the primary checkout, or a plain manual clone).
+ */
+async function managedWorktreeAletheDir() {
+  const canonical = await realpath(REPO_ROOT).catch(() => REPO_ROOT)
+  const segments = canonical.split(path.sep)
+  const aletheIndex = segments.lastIndexOf('.alethe')
+  if (aletheIndex === -1 || segments[aletheIndex + 1] !== 'worktrees') return null
+  return path.join(...segments.slice(0, aletheIndex + 1))
+}
+
+/**
  * A fresh worktree under `.alethe/worktrees/<name>` gets its own `target/` by
  * default, so opening one means recompiling every dependency from scratch —
  * minutes of Rust build time and gigabytes on disk, per worktree. Every
@@ -66,11 +88,8 @@ async function checkoutFingerprint() {
  * `target/`, since there's no sibling `worktrees/` directory to share.
  */
 async function sharedCargoTargetDir() {
-  const canonical = await realpath(REPO_ROOT).catch(() => REPO_ROOT)
-  const segments = canonical.split(path.sep)
-  const worktreesIndex = segments.lastIndexOf('.alethe')
-  if (worktreesIndex === -1 || segments[worktreesIndex + 1] !== 'worktrees') return null
-  return path.join(...segments.slice(0, worktreesIndex + 1), 'cargo-target')
+  const aletheDir = await managedWorktreeAletheDir()
+  return aletheDir === null ? null : path.join(aletheDir, 'cargo-target')
 }
 
 async function main() {
@@ -80,7 +99,19 @@ async function main() {
   const explicitPort = process.env.ALETHE_DEV_PORT?.trim()
 
   const fingerprint = await checkoutFingerprint()
-  const identifier = explicitIdentifier || `com.kc1t.alethe.dev.${fingerprint}`
+  // Only the spawned worktrees get a per-checkout identifier. The primary
+  // checkout keeps the plain `com.kc1t.alethe.dev` one, because Tauri derives
+  // the app's data root from the identifier: suffixing it there silently moved
+  // an existing install onto a brand new, empty data root, stranding the
+  // profile, contacts and chat history in the old one and dropping the app
+  // back into first-run onboarding (observed live). It also split `npm run
+  // app` away from `npm run web`, which pins the plain identifier explicitly.
+  // Worktrees have no such history to strand — they are created empty — so
+  // they still get isolation, which is what this whole mechanism was for.
+  const isManagedWorktree = (await managedWorktreeAletheDir()) !== null
+  const identifier =
+    explicitIdentifier ||
+    (isManagedWorktree ? `com.kc1t.alethe.dev.${fingerprint}` : BASE_IDENTIFIER)
   // Spreads each checkout's preferred port across the scan range instead of
   // every worktree starting its search at the same 1422 and piling up on
   // whichever one wins the race.
@@ -103,7 +134,17 @@ async function main() {
   console.log(`[dev-instance] dev port: ${port}`)
   if (cargoTargetDir) console.log(`[dev-instance] shared cargo target: ${cargoTargetDir}`)
 
-  const child = spawn('tauri', ['dev', '--config', configOverride], {
+  // `--config` also accepts a path to a JSON file, not just an inline JSON
+  // string — used here instead of passing the string directly, because on
+  // Windows `spawn(..., { shell: true })` routes through cmd.exe, which
+  // mangles the embedded double quotes of an inline JSON argument (observed
+  // live: `{"productName":...}` arrived as `{productName:...}`, invalid
+  // JSON). A file path has no such quoting problem.
+  const configDir = await mkdtemp(path.join(os.tmpdir(), 'alethe-dev-config-'))
+  const configPath = path.join(configDir, 'tauri.dev-instance.conf.json')
+  await writeFile(configPath, configOverride, 'utf8')
+
+  const child = spawn('tauri', ['dev', '--config', configPath], {
     stdio: 'inherit',
     shell: process.platform === 'win32',
     cwd: REPO_ROOT,
