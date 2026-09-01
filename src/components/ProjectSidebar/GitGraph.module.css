@@ -65,13 +65,6 @@
   background: var(--panel-hover);
 }
 
-/* Active search: non-matching commits are dimmed, never removed from the
-   list — removing them would cut their SVG segment and break the graph's
-   visual continuity again (each row only draws its own stretch). */
-.rowDimmed {
-  opacity: 0.35;
-}
-
 .svg {
   flex-shrink: 0;
   margin-right: 2px;
