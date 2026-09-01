@@ -2308,8 +2308,10 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.prNoRepoBody': 'O projeto não possui um repositório Git configurado.',
   'merge.prReviewStartedTitle': 'Revisão de PR iniciada',
   'merge.prReviewStartedBody': 'O agente está revisando o PR #{number} na worktree isolada.',
-  'merge.prMergeConfirm': 'Fazer squash merge do PR #{number} ({title})? Esta ação altera o repositório remoto.',
-  'merge.prStaleError': 'O PR foi atualizado desde a revisão. Recarregue os dados e revise o novo SHA antes do merge.',
+  'merge.prMergeConfirm':
+    'Fazer squash merge do PR #{number} ({title})? Esta ação altera o repositório remoto.',
+  'merge.prStaleError':
+    'O PR foi atualizado desde a revisão. Recarregue os dados e revise o novo SHA antes do merge.',
   'merge.prDraftError': 'PRs em rascunho não podem ser mesclados.',
   'merge.prConflictError': 'O GitHub informa que o PR possui conflitos.',
   'merge.prMergedTitle': 'PR mesclado',

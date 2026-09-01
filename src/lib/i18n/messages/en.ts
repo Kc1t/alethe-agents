@@ -2284,11 +2284,13 @@ export const en = {
   'merge.pr': 'PR',
   'merge.prTooltip': 'Open Pull Request',
   'merge.prNoRepoTitle': 'PR review',
-  'merge.prNoRepoBody': 'This project doesn\'t have a configured Git repository.',
+  'merge.prNoRepoBody': "This project doesn't have a configured Git repository.",
   'merge.prReviewStartedTitle': 'PR review started',
   'merge.prReviewStartedBody': 'The agent is reviewing PR #{number} in the isolated worktree.',
-  'merge.prMergeConfirm': 'Squash merge PR #{number} ({title})? This changes the remote repository.',
-  'merge.prStaleError': 'The PR was updated since the review. Reload and check the new SHA before merging.',
+  'merge.prMergeConfirm':
+    'Squash merge PR #{number} ({title})? This changes the remote repository.',
+  'merge.prStaleError':
+    'The PR was updated since the review. Reload and check the new SHA before merging.',
   'merge.prDraftError': 'Draft PRs cannot be merged.',
   'merge.prConflictError': 'GitHub reports this PR has conflicts.',
   'merge.prMergedTitle': 'PR merged',
