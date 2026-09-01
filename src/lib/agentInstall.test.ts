@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  installArgv,
   installMethodsFor,
   installShellLine,
   type InstallToolchain,
   needsNodeToolchain,
   uninstallMethodsFor,
+  wslInstallMethodsFor,
 } from './agentInstall'
 
 const BARE: InstallToolchain = {
@@ -120,6 +122,49 @@ describe('uninstallMethodsFor', () => {
 
 describe('installShellLine', () => {
   it('closes the shell so the runner can detect completion', () => {
-    expect(installShellLine('npm install -g opencode-ai')).toBe('npm install -g opencode-ai; exit\r')
+    expect(installShellLine('npm install -g opencode-ai')).toBe(
+      'npm install -g opencode-ai; exit\r',
+    )
+  })
+})
+
+describe('wslInstallMethodsFor', () => {
+  it('keeps only the methods that also work inside a distro', () => {
+    expect(wslInstallMethodsFor('claude')).toEqual([
+      { id: 'npm', command: 'npm install -g @anthropic-ai/claude-code', requires: 'npm' },
+    ])
+    expect(wslInstallMethodsFor('opencode')).toEqual([
+      { id: 'npm', command: 'npm install -g opencode-ai', requires: 'npm' },
+    ])
+  })
+
+  it('yields nothing when every method is Windows-only', () => {
+    expect(wslInstallMethodsFor('antigravity')).toEqual([])
+  })
+})
+
+describe('installArgv', () => {
+  it('splits a plain npm command into program and argv', () => {
+    expect(installArgv('npm install -g @openai/codex')).toEqual({
+      program: 'npm',
+      args: ['install', '-g', '@openai/codex'],
+    })
+  })
+
+  it('refuses commands that only a shell can run', () => {
+    expect(installArgv('curl -fsSL https://example.com/i.sh | bash')).toBeNull()
+    expect(installArgv('a; b')).toBeNull()
+    expect(installArgv('irm https://example.com/install.ps1 | iex')).toBeNull()
+    expect(installArgv('echo $HOME')).toBeNull()
+    expect(installArgv('npm install -g "my pkg"')).toBeNull()
+  })
+
+  it('ignores padding and rejects an empty command', () => {
+    expect(installArgv('  npm   install  -g   opencode-ai ')).toEqual({
+      program: 'npm',
+      args: ['install', '-g', 'opencode-ai'],
+    })
+    expect(installArgv('')).toBeNull()
+    expect(installArgv('   ')).toBeNull()
   })
 })

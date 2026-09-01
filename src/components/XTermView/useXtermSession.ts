@@ -37,6 +37,7 @@ import {
   attachPty,
   clearPtyScrollback,
   findCliLauncher,
+  findWslCli,
   graphifyCodexConfigWrite,
   graphifyEnsureGraph,
   graphifyMcpConfigPath,
@@ -67,6 +68,7 @@ import {
   type AgentType,
   type Theme,
 } from '../../lib/types'
+import { toWslGuestPath, wslTargetFor } from '../../lib/wsl'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -876,7 +878,24 @@ export function useXtermSession(params: {
         }
 
         let launcherOverride: string | undefined
-        if (command && command !== 'shell') {
+        const wslTarget = wslTargetFor(
+          cwd,
+          useProjectsStore.getState().preferences.enabledFeatures.wsl,
+        )
+        if (command && command !== 'shell' && wslTarget) {
+          const auto = await findWslCli(wslTarget.distro, agentCliCommand(command) ?? command)
+          console.info(
+            `[pty-launch] ${command} findWslCli(${wslTarget.distro}) → ${auto ?? 'null (NOT FOUND)'}`,
+          )
+          if (!auto) {
+            console.warn(
+              `[pty-launch] ${command} unresolved — showing the not-found overlay and staying offline`,
+            )
+            setCommandNotFound(command)
+            useTerminalsStore.getState().setStatus(ptyId, 'offline')
+            return
+          }
+        } else if (command && command !== 'shell') {
           if (cliPathOverride) {
             if (cliPathMatchesAgent(command, cliPathOverride)) {
               launcherOverride = cliPathOverride
@@ -993,8 +1012,11 @@ export function useXtermSession(params: {
         // o spawn.
         const mcpConfigPaths: string[] = []
 
+        // Graphify and ai-memory run Windows-side binaries over Windows paths, so neither
+        // crosses into a distro.
         if (
           graphifyRepo &&
+          !wslTarget &&
           (command === 'claude' || command === 'codex' || command === 'opencode')
         ) {
           void graphifyEnsureGraph(graphifyRepo).catch(() => undefined)
@@ -1013,6 +1035,7 @@ export function useXtermSession(params: {
         if (
           aiMemoryEnabled &&
           cwd &&
+          !wslTarget &&
           (command === 'claude' || command === 'codex' || command === 'opencode')
         ) {
           const status = await aiMemoryDetect().catch(() => undefined)
@@ -1056,7 +1079,7 @@ export function useXtermSession(params: {
           if (disposed) return
         }
 
-        if (command === 'opencode' && cwd && gsdWatcherEnabled) {
+        if (command === 'opencode' && cwd && !wslTarget && gsdWatcherEnabled) {
           const modelChain = useProjectsStore.getState().preferences.gsdSyncModelChain ?? []
 
           await gsdOpenCodePluginWrite(cwd, modelChain).catch((error) => {
@@ -1065,8 +1088,18 @@ export function useXtermSession(params: {
           if (disposed) return
         }
 
+        const launchMcpConfigPaths = wslTarget
+          ? mcpConfigPaths.map(toWslGuestPath).filter((p): p is string => p !== null)
+          : mcpConfigPaths
+
         const launch = command
-          ? buildAgentLaunch(command, preparedRuntime.args, resumeId, undefined, mcpConfigPaths)
+          ? buildAgentLaunch(
+              command,
+              preparedRuntime.args,
+              resumeId,
+              undefined,
+              launchMcpConfigPaths,
+            )
           : { args: preparedRuntime.args, sessionId: undefined, createdSession: false }
         const spawnArgs = launch.args.length > 0 ? launch.args : undefined
         if (command && command !== 'shell') {

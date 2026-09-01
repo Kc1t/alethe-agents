@@ -10,12 +10,15 @@ import {
   needsNodeToolchain,
   NODE_DOWNLOAD_URL,
   nodeInstallMethods,
+  wslInstallMethodsFor,
 } from '../../lib/agentInstall'
 import { useT } from '../../lib/i18n'
 import { openInBrowser, probeInstallToolchain } from '../../lib/tauri'
 import type { AgentType } from '../../lib/types'
-import { Modal } from '../modals/Modal'
+import { wslTargetFor } from '../../lib/wsl'
+import { useProjectsStore } from '../../stores/projectsStore'
 import controls from '../modals/controls.module.css'
+import { Modal } from '../modals/Modal'
 import styles from './agentActions.module.css'
 
 type Props = {
@@ -25,6 +28,7 @@ type Props = {
   onClose: () => void
   onInstalled?: () => void
   nested?: boolean
+  cwd?: string | null
 }
 
 // eslint-disable-next-line no-control-regex
@@ -39,12 +43,22 @@ const METHOD_LABEL_KEY = {
   choco: 'agentInstall.method.choco',
 } as const
 
-export function AgentInstallModal({ agent, label, open, onClose, onInstalled, nested }: Props) {
+export function AgentInstallModal({
+  agent,
+  label,
+  open,
+  onClose,
+  onInstalled,
+  nested,
+  cwd,
+}: Props) {
   const t = useT()
   const [toolchain, setToolchain] = useState<InstallToolchain | null>(null)
   const [probing, setProbing] = useState(true)
   const [chosenId, setChosenId] = useState<InstallMethod['id'] | null>(null)
-  const { status, log, install, reset } = useAgentInstall(agent)
+  const wslEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.wsl)
+  const wslTarget = wslTargetFor(cwd, wslEnabled)
+  const { status, log, install, reset } = useAgentInstall(agent, agent, { cwd })
   const nodeInstall = useAgentInstall(agent, 'node-toolchain')
   const busyAgent = useAgentOperationBusy()
   const notifiedRef = useRef(false)
@@ -79,7 +93,7 @@ export function AgentInstallModal({ agent, label, open, onClose, onInstalled, ne
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeInstall.status])
 
-  const methods = installMethodsFor(agent, toolchain)
+  const methods = wslTarget ? wslInstallMethodsFor(agent) : installMethodsFor(agent, toolchain)
   const chosen = methods.find((method) => method.id === chosenId) ?? methods[0]
   const docsUrl = installDocsUrl(agent)
   const running = status === 'running'
@@ -88,7 +102,8 @@ export function AgentInstallModal({ agent, label, open, onClose, onInstalled, ne
   // else — otherwise it stays enabled and silently does nothing when clicked.
   const blockedByOther = (key: string) => busyAgent !== null && busyAgent !== key
   const blocked = blockedByOther(agent)
-  const missingNode = !probing && methods.length === 0 && needsNodeToolchain(agent, toolchain)
+  const missingNode =
+    !wslTarget && !probing && methods.length === 0 && needsNodeToolchain(agent, toolchain)
   const nodeMethod = missingNode ? nodeInstallMethods(toolchain)[0] : undefined
   const cleanLog = log.replace(ANSI_PATTERN, '')
   const nodeLog = nodeInstall.log.replace(ANSI_PATTERN, '')
@@ -131,7 +146,11 @@ export function AgentInstallModal({ agent, label, open, onClose, onInstalled, ne
 
       {!probing && methods.length > 0 ? (
         <>
-          <p className={styles.modalText}>{t('agentInstall.chooseMethod', { agent: label })}</p>
+          <p className={styles.modalText}>
+            {wslTarget
+              ? t('agentInstall.chooseMethodWsl', { agent: label, distro: wslTarget.distro })
+              : t('agentInstall.chooseMethod', { agent: label })}
+          </p>
           <div className={styles.methodList}>
             {methods.map((method) => (
               <label
@@ -184,7 +203,11 @@ export function AgentInstallModal({ agent, label, open, onClose, onInstalled, ne
       ) : null}
 
       {!probing && methods.length === 0 && !missingNode ? (
-        <p className={styles.modalText}>{t('agentInstall.noMethod')}</p>
+        <p className={styles.modalText}>
+          {wslTarget
+            ? t('agentInstall.noMethodWsl', { distro: wslTarget.distro })
+            : t('agentInstall.noMethod')}
+        </p>
       ) : null}
 
       {status === 'failed' ? (

@@ -139,6 +139,20 @@ export function nodeInstallMethods(toolchain: InstallToolchain | null): InstallM
   )
 }
 
+// PowerShell-only installer shapes: `irm`/`iwr` and their full cmdlet names, piped into `iex`.
+const POWERSHELL_INSTALLER =
+  /(^|[\s|])(irm|iwr|iex|invoke-restmethod|invoke-webrequest|invoke-expression)([\s|]|$)/i
+
+const WINDOWS_ONLY_METHODS: InstallMethodId[] = ['winget', 'scoop', 'choco']
+
+export function wslInstallMethodsFor(agent: AgentType): InstallMethod[] {
+  const methods = AGENT_INSTALL_CATALOG[agent]?.methods ?? []
+  return methods.filter((method) => {
+    if (WINDOWS_ONLY_METHODS.includes(method.id)) return false
+    return !POWERSHELL_INSTALLER.test(method.command)
+  })
+}
+
 // Every documented install command ends in the package or package id, so the uninstall counterpart
 // is derived from it rather than duplicated in the catalog.
 const UNINSTALL_TEMPLATE: Partial<Record<InstallMethodId, (target: string) => string>> = {
@@ -169,4 +183,13 @@ export function uninstallMethodsFor(
 /** Line handed to the shell PTY: run the installer, then close the shell. */
 export function installShellLine(command: string): string {
   return `${command}; exit\r`
+}
+const SHELL_SYNTAX = /[|&;<>$`(){}'"\n\\]/
+
+export function installArgv(command: string): { program: string; args: string[] } | null {
+  if (SHELL_SYNTAX.test(command)) return null
+  const tokens = command.trim().split(/\s+/)
+  const [program, ...args] = tokens
+  if (!program) return null
+  return { program, args }
 }
