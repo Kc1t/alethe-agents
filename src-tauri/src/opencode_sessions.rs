@@ -166,11 +166,11 @@ fn snapshot_opencode_sessions_inner(cwd: String) -> Result<Vec<OpenCodeSessionSn
         &binary,
         &["session", "list", "--format", "json", "--max-count", "50"],
     )
-    .map_err(|e| format!("falha ao executar opencode: {e}"))?;
+    .map_err(|e| format!("failed to run opencode: {e}"))?;
 
     if !output.success {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("opencode session list falhou: {stderr}"));
+        return Err(format!("opencode session list failed: {stderr}"));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -179,7 +179,7 @@ fn snapshot_opencode_sessions_inner(cwd: String) -> Result<Vec<OpenCodeSessionSn
         return Ok(Vec::new());
     }
     let entries: Vec<serde_json::Value> =
-        serde_json::from_str(&stdout).map_err(|e| format!("falha ao parsear JSON: {e}"))?;
+        serde_json::from_str(&stdout).map_err(|e| format!("failed to parse JSON: {e}"))?;
 
     let mut sessions: Vec<OpenCodeSessionSnapshot> = entries
         .into_iter()
@@ -250,7 +250,7 @@ fn opencode_export_session_inner(
     let json_start = stdout
         .find('{')
         .ok_or_else(|| "opencode export did not return JSON".to_string())?;
-    serde_json::from_str(&stdout[json_start..]).map_err(|e| format!("falha ao parsear JSON: {e}"))
+    serde_json::from_str(&stdout[json_start..]).map_err(|e| format!("failed to parse JSON: {e}"))
 }
 
 #[cfg(test)]

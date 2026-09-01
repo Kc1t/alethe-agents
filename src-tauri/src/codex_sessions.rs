@@ -88,7 +88,7 @@ fn snapshot_codex_sessions_inner(cwd: String) -> Result<Vec<CodexSessionSnapshot
         if crate::wsl::wsl_target(&cwd).is_some() {
             return Ok(Vec::new());
         }
-        return Err("USERPROFILE/HOME nao definido".to_string());
+        return Err("USERPROFILE/HOME is not set".to_string());
     };
     let target_cwd = scope.match_key();
     if !scope.root.is_dir() {

@@ -218,7 +218,7 @@ pub(crate) fn project_dirs_for_cwd(cwd: &str) -> Result<Vec<PathBuf>, String> {
         if crate::wsl::wsl_target(cwd_trimmed).is_some() {
             return Ok(Vec::new());
         }
-        return Err("USERPROFILE/HOME nao definido".to_string());
+        return Err("USERPROFILE/HOME is not set".to_string());
     };
     let encoded = encode_cwd_for_claude(&scope.match_cwd);
     Ok(matching_project_dirs(&scope.root, &encoded))
