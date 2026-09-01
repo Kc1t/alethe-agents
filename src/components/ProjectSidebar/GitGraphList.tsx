@@ -4,24 +4,23 @@ import { useT } from '../../lib/i18n'
 import type { GitCommitEntry } from '../../lib/tauri'
 import styles from './GitGraph.module.css'
 
-// More spaced out (GitLens/GitKraken style) than the original value — more
-// breathing room between lanes and between commit rows. `ROW_HEIGHT` has to
-// match `.row { height: ... }` in GitGraph.module.css (CSS can't import a
-// TS constant, so both need to be changed together).
-// The ROW_HEIGHT×LANE_WIDTH ratio controls how "smooth" each divergence/
-// convergence curve looks: the curve covers LANE_WIDTH horizontally in only
-// HALF of ROW_HEIGHT vertically (see `GraphRowView`) — with the old ratio
-// (20×28, curve using only 14px of vertical space) the diagonal ended up
-// steep and looked like an "elbow" instead of a curve, especially in
-// histories with several short branches stacked in sequence. Raising
-// ROW_HEIGHT and lowering LANE_WIDTH a bit makes the curve noticeably
-// smoother without changing the drawing logic.
-// Two text lines per row (subject above, author/date below) — see `.info` in the stylesheet. On a
-// narrow sidebar a single line forced the subject to share its width with the ref badges and the
-// author/date, and the subject lost: it was clipped to a few characters ("fix(u…", "Merg…") while
-// the row's most important information sat off screen. Stacking gives the subject the full width.
+// Row height covers two text lines — subject above, author/date and badges below (see `.info` in
+// the stylesheet). On a narrow sidebar a single line forced the subject to share its width with
+// the badges and the author/date and the subject lost, clipped to a few characters ("fix(u…",
+// "Merg…") with the row's most important information off screen. Stacking gives it the full width.
+//
+// It also sets how smooth each divergence/convergence curve looks: a curve crosses one lane width
+// horizontally in only HALF of ROW_HEIGHT vertically (see `GraphRowView`), so a short row against
+// a wide lane turns the diagonal into an "elbow" rather than a curve.
+//
+// Must match `.row { height: ... }` in GitGraph.module.css — CSS can't import a TS constant, so
+// the two have to be changed together.
 export const ROW_HEIGHT = 40
 const LANE_WIDTH_MAX = 14
+/** Lanes never get narrower than this. Scaling the whole graph down to fit an arbitrary lane count
+ *  (the previous approach) drove lanes to a few pixels and strokes below 1px, which sub-pixel
+ *  rendering turns into a blur — a graph too small to actually read. */
+const LANE_WIDTH_MIN = 10
 const DOT_RADIUS = 4
 const OVERSCAN = 8
 
@@ -31,25 +30,27 @@ const OVERSCAN = 8
  *  branches produced a gutter wider than the sidebar itself and pushed the subject, badges and
  *  author line off the panel.
  *
- *  The gutter is bounded by SCALING the lanes down to fit rather than by dropping or merging any
- *  of them. Both of those were tried and both corrupted the drawing: collapsing deep lanes onto
- *  the last column stacked unrelated strands at one x, and omitting them left strands that
- *  appeared and vanished with no connection — commits sitting on a line that isn't theirs, and
- *  curves that lead nowhere. Every lane is drawn, in its own column, always; a dense history just
- *  gets a tighter graph. */
-const GRAPH_GUTTER_MAX = 66
+ *  Deep lanes are never MERGED onto a shared column: that stacked unrelated strands at one x and
+ *  put commits on a line that wasn't theirs. Lanes are given as much width as fits, down to a
+ *  legible floor (`LANE_WIDTH_MIN`); only past `MAX_DRAWN_LANES` — nine concurrent lanes — is
+ *  anything left out, and what is drawn always sits in its own column at a readable size. */
+const GRAPH_GUTTER_MAX = 96
 
-/** Lane geometry for a given lane count — width, dot radius and stroke widths all scale together,
- *  so a compressed graph stays proportional instead of drawing fat dots over hairline columns. */
+/** How many lanes fit at the minimum legible width. Beyond this the extra lanes are left undrawn —
+ *  the honest tradeoff for never rendering a blurred graph, and far enough out (nine concurrent
+ *  lanes) that ordinary histories never reach it. Dots and strokes keep a fixed size at every lane
+ *  count, since the minimum lane width already leaves room for them. */
+const MAX_DRAWN_LANES = Math.floor(GRAPH_GUTTER_MAX / LANE_WIDTH_MIN)
+
 function laneMetrics(laneCount: number) {
-  const width = Math.min(LANE_WIDTH_MAX, GRAPH_GUTTER_MAX / Math.max(1, laneCount))
-  const scale = width / LANE_WIDTH_MAX
-  return {
-    width,
-    dotRadius: Math.max(1.75, DOT_RADIUS * scale),
-    mainStroke: Math.max(1.25, MAIN_STROKE_WIDTH * scale),
-    sideStroke: Math.max(1, SIDE_STROKE_WIDTH * scale),
-  }
+  const drawnLanes = Math.max(1, Math.min(laneCount, MAX_DRAWN_LANES))
+  // Whole pixels: a fractional lane width puts every line on a fractional x, which is exactly what
+  // makes vertical strokes render soft instead of crisp.
+  const width = Math.max(
+    LANE_WIDTH_MIN,
+    Math.min(LANE_WIDTH_MAX, Math.floor(GRAPH_GUTTER_MAX / drawnLanes)),
+  )
+  return { width, drawnLanes }
 }
 
 type LaneMetrics = ReturnType<typeof laneMetrics>
@@ -82,8 +83,8 @@ const LANE_COLOR_VARS = [
 const MAIN_LANE = 0
 const MAIN_STROKE_WIDTH = 3
 const SIDE_STROKE_WIDTH = 2
-function laneStrokeWidth(lane: number, metrics: LaneMetrics): number {
-  return lane === MAIN_LANE ? metrics.mainStroke : metrics.sideStroke
+function laneStrokeWidth(lane: number): number {
+  return lane === MAIN_LANE ? MAIN_STROKE_WIDTH : SIDE_STROKE_WIDTH
 }
 
 type LaneState = (string | null)[]
@@ -318,7 +319,6 @@ export function RefBadges({ refs }: { refs: string[] }) {
 function GraphRowView({
   row,
   t,
-  laneCount,
   metrics,
   strandsHidden,
   onSelect,
@@ -326,7 +326,6 @@ function GraphRowView({
 }: {
   row: GraphRow
   t: ReturnType<typeof useT>
-  laneCount: number
   metrics: LaneMetrics
   /** Set while a search is filtering the list: the commits between these results aren't on screen,
    *  so connecting strands would describe a history that isn't being shown. Only the dot is drawn,
@@ -341,13 +340,13 @@ function GraphRowView({
   // wide string gets clipped by the window edge on a right-docked sidebar.
   const rowTooltip = `${row.commit.hash.slice(0, 7)}\n${row.commit.subject}`
   const dotColor = laneColorForId(row.lane, row.laneId)
-  const dotRadius =
-    row.lane === MAIN_LANE ? metrics.dotRadius + metrics.dotRadius * 0.375 : metrics.dotRadius
+  const dotRadius = row.lane === MAIN_LANE ? DOT_RADIUS + 1.5 : DOT_RADIUS
 
   const elements: React.ReactNode[] = []
 
   // 1. Process the top half (0 -> cy)
-  for (let l = 0; l < row.lanesBefore.length && !strandsHidden; l++) {
+  const laneLimit = metrics.drawnLanes
+  for (let l = 0; l < Math.min(row.lanesBefore.length, laneLimit) && !strandsHidden; l++) {
     if (row.lanesBefore[l] != null) {
       const fromX = laneX(l, metrics.width)
       const color = laneColorForId(l, row.laneIdsBefore[l] ?? null)
@@ -361,7 +360,7 @@ function GraphRowView({
             x2={cx}
             y2={cy}
             stroke={color}
-            strokeWidth={laneStrokeWidth(l, metrics)}
+            strokeWidth={laneStrokeWidth(l)}
             strokeLinecap="round"
           />,
         )
@@ -378,7 +377,7 @@ function GraphRowView({
             d={`M ${fromX} 0 C ${fromX} ${midY}, ${cx} ${midY}, ${cx} ${cy}`}
             fill="none"
             stroke={color}
-            strokeWidth={laneStrokeWidth(l, metrics)}
+            strokeWidth={laneStrokeWidth(l)}
             strokeLinecap="round"
           />,
         )
@@ -391,7 +390,7 @@ function GraphRowView({
             x2={fromX}
             y2={cy}
             stroke={color}
-            strokeWidth={laneStrokeWidth(l, metrics)}
+            strokeWidth={laneStrokeWidth(l)}
             strokeLinecap="round"
           />,
         )
@@ -401,7 +400,7 @@ function GraphRowView({
 
   // 2. Process the bottom half (cy -> ROW_HEIGHT) — only if this isn't the last row
   if (!row.isLastRow && !strandsHidden) {
-    for (let l = 0; l < row.lanesAfter.length; l++) {
+    for (let l = 0; l < Math.min(row.lanesAfter.length, laneLimit); l++) {
       const parent = row.lanesAfter[l]
       if (parent != null) {
         const toX = laneX(l, metrics.width)
@@ -416,7 +415,7 @@ function GraphRowView({
               x2={cx}
               y2={ROW_HEIGHT}
               stroke={color}
-              strokeWidth={laneStrokeWidth(l, metrics)}
+              strokeWidth={laneStrokeWidth(l)}
               strokeLinecap="round"
             />,
           )
@@ -429,7 +428,7 @@ function GraphRowView({
               x2={toX}
               y2={ROW_HEIGHT}
               stroke={color}
-              strokeWidth={laneStrokeWidth(l, metrics)}
+              strokeWidth={laneStrokeWidth(l)}
               strokeLinecap="round"
             />,
           )
@@ -441,7 +440,7 @@ function GraphRowView({
               d={`M ${cx} ${cy} C ${cx} ${midY}, ${toX} ${midY}, ${toX} ${ROW_HEIGHT}`}
               fill="none"
               stroke={color}
-              strokeWidth={laneStrokeWidth(l, metrics)}
+              strokeWidth={laneStrokeWidth(l)}
               strokeLinecap="round"
             />,
           )
@@ -462,7 +461,7 @@ function GraphRowView({
     >
       <svg
         className={styles.svg}
-        width={laneCount * metrics.width}
+        width={metrics.drawnLanes * metrics.width}
         height={ROW_HEIGHT}
         aria-hidden="true"
       >
@@ -625,7 +624,6 @@ export function GitGraphList({
                 key={row.commit.hash}
                 row={row}
                 t={t}
-                laneCount={laneCount}
                 metrics={metrics}
                 strandsHidden={searching}
                 onSelect={() =>
