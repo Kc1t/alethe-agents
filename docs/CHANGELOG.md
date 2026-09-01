@@ -12,6 +12,14 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- Pull Request review and squash merge from the merge panel. Alethe locates an open GitHub Pull
+  Request for an agent worktree through the local GitHub CLI (`gh auth login` required), opens its
+  metadata, and can start an AI review inside the same isolated worktree — the agent is instructed to
+  only inspect the diff, never to commit, push, merge, or comment on GitHub. Merging stays an
+  explicit human action: before the squash merge Alethe re-fetches the PR, blocks it when the head
+  SHA moved since the review, when the PR is a draft, or when GitHub reports conflicts, and passes
+  the same SHA to GitHub as a concurrency guard. No GitHub token is stored; authentication is
+  delegated to the local GitHub CLI.
 - Local voice dictation with on-device Parakeet TDT v3 (sherpa-onnx). Enable it under Preferences →
   Integrations, download the model once (~640 MB), then press Ctrl+E (⌘E on macOS) to dictate into
   the active terminal. The mic indicator appears only while listening or while the model is
