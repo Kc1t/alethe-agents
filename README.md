@@ -143,6 +143,11 @@ registry, npm/pnpm/Volta/fnm/nvm/Bun/Cargo/Scoop/Chocolatey, and can be pointed 
 - RAM readout in the title bar; disable a terminal or suspend a whole group to get memory back.
 - Git panel per project — status, stage, commit, branches, diffs in a pane — plus worktrees for
   parallel tasks.
+- **Pull Request review**: the merge panel finds the open GitHub PR for an agent worktree through the
+  local `gh` CLI, opens its metadata, and can start an AI review inside the same isolated worktree —
+  read-only, with no commits, pushes, merges, or GitHub comments. Squash-merging stays an explicit
+  human action, blocked when the head SHA moved, the PR is a draft, or GitHub reports conflicts. No
+  GitHub token is stored; authentication is delegated to `gh`.
 - Content panes beside the terminals: file explorer, Markdown, diffs, images, video, embedded browser.
 - Todos per project, isolated profiles, local backup export/import, 14 UI and terminal themes,
   EN and pt-BR.

@@ -30,6 +30,7 @@ mod ghostty_bridge;
 mod ghostty_ffi;
 mod git_control;
 mod github_sync;
+mod github_pr;
 mod graphify;
 mod handoff;
 mod health_probe;
@@ -347,6 +348,8 @@ pub fn run() {
             github_sync::github_sync_logout,
             github_sync::github_sync_push,
             github_sync::github_sync_pull,
+            github_pr::github_pr_find,
+            github_pr::github_pr_merge,
             git_control::git_init,
             git_control::git_status,
             git_control::git_diff,

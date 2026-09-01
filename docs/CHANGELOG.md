@@ -12,6 +12,15 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- Pull Request review and squash merge from the merge panel. Alethe locates an open GitHub Pull
+  Request for an agent worktree through the local GitHub CLI (`gh auth login` required), opens its
+  metadata, and can start an AI review inside the same isolated worktree — the agent is instructed to
+  only inspect the diff, never to commit, push, merge, or comment on GitHub. Merging stays an
+  explicit human action: before the squash merge Alethe re-fetches the PR, blocks it when the head
+  SHA moved since the review, when the PR is a draft, or when GitHub reports conflicts, and passes
+  the same SHA to GitHub as a concurrency guard. No GitHub token is stored; authentication is
+  delegated to the local GitHub CLI.
+
 - Mark a page element in the in-app browser (crosshair) and send it to an agent chat, with selector,
   text, HTML snippet, and a cropped screenshot — similar to Orca’s grab → attach flow. Uses the
   embedded (CDP) browser; native private panes switch over when you start marking. Hover highlights

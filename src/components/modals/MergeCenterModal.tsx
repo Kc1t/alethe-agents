@@ -2,6 +2,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  GitPullRequest,
   MessageSquare,
   Play,
   RefreshCw,
@@ -59,6 +60,7 @@ export type MergeCenterModalProps = {
   onValidate: (item: PendingMergeCard) => void
   validatingId: string | null
   onOpenTest: (item: PendingMergeCard) => void
+  onOpenPullRequest: (item: PendingMergeCard) => void
   onRecheckGate: (item: PendingMergeCard) => void
 }
 
@@ -95,6 +97,7 @@ export function MergeCenterModal({
   onValidate,
   validatingId,
   onOpenTest,
+  onOpenPullRequest,
   onRecheckGate,
 }: MergeCenterModalProps) {
   const t = useT()
@@ -338,6 +341,17 @@ export function MergeCenterModal({
             >
               <MessageSquare size={12} />
               <span className={panelStyles.actionBtnLabel}>{t('merge.review')}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`${panelStyles.actionBtn} ${panelStyles.btnReview}`}
+              disabled={buttonsDisabled}
+              onClick={() => onOpenPullRequest(item)}
+              title={t('merge.prTooltip')}
+            >
+              <GitPullRequest size={12} />
+              <span className={panelStyles.actionBtnLabel}>{t('merge.pr')}</span>
             </button>
           </div>
         </>
