@@ -1,4 +1,14 @@
-import { Bot, BrainCircuit, GitBranch, Globe2, ListTodo, Network, Plug, Workflow } from 'lucide-react'
+import {
+  Bot,
+  BrainCircuit,
+  GitBranch,
+  Globe2,
+  ListTodo,
+  Network,
+  Plug,
+  SquareTerminal,
+  Workflow,
+} from 'lucide-react'
 
 import { FEATURES } from '../../../lib/features'
 import { useT } from '../../../lib/i18n'
@@ -16,6 +26,7 @@ const FEATURE_ICONS = {
   mcp: Plug,
   playwright: Bot,
   orchestrator: Workflow,
+  wsl: SquareTerminal,
 } as const
 
 export function FeaturesPage() {
