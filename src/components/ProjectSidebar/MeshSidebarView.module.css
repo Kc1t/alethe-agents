@@ -731,3 +731,16 @@
   font-size: 10px;
   color: var(--status-working);
 }
+
+/* The three steps of sharing a project. Numbered because the order matters and because the middle
+   step happens on the other person's machine — the reason the flow read as a dead end before. */
+.inviteSteps {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}

@@ -30,6 +30,10 @@ import {
   getRendezvousStatus,
   type RendezvousStatus,
 } from '../../lib/api/syncRendezvous'
+import {
+  type PendingChatContactRequest,
+  syncListPendingChatContactRequests,
+} from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
 import { downscaleAvatar } from '../../lib/image/downscaleAvatar'
 import { PROJECT_SYNC_CAPABILITIES } from '../../lib/sync/contracts'
@@ -63,6 +67,7 @@ const GOOGLE_CLOUD_CREDENTIALS_URL = 'https://console.cloud.google.com/apis/cred
 export function MeshSidebarView() {
   const t = useT()
   const openModal = useUiStore((s) => s.openModal_)
+  const setActiveView = useUiStore((s) => s.setActiveView)
   const projects = useProjectsStore((s) => s.projects)
   const preferences = useProjectsStore((s) => s.preferences)
   const activeProjectId = useProjectsStore((s) => s.activeProjectId)
@@ -89,6 +94,7 @@ export function MeshSidebarView() {
   const [pairingCodeCopied, setPairingCodeCopied] = useState(false)
   const [pairingCodeBusy, setPairingCodeBusy] = useState(false)
   const [pairingCodeError, setPairingCodeError] = useState(false)
+  const [pendingRequests, setPendingRequests] = useState<PendingChatContactRequest[]>([])
   const [deviceIdCopied, setDeviceIdCopied] = useState(false)
   const [grantActionBusy, setGrantActionBusy] = useState<string | null>(null)
   const [rendezvousSettings, setRendezvousSettings] = useState<CollaborationServiceSettings | null>(
@@ -144,6 +150,28 @@ export function MeshSidebarView() {
   useEffect(() => {
     void refreshRendezvous()
   }, [])
+
+  // Only polled while the invite panel is open — that is the one moment the count matters (you
+  // just handed someone a code and are waiting for them to use it), and it keeps this off the
+  // sidebar's normal render path entirely.
+  useEffect(() => {
+    if (!showInvitePanel) return
+    let active = true
+    const refresh = () =>
+      syncListPendingChatContactRequests()
+        .then((requests) => {
+          if (active) setPendingRequests(requests)
+        })
+        .catch(() => {
+          if (active) setPendingRequests([])
+        })
+    void refresh()
+    const timer = window.setInterval(() => void refresh(), 5_000)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+    }
+  }, [showInvitePanel])
 
   const workerConfigured = Boolean(rendezvousSettings?.validatedEndpoint)
 
@@ -840,6 +868,26 @@ export function MeshSidebarView() {
             {showInvitePanel ? (
               <div className={styles.oauthSetup}>
                 <span className={styles.infoHint}>{t('mesh.sharePairingCodeHint')}</span>
+                {/* Sharing a project has always worked, but every step after handing over the code
+                    lived in the Chat tab with nothing pointing at it — so the code looked like a
+                    dead end and "there is no way to accept an invite" was the honest reading. The
+                    steps are spelled out here, and any request that arrives surfaces right here
+                    with a shortcut to the screen that approves it. */}
+                <ol className={styles.inviteSteps}>
+                  <li>{t('mesh.inviteStepShare')}</li>
+                  <li>{t('mesh.inviteStepRedeem')}</li>
+                  <li>{t('mesh.inviteStepApprove')}</li>
+                </ol>
+                {pendingRequests.length > 0 ? (
+                  <button
+                    type="button"
+                    className={styles.primaryAction}
+                    onClick={() => setActiveView('collaboration')}
+                  >
+                    <Share2 size={13} />
+                    <span>{t('mesh.inviteReviewRequests', { count: pendingRequests.length })}</span>
+                  </button>
+                ) : null}
                 {pairingCodeBusy ? (
                   <div className={styles.loadingRow}>
                     <Loader2 size={14} className={styles.spin} />
@@ -880,7 +928,9 @@ export function MeshSidebarView() {
                     ) : null}
                   </>
                 ) : pairingCodeError ? (
-                  <span className={styles.deviceActionError}>{t('chat.contacts.exportFailed')}</span>
+                  <span className={styles.deviceActionError}>
+                    {t('chat.contacts.exportFailed')}
+                  </span>
                 ) : null}
                 <button
                   type="button"
