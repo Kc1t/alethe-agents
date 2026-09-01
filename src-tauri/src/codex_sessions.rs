@@ -3,7 +3,7 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
-use crate::provider_common::{file_modified_ms, normalize_cwd, provider_home_dir};
+use crate::provider_common::{file_modified_ms, normalize_cwd, provider_home_dir, provider_scope};
 
 #[derive(Serialize)]
 pub struct CodexSessionSnapshot {
@@ -80,20 +80,23 @@ pub async fn snapshot_codex_sessions(cwd: String) -> Result<Vec<CodexSessionSnap
 }
 
 fn snapshot_codex_sessions_inner(cwd: String) -> Result<Vec<CodexSessionSnapshot>, String> {
-    let target_cwd = normalize_cwd(&cwd);
-    if target_cwd.is_empty() {
+    if normalize_cwd(&cwd).is_empty() {
         return Ok(Vec::new());
     }
 
-    let Some(root) = codex_sessions_dir() else {
+    let Some(scope) = provider_scope(&cwd, &[".codex", "sessions"]) else {
+        if crate::wsl::wsl_target(&cwd).is_some() {
+            return Ok(Vec::new());
+        }
         return Err("USERPROFILE/HOME nao definido".to_string());
     };
-    if !root.is_dir() {
+    let target_cwd = scope.match_key();
+    if !scope.root.is_dir() {
         return Ok(Vec::new());
     }
 
     let mut files = Vec::new();
-    collect_jsonl_files(&root, &mut files);
+    collect_jsonl_files(&scope.root, &mut files);
 
     let mut sessions = Vec::new();
     let mut seen_ids = std::collections::HashSet::new();
@@ -104,7 +107,7 @@ fn snapshot_codex_sessions_inner(cwd: String) -> Result<Vec<CodexSessionSnapshot
         let Some(session) = parse_codex_session(&path, &metadata) else {
             continue;
         };
-        if normalize_cwd(&session.cwd) != target_cwd || !seen_ids.insert(session.id.clone()) {
+        if scope.normalize(&session.cwd) != target_cwd || !seen_ids.insert(session.id.clone()) {
             continue;
         }
         sessions.push(session);
