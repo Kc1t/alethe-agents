@@ -1,12 +1,14 @@
 import { isTauri } from '@tauri-apps/api/core'
 import { X } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 
 import { useT } from '../../lib/i18n'
 import {
   type BrowserFrame,
+  type BrowserInspectResult,
   browserPaneClose,
   browserPaneCloseTarget,
+  browserPaneInspectAt,
   browserPaneKey,
   browserPaneMouse,
   browserPaneOpen,
@@ -22,6 +24,25 @@ import {
 import { isAppShortcut, modifiersOf, mouseButtonOf, toKeyInput, toPageCoords } from './cdpInput'
 import styles from './WebPane.module.css'
 
+function highlightStyle(
+  rect: { x: number; y: number; width: number; height: number },
+  frame: { deviceWidth: number; deviceHeight: number },
+  canvas: HTMLCanvasElement | null,
+): CSSProperties {
+  if (!canvas) return { display: 'none' }
+  const bounds = canvas.getBoundingClientRect()
+  const host = canvas.parentElement?.getBoundingClientRect()
+  if (!host || frame.deviceWidth <= 0 || frame.deviceHeight <= 0) return { display: 'none' }
+  const scaleX = bounds.width / frame.deviceWidth
+  const scaleY = bounds.height / frame.deviceHeight
+  return {
+    left: bounds.left - host.left + rect.x * scaleX,
+    top: bounds.top - host.top + rect.y * scaleY,
+    width: Math.max(2, rect.width * scaleX),
+    height: Math.max(2, rect.height * scaleY),
+  }
+}
+
 type CdpBrowserSurfaceProps = {
   paneId: string
   url: string
@@ -29,10 +50,16 @@ type CdpBrowserSurfaceProps = {
   visible: boolean
   /** Attach to this existing tab instead of opening a new one. */
   watchTargetId?: string
+  /** When true, clicks inspect DOM elements instead of driving the page. */
+  grabMode?: boolean
+  highlightRect?: { x: number; y: number; width: number; height: number } | null
+  onGrabInspect?: (result: BrowserInspectResult) => void
+  onGrabCancel?: () => void
 }
 
 const RESIZE_DEBOUNCE_MS = 180
 const TARGET_POLL_MS = 3000
+const GRAB_HOVER_MS = 70
 
 function decodeJpeg(base64: string): Blob {
   const binary = atob(base64)
@@ -49,6 +76,10 @@ export function CdpBrowserSurface({
   reloadKey,
   visible,
   watchTargetId,
+  grabMode = false,
+  highlightRect = null,
+  onGrabInspect,
+  onGrabCancel,
 }: CdpBrowserSurfaceProps) {
   const t = useT()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -56,14 +87,38 @@ export function CdpBrowserSurface({
   const frameRef = useRef<BrowserFrame | null>(null)
   const readyRef = useRef(false)
   const paintedRef = useRef(false)
+  const grabHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [error, setError] = useState('')
   const [painted, setPainted] = useState(false)
   const [targets, setTargets] = useState<BrowserTarget[]>([])
   const [activeTarget, setActiveTarget] = useState('')
+  const [hoverRect, setHoverRect] = useState<{
+    x: number
+    y: number
+    width: number
+    height: number
+  } | null>(null)
   // useT returns a fresh function every render. Depending on it would tear the pane down and
   // reopen it on every repaint, which never settles into a first frame.
   const failedLabelRef = useRef(t('webPane.cdpFailed'))
   failedLabelRef.current = t('webPane.cdpFailed')
+
+  useEffect(() => {
+    if (!grabMode) {
+      setHoverRect(null)
+      if (grabHoverTimerRef.current) {
+        clearTimeout(grabHoverTimerRef.current)
+        grabHoverTimerRef.current = null
+      }
+    }
+  }, [grabMode])
+
+  useEffect(
+    () => () => {
+      if (grabHoverTimerRef.current) clearTimeout(grabHoverTimerRef.current)
+    },
+    [],
+  )
 
   const measure = useCallback(() => {
     const host = hostRef.current
@@ -241,6 +296,38 @@ export function CdpBrowserSurface({
       if (!canvas || !frame || !readyRef.current) return
       const rect = canvas.getBoundingClientRect()
       const point = toPageCoords({ clientX: event.clientX, clientY: event.clientY }, rect, frame)
+
+      if (grabMode && kind === 'mousePressed') {
+        event.preventDefault()
+        if (grabHoverTimerRef.current) {
+          clearTimeout(grabHoverTimerRef.current)
+          grabHoverTimerRef.current = null
+        }
+        void browserPaneInspectAt(paneId, point.x, point.y)
+          .then((result) => {
+            setHoverRect(null)
+            onGrabInspect?.(result)
+          })
+          .catch((cause) => {
+            void recordFrontendError(
+              `inspect: ${cause instanceof Error ? cause.message : String(cause)}`,
+              null,
+              'browser-cdp.grab',
+            )
+          })
+        return
+      }
+      if (grabMode && kind === 'mouseMoved') {
+        if (grabHoverTimerRef.current) clearTimeout(grabHoverTimerRef.current)
+        grabHoverTimerRef.current = setTimeout(() => {
+          void browserPaneInspectAt(paneId, point.x, point.y)
+            .then((result) => setHoverRect(result.rect))
+            .catch(() => {})
+        }, GRAB_HOVER_MS)
+        return
+      }
+      if (grabMode) return
+
       const button = 'button' in event ? mouseButtonOf(event.button) : 'none'
       void browserPaneMouse(paneId, {
         kind,
@@ -252,17 +339,22 @@ export function CdpBrowserSurface({
         ...extra,
       }).catch(() => {})
     },
-    [paneId],
+    [grabMode, onGrabInspect, paneId],
   )
 
   const sendKey = useCallback(
     (kind: 'keyDown' | 'keyUp', event: React.KeyboardEvent<HTMLCanvasElement>) => {
       if (!readyRef.current) return
+      if (grabMode && kind === 'keyDown' && event.key === 'Escape') {
+        event.preventDefault()
+        onGrabCancel?.()
+        return
+      }
       if (isAppShortcut(event)) return
       event.preventDefault()
       void browserPaneKey(paneId, toKeyInput(kind, event)).catch(() => {})
     },
-    [paneId],
+    [grabMode, onGrabCancel, paneId],
   )
 
   return (
@@ -300,7 +392,7 @@ export function CdpBrowserSurface({
       ) : null}
       <canvas
         ref={canvasRef}
-        className={styles.cdpCanvas}
+        className={`${styles.cdpCanvas} ${grabMode ? styles.cdpGrabCursor : ''}`}
         tabIndex={0}
         aria-label={t('webPane.cdpSurface')}
         onMouseDown={(event) => {
@@ -316,6 +408,18 @@ export function CdpBrowserSurface({
         onKeyUp={(event) => sendKey('keyUp', event)}
         onContextMenu={(event) => event.preventDefault()}
       />
+      {(() => {
+        const rect = highlightRect ?? hoverRect
+        const frame = frameRef.current
+        if (!rect || !frame) return null
+        return (
+          <div
+            className={`${styles.grabHighlight} ${!highlightRect && hoverRect ? styles.grabHighlightHover : ''}`}
+            style={highlightStyle(rect, frame, canvasRef.current)}
+            aria-hidden
+          />
+        )
+      })()}
       {!painted && !error ? (
         <div className={styles.cdpStatus}>{t('webPane.cdpLoading')}</div>
       ) : null}

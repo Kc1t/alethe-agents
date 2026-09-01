@@ -9,11 +9,6 @@ import {
 
 import { ZOOM_MAX, ZOOM_MIN } from '../../../lib/agentCanvasConfig'
 
-   
-                                                                             
-                                                                          
-                                                      
-   
 export function useCanvasZoom(
   containerRef: RefObject<HTMLDivElement | null>,
   stageRef: RefObject<HTMLDivElement | null>,
@@ -21,13 +16,12 @@ export function useCanvasZoom(
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [panning, setPanning] = useState(false)
-                                                                         
+
   const panStartRef = useRef<{ mx: number; my: number; px: number; py: number } | null>(null)
 
   const clampZoom = (z: number) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(z * 100) / 100))
   const zoomBy = useCallback((delta: number) => setZoom((z) => clampZoom(z + delta)), [])
 
-                                                                               
   const fitZoom = useCallback(() => {
     const container = containerRef.current
     const stage = stageRef.current
@@ -42,7 +36,7 @@ export function useCanvasZoom(
   }, [containerRef, stageRef])
 
   // Zoom com a roda do mouse (canvas de verdade). Listener nativo non-passive
-                                                                        
+
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -54,11 +48,10 @@ export function useCanvasZoom(
     return () => el.removeEventListener('wheel', onWheel)
   }, [containerRef])
 
-                                                                                
   const onCanvasPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 && e.button !== 1) return
     const target = e.target as HTMLElement
-                                                                                
+
     if (
       e.button === 0 &&
       target.closest(

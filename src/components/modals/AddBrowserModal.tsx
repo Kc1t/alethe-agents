@@ -32,11 +32,13 @@ export function AddBrowserModal() {
     return state.projects.find((candidate) => candidate.id === state.activeProjectId) ?? null
   })
   const createWebPane = useProjectsStore((state) => state.createWebPane)
+  const openBrowserWorkspace = useProjectsStore((state) => state.openBrowserWorkspace)
   const [urlInput, setUrlInput] = useState('')
   const [name, setName] = useState('')
   const [javascriptEnabled, setJavascriptEnabled] = useState(true)
   const [resourceMode, setResourceMode] = useState<BrowserResourceMode>('app-first')
   const [zoom, setZoom] = useState(1)
+  const [openInGrid, setOpenInGrid] = useState(false)
   const normalizedUrl = normalizeBrowserUrl(urlInput)
 
   useEffect(() => {
@@ -46,17 +48,20 @@ export function AddBrowserModal() {
     setJavascriptEnabled(true)
     setResourceMode('app-first')
     setZoom(1)
+    setOpenInGrid(false)
   }, [context?.url, open])
 
   const addBrowser = () => {
     if (!project || !normalizedUrl) return
-    createWebPane(project.id, {
+    const args = {
       url: normalizedUrl,
       name: name.trim() || undefined,
       javascriptEnabled,
       resourceMode,
       zoom,
-    })
+    }
+    if (openInGrid) createWebPane(project.id, args)
+    else openBrowserWorkspace(project.id, args)
     useUiStore.getState().setActiveView('workspace')
     closeModal()
   }
@@ -78,7 +83,7 @@ export function AddBrowserModal() {
             onClick={addBrowser}
             disabled={!project || !normalizedUrl}
           >
-            {t('browser.addToGrid')}
+            {t(openInGrid ? 'browser.addToGrid' : 'browser.openTab')}
           </button>
         </>
       }
@@ -174,11 +179,29 @@ export function AddBrowserModal() {
             { value: 'keep-alive', label: t('browser.resourceModeKeepAlive') },
           ]}
         />
-        <span className={controls.hint}>{t(`browser.resourceModeDescription.${resourceMode}`)}</span>
+        <span className={controls.hint}>
+          {t(`browser.resourceModeDescription.${resourceMode}`)}
+        </span>
       </div>
 
+      <label className={styles.toggleCard}>
+        <input
+          type="checkbox"
+          checked={openInGrid}
+          onChange={(event) => setOpenInGrid(event.target.checked)}
+        />
+        <span>
+          <strong>{t('browser.openInGridOption')}</strong>
+          <small>{t('browser.openInGridOptionDescription')}</small>
+        </span>
+      </label>
+
       {project ? (
-        <p className={styles.destination}>{t('browser.destination', { project: project.name })}</p>
+        <p className={styles.destination}>
+          {t(openInGrid ? 'browser.destinationGrid' : 'browser.destinationTab', {
+            project: project.name,
+          })}
+        </p>
       ) : (
         <p className={styles.error}>{t('ui.markdown.noActiveProject')}</p>
       )}

@@ -7,20 +7,11 @@ import type { AgentType } from '../lib/types'
 import { useProjectsStore } from '../stores/projectsStore'
 import { useUiStore } from '../stores/uiStore'
 
-   
-                                                                            
-                                                        
-  
-                            
-                                                                        
-                                                 
-   
-
-                                                                           
 const AGENT_PREFERENCE: AgentType[] = [
   'claude',
   'codex',
   'copilot',
+  'cursor',
   'antigravity',
   'opencode',
   'shell',
@@ -30,6 +21,7 @@ const AGENT_LABEL: Record<AgentType, string> = {
   claude: 'Claude',
   codex: 'Codex',
   copilot: 'GitHub Copilot',
+  cursor: 'Cursor Agent',
   antigravity: 'Antigravity',
   opencode: 'OpenCode',
   shell: 'Shell',
@@ -41,8 +33,6 @@ export function useCliOpenRequests(hydrated: boolean) {
   const t = useT()
 
   useEffect(() => {
-                                                                            
-                                                                      
     if (!hydrated) return
     let disposed = false
 
@@ -68,15 +58,11 @@ export function useCliOpenRequests(hydrated: boolean) {
       useUiStore.getState().pushToast({ title: t('notif.cliProjectCreated'), body: plan.name })
     }
 
-                                                                               
-                                                   
     void cliTakePendingOpen()
       .then((path) => {
         if (!disposed && path) openFromCli(path)
       })
-      .catch(() => {
-                                                    
-      })
+      .catch(() => {})
 
     const unlisten = listenCliOpenPath((path) => {
       if (!disposed) openFromCli(path)

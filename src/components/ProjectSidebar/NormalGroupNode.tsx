@@ -7,7 +7,6 @@ import { type Group, type Project } from '../../lib/types'
 import { Collapse } from '../ui/Collapse'
 import styles from './NormalProjectSidebar.module.css'
 
-                                                                          
 export function collectDescendants(rootId: string, allGroups: Group[]): Set<string> {
   const result = new Set<string>()
   const queue = [rootId]

@@ -120,7 +120,7 @@ The `dark` block defines these groups of tokens:
 - **Accent:** `--accent`, `--accent-strong`, `--accent-on`, `--accent-soft`, `--accent-faint`, `--accent-border`, `--accent-ring`, `--accent-bg-soft`, `--accent-border-soft`
 - **Cards and surfaces:** `--surface-modal`, `--surface-card-default`, `--surface-card-default-strong`, `--surface-card-selected`, `--border-subtle`, `--border-accent`
 - **Status:** `--status-working`, `--status-working-soft`, `--status-waiting`, `--status-waiting-soft`, `--status-stopped`, `--status-stopped-soft`, `--status-disabled`, `--status-offline`, `--status-offline-soft`, `--status-active`, `--status-idle`
-- **Agent colors:** `--agent-shell`, `--agent-claude`, `--agent-codex`, `--agent-opencode`, `--agent-freebuff`, `--agent-mimo`, `--agent-antigravity`, `--agent-shell-soft`, `--agent-claude-soft`, `--agent-codex-soft`, `--agent-opencode-soft`, `--agent-freebuff-soft`, `--agent-mimo-soft`, `--agent-antigravity-soft`
+- **Agent colors:** `--agent-shell`, `--agent-claude`, `--agent-codex`, `--agent-opencode`, `--agent-freebuff`, `--agent-mimo`, `--agent-antigravity`, `--agent-cursor`, `--agent-shell-soft`, `--agent-claude-soft`, `--agent-codex-soft`, `--agent-opencode-soft`, `--agent-freebuff-soft`, `--agent-mimo-soft`, `--agent-antigravity-soft`, `--agent-cursor-soft`
 - **Focus:** `--focus-ring`
 - **Tabs lane:** `--shape-tabs-lane-bg`, `--shape-tabs-lane-border`
 - **Shadows:** `--shadow-sm`, `--shadow-md`, `--shadow-lg`

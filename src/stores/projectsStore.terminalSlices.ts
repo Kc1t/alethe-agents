@@ -39,6 +39,7 @@ type TerminalsSlice = Pick<
   | 'createGraphifyPane'
   | 'renameTerminal'
   | 'setBrowserEngine'
+  | 'setBrowserPaneUrl'
   | 'markGsdSyncViewer'
   | 'deleteTerminal'
   | 'deleteTerminalWithWorktreeCleanup'
@@ -304,6 +305,47 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
         browserConfig: { ...t.browserConfig, engine },
       })),
 
+    setBrowserPaneUrl: (projectId, terminalId, url) =>
+      update((state) => {
+        let host = url
+        try {
+          host = new URL(url).hostname
+        } catch {
+          /* keep url as label fallback */
+        }
+        const projects = state.projects.map((project) =>
+          project.id !== projectId
+            ? project
+            : {
+                ...project,
+                terminals: project.terminals.map((terminal) =>
+                  terminal.id !== terminalId
+                    ? terminal
+                    : {
+                        ...terminal,
+                        url,
+                        name: terminal.name === host || !terminal.name ? host : terminal.name,
+                        lastUsedAt: Date.now(),
+                      },
+                ),
+              },
+        )
+        const tabs = state.workspace.tabs.map((tab) => {
+          if (
+            (tab.kind === 'browser' || tab.kind === 'terminal') &&
+            tab.sourceId === terminalId &&
+            tab.sourceProjectId === projectId
+          ) {
+            return { ...tab, label: host, updatedAt: Date.now() }
+          }
+          return tab
+        })
+        return {
+          projects,
+          workspace: { ...state.workspace, tabs },
+        }
+      }),
+
     markGsdSyncViewer: (projectId, terminalId) =>
       updateTerminal(projectId, terminalId, (t) =>
         t.gsdSyncViewer ? t : { ...t, gsdSyncViewer: true },
@@ -349,7 +391,7 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
           .filter(
             (tab) =>
               !(
-                tab.kind === 'terminal' &&
+                (tab.kind === 'terminal' || tab.kind === 'browser') &&
                 tab.sourceProjectId === projectId &&
                 idsToRemove.has(tab.sourceId ?? '')
               ),
@@ -400,6 +442,7 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
           await worktreeRemove(repo, terminal.worktreeAgentId, true)
         } catch (firstErr) {
           if (String(firstErr).includes('worktree_not_found')) {
+            /* already gone */
           } else {
             await new Promise((resolve) => setTimeout(resolve, 400))
             try {

@@ -15,13 +15,7 @@ export function cleanupPtys(ptyIds: Array<string | null | undefined>): void {
     void killPty(ptyId).catch(() => {
       // The PTY may already have exited or been killed by another action.
     })
-                                                                           
-                                                                                
-                                                                               
-                                                                                 
-                                                                                  
-    void ghosttyKill(ptyId).catch(() => {
-                                                       
-    })
+
+    void ghosttyKill(ptyId).catch(() => {})
   }
 }

@@ -2,12 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 export type OrchestratorJobStatus =
-  | 'queued'
-  | 'running'
-  | 'done'
-  | 'failed'
-  | 'cancelled'
-  | 'released'
+  'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'released'
 
 export type OrchestratorJob = {
   id: string

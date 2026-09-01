@@ -169,13 +169,13 @@ export function createSubTabsSlice({ updateTerminal, updateSubTab }: SliceCtx): 
         const remaining = t.tabs.filter((s) => s.id !== tabId)
         if (remaining.length === 0) return t
         const adjacentTab =
-          closingIndex >= 0
-            ? (t.tabs[closingIndex + 1] ?? t.tabs[closingIndex - 1])
-            : undefined
+          closingIndex >= 0 ? (t.tabs[closingIndex + 1] ?? t.tabs[closingIndex - 1]) : undefined
         const activeTabId =
           t.activeTabId === tabId
             ? (adjacentTab?.id ?? remaining[0].id)
-            : (remaining.some((tab) => tab.id === t.activeTabId) ? t.activeTabId : remaining[0].id)
+            : remaining.some((tab) => tab.id === t.activeTabId)
+              ? t.activeTabId
+              : remaining[0].id
         const next = { ...t, tabs: remaining, activeTabId }
         return activeTabId ? touchTerminalUsage(next, activeTabId) : next
       }),

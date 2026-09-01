@@ -33,7 +33,6 @@ export function normalizeTodoTags(value: unknown): string[] {
   return tags.slice(0, 6)
 }
 
-                                                                   
 export function reorderTodoItems(
   items: TodoItem[],
   draggedId: string,

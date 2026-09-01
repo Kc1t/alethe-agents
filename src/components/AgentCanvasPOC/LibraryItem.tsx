@@ -6,11 +6,6 @@ import { useT } from '../../lib/i18n'
 import styles from './AgentCanvasPOC.module.css'
 import { AgentChip } from './AgentChip'
 
-   
-                                                                            
-                                                                           
-                                               
-   
 export function LibraryItem({
   template,
   installed,

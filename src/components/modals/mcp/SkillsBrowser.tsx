@@ -96,9 +96,7 @@ export function SkillsBrowser({ dark }: { dark: boolean }) {
     if (removed.length > 0) {
       pushToast({
         title: t('skills.removed', { name: target.group.name }),
-        body: sharedKept
-          ? t('skills.removedLinkOnly', { path: sharedKept })
-          : removed.join(', '),
+        body: sharedKept ? t('skills.removedLinkOnly', { path: sharedKept }) : removed.join(', '),
       })
     }
     if (failed.length > 0) {
@@ -368,9 +366,7 @@ function TreeNode({ node, depth }: { node: SkillNode; depth: number }) {
         {node.name}
       </button>
       {open
-        ? node.children.map((child) => (
-            <TreeNode key={child.path} node={child} depth={depth + 1} />
-          ))
+        ? node.children.map((child) => <TreeNode key={child.path} node={child} depth={depth + 1} />)
         : null}
     </>
   )

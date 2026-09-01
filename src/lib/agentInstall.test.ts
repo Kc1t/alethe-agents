@@ -67,6 +67,11 @@ describe('installMethodsFor', () => {
     )
     expect(installMethodsFor('mimo', BARE).map((method) => method.id)).toEqual(['native'])
   })
+
+  it('installs Cursor Agent through the official Windows install script', () => {
+    expect(installMethodsFor('cursor', BARE).map((method) => method.id)).toEqual(['native'])
+    expect(installMethodsFor('cursor', BARE)[0].command).toContain('cursor.com/install')
+  })
 })
 
 describe('needsNodeToolchain', () => {
@@ -120,6 +125,8 @@ describe('uninstallMethodsFor', () => {
 
 describe('installShellLine', () => {
   it('closes the shell so the runner can detect completion', () => {
-    expect(installShellLine('npm install -g opencode-ai')).toBe('npm install -g opencode-ai; exit\r')
+    expect(installShellLine('npm install -g opencode-ai')).toBe(
+      'npm install -g opencode-ai; exit\r',
+    )
   })
 })

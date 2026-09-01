@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { normalizeBrowserUrl } from './browserUrl'
 import { makeWebPane } from './terminalFactory'
 
 describe('makeWebPane', () => {
@@ -30,5 +31,12 @@ describe('makeWebPane', () => {
       resourceMode: 'balanced',
       zoom: 1.25,
     })
+  })
+})
+
+describe('normalizeBrowserUrl for address bar', () => {
+  it('accepts bare hosts as https', () => {
+    expect(normalizeBrowserUrl('example.com/docs')).toBe('https://example.com/docs')
+    expect(normalizeBrowserUrl('localhost:3000')).toBe('http://localhost:3000/')
   })
 })

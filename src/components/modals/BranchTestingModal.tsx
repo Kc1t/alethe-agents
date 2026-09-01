@@ -43,7 +43,9 @@ export type BranchTestingModalProps = {
   onClose: () => void
   branchName: string
   projectName: string
-  changesSummary: Array<string | { path: string; status: string; additions?: number; deletions?: number }>
+  changesSummary: Array<
+    string | { path: string; status: string; additions?: number; deletions?: number }
+  >
   /** Shield layer 4 — 'idle' when the project has no `healthCheckCommand`
    *  configured (the section shows only a hint, never triggers on its own). */
   healthState: 'idle' | 'loading' | 'ok' | 'warn'

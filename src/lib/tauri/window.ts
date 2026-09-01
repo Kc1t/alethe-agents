@@ -1,6 +1,21 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
+export type WindowControlSide = 'left' | 'right'
+export type WindowControlButton = 'close' | 'minimize' | 'maximize'
+
+export type WindowControlsLayout = {
+  side: WindowControlSide
+  buttons: WindowControlButton[]
+  /** `gnome` | `macos` | `windows` | `linux-default` */
+  source: string
+}
+
+/** Desktop-native window chrome placement (GNOME button-layout on Linux). */
+export async function desktopWindowControls(): Promise<WindowControlsLayout> {
+  return invoke<WindowControlsLayout>('desktop_window_controls')
+}
+
 export async function setWindowOpacity(opacity: number): Promise<void> {
   await invoke('set_window_opacity', { opacity })
 }

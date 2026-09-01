@@ -4,7 +4,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { pickDirectory } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import { basename } from '../../lib/paths'
-import { AGENT_TYPE_LABELS, type AgentRuntimeProfile, type AgentType,ALL_AGENT_TYPES, UNRESTRICTED_FLAG } from '../../lib/types'
+import {
+  AGENT_TYPE_LABELS,
+  type AgentRuntimeProfile,
+  type AgentType,
+  ALL_AGENT_TYPES,
+  UNRESTRICTED_FLAG,
+} from '../../lib/types'
 import { getProjectDefaultCwd, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AgentIcon } from '../icons/AgentIcons'
@@ -42,6 +48,7 @@ export function NewTerminalModal() {
     claude: false,
     codex: false,
     copilot: false,
+    cursor: false,
     antigravity: false,
     opencode: false,
     freebuff: false,
@@ -84,6 +91,7 @@ export function NewTerminalModal() {
       claude: alwaysStartUnrestricted,
       codex: alwaysStartUnrestricted,
       copilot: alwaysStartUnrestricted,
+      cursor: alwaysStartUnrestricted,
       antigravity: alwaysStartUnrestricted,
       opencode: alwaysStartUnrestricted,
       freebuff: alwaysStartUnrestricted,
@@ -100,6 +108,7 @@ export function NewTerminalModal() {
       claude: false,
       codex: false,
       copilot: false,
+      cursor: false,
       antigravity: false,
       opencode: false,
       freebuff: false,

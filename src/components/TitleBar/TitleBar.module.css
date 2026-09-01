@@ -189,8 +189,7 @@
 .groupTabClose {
   display: grid;
   place-items: center;
-                                                                           
-                                                                  
+
   width: 0;
   height: 18px;
   margin-left: 0;
@@ -274,8 +273,6 @@
 }
 
 .spacer {
-                                                                             
-                                                                               
   flex: 1 1 0;
   height: 100%;
   min-width: 12px;
@@ -600,20 +597,37 @@
   cursor: pointer;
 }
 
-.barEnd > .widgets + .windowBtn,
-.barEnd > .rightSidebarBtn + .windowBtn {
+.windowControls {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  flex-shrink: 0;
+}
+
+.windowControls[data-side='right'] {
   margin-left: 4px;
   border-left: 1px solid var(--border);
-  padding-left: 6px;
-  width: 34px;
+  padding-left: 2px;
 }
+
+.windowControls[data-side='left'] {
+  margin-right: 4px;
+  border-right: 1px solid var(--border);
+  padding-right: 2px;
+}
+
+.barEnd > .widgets + .windowControls,
+.barEnd > .rightSidebarBtn + .windowControls {
+  margin-left: 4px;
+}
+
 .windowBtn:hover {
   background: var(--panel-hover);
   color: var(--fg);
 }
 .close:hover {
-  background: #e81123;
-  color: #fff;
+  background: var(--status-offline);
+  color: var(--bg);
 }
 
 .bar[data-style='three-areas'] .barStart {

@@ -103,7 +103,6 @@ export function MultiagentPage() {
     return schedulerStore.initListener()
   }, [])
 
-                                                              
   useEffect(() => {
     if (selectedProjectId) {
       void schedulerStore.loadTasks(selectedProjectId)
@@ -191,7 +190,10 @@ export function MultiagentPage() {
             value={selectedProjectId}
             onChange={setSelectedProjectId}
             ariaLabel="Select a project"
-            options={[{ value: '', label: '-- Select a project --' }, ...projects.map((p) => ({ value: p.id, label: p.name }))]}
+            options={[
+              { value: '', label: '-- Select a project --' },
+              ...projects.map((p) => ({ value: p.id, label: p.name })),
+            ]}
           />
 
           {selectedProjectId && repoPath && (

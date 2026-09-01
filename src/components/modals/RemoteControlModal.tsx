@@ -137,19 +137,39 @@ export function RemoteControlModal() {
           <section className={styles.details}>
             <div className={styles.metric}>
               <span className={styles.metricLabel}>{t('remote.connectedDevices')}</span>
-              <strong>{info?.connected_devices ?? 0}/{info?.max_devices ?? 1}</strong>
+              <strong>
+                {info?.connected_devices ?? 0}/{info?.max_devices ?? 1}
+              </strong>
               <span className={styles.metricHint}>
-                {info?.connected_devices === 1 ? t('remote.deviceSingular') : t('remote.devicePlural')}
+                {info?.connected_devices === 1
+                  ? t('remote.deviceSingular')
+                  : t('remote.devicePlural')}
               </span>
             </div>
-            <button type="button" className={controls.btn} onClick={() => { closeModal(); openModal('preferences', { category: 'remoteControl' }) }}>
+            <button
+              type="button"
+              className={controls.btn}
+              onClick={() => {
+                closeModal()
+                openModal('preferences', { category: 'remoteControl' })
+              }}
+            >
               {t('remote.openSettings')}
             </button>
             <div className={styles.urlBlock}>
               <span className={styles.metricLabel}>{t('remote.urlLabel')}</span>
-              <code>{pairingOpen && info?.pairing_url ? info.pairing_url : t('remote.hiddenAddressPlaceholder')}</code>
+              <code>
+                {pairingOpen && info?.pairing_url
+                  ? info.pairing_url
+                  : t('remote.hiddenAddressPlaceholder')}
+              </code>
             </div>
-            <button type="button" className={controls.btn} onClick={() => void run(remoteControlRevoke)} disabled={busy}>
+            <button
+              type="button"
+              className={controls.btn}
+              onClick={() => void run(remoteControlRevoke)}
+              disabled={busy}
+            >
               {t('remote.revoke')}
             </button>
           </section>

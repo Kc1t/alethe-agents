@@ -1,6 +1,5 @@
 import styles from './NormalProjectSidebar.module.css'
 
-                                                            
 export function initialsOf(name: string): string {
   const parts = name
     .trim()
@@ -11,7 +10,6 @@ export function initialsOf(name: string): string {
   return (parts[0][0] + parts[1][0]).toLowerCase()
 }
 
-                                                                                          
 export function Monogram({
   name,
   iconUrl,
@@ -49,7 +47,6 @@ export function Monogram({
   )
 }
 
-                                                     
 export function GroupBadge({
   name,
   iconUrl,

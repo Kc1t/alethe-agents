@@ -41,7 +41,9 @@ import { selectActiveProject, useProjectsStore } from '../../stores/projectsStor
 import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
 
-const MarkdownRenderer = lazy(() => import('../MarkdownPane/MarkdownRenderer').then(m => ({ default: m.MarkdownRenderer })))
+const MarkdownRenderer = lazy(() =>
+  import('../MarkdownPane/MarkdownRenderer').then((m) => ({ default: m.MarkdownRenderer })),
+)
 import { McpPanel } from '../McpPanel'
 import { GitControl } from '../ProjectSidebar/GitControl'
 import { TodoSidebar } from '../TodoSidebar'
@@ -69,12 +71,12 @@ export function RightSidebar() {
         .filter((terminal) => !terminal.kind)
         .sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))[0]
     : null
-  const sidebarSubTab = sidebarTerminal?.tabs.find((tab) => tab.id === sidebarTerminal.activeTabId)
-    ?? sidebarTerminal?.tabs[0]
+  const sidebarSubTab =
+    sidebarTerminal?.tabs.find((tab) => tab.id === sidebarTerminal.activeTabId) ??
+    sidebarTerminal?.tabs[0]
 
   const todoEnabled = preferences.enabledFeatures.todos
-  const gitEnabled =
-    preferences.enabledFeatures.git && preferences.gitControlPlacement === 'right'
+  const gitEnabled = preferences.enabledFeatures.git && preferences.gitControlPlacement === 'right'
   const mcpEnabled = preferences.enabledFeatures.mcp
   // The panel now survives its features being turned off one by one, so a mode whose
   // feature was disabled has to fall back instead of rendering a hidden feature.
@@ -433,7 +435,8 @@ function MarkdownSidebarViewer() {
   useEffect(() => {
     if (!selected?.path || content === null) return
     const frame = window.requestAnimationFrame(() => {
-      if (scrollRef.current) scrollRef.current.scrollTop = markdownScrollPositions.get(selected.path) ?? 0
+      if (scrollRef.current)
+        scrollRef.current.scrollTop = markdownScrollPositions.get(selected.path) ?? 0
     })
     return () => window.cancelAnimationFrame(frame)
   }, [content, selected?.path])
@@ -464,13 +467,9 @@ function MarkdownSidebarViewer() {
         const payload = event.payload
         if (payload.type === 'enter') {
           nativeDragHasMarkdownRef.current = payload.paths.some(isMarkdownPath)
-          setDropActive(
-            nativeDragHasMarkdownRef.current && isOverViewer(payload.position),
-          )
+          setDropActive(nativeDragHasMarkdownRef.current && isOverViewer(payload.position))
         } else if (payload.type === 'over') {
-          setDropActive(
-            nativeDragHasMarkdownRef.current && isOverViewer(payload.position),
-          )
+          setDropActive(nativeDragHasMarkdownRef.current && isOverViewer(payload.position))
         } else if (payload.type === 'leave') {
           nativeDragHasMarkdownRef.current = false
           setDropActive(false)
@@ -583,7 +582,9 @@ function MarkdownSidebarViewer() {
                 onClick={() => openMarkdownSidebar(p.path, p.title)}
               >
                 <FileText size={13} style={{ color: 'var(--accent)', flexShrink: 0 }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span
+                  style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                >
                   {p.title}
                 </span>
               </button>
@@ -723,26 +724,27 @@ function MarkdownSidebarViewer() {
           ref={scrollRef}
           className={styles.content}
           onScroll={(event) => {
-            if (selected?.path) markdownScrollPositions.set(selected.path, event.currentTarget.scrollTop)
+            if (selected?.path)
+              markdownScrollPositions.set(selected.path, event.currentTarget.scrollTop)
           }}
         >
-        {error ? (
-          <div className={styles.empty}>
-            <FileText size={20} />
-            <strong>{t('rightSidebar.markdownError')}</strong>
-            <span>{error}</span>
-          </div>
-        ) : content === null ? (
-          <div className={styles.empty}>
-            <span>{t('ui.markdown.loading')}</span>
-          </div>
-        ) : (
-          <div ref={markdownRef} className={styles.commentableMarkdown}>
-            <Suspense fallback={<span>{t('ui.markdown.loading')}</span>}>
-              <MarkdownRenderer content={content} dark={dark} />
-            </Suspense>
-          </div>
-        )}
+          {error ? (
+            <div className={styles.empty}>
+              <FileText size={20} />
+              <strong>{t('rightSidebar.markdownError')}</strong>
+              <span>{error}</span>
+            </div>
+          ) : content === null ? (
+            <div className={styles.empty}>
+              <span>{t('ui.markdown.loading')}</span>
+            </div>
+          ) : (
+            <div ref={markdownRef} className={styles.commentableMarkdown}>
+              <Suspense fallback={<span>{t('ui.markdown.loading')}</span>}>
+                <MarkdownRenderer content={content} dark={dark} />
+              </Suspense>
+            </div>
+          )}
         </div>
       </div>
     </section>

@@ -85,7 +85,13 @@ describe('production renderer security policy', () => {
       'http:',
       'https:',
     ])
-    expect(directives.get('media-src')).toEqual(["'self'", 'asset:', 'http://asset.localhost'])
+    expect(directives.get('media-src')).toEqual([
+      "'self'",
+      'asset:',
+      'http://asset.localhost',
+      'mediastream:',
+      'blob:',
+    ])
     expect(directives.get('font-src')).toEqual(["'self'"])
     expect(directives.get('connect-src')).toEqual([
       "'self'",
@@ -118,8 +124,11 @@ describe('production renderer security policy', () => {
       'core:window:allow-toggle-maximize',
       'core:window:allow-destroy',
       'core:window:allow-start-dragging',
+      'core:window:allow-start-resize-dragging',
       'core:window:allow-is-focused',
       'core:window:allow-is-minimized',
+      'core:window:allow-is-maximized',
+      'core:window:allow-is-fullscreen',
       'core:window:allow-set-icon',
       'core:window:allow-set-title',
       'core:webview:allow-create-webview',

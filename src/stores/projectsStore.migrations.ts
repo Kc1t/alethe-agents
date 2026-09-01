@@ -1,9 +1,3 @@
-   
-                                                                                
-                                                                                    
-                                                                      
-   
-
 import { nanoid } from 'nanoid'
 
 import { normalizeEnabledFeatures } from '../lib/features'
@@ -94,10 +88,9 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     windowOpacity: Number.isFinite(rawWindowOpacity)
       ? Math.min(1, Math.max(0.6, rawWindowOpacity))
       : 1,
-                                                                               
-                                                                            
+
     enabledAgents: { ...DEFAULT_PREFERENCES.enabledAgents, ...preferences.enabledAgents },
-                                                                                 
+
     enabledFeatures: normalizeEnabledFeatures(raw),
     leftSidebarVisible: raw?.leftSidebarVisible ?? true,
     rightSidebarVisible: raw?.rightSidebarVisible ?? true,
@@ -108,6 +101,11 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     motionPreference: raw?.motionPreference === 'reduced' ? 'reduced' : 'animated',
     accountCreated: legacyAccountCreated,
     topbarStyle: preferences.topbarStyle === 'three-areas' ? 'three-areas' : 'classic',
+    windowControlsPlacement:
+      preferences.windowControlsPlacement === 'left' ||
+      preferences.windowControlsPlacement === 'right'
+        ? preferences.windowControlsPlacement
+        : 'system',
     gitControlPlacement: preferences.gitControlPlacement === 'right' ? 'right' : 'left',
     mcpDefaultScope: preferences.mcpDefaultScope === 'project' ? 'project' : 'global',
     mcpOnboardingSeen: Boolean(preferences.mcpOnboardingSeen),
@@ -441,7 +439,6 @@ function migrateToV5(parsed: any): any {
   }
 }
 
-                                                                              
 export function collectGroupProjectIds(groupId: string, groups: Group[]): Set<string> {
   const result = new Set<string>()
   const queue = [groupId]

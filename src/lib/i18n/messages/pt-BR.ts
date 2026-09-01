@@ -80,6 +80,7 @@ export const ptBR: Record<MessageKey, string> = {
   'agent.claude.desc': 'Anthropic CLI',
   'agent.codex.desc': 'OpenAI CLI',
   'agent.copilot.desc': 'Agente CLI do GitHub',
+  'agent.cursor.desc': 'CLI do Cursor Agent (Windows, macOS, Linux)',
   'agent.opencode.desc': 'Open source',
   'agent.freebuff.desc': 'Agente grátis',
   'agent.mimo.desc': 'CLI da Xiaomi',
@@ -498,6 +499,12 @@ export const ptBR: Record<MessageKey, string> = {
     'Escolha como a topbar divide sidebars, abas, status e controles da janela.',
   'prefs.topbarStyleClassic': 'Clássico',
   'prefs.topbarStyleThreeAreas': 'Três áreas',
+  'prefs.windowControlsPlacement': 'Controles da janela',
+  'prefs.windowControlsPlacementDesc':
+    'Onde ficam minimizar, maximizar e fechar na barra de título. Sistema segue o desktop (button-layout do GNOME no Linux).',
+  'prefs.windowControlsPlacementSystem': 'Sistema',
+  'prefs.windowControlsPlacementLeft': 'Esquerda',
+  'prefs.windowControlsPlacementRight': 'Direita',
   'prefs.gitControl': 'Controle Git na sidebar',
   'prefs.gitControlDesc': 'Mostre ou oculte a aba Source Control na sidebar de projetos.',
   'prefs.gitControlShow': 'Mostrar',
@@ -621,7 +628,8 @@ export const ptBR: Record<MessageKey, string> = {
   'dictation.tooShort': 'Gravação muito curta — segure um pouco mais e solte.',
   'dictation.silentMic':
     'Nenhum áudio capturado. Verifique a permissão de microfone do Alethe e o dispositivo selecionado.',
-  'dictation.emptyTranscript': 'Áudio capturado, mas o modelo não devolveu texto. Fale um pouco mais claro.',
+  'dictation.emptyTranscript':
+    'Áudio capturado, mas o modelo não devolveu texto. Fale um pouco mais claro.',
   'dictation.noActiveTerminal': 'Foque um painel de terminal antes de ditar.',
   'dictation.unsupported': 'Entrada de voz indisponível nesta versão.',
   'prefs.terminalTheme': 'Tema do terminal',
@@ -711,7 +719,7 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.cliPathMismatch': 'Isso não parece ser o CLI',
   'prefs.cliPathMismatchBody':
     'A ferramenta de linha de comando do {agent} se chama "{command}". O arquivo escolhido tem outro nome, então ele pode abrir o aplicativo gráfico em vez de rodar no terminal.',
-  'prefs.enabledAgents': 'Agentes habilitados ({count}/4)',
+  'prefs.enabledAgents': 'Agentes habilitados ({count})',
   'prefs.resetSession': 'Resetar última sessão',
   'prefs.resetSessionDesc':
     'Se reabrir o app não retomou seus agentes, isto acha a conversa mais recente de cada agente aberto e reinicia com resume.',
@@ -1058,7 +1066,8 @@ export const ptBR: Record<MessageKey, string> = {
   'crud.cloningRepoTitle': 'Clonando Repositório',
   'crud.cloningRepoBody': 'Iniciando clone de {url} e gerando briefing de contexto de IA…',
   'crud.repoClonedTitle': 'Repositório Clonado',
-  'crud.repoClonedBody': 'Clone concluído com sucesso. Contexto de IA injetado em AGENTS.md e CLAUDE.md.',
+  'crud.repoClonedBody':
+    'Clone concluído com sucesso. Contexto de IA injetado em AGENTS.md e CLAUDE.md.',
   'crud.cloneErrorTitle': 'Erro no Clone',
   'crud.createAgentSandboxProject': 'Criar projeto Agent Sandbox',
   'crud.firstTerminalLabel': 'Primeiro terminal',
@@ -1197,11 +1206,17 @@ export const ptBR: Record<MessageKey, string> = {
   'browser.resourceModeDescription.keep-alive':
     'Mantém páginas ocultas carregadas, mas ainda as libera se o Alethe detectar pressão de memória.',
   'browser.addToGrid': 'Adicionar ao grid',
+  'browser.openTab': 'Abrir aba de browser',
+  'browser.openInGridOption': 'Adicionar ao lado dos terminais',
+  'browser.openInGridOptionDescription':
+    'Coloca a página no grid do projeto. Deixe desmarcado para abrir uma aba dedicada de browser.',
   'browser.privateTitle': 'Sessão privada sempre ativa',
   'browser.privateDescription':
     'O Alethe abre este pane em uma webview nativa anônima. Cookies, logins, cache, preenchimento automático e dados dos sites não são mantidos depois que o pane é fechado.',
   'browser.privateBadge': 'Privado',
   'browser.destination': 'Este browser será adicionado a {project}.',
+  'browser.destinationTab': 'Abre como aba própria de {project}, separada do grid de terminais.',
+  'browser.destinationGrid': 'Este browser será adicionado ao grid de {project}.',
   'browser.embedHint':
     'Abre dentro do Alethe. Alguns sites podem bloquear a visualização incorporada.',
   'term.suspendGroupTitle': 'Suspender grupo',
@@ -1376,6 +1391,7 @@ export const ptBR: Record<MessageKey, string> = {
   'ui.titlebar.minimize': 'Minimizar',
   'ui.titlebar.maximize': 'Maximizar',
   'ui.titlebar.close': 'Fechar',
+  'ui.titlebar.windowControls': 'Controles da janela',
   'appClose.title': 'Fechar o Alethe?',
   'appClose.message':
     'Agentes e terminais abertos serão encerrados. As conversas salvas poderão ser retomadas quando você abrir o Alethe novamente.',
@@ -1813,9 +1829,15 @@ export const ptBR: Record<MessageKey, string> = {
   /* ---- xterm link actions ---- */
   'xterm.linkMenu': 'Ações do link',
   'xterm.openInGrid': 'Abrir no grid',
+  'xterm.openInBrowserTab': 'Abrir em aba de browser',
   'xterm.addMarkdownToGroupView': 'Adicionar Markdown à view do grupo',
   'xterm.openInFolder': 'Abrir na pasta',
   'xterm.copy': 'Copiar',
+  'xterm.contextCopy': 'Copiar',
+  'xterm.contextPaste': 'Colar',
+  'xterm.contextSelectAll': 'Selecionar tudo',
+  'xterm.contextCopyContext': 'Copiar contexto',
+  'xterm.contextClearScreen': 'Limpar tela',
   'xterm.openInBrowser': 'Abrir no browser',
   'xterm.openInApp': 'Abrir no app',
   'xterm.playInApp': 'Reproduzir no app',
@@ -1861,6 +1883,9 @@ export const ptBR: Record<MessageKey, string> = {
   'addContent.websiteHint': 'A página será inserida como pane no canvas, não dentro deste modal.',
   'addContent.addToCanvas': 'Adicionar ao canvas',
   'webPane.reload': 'Recarregar página',
+  'webPane.back': 'Voltar',
+  'webPane.forward': 'Avançar',
+  'webPane.addressBar': 'Barra de endereço',
   'webPane.close': 'Fechar pane do site',
   'webPane.confirmClose': 'Fechar o pane do site "{name}"?',
   'webPane.invalidUrl': 'O endereço deste site é inválido.',
@@ -1870,7 +1895,7 @@ export const ptBR: Record<MessageKey, string> = {
   'webPane.agentOpenedBody': '{page} está aberta no navegador compartilhado.',
   'webPane.agentOpenedOutside': 'Abrir no meu navegador',
   'webPane.agentOpenedDismiss': 'Deixar em segundo plano',
-  'webPane.agentOpenedAction': 'Ver aqui dentro',
+  'webPane.agentOpenedAction': 'Mostrar na aba de browser',
   'webPane.cdpCloseTab': 'Fechar aba',
   'webPane.cdpTabs': 'Abas abertas',
   'webPane.cdpLoading': 'Conectando ao navegador...',
@@ -1878,6 +1903,25 @@ export const ptBR: Record<MessageKey, string> = {
   'webPane.cdpSurface': 'Página do navegador',
   'webPane.engineCdpOn': 'Navegador embutido ligado — clique para voltar à janela nativa',
   'webPane.engineCdpOff': 'Renderizar esta página dentro do painel (compartilhada com o agente)',
+  'webPane.grabMark': 'Marcar elemento para enviar ao agente',
+  'webPane.grabCancel': 'Cancelar marcação de elemento',
+  'webPane.grabHint': 'Clique em um elemento da página para marcá-lo.',
+  'webPane.grabCopy': 'Copiar',
+  'webPane.grabSend': 'Enviar ao agente',
+  'webPane.grabCopied': 'Elemento copiado',
+  'webPane.grabSentTitle': 'Enviado ao agente',
+  'webPane.grabSentBody': 'Colado em {agent}.',
+  'webPane.grabFailed': 'Não foi possível capturar esse elemento',
+  'webPane.grabNeedsCdpTitle': 'Mudou para o navegador embutido',
+  'webPane.grabNeedsCdpBody':
+    'A marcação de elementos precisa do navegador compartilhado para inspecionar a página.',
+  'webPane.grabNoAgentTitle': 'Nenhum terminal de agente pronto',
+  'webPane.grabNoAgentBody': 'Abra antes um painel Claude, Codex ou outro agente com sessão ativa.',
+  'webPane.pageShot': 'Enviar captura da página ao agente',
+  'webPane.pageShotNeedsCdpBody':
+    'A captura da página precisa do navegador compartilhado. A troca já foi feita — tente de novo.',
+  'webPane.pageShotSentTitle': 'Captura da página enviada',
+  'webPane.pageShotFailed': 'Não foi possível capturar a página',
   'webPane.privateHint':
     'Sessão nativa privada · os dados de navegação são descartados ao fechar este pane.',
 
@@ -2264,8 +2308,10 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.prNoRepoBody': 'O projeto não possui um repositório Git configurado.',
   'merge.prReviewStartedTitle': 'Revisão de PR iniciada',
   'merge.prReviewStartedBody': 'O agente está revisando o PR #{number} na worktree isolada.',
-  'merge.prMergeConfirm': 'Fazer squash merge do PR #{number} ({title})? Esta ação altera o repositório remoto.',
-  'merge.prStaleError': 'O PR foi atualizado desde a revisão. Recarregue os dados e revise o novo SHA antes do merge.',
+  'merge.prMergeConfirm':
+    'Fazer squash merge do PR #{number} ({title})? Esta ação altera o repositório remoto.',
+  'merge.prStaleError':
+    'O PR foi atualizado desde a revisão. Recarregue os dados e revise o novo SHA antes do merge.',
   'merge.prDraftError': 'PRs em rascunho não podem ser mesclados.',
   'merge.prConflictError': 'O GitHub informa que o PR possui conflitos.',
   'merge.prMergedTitle': 'PR mesclado',

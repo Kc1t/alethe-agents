@@ -255,6 +255,27 @@ export function AppearancePage() {
       </SettingsSection>
 
       <SettingsSection
+        id="window-controls-placement"
+        title={t('prefs.windowControlsPlacement')}
+        description={t('prefs.windowControlsPlacementDesc')}
+      >
+        <Dropdown
+          value={preferences.windowControlsPlacement}
+          onChange={(value) =>
+            setPreferences({
+              windowControlsPlacement: value as 'system' | 'left' | 'right',
+            })
+          }
+          ariaLabel={t('prefs.windowControlsPlacement')}
+          options={[
+            { value: 'system', label: t('prefs.windowControlsPlacementSystem') },
+            { value: 'left', label: t('prefs.windowControlsPlacementLeft') },
+            { value: 'right', label: t('prefs.windowControlsPlacementRight') },
+          ]}
+        />
+      </SettingsSection>
+
+      <SettingsSection
         id="git-control-placement"
         title={t('prefs.gitControlPlacement')}
         description={t('prefs.gitControlPlacementDesc')}

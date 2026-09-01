@@ -758,22 +758,11 @@ pub(crate) fn kill_process_tree(pid: u32) {
 
 #[cfg(not(windows))]
 pub(crate) fn kill_process_tree(pid: u32) {
-    // portable-pty calls setsid() on Linux, so the shell owns its own process
-    // group. Sending a signal to the negative PID targets the entire group.
-    let _ = std::process::Command::new("kill")
-        .args(["-TERM", &format!("-{pid}")])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .and_then(|mut child| child.wait());
-    // Give well-behaved processes a moment to exit cleanly, then escalate.
-    std::thread::sleep(std::time::Duration::from_millis(200));
-    let _ = std::process::Command::new("kill")
-        .args(["-9", &format!("-{pid}")])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .and_then(|mut child| child.wait());
+    // Walk the parent/child tree and SIGKILL each PID individually.
+    // Do NOT use `kill -TERM -{pid}` (process-group signal): when the PTY
+    // shares Alethe's PGID, or when `pid` equals our PGID, that terminates
+    // the whole app (AppImage exits with "terminated" on delete-terminal).
+    process_tree::kill_pid_tree(pid);
 }
 
 #[tauri::command]
@@ -1637,9 +1626,9 @@ pub fn install_kill_on_close_guard() {
 pub fn install_kill_on_close_guard() {
     // On Linux there is no equivalent of a Windows Job Object. Instead, the shutdown
     // handler in lib.rs calls kill_all_sessions_background() on ExitRequested, which
-    // now works thanks to the SIGTERM/SIGKILL process-group kill in kill_process_tree.
-    // On the next startup, sweep_orphans_from_previous_session() kills any grandchild
-    // processes that escaped the previous shutdown.
+    // walks each PTY's process tree with per-PID signals. On the next startup,
+    // sweep_orphans_from_previous_session() kills any grandchild processes that
+    // escaped the previous shutdown.
     let _ = JOB_GUARD_ACTIVE.set(true);
 }
 
@@ -1677,21 +1666,63 @@ mod tests {
 
     #[test]
     fn a_kill_never_runs_while_the_child_lock_is_held() {
-        let source = include_str!("pty.rs");
+        // Normalize CRLF so Windows checkouts (core.autocrlf) match Linux/macOS parsing.
+        let source = include_str!("pty.rs").replace("\r\n", "\n");
         for (index, _) in source.match_indices("child.lock()") {
-            let tail = &source[index..];
-            let block_end = tail
-                .find(
-                    "
-    }",
-                )
-                .unwrap_or(tail.len().min(600));
-            let block = &tail[..block_end.min(600)];
+            let head = &source[index.saturating_sub(96)..index];
+            let after = &source[index + "child.lock()".len()..];
+
+            // `.lock().ok().and_then(|...| ...)` — lock ends when the closure returns.
+            if let Some(rest) = after.strip_prefix(".ok().and_then(") {
+                let closure_body = rest
+                    .split_once('|')
+                    .map(|(_, body)| body)
+                    .and_then(|body| body.find(')').map(|end| &body[..end]))
+                    .unwrap_or("");
+                assert!(
+                    !closure_body.contains("kill_process_tree("),
+                    "kill_process_tree inside child.lock and_then near byte {index}; read the pid, release the lock, then kill"
+                );
+                continue;
+            }
+
+            // `if let ... = child.lock() { ... }` — lock held for the whole block.
+            if head.contains("if let") {
+                if let Some(brace) = after.find('{') {
+                    let block = child_lock_brace_block(&after[brace..]);
+                    assert!(
+                        !block.contains("kill_process_tree("),
+                        "kill_process_tree while child.lock if-let block near byte {index}; read the pid, release the lock, then kill"
+                    );
+                    continue;
+                }
+            }
+
+            // Fallback: same statement only (until the next semicolon).
+            let stmt_end = after.find(';').unwrap_or(after.len().min(200));
+            let stmt = &after[..stmt_end];
             assert!(
-                !block.contains("kill_process_tree("),
-                "a child lock is held across kill_process_tree near byte {index};                  read the pid, release the lock, then kill"
+                !stmt.contains("kill_process_tree("),
+                "kill_process_tree in the same statement as child.lock near byte {index}; read the pid, release the lock, then kill"
             );
         }
+    }
+
+    fn child_lock_brace_block(source: &str) -> &str {
+        let mut depth = 0;
+        for (i, ch) in source.char_indices() {
+            match ch {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return &source[..=i];
+                    }
+                }
+                _ => {}
+            }
+        }
+        source
     }
 
     /// The snapshot paths run under the global session lock, so they must never wait on a child.

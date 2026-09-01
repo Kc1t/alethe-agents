@@ -162,6 +162,7 @@ export type ProjectsState = ProjectsFile & {
   addProjectToWorkspace: (projectId: string) => void
   openGroupWorkspace: (groupId: string, mode?: 'append' | 'only') => void
   openTerminalWorkspace: (projectId: string, terminalId: string) => void
+  openBrowserWorkspace: (projectId: string, args: BrowserPaneOptions) => Terminal
   addTerminalToWorkspace: (projectId: string, terminalId: string) => void
   addWorkspaceTabToCurrent: (tabId: string) => void
   focusWorkspaceTerminal: (projectId: string, terminalId: string) => void
@@ -234,6 +235,7 @@ export type ProjectsState = ProjectsFile & {
   createGraphifyPane: (projectId: string, cwd: string) => Terminal
   renameTerminal: (projectId: string, terminalId: string, name: string) => void
   setBrowserEngine: (projectId: string, terminalId: string, engine: BrowserEngine) => void
+  setBrowserPaneUrl: (projectId: string, terminalId: string, url: string) => void
 
   markGsdSyncViewer: (projectId: string, terminalId: string) => void
   deleteTerminal: (projectId: string, terminalId: string) => void

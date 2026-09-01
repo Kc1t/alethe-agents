@@ -47,6 +47,7 @@ const QUICK_AGENTS: Array<{ type: AgentType; label: string }> = [
   { type: 'claude', label: 'Claude' },
   { type: 'codex', label: 'Codex' },
   { type: 'copilot', label: 'GitHub Copilot' },
+  { type: 'cursor', label: 'Cursor Agent' },
   { type: 'antigravity', label: 'Antigravity' },
   { type: 'opencode', label: 'OpenCode' },
 ]
@@ -63,6 +64,7 @@ const NOTIF_AGENT_CLASS: Record<AgentType, string> = {
   claude: styles.notifClaude,
   codex: styles.notifCodex,
   copilot: styles.notifCodex,
+  cursor: styles.notifCursor,
   antigravity: styles.notifAntigravity,
   shell: styles.notifShell,
   opencode: styles.notifOpencode,
@@ -91,7 +93,7 @@ export function HomeView() {
       openContainerWithAllPanes: s.openContainerWithAllPanes,
       setActiveProjectOnly: s.setActiveProjectOnly,
       createAgentTerminal: s.createAgentTerminal,
-    }))
+    })),
   )
 
   const {
@@ -109,10 +111,9 @@ export function HomeView() {
       requestPaneFocus: s.requestPaneFocus,
       notifications: s.notifications,
       clearNotifications: s.clearNotifications,
-    }))
+    })),
   )
 
-                                                                                   
   const lastUsedByProject = useMemo(() => {
     const map = new Map<string, number>()
     for (const c of containers) {
@@ -188,8 +189,7 @@ export function HomeView() {
   const [quickUnrestricted, setQuickUnrestricted] = useState(false)
   const quickPromptRef = useRef<HTMLInputElement>(null)
   const [quickCwd, setQuickCwd] = useState('')
-                                                                                
-                                                                           
+
   const quickAgent = quickAgents.some((agent) => agent.type === quickAgentRaw)
     ? quickAgentRaw
     : (quickAgents[0]?.type ?? 'claude')

@@ -13,12 +13,13 @@ import {
   Pin,
   RefreshCw,
   Newspaper,
+  Globe2,
   Smartphone,
   Users,
   Workflow,
   X,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { ContextMenu, type MenuItem } from '../ProjectSidebar/ContextMenu'
 import { AntigravityIcon, ClaudeIcon, CodexIcon } from '../icons/AgentIcons'
@@ -29,8 +30,10 @@ import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
 import { requestAppClose } from '../../hooks/useCloseConfirmation'
 import { observeClaudeReset, observeCodexReset } from '../../lib/limitResetWatch'
 import { useT } from '../../lib/i18n'
-import { formatShortcut } from '../../lib/platform'
-import { killPty, remoteControlConnectedDevices } from '../../lib/tauri'
+import { formatShortcut, isMacOS, isWindows } from '../../lib/platform'
+import { desktopWindowControls, killPty, remoteControlConnectedDevices } from '../../lib/tauri'
+import type { WindowControlButton, WindowControlsLayout } from '../../lib/tauri'
+import { resolveWindowControlsLayout } from '../../lib/windowControls'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import styles from './TitleBar.module.css'
@@ -90,6 +93,66 @@ function MemoryPillButton({ ramMb }: { ramMb: number }) {
   )
 }
 
+function WindowControls({
+  layout,
+  onMinimize,
+  onMaximize,
+  onClose,
+}: {
+  layout: WindowControlsLayout
+  onMinimize: () => void
+  onMaximize: () => void
+  onClose: () => void
+}) {
+  const t = useT()
+  const actions: Record<
+    WindowControlButton,
+    { onClick: () => void; title: string; className?: string; icon: ReactNode }
+  > = {
+    minimize: {
+      onClick: onMinimize,
+      title: t('ui.titlebar.minimize'),
+      icon: <Minus size={14} />,
+    },
+    maximize: {
+      onClick: onMaximize,
+      title: t('ui.titlebar.maximize'),
+      icon: <Maximize2 size={12} />,
+    },
+    close: {
+      onClick: onClose,
+      title: t('ui.titlebar.close'),
+      className: styles.close,
+      icon: <X size={14} />,
+    },
+  }
+
+  return (
+    <div
+      className={styles.windowControls}
+      data-side={layout.side}
+      role="group"
+      aria-label={t('ui.titlebar.windowControls')}
+    >
+      {layout.buttons.map((button) => {
+        const action = actions[button]
+        return (
+          <button
+            key={button}
+            type="button"
+            className={`${styles.windowBtn} ${action.className ?? ''}`}
+            onClick={action.onClick}
+            title={action.title}
+            aria-label={action.title}
+          >
+            {action.icon}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 export function TitleBar() {
   const t = useT()
   const toggleMainMenu = useUiStore((s) => s.toggleMainMenu)
@@ -125,14 +188,29 @@ export function TitleBar() {
   const navigateWorkspaceHistory = useProjectsStore((s) => s.navigateWorkspaceHistory)
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null)
   const [remoteConnectedDevices, setRemoteConnectedDevices] = useState(0)
+  const [detectedWindowControls, setDetectedWindowControls] = useState<WindowControlsLayout | null>(
+    () => {
+      // Optimistic placement before the desktop query returns — avoids a right→left flash on Linux/GNOME.
+      if (isWindows()) {
+        return { side: 'right', buttons: ['minimize', 'maximize', 'close'], source: 'pending' }
+      }
+      if (isMacOS()) {
+        return { side: 'left', buttons: ['close', 'minimize', 'maximize'], source: 'pending' }
+      }
+      return { side: 'left', buttons: ['close', 'minimize', 'maximize'], source: 'pending' }
+    },
+  )
   const activeProfile = profiles.find((profile) => profile.id === activeProfileId) ?? null
   const threeAreas = preferences.topbarStyle === 'three-areas'
+  const windowControls = resolveWindowControlsLayout(
+    detectedWindowControls,
+    preferences.windowControlsPlacement,
+  )
+  const windowControlsOnLeft = windowControls.side === 'left'
   const antigravityReady =
     antigravityUsage?.status === 'ready' && antigravityUsage.buckets.length > 0
   const remoteConnectedLabel = t(
-    remoteConnectedDevices === 1
-      ? 'remote.topbarDeviceConnected'
-      : 'remote.topbarDevicesConnected',
+    remoteConnectedDevices === 1 ? 'remote.topbarDeviceConnected' : 'remote.topbarDevicesConnected',
     { count: remoteConnectedDevices },
   )
 
@@ -142,14 +220,10 @@ export function TitleBar() {
       window.dispatchEvent(new CustomEvent('alethe:agent-canvas-exit'))
       return
     }
-    void killPty(agentCanvasSession.ptyId).catch(() => {
-                                   
-    })
+    void killPty(agentCanvasSession.ptyId).catch(() => {})
     setAgentCanvasSession(null)
   }
 
-                                                                             
-                                                                        
   const activeRef = useRef(true)
 
   useEffect(() => {
@@ -176,7 +250,6 @@ export function TitleBar() {
     }
   }, [])
 
-                                                                            
   useEffect(() => {
     let cancelled = false
     let interval: number | null = null
@@ -191,8 +264,6 @@ export function TitleBar() {
           consecutiveFailures = 0
         }
       } catch {
-                                                                               
-                                                                                  
         consecutiveFailures += 1
         if (consecutiveFailures >= 3 && !cancelled) {
           setClaudeUsage(null)
@@ -210,8 +281,6 @@ export function TitleBar() {
     }
   }, [setClaudeUsage])
 
-                                                                                
-                                                                       
   useEffect(() => {
     let cancelled = false
     let interval: number | null = null
@@ -243,7 +312,6 @@ export function TitleBar() {
     }
   }, [setCodexUsage])
 
-                                                                                                     
   useEffect(() => {
     let cancelled = false
     let interval: number | null = null
@@ -273,7 +341,6 @@ export function TitleBar() {
 
   const win = getCurrentWindow()
 
-                                                                             
   useEffect(() => {
     const update = (focused: boolean) => {
       activeRef.current = focused && document.visibilityState === 'visible'
@@ -298,10 +365,34 @@ export function TitleBar() {
     void win.setTitle(APP_TITLE)
   }, [win])
 
+  useEffect(() => {
+    let cancelled = false
+    void desktopWindowControls()
+      .then((layout) => {
+        if (!cancelled) setDetectedWindowControls(layout)
+      })
+      .catch(() => {
+        // Keep the optimistic OS default already in state.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const windowControlsEl = (
+    <WindowControls
+      layout={windowControls}
+      onMinimize={() => void win.minimize()}
+      onMaximize={() => void win.toggleMaximize()}
+      onClose={() => void requestAppClose()}
+    />
+  )
+
   return (
     <div
       className={styles.bar}
       data-style={preferences.topbarStyle}
+      data-window-controls={windowControls.side}
       data-tauri-drag-region
       style={
         {
@@ -315,6 +406,7 @@ export function TitleBar() {
       }
     >
       <div className={styles.barStart}>
+        {windowControlsOnLeft ? windowControlsEl : null}
         <button
           type="button"
           className={styles.iconBtn}
@@ -457,6 +549,8 @@ export function TitleBar() {
                   {tab.pinned ? <Pin size={11} className={styles.groupTabPinIcon} /> : null}
                   {tab.iconUrl ? (
                     <img src={tab.iconUrl} alt="" className={styles.groupTabIcon} />
+                  ) : tab.kind === 'browser' ? (
+                    <Globe2 size={14} className={styles.groupTabIconSvg} />
                   ) : tab.kind === 'composition' ? (
                     <Workflow size={14} className={styles.groupTabIconSvg} />
                   ) : (
@@ -519,16 +613,18 @@ export function TitleBar() {
       <div className={styles.barEnd}>
         <div className={styles.widgets}>
           <div className={styles.utilityGroup}>
-            {!threeAreas ? <button
-              type="button"
-              className={`${styles.iconBtn} ${updateInfo ? styles.whatsNewPending : ''}`}
-              onClick={() => openModal('whatsNew')}
-              title={t('whatsNew.button')}
-              aria-label={t('whatsNew.button')}
-            >
-              <Newspaper size={13} />
-              {updateInfo ? <span className={styles.whatsNewDot} /> : null}
-            </button> : null}
+            {!threeAreas ? (
+              <button
+                type="button"
+                className={`${styles.iconBtn} ${updateInfo ? styles.whatsNewPending : ''}`}
+                onClick={() => openModal('whatsNew')}
+                title={t('whatsNew.button')}
+                aria-label={t('whatsNew.button')}
+              >
+                <Newspaper size={13} />
+                {updateInfo ? <span className={styles.whatsNewDot} /> : null}
+              </button>
+            ) : null}
             {!threeAreas && preferences.topbarShowSync ? (
               <button
                 type="button"
@@ -755,33 +851,7 @@ export function TitleBar() {
             )}
           </button>
         ) : null}
-        <button
-          type="button"
-          className={styles.windowBtn}
-          onClick={() => void win.minimize()}
-          title={t('ui.titlebar.minimize')}
-          aria-label={t('ui.titlebar.minimize')}
-        >
-          <Minus size={14} />
-        </button>
-        <button
-          type="button"
-          className={styles.windowBtn}
-          onClick={() => void win.toggleMaximize()}
-          title={t('ui.titlebar.maximize')}
-          aria-label={t('ui.titlebar.maximize')}
-        >
-          <Maximize2 size={12} />
-        </button>
-        <button
-          type="button"
-          className={`${styles.windowBtn} ${styles.close}`}
-          onClick={() => void requestAppClose()}
-          title={t('ui.titlebar.close')}
-          aria-label={t('ui.titlebar.close')}
-        >
-          <X size={14} />
-        </button>
+        {windowControlsOnLeft ? null : windowControlsEl}
       </div>
       {tabMenu ? (
         <ContextMenu

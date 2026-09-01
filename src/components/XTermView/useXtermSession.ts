@@ -77,6 +77,7 @@ import {
   normalizePastedText,
   shouldScrollHostScrollback,
 } from './terminalInput'
+import { collectTerminalContextText } from './terminalContextMenu'
 import {
   type DetectedTerminalLink,
   detectTerminalLinks,
@@ -108,6 +109,15 @@ function isBrowserInputPending(): boolean {
 let aiMemoryMissingWarned = false
 
 type BootPhase = 'preparing' | 'queued' | 'spawning' | 'attaching' | 'ready'
+
+export type TerminalContextMenuActions = {
+  copy: () => void
+  paste: () => void
+  selectAll: () => void
+  clearScreen: () => void
+  copyContext: () => void
+  canPaste: boolean
+}
 
 export function useXtermSession(params: {
   ptyId: string
@@ -150,6 +160,9 @@ export function useXtermSession(params: {
   setRetryKey: Dispatch<SetStateAction<number>>
   setDropActive: Dispatch<SetStateAction<boolean>>
   showLinkActionsMenu: (event: MouseEvent, link: DetectedTerminalLink) => void
+  showTerminalContextMenu: (event: MouseEvent) => void
+  hideTerminalContextMenu: () => void
+  contextMenuActionsRef: MutableRefObject<TerminalContextMenuActions | null>
   recordPromptInput: (data: string) => boolean
   navigateHistory: (direction: 'up' | 'down') => void
 }) {
@@ -191,6 +204,9 @@ export function useXtermSession(params: {
     setRetryKey,
     setDropActive,
     showLinkActionsMenu,
+    showTerminalContextMenu,
+    hideTerminalContextMenu,
+    contextMenuActionsRef,
     recordPromptInput,
     navigateHistory,
   } = params
@@ -305,6 +321,7 @@ export function useXtermSession(params: {
 
     linkScrollDisposable = terminal.onScroll(() => {
       if (linkActionsRef.current) setLinkActions(null)
+      hideTerminalContextMenu()
     })
 
     terminal.focus()
@@ -342,7 +359,9 @@ export function useXtermSession(params: {
               : undefined,
           )
           clampHorizontalScroll()
-        } catch {}
+        } catch {
+          /* ignore */
+        }
       }
       if (pendingWriteLength > 0) {
         writeFrame = window.requestAnimationFrame(flushPendingWrite)
@@ -376,7 +395,9 @@ export function useXtermSession(params: {
           terminal.write(replay, () => {
             try {
               terminal.scrollToBottom()
-            } catch {}
+            } catch {
+              /* ignore */
+            }
             resolve()
           })
         } catch {
@@ -401,7 +422,9 @@ export function useXtermSession(params: {
       event.stopPropagation()
       try {
         terminal.scrollLines(lines)
-      } catch {}
+      } catch {
+        /* ignore */
+      }
     }
     container.addEventListener('wheel', onWheel, { passive: false, capture: true })
 
@@ -595,25 +618,75 @@ export function useXtermSession(params: {
     }
     container.addEventListener('paste', onPaste)
 
+    const copySelection = () => {
+      if (!terminal.hasSelection()) return
+      const selection = terminal.getSelection()
+      if (!selection) return
+      void writeClipboardText(selection).catch(() => navigator.clipboard?.writeText(selection))
+      terminal.clearSelection()
+    }
+
+    const pasteFromClipboard = () => {
+      if (readOnly) return
+      void resolveClipboardPaste()
+        .catch(() => navigator.clipboard?.readText() ?? '')
+        .then(pasteText)
+        .catch(() => {
+          terminal.focus()
+        })
+    }
+
+    const clearScreen = () => {
+      terminal.clear()
+      terminal.scrollToBottom()
+      const id = ptyIdRef.current
+      if (!id) return
+      void clearPtyScrollback(id).catch((error) =>
+        console.warn('[pty-scrollback] failed to clear from context menu:', error),
+      )
+    }
+
+    const copyContext = () => {
+      const text = collectTerminalContextText(terminal)
+      if (!text) return
+      void writeClipboardText(text)
+        .catch(() => navigator.clipboard?.writeText(text))
+        .then(() => {
+          useUiStore.getState().pushToast({
+            title: translate(getLocale(), 'xterm.toastCopied'),
+            body: text.length > 120 ? `${text.slice(0, 117)}…` : text,
+          })
+        })
+        .catch(() => {
+          useUiStore.getState().pushToast({
+            title: translate(getLocale(), 'xterm.toastCopyFail'),
+            body: '',
+          })
+        })
+    }
+
+    contextMenuActionsRef.current = {
+      copy: copySelection,
+      paste: pasteFromClipboard,
+      selectAll: () => terminal.selectAll(),
+      clearScreen,
+      copyContext,
+      canPaste: !readOnly,
+    }
+
     const onContextMenu = (event: MouseEvent) => {
       event.preventDefault()
       event.stopPropagation()
-      if (readOnly) return
 
-      if (terminal.hasSelection()) {
-        const selection = terminal.getSelection()
-        if (selection) {
-          void writeClipboardText(selection).catch(() => navigator.clipboard?.writeText(selection))
-          terminal.clearSelection()
-        }
-      } else {
-        void resolveClipboardPaste()
-          .catch(() => navigator.clipboard?.readText() ?? '')
-          .then(pasteText)
-          .catch(() => {
-            terminal.focus()
-          })
+      // Ctrl+right-click keeps the previous terminal-style copy/paste shortcut.
+      if (event.ctrlKey) {
+        if (readOnly) return
+        if (terminal.hasSelection()) copySelection()
+        else pasteFromClipboard()
+        return
       }
+
+      showTerminalContextMenu(event)
     }
     container.addEventListener('contextmenu', onContextMenu)
 
@@ -860,7 +933,9 @@ export function useXtermSession(params: {
         try {
           const rect = container?.getBoundingClientRect()
           if (rect && rect.width >= 50 && rect.height >= 30) fitAddon.fit()
-        } catch {}
+        } catch {
+          /* ignore */
+        }
         setCommandNotFound(null)
         setBootPhase('preparing')
 
@@ -965,7 +1040,9 @@ export function useXtermSession(params: {
               removeSession(sessionPersistenceKey)
               onSessionIdRef.current?.(undefined)
             }
-          } catch {}
+          } catch {
+            /* ignore */
+          }
           if (disposed) return
         }
 
@@ -983,7 +1060,9 @@ export function useXtermSession(params: {
             const candidates = gsdChildId ? sessions.filter((s) => s.id !== gsdChildId) : sessions
             const claimed = claimMostRecentSession('opencode', cwd, candidates)
             if (claimed) resumeId = claimed.id
-          } catch {}
+          } catch {
+            /* ignore */
+          }
           if (disposed) return
         }
         const preparedRuntime = command
@@ -1507,6 +1586,7 @@ export function useXtermSession(params: {
       completionMonitor?.dispose()
       completionMonitor = null
       setLinkActions(null)
+      contextMenuActionsRef.current = null
       if (terminalRef.current === terminal) terminalRef.current = null
       ptyIdRef.current = null
       if (resyncTerminalRef.current === doResync) resyncTerminalRef.current = null

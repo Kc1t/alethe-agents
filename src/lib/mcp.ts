@@ -106,16 +106,17 @@ function isRecord(value: unknown): value is UnknownRecord {
 }
 
 function stringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : []
 }
 
 function envInputs(value: unknown, interpolate: boolean): McpEnvInput[] {
   if (!isRecord(value)) return []
   return Object.entries(value).flatMap(([key, raw]) => {
     if (typeof raw !== 'string') return []
-    const inner = interpolate && raw.startsWith('{env:') && raw.endsWith('}')
-      ? raw.slice(5, -1).trim()
-      : null
+    const inner =
+      interpolate && raw.startsWith('{env:') && raw.endsWith('}') ? raw.slice(5, -1).trim() : null
     return [inner ? { key, passthroughFrom: inner } : { key, value: raw }]
   })
 }
@@ -155,7 +156,8 @@ function serverFromEntry(name: string, entry: UnknownRecord): McpServerInput | n
 
   // OpenCode packs the command and its arguments into one array.
   const packed = stringArray(entry.command)
-  const command = packed.length > 0 ? packed[0] : typeof entry.command === 'string' ? entry.command : ''
+  const command =
+    packed.length > 0 ? packed[0] : typeof entry.command === 'string' ? entry.command : ''
   if (!command.trim()) return null
   const args = packed.length > 0 ? packed.slice(1) : stringArray(entry.args)
 
@@ -170,9 +172,7 @@ function serverFromEntry(name: string, entry: UnknownRecord): McpServerInput | n
   }
 }
 
-export type PasteResult =
-  | { ok: true; servers: McpServerInput[] }
-  | { ok: false; error: MessageKey }
+export type PasteResult = { ok: true; servers: McpServerInput[] } | { ok: false; error: MessageKey }
 
 /**
  * Accepts every shape people copy out of an agent's docs: a `mcpServers`/`mcp` wrapper, a
@@ -196,8 +196,7 @@ export function parsePastedServer(text: string, fallbackName = ''): PasteResult 
   const entries = Object.entries(container).filter((entry): entry is [string, UnknownRecord] =>
     isRecord(entry[1]),
   )
-  const looksLikeOneServer =
-    !isRecord(wrapper) && ('command' in container || 'url' in container)
+  const looksLikeOneServer = !isRecord(wrapper) && ('command' in container || 'url' in container)
 
   const servers = looksLikeOneServer
     ? [serverFromEntry(fallbackName.trim(), container)].filter(

@@ -154,7 +154,6 @@
   min-width: 0;
 }
 
-                                                               
 .projectRow {
   display: flex;
   align-items: center;
@@ -257,7 +256,6 @@
   flex-shrink: 0;
 }
 
-                                                      
 .rowHoverBtn {
   width: 20px;
   height: 20px;
@@ -352,7 +350,6 @@
   min-width: 0;
 }
 
-                                                                                
 .groupTag {
   display: flex;
   align-items: center;
@@ -420,8 +417,6 @@
   text-overflow: ellipsis;
 }
 
-                                                                                
-                                                           
 .groupBody {
   display: flex;
   flex-direction: column;
@@ -433,8 +428,7 @@
 }
 
 .groupBox:hover .groupBody {
-  box-shadow: inset 1px 0 0
-    color-mix(in srgb, var(--group-color, var(--border)) 45%, var(--border));
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--group-color, var(--border)) 45%, var(--border));
 }
 
 .groupEmpty {
@@ -443,7 +437,6 @@
   color: var(--fg-faint);
 }
 
-                                                        
 .projectDisabled .projectName {
   color: var(--text-tertiary);
 }
@@ -488,7 +481,6 @@
   }
 }
 
-                                                        
 .ungroupedSection {
   margin-top: 2px;
   padding: 0;
@@ -531,8 +523,7 @@
 .terminalRow:hover {
   background: var(--panel-hover);
 }
-                                                                              
-                                                       
+
 .terminalHidden .agentIcon,
 .terminalDisabled .agentIcon {
   filter: grayscale(1);
@@ -579,14 +570,12 @@
   flex: 0 0 auto;
 }
 
-                                                                 
 .terminalFocused,
 .terminalFocused:hover {
   background: color-mix(in srgb, var(--panel-hover) 82%, var(--fg) 12%);
   color: var(--fg);
 }
 
-                                                               
 .monogram {
   display: grid;
   place-items: center;
