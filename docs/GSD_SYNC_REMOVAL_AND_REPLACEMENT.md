@@ -1,7 +1,21 @@
 # Removing GSD Sync, replacing it with verified procedures
 
-Status: **planned** — the replacement's core is implemented (`src-tauri/src/procedure.rs`,
-`src-tauri/src/change_trigger.rs`); the removal has not started.
+Status: **step 1 of 5 done** (commit `240dc84`). The replacement's core is implemented
+(`src-tauri/src/procedure.rs`, `src-tauri/src/change_trigger.rs`) but not yet wired to any UI.
+
+## Picking this up later
+
+Read this whole document before touching anything — the inventory below is the result of an audit
+that already caught one wrong deletion, and redoing it from greps risks repeating that mistake.
+
+Project rules that apply to every step here (`CLAUDE.md` § 5 and § 7):
+
+- Update `docs/CHANGELOG.md` under `[Não lançado]` in the same change. Not optional.
+- Every visible string goes through `t()` and must exist in **both** `en.ts` and `pt-BR.ts` — the
+  build fails if one is missing. Removing UI means removing its keys from both.
+- Never restart the app or the dev server; changes apply through HMR.
+- Do not commit or push without the owner asking at that moment, and never add a co-author line.
+- Repository content (code, comments, docs, commits) is written in English.
 
 ## Why
 
