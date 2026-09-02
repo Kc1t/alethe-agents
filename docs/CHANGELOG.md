@@ -23,6 +23,8 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **Fixed source control pointing at an agent's worktree instead of the project.** The Git panel and the sidebar's git badge both took the selected terminal's working directory first, and an agent running in an isolated worktree has its cwd inside `.alethe/worktrees/`, so the panel showed that worktree and its `alethe/agent-*` branch — reporting a clean tree for a repository the user was not working in. Both now resolve the project's own repository first, falling back to the terminal's directory only when the project has none.
+
 - **Fixed the P2P layer re-punching a peer it was already connected to, and retrying an unreachable one forever.** A successful connect was immediately followed by further connect attempts for the same peer, each spending the full 8s punch budget to rebuild a path that already existed; and once a peer stopped answering, the same two candidates were retried back to back indefinitely. A connect now reuses a live session instead of punching again, and a failed punch backs the peer off (15s, then 45s, 2min, 5min), clearing the moment a connect succeeds.
 
 - **Reformatted the commit graph rows to two lines** (subject on top, author/date and ref badges below). On a narrow sidebar a single row forced the subject to share its width with the badges and the author line, and the subject lost — commits showed as `fix(u…` or `Merg…` while the row's most important text sat off screen. The subject now gets the row's full width.

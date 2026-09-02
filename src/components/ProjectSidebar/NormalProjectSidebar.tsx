@@ -33,6 +33,8 @@ import {
   type SidebarDropIndicator,
   sidebarInsertionIndex,
 } from '../../lib/sidebarDrag'
+import { getProjectRepoRoot } from '../../lib/terminalFactory'
+import { useGitStatusSummary } from '../../hooks/useGitStatusSummary'
 import { type Group, type Project } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -175,7 +177,6 @@ export function NormalProjectSidebar() {
     if (!showGitControl && sidebarTab === 'git') setSidebarTab('projects')
   }, [showGitControl, sidebarTab])
 
-                                                                         
   const openPaneSets = useMemo(() => {
     const map: Record<string, Set<string>> = {}
     for (const c of containers) map[c.projectId] = new Set(c.paneIds)
@@ -217,6 +218,38 @@ export function NormalProjectSidebar() {
     sidebarTerminal?.tabs.find((tab) => tab.id === sidebarTerminal.activeTabId) ??
     sidebarTerminal?.tabs[0]
 
+  // The project's own repository comes FIRST, ahead of the selected terminal's cwd. When an agent
+  // is running in an isolated worktree its terminal's cwd is `.alethe/worktrees/<id>`, so leading
+  // with it pointed source control at the agent's worktree and its `alethe/agent-*` branch instead
+  // of the project — reported live, with the panel showing a clean tree for a repo the user was
+  // not working in. `getProjectRepoRoot` already skips worktree terminals and, failing that,
+  // derives the real root from a worktree path, so it is the right answer whenever it has one.
+  const activeCwd = useMemo(
+    () =>
+      (activeProject ? getProjectRepoRoot(activeProject) : '') ||
+      activeProject?.defaultCwd ||
+      sidebarSubTab?.cwd ||
+      sidebarTerminal?.cwd ||
+      '',
+    [sidebarSubTab?.cwd, sidebarTerminal?.cwd, activeProject],
+  )
+  const gitSummary = useGitStatusSummary(activeCwd)
+
+  const gitButtonTitle = useMemo(() => {
+    if (!gitSummary.hasRepo || gitSummary.total === 0) {
+      return t('ui.sidebar.git')
+    }
+    if (gitSummary.staged > 0 || gitSummary.changes > 0 || gitSummary.untracked > 0) {
+      return t('ui.sidebar.gitTooltipDetailed', {
+        total: gitSummary.total.toLocaleString(),
+        staged: gitSummary.staged.toLocaleString(),
+        changes: gitSummary.changes.toLocaleString(),
+        untracked: gitSummary.untracked.toLocaleString(),
+      })
+    }
+    return t('ui.sidebar.gitWithChanges', { count: gitSummary.total.toLocaleString() })
+  }, [gitSummary, t])
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   const clearDragState = () => {
@@ -240,7 +273,6 @@ export function NormalProjectSidebar() {
     const target = String(over.id)
     if (dragged === target) return
 
-                                                                                        
     if (dragged.startsWith('term:') && target.startsWith('proj:')) {
       const [, fromProject, terminalId] = dragged.split(':')
       const [, toProject] = target.split(':')
@@ -248,8 +280,6 @@ export function NormalProjectSidebar() {
       return
     }
 
-                                                                                
-                                                                              
     if (dragged.startsWith('proj:') && target.startsWith('proj:')) {
       const fromId = dragged.slice('proj:'.length)
       const toId = target.slice('proj:'.length)
@@ -292,7 +322,6 @@ export function NormalProjectSidebar() {
       return
     }
 
-                                                                           
     if (dragged.startsWith('proj:') && target.startsWith('group:')) {
       const [, projectId] = dragged.split(':')
       const [, groupId] = target.split(':')
@@ -318,7 +347,6 @@ export function NormalProjectSidebar() {
       return
     }
 
-                                                                        
     if (dragged.startsWith('grp:') && target.startsWith('group:')) {
       const [, srcGroupId] = dragged.split(':')
       const [, parentId] = target.split(':')
@@ -369,10 +397,6 @@ export function NormalProjectSidebar() {
       }}
       onToggleCollapsed={() => actions.toggleProjectCollapsed(p.id)}
       onTerminalClick={(t) => {
-                                                                             
-                                                                           
-                                                                           
-                                                               
         if (t.gsdSyncViewer) {
           actions.setFullscreenPane(t.id)
           setActiveView('workspace')
@@ -520,8 +544,8 @@ export function NormalProjectSidebar() {
             type="button"
             role="tab"
             aria-selected={sidebarTab === 'git'}
-            aria-label={t('ui.sidebar.git')}
-            title={t('ui.sidebar.git')}
+            aria-label={gitButtonTitle}
+            title={gitButtonTitle}
             className={`${styles.sidebarTab} ${sidebarTab === 'git' ? styles.sidebarTabActive : ''}`}
             onClick={() => {
               setSidebarTab('git')
@@ -529,6 +553,11 @@ export function NormalProjectSidebar() {
             }}
           >
             <GitBranch size={14} />
+            {gitSummary.formatted ? (
+              <span className={styles.gitBadge} aria-hidden="true">
+                {gitSummary.formatted}
+              </span>
+            ) : null}
             <span>{t('ui.sidebar.git')}</span>
           </button>
         ) : null}
@@ -596,7 +625,7 @@ export function NormalProjectSidebar() {
           {sidebarTerminal && sidebarSubTab && activeProject ? (
             <FileExplorer
               projectId={activeProject.id}
-              cwd={sidebarSubTab.cwd || sidebarTerminal.cwd}
+              cwd={activeCwd || sidebarSubTab.cwd || sidebarTerminal.cwd}
               ptyId={sidebarSubTab.ptyId}
               terminalName={sidebarTerminal.name}
             />
