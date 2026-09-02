@@ -2,6 +2,7 @@ import { AlertTriangle, CircleCheck, GitBranch } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { readableError } from '../../lib/errors'
+import { confirmAction } from '../../lib/confirmDialog'
 import { useT } from '../../lib/i18n'
 import { discoverProviderModels, gitInit, gitStatus } from '../../lib/tauri'
 import {
@@ -105,7 +106,7 @@ export function EditProjectAgentSettings({
 
   const handleInitGit = async () => {
     if (!cwd || gitInitBusy) return
-    if (!confirm(t('git.initOffer.confirm'))) return
+    if (!(await confirmAction(t('git.initOffer.confirm')))) return
     setGitInitBusy(true)
     try {
       await gitInit(cwd)
@@ -305,9 +306,11 @@ export function EditProjectAgentSettings({
           disabled={migratingWorktrees}
           onClick={() => {
             if (migratingWorktrees) return
-            if (!confirm(t('multiAgent.migrateExistingConfirm'))) return
-            setMigratingWorktrees(true)
             void (async () => {
+              // The confirmation is awaited inside the async body: `onClick` itself is not async,
+              // and awaiting in it is a compile error.
+              if (!(await confirmAction(t('multiAgent.migrateExistingConfirm')))) return
+              setMigratingWorktrees(true)
               try {
                 const result = await migrateProjectTerminalsToWorktrees(
                   projectId,
@@ -316,7 +319,11 @@ export function EditProjectAgentSettings({
                 // Uncommitted work is a warning, never a block: it stays in the
                 // main repository (worktrees branch off HEAD).
                 if (result.status !== 'dirty') return
-                if (!confirm(t('multiAgent.migrateDirtyConfirm', { count: result.pending })))
+                if (
+                  !(await confirmAction(
+                    t('multiAgent.migrateDirtyConfirm', { count: result.pending }),
+                  ))
+                )
                   return
                 await migrateProjectTerminalsToWorktrees(projectId, gsdWatcherEnabled, {
                   allowDirty: true,

@@ -1417,6 +1417,7 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.gsdSyncPaneName': 'GSD Sync',
   'crud.editProjectWorktrees': 'Worktrees',
   'crud.editProjectMerge': 'Merge',
+  'crud.removeWorktreeConfirm': 'Excluir o ambiente do agente “{agent}”? Isso não pode ser desfeito.',
   'crud.editProjectAgentSettings': 'Configurações dos agentes',
   'crud.editProjectAgentSettingsDesc':
     'Defina como este projeto cria e valida worktrees de agentes.',

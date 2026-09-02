@@ -1403,6 +1403,7 @@ export const en = {
   'merge.gsdSyncPaneName': 'GSD Sync',
   'crud.editProjectWorktrees': 'Worktrees',
   'crud.editProjectMerge': 'Merge',
+  'crud.removeWorktreeConfirm': 'Delete the agent environment “{agent}”? This cannot be undone.',
   'crud.editProjectAgentSettings': 'Agent settings',
   'crud.editProjectAgentSettingsDesc':
     'Configure how this project creates and validates agent worktrees.',

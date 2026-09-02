@@ -49,7 +49,12 @@ async function resolveServerBaseUrl(): Promise<string> {
       const resolved = await invoke<number>('get_core_port')
       if (resolved > 0) port = resolved
     } catch (error) {
-      log('warn', 'Core', 'Failed to resolve the core port over IPC, falling back to the default', error)
+      log(
+        'warn',
+        'Core',
+        'Failed to resolve the core port over IPC, falling back to the default',
+        error,
+      )
     }
     const url = `http://127.0.0.1:${port}`
     cachedServerBaseUrl = url
@@ -72,6 +77,20 @@ function cachedOrDefaultCoreHost(): string {
 }
 let coreAvailability: { available: boolean; expiresAt: number } | null = null
 let coreAvailabilityRequest: Promise<boolean> | null = null
+
+/** How long an "available" answer is trusted before re-probing. */
+const CORE_AVAILABLE_TTL_MS = 5_000
+
+/**
+ * Backoff for an "unavailable" answer. This used to be a flat 1s, which meant a Core that was
+ * never going to answer — the normal case for a desktop session that does not use Core storage —
+ * was probed once a second forever, each attempt logging a failed fetch and a CORS violation. The
+ * console filled with hundreds of identical errors, which is noise on its own and also buries the
+ * real errors underneath it. Retrying stays quick for a Core that is merely starting up, then
+ * backs off to roughly once a minute.
+ */
+const CORE_UNAVAILABLE_BACKOFF_MS = [1_000, 3_000, 10_000, 30_000, 60_000]
+let coreUnavailableStreak = 0
 let coreSessionToken: string | null = null
 let coreSessionExpiresAt = 0
 let coreSessionRefreshAfter = 0
@@ -195,7 +214,18 @@ export async function canUseSharedCoreTransport(): Promise<boolean> {
 
   try {
     const available = await coreAvailabilityRequest
-    coreAvailability = { available, expiresAt: Date.now() + (available ? 5000 : 1000) }
+    if (available) {
+      coreUnavailableStreak = 0
+    } else {
+      coreUnavailableStreak = Math.min(
+        coreUnavailableStreak + 1,
+        CORE_UNAVAILABLE_BACKOFF_MS.length,
+      )
+    }
+    const ttl = available
+      ? CORE_AVAILABLE_TTL_MS
+      : CORE_UNAVAILABLE_BACKOFF_MS[coreUnavailableStreak - 1]
+    coreAvailability = { available, expiresAt: Date.now() + ttl }
     return available
   } finally {
     coreAvailabilityRequest = null
@@ -214,6 +244,7 @@ async function getCoreSessionToken(): Promise<string> {
     // restarted core can own the same port while pointing at another data root.
     if (coreSessionToken) {
       coreAvailability = null
+      coreUnavailableStreak = 0
       if (!(await canUseSharedCoreTransport())) throw new Error(CORE_UNAVAILABLE)
     }
     const response = await fetch(`${await resolveServerBaseUrl()}/api/session`, {
@@ -235,6 +266,7 @@ async function getCoreSessionToken(): Promise<string> {
       payload.instanceId !== verifiedCoreInstanceId
     ) {
       coreAvailability = null
+      coreUnavailableStreak = 0
       verifiedCoreInstanceId = null
       if (!(await canUseSharedCoreTransport()) || verifiedCoreInstanceId !== payload.instanceId) {
         invalidateCoreSessionToken()
@@ -269,6 +301,7 @@ export function invalidateCoreSessionToken(): void {
   coreSessionRefreshAfter = 0
   coreSessionRequest = null
   coreAvailability = null
+  coreUnavailableStreak = 0
   verifiedCoreInstanceId = null
 }
 
