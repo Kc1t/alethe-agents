@@ -19,14 +19,6 @@ pub struct ProcedureStep {
     pub category: String,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct GsdChildState {
-    pub session_id: Option<String>,
-    pub busy: bool,
-    pub error: Option<String>,
-}
-
 #[derive(Debug, Clone, Serialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanningStatus {
@@ -197,41 +189,6 @@ pub fn read_gsd_child_error(repo_path: String) -> Result<Option<String>, String>
         let _ = std::fs::remove_file(&path);
     }
     Ok(content)
-}
-
-fn read_gsd_child_state_inner(repo_path: String) -> Result<GsdChildState, String> {
-    let root = crate::git_control::repository_root(&repo_path)?;
-    let planning = root.join(".planning");
-    let session_id = std::fs::read_to_string(planning.join(".gsd-child-session"))
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-    let busy = planning.join(".gsd-child-busy").is_file();
-    let error = if session_id.is_some() {
-        let path = planning.join(".gsd-child-error");
-        let content = std::fs::read_to_string(&path)
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty());
-        if content.is_some() {
-            let _ = std::fs::remove_file(path);
-        }
-        content
-    } else {
-        None
-    };
-    Ok(GsdChildState {
-        session_id,
-        busy,
-        error,
-    })
-}
-
-#[tauri::command]
-pub async fn read_gsd_child_state(repo_path: String) -> Result<GsdChildState, String> {
-    tokio::task::spawn_blocking(move || read_gsd_child_state_inner(repo_path))
-        .await
-        .map_err(|error| format!("read_gsd_child_state task failed: {error}"))?
 }
 
 #[tauri::command]
@@ -505,21 +462,4 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 
-    #[test]
-    fn gsd_child_state_reads_all_sentinels_with_one_root_resolution() {
-        let root = temp_git_repo("child-state");
-        let planning = root.join(".planning");
-        fs::create_dir_all(&planning).unwrap();
-        fs::write(planning.join(".gsd-child-session"), "ses_combined\n").unwrap();
-        fs::write(planning.join(".gsd-child-busy"), "1").unwrap();
-        fs::write(planning.join(".gsd-child-error"), "model failed\n").unwrap();
-
-        let state = read_gsd_child_state_inner(root.to_string_lossy().into_owned()).unwrap();
-
-        assert_eq!(state.session_id.as_deref(), Some("ses_combined"));
-        assert!(state.busy);
-        assert_eq!(state.error.as_deref(), Some("model failed"));
-        assert!(!planning.join(".gsd-child-error").exists());
-        fs::remove_dir_all(root).unwrap();
-    }
 }

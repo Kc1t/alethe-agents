@@ -537,7 +537,6 @@ pub fn run() {
             planning::get_planning_autocommit,
             planning_gate::read_planning_status,
             planning_gate::read_gsd_child_session,
-            planning_gate::read_gsd_child_state,
             planning_gate::read_gsd_child_busy,
             planning_gate::read_gsd_child_error,
             planning_gate::read_gsd_procedure,
