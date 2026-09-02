@@ -1,6 +1,7 @@
-import { GitBranch } from 'lucide-react'
+import { AlertTriangle, GitBranch, X } from 'lucide-react'
+import { useState } from 'react'
 
-import { useT } from '../../lib/i18n'
+import { type MessageKey, useT } from '../../lib/i18n'
 import type { Theme } from '../../lib/types'
 import type { MergePhase } from '../../stores/mergeStore'
 import { AgentIcon } from '../icons/AgentIcons'
@@ -52,32 +53,80 @@ export function MergeTree({
     )
   }
 
+  // Which warning is expanded, if any. Local state: it is a transient detail view, not something
+  // any other part of the app needs to know about.
+  const [openWarning, setOpenWarning] = useState<{
+    item: PendingMergeCard
+    gate: GateResult
+    status: { key: MessageKey }
+  } | null>(null)
+
   return (
     <div className={styles.tree}>
       <div className={styles.trunk} />
       {items.map((item) => {
         const status = deriveCardStatus(gateStatus[item.id], item.id === activeCardId, mergePhase)
+        const gate = gateStatus[item.id]
+        // Only a stage that actually went wrong gets the warning affordance. "ready" and the
+        // in-progress stages are not problems, and marking them would make the icon meaningless.
+        const warning = gate?.stage === 'failed' || gate?.stage === 'unverified' ? gate : null
         return (
-          <button
-            key={item.id}
-            type="button"
-            className={styles.node}
-            onClick={() => onSelect(item)}
-          >
-            <span className={styles.connector} />
-            <span className={`${styles.dot} ${TONE_CLASS[status.tone]}`} />
-            <span className={styles.nodeContent}>
-              <span className={styles.nodeIcon}>
-                <AgentIcon type={item.agentType} size={14} theme={terminalTheme} />
+          // A row, not a button: it holds two independent actions now, and a button inside a
+          // button is invalid HTML that browsers resolve unpredictably.
+          <div key={item.id} className={styles.node}>
+            <button type="button" className={styles.nodeMain} onClick={() => onSelect(item)}>
+              <span className={styles.connector} />
+              <span className={`${styles.dot} ${TONE_CLASS[status.tone]}`} />
+              <span className={styles.nodeContent}>
+                <span className={styles.nodeIcon}>
+                  <AgentIcon type={item.agentType} size={14} theme={terminalTheme} />
+                </span>
+                <span className={styles.nodeText}>
+                  <span className={styles.nodeName}>{item.agentName}</span>
+                  <span className={styles.nodeStatus}>{t(status.key)}</span>
+                </span>
               </span>
-              <span className={styles.nodeText}>
-                <span className={styles.nodeName}>{item.agentName}</span>
-                <span className={styles.nodeStatus}>{t(status.key)}</span>
-              </span>
-            </span>
-          </button>
+            </button>
+            {warning ? (
+              <button
+                type="button"
+                className={`${styles.nodeWarning} ${
+                  warning.stage === 'failed' ? styles.nodeWarningFailed : ''
+                }`}
+                title={t(status.key)}
+                aria-label={t(status.key)}
+                onClick={() => setOpenWarning({ item, gate: warning, status })}
+              >
+                <AlertTriangle size={13} />
+              </button>
+            ) : null}
+          </div>
         )
       })}
+      {openWarning ? (
+        <div className={styles.warningPopup} role="dialog" aria-modal="false">
+          <div className={styles.warningHeader}>
+            <AlertTriangle size={13} />
+            <strong>{openWarning.item.agentName}</strong>
+            <button
+              type="button"
+              className={styles.warningClose}
+              onClick={() => setOpenWarning(null)}
+              aria-label={t('common.close')}
+            >
+              <X size={12} />
+            </button>
+          </div>
+          <span className={styles.warningStatus}>{t(openWarning.status.key)}</span>
+          {/* `detail` is whatever the gate reported — the actual reason. Without it the popup
+              would only repeat the label already visible in the row. */}
+          {openWarning.gate.detail ? (
+            <pre className={styles.warningDetail}>{openWarning.gate.detail}</pre>
+          ) : (
+            <span className={styles.warningEmpty}>{t('merge.gateNoDetail')}</span>
+          )}
+        </div>
+      ) : null}
       <div className={styles.mainNode}>
         <span className={styles.mainDot} />
         <GitBranch size={11} />

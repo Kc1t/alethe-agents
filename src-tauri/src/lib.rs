@@ -9,6 +9,7 @@ pub mod backup;
 pub mod browser_pane;
 pub mod browser_session;
 pub mod cdp;
+pub mod change_trigger;
 pub mod claude_sessions;
 pub mod claude_usage;
 pub mod cli_launch;
@@ -182,6 +183,7 @@ pub fn run() {
         .manage(std::sync::Arc::new(sync_rendezvous::RendezvousRuntime::default()))
         .manage(std::sync::Arc::new(sync_p2p_bridge::P2pSessionRegistry::default()))
         .manage(std::sync::Arc::new(sync_file_pipeline_session::FileSyncSessionRegistry::default()))
+        .manage(std::sync::Arc::new(change_trigger::ChangeTriggerRegistry::default()))
         .manage(orchestrator::OrchestratorState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -519,6 +521,9 @@ pub fn run() {
             telemetry::get_telemetry_metrics,
             telemetry::get_telemetry_traces,
             validation::run_validation,
+            change_trigger::change_trigger_start,
+            change_trigger::change_trigger_stop,
+            change_trigger::change_trigger_acknowledge,
             planning::start_gsd_watcher,
             planning::stop_gsd_watcher,
             planning::planning_audit_record,
@@ -615,6 +620,7 @@ pub fn run() {
             sync_tasks::sync_update_task,
             sync_tasks::sync_assign_task,
             sync_tasks::sync_delete_task,
+            sync_tasks::sync_delete_project_tasks,
             sync_chat::sync_create_conversation,
             sync_chat::sync_get_conversation,
             sync_chat::sync_add_conversation_member,
@@ -628,6 +634,7 @@ pub fn run() {
             sync_chat::sync_ensure_project_conversation,
             sync_chat::sync_start_direct_conversation,
             sync_chat::sync_delete_direct_conversation,
+            sync_chat::sync_delete_project_conversation,
             sync_chat::sync_send_message,
             sync_chat::sync_send_message_for_transport,
             sync_chat::sync_ingest_chat_transport_frame,

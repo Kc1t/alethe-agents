@@ -2466,6 +2466,7 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.statusRebasing': 'Rebase…',
   'merge.statusMerged': 'Integrado',
   'merge.statusBlocked': 'Bloqueado',
+  'merge.gateNoDetail': 'A verificação não reportou mais detalhes.',
   'merge.statusGateFailed': 'Falhou verificação automática',
   'merge.statusUnverified': 'Sem verificação automática',
   'merge.gateFailedDiffEmpty':

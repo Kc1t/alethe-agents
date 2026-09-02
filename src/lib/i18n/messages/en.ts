@@ -2447,6 +2447,7 @@ export const en = {
   'merge.statusRebasing': 'Rebasing…',
   'merge.statusMerged': 'Merged',
   'merge.statusBlocked': 'Blocked',
+  'merge.gateNoDetail': 'The check reported no further detail.',
   'merge.statusGateFailed': 'Failed automatic check',
   'merge.statusUnverified': 'No automatic check',
   'merge.gateFailedDiffEmpty':
