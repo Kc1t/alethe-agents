@@ -48,6 +48,7 @@ pub mod orchestrator_core;
 pub mod paths;
 pub mod planning;
 pub mod planning_gate;
+pub mod procedure;
 pub mod process_tree;
 pub mod profiles;
 pub mod project_detector;
