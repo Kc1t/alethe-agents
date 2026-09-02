@@ -18,6 +18,7 @@ pub fn router() -> Router {
         .route("/api/sync/tasks/update", post(update))
         .route("/api/sync/tasks/assign", post(assign))
         .route("/api/sync/tasks/delete", post(delete))
+        .route("/api/sync/tasks/project/delete", post(delete_project_tasks))
 }
 
 #[derive(Deserialize)]
@@ -283,3 +284,26 @@ async fn delete(Extension(runtime): Extension<Arc<ServerRuntime>>, Json(payload)
         .and_then(|result| result),
     )
 }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeleteProjectTasksBody {
+    project_id: String,
+}
+
+async fn delete_project_tasks(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(payload): Json<DeleteProjectTasksBody>,
+) -> Response {
+    let data_root = runtime.data_root().to_path_buf();
+    respond(
+        tokio::task::spawn_blocking(move || {
+            crate::sync_tasks::delete_project_tasks_at(&data_root, &payload.project_id)
+                .map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|result| result),
+    )
+}
+

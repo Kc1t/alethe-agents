@@ -6,7 +6,7 @@ import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
 
 export function useProjectNodeState(project: Project) {
-  const visibleTerminals = project.terminals.filter((terminal) => !terminal.gsdSyncViewer)
+  const visibleTerminals = project.terminals
   const runningCount = useTerminalsStore((state) =>
     visibleTerminals.reduce(
       (count, terminal) =>

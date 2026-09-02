@@ -24,7 +24,7 @@ type SchedulerState = {
   initListener: () => () => void
 }
 
-/** Prompt inicial do agente de task GSD — aponta pro planejamento e trava escopo. */
+/** Prompt inicial do agente de task — aponta pro planejamento e trava escopo. */
 function taskPrompt(taskTitle: string): string {
   return (
     `Sua tarefa: "${taskTitle}". Leia .planning/task.md, .planning/plan.md e ` +

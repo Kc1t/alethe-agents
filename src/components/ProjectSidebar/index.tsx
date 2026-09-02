@@ -428,11 +428,6 @@ function CleanProjectSidebar() {
         activateProject(p)
       }}
       onTerminalClick={(t) => {
-        if (t.gsdSyncViewer) {
-          actions.setFullscreenPane(t.id)
-          setActiveView('workspace')
-          return
-        }
         actions.focusWorkspaceTerminal(p.id, t.id)
         setActiveTerminal(p.id, t.id)
         const activeTab = t.tabs.find((tab) => tab.id === t.activeTabId) ?? t.tabs[0]
@@ -443,11 +438,6 @@ function CleanProjectSidebar() {
         setActiveView(p.mode === 'agentSandbox' ? 'agentSandbox' : 'workspace')
       }}
       onTerminalDoubleClick={(t) => {
-        if (t.gsdSyncViewer) {
-          actions.setFullscreenPane(t.id)
-          setActiveView('workspace')
-          return
-        }
         actions.openTerminalWorkspace(p.id, t.id)
         setActiveTerminal(p.id, t.id)
         requestPaneFocus(t.id)

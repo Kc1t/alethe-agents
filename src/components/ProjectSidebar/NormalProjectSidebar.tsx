@@ -397,11 +397,6 @@ export function NormalProjectSidebar() {
       }}
       onToggleCollapsed={() => actions.toggleProjectCollapsed(p.id)}
       onTerminalClick={(t) => {
-        if (t.gsdSyncViewer) {
-          actions.setFullscreenPane(t.id)
-          setActiveView('workspace')
-          return
-        }
         actions.focusWorkspaceTerminal(p.id, t.id)
         setActiveTerminal(p.id, t.id)
         const activeTab = t.tabs.find((tab) => tab.id === t.activeTabId) ?? t.tabs[0]
@@ -412,11 +407,6 @@ export function NormalProjectSidebar() {
         setActiveView(p.mode === 'agentSandbox' ? 'agentSandbox' : 'workspace')
       }}
       onTerminalDoubleClick={(t) => {
-        if (t.gsdSyncViewer) {
-          actions.setFullscreenPane(t.id)
-          setActiveView('workspace')
-          return
-        }
         actions.openTerminalWorkspace(p.id, t.id)
         setActiveTerminal(p.id, t.id)
         requestPaneFocus(t.id)
@@ -429,8 +419,8 @@ export function NormalProjectSidebar() {
       onAddTerminal={() => openModal('newTerminal', { projectId: p.id })}
       onQuickOpen={() => activateProject(p, 'open')}
       onToggleDisabled={() => {
-        const visible = p.terminals.filter((term) => !term.gsdSyncViewer)
-        const allDisabled = visible.length > 0 && visible.every((term) => term.disabled)
+        const allDisabled =
+          p.terminals.length > 0 && p.terminals.every((term) => term.disabled)
         actions.setProjectDisabled(p.id, !allDisabled)
       }}
       dropEdge={dropIndicator?.id === `proj:${p.id}` ? dropIndicator.edge : null}

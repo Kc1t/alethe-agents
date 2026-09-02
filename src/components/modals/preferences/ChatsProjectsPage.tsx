@@ -72,6 +72,10 @@ export function ChatsProjectsPage() {
     const byKey = new Map<string, StorageGroup>()
     for (const row of rows) {
       const isDirect = row.kind === 'direct'
+      if (!isDirect && row.projectId && !projects.some((project) => project.id === row.projectId)) {
+        // Skip orphan conversations for projects that have been removed/deleted from the workspace.
+        continue
+      }
       const key = isDirect ? `direct:${row.otherAccountRoute ?? row.conversationId}` : `project:${row.projectId ?? row.conversationId}`
       const label = isDirect
         ? (row.otherAccountRoute && contactLabels[row.otherAccountRoute]) || row.otherAccountRoute || t('prefs.chatsProjects.unknownContact')

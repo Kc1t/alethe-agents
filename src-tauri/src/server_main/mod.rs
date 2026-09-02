@@ -1,4 +1,5 @@
 pub mod agent_routes;
+pub mod ai_memory_routes;
 pub mod backup_routes;
 pub mod event_routes;
 pub mod fs_cli_routes;
@@ -8,6 +9,8 @@ pub mod misc_routes;
 pub mod profile_routes;
 pub mod pty_routes;
 pub mod session_routes;
+pub mod skills_routes;
+pub mod plugins_routes;
 pub mod sync_activation_routes;
 pub mod sync_access_routes;
 pub mod sync_invitation_bridge_routes;
@@ -594,7 +597,10 @@ pub fn build_router(runtime: ServerRuntime) -> Router {
         .merge(event_routes::router())
         .merge(git_routes::router())
         .merge(session_routes::router())
+        .merge(skills_routes::router())
+        .merge(plugins_routes::router())
         .merge(agent_routes::router())
+        .merge(ai_memory_routes::router())
         .merge(misc_routes::router())
         .merge(fs_cli_routes::router())
         .merge(backup_routes::router())

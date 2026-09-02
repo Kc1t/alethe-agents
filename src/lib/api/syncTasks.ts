@@ -214,3 +214,15 @@ export async function syncDeleteTask(
     body: JSON.stringify({ projectId, taskId, deviceId, expectedBaseRevision }),
   })
 }
+
+export async function syncDeleteProjectTasks(projectId: string): Promise<void> {
+  if (isTauriEnv()) {
+    await invoke('sync_delete_project_tasks', { projectId })
+    return
+  }
+  await webApiFetch('/api/sync/tasks/project/delete', {
+    method: 'POST',
+    body: JSON.stringify({ projectId }),
+  })
+}
+

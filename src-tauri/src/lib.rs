@@ -1,5 +1,6 @@
 pub mod activity_stats;
 pub mod agent_cost;
+pub mod agent_config;
 pub mod agent_events;
 pub mod agent_library;
 pub mod ai_memory;
@@ -41,12 +42,12 @@ pub mod mcp_model;
 pub mod mcp_store;
 pub mod merge_analyzer;
 pub mod opencode_bridge;
-pub mod opencode_gsd_plugin;
 pub mod opencode_sessions;
 pub mod orchestrator;
 pub mod orchestrator_core;
 pub mod paths;
 pub mod planning;
+pub mod plugins;
 pub mod planning_gate;
 pub mod procedure;
 pub mod process_tree;
@@ -300,6 +301,19 @@ pub fn run() {
                 Arc::clone(&resource_supervisor_for_setup),
             );
 
+            // Alethe's own agent configuration directory, registered before anything can look it
+            // up. Registering late would let the MCP manager fall back to the user's own config for
+            // the first lookups, and the settings screen would then be editing a file the running
+            // agent never reads.
+            match paths::app_data_dir(app.handle())
+                .and_then(|root| agent_config::ensure_agent_config_at(&root))
+            {
+                Ok(root) => agent_config::register_agent_config_root(root),
+                Err(error) => {
+                    eprintln!("[agent-config] could not prepare the agent config directory: {error}")
+                }
+            }
+
             pty::cleanup_orphan_scrollback(app.handle());
             agent_events::start_listener(app.handle().clone());
 
@@ -443,6 +457,7 @@ pub fn run() {
             git_control::git_log_graph,
             git_control::git_show_commit_files,
             git_control::git_show_commit_stats,
+            git_control::git_working_tree_stats,
             git_control::git_show_commit_file_diff,
             translation::translation_has_api_key,
             translation::translation_set_api_key,
@@ -522,11 +537,12 @@ pub fn run() {
             telemetry::get_telemetry_metrics,
             telemetry::get_telemetry_traces,
             validation::run_validation,
+            agent_config::agent_config_root,
             change_trigger::change_trigger_start,
             change_trigger::change_trigger_stop,
             change_trigger::change_trigger_acknowledge,
-            planning::start_gsd_watcher,
-            planning::stop_gsd_watcher,
+            planning::start_planning_watcher,
+            planning::stop_planning_watcher,
             planning::planning_audit_record,
             planning::planning_audit_history,
             planning::list_project_plans,
@@ -536,11 +552,6 @@ pub fn run() {
             planning::set_planning_autocommit,
             planning::get_planning_autocommit,
             planning_gate::read_planning_status,
-            planning_gate::read_gsd_child_session,
-            planning_gate::read_gsd_child_busy,
-            planning_gate::read_gsd_child_error,
-            planning_gate::read_gsd_procedure,
-            opencode_gsd_plugin::gsd_opencode_plugin_write,
             scheduler::get_scheduler_tasks,
             scheduler::trigger_scheduler_tick,
             scheduler::cancel_task,
@@ -705,6 +716,10 @@ pub fn run() {
             skills::skills_scan,
             skills::skills_detail,
             skills::skills_uninstall,
+            skills::skills_sync,
+            plugins::plugins_scan,
+            plugins::plugins_detail,
+            plugins::plugins_import,
             opencode_sessions::snapshot_opencode_sessions,
             opencode_sessions::opencode_export_session,
             ping,

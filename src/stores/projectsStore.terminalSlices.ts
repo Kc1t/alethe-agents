@@ -37,7 +37,6 @@ type TerminalsSlice = Pick<
   | 'createWebPane'
   | 'renameTerminal'
   | 'setBrowserEngine'
-  | 'markGsdSyncViewer'
   | 'deleteTerminal'
   | 'deleteTerminalWithWorktreeCleanup'
   | 'killTerminal'
@@ -68,7 +67,7 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
         })
         // Mirrors the exact exclusion `getProjectRepoRoot` (terminalFactory.ts)
         // already applies when READING the project's root: a terminal whose
-        // cwd is its own worktree-agent folder, a GSD sync viewer, an
+        // cwd is its own worktree-agent folder, an
         // ephemeral conflict-resolution agent, or another ephemeral utility
         // is never a legitimate "project root" candidate. Missing this same
         // exclusion on the WRITE side let e.g. a merge conflict's throwaway
@@ -79,7 +78,6 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
         // ended up pointing at a deleted merge-env directory).
         const isPureCandidate =
           !args.worktreeAgentId &&
-          !args.gsdSyncViewer &&
           !args.ephemeralConflictAgent &&
           !args.ephemeralUtility
         const projects = state.projects.map((p) =>
@@ -277,22 +275,10 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
         browserConfig: { ...t.browserConfig, engine },
       })),
 
-    markGsdSyncViewer: (projectId, terminalId) =>
-      updateTerminal(projectId, terminalId, (t) =>
-        t.gsdSyncViewer ? t : { ...t, gsdSyncViewer: true },
-      ),
-
     deleteTerminal: (projectId, terminalId) =>
       update((state) => {
         const project = state.projects.find((p) => p.id === projectId)
-        const terminal = project?.terminals.find((t) => t.id === terminalId)
-        // Deleting ANY terminal with cwd drags along the GSD Sync "viewer" terminal for the same folder
         const idsToRemove = new Set([terminalId])
-        if (terminal?.cwd) {
-          for (const sibling of project?.terminals ?? []) {
-            if (sibling.gsdSyncViewer && sibling.cwd === terminal.cwd) idsToRemove.add(sibling.id)
-          }
-        }
         const terminalsToClean = (project?.terminals ?? []).filter((t) => idsToRemove.has(t.id))
         if (terminalsToClean.length > 0) cleanupPtys(collectTerminalPtyIds(terminalsToClean))
         const projects = state.projects.map((p) => {

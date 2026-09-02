@@ -432,7 +432,6 @@ type ProjectsSlice = Pick<
   | 'setValidationCommands'
   | 'setHealthCheckCommand'
   | 'setHealthCheckPath'
-  | 'setGsdWatcherEnabled'
   | 'setConflictAgentProvider'
   | 'setConflictAgentModel'
   | 'setReviewAgentProvider'
@@ -560,9 +559,6 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
     setHealthCheckPath: (id, healthCheckPath) =>
       updateProject(id, (p) => ({ ...p, healthCheckPath })),
 
-    setGsdWatcherEnabled: (id, gsdWatcherEnabled) =>
-      updateProject(id, (p) => ({ ...p, gsdWatcherEnabled })),
-
     setConflictAgentProvider: (id, conflictAgentProvider) =>
       updateProject(id, (p) => ({ ...p, conflictAgentProvider })),
 
@@ -655,7 +651,7 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
       }
     },
 
-    migrateProjectTerminalsToWorktrees: async (projectId, gsdWatcherEnabledOverride, opts) => {
+    migrateProjectTerminalsToWorktrees: async (projectId, opts) => {
       if (migratingWorktreeProjectIds.has(projectId)) return { status: 'aborted' }
       const project = get().projects.find((p) => p.id === projectId)
       if (!project) return { status: 'aborted' }
@@ -670,8 +666,7 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
 
       migratingWorktreeProjectIds.add(projectId)
       try {
-        const { worktreeProvision, gitStatus, gsdOpenCodePluginWrite } =
-          await import('../lib/tauri')
+        const { worktreeProvision, gitStatus } = await import('../lib/tauri')
 
         // Probed up front so a non-repo is reported as such, instead of the raw
         // not_a_git_repository error leaking into the final toast.
@@ -713,19 +708,6 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
               agentId,
               project.worktreeMode ?? 'gitWorktree',
             )
-
-            // A migrated terminal running OpenCode with the GSD watcher on
-            // would otherwise start without the plugin — write it up front.
-            const gsdWatcherEnabled = gsdWatcherEnabledOverride ?? project.gsdWatcherEnabled
-            if (gsdWatcherEnabled && terminal.tabs.some((tab) => tab.type === 'opencode')) {
-              const modelChain = get().preferences.gsdSyncModelChain ?? []
-              await gsdOpenCodePluginWrite(info.path, modelChain).catch((error) => {
-                console.error(
-                  `[projectsStore] gsdOpenCodePluginWrite failed for ${info.path}:`,
-                  error,
-                )
-              })
-            }
 
             // Update cwd/worktreeAgentId/sessionId (cleared — the new session
             // has no known ID yet) BEFORE restarting the tabs. Order matters:

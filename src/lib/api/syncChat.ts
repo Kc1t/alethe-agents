@@ -75,6 +75,17 @@ export async function syncDeleteDirectConversation(contactAccountRoute: string):
   })
 }
 
+/** Permanently deletes every project conversation (messages + attachments) associated with a project ID. */
+export async function syncDeleteProjectConversation(projectId: string): Promise<number> {
+  if (isTauriEnv()) {
+    return invoke<number>('sync_delete_project_conversation', { projectId })
+  }
+  return webApiFetch<number>('/api/sync/chat/conversations/delete-project', {
+    method: 'POST',
+    body: JSON.stringify({ projectId }),
+  })
+}
+
 export async function syncSendMessage(
   conversationId: string,
   contentType: MessageContentType,

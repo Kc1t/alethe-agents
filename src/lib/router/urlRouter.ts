@@ -7,7 +7,7 @@ export const ROUTE_PATH_MAP: Record<
   string,
   {
     view: 'home' | 'workspace' | 'agentCanvas'
-    sidebarMode?: 'todo' | 'markdown' | 'git' | 'gsdSync'
+    sidebarMode?: 'todo' | 'markdown' | 'git'
     modal?: 'preferences'
   }
 > = {
@@ -15,7 +15,6 @@ export const ROUTE_PATH_MAP: Record<
   '/workspace': { view: 'workspace' },
   '/agents': { view: 'agentCanvas' },
   '/git': { view: 'workspace', sidebarMode: 'git' },
-  '/sessions': { view: 'workspace', sidebarMode: 'gsdSync' },
   '/settings': { view: 'workspace', modal: 'preferences' },
 }
 

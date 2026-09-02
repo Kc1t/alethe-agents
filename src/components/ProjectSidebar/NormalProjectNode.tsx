@@ -1,7 +1,16 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { ChevronDown, Folder, MoreHorizontal, Network, Pause, Plus } from 'lucide-react'
+import {
+  AlertCircle,
+  ChevronDown,
+  Folder,
+  MoreHorizontal,
+  Network,
+  Pause,
+  Plus,
+} from 'lucide-react'
 
 import { useT } from '../../lib/i18n'
+import { useChangeTriggerStore } from '../../stores/changeTriggerStore'
 import { type SidebarDropEdge } from '../../lib/sidebarDrag'
 import { type Project, type Terminal } from '../../lib/types'
 import { Collapse } from '../ui/Collapse'
@@ -40,6 +49,8 @@ export function NormalProjectNode({
   dropEdge,
 }: NormalProjectNodeProps) {
   const t = useT()
+  const pendingChange = useChangeTriggerStore((state) => state.pending[project.id])
+  const openChangeTrigger = useChangeTriggerStore((state) => state.open)
   const { setNodeRef: dropRef } = useDroppable({ id: `proj:${project.id}` })
   const draggable = useDraggable({ id: `proj:${project.id}` })
   const isDragging = draggable.isDragging
@@ -93,6 +104,20 @@ export function NormalProjectNode({
           <Network size={12} className={styles.agentProjectIcon} />
         ) : null}
         {allDisabled ? <Pause size={11} className={styles.projectPauseIcon} /> : null}
+        {pendingChange ? (
+          <button
+            type="button"
+            className={styles.changeTriggerBadge}
+            onClick={(e) => {
+              e.stopPropagation()
+              openChangeTrigger(project.id)
+            }}
+            title={t('changeTrigger.badgeTooltip', { count: pendingChange.fileCount })}
+            aria-label={t('changeTrigger.badgeTooltip', { count: pendingChange.fileCount })}
+          >
+            <AlertCircle size={12} />
+          </button>
+        ) : null}
         <button
           type="button"
           className={`${styles.rowHoverBtn} ${isEmpty ? styles.rowHoverBtnVisible : ''}`}

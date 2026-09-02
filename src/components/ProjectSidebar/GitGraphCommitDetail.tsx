@@ -11,6 +11,7 @@ import {
   gitShowCommitMessage,
   gitShowCommitStats,
 } from '../../lib/tauri'
+import { DiffStatBar } from '../ui/DiffStatBar'
 import styles from './GitGraph.module.css'
 import { RefBadges, relativeTime } from './GitGraphList'
 
@@ -180,41 +181,6 @@ function TranslateMessage({ message }: { message: string }) {
   )
 }
 
-/** GitHub-style five-block bar showing how much of a file's change was additions vs. deletions.
- *  Proportional to the file's own total, not the commit's — the bar answers "what kind of change
- *  was this file", while the raw counts beside it carry the magnitude. */
-const DIFF_BAR_BLOCKS = 5
-
-function DiffStatBar({ additions, deletions }: { additions: number; deletions: number }) {
-  const total = additions + deletions
-  if (total === 0) return null
-  // At least one block for a side that changed anything at all, so a small number of additions
-  // among many deletions never renders as "no additions".
-  const addedBlocks = Math.min(
-    DIFF_BAR_BLOCKS,
-    Math.max(1, Math.round((additions / total) * DIFF_BAR_BLOCKS)),
-  )
-  const removedBlocks = Math.min(
-    DIFF_BAR_BLOCKS - addedBlocks,
-    additions === 0
-      ? DIFF_BAR_BLOCKS
-      : Math.max(deletions > 0 ? 1 : 0, DIFF_BAR_BLOCKS - addedBlocks),
-  )
-
-  return (
-    <span className={styles.diffBar} aria-hidden="true">
-      {Array.from({ length: DIFF_BAR_BLOCKS }, (_, index) => {
-        const kind =
-          index < addedBlocks
-            ? styles.diffBlockAdded
-            : index < addedBlocks + removedBlocks
-              ? styles.diffBlockRemoved
-              : styles.diffBlockEmpty
-        return <span key={index} className={`${styles.diffBlock} ${kind}`} />
-      })}
-    </span>
-  )
-}
 
 export type GitGraphCommitDetailProps = {
   repoRoot: string

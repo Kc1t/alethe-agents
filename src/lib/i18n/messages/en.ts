@@ -866,9 +866,9 @@ export const en = {
   'features.orchestrator.title': 'Agent orchestration',
   'features.orchestrator.description':
     'Gives Claude Code a set of Alethe tools for handing work to Codex workers that run in parallel. Alethe owns the sandbox, the concurrency limit and the workers themselves, and can steer or cancel one mid-run.',
-  'features.mcp.title': 'MCP & Skills',
+  'features.mcp.title': 'Agent extensions',
   'features.mcp.description':
-    'Inspect and manage the MCP servers and skills of every coding agent from one panel.',
+    'Inspect and manage the MCP servers, skills and plugins of every coding agent from one panel.',
   'features.aiMemory.title': 'AI Memory',
   'features.aiMemory.description':
     'Long-term memory shared across Claude Code, Codex and OpenCode. Requires the ai-memory server installed.',
@@ -903,18 +903,7 @@ export const en = {
   'todo.choosePath': 'Choose Todo folder',
   'todo.clearPath': 'Use default folder',
   'todo.templateError': 'Could not create the Todo template: {message}',
-  'todo.gsdBusy': 'Syncing',
-  'todo.gsdIdle': 'Idle',
-  'todo.gsdError': 'Error',
-  'todo.gsdProgress': '{done}/{total} tasks',
 
-  /* ---- GSD Sync activity feed (read-only "subagent" view) ---- */
-  'gsdActivity.loading': 'Loading activity…',
-  'gsdActivity.tokens': '{count} tokens',
-  'gsdActivity.roleUser': 'Instruction',
-  'gsdActivity.roleAssistant': 'Agent',
-  'gsdActivity.instructionHint': 'sent to the agent — click to expand',
-  'gsdActivity.patchApplied': 'File change applied.',
   'prefs.limitResetNotify': 'Limit reset alerts',
   'prefs.limitResetNotifyDesc':
     'Notify when a Claude or Codex usage window resets, showing which one.',
@@ -957,14 +946,6 @@ export const en = {
   'prefs.spawnConcurrencyDecrease': 'Fewer parallel spawns',
   'prefs.spawnConcurrencyIncrease': 'More parallel spawns',
   'prefs.spawnConcurrencyReset': 'Reset to default',
-  'prefs.gsdSyncModelsTitle': 'GSD Sync model fallback chain',
-  'prefs.gsdSyncModelsDesc':
-    'Backup models for the GSD Sync child session, tried in order if the mirrored model fails.',
-  'prefs.gsdSyncModelsHint':
-    'The GSD Sync session always tries the same model the main conversation just used, first and automatically. This list is only a safety net for the rare case that model also fails (e.g. rate limit) — each one is tried in order until one works.',
-  'prefs.gsdSyncModelsEmpty': 'No fallback configured — only the mirrored model is tried.',
-  'prefs.gsdSyncModelsRemove': 'Remove',
-  'prefs.gsdSyncModelsAdd': 'Add model',
 
   /* ---- PreferencesModal — Multi-Agent & Telemetry tab ---- */
   'prefs.categoryMultiagent': 'Multi-Agent & Telemetry',
@@ -992,7 +973,7 @@ export const en = {
   'prefs.multiagentNoTraces': 'No recent events recorded.',
   'prefs.multiagentTraceProject': 'Project: {id}',
   'prefs.multiagentTraceCorrId': 'CorrId: {id}',
-  'prefs.multiagentAuditTitle': 'GSD audit & autocommit',
+  'prefs.multiagentAuditTitle': 'Planning audit & autocommit',
   'prefs.multiagentAuditDesc':
     'Monitors changes in `.planning/` and configures automatic audit commits.',
   'prefs.multiagentAutocommitLabel': 'Enable audit autocommit (opt-in)',
@@ -1001,8 +982,42 @@ export const en = {
   'prefs.multiagentNoAuditLogs': 'No changes recorded in `.planning/` through Git.',
   'prefs.multiagentAuditAuthor': 'Author: {author}',
   'prefs.multiagentAuditAgent': '· Agent: {agentId}',
-  'prefs.multiagentSelectProjectAuditHint': 'Select a project above to view the GSD audit history.',
+  'prefs.multiagentSelectProjectAuditHint':
+    'Select a project above to view the planning audit history.',
 
+  /* ---- Change trigger: asking the agent to write up what it just did ---- */
+  'changeTrigger.title': 'Record what was done',
+  'changeTrigger.subtitle': '{count} files changed and nothing is being written up.',
+  'changeTrigger.loading': 'Reading the working tree…',
+  'changeTrigger.loadFailed': 'Could not read what changed: {error}',
+  'changeTrigger.nothingChanged': 'Nothing is changed right now — it was probably committed or reverted.',
+  'changeTrigger.noRepository': 'This project has no repository to compare against.',
+  'changeTrigger.binary': 'binary',
+  'changeTrigger.targetLabel': 'Send to',
+  'changeTrigger.noAgentRunning':
+    'No agent is running in this project. The prompt goes into an open agent conversation — start one and reopen this.',
+  'changeTrigger.send': 'Ask the agent',
+  'changeTrigger.dismiss': 'Not now',
+  'changeTrigger.sentTitle': 'Prompt sent',
+  'changeTrigger.sentBody': 'Typed into {agent}.',
+  'changeTrigger.sendFailedTitle': 'Could not send the prompt',
+  'changeTrigger.badgeTooltip': '{count} files changed with nothing written up — click to review',
+  'changeTrigger.promptIntro':
+    '{count} files changed in this project since the last write-up. Before moving on, record the procedure for this work.',
+  'changeTrigger.promptFilesHeader': 'Files changed:',
+  'changeTrigger.promptFilesOverflow': '- ...and {count} more files.',
+  'changeTrigger.promptRulesHeader': 'Write the procedure as numbered steps, following these rules:',
+  'changeTrigger.promptRuleCoverage':
+    '1. Every file listed above must be named by at least one step. Nothing changed may go unmentioned.',
+  'changeTrigger.promptRuleGrouping':
+    '2. One step may cover many files. Group related work — do not write one step per file.',
+  'changeTrigger.promptRuleVerification':
+    '3. Each step states what was done AND how a person checks it: which screen to open, what to do there, and what should happen.',
+  'changeTrigger.promptStaleHeader':
+    'These files were already covered by an earlier step, but have changed since it was written:',
+  'changeTrigger.promptStaleItem': '- {path} — covered by: "{step}"',
+  'changeTrigger.promptStaleChoice':
+    'For each one, either amend that existing step or add a new step, and say which you chose.',
   'prefs.agentsTitle': 'Enabled agents',
   'prefs.agentsDesc': 'Choose which agents are available when creating terminals and sub-tabs.',
   'prefs.cliPaths': 'Agent CLI paths',
@@ -1187,10 +1202,6 @@ export const en = {
   'rightSidebar.navigation': 'Right sidebar navigation',
   'rightSidebar.todoTab': 'Todo',
   'rightSidebar.markdownTab': 'Markdown',
-  'rightSidebar.gsdSyncTab': 'GSD Sync',
-  'rightSidebar.gsdSyncEmptyTitle': 'No active GSD Sync session',
-  'rightSidebar.gsdSyncEmptyDesc':
-    'Turn on GSD monitoring for a project to see its child sessions here.',
   'plans.title': 'Planning docs',
   'rightSidebar.markdownEmptyTitle': 'No Markdown selected',
   'rightSidebar.markdownEmptyDesc':
@@ -1400,7 +1411,6 @@ export const en = {
   'merge.modelSearch': 'Search {count} {provider} models…',
   'merge.modelEmpty': 'No models found for “{query}”.',
   'merge.modelCustom': 'Use custom model: “{model}”',
-  'merge.gsdSyncPaneName': 'GSD Sync',
   'crud.editProjectWorktrees': 'Worktrees',
   'crud.editProjectMerge': 'Merge',
   'crud.removeWorktreeConfirm': 'Delete the agent environment “{agent}”? This cannot be undone.',
@@ -1418,7 +1428,6 @@ export const en = {
     'Boots the app in an isolated environment and confirms it actually responds before Test/Merge. The command must listen on the port given by the %PORT%/$PORT environment variable.',
   'crud.editProjectHealthCheckPath': 'Health check path',
   'crud.editProjectHealthCheckPathPlaceholder': '/ (default)',
-  'crud.editProjectGsdWatcher': 'Watch the GSD planning files (.planning/)',
   'crud.projectColorLabel': 'Color (container border)',
   'crud.projectIconEditHint':
     'Use a URL or upload a local image. Replaces the project square in the sidebar, topbar and container.',
@@ -2333,7 +2342,7 @@ export const en = {
   'sandbox.job': 'job',
   'sandbox.thread': 'thread',
 
-  'scheduler.agentSpawnedTitle': 'GSD agent started',
+  'scheduler.agentSpawnedTitle': 'Task agent started',
   'multiAgent.newEnvPlaceholder': 'agent environment name (e.g. feature-x)',
   'multiAgent.createEnv': 'Create agent environment',
   'multiAgent.creatingEnv': 'Creating…',
@@ -2437,8 +2446,6 @@ export const en = {
   'merge.panelTitle': 'Merge Center',
   'merge.panelEmpty': 'No merges pending review.',
   'merge.panelGatedHint': '{count} agent(s) still finishing planning',
-  'merge.gsdChildErrorTitle': 'GSD Sync could not update goal/plan',
-  'merge.gsdChildErrorBody': '{error}',
   'merge.statusReady': 'Awaiting action',
   'merge.statusPreparing': 'Analyzing…',
   'merge.statusResolving': 'Resolving conflict',
@@ -2600,7 +2607,7 @@ export const en = {
   'mcp.diagMissing': 'config not found',
   'mcp.diagReadOnly': 'read-only',
   'mcp.expand': 'Open the MCP manager',
-  'mcp.managerTitle': 'MCP servers',
+  'mcp.managerTitle': 'Agent extensions',
   'mcp.detailAgents': 'Configured on',
   'mcp.detailEnv': 'Environment',
   'mcp.detailHeaders': 'Headers',
@@ -2705,8 +2712,39 @@ export const en = {
   'mcp.syncWritten': '{name} copied to {agents}',
   'mcp.syncBlocked': '{agents} cannot express every field',
   'mcp.syncFailed': 'Copy to {agents} failed',
-  'mcp.tabServers': 'Servers',
-  'mcp.tabSkills': 'Skills',
+  'mcp.tab.servers': 'Servers',
+  'mcp.tab.skills': 'Skills',
+  'mcp.tab.plugins': 'Plugins',
+
+  /* ---- Plugins the agent loads ---- */
+  'plugins.scopeAlethe': 'In Alethe',
+  'plugins.scopeAletheHint': 'What an agent launched from Alethe loads.',
+  'plugins.scopeUser': 'On this machine',
+  'plugins.scopeUserHint':
+    'Your own OpenCode configuration. Not loaded inside Alethe until imported.',
+  'plugins.scopeEmpty': 'Nothing here.',
+  'plugins.importHere': 'Import',
+  'plugins.importAll': 'Import all {count}',
+  'plugins.importDoneTitle': 'Plugins imported',
+  'plugins.importDoneBody': '{count} now load in Alethe, from the next launch.',
+  'plugins.importRefusedTitle': '{name} was not imported',
+  'plugins.importFailedTitle': 'Could not import',
+  'plugins.importStatus.skipped': 'A plugin with this name is already in Alethe. It was left untouched.',
+  'plugins.importStatus.failed': 'The copy failed.',
+  'plugins.badgeManaged': 'Alethe',
+  'plugins.badgeManagedHint': 'Written by Alethe and rewritten on every launch.',
+  'plugins.badgeDeclared': 'declared',
+  'plugins.badgeMissing': 'file missing',
+  'plugins.managedWarning':
+    'Alethe writes this plugin and rewrites it on every launch, so changes made here are lost.',
+  'plugins.missingWarning':
+    'The configuration names this file, but it is not on disk. The entry loads nothing.',
+  'plugins.originDirectory': 'Loaded automatically from the plugin folder',
+  'plugins.originDeclared': 'Loaded because opencode.json names it',
+  'plugins.loadingSource': 'Reading the file…',
+  'plugins.truncated': 'Only the beginning of the file is shown.',
+  'plugins.emptyTitle': 'No plugins found',
+  'plugins.selectOne': 'Pick a plugin to see it',
   'skills.loading': 'Reading the skill folders…',
   'skills.emptyTitle': 'No skill installed',
   'skills.emptyDescription':
@@ -2719,6 +2757,22 @@ export const en = {
   'skills.installInfo': 'Install info',
   'skills.structure': 'Structure',
   'skills.badgeBundled': 'bundled',
+  'skills.notInstalled': 'not installed',
+  'skills.copyHere': 'Copy here',
+  'skills.copyHereHint': 'Copies the skill files into this agent.',
+  'skills.shareAction': 'Move to the store',
+  'skills.shareHint':
+    'Moves the skill into the shared store and leaves this agent pointing at it, so there is one copy instead of several that drift apart.',
+  'skills.linkAction': 'Link',
+  'skills.linkHint': 'Points this agent at the shared copy instead of duplicating it.',
+  'skills.copyToAll': 'Copy to the other {count}',
+  'skills.copyDoneTitle': 'Skill copied',
+  'skills.copyDoneBody': 'Now available in {agents}.',
+  'skills.copyRefusedTitle': 'Not copied to {agent}',
+  'skills.copyFailedTitle': 'Could not copy the skill',
+  'skills.copyStatus.skipped': 'A skill with this name is already there. It was left untouched.',
+  'skills.copyStatus.blocked': 'This store cannot take the skill.',
+  'skills.copyStatus.failed': 'The copy failed.',
   'skills.installedOn': 'Installed on',
   'skills.badgeLinked': 'link',
   'skills.removeAllAction': 'Remove from all {count}',

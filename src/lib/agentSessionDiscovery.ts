@@ -16,7 +16,6 @@ import {
 import { saveSession } from './sessionResume'
 import { waitForSessionHint } from './sessionWatch'
 import {
-  readGsdChildSession,
   snapshotAntigravitySessions,
   snapshotCodexSessions,
   snapshotOpenCodeSessions,
@@ -51,12 +50,7 @@ export async function discoverActiveSessionNow(
   reservedIds?: ReadonlySet<string>,
 ): Promise<string | undefined> {
   const sessions = await snapshotFor(agent, cwd)
-  let filtered = sessions
-  if (agent === 'opencode') {
-    const gsdChildId = await readGsdChildSession(cwd).catch(() => null)
-    if (gsdChildId) filtered = sessions.filter((s) => s.id !== gsdChildId)
-  }
-  const claimed = claimMostRecentSession(agent, cwd, filtered, ptyId, reservedIds)
+  const claimed = claimMostRecentSession(agent, cwd, sessions, ptyId, reservedIds)
   if (!claimed) return undefined
   if (ptyId) {
     saveSession(ptyId, {
@@ -125,21 +119,11 @@ export async function watchAndPersistDiscoveredSession(
     }
     if (isCancelled()) return
     const sessions = await snapshotFor(agent, cwd)
-    // Sessão-filha do GSD Sync aparece em `opencode session list` como sessão
-    // de verdade (sem parentID, de propósito) — sem excluir, ela podia ser
-    // confundida com a sessão real recém-criada deste terminal se surgisse
-    // na mesma janela de detecção. Exclusão depende só do sentinel existir
-    // em disco, não do toggle atual de `gsdWatcherEnabled`.
-    let filteredSessions = sessions
-    if (agent === 'opencode') {
-      const gsdChildId = await readGsdChildSession(cwd).catch(() => null)
-      if (gsdChildId) filteredSessions = sessions.filter((s) => s.id !== gsdChildId)
-    }
     const newSession = claimDiscoveredSession(
       agent,
       cwd,
       before,
-      filteredSessions,
+      sessions,
       spawnedPtyId,
       reservedIds,
     )

@@ -60,7 +60,7 @@ export function MultiagentPage() {
       const history = await planningAuditHistory(path, 15)
       setAuditLogs(history)
     } catch (err) {
-      console.error('Failed to load GSD audit history:', err)
+      console.error('Failed to load planning audit history:', err)
       setAuditLogs([])
     } finally {
       setLoadingAudit(false)
@@ -370,7 +370,7 @@ export function MultiagentPage() {
       </SettingsSection>
 
       <SettingsSection
-        id="multiagent-gsd-audit"
+        id="multiagent-planning-audit"
         title={t('prefs.multiagentAuditTitle')}
         description={t('prefs.multiagentAuditDesc')}
       >

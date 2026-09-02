@@ -1,9 +1,10 @@
 //! Watches a project's source for accumulated change and asks — once it has settled — whether the
 //! agent should write up the procedure for what was done.
 //!
-//! Replaces the GSD watcher's premise. That one watched `.planning/` and reacted to the *procedure
-//! file itself* changing, which only ever happened when something had already written it. This
-//! watches the thing the procedure is supposed to describe (the code) and fires before it exists.
+//! It watches the code, not the write-up. A watcher pointed at the procedure file only ever
+//! reacts *after* something has already written it, which says nothing about whether the procedure
+//! still describes the code. Watching the source instead means the prompt arrives before the
+//! write-up exists, which is the only moment it can affect what gets written.
 //!
 //! Two conditions must hold, and the second is what keeps this from being an interruption:
 //!
@@ -23,12 +24,15 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tauri::Emitter;
 
 use crate::project_file_watcher::{start_project_watcher, ProjectWatcherHandle};
 
-/// Emitted when both conditions are met. The frontend decides what to do with it.
-pub const CHANGE_TRIGGER_EVENT: &str = "change-trigger://fired";
+/// Event-bus type emitted when both conditions are met. The frontend decides what to do with it.
+///
+/// Published on the event bus rather than emitted straight to the window: the bus already reaches
+/// the Tauri frontend, and routing this through it means the Axum transport starts a watcher that
+/// reports through the same path instead of a second one that only the desktop app can hear.
+pub const CHANGE_TRIGGER_EVENT: &str = "ChangeTriggerFired";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -127,8 +131,19 @@ fn should_fire(
 
 #[tauri::command]
 pub fn change_trigger_start(
-    app: tauri::AppHandle,
     registry: tauri::State<'_, Arc<ChangeTriggerRegistry>>,
+    project_id: String,
+    project_root: String,
+    config: Option<ChangeTriggerConfig>,
+) -> Result<bool, String> {
+    change_trigger_start_core(registry.inner().clone(), project_id, project_root, config)
+}
+
+/// Core without `tauri::State`, so the Axum transport drives the same watcher rather than a second
+/// implementation. Returns `false` when the platform could not provide a watcher at all — a caller
+/// needs to tell that apart from "started and nothing has changed yet".
+pub fn change_trigger_start_core(
+    registry: Arc<ChangeTriggerRegistry>,
     project_id: String,
     project_root: String,
     config: Option<ChangeTriggerConfig>,
@@ -152,8 +167,7 @@ pub fn change_trigger_start(
         return Ok(false);
     };
 
-    let registry_inner: Arc<ChangeTriggerRegistry> = registry.inner().clone();
-    registry_inner.insert(
+    registry.insert(
         project_id.clone(),
         WatchedProject {
             handle,
@@ -166,7 +180,7 @@ pub fn change_trigger_start(
     let poll_project_id = project_id;
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(5));
-        let Some(state) = registry_inner.state_for(&poll_project_id) else {
+        let Some(state) = registry.state_for(&poll_project_id) else {
             // The project stopped being watched — this poller has nothing left to do.
             break;
         };
@@ -182,7 +196,13 @@ pub fn change_trigger_start(
                 sample_paths: guard.paths.iter().take(MAX_SAMPLE_PATHS).cloned().collect(),
             }
         };
-        let _ = app.emit(CHANGE_TRIGGER_EVENT, payload);
+        crate::event_bus::publish_event_simple(
+            CHANGE_TRIGGER_EVENT,
+            &format!("change-trigger-{}", poll_project_id),
+            Some(poll_project_id.clone()),
+            None,
+            serde_json::to_value(&payload).unwrap_or(serde_json::Value::Null),
+        );
     });
 
     Ok(true)
@@ -196,6 +216,10 @@ pub fn change_trigger_stop(
     registry.remove(&project_id);
 }
 
+pub fn change_trigger_stop_core(registry: &ChangeTriggerRegistry, project_id: &str) {
+    registry.remove(project_id);
+}
+
 /// Clears what has accumulated. Called both when the user accepts (the procedure now covers this
 /// work) and when they decline (they were asked once; asking again about the same batch would be
 /// nagging).
@@ -204,7 +228,11 @@ pub fn change_trigger_acknowledge(
     registry: tauri::State<'_, Arc<ChangeTriggerRegistry>>,
     project_id: String,
 ) {
-    if let Some(state) = registry.state_for(&project_id) {
+    change_trigger_acknowledge_core(&registry, &project_id);
+}
+
+pub fn change_trigger_acknowledge_core(registry: &ChangeTriggerRegistry, project_id: &str) {
+    if let Some(state) = registry.state_for(project_id) {
         let mut guard = state.lock().unwrap();
         guard.paths.clear();
         guard.last_change_at = None;

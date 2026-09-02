@@ -37,12 +37,12 @@ import {
   aiMemoryMcpConfigPath,
   aiMemoryOpenCodeConfigWrite,
   attachPty,
+  agentConfigRoot,
   attachPtySnapshot,
   chunksAfterPtySnapshot,
   clearPtyScrollback,
   findCliLauncher,
   getPtySize,
-  gsdOpenCodePluginWrite,
   killPty,
   listenPtyActivity,
   listenPtyData,
@@ -54,7 +54,6 @@ import {
   ptyExists,
   type PtyResyncReason,
   readClipboardPayload,
-  readGsdChildSession,
   resizePty,
   setPtyVisible,
   snapshotAntigravitySessions,
@@ -216,7 +215,6 @@ export function useXtermSession(params: {
   sessionId?: string
   env?: Record<string, string>
 
-  gsdWatcherEnabled?: boolean
 
   trustSessionId?: boolean
 
@@ -267,7 +265,6 @@ export function useXtermSession(params: {
     initialInput,
     sessionId,
     env,
-    gsdWatcherEnabled,
     trustSessionId,
     readOnly,
     skipSessionClaim,
@@ -1838,16 +1835,13 @@ export function useXtermSession(params: {
           command && RESUMABLE_AGENTS.includes(command) ? peekSession(sessionPersistenceKey) : null
         const savedConversationId = savedConversationIdFor(savedSession, command, cwd)
         let resumeId = sessionId ?? savedConversationId
-        // Confirmado ao vivo: um sentinel de sessão do GSD Sync
-        // (`.gsd-child-session`) resolvido mal num merge de conflito podia
-        // ficar com marcadores de conflito de verdade dentro do valor
-        // (`<<<<<<< HEAD\nses_...\n=======\n...`), e esse texto cru virava
-        // literalmente o argumento `--session` do spawn. Nunca confia num
-        // resumeId com quebra de linha ou marcador de conflito — trata como
-        // "sem sessão prévia" (sessão nova) em vez de propagar lixo pro CLI.
+        // A session id read from a file that was badly merged can carry real conflict markers
+        // inside the value, and that raw text became the `--session` argument of the spawn
+        // verbatim. Never trust a resumeId containing a line break or a conflict marker —
+        // treat it as "no previous session" instead of passing garbage to the CLI.
         if (resumeId && (/[\r\n]/.test(resumeId) || /^(<{7}|={7}|>{7})/m.test(resumeId))) {
           console.warn(
-            `[pty-launch] ${command} resumeId com formato inválido (marcador de conflito?) descartado: ${JSON.stringify(resumeId.slice(0, 120))}`,
+            `[pty-launch] ${command} discarded a malformed resumeId (conflict marker?): ${JSON.stringify(resumeId.slice(0, 120))}`,
           )
           resumeId = undefined
         }
@@ -1931,31 +1925,8 @@ export function useXtermSession(params: {
         ) {
           try {
             const sessions = await snapshotOpenCodeSessions(cwd)
-            // A sessão-filha do GSD Sync (ver alethe-gsd-state.ts) é criada
-            // DE PROPÓSITO sem `parentID` — sem isso ela não resumia com
-            // histórico visível na TUI — então, ao contrário de sub-sessões
-            // internas do próprio OpenCode, ELA APARECE em `opencode session
-            // list` como uma sessão de verdade, e fica "mais recente" que a
-            // conversa real a cada ciclo GSD. Sem excluir aqui, um terminal
-            // normal sem sessionId salvo podia reivindicar a sessão-filha
-            // (cheia de instruções internas do GSD) como se fosse a própria
-            // — e como `useGsdSyncSessions` acha o terminal certo justamente
-            // procurando quem tem esse sessionId, ele então tratava o
-            // terminal normal como se fosse o viewer da sessão-filha,
-            // escondendo/fechando a pane dele.
-            // Gateado só em `gsdWatcherEnabled` (o toggle atual da UI) e não
-            // na existência real do sentinel: se o plugin já escreveu
-            // `.gsd-child-session` em algum momento (spawn anterior com o
-            // toggle ligado, worktree que herdou o arquivo do commit-base) e
-            // depois o toggle foi desligado, esse trecho passava a tratar a
-            // sessão-filha como candidata válida de novo — um terminal
-            // normal sem sessionId salvo podia reivindicá-la mesmo com o
-            // watcher desligado. A exclusão agora depende só do sentinel
-            // existir em disco, não do estado atual do toggle.
-            const gsdChildId = await readGsdChildSession(cwd).catch(() => null)
-            const candidates = gsdChildId ? sessions.filter((s) => s.id !== gsdChildId) : sessions
             const reserved = reservedSessionIdsFor('opencode', sessionPersistenceKey)
-            const claimed = claimMostRecentSession('opencode', cwd, candidates, undefined, reserved)
+            const claimed = claimMostRecentSession('opencode', cwd, sessions, undefined, reserved)
             if (claimed) resumeId = claimed.id
           } catch {
             // Falha ao listar sessões — segue sem reivindicar nenhuma.
@@ -2016,15 +1987,6 @@ export function useXtermSession(params: {
           if (disposed) return
         }
 
-        if (command === 'opencode' && cwd && gsdWatcherEnabled) {
-          const modelChain = useProjectsStore.getState().preferences.gsdSyncModelChain ?? []
-
-          await gsdOpenCodePluginWrite(cwd, modelChain).catch((error) => {
-            console.error(`[pty-launch] gsdOpenCodePluginWrite falhou pra ${cwd}:`, error)
-          })
-          if (disposed) return
-        }
-
         const launch = command
           ? buildAgentLaunch(command, preparedRuntime.args, resumeId, undefined, mcpConfigPaths)
           : { args: preparedRuntime.args, sessionId: undefined, createdSession: false }
@@ -2066,6 +2028,22 @@ export function useXtermSession(params: {
           return
         }
         setBootPhase('spawning')
+        // OpenCode reads its configuration from `XDG_CONFIG_HOME`, so pointing that at Alethe's own
+        // directory gives the agent a clean environment Alethe manages instead of whatever the
+        // machine happens to have. Only configuration moves: sessions, credentials and snapshots
+        // live in OpenCode's separate data directory, so history and login are unaffected.
+        let spawnEnv = preparedRuntime.env
+        if (command === 'opencode') {
+          const configRoot = await agentConfigRoot().catch((error) => {
+            // Falling back to the ambient config is better than refusing to start, but it has to be
+            // visible: the agent then reads a different file from the one the MCP manager edits.
+            console.error('[pty-launch] could not resolve the agent config root:', error)
+            return null
+          })
+          if (configRoot) spawnEnv = { ...(spawnEnv ?? {}), XDG_CONFIG_HOME: configRoot }
+          if (disposed) return
+        }
+
         let response: { id: string }
         try {
           response = await spawnPty({
@@ -2076,7 +2054,7 @@ export function useXtermSession(params: {
             cwd: cwd ?? undefined,
             extraArgs: spawnArgs,
             launcherOverride,
-            env: preparedRuntime.env,
+            env: spawnEnv,
             profileId: activeProfileId,
           })
         } finally {

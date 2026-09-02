@@ -30,6 +30,10 @@ pub fn router() -> Router {
             "/api/sync/chat/conversations/delete-direct",
             post(delete_direct_conversation),
         )
+        .route(
+            "/api/sync/chat/conversations/delete-project",
+            post(delete_project_conversation),
+        )
         .route("/api/sync/chat/messages/send", post(send_message))
         .route("/api/sync/chat/messages/decrypted", get(list_decrypted_messages))
         .route("/api/sync/chat/messages/edit", post(edit_message))
@@ -538,3 +542,26 @@ async fn delete_direct_conversation(
         .and_then(|result| result),
     )
 }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeleteProjectConversationBody {
+    project_id: String,
+}
+
+async fn delete_project_conversation(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+    Json(body): Json<DeleteProjectConversationBody>,
+) -> Response {
+    let data_root = runtime.data_root().to_path_buf();
+    respond(
+        tokio::task::spawn_blocking(move || {
+            crate::sync_chat::delete_project_conversation_at(&data_root, &body.project_id)
+                .map_err(|error| error.to_string())
+        })
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|result| result),
+    )
+}
+

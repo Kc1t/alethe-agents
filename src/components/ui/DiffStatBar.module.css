@@ -1,0 +1,23 @@
+.bar {
+  display: flex;
+  gap: 1.5px;
+  flex-shrink: 0;
+}
+
+.block {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+}
+
+.added {
+  background: var(--status-working);
+}
+
+.removed {
+  background: var(--status-offline);
+}
+
+.empty {
+  background: var(--border-strong);
+}

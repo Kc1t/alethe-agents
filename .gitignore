@@ -20,6 +20,8 @@ Thumbs.db
 
 # Tauri
 src-tauri/target/
+src-tauri/target_*/
+src-tauri/target-*/
 # Build isolada do harness de E2E — nunca compartilha target/ com o `tauri dev`
 # interativo (lock e binário de saída próprios).
 src-tauri/target-e2e/

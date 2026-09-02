@@ -593,6 +593,22 @@ mod tests {
     use super::*;
     use rand_core::OsRng;
 
+    /// Deterministic aperiodic bytes for chunking fixtures. splitmix64, the same small PRNG
+    /// `gear_table` uses — real files are not periodic, and a periodic fixture silently defeats
+    /// content-defined chunking (see `cdc_boundaries_are_stable_away_from_a_localized_edit`).
+    fn pseudo_random_bytes(seed: u64, len: usize) -> Vec<u8> {
+        let mut state = seed;
+        (0..len)
+            .map(|_| {
+                state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+                let mut z = state;
+                z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+                z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+                ((z ^ (z >> 31)) >> 33) as u8
+            })
+            .collect()
+    }
+
     fn temp_dir(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!("alethe-manifest-{name}-{}", nanoid::nanoid!(8)));
         fs::create_dir_all(&dir).unwrap();
@@ -811,24 +827,48 @@ mod tests {
     fn cdc_boundaries_are_stable_away_from_a_localized_edit() {
         // The core promise of content-defined chunking: inserting bytes in the middle of a large
         // file should only change the chunk(s) near the insertion point — everything before that
-        // region, and most of what's after it (once the rolling hash resynchronizes), should
-        // reproduce byte-identical chunks. This is exactly what fixed-offset chunking cannot do
-        // (every chunk after the edit point would shift and re-hash).
-        let base: Vec<u8> = (0..300_000_u32).map(|value| ((value * 37) % 256) as u8).collect();
+        // region, and everything after it once the rolling hash resynchronizes, should reproduce
+        // byte-identical chunks. This is exactly what fixed-offset chunking cannot do (every chunk
+        // after the edit point would shift and re-hash).
+        //
+        // The fixture must be aperiodic. An earlier version used `(value * 37) % 256`, which
+        // repeats every 256 bytes, and that quietly made the test unpassable by ANY correct
+        // implementation: a gear hash decides a boundary from the last handful of bytes, so on data
+        // that repeats every 256 bytes the boundaries fall at fixed offsets mod 256. Inserting 500
+        // bytes (500 % 256 != 0) shifts the whole tail out of phase, and every later chunk then
+        // covers a different slice of the same repeating pattern — there is no unique content left
+        // to resynchronize *to*. It also meant every chunk hit the forced maximum, so the test
+        // never exercised a content-defined boundary at all.
+        let base: Vec<u8> = pseudo_random_bytes(0x5EED, 300_000);
         let mut edited = base.clone();
         let insertion_point = 150_000;
         edited.splice(insertion_point..insertion_point, std::iter::repeat(0xAB_u8).take(500));
 
+        let cut_points = |data: &[u8]| {
+            cdc_cut_points(
+                data,
+                TEXT_CHUNK_MIN_BYTES,
+                TEXT_CHUNK_TARGET_BYTES,
+                TEXT_CHUNK_MAX_BYTES,
+            )
+        };
         let hash_chunks = |data: &[u8]| -> Vec<String> {
-            let lengths = cdc_cut_points(data, TEXT_CHUNK_MIN_BYTES, TEXT_CHUNK_TARGET_BYTES, TEXT_CHUNK_MAX_BYTES);
             let mut offset = 0;
             let mut hashes = Vec::new();
-            for length in lengths {
+            for length in cut_points(data) {
                 hashes.push(hex(&Sha256::digest(&data[offset..offset + length])));
                 offset += length;
             }
             hashes
         };
+
+        let base_lengths = cut_points(&base);
+        // Guards the fixture itself: if every chunk were the forced maximum, chunking would have
+        // degenerated to fixed-size and the assertions below would prove nothing.
+        assert!(
+            base_lengths.iter().any(|length| *length < TEXT_CHUNK_MAX_BYTES),
+            "fixture must produce content-defined boundaries, not only forced maximums"
+        );
 
         let base_hashes = hash_chunks(&base);
         let edited_hashes = hash_chunks(&edited);
@@ -837,7 +877,7 @@ mod tests {
         let prefix_chunk_count = {
             let mut offset = 0usize;
             let mut count = 0usize;
-            for length in cdc_cut_points(&base, TEXT_CHUNK_MIN_BYTES, TEXT_CHUNK_TARGET_BYTES, TEXT_CHUNK_MAX_BYTES) {
+            for length in &base_lengths {
                 if offset + length > insertion_point {
                     break;
                 }
@@ -846,8 +886,14 @@ mod tests {
             }
             count
         };
-        assert!(prefix_chunk_count > 0, "fixture should span multiple chunks before the edit point");
-        assert_eq!(&base_hashes[..prefix_chunk_count], &edited_hashes[..prefix_chunk_count]);
+        assert!(
+            prefix_chunk_count > 0,
+            "fixture should span multiple chunks before the edit point"
+        );
+        assert_eq!(
+            &base_hashes[..prefix_chunk_count],
+            &edited_hashes[..prefix_chunk_count]
+        );
 
         // The tail of the file (well after the edit + resync distance) should also match — proof
         // that only a bounded region around the edit was affected, not everything downstream.

@@ -10,7 +10,6 @@ import {
   Plug,
   RefreshCw,
   Settings,
-  Sparkles,
   X,
 } from 'lucide-react'
 import {
@@ -24,7 +23,6 @@ import {
   useState,
 } from 'react'
 
-import { type GsdSyncSession, useGsdSyncSessions } from '../../hooks/useGsdSyncSessions'
 import { useGitStatusSummary } from '../../hooks/useGitStatusSummary'
 import { hasFileDragPayload, readFileDragPayload } from '../../lib/fileDrag'
 import { useT } from '../../lib/i18n'
@@ -33,13 +31,11 @@ import { basename } from '../../lib/paths'
 import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import {
   listProjectPlans,
-  type PlanningStatus,
-  readPlanningStatus,
   readTextFile,
   writeClipboardText,
 } from '../../lib/tauri'
 import type { Project, SubTab, Terminal } from '../../lib/types'
-import { selectActiveProject, useProjectsStore } from '../../stores/projectsStore'
+import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
 
@@ -49,7 +45,6 @@ const MarkdownRenderer = lazy(() =>
 import { McpPanel } from '../McpPanel'
 import { GitControl } from '../ProjectSidebar/GitControl'
 import { TodoSidebar } from '../TodoSidebar'
-import { DotmCircular2 } from '../ui/dotm-circular-2'
 import styles from './RightSidebar.module.css'
 
 const markdownScrollPositions = new Map<string, number>()
@@ -60,7 +55,6 @@ export function RightSidebar() {
   const setMode = useUiStore((state) => state.showTodoSidebar)
   const openMarkdown = useUiStore((state) => state.showMarkdownSidebar)
   const showGit = useUiStore((state) => state.showGitSidebar)
-  const showGsdSyncSidebar = useUiStore((state) => state.showGsdSyncSidebar)
   const showMcp = useUiStore((state) => state.showMcpSidebar)
   const openModal = useUiStore((state) => state.openModal_)
   const preferences = useProjectsStore((state) => state.preferences)
@@ -111,7 +105,6 @@ export function RightSidebar() {
   useEffect(() => {
     const modeStillEnabled =
       mode === 'markdown' ||
-      mode === 'gsdSync' ||
       (mode === 'todo' && todoEnabled) ||
       (mode === 'git' && gitEnabled) ||
       (mode === 'mcp' && mcpEnabled)
@@ -146,17 +139,6 @@ export function RightSidebar() {
         >
           <FileText size={14} />
           <span>{t('rightSidebar.markdownTab')}</span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === 'gsdSync'}
-          className={`${styles.sidebarTab} ${mode === 'gsdSync' ? styles.sidebarTabActive : ''}`}
-          onClick={showGsdSyncSidebar}
-          title={t('rightSidebar.gsdSyncTab')}
-        >
-          <Sparkles size={14} />
-          <span>{t('rightSidebar.gsdSyncTab')}</span>
         </button>
         {gitEnabled ? (
           <button
@@ -227,7 +209,6 @@ export function RightSidebar() {
       <div className={styles.tabContent}>
         {mode === 'markdown' ? <MarkdownSidebarViewer /> : null}
         {mode === 'todo' && todoEnabled ? <TodoSidebar /> : null}
-        {mode === 'gsdSync' ? <GsdSyncSidebarContent /> : null}
         {mode === 'mcp' && mcpEnabled ? <McpPanel /> : null}
         {mode === 'git' && gitEnabled ? (
           <GitSidebarContent
@@ -238,106 +219,6 @@ export function RightSidebar() {
         ) : null}
       </div>
     </aside>
-  )
-}
-
-function GsdSyncSidebarContent() {
-  const t = useT()
-  const activeProject = useProjectsStore(selectActiveProject)
-  const setGsdSyncActivityView = useUiStore((state) => state.setGsdSyncActivityView)
-  const sessions = useGsdSyncSessions()
-  const projectSessions = activeProject
-    ? sessions.filter((session) => session.projectId === activeProject.id)
-    : []
-
-  if (!activeProject || projectSessions.length === 0) {
-    return (
-      <div className={styles.empty}>
-        <Sparkles size={20} />
-        <strong>{t('rightSidebar.gsdSyncEmptyTitle')}</strong>
-        <span>{t('rightSidebar.gsdSyncEmptyDesc')}</span>
-      </div>
-    )
-  }
-
-  return (
-    <div className={styles.gsdPanel}>
-      <div className={styles.gsdList}>
-        {projectSessions.map((session) => (
-          <GsdSyncRow
-            key={session.id}
-            session={session}
-            onOpen={() => {
-              const title = basename(session.worktreePath) || session.worktreePath
-              setGsdSyncActivityView({
-                worktreePath: session.worktreePath,
-                sessionId: session.childId,
-                title,
-              })
-            }}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function GsdSyncRow({ session, onOpen }: { session: GsdSyncSession; onOpen: () => void }) {
-  const t = useT()
-  const [status, setStatus] = useState<PlanningStatus | null>(null)
-  const name = basename(session.worktreePath) || session.worktreePath
-
-  useEffect(() => {
-    if (!session.worktreePath) return
-    let cancelled = false
-    readPlanningStatus(session.worktreePath)
-      .then((result) => {
-        if (!cancelled) setStatus(result)
-      })
-      .catch(() => {
-        if (!cancelled) setStatus(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [session.worktreePath, session.busy])
-
-  const statusLabel = session.hasError
-    ? t('todo.gsdError')
-    : session.busy
-      ? t('todo.gsdBusy')
-      : t('todo.gsdIdle')
-  const progressLabel =
-    status?.roadmapTotalCount != null && status.roadmapPendingCount != null
-      ? t('todo.gsdProgress', {
-          done: status.roadmapTotalCount - status.roadmapPendingCount,
-          total: status.roadmapTotalCount,
-        })
-      : null
-
-  return (
-    <button type="button" className={styles.gsdRow} onClick={onOpen} title={name}>
-      <span className={styles.gsdRowState}>
-        {session.hasError ? (
-          <span className={styles.gsdErrorDot} />
-        ) : session.busy ? (
-          <DotmCircular2
-            size={13}
-            dotSize={2}
-            cellPadding={1}
-            speed={1.2}
-            bloom
-            ariaLabel={statusLabel}
-          />
-        ) : (
-          <span className={styles.gsdIdleDot} />
-        )}
-      </span>
-      <span className={styles.gsdRowBody}>
-        <span className={styles.gsdRowName}>{name}</span>
-        <span className={styles.gsdRowMeta}>{progressLabel ?? statusLabel}</span>
-      </span>
-    </button>
   )
 }
 

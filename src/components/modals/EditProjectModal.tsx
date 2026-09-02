@@ -6,8 +6,6 @@ import { useT } from '../../lib/i18n'
 import {
   detectProjectStack,
   gitListBranches,
-  startGsdWatcher,
-  stopGsdWatcher,
   worktreeList,
   worktreeProvision,
   worktreeRemove,
@@ -38,7 +36,6 @@ export function EditProjectModal() {
   const setValidationCommands = useProjectsStore((s) => s.setValidationCommands)
   const setHealthCheckCommand = useProjectsStore((s) => s.setHealthCheckCommand)
   const setHealthCheckPath = useProjectsStore((s) => s.setHealthCheckPath)
-  const setGsdWatcherEnabled = useProjectsStore((s) => s.setGsdWatcherEnabled)
   const setConflictAgentProvider = useProjectsStore((s) => s.setConflictAgentProvider)
   const setConflictAgentModel = useProjectsStore((s) => s.setConflictAgentModel)
   const setAutoWorktree = useProjectsStore((s) => s.setAutoWorktree)
@@ -58,7 +55,6 @@ export function EditProjectModal() {
   const [validationCommandsStr, setValidationCommandsStr] = useState('')
   const [healthCheckCommand, setHealthCheckCommandState] = useState('')
   const [healthCheckPath, setHealthCheckPathState] = useState('')
-  const [gsdWatcherEnabled, setGsdWatcherEnabledState] = useState(false)
   const [worktrees, setWorktrees] = useState<any[]>([])
   const [loadingWorktrees, setLoadingWorktrees] = useState(false)
   const [conflictProvider, setConflictProviderState] = useState<AgentType>('claude')
@@ -106,7 +102,6 @@ export function EditProjectModal() {
     setValidationCommandsStr((project.validationCommands ?? []).join('\n'))
     setHealthCheckCommandState(project.healthCheckCommand ?? '')
     setHealthCheckPathState(project.healthCheckPath ?? '')
-    setGsdWatcherEnabledState(project.gsdWatcherEnabled ?? false)
 
     setConflictProviderState(project.conflictAgentProvider ?? 'claude')
     setConflictModelState(project.conflictAgentModel ?? '')
@@ -249,18 +244,6 @@ export function EditProjectModal() {
 
     if (autoWorktree !== (project.autoWorktree ?? false)) {
       setAutoWorktree(project.id, autoWorktree)
-    }
-
-    if (gsdWatcherEnabled !== project.gsdWatcherEnabled) {
-      setGsdWatcherEnabled(project.id, gsdWatcherEnabled)
-      const repoPath = project.terminals[0]?.cwd
-      if (repoPath) {
-        if (gsdWatcherEnabled) {
-          startGsdWatcher(project.id, repoPath).catch(console.error)
-        } else {
-          stopGsdWatcher(project.id, repoPath).catch(console.error)
-        }
-      }
     }
 
     closeModal()
@@ -478,8 +461,6 @@ export function EditProjectModal() {
                 onConflictModelChange={setConflictModelState}
                 autoWorktree={autoWorktree}
                 onAutoWorktreeChange={setAutoWorktreeState}
-                gsdWatcherEnabled={gsdWatcherEnabled}
-                onGsdWatcherEnabledChange={setGsdWatcherEnabledState}
               />
             </div>
           ) : null}

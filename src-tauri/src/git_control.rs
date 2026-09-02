@@ -649,11 +649,10 @@ pub struct DiffSummaryEntry {
     pub deletions: Option<usize>,
 }
 
-/// `opencode.json` (plugin GSD, escrito automaticamente a
-
-/// `.opencode/alethe-gsd-config.json`, `.planning/goal.md` etc. como se
-
-/// Alethe escrevendo essa infraestrutura na worktree.
+/// Paths Alethe writes into a worktree itself: the OpenCode configuration under `.opencode/` and
+/// the `opencode.json` beside it (written on spawn), plus the planning documents in `.planning/`.
+/// They are filtered out of a diff summary so a worktree where only Alethe's own infrastructure
+/// landed does not read as if the agent had done work in it.
 fn is_alethe_infra_path(path: &str) -> bool {
     path.starts_with(".planning/") || path.starts_with(".opencode/") || path == "opencode.json"
 }
@@ -1174,6 +1173,71 @@ pub async fn git_show_commit_stats(
         .map_err(|error| format!("git_show_commit_stats: blocking task failed: {error}"))?
 }
 
+/// Per-file line counts for the *working tree* — the same shape `git_show_commit_stats` returns for
+/// a commit, but for work that has not been committed yet.
+///
+/// This is what the change trigger reports on: by the time a change is worth describing, it is
+/// still uncommitted, so a commit-based view would show nothing at all.
+///
+/// Untracked files are included deliberately. `git diff HEAD` ignores them, and a brand-new file is
+/// precisely the change most likely to go undescribed — leaving it out would let the popup call a
+/// change fully covered while a whole new file went unmentioned. They are reported as added, with
+/// their full line count, which is what `git diff` would say once staged.
+fn git_working_tree_stats_inner(repo_root: String) -> Result<Vec<DiffSummaryEntry>, String> {
+    let root = repository_root(&repo_root)?;
+    let name_status = checked_output(&root, &["diff", "--name-status", "-r", "-z", "HEAD"])?;
+    let numstat = checked_output(&root, &["diff", "--numstat", "-r", "-z", "HEAD"])?;
+    let stats = parse_numstat_z(&String::from_utf8_lossy(&numstat.stdout));
+
+    let mut entries: Vec<DiffSummaryEntry> = parse_name_status_z(&name_status.stdout)
+        .into_iter()
+        .map(|change| {
+            let (additions, deletions) = match stats.get(&change.path) {
+                Some((adds, dels)) => (Some(*adds), Some(*dels)),
+                None => (None, None),
+            };
+            DiffSummaryEntry {
+                path: change.path,
+                status: change.status,
+                additions,
+                deletions,
+            }
+        })
+        .collect();
+
+    let untracked = checked_output(
+        &root,
+        &["ls-files", "--others", "--exclude-standard", "-z"],
+    )?;
+    for path in String::from_utf8_lossy(&untracked.stdout)
+        .split(' ')
+        .filter(|p| !p.is_empty())
+    {
+        // Counted here rather than via `git diff --no-index`, which would cost one process per
+        // file. A file that cannot be read as text (binary, or gone between the listing and now)
+        // reports no counts, matching how `parse_numstat_z` already leaves binaries out.
+        let additions = std::fs::read_to_string(root.join(path))
+            .ok()
+            .map(|contents| contents.lines().count());
+        entries.push(DiffSummaryEntry {
+            path: path.to_string(),
+            status: "A".to_string(),
+            additions,
+            deletions: additions.map(|_| 0),
+        });
+    }
+
+    entries.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(entries)
+}
+
+#[tauri::command]
+pub async fn git_working_tree_stats(repo: String) -> Result<Vec<DiffSummaryEntry>, String> {
+    tokio::task::spawn_blocking(move || git_working_tree_stats_inner(repo))
+        .await
+        .map_err(|error| format!("git_working_tree_stats: blocking task failed: {error}"))?
+}
+
 /// The FULL commit message (`%B` — subject + body), for the commit detail
 /// screen (`git_log_graph` only returns `%s`, a single line).
 fn git_show_commit_message_inner(repo_root: String, hash: String) -> Result<String, String> {
@@ -1494,6 +1558,49 @@ mod tests {
     }
 
     #[test]
+    fn working_tree_stats_counts_modified_and_untracked_files() {
+        // An untracked file is the case this exists for: `git diff HEAD` ignores it, so without
+        // the explicit `ls-files --others` pass a whole new file would be missing from the change
+        // report — and the popup would call the change fully covered while it went unmentioned.
+        let root = temp_dir("worktree-stats");
+        fs::write(root.join("tracked.txt"), "one
+two
+").unwrap();
+        let root_string = root.to_string_lossy().into_owned();
+        git_init(root_string.clone()).unwrap();
+
+        fs::write(root.join("tracked.txt"), "one
+two
+three
+").unwrap();
+        fs::write(root.join("brand-new.txt"), "a
+b
+c
+d
+").unwrap();
+
+        let stats = git_working_tree_stats_inner(root_string).unwrap();
+        let by_path: std::collections::HashMap<&str, &DiffSummaryEntry> =
+            stats.iter().map(|e| (e.path.as_str(), e)).collect();
+
+        let tracked = by_path.get("tracked.txt").expect("modified file reported");
+        assert_eq!(tracked.status, "M");
+        assert_eq!(tracked.additions, Some(1));
+        assert_eq!(tracked.deletions, Some(0));
+
+        let untracked = by_path.get("brand-new.txt").expect("untracked file reported");
+        assert_eq!(untracked.status, "A");
+        assert_eq!(
+            untracked.additions,
+            Some(4),
+            "an untracked file counts every line as added"
+        );
+        assert_eq!(untracked.deletions, Some(0));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn git_init_adopts_existing_files_into_a_first_commit() {
         let root = temp_dir("init-adopt");
         fs::write(root.join("existing.txt"), "already here\n").unwrap();
@@ -1619,14 +1726,8 @@ mod tests {
 
         fs::create_dir_all(root.join(".planning")).unwrap();
         fs::write(root.join(".planning").join("goal.md"), "").unwrap();
-        fs::create_dir_all(root.join(".opencode").join("plugins")).unwrap();
-        fs::write(
-            root.join(".opencode")
-                .join("plugins")
-                .join("alethe-gsd-state.ts"),
-            "",
-        )
-        .unwrap();
+        fs::create_dir_all(root.join(".opencode")).unwrap();
+        fs::write(root.join(".opencode").join("opencode.json"), "").unwrap();
         fs::write(root.join("opencode.json"), "{}").unwrap();
 
         let with_worktree = git_diff_summary(

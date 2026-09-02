@@ -40,6 +40,7 @@ pub fn router() -> Router {
         .route("/api/git/log_graph", get(git_log_graph))
         .route("/api/git/commit_files", get(git_commit_files))
         .route("/api/git/commit_message", get(git_commit_message))
+        .route("/api/git/working_tree_stats", get(git_working_tree_stats))
         .route("/api/git/commit_stats", get(git_commit_stats))
         .route("/api/git/commit_file_diff", get(git_commit_file_diff))
         .route("/api/git/create_branch", post(git_create_branch))
@@ -226,6 +227,17 @@ async fn git_commit_stats(Query(p): Query<HashMap<String, String>>) -> impl Into
         Err(e) => return e.into_response(),
     };
     match git_control::git_show_commit_stats(repo, hash).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => AppError::from(e).into_response(),
+    }
+}
+
+async fn git_working_tree_stats(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
+    let repo = match q(&p, "repo") {
+        Ok(v) => v,
+        Err(e) => return e.into_response(),
+    };
+    match git_control::git_working_tree_stats(repo).await {
         Ok(v) => Json(v).into_response(),
         Err(e) => AppError::from(e).into_response(),
     }

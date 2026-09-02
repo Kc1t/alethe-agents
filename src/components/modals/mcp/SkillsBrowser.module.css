@@ -249,3 +249,13 @@ button.treeRow:hover {
   color: var(--fg-faint);
   overflow-wrap: anywhere;
 }
+
+/* A store that does not have this skill yet. Dimmed rather than hidden: the copy affordance only
+   makes sense next to the gap it fills. */
+.agentRowAbsent {
+  opacity: 0.6;
+}
+
+.agentRowAbsent .path {
+  font-style: italic;
+}

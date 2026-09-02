@@ -561,6 +561,33 @@ pub fn delete_direct_conversation_at(
     }
 }
 
+/// Permanently deletes every conversation document associated with `project_id`, removing both
+/// the main document and any append journal. Returns the number of conversations deleted.
+pub fn delete_project_conversation_at(
+    data_root: &Path,
+    project_id: &str,
+) -> Result<usize, ChatError> {
+    let chat_dir = data_root.join("sync").join("chat");
+    let Ok(entries) = fs::read_dir(&chat_dir) else { return Ok(0) };
+    let mut deleted_count = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
+        if let Ok(conversation) = load_conversation_at(data_root, stem) {
+            if conversation.project_id.as_deref() == Some(project_id) {
+                let _ = fs::remove_file(journal_path(data_root, stem));
+                if fs::remove_file(&path).is_ok() {
+                    deleted_count += 1;
+                }
+            }
+        }
+    }
+    Ok(deleted_count)
+}
+
 /// Adds a member and rotates the epoch. The new member receives a wrap for the new epoch only —
 /// no access to history from before they joined (ADR-0006's documented non-goal).
 pub fn add_member_at(
@@ -1009,6 +1036,15 @@ pub fn sync_delete_direct_conversation(
     let (_, account_route) = local_chat_identity(&data_root)?;
     delete_direct_conversation_at(&data_root, &account_route, &contact_account_route)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn sync_delete_project_conversation(
+    app: tauri::AppHandle,
+    project_id: String,
+) -> Result<usize, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    delete_project_conversation_at(&data_root, &project_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -2172,6 +2208,27 @@ mod tests {
             MessageContentType::Text, b"fresh start", vec![], &AllowAll, 3_000,
         )
         .unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn delete_project_conversation_removes_channel_and_journal() {
+        let root = temp_root("delete-project-conv");
+        let alice_secret = X25519StaticSecret::random_from_rng(OsRng);
+        let conv = create_conversation_at(
+            &root,
+            Some("proj-to-delete".to_string()),
+            ConversationKind::ProjectChannel,
+            None,
+            vec![member("route-alice", &alice_secret)],
+            1_000,
+        )
+        .unwrap();
+
+        let deleted = delete_project_conversation_at(&root, "proj-to-delete").unwrap();
+        assert_eq!(deleted, 1);
+        assert!(load_conversation_at(&root, &conv.conversation_id).is_err());
+        assert_eq!(delete_project_conversation_at(&root, "proj-to-delete").unwrap(), 0);
         fs::remove_dir_all(root).unwrap();
     }
 }

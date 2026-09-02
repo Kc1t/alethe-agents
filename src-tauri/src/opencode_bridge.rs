@@ -50,7 +50,17 @@ export const AletheBridgePlugin = async ({ directory }) => {
 }
 "#;
 
+/// Where the bridge plugin has to land for OpenCode to load it.
+///
+/// Alethe hands its agents its own configuration root (see `agent_config`), so the plugin belongs
+/// there — installing it under the user's `~/.config/opencode/` would put it somewhere no agent
+/// started from Alethe ever reads, and the working/idle signal would go quiet with nothing to
+/// explain why. The home directory stays as the fallback for the window before the root is
+/// registered.
 fn plugin_dir() -> Option<PathBuf> {
+    if let Some(root) = crate::agent_config::registered_agent_config_root() {
+        return Some(root.join("opencode").join("plugin"));
+    }
     Some(
         dirs_next::home_dir()?
             .join(".config")

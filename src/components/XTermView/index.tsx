@@ -53,7 +53,6 @@ export type XTermViewProps = {
 
   env?: Record<string, string>
 
-  gsdWatcherEnabled?: boolean
 
   trustSessionId?: boolean
 
@@ -93,7 +92,6 @@ export function XTermView({
   sessionId,
   sessionKey,
   env,
-  gsdWatcherEnabled,
   trustSessionId,
   readOnly,
   skipSessionClaim,
@@ -331,7 +329,6 @@ export function XTermView({
     initialInput,
     sessionId,
     env,
-    gsdWatcherEnabled,
     trustSessionId,
     readOnly,
     skipSessionClaim,

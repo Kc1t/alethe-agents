@@ -10,11 +10,11 @@ import { AgentSandbox } from './components/AgentSandbox'
 import { DictationButton } from './components/DictationButton'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { FocusOverlay } from './components/FocusOverlay'
-import { GsdSyncActivityView } from './components/GsdSyncActivityView'
 import { AgentIcon } from './components/icons/AgentIcons'
 import { LinkViewerOverlay } from './components/LinkViewerOverlay'
 import { MainMenu } from './components/MainMenu'
 import { AddBrowserModal } from './components/modals/AddBrowserModal'
+import { ChangeProcedureModal } from './components/modals/ChangeProcedureModal'
 import { AddContentModal } from './components/modals/AddContentModal'
 import { AiUsageModal } from './components/modals/AiUsageModal'
 import { AuditModal } from './components/modals/AuditModal'
@@ -67,12 +67,22 @@ import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
 import { intlLocale, translate, useT } from './lib/i18n'
 import { visibilityFromPanelResize, widthFromPanelResize } from './lib/sidebarPanelState'
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
-import { ghosttyKillAll, setWindowOpacity, subscribeCoreSyncEvents } from './lib/tauri'
+import { changeTriggerStart, changeTriggerStop } from './lib/api/changeTrigger'
+import { getProjectRepoRoot } from './lib/terminalFactory'
+import {
+  ghosttyKillAll,
+  setWindowOpacity,
+  startPlanningWatcher,
+  stopPlanningWatcher,
+  subscribeCoreSyncEvents,
+} from './lib/tauri'
+import type { Project } from './lib/types'
 import { getLastCrashReport } from './lib/tauri'
 import { loadThemeIconBytes } from './lib/themeIcons'
 import { checkForUpdate } from './lib/updater'
 import { type ProjectsState, useProjectsStore } from './stores/projectsStore'
 import { useTerminalsStore } from './stores/terminalsStore'
+import { useChangeTriggerStore } from './stores/changeTriggerStore'
 import { type InAppToast, useUiStore } from './stores/uiStore'
 
 const AgentCanvasPOC = lazy(() =>
@@ -183,6 +193,15 @@ function LoadingScreen({
       </div>
     </div>
   )
+}
+
+/** Renders the change-procedure popup for whichever project the user opened it on. A gate rather
+ *  than a prop on the modal: the badge that opens it lives in two separate sidebar implementations,
+ *  and only the store is shared between them. */
+function ChangeProcedureGate() {
+  const projectId = useChangeTriggerStore((state) => state.openProjectId)
+  if (!projectId) return null
+  return <ChangeProcedureModal projectId={projectId} />
 }
 
 function ToastItem({ toast }: { toast: InAppToast }) {
@@ -359,6 +378,109 @@ export default function App() {
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [])
+
+  // Change triggers, one per project with a repository. The backend watches the source and raises
+  // an event once change has both piled up and gone quiet; the badge and popup are the only things
+  // that act on it, and neither spends a token until the user asks.
+  useEffect(() => {
+    if (!hydrated) return
+    const unlistenTriggers = useChangeTriggerStore.getState().initListener()
+    const watched = new Map<string, string>()
+
+    const sync = (projects: Project[]) => {
+      const wanted = new Map<string, string>()
+      for (const project of projects) {
+        const repo = getProjectRepoRoot(project)
+        if (repo) wanted.set(project.id, repo)
+      }
+      for (const [projectId, repo] of watched) {
+        if (wanted.get(projectId) === repo) continue
+        watched.delete(projectId)
+        // A project that is gone has no backend state left to acknowledge, so its badge is cleared
+        // rather than dismissed — dismissing would call a command for a watcher that no longer
+        // exists.
+        useChangeTriggerStore.getState().clear(projectId)
+        void changeTriggerStop(projectId).catch((error) => {
+          console.error(`[change-trigger] stop failed for ${projectId}:`, error)
+        })
+      }
+      for (const [projectId, repo] of wanted) {
+        if (watched.has(projectId)) continue
+        watched.set(projectId, repo)
+        void changeTriggerStart(projectId, repo)
+          .then((started) => {
+            // `false` means the platform gave us no watcher at all, which is not the same as
+            // "started and quiet" — without saying so, a project that can never raise a trigger
+            // looks exactly like one where nothing has changed.
+            if (!started) {
+              console.error(`[change-trigger] no watcher available for ${projectId} (${repo})`)
+            }
+          })
+          .catch((error) => {
+            console.error(`[change-trigger] start failed for ${projectId}:`, error)
+          })
+      }
+    }
+
+    sync(useProjectsStore.getState().projects)
+    const unsubscribe = useProjectsStore.subscribe((state, previous) => {
+      if (state.projects !== previous.projects) sync(state.projects)
+    })
+    return () => {
+      unlistenTriggers()
+      unsubscribe()
+      for (const projectId of watched.keys()) {
+        void changeTriggerStop(projectId).catch(() => {
+          // Teardown: the backend drops its watchers with the process anyway.
+        })
+      }
+    }
+  }, [hydrated])
+
+  // Planning watchers, one per project with a repository. They are the only source of the
+  // `PlanningUpdated` event, which drives the scheduler's autotick and the planning autocommit, so
+  // a project without one silently gets neither — which is why they are started here for every
+  // project rather than behind a setting somebody has to remember to switch on.
+  useEffect(() => {
+    if (!hydrated) return
+    const watched = new Map<string, string>()
+
+    const sync = (projects: Project[]) => {
+      const wanted = new Map<string, string>()
+      for (const project of projects) {
+        const repo = getProjectRepoRoot(project)
+        if (repo) wanted.set(project.id, repo)
+      }
+      for (const [projectId, repo] of watched) {
+        // A moved repository needs its old watcher stopped, not just a second one started.
+        if (wanted.get(projectId) === repo) continue
+        void stopPlanningWatcher(projectId, repo).catch((error) => {
+          console.error(`[planning-watcher] stop failed for ${projectId}:`, error)
+        })
+        watched.delete(projectId)
+      }
+      for (const [projectId, repo] of wanted) {
+        if (watched.has(projectId)) continue
+        watched.set(projectId, repo)
+        void startPlanningWatcher(projectId, repo).catch((error) => {
+          console.error(`[planning-watcher] start failed for ${projectId}:`, error)
+        })
+      }
+    }
+
+    sync(useProjectsStore.getState().projects)
+    const unsubscribe = useProjectsStore.subscribe((state, previous) => {
+      if (state.projects !== previous.projects) sync(state.projects)
+    })
+    return () => {
+      unsubscribe()
+      for (const [projectId, repo] of watched) {
+        void stopPlanningWatcher(projectId, repo).catch(() => {
+          // Teardown: the backend drops its watchers with the process anyway.
+        })
+      }
+    }
+  }, [hydrated])
 
   // Keep the profile catalog and active document synchronized across clients.
   useEffect(() => {
@@ -848,11 +970,11 @@ export default function App() {
         </PanelGroup>
       </div>
       <FocusOverlay />
-      <GsdSyncActivityView />
       <LinkViewerOverlay />
       <DictationButton />
       <MainMenu />
       <ErrorBoundary label="modals">
+        <ChangeProcedureGate />
         <NewProjectModal />
         <NewGroupModal />
         <EditGroupModal />

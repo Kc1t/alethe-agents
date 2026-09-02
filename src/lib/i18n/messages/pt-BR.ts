@@ -872,9 +872,9 @@ export const ptBR: Record<MessageKey, string> = {
   'features.orchestrator.title': 'Orquestração de agentes',
   'features.orchestrator.description':
     'Dá ao Claude Code um conjunto de ferramentas do Alethe para repassar trabalho a workers Codex que rodam em paralelo. O Alethe é dono do sandbox, do limite de concorrência e dos workers, e consegue corrigir ou cancelar um deles no meio da execução.',
-  'features.mcp.title': 'MCP e Skills',
+  'features.mcp.title': 'Extensões dos agentes',
   'features.mcp.description':
-    'Inspecione e gerencie os servidores MCP e as skills de cada agente em um só painel.',
+    'Inspecione e gerencie os servidores MCP, as skills e os plugins de cada agente em um só painel.',
   'features.aiMemory.title': 'AI Memory',
   'features.aiMemory.description':
     'Memória de longo prazo compartilhada entre Claude Code, Codex e OpenCode. Requer o servidor ai-memory instalado.',
@@ -909,18 +909,7 @@ export const ptBR: Record<MessageKey, string> = {
   'todo.choosePath': 'Escolher pasta das tarefas',
   'todo.clearPath': 'Usar pasta padrao',
   'todo.templateError': 'Nao foi possivel criar o template das tarefas: {message}',
-  'todo.gsdBusy': 'Sincronizando',
-  'todo.gsdIdle': 'Ociosa',
-  'todo.gsdError': 'Erro',
-  'todo.gsdProgress': '{done}/{total} tarefas',
 
-  /* ---- Feed de atividade do GSD Sync (visão "subagente" somente leitura) ---- */
-  'gsdActivity.loading': 'Carregando atividade…',
-  'gsdActivity.tokens': '{count} tokens',
-  'gsdActivity.roleUser': 'Instrução',
-  'gsdActivity.roleAssistant': 'Agente',
-  'gsdActivity.instructionHint': 'enviado pro agente — clique pra expandir',
-  'gsdActivity.patchApplied': 'Alteração de arquivo aplicada.',
   'prefs.limitResetNotify': 'Avisos de reset de limite',
   'prefs.limitResetNotifyDesc':
     'Notifica quando uma janela de uso do Claude ou Codex reseta, mostrando qual.',
@@ -964,14 +953,6 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.spawnConcurrencyDecrease': 'Menos spawns em paralelo',
   'prefs.spawnConcurrencyIncrease': 'Mais spawns em paralelo',
   'prefs.spawnConcurrencyReset': 'Voltar ao padrão',
-  'prefs.gsdSyncModelsTitle': 'Cadeia de fallback de modelos do GSD Sync',
-  'prefs.gsdSyncModelsDesc':
-    'Modelos reserva pra sessão-filha do GSD Sync, tentados em ordem se o modelo espelhado falhar.',
-  'prefs.gsdSyncModelsHint':
-    'A sessão do GSD Sync sempre tenta primeiro, automaticamente, o mesmo modelo que a conversa principal acabou de usar. Esta lista é só a rede de segurança pro caso raro desse modelo também falhar (ex.: limite de uso) — cada um é tentado em ordem até funcionar.',
-  'prefs.gsdSyncModelsEmpty': 'Nenhum fallback configurado — só o modelo espelhado é tentado.',
-  'prefs.gsdSyncModelsRemove': 'Remover',
-  'prefs.gsdSyncModelsAdd': 'Adicionar modelo',
 
   /* ---- PreferencesModal — aba Multi-Agent & Telemetry ---- */
   'prefs.categoryMultiagent': 'Multiagente e Telemetria',
@@ -1001,7 +982,7 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.multiagentNoTraces': 'Nenhum evento recente registrado.',
   'prefs.multiagentTraceProject': 'Projeto: {id}',
   'prefs.multiagentTraceCorrId': 'CorrId: {id}',
-  'prefs.multiagentAuditTitle': 'Auditoria e auto-commit do GSD',
+  'prefs.multiagentAuditTitle': 'Auditoria e auto-commit do planejamento',
   'prefs.multiagentAuditDesc':
     'Acompanha mudanças em `.planning/` e configura commits automáticos de auditoria.',
   'prefs.multiagentAutocommitLabel': 'Ativar auto-commit de auditoria (opt-in)',
@@ -1011,8 +992,41 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.multiagentAuditAuthor': 'Autor: {author}',
   'prefs.multiagentAuditAgent': '· Agente: {agentId}',
   'prefs.multiagentSelectProjectAuditHint':
-    'Selecione um projeto acima pra ver o histórico de auditoria do GSD.',
+    'Selecione um projeto acima pra ver o histórico de auditoria do planejamento.',
 
+  /* ---- Gatilho de mudança: pedir ao agente o registro do que ele acabou de fazer ---- */
+  'changeTrigger.title': 'Registrar o que foi feito',
+  'changeTrigger.subtitle': '{count} arquivos mudaram e nada está sendo registrado.',
+  'changeTrigger.loading': 'Lendo a árvore de trabalho…',
+  'changeTrigger.loadFailed': 'Não deu pra ler o que mudou: {error}',
+  'changeTrigger.nothingChanged': 'Nada alterado agora — provavelmente foi commitado ou revertido.',
+  'changeTrigger.noRepository': 'Este projeto não tem repositório pra comparar.',
+  'changeTrigger.binary': 'binário',
+  'changeTrigger.targetLabel': 'Enviar para',
+  'changeTrigger.noAgentRunning':
+    'Nenhum agente rodando neste projeto. O prompt entra na conversa aberta de um agente — inicie um e abra isto de novo.',
+  'changeTrigger.send': 'Pedir ao agente',
+  'changeTrigger.dismiss': 'Agora não',
+  'changeTrigger.sentTitle': 'Prompt enviado',
+  'changeTrigger.sentBody': 'Digitado em {agent}.',
+  'changeTrigger.sendFailedTitle': 'Não deu pra enviar o prompt',
+  'changeTrigger.badgeTooltip': '{count} arquivos mudaram sem registro — clique pra revisar',
+  'changeTrigger.promptIntro':
+    '{count} arquivos mudaram neste projeto desde o último registro. Antes de seguir, registre o procedimento desse trabalho.',
+  'changeTrigger.promptFilesHeader': 'Arquivos alterados:',
+  'changeTrigger.promptFilesOverflow': '- ...e mais {count} arquivos.',
+  'changeTrigger.promptRulesHeader': 'Escreva o procedimento em passos numerados, seguindo estas regras:',
+  'changeTrigger.promptRuleCoverage':
+    '1. Todo arquivo listado acima precisa ser citado por pelo menos um passo. Nada que mudou pode ficar sem menção.',
+  'changeTrigger.promptRuleGrouping':
+    '2. Um passo pode cobrir vários arquivos. Agrupe o trabalho relacionado — não escreva um passo por arquivo.',
+  'changeTrigger.promptRuleVerification':
+    '3. Cada passo diz o que foi feito E como uma pessoa confere: qual tela abrir, o que fazer lá e o que deve acontecer.',
+  'changeTrigger.promptStaleHeader':
+    'Estes arquivos já eram cobertos por um passo anterior, mas mudaram depois que ele foi escrito:',
+  'changeTrigger.promptStaleItem': '- {path} — coberto por: "{step}"',
+  'changeTrigger.promptStaleChoice':
+    'Para cada um, corrija o passo existente ou acrescente um passo novo, e diga qual das duas escolheu.',
   'prefs.agentsTitle': 'Agentes habilitados',
   'prefs.agentsDesc': 'Escolha quais agentes podem ser usados ao criar terminais e sub-tabs.',
   'prefs.cliPaths': 'Caminhos dos CLIs',
@@ -1201,10 +1215,6 @@ export const ptBR: Record<MessageKey, string> = {
   'rightSidebar.navigation': 'Navegação da sidebar direita',
   'rightSidebar.todoTab': 'Todo',
   'rightSidebar.markdownTab': 'Markdown',
-  'rightSidebar.gsdSyncTab': 'GSD Sync',
-  'rightSidebar.gsdSyncEmptyTitle': 'Nenhuma sessão GSD Sync ativa',
-  'rightSidebar.gsdSyncEmptyDesc':
-    'Ligue o monitoramento GSD de um projeto pra ver as sessões-filha aqui.',
   'plans.title': 'Documentos de planejamento',
   'rightSidebar.markdownEmptyTitle': 'Nenhum Markdown selecionado',
   'rightSidebar.markdownEmptyDesc':
@@ -1414,7 +1424,6 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.modelSearch': 'Buscar entre {count} modelos de {provider}…',
   'merge.modelEmpty': 'Nenhum modelo encontrado para “{query}”.',
   'merge.modelCustom': 'Usar modelo personalizado: “{model}”',
-  'merge.gsdSyncPaneName': 'GSD Sync',
   'crud.editProjectWorktrees': 'Worktrees',
   'crud.editProjectMerge': 'Merge',
   'crud.removeWorktreeConfirm': 'Excluir o ambiente do agente “{agent}”? Isso não pode ser desfeito.',
@@ -1432,7 +1441,6 @@ export const ptBR: Record<MessageKey, string> = {
     'Sobe o app num ambiente isolado e confirma que ele responde de verdade antes de Testar/Integrar. O comando precisa escutar na porta indicada pela variável de ambiente %PORT%/$PORT.',
   'crud.editProjectHealthCheckPath': 'Caminho verificado',
   'crud.editProjectHealthCheckPathPlaceholder': '/ (padrão)',
-  'crud.editProjectGsdWatcher': 'Monitorar arquivos de planejamento GSD (.planning/)',
   'crud.projectColorLabel': 'Cor (borda do container)',
   'crud.projectIconEditHint':
     'Use uma URL ou faça upload de uma imagem local. Substitui o quadradinho do projeto na sidebar, topbar e container.',
@@ -2351,7 +2359,7 @@ export const ptBR: Record<MessageKey, string> = {
   'sandbox.job': 'job',
   'sandbox.thread': 'thread',
 
-  'scheduler.agentSpawnedTitle': 'Agente GSD iniciado',
+  'scheduler.agentSpawnedTitle': 'Agente de tarefa iniciado',
   'multiAgent.newEnvPlaceholder': 'nome do ambiente (ex: feature-x)',
   'multiAgent.createEnv': 'Criar ambiente de agente',
   'multiAgent.creatingEnv': 'Criando…',
@@ -2456,8 +2464,6 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.panelTitle': 'Central de Merges',
   'merge.panelEmpty': 'Nenhum merge pendente de revisão.',
   'merge.panelGatedHint': '{count} agente(s) ainda finalizando o planejamento',
-  'merge.gsdChildErrorTitle': 'GSD Sync não conseguiu atualizar goal/plan',
-  'merge.gsdChildErrorBody': '{error}',
   'merge.statusReady': 'Aguardando ação',
   'merge.statusPreparing': 'Analisando…',
   'merge.statusResolving': 'Resolvendo conflito',
@@ -2622,7 +2628,7 @@ export const ptBR: Record<MessageKey, string> = {
   'mcp.diagMissing': 'config não encontrada',
   'mcp.diagReadOnly': 'somente leitura',
   'mcp.expand': 'Abrir o gerenciador de MCP',
-  'mcp.managerTitle': 'Servidores MCP',
+  'mcp.managerTitle': 'Extensões dos agentes',
   'mcp.detailAgents': 'Configurado em',
   'mcp.detailEnv': 'Ambiente',
   'mcp.detailHeaders': 'Headers',
@@ -2726,8 +2732,39 @@ export const ptBR: Record<MessageKey, string> = {
   'mcp.syncWritten': '{name} copiado para {agents}',
   'mcp.syncBlocked': '{agents} não consegue expressar todos os campos',
   'mcp.syncFailed': 'A cópia para {agents} falhou',
-  'mcp.tabServers': 'Servidores',
-  'mcp.tabSkills': 'Skills',
+  'mcp.tab.servers': 'Servidores',
+  'mcp.tab.skills': 'Skills',
+  'mcp.tab.plugins': 'Plugins',
+
+  /* ---- Plugins que o agente carrega ---- */
+  'plugins.scopeAlethe': 'No Alethe',
+  'plugins.scopeAletheHint': 'O que um agente aberto pelo Alethe carrega.',
+  'plugins.scopeUser': 'Nesta máquina',
+  'plugins.scopeUserHint':
+    'Sua configuração do OpenCode. Não carrega dentro do Alethe enquanto não for importada.',
+  'plugins.scopeEmpty': 'Nada aqui.',
+  'plugins.importHere': 'Importar',
+  'plugins.importAll': 'Importar os {count}',
+  'plugins.importDoneTitle': 'Plugins importados',
+  'plugins.importDoneBody': '{count} passam a carregar no Alethe, a partir da próxima abertura.',
+  'plugins.importRefusedTitle': '{name} não foi importado',
+  'plugins.importFailedTitle': 'Não deu pra importar',
+  'plugins.importStatus.skipped': 'Já existe um plugin com esse nome no Alethe. Nada foi alterado.',
+  'plugins.importStatus.failed': 'A cópia falhou.',
+  'plugins.badgeManaged': 'Alethe',
+  'plugins.badgeManagedHint': 'Escrito pelo Alethe e reescrito a cada abertura.',
+  'plugins.badgeDeclared': 'declarado',
+  'plugins.badgeMissing': 'arquivo sumiu',
+  'plugins.managedWarning':
+    'O Alethe escreve esse plugin e reescreve a cada abertura, então mudanças aqui se perdem.',
+  'plugins.missingWarning':
+    'A configuração cita esse arquivo, mas ele não está no disco. A entrada não carrega nada.',
+  'plugins.originDirectory': 'Carregado automaticamente da pasta de plugins',
+  'plugins.originDeclared': 'Carregado porque o opencode.json cita ele',
+  'plugins.loadingSource': 'Lendo o arquivo…',
+  'plugins.truncated': 'Só o começo do arquivo é mostrado.',
+  'plugins.emptyTitle': 'Nenhum plugin encontrado',
+  'plugins.selectOne': 'Escolha um plugin pra ver',
   'skills.loading': 'Lendo as pastas de skills…',
   'skills.emptyTitle': 'Nenhuma skill instalada',
   'skills.emptyDescription':
@@ -2740,6 +2777,22 @@ export const ptBR: Record<MessageKey, string> = {
   'skills.installInfo': 'Origem da instalação',
   'skills.structure': 'Estrutura',
   'skills.badgeBundled': 'nativa',
+  'skills.notInstalled': 'não instalada',
+  'skills.copyHere': 'Copiar pra cá',
+  'skills.copyHereHint': 'Copia os arquivos da skill para este agente.',
+  'skills.shareAction': 'Mover para a store',
+  'skills.shareHint':
+    'Move a skill para a store compartilhada e deixa este agente apontando pra ela, então fica uma cópia só em vez de várias que se separam.',
+  'skills.linkAction': 'Vincular',
+  'skills.linkHint': 'Aponta este agente para a cópia compartilhada em vez de duplicar.',
+  'skills.copyToAll': 'Copiar para os outros {count}',
+  'skills.copyDoneTitle': 'Skill copiada',
+  'skills.copyDoneBody': 'Agora disponível em {agents}.',
+  'skills.copyRefusedTitle': 'Não copiada para {agent}',
+  'skills.copyFailedTitle': 'Não deu pra copiar a skill',
+  'skills.copyStatus.skipped': 'Já existe uma skill com esse nome lá. Nada foi alterado.',
+  'skills.copyStatus.blocked': 'Essa store não aceita a skill.',
+  'skills.copyStatus.failed': 'A cópia falhou.',
   'skills.installedOn': 'Instalada em',
   'skills.badgeLinked': 'link',
   'skills.removeAllAction': 'Remover dos {count}',

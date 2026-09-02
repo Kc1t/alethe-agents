@@ -685,18 +685,10 @@ export const useMergeStore = create<MergeState>((set, get) => ({
           .getState()
           .projects.find((p) => p.id === project.id)
         const terminal = projectAtCleanup?.terminals.find((term) => term.id === paneTerminalId)
-        // The GSD Sync child session's "viewer" terminal (if it exists) is
-        // a SEPARATE entity, matched only by `cwd` — killing just the main
-        // pane here and leaving `deleteTerminal` (further below) to kill
-        // the viewer last isn't enough: `worktreeRemove`, right after,
-        // already deletes the folder from disk while the viewer's process
-        // may still be alive in it (confirmed live: "ENOENT: no such file
-        // or directory, lstat <worktree>" in an orphaned GSD Sync
-        // terminal). Kill both together now, before any disk removal.
-        const gsdViewer = projectAtCleanup?.terminals.find(
-          (term) => term.gsdSyncViewer && term.cwd === terminal?.cwd,
-        )
-        const ptyIds = [...(terminal?.tabs ?? []), ...(gsdViewer?.tabs ?? [])]
+        // Killed before any disk removal: `worktreeRemove` runs right after and deletes the folder
+        // out from under any process still alive inside it (confirmed live as
+        // "ENOENT: no such file or directory, lstat <worktree>").
+        const ptyIds = (terminal?.tabs ?? [])
           .map((tab) => tab.ptyId)
           .filter((id): id is string => Boolean(id))
         await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(() => [])))

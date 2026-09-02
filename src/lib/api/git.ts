@@ -248,6 +248,17 @@ export async function gitShowCommitStats(repo: string, hash: string): Promise<Di
   )
 }
 
+/** Per-file added/removed line counts for the *working tree* — the uncommitted counterpart of
+ *  `gitShowCommitStats`. This is what the change trigger reports on: by the time a change is worth
+ *  describing it has not been committed yet, so a commit-based view would show nothing. Untracked
+ *  files are included, reported as added with their full line count. */
+export async function gitWorkingTreeStats(repo: string): Promise<DiffSummaryEntry[]> {
+  if (isTauriEnv()) return invoke<DiffSummaryEntry[]>('git_working_tree_stats', { repo })
+  return webApiFetch<DiffSummaryEntry[]>(
+    `/api/git/working_tree_stats?repo=${encodeURIComponent(repo)}`,
+  )
+}
+
 /** The patch for a single file within a commit, for the expandable per-file diff. */
 export async function gitShowCommitFileDiff(
   repo: string,

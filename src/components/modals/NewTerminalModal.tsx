@@ -69,7 +69,7 @@ export function NewTerminalModal() {
     for (const candidate of projects) {
       // Agent worktrees are not useful shortcuts for starting a regular project terminal.
       for (const terminal of candidate.terminals) {
-        if (terminal.worktreeAgentId || terminal.gsdSyncViewer) continue
+        if (terminal.worktreeAgentId) continue
         const paths = [terminal.cwd, ...terminal.tabs.map((tab) => tab.cwd)]
         for (const path of paths) {
           const trimmed = path?.trim()

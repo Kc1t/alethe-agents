@@ -66,7 +66,6 @@ export type PlanningStatus = {
   notes: string | null
 }
 
-export type GsdProcedureStep = { description: string; category: string }
 
 export type SchedulerTask = {
   id: string
@@ -392,9 +391,16 @@ export async function getTelemetryTraces(correlationId?: string): Promise<EventB
   )
 }
 
+/** Name of the Tauri event `event_bus::publish` emits. Must stay identical to the literal in
+ *  `src-tauri/src/event_bus.rs` — a mismatch here is silent, because a listener on a name nobody
+ *  emits simply never fires. `eventBusName.contract.test.ts` fails if the two drift apart. */
+export const EVENT_BUS_EVENT = 'alethe://event-bus'
+
 export function listenEventBus(handler: (event: EventBusPayload) => void): Promise<UnlistenFn> {
   if (isTauriEnv())
-    return listen<EventBusPayload>('event-bus-event', (event) => handler(event.payload))
+    return listen<EventBusPayload>(EVENT_BUS_EVENT, (event) => handler(event.payload))
+  // Web/Core mode has its own event stream (`/api/events/ws`, see `coreEvents.ts`); the event bus
+  // is not bridged onto it, so there is nothing to subscribe to here.
   return Promise.resolve(() => {})
 }
 
@@ -406,58 +412,41 @@ export async function runValidation(cwd: string, commands: string[]): Promise<Va
   })
 }
 
-export async function startGsdWatcher(projectId: string, repoPath: string): Promise<void> {
-  if (isTauriEnv()) return invoke('start_gsd_watcher', { projectId, repoPath })
-  await webApiFetch('/api/gsd/start_watcher', {
+/** Watches the project's `.planning/` folder. It is the only source of the `PlanningUpdated`
+ *  event, which drives the scheduler's autotick and the planning autocommit — nothing else emits
+ *  it, so a project with no watcher gets neither. Started for every project with a repository
+ *  (see `App.tsx`), with no setting to turn it off. */
+export async function startPlanningWatcher(projectId: string, repoPath: string): Promise<void> {
+  if (isTauriEnv()) return invoke('start_planning_watcher', { projectId, repoPath })
+  await webApiFetch('/api/planning/start_watcher', {
     method: 'POST',
     body: JSON.stringify({ projectId, repoPath }),
   })
 }
 
-export async function stopGsdWatcher(projectId: string, repoPath: string): Promise<void> {
-  if (isTauriEnv()) return invoke('stop_gsd_watcher', { projectId, repoPath })
-  await webApiFetch('/api/gsd/stop_watcher', {
+export async function stopPlanningWatcher(projectId: string, repoPath: string): Promise<void> {
+  if (isTauriEnv()) return invoke('stop_planning_watcher', { projectId, repoPath })
+  await webApiFetch('/api/planning/stop_watcher', {
     method: 'POST',
     body: JSON.stringify({ projectId, repoPath }),
   })
+}
+
+/** Directory Alethe hands its agents as their configuration root, created on first use.
+ *
+ *  Passed to OpenCode as `XDG_CONFIG_HOME` at spawn, so an agent started from Alethe reads the
+ *  configuration Alethe manages rather than whatever the machine happens to have. Only
+ *  configuration is redirected: sessions, credentials and snapshots live in OpenCode's separate
+ *  data directory and are untouched, so history and login survive. */
+export async function agentConfigRoot(): Promise<string> {
+  if (isTauriEnv()) return invoke<string>('agent_config_root')
+  return webApiFetch<string>('/api/agent_config/root')
 }
 
 export async function readPlanningStatus(repoPath: string): Promise<PlanningStatus> {
   if (isTauriEnv()) return invoke<PlanningStatus>('read_planning_status', { repoPath })
   return webApiFetch<PlanningStatus>(
     `/api/planning/status?repoPath=${encodeURIComponent(repoPath)}`,
-  )
-}
-
-export async function gsdOpenCodePluginWrite(repo: string, modelChain: string[]): Promise<void> {
-  if (isTauriEnv()) return invoke('gsd_opencode_plugin_write', { repo, modelChain })
-  await webApiFetch('/api/gsd/opencode_plugin_write', {
-    method: 'POST',
-    body: JSON.stringify({ repo, modelChain }),
-  })
-}
-
-export async function readGsdChildSession(repoPath: string): Promise<string | null> {
-  if (isTauriEnv()) return invoke<string | null>('read_gsd_child_session', { repoPath })
-  return webApiFetch<string | null>(
-    `/api/gsd/child_session?repoPath=${encodeURIComponent(repoPath)}`,
-  )
-}
-
-export async function readGsdChildBusy(repoPath: string): Promise<boolean> {
-  if (isTauriEnv()) return invoke<boolean>('read_gsd_child_busy', { repoPath })
-  return webApiFetch<boolean>(`/api/gsd/child_busy?repoPath=${encodeURIComponent(repoPath)}`)
-}
-
-export async function readGsdChildError(repoPath: string): Promise<string | null> {
-  if (isTauriEnv()) return invoke<string | null>('read_gsd_child_error', { repoPath })
-  return webApiFetch<string | null>(`/api/gsd/child_error?repoPath=${encodeURIComponent(repoPath)}`)
-}
-
-export async function readGsdProcedure(repoPath: string): Promise<GsdProcedureStep[]> {
-  if (isTauriEnv()) return invoke<GsdProcedureStep[]>('read_gsd_procedure', { repoPath })
-  return webApiFetch<GsdProcedureStep[]>(
-    `/api/gsd/procedure?repoPath=${encodeURIComponent(repoPath)}`,
   )
 }
 

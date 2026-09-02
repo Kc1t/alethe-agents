@@ -215,28 +215,20 @@ export type Terminal = {
 
   staged?: boolean
 
-  gsdSyncViewer?: boolean
   /**
    * Marks this terminal as the EPHEMERAL conflict-resolution agent
    * (`mergeStore.ts` — "born, resolves, dies"). Must never be treated as a
-   * trackable agent worktree: excluded from the GSD Sync watcher/plugin
-   * (`useGsdSyncSessionsWatcher`/`gsdOpenCodePluginWrite`) — without this
-   * exclusion the GSD plugin got installed on this disposable terminal like
-   * any normal worktree, creating a real child session that went orphaned
-   * (pointing at an already-deleted folder) the moment the ephemeral agent
-   * was torn down at the end of the merge.
+   * trackable agent worktree.
    */
   ephemeralConflictAgent?: boolean
   /**
    * Marks a disposable utility terminal (a "Review"/"Test" session from the
    * Merge Center — born, serves manual review, dies) that must NEVER be
    * treated as a candidate "pure repository root" in `getProjectRepoRoot`.
-   * These terminals have `cwd` = the worktree of the agent under review, but
-   * no `worktreeAgentId`/`gsdSyncViewer`, so the root heuristic picked them
-   * as a reference by mistake, contaminating `repo` with the worktree path
-   * instead of the real root, and the agent's card vanished from the Merge
-   * Center while the review/test session was open (same bug class already
-   * fixed for `gsdSyncViewer`).
+   * These terminals have `cwd` = the worktree of the agent under review, but no
+   * `worktreeAgentId`, so the root heuristic picked them as a reference by mistake, contaminating
+   * `repo` with the worktree path instead of the real root, and the agent's card vanished from the
+   * Merge Center while the review/test session was open.
    */
   ephemeralUtility?: boolean
   /** Hides this terminal and its output from every paired remote device. */
@@ -305,7 +297,6 @@ export type Project = {
   healthCheckCommand?: string
   /** HTTP path checked by the probe (e.g. "/", "/health"). Defaults to '/' when empty. */
   healthCheckPath?: string
-  gsdWatcherEnabled?: boolean
 
   conflictAgentProvider?: AgentType
 
@@ -527,7 +518,6 @@ export type Preferences = {
    */
   nodeHeapProfile?: 'conservative' | 'balanced' | 'performance'
 
-  gsdSyncModelChain?: string[]
 }
 
 export type ResourcePolicyMode = 'smart-lru' | 'manual'

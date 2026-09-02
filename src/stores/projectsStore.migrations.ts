@@ -285,22 +285,95 @@ export function migrateWorkspaceNavigation(base: {
   }
 }
 
+/**
+ * Drops the read-only "viewer" terminals left behind by GSD Sync.
+ *
+ * They were panes onto a child session that no longer exists, and nothing creates them any more —
+ * but they are in every `projects.json` written while the feature was live. Simply deleting the
+ * `gsdSyncViewer` flag would be worse than keeping it: the flag is what hid them, so dropping it
+ * turns each one into an ordinary terminal the user never opened, pointing into an agent worktree
+ * that has usually been deleted since. They are removed instead, along with every reference to
+ * them — a terminal id left in a pane group or a grid layout outlives the terminal itself.
+ */
+function dropGsdSyncViewerTerminals(project: any): any {
+  const removed = new Set<string>(
+    (project.terminals ?? [])
+      .filter((terminal: any) => terminal?.gsdSyncViewer)
+      .map((terminal: any) => terminal.id),
+  )
+  if (removed.size === 0) return project
+
+  const paneGroups = (project.paneGroups ?? [])
+    .map((group: any) => ({
+      ...group,
+      paneIds: (group.paneIds ?? []).filter((id: string) => !removed.has(id)),
+    }))
+    // A group is a visual block of panes; one that has lost all but one member is no longer a
+    // group, which is the same rule `deleteTerminal` applies.
+    .filter((group: any) => group.paneIds.length > 1)
+
+  const pruneLayout = (layout: any) =>
+    layout?.cells
+      ? {
+          ...layout,
+          cells: Object.fromEntries(
+            Object.entries(layout.cells).filter(([id]) => !removed.has(id)),
+          ),
+        }
+      : layout
+
+  return {
+    ...project,
+    terminals: (project.terminals ?? []).filter((terminal: any) => !removed.has(terminal.id)),
+    paneGroups: paneGroups.length > 0 ? paneGroups : undefined,
+    gridLayout: pruneLayout(project.gridLayout),
+    gridLayoutHistory: (project.gridLayoutHistory ?? []).map((entry: any) => ({
+      ...entry,
+      layout: pruneLayout(entry.layout),
+    })),
+  }
+}
+
 function migrateToV7(parsed: any): ProjectsFile {
+  const projects = (parsed.projects ?? []).map((project: any) =>
+    dropGsdSyncViewerTerminals({
+      ...project,
+      gridLayoutHistory: project.gridLayoutHistory ?? [],
+    }),
+  )
+  const groups = (parsed.groups ?? []).map((group: any) => ({
+    ...group,
+    gridLayoutHistory: group.gridLayoutHistory ?? [],
+  }))
+  const preferences = {
+    ...normalizePreferences(parsed.preferences),
+    workspaceGridLayoutHistory: parsed.preferences?.workspaceGridLayoutHistory ?? [],
+  }
+  // The workspace (containers, tabs, history) stores pane ids too, and a dropped terminal has to
+  // disappear from those as well or the layout restores a pane with nothing behind it. Only re-run
+  // when something was actually dropped — for every other file this path must stay a no-op.
+  const droppedTerminals =
+    projects.reduce((total: number, p: any) => total + (p.terminals?.length ?? 0), 0) !==
+    (parsed.projects ?? []).reduce(
+      (total: number, p: any) => total + (p.terminals?.length ?? 0),
+      0,
+    )
+
   return normalizeStoredAccents({
     ...parsed,
     version: 7,
-    projects: (parsed.projects ?? []).map((project: any) => ({
-      ...project,
-      gridLayoutHistory: project.gridLayoutHistory ?? [],
-    })),
-    groups: (parsed.groups ?? []).map((group: any) => ({
-      ...group,
-      gridLayoutHistory: group.gridLayoutHistory ?? [],
-    })),
-    preferences: {
-      ...normalizePreferences(parsed.preferences),
-      workspaceGridLayoutHistory: parsed.preferences?.workspaceGridLayoutHistory ?? [],
-    },
+    projects,
+    groups,
+    workspace: droppedTerminals
+      ? migrateWorkspaceNavigation({
+          workspace: parsed.workspace,
+          projects,
+          groups,
+          activeProjectId: parsed.activeProjectId ?? null,
+          preferences,
+        })
+      : parsed.workspace,
+    preferences,
   })
 }
 
@@ -407,7 +480,6 @@ function migrateToV5(parsed: any): any {
     ...p,
     worktreeMode: p.worktreeMode ?? 'gitWorktree',
     validationCommands: p.validationCommands ?? [],
-    gsdWatcherEnabled: p.gsdWatcherEnabled ?? false,
     conflictAgentProvider: p.conflictAgentProvider ?? 'claude',
   }))
 

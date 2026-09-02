@@ -1,9 +1,10 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import { ChevronDown, Folder, MoreHorizontal, Pause, Plus } from 'lucide-react'
+import { AlertCircle, ChevronDown, Folder, MoreHorizontal, Pause, Plus } from 'lucide-react'
 
 import { useT } from '../../lib/i18n'
 import { type SidebarDropEdge } from '../../lib/sidebarDrag'
 import { type Project, type Terminal } from '../../lib/types'
+import { useChangeTriggerStore } from '../../stores/changeTriggerStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { Collapse } from '../ui/Collapse'
 import { DotmCircular2 } from '../ui/dotm-circular-2'
@@ -45,6 +46,8 @@ export function ProjectNode({
   dropEdge,
 }: ProjectNodeProps) {
   const t = useT()
+  const pendingChange = useChangeTriggerStore((state) => state.pending[project.id])
+  const openChangeTrigger = useChangeTriggerStore((state) => state.open)
   const { setNodeRef: dropRef } = useDroppable({ id: `proj:${project.id}` })
   const draggable = useDraggable({ id: `proj:${project.id}` })
   const toggleCollapsed = useProjectsStore((state) => state.toggleProjectCollapsed)
@@ -87,6 +90,20 @@ export function ProjectNode({
           <span className={styles.projectNameText}>{project.name}</span>
         </span>
         {allDisabled ? <Pause size={10} className={styles.projectPauseIcon} /> : null}
+        {pendingChange ? (
+          <button
+            type="button"
+            className={styles.changeTriggerBadge}
+            onClick={(e) => {
+              e.stopPropagation()
+              openChangeTrigger(project.id)
+            }}
+            title={t('changeTrigger.badgeTooltip', { count: pendingChange.fileCount })}
+            aria-label={t('changeTrigger.badgeTooltip', { count: pendingChange.fileCount })}
+          >
+            <AlertCircle size={11} />
+          </button>
+        ) : null}
         <button
           type="button"
           className={`${styles.projectAddTerminalButton} ${isEmpty ? styles.projectAddTerminalButtonVisible : ''}`}

@@ -139,18 +139,6 @@ export const TerminalPane = memo(function TerminalPane({
   const useNativeBackend = shouldUseNativeBackend(nativeTerminalMacos)
 
 
-  // sozinho (ver XTermView, gatilho condicionado a command === 'opencode').
-  // NUNCA pro agente efêmero de resolução de conflito (`mergeStore.ts` —
-  // "nasce, resolve, morre") — confirmado ao vivo: sem essa exclusão, o
-  // plugin era instalado nele igual a qualquer worktree normal, criando uma
-  // sessão-filha de verdade que ficava órfã assim que o agente descartável
-  // era encerrado ao final do merge.
-  const gsdWatcherEnabled = useProjectsStore((s) => {
-    if (terminal.ephemeralConflictAgent) return false
-    const p = s.projects.find((p) => p.id === projectId)
-    return Boolean(p?.gsdWatcherEnabled)
-  })
-
   // Resize de span no grid do PROJETO (quando project.layoutMode === 'grid').
   const projectGrid = useProjectsStore((s) => {
     const p = s.projects.find((p) => p.id === projectId)
@@ -563,9 +551,6 @@ export const TerminalPane = memo(function TerminalPane({
                   onSessionClaimSkipped={() =>
                     setSubTabSkipSessionClaim(projectId, terminal.id, activeTab.id, false)
                   }
-                  gsdWatcherEnabled={gsdWatcherEnabled}
-                  trustSessionId={terminal.gsdSyncViewer}
-                  readOnly={terminal.gsdSyncViewer}
                   terminalTheme={terminalTheme}
                   onSpawned={(id) => {
                     setResumePending(false)

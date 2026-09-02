@@ -1,12 +1,12 @@
-// GSD watchers and sentinel reads, Planning, Scheduler, Validation, Event Bus,
+// Planning watcher, Scheduler, Validation, Event Bus,
 // and Telemetry are independent of `AppHandle`.
 //
 // The Tauri watcher commands use managed `PlanningWatchers`, but their core
 // functions never need the app handle. The standalone Core owns a separate
 // static registry of the same type.
 
+use crate::change_trigger::{self, ChangeTriggerConfig, ChangeTriggerRegistry};
 use crate::event_bus::{self, EventBusPayload};
-use crate::opencode_gsd_plugin;
 use crate::planning::{self, PlanningWatchers};
 use crate::planning_gate;
 use crate::scheduler;
@@ -28,16 +28,22 @@ fn planning_watchers() -> &'static PlanningWatchers {
     WATCHERS.get_or_init(PlanningWatchers::default)
 }
 
+fn change_triggers() -> Arc<ChangeTriggerRegistry> {
+    static REGISTRY: OnceLock<Arc<ChangeTriggerRegistry>> = OnceLock::new();
+    REGISTRY
+        .get_or_init(|| Arc::new(ChangeTriggerRegistry::default()))
+        .clone()
+}
+
 pub fn router() -> Router {
     Router::new()
+        .route("/api/agent_config/root", get(agent_config_root))
+        .route("/api/change_trigger/start", post(change_trigger_start))
+        .route("/api/change_trigger/stop", post(change_trigger_stop))
+        .route("/api/change_trigger/acknowledge", post(change_trigger_acknowledge))
         .route("/api/planning/status", get(planning_status))
-        .route("/api/gsd/start_watcher", post(gsd_start_watcher))
-        .route("/api/gsd/stop_watcher", post(gsd_stop_watcher))
-        .route("/api/gsd/opencode_plugin_write", post(gsd_plugin_write))
-        .route("/api/gsd/child_session", get(gsd_child_session))
-        .route("/api/gsd/child_busy", get(gsd_child_busy))
-        .route("/api/gsd/child_error", get(gsd_child_error))
-        .route("/api/gsd/procedure", get(gsd_procedure))
+        .route("/api/planning/start_watcher", post(planning_start_watcher))
+        .route("/api/planning/stop_watcher", post(planning_stop_watcher))
         .route("/api/scheduler/tasks", get(scheduler_tasks))
         .route("/api/scheduler/tick", post(scheduler_tick))
         .route("/api/scheduler/cancel_task", post(scheduler_cancel))
@@ -140,64 +146,72 @@ async fn planning_status(Query(p): Query<HashMap<String, String>>) -> impl IntoR
 }
 
 #[derive(Deserialize)]
-struct GsdWatcherBody {
+struct PlanningWatcherBody {
     #[serde(rename = "projectId")]
     project_id: String,
     #[serde(rename = "repoPath")]
     repo_path: String,
 }
-async fn gsd_start_watcher(Json(b): Json<GsdWatcherBody>) -> impl IntoResponse {
-    respond(planning::start_gsd_watcher_core(
+async fn planning_start_watcher(Json(b): Json<PlanningWatcherBody>) -> impl IntoResponse {
+    respond(planning::start_planning_watcher_core(
         planning_watchers(),
         b.project_id,
         b.repo_path,
     ))
 }
-async fn gsd_stop_watcher(Json(b): Json<GsdWatcherBody>) -> impl IntoResponse {
-    respond(planning::stop_gsd_watcher_core(
+async fn planning_stop_watcher(Json(b): Json<PlanningWatcherBody>) -> impl IntoResponse {
+    respond(planning::stop_planning_watcher_core(
         planning_watchers(),
         b.project_id,
         b.repo_path,
+    ))
+}
+
+async fn agent_config_root(
+    Extension(runtime): Extension<Arc<ServerRuntime>>,
+) -> impl IntoResponse {
+    let profile_dir = match super::profile_routes::active_profile_dir_at(runtime.data_root()) {
+        Ok(dir) => dir,
+        Err(error) => return AppError::from(error.to_string()).into_response(),
+    };
+    match crate::agent_config::ensure_agent_config_at(&profile_dir) {
+        Ok(root) => Json(root.to_string_lossy().into_owned()).into_response(),
+        Err(error) => AppError::from(error).into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct ChangeTriggerStartBody {
+    #[serde(rename = "projectId")]
+    project_id: String,
+    #[serde(rename = "projectRoot")]
+    project_root: String,
+    config: Option<ChangeTriggerConfig>,
+}
+async fn change_trigger_start(Json(b): Json<ChangeTriggerStartBody>) -> impl IntoResponse {
+    respond(change_trigger::change_trigger_start_core(
+        change_triggers(),
+        b.project_id,
+        b.project_root,
+        b.config,
     ))
 }
 
 #[derive(Deserialize)]
-struct GsdPluginWriteBody {
-    repo: String,
-    #[serde(rename = "modelChain")]
-    model_chain: Vec<String>,
+struct ChangeTriggerProjectBody {
+    #[serde(rename = "projectId")]
+    project_id: String,
 }
-async fn gsd_plugin_write(Json(b): Json<GsdPluginWriteBody>) -> impl IntoResponse {
-    respond(opencode_gsd_plugin::gsd_opencode_plugin_write(b.repo, b.model_chain).await)
+async fn change_trigger_stop(Json(b): Json<ChangeTriggerProjectBody>) -> impl IntoResponse {
+    change_trigger::change_trigger_stop_core(&change_triggers(), &b.project_id);
+    respond(Ok::<(), String>(()))
 }
 
-async fn gsd_child_session(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
-    let repo_path = match q(&p, "repoPath") {
-        Ok(v) => v,
-        Err(e) => return e.into_response(),
-    };
-    respond(planning_gate::read_gsd_child_session(repo_path))
-}
-async fn gsd_child_busy(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
-    let repo_path = match q(&p, "repoPath") {
-        Ok(v) => v,
-        Err(e) => return e.into_response(),
-    };
-    respond(planning_gate::read_gsd_child_busy(repo_path))
-}
-async fn gsd_child_error(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
-    let repo_path = match q(&p, "repoPath") {
-        Ok(v) => v,
-        Err(e) => return e.into_response(),
-    };
-    respond(planning_gate::read_gsd_child_error(repo_path))
-}
-async fn gsd_procedure(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
-    let repo_path = match q(&p, "repoPath") {
-        Ok(v) => v,
-        Err(e) => return e.into_response(),
-    };
-    respond(planning_gate::read_gsd_procedure(repo_path))
+async fn change_trigger_acknowledge(
+    Json(b): Json<ChangeTriggerProjectBody>,
+) -> impl IntoResponse {
+    change_trigger::change_trigger_acknowledge_core(&change_triggers(), &b.project_id);
+    respond(Ok::<(), String>(()))
 }
 
 async fn scheduler_tasks(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {

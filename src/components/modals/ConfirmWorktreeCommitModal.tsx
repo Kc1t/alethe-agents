@@ -11,7 +11,7 @@ export type ConfirmWorktreeCommitModalProps = {
   onClose: () => void
   branchName: string
   pending: WorktreePendingChange[]
-  /** Pre-filled from `.planning/goal.md` (GSD Sync child session), when it exists. */
+  /** Pre-filled from `.planning/goal.md`, when it exists. */
   defaultMessage: string
   onConfirm: (message: string) => void
 }

@@ -741,6 +741,26 @@ pub fn sync_delete_task(
         .map_err(|e| e.to_string())
 }
 
+/// Permanently deletes the tasks document for a project. Returns Ok(()) even if the document
+/// did not exist.
+pub fn delete_project_tasks_at(data_root: &Path, project_id: &str) -> Result<(), std::io::Error> {
+    let path = tasks_document_path(data_root, project_id);
+    match fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+#[tauri::command]
+pub fn sync_delete_project_tasks(
+    app: tauri::AppHandle,
+    project_id: String,
+) -> Result<(), String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    delete_project_tasks_at(&data_root, &project_id).map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -957,5 +977,19 @@ mod tests {
             );
         }
         assert_eq!(document.op_log.len(), MAX_OP_LOG_ENTRIES);
+    }
+
+    #[test]
+    fn delete_project_tasks_removes_file() {
+        let root = temp_root("delete-tasks");
+        let path = tasks_document_path(&root, "proj-to-delete");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, b"{}").unwrap();
+        assert!(path.exists());
+
+        delete_project_tasks_at(&root, "proj-to-delete").unwrap();
+        assert!(!path.exists());
+        assert!(delete_project_tasks_at(&root, "proj-to-delete").is_ok());
+        fs::remove_dir_all(root).unwrap();
     }
 }

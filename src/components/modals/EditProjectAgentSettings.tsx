@@ -44,8 +44,6 @@ export function EditProjectAgentSettings({
   onConflictModelChange,
   autoWorktree,
   onAutoWorktreeChange,
-  gsdWatcherEnabled,
-  onGsdWatcherEnabledChange,
 }: {
   projectId: string
   cwd: string
@@ -63,8 +61,6 @@ export function EditProjectAgentSettings({
   onConflictModelChange: (modelId: string) => void
   autoWorktree: boolean
   onAutoWorktreeChange: (enabled: boolean) => void
-  gsdWatcherEnabled: boolean
-  onGsdWatcherEnabledChange: (enabled: boolean) => void
 }) {
   const t = useT()
   const pushToast = useUiStore((s) => s.pushToast)
@@ -312,10 +308,7 @@ export function EditProjectAgentSettings({
               if (!(await confirmAction(t('multiAgent.migrateExistingConfirm')))) return
               setMigratingWorktrees(true)
               try {
-                const result = await migrateProjectTerminalsToWorktrees(
-                  projectId,
-                  gsdWatcherEnabled,
-                )
+                const result = await migrateProjectTerminalsToWorktrees(projectId)
                 // Uncommitted work is a warning, never a block: it stays in the
                 // main repository (worktrees branch off HEAD).
                 if (result.status !== 'dirty') return
@@ -325,9 +318,7 @@ export function EditProjectAgentSettings({
                   ))
                 )
                   return
-                await migrateProjectTerminalsToWorktrees(projectId, gsdWatcherEnabled, {
-                  allowDirty: true,
-                })
+                await migrateProjectTerminalsToWorktrees(projectId, { allowDirty: true })
               } finally {
                 setMigratingWorktrees(false)
               }
@@ -341,18 +332,6 @@ export function EditProjectAgentSettings({
         <p style={{ fontSize: 10, color: 'var(--fg-muted)', marginTop: 4 }}>
           {t('multiAgent.migrateExistingHint')}
         </p>
-      </div>
-
-      <div className={`${controls.field} ${styles.toggleRow}`}>
-        <input
-          type="checkbox"
-          id="gsdWatcher"
-          checked={gsdWatcherEnabled}
-          onChange={(e) => onGsdWatcherEnabledChange(e.target.checked)}
-        />
-        <label htmlFor="gsdWatcher" className={styles.toggleLabel}>
-          {t('crud.editProjectGsdWatcher')}
-        </label>
       </div>
     </>
   )

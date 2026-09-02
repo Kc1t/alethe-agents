@@ -2,6 +2,11 @@ import type { SkillAgentSnapshot, SkillSummary } from './tauri/skills'
 
 export const SHARED_SKILL_AGENT = 'shared'
 
+/** Every store `skills_scan` reports, in the order the panel shows them. `shared` is not an agent:
+ *  it is the cross-agent store the others link into, and copying a skill there is how it stops
+ *  belonging to one agent. Must stay in step with `ROOTS` in `src-tauri/src/skills.rs`. */
+export const SKILL_STORES = ['claude', 'codex', 'opencode', 'antigravity', 'shared'] as const
+
 export type SkillGroup = {
   name: string
   description: string

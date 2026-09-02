@@ -133,7 +133,6 @@ export type ProjectsState = ProjectsFile & {
   setValidationCommands: (id: string, commands: string[]) => void
   setHealthCheckCommand: (id: string, command: string) => void
   setHealthCheckPath: (id: string, path: string) => void
-  setGsdWatcherEnabled: (id: string, enabled: boolean) => void
   setConflictAgentProvider: (id: string, provider: AgentType) => void
   setConflictAgentModel: (id: string, model: string) => void
   setReviewAgentProvider: (id: string, provider: AgentType) => void
@@ -150,7 +149,6 @@ export type ProjectsState = ProjectsFile & {
   ) => Promise<{ ok: boolean; error?: string }>
   migrateProjectTerminalsToWorktrees: (
     projectId: string,
-    gsdWatcherEnabledOverride?: boolean,
     opts?: { allowDirty?: boolean },
   ) => Promise<MigrateWorktreesResult>
 
@@ -214,7 +212,6 @@ export type ProjectsState = ProjectsFile & {
         runtimeProfile?: AgentRuntimeProfile
       }
       worktreeAgentId?: string
-      gsdSyncViewer?: boolean
       ephemeralConflictAgent?: boolean
       ephemeralUtility?: boolean
     },
@@ -247,7 +244,6 @@ export type ProjectsState = ProjectsFile & {
   renameTerminal: (projectId: string, terminalId: string, name: string) => void
   setBrowserEngine: (projectId: string, terminalId: string, engine: BrowserEngine) => void
 
-  markGsdSyncViewer: (projectId: string, terminalId: string) => void
   deleteTerminal: (projectId: string, terminalId: string) => void
 
   deleteTerminalWithWorktreeCleanup: (projectId: string, terminalId: string) => Promise<void>

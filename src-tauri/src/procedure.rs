@@ -1,10 +1,9 @@
 //! Procedures that can be *verified*, not just written.
 //!
-//! The GSD watcher read a `procedure.json` and trusted it. Nothing checked whether the procedure
-//! actually described the work that was done, so it went stale silently — the file said what
-//! someone once intended, and there was no way to tell how far the code had drifted from it.
+//! A procedure file that is merely read and trusted goes stale in silence: it says what someone
+//! once intended, and nothing can tell how far the code has drifted from it since.
 //!
-//! Here the procedure is a claim about specific files, and the system holds it to that claim. Each
+//! So here a procedure is a claim about specific files, and the system holds it to that claim. Each
 //! step names the files it covers, and each covered file records a fingerprint of its contents at
 //! the moment it was covered. That fingerprint is what makes the difference between "this file has
 //! a procedure" and "this file has a procedure that still describes it".
@@ -153,6 +152,31 @@ pub fn check_coverage(procedure: &Procedure, changed: &BTreeMap<String, String>)
     }
 }
 
+/// Builds the `changed` map `check_coverage` expects, by fingerprinting each changed file as it
+/// currently stands on disk.
+///
+/// This is the glue between the coverage rule and reality: the rule is pure and testable, but it
+/// can only be trusted if the fingerprints it compares against are the files as they are *now*,
+/// not as they were when the procedure was written.
+///
+/// A path that no longer exists (deleted, or renamed away) is skipped rather than reported as
+/// changed-with-no-content. A deletion is real work, but it has no contents to fingerprint, so it
+/// cannot go stale the way an edit can — treating it as an ordinary changed file would leave a
+/// procedure permanently incomplete with no way for the agent to satisfy it.
+pub fn fingerprint_changed_files<P: AsRef<std::path::Path>>(
+    repo_root: P,
+    changed_paths: &[String],
+) -> BTreeMap<String, String> {
+    let root = repo_root.as_ref();
+    let mut map = BTreeMap::new();
+    for path in changed_paths {
+        if let Ok(contents) = std::fs::read(root.join(path)) {
+            map.insert(path.clone(), fingerprint(&contents));
+        }
+    }
+    map
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -248,6 +272,26 @@ mod tests {
         assert_eq!(report.unknown_claims.len(), 1);
         assert_eq!(report.unknown_claims[0].path, "src/typo-path.tsx");
         assert!(report.is_complete(), "a stray claim must not block completion");
+    }
+
+    #[test]
+    fn fingerprinting_skips_a_path_that_no_longer_exists() {
+        // A deleted file has no contents to fingerprint. Reporting it as changed anyway would make
+        // it permanently uncovered — no step could ever match a hash that cannot be computed.
+        let root = std::env::temp_dir().join(format!("alethe-procedure-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("present.txt"), b"hello").unwrap();
+
+        let map = fingerprint_changed_files(
+            &root,
+            &["present.txt".to_string(), "deleted.txt".to_string()],
+        );
+
+        assert_eq!(map.len(), 1);
+        assert_eq!(map.get("present.txt"), Some(&fingerprint(b"hello")));
+        assert!(!map.contains_key("deleted.txt"));
+
+        std::fs::remove_dir_all(&root).unwrap();
     }
 
     #[test]
