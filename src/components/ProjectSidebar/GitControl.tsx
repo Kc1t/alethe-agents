@@ -33,7 +33,9 @@ import {
   openInFileExplorer,
 } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
+import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import { useUiStore } from '../../stores/uiStore'
+import { Dropdown } from '../ui/Dropdown'
 import styles from './GitControl.module.css'
 import { GitGraph } from './GitGraph'
 import { IncomingOutgoing } from './IncomingOutgoing'
@@ -56,7 +58,25 @@ const ERROR_KEYS: Record<string, MessageKey> = {
 export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlProps) {
   const t = useT()
   const pushToast = useUiStore((state) => state.pushToast)
-  const [liveCwd, setLiveCwd] = useState(cwd)
+  const projects = useProjectsStore((state) => state.projects)
+  // Which repository this panel is showing, chosen explicitly rather than inferred.
+  //
+  // It used to follow the selected terminal's working directory, which meant that whenever an
+  // agent running in an isolated worktree was selected, source control silently switched to
+  // `.alethe/worktrees/<id>` and its `alethe/agent-*` branch — reporting a clean tree for a
+  // repository the user was not working in, with no way to say otherwise. Inference was the bug:
+  // the panel now defaults to the active project and lets you pick another.
+  const [selectedProjectId, setSelectedProjectId] = useState(projectId)
+  useEffect(() => {
+    setSelectedProjectId(projectId)
+  }, [projectId])
+  const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null
+  const projectCwd = selectedProject
+    ? getProjectRepoRoot(selectedProject) || selectedProject.defaultCwd || ''
+    : ''
+  // The passed-in `cwd` is only a fallback now, for a project with no resolvable repository.
+  const effectiveCwd = projectCwd || cwd
+  const [liveCwd, setLiveCwd] = useState(effectiveCwd)
   const [status, setStatus] = useState<GitRepositoryStatus | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -69,8 +89,8 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
   const lastAutoRefreshRef = useRef(0)
 
   useEffect(() => {
-    setLiveCwd(cwd)
-    if (cwd || !ptyId) return
+    setLiveCwd(effectiveCwd)
+    if (effectiveCwd || !ptyId) return
     let cancelled = false
     getPtyCwd(ptyId)
       .then((value) => {
@@ -80,7 +100,7 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
     return () => {
       cancelled = true
     }
-  }, [cwd, ptyId])
+  }, [effectiveCwd, ptyId])
 
   const refresh = useCallback(
     async (quiet = false) => {
@@ -246,7 +266,21 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
     <div className={styles.panel} aria-busy={busy}>
       <div className={styles.repoHeader} title={status.repoRoot}>
         <div className={styles.repoContext}>
-          <strong>{terminalName}</strong>
+          {projects.length > 1 ? (
+            <Dropdown
+              value={selectedProjectId}
+              onChange={setSelectedProjectId}
+              options={projects.map((project) => ({
+                value: project.id,
+                label: project.name,
+                description: getProjectRepoRoot(project) || project.defaultCwd || '',
+              }))}
+              ariaLabel={t('git.selectProject')}
+              className={styles.repoPicker}
+            />
+          ) : (
+            <strong>{selectedProject?.name ?? terminalName}</strong>
+          )}
           <span>{status.repoRoot}</span>
         </div>
         <button

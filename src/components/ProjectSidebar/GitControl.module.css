@@ -423,3 +423,18 @@
     transform: rotate(360deg);
   }
 }
+
+/* The repository picker sits where the terminal name used to, so the panel still reads as one
+   header line — it is a choice now, not a label. */
+.repoPicker {
+  height: 24px;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  background: transparent;
+  border-color: transparent;
+}
+
+.repoPicker:hover:not(:disabled) {
+  background: var(--bg-sunken);
+}

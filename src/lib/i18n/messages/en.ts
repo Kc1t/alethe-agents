@@ -1803,6 +1803,7 @@ export const en = {
   'git.empty.noFolderDesc': 'The selected terminal does not have a working directory yet.',
   'git.empty.noTerminal': 'No terminal selected',
   'git.empty.noTerminalDesc': 'Open a project terminal to inspect its Git repository.',
+  'git.selectProject': 'Repository shown in source control',
   'git.graph.title': 'Commit graph',
   'git.graph.loading': 'Loading history…',
   'git.graph.empty': 'No commits yet.',

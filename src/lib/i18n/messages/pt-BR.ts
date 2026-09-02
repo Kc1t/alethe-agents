@@ -1824,6 +1824,7 @@ export const ptBR: Record<MessageKey, string> = {
   'git.empty.noFolderDesc': 'O terminal selecionado ainda não possui um diretório de trabalho.',
   'git.empty.noTerminal': 'Nenhum terminal selecionado',
   'git.empty.noTerminalDesc': 'Abra um terminal de projeto para inspecionar seu repositório Git.',
+  'git.selectProject': 'Repositório mostrado no controle de versão',
   'git.graph.title': 'Gráfico de commits',
   'git.graph.loading': 'Carregando histórico…',
   'git.graph.empty': 'Nenhum commit ainda.',
