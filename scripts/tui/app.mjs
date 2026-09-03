@@ -8,6 +8,7 @@ import { filterGestures, gesturesFrom } from './flow/parse.mjs'
 import { defaultLogPath, followFile } from './flow/reader.mjs'
 import { CommandsPanel } from './panels/commands.mjs'
 import { FlowPanel } from './panels/flow.mjs'
+import { Header } from './panels/header.mjs'
 import { StatePanel } from './panels/state.mjs'
 
 const h = React.createElement
@@ -16,15 +17,6 @@ const PANELS = ['commands', 'state', 'flow']
 const PORT_POLL_MS = 2500
 /** How much of the stream is kept in memory. Older gestures scroll out of reach, not out of file. */
 const MAX_RECORDS = 4000
-
-function Header({ branch, width }) {
-  return h(
-    Box,
-    { width },
-    h(Text, { bold: true, color: 'cyan' }, ' alethe '),
-    h(Text, { color: 'gray' }, branch ? `─ ${branch} ` : ''),
-  )
-}
 
 function Footer({ mode, filter }) {
   if (mode === 'filter') {
@@ -41,8 +33,8 @@ function Footer({ mode, filter }) {
   }
   return h(
     Text,
-    { color: 'gray' },
-    ' tab painel · enter executar · d doctor · / filtrar · c prender corr · x limpar · ? ajuda · q sair',
+    { color: 'gray', dimColor: true },
+    ' tab · enter · d doctor · / filtrar · c corr · x limpar · ? ajuda · q sair',
   )
 }
 
