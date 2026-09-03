@@ -254,11 +254,11 @@ pub fn write_text_file(path: String, content: String) -> Result<(), String> {
     fs::write(&file, content).map_err(|error| error.to_string())
 }
 
-/// Escreve o espelho `.alethe/project.json` dentro da própria pasta do
-/// projeto (não no app data) — cria `.alethe/` se ainda não existir. Ao
-/// contrário de `write_text_file`, este comando pode criar o arquivo do zero
-/// (não exige que já exista), porque o objetivo é justamente inicializar o
-/// espelho na primeira vez que o projeto é salvo.
+/// Writes the `.alethe/project.json` mirror inside the project's own folder
+/// (not app data) — creates `.alethe/` if it doesn't exist yet. Unlike
+/// `write_text_file`, this command can create the file from scratch (doesn't
+/// require it to already exist), because the whole point is to initialize
+/// the mirror the first time the project is saved.
 #[tauri::command]
 pub fn write_project_marker(project_dir: String, content: String) -> Result<(), String> {
     let dir = PathBuf::from(project_dir.trim());
@@ -270,10 +270,10 @@ pub fn write_project_marker(project_dir: String, content: String) -> Result<(), 
     fs::write(marker_dir.join("project.json"), content).map_err(|error| error.to_string())
 }
 
-/// Lê `.alethe/project.json` de uma pasta, se existir — usado pela detecção
-/// de "configuração já existente" ao criar um projeto novo apontando pra essa
-/// pasta. `None` (não erro) quando o marcador simplesmente não existe ainda,
-/// que é o caso normal pra qualquer pasta nova/nunca usada pelo Alethe.
+/// Reads a folder's `.alethe/project.json`, if it exists — used to detect an
+/// "already-configured project" when pointing a new project at that folder.
+/// `None` (not an error) when the marker simply doesn't exist yet, which is
+/// the normal case for any folder new to / never used by Alethe.
 #[tauri::command]
 pub fn read_project_marker(project_dir: String) -> Option<String> {
     let marker = PathBuf::from(project_dir.trim())

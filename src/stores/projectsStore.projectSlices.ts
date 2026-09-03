@@ -501,10 +501,10 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
         groupId,
         archived: false,
         createdAt: Date.now(),
-        // Nunca existe processo vivo pra reaproveitar num projeto recém-
-        // importado — zera ptyId de toda tab, mas preserva sessionId (tenta
-        // resumir de propósito no próximo spawn, mesma lógica do item de
-        // migração de worktree).
+        // No live process ever exists to reuse for a freshly imported
+        // project — zeroes every tab's ptyId, but keeps sessionId (tries to
+        // resume on purpose on the next spawn, same logic as the worktree
+        // migration item).
         terminals: (data.terminals ?? []).map((terminal) => ({
           ...terminal,
           tabs: terminal.tabs.map((tab) => ({ ...tab, ptyId: null })),

@@ -33,7 +33,7 @@
         "script-src": ["'self'"],
         "style-src": ["'self'", "'unsafe-inline'"],
         "img-src": ["'self'", "data:", "asset:", "http://asset.localhost", "http:", "https:"],
-        "media-src": ["'self'", "asset:", "http://asset.localhost"],
+        "media-src": ["'self'", "asset:", "http://asset.localhost", "mediastream:", "blob:"],
         "font-src": ["'self'"],
         "connect-src": [
           "'self'",

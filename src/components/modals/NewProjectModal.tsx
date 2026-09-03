@@ -65,7 +65,7 @@ export function NewProjectModal() {
         setDetectedConfig(parsed as Project)
       }
     } catch {
-      /* marcador ausente/corrompido — segue o fluxo normal de criação */
+      /* marker missing/corrupted — falls back to the normal creation flow */
     }
   }
 
@@ -95,7 +95,7 @@ export function NewProjectModal() {
       color,
       iconUrl: iconUrl.trim() || undefined,
       groupId,
-      // Clonar dita a pasta do projeto — ignora o path escolhido manualmente.
+      // Cloning dictates the project's folder — ignores the manually chosen path.
       defaultCwd: trimmedGithub ? undefined : defaultCwd.trim() || undefined,
       githubUrl: trimmedGithub || undefined,
       firstBootPending: Boolean(trimmedGithub),
@@ -106,23 +106,24 @@ export function NewProjectModal() {
     if (trimmedGithub) {
       closeModal()
       pushToast({
-        title: 'Clonando Repositório',
-        body: `Iniciando clone de ${trimmedGithub} e gerando briefing de contexto de IA...`,
+        title: t('crud.cloningRepoTitle'),
+        body: t('crud.cloningRepoBody', { url: trimmedGithub }),
         agent: 'claude',
       })
       try {
-        // A pasta escolhida (se houver) vira o pai do clone; string vazia deixa
-        // o backend resolver o padrao. O nome da pasta sai da URL do repo.
+        // The chosen folder (if any) becomes the clone's parent; an empty
+        // string lets the backend resolve the default. The folder name comes
+        // from the repo URL.
         await cloneGithubRepo(trimmedGithub, defaultCwd.trim())
         pushToast({
-          title: 'Repositório Clonado',
-          body: 'Clone concluído com sucesso. Contexto de IA injetado em AGENTS.md e CLAUDE.md.',
+          title: t('crud.repoClonedTitle'),
+          body: t('crud.repoClonedBody'),
           agent: 'claude',
         })
       } catch (err) {
-        console.error('Falha ao clonar repositório GitHub:', err)
+        console.error('[NewProjectModal] failed cloning GitHub repo:', err)
         pushToast({
-          title: 'Erro no Clone',
+          title: t('crud.cloneErrorTitle'),
           body: String(err),
           agent: 'claude',
         })
@@ -287,7 +288,7 @@ export function NewProjectModal() {
             className={controls.input}
             value={githubUrl}
             onChange={(e) => setGithubUrl(e.target.value)}
-            placeholder="https://github.com/usuario/repositorio"
+            placeholder="https://github.com/user/repository"
           />
           <span className={controls.hint}>{t('crud.githubUrlHint')}</span>
         </div>
@@ -331,7 +332,7 @@ export function NewProjectModal() {
             />
           )}
 
-          {/* Botão de Paleta Completa / Mais Cores */}
+          {/* Full Palette / More Colors button */}
           <button
             type="button"
             onClick={() => setIsColorPopoverOpen(true)}

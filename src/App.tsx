@@ -1015,6 +1015,7 @@ export default function App() {
         <RemoteControlModal />
         <AuditModal />
         {openModal === 'meshFolderTree' ? <ProjectFolderTreeModal /> : null}
+        <FsBrowserModal />
       </ErrorBoundary>
       <InAppNotifications />
       {activeView === 'agentCanvas' ? <TokenHud /> : null}

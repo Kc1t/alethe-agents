@@ -112,6 +112,22 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     uiZoom: clampUiZoom(preferences.uiZoom),
     appIconTheme: normalizeAppIconTheme(preferences.appIconTheme),
     spawnConcurrency: clampSpawnConcurrency(preferences.spawnConcurrency),
+    dictationEnabled: Boolean(preferences.dictationEnabled),
+    dictationMode: preferences.dictationMode === 'hold' ? 'hold' : 'toggle',
+    dictationModelId:
+      typeof preferences.dictationModelId === 'string' && preferences.dictationModelId.trim()
+        ? preferences.dictationModelId.trim()
+        : DEFAULT_PREFERENCES.dictationModelId,
+    dictationMicrophoneId:
+      typeof preferences.dictationMicrophoneId === 'string' &&
+      preferences.dictationMicrophoneId.trim()
+        ? preferences.dictationMicrophoneId.trim()
+        : null,
+    dictationMicrophoneLabel:
+      typeof preferences.dictationMicrophoneLabel === 'string' &&
+      preferences.dictationMicrophoneLabel.trim()
+        ? preferences.dictationMicrophoneLabel.trim()
+        : null,
     resourcePolicy: {
       // Automatic parking was removed. Keep the legacy shape for file
       // compatibility, but normalize every installation to monitoring only.

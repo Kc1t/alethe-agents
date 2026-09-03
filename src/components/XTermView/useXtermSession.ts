@@ -800,6 +800,16 @@ export function useXtermSession(params: {
 
     const requestWriteRecovery = (id: string, source: 'input' | 'paste', error: unknown) => {
       console.warn(`[pty-${source}] write failed for ${id}; requesting recovery`, error)
+      if (source === 'input' && initialInputInFlight) {
+        // Restarting now would kill the process right in the middle of
+        // delivering the initial prompt, losing the session with no chance
+        // to resume — let `sendInitialInput` handle the failure itself
+        // (logs and gives up) instead of triggering this destructive recovery.
+        console.warn(
+          `[pty-input] automatic recovery SUPPRESSED on ${id}: initial prompt delivery still in progress`,
+        )
+        return
+      }
       if (disposed || writeRecoveryPending || id !== ptyIdRef.current) return
       if (source === 'input' && initialInputInFlight) {
         // Reiniciar agora mataria o processo bem no meio da entrega do
@@ -807,7 +817,7 @@ export function useXtermSession(params: {
         // `sendInitialInput` lidar com a falha (loga e desiste) em vez
         // de disparar essa recuperação destrutiva.
         console.warn(
-          `[pty-input] recuperação automática SUPRIMIDA em ${id}: entrega do prompt inicial ainda em andamento`,
+          `[pty-input] automatic recovery SUPPRESSED on ${id}: initial prompt delivery still in progress`,
         )
         return
       }
@@ -2336,9 +2346,9 @@ export function useXtermSession(params: {
               await new Promise((resolve) => window.setTimeout(resolve, 250))
               const runtime = useTerminalsStore.getState().byPtyId[response.id]
               const quietFor = runtime ? Date.now() - runtime.lastIoAt : 0
-              // OpenCode: só a espera mínima fixa importa (earliestSendAt já
-              // cobre isso). Outros providers: mantém o critério antigo de
-              // "saída quieta", que nunca deu esse problema.
+              // OpenCode: only the fixed minimum wait matters (earliestSendAt
+              // already covers it). Other providers: keep the old "quiet
+              // output" criterion, which never had this problem.
               const settled = isOpencode || quietFor >= 700 || Date.now() >= timedSendAt
               if (Date.now() >= earliestSendAt && runtime?.alive && settled) {
                 readyToSend = true
@@ -2405,7 +2415,7 @@ export function useXtermSession(params: {
                 })
                 if (!delivered) {
                   console.warn(
-                    `[pty-launch] opencode não confirmou o texto digitado na tela antes do prazo id=${response.id}`,
+                    `[pty-launch] opencode did not confirm the typed text on screen before the deadline id=${response.id}`,
                   )
                   return
                 }
@@ -2445,7 +2455,7 @@ export function useXtermSession(params: {
               )
               onInitialInputSentRef.current?.()
             } catch (error) {
-              console.warn('[pty-launch] não foi possível enviar o prompt inicial:', error)
+              console.warn('[pty-launch] could not send the initial prompt:', error)
             }
           }
           initialInputInFlight = true
@@ -2457,7 +2467,7 @@ export function useXtermSession(params: {
         scheduleResize()
         if (!disposed) setBootPhase('ready')
       } catch (err) {
-        console.error(`[pty-launch] ${command ?? 'shell'} FALHOU ao iniciar PTY:`, err)
+        console.error(`[pty-launch] ${command ?? 'shell'} FAILED to start:`, err)
         onLaunchErrorRef.current?.(err)
         if (!disposed) terminal.writeln(`Failed to start PTY: ${String(err)}`)
         if (!disposed) setBootPhase('ready')

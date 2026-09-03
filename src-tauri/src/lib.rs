@@ -31,6 +31,7 @@ pub mod ghostty_bridge;
 #[cfg(all(target_os = "macos", ghostty_linked))]
 pub mod ghostty_ffi;
 pub mod git_control;
+pub mod github_pr;
 pub mod github_sync;
 pub mod handoff;
 pub mod health_probe;
@@ -41,22 +42,22 @@ pub mod mcp_health;
 pub mod mcp_model;
 pub mod mcp_store;
 pub mod merge_analyzer;
+pub mod obs;
+pub mod obs_ipc;
+pub mod obs_sink;
 pub mod opencode_bridge;
 pub mod opencode_sessions;
 pub mod orchestrator;
 pub mod orchestrator_core;
-pub mod obs;
-pub mod obs_ipc;
-pub mod obs_sink;
 pub mod paths;
-pub mod self_test;
 pub mod planning;
-pub mod plugins;
 pub mod planning_gate;
+pub mod plugins;
 pub mod procedure;
 pub mod process_tree;
 pub mod profiles;
 pub mod project_detector;
+pub mod project_file_watcher;
 pub mod projects;
 pub mod provider_common;
 pub mod pty;
@@ -65,14 +66,17 @@ pub mod remote;
 pub mod resource_manager;
 pub mod resources;
 pub mod scheduler;
+pub mod self_test;
 pub mod server_main;
 pub mod session_watcher;
 pub mod skills;
+pub mod speech;
+pub mod speech_capture;
 pub mod spotify;
 pub mod stats;
 pub mod supervisor;
-pub mod sync_activation;
 pub mod sync_access;
+pub mod sync_activation;
 pub mod sync_chat;
 pub mod sync_cloudflare_deploy;
 pub mod sync_crypto;
@@ -82,7 +86,6 @@ pub mod sync_file_pipeline_session;
 pub mod sync_invitation_bridge;
 pub mod sync_manifest;
 pub mod sync_mesh;
-pub mod project_file_watcher;
 pub mod sync_p2p_bridge;
 pub mod sync_project_invite;
 pub mod sync_protocol;
@@ -97,6 +100,7 @@ pub mod sync_transport;
 pub mod telemetry;
 pub mod translation;
 pub mod validation;
+pub mod webview_media;
 pub mod window_style;
 #[cfg(windows)]
 pub mod windows_webview;
@@ -191,6 +195,7 @@ pub fn run() {
         .manage(std::sync::Arc::new(sync_file_pipeline_session::FileSyncSessionRegistry::default()))
         .manage(std::sync::Arc::new(change_trigger::ChangeTriggerRegistry::default()))
         .manage(orchestrator::OrchestratorState::default())
+        .manage(speech::SpeechState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
@@ -256,6 +261,13 @@ pub fn run() {
                     }
                     Err(error) => eprintln!("[icon] failed to decode the embedded icon: {error}"),
                 }
+                // Required for getUserMedia / voice dictation on WebKitGTK.
+                webview_media::grant_media_permissions(&window);
+            }
+
+            #[cfg(not(target_os = "linux"))]
+            if let Some(window) = app.get_webview_window("main") {
+                webview_media::grant_media_permissions(&window);
             }
             // The log directory is established before anything else so that a failure here is
             // reported instead of silently turning every later diagnostic into a no-op. An app
@@ -461,6 +473,8 @@ pub fn run() {
             github_sync::github_sync_logout,
             github_sync::github_sync_push,
             github_sync::github_sync_pull,
+            github_pr::github_pr_find,
+            github_pr::github_pr_merge,
             git_control::git_init,
             git_control::git_status,
             git_control::git_diff,
@@ -532,6 +546,15 @@ pub fn run() {
             crash_watch::get_last_crash_report,
             crash_watch::get_job_guard_status,
             set_window_opacity,
+            speech::speech_list_models,
+            speech::speech_list_input_devices,
+            speech::speech_model_states,
+            speech::speech_download_model,
+            speech::speech_delete_model,
+            speech::speech_start_capture,
+            speech::speech_stop_capture,
+            speech::speech_stop_and_transcribe,
+            speech::speech_transcribe,
             quit_app,
             worktrees::worktree_provision,
             worktrees::worktree_list,

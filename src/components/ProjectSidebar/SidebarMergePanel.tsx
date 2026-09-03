@@ -10,9 +10,12 @@ import {
   type DiffSummaryEntry,
   gitDiffSummary,
   gitStatus,
+  githubPrFind,
+  githubPrMerge,
   healthProbe,
   type HealthProbeResult,
   killPtyTree,
+  type PullRequestSummary,
   readTextFile,
   runValidation,
   type ValidationResult,
@@ -22,6 +25,7 @@ import {
   worktreeRemove,
   writePty,
 } from '../../lib/tauri'
+import { evaluateMergeGuard } from '../../lib/pullRequestMerge'
 import type { AgentType } from '../../lib/types'
 import { MERGE_BUSY_PHASES, type MergePhase, useMergeStore } from '../../stores/mergeStore'
 import { getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
@@ -29,6 +33,7 @@ import { useUiStore } from '../../stores/uiStore'
 import { BranchTestingModal, type TestingItem } from '../modals/BranchTestingModal'
 import { ConfirmWorktreeCommitModal } from '../modals/ConfirmWorktreeCommitModal'
 import { MergeCenterModal } from '../modals/MergeCenterModal'
+import { PullRequestReviewModal } from '../PullRequestReview/PullRequestReviewModal'
 import { MergeTree } from './MergeTree'
 import styles from './SidebarMergePanel.module.css'
 
@@ -44,6 +49,19 @@ function reviewPrompt(branch: string, target: string): string {
     'inconsistência com o resto do código) — não implemente nada, não corrija nada sozinho, ' +
     'só avalie e explique. O usuário pode te responder aqui no terminal com pedidos de ajuste; ' +
     'quando achar que está tudo certo, diga isso explicitamente.'
+  )
+}
+
+/** Agent-facing prompt for the PR reviewer (shown in its terminal, not in the
+ *  Alethe UI) — out of i18n scope, same convention as reviewPrompt() above.
+ *  Never commits, pushes, merges, or comments on GitHub by itself. */
+function pullRequestReviewPrompt(branch: string, target: string, pr: PullRequestSummary): string {
+  return (
+    `Revise o Pull Request #${pr.number}: "${pr.title}". ` +
+    `A branch local e "${branch}" e o destino e "${target}"; o SHA remoto analisado e ${pr.headSha}. ` +
+    `Use git diff ${target}...HEAD e inspecione os arquivos alterados. ` +
+    'Procure bugs, riscos de seguranca, quebra de contrato, testes ausentes e problemas de compatibilidade. ' +
+    'Nao faca commit, push, merge ou comentarios no GitHub. Apenas apresente achados objetivos, severidade e recomendacoes.'
   )
 }
 
@@ -159,6 +177,10 @@ export function SidebarMergePanel() {
   >({})
   const [reviewInputId, setReviewInputId] = useState<string | null>(null)
   const [reviewFeedback, setReviewFeedback] = useState('')
+  const [prTarget, setPrTarget] = useState<PendingMergeCard | null>(null)
+  const [prLoading, setPrLoading] = useState(false)
+  const [prError, setPrError] = useState<string | null>(null)
+  const [prList, setPrList] = useState<PullRequestSummary[]>([])
   const [gateStatus, setGateStatus] = useState<Record<string, GateResult>>({})
   const probingRef = useRef<Set<string>>(new Set())
   const [centerModalOpen, setCenterModalOpen] = useState(false)
@@ -576,6 +598,91 @@ export function SidebarMergePanel() {
     }
   }
 
+  const handleOpenPullRequest = async (item: PendingMergeCard) => {
+    setCenterModalOpen(false)
+    const proj = projects.find((p) => p.id === item.projectId)
+    const repo = proj ? getProjectRepoRoot(proj) : ''
+    if (!repo) {
+      pushToast({ title: t('merge.prNoRepoTitle'), body: t('merge.prNoRepoBody') })
+      return
+    }
+
+    setPrTarget(item)
+    setPrList([])
+    setPrError(null)
+    setPrLoading(true)
+    try {
+      setPrList(await githubPrFind(repo, item.branchName))
+    } catch (err) {
+      setPrError(String(err))
+    } finally {
+      setPrLoading(false)
+    }
+  }
+
+  const handleStartPullRequestReview = async (pr: PullRequestSummary) => {
+    if (!prTarget) return
+    const proj = projects.find((p) => p.id === prTarget.projectId)
+    if (!proj) return
+
+    let target = pr.baseBranch
+    const repo = getProjectRepoRoot(proj)
+    if (repo) {
+      try {
+        target = (await gitStatus(repo)).branch
+      } catch {
+        // Keep the base branch reported by GitHub as a safe fallback.
+      }
+    }
+
+    const provider = proj.reviewAgentProvider ?? proj.conflictAgentProvider ?? 'claude'
+    const model = proj.reviewAgentModel ?? proj.conflictAgentModel
+    const terminal = createTerminal(prTarget.projectId, {
+      name: `pr-review-${pr.number}`,
+      cwd: prTarget.worktreePath,
+      firstTab: {
+        type: provider,
+        cwd: prTarget.worktreePath,
+        initialInput: pullRequestReviewPrompt(prTarget.branchName, target, pr),
+        extraArgs: model ? ['--model', model] : undefined,
+      },
+    })
+    const tabId = terminal.tabs[0]?.id
+    if (!tabId) return
+
+    setReviewSessions((prev) => ({ ...prev, [prTarget.id]: { terminalId: terminal.id, tabId } }))
+    setPrTarget(null)
+    pushToast({
+      title: t('merge.prReviewStartedTitle'),
+      body: t('merge.prReviewStartedBody', { number: pr.number }),
+    })
+  }
+
+  const handleMergePullRequest = async (pr: PullRequestSummary) => {
+    if (!prTarget) return
+    const proj = projects.find((p) => p.id === prTarget.projectId)
+    const repo = proj ? getProjectRepoRoot(proj) : ''
+    if (!repo) return
+
+    if (!confirm(t('merge.prMergeConfirm', { number: pr.number, title: pr.title }))) return
+
+    try {
+      const latestOpenPrs = await githubPrFind(repo, pr.headBranch)
+      const guard = evaluateMergeGuard(pr, latestOpenPrs)
+      if (!guard.ok) throw new Error(t(guard.errorKey))
+
+      const result = await githubPrMerge(repo, pr.number, 'squash', guard.latest.headSha)
+      pushToast({
+        title: t('merge.prMergedTitle'),
+        body: result || t('merge.prMergedBody', { number: pr.number }),
+      })
+      setPrTarget(null)
+      setPrList([])
+    } catch (err) {
+      setPrError(String(err))
+    }
+  }
+
   const handleStartTesting = async (item: PendingMergeCard) => {
     const proj = projects.find((p) => p.id === item.projectId)
 
@@ -816,6 +923,7 @@ export function SidebarMergePanel() {
           onValidate={(item) => void handleRunValidation(item)}
           validatingId={validatingId}
           onOpenTest={handleOpenTestModal}
+          onOpenPullRequest={(item) => void handleOpenPullRequest(item)}
           onRecheckGate={(item) => void checkCard(item)}
         />
       ) : null}
@@ -903,6 +1011,23 @@ export function SidebarMergePanel() {
           onConfirm={(message) => void handleConfirmCommitAndIntegrate(message)}
         />
       ) : null}
+
+      <PullRequestReviewModal
+        open={Boolean(prTarget)}
+        loading={prLoading}
+        error={prError}
+        pullRequests={prList}
+        branchName={prTarget?.branchName ?? ''}
+        onClose={() => {
+          const reopenItem = prTarget
+          setPrTarget(null)
+          setPrError(null)
+          setPrList([])
+          if (reopenItem) reopenCenterModalFor(reopenItem)
+        }}
+        onStartReview={(pr) => void handleStartPullRequestReview(pr)}
+        onMerge={(pr) => void handleMergePullRequest(pr)}
+      />
     </>
   )
 }

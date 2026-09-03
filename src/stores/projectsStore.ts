@@ -113,12 +113,11 @@ export type ProjectsState = ProjectsFile & {
     githubUrl?: string
     firstBootPending?: boolean
   }) => Project
-  /** Cria um projeto novo a partir de um `Project` exportado (arquivo JSON
-   *  escolhido pelo usuário) ou detectado em `.alethe/project.json` — gera um
-   *  `id` novo (nunca reaproveita o original, pra não colidir com um projeto
-   *  já existente) e zera `ptyId` de toda tab (não existe processo vivo pra
-   *  reaproveitar), mas preserva `sessionId` — mesma lógica de "tenta resumir
-   *  de propósito" do item de migração de worktree. */
+  /** Creates a new project from an exported `Project` (a JSON file the user picked) or one detected
+   *  in `.alethe/project.json` — mints a new `id` rather than reusing the original, which would
+   *  collide with an existing project, and zeroes every tab's `ptyId` because no live process
+   *  exists to reuse. `sessionId` is deliberately kept: resuming on the next spawn is the point,
+   *  the same reasoning as the worktree migration item. */
   importProjectFromFile: (data: Project, groupId?: string | null) => Project
   renameProject: (id: string, name: string) => void
   archiveProject: (id: string) => void

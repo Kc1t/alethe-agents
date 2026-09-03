@@ -76,8 +76,8 @@ const MAX_MEMORY_HISTORY = 720
 const MAX_TOASTS = 4
 const MAX_NOTIFICATIONS = 12
 // Defense in depth against any upstream source re-firing the same
-// notification in a tight loop — the backend debounces this for memory
-// pressure already, but a duplicate title+body within this window is never
+// notification in a tight loop — the backend already debounces this for
+// memory pressure, but a duplicate title+body within this window is never
 // worth showing twice.
 const DUPLICATE_TOAST_WINDOW_MS = 5_000
 

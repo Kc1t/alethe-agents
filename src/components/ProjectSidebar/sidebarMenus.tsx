@@ -171,7 +171,7 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
               .getState()
               .pushToast({ title: t('ui.sidebar.importProjectConfigDone'), body: '' })
           } catch (error) {
-            console.error('[sidebarMenus] falha importando configuração de projeto:', error)
+            console.error('[sidebarMenus] failed importing project config:', error)
             useUiStore.getState().pushToast({
               title: t('ui.sidebar.importProjectConfigFailed'),
               body: String(error),

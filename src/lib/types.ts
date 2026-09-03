@@ -491,9 +491,17 @@ export type Preferences = {
    */
   paneLayouts?: Record<string, Record<string, number>>
   notifyOnLimitReset: boolean
-  /** Ditado por voz (speech-to-text) escreve no terminal ativo. Default false. */
+  /** Local speech-to-text into the active terminal. Off by default. */
   dictationEnabled: boolean
-  /** Quantos PTYs podem ser spawnados em paralelo (fila global). Default 3. */
+  /** Toggle = press Ctrl+E to start/stop; Hold = dictate while Ctrl+E is held. */
+  dictationMode: 'toggle' | 'hold'
+  /** Selected on-device STT model id (Parakeet TDT v3 by default). */
+  dictationModelId: string
+  /** Preferred microphone deviceId, or null for the OS default. */
+  dictationMicrophoneId: string | null
+  /** Cached microphone label when the preferred device is unplugged. */
+  dictationMicrophoneLabel: string | null
+  /** How many PTYs may spawn in parallel (global queue). Default 3. */
   spawnConcurrency: number
 
   resourcePolicy: ResourcePolicyPreferences
@@ -619,6 +627,10 @@ export const DEFAULT_PREFERENCES: Preferences = {
   rightSidebarWidth: 300,
   notifyOnLimitReset: true,
   dictationEnabled: false,
+  dictationMode: 'toggle',
+  dictationModelId: 'parakeet-tdt-0.6b-v3-int8',
+  dictationMicrophoneId: null,
+  dictationMicrophoneLabel: null,
   spawnConcurrency: 3,
   resourcePolicy: {
     mode: 'manual',
