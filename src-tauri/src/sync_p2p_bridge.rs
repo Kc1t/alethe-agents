@@ -608,7 +608,8 @@ pub fn punch_and_wrap_candidates(local_port: u16, candidates: &[SocketAddr]) -> 
                 // SUCCESS, the other logging only failures. This burst makes it overwhelmingly
                 // likely the peer also completes, so both sides enter the handshake together.
                 for _ in 0..PUNCH_CONFIRM_BURST {
-                    let _ = socket.send_to(b"alethe-p2p-punch", from);
+                    // Hole punching sprays packets and expects most of them to fail.
+                    crate::best_effort!(socket.send_to(b"alethe-p2p-punch", from), "punch_packet_dropped");
                 }
                 socket.connect(from).map_err(|_| P2pError::Io)?;
                 return Ok(ReliableUdpStream::new(socket));
@@ -1420,7 +1421,7 @@ mod tests {
                 response.extend_from_slice(&STUN_MAGIC_COOKIE.to_be_bytes());
                 response.extend_from_slice(&transaction_id);
                 response.extend_from_slice(&attribute);
-                let _ = responder.send_to(&response, from);
+                crate::best_effort!(responder.send_to(&response, from), "punch_response_dropped");
             }
         });
         (UdpSocket::bind("127.0.0.1:0").unwrap(), addr)

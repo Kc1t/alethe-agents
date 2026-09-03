@@ -185,11 +185,11 @@ fn save_settings_at(data_root: &Path, settings: &ServiceSettings) -> Result<(), 
         .and_then(|_| file.sync_all())
         .is_err()
     {
-        let _ = fs::remove_file(&temporary);
+        crate::best_effort!(fs::remove_file(&temporary), "temp_file_already_gone");
         return Err(ActivationError::Io);
     }
     replace_file(&temporary, &path).map_err(|error| {
-        let _ = fs::remove_file(&temporary);
+        crate::best_effort!(fs::remove_file(&temporary), "temp_file_already_gone");
         error
     })
 }

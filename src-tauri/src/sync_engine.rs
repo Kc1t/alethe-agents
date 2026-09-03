@@ -248,11 +248,11 @@ fn save_at(data_root: &Path, state: &EngineState) -> Result<(), EngineError> {
         .open(&temporary)
         .map_err(|_| EngineError::Io)?;
     if file.write_all(&bytes).and_then(|_| file.sync_all()).is_err() {
-        let _ = fs::remove_file(&temporary);
+        crate::best_effort!(fs::remove_file(&temporary), "temp_file_already_gone");
         return Err(EngineError::Io);
     }
     replace_file(&temporary, &path).map_err(|error| {
-        let _ = fs::remove_file(&temporary);
+        crate::best_effort!(fs::remove_file(&temporary), "temp_file_already_gone");
         error
     })
 }
@@ -425,22 +425,13 @@ pub fn apply_remote_operation_at(
     save_at(data_root, &state)?;
     // Same reasoning as the mention record in `sync_chat`: a silent failure here makes the access
     // log understate what happened, and an understated security log is read as an assurance.
-    if let Err(error) = crate::sync_access::record_at(
+    crate::sync_access::record_or_report_at(
         data_root,
         crate::sync_access::AccessCategory::Collaboration,
         crate::sync_access::AccessKind::SyncConflict,
         &conflict.conflict_id,
         now_ms,
-    ) {
-        crate::decide!(
-            target: "sync.access",
-            attempted = "record_access",
-            outcome = Failed,
-            because = "access_log_write_failed",
-            rule = "access_log.records_every_entry",
-            evidence = { kind = %"sync_conflict", subject = %conflict.conflict_id, error = %error },
-        );
-    }
+    );
     Ok(Err(conflict))
 }
 

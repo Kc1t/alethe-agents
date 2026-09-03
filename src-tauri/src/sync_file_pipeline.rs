@@ -409,12 +409,12 @@ mod tests {
 
         fs::remove_dir_all(&source).unwrap();
         fs::remove_dir_all(&receiver_data_root).unwrap();
-        let _ = fs::remove_dir_all(&published_destination);
+        crate::best_effort!(fs::remove_dir_all(&published_destination), "test_dir_already_absent");
         let backup = published_destination.with_file_name(format!(
             "{}.alethe-prev",
             published_destination.file_name().unwrap().to_string_lossy()
         ));
-        let _ = fs::remove_dir_all(&backup);
+        crate::best_effort!(fs::remove_dir_all(&backup), "test_dir_already_absent");
     }
 
     #[test]

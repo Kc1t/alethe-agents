@@ -144,11 +144,11 @@ fn save_journal_at(data_root: &Path, journal: &StagingJournal) -> Result<(), Sta
         .open(&temporary)
         .map_err(|_| StagingError::Io)?;
     if file.write_all(&bytes).and_then(|_| file.sync_all()).is_err() {
-        let _ = fs::remove_file(&temporary);
+        crate::best_effort!(fs::remove_file(&temporary), "temp_file_already_gone");
         return Err(StagingError::Io);
     }
     replace_file(&temporary, &path).map_err(|error| {
-        let _ = fs::remove_file(&temporary);
+        crate::best_effort!(fs::remove_file(&temporary), "temp_file_already_gone");
         error
     })
 }
@@ -323,7 +323,7 @@ pub fn verify_staged_at(
             // recipient's attention to re-request the transfer. In-progress publish-step failures
             // (`do_publish_steps`) are deliberately not published here — those are resumable via
             // `recover_publication_at` on the next call, not a state requiring user action.
-            let _ = crate::sync_access::record_at(
+            crate::sync_access::record_or_report_at(
                 data_root,
                 crate::sync_access::AccessCategory::Collaboration,
                 crate::sync_access::AccessKind::TransferFailure,

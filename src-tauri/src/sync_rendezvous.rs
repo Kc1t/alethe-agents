@@ -147,7 +147,9 @@ impl RendezvousRuntime {
     fn stop(&self) {
         if let Ok(mut sender) = self.stop.lock() {
             if let Some(sender) = sender.take() {
-                let _ = sender.send(true);
+                // The receiver is gone once the connection task has already exited, which is the
+                // ordinary case when stopping an idle connection.
+                crate::best_effort!(sender.send(true), "connection_task_already_gone");
             }
         }
         if let Ok(mut outgoing) = self.outgoing.lock() {
@@ -357,7 +359,8 @@ async fn connect_once(
         tokio::select! {
             changed = stop_rx.changed() => {
                 if changed.is_err() || *stop_rx.borrow() {
-                    let _ = writer.send(Message::Close(None)).await;
+                    // A courtesy close on a socket that is already going away.
+                    crate::best_effort!(writer.send(Message::Close(None)).await, "socket_already_closing");
                     return Ok(());
                 }
             }
@@ -462,7 +465,7 @@ async fn connect_once(
                                     } else {
                                         crate::sync_access::AccessCategory::Collaboration
                                     };
-                                    let _ = crate::sync_access::record_at(
+                                    crate::sync_access::record_or_report_at(
                                         data_root, category, kind, subject, crate::provider_common::now_ms(),
                                     );
                                 }

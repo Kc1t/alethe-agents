@@ -128,11 +128,11 @@ fn save_at(data_root: &Path, document: &SubscriptionDocument) -> Result<(), Stri
         .open(&temporary)
         .map_err(|_| "subscription_document_write_failed".to_string())?;
     if file.write_all(&bytes).and_then(|_| file.sync_all()).is_err() {
-        let _ = fs::remove_file(&temporary);
+        crate::best_effort!(fs::remove_file(&temporary), "temp_file_already_gone");
         return Err("subscription_document_write_failed".to_string());
     }
     replace_file(&temporary, &path).map_err(|error| {
-        let _ = fs::remove_file(&temporary);
+        crate::best_effort!(fs::remove_file(&temporary), "temp_file_already_gone");
         error
     })
 }

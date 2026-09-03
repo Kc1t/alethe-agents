@@ -315,10 +315,21 @@ pub fn init_project_sync_root(base_dir: &Path, project_name: &str) -> Result<Pat
             "syncCapability": "unavailable",
             "version": 1
         });
-        let _ = fs::write(
+        // Without this file the project exists but its sync capability is unknown, and the
+        // degraded behaviour shows up much later somewhere unrelated to project creation.
+        if let Err(error) = fs::write(
             &sync_meta_file,
             serde_json::to_string_pretty(&meta).unwrap_or_default(),
-        );
+        ) {
+            crate::decide!(
+                target: "sync.mesh",
+                attempted = "write_sync_meta",
+                outcome = Failed,
+                because = "meta_write_failed",
+                rule = "mesh.project.has_sync_meta",
+                evidence = { error = %error },
+            );
+        }
     }
 
     Ok(project_root)
@@ -431,7 +442,7 @@ pub fn purge_project_backup_vault(
         for entry in entries.flatten() {
             if let Ok(meta) = entry.metadata() {
                 if meta.is_file() {
-                    let _ = fs::remove_file(entry.path());
+                    crate::best_effort!(fs::remove_file(entry.path()), "stale_entry_already_gone");
                     count += 1;
                 }
             }
@@ -580,7 +591,7 @@ pub fn configure_google_sync(
             // back to a client that does not need one does not silently keep sending a stale
             // secret for the new client_id.
             if let Ok(entry) = keyring::Entry::new(GOOGLE_TOKEN_SERVICE, GOOGLE_CLIENT_SECRET_ACCOUNT) {
-                let _ = entry.delete_credential();
+                crate::best_effort!(entry.delete_credential(), "credential_already_absent");
             }
         }
     }
@@ -853,7 +864,12 @@ pub async fn start_google_sync_auth(app: tauri::AppHandle) -> Result<GoogleSyncU
     // never a token, code, or client secret — to `spawn.log`, so a login that silently fails to
     // leave the app "connected" can actually be diagnosed instead of just disappearing.
     let log = |message: &str| {
-        let _ = crate::diagnostics::append_spawn_log(&app, &format!("[google_sync_auth] {message}"));
+        // The comment above promises these lines make a silent login failure diagnosable. Discarding
+        // the write meant the promise could quietly not hold, on exactly the run being diagnosed.
+        crate::best_effort!(
+            crate::diagnostics::append_spawn_log(&app, &format!("[google_sync_auth] {message}")),
+            "spawn_log_unavailable"
+        );
     };
     let current = get_google_sync_status(app.clone())?;
     if current.connected {
@@ -1111,7 +1127,18 @@ pub async fn start_google_sync_auth(app: tauri::AppHandle) -> Result<GoogleSyncU
         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     );
-    let _ = stream.write_all(response.as_bytes()).await;
+    // The browser tab is waiting on this response. If it never arrives the tab hangs on a blank
+    // page while the sign-in actually succeeded, which reads as "the login froze".
+    if let Err(error) = stream.write_all(response.as_bytes()).await {
+        crate::decide!(
+            target: "sync.mesh",
+            attempted = "oauth_callback_response",
+            outcome = Failed,
+            because = "callback_write_failed",
+            rule = "mesh.oauth.closes_the_browser_tab",
+            evidence = { error = %error },
+        );
+    }
     let code = code?;
 
     log("callback received, exchanging code for tokens");
@@ -1226,7 +1253,7 @@ pub async fn start_google_sync_auth(app: tauri::AppHandle) -> Result<GoogleSyncU
     ) {
         log(&format!("complete_verified_identity failed, rolling back stored tokens: {error}"));
         if let Ok(entry) = keyring::Entry::new(GOOGLE_TOKEN_SERVICE, &user.sub) {
-            let _ = entry.delete_credential();
+            crate::best_effort!(entry.delete_credential(), "credential_already_absent");
         }
         return Err(error);
     }
@@ -1270,7 +1297,7 @@ pub fn disconnect_google_sync(app: tauri::AppHandle) -> Result<bool, String> {
     // Remove plaintext state written by prototype builds. It is never trusted as identity.
     if let Ok(data_dir) = crate::paths::profile_data_dir(&app) {
         let auth_file = data_dir.join("google_auth.json");
-        let _ = fs::remove_file(&auth_file);
+        crate::best_effort!(fs::remove_file(&auth_file), "auth_file_already_absent");
     }
     let root = crate::profiles::resolve_tauri_data_root(&app)?;
     let snapshot = crate::sync_security::snapshot_at(&root)?;
@@ -1407,7 +1434,7 @@ mod tests {
         assert_eq!(metadata["p2pEnabled"], false);
         assert_eq!(metadata["syncCapability"], "unavailable");
 
-        let _ = fs::remove_dir_all(base);
+        crate::best_effort!(fs::remove_dir_all(base), "test_dir_already_absent");
     }
 
     #[test]
@@ -1429,7 +1456,7 @@ mod tests {
         let src = nodes.iter().find(|n| n.name == "src").unwrap();
         assert!(!src.is_heavy);
 
-        let _ = fs::remove_dir_all(root);
+        crate::best_effort!(fs::remove_dir_all(root), "test_dir_already_absent");
     }
 
     #[test]
@@ -1452,7 +1479,7 @@ mod tests {
         assert_eq!(deleted, 1);
         assert!(!Path::new(&backup.path).exists());
 
-        let _ = fs::remove_dir_all(root);
+        crate::best_effort!(fs::remove_dir_all(root), "test_dir_already_absent");
     }
 
     // Test-only RSA keypair standing in for Google's rotating JWKS signing key. Never used for

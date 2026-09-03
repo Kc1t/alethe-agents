@@ -77,14 +77,36 @@ pub fn load_token() -> Result<Option<String>, GithubSignalingError> {
     match token_entry()?.get_secret() {
         Ok(secret) => String::from_utf8(secret).map(Some).map_err(|_| GithubSignalingError::Decode),
         Err(keyring::Error::NoEntry) => Ok(None),
-        Err(_) => Err(GithubSignalingError::CredentialStoreUnavailable),
+        Err(error) => {
+            // "The keychain is locked", "the app lost its entitlement" and "the service is not
+            // running" all reduced to one error code, and the remedy differs for each.
+            crate::decide!(
+                target: "sync.signaling",
+                attempted = "load_token",
+                outcome = Failed,
+                because = "credential_read_failed",
+                rule = "signaling.token.from_credential_store",
+                evidence = { error = %error },
+            );
+            Err(GithubSignalingError::CredentialStoreUnavailable)
+        }
     }
 }
 
 pub fn clear_token() -> Result<(), GithubSignalingError> {
     match token_entry()?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(_) => Err(GithubSignalingError::CredentialStoreUnavailable),
+        Err(error) => {
+            crate::decide!(
+                target: "sync.signaling",
+                attempted = "clear_token",
+                outcome = Failed,
+                because = "credential_delete_failed",
+                rule = "signaling.token.removable",
+                evidence = { error = %error },
+            );
+            Err(GithubSignalingError::CredentialStoreUnavailable)
+        }
     }
 }
 
@@ -449,6 +471,6 @@ mod tests {
             assert_eq!(seen_by_self, None);
             cleanup_session(&gist_id, &session_id).await.unwrap();
         });
-        let _ = clear_token();
+        crate::best_effort!(clear_token(), "test_token_already_cleared");
     }
 }

@@ -140,11 +140,11 @@ fn save_at(data_root: &Path, document: &AccessDocument) -> Result<(), String> {
         .and_then(|_| file.sync_all())
         .is_err()
     {
-        let _ = fs::remove_file(&temporary);
+        crate::best_effort!(fs::remove_file(&temporary), "temp_file_already_gone");
         return Err("access_center_write_failed".to_string());
     }
     replace(&temporary, &destination).map_err(|error| {
-        let _ = fs::remove_file(&temporary);
+        crate::best_effort!(fs::remove_file(&temporary), "temp_file_already_gone");
         error
     })
 }
@@ -154,6 +154,34 @@ fn valid_opaque(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+}
+
+/// Records an access entry, reporting a failure instead of discarding it.
+///
+/// Callers used to write `let _ = record_at(…)` — eight of them. The access log is what the user
+/// reads to answer "who reached into my project?", so a discarded write turns a failure into an
+/// absence, and an absence into the confident conclusion that nothing happened. On a security
+/// surface, being quietly wrong is worse than being loudly unavailable.
+///
+/// The return value is deliberately `()`: recording is a side effect of the operation that
+/// triggered it and must never fail that operation, but it must not vanish either.
+pub fn record_or_report_at(
+    data_root: &Path,
+    category: AccessCategory,
+    kind: AccessKind,
+    subject_handle: &str,
+    now_ms: u64,
+) {
+    if let Err(error) = record_at(data_root, category, kind, subject_handle, now_ms) {
+        crate::decide!(
+            target: "sync.access",
+            attempted = "record_access",
+            outcome = Failed,
+            because = "access_log_write_failed",
+            rule = "access_log.records_every_entry",
+            evidence = { kind = ?kind, subject = %subject_handle, error = %error },
+        );
+    }
 }
 
 pub fn record_at(
@@ -377,7 +405,7 @@ mod tests {
         for forbidden in ["projectName", "filePath", "bearer", "oauth", "ciphertext"] {
             assert!(!serialized.contains(forbidden));
         }
-        let _ = fs::remove_dir_all(root);
+        crate::best_effort!(fs::remove_dir_all(root), "test_dir_already_absent");
     }
 
     #[test]
@@ -408,7 +436,7 @@ mod tests {
         update_at(&root, &deferred.id, "defer", Some(5_000), 3_100).unwrap();
         assert!(list_at(&root, 4_000).unwrap().is_empty());
         assert_eq!(list_at(&root, 5_000).unwrap().len(), 1);
-        let _ = fs::remove_dir_all(root);
+        crate::best_effort!(fs::remove_dir_all(root), "test_dir_already_absent");
     }
 
     #[test]
@@ -433,6 +461,6 @@ mod tests {
         assert_eq!(updated.len(), 5);
         assert!(updated.iter().all(|record| record.dismissed_at_ms == Some(2_000)));
         assert!(list_at(&root, 3_000).unwrap().is_empty());
-        let _ = fs::remove_dir_all(root);
+        crate::best_effort!(fs::remove_dir_all(root), "test_dir_already_absent");
     }
 }

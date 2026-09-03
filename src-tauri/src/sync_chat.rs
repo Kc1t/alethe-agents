@@ -152,7 +152,18 @@ pub enum ChatError {
     InvalidInput,
     SizeMismatch,
     DecryptFailed,
+    /// Reading or writing the conversation on disk.
     Io,
+    /// Encoding or decoding a stored structure. A corrupt document is not a full disk, and the
+    /// remedy is different, but both used to report `chat_io_error`.
+    Encoding,
+    /// Key derivation or authenticated encryption. A failure here means a key mismatch or tampering
+    /// — it used to be reported identically to running out of disk space, which sent anyone reading
+    /// the error looking in entirely the wrong place.
+    Crypto,
+    /// The device secret could not be read from the OS credential store. Distinct because the
+    /// remedy is "unlock the keychain", not "free some space".
+    KeyMaterial,
 }
 
 impl std::fmt::Display for ChatError {
@@ -166,6 +177,9 @@ impl std::fmt::Display for ChatError {
             ChatError::SizeMismatch => "chat_size_mismatch",
             ChatError::DecryptFailed => "chat_decrypt_failed",
             ChatError::Io => "chat_io_error",
+            ChatError::Encoding => "chat_encoding_error",
+            ChatError::Crypto => "chat_crypto_error",
+            ChatError::KeyMaterial => "chat_key_material_unavailable",
         };
         write!(f, "{code}")
     }
@@ -204,7 +218,7 @@ const JOURNAL_COMPACT_THRESHOLD: usize = 50;
 pub(crate) fn load_at(data_root: &Path, conversation_id: &str) -> Result<ConversationDocument, ChatError> {
     let path = conversation_path(data_root, conversation_id);
     let bytes = fs::read(&path).map_err(|_| ChatError::NotFound)?;
-    let mut document: ConversationDocument = serde_json::from_slice(&bytes).map_err(|_| ChatError::Io)?;
+    let mut document: ConversationDocument = serde_json::from_slice(&bytes).map_err(|_| ChatError::Encoding)?;
     if document.schema_version != CHAT_SCHEMA_VERSION {
         return Err(ChatError::Io);
     }
@@ -240,7 +254,7 @@ fn append_message_to_journal_at(
     let path = journal_path(data_root, conversation_id);
     let parent = path.parent().ok_or(ChatError::Io)?;
     fs::create_dir_all(parent).map_err(|_| ChatError::Io)?;
-    let mut line = serde_json::to_vec(message).map_err(|_| ChatError::Io)?;
+    let mut line = serde_json::to_vec(message).map_err(|_| ChatError::Encoding)?;
     line.push(b'\n');
     let mut file = OpenOptions::new().create(true).append(true).open(&path).map_err(|_| ChatError::Io)?;
     file.write_all(&line).and_then(|_| file.sync_all()).map_err(|_| ChatError::Io)
@@ -298,18 +312,18 @@ fn save_at(data_root: &Path, document: &ConversationDocument) -> Result<(), Chat
     let parent = path.parent().ok_or(ChatError::Io)?;
     fs::create_dir_all(parent).map_err(|_| ChatError::Io)?;
     let temporary = parent.join(format!(".chat-{}.tmp", nanoid::nanoid!(12)));
-    let bytes = serde_json::to_vec_pretty(document).map_err(|_| ChatError::Io)?;
+    let bytes = serde_json::to_vec_pretty(document).map_err(|_| ChatError::Encoding)?;
     let mut file = OpenOptions::new()
         .create_new(true)
         .write(true)
         .open(&temporary)
         .map_err(|_| ChatError::Io)?;
     if file.write_all(&bytes).and_then(|_| file.sync_all()).is_err() {
-        let _ = fs::remove_file(&temporary);
+        crate::best_effort!(fs::remove_file(&temporary), "temp_file_already_gone");
         return Err(ChatError::Io);
     }
     replace_file(&temporary, &path).map_err(|error| {
-        let _ = fs::remove_file(&temporary);
+        crate::best_effort!(fs::remove_file(&temporary), "temp_file_already_gone");
         error
     })?;
     // A full rewrite always reflects everything the journal held (`load_at` merges journal
@@ -317,7 +331,10 @@ fn save_at(data_root: &Path, document: &ConversationDocument) -> Result<(), Chat
     // journal is now redundant — clear it so a future `load_at` doesn't re-merge already-included
     // messages. Best-effort: a leftover journal file is harmless (its messages are already
     // deduplicated by `message_id` on merge), just wasted space until the next compaction.
-    let _ = fs::remove_file(journal_path(data_root, &document.conversation.conversation_id));
+    crate::best_effort!(
+        fs::remove_file(journal_path(data_root, &document.conversation.conversation_id)),
+        "journal_already_compacted"
+    );
     Ok(())
 }
 
@@ -335,14 +352,14 @@ fn wrap_epoch_key_for(
     let hkdf = Hkdf::<Sha256>::new(None, shared.as_bytes());
     let info = format!("alethe-chat-epoch-wrap-v1|{conversation_id}|{epoch_number}");
     let mut wrap_key = [0_u8; 32];
-    hkdf.expand(info.as_bytes(), &mut wrap_key).map_err(|_| ChatError::Io)?;
+    hkdf.expand(info.as_bytes(), &mut wrap_key).map_err(|_| ChatError::Crypto)?;
 
     let mut nonce_bytes = [0_u8; 12];
     OsRng.fill_bytes(&mut nonce_bytes);
     let cipher = ChaCha20Poly1305::new(Key::from_slice(&wrap_key));
     let ciphertext = cipher
         .encrypt(Nonce::from_slice(&nonce_bytes), key.as_slice())
-        .map_err(|_| ChatError::Io)?;
+        .map_err(|_| ChatError::Crypto)?;
 
     Ok(EpochKeyWrap {
         member_account_route: String::new(), // filled in by the caller, which knows the member
@@ -368,7 +385,7 @@ pub fn unwrap_key(
     let hkdf = Hkdf::<Sha256>::new(None, shared.as_bytes());
     let info = format!("alethe-chat-epoch-wrap-v1|{conversation_id}|{epoch_number}");
     let mut wrap_key = [0_u8; 32];
-    hkdf.expand(info.as_bytes(), &mut wrap_key).map_err(|_| ChatError::Io)?;
+    hkdf.expand(info.as_bytes(), &mut wrap_key).map_err(|_| ChatError::Crypto)?;
     let cipher = ChaCha20Poly1305::new(Key::from_slice(&wrap_key));
     let nonce = Nonce::from_slice(&wrap.nonce);
     let plaintext = cipher.decrypt(nonce, wrap.wrapped_key.as_slice()).map_err(|_| ChatError::DecryptFailed)?;
@@ -553,11 +570,34 @@ pub fn delete_direct_conversation_at(
     let path = conversation_path(data_root, &conversation_id);
     // The journal (see `journal_path`'s doc comment) can hold messages not yet folded into the
     // base document — removing only the base file would leave those resurrectable on next load.
-    let _ = fs::remove_file(journal_path(data_root, &conversation_id));
+    // A journal that survives this deletion resurrects the conversation the user asked to erase,
+    // so a failure here is reported even though it does not stop the base deletion.
+    match fs::remove_file(journal_path(data_root, &conversation_id)) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => crate::decide!(
+            target: "sync.chat",
+            attempted = "delete_journal",
+            outcome = Failed,
+            because = "journal_remove_failed",
+            rule = "chat.delete.removes_journal_too",
+            evidence = { conversation_id = %conversation_id, error = %error },
+        ),
+    }
     match fs::remove_file(&path) {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(_) => Err(ChatError::Io),
+        Err(error) => {
+            crate::decide!(
+                target: "sync.chat",
+                attempted = "delete_conversation",
+                outcome = Failed,
+                because = "document_remove_failed",
+                rule = "chat.delete.removes_document",
+                evidence = { conversation_id = %conversation_id, error = %error },
+            );
+            Err(ChatError::Io)
+        }
     }
 }
 
@@ -578,7 +618,7 @@ pub fn delete_project_conversation_at(
         let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
         if let Ok(conversation) = load_conversation_at(data_root, stem) {
             if conversation.project_id.as_deref() == Some(project_id) {
-                let _ = fs::remove_file(journal_path(data_root, stem));
+                crate::best_effort!(fs::remove_file(journal_path(data_root, stem)), "journal_already_absent");
                 if fs::remove_file(&path).is_ok() {
                     deleted_count += 1;
                 }
@@ -684,7 +724,7 @@ pub fn send_message_at(
     document.next_sequence += 1;
     let nonce = message_nonce(epoch_number, sequence);
     let cipher = ChaCha20Poly1305::new(Key::from_slice(epoch_key));
-    let ciphertext = cipher.encrypt(Nonce::from_slice(&nonce), plaintext).map_err(|_| ChatError::Io)?;
+    let ciphertext = cipher.encrypt(Nonce::from_slice(&nonce), plaintext).map_err(|_| ChatError::Crypto)?;
 
     let message = MessageRecord {
         message_id: format!("cmsg_{}", nanoid::nanoid!(24)),
@@ -713,22 +753,13 @@ pub fn send_message_at(
         // discarded write there turns a failure into an absence, and an absence into the confident
         // conclusion that nothing happened — on a security surface, where being quietly wrong is
         // worse than being loudly unavailable.
-        if let Err(error) = crate::sync_access::record_at(
+        crate::sync_access::record_or_report_at(
             data_root,
             crate::sync_access::AccessCategory::Collaboration,
             crate::sync_access::AccessKind::ChatMention,
             &message.message_id,
             now_ms,
-        ) {
-            crate::decide!(
-                target: "sync.access",
-                attempted = "record_access",
-                outcome = Failed,
-                because = "access_log_write_failed",
-                rule = "access_log.records_every_entry",
-                evidence = { kind = %"chat_mention", subject = %message.message_id, error = %error },
-            );
-        }
+        );
     }
     Ok(message)
 }
@@ -780,7 +811,7 @@ pub(crate) fn resolve_epoch_key(
         return resolve_direct_epoch_key(conversation, epoch_number, account_route, device_id);
     }
     let wrap = epoch_wrap_at(conversation, epoch_number, account_route).ok_or(ChatError::NotAMember)?;
-    let secret = crate::sync_security::load_device_agreement_secret(device_id).map_err(|_| ChatError::Io)?;
+    let secret = crate::sync_security::load_device_agreement_secret(device_id).map_err(|_| ChatError::KeyMaterial)?;
     unwrap_key(wrap, &secret, &conversation.conversation_id, epoch_number)
 }
 
@@ -798,12 +829,12 @@ fn resolve_direct_epoch_key(
     let other_public_bytes: [u8; 32] =
         other.x25519_public_key.as_slice().try_into().map_err(|_| ChatError::InvalidInput)?;
     let other_public = X25519PublicKey::from(other_public_bytes);
-    let secret = crate::sync_security::load_device_agreement_secret(device_id).map_err(|_| ChatError::Io)?;
+    let secret = crate::sync_security::load_device_agreement_secret(device_id).map_err(|_| ChatError::KeyMaterial)?;
     let shared = secret.diffie_hellman(&other_public);
     let hkdf = Hkdf::<Sha256>::new(None, shared.as_bytes());
     let info = format!("alethe-chat-direct-epoch-v1|{}|{epoch_number}", conversation.conversation_id);
     let mut key = [0_u8; 32];
-    hkdf.expand(info.as_bytes(), &mut key).map_err(|_| ChatError::Io)?;
+    hkdf.expand(info.as_bytes(), &mut key).map_err(|_| ChatError::Crypto)?;
     Ok(key)
 }
 
@@ -838,7 +869,7 @@ pub fn edit_message_at(
         .ok_or(ChatError::NotFound)?;
     let nonce = message_nonce(message.epoch, message.sequence);
     let cipher = ChaCha20Poly1305::new(Key::from_slice(editor_epoch_key));
-    let ciphertext = cipher.encrypt(Nonce::from_slice(&nonce), new_plaintext).map_err(|_| ChatError::Io)?;
+    let ciphertext = cipher.encrypt(Nonce::from_slice(&nonce), new_plaintext).map_err(|_| ChatError::Crypto)?;
     message.ciphertext = ciphertext;
     message.edited_at_ms = Some(now_ms);
     let updated = message.clone();
@@ -934,7 +965,7 @@ pub fn upload_attachment_at(
     let mut nonce_bytes = [0_u8; 12];
     OsRng.fill_bytes(&mut nonce_bytes);
     let cipher = ChaCha20Poly1305::new(Key::from_slice(&attachment_key));
-    let ciphertext = cipher.encrypt(Nonce::from_slice(&nonce_bytes), plaintext).map_err(|_| ChatError::Io)?;
+    let ciphertext = cipher.encrypt(Nonce::from_slice(&nonce_bytes), plaintext).map_err(|_| ChatError::Crypto)?;
 
     let attachment = AttachmentRecord {
         attachment_id,
@@ -1413,7 +1444,7 @@ pub(crate) fn download_attachment_plaintext(
         .find(|wrap| wrap.member_account_route == account_route)
         .ok_or(ChatError::NotAMember)?;
     let secret =
-        crate::sync_security::load_device_agreement_secret(device_id).map_err(|_| ChatError::Io)?;
+        crate::sync_security::load_device_agreement_secret(device_id).map_err(|_| ChatError::KeyMaterial)?;
     let attachment_key = unwrap_key(wrap, &secret, attachment_id, 0)?;
     decrypt_attachment(attachment, &attachment_key)
 }

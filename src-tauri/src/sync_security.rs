@@ -457,7 +457,20 @@ impl DeviceSecretStore for PlatformDeviceSecretStore {
             .map_err(|_| "credential_store_unavailable".to_string())?;
         match entry.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(_) => Err("credential_store_delete_failed".to_string()),
+            Err(error) => {
+                // The cause is kept in the record even though the caller only gets a code: a
+                // locked keychain, a revoked permission and a missing service all produced the
+                // same string, and the remedy differs for each.
+                crate::decide!(
+                    target: "sync.security",
+                    attempted = "delete_device_secret",
+                    outcome = Failed,
+                    because = "credential_delete_failed",
+                    rule = "security.device_secret.removable",
+                    evidence = { device_id = %device_id, error = %error },
+                );
+                Err("credential_store_delete_failed".to_string())
+            }
         }
     }
 }
@@ -766,15 +779,17 @@ fn save_at(data_root: &Path, document: &SyncSecurityDocument) -> Result<(), Stri
         .and_then(|_| file.sync_all())
         .is_err()
     {
-        let _ = fs::remove_file(&temporary);
+        crate::best_effort!(fs::remove_file(&temporary), "temp_file_already_gone");
         return Err("security_document_write_failed".to_string());
     }
     replace_file(&temporary, &path).map_err(|error| {
-        let _ = fs::remove_file(&temporary);
+        crate::best_effort!(fs::remove_file(&temporary), "temp_file_already_gone");
         error
     })?;
     if let Ok(directory) = OpenOptions::new().read(true).open(parent) {
-        let _ = directory.sync_all();
+        // Durability of the rename itself. Not every platform or filesystem supports fsync on a
+        // directory handle, and a refusal there is not a failed write.
+        crate::best_effort!(directory.sync_all(), "directory_fsync_unsupported");
     }
     Ok(())
 }
@@ -964,7 +979,7 @@ pub(crate) fn redeem_invitation(
         Some(invitation_id.to_string()),
     );
     save_at(data_root, &document)?;
-    let _ = crate::sync_access::record_at(
+    crate::sync_access::record_or_report_at(
         data_root,
         crate::sync_access::AccessCategory::Collaboration,
         crate::sync_access::AccessKind::InvitationRedeemed,
@@ -1405,7 +1420,8 @@ pub(crate) fn complete_verified_identity<S: DeviceSecretStore>(
         &agreement_secret_entry_id(&device_id),
         &agreement_secret.to_bytes(),
     ) {
-        let _ = secret_store.delete(&device_id);
+        // Rolling back the half-created device. It may legitimately not be there yet.
+        crate::best_effort!(secret_store.delete(&device_id), "rollback_secret_absent");
         return Err(error);
     }
     let device = DeviceRecord {
@@ -1442,14 +1458,17 @@ pub(crate) fn complete_verified_identity<S: DeviceSecretStore>(
         None,
     );
     if let Err(error) = save_at(data_root, &document) {
-        let _ = secret_store.delete(&device.device_id);
-        let _ = secret_store.delete(&agreement_secret_entry_id(&device.device_id));
+        crate::best_effort!(secret_store.delete(&device.device_id), "rollback_secret_absent");
+        crate::best_effort!(
+            secret_store.delete(&agreement_secret_entry_id(&device.device_id)),
+            "rollback_agreement_secret_absent"
+        );
         return Err(error);
     }
     if !is_first_device_for_account {
         // Best-effort: a failure to publish the access-center record must never fail device
         // registration itself, which already succeeded and was persisted above.
-        let _ = crate::sync_access::record_at(
+        crate::sync_access::record_or_report_at(
             data_root,
             crate::sync_access::AccessCategory::Security,
             crate::sync_access::AccessKind::DevicePendingApproval,
@@ -1954,7 +1973,7 @@ fn queue_pending_chat_contact_request_at(
     let mut document = load_at(data_root)?;
     document.pending_chat_contact_requests.push(request.clone());
     save_at(data_root, &document)?;
-    let _ = crate::sync_access::record_at(
+    crate::sync_access::record_or_report_at(
         data_root,
         crate::sync_access::AccessCategory::Collaboration,
         crate::sync_access::AccessKind::PairingRequestPending,

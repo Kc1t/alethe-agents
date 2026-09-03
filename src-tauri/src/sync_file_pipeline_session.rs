@@ -376,7 +376,7 @@ mod tests {
 
         fs::remove_dir_all(&source).unwrap();
         fs::remove_dir_all(&receiver_data_root).unwrap();
-        let _ = fs::remove_dir_all(&destination);
+        crate::best_effort!(fs::remove_dir_all(&destination), "test_dir_already_absent");
     }
 
     #[test]
