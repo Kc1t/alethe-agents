@@ -2,7 +2,16 @@ import { realpath } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
-export const CORE_URL = 'http://127.0.0.1:1423'
+/**
+ * Where the local Alethe Core is expected to answer.
+ *
+ * `ALETHE_SERVER_PORT` is what pins the Core to a different port when 1423 is taken (see
+ * `bind_server_listener` in `server_main/mod.rs`), and both `vite.config.ts` and the launcher
+ * honour it. Ignoring it here meant `--diagnose` probed 1423 regardless and reported "no Core
+ * found" about a Core that was running perfectly well one port over.
+ */
+export const CORE_PORT = Number(process.env.ALETHE_SERVER_PORT) || 1423
+export const CORE_URL = `http://127.0.0.1:${CORE_PORT}`
 export const CORE_API_VERSION = 1
 
 export function expectedAppIdentifier(env = process.env) {

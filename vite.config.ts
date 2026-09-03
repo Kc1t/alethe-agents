@@ -12,6 +12,11 @@ export default defineConfig({
     // always agree; running Vite directly (`npm run dev`) still defaults to
     // 1422.
     port: Number(process.env.ALETHE_DEV_PORT) || 1422,
+    // Bind one loopback stack explicitly. Left to `localhost`, Vite resolves `::1` first on
+    // Windows while the port scan in `dev-instance.mjs` checks IPv4 — the scan then calls a port
+    // free that Vite cannot bind, and `npm run app` dies on "Port already in use". Naming the
+    // address here removes the whole class of mismatch rather than one instance of it.
+    host: '127.0.0.1',
     // Keeps the dev UI's port predictable once chosen (referenced by the
     // storage-identity contract test) instead of silently drifting to
     // another one if it's somehow taken after `dev-instance.mjs` already

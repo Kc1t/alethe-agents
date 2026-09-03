@@ -36,18 +36,41 @@ const PORT_SCAN_RANGE = 200
 // entry points resolve to the same Tauri data root for the same checkout.
 const BASE_IDENTIFIER = 'com.kc1t.alethe.dev'
 
-function isPortFree(port) {
+/** The loopback addresses a port has to be free on. See `isPortFree`. */
+export const LOOPBACK_HOSTS = ['127.0.0.1', '::1']
+
+function isHostPortFree(host, port) {
   return new Promise((resolve) => {
     const server = createServer()
-    server.once('error', () => resolve(false))
-    server.listen({ host: '127.0.0.1', port }, () => {
+    server.once('error', (error) => {
+      // A machine with IPv6 disabled cannot bind `::1` at all, which is not the same thing as the
+      // port being taken — treating it as taken would reject every port in the scan range.
+      resolve(error.code === 'EAFNOSUPPORT' || error.code === 'EADDRNOTAVAIL')
+    })
+    server.listen({ host, port }, () => {
       server.close(() => resolve(true))
     })
   })
 }
 
-async function findFreePort(preferred) {
-  for (let port = preferred; port < preferred + PORT_SCAN_RANGE; port += 1) {
+/**
+ * True only when the port is free on *both* loopback stacks.
+ *
+ * Probing only `127.0.0.1` is how `npm run app` came to fail with "Port 1594 is already in use"
+ * against a port this scan had just called free: a stale process was listening on `[::1]:1594`,
+ * invisible to an IPv4-only probe, and Vite — which resolves `localhost` to `::1` first on
+ * Windows — then tried to bind the stack that was actually occupied. The probe asked one stack and
+ * the server bound the other.
+ */
+export async function isPortFree(port) {
+  for (const host of LOOPBACK_HOSTS) {
+    if (!(await isHostPortFree(host, port))) return false
+  }
+  return true
+}
+
+export async function findFreePort(preferred, range = PORT_SCAN_RANGE) {
+  for (let port = preferred; port < preferred + range; port += 1) {
     if (await isPortFree(port)) return port
   }
   throw new Error(`No free port found near ${preferred}`)
@@ -124,7 +147,10 @@ async function main() {
   const configOverride = JSON.stringify({
     productName: `Alethe Dev (${worktreeName})`,
     identifier,
-    build: { devUrl: `http://localhost:${port}` },
+    // Pinned to the IPv4 loopback rather than `localhost`, which resolves to `::1` first on
+    // Windows. Vite binds the same address (see `vite.config.ts`), so both ends of the dev server
+    // name one stack instead of each picking its own.
+    build: { devUrl: `http://127.0.0.1:${port}` },
   })
 
   const cargoTargetDir = process.env.CARGO_TARGET_DIR || (await sharedCargoTargetDir())

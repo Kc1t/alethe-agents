@@ -10,6 +10,14 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Não lançado]
 
+### Fixed
+
+- **`npm run app` no longer fails with "Port already in use" against a port it had just picked.** The port scan probed only the IPv4 loopback while Vite, which resolves `localhost` to `::1` first on Windows, bound the other stack — so a stale process listening on `[::1]:1594` was invisible to the scan and fatal to the launch. The scan now requires a port to be free on both loopback stacks, and the dev server and Tauri's `devUrl` both name the IPv4 address explicitly instead of each resolving `localhost` on its own. A machine with IPv6 disabled is handled as "cannot bind", not as "port taken".
+
+- **`npm run web` picks a free port for the Web UI instead of assuming 1424.** With `strictPort` set, a taken 1424 killed the launcher outright; and the URL was printed before Vite had bound anything, so it could name a port nothing was serving.
+
+- **`npm run web:diagnose` honours `ALETHE_SERVER_PORT`.** It probed 1423 unconditionally, so a Core deliberately pinned to another port was reported as "no Core found" — the diagnostic asserting absence about something running one port over.
+
 ### Changed
 
 - **`npm test` and `npm run build` work again on Windows.** Six scripts chained their steps with `&&`, which Windows PowerShell 5.1 does not have, so on any machine where npm's `script-shell` points at it the script died on a parser error before the first step ran — the test suite itself was fine and never got to say so. Steps are now sequenced by `scripts/run-seq.mjs`, which behaves identically under cmd, PowerShell and sh. `npm run app:logs` also stopped depending on `mkdir -p` and `tee`.

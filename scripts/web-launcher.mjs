@@ -1,6 +1,9 @@
 import { spawn } from 'node:child_process'
 
-import { probeCore } from './web-launcher-lib.mjs'
+import { findFreePort } from './dev-instance.mjs'
+import { CORE_PORT, probeCore } from './web-launcher-lib.mjs'
+
+const WEB_UI_PORT = 1424
 
 const startedAt = performance.now()
 const children = new Set()
@@ -58,7 +61,9 @@ async function main() {
 
   if (initial.status === 'incompatible') throw new Error(initial.reason)
   if (initial.status === 'compatible') {
-    milestone(`Compatible ${initial.runtime.mode} Core found (${initial.runtime.instanceId})`)
+    milestone(
+      `Compatible ${initial.runtime.mode} Core found on port ${CORE_PORT} (${initial.runtime.instanceId})`,
+    )
   } else {
     milestone('No Core found; starting the standalone Core')
     ownsCore = true
@@ -67,8 +72,15 @@ async function main() {
     milestone(`Standalone Core ready (${ready.runtime.instanceId})`)
   }
 
-  milestone('Starting the Web UI on http://localhost:1424')
-  launch('npx', ['vite', '--port', '1424'])
+  // 1424 was hardcoded and never checked. `strictPort` in `vite.config.ts` means Vite refuses to
+  // drift to another port, so a taken 1424 killed the launcher instead of moving over — and the
+  // URL was printed before Vite had bound anything, so it could name a port nothing was serving.
+  const uiPort = await findFreePort(WEB_UI_PORT, 20)
+  if (uiPort !== WEB_UI_PORT) {
+    milestone(`Port ${WEB_UI_PORT} is taken; using ${uiPort} for the Web UI`)
+  }
+  milestone(`Starting the Web UI on http://127.0.0.1:${uiPort}`)
+  launch('npx', ['vite', '--port', String(uiPort)])
 }
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
