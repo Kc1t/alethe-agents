@@ -66,7 +66,7 @@ type MenuActions = Pick<
   | 'setTerminalDisabled'
   | 'killTerminal'
   | 'setLaneVisible'
-  | 'setTerminalRemoteExcluded'
+  | 'setTerminalRemoteShared'
   | 'deleteTerminal'
   | 'deleteTerminalWithWorktreeCleanup'
   | 'setPreferences'
@@ -607,12 +607,12 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
         ? [
             {
               kind: 'item' as const,
-              label: term.remoteExcluded
-                ? t('ui.terminal.shareWithRemote')
-                : t('ui.terminal.hideFromRemote'),
-              icon: term.remoteExcluded ? <Smartphone size={14} /> : <SmartphoneNfc size={14} />,
+              label: term.remoteShared
+                ? t('ui.terminal.hideFromRemote')
+                : t('ui.terminal.shareWithRemote'),
+              icon: term.remoteShared ? <SmartphoneNfc size={14} /> : <Smartphone size={14} />,
               onClick: () =>
-                actions.setTerminalRemoteExcluded(projectId, term.id, !term.remoteExcluded),
+                actions.setTerminalRemoteShared(projectId, term.id, !term.remoteShared),
             },
           ]
         : []),

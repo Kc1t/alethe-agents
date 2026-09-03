@@ -80,9 +80,47 @@ describe('projects file migration', () => {
       preferences: { ...DEFAULT_PREFERENCES, workspaceGridLayoutHistory: undefined },
     })
 
-    expect(migrated.version).toBe(7)
+    expect(migrated.version).toBe(8)
     expect(migrated.projects[0].gridLayoutHistory).toEqual([])
     expect(migrated.groups[0].gridLayoutHistory).toEqual([])
     expect(migrated.preferences.workspaceGridLayoutHistory).toEqual([])
+  })
+
+  it('carries forward remote sharing when migrating v7 data to v8', () => {
+    const migrated = migrate({
+      ...EMPTY_PROJECTS_FILE,
+      version: 7,
+      projects: [
+        {
+          id: 'project',
+          terminals: [
+            { id: 'excluded', remoteExcluded: true },
+            { id: 'shared', remoteExcluded: false },
+            { id: 'untouched' },
+          ],
+        },
+      ],
+    })
+
+    expect(migrated.version).toBe(8)
+    const terminals = migrated.projects[0].terminals
+    expect(terminals.find((t) => t.id === 'excluded')?.remoteShared).toBe(false)
+    expect(terminals.find((t) => t.id === 'shared')?.remoteShared).toBe(true)
+    expect(terminals.find((t) => t.id === 'untouched')?.remoteShared).toBe(true)
+  })
+
+  it('leaves an explicit remoteShared value untouched when migrating to v8', () => {
+    const migrated = migrate({
+      ...EMPTY_PROJECTS_FILE,
+      version: 7,
+      projects: [
+        {
+          id: 'project',
+          terminals: [{ id: 'terminal', remoteExcluded: true, remoteShared: true }],
+        },
+      ],
+    })
+
+    expect(migrated.projects[0].terminals[0].remoteShared).toBe(true)
   })
 })

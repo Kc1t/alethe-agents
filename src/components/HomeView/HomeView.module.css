@@ -980,6 +980,11 @@
   background: color-mix(in srgb, var(--agent-mimo) 16%, transparent);
   border-color: color-mix(in srgb, var(--agent-mimo) 28%, transparent);
 }
+.notifKiro {
+  color: var(--agent-kiro);
+  background: color-mix(in srgb, var(--agent-kiro) 16%, transparent);
+  border-color: color-mix(in srgb, var(--agent-kiro) 28%, transparent);
+}
 
 .notifBody {
   display: flex;

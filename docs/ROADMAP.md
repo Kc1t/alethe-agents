@@ -117,6 +117,11 @@ Only once the four stages above are real.
   through the handoff packet.
 - Budgets per project, not just per run.
 
+> Cross-reference: `ORCHESTRATOR_ROADMAP.md`'s own Phase 5/6 attack this same "agent selection by
+> cost" ambition from the `alethe_delegate` side, ahead of this document's Phases 1-4 being real.
+> The two roadmaps are deliberately not merged (see that document's header) — reconcile once both
+> have shipped something concrete, not before.
+
 ---
 
 ## Explicit non-goals

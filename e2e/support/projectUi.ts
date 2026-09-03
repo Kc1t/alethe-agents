@@ -21,7 +21,7 @@
  *    which element was resolved, no exceptions; (b) every modal switch
  *    actively waits for the PREVIOUS modal to disappear from the DOM before continuing; (c)
  *    the "New terminal" agent selection is scoped inside the container
- *    of that specific modal (found via `h2*=Novo terminal`), never a
+ *    of that specific modal (found via `h2*=Nova sessão`), never a
  *    loose search on the whole page.
  *
  * `__ALETHE_E2E_QUERY__` (see `src/lib/e2eHooks.ts`) is used only to READ
@@ -458,7 +458,7 @@ export async function openAgentTerminalViaUi(agentLabel: string): Promise<void> 
 }
 
 /**
- * Selects the agent and clicks "Open <Agent>" in a "New terminal" modal that
+ * Selects the agent and clicks "Open <Agent>" in a "New session" modal that
  * is ALREADY OPEN — reused both by `openAgentTerminalViaUi` (which
  * opens the modal first, via the project's "+") and by the modal that opens
  * ON ITS OWN right after creating a project (`completeAutoOpenedNewTerminal`)
@@ -474,19 +474,24 @@ async function selectAgentInOpenNewTerminalModal(agentLabel: string): Promise<vo
   // found", because the element exists in the DOM but never becomes visible).
   const modal = await $('[role="dialog"]')
   await modal.waitForDisplayed({ timeout: 10_000 })
-  const modalTitle = await modal.$('h2*=Novo terminal')
+  const modalTitle = await modal.$('h2*=Nova sessão')
   await modalTitle.waitForDisplayed({ timeout: 10_000 })
 
-  const agentCard = await modal.$(`button*=${agentLabel}`)
-  await agentCard.waitForClickable({ timeout: 10_000 })
-  await markScreenshotAndClick(agentCard, nextShotName(`selecionar-agente-${agentLabel}`))
+  // The agent is a row select: open the field, then pick the option from the portaled menu.
+  const agentField = await modal.$('[data-alethe-field="agent"]')
+  await agentField.waitForClickable({ timeout: 10_000 })
+  await markScreenshotAndClick(agentField, nextShotName(`abrir-lista-agentes-${agentLabel}`))
+
+  const agentOption = await $(`[data-alethe-dropdown-menu] button*=${agentLabel}`)
+  await agentOption.waitForClickable({ timeout: 10_000 })
+  await markScreenshotAndClick(agentOption, nextShotName(`selecionar-agente-${agentLabel}`))
 
   const openButton = await modal.$(`button*=Abrir ${agentLabel}`)
   await openButton.waitForDisplayed({ timeout: 5_000 })
-  const pressed = await agentCard.getAttribute('aria-pressed')
-  if (pressed !== 'true') {
+  const selectedLabel = await agentField.getText()
+  if (!selectedLabel.includes(agentLabel)) {
     throw new Error(
-      `selectAgentInOpenNewTerminalModal: card "${agentLabel}" did not end up with aria-pressed=true after the click (got "${pressed}")`,
+      `selectAgentInOpenNewTerminalModal: field did not end up showing "${agentLabel}" after the click (got "${selectedLabel}")`,
     )
   }
 

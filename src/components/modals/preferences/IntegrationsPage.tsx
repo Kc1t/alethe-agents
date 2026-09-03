@@ -8,6 +8,7 @@ import {
   cliShimUninstall,
 } from '../../../lib/tauri'
 import { useProjectsStore } from '../../../stores/projectsStore'
+import { Router9Settings } from '../../Router9/Router9Settings'
 import controls from '../controls.module.css'
 import styles from '../PreferencesModal.module.css'
 import { SettingsSection } from './primitives'
@@ -104,12 +105,15 @@ function TerminalCommandSection() {
 }
 
 export function IntegrationsPage() {
+
   const t = useT()
   const preferences = useProjectsStore((state) => state.preferences)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
   return (
     <>
       <TerminalCommandSection />
+
+      <Router9Settings />
 
       <SettingsSection id="spotify" title={t('prefs.spotify')} description={t('prefs.spotifyDesc')}>
         <div className={styles.integrationFields}>

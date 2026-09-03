@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { normalizeEnabledFeatures } from './features'
+import { legacyGitFeatureFlag, normalizeEnabledFeatures } from './features'
 
 describe('normalizeEnabledFeatures', () => {
   it('enables the initial modules for a fresh profile', () => {
     expect(normalizeEnabledFeatures(undefined)).toEqual({
       todos: true,
-      git: true,
       browser: true,
       graphify: true,
       aiMemory: false,
@@ -16,10 +15,9 @@ describe('normalizeEnabledFeatures', () => {
     })
   })
 
-  it('preserves legacy Git and keeps Todo off for existing profiles', () => {
+  it('keeps Todo off for existing profiles', () => {
     expect(normalizeEnabledFeatures({ showGitControl: false })).toEqual({
       todos: false,
-      git: false,
       browser: true,
       graphify: true,
       aiMemory: false,
@@ -30,9 +28,8 @@ describe('normalizeEnabledFeatures', () => {
   })
 
   it('preserves explicit modular preferences', () => {
-    expect(normalizeEnabledFeatures({ enabledFeatures: { todos: false, git: true } })).toEqual({
+    expect(normalizeEnabledFeatures({ enabledFeatures: { todos: false } })).toEqual({
       todos: false,
-      git: true,
       browser: true,
       graphify: true,
       aiMemory: false,
@@ -44,10 +41,9 @@ describe('normalizeEnabledFeatures', () => {
 
   it('keeps AI Memory off unless explicitly enabled', () => {
     expect(
-      normalizeEnabledFeatures({ enabledFeatures: { todos: true, git: true, aiMemory: true } }),
+      normalizeEnabledFeatures({ enabledFeatures: { todos: true, aiMemory: true } }),
     ).toEqual({
       todos: true,
-      git: true,
       browser: true,
       graphify: true,
       aiMemory: true,
@@ -76,5 +72,23 @@ describe('normalizeEnabledFeatures', () => {
 
   it('preserves an explicit Graphify preference', () => {
     expect(normalizeEnabledFeatures({ enabledFeatures: { graphify: false } }).graphify).toBe(false)
+  })
+
+  it('no longer carries Git, which is a plugin now', () => {
+    expect(normalizeEnabledFeatures(undefined)).not.toHaveProperty('git')
+    expect(normalizeEnabledFeatures({ enabledFeatures: { git: false } })).not.toHaveProperty('git')
+  })
+})
+
+describe('legacyGitFeatureFlag', () => {
+  it('reads the modular flag, then the pre-modular one', () => {
+    expect(legacyGitFeatureFlag({ enabledFeatures: { git: false } })).toBe(false)
+    expect(legacyGitFeatureFlag({ enabledFeatures: { git: true } })).toBe(true)
+    expect(legacyGitFeatureFlag({ showGitControl: false })).toBe(false)
+  })
+
+  it('is undefined for a profile that never had the feature flag', () => {
+    expect(legacyGitFeatureFlag(undefined)).toBeUndefined()
+    expect(legacyGitFeatureFlag({ enabledFeatures: { todos: true } })).toBeUndefined()
   })
 })

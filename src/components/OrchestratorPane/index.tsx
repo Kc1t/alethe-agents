@@ -1,11 +1,15 @@
+import { convertFileSrc } from '@tauri-apps/api/core'
 import {
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   CornerDownLeft,
   Cpu,
   FilePen,
   GitBranch,
+  Globe2,
   Minus,
+  Network,
   Plus,
   Terminal as TerminalIcon,
   X,
@@ -21,6 +25,8 @@ import {
   useState,
 } from 'react'
 
+import { useOrchestratorQuotaWarnings } from '../../hooks/useOrchestratorQuotaWarnings'
+import { formatReset } from '../../lib/agentCanvasUtils'
 import { type MessageKey, type TFunction, useT } from '../../lib/i18n'
 import {
   DOT_SPACING,
@@ -28,11 +34,13 @@ import {
   focusView,
   type GraphNode,
   layoutPlannerBoard,
+  mediaNodeId,
   type NodeHeights,
   rootNodeId,
   type ViewTransform,
   zoomAt,
 } from '../../lib/orchestratorGraph'
+import { extractMediaItems, type MediaItem } from '../../lib/orchestratorMedia'
 import {
   type Attention,
   type AttentionLane,
@@ -45,20 +53,33 @@ import {
   RUN_LANE_ORDER,
   type RunLane,
 } from '../../lib/orchestratorRuns'
+import { nativeSubagentJobs } from '../../lib/orchestratorSubagents'
+import { basename } from '../../lib/paths'
 import {
+  gitStatus,
   listenOrchestratorJobs,
+  mergeAnalyze,
+  mergeFinalize,
+  mergePrepare,
   orchestratorAnswer,
   type OrchestratorDecision,
   type OrchestratorJob,
+  orchestratorJobDiff,
   orchestratorJobs,
   orchestratorMessage,
   type OrchestratorPendingApproval,
   type OrchestratorSnapshot,
+  worktreeCommitWorktree,
+  worktreeFetchBranch,
+  worktreeRemove,
 } from '../../lib/tauri'
 import { parseAgentType, type Project, type Terminal, type Theme } from '../../lib/types'
+import { useAgentCanvasStore } from '../../stores/agentCanvasStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AgentIcon } from '../icons/AgentIcons'
+import { MarkdownRenderer } from '../MarkdownPane/MarkdownRenderer'
+import { Modal } from '../modals/Modal'
 import { Collapse } from '../ui/Collapse'
 import styles from './OrchestratorPane.module.css'
 
@@ -168,9 +189,42 @@ const MODE_LABEL: Record<MessageMode, MessageKey> = {
 // Released and cancelled workers are gone for good. An interrupted one is not: `alethe_send`
 // re-queues a worker whose process died and resumes its thread, so a message is how it comes back.
 function canMessage(job: OrchestratorJob): boolean {
+  if (job.native) return false
   if (job.status === 'released' || job.status === 'cancelled') return false
   if (job.status === 'interrupted') return job.threadId !== null
   return true
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return url
+  }
+}
+
+function pathOf(url: string): string {
+  try {
+    const parsed = new URL(url)
+    return `${parsed.pathname}${parsed.search}` || '/'
+  } catch {
+    return ''
+  }
+}
+
+function diffLineClass(line: string): string | undefined {
+  if (line.startsWith('+') && !line.startsWith('+++')) return styles.diffAdded
+  if (line.startsWith('-') && !line.startsWith('---')) return styles.diffRemoved
+  if (line.startsWith('@@ ')) return styles.diffHunk
+  if (
+    line.startsWith('diff ') ||
+    line.startsWith('index ') ||
+    line.startsWith('--- ') ||
+    line.startsWith('+++ ')
+  ) {
+    return styles.diffHeaderLine
+  }
+  return undefined
 }
 
 function messageMode(job: OrchestratorJob): MessageMode {
@@ -300,10 +354,18 @@ type WorkerNodeProps = {
   node: GraphNode
   selected: boolean
   answering: boolean
+  applying: boolean
+  applied: boolean
+  projectId: string
+  diffOpen: boolean
+  diffText: string | undefined
+  diffLoading: boolean
   theme: Theme
   onSelect: (id: string) => void
   onMessage: (id: string) => void
   onAnswer: AnswerFn
+  onToggleDiff: (id: string) => void
+  onApply: (job: OrchestratorJob) => void
   bind: BindNode
   t: TFunction
 }
@@ -313,10 +375,18 @@ function WorkerNode({
   node,
   selected,
   answering,
+  applying,
+  applied,
+  projectId,
+  diffOpen,
+  diffText,
+  diffLoading,
   theme,
   onSelect,
   onMessage,
   onAnswer,
+  onToggleDiff,
+  onApply,
   bind,
   t,
 }: WorkerNodeProps) {
@@ -326,6 +396,15 @@ function WorkerNode({
   const live = latestLine(job.summary) || latestLine(job.spec)
   const plan = job.plan.filter((step) => step.trim().length > 0)
   const report = job.summary.trim()
+  // The first image already has its own card below this node (see `promotedMediaByJobId` in the
+  // parent) — the strip here only ever shows what didn't get promoted: links, and any 2nd+ image.
+  const remainingMedia = useMemo(() => {
+    if (!report) return []
+    const items = extractMediaItems(report)
+    const promotedIndex = items.findIndex((item) => item.kind !== 'link')
+    return promotedIndex === -1 ? items : items.filter((_, index) => index !== promotedIndex)
+  }, [report])
+  const [previewMedia, setPreviewMedia] = useState<MediaItem | null>(null)
 
   return (
     <article
@@ -407,17 +486,126 @@ function WorkerNode({
             </>
           )}
           <div className={styles.detailLabel}>{t('orchestrator.summaryLabel')}</div>
-          <p className={styles.report}>{report || t('orchestrator.noReport')}</p>
-          {canMessage(job) && (
+          {report ? (
+            <div className={styles.report}>
+              <MarkdownRenderer content={report} dark={theme === 'dark'} />
+            </div>
+          ) : (
+            <p className={styles.report}>{t('orchestrator.noReport')}</p>
+          )}
+          {remainingMedia.length > 0 && (
+            <div className={styles.mediaStrip}>
+              {remainingMedia.map((item) =>
+                item.kind === 'link' ? (
+                  <button
+                    key={item.value}
+                    type="button"
+                    className={styles.mediaLink}
+                    title={item.value}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={() =>
+                      useProjectsStore.getState().createWebPane(projectId, { url: item.value })
+                    }
+                  >
+                    <Globe2 size={13} />
+                    <span className={styles.mediaLinkText}>
+                      <span className={styles.mediaLinkHost}>{hostnameOf(item.value)}</span>
+                      <span className={styles.mediaLinkPath}>{pathOf(item.value)}</span>
+                    </span>
+                  </button>
+                ) : (
+                  <button
+                    key={item.value}
+                    type="button"
+                    className={styles.mediaFigure}
+                    title={item.value}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={() => setPreviewMedia(item)}
+                  >
+                    <img
+                      className={styles.mediaThumb}
+                      src={item.kind === 'image-local' ? convertFileSrc(item.value) : item.value}
+                      alt=""
+                      loading="lazy"
+                    />
+                    <span className={styles.mediaCaption}>{basename(item.value)}</span>
+                  </button>
+                ),
+              )}
+            </div>
+          )}
+          {previewMedia && (
+            <Modal
+              open
+              onClose={() => setPreviewMedia(null)}
+              title={basename(previewMedia.value)}
+              width={720}
+            >
+              <div className={styles.mediaPreviewBody}>
+                <img
+                  className={styles.mediaPreviewImage}
+                  src={
+                    previewMedia.kind === 'image-local'
+                      ? convertFileSrc(previewMedia.value)
+                      : previewMedia.value
+                  }
+                  alt=""
+                />
+                <div className={styles.mediaPreviewPath} title={previewMedia.value}>
+                  {previewMedia.value}
+                </div>
+              </div>
+            </Modal>
+          )}
+          {(canMessage(job) || job.hasDiff || (job.worktree && job.status === 'done')) && (
             <div className={styles.detailActions}>
-              <button
-                type="button"
-                className={styles.action}
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={() => onMessage(job.id)}
-              >
-                {t('orchestrator.messageAction')}
-              </button>
+              {canMessage(job) && (
+                <button
+                  type="button"
+                  className={styles.action}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => onMessage(job.id)}
+                >
+                  {t('orchestrator.messageAction')}
+                </button>
+              )}
+              {job.hasDiff && (
+                <button
+                  type="button"
+                  className={styles.action}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => onToggleDiff(job.id)}
+                >
+                  {t(diffOpen ? 'orchestrator.hideDiff' : 'orchestrator.viewDiff')}
+                </button>
+              )}
+              {job.worktree && job.status === 'done' && !applied && (
+                <button
+                  type="button"
+                  className={styles.action}
+                  disabled={applying}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => onApply(job)}
+                >
+                  {t(applying ? 'orchestrator.applying' : 'orchestrator.applyAction')}
+                </button>
+              )}
+            </div>
+          )}
+          {diffOpen && (
+            <div className={styles.diffBlock} onPointerDown={(event) => event.stopPropagation()}>
+              {diffLoading ? (
+                <p className={styles.report}>{t('orchestrator.diffLoading')}</p>
+              ) : (
+                <pre className={styles.diffText}>
+                  {(diffText || t('diff.empty')).split('\n').map((line, index) => (
+                    <span key={index} className={diffLineClass(line)}>
+                      {line}
+                      {'\n'}
+                    </span>
+                  ))}
+                </pre>
+              )}
             </div>
           )}
         </div>
@@ -431,6 +619,46 @@ function WorkerNode({
         >
           <i style={{ width: `${share}%` }} />
         </span>
+      )}
+    </article>
+  )
+}
+
+type MediaCardNodeProps = {
+  node: GraphNode
+  item: MediaItem
+  bind: BindNode
+}
+
+function MediaCardNode({ node, item, bind }: MediaCardNodeProps) {
+  const [open, setOpen] = useState(false)
+  const src = item.kind === 'image-local' ? convertFileSrc(item.value) : item.value
+
+  return (
+    <article
+      ref={(element) => bind(node.id, element)}
+      className={styles.media}
+      style={{ left: node.x, top: node.y, width: node.width }}
+    >
+      <button
+        type="button"
+        className={styles.mediaCard}
+        title={item.value}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={() => setOpen(true)}
+      >
+        <img className={styles.mediaCardImage} src={src} alt="" loading="lazy" />
+        <span className={styles.mediaCaption}>{basename(item.value)}</span>
+      </button>
+      {open && (
+        <Modal open onClose={() => setOpen(false)} title={basename(item.value)} width={720}>
+          <div className={styles.mediaPreviewBody}>
+            <img className={styles.mediaPreviewImage} src={src} alt="" />
+            <div className={styles.mediaPreviewPath} title={item.value}>
+              {item.value}
+            </div>
+          </div>
+        </Modal>
       )}
     </article>
   )
@@ -669,12 +897,19 @@ export const OrchestratorPane = memo(function OrchestratorPane({
   const setActiveView = useUiStore((state) => state.setActiveView)
   const requestPaneFocus = useUiStore((state) => state.requestPaneFocus)
   const [snapshot, setSnapshot] = useState<OrchestratorSnapshot>(EMPTY)
+  const quotaWarnings = useOrchestratorQuotaWarnings()
   const [selectedPlanner, setSelectedPlanner] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [openRuns, setOpenRuns] = useState<Record<string, boolean>>({})
+  const [summaryOpen, setSummaryOpen] = useState(true)
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [answering, setAnswering] = useState<ReadonlySet<string>>(() => new Set())
+  const [applying, setApplying] = useState<ReadonlySet<string>>(() => new Set())
+  const [applied, setApplied] = useState<ReadonlySet<string>>(() => new Set())
+  const [diffOpenFor, setDiffOpenFor] = useState<string | null>(null)
+  const [diffText, setDiffText] = useState<Record<string, string>>({})
+  const [diffLoading, setDiffLoading] = useState<ReadonlySet<string>>(() => new Set())
   const [heights, setHeights] = useState<NodeHeights>({})
   const [view, setView] = useState<ViewTransform>(IDENTITY_VIEW)
   const [panning, setPanning] = useState(false)
@@ -684,7 +919,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
     openModal('newTerminal', {
       projectId,
       only: ['claude'],
-      titleKey: 'orchestrator.addPlannerTitle',
+      titleKey: 'term.newPlannerTitle',
     })
   }, [openModal, projectId])
 
@@ -728,17 +963,61 @@ export const OrchestratorPane = memo(function OrchestratorPane({
     return () => window.clearInterval(timer)
   }, [busy])
 
-  const jobs = snapshot.jobs
-  const planners = snapshot.planners
+  const subagentNodes = useAgentCanvasStore((s) => s.nodes)
+
+  // Planners live app-wide (one per agent terminal, anywhere), so the snapshot is global — but the
+  // board is opened from one project, and a planner from another project is noise here, not signal.
+  const project = useMemo(() => projects.find((p) => p.id === projectId) ?? null, [projects, projectId])
+  const projectPtyIds = useMemo(() => {
+    const ids = new Set<string>()
+    if (!project) return ids
+    for (const term of project.terminals) {
+      for (const tab of term.tabs) if (tab.ptyId) ids.add(tab.ptyId)
+    }
+    return ids
+  }, [project])
+
+  const jobs = useMemo(() => {
+    const native = nativeSubagentJobs(subagentNodes)
+    const all = native.length > 0 ? [...snapshot.jobs, ...native] : snapshot.jobs
+    return all.filter((job) =>
+      job.plannerId
+        ? projectPtyIds.has(job.plannerId)
+        : project?.defaultCwd
+          ? job.cwd.startsWith(project.defaultCwd)
+          : true,
+    )
+  }, [snapshot.jobs, subagentNodes, projectPtyIds, project])
+  const planners = useMemo(
+    () => snapshot.planners.filter((p) => projectPtyIds.has(p.id)),
+    [snapshot.planners, projectPtyIds],
+  )
   const groups = useMemo(() => groupPlanners(jobs, planners), [jobs, planners])
   const activeGroup =
     groups.find((group) => plannerKey(group) === selectedPlanner) ?? groups[0] ?? null
   const groupJobs = useMemo(() => activeGroup?.jobs ?? [], [activeGroup])
   const runs = useMemo(() => activeGroup?.runs ?? [], [activeGroup])
   const plannerId = activeGroup?.id ?? null
+  // Only the first image a worker's report mentions gets promoted to its own canvas card — enough
+  // to surface "the thing it made" without the layout having to reflow siblings for 2nd/3rd images.
+  const promotedMediaByJobId = useMemo(() => {
+    const map = new Map<string, MediaItem>()
+    for (const job of groupJobs) {
+      const report = job.summary.trim()
+      if (!report) continue
+      const promoted = extractMediaItems(report).find((item) => item.kind !== 'link')
+      if (promoted) map.set(job.id, promoted)
+    }
+    return map
+  }, [groupJobs])
+  const mediaByNodeId = useMemo(() => {
+    const map = new Map<string, MediaItem>()
+    for (const [jobId, item] of promotedMediaByJobId) map.set(mediaNodeId(jobId), item)
+    return map
+  }, [promotedMediaByJobId])
   const graph = useMemo(
-    () => layoutPlannerBoard(runs, heights, plannerId),
-    [runs, heights, plannerId],
+    () => layoutPlannerBoard(runs, heights, plannerId, promotedMediaByJobId),
+    [runs, heights, plannerId, promotedMediaByJobId],
   )
   const jobById = useMemo(() => new Map(groupJobs.map((job) => [job.id, job])), [groupJobs])
   const selected = selectedId ? (jobById.get(selectedId) ?? null) : null
@@ -936,6 +1215,80 @@ export const OrchestratorPane = memo(function OrchestratorPane({
     }
   }
 
+  const applyWorktree = async (job: OrchestratorJob) => {
+    if (!job.worktree || applying.has(job.id) || applied.has(job.id)) return
+    const repo = job.worktree
+    setApplying((prev) => new Set(prev).add(job.id))
+    try {
+      await worktreeCommitWorktree(repo, job.id, `Alethe orchestrator: ${job.id}`)
+      await worktreeFetchBranch(repo, job.id).catch(() => undefined)
+      const target = (await gitStatus(repo)).branch
+      const source = `alethe/agent-${job.id}`
+      const analysis = await mergeAnalyze(repo, source, target, projectId)
+      if (!analysis.clean) {
+        pushToast({
+          title: t('orchestrator.applyConflict'),
+          body: t('orchestrator.applyConflictBody', { id: job.id }),
+        })
+        return
+      }
+      const env = await mergePrepare(repo, source, target, projectId)
+      const outcome = await mergeFinalize(repo, env.id, [])
+      if (!outcome.merged) {
+        pushToast({ title: t('orchestrator.applyFailed'), body: outcome.output })
+        return
+      }
+      await worktreeRemove(repo, job.id, false).catch(() => undefined)
+      setApplied((prev) => new Set(prev).add(job.id))
+      pushToast({
+        title: t('orchestrator.applySuccess'),
+        body: t('orchestrator.applySuccessBody', { branch: target }),
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (message.includes('worktree_not_found')) {
+        // Already applied (or removed some other way) in an earlier attempt — the backend still
+        // reports `worktree` for this job because nothing clears it after a successful apply, so
+        // treat "gone from disk" as done rather than a failure to retry forever.
+        setApplied((prev) => new Set(prev).add(job.id))
+        return
+      }
+      pushToast({ title: t('orchestrator.applyFailed'), body: message })
+    } finally {
+      setApplying((prev) => {
+        const next = new Set(prev)
+        next.delete(job.id)
+        return next
+      })
+    }
+  }
+
+  const toggleDiff = async (jobId: string) => {
+    if (diffOpenFor === jobId) {
+      setDiffOpenFor(null)
+      return
+    }
+    setDiffOpenFor(jobId)
+    if (diffText[jobId] !== undefined || diffLoading.has(jobId)) return
+    setDiffLoading((prev) => new Set(prev).add(jobId))
+    try {
+      const text = await orchestratorJobDiff(jobId)
+      setDiffText((prev) => ({ ...prev, [jobId]: text }))
+    } catch (error) {
+      pushToast({
+        title: t('orchestrator.diffFailed'),
+        body: error instanceof Error ? error.message : String(error),
+      })
+      setDiffOpenFor((current) => (current === jobId ? null : current))
+    } finally {
+      setDiffLoading((prev) => {
+        const next = new Set(prev)
+        next.delete(jobId)
+        return next
+      })
+    }
+  }
+
   const send = async () => {
     const message = draft.trim()
     if (!selected || !message || sending || !canSend) return
@@ -956,40 +1309,62 @@ export const OrchestratorPane = memo(function OrchestratorPane({
   return (
     <section className={styles.pane}>
       <header className={styles.head}>
-        <h2 className={styles.title}>{t('orchestrator.title')}</h2>
-        <div className={styles.counts}>
-          {blockedAll > 0 && (
-            <span
-              className={styles.countAlert}
-              data-lane="blocked"
-              title={t('orchestrator.blockedTitle')}
-            >
-              {t('orchestrator.runBlocked', { count: blockedAll })}
-            </span>
-          )}
-          {interruptedAll > 0 && (
-            <span
-              className={styles.countAlert}
-              data-lane="interrupted"
-              title={t('orchestrator.interruptedTitle')}
-            >
-              {t('orchestrator.runInterrupted', { count: interruptedAll })}
-            </span>
-          )}
-          <span>{t('orchestrator.running', { count: String(snapshot.running) })}</span>
-          <span>{t('orchestrator.queued', { count: String(snapshot.queued) })}</span>
-          <span>{t('orchestrator.limit', { count: String(snapshot.concurrencyLimit) })}</span>
+        <div className={styles.headLeft}>
+          <span className={styles.iconWrap}>
+            <Network size={16} />
+          </span>
+          <span className={styles.title}>{t('orchestrator.title')}</span>
         </div>
-        <button
-          type="button"
-          className={styles.close}
-          title={t('common.close')}
-          aria-label={t('common.close')}
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={() => closePane(projectId, terminal.id)}
-        >
-          <X size={14} />
-        </button>
+        <div className={styles.headRight}>
+          <div className={styles.counts}>
+            {quotaWarnings.map((warning) => (
+              <span
+                key={warning.agent}
+                className={styles.countAlert}
+                title={t('orchestrator.quotaWarningTitle', { agent: warning.agent, pct: warning.pct })}
+              >
+                {t('orchestrator.quotaWarning', {
+                  agent: warning.agent,
+                  pct: warning.pct,
+                  resets: warning.resetsAt ? formatReset(warning.resetsAt, t('orchestrator.quotaResetsNow')) : '—',
+                })}
+              </span>
+            ))}
+            {blockedAll > 0 && (
+              <span
+                className={styles.countAlert}
+                data-lane="blocked"
+                title={t('orchestrator.blockedTitle')}
+              >
+                {t('orchestrator.runBlocked', { count: blockedAll })}
+              </span>
+            )}
+            {interruptedAll > 0 && (
+              <span
+                className={styles.countAlert}
+                data-lane="interrupted"
+                title={t('orchestrator.interruptedTitle')}
+              >
+                {t('orchestrator.runInterrupted', { count: interruptedAll })}
+              </span>
+            )}
+            <span>{t('orchestrator.running', { count: String(snapshot.running) })}</span>
+            <span>{t('orchestrator.queued', { count: String(snapshot.queued) })}</span>
+            <span>{t('orchestrator.limit', { count: String(snapshot.concurrencyLimit) })}</span>
+          </div>
+          <div className={styles.actions}>
+            <button
+              type="button"
+              className={`${styles.action} ${styles.danger}`}
+              title={t('common.close')}
+              aria-label={t('common.close')}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => closePane(projectId, terminal.id)}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
       </header>
 
       {groups.length === 0 ? (
@@ -1093,14 +1468,28 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                           node={node}
                           selected={node.id === selectedId}
                           answering={answering.has(node.id)}
+                          applying={applying.has(node.id)}
+                          applied={applied.has(node.id)}
+                          projectId={projectId}
+                          diffOpen={diffOpenFor === node.id}
+                          diffText={diffText[node.id]}
+                          diffLoading={diffLoading.has(node.id)}
                           theme={theme}
                           onSelect={(id) => setSelectedId(id === selectedId ? null : id)}
                           onMessage={focusComposer}
                           onAnswer={(id, decision) => void answer(id, decision)}
+                          onToggleDiff={(id) => void toggleDiff(id)}
+                          onApply={(job) => void applyWorktree(job)}
                           bind={bind}
                           t={t}
                         />
                       )
+                    })}
+
+                    {graph.media.map((node) => {
+                      const item = mediaByNodeId.get(node.id)
+                      if (!item) return null
+                      return <MediaCardNode key={node.id} node={node} item={item} bind={bind} />
                     })}
                   </div>
                 )}
@@ -1197,14 +1586,24 @@ export const OrchestratorPane = memo(function OrchestratorPane({
               </form>
             </div>
 
-            <aside className={styles.rail}>
-              <div className={styles.railHead}>
-                <span>{t('orchestrator.summary')}</span>
+            <aside className={styles.rail} data-collapsed={summaryOpen ? undefined : 'true'}>
+              <button
+                type="button"
+                className={styles.railHead}
+                title={t(summaryOpen ? 'orchestrator.summaryCollapse' : 'orchestrator.summaryExpand')}
+                aria-expanded={summaryOpen}
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => setSummaryOpen((open) => !open)}
+              >
+                <span className={styles.railHeadChevron} aria-hidden>
+                  {summaryOpen ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
+                </span>
+                <span className={styles.railHeadLabel}>{t('orchestrator.summary')}</span>
                 <span className={styles.railHeadName}>
                   {activeGroup?.label ?? t('orchestrator.noPlanner')}
                 </span>
-              </div>
-              <div className={styles.railScroll}>
+              </button>
+              <div className={styles.railScroll} hidden={!summaryOpen}>
                 <div className={styles.railSection}>
                   <div className={styles.headline}>
                     <b>{counts.finished}</b>

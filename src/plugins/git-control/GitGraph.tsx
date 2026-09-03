@@ -23,7 +23,7 @@ import {
   writeClipboardText,
 } from '../../lib/tauri'
 import { useUiStore } from '../../stores/uiStore'
-import { ContextMenu, type MenuItem } from './ContextMenu'
+import { ContextMenu, type MenuItem } from '../../components/ProjectSidebar/ContextMenu'
 import styles from './GitGraph.module.css'
 import { GitGraphCommitDetail } from './GitGraphCommitDetail'
 import { GitGraphList } from './GitGraphList'

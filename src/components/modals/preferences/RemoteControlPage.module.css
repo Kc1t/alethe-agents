@@ -26,5 +26,7 @@
 .deviceCopy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty { margin: 0; }
 .startupNote { margin: 10px 0 0; color: var(--fg-muted); font-size: 11px; line-height: 1.45; }
+.tutorialList { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--fg-muted); font-size: 11.5px; line-height: 1.5; }
+.tutorialList li strong { color: var(--fg); }
 .error { color: var(--status-offline); font-size: 11px; }
 @media (max-width: 640px) { .settingsGrid { grid-template-columns: 1fr; } .device { align-items: flex-start; flex-wrap: wrap; } .device button { margin-left: 40px; } }

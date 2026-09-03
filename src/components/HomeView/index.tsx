@@ -33,6 +33,7 @@ import { EmptyState } from '../EmptyState'
 import homeBackground from '../../assets/home-bg-right.png'
 import { computeStreak } from './ActivityGraph'
 import { NowPlayingWidget } from './NowPlayingWidget'
+import { SetupWalkthrough } from './SetupWalkthrough'
 import { UsageStrip } from './UsageStrip'
 import { ActivityGraph } from './ActivityGraph'
 import { TimeAnalytics } from './TimeAnalytics'
@@ -68,6 +69,7 @@ const NOTIF_AGENT_CLASS: Record<AgentType, string> = {
   opencode: styles.notifOpencode,
   freebuff: styles.notifFreebuff,
   mimo: styles.notifMimo,
+  kiro: styles.notifKiro,
 }
 
 export function HomeView() {
@@ -91,7 +93,7 @@ export function HomeView() {
       openContainerWithAllPanes: s.openContainerWithAllPanes,
       setActiveProjectOnly: s.setActiveProjectOnly,
       createAgentTerminal: s.createAgentTerminal,
-    }))
+    })),
   )
 
   const {
@@ -109,10 +111,9 @@ export function HomeView() {
       requestPaneFocus: s.requestPaneFocus,
       notifications: s.notifications,
       clearNotifications: s.clearNotifications,
-    }))
+    })),
   )
 
-                                                                                   
   const lastUsedByProject = useMemo(() => {
     const map = new Map<string, number>()
     for (const c of containers) {
@@ -188,8 +189,7 @@ export function HomeView() {
   const [quickUnrestricted, setQuickUnrestricted] = useState(false)
   const quickPromptRef = useRef<HTMLInputElement>(null)
   const [quickCwd, setQuickCwd] = useState('')
-                                                                                
-                                                                           
+
   const quickAgent = quickAgents.some((agent) => agent.type === quickAgentRaw)
     ? quickAgentRaw
     : (quickAgents[0]?.type ?? 'claude')
@@ -441,6 +441,8 @@ export function HomeView() {
           </div>
         </div>
       </section>
+
+      <SetupWalkthrough />
 
       <div className={styles.overviewGrid}>
         <section className={styles.section}>

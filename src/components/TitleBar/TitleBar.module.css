@@ -327,6 +327,12 @@
   background: var(--panel-hover);
 }
 
+.remoteDevicePillIdle {
+  border-color: var(--status-idle);
+  color: var(--status-idle);
+  background: var(--status-stopped-soft);
+}
+
 .remoteDevicePill svg {
   flex-shrink: 0;
 }

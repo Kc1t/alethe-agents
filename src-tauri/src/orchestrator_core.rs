@@ -53,6 +53,26 @@ impl Launcher {
             env: Vec::new(),
         }
     }
+
+    /// `bypassPermissions`: this stream has no interactive approval channel — a tool call needing
+    /// permission is auto-denied and reported, not paused for an answer.
+    pub fn claude_headless(program: PathBuf) -> Self {
+        Self {
+            kind: "claude".into(),
+            program,
+            args: vec![
+                "-p".into(),
+                "--input-format".into(),
+                "stream-json".into(),
+                "--output-format".into(),
+                "stream-json".into(),
+                "--verbose".into(),
+                "--permission-mode".into(),
+                "bypassPermissions".into(),
+            ],
+            env: Vec::new(),
+        }
+    }
 }
 
 /// A worker runs its commands inside Codex's sandbox, which uses a lowered token that cannot start
@@ -85,33 +105,27 @@ fn git(cwd: &std::path::Path, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-/// A detached worktree per job, parked next to the repository rather than inside it, so parallel
-/// workers editing the same files cannot overwrite each other. It is left in place on purpose:
-/// the work still has to be reviewed and merged.
+/// Same path/branch convention as `worktrees.rs` (`<repo>/.alethe/worktrees/<id>/`,
+/// `alethe/agent-<id>`) on purpose, so its functions can later commit/fetch/remove this worktree —
+/// this module stays crate-free (see file header), so it can't call `worktrees.rs` directly.
 fn isolate_worktree(cwd: &str, job_id: &str) -> Result<String, String> {
     let origin = PathBuf::from(cwd);
     let root = git(&origin, &["rev-parse", "--show-toplevel"])?;
     let root = PathBuf::from(root.replace('/', std::path::MAIN_SEPARATOR_STR));
-    let name = root
-        .file_name()
-        .map(|value| value.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "repo".to_string());
-    let parent = root
-        .parent()
-        .ok_or_else(|| "repository has no parent directory".to_string())?;
-    let target = parent
-        .join(".alethe-worktrees")
-        .join(&name)
-        .join(format!("{job_id}-{}", now_ms()));
-    if let Some(dir) = target.parent() {
-        std::fs::create_dir_all(dir).map_err(|error| error.to_string())?;
+    let base = root.join(".alethe").join("worktrees");
+    std::fs::create_dir_all(&base).map_err(|error| error.to_string())?;
+    let target = base.join(job_id);
+    if target.exists() {
+        return Err(format!("a worktree already exists for {job_id}"));
     }
+    let branch = format!("alethe/agent-{job_id}");
     git(
         &root,
         &[
             "worktree",
             "add",
-            "--detach",
+            "-b",
+            &branch,
             &target.to_string_lossy(),
             "HEAD",
         ],
@@ -171,6 +185,8 @@ struct Job {
     plan: Vec<String>,
     diff: Option<String>,
     tokens: Option<Value>,
+    /// Live only, like `tokens`/`diff` — never persisted.
+    quota: Option<Value>,
     outcome: Option<String>,
     started_at: Option<u64>,
     ended_at: Option<u64>,
@@ -178,6 +194,7 @@ struct Job {
     timeout_ms: Option<u64>,
     approval_policy: String,
     sandbox: String,
+    web_search: bool,
     /// The request the worker is stopped on, kept with the rpc id it must be answered with.
     pending: Option<Value>,
     child: Option<Arc<Mutex<Child>>>,
@@ -207,6 +224,7 @@ impl Job {
             "seconds": elapsed,
             "plan": self.plan,
             "tokens": self.tokens,
+            "quota": self.quota,
             "worktree": self.worktree,
             "pendingApproval": self.pending,
             "hasDiff": self.diff.is_some(),
@@ -230,6 +248,7 @@ impl Job {
             "worktree": self.worktree,
             "approvalPolicy": self.approval_policy,
             "sandbox": self.sandbox,
+            "webSearch": self.web_search,
             "summary": self.report,
             "startedAt": self.started_at,
             "endedAt": self.ended_at,
@@ -271,6 +290,7 @@ impl Job {
                 .unwrap_or_default(),
             diff: None,
             tokens: None,
+            quota: None,
             outcome: text("outcome"),
             started_at: value.get("startedAt").and_then(Value::as_u64),
             ended_at: value.get("endedAt").and_then(Value::as_u64),
@@ -278,6 +298,7 @@ impl Job {
             timeout_ms: Some(DEFAULT_JOB_TIMEOUT_MS),
             approval_policy: text("approvalPolicy").unwrap_or_else(|| "never".to_string()),
             sandbox: text("sandbox").unwrap_or_else(|| "workspace-write".to_string()),
+            web_search: value.get("webSearch").and_then(Value::as_bool).unwrap_or(false),
             pending: None,
             child: None,
             stdin: None,
@@ -380,7 +401,9 @@ impl Inner {
 pub struct Core {
     inner: Arc<Mutex<Inner>>,
     signal: Arc<Condvar>,
-    launcher: Arc<Mutex<Option<Launcher>>>,
+    /// One launcher per worker backend (`"codex"`, `"claude"`, ...), keyed by `Launcher::kind`, so
+    /// more than one CLI can serve as a worker at the same time.
+    launchers: Arc<Mutex<HashMap<String, Launcher>>>,
     observer: Arc<Mutex<Option<Observer>>>,
     dispatch: Arc<Mutex<Option<Sender<Value>>>>,
     store: Arc<Mutex<Option<PathBuf>>>,
@@ -394,7 +417,7 @@ impl Default for Core {
                 ..Inner::default()
             })),
             signal: Arc::new(Condvar::new()),
-            launcher: Arc::new(Mutex::new(None)),
+            launchers: Arc::new(Mutex::new(HashMap::new())),
             observer: Arc::new(Mutex::new(None)),
             dispatch: Arc::new(Mutex::new(None)),
             store: Arc::new(Mutex::new(None)),
@@ -448,11 +471,19 @@ fn next_from_inbox(
     job_id: &str,
 ) -> Option<(Arc<Mutex<ChildStdin>>, Value)> {
     let job = inner.jobs.get_mut(job_id)?;
-    if job.stdin.is_none() {
-        return None;
-    }
+    let stdin = job.stdin.clone()?;
     let thread_id = job.thread_id.clone()?;
+    let is_claude = job.agent == "claude";
     let message = job.inbox.pop_front()?;
+    if is_claude {
+        return Some((
+            stdin,
+            json!({
+                "type": "user",
+                "message": { "role": "user", "content": [{ "type": "text", "text": message }] }
+            }),
+        ));
+    }
     stage_rpc(
         inner,
         job_id,
@@ -590,7 +621,7 @@ impl Core {
     }
 
     pub fn set_launcher(&self, launcher: Launcher) {
-        *guard(&self.launcher) = Some(launcher);
+        guard(&self.launchers).insert(launcher.kind.clone(), launcher);
     }
 
     pub fn set_observer(&self, observer: Observer) {
@@ -629,7 +660,7 @@ impl Core {
     }
 
     fn spawn_worker(&self, job_id: &str) {
-        let (cwd, spec, resume_thread, approval_policy, sandbox) = {
+        let (agent, cwd, spec, resume_thread, approval_policy, sandbox, web_search) = {
             let mut inner = guard(&self.inner);
             let Some(job) = inner.jobs.get_mut(job_id) else {
                 return;
@@ -640,20 +671,28 @@ impl Core {
             // Work that arrived while the worker was down leads; otherwise this is its first turn.
             let first_turn = job.inbox.pop_front().unwrap_or_else(|| job.spec.clone());
             let started = (
+                job.agent.clone(),
                 job.cwd.clone(),
                 first_turn,
                 job.thread_id.clone(),
                 job.approval_policy.clone(),
                 job.sandbox.clone(),
+                job.web_search,
             );
             inner.running += 1;
             started
         };
 
-        let Some(launcher) = guard(&self.launcher).clone() else {
-            self.settle(job_id, STATUS_FAILED, "failed", "no worker launcher configured");
+        let Some(launcher) = guard(&self.launchers).get(&agent).cloned() else {
+            self.settle(
+                job_id,
+                STATUS_FAILED,
+                "failed",
+                &format!("no worker launcher configured for agent {agent}"),
+            );
             return;
         };
+        let is_claude = agent == "claude";
 
         let mut command = Command::new(&launcher.program);
         command
@@ -662,6 +701,13 @@ impl Core {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
+        // Claude keeps its own session on disk under this id — no separate resume RPC like Codex's
+        // `thread/resume`, the CLI just needs the id up front.
+        if is_claude {
+            if let Some(thread_id) = &resume_thread {
+                command.args(["--resume", thread_id]);
+            }
+        }
         for (key, value) in &launcher.env {
             command.env(key, value);
         }
@@ -705,41 +751,53 @@ impl Core {
             self.notify(&inner);
         }
 
-        let _ = send_rpc(
-            &stdin,
-            &json!({
-                "id": 1,
-                "method": "initialize",
-                "params": {
-                    "clientInfo": { "name": "alethe-orchestrator", "title": "Alethe", "version": "1" },
-                    // Granular approvals are gated behind this: without it the worker cannot route
-                    // its question here and gives up on the write instead of asking.
-                    "capabilities": { "experimentalApi": true }
-                }
-            }),
-        );
-        let _ = send_rpc(&stdin, &json!({ "method": "initialized" }));
-        // Codex keeps threads on disk, so a worker whose process died can pick up its own history
-        // instead of reading everything again.
-        let opening = match &resume_thread {
-            Some(thread_id) => json!({
-                "id": 2,
-                "method": "thread/resume",
-                "params": { "threadId": thread_id, "cwd": cwd }
-            }),
-            None => json!({
-                "id": 2,
-                "method": "thread/start",
-                "params": {
-                    "cwd": cwd,
-                    "approvalPolicy": serde_json::from_str::<Value>(&approval_policy)
-                        .unwrap_or(Value::String("never".into())),
-                    "approvalsReviewer": "user",
-                    "sandbox": sandbox
-                }
-            }),
-        };
-        let _ = send_rpc(&stdin, &opening);
+        if is_claude {
+            // no handshake: the first line written is the first turn
+            let _ = send_rpc(
+                &stdin,
+                &json!({
+                    "type": "user",
+                    "message": { "role": "user", "content": [{ "type": "text", "text": spec }] }
+                }),
+            );
+        } else {
+            let _ = send_rpc(
+                &stdin,
+                &json!({
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "clientInfo": { "name": "alethe-orchestrator", "title": "Alethe", "version": "1" },
+                        // Granular approvals are gated behind this: without it the worker cannot route
+                        // its question here and gives up on the write instead of asking.
+                        "capabilities": { "experimentalApi": true }
+                    }
+                }),
+            );
+            let _ = send_rpc(&stdin, &json!({ "method": "initialized" }));
+            // Codex keeps threads on disk, so a worker whose process died can pick up its own history
+            // instead of reading everything again.
+            let opening = match &resume_thread {
+                Some(thread_id) => json!({
+                    "id": 2,
+                    "method": "thread/resume",
+                    "params": { "threadId": thread_id, "cwd": cwd }
+                }),
+                None => json!({
+                    "id": 2,
+                    "method": "thread/start",
+                    "params": {
+                        "cwd": cwd,
+                        "approvalPolicy": serde_json::from_str::<Value>(&approval_policy)
+                            .unwrap_or(Value::String("never".into())),
+                        "approvalsReviewer": "user",
+                        "sandbox": sandbox,
+                        "config": { "tools": { "web_search": { "mode": if web_search { "live" } else { "disabled" } } } }
+                    }
+                }),
+            };
+            let _ = send_rpc(&stdin, &opening);
+        }
 
         let timeout_ms = guard(&self.inner)
             .jobs
@@ -762,7 +820,11 @@ impl Core {
                     let Ok(message) = serde_json::from_str::<Value>(&line) else {
                         continue;
                     };
-                    core.on_worker_message(&owned_id, &stdin, &spec, &message);
+                    if is_claude {
+                        core.on_worker_message_claude(&owned_id, &message);
+                    } else {
+                        core.on_worker_message(&owned_id, &stdin, &spec, &message);
+                    }
                 }
                 core.finish(
                     &owned_id,
@@ -901,6 +963,17 @@ impl Core {
         };
         send_rpc(&stdin, &json!({ "id": rpc_id, "result": { "decision": decision } }))?;
         Ok(json!({ "answered": job_id, "decision": decision }))
+    }
+
+    /// The unified diff a Codex worker has produced so far, straight off its own `turn/diff/updated`
+    /// reports — the same text `alethe_diff` hands the planner, now for the person to read too.
+    pub fn job_diff(&self, job_id: &str) -> Result<String, String> {
+        let inner = guard(&self.inner);
+        let job = inner
+            .jobs
+            .get(job_id)
+            .ok_or_else(|| format!("unknown job {job_id}"))?;
+        Ok(job.diff.clone().unwrap_or_default())
     }
 
     fn on_worker_message(
@@ -1045,6 +1118,125 @@ impl Core {
         self.notify(&inner);
     }
 
+    /// Flat `{"type": ...}` events, no request/response envelope like Codex's.
+    fn on_worker_message_claude(&self, job_id: &str, message: &Value) {
+        let kind = message.get("type").and_then(Value::as_str).unwrap_or("");
+        match kind {
+            "rate_limit_event" => {
+                let Some(info) = message.get("rate_limit_info").cloned() else {
+                    return;
+                };
+                let mut inner = guard(&self.inner);
+                if let Some(job) = inner.jobs.get_mut(job_id) {
+                    job.quota = Some(info);
+                }
+                self.notify(&inner);
+            }
+            "system" => {
+                match message.get("subtype").and_then(Value::as_str).unwrap_or("") {
+                    "init" => {
+                        let Some(session_id) = message.get("session_id").and_then(Value::as_str)
+                        else {
+                            return;
+                        };
+                        let mut inner = guard(&self.inner);
+                        if let Some(job) = inner.jobs.get_mut(job_id) {
+                            if job.thread_id.is_none() {
+                                job.thread_id = Some(session_id.to_string());
+                            }
+                        }
+                        self.notify(&inner);
+                    }
+                    "permission_denied" => {
+                        let note = message
+                            .get("message")
+                            .and_then(Value::as_str)
+                            .unwrap_or("a tool call was denied permission");
+                        let mut inner = guard(&self.inner);
+                        if let Some(job) = inner.jobs.get_mut(job_id) {
+                            job.reply.push_str(&format!("\n[blocked] {note}\n"));
+                        }
+                        self.notify(&inner);
+                    }
+                    _ => {}
+                }
+            }
+            "assistant" => {
+                let text = message
+                    .get("message")
+                    .and_then(|m| m.get("content"))
+                    .and_then(Value::as_array)
+                    .map(|blocks| {
+                        blocks
+                            .iter()
+                            .filter(|block| block.get("type").and_then(Value::as_str) == Some("text"))
+                            .filter_map(|block| block.get("text").and_then(Value::as_str))
+                            .collect::<Vec<_>>()
+                            .join("")
+                    })
+                    .unwrap_or_default();
+                if text.is_empty() {
+                    return;
+                }
+                let mut inner = guard(&self.inner);
+                if let Some(job) = inner.jobs.get_mut(job_id) {
+                    job.reply.push_str(&text);
+                    if job.reply.len() > REPLY_LIMIT {
+                        let cut = job.reply.len() - REPLY_LIMIT;
+                        job.reply = job.reply.split_off(cut);
+                    }
+                }
+                self.notify(&inner);
+            }
+            "result" => {
+                let is_error = message.get("is_error").and_then(Value::as_bool).unwrap_or(false);
+                let result_text = message
+                    .get("result")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
+                let tokens = message.get("usage").cloned();
+                let cwd = {
+                    let mut inner = guard(&self.inner);
+                    let cwd = inner.jobs.get(job_id).map(|job| job.cwd.clone());
+                    if let (Some(job), Some(tokens)) = (inner.jobs.get_mut(job_id), tokens) {
+                        job.tokens = Some(tokens);
+                    }
+                    cwd
+                };
+                if let Some(cwd) = cwd {
+                    if let Ok(diff) = git(&PathBuf::from(&cwd), &["diff", "HEAD"]) {
+                        if !diff.trim().is_empty() {
+                            let mut inner = guard(&self.inner);
+                            if let Some(job) = inner.jobs.get_mut(job_id) {
+                                job.diff = Some(diff);
+                            }
+                        }
+                    }
+                }
+                let summary = if result_text.is_empty() {
+                    let inner = guard(&self.inner);
+                    inner
+                        .jobs
+                        .get(job_id)
+                        .map(|job| tail(job.reply.trim(), REPLY_LIMIT))
+                        .unwrap_or_default()
+                } else {
+                    result_text
+                };
+                self.finish(
+                    job_id,
+                    if is_error { STATUS_FAILED } else { STATUS_DONE },
+                    Some(if is_error { "failed".into() } else { "succeeded".into() }),
+                    summary,
+                    false,
+                );
+            }
+            _ => {}
+        }
+    }
+
     /// `terminal` decides whether the worker process dies with the turn. A completed turn keeps
     /// it alive so `alethe_send` can hand it more work on the same thread; cancelling kills it.
     fn finish(
@@ -1130,7 +1322,7 @@ pub fn tools() -> Value {
     json!([
         {
             "name": "alethe_delegate",
-            "description": "Hand independent units of work to Codex workers that Alethe runs as separate processes. These are NOT your own subagents: they are a different agent on its own token budget, so their reading and writing costs you nothing but the task text. Prefer this over launching subagents of your own for the same work. They also outlive the turn, can be corrected mid-run with alethe_steer, and can each take an isolated git worktree. Returns job ids immediately; the workers run in parallel. Delegate when the work splits into units that each need their own reading and judgement, and there are at least two of them: one unit per area of the codebase, per service, per feature. Send every unit in ONE call so they run at the same time, and make each task self contained. Do NOT delegate work that is uniform across its inputs, that one command or script does in a single pass, or that is quicker to finish than to describe.",
+            "description": "Hand independent units of work to Codex or Claude workers that Alethe runs as separate processes. These are NOT your own subagents: they are a different agent on its own token budget, so their reading and writing costs you nothing but the task text. Prefer this over launching subagents of your own for the same work. They also outlive the turn, can be corrected mid-run with alethe_steer, and can each take an isolated git worktree. Returns job ids immediately; the workers run in parallel. Delegate when the work splits into units that each need their own reading and judgement, and there are at least two of them: one unit per area of the codebase, per service, per feature. Send every unit in ONE call so they run at the same time, and make each task self contained. Do NOT delegate work that is uniform across its inputs, that one command or script does in a single pass, or that is quicker to finish than to describe.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1138,6 +1330,11 @@ pub fn tools() -> Value {
                         "type": "array",
                         "items": { "type": "string" },
                         "description": "One self contained instruction per worker."
+                    },
+                    "agent": {
+                        "type": "string",
+                        "enum": ["codex", "claude"],
+                        "description": "Which CLI runs the worker. Defaults to codex. A Claude worker runs without an approval channel (bypasses permissions) and does not yet report a live diff."
                     },
                     "cwd": { "type": "string", "description": "Working directory. Defaults to the lead's directory." },
                     "label": { "type": "string", "description": "A short name for this batch, in the user's words - what it is for, not how it is done. It is how the person watching tells one round of delegation from another." },
@@ -1148,6 +1345,10 @@ pub fn tools() -> Value {
                     "askForApproval": {
                         "type": "boolean",
                         "description": "Make each worker stop and ask you before it reaches outside its own working directory - the network, another folder, anything the sandbox would otherwise refuse. Work inside the directory still proceeds on its own. Use it whenever the work touches a repository that matters. A worker that is asking shows up as blocked and is answered with alethe_answer."
+                    },
+                    "webSearch": {
+                        "type": "boolean",
+                        "description": "Give each worker a live web search tool, on top of its shell and files. Use it for research: real cases, current facts, sources you can cite - not for work confined to a repository, where it adds nothing."
                     },
                     "timeoutSeconds": {
                         "type": "number",
@@ -1303,6 +1504,10 @@ pub fn call_tool(
                 .get("askForApproval")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
+            let web_search = arguments
+                .get("webSearch")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
             // The named policies decide for themselves what is worth asking about. The granular
             // form is the one that says plainly which callbacks this client will answer, which is
             // what makes a worker route the question here instead of giving up on it.
@@ -1344,10 +1549,14 @@ pub fn call_tool(
             // One delegate call is one run: the batch the lead asked for at one moment. Grouping by
             // it is what lets several rounds of delegation stay apart instead of piling into one list.
             let planner_id = planner.map(ToOwned::to_owned);
-            let agent = guard(&core.launcher)
-                .as_ref()
-                .map(|launcher| launcher.kind.clone())
-                .unwrap_or_else(|| "codex".to_string());
+            // Not validated here on purpose — an unconfigured agent fails cleanly later, in
+            // `spawn_worker`, through the normal delivery path.
+            let agent = arguments
+                .get("agent")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("codex")
+                .to_string();
 
             let (run_id, ids): (String, Vec<String>) = {
                 let mut inner = guard(&core.inner);
@@ -1413,6 +1622,7 @@ pub fn call_tool(
                             plan: Vec::new(),
                             diff: None,
                             tokens: None,
+                            quota: None,
                             outcome: None,
                             started_at: None,
                             ended_at: None,
@@ -1420,6 +1630,7 @@ pub fn call_tool(
                             timeout_ms,
                             approval_policy: approval_policy.clone(),
                             sandbox: sandbox.clone(),
+                            web_search,
                             pending: None,
                             child: None,
                             stdin: None,
@@ -1508,18 +1719,33 @@ pub fn call_tool(
             let job_id = required_str(arguments, "jobId")?;
             let message = required_str(arguments, "message")?;
             let mut inner = guard(&core.inner);
-            let job = inner
-                .jobs
-                .get(&job_id)
-                .ok_or_else(|| format!("unknown job {job_id}"))?;
-            let thread_id = job
-                .thread_id
-                .clone()
-                .ok_or_else(|| format!("job {job_id} has no thread yet"))?;
-            let turn_id = job
-                .active_turn_id
-                .clone()
-                .ok_or_else(|| format!("job {job_id} has no running turn to steer"))?;
+            let (agent, thread_id, turn_id) = {
+                let job = inner
+                    .jobs
+                    .get(&job_id)
+                    .ok_or_else(|| format!("unknown job {job_id}"))?;
+                let thread_id = job
+                    .thread_id
+                    .clone()
+                    .ok_or_else(|| format!("job {job_id} has no thread yet"))?;
+                (job.agent.clone(), thread_id, job.active_turn_id.clone())
+            };
+            if agent == "claude" {
+                let job = inner
+                    .jobs
+                    .get_mut(&job_id)
+                    .ok_or_else(|| format!("unknown job {job_id}"))?;
+                job.inbox.push_back(message);
+                let queued = job.inbox.len();
+                core.notify(&inner);
+                return Ok(json!({
+                    "queued": job_id,
+                    "waiting": queued,
+                    "note": "Claude workers queue a steer for the next turn instead of bending the current one"
+                }));
+            }
+            let turn_id =
+                turn_id.ok_or_else(|| format!("job {job_id} has no running turn to steer"))?;
             let (stdin, request) = stage_rpc(
                 &mut inner,
                 &job_id,
@@ -1584,16 +1810,33 @@ pub fn call_tool(
                     inner.max_concurrent
                 ));
             }
-            let (stdin, request) = stage_rpc(
-                &mut inner,
-                &job_id,
-                "turn/start",
-                json!({
-                    "threadId": thread_id,
-                    "input": [{ "type": "text", "text": message }],
-                    "approvalPolicy": "never"
-                }),
-            )?;
+            // Claude's process is already sitting there, multi-turn — the next line written on its
+            // stdin just is the next turn, no `turn/start` RPC to build like Codex needs.
+            let is_claude = job.agent == "claude";
+            let (stdin, request) = if is_claude {
+                let stdin = job
+                    .stdin
+                    .clone()
+                    .ok_or_else(|| format!("job {job_id} has no live worker"))?;
+                (
+                    stdin,
+                    json!({
+                        "type": "user",
+                        "message": { "role": "user", "content": [{ "type": "text", "text": message }] }
+                    }),
+                )
+            } else {
+                stage_rpc(
+                    &mut inner,
+                    &job_id,
+                    "turn/start",
+                    json!({
+                        "threadId": thread_id,
+                        "input": [{ "type": "text", "text": message }],
+                        "approvalPolicy": "never"
+                    }),
+                )?
+            };
             if let Some(job) = inner.jobs.get_mut(&job_id) {
                 job.status = STATUS_RUNNING.to_string();
                 job.outcome = None;

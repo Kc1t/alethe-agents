@@ -7,7 +7,9 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 
 import App from './App'
+import { initPluginHost } from './lib/plugins'
 import { recordFrontendError } from './lib/tauri'
+import { watchPluginThemeStyles } from './lib/themeTokens'
 
 // Capture uncaught errors that React boundaries cannot handle, such as PTY callbacks.
 let lastErrorAt = 0
@@ -39,6 +41,12 @@ window.addEventListener('unhandledrejection', (event) => {
     'unhandledrejection',
   )
 })
+
+watchPluginThemeStyles()
+
+// Contributions land in reactive registries, so the shell renders immediately
+// and picks plugin surfaces up as they activate.
+void initPluginHost()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

@@ -932,11 +932,13 @@ pub async fn write_pty(
 pub async fn resize_pty(
     app: AppHandle,
     sessions: State<'_, PtySessions>,
+    remote: State<'_, Arc<crate::remote::RemoteHub>>,
     id: String,
     cols: u16,
     rows: u16,
 ) -> Result<(), String> {
     let sessions: PtySessions = Arc::clone(sessions.inner());
+    let remote_hub = Arc::clone(remote.inner());
     tokio::task::spawn_blocking(move || {
         if pty_debug_enabled() {
             let _ = append_spawn_log(&app, &format!("[pty-debug] {id}: resize_pty {cols}x{rows}"));
@@ -969,6 +971,15 @@ pub async fn resize_pty(
                 })
                 .map_err(|error| error.to_string())?;
         }
+
+        remote_hub.publish(&id, || {
+            serde_json::json!({
+                "type": "pty_resize",
+                "ptyId": &id,
+                "cols": cols.max(1),
+                "rows": rows.max(1),
+            })
+        });
 
         //
 
@@ -1052,6 +1063,62 @@ pub async fn kill_pty(
     })
     .await
     .map_err(|error| format!("kill_pty: falha na task bloqueante: {error}"))?
+}
+
+/// Removes several PTYs from shared state in one IPC call and tears their process trees down in
+/// parallel. Group standby must not fire dozens of independent best-effort requests and then erase
+/// the only IDs that could retry them.
+#[tauri::command]
+pub async fn kill_ptys(
+    app: AppHandle,
+    sessions: State<'_, PtySessions>,
+    ids: Vec<String>,
+) -> Result<Vec<String>, String> {
+    let sessions: PtySessions = Arc::clone(sessions.inner());
+    tokio::task::spawn_blocking(move || {
+        let unique_ids = ids.into_iter().collect::<std::collections::HashSet<_>>();
+        let drained = {
+            let mut sessions = sessions
+                .lock()
+                .map_err(|_| "PTY sessions lock poisoned".to_string())?;
+            unique_ids
+                .iter()
+                .filter_map(|id| sessions.remove(id).map(|session| (id.clone(), session)))
+                .collect::<Vec<_>>()
+        };
+
+        let (done, finished) = std::sync::mpsc::channel::<String>();
+        for (id, session) in drained {
+            session.teardown.store(TEARDOWN_KILLED, Ordering::SeqCst);
+            let done = done.clone();
+            let _ = std::thread::Builder::new()
+                .name("alethe-pty-batch-kill".to_string())
+                .spawn(move || {
+                    terminate_session(session);
+                    let _ = done.send(id);
+                });
+        }
+        drop(done);
+
+        let deadline = Instant::now() + Duration::from_secs(8);
+        let mut completed = Vec::new();
+        while completed.len() < unique_ids.len() {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            match finished.recv_timeout(remaining) {
+                Ok(id) => completed.push(id),
+                Err(_) => break,
+            }
+        }
+        for id in &unique_ids {
+            let _ = delete_scrollback(&app, id);
+        }
+        Ok(completed)
+    })
+    .await
+    .map_err(|error| format!("kill_ptys: batch task failed: {error}"))?
 }
 
 ///

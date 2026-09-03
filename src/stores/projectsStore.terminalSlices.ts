@@ -49,7 +49,7 @@ type TerminalsSlice = Pick<
   | 'setProjectDisabled'
   | 'setLaneVisible'
   | 'setTerminalTopbarPinned'
-  | 'setTerminalRemoteExcluded'
+  | 'setTerminalRemoteShared'
   | 'markTerminalUsed'
 >
 
@@ -564,8 +564,8 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
     setTerminalTopbarPinned: (projectId, terminalId, pinned) =>
       updateTerminal(projectId, terminalId, (t) => ({ ...t, topbarPinned: pinned })),
 
-    setTerminalRemoteExcluded: (projectId, terminalId, excluded) =>
-      updateTerminal(projectId, terminalId, (t) => ({ ...t, remoteExcluded: excluded })),
+    setTerminalRemoteShared: (projectId, terminalId, shared) =>
+      updateTerminal(projectId, terminalId, (t) => ({ ...t, remoteShared: shared })),
 
     markTerminalUsed: (projectId, terminalId) =>
       updateTerminal(projectId, terminalId, (t) => touchTerminalUsage(t)),
@@ -819,7 +819,7 @@ export function createContainersSlice({ get, update, updateContainer }: SliceCtx
         return { ...c, paneIds: next }
       }),
 
-    groupPanes: (projectId, paneIds) =>
+    groupPanes: (projectId, paneIds, options) =>
       update((state) => {
         const project = state.projects.find((p) => p.id === projectId)
         const validIds = [...new Set(paneIds)].filter((id) =>
@@ -833,7 +833,12 @@ export function createContainersSlice({ get, update, updateContainer }: SliceCtx
           ...new Set(absorbed.flatMap((group) => group.paneIds).concat(validIds)),
         ]
         const remaining = groups.filter((group) => !absorbed.includes(group))
-        remaining.push({ id: `pane-group-${Date.now()}`, paneIds: expandedIds })
+        const kind = options?.kind ?? absorbed.find((group) => group.kind)?.kind
+        remaining.push({
+          id: `pane-group-${Date.now()}`,
+          paneIds: expandedIds,
+          ...(kind ? { kind } : {}),
+        })
         return {
           projects: state.projects.map((p) =>
             p.id === projectId ? { ...p, paneGroups: remaining } : p,

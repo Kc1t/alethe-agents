@@ -2,7 +2,7 @@ import { Check, Minus, Pause, Plus, RotateCcw, Waves } from 'lucide-react'
 
 import { useT } from '../../../lib/i18n'
 import { APP_ICON_OPTIONS, getThemeIcon } from '../../../lib/themeIcons'
-import { THEME_OPTIONS, themeDescription, themeLabel } from '../../../lib/themes'
+import { themeDescription, themeLabel, useThemeOptions } from '../../../lib/themes'
 import type { MotionPreference, VisualStyle } from '../../../lib/types'
 import { UI_ZOOM_LIMITS, useProjectsStore } from '../../../stores/projectsStore'
 import { Dropdown } from '../../ui/Dropdown'
@@ -11,6 +11,7 @@ import { SettingsSection } from './primitives'
 
 export function AppearancePage() {
   const t = useT()
+  const themeOptions = useThemeOptions()
   const preferences = useProjectsStore((state) => state.preferences)
   const setUiTheme = useProjectsStore((state) => state.setUiTheme)
   const setTerminalTheme = useProjectsStore((state) => state.setTerminalTheme)
@@ -132,7 +133,7 @@ export function AppearancePage() {
         description={t('prefs.uiThemeDesc')}
       >
         <div className={styles.themeGrid}>
-          {THEME_OPTIONS.map((theme) => {
+          {themeOptions.map((theme) => {
             const active = preferences.uiTheme === theme.id
             return (
               <button
@@ -203,7 +204,7 @@ export function AppearancePage() {
           ariaLabel={t('prefs.terminalTheme')}
           options={[
             { value: '', label: t('common.followUi') },
-            ...THEME_OPTIONS.map((theme) => ({ value: theme.id, label: themeLabel(t, theme.id) })),
+            ...themeOptions.map((theme) => ({ value: theme.id, label: themeLabel(t, theme.id) })),
           ]}
         />
       </SettingsSection>

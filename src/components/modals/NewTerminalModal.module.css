@@ -1,91 +1,178 @@
-.description {
-  margin: -2px 0 18px;
-  color: var(--fg-muted);
-  font-size: 12px;
-  line-height: 1.45;
+.modal {
+  border-radius: 20px;
 }
 
-.section + .section {
-  margin-top: 18px;
+.modal header {
+  padding: 20px 22px 2px;
 }
 
-.stepTitle {
-  margin: 0 0 9px;
-  color: var(--fg);
-  font-size: 12px;
+.modal h2 {
+  font-size: 17px;
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
-.agentGrid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+.modal footer {
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px 18px;
 }
 
-.agentCard {
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field {
   min-width: 0;
-  min-height: 58px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.fieldLabel {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 10px 13px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-sunken);
-  color: var(--fg);
-  text-align: left;
-  cursor: pointer;
-  transition:
-    background 120ms,
-    border-color 120ms;
+  gap: 8px;
+  color: var(--fg-muted);
+  font-size: 12px;
 }
 
-.agentCard:hover {
-  background: var(--panel-hover);
-  border-color: var(--border-strong);
+.fieldLabelText {
+  flex: 1;
+  min-width: 0;
 }
 
-.agentCardActive {
-  border-color: var(--accent);
-  background: var(--accent-faint);
+.fieldNote {
+  color: var(--fg-faint);
+  font-size: 11px;
 }
 
-.agentIcon {
-  width: 25px;
-  height: 25px;
+.fieldAction {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  flex: 0 0 25px;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-faint);
+  font-size: 11px;
+  cursor: pointer;
 }
 
-.agentLabel {
-  min-width: 0;
-  flex: 1;
-  overflow: hidden;
+.fieldAction:hover {
   color: var(--fg);
-  font-size: 13px;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.selectedIcon {
+.contextLine {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.contextIcon {
+  display: inline-flex;
   flex: 0 0 auto;
-  color: var(--accent);
+  color: var(--status-waiting);
+}
+
+.goalRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-sunken);
+}
+
+.goalRow:focus-within {
+  border-color: var(--accent);
+}
+
+.goalIcon {
+  margin-top: 2px;
+  flex: 0 0 auto;
+  color: var(--fg-faint);
+}
+
+.goalInput {
+  min-width: 0;
+  min-height: 42px;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--fg);
+  font: 13px/1.5 var(--font-sans);
+  resize: vertical;
+}
+
+.goalInput::placeholder {
+  color: var(--fg-faint);
+}
+
+.pathInput {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  outline: 0;
+  background: var(--bg-sunken);
+  color: var(--fg);
+  font: 11px var(--font-mono);
+}
+
+.pathInput:focus {
+  border-color: var(--accent);
+}
+
+.advanced {
+  margin-top: 16px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.advanced summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.advancedHint {
+  margin-left: 6px;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+
+.advancedBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-sunken);
 }
 
 .permissionToggle {
   width: 100%;
-  min-height: 58px;
+  min-height: 52px;
   display: flex;
   align-items: center;
   gap: 11px;
-  margin-top: 9px;
-  padding: 10px 13px;
+  padding: 9px 12px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-sunken);
+  border-radius: 12px;
+  background: var(--bg-elevated);
   color: var(--fg);
   text-align: left;
   cursor: pointer;
@@ -101,17 +188,17 @@
 
 .permissionToggleActive {
   border-color: var(--status-waiting);
-  background: color-mix(in srgb, var(--status-waiting) 9%, var(--bg-sunken));
+  background: color-mix(in srgb, var(--status-waiting) 9%, var(--bg-elevated));
 }
 
 .permissionToggleIcon {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 28px;
-  border-radius: var(--radius-sm);
+  flex: 0 0 26px;
+  border-radius: 8px;
   background: var(--panel);
   color: var(--fg-muted);
 }
@@ -155,133 +242,114 @@
   color: var(--status-waiting);
 }
 
-.alwaysUnrestricted {
+.checkboxLine {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  margin-top: 8px;
   color: var(--fg-muted);
   font-size: 11px;
   cursor: pointer;
 }
 
-.alwaysUnrestricted input {
+.checkboxLine input {
   accent-color: var(--accent);
 }
 
-.folderRow {
-  min-height: 40px;
-  display: flex;
+.router9Start {
+  display: inline-flex;
   align-items: center;
-  gap: 9px;
-  padding: 4px 5px 4px 11px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-sunken);
-}
-
-.folderRow:focus-within {
-  border-color: var(--accent);
-}
-
-.folderIcon {
-  flex: 0 0 auto;
-  color: var(--status-waiting);
-}
-
-.folderInput {
-  min-width: 0;
-  flex: 1;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--fg);
-  font: 11px var(--font-mono);
-}
-
-.browseButton {
-  flex: 0 0 auto;
-  padding: 6px 11px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--panel);
-  color: var(--fg-muted);
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.browseButton:hover {
-  border-color: var(--border-strong);
-  background: var(--panel-hover);
-  color: var(--fg);
-}
-
-.recentBlock {
-  margin-top: 10px;
-}
-
-.recentLabel {
-  display: block;
-  margin-bottom: 7px;
-  color: var(--fg-faint);
-  font-size: 10px;
-}
-
-.recentFolders {
-  display: flex;
-  flex-wrap: wrap;
   gap: 6px;
-}
-
-.folderChip {
-  max-width: 150px;
-  overflow: hidden;
+  align-self: flex-start;
   padding: 5px 10px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-sunken);
+  border-radius: 8px;
+  background: transparent;
   color: var(--fg-muted);
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    color 120ms,
+    border-color 120ms;
+}
+
+.router9Start:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--border-strong);
+}
+
+.router9Start:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.footerFill {
+  flex: 1;
+}
+
+.createMore {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg-muted);
+  font-size: 12px;
   cursor: pointer;
 }
 
-.folderChip:hover {
-  border-color: var(--border-strong);
+.createMore:hover {
   color: var(--fg);
 }
 
-.autoNameHint {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 18px;
-  color: var(--fg-faint);
-  font-size: 10px;
-}
-
-.advanced {
-  margin-top: 14px;
-  color: var(--fg-muted);
-  font-size: 11px;
-}
-
-.advanced summary {
-  width: fit-content;
-  cursor: pointer;
-}
-
-.advancedBody {
-  margin-top: 12px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+.switchTrack {
+  width: 32px;
+  height: 18px;
+  position: relative;
+  flex: 0 0 auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
   background: var(--bg-sunken);
+  transition: background 120ms ease;
 }
 
-@media (max-width: 620px) {
-  .agentGrid {
-    grid-template-columns: 1fr;
-  }
+.switchTrack::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--fg-faint);
+  transition:
+    left 120ms ease,
+    background 120ms ease;
+}
+
+.switchTrackOn {
+  background: var(--panel-hover);
+}
+
+.switchTrackOn::after {
+  left: 16px;
+  background: var(--accent);
+}
+
+.submitButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.shortcut {
+  padding: 1px 5px;
+  border: 1px solid currentcolor;
+  border-radius: var(--radius-sm);
+  opacity: 0.5;
+  font: 10px var(--font-mono);
+}
+
+:global([data-visual-style='clean']) .modal {
+  border-radius: var(--clean-modal-radius);
 }

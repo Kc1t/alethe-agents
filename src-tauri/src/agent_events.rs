@@ -3,6 +3,7 @@
 // O Claude Code dispara hooks `SubagentStart`/`SubagentStop` como POST HTTP
 
 use std::io::Read;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
@@ -67,47 +68,262 @@ pub fn agent_hooks_token() -> String {
 }
 
 #[tauri::command]
-pub fn agent_hooks_settings_path() -> Result<String, String> {
+pub fn agent_hooks_settings_path(
+    planner_id: String,
+    orchestrator: Option<bool>,
+) -> Result<String, String> {
+    let orchestrator = orchestrator.unwrap_or(true);
     let port = wait_for_listener_port()
         .ok_or_else(|| "listener de agents ainda nao esta disponivel".to_string())?;
     let endpoint = listener_endpoint(port);
-    // Namespaced by port so a second instance cannot overwrite the first one's endpoint and
-    // silently redirect its agents.
-    let path = std::env::temp_dir().join(format!("alethe-agent-hooks-{port}.json"));
+    // Namespaced by port and planner so each Claude terminal gets its own file and its hooks carry
+    // the id back, the same way the orchestrator MCP config does per terminal.
+    let safe_planner: String = planner_id
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let variant = if orchestrator { "full" } else { "session" };
+    let path = std::env::temp_dir()
+        .join(format!("alethe-agent-hooks-{port}-{variant}-{safe_planner}.json"));
     let token = init_token();
     let hook = serde_json::json!([
         { "hooks": [ {
             "type": "http",
             "url": format!("{endpoint}/hook"),
             "timeout": 5,
-            "headers": { "X-Alethe-Token": token }
+            "headers": { "X-Alethe-Token": token, "X-Alethe-Planner": planner_id }
         } ] }
     ]);
-    let settings = serde_json::json!({
 
+    // Both carry `session_id`, the only authoritative answer to which conversation a pane sits on
+    // once `/clear` or an in-CLI `/resume` moves it off the id it was launched with.
+    let mut hooks = serde_json::Map::new();
+    hooks.insert("SessionStart".to_string(), hook.clone());
+    hooks.insert("UserPromptSubmit".to_string(), hook.clone());
 
-        "teammateMode": "in-process",
-        "hooks": {
-            "SubagentStart": hook.clone(),
-            "SubagentStop": hook.clone(),
-            // Fase 2: tool calls em tempo real. PreToolUse dentro de subagent
-
-            "PreToolUse": hook.clone(),
-            "PostToolUse": hook.clone(),
-
-
-            "TeammateIdle": hook.clone(),
-            "TaskCreated": hook.clone(),
-            "TaskCompleted": hook
+    let mut settings = serde_json::Map::new();
+    if orchestrator {
+        settings.insert(
+            "teammateMode".to_string(),
+            serde_json::Value::String("in-process".to_string()),
+        );
+        for event in [
+            "SubagentStart",
+            "SubagentStop",
+            "PreToolUse",
+            "PostToolUse",
+            "TeammateIdle",
+            "TaskCreated",
+            "TaskCompleted",
+        ] {
+            hooks.insert(event.to_string(), hook.clone());
         }
-    });
-    let body = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    }
+    settings.insert("hooks".to_string(), serde_json::Value::Object(hooks));
+
+    let body = serde_json::to_string_pretty(&serde_json::Value::Object(settings))
+        .map_err(|e| e.to_string())?;
     std::fs::write(&path, body).map_err(|e| e.to_string())?;
     eprintln!(
         "[agent_events] hooks settings escrito em {}",
         path.display()
     );
     Ok(path.to_string_lossy().to_string())
+}
+
+const CODEX_HOOKS_MARK_START: &str = "# alethe-managed-hooks-start";
+const CODEX_HOOKS_MARK_END: &str = "# alethe-managed-hooks-end";
+
+fn ps_escape(value: &str) -> String {
+    value.replace('\'', "''")
+}
+
+fn toml_string(value: &str) -> String {
+    toml_edit::Value::from(value).to_string()
+}
+
+/// Codex CLI hooks only run `command`/`commandWindows` handlers — there is no built-in http type
+/// like Claude Code's. So a tiny PowerShell forwarder is generated per terminal, carrying its own
+/// endpoint/token/planner baked in, and piped Codex's hook JSON on stdin.
+fn write_codex_hook_forwarder(port: u16, planner_id: &str, safe_planner: &str) -> Result<PathBuf, String> {
+    let endpoint = listener_endpoint(port);
+    let token = init_token();
+    let script = format!(
+        "$body = [Console]::In.ReadToEnd()\r\n\
+         try {{\r\n\
+         \x20\x20Invoke-RestMethod -Uri '{endpoint}/hook' -Method Post -Body $body -ContentType 'application/json' -Headers @{{ 'X-Alethe-Token' = '{token}'; 'X-Alethe-Planner' = '{planner}'; 'X-Alethe-Agent' = 'codex' }} | Out-Null\r\n\
+         }} catch {{}}\r\n",
+        endpoint = endpoint,
+        token = ps_escape(token),
+        planner = ps_escape(planner_id),
+    );
+    let path = std::env::temp_dir().join(format!("alethe-codex-hook-forward-{port}-{safe_planner}.ps1"));
+    std::fs::write(&path, script).map_err(|e| format!("write_failed:{e}"))?;
+    Ok(path)
+}
+
+const CODEX_MCP_MARK_START: &str = "# alethe-managed-mcp-start";
+const CODEX_MCP_MARK_END: &str = "# alethe-managed-mcp-end";
+
+/// Codex's MCP client only declares servers via `command`/`args` (stdio), unlike Claude Code's
+/// remote `http` support — this script bridges stdin/stdout JSON-RPC to Alethe's `/mcp` endpoint.
+fn write_codex_mcp_bridge(port: u16, planner_id: &str, safe_planner: &str) -> Result<PathBuf, String> {
+    let endpoint = listener_endpoint(port);
+    let token = init_token();
+    let script = format!(
+        "while ($line = [Console]::In.ReadLine()) {{\r\n\
+         \x20\x20if ([string]::IsNullOrWhiteSpace($line)) {{ continue }}\r\n\
+         \x20\x20try {{\r\n\
+         \x20\x20\x20\x20$resp = Invoke-WebRequest -Uri '{endpoint}/mcp' -Method Post -Body $line -ContentType 'application/json' -Headers @{{ 'X-Alethe-Token' = '{token}'; 'X-Alethe-Planner' = '{planner}' }}\r\n\
+         \x20\x20\x20\x20if ($resp.Content) {{\r\n\
+         \x20\x20\x20\x20\x20\x20[Console]::Out.WriteLine($resp.Content)\r\n\
+         \x20\x20\x20\x20\x20\x20[Console]::Out.Flush()\r\n\
+         \x20\x20\x20\x20}}\r\n\
+         \x20\x20}} catch {{}}\r\n\
+         }}\r\n",
+        endpoint = endpoint,
+        token = ps_escape(token),
+        planner = ps_escape(planner_id),
+    );
+    let path = std::env::temp_dir().join(format!("alethe-codex-mcp-bridge-{port}-{safe_planner}.ps1"));
+    std::fs::write(&path, script).map_err(|e| format!("write_failed:{e}"))?;
+    Ok(path)
+}
+
+fn codex_mcp_config_write_inner(repo: String, planner_id: String) -> Result<(), String> {
+    let port = wait_for_listener_port()
+        .ok_or_else(|| "listener de agents ainda nao esta disponivel".to_string())?;
+    let safe_planner: String = planner_id
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let script_path = write_codex_mcp_bridge(port, &planner_id, &safe_planner)?;
+
+    let root = crate::git_control::repository_root(&repo)?;
+    let codex_dir = root.join(".codex");
+    std::fs::create_dir_all(&codex_dir).map_err(|e| format!("mkdir_failed:{e}"))?;
+    let path = codex_dir.join("config.toml");
+
+    let existing = if path.is_file() {
+        std::fs::read_to_string(&path).map_err(|e| format!("read_failed:{e}"))?
+    } else {
+        String::new()
+    };
+
+    let mut kept_lines: Vec<&str> = Vec::new();
+    let mut skipping = false;
+    for line in existing.lines() {
+        let trimmed = line.trim();
+        if trimmed == CODEX_MCP_MARK_START {
+            skipping = true;
+            continue;
+        }
+        if trimmed == CODEX_MCP_MARK_END {
+            skipping = false;
+            continue;
+        }
+        if !skipping {
+            kept_lines.push(line);
+        }
+    }
+    let mut body = kept_lines.join("\n");
+    if !body.is_empty() && !body.ends_with('\n') {
+        body.push('\n');
+    }
+
+    let script_toml = toml_string(&script_path.to_string_lossy());
+    body.push_str(&format!(
+        "\n{CODEX_MCP_MARK_START}\n[mcp_servers.alethe]\ncommand = \"powershell.exe\"\nargs = [\"-NoProfile\", \"-ExecutionPolicy\", \"Bypass\", \"-File\", {script_toml}]\n{CODEX_MCP_MARK_END}\n",
+    ));
+
+    std::fs::write(&path, body).map_err(|e| format!("write_failed:{e}"))
+}
+
+/// Writes (idempotently, replacing its own prior block) the `[mcp_servers.alethe]` section that
+/// registers this Codex terminal as an orchestrator planner — so a Codex-driven session can call
+/// `alethe_delegate` too, same as a Claude terminal already can.
+#[tauri::command]
+pub async fn codex_mcp_config_write(
+    app: tauri::AppHandle,
+    repo: String,
+    planner_id: String,
+    planner_label: String,
+    planner_agent: String,
+) -> Result<(), String> {
+    let state = app.state::<crate::orchestrator::OrchestratorState>();
+    state.core().register_planner(crate::orchestrator_core::Planner {
+        id: planner_id.clone(),
+        label: planner_label,
+        agent: planner_agent,
+    });
+    tokio::task::spawn_blocking(move || codex_mcp_config_write_inner(repo, planner_id))
+        .await
+        .map_err(|error| format!("codex_mcp_config_write: falha na task bloqueante: {error}"))?
+}
+
+fn codex_hooks_config_write_inner(repo: String, planner_id: String) -> Result<(), String> {
+    let port = wait_for_listener_port()
+        .ok_or_else(|| "listener de agents ainda nao esta disponivel".to_string())?;
+    let safe_planner: String = planner_id
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    let script_path = write_codex_hook_forwarder(port, &planner_id, &safe_planner)?;
+
+    let root = crate::git_control::repository_root(&repo)?;
+    let codex_dir = root.join(".codex");
+    std::fs::create_dir_all(&codex_dir).map_err(|e| format!("mkdir_failed:{e}"))?;
+    let path = codex_dir.join("config.toml");
+
+    let existing = if path.is_file() {
+        std::fs::read_to_string(&path).map_err(|e| format!("read_failed:{e}"))?
+    } else {
+        String::new()
+    };
+
+    let mut kept_lines: Vec<&str> = Vec::new();
+    let mut skipping = false;
+    for line in existing.lines() {
+        let trimmed = line.trim();
+        if trimmed == CODEX_HOOKS_MARK_START {
+            skipping = true;
+            continue;
+        }
+        if trimmed == CODEX_HOOKS_MARK_END {
+            skipping = false;
+            continue;
+        }
+        if !skipping {
+            kept_lines.push(line);
+        }
+    }
+    let mut body = kept_lines.join("\n");
+    if !body.is_empty() && !body.ends_with('\n') {
+        body.push('\n');
+    }
+
+    let command_toml = format!("powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"{script_path}\"", script_path = script_path.to_string_lossy());
+    let mut block = String::new();
+    block.push_str(&format!("\n{CODEX_HOOKS_MARK_START}\n"));
+    for event in ["SubagentStart", "SubagentStop"] {
+        block.push_str(&format!(
+            "[[hooks.{event}]]\nmatcher = \".*\"\n\n[[hooks.{event}.hooks]]\ntype = \"command\"\ncommand = \"true\"\ncommandWindows = '{command_toml}'\ntimeout = 5\n\n",
+        ));
+    }
+    block.push_str(&format!("{CODEX_HOOKS_MARK_END}\n"));
+    body.push_str(&block);
+
+    std::fs::write(&path, body).map_err(|e| format!("write_failed:{e}"))
+}
+
+/// Writes (idempotently, replacing its own prior block) the `[hooks]` section that reports this
+/// Codex terminal's own subagents back to Alethe, tagged with `planner_id` so the orchestrator
+/// canvas can hang them off the terminal that spawned them.
+#[tauri::command]
+pub async fn codex_hooks_config_write(repo: String, planner_id: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || codex_hooks_config_write_inner(repo, planner_id))
+        .await
+        .map_err(|error| format!("codex_hooks_config_write: falha na task bloqueante: {error}"))?
 }
 
 pub fn start_listener(app: AppHandle) {
@@ -277,7 +493,7 @@ pub fn start_listener(app: AppHandle) {
             }
 
             match serde_json::from_str::<serde_json::Value>(&body) {
-                Ok(payload) => {
+                Ok(mut payload) => {
                     let get = |k: &str| {
                         payload
                             .get(k)
@@ -292,7 +508,38 @@ pub fn start_listener(app: AppHandle) {
                         get("agent_type"),
                     );
 
-                    let preview: String = body.chars().take(600).collect();
+                    // Which Claude terminal this fired from, so the frontend can hang the subagent
+                    // off the same planner tree as its Codex delegations.
+                    if let Some(planner) = request
+                        .headers()
+                        .iter()
+                        .find(|h| h.field.equiv("X-Alethe-Planner"))
+                        .map(|h| h.value.as_str().to_string())
+                    {
+                        if let Some(object) = payload.as_object_mut() {
+                            object.insert(
+                                "plannerId".to_string(),
+                                serde_json::Value::String(planner),
+                            );
+                        }
+                    }
+
+                    // Which CLI's own subagent mechanism fired this — Claude's http hook carries no
+                    // such header, so its absence defaults to "claude" for backward compatibility.
+                    let source_agent = request
+                        .headers()
+                        .iter()
+                        .find(|h| h.field.equiv("X-Alethe-Agent"))
+                        .map(|h| h.value.as_str().to_string())
+                        .unwrap_or_else(|| "claude".to_string());
+                    if let Some(object) = payload.as_object_mut() {
+                        object.insert(
+                            "sourceAgent".to_string(),
+                            serde_json::Value::String(source_agent),
+                        );
+                    }
+
+                    let preview: String = body.chars().take(4000).collect();
                     eprintln!("[agent_events] payload: {preview}");
                     if let Err(e) = app.emit("agent-hook", &payload) {
                         eprintln!("[agent_events] falha ao emitir agent-hook: {e}");
@@ -304,4 +551,19 @@ pub fn start_listener(app: AppHandle) {
             let _ = request.respond(tiny_http::Response::empty(200));
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::toml_string;
+
+    #[test]
+    fn toml_string_escapes_windows_paths() {
+        let path = r#"C:\Users\kauam\AppData\Local\Temp\alethe-\"bridge\".ps1"#;
+        let document = format!("path = {}", toml_string(path))
+            .parse::<toml_edit::DocumentMut>()
+            .expect("generated path should be valid TOML");
+
+        assert_eq!(document["path"].as_str(), Some(path));
+    }
 }

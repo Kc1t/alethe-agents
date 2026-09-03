@@ -1,0 +1,240 @@
+.step {
+  display: flex;
+  flex-direction: column;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 30px;
+  padding: 0 11px;
+  margin-bottom: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  color: var(--fg-faint);
+}
+
+.search:focus-within {
+  border-color: var(--accent-border);
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  outline: none;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 12.5px;
+}
+
+.search input::placeholder {
+  color: var(--fg-faint);
+}
+
+.clear {
+  display: grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--fg-faint);
+  cursor: pointer;
+}
+
+.clear:hover {
+  color: var(--fg);
+}
+
+.group {
+  margin-bottom: 20px;
+}
+
+.groupTitle {
+  margin: 0 0 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row[data-first] {
+  border-top: 0;
+}
+
+.icon {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-card-default);
+  color: var(--fg-muted);
+  transition:
+    color var(--anim-fast) ease,
+    border-color var(--anim-fast) ease;
+}
+
+.row[data-on] .icon {
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+
+.rowCopy {
+  flex: 1;
+  min-width: 0;
+}
+
+.rowTitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+}
+
+.rowDesc {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--fg-faint);
+}
+
+.tagExperimental {
+  padding: 1px 6px;
+  border: 1px solid var(--status-waiting);
+  border-radius: 999px;
+  color: var(--status-waiting);
+  font-size: 9.5px;
+  line-height: 1.5;
+}
+
+.track {
+  position: relative;
+  width: 32px;
+  height: 19px;
+  flex: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  transition: background-color var(--anim-fast) ease;
+}
+
+.track b {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--fg-faint);
+  transition:
+    left var(--anim-fast) ease,
+    background-color var(--anim-fast) ease;
+}
+
+.row[data-on] .track {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+
+.row[data-on] .track b {
+  left: 15px;
+  background: var(--accent);
+}
+
+.subRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0 8px 40px;
+  border-top: 1px dashed var(--border);
+}
+
+.subTitle {
+  display: block;
+  font-size: 11.5px;
+  color: var(--fg-muted);
+}
+
+.subDesc {
+  display: block;
+  margin-top: 2px;
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: var(--fg-faint);
+}
+
+.segmented {
+  display: flex;
+  gap: 2px;
+  flex: none;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+}
+
+.segmented button {
+  border: 0;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.segmented button[data-on] {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 0 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: none;
+  color: var(--fg-faint);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.more:hover {
+  color: var(--fg);
+}
+
+.empty {
+  padding: 26px 0;
+  text-align: center;
+  color: var(--fg-faint);
+  font-size: 12px;
+}

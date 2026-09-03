@@ -4,8 +4,8 @@ import { useState } from 'react'
 import { useAgentOperationBusy } from '../../hooks/useAgentInstall'
 import { useT } from '../../lib/i18n'
 import type { AgentType } from '../../lib/types'
-import { AgentInstallModal } from './AgentInstallModal'
 import styles from './agentActions.module.css'
+import { AgentInstallModal } from './AgentInstallModal'
 
 type Props = {
   agent: AgentType

@@ -19,6 +19,8 @@ Thumbs.db
 
 # Tauri
 src-tauri/target/
+# npm run test:e2e:build sets CARGO_TARGET_DIR=target-e2e (multi-GB).
+src-tauri/target-e2e/
 src-tauri/gen/
 
 # libghostty pré-buildado — não versionado (binário ~39MB). Reconstruído por
@@ -34,6 +36,9 @@ src-tauri/**/*.app
 src-tauri/**/*.AppImage
 src-tauri/**/*.deb
 src-tauri/**/*.rpm
+
+# App-written project marker: dev-server logs and worktree state.
+.alethe/
 
 # Logs
 *.log

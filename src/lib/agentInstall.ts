@@ -82,6 +82,10 @@ export const AGENT_INSTALL_CATALOG: Partial<Record<AgentType, AgentInstallCatalo
       { id: 'choco', command: 'choco install opencode', requires: 'choco' },
     ],
   },
+  kiro: {
+    docsUrl: 'https://kiro.dev/cli/',
+    methods: [{ id: 'native', command: "irm 'https://cli.kiro.dev/install.ps1' | iex" }],
+  },
 }
 
 export function installDocsUrl(agent: AgentType): string | undefined {
@@ -169,4 +173,13 @@ export function uninstallMethodsFor(
 /** Line handed to the shell PTY: run the installer, then close the shell. */
 export function installShellLine(command: string): string {
   return `${command}; exit\r`
+}
+
+// eslint-disable-next-line no-control-regex
+const ANSI_PATTERN =
+  /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|[\x00-\x08\x0b\x0c\x0e-\x1f]/g
+
+/** Installer output is raw PTY bytes; strip the escape sequences before rendering it as text. */
+export function stripInstallLogAnsi(log: string): string {
+  return log.replace(ANSI_PATTERN, '')
 }

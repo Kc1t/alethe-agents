@@ -7,17 +7,17 @@ import {
   Minus,
   Network,
   Plus,
-  TerminalSquare,
 } from 'lucide-react'
 import { memo, useMemo } from 'react'
 
 import { useT } from '../../lib/i18n'
+import { formatShortcut } from '../../lib/platform'
 import type { Group, Project, Terminal, WorkspaceContainer } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { EmptyState } from '../EmptyState'
 import { PaneArea } from './PaneArea'
 import styles from './ProjectContainer.module.css'
+import { WorkspaceEmptyState } from './WorkspaceEmptyState'
 
 export type ProjectContainerProps = {
   container: WorkspaceContainer
@@ -205,15 +205,23 @@ export const ProjectContainer = memo(function ProjectContainer({
       <div className={styles.body}>
         {terminals.length === 0 ? (
           <div className={styles.emptyShell}>
-            <EmptyState
-              compact
-              icon={<TerminalSquare size={18} />}
-              title={t('ws.panesEmptyTitle')}
-              description={t('ws.panesEmptyDesc')}
-              primaryAction={{
-                label: t('ws.panesEmptyAction'),
-                onClick: () => openContainerWithAllPanes(project.id),
-              }}
+            <WorkspaceEmptyState
+              actions={[
+                {
+                  label: t('ws.emptyOpenPanes'),
+                  onClick: () => openContainerWithAllPanes(project.id),
+                },
+                {
+                  label: t('ws.emptyNewTerminal'),
+                  shortcut: formatShortcut('Ctrl+T'),
+                  onClick: () => openModal('newTerminal', { projectId: project.id }),
+                },
+                {
+                  label: t('ws.emptyAddContent'),
+                  shortcut: formatShortcut('Ctrl+Shift+A'),
+                  onClick: () => openModal('addContent', { projectId: project.id }),
+                },
+              ]}
             />
           </div>
         ) : (

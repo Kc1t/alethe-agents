@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 
+import { useT } from '../../../lib/i18n'
+import { refreshLocalPlugins, setPluginEnabled, usePlugins } from '../../../lib/plugins'
+import type {
+  EventBusPayload,
+  MetricData,
+  PlanningCommit,
+  PluginManifest,
+} from '../../../lib/tauri'
 import {
   getPlanningAutocommit,
   getTelemetryMetrics,
@@ -7,23 +15,19 @@ import {
   planningAuditHistory,
   pluginInstall,
   pluginUninstall,
-  pluginsList,
   setPlanningAutocommit,
-} from '../../../lib/tauri'
-import type {
-  EventBusPayload,
-  MetricData,
-  PluginManifest,
-  PlanningCommit,
 } from '../../../lib/tauri'
 import { useProjectsStore } from '../../../stores/projectsStore'
 import { useSchedulerStore } from '../../../stores/schedulerStore'
-import controls from '../controls.module.css'
-import styles from '../PreferencesModal.module.css'
-import { SettingsSection } from './primitives'
+import { useUiStore } from '../../../stores/uiStore'
 import { Dropdown } from '../../ui/Dropdown'
+import styles from '../PreferencesModal.module.css'
+import multiagentStyles from './MultiagentPage.module.css'
+import { SettingsSection } from './primitives'
 
 export function MultiagentPage() {
+  const t = useT()
+  const pushToast = useUiStore((state) => state.pushToast)
   const projects = useProjectsStore((state) => state.projects)
   const [selectedProjectId, setSelectedProjectId] = useState<string>(projects[0]?.id ?? '')
   const schedulerStore = useSchedulerStore()
@@ -31,9 +35,10 @@ export function MultiagentPage() {
   const [metrics, setMetrics] = useState<Record<string, MetricData>>({})
   const [traces, setTraces] = useState<EventBusPayload[]>([])
   const [loadingTelemetry, setLoadingTelemetry] = useState(true)
+  const [telemetryError, setTelemetryError] = useState(false)
 
-  const [plugins, setPlugins] = useState<PluginManifest[]>([])
-  const [loadingPlugins, setLoadingPlugins] = useState(true)
+  const plugins = usePlugins()
+  const [pluginManifestInput, setPluginManifestInput] = useState('')
 
   const [autocommit, setAutocommit] = useState(false)
   const [auditLogs, setAuditLogs] = useState<PlanningCommit[]>([])
@@ -44,8 +49,10 @@ export function MultiagentPage() {
       const [m, tr] = await Promise.all([getTelemetryMetrics(), getTelemetryTraces()])
       setMetrics(m)
       setTraces(tr.slice(-15).reverse())
+      setTelemetryError(false)
     } catch (err) {
-      console.error('Falha ao carregar telemetria:', err)
+      console.error('Failed to load telemetry:', err)
+      setTelemetryError(true)
     } finally {
       setLoadingTelemetry(false)
     }
@@ -53,12 +60,9 @@ export function MultiagentPage() {
 
   const loadPlugins = useCallback(async () => {
     try {
-      const list = await pluginsList()
-      setPlugins(list)
+      await refreshLocalPlugins()
     } catch (err) {
-      console.error('Falha ao listar plugins:', err)
-    } finally {
-      setLoadingPlugins(false)
+      console.error('Failed to list plugins:', err)
     }
   }, [])
 
@@ -67,7 +71,7 @@ export function MultiagentPage() {
       const enabled = await getPlanningAutocommit()
       setAutocommit(enabled)
     } catch (err) {
-      console.error('Falha ao obter estado de autocommit:', err)
+      console.error('Failed to read autocommit state:', err)
     }
   }, [])
 
@@ -98,12 +102,10 @@ export function MultiagentPage() {
     void loadAutocommitState()
   }, [loadPlugins, loadAutocommitState])
 
-  // Inicializa o ouvinte do barramento no schedulerStore
   useEffect(() => {
     return schedulerStore.initListener()
   }, [])
 
-                                                              
   useEffect(() => {
     if (selectedProjectId) {
       void schedulerStore.loadTasks(selectedProjectId)
@@ -122,31 +124,37 @@ export function MultiagentPage() {
   }
 
   const handleInstallPlugin = async () => {
-    const raw = prompt('Cole o JSON do Manifest do plugin:')?.trim()
+    const raw = pluginManifestInput.trim()
     if (!raw) return
     try {
       const manifest = JSON.parse(raw) as PluginManifest
-      if (!manifest.name || !manifest.version || !manifest.kind) {
-        alert('Invalid manifest. Fill in name, version, and kind.')
+      if (!manifest.id || !manifest.name || !manifest.version || !manifest.kind) {
+        pushToast({ title: t('prefs.multiagentPluginInstallInvalid'), body: '' })
         return
       }
       await pluginInstall(manifest)
-      alert('Plugin instalado com sucesso!')
+      pushToast({ title: t('prefs.multiagentPluginInstallSuccess'), body: '' })
+      setPluginManifestInput('')
       void loadPlugins()
     } catch (err) {
-      alert('Erro ao instalar plugin: ' + err)
+      pushToast({
+        title: t('prefs.multiagentPluginInstallError', { error: String(err) }),
+        body: '',
+      })
     }
   }
 
   const handleUninstallPlugin = async (id: string) => {
-    if (confirm(`Tem certeza que deseja desinstalar o plugin "${id}"?`)) {
-      try {
-        await pluginUninstall(id)
-        alert('Plugin desinstalado!')
-        void loadPlugins()
-      } catch (err) {
-        alert('Erro ao desinstalar plugin: ' + err)
-      }
+    if (!window.confirm(t('prefs.multiagentPluginUninstallConfirm', { name: id }))) return
+    try {
+      await pluginUninstall(id)
+      pushToast({ title: t('prefs.multiagentPluginUninstallSuccess'), body: '' })
+      void loadPlugins()
+    } catch (err) {
+      pushToast({
+        title: t('prefs.multiagentPluginUninstallError', { error: String(err) }),
+        body: '',
+      })
     }
   }
 
@@ -155,26 +163,7 @@ export function MultiagentPage() {
       await setPlanningAutocommit(enabled)
       setAutocommit(enabled)
     } catch (err) {
-      alert('Erro ao alterar autocommit: ' + err)
-    }
-  }
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return 'var(--fg-muted)'
-      case 'ready':
-        return 'var(--status-ready-fg, #38bdf8)'
-      case 'running':
-        return 'var(--status-running-fg, #f59e0b)'
-      case 'completed':
-        return 'var(--status-completed-fg, #10b981)'
-      case 'failed':
-        return 'var(--status-failed-fg, #ef4444)'
-      case 'blocked':
-        return '#6b7280'
-      default:
-        return 'var(--fg)'
+      pushToast({ title: t('prefs.multiagentAutocommitError'), body: String(err) })
     }
   }
 
@@ -182,164 +171,103 @@ export function MultiagentPage() {
     <>
       <SettingsSection
         id="multiagent-scheduler"
-        title="Scheduler & task queue"
-        description="Manage execution waves (Task DAG) per project."
+        title={t('prefs.multiagentSchedulerTitle')}
+        description={t('prefs.multiagentSchedulerDesc')}
       >
-        <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+        <div className={multiagentStyles.toolbar}>
           <Dropdown
-            className={controls.input}
+            className={styles.select}
             value={selectedProjectId}
             onChange={setSelectedProjectId}
-            ariaLabel="Select a project"
-            options={[{ value: '', label: '-- Select a project --' }, ...projects.map((p) => ({ value: p.id, label: p.name }))]}
+            ariaLabel={t('prefs.multiagentSelectProjectOption')}
+            options={[
+              { value: '', label: t('prefs.multiagentSelectProjectOption') },
+              ...projects.map((p) => ({ value: p.id, label: p.name })),
+            ]}
           />
 
-          {selectedProjectId && repoPath && (
+          {selectedProjectId && repoPath ? (
             <button
               type="button"
-              className={styles.secondaryButton}
-              style={{ height: 32, padding: '0 12px', fontSize: 11 }}
+              className={`${styles.secondaryButton} ${multiagentStyles.runTickButton}`}
               onClick={handleTick}
             >
-              Run tick (force queue)
+              {t('prefs.multiagentRunTick')}
             </button>
-          )}
+          ) : null}
         </div>
 
         {selectedProjectId ? (
           schedulerStore.loading ? (
-            <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>
-              Carregando fila do projeto...
-            </div>
+            <div className={multiagentStyles.mutedNote}>{t('prefs.multiagentLoadingQueue')}</div>
           ) : schedulerStore.tasks.length === 0 ? (
-            <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
-              Nenhuma tarefa de planejamento (GSD) encontrada em `.planning/`.
-            </div>
+            <div className={multiagentStyles.emptyNote}>{t('prefs.multiagentNoTasks')}</div>
           ) : (
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 8,
-                maxHeight: 220,
-                overflowY: 'auto',
-              }}
-            >
+            <div className={multiagentStyles.list}>
               {schedulerStore.tasks.map((task) => (
-                <div
-                  key={task.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '8px 12px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'var(--bg-active)',
-                    border: '1px solid var(--border)',
-                    fontSize: 11,
-                  }}
-                >
-                  <div style={{ overflow: 'hidden', marginRight: 12 }}>
-                    <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div key={task.id} className={multiagentStyles.taskRow}>
+                  <div className={multiagentStyles.taskBody}>
+                    <div className={multiagentStyles.taskTitleRow}>
                       <span>
                         #{task.id}: {task.title}
                       </span>
-                      <span
-                        style={{
-                          fontSize: 9,
-                          padding: '2px 6px',
-                          borderRadius: 4,
-                          background: 'var(--border)',
-                          color: getStatusColor(task.status),
-                          fontWeight: 700,
-                        }}
-                      >
+                      <span className={multiagentStyles.statusBadge} data-status={task.status}>
                         {task.status.toUpperCase()}
                       </span>
                     </div>
-                    {task.dependencies.length > 0 && (
-                      <div style={{ fontSize: 9, color: 'var(--fg-muted)', marginTop: 2 }}>
-                        Depende de:{' '}
-                        <span style={{ fontFamily: 'monospace' }}>
-                          {task.dependencies.join(', ')}
-                        </span>
+                    {task.dependencies.length > 0 ? (
+                      <div className={multiagentStyles.taskMeta}>
+                        {t('prefs.multiagentDependsOn')} <code>{task.dependencies.join(', ')}</code>
                       </div>
-                    )}
-                    {task.assignedAgentId && (
-                      <div style={{ fontSize: 9, color: 'var(--accent)', marginTop: 2 }}>
-                        Alocado para: Agente {task.assignedAgentId}
+                    ) : null}
+                    {task.assignedAgentId ? (
+                      <div className={multiagentStyles.taskAssignee}>
+                        {t('prefs.multiagentAssignedTo', { agentId: task.assignedAgentId })}
                       </div>
-                    )}
+                    ) : null}
                   </div>
-                  {task.status === 'running' && (
+                  {task.status === 'running' ? (
                     <button
                       type="button"
+                      className={multiagentStyles.cancelButton}
                       onClick={() => schedulerStore.cancel(task.id)}
-                      style={{
-                        padding: '4px 8px',
-                        fontSize: 10,
-                        borderRadius: 'var(--radius-sm)',
-                        background: 'var(--status-failed-bg, #4c1d1d)',
-                        color: '#ff8888',
-                        border: 'none',
-                        cursor: 'pointer',
-                        flexShrink: 0,
-                      }}
                     >
-                      Cancelar
+                      {t('prefs.multiagentCancel')}
                     </button>
-                  )}
+                  ) : null}
                 </div>
               ))}
             </div>
           )
         ) : (
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
-            Select a project to inspect and orchestrate its tasks.
-          </div>
+          <div className={multiagentStyles.emptyNote}>{t('prefs.multiagentSelectProjectHint')}</div>
         )}
       </SettingsSection>
 
       <SettingsSection
         id="multiagent-metrics"
-        title="Execution metrics (phases 1/2)"
-        description="Accumulated global counters from the internal event bus."
+        title={t('prefs.multiagentMetricsTitle')}
+        description={t('prefs.multiagentMetricsDesc')}
       >
         {loadingTelemetry ? (
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Loading metrics...</div>
+          <div className={multiagentStyles.mutedNote}>{t('prefs.multiagentLoadingMetrics')}</div>
+        ) : telemetryError ? (
+          <div className={multiagentStyles.errorNote}>{t('prefs.multiagentTelemetryError')}</div>
         ) : Object.keys(metrics).length === 0 ? (
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
-            No accumulated event metrics.
-          </div>
+          <div className={multiagentStyles.emptyNote}>{t('prefs.multiagentNoMetrics')}</div>
         ) : (
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
-              gap: 8,
-            }}
-          >
+          <div className={multiagentStyles.metricGrid}>
             {Object.entries(metrics).map(([key, data]) => {
               const name = key.replace('alethe_event_', '').toUpperCase()
               return (
-                <div
-                  key={key}
-                  style={{
-                    padding: '8px 10px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'var(--bg-active)',
-                    border: '1px solid var(--border)',
-                  }}
-                >
-                  <div style={{ fontSize: 10, color: 'var(--fg-muted)', fontWeight: 600 }}>
-                    {name}
-                  </div>
-                  <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>{data.count}</div>
-                  {data.last_value > 0 && (
-                    <div style={{ fontSize: 9, color: 'var(--accent)', marginTop: 2 }}>
-                      Last: {data.last_value.toFixed(2)}
+                <div key={key} className={multiagentStyles.metricCard}>
+                  <div className={multiagentStyles.metricLabel}>{name}</div>
+                  <div className={multiagentStyles.metricValue}>{data.count}</div>
+                  {data.last_value > 0 ? (
+                    <div className={multiagentStyles.metricLast}>
+                      {t('prefs.multiagentLastValue', { value: data.last_value.toFixed(2) })}
                     </div>
-                  )}
+                  ) : null}
                 </div>
               )
             })}
@@ -349,62 +277,29 @@ export function MultiagentPage() {
 
       <SettingsSection
         id="multiagent-traces"
-        title="Recent event history"
-        description="Real-time tracking of structured Event Bus logs."
+        title={t('prefs.multiagentTracesTitle')}
+        description={t('prefs.multiagentTracesDesc')}
       >
         {loadingTelemetry ? (
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Loading traces...</div>
+          <div className={multiagentStyles.mutedNote}>{t('prefs.multiagentLoadingTraces')}</div>
         ) : traces.length === 0 ? (
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
-            No recent events recorded.
-          </div>
+          <div className={multiagentStyles.emptyNote}>{t('prefs.multiagentNoTraces')}</div>
         ) : (
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 6,
-              maxHeight: 180,
-              overflowY: 'auto',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-sm)',
-              padding: 8,
-              background: 'var(--bg-active)',
-            }}
-          >
+          <div className={multiagentStyles.scrollLog}>
             {traces.map((trace, idx) => (
-              <div
-                key={idx}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  fontSize: 10,
-                  paddingBottom: 4,
-                  borderBottom: '1px solid color-mix(in srgb, var(--border) 40%, transparent)',
-                }}
-              >
-                <div style={{ overflow: 'hidden', marginRight: 12 }}>
-                  <span style={{ fontWeight: 600, color: 'var(--accent)' }}>
-                    {trace.event_type}
-                  </span>
-                  {trace.task_id && (
-                    <span style={{ color: 'var(--fg-muted)', marginLeft: 6 }}>
-                      Task: {trace.task_id}
+              <div key={idx} className={multiagentStyles.traceRow}>
+                <div className={multiagentStyles.traceBody}>
+                  <span className={multiagentStyles.traceType}>{trace.event_type}</span>
+                  {trace.task_id ? (
+                    <span className={multiagentStyles.traceTask}>
+                      {t('prefs.multiagentTraceTask', { id: trace.task_id })}
                     </span>
-                  )}
-                  <div
-                    style={{
-                      color: 'var(--fg-muted)',
-                      fontSize: 9,
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    CorrId: {trace.correlation_id}
+                  ) : null}
+                  <div className={multiagentStyles.traceCorrId}>
+                    {t('prefs.multiagentTraceCorrId', { id: trace.correlation_id })}
                   </div>
                 </div>
-                <div style={{ textAlign: 'right', color: 'var(--fg-muted)', flexShrink: 0 }}>
+                <div className={multiagentStyles.traceTime}>
                   {new Date(trace.timestamp_ms).toLocaleTimeString()}
                 </div>
               </div>
@@ -415,64 +310,73 @@ export function MultiagentPage() {
 
       <SettingsSection
         id="multiagent-plugins"
-        title="Plugin manager"
-        description="View and install orchestrator plugins and custom tools."
+        title={t('prefs.multiagentPluginsTitle')}
+        description={t('prefs.multiagentPluginsDesc')}
       >
-        <button
-          type="button"
-          className={styles.secondaryButton}
-          style={{ marginBottom: 12, fontSize: 11 }}
-          onClick={handleInstallPlugin}
-        >
-          Install new plugin (JSON)
-        </button>
+        <div className={multiagentStyles.pluginForm}>
+          <textarea
+            className={multiagentStyles.pluginTextarea}
+            value={pluginManifestInput}
+            onChange={(event) => setPluginManifestInput(event.target.value)}
+            placeholder={t('prefs.multiagentPluginInstallPlaceholder')}
+            spellCheck={false}
+          />
+          <button
+            type="button"
+            className={styles.secondaryButton}
+            disabled={!pluginManifestInput.trim()}
+            onClick={() => void handleInstallPlugin()}
+          >
+            {t('prefs.multiagentPluginInstallButton')}
+          </button>
+        </div>
 
-        {loadingPlugins ? (
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>Carregando plugins...</div>
-        ) : plugins.length === 0 ? (
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
-            Nenhum plugin instalado no momento.
-          </div>
+        {plugins.length === 0 ? (
+          <div className={multiagentStyles.emptyNote}>{t('prefs.multiagentNoPlugins')}</div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className={multiagentStyles.list}>
             {plugins.map((plug) => (
-              <div
-                key={plug.name}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '8px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--bg-active)',
-                  border: '1px solid var(--border)',
-                  fontSize: 11,
-                }}
-              >
+              <div key={plug.manifest.id} className={multiagentStyles.pluginRow}>
                 <div>
-                  <div style={{ fontWeight: 600 }}>
-                    {plug.name} (v{plug.version})
+                  <div className={multiagentStyles.pluginName}>
+                    {plug.manifest.name} (v{plug.manifest.version})
                   </div>
-                  <div style={{ fontSize: 9, color: 'var(--fg-muted)' }}>Tipo: {plug.kind}</div>
-                  <div style={{ fontSize: 10, color: 'var(--fg-muted)', marginTop: 2 }}>
-                    {plug.description}
+                  <div className={multiagentStyles.pluginKind}>
+                    {t('prefs.multiagentPluginKind', { kind: plug.manifest.kind })}
+                    {plug.source === 'bundled'
+                      ? ` · ${t('prefs.multiagentPluginBundled')}`
+                      : null}
                   </div>
+                  <div className={multiagentStyles.pluginDescription}>
+                    {plug.manifest.description}
+                  </div>
+                  {plug.error ? (
+                    <div className={multiagentStyles.pluginError}>
+                      {t('prefs.multiagentPluginError', { error: plug.error })}
+                    </div>
+                  ) : null}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleUninstallPlugin(plug.name)}
-                  style={{
-                    padding: '4px 8px',
-                    fontSize: 10,
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'var(--status-failed-bg, #4c1d1d)',
-                    color: '#ff8888',
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Desinstalar
-                </button>
+                <div className={multiagentStyles.pluginActions}>
+                  <label className={multiagentStyles.pluginToggle}>
+                    <input
+                      type="checkbox"
+                      checked={plug.enabled}
+                      onChange={(event) =>
+                        void setPluginEnabled(plug.manifest.id, event.target.checked)
+                      }
+                    />
+                    {t('prefs.multiagentPluginEnabled')}
+                  </label>
+                  {plug.source === 'local' ? (
+                    <button
+                      type="button"
+                      className={multiagentStyles.cancelButton}
+                      onClick={() => void handleUninstallPlugin(plug.manifest.id)}
+                    >
+                      {t('prefs.multiagentPluginUninstall')}
+                    </button>
+                  ) : null}
+                </div>
               </div>
             ))}
           </div>
@@ -481,83 +385,37 @@ export function MultiagentPage() {
 
       <SettingsSection
         id="multiagent-gsd-audit"
-        title="GSD audit & autocommit"
-        description="Monitor task changes in `.planning/` and configure automatic audit commits."
+        title={t('prefs.multiagentAuditTitle')}
+        description={t('prefs.multiagentAuditDesc')}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <div className={multiagentStyles.autocommitRow}>
           <input
             type="checkbox"
             id="planningAutocommit"
             checked={autocommit}
-            onChange={(e) => handleToggleAutocommit(e.target.checked)}
-            style={{ cursor: 'pointer' }}
+            onChange={(e) => void handleToggleAutocommit(e.target.checked)}
           />
-          <label
-            htmlFor="planningAutocommit"
-            style={{ fontSize: 11, cursor: 'pointer', userSelect: 'none' }}
-          >
-            Ativar Auto-commit de Auditoria (Opt-in)
-          </label>
+          <label htmlFor="planningAutocommit">{t('prefs.multiagentAutocommitLabel')}</label>
         </div>
 
         {selectedProjectId ? (
           loadingAudit ? (
-            <div style={{ fontSize: 11, color: 'var(--fg-muted)' }}>
-              Carregando logs de auditoria...
-            </div>
+            <div className={multiagentStyles.mutedNote}>{t('prefs.multiagentLoadingAudit')}</div>
           ) : auditLogs.length === 0 ? (
-            <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
-              No changes recorded in `.planning/` through Git.
-            </div>
+            <div className={multiagentStyles.emptyNote}>{t('prefs.multiagentNoAuditLogs')}</div>
           ) : (
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 6,
-                maxHeight: 180,
-                overflowY: 'auto',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)',
-                padding: 8,
-                background: 'var(--bg-active)',
-              }}
-            >
+            <div className={multiagentStyles.scrollLog}>
               {auditLogs.map((log) => (
-                <div
-                  key={log.hash}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    fontSize: 10,
-                    paddingBottom: 4,
-                    borderBottom: '1px solid color-mix(in srgb, var(--border) 40%, transparent)',
-                  }}
-                >
+                <div key={log.hash} className={multiagentStyles.auditRow}>
                   <div>
-                    <span
-                      style={{
-                        fontFamily: 'monospace',
-                        fontWeight: 600,
-                        color: 'var(--accent)',
-                        marginRight: 6,
-                      }}
-                    >
-                      {log.hash.slice(0, 7)}
-                    </span>
+                    <span className={multiagentStyles.auditHash}>{log.hash.slice(0, 7)}</span>
                     <span>{log.subject}</span>
-                    <div style={{ color: 'var(--fg-muted)', fontSize: 9 }}>
-                      Autor: {log.author} {log.agentId ? `· Agente: ${log.agentId}` : ''}
+                    <div className={multiagentStyles.auditAuthor}>
+                      {t('prefs.multiagentAuditAuthor', { author: log.author })}{' '}
+                      {log.agentId ? t('prefs.multiagentAuditAgent', { agentId: log.agentId }) : ''}
                     </div>
                   </div>
-                  <div
-                    style={{
-                      textAlign: 'right',
-                      color: 'var(--fg-muted)',
-                      fontSize: 9,
-                      flexShrink: 0,
-                    }}
-                  >
+                  <div className={multiagentStyles.auditTime}>
                     {new Date(log.timestampMs).toLocaleString()}
                   </div>
                 </div>
@@ -565,8 +423,8 @@ export function MultiagentPage() {
             </div>
           )
         ) : (
-          <div style={{ fontSize: 11, color: 'var(--fg-muted)', fontStyle: 'italic' }}>
-            Select a project above to view the GSD audit history.
+          <div className={multiagentStyles.emptyNote}>
+            {t('prefs.multiagentSelectProjectAuditHint')}
           </div>
         )}
       </SettingsSection>

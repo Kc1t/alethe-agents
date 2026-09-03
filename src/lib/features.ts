@@ -5,6 +5,10 @@ export type FeatureDefinition = {
   id: FeatureId
   titleKey: MessageKey
   descriptionKey: MessageKey
+  /** Synonyms the onboarding search matches on, beyond the title and description. */
+  keywordsKey: MessageKey
+  /** Modules kept behind "show others" until the user goes looking for them. */
+  secondary?: true
 }
 
 export const FEATURES: readonly FeatureDefinition[] = [
@@ -12,42 +16,62 @@ export const FEATURES: readonly FeatureDefinition[] = [
     id: 'todos',
     titleKey: 'features.todos.title',
     descriptionKey: 'features.todos.description',
-  },
-  {
-    id: 'git',
-    titleKey: 'features.git.title',
-    descriptionKey: 'features.git.description',
+    keywordsKey: 'features.todos.keywords',
   },
   {
     id: 'browser',
     titleKey: 'features.browser.title',
     descriptionKey: 'features.browser.description',
+    keywordsKey: 'features.browser.keywords',
   },
   {
     id: 'graphify',
     titleKey: 'features.graphify.title',
     descriptionKey: 'features.graphify.description',
+    keywordsKey: 'features.graphify.keywords',
+    secondary: true,
   },
   {
     id: 'mcp',
     titleKey: 'features.mcp.title',
     descriptionKey: 'features.mcp.description',
+    keywordsKey: 'features.mcp.keywords',
   },
   {
     id: 'playwright',
     titleKey: 'features.playwright.title',
     descriptionKey: 'features.playwright.description',
+    keywordsKey: 'features.playwright.keywords',
   },
   {
     id: 'orchestrator',
     titleKey: 'features.orchestrator.title',
     descriptionKey: 'features.orchestrator.description',
+    keywordsKey: 'features.orchestrator.keywords',
+  },
+  {
+    id: 'aiMemory',
+    titleKey: 'features.aiMemory.title',
+    descriptionKey: 'features.aiMemory.description',
+    keywordsKey: 'features.aiMemory.keywords',
+    secondary: true,
   },
 ]
 
 type StoredFeaturePreferences = {
-  enabledFeatures?: Partial<Record<FeatureId, boolean>>
+  enabledFeatures?: Partial<Record<FeatureId, boolean>> & LegacyFeatureFlags
   showGitControl?: boolean
+}
+
+/** Feature ids that became plugins. Read only by the one-time migration. */
+export type LegacyFeatureFlags = { git?: boolean }
+
+/**
+ * Git Control is a plugin now. Returns the legacy flag once, so the caller can
+ * carry the user's old choice over to the plugin's enabled state.
+ */
+export function legacyGitFeatureFlag(raw: StoredFeaturePreferences | undefined): boolean | undefined {
+  return raw?.enabledFeatures?.git ?? raw?.showGitControl
 }
 
 export function normalizeEnabledFeatures(
@@ -56,7 +80,6 @@ export function normalizeEnabledFeatures(
   if (raw?.enabledFeatures) {
     return {
       todos: raw.enabledFeatures.todos ?? true,
-      git: raw.enabledFeatures.git ?? true,
       browser: raw.enabledFeatures.browser ?? true,
       graphify: raw.enabledFeatures.graphify ?? true,
       mcp: raw.enabledFeatures.mcp ?? true,
@@ -70,7 +93,6 @@ export function normalizeEnabledFeatures(
   }
   return {
     todos: raw === undefined,
-    git: raw?.showGitControl ?? true,
     browser: true,
     graphify: true,
     aiMemory: false,

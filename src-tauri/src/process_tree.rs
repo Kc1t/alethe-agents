@@ -107,17 +107,41 @@ struct PersistedRoots {
     roots: Vec<PersistedRoot>,
 }
 
-static ROOTS_FILE: OnceLock<PathBuf> = OnceLock::new();
+static ROOTS_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 /// Scopes the file to one instance's data directory. A dev build and an installed build must never
 /// share it: the sweep kills whole process trees, so reading another live instance's file wipes out
 /// its terminals. Until this is set there is no path, and both the write and the sweep are skipped.
 pub fn set_roots_file_dir(dir: PathBuf) {
-    let _ = ROOTS_FILE.set(dir.join("pty_roots.json"));
+    let _ = ROOTS_DIR.set(dir);
 }
 
 fn roots_file_path() -> Option<PathBuf> {
-    ROOTS_FILE.get().cloned()
+    ROOTS_DIR
+        .get()
+        .map(|dir| dir.join(format!("pty_roots-{}.json", std::process::id())))
+}
+
+fn is_roots_registry_name(name: &str) -> bool {
+    name == "pty_roots.json" || (name.starts_with("pty_roots-") && name.ends_with(".json"))
+}
+
+fn roots_files() -> Vec<PathBuf> {
+    let Some(dir) = ROOTS_DIR.get() else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(is_roots_registry_name)
+        })
+        .collect()
 }
 
 fn identify(sys: &System, pid: u32) -> Option<PersistedRoot> {
@@ -173,48 +197,51 @@ fn persist_roots() {
 /// falhar silenciosamente, ou qualquer processo que tenha escapado dele).
 
 pub fn sweep_orphans_from_previous_session() -> usize {
-    let Some(path) = roots_file_path() else {
-        return 0;
-    };
-    let Ok(bytes) = std::fs::read(&path) else {
-        return 0;
-    };
-    // A file this build cannot parse says nothing about who owns the processes in it, and the sweep
-    // kills whole trees — so it is discarded rather than acted on.
-    let Ok(persisted) = serde_json::from_slice::<PersistedRoots>(&bytes) else {
-        let _ = std::fs::remove_file(&path);
-        return 0;
-    };
-
     let mut sys = System::new();
     sys.refresh_processes(ProcessesToUpdate::All);
-
-    // Nothing here is an orphan while the instance that registered it is still running: these are
-    // its live terminals, and the file is still in use, so it must not be removed either.
-    if still_running(&sys, &persisted.owner) {
-        return 0;
-    }
-
-    let _ = std::fs::remove_file(&path);
-    if persisted.roots.is_empty() {
-        return 0;
-    }
-
     let parent_map = get_parent_map();
     let mut killed_roots = 0;
-    for root in persisted.roots {
-        if !still_running(&sys, &root) {
+    for path in roots_files() {
+        let Ok(bytes) = std::fs::read(&path) else {
+            continue;
+        };
+        // A malformed registry cannot safely identify process ownership.
+        let Ok(persisted) = serde_json::from_slice::<PersistedRoots>(&bytes) else {
+            let _ = std::fs::remove_file(&path);
+            continue;
+        };
+        // Installed and dev instances can overlap during an update. Each owns a separate registry,
+        // and a live owner's terminals must never be mistaken for another instance's leftovers.
+        if still_running(&sys, &persisted.owner) {
             continue;
         }
-        let mut all = collect_descendants(root.pid, &parent_map);
-        all.reverse();
-        all.push(root.pid);
-        for pid in all {
-            kill_pid(pid);
+
+        let _ = std::fs::remove_file(&path);
+        for root in persisted.roots {
+            if !still_running(&sys, &root) {
+                continue;
+            }
+            let mut all = collect_descendants(root.pid, &parent_map);
+            all.reverse();
+            all.push(root.pid);
+            for pid in all {
+                kill_pid(pid);
+            }
+            killed_roots += 1;
         }
-        killed_roots += 1;
     }
     killed_roots
+}
+
+/// Reaps registries whose owner dies after this instance has already started, which commonly
+/// happens while an installer replaces a running build.
+pub fn start_orphan_sweeper() {
+    let _ = std::thread::Builder::new()
+        .name("alethe-orphan-sweeper".to_string())
+        .spawn(|| loop {
+            std::thread::sleep(Duration::from_secs(30));
+            let _ = sweep_orphans_from_previous_session();
+        });
 }
 
 pub fn get_pty_tree(pty_id: &str) -> Option<PtyTreeInfo> {
@@ -318,4 +345,17 @@ pub async fn kill_pty_tree_cmd(pty_id: String) -> Result<Vec<u32>, String> {
     tokio::task::spawn_blocking(move || kill_pty_tree(&pty_id))
         .await
         .map_err(|error| format!("kill_pty_tree_cmd: falha na task bloqueante: {error}"))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_roots_registry_name;
+
+    #[test]
+    fn discovers_legacy_and_per_instance_root_registries_only() {
+        assert!(is_roots_registry_name("pty_roots.json"));
+        assert!(is_roots_registry_name("pty_roots-17124.json"));
+        assert!(!is_roots_registry_name("pty_roots-17124.json.tmp"));
+        assert!(!is_roots_registry_name("unrelated.json"));
+    }
 }

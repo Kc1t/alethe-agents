@@ -5,14 +5,14 @@ import {
   Blocks,
   ChevronRight,
   Info,
+  type LucideIcon,
   Palette,
-  ShieldCheck,
   Plug,
   Search,
+  ShieldCheck,
   TerminalSquare,
   UserRound,
   X,
-  type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -28,9 +28,9 @@ import { FeaturesPage } from './preferences/FeaturesPage'
 import { IntegrationsPage } from './preferences/IntegrationsPage'
 import { MultiagentPage } from './preferences/MultiagentPage'
 import { OrganizationPage } from './preferences/OrganizationPage'
-import { TerminalPage } from './preferences/TerminalPage'
-import { RemoteControlPage } from './preferences/RemoteControlPage'
 import { Avatar } from './preferences/primitives'
+import { RemoteControlPage } from './preferences/RemoteControlPage'
+import { TerminalPage } from './preferences/TerminalPage'
 import styles from './PreferencesModal.module.css'
 
 type CategoryId =
@@ -119,8 +119,8 @@ export function PreferencesModal() {
       },
       {
         id: 'multiagent',
-        label: 'Multi-Agent & Telemetry',
-        description: 'Real-time metrics, event traces, and structured logs.',
+        label: t('prefs.categoryMultiagent'),
+        description: t('prefs.categoryMultiagentDesc'),
         Icon: Activity,
       },
       {
@@ -254,6 +254,14 @@ export function PreferencesModal() {
         label: t('prefs.cliCommand'),
         description: t('prefs.cliCommandDesc'),
         keywords: 'cli command terminal path shell comando linha de comando abrir pasta',
+      },
+      {
+        category: 'integrations',
+        target: 'router9',
+        label: t('router9.title'),
+        description: t('router9.desc'),
+        keywords:
+          '9router router proxy roteador rate limit fallback provider provedor base url api key chave anthropic openai',
       },
       {
         category: 'integrations',

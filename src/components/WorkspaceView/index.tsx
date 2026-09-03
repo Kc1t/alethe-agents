@@ -6,7 +6,7 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import { FolderOpen, FolderPlus, TerminalSquare } from 'lucide-react'
+import { FolderOpen, FolderPlus } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Panel, Separator } from 'react-resizable-panels'
 import { useShallow } from 'zustand/react/shallow'
@@ -21,6 +21,7 @@ import {
   reconcileGridLayout,
 } from '../../lib/gridLayout'
 import { useT } from '../../lib/i18n'
+import { formatShortcut } from '../../lib/platform'
 import type {
   AgentType,
   GridLayout,
@@ -32,13 +33,13 @@ import type {
 import { MAX_WORKSPACE_TABS } from '../../lib/workspaceNavigation'
 import { selectActiveProject, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { EmptyState } from '../EmptyState'
 import { GridCellHandles } from '../GridCellHandles'
 import { AgentIcon } from '../icons/AgentIcons'
 import { PaneArea } from './PaneArea'
 import { PersistentPanelGroup as PanelGroup } from './PersistentPanelGroup'
 import { ProjectContainer } from './ProjectContainer'
 import { WorkspaceSurfaceProvider } from './workspaceSurface'
+import { WorkspaceEmptyState, type WorkspaceEmptyAction } from './WorkspaceEmptyState'
 import styles from './WorkspaceView.module.css'
 
 function resolveGroup(project: Project, groupsById: Map<string, Group>): Group | null {
@@ -486,6 +487,11 @@ export function WorkspaceView() {
               surface.active ? (
                 <NoWorkspace
                   project={activeProject}
+                  group={
+                    surface.activeGroupId
+                      ? (groupsById.get(surface.activeGroupId) ?? null)
+                      : null
+                  }
                   onAddTerminal={(defaultCwd) =>
                     activeProject
                       ? openModal('newTerminal', { projectId: activeProject.id })
@@ -877,13 +883,16 @@ function ContainerPanelFragment({
 
 function NoWorkspace({
   project,
+  group,
   onAddTerminal,
 }: {
   project: Project | null
+  group: Group | null
   onAddTerminal: (defaultCwd?: string) => void
 }) {
   const t = useT()
   const openContainerWithAllPanes = useProjectsStore((s) => s.openContainerWithAllPanes)
+  const openGroupWorkspace = useProjectsStore((s) => s.openGroupWorkspace)
   const createProject = useProjectsStore((s) => s.createProject)
   const createTerminal = useProjectsStore((s) => s.createTerminal)
   const openTerminalWorkspace = useProjectsStore((s) => s.openTerminalWorkspace)
@@ -894,6 +903,9 @@ function NoWorkspace({
   const terminalTheme = useProjectsStore(
     (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,
   )
+  const allProjects = useProjectsStore((s) => s.projects)
+  const allGroups = useProjectsStore((s) => s.groups)
+  const openModal = useUiStore((s) => s.openModal_)
   const quickAgents = useMemo(
     () =>
       (['claude', 'codex', 'antigravity', 'opencode', 'shell'] as AgentType[]).filter(
@@ -944,6 +956,37 @@ function NoWorkspace({
       firstTab: { type: quickAgent, cwd, runtimeProfile: 'lean' },
     })
     openTerminalWorkspace(createdProject.id, terminal.id)
+  }
+  if (group) {
+    const projectIds = collectGroupProjectIds(group.id, allGroups)
+    const hasPanes = allProjects.some(
+      (candidate) => projectIds.has(candidate.id) && candidate.terminals.length > 0,
+    )
+    const actions: WorkspaceEmptyAction[] = [
+      ...(hasPanes
+        ? [
+            {
+              label: t('ws.emptyOpenGroup'),
+              onClick: () => openGroupWorkspace(group.id, 'only'),
+            },
+          ]
+        : []),
+      {
+        label: t('ws.emptyNewProject'),
+        shortcut: formatShortcut('Ctrl+Shift+P'),
+        onClick: () => openModal('newProject', { groupId: group.id }),
+      },
+      {
+        label: t('ws.emptyFindJump'),
+        shortcut: formatShortcut('Ctrl+P'),
+        onClick: () => openModal('findJump'),
+      },
+    ]
+    return (
+      <div className={styles.emptyShell}>
+        <WorkspaceEmptyState actions={actions} />
+      </div>
+    )
   }
   if (!project) {
     return (
@@ -1008,32 +1051,29 @@ function NoWorkspace({
       </div>
     )
   }
-  if (project.terminals.length === 0) {
-    return (
-      <div className={styles.emptyShell}>
-        <EmptyState
-          icon={<TerminalSquare size={22} />}
-          title={t('ws.emptyTerminalTitle')}
-          description={t('ws.emptyTerminalDesc')}
-          primaryAction={{
-            label: t('ws.emptyTerminalAction'),
-            onClick: onAddTerminal,
-          }}
-        />
-      </div>
-    )
-  }
+  const projectActions: WorkspaceEmptyAction[] = [
+    ...(project.terminals.length > 0
+      ? [
+          {
+            label: t('ws.emptyOpenPanes'),
+            onClick: () => openContainerWithAllPanes(project.id),
+          },
+        ]
+      : []),
+    {
+      label: t('ws.emptyNewTerminal'),
+      shortcut: formatShortcut('Ctrl+T'),
+      onClick: () => onAddTerminal(),
+    },
+    {
+      label: t('ws.emptyAddContent'),
+      shortcut: formatShortcut('Ctrl+Shift+A'),
+      onClick: () => openModal('addContent', { projectId: project.id }),
+    },
+  ]
   return (
     <div className={styles.emptyShell}>
-      <EmptyState
-        icon={<TerminalSquare size={22} />}
-        title={t('ws.emptyContainerTitle')}
-        description={t('ws.emptyContainerDesc', { count: project.terminals.length })}
-        primaryAction={{
-          label: t('ws.emptyContainerAction'),
-          onClick: () => openContainerWithAllPanes(project.id),
-        }}
-      />
+      <WorkspaceEmptyState actions={projectActions} />
     </div>
   )
 }

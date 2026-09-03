@@ -2,6 +2,7 @@ import claudeLogo from '../../assets/claude-code.png'
 import codexLogo from '../../assets/codex.png'
 import freebuffLogo from '../../assets/freebuff.png'
 import antigravityLogo from '../../assets/antigravity.png'
+import kiroLogo from '../../assets/kiro.svg'
 import { iconMap } from '../../assets/icons'
 import type { AgentType, Theme } from '../../lib/types'
 import { isLightTheme } from '../../lib/themes'
@@ -48,6 +49,10 @@ export function MimoIcon({ size = 16 }: { size?: number }) {
       <path d="M5 11V6l3 3 3-3v5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
+}
+
+export function KiroIcon({ size = 16 }: { size?: number }) {
+  return <img src={kiroLogo} alt="" width={size} height={size} draggable={false} />
 }
 
 export function OpenCodeIcon({ size = 16, theme }: { size?: number; theme: Theme }) {
@@ -102,6 +107,7 @@ export function AgentIcon({
   if (type === 'copilot') return <CopilotIcon size={size} />
   if (type === 'freebuff') return <FreebuffIcon size={size} />
   if (type === 'mimo') return <MimoIcon size={size} />
+  if (type === 'kiro') return <KiroIcon size={size} />
   if (type === 'antigravity') return <AntigravityIcon size={size} />
   return <OpenCodeIcon size={size} theme={theme} />
 }

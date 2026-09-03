@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import {
   claimDiscoveredSession,
+  pickSwitchedSession,
   registerSessionClaim,
   resetSessionClaimsForTests,
 } from './sessionDiscovery'
@@ -60,5 +61,76 @@ describe('claimDiscoveredSession', () => {
     )
 
     expect(claimed).toBeUndefined()
+  })
+})
+
+describe('pickSwitchedSession', () => {
+  beforeEach(() => {
+    resetSessionClaimsForTests()
+  })
+
+  it('adopts the single unclaimed session written after the pane stopped writing its own', () => {
+    const switched = pickSwitchedSession(
+      'claude',
+      'D:/repo',
+      { id: 'mine', modified_at_ms: 10 },
+      [
+        { id: 'mine', modified_at_ms: 10 },
+        { id: 'resumed', modified_at_ms: 20 },
+      ],
+      'tab-1',
+    )
+
+    expect(switched?.id).toBe('resumed')
+  })
+
+  it('never adopts the session another pane in the same folder is writing', () => {
+    registerSessionClaim('claude', 'D:/repo', 'neighbour', 'tab-2')
+
+    const switched = pickSwitchedSession(
+      'claude',
+      'd:/REPO',
+      { id: 'mine', modified_at_ms: 10 },
+      [
+        { id: 'mine', modified_at_ms: 10 },
+        { id: 'neighbour', modified_at_ms: 99 },
+      ],
+      'tab-1',
+    )
+
+    expect(switched).toBeUndefined()
+  })
+
+  it('still adopts a session this same pane already claims', () => {
+    registerSessionClaim('claude', 'D:/repo', 'resumed', 'tab-1')
+
+    const switched = pickSwitchedSession(
+      'claude',
+      'D:/repo',
+      { id: 'mine', modified_at_ms: 10 },
+      [
+        { id: 'mine', modified_at_ms: 10 },
+        { id: 'resumed', modified_at_ms: 20 },
+      ],
+      'tab-1',
+    )
+
+    expect(switched?.id).toBe('resumed')
+  })
+
+  it('stays put when more than one unclaimed session is newer', () => {
+    const switched = pickSwitchedSession(
+      'claude',
+      'D:/repo',
+      { id: 'mine', modified_at_ms: 10 },
+      [
+        { id: 'mine', modified_at_ms: 10 },
+        { id: 'a', modified_at_ms: 20 },
+        { id: 'b', modified_at_ms: 30 },
+      ],
+      'tab-1',
+    )
+
+    expect(switched).toBeUndefined()
   })
 })

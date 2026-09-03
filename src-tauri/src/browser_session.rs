@@ -311,35 +311,56 @@ pub fn browser_session_status(
 }
 
 pub fn mcp_server_spec(endpoint: &str) -> serde_json::Value {
-    mcp_server_spec_for(Some(endpoint))
+    mcp_server_spec_for(Some(endpoint), None)
 }
 
-pub fn mcp_server_spec_for(endpoint: Option<&str>) -> serde_json::Value {
+/// `dedicated_headless` only applies when `endpoint` is `None`: it decides whether the browser
+/// Playwright launches for itself runs headless or, its own default, headed.
+pub fn mcp_server_spec_for(
+    endpoint: Option<&str>,
+    dedicated_headless: Option<bool>,
+) -> serde_json::Value {
     let mut args = vec!["-y".to_string(), "@playwright/mcp@latest".to_string()];
     if let Some(endpoint) = endpoint {
         args.push("--cdp-endpoint".to_string());
         args.push(endpoint.to_string());
+    } else if dedicated_headless == Some(true) {
+        args.push("--headless".to_string());
     }
     serde_json::json!({ "command": "npx", "args": args })
 }
 
 /// Mirrors `graphify_mcp_config_path`: an ephemeral config Claude is pointed at with `--mcp-config`.
+///
+/// `dedicated` opts an agent out of the shared/pane browser entirely, even if one is already
+/// running — Playwright then manages its own separate browser for that agent, headed unless
+/// `headless` asks otherwise.
 #[tauri::command]
-pub fn playwright_mcp_config_path(state: State<'_, BrowserSessionState>) -> Result<String, String> {
-    let info = state
-        .session
-        .lock()
-        .map_err(|_| "browser session lock poisoned")?
-        .as_ref()
-        .filter(|session| is_alive(session))
-        .map(|session| session.info.clone());
+pub fn playwright_mcp_config_path(
+    state: State<'_, BrowserSessionState>,
+    dedicated: bool,
+    headless: bool,
+) -> Result<String, String> {
+    let info = if dedicated {
+        None
+    } else {
+        state
+            .session
+            .lock()
+            .map_err(|_| "browser session lock poisoned")?
+            .as_ref()
+            .filter(|session| is_alive(session))
+            .map(|session| session.info.clone())
+    };
 
-    // Spawning an agent must never launch a browser. When one is already running the agent is
-    // pointed at it so both act on the same tabs; otherwise Playwright keeps its own default,
-    // which only opens a browser once the agent actually reaches for one.
+    // Spawning an agent must never launch the shared browser itself. When one is already running
+    // and the agent isn't opting for a dedicated browser, it is pointed at the shared one so both
+    // act on the same tabs; otherwise Playwright keeps its own default (or the requested
+    // headless mode), which only opens a browser once the agent actually reaches for one.
     let endpoint = info.as_ref().map(|info| info.endpoint.as_str());
+    let dedicated_headless = dedicated.then_some(headless);
     let config = serde_json::json!({
-        "mcpServers": { "playwright": mcp_server_spec_for(endpoint) }
+        "mcpServers": { "playwright": mcp_server_spec_for(endpoint, dedicated_headless) }
     });
     let suffix = info
         .as_ref()
@@ -385,7 +406,7 @@ mod tests {
     fn spawning_an_agent_without_a_browser_does_not_demand_one() {
         // Starting an agent used to launch a browser just to fill in --cdp-endpoint, so every
         // terminal opened a window and concurrent spawns opened several.
-        let spec = mcp_server_spec_for(None);
+        let spec = mcp_server_spec_for(None, None);
         let args: Vec<&str> = spec["args"]
             .as_array()
             .expect("args")
@@ -401,7 +422,7 @@ mod tests {
 
     #[test]
     fn a_running_browser_is_shared_with_the_agent() {
-        let spec = mcp_server_spec_for(Some("http://127.0.0.1:4321"));
+        let spec = mcp_server_spec_for(Some("http://127.0.0.1:4321"), None);
         let args: Vec<&str> = spec["args"]
             .as_array()
             .expect("args")
@@ -410,6 +431,53 @@ mod tests {
             .collect();
         assert!(args.contains(&"--cdp-endpoint"));
         assert!(args.contains(&"http://127.0.0.1:4321"));
+    }
+
+    #[test]
+    fn a_dedicated_headless_browser_gets_the_flag_and_no_endpoint() {
+        let spec = mcp_server_spec_for(None, Some(true));
+        let args: Vec<&str> = spec["args"]
+            .as_array()
+            .expect("args")
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect();
+        assert!(args.contains(&"--headless"));
+        assert!(
+            !args.contains(&"--cdp-endpoint"),
+            "a dedicated browser must never attach to the shared one"
+        );
+    }
+
+    #[test]
+    fn a_dedicated_headed_browser_gets_neither_flag() {
+        let spec = mcp_server_spec_for(None, Some(false));
+        let args: Vec<&str> = spec["args"]
+            .as_array()
+            .expect("args")
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect();
+        assert!(
+            !args.contains(&"--headless"),
+            "headed is Playwright's own default; the flag must be omitted, not passed as false"
+        );
+        assert!(!args.contains(&"--cdp-endpoint"));
+    }
+
+    #[test]
+    fn dedicated_headless_is_ignored_once_an_endpoint_is_set() {
+        // If a caller ever asks for both an endpoint and a dedicated browser, attaching wins —
+        // there is no such thing as a headless flag for a browser Playwright didn't launch.
+        let spec = mcp_server_spec_for(Some("http://127.0.0.1:9"), Some(true));
+        let args: Vec<&str> = spec["args"]
+            .as_array()
+            .expect("args")
+            .iter()
+            .filter_map(|value| value.as_str())
+            .collect();
+        assert!(!args.contains(&"--headless"));
+        assert!(args.contains(&"--cdp-endpoint"));
     }
 
     #[test]

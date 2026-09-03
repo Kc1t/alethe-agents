@@ -23,4 +23,7 @@
 .hint, .securityNote { margin: 1rem 0 0; color: var(--fg-muted); font-size: .76rem; line-height: 1.5; }
 .securityNote { margin-top: .5rem; opacity: .78; }
 .error { margin-top: .75rem; color: var(--status-offline); font-size: .8rem; }
+.step { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.stepEyebrow { display: block; margin-bottom: .55rem; color: var(--fg-muted); font-size: .68rem; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.advancedLink { margin-top: 1rem; width: 100%; justify-content: center; color: var(--fg-muted); }
 @media (max-width: 560px) { .contentGrid { grid-template-columns: 1fr; } .qr { width: 170px; height: 170px; } .hero { align-items: flex-start; flex-wrap: wrap; } .status { margin-left: 0; } }

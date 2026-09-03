@@ -36,6 +36,7 @@ const LANE_COLOR_VARS = [
   '--agent-freebuff',
   '--agent-mimo',
   '--agent-antigravity',
+  '--agent-kiro',
 ]
 
 /** Lane 0 is always the main lane (the first one allocated, in practice the

@@ -12,6 +12,102 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Plugin system.** Alethe now loads features as plugins instead of hard-wiring every one of them
+  into the app. Official plugins ship inside the installer, are on by default, and can be switched
+  off in Preferences → Multiagent → Plugins; turning one off removes its surfaces immediately, with
+  no restart. Each plugin declares what it needs in its manifest, and the app refuses anything it
+  did not ask for.
+- **Themes can come from a plugin.** A plugin can now register a full theme — application palette,
+  picker swatch, and terminal colors — without touching the app's stylesheet. Contributed colors are
+  validated before they reach the page, so a theme can style the UI but cannot reach the network or
+  inject rules of its own.
+- **Theme Pack, the first bundled plugin.** Ember, Golden Premium, Dark Lemon, and Orca moved out of
+  the core stylesheet into an official plugin. They look and behave exactly as before, and are now
+  removable. Selecting a theme whose plugin is disabled falls back to the default theme and keeps
+  your choice, so re-enabling the plugin restores it.
+- **Git Control is now an official plugin.** Source control works exactly as before — same panel,
+  same placement setting, same left or right sidebar — but it can now be turned off entirely, and
+  its tab appears and disappears without a restart. Its old switch in Preferences → Features is gone:
+  the plugin's own switch replaces it, and if you had the feature turned off, it stays off.
+- Panes, sidebar tabs and commands are now contribution points, so a plugin can add a whole
+  workspace pane, its own sidebar tab, or an entry in the command palette.
+- **Ctrl+P now finds commands, not just terminals.** Plugin-contributed commands are listed above
+  the terminal results and match on their own keywords. Git Control ships the first one: "Source
+  Control", which reveals its panel on whichever side it is placed.
+
+
+### Fixed
+
+- Uninstalling a plugin used its display name instead of its identifier, so any plugin whose name
+  differed from its id could not be removed.
+- The loading placeholder shown while a graph or markdown pane opened had no styling at all, because
+  it referenced a CSS class that was never defined.
+- Switching the sidebar's visual style no longer resets which sidebar tab was open: the two sidebar
+  shells kept separate copies of that state.
+- Putting a group or project on standby now tears all of its terminal and agent process trees down
+  through one reliable batch operation. Per-instance PTY registries also prevent Claude, Codex,
+  shell, and MCP wrapper processes from surviving an app update or overlapping Alethe instance.
+- Codex handoffs on Windows now write escaped bridge-script paths to project `config.toml` files,
+  preventing `\U` TOML parse errors from blocking the receiving session.
+
+### Changed
+
+- A pane whose type has no provider — because the plugin that supplies it is disabled — now says
+  so instead of quietly turning into a terminal pointed at that pane's folder.
+- **9router settings rebuilt around state.** The Integrations panel now opens with a single status
+  line (off / ready / routing through the address it is using) with the start, stop, and dashboard
+  actions beside it, instead of hiding whether the proxy runs inside a button label. What is shown
+  depends on what is true: with nothing installed you get only the install offer; the endpoint key,
+  port, and auto-start appear once routing is on; the install picker appears only when you actually
+  have two installs. Scattered coloured warnings were folded into one notice list with severity, and
+  the "only new terminals change route" note dropped from a permanent warning to a hint shown while
+  routing is actually running.
+
+- **New session modal redesigned.** The dialog is now a single stack of identical rows: an
+  **Open as** field that switches between a plain terminal and an orchestration, then the
+  agent (planner), then the folder (project). Choosing orchestration relabels the fields, limits
+  the agent list to the planners, and reveals an optional **Goal** that is sent to the planner as
+  its first message. Permissions, 9router routing, the runtime profile, and the manual folder path
+  moved into **Advanced**. The footer gained a **Create more** switch that keeps the dialog open
+  after opening a terminal, and the primary button now states what it will do
+  (`Open Claude Code` / `Create orchestration`) with a `Ctrl`/`Cmd` + `Enter` shortcut. The dialog
+  itself is rounder and its title reads `New session` instead of a lowercase `new terminal`.
+
+### Added
+
+- Empty project and group workspaces now use a quiet launcher-style state with a large Alethe mark
+  and direct keyboard-labelled actions instead of boxed empty-state cards.
+- **9router integration.** Alethe can now install, run, and route agents through
+  [9router](https://github.com/decolua/9router), a local proxy that spreads Claude Code, Codex, and
+  OpenCode traffic across multiple providers with automatic fallback. Alethe detects what you
+  already have — whether Node.js is present, and whether a 9router is already on your PATH — and
+  lets you pick between running your own install or letting Alethe install a private,
+  version-pinned copy for you (your global npm packages are untouched). Missing Node.js can be
+  installed from the same dialog. Preferences -> Integrations starts and stops the proxy, opens its
+  dashboard, and holds the endpoint key and port. Routing is off by default, and the master toggle
+  stops the proxy and stops injecting the proxy address the moment it is switched off. An optional
+  topbar pill starts and stops the proxy in one click, and a new optional onboarding step offers
+  the choice during first run.
+- The new-terminal modal now offers "Route through 9router" per agent, with an "always route new
+  agents" default and an inline start button when the proxy is installed but not running. Only
+  terminals opened after a change are affected: an agent keeps the address it started with, so
+  changing the route means restarting it.
+- The new-terminal flow can now start an orchestration with the selected Claude Code or Codex agent
+  as its planner. Alethe keeps the planner above a ready canvas inside one dedicated pane group,
+  without replacing or rearranging the project's surrounding terminal layout.
+- A worker on the orchestration board whose report mentions an image it produced now gets its own
+  card on the canvas, directly below it, automatically — no click needed to see it (previously it
+  was a small thumbnail hidden inside the worker card's click-to-expand detail panel). Click the
+  card to open a full-size preview. Only the first image is promoted this way; a second one or a
+  plain link still show in the expanded detail panel as before.
+- Clicking an image link in a terminal (png, jpg, gif, webp, bmp, avif, ico, svg) now offers "Open
+  in grid" like markdown and text files already did — it opens in its own pane with a header
+  (drag, open in Explorer, focus mode, close) and the image scaled to fit.
+- **Kiro CLI** is now a selectable agent alongside Claude Code, Codex, Copilot, OpenCode,
+  Antigravity, Mimo, and Freebuff — pick it from the new-terminal/new-tab pickers, onboarding,
+  preferences, and the quick-open palette, with its own icon, accent color, install flow
+  (`irm 'https://cli.kiro.dev/install.ps1' | iex`), and unrestricted-mode flag
+  (`--trust-all-tools`).
 - Delegated work can now ask before it leaves the folder it was given. Turned on for a run, a worker
   keeps acting on its own inside that folder and only stops — for the network, another folder, or
   anything else its sandbox would otherwise refuse — on the orchestration board, where you answer.
@@ -29,8 +125,67 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   header counts it across every planner, the planner tabs flag it, and the "needs you elsewhere"
   list puts it above failures and interruptions — a failure is already over, a blocked worker is
   still costing you a slot.
+- Claude's own subagents and teammates now show up on the orchestration board next to any Codex
+  workers a planner delegated, under a shared "Subagents" branch — one board for everything a
+  terminal is running, native or delegated.
+- Codex's own native subagents report to the same board too, through a generated hook forwarder
+  (Codex has no built-in http hook, unlike Claude Code) — each carries the Codex icon so its origin
+  reads at a glance next to any Claude subagents on the same tree.
+- The orchestration board now only shows the planners and runs that belong to the open project —
+  a terminal from another project no longer leaks onto a board it has nothing to do with.
+- A shell a planner backgrounds on its own (a dev server, a long build) shows up on the board too,
+  next to its subagents, and stays "running" there for as long as the planner leaves it up.
+- A worker that changed files can now show the diff right on its card — the same unified diff its
+  own `alethe_diff` tool reads, no need to leave the board to see what it actually did.
+- Delegated work can now target a Claude worker, not only Codex — `alethe_delegate` takes an
+  `agent` param. A Claude worker reports its own result, tokens, cost and diff, and resumes
+  correctly after a restart; it runs with permissions bypassed, since its headless mode has no
+  interactive approval channel to route a question through.
+- A Codex terminal can now register as a planner too, the same way a Claude terminal already does —
+  it can call `alethe_delegate` and target either a Codex or a Claude worker.
+- The orchestration board now warns when Claude or Codex is close to its usage cap, right in the
+  header — no more finding out only after new work stalls waiting on a reset.
+- A finished worker that ran in its own isolated worktree can now be applied to the branch right
+  from its card — commits, merges and cleans up the worktree in one click, no more leaving the app
+  to land what it did by hand.
+- A worker's report can now show its own images and links right on the card — a local image path
+  or a URL mentioned in the summary renders inline (an image) or as a one-click open-in-pane button
+  (a link), instead of sitting there as plain text. Clicking a thumbnail opens it full size; a link
+  chip shows the site's host up front instead of the raw URL.
+
+### Added
+
+- Remote control can now show a **chat instead of a terminal**. A Terminal/Chat switch in the shared
+  terminal's header swaps the live output for the agent conversation — your prompts, the agent's
+  replies with code blocks, and each tool call collapsed into a line you can expand. It reads the
+  same session transcript the handoff capsule does, so it only applies to Claude Code and Codex;
+  any other terminal says so and stays on the terminal view. The choice is remembered per device,
+  the message box works the same in both views, and new messages arrive on their own without
+  reloading.
 
 ### Changed
+
+- Remote control now renders a real terminal on the phone. The shared output is fed through a
+  terminal emulator instead of being stripped of its escape codes and dropped into a plain text
+  block, so colors, box drawing, and in-place redraws (an agent's input box, spinners, progress
+  bars) show as they do on the desktop instead of piling up as duplicated frames. The mirror keeps
+  the desktop pane's column count, so nothing wraps mid-box; text is auto-sized to fit the screen
+  width, with buttons and pinch to adjust it and horizontal panning when the terminal is wider than
+  the phone. Live output is now appended incrementally rather than re-rendering the whole
+  scrollback on every chunk.
+- The remote chat screen is now mobile-first: the terminal fills the real height of the screen
+  (the page itself no longer scrolls), the header is more compact, "Jump to latest" floats over the
+  output, and the message box rises above the on-screen keyboard when it opens, growing with the
+  text as you type.
+
+- Settings → Multi-Agent & Telemetry and → About no longer show untranslated Portuguese strings
+  or native browser `alert`/`prompt` popups. The scheduler, metrics, traces, plugin manager, and
+  GSD audit sections are now fully localized and styled through the same design tokens as the
+  rest of the Settings modal; installing a plugin now uses an inline manifest field instead of a
+  browser prompt.
+- A native subagent's card no longer offers to message it — it never had a real process on the
+  other end, so the composer used to accept a message and then report the worker never got it.
+- A worker's last report now renders as markdown instead of raw text, matching the rest of the app.
 
 - The orchestration board is now a forest read top to bottom. The planner sits alone at the top of
   the canvas with its own product logo, connectors drop from it to every run it started, and each
@@ -52,6 +207,16 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- Dragging on the orchestration canvas now always pans it. It used to also trigger the browser's
+  own text-selection drag, fighting the canvas's own pan handling.
+- "Apply" on an isolated worker's worktree no longer fails with "worktree not found" when the open
+  project isn't the one the worker actually ran in — it now resolves the real repo from the
+  worktree itself instead of assuming the project's own folder.
+- Clicking "apply" a second time on a worktree that already merged and was cleaned up no longer
+  re-fails with "worktree not found" and re-offers the button — it's now treated as already done
+  and the button disappears from the card.
+- A link already rendered as a markdown link in a worker's report no longer also shows as a
+  duplicate chip underneath it.
 - An interrupted worker can be messaged again. Sending it a message is exactly how it comes back:
   Alethe re-queues it and resumes its thread with the message as its next turn, and the message box
   now says so before you send.

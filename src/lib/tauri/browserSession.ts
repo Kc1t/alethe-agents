@@ -20,7 +20,14 @@ export async function browserSessionStatus(): Promise<BrowserSessionInfo | null>
   return invoke<BrowserSessionInfo | null>('browser_session_status')
 }
 
-/** Writes an ephemeral MCP config pointing Playwright at the running browser. */
-export async function playwrightMcpConfigPath(): Promise<string> {
-  return invoke<string>('playwright_mcp_config_path')
+export type PlaywrightBrowserOptions = {
+  /** Skips the shared/pane browser entirely, even if one is already running. */
+  dedicated: boolean
+  /** Only applied when `dedicated` is true. */
+  headless: boolean
+}
+
+/** Writes an ephemeral MCP config pointing Playwright at the running browser, or a dedicated one. */
+export async function playwrightMcpConfigPath(options: PlaywrightBrowserOptions): Promise<string> {
+  return invoke<string>('playwright_mcp_config_path', options)
 }

@@ -54,6 +54,9 @@ fn prepare(app: &AppHandle, state: &OrchestratorState) {
             .push(("Path".to_string(), crate::orchestrator_core::path_without_store_aliases(&cli_resolver::rebuilt_path())));
         core.set_launcher(launcher);
     }
+    if let Some(program) = cli_resolver::find_windows_cli_launcher("claude") {
+        core.set_launcher(Launcher::claude_headless(PathBuf::from(program)));
+    }
 }
 
 pub fn handle_mcp_body(
@@ -128,6 +131,14 @@ pub fn orchestrator_answer(
     decision: String,
 ) -> Result<Value, String> {
     state.core.answer(&job_id, &decision)
+}
+
+#[tauri::command]
+pub fn orchestrator_job_diff(
+    state: tauri::State<'_, OrchestratorState>,
+    job_id: String,
+) -> Result<String, String> {
+    state.core.job_diff(&job_id)
 }
 
 /// Lets the pane talk to one worker without going through the lead. A worker mid-turn is steered so

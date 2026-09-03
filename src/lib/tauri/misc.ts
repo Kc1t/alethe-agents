@@ -12,6 +12,7 @@ export type RemoteControlInfo = {
   session_expiry_secs: number
   read_only: boolean
   allow_shell_input: boolean
+  reach_mode: 'lan' | 'tailscale'
   pairing_open: boolean
   pairing_expires_in: number
   devices: Array<{
@@ -83,6 +84,30 @@ export async function setRemoteControlReadOnly(readOnly: boolean): Promise<Remot
 
 export async function setRemoteControlShellInput(allowed: boolean): Promise<RemoteControlInfo> {
   return invoke<RemoteControlInfo>('remote_control_set_shell_input', { allowed })
+}
+
+export type TailscaleStatus = {
+  available: boolean
+  ip: string | null
+}
+
+/** Side-effect-free: safe to poll to decide whether the Tailscale reach mode is selectable. */
+export async function remoteControlTailscaleStatus(): Promise<TailscaleStatus> {
+  return invoke<TailscaleStatus>('remote_control_tailscale_status')
+}
+
+export async function setRemoteControlReachMode(useTailscale: boolean): Promise<RemoteControlInfo> {
+  return invoke<RemoteControlInfo>('remote_control_set_reach_mode', { useTailscale })
+}
+
+/** Fires when the backend turns remote control off on its own after a long idle period. */
+export function listenRemoteAutoDisabled(handler: () => void): Promise<UnlistenFn> {
+  return listen('remote://auto-disabled', () => handler())
+}
+
+/** Fires when the backend fails to bind its listener (port conflict, Tailscale not reachable, ...) and turns itself back off. */
+export function listenRemoteStartFailed(handler: () => void): Promise<UnlistenFn> {
+  return listen('remote://start-failed', () => handler())
 }
 
 export async function loadProjectsFile(): Promise<string | null> {

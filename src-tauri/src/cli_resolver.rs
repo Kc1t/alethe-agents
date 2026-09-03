@@ -250,36 +250,38 @@ fn parse_version(raw: &str) -> Option<String> {
 /// asks rather than assumes. Output is read from stdout and stderr because some print to stderr.
 const VERSION_FLAGS: [&str; 3] = ["--version", "-v", "version"];
 
+/// Version a CLI at a known path reports, or `None` when it answers nothing usable.
+pub(crate) fn cli_version_at(bin: &std::path::Path) -> Option<String> {
+    for flag in VERSION_FLAGS {
+        let mut command = std::process::Command::new(bin);
+        command.arg(flag);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        let Ok(output) = command.output() else {
+            continue;
+        };
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if let Some(version) = parse_version(&stdout) {
+            return Some(version);
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if let Some(version) = parse_version(&stderr) {
+            return Some(version);
+        }
+    }
+    None
+}
+
 /// Version the agent's CLI reports, or `None` when it is missing or answers nothing usable.
 #[tauri::command]
 pub async fn agent_cli_version(agent: String) -> Option<String> {
-    tokio::task::spawn_blocking(move || {
-        let bin = find_windows_cli_launcher(&agent)?;
-        for flag in VERSION_FLAGS {
-            let mut command = std::process::Command::new(&bin);
-            command.arg(flag);
-            #[cfg(windows)]
-            {
-                use std::os::windows::process::CommandExt;
-                const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-                command.creation_flags(CREATE_NO_WINDOW);
-            }
-            let Ok(output) = command.output() else {
-                continue;
-            };
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            if let Some(version) = parse_version(&stdout) {
-                return Some(version);
-            }
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            if let Some(version) = parse_version(&stderr) {
-                return Some(version);
-            }
-        }
-        None
-    })
-    .await
-    .unwrap_or(None)
+    tokio::task::spawn_blocking(move || cli_version_at(&find_windows_cli_launcher(&agent)?))
+        .await
+        .unwrap_or(None)
 }
 
 /// Reports which installers are usable on this machine so the UI can offer the
@@ -653,6 +655,7 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
 
     let cmd_name = match provider_lower.as_str() {
         "antigravity" | "agy" => "agy",
+        "kiro" => "kiro-cli",
         other => other,
     };
 
@@ -846,6 +849,35 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                 models.push(ModelOption {
                     id: "freebuff-fast".into(),
                     label: "Freebuff Fast".into(),
+                });
+            }
+        }
+        "kiro" => {
+            if let Ok(output) = std::process::Command::new(&bin_path).arg("models").output() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let trimmed = line.trim();
+                    let id = trimmed
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or(trimmed)
+                        .to_string();
+                    if is_valid_model_id(&id) {
+                        models.push(ModelOption {
+                            label: format!("{id} (Kiro CLI)"),
+                            id,
+                        });
+                    }
+                }
+            }
+            if models.is_empty() {
+                models.push(ModelOption {
+                    id: "claude-sonnet-4.5".into(),
+                    label: "Claude Sonnet 4.5 (Anthropic via Kiro)".into(),
+                });
+                models.push(ModelOption {
+                    id: "claude-haiku-4.5".into(),
+                    label: "Claude Haiku 4.5 (Anthropic via Kiro)".into(),
                 });
             }
         }

@@ -35,6 +35,7 @@ const AGENT_LABEL: Record<AgentType, string> = {
   shell: 'Shell',
   mimo: 'Mimo',
   freebuff: 'Freebuff',
+  kiro: 'Kiro CLI',
 }
 
 export function useCliOpenRequests(hydrated: boolean) {

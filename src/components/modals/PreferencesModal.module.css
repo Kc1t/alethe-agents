@@ -950,6 +950,14 @@
   transform: translateX(13px);
 }
 
+.featureSubPanel {
+  margin: -2px 0 4px 50px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+}
+
 .resourceControls {
   display: flex;
   flex-direction: column;
@@ -1165,4 +1173,99 @@
   top: 6px;
   right: 6px;
   color: var(--accent);
+}
+
+.checkboxCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  color: var(--fg);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.checkboxCard span {
+  flex: 1;
+  font-size: 13px;
+}
+
+.versionCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+}
+.versionCardCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.versionCardCopy strong {
+  font-size: 14px;
+}
+.versionCardCopy span {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+.versionCardNumber {
+  color: var(--fg);
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.updateBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.updateAvailable {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.updateAvailable svg {
+  flex-shrink: 0;
+  color: var(--status-working);
+}
+.updateNotes {
+  max-height: 160px;
+  padding: 8px 10px;
+  overflow-y: auto;
+  color: var(--fg-muted);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+.updateProgress {
+  height: 6px;
+  overflow: hidden;
+  background: var(--bg-sunken);
+  border-radius: 3px;
+}
+.updateProgressBar {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+.updateCheckedNote {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+.updateError {
+  margin-top: 8px;
+  color: var(--status-offline);
+  font-size: 12px;
+  word-break: break-word;
+}
+.alignStart {
+  align-self: flex-start;
 }

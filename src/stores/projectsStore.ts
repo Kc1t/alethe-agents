@@ -199,6 +199,7 @@ export type ProjectsState = ProjectsFile & {
         initialInput?: string
         handoff?: AgentHandoffBootstrap
         runtimeProfile?: AgentRuntimeProfile
+        useRouter9?: boolean
       }
       worktreeAgentId?: string
       gsdSyncViewer?: boolean
@@ -219,6 +220,7 @@ export type ProjectsState = ProjectsFile & {
         initialInput?: string
         handoff?: AgentHandoffBootstrap
         runtimeProfile?: AgentRuntimeProfile
+        useRouter9?: boolean
       }
     },
   ) => Promise<Terminal>
@@ -248,8 +250,8 @@ export type ProjectsState = ProjectsFile & {
   setProjectDisabled: (projectId: string, disabled: boolean) => void
   setLaneVisible: (projectId: string, terminalId: string, visible: boolean | null) => void
   setTerminalTopbarPinned: (projectId: string, terminalId: string, pinned: boolean) => void
-  /** Hides a terminal from every paired remote device. */
-  setTerminalRemoteExcluded: (projectId: string, terminalId: string, excluded: boolean) => void
+  /** Opts a terminal in or out of being visible/controllable from paired remote devices. */
+  setTerminalRemoteShared: (projectId: string, terminalId: string, shared: boolean) => void
 
   markTerminalUsed: (projectId: string, terminalId: string) => void
 
@@ -268,7 +270,11 @@ export type ProjectsState = ProjectsFile & {
   closeOtherContainers: (keepProjectId: string) => void
   reorderContainers: (fromIndex: number, toIndex: number) => void
   reorderPaneInContainer: (projectId: string, fromIndex: number, toIndex: number) => void
-  groupPanes: (projectId: string, paneIds: string[]) => void
+  groupPanes: (
+    projectId: string,
+    paneIds: string[],
+    options?: { kind?: 'orchestration' },
+  ) => void
   ungroupPanes: (projectId: string, groupId: string) => void
   setContainerCollapsed: (projectId: string, collapsed: boolean) => void
   setContainerInternalLayout: (projectId: string, layout: LayoutMode) => void
@@ -348,7 +354,7 @@ function nextWriteSequence(): number {
 
 function projectsPayload(state: ProjectsState): ProjectsFile {
   return {
-    version: 7,
+    version: 8,
     groups: state.groups,
     ungroupedOrder: state.ungroupedOrder,
     projects: state.projects,

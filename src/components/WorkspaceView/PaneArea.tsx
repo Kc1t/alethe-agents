@@ -1,5 +1,6 @@
 import { useDroppable } from '@dnd-kit/core'
 import { Ungroup } from 'lucide-react'
+import { Suspense } from 'react'
 import { Panel, Separator } from 'react-resizable-panels'
 
 import {
@@ -10,21 +11,15 @@ import {
   reconcileGridLayout,
 } from '../../lib/gridLayout'
 import { useT } from '../../lib/i18n'
-import type { GridLayout, LayoutMode, Terminal } from '../../lib/types'
+import { paneContributions, useContributions } from '../../lib/plugins'
+import type { GridLayout, LayoutMode, PaneGroup, Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
-import { DiffPane } from '../DiffPane'
-import { OrchestratorPane } from '../OrchestratorPane'
-import { lazy, Suspense } from 'react'
-
 import { GridCellHandles } from '../GridCellHandles'
-
-const GraphifyView = lazy(() => import('../GraphifyView').then(m => ({ default: m.GraphifyView })))
-const MarkdownPane = lazy(() => import('../MarkdownPane').then(m => ({ default: m.MarkdownPane })))
-import { TerminalPane } from '../TerminalPane'
-import { VideoPane } from '../VideoPane'
-import { WebPane } from '../WebPane'
+import { registerCorePanes, TERMINAL_PANE_ID } from './corePanes'
 import { PersistentPanelGroup as Group } from './PersistentPanelGroup'
 import styles from './WorkspaceView.module.css'
+
+registerCorePanes()
 
 const EMPTY_PANE_GROUPS: { id: string; paneIds: string[] }[] = []
 
@@ -40,39 +35,34 @@ function Pane({
   grouped?: boolean
 }) {
   const project = useProjectsStore((s) => s.projects.find((p) => p.id === projectId))
+  useContributions(paneContributions)
   const group = !grouped
     ? project?.paneGroups?.find((candidate) => candidate.paneIds[0] === terminal.id)
     : undefined
   if (group) return <PaneGroupView projectId={projectId} group={group} />
-  if (terminal.kind === 'graphify') {
-    return (
-      <Suspense fallback={<div className={styles.paneLoading}>Loading graph...</div>}>
-        <GraphifyView repo={terminal.cwd} projectId={projectId} terminalId={terminal.id} />
-      </Suspense>
-    )
+
+  const kind = terminal.kind ?? TERMINAL_PANE_ID
+  const contribution = paneContributions.get(kind)
+  // A pane whose provider is gone must not silently become a terminal — that
+  // would be a different thing entirely, wired to the same cwd.
+  if (!contribution) {
+    return <UnavailablePane kind={kind} />
   }
-  if (terminal.kind === 'markdown' || terminal.kind === 'file') {
-    return (
-      <Suspense fallback={<div className={styles.paneLoading}>Loading markdown...</div>}>
-        <MarkdownPane projectId={projectId} terminal={terminal} />
-      </Suspense>
-    )
-  }
-  if (terminal.kind === 'web') {
-    return <WebPane projectId={projectId} terminal={terminal} />
-  }
-  if (terminal.kind === 'video') {
-    return <VideoPane projectId={projectId} terminal={terminal} />
-  }
-  if (terminal.kind === 'diff') {
-    return <DiffPane projectId={projectId} terminal={terminal} />
-  }
-  if (terminal.kind === 'orchestrator') {
-    return <OrchestratorPane projectId={projectId} terminal={terminal} />
-  }
-  return (
-    <TerminalPane projectId={projectId} terminal={terminal} paneDragEnabled={paneDragEnabled} />
+
+  const Component = contribution.component
+  const pane = (
+    <Component projectId={projectId} terminal={terminal} paneDragEnabled={paneDragEnabled} />
   )
+  return contribution.fallback ? (
+    <Suspense fallback={contribution.fallback}>{pane}</Suspense>
+  ) : (
+    pane
+  )
+}
+
+function UnavailablePane({ kind }: { kind: string }) {
+  const t = useT()
+  return <div className={styles.paneLoading}>{t('ws.paneUnavailable', { kind })}</div>
 }
 
 function PaneGroupView({
@@ -80,7 +70,7 @@ function PaneGroupView({
   group,
 }: {
   projectId: string
-  group: { id: string; paneIds: string[] }
+  group: PaneGroup
 }) {
   const t = useT()
   const ungroupPanes = useProjectsStore((s) => s.ungroupPanes)
@@ -91,7 +81,11 @@ function PaneGroupView({
   return (
     <section className={styles.paneGroup}>
       <header className={styles.paneGroupHeader}>
-        <span>{t('ws.paneGroup.title')}</span>
+        <span>
+          {group.kind === 'orchestration'
+            ? t('ws.paneGroup.orchestrationTitle')
+            : t('ws.paneGroup.title')}
+        </span>
         <button
           type="button"
           className={styles.paneGroupAction}
@@ -103,7 +97,9 @@ function PaneGroupView({
           <Ungroup size={14} />
         </button>
       </header>
-      <div className={styles.paneGroupBody}>
+      <div
+        className={`${styles.paneGroupBody} ${group.kind === 'orchestration' ? styles.paneGroupBodyVertical : ''}`}
+      >
         {terminals.map((terminal) => (
           <div key={terminal.id} className={styles.paneGroupItem}>
             <Pane projectId={projectId} terminal={terminal} grouped />

@@ -61,6 +61,7 @@ export function buildAgentLaunch(
                                                                                   
                                                                                    
   mcpConfigPaths?: readonly string[],
+  hooksSettingsPath?: string,
 ): AgentLaunch {
   if (agent === 'shell') {
     return { args: [...baseArgs], sessionId: undefined, createdSession: false }
@@ -69,16 +70,17 @@ export function buildAgentLaunch(
   if (agent === 'claude') {
     const clean = stripClaudeSessionArgs([...baseArgs])
     const mcp = (mcpConfigPaths ?? []).flatMap((path) => ['--mcp-config', path])
+    const settings = hooksSettingsPath ? ['--settings', hooksSettingsPath] : []
     if (sessionId) {
       return {
-        args: ['--resume', sessionId, ...mcp, ...clean],
+        args: ['--resume', sessionId, ...mcp, ...settings, ...clean],
         sessionId,
         createdSession: false,
       }
     }
     const createdId = createUuid()
     return {
-      args: ['--session-id', createdId, ...mcp, ...clean],
+      args: ['--session-id', createdId, ...mcp, ...settings, ...clean],
       sessionId: createdId,
       createdSession: true,
     }
@@ -113,6 +115,12 @@ export function buildAgentLaunch(
       sessionId,
       createdSession: false,
     }
+  }
+
+  if (agent === 'kiro') {
+    // kiro-cli only accepts flags like --trust-all-tools under the `chat`
+    // subcommand — passed bare, it rejects them before falling back to it.
+    return { args: ['chat', ...baseArgs], sessionId: undefined, createdSession: false }
   }
 
                                                                                   

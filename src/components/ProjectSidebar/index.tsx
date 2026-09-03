@@ -14,7 +14,6 @@ import {
   Files,
   Folder,
   FolderPlus,
-  GitBranch,
   Home,
   MoreHorizontal,
   Plus,
@@ -28,6 +27,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
 import { useT } from '../../lib/i18n'
+import { sidebarTabLabel, sidebarTabPanelLabel, useSidebarTabs } from '../../lib/plugins'
 import { formatShortcut } from '../../lib/platform'
 import {
   sidebarDragKind,
@@ -42,7 +42,6 @@ import { SidebarNowPlaying } from '../SidebarNowPlaying'
 import { UserProfile } from '../UserProfile'
 import { ContextMenu, type MenuItem } from './ContextMenu'
 import { FileExplorer } from './FileExplorer'
-import { GitControl } from './GitControl'
 import { GroupNode } from './GroupNode'
 import { NormalProjectSidebar } from './NormalProjectSidebar'
 import { LayoutFooter, WorkspaceLayoutFooter } from './LayoutFooter'
@@ -113,14 +112,13 @@ export function ProjectSidebar() {
 function CleanProjectSidebar() {
   const t = useT()
   // --- data selectors (reactive) ---
-  const { projects, groups, ungroupedOrder, containers, activeProjectId, showGitControl, preferences } = useProjectsStore(
+  const { projects, groups, ungroupedOrder, containers, activeProjectId, preferences } = useProjectsStore(
     useShallow((s) => ({
       projects: s.projects,
       groups: s.groups,
       ungroupedOrder: s.ungroupedOrder,
       containers: s.workspace.containers,
       activeProjectId: s.activeProjectId,
-      showGitControl: s.preferences.enabledFeatures.git,
       preferences: s.preferences,
     }))
   )
@@ -159,7 +157,7 @@ function CleanProjectSidebar() {
       reorderGroups: s.reorderGroups,
       togglePane: s.togglePane,
       setLaneVisible: s.setLaneVisible,
-      setTerminalRemoteExcluded: s.setTerminalRemoteExcluded,
+      setTerminalRemoteShared: s.setTerminalRemoteShared,
       setSubTabCompletionUnread: s.setSubTabCompletionUnread,
       createFilePane: s.createFilePane,
       createGraphifyPane: s.createGraphifyPane,
@@ -193,11 +191,17 @@ function CleanProjectSidebar() {
   const [menu, setMenu] = useState<ContextMenuState>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropIndicator, setDropIndicator] = useState<SidebarDropIndicator | null>(null)
-  const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects'>('projects')
+  const sidebarTab = useUiStore((s) => s.leftSidebarTab)
+  const setSidebarTab = useUiStore((s) => s.setLeftSidebarTab)
+  const contributedTabs = useSidebarTabs('left')
+  const contributedTab = contributedTabs.find((tab) => tab.id === sidebarTab)
 
+  // A contributed tab can vanish when its plugin is disabled at runtime.
   useEffect(() => {
-    if (!showGitControl && sidebarTab === 'git') setSidebarTab('projects')
-  }, [showGitControl, sidebarTab])
+    if (sidebarTab === 'files' || sidebarTab === 'projects') return
+    if (contributedTabs.some((tab) => tab.id === sidebarTab)) return
+    setSidebarTab('projects')
+  }, [contributedTabs, sidebarTab])
 
                                                                          
   const openPaneSets = useMemo(() => {
@@ -519,20 +523,25 @@ function CleanProjectSidebar() {
         >
           <Files size={14} />
         </button>
-        {showGitControl && preferences.gitControlPlacement === 'left' ? (
-          <button
-            type="button"
-            aria-label={t('ui.sidebar.git')}
-            title={t('ui.sidebar.git')}
-            className={`${styles.toolbarButton} ${activeView !== 'home' && sidebarTab === 'git' ? styles.toolbarButtonActive : ''}`}
-            onClick={() => {
-              setSidebarTab('git')
-              setActiveView('workspace')
-            }}
-          >
-            <GitBranch size={14} />
-          </button>
-        ) : null}
+        {contributedTabs.map((tab) => {
+          const TabIcon = tab.icon
+          const label = sidebarTabLabel(t, tab)
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              aria-label={label}
+              title={label}
+              className={`${styles.toolbarButton} ${activeView !== 'home' && sidebarTab === tab.id ? styles.toolbarButtonActive : ''}`}
+              onClick={() => {
+                setSidebarTab(tab.id)
+                setActiveView('workspace')
+              }}
+            >
+              <TabIcon size={14} />
+            </button>
+          )
+        })}
         <span className={styles.toolbarSpacer} />
         <button
           type="button"
@@ -609,32 +618,17 @@ function CleanProjectSidebar() {
         </section>
       ) : null}
 
-      {sidebarTab === 'git' ? (
+      {contributedTab ? (
         <section className={styles.explorerPanel}>
           <div className={styles.explorerHeader}>
-            <span className={styles.explorerLabel}>{t('ui.sidebar.sourceControl')}</span>
+            <span className={styles.explorerLabel}>{sidebarTabPanelLabel(t, contributedTab)}</span>
           </div>
-          {sidebarTerminal && sidebarSubTab && activeProject ? (
-            <GitControl
-              projectId={activeProject.id}
-              cwd={sidebarSubTab.cwd || sidebarTerminal.cwd}
-              ptyId={sidebarSubTab.ptyId}
-              terminalName={sidebarTerminal.name}
-            />
-          ) : (
-            <div className={styles.explorerEmpty}>
-              <EmptyState
-                compact
-                icon={<GitBranch size={18} />}
-                title={t('git.empty.noTerminal')}
-                description={t('git.empty.noTerminalDesc')}
-                primaryAction={{
-                  label: t('ui.sidebar.emptyAction'),
-                  onClick: () => openModal('newProject'),
-                }}
-              />
-            </div>
-          )}
+          <contributedTab.component
+            projectId={activeProject?.id ?? null}
+            cwd={sidebarSubTab?.cwd || sidebarTerminal?.cwd || null}
+            ptyId={sidebarSubTab?.ptyId ?? null}
+            terminalName={sidebarTerminal?.name ?? null}
+          />
         </section>
       ) : null}
 

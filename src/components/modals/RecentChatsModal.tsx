@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { intlLocale, type Locale, type TFunction,useT } from '../../lib/i18n'
-import { buildAgentLaunch } from '../../lib/sessionLaunch'
+import { resumeSessionInPane } from '../../lib/paneResume'
 import {
   type ClaudeSessionMeta,
   listClaudeSessions,
-  restartPty,
   snapshotCodexSessions,
 } from '../../lib/tauri'
-import { agentCliCommand, UNRESTRICTED_FLAG } from '../../lib/types'
+import { UNRESTRICTED_FLAG } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { ClaudeIcon, CodexIcon } from '../icons/AgentIcons'
@@ -169,19 +168,17 @@ export function RecentChatsModal() {
     if (!tab?.ptyId) return
     setBusyId(entry.id)
     try {
-      const launch = buildAgentLaunch(agent, extraArgsFor(agent), entry.id)
-      await restartPty({
-        id: tab.ptyId,
-        cols: 80,
-        rows: 24,
-        command: agentCliCommand(agent),
-        cwd: tab.cwd || cwd || undefined,
-        extraArgs: launch.args,
+      await resumeSessionInPane({
+        agent,
+        projectId: project.id,
+        terminalId: targetTerminal.id,
+        tabId: tab.id,
+        ptyId: tab.ptyId,
+        sessionId: entry.id,
+        cwd: tab.cwd || cwd,
+        extraArgs: extraArgsFor(agent),
+        runtimeProfile: tab.runtimeProfile,
       })
-      window.dispatchEvent(
-        new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: tab.ptyId } }),
-      )
-      setSubTabSessionId(project.id, targetTerminal.id, tab.id, entry.id)
       closeModal()
     } catch (err) {
       setError(t('mod.resumeFailed', { error: String(err) }))

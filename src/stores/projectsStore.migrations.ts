@@ -1,16 +1,13 @@
-   
-                                                                                
-                                                                                    
-                                                                      
-   
-
 import { nanoid } from 'nanoid'
 
-import { normalizeEnabledFeatures } from '../lib/features'
+import { legacyGitFeatureFlag, normalizeEnabledFeatures } from '../lib/features'
+import { recordLegacyGitFlag } from '../lib/plugins/legacyMigration'
+import { normalizePort } from '../lib/router9'
 import { normalizeAppIconTheme } from '../lib/themeIcons'
 import { normalizeTodoTags, normalizeTodoTitle } from '../lib/todos'
 import {
   DEFAULT_PREFERENCES,
+  DEFAULT_ROUTER9_PREFERENCES,
   EMPTY_PROJECTS_FILE,
   type Group,
   GROUP_COLORS,
@@ -66,6 +63,8 @@ function normalizeStoredAccents(file: ProjectsFile): ProjectsFile {
 }
 
 export function normalizePreferences(raw: LegacyPreferences | undefined): Preferences {
+  // Git Control became a plugin; its old toggle is handed to the plugin host.
+  recordLegacyGitFlag(legacyGitFeatureFlag(raw))
   const preferences = {
     ...DEFAULT_PREFERENCES,
     ...(raw ?? {}),
@@ -88,16 +87,17 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
   const legacyAccountCreated =
     raw?.accountCreated ??
     Boolean(raw?.onboardingDone && raw?.displayName && raw.displayName.trim().length > 0)
+  const rawRouter9 = raw?.router9
+  const router9 = { ...DEFAULT_ROUTER9_PREFERENCES, ...(rawRouter9 ?? {}) }
   const rawWindowOpacity = Number(raw?.windowOpacity ?? 1)
   return {
     ...preferences,
     windowOpacity: Number.isFinite(rawWindowOpacity)
       ? Math.min(1, Math.max(0.6, rawWindowOpacity))
       : 1,
-                                                                               
-                                                                            
+
     enabledAgents: { ...DEFAULT_PREFERENCES.enabledAgents, ...preferences.enabledAgents },
-                                                                                 
+
     enabledFeatures: normalizeEnabledFeatures(raw),
     leftSidebarVisible: raw?.leftSidebarVisible ?? true,
     rightSidebarVisible: raw?.rightSidebarVisible ?? true,
@@ -111,6 +111,12 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     gitControlPlacement: preferences.gitControlPlacement === 'right' ? 'right' : 'left',
     mcpDefaultScope: preferences.mcpDefaultScope === 'project' ? 'project' : 'global',
     mcpOnboardingSeen: Boolean(preferences.mcpOnboardingSeen),
+    setupWalkthrough: {
+      ...DEFAULT_PREFERENCES.setupWalkthrough,
+      ...(raw?.setupWalkthrough ?? {}),
+    },
+    setupWalkthroughHidden:
+      raw?.setupWalkthroughHidden ?? Boolean(raw?.onboardingDone && !raw?.setupWalkthrough),
     displayName: preferences.displayName.trim(),
     profileImageUrl: preferences.profileImageUrl.trim(),
     todoStoragePath: preferences.todoStoragePath.trim(),
@@ -136,6 +142,15 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
         Math.max(5, Math.round(resourcePolicy.hiddenShellIdleMinutes)),
       ),
       spawnGraceSeconds: Math.min(900, Math.max(30, Math.round(resourcePolicy.spawnGraceSeconds))),
+    },
+    router9: {
+      ...router9,
+      enabled: Boolean(router9.enabled),
+      autoStart: Boolean(router9.autoStart),
+      defaultForNewAgents: Boolean(router9.defaultForNewAgents),
+      source: router9.source === 'external' ? 'external' : 'managed',
+      port: normalizePort(Number(router9.port)),
+      apiKey: String(router9.apiKey ?? '').trim(),
     },
   }
 }
@@ -311,10 +326,32 @@ function migrateToV7(parsed: any): ProjectsFile {
   })
 }
 
+/**
+ * Migrates v7 -> v8: terminal remote-sharing flips from opt-out
+ * (`remoteExcluded`) to opt-in (`remoteShared`). A terminal that was already
+ * exposed (not explicitly `remoteExcluded: true`) keeps working after the
+ * upgrade; only terminals created from here on default to unshared.
+ */
+function migrateToV8(parsed: any): ProjectsFile {
+  const v7 = migrateToV7(parsed)
+  return {
+    ...v7,
+    version: 8,
+    projects: v7.projects.map((project) => ({
+      ...project,
+      terminals: (project.terminals ?? []).map((terminal) => ({
+        ...terminal,
+        remoteShared: terminal.remoteShared ?? terminal.remoteExcluded !== true,
+      })),
+    })),
+  }
+}
+
 /** Migrates older files and normalizes restorable snapshots. */
 export function migrate(parsed: any): ProjectsFile {
-  if (parsed.version === 7) return migrateToV7(parsed)
-  if (parsed.version === 6) return migrateToV7(parsed)
+  if (parsed.version === 8) return migrateToV8(parsed)
+  if (parsed.version === 7) return migrateToV8(parsed)
+  if (parsed.version === 6) return migrateToV8(parsed)
 
   const v5Result = parsed.version === 5 ? parsed : migrateToV5(parsed)
 
@@ -324,7 +361,7 @@ export function migrate(parsed: any): ProjectsFile {
     orphanWorktrees: p.orphanWorktrees ?? [],
   }))
 
-  return migrateToV7({
+  return migrateToV8({
     ...v5Result,
     version: 6,
     projects: v6Projects,
@@ -425,7 +462,6 @@ function migrateToV5(parsed: any): any {
   }
 }
 
-                                                                              
 export function collectGroupProjectIds(groupId: string, groups: Group[]): Set<string> {
   const result = new Set<string>()
   const queue = [groupId]

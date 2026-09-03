@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 
-import { intlLocale, useT, type Locale, type TFunction } from '../../lib/i18n'
-import { listClaudeSessions, restartPty, type ClaudeSessionMeta } from '../../lib/tauri'
-import { agentCliCommand, type AgentType } from '../../lib/types'
+import { intlLocale, type Locale, type TFunction,useT } from '../../lib/i18n'
+import { resumeSessionInPane } from '../../lib/paneResume'
+import { type ClaudeSessionMeta,listClaudeSessions } from '../../lib/tauri'
+import { type AgentType } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
-import { Modal } from './Modal'
 import styles from './ClaudeHistoryModal.module.css'
+import { Modal } from './Modal'
 
 type Props = {
   open: boolean
@@ -77,32 +78,16 @@ export function ClaudeHistoryModal({
     if (!ptyId) return
     setBusyId(sessionId)
     try {
-                                                                        
-      // remove --resume <id> antigo e adiciona o novo.
-      const old = extraArgs ?? []
-      const filtered: string[] = []
-      for (let i = 0; i < old.length; i++) {
-        if (old[i] === '--resume') {
-          i++ // pula o sessionId antigo
-          continue
-        }
-        filtered.push(old[i])
-      }
-      const newExtraArgs = [...filtered, '--resume', sessionId]
-
-      await restartPty({
-        id: ptyId,
-        cols: 80,
-        rows: 24,
-        command: agentCliCommand(agentType),
+      await resumeSessionInPane({
+        agent: agentType,
+        projectId,
+        terminalId,
+        tabId,
+        ptyId,
+        sessionId,
         cwd,
-        extraArgs: newExtraArgs,
+        extraArgs,
       })
-      window.dispatchEvent(new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId } }))
-
-                                                                                       
-      useProjectsStore.getState().setSubTabSessionId(projectId, terminalId, tabId, sessionId)
-
       onClose()
     } catch (err) {
       setError(t('mod.resumeFailed', { error: String(err) }))

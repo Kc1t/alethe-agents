@@ -50,6 +50,31 @@ export function isSessionClaimed(
                                                                             
                                                                           
    
+/**
+ * The session a pane moved to when the CLI switched conversation under it — an in-CLI `/clear` or
+ * `/resume` leaves no other trace than a sibling file that is now newer than the pane's own.
+ *
+ * A session another pane already claims is never a candidate: two panes on the same folder are
+ * always writing newer-than-each-other files, and without this guard the idle one adopts whatever
+ * its neighbour is typing into, collapsing both rows onto a single conversation.
+ */
+export function pickSwitchedSession(
+  agent: string,
+  cwd: string,
+  current: SessionSnapshot | undefined,
+  sessions: readonly SessionSnapshot[],
+  ownerId?: string,
+): SessionSnapshot | undefined {
+  if (!current) return undefined
+  const candidates = sessions.filter(
+    (session) =>
+      session.id !== current.id &&
+      session.modified_at_ms > current.modified_at_ms &&
+      !isSessionClaimed(agent, cwd, session.id, ownerId),
+  )
+  return candidates.length === 1 ? candidates[0] : undefined
+}
+
 export function claimDiscoveredSession(
   agent: string,
   cwd: string,

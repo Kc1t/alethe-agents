@@ -3,7 +3,13 @@ const params = new URLSearchParams(location.search)
 const pairingToken = params.get('pair') || ''
 const httpBase = location.origin
 const SESSION_KEY = 'alethe.remote.session'
+const FONT_SIZE_KEY = 'alethe.remote.fontSize'
+const CHAT_VIEW_KEY = 'alethe.remote.chatView'
+const TRANSCRIPT_POLL_MS = 4000
 const APPEARANCE_SYNC_MS = 10_000
+const FONT_SIZE_MIN = 7
+const FONT_SIZE_MAX = 22
+const DEFAULT_PTY_SIZE = { cols: 80, rows: 24 }
 
 const messages = {
   en: {
@@ -36,14 +42,27 @@ const messages = {
     'home.workspace': 'Workspace',
     'chat.context': '{project} · {agent}',
     'chat.emptyTerminal': 'Waiting for terminal output…',
+    'chat.fitWidth': 'Fit to width',
+    'chat.fontLarger': 'Increase text size',
+    'chat.fontSmaller': 'Decrease text size',
     'chat.jumpLatest': 'Jump to latest',
     'chat.liveTerminal': 'Live terminal',
+    'chat.messagesEmpty': 'No messages in this session yet.',
+    'chat.messagesError': 'Unable to read this session: {message}',
+    'chat.messagesUnsupported':
+      'The message view reads the agent transcript, which only Claude Code and Codex write. Use the terminal for this one.',
     'chat.messageHint': 'Enter sends · Shift + Enter adds a line',
     'chat.readOnly': 'This device has read-only access. Sending messages is disabled in Alethe.',
     'chat.send': 'Send message',
     'chat.sendError': 'Message not sent: {message}',
     'chat.sendPlaceholder': 'Message this terminal…',
     'chat.sending': 'Sending message',
+    'chat.sessionEnded': 'Terminal session ended.',
+    'chat.toolResult': 'Result',
+    'chat.viewMessages': 'Chat',
+    'chat.viewTerminal': 'Terminal',
+    'role.assistant': 'Agent',
+    'role.user': 'You',
     'state.connectionDescription':
       'Alethe could not be reached on the local network. Check that the desktop app and this device are still connected to the same network.',
     'state.connectionTitle': 'Connection unavailable',
@@ -89,8 +108,15 @@ const messages = {
     'home.workspace': 'Workspace',
     'chat.context': '{project} · {agent}',
     'chat.emptyTerminal': 'Aguardando saída do terminal…',
+    'chat.fitWidth': 'Ajustar à largura',
+    'chat.fontLarger': 'Aumentar o texto',
+    'chat.fontSmaller': 'Diminuir o texto',
     'chat.jumpLatest': 'Ir para o final',
     'chat.liveTerminal': 'Terminal ao vivo',
+    'chat.messagesEmpty': 'Nenhuma mensagem nesta sessão ainda.',
+    'chat.messagesError': 'Não foi possível ler esta sessão: {message}',
+    'chat.messagesUnsupported':
+      'A visão de mensagens lê o transcript do agente, que só o Claude Code e o Codex escrevem. Use o terminal neste aqui.',
     'chat.messageHint': 'Enter envia · Shift + Enter adiciona uma linha',
     'chat.readOnly':
       'Este dispositivo tem acesso somente leitura. O envio de mensagens está desativado no Alethe.',
@@ -98,6 +124,12 @@ const messages = {
     'chat.sendError': 'Mensagem não enviada: {message}',
     'chat.sendPlaceholder': 'Enviar mensagem para este terminal…',
     'chat.sending': 'Enviando mensagem',
+    'chat.sessionEnded': 'Sessão do terminal encerrada.',
+    'chat.toolResult': 'Resultado',
+    'chat.viewMessages': 'Chat',
+    'chat.viewTerminal': 'Terminal',
+    'role.assistant': 'Agente',
+    'role.user': 'Você',
     'state.connectionDescription':
       'Não foi possível alcançar o Alethe na rede local. Confira se o app desktop e este dispositivo continuam conectados à mesma rede.',
     'state.connectionTitle': 'Conexão indisponível',
@@ -120,6 +152,10 @@ const icons = {
   chevronRight: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>',
   folder:
     '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  fitWidth:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6v12m16-12v12M8 12h8m0 0-3-3m3 3-3 3"/></svg>',
+  fontLarger: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
+  fontSmaller: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>',
   info: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></svg>',
   refresh:
     '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7"/></svg>',
@@ -162,7 +198,14 @@ let wsBase = null
 let readOnly = false
 let state = { groups: [], projects: [] }
 let selected = null
-let output = ''
+let terminal = null
+let ptySize = { ...DEFAULT_PTY_SIZE }
+let pendingWrites = []
+let fontSize = Number(localStorage.getItem(FONT_SIZE_KEY)) || 0
+let autoFitFont = !fontSize
+let chatView = localStorage.getItem(CHAT_VIEW_KEY) === 'messages' ? 'messages' : 'terminal'
+let transcript = null
+let transcriptTimer = null
 let socket = null
 let socketAuthenticated = false
 let reconnectTimer = null
@@ -185,15 +228,6 @@ const escapeHtml = (value) =>
     /[&<>"']/g,
     (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[char],
   )
-const readableTerminalText = (value) =>
-  String(value ?? '')
-    .replace(/\u001b(?:\][^\u0007]*(?:\u0007|\u001b\\)|\[[0-?]*[ -/]*[@-~]|[@-_])/g, '')
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .replace(/\u0008+/g, '')
-    .replace(/\n{4,}/g, '\n\n\n')
-
 function t(key, replacements = {}) {
   const dictionary = messages[appearance.language] || messages.en
   const template = dictionary[key] || messages.en[key] || key
@@ -282,6 +316,7 @@ function applyAppearance(next, shouldRender = true) {
   document.documentElement.style.colorScheme = appearance.colorScheme
   if (iconChanged || !document.querySelector('[data-brand-icon]')) updateBrandAssets()
   updateThemeColor()
+  if (terminal) terminal.options.theme = terminalTheme()
   if (languageChanged && rendered && shouldRender) renderCurrentView()
 }
 
@@ -447,6 +482,8 @@ function renderWorkspaceList(filter) {
 function renderHome(filter = currentFilter) {
   stateView = null
   selected = null
+  disposeTerminal()
+  stopTranscriptPolling()
   const chatCount = (state.projects || []).reduce(
     (total, project) => total + (project.chats || []).length,
     0,
@@ -467,6 +504,338 @@ function renderHome(filter = currentFilter) {
   setConnectionState(connectionState)
 }
 
+const LIGHT_ANSI = {
+  black: '#1f2328',
+  red: '#c0392b',
+  green: '#1a7f37',
+  yellow: '#9a6700',
+  blue: '#0969da',
+  magenta: '#8250df',
+  cyan: '#1b7c83',
+  white: '#3f3f46',
+  brightBlack: '#6e7781',
+  brightRed: '#cf222e',
+  brightGreen: '#1a7f37',
+  brightYellow: '#bf8700',
+  brightBlue: '#0969da',
+  brightMagenta: '#8250df',
+  brightCyan: '#1b7c83',
+  brightWhite: '#18181b',
+}
+
+function readToken(name, fallback) {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+  return value || fallback
+}
+
+function terminalTheme() {
+  const base = {
+    background: readToken('--bg-sunken', '#101114'),
+    foreground: readToken('--fg', '#f3f4f6'),
+    cursor: readToken('--accent', '#f3f4f6'),
+    cursorAccent: readToken('--bg-sunken', '#101114'),
+    selectionBackground: readToken('--accent-ring', 'rgba(59,130,246,0.4)'),
+  }
+  return appearance.colorScheme === 'light' ? { ...base, ...LIGHT_ANSI } : base
+}
+
+function disposeTerminal() {
+  if (terminal) terminal.dispose()
+  terminal = null
+  pendingWrites = []
+}
+
+function mountTerminal() {
+  const host = document.querySelector('#terminal-host')
+  if (!host || !window.Terminal) return
+  const instance = new window.Terminal({
+    cols: ptySize.cols,
+    rows: ptySize.rows,
+    scrollback: 5000,
+    disableStdin: true,
+    cursorBlink: false,
+    convertEol: false,
+    allowProposedApi: true,
+    fontFamily: readToken('--font-mono', 'monospace'),
+    fontSize: fontSize || 12,
+    theme: terminalTheme(),
+  })
+  const unicode = window.Unicode11Addon?.Unicode11Addon
+  if (unicode) {
+    instance.loadAddon(new unicode())
+    instance.unicode.activeVersion = '11'
+  }
+  instance.open(host)
+  const helper = host.querySelector('.xterm-helper-textarea')
+  if (helper) {
+    helper.setAttribute('readonly', 'readonly')
+    helper.setAttribute('inputmode', 'none')
+  }
+  instance.onScroll(() => updateJumpButton())
+  terminal = instance
+  if (pendingWrites.length) {
+    instance.write(pendingWrites.join(''))
+    pendingWrites = []
+  }
+  applyTerminalFit()
+  scheduleTerminalFit()
+}
+
+function cellMetrics() {
+  const screen = document.querySelector('#terminal-host .xterm-screen')
+  if (!screen || !terminal || !terminal.cols || !terminal.rows) return null
+  const width = screen.clientWidth / terminal.cols
+  const height = screen.clientHeight / terminal.rows
+  return width > 0 && height > 0 ? { width, height } : null
+}
+
+function applyTerminalFit() {
+  if (!terminal) return
+  const viewport = document.querySelector('#terminal-viewport')
+  if (!viewport) return
+  const available = viewport.clientWidth
+  const availableHeight = viewport.clientHeight
+  if (available <= 0) return
+  const metrics = cellMetrics()
+  const widthRatio = metrics ? metrics.width / terminal.options.fontSize : 0.6
+  const heightRatio = metrics ? metrics.height / terminal.options.fontSize : 1.2
+  if (autoFitFont) {
+    const target = Math.floor(available / (ptySize.cols * widthRatio))
+    fontSize = Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, target))
+  }
+  if (!fontSize) fontSize = 12
+  if (terminal.options.fontSize !== fontSize) terminal.options.fontSize = fontSize
+  const visibleRows = Math.floor(availableHeight / (fontSize * heightRatio))
+  const rows = Math.max(ptySize.rows, Math.min(visibleRows || ptySize.rows, 200))
+  if (terminal.cols !== ptySize.cols || terminal.rows !== rows) terminal.resize(ptySize.cols, rows)
+  updateJumpButton()
+}
+
+function scheduleTerminalFit() {
+  window.requestAnimationFrame(() => applyTerminalFit())
+}
+
+function setFontSize(next) {
+  autoFitFont = false
+  fontSize = Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, Math.round(next)))
+  localStorage.setItem(FONT_SIZE_KEY, String(fontSize))
+  applyTerminalFit()
+}
+
+function enableAutoFit() {
+  autoFitFont = true
+  localStorage.removeItem(FONT_SIZE_KEY)
+  applyTerminalFit()
+}
+
+function setPtySize(cols, rows) {
+  const nextCols = Number(cols) || ptySize.cols
+  const nextRows = Number(rows) || ptySize.rows
+  if (nextCols === ptySize.cols && nextRows === ptySize.rows) return
+  ptySize = { cols: nextCols, rows: nextRows }
+  applyTerminalFit()
+}
+
+function writeTerminal(text) {
+  if (!text) return
+  if (!terminal) {
+    pendingWrites.push(text)
+    return
+  }
+  terminal.write(text)
+}
+
+function resetTerminal(text) {
+  const content = text || `\u001b[2m${t('chat.emptyTerminal')}\u001b[0m`
+  if (!terminal) {
+    pendingWrites = [content]
+    return
+  }
+  terminal.reset()
+  terminal.write(content)
+  terminal.scrollToBottom()
+}
+
+function terminalIsAtBottom() {
+  if (!terminal) return true
+  const buffer = terminal.buffer.active
+  return buffer.viewportY >= buffer.baseY
+}
+
+function updateJumpButton() {
+  const latest = document.querySelector('#latest')
+  if (latest) latest.hidden = terminalIsAtBottom()
+}
+
+function scrollTerminalToEnd() {
+  if (terminal) terminal.scrollToBottom()
+  updateJumpButton()
+}
+
+function bindTerminalGestures() {
+  const viewport = document.querySelector('#terminal-viewport')
+  if (!viewport) return
+  let pinchStart = 0
+  let pinchFont = 0
+  const distance = (touches) =>
+    Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY)
+  viewport.addEventListener(
+    'touchstart',
+    (event) => {
+      if (event.touches.length !== 2) return
+      pinchStart = distance(event.touches)
+      pinchFont = fontSize || 12
+    },
+    { passive: true },
+  )
+  viewport.addEventListener(
+    'touchmove',
+    (event) => {
+      if (event.touches.length !== 2 || !pinchStart) return
+      event.preventDefault()
+      setFontSize(pinchFont * (distance(event.touches) / pinchStart))
+    },
+    { passive: false },
+  )
+  viewport.addEventListener('touchend', () => {
+    pinchStart = 0
+  })
+}
+
+function subscribeSocket(ptyId) {
+  if (socket?.readyState !== WebSocket.OPEN || !socketAuthenticated) return false
+  socket.send(JSON.stringify({ type: 'subscribe', sessionToken, ptyId }))
+  return true
+}
+
+async function loadScrollback(ptyId) {
+  if (subscribeSocket(ptyId)) return
+  try {
+    const data = await api(`/api/scrollback?id=${encodeURIComponent(ptyId)}`)
+    if (ptyId !== selected) return
+    setPtySize(data.cols, data.rows)
+    resetTerminal(data.text || '')
+  } catch (error) {
+    if (error instanceof SessionError) {
+      renderSessionLost(error.message)
+      return
+    }
+    resetTerminal(`${t('state.terminalError')}\r\n${error.message || error}\r\n`)
+  }
+}
+
+function inlineMarkdown(escaped) {
+  return escaped
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+}
+
+function renderMarkdown(text) {
+  return String(text ?? '')
+    .split('```')
+    .map((part, index) => {
+      if (index % 2 === 1) {
+        const body = part.replace(/^[\w-]*\n/, '').replace(/\n$/, '')
+        return `<pre class="msg-code">${escapeHtml(body)}</pre>`
+      }
+      return part
+        .split(/\n{2,}/)
+        .filter((block) => block.trim())
+        .map((block) => `<p>${inlineMarkdown(escapeHtml(block)).replaceAll('\n', '<br>')}</p>`)
+        .join('')
+    })
+    .join('')
+}
+
+function toolSummary(text) {
+  const value = String(text ?? '')
+  const separator = value.indexOf(':')
+  const name = separator > 0 && separator < 40 ? value.slice(0, separator) : t('chat.toolResult')
+  return { name, body: separator > 0 && separator < 40 ? value.slice(separator + 1).trim() : value }
+}
+
+function messageMarkup(message) {
+  const role = message.role
+  if (role === 'tool' || role === 'tool-result') {
+    const { name, body } = toolSummary(message.text)
+    return `<details class="msg-step" data-role="${escapeHtml(role)}">
+      <summary>${escapeHtml(role === 'tool' ? name : t('chat.toolResult'))}</summary>
+      <pre>${escapeHtml(body)}</pre>
+    </details>`
+  }
+  return `<article class="msg" data-role="${escapeHtml(role)}">
+    <span class="msg-role">${escapeHtml(role === 'user' ? t('role.user') : transcript?.agent ? agentName(transcript.agent) : t('role.assistant'))}</span>
+    <div class="msg-body">${renderMarkdown(message.text)}</div>
+  </article>`
+}
+
+function transcriptNotice(text) {
+  return `<p class="messages-notice">${escapeHtml(text)}</p>`
+}
+
+function renderTranscript() {
+  const list = document.querySelector('#messages')
+  if (!list) return
+  if (!transcript) return
+  if (transcript.supported === false) {
+    list.innerHTML = transcriptNotice(t('chat.messagesUnsupported'))
+    return
+  }
+  if (transcript.error) {
+    list.innerHTML = transcriptNotice(t('chat.messagesError', { message: transcript.error }))
+    return
+  }
+  const messages = transcript.messages || []
+  if (!messages.length) {
+    list.innerHTML = transcriptNotice(t('chat.messagesEmpty'))
+    return
+  }
+  const nearEnd = list.scrollHeight - list.scrollTop - list.clientHeight < 120
+  list.innerHTML = messages.map(messageMarkup).join('')
+  if (nearEnd) list.scrollTop = list.scrollHeight
+}
+
+async function loadTranscript(ptyId) {
+  const since = transcript?.revision ? `&since=${transcript.revision}` : ''
+  try {
+    const data = await api(`/api/transcript?id=${encodeURIComponent(ptyId)}${since}`)
+    if (ptyId !== selected) return
+    if (data.unchanged) return
+    transcript = data
+    renderTranscript()
+  } catch (error) {
+    if (error instanceof SessionError) {
+      renderSessionLost(error.message)
+      return
+    }
+    if (ptyId !== selected) return
+    transcript = { supported: true, error: error.message || String(error) }
+    renderTranscript()
+  }
+}
+
+function stopTranscriptPolling() {
+  if (transcriptTimer) window.clearInterval(transcriptTimer)
+  transcriptTimer = null
+}
+
+function startTranscriptPolling() {
+  stopTranscriptPolling()
+  const ptyId = selected
+  void loadTranscript(ptyId)
+  transcriptTimer = window.setInterval(() => {
+    if (document.visibilityState !== 'visible' || chatView !== 'messages') return
+    void loadTranscript(ptyId)
+  }, TRANSCRIPT_POLL_MS)
+}
+
+function setChatView(next) {
+  if (chatView === next) return
+  chatView = next
+  localStorage.setItem(CHAT_VIEW_KEY, next)
+  renderChat()
+}
+
 function composerMarkup() {
   if (readOnly)
     return `<aside class="read-only-notice">${icons.info}<p>${t('chat.readOnly')}</p></aside>`
@@ -477,6 +846,28 @@ function composerMarkup() {
   </form></div>`
 }
 
+function viewSwitchMarkup() {
+  const option = (view, label) =>
+    `<button type="button" data-view="${view}"${chatView === view ? ' class="is-active" aria-pressed="true"' : ' aria-pressed="false"'}>${escapeHtml(label)}</button>`
+  return `<div class="view-switch" role="group">${option('terminal', t('chat.viewTerminal'))}${option('messages', t('chat.viewMessages'))}</div>`
+}
+
+function terminalPaneMarkup() {
+  return `<div class="terminal-tools">
+      <button class="icon-button tool-button" id="font-smaller" type="button" aria-label="${t('chat.fontSmaller')}">${icons.fontSmaller}</button>
+      <button class="icon-button tool-button" id="font-larger" type="button" aria-label="${t('chat.fontLarger')}">${icons.fontLarger}</button>
+      <button class="icon-button tool-button" id="font-fit" type="button" aria-label="${t('chat.fitWidth')}">${icons.fitWidth}</button>
+    </div>
+  </header>
+  <div class="terminal-viewport" id="terminal-viewport"><div class="terminal-host" id="terminal-host"></div></div>
+  <button class="jump-latest" id="latest" type="button" hidden>${icons.arrowDown}<span>${t('chat.jumpLatest')}</span></button>`
+}
+
+function messagesPaneMarkup() {
+  return `</header>
+  <div class="messages" id="messages"><p class="messages-notice">${t('state.loadingDescription')}</p></div>`
+}
+
 function renderChat() {
   const chat = findChat(selected)
   if (!chat) {
@@ -485,18 +876,43 @@ function renderChat() {
     return
   }
   stateView = null
+  disposeTerminal()
+  stopTranscriptPolling()
+  const showTerminal = chatView === 'terminal'
   app.innerHTML = `<div class="app-frame chat-frame">
     <header class="topbar chat-topbar"><button class="icon-button back-button" id="back" type="button" aria-label="${t('common.back')}">${icons.arrowLeft}</button><div class="chat-title"><strong>${escapeHtml(chat.name)}</strong><span>${escapeHtml(t('chat.context', { project: chat.projectName || t('home.workspace'), agent: agentName(chat.agent) }))}</span></div>${connectionPill()}</header>
-    <main class="page chat-page"><section class="terminal-shell"><header class="terminal-heading"><span class="terminal-title">${icons.terminal}<strong>${t('chat.liveTerminal')}</strong></span><button class="text-button" id="latest" type="button" hidden>${icons.arrowDown}<span>${t('chat.jumpLatest')}</span></button></header>
-      <div class="terminal-viewport"><pre class="terminal-output" id="terminal" tabindex="0"></pre><p class="terminal-empty" id="terminal-empty">${t('chat.emptyTerminal')}</p></div>
+    <main class="page chat-page"><section class="terminal-shell" data-view="${showTerminal ? 'terminal' : 'messages'}">
+      <header class="terminal-heading">${viewSwitchMarkup()}
+      ${showTerminal ? terminalPaneMarkup() : messagesPaneMarkup()}
     </section>${composerMarkup()}</main>
   </div>`
   rendered = true
-  document.querySelector('#back').addEventListener('click', () => renderHome())
-  document.querySelector('#latest').addEventListener('click', () => scrollTerminalToEnd())
+  document.querySelector('#back').addEventListener('click', () => {
+    disposeTerminal()
+    stopTranscriptPolling()
+    renderHome()
+  })
+  app
+    .querySelectorAll('.view-switch [data-view]')
+    .forEach((button) => button.addEventListener('click', () => setChatView(button.dataset.view)))
   if (!readOnly) bindComposer()
-  updateTerminal(output, true)
   setConnectionState(connectionState)
+  if (showTerminal) {
+    document.querySelector('#latest').addEventListener('click', () => scrollTerminalToEnd())
+    document
+      .querySelector('#font-smaller')
+      .addEventListener('click', () => setFontSize((fontSize || 12) - 1))
+    document
+      .querySelector('#font-larger')
+      .addEventListener('click', () => setFontSize((fontSize || 12) + 1))
+    document.querySelector('#font-fit').addEventListener('click', () => enableAutoFit())
+    mountTerminal()
+    bindTerminalGestures()
+    void loadScrollback(selected)
+    return
+  }
+  renderTranscript()
+  startTranscriptPolling()
 }
 
 function bindComposer() {
@@ -504,9 +920,19 @@ function bindComposer() {
   const input = document.querySelector('#message')
   const button = form.querySelector('.send-button')
   const errorLabel = document.querySelector('#composer-error')
+  const autoGrow = () => {
+    input.style.height = 'auto'
+    input.style.height = `${Math.min(input.scrollHeight, 128)}px`
+  }
   input.addEventListener('input', () => {
     errorLabel.textContent = ''
+    autoGrow()
   })
+  input.addEventListener('focus', () => {
+    window.scrollTo(0, 0)
+    window.requestAnimationFrame(() => scrollTerminalToEnd())
+  })
+  autoGrow()
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
@@ -528,6 +954,7 @@ function bindComposer() {
         body: JSON.stringify({ ptyId: selected, text }),
       })
       input.value = ''
+      autoGrow()
     } catch (error) {
       if (error instanceof SessionError) {
         renderSessionLost(error.message)
@@ -546,47 +973,12 @@ function bindComposer() {
   })
 }
 
-function updateTerminal(nextOutput, forceEnd = false) {
-  const terminal = document.querySelector('#terminal')
-  if (!terminal) return
-  const nearEnd = terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 56
-  terminal.textContent = nextOutput
-  const empty = document.querySelector('#terminal-empty')
-  if (empty) empty.hidden = Boolean(nextOutput)
-  if (forceEnd || nearEnd) scrollTerminalToEnd()
-  else {
-    const latest = document.querySelector('#latest')
-    if (latest) latest.hidden = false
-  }
-}
-
-function scrollTerminalToEnd() {
-  const terminal = document.querySelector('#terminal')
-  if (terminal) terminal.scrollTop = terminal.scrollHeight
-  const latest = document.querySelector('#latest')
-  if (latest) latest.hidden = true
-}
-
-async function openChat(ptyId) {
+function openChat(ptyId) {
   selected = ptyId
-  output = ''
+  ptySize = { ...DEFAULT_PTY_SIZE }
+  transcript = null
   renderChat()
-  try {
-    const data = await api(`/api/scrollback?id=${encodeURIComponent(ptyId)}`)
-    output = readableTerminalText(data.text || '')
-    updateTerminal(output, true)
-  } catch (error) {
-    if (error instanceof SessionError) {
-      renderSessionLost(error.message)
-      return
-    }
-    output = `${t('state.terminalError')}\n${error.message || error}`
-    updateTerminal(output, true)
-  }
-  if (socket?.readyState === WebSocket.OPEN && socketAuthenticated)
-    socket.send(JSON.stringify({ type: 'subscribe', sessionToken, ptyId }))
 }
-
 function connectSocket() {
   if (!wsBase || !sessionToken) return
   setConnectionState('connecting')
@@ -613,8 +1005,7 @@ function connectSocket() {
     if (message.type === 'authenticated') {
       socketAuthenticated = true
       setConnectionState('live')
-      if (selected)
-        socket.send(JSON.stringify({ type: 'subscribe', sessionToken, ptyId: selected }))
+      if (selected) subscribeSocket(selected)
       return
     }
     if (message.type === 'error') {
@@ -626,9 +1017,25 @@ function connectSocket() {
       return
     }
     if (message.ptyId !== selected) return
-    if (message.type === 'scrollback') output = readableTerminalText(message.text || '')
-    if (message.type === 'pty_output') output = readableTerminalText(output + (message.text || ''))
-    updateTerminal(output)
+    if (message.type === 'scrollback') {
+      setPtySize(message.cols, message.rows)
+      if (chatView === 'terminal') resetTerminal(message.text || '')
+      return
+    }
+    if (message.type === 'pty_resize') {
+      setPtySize(message.cols, message.rows)
+      return
+    }
+    if (message.type === 'pty_output') {
+      if (chatView !== 'terminal') return
+      const stick = terminalIsAtBottom()
+      writeTerminal(message.text || '')
+      if (stick) scrollTerminalToEnd()
+      else updateJumpButton()
+      return
+    }
+    if (message.type === 'pty_exit')
+      writeTerminal(`\r\n\u001b[2m${t('chat.sessionEnded')}\u001b[0m\r\n`)
   }
   socket.onclose = () => {
     socketAuthenticated = false
@@ -641,6 +1048,8 @@ function connectSocket() {
 function renderState(config) {
   const { titleKey, descriptionKey, detail = '', action = false, loading = false } = config
   stateView = config
+  disposeTerminal()
+  stopTranscriptPolling()
   app.innerHTML = `<div class="state-page ${loading ? 'is-loading' : ''}" role="status" aria-live="polite"><div class="state-content"><img class="state-logo" src="/brand-icon.png?v=${encodeURIComponent(appearance.appIconTheme)}" alt="" data-brand-icon><span class="state-brand">${t('brand.remote')}</span><h1>${t(titleKey)}</h1><p>${t(descriptionKey)}</p>${detail ? `<details><summary>${t('common.details')}</summary><code>${escapeHtml(detail)}</code></details>` : ''}${action ? `<button class="primary-button" id="state-action" type="button">${icons.refresh}<span>${t('common.reload')}</span></button>` : ''}<span class="loading-track" aria-hidden="true"></span></div></div>`
   rendered = true
   if (action)
@@ -688,9 +1097,31 @@ function renderCurrentView() {
   else if (state.projects.length || sessionToken) renderHome(currentFilter)
 }
 
+function syncViewportMetrics() {
+  const viewport = window.visualViewport
+  const root = document.documentElement
+  const height = Math.round(viewport ? viewport.height : window.innerHeight)
+  const offset = Math.round(viewport ? viewport.offsetTop : 0)
+  root.style.setProperty('--app-height', `${height}px`)
+  root.style.setProperty('--viewport-offset', `${offset}px`)
+  scheduleTerminalFit()
+}
+
+function startViewportSync() {
+  const viewport = window.visualViewport
+  syncViewportMetrics()
+  if (viewport) {
+    viewport.addEventListener('resize', syncViewportMetrics)
+    viewport.addEventListener('scroll', syncViewportMetrics)
+  }
+  window.addEventListener('resize', syncViewportMetrics)
+  window.addEventListener('orientationchange', () => window.setTimeout(syncViewportMetrics, 150))
+}
+
 async function boot() {
   await syncAppearance(false)
   startAppearanceSync()
+  startViewportSync()
   renderLoading()
   if (pairingToken) {
     try {

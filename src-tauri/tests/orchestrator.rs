@@ -453,10 +453,11 @@ fn the_queue_never_breaches_the_concurrency_limit() {
 }
 
 /// A worker that starts, holds its pipes open and never speaks the protocol. It exercises the
-/// watchdog without spending a real Codex turn.
+/// watchdog without spending a real Codex turn. Registered under the "codex" kind: `alethe_delegate`
+/// defaults a job's agent to "codex" when the call does not name one, same as these tests do.
 fn silent_launcher() -> Launcher {
     Launcher {
-        kind: "silent".into(),
+        kind: "codex".into(),
         program: PathBuf::from("cmd"),
         args: vec![
             "/c".into(),
@@ -467,6 +468,124 @@ fn silent_launcher() -> Launcher {
         ],
         env: Vec::new(),
     }
+}
+
+/// Plays back a fixed Claude stream-json transcript instead of spawning the real CLI.
+fn fake_claude_launcher(dir: &std::path::Path, transcript: &str) -> Launcher {
+    let path = dir.join("transcript.jsonl");
+    std::fs::write(&path, transcript).expect("write fake transcript");
+    Launcher {
+        kind: "claude".into(),
+        program: PathBuf::from("cmd"),
+        args: vec!["/c".into(), "type".into(), path.to_string_lossy().into_owned()],
+        env: Vec::new(),
+    }
+}
+
+#[test]
+fn a_claude_worker_reports_its_result_and_tokens() {
+    let dir = workspace("claude-worker");
+    let core = Core::default();
+    let transcript = concat!(
+        r#"{"type":"system","subtype":"init","session_id":"fake-session-1"}"#, "\n",
+        r#"{"type":"assistant","message":{"content":[{"type":"text","text":"working on it"}]}}"#, "\n",
+        r#"{"type":"result","is_error":false,"result":"CLAUDE_DONE_OK","usage":{"input_tokens":3,"output_tokens":5}}"#, "\n",
+    );
+    core.set_launcher(fake_claude_launcher(&dir, transcript));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["do something"], "cwd": dir.to_string_lossy(), "agent": "claude" }),
+    );
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    let snapshot = core.snapshot();
+    let job = &snapshot["jobs"][0];
+    assert_eq!(job["agent"], "claude");
+    assert_eq!(job["status"], "done");
+    assert_eq!(job["outcome"], "succeeded");
+    assert_eq!(job["threadId"], "fake-session-1");
+    assert_eq!(job["summary"], "CLAUDE_DONE_OK");
+    assert_eq!(job["tokens"]["input_tokens"], 3);
+    assert_eq!(job["tokens"]["output_tokens"], 5);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_claude_worker_picks_up_its_own_uncommitted_changes_as_a_diff() {
+    let dir = workspace("claude-diff");
+    for args in [
+        vec!["init", "-q"],
+        vec!["config", "user.email", "lab@example.com"],
+        vec!["config", "user.name", "lab"],
+    ] {
+        let status = Command::new("git")
+            .args(&args)
+            .current_dir(&dir)
+            .status()
+            .expect("git");
+        assert!(status.success(), "git {args:?} failed");
+    }
+    std::fs::write(dir.join("file.txt"), "before\n").expect("seed file");
+    for args in [vec!["add", "-A"], vec!["commit", "-qm", "seed"]] {
+        let status = Command::new("git")
+            .args(&args)
+            .current_dir(&dir)
+            .status()
+            .expect("git");
+        assert!(status.success(), "git {args:?} failed");
+    }
+    std::fs::write(dir.join("file.txt"), "after\n").expect("simulate the worker's edit");
+
+    let core = Core::default();
+    let transcript = concat!(
+        r#"{"type":"system","subtype":"init","session_id":"fake-session-diff"}"#, "\n",
+        r#"{"type":"result","is_error":false,"result":"CHANGED_FILE_OK","usage":{"input_tokens":1,"output_tokens":1}}"#, "\n",
+    );
+    core.set_launcher(fake_claude_launcher(&dir, transcript));
+
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["edit file.txt"], "cwd": dir.to_string_lossy(), "agent": "claude" }),
+    );
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    let snapshot = core.snapshot();
+    let job = &snapshot["jobs"][0];
+    assert_eq!(job["status"], "done");
+    assert_eq!(job["hasDiff"], true, "{snapshot}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn delegating_to_an_unconfigured_agent_fails_cleanly_like_any_other_agent() {
+    let dir = workspace("claude-unconfigured");
+    let core = Core::default();
+    // No launcher registered for "claude" at all — same async-failure path as the codex case in
+    // `a_job_fails_cleanly_when_no_launcher_is_configured`, just naming a different agent.
+    let delegated = call(
+        &core,
+        "alethe_delegate",
+        json!({ "tasks": ["anything"], "cwd": dir.to_string_lossy(), "agent": "claude" }),
+    );
+    assert_eq!(delegated["accepted"], json!(1), "{delegated}");
+
+    let checked = call(&core, "alethe_check", json!({ "wait": true, "timeoutMs": 5000 }));
+    let deliveries = checked["deliveries"].as_array().expect("deliveries");
+    assert_eq!(deliveries.len(), 1, "{checked}");
+    assert_eq!(deliveries[0]["outcome"], json!("failed"));
+    assert!(
+        deliveries[0]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("claude"),
+        "{checked}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

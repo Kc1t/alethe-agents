@@ -17,6 +17,7 @@ html {
 body {
   min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;
   margin: 0;
   background: var(--bg);
   color: var(--fg);
@@ -65,6 +66,14 @@ svg {
 #app,
 .app-frame {
   min-height: 100vh;
+  min-height: 100dvh;
+}
+.chat-frame {
+  height: 100dvh;
+  height: var(--app-height, 100dvh);
+  min-height: 0;
+  overflow: hidden;
+  transform: translateY(var(--viewport-offset, 0px));
 }
 .app-frame {
   display: flex;
@@ -517,12 +526,16 @@ svg {
 }
 .chat-page {
   display: flex;
+  min-height: 0;
   flex: 1;
   flex-direction: column;
   max-width: var(--remote-terminal-width);
+  overflow: hidden;
+  padding-top: 0.7rem;
   padding-bottom: 0;
 }
 .terminal-shell {
+  position: relative;
   display: flex;
   min-height: 0;
   flex: 1;
@@ -554,80 +567,217 @@ svg {
 .terminal-title strong {
   font-size: 0.7rem;
 }
-.text-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  min-height: 32px;
-  margin-left: auto;
-  padding: 0.28rem 0.45rem;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--fg-muted);
-  font-size: 0.7rem;
-}
-.text-button:hover {
-  background: var(--panel-hover);
-  color: var(--fg);
-}
-.text-button svg {
-  width: 0.9rem;
-  height: 0.9rem;
-}
 .terminal-viewport {
   position: relative;
   min-height: 0;
   flex: 1;
-}
-.terminal-output {
-  width: 100%;
-  min-height: 55vh;
-  max-height: calc(100vh - 260px);
   overflow: auto;
-  padding: 0.9rem;
-  outline-offset: -3px;
-  color: var(--fg);
+  padding: 0.5rem;
   background: var(--bg-sunken);
-  white-space: pre-wrap;
+  overscroll-behavior: contain;
+}
+.terminal-host {
+  display: inline-block;
+  min-width: 100%;
+}
+.terminal-host .xterm {
+  padding: 0;
+}
+.terminal-host .xterm-viewport {
+  background: transparent !important;
+  scrollbar-width: none;
+}
+.terminal-host .xterm-viewport::-webkit-scrollbar {
+  width: 0;
+}
+.view-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-sunken);
+}
+.view-switch button {
+  min-height: 26px;
+  padding: 0 0.62rem;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+.view-switch button.is-active {
+  background: var(--bg-elevated);
+  color: var(--fg);
+  box-shadow: var(--shadow-sm);
+}
+
+.messages {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.55rem;
+  overflow-y: auto;
+  padding: 0.85rem 0.9rem max(0.85rem, env(safe-area-inset-bottom));
+  background: var(--bg-sunken);
+  overscroll-behavior: contain;
+}
+.messages-notice {
+  max-width: 34ch;
+  margin: auto;
+  color: var(--fg-faint);
+  font-size: 0.78rem;
+  line-height: 1.55;
+  text-align: center;
+}
+.msg {
+  display: grid;
+  min-width: 0;
+  gap: 0.3rem;
+  padding: 0.6rem 0.72rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+}
+.msg[data-role='user'] {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+.msg-role {
+  color: var(--fg-faint);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.msg-body {
+  min-width: 0;
+  color: var(--fg);
+  font-size: 0.82rem;
+  line-height: 1.55;
   overflow-wrap: anywhere;
-  font: 0.75rem/1.58 var(--font-mono);
+}
+.msg-body p + p {
+  margin-top: 0.55rem;
+}
+.msg-body code {
+  padding: 0.05rem 0.28rem;
+  overflow-wrap: anywhere;
+  border-radius: 5px;
+  background: var(--bg-sunken);
+  font: 0.76rem var(--font-mono);
+}
+.msg-code {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 0.55rem 0.62rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-sunken);
+  font: 0.72rem/1.5 var(--font-mono);
   tab-size: 2;
 }
-.terminal-empty {
-  position: absolute;
-  top: 0.9rem;
-  left: 0.9rem;
-  color: var(--fg-faint);
-  font: 0.72rem/1.5 var(--font-mono);
-  pointer-events: none;
+.msg-body .msg-code {
+  margin-top: 0.5rem;
 }
-.terminal-empty[hidden] {
-  display: none;
+.msg-step {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--fg-muted);
+}
+.msg-step summary {
+  padding: 0.42rem 0.6rem;
+  cursor: pointer;
+  font: 0.72rem var(--font-mono);
+  text-underline-offset: 3px;
+}
+.msg-step[data-role='tool-result'] summary {
+  color: var(--fg-faint);
+}
+.msg-step pre {
+  max-height: 240px;
+  overflow: auto;
+  padding: 0 0.6rem 0.55rem;
+  color: var(--fg-muted);
+  font: 0.7rem/1.5 var(--font-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.terminal-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  margin-left: auto;
+}
+.tool-button {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--fg-muted);
+}
+.tool-button:hover {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+.tool-button svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+.jump-latest {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.42rem 0.7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--fg);
+  box-shadow: var(--shadow-md);
+  font-size: 0.7rem;
+}
+.jump-latest svg {
+  width: 0.85rem;
+  height: 0.85rem;
 }
 
 .composer-wrap {
-  position: sticky;
-  bottom: 0;
-  margin: 0.8rem -1rem 0;
-  padding: 0.65rem 1rem max(0.65rem, env(safe-area-inset-bottom));
+  flex: 0 0 auto;
+  margin: 0.7rem -1rem 0;
+  padding: 0.6rem 1rem max(0.6rem, env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
   background: var(--bg);
 }
 .composer {
   position: relative;
   display: grid;
+  grid-template-areas: 'error error' 'input send';
   grid-template-columns: minmax(0, 1fr) 46px;
   align-items: end;
-  gap: 0.5rem;
-  padding-bottom: 1.2rem;
+  gap: 0.4rem 0.5rem;
 }
 .composer textarea {
-  field-sizing: fixed;
+  grid-area: input;
+}
+.composer .send-button {
+  grid-area: send;
+}
+.composer textarea {
   width: 100%;
   min-width: 0;
   min-height: 46px;
   max-height: 128px;
+  overflow-y: auto;
   resize: none;
   padding: 0.72rem 0.78rem;
   border: 1px solid var(--border);
@@ -682,22 +832,18 @@ svg {
   display: block;
 }
 .composer-hint {
-  position: absolute;
-  bottom: 0;
-  left: 0.1rem;
-  color: var(--fg-faint);
-  font-size: 0.7rem;
+  display: none;
 }
 .composer-error {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  max-width: 60%;
+  grid-area: error;
   overflow: hidden;
   color: var(--status-offline);
   font-size: 0.7rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.composer-error:empty {
+  display: none;
 }
 .read-only-notice {
   display: flex;
@@ -723,6 +869,7 @@ svg {
 .state-page {
   display: grid;
   min-height: 100vh;
+  min-height: 100dvh;
   place-items: center;
   padding: 2rem 1.25rem;
   text-align: center;
@@ -877,11 +1024,16 @@ svg {
     padding-bottom: 0.12rem;
   }
   .chat-page {
-    min-height: calc(100vh - 72px);
     padding-bottom: 1.5rem;
   }
-  .terminal-output {
-    min-height: 520px;
+  .composer-hint {
+    display: block;
+    color: var(--fg-faint);
+    font-size: 0.7rem;
+    grid-area: hint;
+  }
+  .composer {
+    grid-template-areas: 'error error' 'input send' 'hint hint';
   }
   .composer-wrap {
     margin-right: 0;
@@ -889,6 +1041,38 @@ svg {
     padding-right: 0;
     padding-left: 0;
     border-top: 0;
+  }
+}
+
+@media (max-width: 699px) {
+  .topbar {
+    min-height: 56px;
+  }
+  .chat-topbar {
+    padding-top: max(0.5rem, env(safe-area-inset-top));
+    padding-bottom: 0.5rem;
+  }
+  .chat-page {
+    padding: 0;
+  }
+  .terminal-shell {
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 0;
+  }
+  .terminal-heading {
+    min-height: 38px;
+    padding: 0.3rem 0.55rem;
+  }
+  .terminal-title strong {
+    font-size: 0.66rem;
+  }
+  .terminal-viewport {
+    padding: 0.45rem 0.5rem;
+  }
+  .composer-wrap {
+    margin: 0;
   }
 }
 
@@ -919,9 +1103,6 @@ svg {
   }
   .chat-title span {
     max-width: 38vw;
-  }
-  .text-button span {
-    display: none;
   }
   .composer-error {
     max-width: 72%;

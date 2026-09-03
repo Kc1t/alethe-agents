@@ -51,6 +51,10 @@ export async function killPty(id: string): Promise<void> {
   await invoke('kill_pty', { id })
 }
 
+export async function killPtys(ids: string[]): Promise<string[]> {
+  return invoke<string[]>('kill_ptys', { ids })
+}
+
 export async function setPtyReadState(id: string, active: boolean): Promise<void> {
   await invoke('set_pty_read_state', { id, active })
 }

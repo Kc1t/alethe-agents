@@ -12,9 +12,8 @@ import {
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
-import { AgentInstallButton } from '../AgentInstall/AgentInstallButton'
-import { DotmCircular2 } from '../ui/dotm-circular-2'
 import { cliPathMatchesAgent } from '../../lib/agentCliPath'
 import { normalizeBrowserUrl } from '../../lib/browserUrl'
 import { pickFile } from '../../lib/dialog'
@@ -30,6 +29,8 @@ import {
 } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { AgentInstallButton } from '../AgentInstall/AgentInstallButton'
+import { DotmCircular2 } from '../ui/dotm-circular-2'
 import { type DetectedTerminalLink } from './terminalLinks'
 import { applyPromptHistoryInput, loadPromptHistory, PROMPT_HISTORY_KEY } from './terminalWrite'
 import { useXtermSession } from './useXtermSession'
@@ -61,6 +62,7 @@ export type XTermViewProps = {
 
   readOnly?: boolean
   runtimeProfile?: AgentRuntimeProfile
+  useRouter9?: boolean
   terminalTheme?: Theme
   onSpawned?: (id: string) => void
   onSessionId?: (id: string | undefined) => void
@@ -91,6 +93,7 @@ export function XTermView({
   readOnly,
 
   runtimeProfile = 'lean',
+  useRouter9 = false,
   terminalTheme = 'dark',
   onSpawned,
   onSessionId,
@@ -323,6 +326,7 @@ export function XTermView({
     trustSessionId,
     readOnly,
     runtimeProfile,
+    useRouter9,
     terminalTheme,
     cliPathOverride,
     sessionPersistenceKey,
@@ -438,154 +442,163 @@ export function XTermView({
           </button>
         </div>
       ) : null}
-      {linkActions ? (
-        <div
-          ref={linkMenuRef}
-          className={styles.linkMenu}
-          style={{ left: linkActions.x, top: linkActions.y }}
-          role="menu"
-          aria-label={t('xterm.linkMenu')}
-          onPointerDown={(event) => {
-            event.stopPropagation()
-            if (event.target === event.currentTarget) event.preventDefault()
-          }}
-        >
-          <div className={styles.linkMenuHeader}>
-            <span className={styles.linkMenuText} title={linkActions.text}>
-              {linkActions.text}
-            </span>
-            <button
-              type="button"
-              className={styles.linkMenuClose}
-              onClick={hideLinkActions}
-              title={t('common.close')}
-              aria-label={t('common.close')}
+      {linkActions
+        ? createPortal(
+            <div
+              ref={linkMenuRef}
+              className={styles.linkMenu}
+              style={{ left: linkActions.x, top: linkActions.y }}
+              role="menu"
+              aria-label={t('xterm.linkMenu')}
+              onPointerDown={(event) => {
+                event.stopPropagation()
+                if (event.target === event.currentTarget) event.preventDefault()
+              }}
             >
-              <X size={14} />
-            </button>
-          </div>
-          <div className={styles.linkMenuItems}>
-            {(linkActions.fileKind === 'markdown' ||
-              linkActions.fileKind === 'text' ||
-              linkActions.fileKind === 'video') &&
-            projectId ? (
-              <button
-                type="button"
-                className={styles.linkMenuItem}
-                role="menuitem"
-                onClick={() => {
-                  openFileInGrid(linkActions.text)
-                  hideLinkActions()
-                }}
-              >
-                <LayoutGrid size={15} />
-                <span>{t('xterm.openInGrid')}</span>
-              </button>
-            ) : null}
-            {linkActions.kind === 'url' && projectId ? (
-              <button
-                type="button"
-                className={styles.linkMenuItem}
-                role="menuitem"
-                onClick={() => {
-                  openUrlInGrid(linkActions.target)
-                  hideLinkActions()
-                }}
-              >
-                <LayoutGrid size={15} />
-                <span>{t('xterm.openInGrid')}</span>
-              </button>
-            ) : null}
-            {linkActions.kind === 'url' || linkActions.fileKind === 'video' ? (
-              <button
-                type="button"
-                className={styles.linkMenuItem}
-                role="menuitem"
-                onClick={() => {
-                  openLinkInAppViewer(linkActions.target)
-                  hideLinkActions()
-                }}
-              >
-                <AppWindow size={15} />
-                <span>
-                  {t(linkActions.fileKind === 'video' ? 'xterm.playInApp' : 'xterm.openInApp')}
+              <div className={styles.linkMenuHeader}>
+                <span className={styles.linkMenuText} title={linkActions.text}>
+                  {linkActions.text}
                 </span>
-              </button>
-            ) : null}
-            {linkActions.fileKind === 'markdown' ? (
-              <>
+                <button
+                  type="button"
+                  className={styles.linkMenuClose}
+                  onClick={hideLinkActions}
+                  title={t('common.close')}
+                  aria-label={t('common.close')}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              <div className={styles.linkMenuItems}>
+                {(linkActions.fileKind === 'markdown' ||
+                  linkActions.fileKind === 'text' ||
+                  linkActions.fileKind === 'video' ||
+                  linkActions.fileKind === 'image') &&
+                projectId ? (
+                  <button
+                    type="button"
+                    className={styles.linkMenuItem}
+                    role="menuitem"
+                    onClick={() => {
+                      openFileInGrid(linkActions.text)
+                      hideLinkActions()
+                    }}
+                  >
+                    <LayoutGrid size={15} />
+                    <span>{t('xterm.openInGrid')}</span>
+                  </button>
+                ) : null}
+                {linkActions.kind === 'url' && projectId ? (
+                  <button
+                    type="button"
+                    className={styles.linkMenuItem}
+                    role="menuitem"
+                    onClick={() => {
+                      openUrlInGrid(linkActions.target)
+                      hideLinkActions()
+                    }}
+                  >
+                    <LayoutGrid size={15} />
+                    <span>{t('xterm.openInGrid')}</span>
+                  </button>
+                ) : null}
+                {linkActions.kind === 'url' || linkActions.fileKind === 'video' ? (
+                  <button
+                    type="button"
+                    className={styles.linkMenuItem}
+                    role="menuitem"
+                    onClick={() => {
+                      openLinkInAppViewer(linkActions.target)
+                      hideLinkActions()
+                    }}
+                  >
+                    <AppWindow size={15} />
+                    <span>
+                      {t(linkActions.fileKind === 'video' ? 'xterm.playInApp' : 'xterm.openInApp')}
+                    </span>
+                  </button>
+                ) : null}
+                {linkActions.fileKind === 'markdown' ? (
+                  <>
+                    <button
+                      type="button"
+                      className={styles.linkMenuItem}
+                      role="menuitem"
+                      onClick={() => {
+                        openLinkInAppViewer(linkActions.text)
+                        hideLinkActions()
+                      }}
+                    >
+                      <Maximize2 size={15} />
+                      <span>{t('xterm.openMarkdownFullscreen')}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.linkMenuItem}
+                      role="menuitem"
+                      onClick={() => {
+                        useUiStore
+                          .getState()
+                          .openMarkdownSidebar(
+                            linkActions.text,
+                            linkActions.text.split(/[\\/]/).pop(),
+                          )
+                        useProjectsStore.getState().setPreferences({ rightSidebarVisible: true })
+                        hideLinkActions()
+                      }}
+                    >
+                      <PanelRight size={15} />
+                      <span>{t('xterm.openMarkdownSidebar')}</span>
+                    </button>
+                  </>
+                ) : null}
                 <button
                   type="button"
                   className={styles.linkMenuItem}
                   role="menuitem"
                   onClick={() => {
-                    openLinkInAppViewer(linkActions.text)
+                    void openLinkInBrowser(linkActions.target)
                     hideLinkActions()
                   }}
                 >
-                  <Maximize2 size={15} />
-                  <span>{t('xterm.openMarkdownFullscreen')}</span>
+                  <ExternalLink size={15} />
+                  <span>
+                    {t(
+                      linkActions.kind === 'url' ? 'xterm.openInBrowser' : 'xterm.openInDefaultApp',
+                    )}
+                  </span>
                 </button>
+                {linkActions.kind === 'path' ? (
+                  <button
+                    type="button"
+                    className={styles.linkMenuItem}
+                    role="menuitem"
+                    onClick={() => {
+                      void openLinkInFolder(linkActions.text)
+                      hideLinkActions()
+                    }}
+                  >
+                    <FolderOpen size={15} />
+                    <span>{t('xterm.openInFolder')}</span>
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className={styles.linkMenuItem}
                   role="menuitem"
                   onClick={() => {
-                    useUiStore
-                      .getState()
-                      .openMarkdownSidebar(linkActions.text, linkActions.text.split(/[\\/]/).pop())
-                    useProjectsStore.getState().setPreferences({ rightSidebarVisible: true })
+                    void copyLinkText(linkActions.text)
                     hideLinkActions()
                   }}
                 >
-                  <PanelRight size={15} />
-                  <span>{t('xterm.openMarkdownSidebar')}</span>
+                  <Copy size={15} />
+                  <span>{t('xterm.copy')}</span>
                 </button>
-              </>
-            ) : null}
-            <button
-              type="button"
-              className={styles.linkMenuItem}
-              role="menuitem"
-              onClick={() => {
-                void openLinkInBrowser(linkActions.target)
-                hideLinkActions()
-              }}
-            >
-              <ExternalLink size={15} />
-              <span>
-                {t(linkActions.kind === 'url' ? 'xterm.openInBrowser' : 'xterm.openInDefaultApp')}
-              </span>
-            </button>
-            {linkActions.kind === 'path' ? (
-              <button
-                type="button"
-                className={styles.linkMenuItem}
-                role="menuitem"
-                onClick={() => {
-                  void openLinkInFolder(linkActions.text)
-                  hideLinkActions()
-                }}
-              >
-                <FolderOpen size={15} />
-                <span>{t('xterm.openInFolder')}</span>
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className={styles.linkMenuItem}
-              role="menuitem"
-              onClick={() => {
-                void copyLinkText(linkActions.text)
-                hideLinkActions()
-              }}
-            >
-              <Copy size={15} />
-              <span>{t('xterm.copy')}</span>
-            </button>
-          </div>
-        </div>
-      ) : null}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   )
 }

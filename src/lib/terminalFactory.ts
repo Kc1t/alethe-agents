@@ -60,6 +60,7 @@ export function makeDefaultTerminal(args: {
     initialInput?: string
     handoff?: AgentHandoffBootstrap
     runtimeProfile?: AgentRuntimeProfile
+    useRouter9?: boolean
   }
   worktreeAgentId?: string
   gsdSyncViewer?: boolean
@@ -92,6 +93,7 @@ export function makeDefaultTerminal(args: {
         initialInput: args.firstTab.initialInput,
         handoff: args.firstTab.handoff,
         runtimeProfile: args.firstTab.runtimeProfile,
+        useRouter9: args.firstTab.useRouter9,
       },
     ],
   }
@@ -99,9 +101,11 @@ export function makeDefaultTerminal(args: {
 
 const MARKDOWN_FILE_PATTERN = /\.(md|markdown|mdx)$/i
 const VIDEO_FILE_PATTERN = /\.(mp4|m4v|mov|avi|mkv|webm|ogv)$/i
+const IMAGE_FILE_PATTERN = /\.(png|jpe?g|gif|webp|bmp|avif|ico|svg)$/i
 
-function classifyPaneKind(filePath: string): 'markdown' | 'video' | 'file' {
+function classifyPaneKind(filePath: string): 'markdown' | 'video' | 'image' | 'file' {
   if (VIDEO_FILE_PATTERN.test(filePath)) return 'video'
+  if (IMAGE_FILE_PATTERN.test(filePath)) return 'image'
   return MARKDOWN_FILE_PATTERN.test(filePath) ? 'markdown' : 'file'
 }
 

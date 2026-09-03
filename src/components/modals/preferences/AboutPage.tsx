@@ -64,31 +64,12 @@ export function AboutPage() {
         title={t('prefs.aboutVersionTitle')}
         description={t('prefs.aboutVersionDesc')}
       >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '12px 14px',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--border)',
-            background: 'var(--bg-sunken)',
-          }}
-        >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <strong style={{ fontSize: 14 }}>Alethe</strong>
-            <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>com.kc1t.alethe</span>
+        <div className={styles.versionCard}>
+          <div className={styles.versionCardCopy}>
+            <strong>Alethe</strong>
+            <span>com.kc1t.alethe</span>
           </div>
-          <span
-            style={{
-              fontSize: 15,
-              fontWeight: 700,
-              fontVariantNumeric: 'tabular-nums',
-              color: 'var(--fg)',
-            }}
-          >
-            {version ? `v${version}` : '—'}
-          </span>
+          <span className={styles.versionCardNumber}>{version ? `v${version}` : '—'}</span>
         </div>
       </SettingsSection>
 
@@ -98,9 +79,9 @@ export function AboutPage() {
         description={t('prefs.aboutUpdatesDesc')}
       >
         {updateInfo ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
-              <DownloadCloud size={16} style={{ color: 'var(--status-working)', flexShrink: 0 }} />
+          <div className={styles.updateBlock}>
+            <div className={styles.updateAvailable}>
+              <DownloadCloud size={16} />
               <span>
                 {t('prefs.aboutUpdateAvailable', {
                   version: updateInfo.version,
@@ -108,84 +89,40 @@ export function AboutPage() {
                 })}
               </span>
             </div>
-            {updateInfo.notes ? (
-              <div
-                style={{
-                  fontSize: 12,
-                  color: 'var(--fg-muted)',
-                  whiteSpace: 'pre-wrap',
-                  maxHeight: 160,
-                  overflowY: 'auto',
-                  padding: '8px 10px',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--bg-active)',
-                }}
-              >
-                {updateInfo.notes}
-              </div>
-            ) : null}
+            {updateInfo.notes ? <div className={styles.updateNotes}>{updateInfo.notes}</div> : null}
             {installing ? (
-              <div
-                style={{
-                  height: 6,
-                  borderRadius: 3,
-                  background: 'var(--bg-active)',
-                  overflow: 'hidden',
-                }}
-                aria-hidden
-              >
-                <div
-                  style={{
-                    height: '100%',
-                    width: `${percent}%`,
-                    background: 'var(--accent)',
-                    transition: 'width 0.2s ease',
-                  }}
-                />
+              <div className={styles.updateProgress} aria-hidden>
+                <div className={styles.updateProgressBar} style={{ width: `${percent}%` }} />
               </div>
             ) : null}
             <button
               type="button"
-              className={`${controls.btn} ${controls.btnPrimary}`}
+              className={`${controls.btn} ${controls.btnPrimary} ${styles.alignStart}`}
               onClick={() => void onInstall()}
               disabled={installing}
-              style={{ alignSelf: 'flex-start' }}
             >
               {installing ? t('update.installing', { percent }) : t('update.installNow')}
             </button>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className={styles.updateBlock}>
             <button
               type="button"
-              className={styles.secondaryButton}
+              className={`${styles.secondaryButton} ${styles.alignStart}`}
               onClick={() => void onCheck()}
               disabled={checking}
-              style={{ alignSelf: 'flex-start' }}
             >
               <RotateCcw size={15} />
               {checking ? t('prefs.aboutChecking') : t('prefs.aboutCheckUpdates')}
             </button>
             {checkedUpToDate ? (
-              <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+              <span className={styles.updateCheckedNote}>
                 {t('prefs.aboutUpToDate', { version })}
               </span>
             ) : null}
           </div>
         )}
-        {error ? (
-          <p
-            style={{
-              fontSize: 12,
-              color: 'var(--status-failed-fg, #ef4444)',
-              marginTop: 8,
-              wordBreak: 'break-word',
-            }}
-          >
-            {t('update.error', { error })}
-          </p>
-        ) : null}
+        {error ? <p className={styles.updateError}>{t('update.error', { error })}</p> : null}
       </SettingsSection>
     </>
   )

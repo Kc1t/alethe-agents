@@ -2,12 +2,16 @@ import { Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { useAgentInstall, useAgentOperationBusy } from '../../hooks/useAgentInstall'
-import { type InstallToolchain, uninstallMethodsFor } from '../../lib/agentInstall'
+import {
+  type InstallToolchain,
+  stripInstallLogAnsi,
+  uninstallMethodsFor,
+} from '../../lib/agentInstall'
 import { useT } from '../../lib/i18n'
 import { probeInstallToolchain } from '../../lib/tauri'
 import type { AgentType } from '../../lib/types'
-import { Modal } from '../modals/Modal'
 import controls from '../modals/controls.module.css'
+import { Modal } from '../modals/Modal'
 import styles from './agentActions.module.css'
 
 type Props = {
@@ -16,10 +20,6 @@ type Props = {
   onUninstalled?: () => void
   nested?: boolean
 }
-
-// eslint-disable-next-line no-control-regex
-const ANSI_PATTERN =
-  /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|[\x00-\x08\x0b\x0c\x0e-\x1f]/g
 
 export function AgentUninstallButton({ agent, label, onUninstalled, nested }: Props) {
   const t = useT()
@@ -53,7 +53,7 @@ export function AgentUninstallButton({ agent, label, onUninstalled, nested }: Pr
 
   const running = status === 'running'
   const blocked = busyAgent !== null && busyAgent !== agent
-  const cleanLog = log.replace(ANSI_PATTERN, '')
+  const cleanLog = stripInstallLogAnsi(log)
 
   return (
     <>

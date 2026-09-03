@@ -1,3 +1,4 @@
+import { listen } from '@tauri-apps/api/event'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
@@ -14,11 +15,15 @@ import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { getLocale, translate } from '../../lib/i18n'
 import { isWindows } from '../../lib/platform'
 import { usePtyPanelVisible } from '../../lib/ptyVisibility'
+import { router9EnvFor } from '../../lib/router9'
 import {
   claimDiscoveredSession,
   claimMostRecentSession,
   isSessionClaimed,
+  pickSwitchedSession,
   registerSessionClaim,
+  releaseSessionClaim,
+  type SessionSnapshot,
 } from '../../lib/sessionDiscovery'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import {
@@ -30,12 +35,15 @@ import {
 import { waitForSessionHint } from '../../lib/sessionWatch'
 import { acquireSpawnSlot, releaseSpawnSlot } from '../../lib/spawnQueue'
 import {
+  agentHooksSettingsPath,
   aiMemoryCodexConfigWrite,
   aiMemoryDetect,
   aiMemoryMcpConfigPath,
   aiMemoryOpenCodeConfigWrite,
   attachPty,
   clearPtyScrollback,
+  codexHooksConfigWrite,
+  codexMcpConfigWrite,
   findCliLauncher,
   graphifyCodexConfigWrite,
   graphifyEnsureGraph,
@@ -120,6 +128,12 @@ function plannerLabelFor(ptyId: string): string {
 
 type BootPhase = 'preparing' | 'queued' | 'spawning' | 'attaching' | 'ready'
 
+type ClaudeSessionHookPayload = {
+  hook_event_name?: string
+  session_id?: string
+  plannerId?: string
+}
+
 export function useXtermSession(params: {
   ptyId: string
   command?: AgentType | null
@@ -136,6 +150,7 @@ export function useXtermSession(params: {
 
   readOnly?: boolean
   runtimeProfile: AgentRuntimeProfile
+  useRouter9?: boolean
   terminalTheme: Theme
   cliPathOverride: string | null
   sessionPersistenceKey: string
@@ -177,6 +192,7 @@ export function useXtermSession(params: {
     trustSessionId,
     readOnly,
     runtimeProfile,
+    useRouter9,
     terminalTheme,
     cliPathOverride,
     sessionPersistenceKey,
@@ -234,6 +250,7 @@ export function useXtermSession(params: {
     let unlistenActivity: (() => void) | null = null
     let unlistenExit: (() => void) | null = null
     let unlistenDragDrop: (() => void) | null = null
+    let unlistenSessionHook: (() => void) | null = null
     let resizeTimer: number | null = null
     let writeFrame: number | null = null
     let writeFallback: number | null = null
@@ -1008,8 +1025,20 @@ export function useXtermSession(params: {
           ? preparePtyRuntimeLaunch(command, runtimeProfile, extraArgs ?? [], env)
           : { args: extraArgs ?? [], env }
 
+        // Read at spawn time rather than through a selector: the PTY environment is fixed when the
+        // process starts, so turning 9router off only ever affects terminals opened afterwards.
+        const router9Env =
+          useRouter9 && command
+            ? router9EnvFor(command, useProjectsStore.getState().preferences.router9)
+            : {}
+        const launchEnv =
+          Object.keys(router9Env).length > 0
+            ? { ...(preparedRuntime.env ?? {}), ...router9Env }
+            : preparedRuntime.env
+
         // o spawn.
         const mcpConfigPaths: string[] = []
+        let hooksSettingsPath: string | undefined
 
         if (
           graphifyRepo &&
@@ -1081,6 +1110,28 @@ export function useXtermSession(params: {
           if (disposed) return
         }
 
+        // Tags every Claude pane's hooks with its ptyId. SessionStart/UserPromptSubmit report the
+        // conversation the CLI is actually on, which is what keeps the pane in sync after an in-CLI
+        // /clear or /resume; with the orchestrator on, the same file also carries its subagent and
+        // tool-call hooks so the canvas can hang them off this planner.
+        if (command === 'claude') {
+          hooksSettingsPath = await agentHooksSettingsPath(ptyId, orchestratorEnabled).catch(
+            () => undefined,
+          )
+          if (disposed) return
+        }
+
+        if (orchestratorEnabled && command === 'codex' && cwd) {
+          // Same idea for Codex: it has its own native subagents (SubagentStart/Stop), just no http
+          // hook handler — codexHooksConfigWrite points them at a generated forwarder instead.
+          await codexHooksConfigWrite(cwd, ptyId).catch(() => undefined)
+          if (disposed) return
+
+          // Registers this Codex terminal as a planner too, so it can call alethe_delegate.
+          await codexMcpConfigWrite(cwd, ptyId, plannerLabelFor(ptyId), command).catch(() => undefined)
+          if (disposed) return
+        }
+
         if (command === 'opencode' && cwd && gsdWatcherEnabled) {
           const modelChain = useProjectsStore.getState().preferences.gsdSyncModelChain ?? []
 
@@ -1091,7 +1142,14 @@ export function useXtermSession(params: {
         }
 
         const launch = command
-          ? buildAgentLaunch(command, preparedRuntime.args, resumeId, undefined, mcpConfigPaths)
+          ? buildAgentLaunch(
+              command,
+              preparedRuntime.args,
+              resumeId,
+              undefined,
+              mcpConfigPaths,
+              hooksSettingsPath,
+            )
           : { args: preparedRuntime.args, sessionId: undefined, createdSession: false }
         const spawnArgs = launch.args.length > 0 ? launch.args : undefined
         if (command && command !== 'shell') {
@@ -1141,7 +1199,7 @@ export function useXtermSession(params: {
             cwd: cwd ?? undefined,
             extraArgs: spawnArgs,
             launcherOverride,
-            env: preparedRuntime.env,
+            env: launchEnv,
           })
         } finally {
           releaseSpawnSlot()
@@ -1179,6 +1237,32 @@ export function useXtermSession(params: {
 
         // spawn vai consumir essa entrada e injetar o resume adequado da CLI.
         if (command && RESUMABLE_AGENTS.includes(command)) {
+          let attachedSessionId = launch.sessionId
+
+          const adoptSession = (nextSessionId: string) => {
+            if (!command || nextSessionId === attachedSessionId) return
+            attachedSessionId = nextSessionId
+            if (cwd) {
+              // The conversation this pane just left is free for another pane to resume; holding
+              // its claim would make the pane that owns it start a fresh chat instead.
+              releaseSessionClaim(sessionPersistenceKey)
+              releaseSessionClaim(response.id)
+              registerSessionClaim(command, cwd, nextSessionId, sessionPersistenceKey)
+              registerSessionClaim(command, cwd, nextSessionId, response.id)
+            }
+            saveSession(sessionPersistenceKey, {
+              sessionId: response.id,
+              claudeSessionId: command === 'claude' ? nextSessionId : undefined,
+              codexSessionId: command === 'codex' ? nextSessionId : undefined,
+              opencodeSessionId: command === 'opencode' ? nextSessionId : undefined,
+              antigravitySessionId: command === 'antigravity' ? nextSessionId : undefined,
+              cwd: cwd ?? '',
+              agent: command,
+              timestamp: Date.now(),
+            })
+            onSessionIdRef.current?.(nextSessionId)
+          }
+
           saveSession(sessionPersistenceKey, {
             sessionId: response.id,
             claudeSessionId: command === 'claude' ? launch.sessionId : undefined,
@@ -1189,6 +1273,26 @@ export function useXtermSession(params: {
             agent: command,
             timestamp: Date.now(),
           })
+
+          // Claude's own hooks are the only source that cannot be wrong about which conversation
+          // the CLI moved to: the mtime watcher below can only guess, and guesses badly when two
+          // panes share a folder. It stays as the fallback for panes launched without --settings.
+          if (command === 'claude') {
+            void listen<ClaudeSessionHookPayload>('agent-hook', (event) => {
+              const payload = event.payload
+              if (payload.plannerId !== ptyId && payload.plannerId !== response.id) return
+              const name = payload.hook_event_name
+              if (name !== 'SessionStart' && name !== 'UserPromptSubmit') return
+              const reported = payload.session_id
+              if (!reported || disposed) return
+              adoptSession(reported)
+            })
+              .then((off) => {
+                if (disposed) off()
+                else unlistenSessionHook = off
+              })
+              .catch(() => {})
+          }
 
           if (
             (command === 'codex' ||
@@ -1202,7 +1306,17 @@ export function useXtermSession(params: {
               const before = new Set((await discoveredSessionsBeforePromise).map((s) => s.id))
               if (launch.sessionId) before.add(launch.sessionId)
 
-              // reivindicada/persistida (perdia resume ao reabrir o pane). Primeiras
+              // Tracks the session this pane is currently attached to so an
+              // in-CLI `/resume` to an already-existing session (not just a
+              // brand-new one) can be detected once the pane's own session
+              // file shows up in a snapshot.
+              let claudeTrackedId = command === 'claude' ? launch.sessionId : undefined
+              const syncTrackedId = () => {
+                if (command === 'claude' && attachedSessionId !== claudeTrackedId) {
+                  claudeTrackedId = attachedSessionId
+                  if (claudeTrackedId) before.add(claudeTrackedId)
+                }
+              }
 
               let attempt = 0
               while (!disposed) {
@@ -1216,6 +1330,7 @@ export function useXtermSession(params: {
                   await new Promise((resolve) => setTimeout(resolve, delayMs))
                 }
                 if (disposed) return
+                syncTrackedId()
                 const sessions =
                   command === 'codex'
                     ? await snapshotCodexSessions(cwd).catch(() => [])
@@ -1225,35 +1340,38 @@ export function useXtermSession(params: {
                         ? await snapshotClaudeSessions(cwd).catch(() => [])
                         : await snapshotOpenCodeSessions(cwd).catch(() => [])
 
-                // equivalente no bloco de resume acima.
+                // Same filtering as the resume block above.
                 let filteredSessions = sessions
                 if (command === 'opencode') {
                   const gsdChildId = await readGsdChildSession(cwd).catch(() => null)
                   if (gsdChildId) filteredSessions = sessions.filter((s) => s.id !== gsdChildId)
                 }
-                const newSession = claimDiscoveredSession(
-                  command,
-                  cwd,
-                  before,
-                  filteredSessions,
-                  sessionPersistenceKey,
-                )
+
+                let newSession: SessionSnapshot | undefined
+                if (command === 'claude' && claudeTrackedId) {
+                  newSession = pickSwitchedSession(
+                    command,
+                    cwd,
+                    filteredSessions.find((s) => s.id === claudeTrackedId),
+                    filteredSessions,
+                    sessionPersistenceKey,
+                  )
+                }
+                if (!newSession) {
+                  newSession = claimDiscoveredSession(
+                    command,
+                    cwd,
+                    before,
+                    filteredSessions,
+                    sessionPersistenceKey,
+                  )
+                }
                 if (newSession) {
-                  saveSession(sessionPersistenceKey, {
-                    sessionId: response.id,
-                    claudeSessionId: command === 'claude' ? newSession.id : undefined,
-                    codexSessionId: command === 'codex' ? newSession.id : undefined,
-                    antigravitySessionId: command === 'antigravity' ? newSession.id : undefined,
-                    opencodeSessionId: command === 'opencode' ? newSession.id : undefined,
-                    cwd: cwd ?? '',
-                    agent: command,
-                    timestamp: Date.now(),
-                  })
-                  onSessionIdRef.current?.(newSession.id)
+                  adoptSession(newSession.id)
                   if (command !== 'claude') return
                   // Claude can switch conversation again through /new or /resume,
                   // so the watcher stays alive for the life of the pane.
-                  before.add(newSession.id)
+                  syncTrackedId()
                   attempt = 0
                   continue
                 }
@@ -1527,6 +1645,7 @@ export function useXtermSession(params: {
       unlistenActivity?.()
       unlistenExit?.()
       unlistenDragDrop?.()
+      unlistenSessionHook?.()
       linkProviderDisposable?.dispose()
       linkScrollDisposable?.dispose()
       completionMonitor?.dispose()

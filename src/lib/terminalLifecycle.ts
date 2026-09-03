@@ -1,6 +1,6 @@
 import { releaseSessionClaim } from './sessionDiscovery'
 import { removeSession } from './sessionResume'
-import { ghosttyKill, killPty } from './tauri'
+import { ghosttyKill, killPtys } from './tauri'
 import { useTerminalsStore } from '../stores/terminalsStore'
 
 export function cleanupPtys(ptyIds: Array<string | null | undefined>): void {
@@ -12,16 +12,11 @@ export function cleanupPtys(ptyIds: Array<string | null | undefined>): void {
     removeSession(ptyId)
     releaseSessionClaim(ptyId)
     unregister(ptyId)
-    void killPty(ptyId).catch(() => {
-      // The PTY may already have exited or been killed by another action.
-    })
-                                                                           
-                                                                                
-                                                                               
-                                                                                 
-                                                                                  
     void ghosttyKill(ptyId).catch(() => {
-                                                       
+                                                        
     })
   }
+  void killPtys(uniqueIds).catch(() => {
+    // The PTYs may already have exited or been killed by another action.
+  })
 }

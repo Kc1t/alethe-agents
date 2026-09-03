@@ -22,6 +22,7 @@ const AGENTS: { id: AgentType; label: string }[] = [
   { id: 'opencode', label: 'OpenCode' },
   { id: 'freebuff', label: 'Freebuff' },
   { id: 'mimo', label: 'Mimo Code' },
+  { id: 'kiro', label: 'Kiro CLI' },
 ]
 
 export function TerminalPage({ enabledCount }: { enabledCount: number }) {
@@ -249,24 +250,13 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
           title={t('prefs.nativeTerminalMacos')}
           description={t('prefs.nativeTerminalMacosDesc')}
         >
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              padding: '8px 12px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--border)',
-              background: 'var(--bg-sunken)',
-              cursor: 'pointer',
-            }}
-          >
+          <label className={styles.checkboxCard}>
             <input
               type="checkbox"
               checked={preferences.nativeTerminalMacos ?? false}
               onChange={(e) => setPreferences({ nativeTerminalMacos: e.target.checked })}
             />
-            <span style={{ flex: 1, fontSize: 13 }}>{t('prefs.nativeTerminalMacosEnable')}</span>
+            <span>{t('prefs.nativeTerminalMacosEnable')}</span>
           </label>
         </SettingsSection>
       ) : null}

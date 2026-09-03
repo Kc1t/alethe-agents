@@ -52,7 +52,8 @@ type ModalKind =
   | null
 
 export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox'
-export type RightSidebarMode = 'todo' | 'markdown' | 'git' | 'gsdSync' | 'mcp'
+/** Open on purpose: plugins contribute right-sidebar tabs at runtime. */
+export type RightSidebarMode = 'todo' | 'markdown' | 'gsdSync' | 'mcp' | (string & {})
 export type MarkdownSidebarTab = { path: string; title: string }
 
 export type MemorySample = MemoryStats & {
@@ -110,6 +111,8 @@ type UiState = {
   activeView: ActiveView
 
   rightSidebarMode: RightSidebarMode
+  /** Active left-sidebar tab. Shared so both shells and commands address the same one. */
+  leftSidebarTab: string
   rightSidebarMarkdown: { path: string; title: string } | null
   rightSidebarMarkdownTabs: MarkdownSidebarTab[]
 
@@ -153,7 +156,8 @@ type UiState = {
   restoreMarkdownSidebarHistory: () => void
   showMarkdownSidebar: () => void
   showTodoSidebar: () => void
-  showGitSidebar: () => void
+  setRightSidebarMode: (mode: RightSidebarMode) => void
+  setLeftSidebarTab: (tab: string) => void
   showGsdSyncSidebar: () => void
   showMcpSidebar: () => void
   setAgentCanvasSession: (session: { folder: string; ptyId: string } | null) => void
@@ -195,6 +199,7 @@ export const useUiStore = create<UiState>((set) => ({
   selectedPanes: [],
   activeView: 'workspace',
   rightSidebarMode: 'todo',
+  leftSidebarTab: 'projects',
   rightSidebarMarkdown: null,
   rightSidebarMarkdownTabs: [],
   agentCanvasSession: null,
@@ -295,7 +300,8 @@ export const useUiStore = create<UiState>((set) => ({
     }),
   showMarkdownSidebar: () => set({ rightSidebarMode: 'markdown' }),
   showTodoSidebar: () => set({ rightSidebarMode: 'todo' }),
-  showGitSidebar: () => set({ rightSidebarMode: 'git' }),
+  setRightSidebarMode: (mode) => set({ rightSidebarMode: mode }),
+  setLeftSidebarTab: (tab) => set({ leftSidebarTab: tab }),
   showGsdSyncSidebar: () => set({ rightSidebarMode: 'gsdSync' }),
   showMcpSidebar: () => set({ rightSidebarMode: 'mcp' }),
   setAgentCanvasSession: (session) => set({ agentCanvasSession: session }),
@@ -304,7 +310,12 @@ export const useUiStore = create<UiState>((set) => ({
     set((s) => {
       const now = Date.now()
       const last = s.notifications[0]
-      if (last && last.title === title && last.body === body && now - last.createdAt < DUPLICATE_TOAST_WINDOW_MS) {
+      if (
+        last &&
+        last.title === title &&
+        last.body === body &&
+        now - last.createdAt < DUPLICATE_TOAST_WINDOW_MS
+      ) {
         return s
       }
       const entry: InAppToast = {

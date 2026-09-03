@@ -10,12 +10,13 @@ import {
   needsNodeToolchain,
   NODE_DOWNLOAD_URL,
   nodeInstallMethods,
+  stripInstallLogAnsi,
 } from '../../lib/agentInstall'
 import { useT } from '../../lib/i18n'
 import { openInBrowser, probeInstallToolchain } from '../../lib/tauri'
 import type { AgentType } from '../../lib/types'
-import { Modal } from '../modals/Modal'
 import controls from '../modals/controls.module.css'
+import { Modal } from '../modals/Modal'
 import styles from './agentActions.module.css'
 
 type Props = {
@@ -26,10 +27,6 @@ type Props = {
   onInstalled?: () => void
   nested?: boolean
 }
-
-// eslint-disable-next-line no-control-regex
-const ANSI_PATTERN =
-  /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|[\x00-\x08\x0b\x0c\x0e-\x1f]/g
 
 const METHOD_LABEL_KEY = {
   native: 'agentInstall.method.native',
@@ -76,7 +73,7 @@ export function AgentInstallModal({ agent, label, open, onClose, onInstalled, ne
   useEffect(() => {
     if (nodeInstall.status !== 'success') return
     void probe()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [nodeInstall.status])
 
   const methods = installMethodsFor(agent, toolchain)
@@ -90,8 +87,8 @@ export function AgentInstallModal({ agent, label, open, onClose, onInstalled, ne
   const blocked = blockedByOther(agent)
   const missingNode = !probing && methods.length === 0 && needsNodeToolchain(agent, toolchain)
   const nodeMethod = missingNode ? nodeInstallMethods(toolchain)[0] : undefined
-  const cleanLog = log.replace(ANSI_PATTERN, '')
-  const nodeLog = nodeInstall.log.replace(ANSI_PATTERN, '')
+  const cleanLog = stripInstallLogAnsi(log)
+  const nodeLog = stripInstallLogAnsi(nodeInstall.log)
 
   return (
     <Modal

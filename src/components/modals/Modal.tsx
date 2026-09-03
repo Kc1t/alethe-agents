@@ -14,6 +14,7 @@ type Props = {
   width?: number
   /** Set when this modal is opened from inside another one, so it layers above it. */
   nested?: boolean
+  className?: string
 }
 
 export function Modal({
@@ -24,6 +25,7 @@ export function Modal({
   footer,
   width = 440,
   nested = false,
+  className,
 }: Props) {
   const t = useT()
   return (
@@ -32,7 +34,7 @@ export function Modal({
         <Dialog.Overlay className={`${styles.overlay} ${nested ? styles.overlayNested : ''}`} />
         <Dialog.Content
           data-alethe-modal-content=""
-          className={`${styles.content} ${nested ? styles.contentNested : ''}`}
+          className={`${styles.content} ${nested ? styles.contentNested : ''} ${className ?? ''}`}
           style={{ width }}
           aria-describedby={undefined}
           onInteractOutside={(event) => {

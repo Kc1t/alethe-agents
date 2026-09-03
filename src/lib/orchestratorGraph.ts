@@ -1,3 +1,4 @@
+import type { MediaItem } from './orchestratorMedia'
 import { LANE_OF, type OrchestratorRun, type RunLane } from './orchestratorRuns'
 
 export const NODE_WIDTH = 252
@@ -14,7 +15,7 @@ export const MAX_SCALE = 1.6
 const ROOT_PREFIX = 'run:'
 const PLANNER_PREFIX = 'planner:'
 
-export type GraphNodeKind = 'planner' | 'run' | 'worker'
+export type GraphNodeKind = 'planner' | 'run' | 'worker' | 'media'
 
 export type GraphNode = {
   id: string
@@ -55,6 +56,7 @@ export type BoardGraph = {
   trees: GraphTree[]
   roots: GraphNode[]
   workers: GraphNode[]
+  media: GraphNode[]
   edges: GraphEdge[]
   width: number
   height: number
@@ -75,6 +77,7 @@ export const EMPTY_BOARD: BoardGraph = {
   trees: [],
   roots: [],
   workers: [],
+  media: [],
   edges: [],
   width: 0,
   height: 0,
@@ -86,6 +89,11 @@ export function rootNodeId(runId: string): string {
 
 export function plannerNodeId(plannerId: string): string {
   return `${PLANNER_PREFIX}${plannerId}`
+}
+
+/** A worker's promoted image gets one card, directly below it. */
+export function mediaNodeId(jobId: string): string {
+  return `${jobId}:media`
 }
 
 function heightOf(heights: NodeHeights | undefined, id: string): number {
@@ -123,6 +131,7 @@ export function layoutPlannerBoard(
   runs: OrchestratorRun[],
   heights?: NodeHeights,
   plannerId?: string | null,
+  mediaByJobId?: ReadonlyMap<string, MediaItem>,
 ): BoardGraph {
   if (runs.length === 0) return EMPTY_BOARD
 
@@ -157,6 +166,7 @@ export function layoutPlannerBoard(
   }))
 
   const workers: GraphNode[] = []
+  const media: GraphNode[] = []
   const trees: GraphTree[] = []
   const runEdges: GraphEdge[] = []
 
@@ -184,6 +194,29 @@ export function layoutPlannerBoard(
         lane: LANE_OF[job.status],
         d: connectorPath(centerX(root), root.y + root.height, centerX(node), node.y),
       })
+
+      if (mediaByJobId?.has(job.id)) {
+        const mediaId = mediaNodeId(job.id)
+        const mediaNode: GraphNode = {
+          id: mediaId,
+          kind: 'media',
+          depth: node.depth + 1,
+          index: column,
+          x: node.x,
+          y: node.y + node.height + LEVEL_GAP,
+          width: NODE_WIDTH,
+          height: heightOf(heights, mediaId),
+        }
+        media.push(mediaNode)
+        bottom = Math.max(bottom, mediaNode.y + mediaNode.height)
+        runEdges.push({
+          id: `${node.id}->${mediaNode.id}`,
+          from: node.id,
+          to: mediaNode.id,
+          lane: LANE_OF[job.status],
+          d: connectorPath(centerX(node), node.y + node.height, centerX(mediaNode), mediaNode.y),
+        })
+      }
     })
 
     trees.push({
@@ -228,6 +261,7 @@ export function layoutPlannerBoard(
     trees,
     roots,
     workers,
+    media,
     edges: [...plannerEdges, ...runEdges],
     width: cursor - TREE_GAP + CANVAS_PADDING,
     height: Math.max(...trees.map((tree) => tree.y + tree.height)) + CANVAS_PADDING,

@@ -48,6 +48,14 @@ export type OrchestratorTokens = {
   modelContextWindow?: number
 }
 
+export type OrchestratorClaudeQuota = {
+  status: 'allowed' | 'rejected' | string
+  resetsAt: number | null
+  rateLimitType: string
+  overageStatus?: string
+  isUsingOverage?: boolean
+}
+
 export type OrchestratorJob = {
   id: string
   /** The terminal whose agent asked for this work; null for calls made outside a terminal. */
@@ -65,10 +73,15 @@ export type OrchestratorJob = {
   seconds: number | null
   plan: string[]
   tokens: OrchestratorTokens | null
+  /** Claude's per-turn usage report; null for Codex workers. */
+  quota: OrchestratorClaudeQuota | null
   worktree: string | null
   pendingApproval: OrchestratorPendingApproval | null
   hasDiff: boolean
   summary: string
+  /** Set only on the frontend, for a Claude/Codex native subagent reshaped into this type — it never
+   * had a real backend job, so steering/resuming/messaging it has nothing to reach. */
+  native?: boolean
 }
 
 export type OrchestratorPlanner = {
@@ -106,6 +119,11 @@ export async function orchestratorJobs(): Promise<OrchestratorSnapshot> {
 
 export async function orchestratorSetConcurrency(limit: number): Promise<void> {
   return invoke<void>('orchestrator_set_concurrency', { limit })
+}
+
+/** The unified diff a worker has produced so far — the same text `alethe_diff` hands the planner. */
+export async function orchestratorJobDiff(jobId: string): Promise<string> {
+  return invoke<string>('orchestrator_job_diff', { jobId })
 }
 
 /** Answers the request a blocked worker is stopped on. Rejects when it is not waiting on one. */

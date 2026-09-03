@@ -37,10 +37,19 @@ impl Provider {
     }
 }
 
-#[derive(Clone, Debug)]
-struct HandoffEvent {
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct HandoffEvent {
     role: &'static str,
     text: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct TranscriptSnapshot {
+    pub session_id: Option<String>,
+    pub revision: u64,
+    pub unchanged: bool,
+    pub messages: Vec<HandoffEvent>,
 }
 
 #[derive(Serialize)]
@@ -329,6 +338,56 @@ fn resolve_source_file(
         .next()
         .map(|(id, path, _)| (id, path, true))
         .ok_or_else(|| "no session found for this provider and working directory".to_string())
+}
+
+/// The remote chat view reads the same transcripts the handoff capsule does.
+/// `since` carries the last revision the caller saw, so an unchanged file skips
+/// the parse entirely and the phone can poll cheaply.
+pub(crate) fn transcript_snapshot(
+    provider: &str,
+    cwd: &str,
+    session_id: Option<&str>,
+    since: Option<u64>,
+    limit: usize,
+) -> Result<TranscriptSnapshot, String> {
+    let provider = Provider::parse(provider)?;
+    let resolved = resolve_source_file(provider, cwd, session_id)
+        .or_else(|_| resolve_source_file(provider, cwd, None));
+    let Ok((id, path, _)) = resolved else {
+        return Ok(TranscriptSnapshot {
+            session_id: None,
+            revision: 0,
+            unchanged: false,
+            messages: Vec::new(),
+        });
+    };
+    let revision = fs::metadata(&path)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+        .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|elapsed| elapsed.as_millis() as u64)
+        .unwrap_or(0);
+    if revision != 0 && since == Some(revision) {
+        return Ok(TranscriptSnapshot {
+            session_id: Some(id),
+            revision,
+            unchanged: true,
+            messages: Vec::new(),
+        });
+    }
+    let mut messages = match provider {
+        Provider::Claude => claude_events(&path)?,
+        Provider::Codex => codex_events(&path)?,
+    };
+    if messages.len() > limit {
+        messages.drain(..messages.len() - limit);
+    }
+    Ok(TranscriptSnapshot {
+        session_id: Some(id),
+        revision,
+        unchanged: false,
+        messages,
+    })
 }
 
 fn run_git(cwd: &str, args: &[&str]) -> Option<String> {

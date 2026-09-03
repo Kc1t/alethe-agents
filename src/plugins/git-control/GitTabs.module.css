@@ -1,0 +1,31 @@
+.panelHeader {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  color: var(--fg);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 650;
+  flex: 0 0 auto;
+}
+
+:global([data-visual-style='clean']) .panelHeader {
+  min-height: var(--clean-row-height);
+  height: var(--clean-row-height);
+  padding: 0 10px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.empty {
+  flex: 1;
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: var(--fg-muted);
+  text-align: center;
+}

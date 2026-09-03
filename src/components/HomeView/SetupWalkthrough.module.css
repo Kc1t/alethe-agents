@@ -1,0 +1,148 @@
+.card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sunken);
+}
+
+.headerCopy {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.progressText {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--fg-faint);
+}
+
+.progressTrack {
+  width: 58px;
+  height: 3px;
+  flex: none;
+  border-radius: 2px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.progressTrack i {
+  display: block;
+  height: 100%;
+  background: var(--status-working);
+  transition: width var(--anim-normal) ease;
+}
+
+.hide {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--fg-faint);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.hide:hover {
+  color: var(--fg);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.list li + li .item {
+  border-top: 1px solid var(--border);
+}
+
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  width: 100%;
+  padding: 11px 14px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.item:hover {
+  background: var(--panel);
+}
+
+.item[data-done] {
+  opacity: 0.6;
+}
+
+.box {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  margin-top: 1px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  display: grid;
+  place-items: center;
+  color: var(--fg-muted);
+}
+
+.item[data-done] .box {
+  background: var(--status-working);
+  border-color: var(--status-working);
+  color: #0b1a14;
+}
+
+.itemCopy {
+  flex: 1;
+  min-width: 0;
+}
+
+.itemTitle {
+  display: block;
+  font-size: 12.5px;
+}
+
+.item[data-done] .itemTitle {
+  text-decoration: line-through;
+  color: var(--fg-faint);
+}
+
+.itemDesc {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg-faint);
+}
+
+.itemGo {
+  flex: none;
+  margin-top: 3px;
+  color: var(--fg-muted);
+}
+
+.footer {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-sunken);
+  font-size: 11px;
+  color: var(--fg-faint);
+}

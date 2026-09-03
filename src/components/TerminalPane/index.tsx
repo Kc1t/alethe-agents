@@ -22,6 +22,7 @@ import { shouldUseNativeBackend } from '../../lib/platform'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import { getActiveSessions, savedConversationIdFor, saveSession } from '../../lib/sessionResume'
 import {
+  agentHooksSettingsPath,
   completeAgentHandoff,
   getClaudeSessionTitle,
   getCodexSessionTitle,
@@ -167,7 +168,7 @@ export const TerminalPane = memo(function TerminalPane({
   }, [activeTab?.extraArgs, activeTab?.handoff, activeTab?.type])
 
   const effectiveLaneVisible = terminal.tabs.length > 1 ? true : terminal.laneVisible === true
-  const topbarPinned = terminal.topbarPinned === true
+  const topbarPinned = terminal.topbarPinned !== false
   const isShell = activeTab?.type === 'shell'
   const showFloatingIdentity = Boolean(activeTab && (!isShell || topbarPinned))
   const showLeftFloating = showFloatingIdentity || (canDragPane && !isShell)
@@ -220,7 +221,21 @@ export const TerminalPane = memo(function TerminalPane({
       activeTab.runtimeProfile,
       activeTab.extraArgs ?? [],
     )
-    const launch = buildAgentLaunch(activeTab.type, preparedRuntime.args, resumeSessionId)
+    const hooksSettingsPath =
+      activeTab.type === 'claude'
+        ? await agentHooksSettingsPath(
+            ptyId,
+            useProjectsStore.getState().preferences.enabledFeatures.orchestrator,
+          ).catch(() => undefined)
+        : undefined
+    const launch = buildAgentLaunch(
+      activeTab.type,
+      preparedRuntime.args,
+      resumeSessionId,
+      undefined,
+      undefined,
+      hooksSettingsPath,
+    )
     if (launch.sessionId && launch.sessionId !== activeTab.sessionId) {
       setSubTabSessionId(projectId, terminal.id, activeTab.id, launch.sessionId)
     }
@@ -650,6 +665,7 @@ export const TerminalPane = memo(function TerminalPane({
                   extraArgs={runtimeExtraArgs}
                   initialInput={activeTab.initialInput}
                   runtimeProfile={activeTab.runtimeProfile}
+                  useRouter9={activeTab.useRouter9}
                   sessionId={activeTab.sessionId}
                   graphifyRepo={graphifyRepo}
                   gsdWatcherEnabled={gsdWatcherEnabled}

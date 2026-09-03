@@ -1,34 +1,66 @@
 .pane {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 0;
 }
 
 .head {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex: none;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-elevated);
+  justify-content: space-between;
+  gap: 8px;
+  flex: 0 0 32px;
+  height: 32px;
+  padding: 0 8px;
+  font-size: 12px;
+  background: var(--shape-tabs-lane-bg);
+  border-bottom: 1px solid var(--shape-tabs-lane-border);
+}
+
+.headLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.headRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.iconWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--fg);
 }
 
 .title {
   margin: 0;
-  font-size: 12px;
-  font-weight: 600;
+  overflow: hidden;
+  font: 500 12px var(--font-sans);
   color: var(--fg);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .counts {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-left: auto;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--fg-muted);
@@ -48,22 +80,37 @@
   background: var(--status-waiting);
 }
 
-.close {
-  display: grid;
-  place-items: center;
+.actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 22px;
   height: 22px;
   padding: 0;
   color: var(--fg-faint);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: 5px;
   cursor: pointer;
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
 }
 
-.close:hover {
+.action:hover:not(:disabled) {
   color: var(--fg);
-  background: var(--bg-sunken);
+  background: var(--accent-soft);
+}
+
+.danger:hover:not(:disabled) {
+  color: var(--status-offline);
+  background: var(--status-offline-soft);
 }
 
 .empty {
@@ -144,8 +191,8 @@
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--shape-tabs-lane-border);
+  background: var(--shape-tabs-lane-bg);
 }
 
 .tabs::-webkit-scrollbar {
@@ -272,6 +319,9 @@
   overflow: hidden;
   touch-action: none;
   cursor: grab;
+  /* A drag on the canvas pans it — without this the browser's native text-selection drag fires
+     instead, fighting the pointer handlers in index.tsx (startPan/movePan/endPan). */
+  user-select: none;
   background-color: var(--bg-sunken);
   /* The dots are texture, not content: kept well under the weight of any real edge or border. */
   background-image: radial-gradient(
@@ -784,6 +834,206 @@
   border-color: var(--accent);
 }
 
+.diffBlock {
+  margin-top: 10px;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-sunken);
+}
+
+.diffText {
+  margin: 0;
+  padding: 6px 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: pre;
+  tab-size: 4;
+}
+
+.diffAdded {
+  display: block;
+  min-width: fit-content;
+  padding: 0 8px;
+  color: var(--status-working);
+  background: var(--status-working-soft);
+}
+
+.diffRemoved {
+  display: block;
+  min-width: fit-content;
+  padding: 0 8px;
+  color: var(--status-offline);
+  background: var(--status-offline-soft);
+}
+
+.diffHunk {
+  display: block;
+  min-width: fit-content;
+  padding: 0 8px;
+  color: var(--accent);
+  background: var(--accent-bg-soft);
+}
+
+.diffHeaderLine {
+  display: block;
+  min-width: fit-content;
+  padding: 0 8px;
+  color: var(--fg-faint);
+}
+
+.mediaStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mediaFigure {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 96px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: zoom-in;
+}
+
+.mediaThumb {
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  transition: border-color 0.15s, opacity 0.15s;
+}
+
+.mediaFigure:hover .mediaThumb {
+  border-color: var(--accent);
+  opacity: 0.9;
+}
+
+.media {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.media:hover {
+  border-color: var(--border-strong);
+}
+
+.mediaCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 8px;
+  background: transparent;
+  border: none;
+  cursor: zoom-in;
+}
+
+.mediaCardImage {
+  width: 100%;
+  height: 140px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  transition: border-color 0.15s, opacity 0.15s;
+}
+
+.mediaCard:hover .mediaCardImage {
+  border-color: var(--accent);
+  opacity: 0.9;
+}
+
+.mediaCaption {
+  overflow: hidden;
+  font-size: 9px;
+  color: var(--fg-faint);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mediaLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  padding: 6px 9px;
+  overflow: hidden;
+  font: inherit;
+  color: var(--fg-muted);
+  text-align: left;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.mediaLink:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.mediaLinkText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+}
+
+.mediaLinkHost {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mediaLinkPath {
+  overflow: hidden;
+  font-size: 9px;
+  color: var(--fg-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mediaPreviewBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mediaPreviewImage {
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  object-fit: contain;
+  background: var(--bg-sunken);
+}
+
+.mediaPreviewPath {
+  overflow: hidden;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--fg-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ---------- the question a blocked worker is stopped on ---------- */
 
 .ask {
@@ -1153,6 +1403,11 @@
   min-height: 0;
   background: var(--bg-elevated);
   border-left: 1px solid var(--border);
+  transition: width 0.14s ease;
+}
+
+.rail[data-collapsed='true'] {
+  width: 30px;
 }
 
 .railHead {
@@ -1160,11 +1415,35 @@
   align-items: center;
   gap: 8px;
   flex: none;
+  width: 100%;
   height: 30px;
-  padding: 0 14px;
+  padding: 0 10px 0 14px;
+  font: inherit;
   font-size: 11px;
+  text-align: left;
   color: var(--fg);
+  background: transparent;
+  border: none;
   border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.railHead:hover {
+  background: var(--bg-sunken);
+}
+
+.railHeadChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: var(--fg-faint);
+}
+
+.railHeadLabel {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .railHeadName {
@@ -1174,6 +1453,25 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   color: var(--fg-faint);
+}
+
+.rail[data-collapsed='true'] .railHead {
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  height: 100%;
+  padding: 8px 0;
+  border-bottom: none;
+}
+
+.rail[data-collapsed='true'] .railHeadLabel {
+  writing-mode: vertical-rl;
+  letter-spacing: 0.08em;
+  color: var(--fg-muted);
+}
+
+.rail[data-collapsed='true'] .railHeadName {
+  display: none;
 }
 
 .railScroll {
