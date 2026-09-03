@@ -10,7 +10,22 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Não lançado]
 
+### Added
+
+- **One log stream for the whole app, in `logs/alethe.jsonl`.** Until now a single user action left traces in two files — `logs/frontend.log` at the repo root and `app-events.log` in the profile data dir — written by two processes with two clocks and no shared key, so "the UI says it sent the message; did the socket ever see it?" could not be answered by reading either one. Every log line now carries a correlation id minted at the gesture, so one click reads back as one ordered timeline. `ALETHE_LOG` controls what is recorded (`ALETHE_LOG=sync.chat=debug`).
+
+- **Decision records.** Code that makes a decision can now say which of Alethe's rules it applied, what it looked at, and what it concluded, in one line — so a surprising outcome can be traced to the rule that produced it instead of inferred. Outcomes are a closed set, including `deferred`, which is what lets a function stop reporting success for work it has only handed to a queue.
+
+- **The standalone Web server writes logs at all.** Every logging entry point required a Tauri `AppHandle`, which that binary does not have, so a Web-mode failure previously left nothing behind.
+
 ### Fixed
+
+- **A chat message saved locally but addressed to nobody now says so.** It appeared in the thread with no error, which from the outside was indistinguishable from a message that had actually been handed to a transport.
+
+- **A failure to create the log directory is reported instead of silently disabling every diagnostic.** The result was an app that wrote no logs at all, where the empty log read exactly like "that code path never ran".
+
+- **Console mirroring no longer costs an IPC round trip per `console.debug`.** It mirrored everything unconditionally; the threshold is now `warn` by default and adjustable with `ALETHE_TRACE`. `LogLevel` in the frontend logger also filters for the first time — it existed from the start but nothing ever checked it.
+
 
 - **`npm run app` no longer fails with "Port already in use" against a port it had just picked.** The port scan probed only the IPv4 loopback while Vite, which resolves `localhost` to `::1` first on Windows, bound the other stack — so a stale process listening on `[::1]:1594` was invisible to the scan and fatal to the launch. The scan now requires a port to be free on both loopback stacks, and the dev server and Tauri's `devUrl` both name the IPv4 address explicitly instead of each resolving `localhost` on its own. A machine with IPv6 disabled is handled as "cannot bind", not as "port taken".
 

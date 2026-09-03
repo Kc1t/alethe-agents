@@ -19,11 +19,6 @@ import { p2pDrainFrames } from '../../lib/api/p2pBridge'
 import { P2P_CHANNEL_CHAT, P2P_CHANNEL_FILE_SYNC, untagFrame } from '../../lib/api/p2pChannel'
 import { subscribeToRendezvousEvents } from '../../lib/api/rendezvousEventBus'
 import {
-  syncFilePipelineIngestFrame,
-  syncFilePipelineOfferProject,
-} from '../../lib/api/syncFilePipeline'
-import { isTauriEnv } from '../../lib/api/transport'
-import {
   type Conversation,
   type DecryptedMessage,
   type MessageContentType,
@@ -37,16 +32,22 @@ import {
   syncUploadAttachment,
 } from '../../lib/api/syncChat'
 import {
+  syncFilePipelineIngestFrame,
+  syncFilePipelineOfferProject,
+} from '../../lib/api/syncFilePipeline'
+import {
   connectRendezvous,
   getRendezvousStatus,
   sendRendezvousFrame,
 } from '../../lib/api/syncRendezvous'
+import { isTauriEnv } from '../../lib/api/transport'
 import {
   encodeAttachmentReferences,
   guessMimeFromName,
   parseAttachmentReferences,
   previewKindFor,
 } from '../../lib/attachmentReference'
+import { withCorrelation } from '../../lib/correlation'
 import { useT } from '../../lib/i18n'
 import { DEFAULT_PROFILE_IMAGE_URL, getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { readBinaryFile, syncLocalIdentity } from '../../lib/tauri'
@@ -54,10 +55,10 @@ import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { Avatar } from '../ui/Avatar'
 import { AttachmentGrid } from './AttachmentGrid'
-import { InviteToProject } from './InviteToProject'
 import { AttachmentPreview } from './AttachmentPreview'
-import { Lightbox } from './Lightbox'
 import styles from './ChatPanel.module.css'
+import { InviteToProject } from './InviteToProject'
+import { Lightbox } from './Lightbox'
 
 export type ChatSource =
   | { kind: 'project'; projectId: string; projectName: string }
@@ -689,10 +690,15 @@ export function ChatPanel({
       disposed = true
       unlisten?.()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [])
 
-  const send = async () => {
+  // Wrapped in a correlation id so everything one send causes — the local encrypt, the p2p attempt,
+  // the relay fallback and the Rust-side records for all three — shares one key in `alethe.jsonl`.
+  // "Did it try to send?" stops being a guess from timestamps and becomes `grep '"corr":"chat.send_…'`.
+  const send = () => withCorrelation('chat.send', sendWithin)
+
+  const sendWithin = async () => {
     if (!conversation) return
     if (pendingAttachments.length > 0) {
       const staged = pendingAttachments
@@ -737,6 +743,13 @@ export function ChatPanel({
         } else {
           await deliverViaRelay(frame, otherMember.accountRoute, otherMember.x25519PublicKey)
         }
+      } else {
+        // Saved locally and addressed to nobody. This is the case that used to look identical to a
+        // successful send from the outside: the message appears in the thread and no error is
+        // shown, but nothing was ever handed to a transport.
+        console.warn(
+          `[chat] message saved locally only — no recipient route (member=${Boolean(otherMember)} frame=${frame.length})`,
+        )
       }
       console.info(`[chat] send() finished (${elapsed()})`)
     } catch (cause) {

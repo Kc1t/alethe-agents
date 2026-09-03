@@ -66,7 +66,6 @@ export type PlanningStatus = {
   notes: string | null
 }
 
-
 export type SchedulerTask = {
   id: string
   projectId: string
@@ -267,13 +266,23 @@ export async function recordFrontendError(
   }
 }
 
-/** Mirrors a devtools console call to `logs/frontend.log` for live debugging. */
-export async function recordConsoleLog(level: string, message: string): Promise<void> {
+/**
+ * Mirrors a devtools console call to `logs/frontend.log` and into the unified decision stream.
+ *
+ * `corr` ties the line to the user gesture that produced it, so a frontend line and the backend
+ * records it caused land on one timeline instead of in two files with no shared key.
+ */
+export async function recordConsoleLog(
+  level: string,
+  message: string,
+  corr?: string | null,
+): Promise<void> {
   if (!isTauriEnv()) return
   try {
-    await invoke('record_console_log', { level, message })
+    await invoke('record_console_log', { level, message, corr: corr ?? null })
   } catch {
-    /* best-effort */
+    // Deliberately silent: this runs from inside the console wrapper, so reporting the failure
+    // through `console.error` would recurse. The Rust side records its own write failures.
   }
 }
 

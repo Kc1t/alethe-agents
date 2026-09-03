@@ -24,16 +24,41 @@ fn unix_secs() -> u64 {
         .unwrap_or(0)
 }
 
-pub fn logs_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let root = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
-    Ok(root.join("logs"))
+/// The log directory for an already-resolved data root.
+///
+/// Split out from [`logs_dir`] because the standalone `alethe-server` binary has no `AppHandle` at
+/// all, and every logging entry point used to require one — so the Web runtime could not write a
+/// single diagnostic line. Both runtimes now resolve their own root and call this.
+pub fn logs_dir_at(data_root: &Path) -> PathBuf {
+    data_root.join("logs")
 }
 
-pub fn set_logs_dir(app: &AppHandle) {
-    if let Ok(dir) = logs_dir(app) {
-        let _ = fs::create_dir_all(&dir);
-        let _ = LOGS_DIR.set(dir);
-    }
+pub fn logs_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let root = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    Ok(logs_dir_at(&root))
+}
+
+/// Registers the log directory and reports whether it is actually usable.
+///
+/// The old version discarded both the resolution error and the `create_dir_all` failure, so a
+/// profile directory that could not be created produced an app with **no diagnostics at all**, and
+/// the resulting empty log read exactly like "that code path never ran". Every other fix in this
+/// area depends on this one: without it, no other logging change can be confirmed.
+pub fn set_logs_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = logs_dir(app)?;
+    fs::create_dir_all(&dir)
+        .map_err(|error| format!("could not create {}: {error}", dir.display()))?;
+    let _ = LOGS_DIR.set(dir.clone());
+    Ok(dir)
+}
+
+/// Same, for a runtime that resolved its data root itself (the standalone server).
+pub fn set_logs_dir_at(data_root: &Path) -> Result<PathBuf, String> {
+    let dir = logs_dir_at(data_root);
+    fs::create_dir_all(&dir)
+        .map_err(|error| format!("could not create {}: {error}", dir.display()))?;
+    let _ = LOGS_DIR.set(dir.clone());
+    Ok(dir)
 }
 
 fn append_log(path: &Path, message: &str) {
@@ -176,16 +201,37 @@ fn trace_dir() -> &'static PathBuf {
     })
 }
 
-/// Mirrors a devtools console call (log/info/warn/error/debug) to
-/// `logs/frontend.log`. Installed by `src/lib/debugTrace.ts` on every console
-/// call without replacing the original devtools output.
+/// Mirrors a devtools console call (log/info/warn/error/debug) to `logs/frontend.log` and into the
+/// unified decision stream. Installed by `src/lib/debugTrace.ts` on every console call without
+/// replacing the original devtools output.
+///
+/// `corr` is the correlation id of the UI gesture the line belongs to. It is what lets a frontend
+/// line and the backend records it caused end up on **one** timeline: previously the two lived in
+/// separate files written by separate processes with no shared key, so "the UI says it sent it, did
+/// the socket ever see it?" could not be answered by reading either one.
 #[tauri::command]
-pub fn record_console_log(level: String, message: String) -> Result<(), String> {
+pub fn record_console_log(
+    level: String,
+    message: String,
+    corr: Option<String>,
+) -> Result<(), String> {
     append_log(
         &trace_dir().join("frontend.log"),
         &format!("[{level}] {message}"),
     );
+    record_ui_line(&level, &message, corr.as_deref());
     Ok(())
+}
+
+/// Feeds one frontend console line into the same stream the backend writes to.
+pub fn record_ui_line(level: &str, message: &str, corr: Option<&str>) {
+    let corr = corr.unwrap_or("");
+    // The console level decides severity, so an `ALETHE_LOG=warn` run still shows frontend errors.
+    match level {
+        "error" => tracing::warn!(target: "alethe.ui", corr, message),
+        "warn" => tracing::info!(target: "alethe.ui", corr, message),
+        _ => tracing::debug!(target: "alethe.ui", corr, message),
+    }
 }
 
 /// Reports, once at startup, whether the platform services this app depends on are actually

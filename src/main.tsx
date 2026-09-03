@@ -1,5 +1,4 @@
 import './bootstrap'
-
 import './styles/reset.css'
 import './styles/theme.css'
 import './styles/visual-clean.css'
@@ -10,13 +9,18 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import { installDebugTrace } from './lib/debugTrace'
 import { installE2eHooks } from './lib/e2eHooks'
+import { installInvokeCorrelation } from './lib/invokeTrace'
 import { initUrlRouter } from './lib/router/urlRouter'
 import { recordFrontendError } from './lib/tauri'
 
 // Inicializa os hooks de automação E2E imediatamente no startup
 installE2eHooks()
 
-// Mirrors devtools console output to logs/frontend.log for live debugging.
+// Tags every Tauri command call with the correlation id of the gesture that caused it. Installed
+// before anything can invoke, so no early call escapes untagged.
+installInvokeCorrelation()
+
+// Mirrors devtools console output into the unified log stream for live debugging.
 installDebugTrace()
 
 // Inicializa a sincronização de rotas de URL via HTML5 History API quando executado em ambiente Web.

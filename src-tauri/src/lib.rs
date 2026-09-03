@@ -45,6 +45,9 @@ pub mod opencode_bridge;
 pub mod opencode_sessions;
 pub mod orchestrator;
 pub mod orchestrator_core;
+pub mod obs;
+pub mod obs_ipc;
+pub mod obs_sink;
 pub mod paths;
 pub mod planning;
 pub mod plugins;
@@ -253,7 +256,18 @@ pub fn run() {
                     Err(error) => eprintln!("[icon] failed to decode the embedded icon: {error}"),
                 }
             }
-            logging::set_logs_dir(app.handle());
+            // The log directory is established before anything else so that a failure here is
+            // reported instead of silently turning every later diagnostic into a no-op. An app
+            // that cannot write logs must say so once, loudly, rather than look like an app with
+            // nothing to report.
+            match logging::set_logs_dir(app.handle()) {
+                Ok(dir) => {
+                    if let Err(error) = obs_sink::install(&dir) {
+                        eprintln!("[obs] decision records are NOT being written: {error}");
+                    }
+                }
+                Err(error) => eprintln!("[obs] no log directory, diagnostics disabled: {error}"),
+            }
             logging::record_platform_readiness();
             let data_root = profiles::resolve_tauri_data_root(app.handle())
                 .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error))?;
@@ -335,7 +349,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(crate::obs_ipc::correlated(tauri::generate_handler![
             agent_events::agent_hooks_settings_path,
             agent_events::agent_hooks_endpoint,
             agent_events::agent_hooks_token,
@@ -727,7 +741,7 @@ pub fn run() {
             opencode_sessions::opencode_export_session,
             ping,
             recorder_scratch_dir,
-        ])
+        ]))
         .build(tauri::generate_context!())
         .expect("error while building alethe")
         .run(move |_app_handle, event| {

@@ -674,6 +674,17 @@ pub fn run_standalone() -> Result<(), String> {
 
         let runtime = ServerRuntime::standalone()
             .map_err(|error| format!("Failed to resolve the data root: {error}"))?;
+        // The Web runtime writes into the same decision stream as the desktop one. Until the log
+        // directory stopped requiring an `AppHandle`, this binary could not write a diagnostic line
+        // at all, so a Web-mode failure left literally nothing behind.
+        match crate::logging::set_logs_dir_at(runtime.data_root()) {
+            Ok(dir) => {
+                if let Err(error) = crate::obs_sink::install(&dir) {
+                    eprintln!("[obs] decision records are NOT being written: {error}");
+                }
+            }
+            Err(error) => eprintln!("[obs] no log directory, diagnostics disabled: {error}"),
+        }
         println!(
             "[Alethe Web Server] Listening on http://{SERVER_HOST}:{port} (instance {}).",
             runtime.instance_id()
