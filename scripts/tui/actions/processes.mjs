@@ -7,7 +7,12 @@
 import { spawn } from 'node:child_process'
 import path from 'node:path'
 
+import { preferredDevPort } from '../../dev-instance.mjs'
+
 const REPO_ROOT = path.resolve(import.meta.dirname, '..', '..', '..')
+
+/** The web UI's port. The core's is shared with the desktop app and is not what identifies this. */
+const WEB_UI_PORT = 1424
 
 /** Everything the screen offers, in the order it is shown. */
 export const COMMANDS = [
@@ -15,12 +20,17 @@ export const COMMANDS = [
     id: 'dev',
     label: 'dev',
     hint: 'tauri dev, com HMR',
+    // The port that says whether this command's app is up, **whoever started it**. Without it the
+    // screen can only control what it launched itself, and an instance started from another
+    // terminal — the usual case — is visible but untouchable.
+    port: () => preferredDevPort(),
     start: () => launch('dev', 'node', ['scripts/dev-instance.mjs']),
   },
   {
     id: 'debug',
     label: 'dev (debug)',
     hint: 'idem, com logs em debug',
+    port: () => preferredDevPort(),
     // Not merely an environment variable: this is the run whose decision records the flow panel
     // below is meant to read, so the filter is opened up and the console mirror lowered together.
     start: () =>
@@ -33,6 +43,7 @@ export const COMMANDS = [
     id: 'web',
     label: 'web',
     hint: 'core + UI no navegador',
+    port: async () => WEB_UI_PORT,
     start: () => launch('web', 'node', ['scripts/web-launcher.mjs']),
   },
 ]

@@ -91,6 +91,13 @@ function Step({ record }) {
  * Collapsed by default so the panel stays a list; a gesture that failed or is missing a step opens
  * on its own, because those are the ones the panel exists to surface.
  */
+function clock(ms) {
+  if (ms === null) return '        '
+  const at = new Date(ms)
+  const pad2 = (value) => String(value).padStart(2, '0')
+  return `${pad2(at.getHours())}:${pad2(at.getMinutes())}:${pad2(at.getSeconds())}`
+}
+
 function Gesture({ gesture, expanded, selected }) {
   const incomplete = gesture.missing.length > 0
   const headline = gesture.uncorrelated ? looseLabel(gesture.records) : gesture.corr
@@ -111,6 +118,9 @@ function Gesture({ gesture, expanded, selected }) {
       // supposed to be pointing at.
       h(Text, { color: 'cyan' }, selected ? '▌' : ' '),
       h(Text, { color: 'gray', dimColor: true }, expanded ? '▾ ' : '▸ '),
+      // Wall-clock time, because "when did this happen?" is the first question asked of any entry
+      // here and a duration alone cannot answer it.
+      h(Text, { color: 'gray', dimColor: true }, `${clock(gesture.startedAt)}  `),
       h(Text, { color, bold: selected || incomplete }, pad(headline, 30)),
       h(Text, { color: 'gray', dimColor: true }, pad(duration, 7)),
       h(Text, { color, dimColor: !incomplete }, summary),
@@ -131,9 +141,56 @@ function Gesture({ gesture, expanded, selected }) {
  * catching here are exactly the ones with a hole in the middle — a frame handed to a queue that no
  * socket ever wrote. Grouping by correlation id is what makes that hole visible.
  */
-export function FlowPanel({ gestures, cursor, expanded, focused, filter, pinned, height }) {
+/** Rows one gesture will occupy, so the viewport can fit whole entries rather than clipping one. */
+function gestureHeight(gesture, isExpanded) {
+  if (!isExpanded) return 1
+  const stepRows = gesture.records.reduce(
+    (total, record) => total + 1 + (record.rule ? 1 : 0) + (evidenceOf(record) ? 1 : 0),
+    0,
+  )
+  return 1 + stepRows + gesture.missing.length
+}
+
+export function FlowPanel({
+  gestures,
+  cursor,
+  expanded,
+  focused,
+  filter,
+  pinned,
+  height,
+  onlyProblems,
+}) {
   const rows = Math.max(3, height)
-  const visible = gestures.slice(0, rows)
+  const isExpanded = (gesture, index) =>
+    expanded.has(gesture.corr ?? '') || (index === cursor && gesture.notable)
+
+  // A window that follows the cursor. Slicing from zero meant arrowing past the last visible row
+  // moved a selection nobody could see — the list looked frozen while the cursor kept going.
+  let start = 0
+  let used = 0
+  for (let index = 0; index <= cursor && index < gestures.length; index += 1) {
+    used += gestureHeight(gestures[index], isExpanded(gestures[index], index))
+    while (used > rows && start < index) {
+      used -= gestureHeight(gestures[start], isExpanded(gestures[start], start))
+      start += 1
+    }
+  }
+
+  const visible = []
+  let budget = rows
+  for (let index = start; index < gestures.length; index += 1) {
+    const cost = gestureHeight(gestures[index], isExpanded(gestures[index], index))
+    if (visible.length > 0 && cost > budget) break
+    visible.push({ gesture: gestures[index], index })
+    budget -= cost
+  }
+
+  const failing = gestures.filter(
+    (gesture) => gesture.missing.length > 0 || gesture.worstOutcome === 'failed',
+  ).length
+  const hiddenBefore = start
+  const hiddenAfter = gestures.length - (start + visible.length)
 
   return h(
     Box,
@@ -150,8 +207,13 @@ export function FlowPanel({ gestures, cursor, expanded, focused, filter, pinned,
       null,
       h(Text, { bold: focused, color: focused ? 'cyan' : 'white' }, 'FLUXO'),
       h(Text, { color: 'gray', dimColor: true }, `  ${gestures.length}`),
+      // The count that matters is not how many gestures there are, it is how many went wrong.
+      failing > 0 ? h(Text, { color: 'red' }, `  ${failing} com problema`) : null,
+      onlyProblems ? h(Text, { color: 'red' }, '  ⚠ só problemas') : null,
       pinned ? h(Text, { color: 'cyan' }, `  ⚲ ${pinned}`) : null,
       filter ? h(Text, { color: 'yellow' }, `  /${filter}`) : null,
+      hiddenBefore > 0 ? h(Text, { color: 'gray', dimColor: true }, `  ↑${hiddenBefore}`) : null,
+      hiddenAfter > 0 ? h(Text, { color: 'gray', dimColor: true }, `  ↓${hiddenAfter}`) : null,
     ),
     visible.length === 0
       ? h(
@@ -159,12 +221,12 @@ export function FlowPanel({ gestures, cursor, expanded, focused, filter, pinned,
           { color: 'gray', dimColor: true },
           'nada ainda — inicie dev (debug) e use o app, ou tecle d para o doctor',
         )
-      : visible.map((gesture, index) =>
+      : visible.map(({ gesture, index }) =>
           h(Gesture, {
             key: gesture.corr ?? `loose-${index}`,
             gesture,
             selected: index === cursor,
-            expanded: expanded.has(gesture.corr ?? '') || (index === cursor && gesture.notable),
+            expanded: isExpanded(gesture, index),
           }),
         ),
   )

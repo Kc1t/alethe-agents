@@ -109,6 +109,31 @@ export async function inspectPorts(extra = []) {
   return results
 }
 
+/**
+ * Waits for a port to actually free up.
+ *
+ * A restart that starts the new instance the instant the kill command returns races the OS: the
+ * socket is still in the old process's teardown, so the new instance either fails to bind or slides
+ * to a different port and the screen then reports the wrong one. Waiting for the port is the only
+ * way to know the restart is a restart and not two instances.
+ */
+export async function waitForPortFree(port, { timeoutMs = 15_000, intervalMs = 250 } = {}) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (await isPortFree(port)) return true
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+  return false
+}
+
+/** Kills every process listening on `port`, whoever started it. */
+export async function freePort(port, options = {}) {
+  const { holders } = await inspectPort(port)
+  const results = []
+  for (const holder of holders) results.push(await killTree(holder.pid, options))
+  return results
+}
+
 /** Whether a holder looks like a dev-server process this project is allowed to kill. */
 export function isKillable(holder) {
   const name = (holder.name ?? '').toLowerCase()

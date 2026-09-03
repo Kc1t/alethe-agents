@@ -10,6 +10,16 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Não lançado]
 
+### Added
+
+- **The development screen can open, close and restart the app** — including an instance it did not start. Each command is identified by the port it uses, so an app launched from another terminal can now be stopped and restarted from the screen; previously "close the app" meant "close the app *this screen* opened", and anything else was visible in the port panel but untouchable. A restart waits for the port to actually free before starting again, because starting the instant the kill returns races the old process's socket teardown and the new instance either fails to bind or slides to a different port.
+
+- **The flow panel gained the things a long session needs**: a viewport that follows the cursor (arrowing past the last visible row used to move a selection nobody could see, so the list looked frozen), wall-clock time per gesture, a count of how many went wrong, a filter for only the gestures with a problem, and a key to expand or collapse everything at once.
+
+### Fixed
+
+- **Two commands no longer render on top of each other.** The layout sized the top row from the state panel alone, leaving the command rail one row short — and a box too small for its children does not clip a row cleanly, it draws them overlapping, so `dev (debug)` and `web` merged into one unreadable line and the third command appeared not to exist. The panel now declares the height it needs and the layout reserves it.
+
 ### Changed
 
 - **The development screen takes over the terminal and gives it back.** It now runs in the alternate screen buffer behind a centred wordmark, so nothing above it — the shell prompt, npm's own banner — is visible while it is open, and the scrollback is exactly as it was on exit. Panels are sized to what they hold instead of a fixed fraction, the selection is a thin bar rather than an inverted block, and a free port is quiet instead of green.
