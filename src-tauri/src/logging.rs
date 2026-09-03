@@ -61,12 +61,41 @@ pub fn set_logs_dir_at(data_root: &Path) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+/// Appends one line, reporting to the decision stream when it cannot.
+///
+/// This function deliberately does not use `append_log` to report its own failures — that would
+/// recurse straight back into the failing path. It reports through `tracing`, which writes to a
+/// different file through a different handle, so a directory that cannot be created here still
+/// leaves evidence somewhere.
 fn append_log(path: &Path, message: &str) {
     if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
+        if let Err(error) = fs::create_dir_all(parent) {
+            tracing::warn!(
+                target: "alethe.logging",
+                path = %parent.display(),
+                error = %error,
+                "log directory could not be created; these lines are being lost",
+            );
+            return;
+        }
     }
-    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
-        let _ = writeln!(file, "[{}] {message}", timestamp_ms());
+    match fs::OpenOptions::new().create(true).append(true).open(path) {
+        Ok(mut file) => {
+            if let Err(error) = writeln!(file, "[{}] {message}", timestamp_ms()) {
+                tracing::warn!(
+                    target: "alethe.logging",
+                    path = %path.display(),
+                    error = %error,
+                    "log line could not be written",
+                );
+            }
+        }
+        Err(error) => tracing::warn!(
+            target: "alethe.logging",
+            path = %path.display(),
+            error = %error,
+            "log file could not be opened; these lines are being lost",
+        ),
     }
 }
 
@@ -120,7 +149,7 @@ fn prune(dir: &Path, prefix: &str) {
     files.sort();
     let remove_count = files.len() - MAX_FILES_PER_PREFIX;
     for path in files.into_iter().take(remove_count) {
-        let _ = fs::remove_file(path);
+        crate::best_effort!(fs::remove_file(path), "pruned_log_already_gone");
     }
 }
 
@@ -196,7 +225,14 @@ fn trace_dir() -> &'static PathBuf {
             cwd
         };
         let dir = root.join("logs");
-        let _ = fs::create_dir_all(&dir);
+        if let Err(error) = fs::create_dir_all(&dir) {
+            tracing::warn!(
+                target: "alethe.logging",
+                path = %dir.display(),
+                error = %error,
+                "trace directory could not be created",
+            );
+        }
         dir
     })
 }

@@ -189,10 +189,10 @@ pub(crate) fn merge_prepare_inner(
     match merge_prepare_body(&root, &env, &id, source, target, project_id, branch.clone()) {
         Ok(result) => Ok(result),
         Err(error) => {
-            let _ = git_command(&env, &["merge", "--abort"]);
-            let _ = git_command(&root, &["worktree", "remove", "--force", &env_arg]);
-            let _ = git_command(&root, &["branch", "-D", &branch]);
-            let _ = std::fs::remove_file(meta_path(&root, &id));
+            crate::best_effort!(git_command(&env, &["merge", "--abort"]), "git_cleanup_target_already_gone");
+            crate::best_effort!(git_command(&root, &["worktree", "remove", "--force", &env_arg]), "git_cleanup_target_already_gone");
+            crate::best_effort!(git_command(&root, &["branch", "-D", &branch]), "git_cleanup_target_already_gone");
+            crate::best_effort!(std::fs::remove_file(meta_path(&root, &id)), "file_already_absent");
             Err(error)
         }
     }
@@ -355,7 +355,7 @@ fn validate_and_stage(
     // existed) — it deleted the file on the first periodic poll (every 7s,
     // see `beginResolvingWatch` in the frontend) even while the agent was
     // still typing/confirming the initial prompt.
-    let _ = std::fs::remove_file(env.join(PROMPT_FILE));
+    crate::best_effort!(std::fs::remove_file(env.join(PROMPT_FILE)), "file_already_absent");
 
     checked_output(env, &["add", "-A"])?;
     if !pending.is_empty() {
@@ -607,9 +607,9 @@ pub(crate) fn merge_finalize_inner(
 
     // Teardown: worktree + temporary branch + metadata.
     let env_arg = git_arg(&env);
-    let _ = git_command(&root, &["worktree", "remove", "--force", &env_arg]);
-    let _ = git_command(&root, &["branch", "-d", &branch]);
-    let _ = std::fs::remove_file(meta_path(&root, &env_id));
+    crate::best_effort!(git_command(&root, &["worktree", "remove", "--force", &env_arg]), "git_cleanup_target_already_gone");
+    crate::best_effort!(git_command(&root, &["branch", "-d", &branch]), "git_cleanup_target_already_gone");
+    crate::best_effort!(std::fs::remove_file(meta_path(&root, &env_id)), "file_already_absent");
 
     emit(
         "MergeMerged",
@@ -733,13 +733,33 @@ pub(crate) fn merge_rebase_onto_target_inner(
             })
             .collect();
         let prompt_path = env.join(PROMPT_FILE);
-        let _ = std::fs::write(&prompt_path, build_prompt(&meta, &conflicts));
+        // The prompt file is what the agent reads to know what to resolve. Missing, the
+        // environment exists and the agent has nothing to work from.
+        if let Err(error) = std::fs::write(&prompt_path, build_prompt(&meta, &conflicts)) {
+            crate::decide!(
+                target: "merge.conflict",
+                attempted = "write_prompt",
+                outcome = Failed,
+                because = "prompt_write_failed",
+                rule = "merge_env.has_a_prompt",
+                evidence = { error = %error },
+            );
+        }
         let updated_meta = MergeMeta {
             conflict_paths: conflicts.iter().map(|c| c.path.clone()).collect(),
             ..meta
         };
         if let Ok(body) = serde_json::to_string_pretty(&updated_meta) {
-            let _ = std::fs::write(meta_path(&root, &env_id), body);
+            if let Err(error) = std::fs::write(meta_path(&root, &env_id), body) {
+                crate::decide!(
+                    target: "merge.conflict",
+                    attempted = "write_meta",
+                    outcome = Failed,
+                    because = "meta_write_failed",
+                    rule = "merge_env.tracked_by_meta_file",
+                    evidence = { env_id = %env_id, error = %error },
+                );
+            }
         }
         let paths = conflicts
             .iter()
@@ -759,7 +779,7 @@ pub(crate) fn merge_rebase_onto_target_inner(
     let stderr = String::from_utf8_lossy(&reconcile.stderr)
         .trim()
         .to_string();
-    let _ = git_command(&env, &["merge", "--abort"]);
+    crate::best_effort!(git_command(&env, &["merge", "--abort"]), "git_cleanup_target_already_gone");
     Ok(MergeOutcome {
         merged: false,
         stage: "rebase_failed".to_string(),
@@ -820,7 +840,7 @@ pub(crate) fn merge_force_cleanup_inner(
     };
 
     let pruned = checked_output(&root, &["worktree", "prune"]).is_ok();
-    let _ = std::fs::remove_file(meta_path(&root, &env_id));
+    crate::best_effort!(std::fs::remove_file(meta_path(&root, &env_id)), "file_already_absent");
 
     Ok(ForceCleanupResult { deleted, pruned })
 }
@@ -840,9 +860,9 @@ pub(crate) fn merge_abort_inner(repo: String, env_id: String) -> Result<(), Stri
     let meta = read_meta(&root, &env_id).ok();
 
     let env_arg = git_arg(&env);
-    let _ = git_command(&root, &["worktree", "remove", "--force", &env_arg]);
-    let _ = git_command(&root, &["branch", "-D", &format!("alethe/merge-{env_id}")]);
-    let _ = std::fs::remove_file(meta_path(&root, &env_id));
+    crate::best_effort!(git_command(&root, &["worktree", "remove", "--force", &env_arg]), "git_cleanup_target_already_gone");
+    crate::best_effort!(git_command(&root, &["branch", "-D", &format!("alethe/merge-{env_id}")]), "git_cleanup_target_already_gone");
+    crate::best_effort!(std::fs::remove_file(meta_path(&root, &env_id)), "file_already_absent");
 
     if let Some(meta) = meta {
         emit("MergeAborted", &meta, serde_json::json!({}));

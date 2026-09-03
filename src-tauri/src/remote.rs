@@ -670,7 +670,7 @@ fn run_http(projects_path: PathBuf, hub: Arc<RemoteHub>, sessions: PtySessions, 
     let port = listener.local_addr().map(|addr| addr.port()).unwrap_or(0);
     hub.http_port.store(port, Ordering::SeqCst);
     eprintln!("[remote] LAN client available at http://{host}:{port}");
-    let _ = listener.set_nonblocking(true);
+    crate::best_effort!(listener.set_nonblocking(true), "socket_option_unsupported");
     while hub.is_active(generation) {
         let stream = match listener.accept() {
             Ok((stream, _)) => stream,
@@ -684,9 +684,9 @@ fn run_http(projects_path: PathBuf, hub: Arc<RemoteHub>, sessions: PtySessions, 
             continue;
         };
         let mut stream = stream;
-        let _ = stream.set_nonblocking(false);
-        let _ = stream.set_read_timeout(Some(SOCKET_TIMEOUT));
-        let _ = stream.set_write_timeout(Some(SOCKET_TIMEOUT));
+        crate::best_effort!(stream.set_nonblocking(false), "socket_option_unsupported");
+        crate::best_effort!(stream.set_read_timeout(Some(SOCKET_TIMEOUT)), "socket_option_unsupported");
+        crate::best_effort!(stream.set_write_timeout(Some(SOCKET_TIMEOUT)), "socket_option_unsupported");
         let hub = Arc::clone(&hub);
         let sessions = Arc::clone(&sessions);
         let projects_path = projects_path.clone();
@@ -694,12 +694,12 @@ fn run_http(projects_path: PathBuf, hub: Arc<RemoteHub>, sessions: PtySessions, 
             let _guard = guard;
             if let Err(error) = handle_http(&mut stream, &projects_path, &hub, &sessions) {
                 eprintln!("[remote] HTTP request failed: {error}");
-                let _ = respond(
+                crate::best_effort!(respond(
                     &mut stream,
                     400,
                     "application/json",
                     r#"{"error":"Bad request"}"#,
-                );
+                ), "remote_client_disconnected");
             }
         });
     }
@@ -717,7 +717,7 @@ fn run_websocket(hub: Arc<RemoteHub>, sessions: PtySessions, generation: u64) {
     };
     let port = listener.local_addr().map(|addr| addr.port()).unwrap_or(0);
     hub.ws_port.store(port, Ordering::SeqCst);
-    let _ = listener.set_nonblocking(true);
+    crate::best_effort!(listener.set_nonblocking(true), "socket_option_unsupported");
     while hub.is_active(generation) {
         let stream = match listener.accept() {
             Ok((stream, _)) => stream,
@@ -764,8 +764,8 @@ fn handle_websocket(
     if hub.auth_blocked(&address) {
         return;
     }
-    let _ = stream.set_read_timeout(Some(SOCKET_TIMEOUT));
-    let _ = stream.set_write_timeout(Some(SOCKET_TIMEOUT));
+    crate::best_effort!(stream.set_read_timeout(Some(SOCKET_TIMEOUT)), "socket_option_unsupported");
+    crate::best_effort!(stream.set_write_timeout(Some(SOCKET_TIMEOUT)), "socket_option_unsupported");
     let expected_origin = allowed_origin(&hub);
     let handshake = accept_hdr(
         stream,
@@ -783,7 +783,7 @@ fn handle_websocket(
         Ok(socket) => socket,
         Err(_) => return,
     };
-    let _ = socket.get_mut().set_nonblocking(true);
+    crate::best_effort!(socket.get_mut().set_nonblocking(true), "socket_option_unsupported");
     let (tx, rx) = mpsc::channel::<String>();
     let opened_at = Instant::now();
     let mut session_id: Option<usize> = None;
@@ -807,11 +807,11 @@ fn handle_websocket(
         }
         if let Some(id) = session_id {
             if !hub.session_alive(id) {
-                let _ = socket.send(Message::Text(
+                crate::best_effort!(socket.send(Message::Text(
                     json!({ "type": "error", "reason": "expired", "message": "Remote session expired" })
                         .to_string()
                         .into(),
-                ));
+                )), "remote_client_disconnected");
                 break;
             }
         }
@@ -833,11 +833,11 @@ fn handle_websocket(
                     if session_id.is_none() {
                         hub.record_auth_failure(&address);
                     }
-                    let _ = socket.send(Message::Text(
+                    crate::best_effort!(socket.send(Message::Text(
                         json!({ "type": "error", "reason": "unauthorized", "message": "Remote session is not valid" })
                             .to_string()
                             .into(),
-                    ));
+                    )), "remote_client_disconnected");
                     break;
                 };
                 if session_id.is_none() {
@@ -847,9 +847,9 @@ fn handle_websocket(
                     }
                     hub.attach_sender(id, tx.clone());
                     session_id = Some(id);
-                    let _ = socket.send(Message::Text(
+                    crate::best_effort!(socket.send(Message::Text(
                         json!({ "type": "authenticated" }).to_string().into(),
-                    ));
+                    )), "remote_client_disconnected");
                 }
                 if command.get("type").and_then(Value::as_str) == Some("subscribe") {
                     let pty_id = command.get("ptyId").and_then(Value::as_str);
@@ -858,7 +858,7 @@ fn handle_websocket(
                         let scrollback = read_scrollback(&sessions, pty_id, MAX_SCROLLBACK);
                         let payload =
                             json!({ "type": "scrollback", "ptyId": pty_id, "text": scrollback });
-                        let _ = socket.send(Message::Text(payload.to_string().into()));
+                        crate::best_effort!(socket.send(Message::Text(payload.to_string().into())), "remote_client_disconnected");
                     }
                 }
             }

@@ -1786,7 +1786,7 @@ d
         let lock_file_clone = lock_file.clone();
         std::thread::spawn(move || {
             sleep(Duration::from_millis(250));
-            let _ = fs::remove_file(&lock_file_clone);
+            crate::best_effort!(fs::remove_file(&lock_file_clone), "file_already_absent");
         });
 
         let result = checked_output(&root, &["status"]);

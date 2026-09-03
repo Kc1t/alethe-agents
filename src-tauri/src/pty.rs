@@ -2022,13 +2022,13 @@ fn scrollback_writer() -> &'static std::sync::mpsc::Sender<ScrollbackWrite> {
                 match &msg {
                     ScrollbackWrite::Append { path, bytes } => {
                         if let Some(parent) = path.parent() {
-                            let _ = fs::create_dir_all(parent);
+                            crate::best_effort!(fs::create_dir_all(parent), "dir_already_exists_or_unwritable");
                         }
                         append_and_maybe_compact(path, bytes);
                     }
                     ScrollbackWrite::Overwrite { path, bytes } => {
                         if let Some(parent) = path.parent() {
-                            let _ = fs::create_dir_all(parent);
+                            crate::best_effort!(fs::create_dir_all(parent), "dir_already_exists_or_unwritable");
                         }
                         if let Err(error) = fs::write(path, bytes) {
                             crate::decide!(

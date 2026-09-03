@@ -408,7 +408,7 @@ pub async fn clone_github_repo(url: String, target_dir: String) -> Result<String
         let target_path = std::path::PathBuf::from(&target_dir);
 
         if let Some(parent) = target_path.parent() {
-            let _ = fs::create_dir_all(parent);
+            crate::best_effort!(fs::create_dir_all(parent), "dir_already_exists_or_unwritable");
         }
 
         // Executa `git clone`
@@ -428,7 +428,10 @@ pub async fn clone_github_repo(url: String, target_dir: String) -> Result<String
         }
 
         // Gera os arquivos de briefing de contexto para os agentes de IA
-        let _ = generate_repo_context_files(&target_dir);
+        crate::best_effort!(
+            generate_repo_context_files(&target_dir),
+            "context_files_optional_for_this_target"
+        );
 
         Ok(target_dir)
     })
@@ -483,8 +486,21 @@ fn generate_repo_context_files(project_dir: &str) -> Result<(), String> {
         Ao iniciar a conversa com o usuário neste repositório, faça um resumo executivo direto de 2 a 3 frases explicando o propósito deste projeto.\n"
     );
 
-    let _ = fs::write(path.join("AGENTS.md"), &context_markdown);
-    let _ = fs::write(path.join("CLAUDE.md"), &context_markdown);
+    // These are the files the agent reads to know what the project is. Written or not, the app
+    // behaves identically; the agent does not, and the symptom appears much later as an agent that
+    // "does not follow the project rules".
+    for name in ["AGENTS.md", "CLAUDE.md"] {
+        if let Err(error) = fs::write(path.join(name), &context_markdown) {
+            crate::decide!(
+                target: "projects.context",
+                attempted = "write_context_file",
+                outcome = Failed,
+                because = "context_write_failed",
+                rule = "project.context_files_describe_the_repo",
+                evidence = { file = %name, error = %error },
+            );
+        }
+    }
 
     Ok(())
 }

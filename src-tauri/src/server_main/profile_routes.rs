@@ -283,7 +283,7 @@ mod tests {
 
     impl Drop for TestRoot {
         fn drop(&mut self) {
-            let _ = fs::remove_dir_all(&self.0);
+            crate::best_effort!(fs::remove_dir_all(&self.0), "dir_already_absent");
         }
     }
 
