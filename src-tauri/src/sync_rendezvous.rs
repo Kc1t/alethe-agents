@@ -31,6 +31,16 @@ pub struct RendezvousStatus {
     pub state: LiveConnectionStatusView,
     pub queued_events: usize,
     pub endpoint_configured: bool,
+    /// Why the last connection attempt ended, when it ended badly.
+    ///
+    /// The reconnect loop used to match `Ok(()) | Err(_)`, so a refused certificate, a rejected
+    /// token, an incompatible protocol and a plain timeout all collapsed into the same status —
+    /// and on leaving the loop the status reset to `NoAttemptYet`, which is the value that also
+    /// means "never tried". "Why can't I connect?" was unanswerable from the app's own state.
+    pub last_error: Option<String>,
+    /// True once the loop has exited because it was told to stop, as opposed to never having run.
+    /// Both used to report `NoAttemptYet`.
+    pub stopped: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -81,6 +91,8 @@ pub struct RendezvousRuntime {
     outgoing: Mutex<Option<mpsc::Sender<Outgoing>>>,
     stop: Mutex<Option<watch::Sender<bool>>>,
     events: Mutex<VecDeque<RendezvousEvent>>,
+    last_error: RwLock<Option<String>>,
+    stopped: RwLock<bool>,
 }
 
 impl Default for LiveConnectionStatus {
@@ -94,6 +106,26 @@ impl RendezvousRuntime {
         if let Ok(mut current) = self.status.write() {
             *current = status;
         }
+    }
+
+    fn set_last_error(&self, error: Option<String>) {
+        if let Ok(mut current) = self.last_error.write() {
+            *current = error;
+        }
+    }
+
+    pub(crate) fn last_error(&self) -> Option<String> {
+        self.last_error.read().ok().and_then(|value| value.clone())
+    }
+
+    fn set_stopped(&self, stopped: bool) {
+        if let Ok(mut current) = self.stopped.write() {
+            *current = stopped;
+        }
+    }
+
+    fn is_stopped(&self) -> bool {
+        self.stopped.read().map(|value| *value).unwrap_or(false)
     }
 
     pub(crate) fn status(&self) -> LiveConnectionStatus {
@@ -344,8 +376,49 @@ async fn connect_once(
             outgoing = outgoing_rx.recv() => {
                 let Some(Outgoing::Json(value)) = outgoing else { return Ok(()); };
                 let text = value.to_string();
-                if text.len() > MAX_FRAME_BYTES { continue; }
-                writer.send(Message::Text(text.into())).await.map_err(|_| "rendezvous_unavailable".to_string())?;
+                let kind = value.get("type").and_then(Value::as_str).unwrap_or("unknown").to_string();
+                if text.len() > MAX_FRAME_BYTES {
+                    // A frame that passed the check in `send_at` and fails it here has grown in
+                    // between, and `continue` drops it without a word: the sender was told the send
+                    // succeeded and the frame simply never existed again.
+                    crate::decide!(
+                        target: "sync.rendezvous",
+                        attempted = "transmit",
+                        outcome = Failed,
+                        because = "frame_too_large_at_write",
+                        rule = "rendezvous.transmit.max_frame_bytes",
+                        evidence = { kind = %kind, bytes = text.len() as u64 },
+                    );
+                    continue;
+                }
+                let bytes = text.len() as u64;
+                match writer.send(Message::Text(text.into())).await {
+                    Ok(()) => {
+                        // The other half of the pair opened by `send_at`. An `enqueue` record with
+                        // no `transmit` record sharing its correlation is a frame that died on the
+                        // local queue — which is exactly the shape of "I sent it and it never
+                        // arrived".
+                        crate::decide!(
+                            target: "sync.rendezvous",
+                            attempted = "transmit",
+                            outcome = Ok,
+                            because = "written_to_socket",
+                            rule = "rendezvous.transmit.socket_write",
+                            evidence = { kind = %kind, bytes = bytes },
+                        );
+                    }
+                    Err(error) => {
+                        crate::decide!(
+                            target: "sync.rendezvous",
+                            attempted = "transmit",
+                            outcome = Failed,
+                            because = "socket_write_failed",
+                            rule = "rendezvous.transmit.socket_write",
+                            evidence = { kind = %kind, bytes = bytes, error = %error },
+                        );
+                        return Err("rendezvous_unavailable".to_string());
+                    }
+                }
             }
             incoming = reader.next() => {
                 let Some(incoming) = incoming else { return Err("rendezvous_closed".to_string()); };
@@ -404,7 +477,20 @@ async fn connect_once(
                             if event_type == "delivery" {
                                 if let Some(id) = value.get("id").and_then(Value::as_str) {
                                     let ack = json!({ "type": "ack", "id": id });
-                                    let _ = writer.send(Message::Text(ack.to_string().into())).await;
+                                    // The comment above documents the bug a missing ack causes. The
+                                    // send of that very fix used to be `let _ =`, so a failed ack
+                                    // reproduced the bug exactly, while the code read as if it were
+                                    // solved. If this record appears, the notification loop is back.
+                                    if let Err(error) = writer.send(Message::Text(ack.to_string().into())).await {
+                                        crate::decide!(
+                                            target: "sync.rendezvous",
+                                            attempted = "ack_delivery",
+                                            outcome = Failed,
+                                            because = "ack_write_failed",
+                                            rule = "rendezvous.delivery.must_ack",
+                                            evidence = { delivery_id = %id, error = %error },
+                                        );
+                                    }
                                 }
                             }
                             runtime.push_event(RendezvousEvent {
@@ -441,17 +527,45 @@ async fn run_connection(
         } else {
             LiveConnectionStatus::RetryingAfterTransientFailure
         });
-        match connect_once(
+        let outcome = connect_once(
             runtime.clone(),
             &endpoint,
             &data_root,
             &mut outgoing_rx,
             &mut stop_rx,
         )
-        .await
-        {
+        .await;
+        match outcome {
             Ok(()) if *stop_rx.borrow() => break,
-            Ok(()) | Err(_) => {
+            result => {
+                // The error used to be discarded here, which is what made "why can't I connect?"
+                // impossible to answer: a refused certificate, a rejected token, an incompatible
+                // protocol and a timeout all left the same trace, namely none. Keeping it turns
+                // that question into a field on the status.
+                match &result {
+                    Err(error) => {
+                        runtime.set_last_error(Some(error.clone()));
+                        crate::decide!(
+                            target: "sync.rendezvous",
+                            attempted = "connect",
+                            outcome = Failed,
+                            because = "connect_once_returned_error",
+                            rule = "rendezvous.reconnect.backoff",
+                            evidence = { attempt = attempt as u64, error = %error },
+                        );
+                    }
+                    Ok(()) => {
+                        runtime.set_last_error(None);
+                        crate::decide!(
+                            target: "sync.rendezvous",
+                            attempted = "connect",
+                            outcome = Deferred,
+                            because = "session_closed_cleanly",
+                            rule = "rendezvous.reconnect.backoff",
+                            evidence = { attempt = attempt as u64 },
+                        );
+                    }
+                }
                 attempt = attempt.saturating_add(1);
                 let seconds = 1_u64 << attempt.min(5);
                 tokio::select! {
@@ -461,6 +575,10 @@ async fn run_connection(
             }
         }
     }
+    // Leaving the loop is "stopped", not "never attempted" — the two used to be the same value, so
+    // a connection that had been tried and abandoned looked identical to one never tried at all.
+    // The last error is deliberately kept: it is the explanation for why the loop is over.
+    runtime.set_stopped(true);
     runtime.set_status(LiveConnectionStatus::NoAttemptYet);
 }
 
@@ -510,6 +628,10 @@ pub async fn start_at(
         .lock()
         .map_err(|_| "rendezvous_state_unavailable".to_string())? = Some(stop_tx);
     runtime.set_status(LiveConnectionStatus::Connecting);
+    // A fresh attempt clears the previous verdict, so a stale error cannot be read as the reason
+    // for a connection that is currently coming up.
+    runtime.set_stopped(false);
+    runtime.set_last_error(None);
     tauri::async_runtime::spawn(run_connection(
         runtime.clone(),
         endpoint,
@@ -532,6 +654,8 @@ pub(crate) fn status_snapshot(
             .map(|events| events.len())
             .unwrap_or(0),
         endpoint_configured,
+        last_error: runtime.last_error(),
+        stopped: runtime.is_stopped(),
     }
 }
 
@@ -567,21 +691,76 @@ pub async fn sync_rendezvous_send(
     send_at(&runtime, frame).await
 }
 
+/// Hands a frame to the connection task.
+///
+/// **This returns `Ok(())` for an enqueue, not for a delivery.** The frame goes onto a local
+/// channel; the socket write happens later, in `connect_once`. That distinction used to be
+/// invisible — the caller saw success and reasonably concluded the frame had left the machine — so
+/// the record here is `Deferred`, and the matching `transmitted` record is written where the write
+/// actually happens. **The absence of the second record is the signal**: an enqueue with no
+/// transmit is a frame that died between the two.
 pub(crate) async fn send_at(runtime: &RendezvousRuntime, frame: Value) -> Result<(), String> {
     let frame = sanitize_outgoing_frame(frame, crate::provider_common::now_ms())?;
     let text = frame.to_string();
+    let frame_kind = frame
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+        .to_string();
     if text.len() > MAX_FRAME_BYTES {
+        crate::decide!(
+            target: "sync.rendezvous",
+            attempted = "enqueue",
+            outcome = Rejected,
+            because = "frame_too_large",
+            rule = "rendezvous.send.max_frame_bytes",
+            evidence = { kind = %frame_kind, bytes = text.len() as u64 },
+        );
         return Err("rendezvous_frame_too_large".to_string());
     }
-    let sender = runtime
+    let sender = match runtime
         .outgoing
         .lock()
-        .map_err(|_| "rendezvous_state_unavailable".to_string())?
-        .clone()
-        .ok_or_else(|| "rendezvous_offline".to_string())?;
-    sender
-        .try_send(Outgoing::Json(frame))
-        .map_err(|_| "rendezvous_backpressure".to_string())
+        .map_err(|_| "rendezvous_state_unavailable".to_string())
+        .and_then(|guard| guard.clone().ok_or_else(|| "rendezvous_offline".to_string()))
+    {
+        Ok(sender) => sender,
+        Err(reason) => {
+            crate::decide!(
+                target: "sync.rendezvous",
+                attempted = "enqueue",
+                outcome = Failed,
+                because = "no_outgoing_channel",
+                rule = "rendezvous.send.requires_live_connection",
+                evidence = { kind = %frame_kind, reason = %reason },
+            );
+            return Err(reason);
+        }
+    };
+    match sender.try_send(Outgoing::Json(frame)) {
+        Ok(()) => {
+            crate::decide!(
+                target: "sync.rendezvous",
+                attempted = "enqueue",
+                outcome = Deferred,
+                because = "queued_for_connection_task",
+                rule = "rendezvous.send.local_queue",
+                evidence = { kind = %frame_kind, bytes = text.len() as u64 },
+            );
+            Ok(())
+        }
+        Err(_) => {
+            crate::decide!(
+                target: "sync.rendezvous",
+                attempted = "enqueue",
+                outcome = Failed,
+                because = "backpressure",
+                rule = "rendezvous.send.local_queue",
+                evidence = { kind = %frame_kind, capacity = OUTGOING_QUEUE_LIMIT as u64 },
+            );
+            Err("rendezvous_backpressure".to_string())
+        }
+    }
 }
 
 fn is_opaque_id(value: &str) -> bool {

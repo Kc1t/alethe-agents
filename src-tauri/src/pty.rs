@@ -1030,7 +1030,9 @@ fn kill_tree_without_holding_child(child: &Arc<Mutex<Box<dyn portable_pty::Child
         kill_process_tree(pid);
     }
     if let Ok(mut child) = child.lock() {
-        let _ = child.kill();
+        // Expected to fail once the tree kill above already reaped the process; naming that is what
+        // separates it from a kill that genuinely did not happen.
+        crate::best_effort!(child.kill(), "child_already_reaped");
     }
 }
 
@@ -1039,7 +1041,47 @@ pub(crate) fn kill_process_tree(pid: u32) {
     let mut command = std::process::Command::new("taskkill");
     command.args(["/F", "/T", "/PID", &pid.to_string()]);
     crate::git_control::hide_console(&mut command);
-    let _ = command.output();
+    // The result used to be discarded entirely, so the UI reported the agent as stopped while the
+    // process was still running — holding its worktree, and, for an agent, still spending tokens.
+    // "I closed it and it kept going" had no evidence anywhere.
+    match command.output() {
+        Ok(output) if output.status.success() => {}
+        Ok(output) => {
+            let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            // taskkill exits 128 when the pid is already gone, which is the ordinary case for a
+            // process that exited on its own a moment earlier — a success for our purposes.
+            let already_gone = output.status.code() == Some(128) || detail.contains("not found");
+            if already_gone {
+                crate::decide!(
+                    target: "pty.kill",
+                    attempted = "taskkill_tree",
+                    outcome = Skipped,
+                    because = "process_already_gone",
+                    rule = "pty.kill.tree_before_child",
+                    evidence = { pid = pid as u64 },
+                );
+            } else {
+                crate::decide!(
+                    target: "pty.kill",
+                    attempted = "taskkill_tree",
+                    outcome = Failed,
+                    because = "taskkill_nonzero_exit",
+                    rule = "pty.kill.tree_before_child",
+                    evidence = { pid = pid as u64, code = output.status.code().unwrap_or(-1) as i64, detail = %detail },
+                );
+            }
+        }
+        Err(error) => {
+            crate::decide!(
+                target: "pty.kill",
+                attempted = "taskkill_tree",
+                outcome = Failed,
+                because = "taskkill_not_runnable",
+                rule = "pty.kill.tree_before_child",
+                evidence = { pid = pid as u64, error = %error },
+            );
+        }
+    }
 }
 
 #[cfg(unix)]
@@ -1497,7 +1539,9 @@ fn terminate_child_tree(
         kill_process_tree(pid);
     }
     if let Ok(mut child) = child.lock() {
-        let _ = child.kill();
+        // Expected to fail once the tree kill above already reaped the process; naming that is what
+        // separates it from a kill that genuinely did not happen.
+        crate::best_effort!(child.kill(), "child_already_reaped");
     }
 }
 

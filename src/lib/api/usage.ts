@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 
+import { orEmptyList } from '../resilience'
 import type { ModelCost } from './sessions'
 import { isTauriEnv, webApiFetch } from './transport'
 
@@ -139,15 +140,31 @@ export async function getOpenCodeUsageSummary(hours: number): Promise<OpenCodeUs
   return webApiFetch<OpenCodeUsageSummary>(`/api/usage/opencode_summary?hours=${hours}`)
 }
 
+// An empty activity map renders as "no work in 91 days" — confidently wrong, and unfalsifiable,
+// because a genuinely idle user sees exactly the same heatmap. The empty list is still returned so
+// the panel renders, but the failure now leaves a line saying the data is missing rather than zero.
 export async function getClaudeActivity(days = 91): Promise<ActivityDay[]> {
-  if (isTauriEnv()) return invoke<ActivityDay[]>('get_claude_activity', { days }).catch(() => [])
-  return webApiFetch<ActivityDay[]>(`/api/usage/claude_activity?days=${days}`).catch(() => [])
+  if (isTauriEnv())
+    return orEmptyList(
+      invoke<ActivityDay[]>('get_claude_activity', { days }),
+      'usage.claudeActivity',
+    )
+  return orEmptyList(
+    webApiFetch<ActivityDay[]>(`/api/usage/claude_activity?days=${days}`),
+    'usage.claudeActivity',
+  )
 }
 
 export async function getMultiAgentActivity(days: number): Promise<ActivityDay[]> {
   if (isTauriEnv())
-    return invoke<ActivityDay[]>('get_multi_agent_activity', { days }).catch(() => [])
-  return webApiFetch<ActivityDay[]>(`/api/usage/multi_agent_activity?days=${days}`).catch(() => [])
+    return orEmptyList(
+      invoke<ActivityDay[]>('get_multi_agent_activity', { days }),
+      'usage.multiAgentActivity',
+    )
+  return orEmptyList(
+    webApiFetch<ActivityDay[]>(`/api/usage/multi_agent_activity?days=${days}`),
+    'usage.multiAgentActivity',
+  )
 }
 
 export async function recordActivitySamples(samples: ActivitySample[]): Promise<void> {

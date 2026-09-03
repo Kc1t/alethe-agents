@@ -8,6 +8,7 @@
  * uma PTY existente (restart manual, migração pra worktree) sem precisar
  * remontar o componente XTermView — ver `agentPtyRestart.ts`.
  */
+import { orEmptyList } from './resilience'
 import {
   claimDiscoveredSession,
   claimMostRecentSession,
@@ -23,10 +24,20 @@ import {
 
 export type AsyncResumableAgent = 'codex' | 'antigravity' | 'opencode'
 
+/**
+ * A failed snapshot used to return `[]`, which every caller reads as "this agent had no session to
+ * resume" — and then starts a fresh, empty conversation while the real session sits on disk. The
+ * empty list is still returned so resumption degrades instead of breaking, but the failure is now
+ * recorded, so the two cases stop being the same observation.
+ */
 async function snapshotFor(agent: AsyncResumableAgent, cwd: string): Promise<SessionSnapshot[]> {
-  if (agent === 'codex') return snapshotCodexSessions(cwd).catch(() => [])
-  if (agent === 'antigravity') return snapshotAntigravitySessions(cwd).catch(() => [])
-  return snapshotOpenCodeSessions(cwd).catch(() => [])
+  if (agent === 'codex') {
+    return orEmptyList(snapshotCodexSessions(cwd), 'sessions.snapshot.codex')
+  }
+  if (agent === 'antigravity') {
+    return orEmptyList(snapshotAntigravitySessions(cwd), 'sessions.snapshot.antigravity')
+  }
+  return orEmptyList(snapshotOpenCodeSessions(cwd), 'sessions.snapshot.opencode')
 }
 
 /**

@@ -74,7 +74,18 @@ impl PtyOutputSink for TauriSink {
 
     fn emit_exit(&self, id: &str, payload: &PtyExitPayload) {
         let channel = format!("pty://exit/{id}");
-        let _ = self.0.emit(&channel, payload);
+        // Exit is the only event that ever clears a pane's "running" state. Dropped, the process is
+        // gone and the pane says it is still working — forever, with nothing anywhere to say why.
+        if let Err(error) = self.0.emit(&channel, payload) {
+            crate::decide!(
+                target: "pty.sink",
+                attempted = "emit_exit",
+                outcome = Failed,
+                because = "tauri_emit_failed",
+                rule = "pty.exit.must_reach_the_pane",
+                evidence = { pty_id = %id, error = %error },
+            );
+        }
     }
 
     fn emit_suspended(&self, payload: &PtySuspendedPayload) {
@@ -109,10 +120,17 @@ impl PtyOutputSink for WebSocketSink {
 
     fn emit_exit(&self, id: &str, payload: &PtyExitPayload) {
         let sender = get_or_create_pty_ws_channel(id);
-        let _ = sender.send(PtyWsMessage::Exit {
-            code: payload.code,
-            reason: payload.reason.to_string(),
-        });
+        // A broadcast send fails only when nobody is subscribed, which is ordinary for a pane the
+        // user already closed — hence best-effort rather than a failure. Naming it is the point:
+        // it separates "no listener" from "the exit never got sent", which the bare discard could
+        // not, and which leaves a pane running forever in the Web transport.
+        crate::best_effort!(
+            sender.send(PtyWsMessage::Exit {
+                code: payload.code,
+                reason: payload.reason.to_string(),
+            }),
+            "no_ws_subscriber_for_exit"
+        );
         // Keep the channel stable across a restart that reuses the PTY id.
         // Existing WebSocket subscribers must observe the next generation.
     }

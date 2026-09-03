@@ -401,13 +401,19 @@ export function ChatPanel({
 
   useEffect(() => {
     let active = true
+    // Failing here leaves the local account route null, and "the other member" is then chosen by
+    // excluding a route that does not exist — so the user themselves can be picked as the other
+    // member. P2P signalling goes to the wrong route and the header shows the wrong person, all
+    // without an error anywhere.
     syncLocalIdentity()
       .then((identity) => {
         if (!active) return
         setLocalDeviceId(identity.deviceId)
         setLocalAccountRoute(identity.accountRoute)
       })
-      .catch(() => undefined)
+      .catch((cause) => {
+        console.error('[chat] local identity unavailable; member resolution will be wrong', cause)
+      })
     return () => {
       active = false
     }
@@ -690,7 +696,6 @@ export function ChatPanel({
       disposed = true
       unlisten?.()
     }
-     
   }, [])
 
   // Wrapped in a correlation id so everything one send causes — the local encrypt, the p2p attempt,
@@ -864,7 +869,10 @@ export function ChatPanel({
       setPendingMentionRoutes(new Set())
       if (otherMember && frame.length > 0) {
         if (p2p.state === 'p2p') {
-          await p2p.send(frame).catch(async () => {
+          await p2p.send(frame).catch(async (cause) => {
+            // Never recorded before the fallback, so p2p could be broken permanently, every
+            // message could be going over the relay, and the header would still say `p2p`.
+            console.warn('[chat] p2p.send failed on attachment, falling back to relay', cause)
             await deliverViaRelay(frame, otherMember.accountRoute, otherMember.x25519PublicKey)
           })
         } else {

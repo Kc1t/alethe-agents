@@ -492,10 +492,23 @@ fn atomic_write(path: &Path, contents: &str) -> Result<(), String> {
     let tmp = PathBuf::from(tmp);
     fs::write(&tmp, contents).map_err(|error| format!("write_failed:{error}"))?;
     // A fresh temp file is created with the default mode, which would widen a config the
-    // user deliberately locked down to 0600.
+    // user deliberately locked down to 0600. This file can hold API keys, so a copy that silently
+    // fails leaves them world-readable while the app reports the write as successful — the failure
+    // mode is not "the setting did not stick", it is "the secret leaked and nobody was told".
     #[cfg(unix)]
     if let Ok(metadata) = fs::metadata(path) {
-        let _ = fs::set_permissions(&tmp, metadata.permissions());
+        if let Err(error) = fs::set_permissions(&tmp, metadata.permissions()) {
+            crate::decide!(
+                target: "mcp.store",
+                attempted = "preserve_permissions",
+                outcome = Failed,
+                because = "set_permissions_failed",
+                rule = "mcp_store.atomic_write_preserves_mode",
+                evidence = { error = %error },
+            );
+            let _ = fs::remove_file(&tmp);
+            return Err(format!("write_failed:permissions_not_preserved:{error}"));
+        }
     }
     fs::rename(&tmp, path).map_err(|error| {
         let _ = fs::remove_file(&tmp);

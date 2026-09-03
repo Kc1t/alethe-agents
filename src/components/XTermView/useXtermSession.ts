@@ -17,7 +17,7 @@ import { isTauriEnv } from '../../lib/api/transport'
 import { getLocale, translate } from '../../lib/i18n'
 import { isLinux, isWindows } from '../../lib/platform'
 import { usePtyPanelVisible } from '../../lib/ptyVisibility'
-import { createTerminalResizePolicy } from '../../lib/terminalResizePolicy'
+import { orEmpty, orEmptyList } from '../../lib/resilience'
 import {
   claimMostRecentSession,
   isSessionClaimed,
@@ -32,12 +32,12 @@ import {
 } from '../../lib/sessionResume'
 import { acquireSpawnSlot, releaseSpawnSlot } from '../../lib/spawnQueue'
 import {
+  agentConfigRoot,
   aiMemoryCodexConfigWrite,
   aiMemoryDetect,
   aiMemoryMcpConfigPath,
   aiMemoryOpenCodeConfigWrite,
   attachPty,
-  agentConfigRoot,
   attachPtySnapshot,
   chunksAfterPtySnapshot,
   clearPtyScrollback,
@@ -64,6 +64,7 @@ import {
   writeClipboardText,
   writePty,
 } from '../../lib/tauri'
+import { createTerminalResizePolicy } from '../../lib/terminalResizePolicy'
 import {
   agentCliCommand,
   type AgentRuntimeProfile,
@@ -214,7 +215,6 @@ export function useXtermSession(params: {
   initialInput?: string
   sessionId?: string
   env?: Record<string, string>
-
 
   trustSessionId?: boolean
 
@@ -1794,7 +1794,11 @@ export function useXtermSession(params: {
           await attachExistingPty(ptyId)
           return
         }
-        const backendHasPty = await ptyExists(ptyId, activeProfileId).catch(() => false)
+        // A failed check used to become `false`, and `false` here means "spawn a new process" —
+        // which replaces a terminal that was alive and well. The user sees "my terminal died"
+        // when in fact the app only failed to ask whether it was there. The fallback stays
+        // `false` (a wrong `true` would attach to nothing), but the failure is no longer silent.
+        const backendHasPty = await orEmpty(ptyExists(ptyId, activeProfileId), 'pty.exists', false)
         if (backendHasPty) {
           await attachExistingPty(ptyId)
           return
@@ -1946,15 +1950,25 @@ export function useXtermSession(params: {
           cwd &&
           (command === 'claude' || command === 'codex' || command === 'opencode')
         ) {
-          const status = await aiMemoryDetect().catch(() => undefined)
+          // A transport failure used to be indistinguishable from "AI-memory is not installed",
+          // and the branch below then shows the user a toast actively telling them so — a false
+          // story rather than a missing one.
+          const status = await orEmpty(aiMemoryDetect(), 'aiMemory.detect', undefined)
           if (status?.installed) {
             if (command === 'claude') {
-              const p = await aiMemoryMcpConfigPath(cwd).catch(() => undefined)
+              // Each of these failing means the agent starts WITHOUT a server the user enabled in
+              // preferences, with no warning: the symptom is "that tool does not work", not "the
+              // path lookup failed during spawn".
+              const p = await orEmpty(
+                aiMemoryMcpConfigPath(cwd),
+                'aiMemory.mcpConfigPath',
+                undefined,
+              )
               if (p) mcpConfigPaths.push(p)
             } else if (command === 'opencode') {
-              await aiMemoryOpenCodeConfigWrite(cwd).catch(() => {})
+              await orEmpty(aiMemoryOpenCodeConfigWrite(cwd), 'aiMemory.opencodeWrite', undefined)
             } else if (command === 'codex') {
-              await aiMemoryCodexConfigWrite(cwd).catch(() => {})
+              await orEmpty(aiMemoryCodexConfigWrite(cwd), 'aiMemory.codexWrite', undefined)
             }
           } else if (!aiMemoryMissingWarned) {
             aiMemoryMissingWarned = true
@@ -1974,7 +1988,7 @@ export function useXtermSession(params: {
         // only once the agent reaches for one.
         const playwrightEnabled = useProjectsStore.getState().preferences.enabledFeatures.playwright
         if (playwrightEnabled && command === 'claude') {
-          const p = await playwrightMcpConfigPath().catch(() => undefined)
+          const p = await orEmpty(playwrightMcpConfigPath(), 'playwright.mcpConfigPath', undefined)
           if (p) mcpConfigPaths.push(p)
           if (disposed) return
         }
@@ -1982,7 +1996,11 @@ export function useXtermSession(params: {
         const orchestratorEnabled =
           useProjectsStore.getState().preferences.enabledFeatures.orchestrator
         if (orchestratorEnabled && command === 'claude') {
-          const p = await orchestratorMcpConfigPath().catch(() => undefined)
+          const p = await orEmpty(
+            orchestratorMcpConfigPath(),
+            'orchestrator.mcpConfigPath',
+            undefined,
+          )
           if (p) mcpConfigPaths.push(p)
           if (disposed) return
         }
@@ -2008,14 +2026,17 @@ export function useXtermSession(params: {
         // directory here lets the watcher below adopt whatever it moves to.
         const discoveredSessionsBeforePromise =
           cwd && (!launch.sessionId || command === 'claude')
-            ? command === 'codex'
-              ? snapshotCodexSessions(cwd).catch(() => [])
+            ? // A failed baseline becomes an empty one, and an empty baseline means every session
+              // already on disk looks new to the watcher below — so it adopts an unrelated earlier
+              // conversation. Wrong, but plausible enough that nobody suspects the baseline.
+              command === 'codex'
+              ? orEmptyList(snapshotCodexSessions(cwd), 'sessions.baseline.codex')
               : command === 'antigravity'
-                ? snapshotAntigravitySessions(cwd).catch(() => [])
+                ? orEmptyList(snapshotAntigravitySessions(cwd), 'sessions.baseline.antigravity')
                 : command === 'opencode'
-                  ? snapshotOpenCodeSessions(cwd).catch(() => [])
+                  ? orEmptyList(snapshotOpenCodeSessions(cwd), 'sessions.baseline.opencode')
                   : command === 'claude'
-                    ? snapshotClaudeSessions(cwd).catch(() => [])
+                    ? orEmptyList(snapshotClaudeSessions(cwd), 'sessions.baseline.claude')
                     : null
             : null
 

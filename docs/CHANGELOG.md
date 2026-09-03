@@ -10,6 +10,36 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Não lançado]
 
+### Fixed
+
+- **"Why can't I connect?" is now a field instead of a guess.** The reconnect loop discarded the connection error entirely, so a refused certificate, a rejected token, an incompatible protocol version and a plain timeout all left the same trace — none — and on giving up the status reset to the same value that means "never tried". The error is kept and surfaced, and "stopped" is now distinct from "not attempted".
+
+- **Sending a frame no longer reports success for something it only queued.** It returned success after putting the frame on a local channel; the socket write happens later and had no record at all. Both steps are recorded now, so an enqueue with no matching transmit is a visible signal rather than an invisible one — which is the exact shape of "I sent it and it never arrived".
+
+- **A received message dropped on arrival leaves a trace.** Five checks stand between a frame arriving and a message appearing — decode, conversation match, storage, epoch key, decryption — and a frame stopped at any of them vanished silently. From the outside that is indistinguishable from a message that was never sent.
+
+- **Closing an agent that does not actually die is now visible.** The result of the process-tree kill was discarded, so the UI reported the agent as stopped while the process kept running, holding its worktree and still spending tokens.
+
+- **A terminal pane no longer stays "running" forever after its process exits**, when the exit event fails to reach it. That event is the only thing that clears the running state.
+
+- **Failures to write the access log are reported.** A discarded write there turns a failure into an absence, and an absence reads as "nobody accessed my project" — a security log understating what happened is read as an assurance.
+
+- **On Unix, a failed permission copy on the MCP config is now an error instead of a silent widening.** That file can hold API keys; the previous failure mode was not "the setting did not stick", it was "the secret became world-readable and nobody was told".
+
+- **A failed agent-session lookup no longer reads as "there was no session to resume"**, which started a fresh empty conversation while the real session sat on disk. The same fix covers the session baseline, whose failure let the watcher adopt an unrelated earlier conversation — wrong, but plausible enough that nobody suspected it.
+
+- **A failed "does this terminal exist?" check no longer spawns a duplicate** over a terminal that was alive, which presented as "my terminal died" when the app had only failed to ask.
+
+- **An agent no longer starts silently without the MCP servers you enabled.** Each config-path lookup failed into "no server", so the symptom was "that tool doesn't work" rather than "the lookup failed during spawn". Relatedly, a transport failure no longer displays the "AI-memory is not installed" notice, which told an actively false story.
+
+- **The chat header no longer claims `p2p` while every message goes over the relay.** The p2p send failure before the relay fallback was never recorded.
+
+- **A failure to read the local identity is reported** instead of leaving the account route empty — with it empty, the user themselves could be selected as "the other member", sending p2p signalling to the wrong route and showing the wrong person in the header.
+
+- **The usage heatmap distinguishes "could not load" from "no work in 91 days".** The two rendered identically, which made the wrong answer unfalsifiable.
+
+- **The P2P bridge's connection diagnostics survive packaging.** Seventeen detailed trace lines went to stderr, which a packaged build discards — so the most useful traces in the codebase were written and thrown away on exactly the machines where a connection problem is hardest to reproduce.
+
 ### Added
 
 - **One log stream for the whole app, in `logs/alethe.jsonl`.** Until now a single user action left traces in two files — `logs/frontend.log` at the repo root and `app-events.log` in the profile data dir — written by two processes with two clocks and no shared key, so "the UI says it sent the message; did the socket ever see it?" could not be answered by reading either one. Every log line now carries a correlation id minted at the gesture, so one click reads back as one ordered timeline. `ALETHE_LOG` controls what is recorded (`ALETHE_LOG=sync.chat=debug`).

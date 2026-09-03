@@ -709,13 +709,26 @@ pub fn send_message_at(
     }
     append_or_compact_at(data_root, &document, &message)?;
     if !message.mentions.is_empty() {
-        let _ = crate::sync_access::record_at(
+        // The access log is what the user reads to answer "who reached into my project?". A
+        // discarded write there turns a failure into an absence, and an absence into the confident
+        // conclusion that nothing happened — on a security surface, where being quietly wrong is
+        // worse than being loudly unavailable.
+        if let Err(error) = crate::sync_access::record_at(
             data_root,
             crate::sync_access::AccessCategory::Collaboration,
             crate::sync_access::AccessKind::ChatMention,
             &message.message_id,
             now_ms,
-        );
+        ) {
+            crate::decide!(
+                target: "sync.access",
+                attempted = "record_access",
+                outcome = Failed,
+                because = "access_log_write_failed",
+                rule = "access_log.records_every_entry",
+                evidence = { kind = %"chat_mention", subject = %message.message_id, error = %error },
+            );
+        }
     }
     Ok(message)
 }
@@ -1155,15 +1168,106 @@ pub fn sync_ingest_chat_transport_frame(
 ) -> Result<DecryptedMessage, String> {
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     let (device_id, account_route) = local_chat_identity(&data_root)?;
-    let message: MessageRecord = serde_json::from_slice(&frame).map_err(|_| "chat_transport_decode_failed".to_string())?;
+
+    // Five gates stand between a frame arriving and a message appearing, and a frame stopped at any
+    // of them used to leave no trace at all. From the outside every one of them looks the same as
+    // "nothing was ever sent", which is why "I didn't receive it" was unanswerable: there was no
+    // way to tell a frame that never arrived from a frame that arrived and was dropped here.
+    let message: MessageRecord = match serde_json::from_slice(&frame) {
+        Ok(message) => message,
+        Err(error) => {
+            crate::decide!(
+                target: "sync.chat",
+                attempted = "ingest_frame",
+                outcome = Failed,
+                because = "frame_decode_failed",
+                rule = "chat.ingest.decodable_frame",
+                evidence = { bytes = frame.len() as u64, error = %error },
+            );
+            return Err("chat_transport_decode_failed".to_string());
+        }
+    };
     if message.conversation_id != conversation_id {
+        // The frame is well-formed and addressed to a conversation other than the one this call is
+        // for — typically the one the user does not currently have open. It is discarded here.
+        crate::decide!(
+            target: "sync.chat",
+            attempted = "ingest_frame",
+            outcome = Rejected,
+            because = "conversation_mismatch",
+            rule = "chat.ingest.conversation_must_match",
+            evidence = {
+                expected = %conversation_id,
+                received = %message.conversation_id,
+                message_id = %message.message_id,
+            },
+        );
         return Err("chat_transport_conversation_mismatch".to_string());
     }
-    record_incoming_message_at(&data_root, &conversation_id, message.clone()).map_err(|e| e.to_string())?;
-    let conversation = load_conversation_at(&data_root, &conversation_id).map_err(|e| e.to_string())?;
-    let epoch_key = resolve_epoch_key(&conversation, message.epoch, &account_route, &device_id)
-        .map_err(|e| e.to_string())?;
-    let plaintext = decrypt_message(&message, &epoch_key).map_err(|e| e.to_string())?;
+    if let Err(error) = record_incoming_message_at(&data_root, &conversation_id, message.clone()) {
+        crate::decide!(
+            target: "sync.chat",
+            attempted = "ingest_frame",
+            outcome = Failed,
+            because = "persist_failed",
+            rule = "chat.ingest.persist_before_display",
+            evidence = { message_id = %message.message_id, error = %error },
+        );
+        return Err(error.to_string());
+    }
+    let conversation = match load_conversation_at(&data_root, &conversation_id) {
+        Ok(conversation) => conversation,
+        Err(error) => {
+            crate::decide!(
+                target: "sync.chat",
+                attempted = "ingest_frame",
+                outcome = Failed,
+                because = "conversation_unreadable",
+                rule = "chat.ingest.requires_conversation",
+                evidence = { conversation_id = %conversation_id, error = %error },
+            );
+            return Err(error.to_string());
+        }
+    };
+    let epoch_key = match resolve_epoch_key(&conversation, message.epoch, &account_route, &device_id)
+    {
+        Ok(key) => key,
+        Err(error) => {
+            // The message is on disk and will stay unreadable until the epoch key can be resolved.
+            // Without this record it simply never appears, which reads as "never arrived".
+            crate::decide!(
+                target: "sync.chat",
+                attempted = "ingest_frame",
+                outcome = Failed,
+                because = "epoch_key_unavailable",
+                rule = "chat.ingest.requires_epoch_key",
+                evidence = { message_id = %message.message_id, epoch = message.epoch, error = %error },
+            );
+            return Err(error.to_string());
+        }
+    };
+    let plaintext = match decrypt_message(&message, &epoch_key) {
+        Ok(plaintext) => plaintext,
+        Err(error) => {
+            crate::decide!(
+                target: "sync.chat",
+                attempted = "ingest_frame",
+                outcome = Failed,
+                because = "decrypt_failed",
+                rule = "chat.ingest.authenticated_decrypt",
+                evidence = { message_id = %message.message_id, epoch = message.epoch, error = %error },
+            );
+            return Err(error.to_string());
+        }
+    };
+    crate::decide!(
+        target: "sync.chat",
+        attempted = "ingest_frame",
+        outcome = Ok,
+        because = "stored_and_decrypted",
+        rule = "chat.ingest.authenticated_decrypt",
+        evidence = { message_id = %message.message_id, epoch = message.epoch },
+    );
     Ok(DecryptedMessage {
         message_id: message.message_id,
         conversation_id: message.conversation_id,

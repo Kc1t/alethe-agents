@@ -423,13 +423,24 @@ pub fn apply_remote_operation_at(
     state.conflicts.push(conflict.clone());
     state.updated_at_ms = now_ms;
     save_at(data_root, &state)?;
-    let _ = crate::sync_access::record_at(
+    // Same reasoning as the mention record in `sync_chat`: a silent failure here makes the access
+    // log understate what happened, and an understated security log is read as an assurance.
+    if let Err(error) = crate::sync_access::record_at(
         data_root,
         crate::sync_access::AccessCategory::Collaboration,
         crate::sync_access::AccessKind::SyncConflict,
         &conflict.conflict_id,
         now_ms,
-    );
+    ) {
+        crate::decide!(
+            target: "sync.access",
+            attempted = "record_access",
+            outcome = Failed,
+            because = "access_log_write_failed",
+            rule = "access_log.records_every_entry",
+            evidence = { kind = %"sync_conflict", subject = %conflict.conflict_id, error = %error },
+        );
+    }
     Ok(Err(conflict))
 }
 

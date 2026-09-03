@@ -512,14 +512,14 @@ fn discover_candidate_blocking() -> Result<DiscoveredCandidate, String> {
     let socket = match UdpSocket::bind("0.0.0.0:0") {
         Ok(socket) => socket,
         Err(cause) => {
-            eprintln!("[p2p] discover: failed to bind local UDP socket: {cause}");
+            crate::note!(target: "sync.p2p", "[p2p] discover: failed to bind local UDP socket: {cause}");
             return Err(P2pError::Io.to_string());
         }
     };
     let public_addr = match stun_discover(&socket) {
         Ok(addr) => addr,
         Err(cause) => {
-            eprintln!("[p2p] discover: STUN resolution failed: {cause}");
+            crate::note!(target: "sync.p2p", "[p2p] discover: STUN resolution failed: {cause}");
             return Err(cause.to_string());
         }
     };
@@ -529,7 +529,7 @@ fn discover_candidate_blocking() -> Result<DiscoveredCandidate, String> {
     let local_port = socket.local_addr().map_err(|_| P2pError::Io.to_string())?.port();
     let local_host = detect_local_ip();
     let nat_class = classify_nat_cached(&socket, public_addr, local_host.as_deref());
-    eprintln!(
+    crate::note!(target: "sync.p2p", 
         "[p2p] discover: local_port={local_port} public={}:{} local_host={:?} nat_class={nat_class:?}",
         public_addr.ip(),
         public_addr.port(),
@@ -570,13 +570,13 @@ pub fn punch_and_wrap_candidates(local_port: u16, candidates: &[SocketAddr]) -> 
     if candidates.is_empty() {
         return Err(P2pError::Punch);
     }
-    eprintln!(
+    crate::note!(target: "sync.p2p", 
         "[p2p] punch: attempting local_port={local_port} candidates={candidates:?} rounds={PUNCH_ATTEMPTS} total_timeout={PUNCH_TOTAL_TIMEOUT:?}"
     );
     let socket = match bind_reusable(local_port) {
         Ok(socket) => socket,
         Err(cause) => {
-            eprintln!("[p2p] punch: failed to rebind local_port={local_port}: {cause}");
+            crate::note!(target: "sync.p2p", "[p2p] punch: failed to rebind local_port={local_port}: {cause}");
             return Err(cause);
         }
     };
@@ -591,13 +591,13 @@ pub fn punch_and_wrap_candidates(local_port: u16, candidates: &[SocketAddr]) -> 
         rounds += 1;
         for peer_addr in candidates {
             if let Err(cause) = socket.send_to(b"alethe-p2p-punch", peer_addr) {
-                eprintln!("[p2p] punch: send_to {peer_addr} failed on round {rounds}: {cause}");
+                crate::note!(target: "sync.p2p", "[p2p] punch: send_to {peer_addr} failed on round {rounds}: {cause}");
             }
         }
         // One bounded read per round — a reply from *any* candidate completes the punch.
         match socket.recv_from(&mut buffer) {
             Ok((_, from)) if candidates.contains(&from) => {
-                eprintln!("[p2p] punch: SUCCESS candidate={from} after {rounds} round(s)");
+                crate::note!(target: "sync.p2p", "[p2p] punch: SUCCESS candidate={from} after {rounds} round(s)");
                 // Keep answering for a moment before moving on. Punching is symmetric: this side
                 // succeeds as soon as it *receives* a datagram, but the peer only succeeds when it
                 // receives one of ours. Returning immediately stopped our transmissions the instant
@@ -614,14 +614,14 @@ pub fn punch_and_wrap_candidates(local_port: u16, candidates: &[SocketAddr]) -> 
                 return Ok(ReliableUdpStream::new(socket));
             }
             Ok((_, from)) => {
-                eprintln!("[p2p] punch: ignoring packet from {from} (not one of this session's candidates)");
+                crate::note!(target: "sync.p2p", "[p2p] punch: ignoring packet from {from} (not one of this session's candidates)");
             }
             Err(cause) => {
                 last_recv_error = Some(cause.to_string());
             }
         }
     }
-    eprintln!(
+    crate::note!(target: "sync.p2p", 
         "[p2p] punch: all {} candidate(s) FAILED after {rounds} round(s), last_recv_error={:?} — falling back to relay",
         candidates.len(),
         last_recv_error
@@ -933,7 +933,7 @@ fn p2p_connect_blocking(
     // already known to fail. `Unknown`/`Cone` on either side still attempts the punch, since the
     // classification is a heuristic, not a guarantee.
     if matches!(local_nat_class, Some(NatClass::Symmetric)) && matches!(peer_nat_class, Some(NatClass::Symmetric)) {
-        eprintln!(
+        crate::note!(target: "sync.p2p", 
             "[p2p] connect: skipping punch for peer={remote_account_route} — both sides classified as symmetric NAT"
         );
         return Err(P2pError::BothSidesSymmetric.to_string());
@@ -942,7 +942,7 @@ fn p2p_connect_blocking(
     // replace a working path with an identical one. Observed live: a successful connect was
     // immediately followed by repeat attempts for the same peer, each burning the 8s punch timeout.
     if let Some(remote_device_id) = registry.live_remote_device_id(&remote_account_route) {
-        eprintln!(
+        crate::note!(target: "sync.p2p", 
             "[p2p] connect: peer={remote_account_route} already has a live session — reusing it"
         );
         return Ok(P2pConnectResult { connected: true, remote_device_id });
@@ -953,7 +953,7 @@ fn p2p_connect_blocking(
     // forever, which is what the logs showed: the same two candidates failing every few seconds
     // with nothing changing in between. Backoff is per peer and clears on the next success.
     if let Some(retry_in) = registry.punch_backoff_remaining(&remote_account_route) {
-        eprintln!(
+        crate::note!(target: "sync.p2p", 
             "[p2p] connect: peer={remote_account_route} punched too recently, backing off for {}s",
             retry_in.as_secs()
         );
@@ -1003,15 +1003,15 @@ fn p2p_connect_blocking(
         match format!("{local_host}:{local_port}").parse::<SocketAddr>() {
             Ok(local_addr) if local_addr != peer_addr => candidates.push(local_addr),
             Ok(_) => {}
-            Err(cause) => eprintln!("[p2p] connect: peer_local_host {local_host:?} did not parse, skipping: {cause}"),
+            Err(cause) => crate::note!(target: "sync.p2p", "[p2p] connect: peer_local_host {local_host:?} did not parse, skipping: {cause}"),
         }
     }
     candidates.push(peer_addr);
-    eprintln!(
+    crate::note!(target: "sync.p2p", 
         "[p2p] connect: peer={remote_account_route} candidates={candidates:?} is_initiator={is_initiator}"
     );
     let mut stream = punch_and_wrap_candidates(local_port, &candidates).map_err(|error| {
-        eprintln!("[p2p] connect: punch failed for peer={remote_account_route}: {error}");
+        crate::note!(target: "sync.p2p", "[p2p] connect: punch failed for peer={remote_account_route}: {error}");
         registry.note_punch_failed(&remote_account_route);
         error.to_string()
     })?;
@@ -1023,11 +1023,11 @@ fn p2p_connect_blocking(
         crate::sync_transport::establish_as_responder(&mut stream, &local_identity, &trust_oracle)
     }
     .map_err(|error| {
-        eprintln!("[p2p] connect: Phase-4 handshake failed for peer={remote_account_route} (punch succeeded): {error}");
+        crate::note!(target: "sync.p2p", "[p2p] connect: Phase-4 handshake failed for peer={remote_account_route} (punch succeeded): {error}");
         error.to_string()
     })?;
 
-    eprintln!("[p2p] connect: SUCCESS peer={remote_account_route} remote_device_id={}", session.remote_device_id);
+    crate::note!(target: "sync.p2p", "[p2p] connect: SUCCESS peer={remote_account_route} remote_device_id={}", session.remote_device_id);
     registry.note_connect_succeeded(&remote_account_route);
     registry.register(remote_account_route, stream, Some(session.remote_device_id.clone()));
 

@@ -132,6 +132,25 @@ macro_rules! decide {
     }};
 }
 
+/// A human-readable diagnostic line that survives packaging.
+///
+/// `eprintln!` is fine under `tauri dev` and useless in a shipped build, where stderr goes nowhere:
+/// the most detailed traces in the codebase — the P2P bridge's connection narration — were being
+/// written and thrown away on exactly the machines where a connection problem is hardest to
+/// reproduce. This keeps the terminal output during development and also puts the line in the
+/// unified stream, where it inherits the correlation id of the gesture in progress.
+///
+/// Prefer [`decide!`] for anything that is a decision. This is for narration.
+#[macro_export]
+macro_rules! note {
+    (target: $target:expr, $($arg:tt)*) => {{
+        let __message = ::std::format!($($arg)*);
+        #[cfg(debug_assertions)]
+        ::std::eprintln!("{}", __message);
+        ::tracing::info!(target: $target, message = %__message);
+    }};
+}
+
 /// Discards a `Result` **while naming why the failure does not matter**.
 ///
 /// This is the counterpart to [`decide!`]: after a site has been reviewed, it ends either as a
