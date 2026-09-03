@@ -212,15 +212,18 @@ pub fn run() {
         }));
     }
 
-    // Automação WebDriver (harness de E2E) — nunca compilada em release
-    // (`debug_assertions`) e, mesmo em debug, só ativa com `ALETHE_E2E=1` no
-    // ambiente. Sem a variável, uma sessão normal de `tauri dev` do dia a dia
-    // não expõe superfície de automação nenhuma.
+    // WebDriver automation (the E2E harness). Never compiled into a release build
+    // (`debug_assertions`) and, even in debug, only active with `ALETHE_E2E=1` in the environment.
+    // Without that variable an everyday `tauri dev` session exposes no automation surface at all.
+    //
+    // The two plugin crates cannot be put behind a Cargo feature: `capabilities/` declares the
+    // `wdio:default` permission, and Tauri resolves capabilities in the build script with no way to
+    // condition one on a feature, so the build fails before compilation starts.
     #[cfg(debug_assertions)]
     if std::env::var_os("ALETHE_E2E").is_some() {
-        // `-webdriver` sobe o servidor WebDriver embarcado em si; o outro dá
-        // acesso à API `browser.tauri.execute()` e mocking de invoke a partir
-        // dos specs. As duas peças são independentes no ecossistema wdio-tauri.
+        // `-webdriver` runs the embedded WebDriver server itself; the other one provides the
+        // `browser.tauri.execute()` API and invoke mocking from the specs. The two pieces are
+        // independent in the wdio-tauri ecosystem.
         builder = builder
             .plugin(tauri_plugin_wdio_webdriver::init())
             .plugin(tauri_plugin_wdio::init());

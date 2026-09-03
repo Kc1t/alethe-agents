@@ -142,6 +142,14 @@ keyring = { version = "3", default-features = false, features = ["sync-secret-se
 # app inteiro durante uma sessão de HMR. Release segue abort (binário menor).
 [profile.dev]
 panic = "unwind"
+# Dependencies are compiled once and then only linked; their debug info costs disk and link time on
+# every incremental rebuild while adding nothing to a backtrace through this crate's own code.
+debug = false
+
+[profile.dev.package.alethe]
+# Keep our own code debuggable. `line-tables-only` is enough for a backtrace with file and line
+# numbers, which is what the app's diagnostics actually use, without full variable info.
+debug = "line-tables-only"
 
 [profile.release]
 panic = "abort"

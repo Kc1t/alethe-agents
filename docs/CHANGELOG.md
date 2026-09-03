@@ -10,6 +10,14 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Não lançado]
 
+### Changed
+
+- **`npm test` and `npm run build` work again on Windows.** Six scripts chained their steps with `&&`, which Windows PowerShell 5.1 does not have, so on any machine where npm's `script-shell` points at it the script died on a parser error before the first step ran — the test suite itself was fine and never got to say so. Steps are now sequenced by `scripts/run-seq.mjs`, which behaves identically under cmd, PowerShell and sh. `npm run app:logs` also stopped depending on `mkdir -p` and `tee`.
+
+- **The test suite runs in about a third of the time** (158s to 58s on the reference machine, same 531 tests). Vitest now uses worker threads instead of spawning a process per worker, and the ~55 test files under `src/lib/` that never touch a DOM global no longer build a jsdom instance each. The two projects are computed from a single list rather than from two globs that have to agree, so a misplaced file fails the run instead of silently ceasing to be tested.
+
+- **Rust dev builds no longer carry debug info for dependencies**, which they never contributed to a backtrace through Alethe's own code. Alethe's own crate keeps line-level debug info. Saves about a gigabyte in `target/`.
+
 ### Added
 
 - **Source control now lets you pick which repository it shows.** It used to infer one from the selected terminal's working directory, which meant an agent running in an isolated worktree silently redirected the panel to `.alethe/worktrees/<id>` and its `alethe/agent-*` branch, with no way to say otherwise. The panel now defaults to the active project and offers a picker for the others; the terminal's directory is only a fallback for a project with no resolvable repository.
