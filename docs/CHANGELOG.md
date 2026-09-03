@@ -12,6 +12,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **The merge panel no longer crashes when its list goes from empty to having items.** A hook was declared after the early return for the empty case, so it was skipped on those renders — and the first render with items then had one more hook than the previous one, which React refuses outright. Going from empty to non-empty is the ordinary case for that panel, not an edge one.
+
+
 - **The app failed to load at all on builds where `invoke` is a read-only property.** The correlation wrapper assigned to it directly, which throws in strict mode, and because it runs at module scope the whole UI died with a blank window — caused by a feature whose only job is to label log lines. It now installs defensively and, when it cannot, turns correlation off and says so once. Diagnostics that can break the thing they observe are worse than no diagnostics.
 
 ### Added

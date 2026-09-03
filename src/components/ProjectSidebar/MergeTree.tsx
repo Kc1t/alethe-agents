@@ -44,6 +44,18 @@ export function MergeTree({
   onSelect,
 }: MergeTreeProps) {
   const t = useT()
+  // Which warning is expanded, if any. Local state: it is a transient detail view, not something
+  // any other part of the app needs to know about.
+  //
+  // Declared before the early return below, not after it. Sitting after it, the hook was skipped on
+  // every render where the list was empty — so the first render with items had one more hook than
+  // the previous one, which React refuses outright and takes the panel down with. The list going
+  // from empty to non-empty is the ordinary case here, not an edge one.
+  const [openWarning, setOpenWarning] = useState<{
+    item: PendingMergeCard
+    gate: GateResult
+    status: { key: MessageKey }
+  } | null>(null)
 
   if (items.length === 0) {
     return (
@@ -52,14 +64,6 @@ export function MergeTree({
       </div>
     )
   }
-
-  // Which warning is expanded, if any. Local state: it is a transient detail view, not something
-  // any other part of the app needs to know about.
-  const [openWarning, setOpenWarning] = useState<{
-    item: PendingMergeCard
-    gate: GateResult
-    status: { key: MessageKey }
-  } | null>(null)
 
   return (
     <div className={styles.tree}>
