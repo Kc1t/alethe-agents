@@ -127,7 +127,11 @@ where
         let mut record = visitor.0;
 
         let metadata = event.metadata();
-        record.insert("ts".into(), crate::diagnostics::timestamp_ms().into());
+        // Epoch milliseconds as a JSON *number*, not the `"secs.millis"` string the older text logs
+        // use. Anything reading this stream sorts and subtracts timestamps — the flow panel groups a
+        // gesture and measures its duration — and a string there silently produces no ordering and
+        // no duration at all, while every record still looks perfectly well-formed.
+        record.insert("ts".into(), crate::provider_common::now_ms().into());
         record.insert("level".into(), metadata.level().as_str().to_lowercase().into());
         record.insert("target".into(), metadata.target().into());
         if let Some(line) = metadata.line() {
@@ -211,6 +215,16 @@ pub fn sink_path() -> Option<&'static Path> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn timestamps_are_numbers_so_durations_can_be_computed() {
+        // Guards a real defect: the first version wrote `crate::diagnostics::timestamp_ms()`, which
+        // is a `"secs.millis"` STRING. Every record still looked well-formed, and every consumer
+        // that sorts or subtracts timestamps — the flow panel measuring how long a gesture took —
+        // silently got nothing.
+        let now: Value = crate::provider_common::now_ms().into();
+        assert!(now.is_number(), "the timestamp written into records must be numeric");
+    }
 
     #[test]
     fn a_visitor_keeps_field_types_instead_of_stringifying_everything() {

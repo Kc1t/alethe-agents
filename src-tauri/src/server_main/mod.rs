@@ -11,6 +11,7 @@ pub mod pty_routes;
 pub mod session_routes;
 pub mod skills_routes;
 pub mod plugins_routes;
+pub mod self_test_routes;
 pub mod sync_activation_routes;
 pub mod sync_access_routes;
 pub mod sync_invitation_bridge_routes;
@@ -599,6 +600,7 @@ pub fn build_router(runtime: ServerRuntime) -> Router {
         .merge(session_routes::router())
         .merge(skills_routes::router())
         .merge(plugins_routes::router())
+        .merge(self_test_routes::router())
         .merge(agent_routes::router())
         .merge(ai_memory_routes::router())
         .merge(misc_routes::router())

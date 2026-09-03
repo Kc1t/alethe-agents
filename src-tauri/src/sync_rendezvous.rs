@@ -179,7 +179,7 @@ fn validated_endpoint(endpoint: &str) -> Result<String, String> {
     Ok(endpoint.trim_end_matches('/').to_string())
 }
 
-fn endpoint_for_settings(
+pub(crate) fn endpoint_for_settings(
     settings: &crate::sync_activation::ServiceSettings,
 ) -> Result<String, String> {
     match settings.mode {
@@ -195,7 +195,7 @@ fn endpoint_for_settings(
     }
 }
 
-fn websocket_url(endpoint: &str, account_route: &str) -> Result<String, String> {
+pub(crate) fn websocket_url(endpoint: &str, account_route: &str) -> Result<String, String> {
     let mut url =
         url::Url::parse(endpoint).map_err(|_| "activation_invalid_endpoint".to_string())?;
     url.set_scheme(match url.scheme() {

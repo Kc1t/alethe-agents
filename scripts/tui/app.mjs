@@ -1,6 +1,7 @@
 import { Box, Text, useApp, useInput, useStdout } from 'ink'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { runDoctor, summarize } from './actions/doctor.mjs'
 import { COMMANDS, stop } from './actions/processes.mjs'
 import { inspectPorts } from './actions/ports.mjs'
 import { filterGestures, gesturesFrom } from './flow/parse.mjs'
@@ -41,7 +42,7 @@ function Footer({ mode, filter }) {
   return h(
     Text,
     { color: 'gray' },
-    ' tab painel · ↑↓ mover · enter executar · / filtrar · c prender corr · x limpar · ? ajuda · q sair',
+    ' tab painel · enter executar · d doctor · / filtrar · c prender corr · x limpar · ? ajuda · q sair',
   )
 }
 
@@ -53,6 +54,7 @@ function Help() {
     ['/', 'filtrar o fluxo por texto'],
     ['c', 'prender no corr do gesto selecionado (de novo solta)'],
     ['x', 'limpar o fluxo na tela (não apaga o arquivo)'],
+    ['d', 'doctor: diagnostica o runtime que estiver rodando; os veredictos caem no fluxo'],
     ['k', 'no painel de estado: matar a árvore do processo dono da porta'],
     ['q', 'sair, parando o que esta tela iniciou'],
   ]
@@ -150,6 +152,14 @@ export function App({ branch, logPath }) {
     })
   }, [commandCursor])
 
+  // The doctor runs in Rust, against whichever runtime is up. Its verdicts are decision records, so
+  // they land in the flow panel below on their own — no panel of its own, and one vocabulary.
+  const runDiagnosis = useCallback(async () => {
+    setNotice('doctor: perguntando ao runtime…')
+    const report = await runDoctor()
+    setNotice(summarize(report))
+  }, [])
+
   const killSelectedPort = useCallback(async () => {
     const entry = ports[portCursor]
     if (!entry || entry.holders.length === 0) {
@@ -221,6 +231,11 @@ export function App({ branch, logPath }) {
     if (input === 'c') {
       const gesture = gestures[flowCursor]
       setPinned((current) => (current !== null ? null : (gesture?.corr ?? null)))
+      return
+    }
+
+    if (input === 'd') {
+      void runDiagnosis()
       return
     }
 

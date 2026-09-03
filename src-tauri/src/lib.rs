@@ -49,6 +49,7 @@ pub mod obs;
 pub mod obs_ipc;
 pub mod obs_sink;
 pub mod paths;
+pub mod self_test;
 pub mod planning;
 pub mod plugins;
 pub mod planning_gate;
@@ -741,6 +742,7 @@ pub fn run() {
             opencode_sessions::opencode_export_session,
             ping,
             recorder_scratch_dir,
+            self_test::self_test,
         ]))
         .build(tauri::generate_context!())
         .expect("error while building alethe")

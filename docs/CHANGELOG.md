@@ -12,6 +12,14 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **A local diagnosis that proves instead of assuming.** DNS, TCP and the TLS/WebSocket handshake are now three separate checks: they used to collapse into one opaque failure that read the same for "this machine has no DNS", "a firewall is dropping the packets" and "the certificate was refused" — three problems with three different remedies. Each verdict names what to do about it, and a check whose dependency already failed is reported as not-run rather than producing a second, more confusing error on top of the first. The log directory is verified by writing a value and reading it back, because a logger that cannot write leaves an empty file that reads exactly like "that code path never ran". Press `d` in the development screen; the verdicts appear in the flow panel like any other decision.
+
+### Fixed
+
+- **Timestamps in the decision log are numbers again.** They were being written as a `"seconds.millis"` string, so every record still looked well-formed while anything that sorts or subtracts them — measuring how long one user action took — silently got nothing.
+
+### Added
+
 - **`npm run alethe` opens a development screen.** One full-screen, keyboard-driven application rather than a set of commands to remember: a command rail that starts and stops `dev`, `dev (debug)` and `web`; live port state showing not just that a port is taken but *which* process holds it, with its full command line, so a stale dev server from another worktree is identifiable and can be killed by its whole tree; and the decision stream from the unified log.
 
 - **The log panel is an inspector, not a tail.** Records are grouped by correlation id, so a single user action reads back as one timeline with the rule applied at each step. It also flags what is *absent*: a frame handed to the send queue with no matching socket write is marked incomplete, with the reason spelled out. That failure cannot be seen by scrolling a log, because the evidence for it is a record that was never written.
