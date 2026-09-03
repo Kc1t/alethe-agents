@@ -16,9 +16,13 @@ function shorten(commandLine, width) {
  * The holder's command line, not just the process name, because "node.exe" cannot tell two dev
  * servers apart — and the whole reason to look at this panel is to find out *which* stale one is
  * sitting on the port. That is also what makes killing it an informed decision.
+ *
+ * A free port is deliberately quiet. Rendering three green "livre" labels every second trains the
+ * eye to skip the column, which is the opposite of what a status panel is for; only the taken ones
+ * are coloured.
  */
 export function StatePanel({ ports, processes, focused, width }) {
-  const cmdWidth = Math.max(20, width - 40)
+  const cmdWidth = Math.max(20, width - 42)
   return h(
     Box,
     {
@@ -27,15 +31,16 @@ export function StatePanel({ ports, processes, focused, width }) {
       borderColor: focused ? 'cyan' : 'gray',
       paddingX: 1,
       flexGrow: 1,
+      overflow: 'hidden',
     },
     h(
       Box,
       null,
-      h(Text, { bold: true }, 'ESTADO'),
-      focused ? h(Text, { color: 'gray' }, '   k mata a árvore do dono') : null,
+      h(Text, { bold: focused, color: focused ? 'cyan' : 'white' }, 'ESTADO'),
+      focused ? h(Text, { color: 'gray', dimColor: true }, '   k mata a árvore do dono') : null,
     ),
     ports.length === 0
-      ? h(Text, { color: 'gray' }, 'lendo portas…')
+      ? h(Text, { color: 'gray', dimColor: true }, 'lendo portas…')
       : ports.map((entry) =>
           h(
             Box,
@@ -45,18 +50,17 @@ export function StatePanel({ ports, processes, focused, width }) {
               null,
               // The cursor has to be visible: `k` kills whatever this row points at, and an
               // ambiguous selection there ends the wrong process.
-              h(Text, { color: 'cyan' }, entry.selected && focused ? '▸ ' : '  '),
-              h(Text, { color: 'gray', inverse: entry.selected && focused }, `${entry.port}`),
-              h(Text, null, '  '),
+              h(Text, { color: 'cyan' }, entry.selected && focused ? '▌' : ' '),
+              h(Text, { bold: entry.selected && focused }, ` ${entry.port}  `),
               entry.free
-                ? h(Text, { color: 'green' }, 'livre')
-                : h(Text, { color: 'yellow' }, 'ocupada'),
-              entry.label ? h(Text, { color: 'gray' }, `  ${entry.label}`) : null,
+                ? h(Text, { color: 'gray', dimColor: true }, 'livre  ')
+                : h(Text, { color: 'yellow' }, 'em uso '),
+              entry.label ? h(Text, { color: 'gray', dimColor: true }, ` ${entry.label}`) : null,
             ),
             ...entry.holders.map((holder) =>
               h(
                 Text,
-                { key: holder.pid, color: 'gray' },
+                { key: holder.pid, color: 'gray', wrap: 'truncate-end' },
                 `      ${holder.name ?? '?'} ${holder.pid}  ${shorten(holder.commandLine, cmdWidth)}`,
               ),
             ),
@@ -66,28 +70,26 @@ export function StatePanel({ ports, processes, focused, width }) {
       ? h(
           Box,
           { flexDirection: 'column', marginTop: 1 },
-          ...processes.map((handle) =>
+          ...processes.flatMap((handle) => [
             h(
               Text,
               { key: handle.id, color: handle.exitCode === null ? 'green' : 'red' },
-              `${handle.id}  pid ${handle.pid ?? '?'}  ${
+              ` ${handle.id}  ${
                 handle.exitCode === null
-                  ? `${Math.round((Date.now() - handle.startedAt) / 1000)}s`
+                  ? `pid ${handle.pid ?? '?'}  ${Math.round((Date.now() - handle.startedAt) / 1000)}s`
                   : `saiu (${handle.exitCode})`
               }`,
             ),
-          ),
-          // The last line of a launcher's own output, which is where "Port already in use" and
-          // "ready in 1.4s" both show up.
-          ...processes
-            .filter((handle) => handle.lines.length > 0)
-            .map((handle) =>
-              h(
-                Text,
-                { key: `${handle.id}-tail`, color: 'gray', wrap: 'truncate-end' },
-                `      ${handle.lines[handle.lines.length - 1]}`,
-              ),
-            ),
+            // The launcher's own last line, which is where "Port already in use" and "ready in
+            // 1.4s" both turn up.
+            handle.lines.length > 0
+              ? h(
+                  Text,
+                  { key: `${handle.id}-tail`, color: 'gray', dimColor: true, wrap: 'truncate-end' },
+                  `      ${handle.lines[handle.lines.length - 1]}`,
+                )
+              : null,
+          ]),
         )
       : null,
   )

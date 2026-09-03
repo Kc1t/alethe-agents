@@ -62,7 +62,7 @@ test('a gesture whose frame died on the queue is drawn as incomplete, and opened
   )
   const output = panel(gestures)
   assert.match(output, /g_1/)
-  assert.match(output, /INCOMPLETO/)
+  assert.match(output, /incompleto/)
   // A notable gesture opens on its own, so the reason is readable without a keystroke.
   assert.match(output, /sem `transmit`/)
   assert.match(output, /rendezvous\.send\.local_queue/)
@@ -92,12 +92,12 @@ test('a complete gesture stays collapsed and is not flagged', () => {
   )
   const output = panel(gestures)
   assert.match(output, /g_2/)
-  assert.doesNotMatch(output, /INCOMPLETO/)
+  assert.doesNotMatch(output, /incompleto/)
   assert.match(output, /2 passos/)
 })
 
 test('a pinned correlation and an active filter are visible in the header', () => {
   const output = panel([], { pinned: 'g_7', filter: 'taskkill' })
-  assert.match(output, /corr:g_7/)
+  assert.match(output, /⚲ g_7/)
   assert.match(output, /\/taskkill/)
 })

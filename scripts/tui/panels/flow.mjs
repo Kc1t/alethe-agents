@@ -12,6 +12,15 @@ const OUTCOME_COLOR = {
   skipped: 'gray',
 }
 
+/** A short glyph per verdict, so the column stays narrow and scannable. */
+const OUTCOME_MARK = {
+  failed: '✗',
+  rejected: '!',
+  deferred: '·',
+  ok: '✓',
+  skipped: '–',
+}
+
 function pad(value, width) {
   const text = String(value ?? '')
   return text.length >= width ? text.slice(0, width) : text + ' '.repeat(width - text.length)
@@ -38,30 +47,41 @@ function evidenceOf(record) {
     .join(' ')
 }
 
+/**
+ * A name for a gesture that carried no correlation id.
+ *
+ * "(sem correlação)" is technically true and tells the reader nothing — the seven doctor checks
+ * appeared under it as one anonymous blob. The subsystem the records came from is what someone
+ * actually wants to read in the list.
+ */
+function looseLabel(records) {
+  const counts = new Map()
+  for (const record of records) {
+    counts.set(record.target, (counts.get(record.target) ?? 0) + 1)
+  }
+  const [top] = [...counts.entries()].sort((a, b) => b[1] - a[1])
+  if (!top) return 'sem correlação'
+  return counts.size === 1 ? top[0] : `${top[0]} +${counts.size - 1}`
+}
+
 function Step({ record }) {
   const outcome = record.outcome ?? ''
   const color = OUTCOME_COLOR[outcome] ?? 'gray'
+  const quiet = outcome === 'ok' || outcome === 'skipped'
+  const evidence = evidenceOf(record)
   return h(
     Box,
     { flexDirection: 'column' },
     h(
       Box,
       null,
-      h(Text, { color }, `  ${pad(outcome || '·', 9)}`),
-      h(Text, { color: 'cyan' }, pad(record.target, 22)),
+      h(Text, { color, dimColor: quiet }, `    ${OUTCOME_MARK[outcome] ?? '·'} `),
+      h(Text, { color: 'cyan', dimColor: true }, pad(record.target, 20)),
       h(Text, null, record.attempted ?? record.message ?? record.command ?? ''),
+      record.because ? h(Text, { color: 'gray' }, `  ${record.because}`) : null,
     ),
-    record.rule
-      ? h(
-          Box,
-          null,
-          h(Text, { color: 'gray' }, `            rule: ${record.rule}`),
-          record.because ? h(Text, { color: 'gray' }, `  → ${record.because}`) : null,
-        )
-      : null,
-    evidenceOf(record)
-      ? h(Text, { color: 'gray', dimColor: true }, `            ${evidenceOf(record)}`)
-      : null,
+    record.rule ? h(Text, { color: 'gray', dimColor: true }, `      ${record.rule}`) : null,
+    evidence ? h(Text, { color: 'gray', dimColor: true }, `      ${evidence}`) : null,
   )
 }
 
@@ -73,11 +93,11 @@ function Step({ record }) {
  */
 function Gesture({ gesture, expanded, selected }) {
   const incomplete = gesture.missing.length > 0
-  const headline = gesture.uncorrelated ? '(sem correlação)' : gesture.corr
+  const headline = gesture.uncorrelated ? looseLabel(gesture.records) : gesture.corr
   const color = incomplete ? 'red' : (OUTCOME_COLOR[gesture.worstOutcome] ?? 'white')
   const duration = gesture.durationMs === null ? '' : `${(gesture.durationMs / 1000).toFixed(1)}s`
   const summary = incomplete
-    ? '⚠ INCOMPLETO'
+    ? 'incompleto'
     : `${gesture.records.length} passo${gesture.records.length === 1 ? '' : 's'}`
 
   return h(
@@ -86,17 +106,19 @@ function Gesture({ gesture, expanded, selected }) {
     h(
       Box,
       null,
-      // `▾`/`▸` rather than `▼`/`▶`: the latter pair reports different display widths
-      // (one is East-Asian wide), which shifted every collapsed row one column right.
-      h(Text, { inverse: selected }, expanded ? ' ▾ ' : ' ▸ '),
-      h(Text, { color, bold: incomplete, inverse: selected }, pad(headline, 28)),
-      h(Text, { color: 'gray' }, pad(duration, 7)),
-      h(Text, { color }, summary),
+      // A thin bar plus bold text, rather than an inverted block. Inverting a padded 30-column
+      // string painted a solid slab across the panel, pulling the eye away from the verdict it was
+      // supposed to be pointing at.
+      h(Text, { color: 'cyan' }, selected ? '▌' : ' '),
+      h(Text, { color: 'gray', dimColor: true }, expanded ? '▾ ' : '▸ '),
+      h(Text, { color, bold: selected || incomplete }, pad(headline, 30)),
+      h(Text, { color: 'gray', dimColor: true }, pad(duration, 7)),
+      h(Text, { color, dimColor: !incomplete }, summary),
     ),
     expanded ? gesture.records.map((record, index) => h(Step, { key: index, record })) : null,
     expanded
       ? gesture.missing.map((gap, index) =>
-          h(Text, { key: `gap-${index}`, color: 'red' }, `  ✗ ${gap.missing}`),
+          h(Text, { key: `gap-${index}`, color: 'red' }, `    ✗ ${gap.missing}`),
         )
       : null,
   )
@@ -121,20 +143,21 @@ export function FlowPanel({ gestures, cursor, expanded, focused, filter, pinned,
       borderColor: focused ? 'cyan' : 'gray',
       paddingX: 1,
       flexGrow: 1,
+      overflow: 'hidden',
     },
     h(
       Box,
       null,
-      h(Text, { bold: true }, 'FLUXO'),
-      pinned ? h(Text, { color: 'cyan' }, `  corr:${pinned}`) : null,
+      h(Text, { bold: focused, color: focused ? 'cyan' : 'white' }, 'FLUXO'),
+      h(Text, { color: 'gray', dimColor: true }, `  ${gestures.length}`),
+      pinned ? h(Text, { color: 'cyan' }, `  ⚲ ${pinned}`) : null,
       filter ? h(Text, { color: 'yellow' }, `  /${filter}`) : null,
-      h(Text, { color: 'gray' }, `  ${gestures.length} gesto${gestures.length === 1 ? '' : 's'}`),
     ),
     visible.length === 0
       ? h(
           Text,
-          { color: 'gray' },
-          'nada ainda — inicie `dev (debug)` e use o app; os registros aparecem aqui',
+          { color: 'gray', dimColor: true },
+          'nada ainda — inicie dev (debug) e use o app, ou tecle d para o doctor',
         )
       : visible.map((gesture, index) =>
           h(Gesture, {

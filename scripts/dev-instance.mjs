@@ -76,6 +76,20 @@ export async function findFreePort(preferred, range = PORT_SCAN_RANGE) {
   throw new Error(`No free port found near ${preferred}`)
 }
 
+/**
+ * The Vite port this checkout prefers, derived from its path.
+ *
+ * Exported so anything reporting on ports uses the same derivation instead of reimplementing it —
+ * a second copy would drift, and a port panel that confidently shows the wrong number is worse than
+ * one that shows none.
+ */
+export async function preferredDevPort(env = process.env) {
+  const explicit = env.ALETHE_DEV_PORT?.trim()
+  if (explicit) return Number(explicit)
+  const fingerprint = await checkoutFingerprint()
+  return BASE_PORT + (parseInt(fingerprint.slice(0, 4), 16) % PORT_SCAN_RANGE)
+}
+
 async function checkoutFingerprint() {
   const canonical = await realpath(REPO_ROOT).catch(() => REPO_ROOT)
   const normalized = process.platform === 'win32' ? canonical.toLowerCase() : canonical

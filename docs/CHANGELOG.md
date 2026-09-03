@@ -10,6 +10,16 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Não lançado]
 
+### Changed
+
+- **The development screen takes over the terminal and gives it back.** It now runs in the alternate screen buffer behind a centred wordmark, so nothing above it — the shell prompt, npm's own banner — is visible while it is open, and the scrollback is exactly as it was on exit. Panels are sized to what they hold instead of a fixed fraction, the selection is a thin bar rather than an inverted block, and a free port is quiet instead of green.
+
+### Fixed
+
+- **The port panel was watching the wrong port.** It listed 1422 and called it "the dev port", but the dev port is derived from the checkout path so two worktrees do not collide — on this machine it is 1594, the exact port the original "already in use" failure was about, and the panel never showed it. It now derives the port the same way the launcher does, instead of keeping a second copy of the rule that could drift. The labels also say plainly that the core is the same port in both modes and only the UI port differs.
+
+- **A gesture with no correlation id is named by the subsystem it came from**, instead of appearing as one anonymous "(sem correlação)" blob — which is what the seven doctor checks looked like.
+
 ### Added
 
 - **A local diagnosis that proves instead of assuming.** DNS, TCP and the TLS/WebSocket handshake are now three separate checks: they used to collapse into one opaque failure that read the same for "this machine has no DNS", "a firewall is dropping the packets" and "the certificate was refused" — three problems with three different remedies. Each verdict names what to do about it, and a check whose dependency already failed is reported as not-run rather than producing a second, more confusing error on top of the first. The log directory is verified by writing a value and reading it back, because a logger that cannot write leaves an empty file that reads exactly like "that code path never ran". Press `d` in the development screen; the verdicts appear in the flow panel like any other decision.

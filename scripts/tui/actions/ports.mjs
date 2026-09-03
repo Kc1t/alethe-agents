@@ -11,16 +11,35 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
-import { isPortFree } from '../../dev-instance.mjs'
+import { isPortFree, preferredDevPort } from '../../dev-instance.mjs'
 
 const run = promisify(execFile)
 
-/** The ports this project uses, and what each one is for. */
-export const KNOWN_PORTS = [
-  { port: 1422, label: 'vite (dev padrão)' },
-  { port: 1423, label: 'alethe core' },
-  { port: 1424, label: 'vite (web)' },
-]
+/**
+ * The ports this checkout actually uses.
+ *
+ * The dev port is **derived from the checkout path**, not fixed at 1422 — that is the whole point of
+ * `dev-instance.mjs`, so two worktrees do not collide. Listing 1422 unconditionally was wrong twice
+ * over: it labelled a port this checkout never touches as "the dev port", and it never showed the
+ * one that does. On this machine the real dev port is 1594 — the exact port the original "already in
+ * use" failure was about, and the panel was not watching it.
+ *
+ * The core is deliberately the same number in both modes: `npm run app` binds an *embedded* core and
+ * `npm run web` starts a *standalone* one, and both begin at 1423 and scan upward. Only the UI port
+ * differs between the two modes.
+ */
+export async function knownPorts() {
+  const dev = await preferredDevPort()
+  const ports = [
+    { port: dev, label: 'vite (dev deste checkout)' },
+    { port: 1423, label: 'core (dev e web usam o mesmo)' },
+    { port: 1424, label: 'ui do modo web' },
+  ]
+  // A checkout whose derived port happens to be 1424 would list it twice.
+  return ports.filter(
+    (entry, index) => ports.findIndex((other) => other.port === entry.port) === index,
+  )
+}
 
 /** Process names a dev port is plausibly held by. Anything else is refused without `force`. */
 const KILLABLE = ['node', 'vite', 'alethe', 'cargo', 'esbuild']
@@ -78,9 +97,10 @@ export async function inspectPort(port) {
 
 /** The project's ports, plus any extra the caller cares about. */
 export async function inspectPorts(extra = []) {
-  const ports = [...KNOWN_PORTS.map((entry) => entry.port), ...extra]
+  const known = await knownPorts()
+  const ports = [...known.map((entry) => entry.port), ...extra]
   const unique = [...new Set(ports)].sort((a, b) => a - b)
-  const label = new Map(KNOWN_PORTS.map((entry) => [entry.port, entry.label]))
+  const label = new Map(known.map((entry) => [entry.port, entry.label]))
   const results = []
   for (const port of unique) {
     const result = await inspectPort(port)

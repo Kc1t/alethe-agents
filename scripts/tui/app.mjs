@@ -274,24 +274,36 @@ export function App({ branch, logPath }) {
   // Whatever the screen started must not outlive it.
   useEffect(() => stopAll, [stopAll])
 
+  const subtitle = [
+    `${COMMANDS.filter((command) => running.get(command.id)?.exitCode === null).length} rodando`,
+    `${gestures.length} no fluxo`,
+  ].join('  ·  ')
+
   if (mode === 'help') {
     return h(
       Box,
-      { flexDirection: 'column' },
-      h(Header, { branch, width }),
+      { flexDirection: 'column', width, height },
+      h(Header, { branch, width, subtitle }),
       h(Help),
+      h(Box, { flexGrow: 1 }),
       h(Footer, { mode }),
     )
   }
 
-  const topHeight = Math.max(7, Math.floor((height - 4) * 0.45))
+  // Sized to what it holds, so the flow panel gets every row left over instead of a fixed fraction
+  // that left both halves half empty.
+  const stateRows =
+    ports.length +
+    ports.reduce((total, entry) => total + entry.holders.length, 0) +
+    running.size * 2
+  const topHeight = Math.min(Math.max(6, stateRows + 3), Math.max(6, height - 12))
   return h(
     Box,
-    { flexDirection: 'column', width },
-    h(Header, { branch, width }),
+    { flexDirection: 'column', width, height },
+    h(Header, { branch, width, subtitle }),
     h(
       Box,
-      { height: topHeight },
+      { height: topHeight, flexShrink: 0 },
       h(CommandsPanel, {
         commands: COMMANDS,
         cursor: commandCursor,
@@ -312,7 +324,7 @@ export function App({ branch, logPath }) {
       focused: panel === 'flow',
       filter,
       pinned,
-      height: height - topHeight - 5,
+      height: height - topHeight - 7,
     }),
     notice ? h(Text, { color: 'cyan' }, ` ${notice}`) : null,
     h(Footer, { mode, filter: draft }),

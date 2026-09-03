@@ -14,13 +14,13 @@ export const COMMANDS = [
   {
     id: 'dev',
     label: 'dev',
-    hint: 'tauri dev com HMR',
+    hint: 'tauri dev, com HMR',
     start: () => launch('dev', 'node', ['scripts/dev-instance.mjs']),
   },
   {
     id: 'debug',
     label: 'dev (debug)',
-    hint: 'tudo registrado: ALETHE_LOG=debug',
+    hint: 'idem, com logs em debug',
     // Not merely an environment variable: this is the run whose decision records the flow panel
     // below is meant to read, so the filter is opened up and the console mirror lowered together.
     start: () =>
@@ -32,7 +32,7 @@ export const COMMANDS = [
   {
     id: 'web',
     label: 'web',
-    hint: 'core standalone + UI no navegador',
+    hint: 'core + UI no navegador',
     start: () => launch('web', 'node', ['scripts/web-launcher.mjs']),
   },
 ]

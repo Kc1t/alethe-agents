@@ -100,7 +100,6 @@ fn emit(result: &CheckResult) {
     // routine successes are chatter. A doctor run is not routine, it is an explicit request for a
     // report, and a healthy run that leaves no trace would be the same silence this whole effort
     // exists to remove — you would have no way to tell "everything passed" from "it never ran".
-    let level_hint = if result.outcome == Outcome::Failed { "failed" } else { "reported" };
     if result.outcome == Outcome::Failed {
         tracing::warn!(
             target: "self_test",
@@ -119,7 +118,6 @@ fn emit(result: &CheckResult) {
             because = result.because.as_str(),
             rule = result.location.as_str(),
             elapsed_ms = result.elapsed_ms,
-            kind = level_hint,
         );
     }
 }
@@ -485,6 +483,22 @@ pub async fn self_test(app: tauri::AppHandle) -> Result<Vec<CheckResult>, String
 mod tests {
     use super::*;
 
+    /// A directory nothing else in this run can collide with.
+    ///
+    /// These tests previously named their temp directory with `now_ms()`. Tests run in parallel, so
+    /// two of them starting in the same millisecond shared a directory and one deleted the other's
+    /// fixture — a failure that appears roughly one run in ten and looks like a real bug in the code
+    /// under test. A clock is not an identity.
+    fn scratch(label: &str) -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        std::env::temp_dir().join(format!(
+            "alethe-selftest-{label}-{}-{}",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ))
+    }
+
     #[test]
     fn host_and_port_defaults_by_scheme() {
         assert_eq!(
@@ -501,10 +515,7 @@ mod tests {
     #[test]
     fn a_missing_log_directory_is_reported_rather_than_assumed_healthy() {
         // A path that cannot become a directory, because a file already sits where it would go.
-        let base = std::env::temp_dir().join(format!(
-            "alethe-selftest-{}",
-            crate::provider_common::now_ms()
-        ));
+        let base = scratch("case");
         std::fs::create_dir_all(&base).unwrap();
         std::fs::write(base.join("logs"), b"not a directory").unwrap();
 
@@ -518,10 +529,7 @@ mod tests {
 
     #[test]
     fn a_writable_log_directory_is_proved_by_a_round_trip() {
-        let base = std::env::temp_dir().join(format!(
-            "alethe-selftest-ok-{}",
-            crate::provider_common::now_ms()
-        ));
+        let base = scratch("ok");
         std::fs::create_dir_all(&base).unwrap();
 
         let result = check_log_sink(&base);
@@ -550,10 +558,7 @@ mod tests {
     fn settings_that_are_off_are_rejected_not_failed() {
         // "Collaboration is switched off" is a true, expected state, and reporting it as a failure
         // would send someone debugging a network that is working fine.
-        let base = std::env::temp_dir().join(format!(
-            "alethe-selftest-settings-{}",
-            crate::provider_common::now_ms()
-        ));
+        let base = scratch("settings");
         std::fs::create_dir_all(&base).unwrap();
         let result = check_settings(&base);
         assert!(

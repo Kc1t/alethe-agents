@@ -51,5 +51,39 @@ if (logPath === null) {
 }
 
 const branch = await currentBranch()
+
+/**
+ * The alternate screen buffer.
+ *
+ * `?1049h` switches to a second, empty buffer and `?1049l` switches back — so the screen owns the
+ * whole terminal while it runs and the shell's scrollback is exactly as it was on exit, rather than
+ * being left with a dead layout stamped into it. `?25l`/`?25h` hides the cursor, which otherwise
+ * blinks in whatever cell was drawn last.
+ *
+ * Restored on every exit path, including a signal: leaving a terminal stuck in the alternate buffer
+ * with no cursor is the kind of mess a tool has no business leaving behind.
+ */
+const enterFullScreen = () => process.stdout.write('[?1049h[?25l')
+const leaveFullScreen = () => process.stdout.write('[?25h[?1049l')
+
+enterFullScreen()
+let restored = false
+const restore = () => {
+  if (restored) return
+  restored = true
+  leaveFullScreen()
+}
+process.on('exit', restore)
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(signal, () => {
+    restore()
+    process.exit(0)
+  })
+}
+
 const app = render(React.createElement(App, { branch, logPath }))
-await app.waitUntilExit()
+try {
+  await app.waitUntilExit()
+} finally {
+  restore()
+}
