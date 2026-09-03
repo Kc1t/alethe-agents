@@ -64,12 +64,14 @@ pub struct TauriSink(pub tauri::AppHandle);
 impl PtyOutputSink for TauriSink {
     fn emit_data(&self, id: &str, text: &str, _cursor: u64) {
         let channel = format!("pty://data/{id}");
-        let _ = self.0.emit(&channel, text);
+        // Terminal output. Dropped, the pane simply stops updating — and at this volume a record
+        // per chunk would drown the stream, so the reason is named and left at debug.
+        crate::best_effort!(self.0.emit(&channel, text), "webview_gone_for_data");
     }
 
     fn emit_activity(&self, id: &str, text: &str, _cursor: u64) {
         let channel = format!("pty://activity/{id}");
-        let _ = self.0.emit(&channel, text);
+        crate::best_effort!(self.0.emit(&channel, text), "webview_gone_for_activity");
     }
 
     fn emit_exit(&self, id: &str, payload: &PtyExitPayload) {
@@ -89,12 +91,18 @@ impl PtyOutputSink for TauriSink {
     }
 
     fn emit_suspended(&self, payload: &PtySuspendedPayload) {
-        let _ = self.0.emit("resource://pty-suspended", payload);
+        crate::best_effort!(
+            self.0.emit("resource://pty-suspended", payload),
+            "webview_gone_for_suspend"
+        );
     }
 
     fn emit_resized(&self, id: &str, cols: u16, rows: u16) {
         let channel = format!("pty://resized/{id}");
-        let _ = self.0.emit(&channel, PtyResizedPayload { cols, rows });
+        crate::best_effort!(
+            self.0.emit(&channel, PtyResizedPayload { cols, rows }),
+            "webview_gone_for_resize"
+        );
     }
 }
 
@@ -104,18 +112,24 @@ pub struct WebSocketSink;
 impl PtyOutputSink for WebSocketSink {
     fn emit_data(&self, id: &str, text: &str, cursor: u64) {
         let sender = get_or_create_pty_ws_channel(id);
-        let _ = sender.send(PtyWsMessage::Data {
-            chunk: text.to_string(),
-            cursor,
-        });
+        crate::best_effort!(
+            sender.send(PtyWsMessage::Data {
+                chunk: text.to_string(),
+                cursor,
+            }),
+            "no_ws_subscriber_for_data"
+        );
     }
 
     fn emit_activity(&self, id: &str, text: &str, cursor: u64) {
         let sender = get_or_create_pty_ws_channel(id);
-        let _ = sender.send(PtyWsMessage::Activity {
-            chunk: text.to_string(),
-            cursor,
-        });
+        crate::best_effort!(
+            sender.send(PtyWsMessage::Activity {
+                chunk: text.to_string(),
+                cursor,
+            }),
+            "no_ws_subscriber_for_activity"
+        );
     }
 
     fn emit_exit(&self, id: &str, payload: &PtyExitPayload) {
@@ -146,7 +160,10 @@ impl PtyOutputSink for WebSocketSink {
 
     fn emit_resized(&self, id: &str, cols: u16, rows: u16) {
         let sender = get_or_create_pty_ws_channel(id);
-        let _ = sender.send(PtyWsMessage::Resized { cols, rows });
+        crate::best_effort!(
+            sender.send(PtyWsMessage::Resized { cols, rows }),
+            "no_ws_subscriber_for_resize"
+        );
     }
 }
 

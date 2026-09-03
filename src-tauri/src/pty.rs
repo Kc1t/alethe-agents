@@ -783,13 +783,13 @@ pub async fn spawn_pty_core(
                     sent_boot_nudge = true;
                     if pty_debug_enabled() {
                         if let Some(ref path) = debug_log_path {
-                            let _ = append_spawn_log_path(
+                            crate::best_effort!(append_spawn_log_path(
                                 path,
                                 &format!(
                                     "[pty-debug] {debug_id}: primeiro batch real recebido ({} bytes)",
                                     first.len()
                                 ),
-                            );
+                            ), "spawn_log_unavailable");
                         }
                     }
                     let nudge_writer = Arc::clone(&boot_nudge_writer);
@@ -801,19 +801,19 @@ pub async fn spawn_pty_core(
                         let claimed = try_claim_redraw_nudge(&nudge_lock);
                         if pty_debug_enabled() {
                             if let Some(ref path) = nudge_log_path {
-                                let _ = append_spawn_log_path(
+                                crate::best_effort!(append_spawn_log_path(
                                     path,
                                     &format!(
                                         "[pty-debug] {nudge_debug_id}: nudge de boot {} (150ms após 1º batch)",
                                         if claimed { "ENVIADO" } else { "pulado (perdeu a trava)" }
                                     ),
-                                );
+                                ), "spawn_log_unavailable");
                             }
                         }
                         if claimed {
                             if let Ok(mut writer) = nudge_writer.lock() {
-                                let _ = writer.write_all(&[12]);
-                                let _ = writer.flush();
+                                crate::best_effort!(writer.write_all(&[12]), "pty_write_closed");
+                                crate::best_effort!(writer.flush(), "pty_write_closed");
                             }
                         }
                     });
@@ -1103,7 +1103,7 @@ pub(crate) fn kill_process_tree(pid: u32) {
     // to the root PID if the platform PTY implementation did not do so.
     let group = -(pid as i32);
     if !send_signal(group, 15) {
-        let _ = send_signal(pid as i32, 15);
+        let _ = send_signal(pid as i32, 15); // returns bool, not Result: a false means the process is already gone
     }
 
     let deadline = Instant::now() + Duration::from_millis(750);
@@ -1412,10 +1412,10 @@ pub async fn resize_pty_core(
     tokio::task::spawn_blocking(move || {
         if pty_debug_enabled() {
             if let Some(ref path) = log_path_buf {
-                let _ = append_spawn_log_path(
+                crate::best_effort!(append_spawn_log_path(
                     path,
                     &format!("[pty-debug] {pty_id}: resize_pty {cols}x{rows}"),
-                );
+                ), "spawn_log_unavailable");
             }
         }
         let (master, writer, wants_resize_nudge, nudge_lock, cols_atomic, rows_atomic) = {
@@ -1478,20 +1478,20 @@ pub async fn resize_pty_core(
             let claimed = try_claim_redraw_nudge(&nudge_lock);
             if pty_debug_enabled() {
                 if let Some(ref path) = log_path_buf {
-                    let _ = append_spawn_log_path(
+                    crate::best_effort!(append_spawn_log_path(
                         path,
                         &format!(
                             "[pty-debug] {pty_id}: resize redraw nudge {} ({}ms after master.resize)",
                             if claimed { "sent" } else { "skipped (cooldown)" },
                             RESIZE_REDRAW_NUDGE_DELAY_MS
                         ),
-                    );
+                    ), "spawn_log_unavailable");
                 }
             }
             if claimed {
                 if let Ok(mut writer) = writer.lock() {
-                    let _ = writer.write_all(&[12]);
-                    let _ = writer.flush();
+                    crate::best_effort!(writer.write_all(&[12]), "pty_write_closed");
+                    crate::best_effort!(writer.flush(), "pty_write_closed");
                 }
             }
         }
@@ -1535,7 +1535,18 @@ fn terminate_child_tree(
 ) {
     let root_pid = child.lock().ok().and_then(|child| child.process_id());
     if let Some(pid) = root_pid {
-        let _ = process_tree::kill_pty_tree_with_expected_root(pty_id, Some(pid));
+        // Same failure mode as the tree kill in `kill_process_tree`: the pane reports stopped while
+        // the process is still alive, holding its worktree.
+        if let Err(error) = process_tree::kill_pty_tree_with_expected_root(pty_id, Some(pid)) {
+            crate::decide!(
+                target: "pty.kill",
+                attempted = "kill_pty_tree",
+                outcome = Failed,
+                because = "tree_kill_failed",
+                rule = "pty.kill.tree_before_child",
+                evidence = { pty_id = %pty_id, pid = pid as u64, error = %error },
+            );
+        }
         kill_process_tree(pid);
     }
     if let Ok(mut child) = child.lock() {
@@ -1655,7 +1666,7 @@ pub fn suspend_session(
         reason: "memory-pressure",
     });
     if let Some(path) = log_path {
-        let _ = append_spawn_log_path(path, &format!("suspend id={id} reason=memory-pressure"));
+        crate::best_effort!(append_spawn_log_path(path, &format!("suspend id={id} reason=memory-pressure")), "spawn_log_unavailable");
     }
     if let Ok(mut sessions) = sessions.lock() {
         sessions.remove(id);
@@ -1953,11 +1964,31 @@ enum ScrollbackWrite {
 }
 
 fn append_and_maybe_compact(path: &Path, bytes: &[u8]) {
+    // Every early return here silently drops terminal history. The user then reopens a pane and
+    // finds it blank, with nothing anywhere connecting that to a disk error minutes earlier.
     let mut file = match fs::OpenOptions::new().create(true).append(true).open(path) {
         Ok(file) => file,
-        Err(_) => return,
+        Err(error) => {
+            crate::decide!(
+                target: "pty.scrollback",
+                attempted = "append",
+                outcome = Failed,
+                because = "open_failed",
+                rule = "scrollback.persists_pane_history",
+                evidence = { bytes = bytes.len() as u64, error = %error },
+            );
+            return;
+        }
     };
-    if file.write_all(bytes).is_err() {
+    if let Err(error) = file.write_all(bytes) {
+        crate::decide!(
+            target: "pty.scrollback",
+            attempted = "append",
+            outcome = Failed,
+            because = "write_failed",
+            rule = "scrollback.persists_pane_history",
+            evidence = { bytes = bytes.len() as u64, error = %error },
+        );
         return;
     }
     let len = file.metadata().map(|m| m.len()).unwrap_or(0);
@@ -1966,7 +1997,16 @@ fn append_and_maybe_compact(path: &Path, bytes: &[u8]) {
         if let Ok(all) = fs::read(path) {
             if all.len() > SCROLLBACK_CAP_BYTES {
                 let tail = &all[all.len() - SCROLLBACK_CAP_BYTES..];
-                let _ = fs::write(path, tail);
+                if let Err(error) = fs::write(path, tail) {
+                    crate::decide!(
+                        target: "pty.scrollback",
+                        attempted = "compact",
+                        outcome = Failed,
+                        because = "rewrite_failed",
+                        rule = "scrollback.caps_file_size",
+                        evidence = { bytes = tail.len() as u64, error = %error },
+                    );
+                }
             }
         }
     }
@@ -1990,10 +2030,20 @@ fn scrollback_writer() -> &'static std::sync::mpsc::Sender<ScrollbackWrite> {
                         if let Some(parent) = path.parent() {
                             let _ = fs::create_dir_all(parent);
                         }
-                        let _ = fs::write(path, bytes);
+                        if let Err(error) = fs::write(path, bytes) {
+                            crate::decide!(
+                                target: "pty.scrollback",
+                                attempted = "overwrite",
+                                outcome = Failed,
+                                because = "write_failed",
+                                rule = "scrollback.persists_pane_history",
+                                evidence = { bytes = bytes.len() as u64, error = %error },
+                            );
+                        }
                     }
                     ScrollbackWrite::Barrier(done) => {
-                        let _ = done.send(());
+                        // The waiter may have given up already; the barrier is only a hint.
+                        crate::best_effort!(done.send(()), "barrier_waiter_gone");
                     }
                 }
             }
@@ -2053,10 +2103,21 @@ pub fn push_scrollback(
     // pra TODOS os terminais com qualquer atividade.
     let path_buf = path.to_path_buf();
     // Envia pro writer global em vez de spawnar uma thread por flush.
-    let _ = scrollback_writer().send(ScrollbackWrite::Append {
+    // A dead writer thread means scrollback silently stops persisting for the rest of the session,
+    // and the panes look fine until one is reopened.
+    if let Err(error) = scrollback_writer().send(ScrollbackWrite::Append {
         path: path_buf,
         bytes,
-    });
+    }) {
+        crate::decide!(
+            target: "pty.scrollback",
+            attempted = "queue_append",
+            outcome = Failed,
+            because = "writer_thread_gone",
+            rule = "scrollback.persists_pane_history",
+            evidence = { error = %error },
+        );
+    }
     Ok(cursor)
 }
 
@@ -2079,10 +2140,19 @@ pub fn flush_scrollback(
 
     // a cauda no disco.
     let path_buf = path.to_path_buf();
-    let _ = scrollback_writer().send(ScrollbackWrite::Overwrite {
+    if let Err(error) = scrollback_writer().send(ScrollbackWrite::Overwrite {
         path: path_buf,
         bytes,
-    });
+    }) {
+        crate::decide!(
+            target: "pty.scrollback",
+            attempted = "queue_overwrite",
+            outcome = Failed,
+            because = "writer_thread_gone",
+            rule = "scrollback.persists_pane_history",
+            evidence = { error = %error },
+        );
+    }
     Ok(())
 }
 
@@ -2114,7 +2184,7 @@ pub fn cleanup_orphan_scrollback_dir(dir: &Path, projects_text: &str) {
             continue;
         };
         if !projects_text.contains(stem) {
-            let _ = fs::remove_file(&path);
+            crate::best_effort!(fs::remove_file(&path), "scrollback_already_absent");
         }
     }
 }
