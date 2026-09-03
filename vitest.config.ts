@@ -13,6 +13,7 @@ import { defineConfig } from 'vitest/config'
  */
 const DOM_TESTS_IN_LIB = new Set([
   'src/lib/api/transport.test.ts',
+  'src/lib/invokeTrace.test.ts',
   'src/lib/mountQueue.test.ts',
   'src/lib/overlayPresence.test.ts',
   'src/lib/resourceEvents.test.ts',

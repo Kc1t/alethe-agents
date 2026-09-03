@@ -10,6 +10,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Não lançado]
 
+### Fixed
+
+- **The app failed to load at all on builds where `invoke` is a read-only property.** The correlation wrapper assigned to it directly, which throws in strict mode, and because it runs at module scope the whole UI died with a blank window — caused by a feature whose only job is to label log lines. It now installs defensively and, when it cannot, turns correlation off and says so once. Diagnostics that can break the thing they observe are worse than no diagnostics.
+
 ### Added
 
 - **The development screen can open, close and restart the app** — including an instance it did not start. Each command is identified by the port it uses, so an app launched from another terminal can now be stopped and restarted from the screen; previously "close the app" meant "close the app *this screen* opened", and anything else was visible in the port panel but untouchable. A restart waits for the port to actually free before starting again, because starting the instant the kill returns races the old process's socket teardown and the new instance either fails to bind or slides to a different port.
