@@ -11,7 +11,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { intlLocale, type Locale, type TFunction,useT } from '../../lib/i18n'
+import { intlLocale, type Locale, type TFunction, useT } from '../../lib/i18n'
 import { expected } from '../../lib/resilience'
 import {
   type CrashReport,

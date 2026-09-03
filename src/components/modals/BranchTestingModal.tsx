@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 
-import { type MessageKey,useT } from '../../lib/i18n'
+import { type MessageKey, useT } from '../../lib/i18n'
 import controls from './controls.module.css'
 import { Modal } from './Modal'
 

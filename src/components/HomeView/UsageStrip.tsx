@@ -1,5 +1,5 @@
 import { Clock, RefreshCw } from 'lucide-react'
-import { type ReactNode,useState } from 'react'
+import { type ReactNode, useState } from 'react'
 
 import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
 import { getCachedClaudeUsage } from '../../lib/claudeUsageCache'

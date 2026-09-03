@@ -66,7 +66,6 @@ export function ChatsProjectsPage() {
 
   useEffect(() => {
     void refresh()
-     
   }, [])
 
   const groups = useMemo<StorageGroup[]>(() => {

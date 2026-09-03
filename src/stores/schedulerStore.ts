@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-import { getLocale,translate } from '../lib/i18n'
+import { getLocale, translate } from '../lib/i18n'
 import { expected } from '../lib/resilience'
 import {
   cancelTask,

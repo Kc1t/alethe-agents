@@ -1,4 +1,4 @@
-import { Grid3x3, Layout, LayoutGrid, type LucideIcon,Sidebar as SidebarIcon } from 'lucide-react'
+import { Grid3x3, Layout, LayoutGrid, type LucideIcon, Sidebar as SidebarIcon } from 'lucide-react'
 
 import { useT } from '../../lib/i18n'
 import { type LayoutMode } from '../../lib/types'

@@ -18,7 +18,6 @@ type Props = {
   nested?: boolean
 }
 
- 
 const ANSI_PATTERN =
   /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|[\x00-\x08\x0b\x0c\x0e-\x1f]/g
 

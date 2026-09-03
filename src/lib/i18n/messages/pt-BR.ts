@@ -956,7 +956,8 @@ export const ptBR: Record<MessageKey, string> = {
   'dictation.tooShort': 'Gravação muito curta — segure um pouco mais e solte.',
   'dictation.silentMic':
     'Nenhum áudio capturado. Verifique a permissão de microfone do Alethe e o dispositivo selecionado.',
-  'dictation.emptyTranscript': 'Áudio capturado, mas o modelo não devolveu texto. Fale um pouco mais claro.',
+  'dictation.emptyTranscript':
+    'Áudio capturado, mas o modelo não devolveu texto. Fale um pouco mais claro.',
   'dictation.noActiveTerminal': 'Foque um painel de terminal antes de ditar.',
   'dictation.unsupported': 'Entrada de voz indisponível nesta versão.',
   'prefs.terminalTheme': 'Tema do terminal',
@@ -1416,7 +1417,8 @@ export const ptBR: Record<MessageKey, string> = {
   'crud.cloningRepoTitle': 'Clonando Repositório',
   'crud.cloningRepoBody': 'Iniciando clone de {url} e gerando briefing de contexto de IA…',
   'crud.repoClonedTitle': 'Repositório Clonado',
-  'crud.repoClonedBody': 'Clone concluído com sucesso. Contexto de IA injetado em AGENTS.md e CLAUDE.md.',
+  'crud.repoClonedBody':
+    'Clone concluído com sucesso. Contexto de IA injetado em AGENTS.md e CLAUDE.md.',
   'crud.cloneErrorTitle': 'Erro no Clone',
   'crud.createAgentSandboxProject': 'Criar projeto Agent Sandbox',
   'crud.firstTerminalLabel': 'Primeiro terminal',
@@ -2618,8 +2620,10 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.prNoRepoBody': 'O projeto não possui um repositório Git configurado.',
   'merge.prReviewStartedTitle': 'Revisão de PR iniciada',
   'merge.prReviewStartedBody': 'O agente está revisando o PR #{number} na worktree isolada.',
-  'merge.prMergeConfirm': 'Fazer squash merge do PR #{number} ({title})? Esta ação altera o repositório remoto.',
-  'merge.prStaleError': 'O PR foi atualizado desde a revisão. Recarregue os dados e revise o novo SHA antes do merge.',
+  'merge.prMergeConfirm':
+    'Fazer squash merge do PR #{number} ({title})? Esta ação altera o repositório remoto.',
+  'merge.prStaleError':
+    'O PR foi atualizado desde a revisão. Recarregue os dados e revise o novo SHA antes do merge.',
   'merge.prDraftError': 'PRs em rascunho não podem ser mesclados.',
   'merge.prConflictError': 'O GitHub informa que o PR possui conflitos.',
   'merge.prMergedTitle': 'PR mesclado',

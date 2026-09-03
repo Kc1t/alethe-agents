@@ -1,7 +1,7 @@
 import { ChevronRight, Folder, Loader2, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { type SyncSecuritySnapshot,syncSecuritySnapshot } from '../../lib/api/syncSecurity'
+import { type SyncSecuritySnapshot, syncSecuritySnapshot } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
 import { useProjectsStore } from '../../stores/projectsStore'
 import styles from './VaultHub.module.css'

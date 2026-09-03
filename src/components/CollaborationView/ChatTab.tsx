@@ -188,7 +188,6 @@ export function ChatTab({
       active = false
       unsubscribe()
     }
-     
   }, [])
 
   useEffect(() => {

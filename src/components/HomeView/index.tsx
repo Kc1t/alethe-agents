@@ -20,11 +20,11 @@ import homeBackground from '../../assets/home-bg-right.png'
 import { getCachedActivity } from '../../lib/activityCache'
 import { pickDirectory } from '../../lib/dialog'
 import { formatHomeDate, formatRelativeTimestamp, getGreeting } from '../../lib/greeting'
-import { type TFunction,useT } from '../../lib/i18n'
+import { type TFunction, useT } from '../../lib/i18n'
 import { formatShortcut } from '../../lib/platform'
 import { getFirstName, getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { openInBrowser } from '../../lib/tauri'
-import { type AgentType, type Project,UNRESTRICTED_FLAG } from '../../lib/types'
+import { type AgentType, type Project, UNRESTRICTED_FLAG } from '../../lib/types'
 import {
   getProjectDefaultCwd,
   getProjectRepoRoot,

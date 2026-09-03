@@ -16,7 +16,7 @@ import { useUiStore } from '../../stores/uiStore'
 import { AgentIcon } from '../icons/AgentIcons'
 import controls from './controls.module.css'
 import styles from './EditProjectModal.module.css'
-import { type ModelOption,ModelSearchablePicker } from './ModelSearchablePicker'
+import { type ModelOption, ModelSearchablePicker } from './ModelSearchablePicker'
 
 const ALL_AGENTS: { type: AgentType; label: string }[] = ALL_AGENT_TYPES.map((type) => ({
   type,

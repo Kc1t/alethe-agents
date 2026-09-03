@@ -1,11 +1,11 @@
 import { ChevronDown, Coins } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-import { costLevel,fmtTokens, fmtUsd } from '../../lib/costFormat'
+import { costLevel, fmtTokens, fmtUsd } from '../../lib/costFormat'
 import { useT } from '../../lib/i18n'
 import { basename } from '../../lib/paths'
 import type { AgentType } from '../../lib/types'
-import { selectCostTotals,useAgentCostStore } from '../../stores/agentCostStore'
+import { selectCostTotals, useAgentCostStore } from '../../stores/agentCostStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { AgentIcon } from '../icons/AgentIcons'
 import styles from './TokenHud.module.css'

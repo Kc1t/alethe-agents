@@ -1,4 +1,4 @@
-import { getLocale, type MessageKey, type TFunction,translate } from './i18n'
+import { getLocale, type MessageKey, type TFunction, translate } from './i18n'
 import type { Theme } from './types'
 
 export type ThemeOption = {

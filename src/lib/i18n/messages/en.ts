@@ -949,7 +949,8 @@ export const en = {
   'dictation.tooShort': 'Recording was too short — hold a bit longer, then release.',
   'dictation.silentMic':
     'No audio captured. Check the microphone permission for Alethe and the selected input device.',
-  'dictation.emptyTranscript': 'Heard audio, but the model returned no text. Try speaking more clearly.',
+  'dictation.emptyTranscript':
+    'Heard audio, but the model returned no text. Try speaking more clearly.',
   'dictation.noActiveTerminal': 'Focus a terminal pane before dictating.',
   'dictation.unsupported': 'Voice input is not available in this build.',
   'prefs.terminalTheme': 'Terminal theme',
@@ -1403,7 +1404,8 @@ export const en = {
   'crud.cloningRepoTitle': 'Cloning repository',
   'crud.cloningRepoBody': 'Starting the clone of {url} and generating the AI context briefing…',
   'crud.repoClonedTitle': 'Repository cloned',
-  'crud.repoClonedBody': 'Clone completed successfully. AI context injected into AGENTS.md and CLAUDE.md.',
+  'crud.repoClonedBody':
+    'Clone completed successfully. AI context injected into AGENTS.md and CLAUDE.md.',
   'crud.cloneErrorTitle': 'Clone error',
   'crud.createAgentSandboxProject': 'Create Agent Sandbox project',
   'crud.firstTerminalLabel': 'First terminal',
@@ -2593,11 +2595,13 @@ export const en = {
   'merge.pr': 'PR',
   'merge.prTooltip': 'Open Pull Request',
   'merge.prNoRepoTitle': 'PR review',
-  'merge.prNoRepoBody': 'This project doesn\'t have a configured Git repository.',
+  'merge.prNoRepoBody': "This project doesn't have a configured Git repository.",
   'merge.prReviewStartedTitle': 'PR review started',
   'merge.prReviewStartedBody': 'The agent is reviewing PR #{number} in the isolated worktree.',
-  'merge.prMergeConfirm': 'Squash merge PR #{number} ({title})? This changes the remote repository.',
-  'merge.prStaleError': 'The PR was updated since the review. Reload and check the new SHA before merging.',
+  'merge.prMergeConfirm':
+    'Squash merge PR #{number} ({title})? This changes the remote repository.',
+  'merge.prStaleError':
+    'The PR was updated since the review. Reload and check the new SHA before merging.',
   'merge.prDraftError': 'Draft PRs cannot be merged.',
   'merge.prConflictError': 'GitHub reports this PR has conflicts.',
   'merge.prMergedTitle': 'PR merged',

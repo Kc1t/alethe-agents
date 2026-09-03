@@ -1,4 +1,4 @@
-import { type DialogFilter,open, save } from '@tauri-apps/plugin-dialog'
+import { type DialogFilter, open, save } from '@tauri-apps/plugin-dialog'
 
 import { useUiStore } from '../stores/uiStore'
 import { isTauriEnv } from './api/transport'

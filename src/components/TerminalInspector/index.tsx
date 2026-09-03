@@ -13,7 +13,7 @@ import {
   TerminalSquare,
   Trash2,
 } from 'lucide-react'
-import { type ReactNode,useMemo, useState } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { useT } from '../../lib/i18n'

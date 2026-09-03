@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
-import { type InstallMethod,installShellLine } from '../lib/agentInstall'
+import { type InstallMethod, installShellLine } from '../lib/agentInstall'
 import { withFallback } from '../lib/resilience'
 import {
   agentCliVersion,

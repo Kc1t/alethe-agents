@@ -37,9 +37,7 @@ function peakAmplitude(samples: Float32Array): number {
 }
 
 /** Capture mono PCM from the preferred mic until `stop()` is called. */
-export async function startAudioCapture(
-  deviceId: string | null,
-): Promise<AudioCaptureSession> {
+export async function startAudioCapture(deviceId: string | null): Promise<AudioCaptureSession> {
   if (!navigator.mediaDevices?.getUserMedia) {
     throw new Error('Microphone API is unavailable in this webview.')
   }
@@ -61,8 +59,7 @@ export async function startAudioCapture(
       // Fall back to the system default when the preferred device is missing.
       stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     } catch {
-      const message =
-        firstError instanceof Error ? firstError.message : String(firstError)
+      const message = firstError instanceof Error ? firstError.message : String(firstError)
       throw new Error(
         `Microphone permission denied or unavailable (${message}). Allow the mic for Alethe and try again.`,
       )

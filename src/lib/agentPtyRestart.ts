@@ -21,7 +21,7 @@
  */
 import { useTerminalsStore } from '../stores/terminalsStore'
 import { preparePtyRuntimeLaunch } from './agentRuntimeAdapter'
-import { type AsyncResumableAgent,watchAndPersistDiscoveredSession } from './agentSessionDiscovery'
+import { type AsyncResumableAgent, watchAndPersistDiscoveredSession } from './agentSessionDiscovery'
 import { withFallback } from './resilience'
 import { buildAgentLaunch } from './sessionLaunch'
 import { saveSession } from './sessionResume'

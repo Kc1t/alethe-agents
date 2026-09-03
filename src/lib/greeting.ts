@@ -1,4 +1,4 @@
-import { getLocale, intlLocale, type Locale,translate } from './i18n'
+import { getLocale, intlLocale, type Locale, translate } from './i18n'
 
 export function getGreeting(date: Date = new Date(), locale: Locale = getLocale()): string {
   const h = date.getHours()

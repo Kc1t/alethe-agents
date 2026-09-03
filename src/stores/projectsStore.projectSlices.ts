@@ -13,7 +13,7 @@ import {
   getProjectRepoRoot,
 } from '../lib/terminalFactory'
 import { cleanupPtys } from '../lib/terminalLifecycle'
-import type { AgentType,Group, Project } from '../lib/types'
+import type { AgentType, Group, Project } from '../lib/types'
 import { GROUP_COLORS } from '../lib/types'
 import { sanitizeWorkspaceSnapshot } from '../lib/workspaceNavigation'
 import type { ProjectsState } from './projectsStore'

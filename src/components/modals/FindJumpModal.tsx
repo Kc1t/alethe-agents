@@ -1,4 +1,4 @@
-import { Bot, Boxes, Code2, Gift, type LucideIcon,Sparkles, Terminal } from 'lucide-react'
+import { Bot, Boxes, Code2, Gift, type LucideIcon, Sparkles, Terminal } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
