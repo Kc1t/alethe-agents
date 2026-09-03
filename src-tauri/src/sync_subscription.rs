@@ -805,7 +805,14 @@ mod tests {
         let reloaded = list_subscriptions_at(&root).unwrap();
         assert_eq!(reloaded.len(), 1);
         assert_eq!(reloaded[0].state, SubscriptionState::Configuring);
-        assert_eq!(reloaded[0].destination.as_deref(), destination.to_str());
+        // The stored destination is canonicalized on purpose (SYNC-INV-005: a path reached only
+        // through a symlink must not slip past the safety check), so the expectation has to be
+        // canonicalized the same way. Comparing against the raw temp path passed on Linux and
+        // Windows and failed on macOS, where `/var` is a symlink to `/private/var` — the test was
+        // asserting a platform detail, not the behaviour.
+        let canonical_parent = strip_verbatim_prefix(&fs::canonicalize(destination.parent().unwrap()).unwrap());
+        let expected = canonical_parent.join(destination.file_name().unwrap());
+        assert_eq!(reloaded[0].destination.as_deref(), expected.to_str());
         fs::remove_dir_all(root).unwrap();
     }
 }

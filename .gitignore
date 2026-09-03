@@ -72,3 +72,8 @@ imagem/
 
 # Build do harness E2E gerada na raiz (nunca compartilha com src-tauri/target-e2e/)
 /target-e2e/
+
+# Worktrees and merge environments Alethe provisions for its own agents. They are full checkouts of
+# this repo, so leaving them untracked-but-visible made every `git add -A` a hazard and every
+# repo-wide tool (prettier, grep) walk thousands of duplicate files.
+.alethe/
