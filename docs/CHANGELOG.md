@@ -10,6 +10,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Não lançado]
 
+### Added
+
+- **`npm run alethe` opens a development screen.** One full-screen, keyboard-driven application rather than a set of commands to remember: a command rail that starts and stops `dev`, `dev (debug)` and `web`; live port state showing not just that a port is taken but *which* process holds it, with its full command line, so a stale dev server from another worktree is identifiable and can be killed by its whole tree; and the decision stream from the unified log.
+
+- **The log panel is an inspector, not a tail.** Records are grouped by correlation id, so a single user action reads back as one timeline with the rule applied at each step. It also flags what is *absent*: a frame handed to the send queue with no matching socket write is marked incomplete, with the reason spelled out. That failure cannot be seen by scrolling a log, because the evidence for it is a record that was never written.
+
 ### Changed
 
 - **Every silently discarded failure in the app now states its verdict.** Roughly 430 sites across the Rust and TypeScript sides — a `let _ =`, an `Err(_)`, a `.catch(() => [])` — each ends either as a recorded failure or as a best-effort with a named reason. A discard with no stated reason is now a defect by definition rather than an open question, because the code could not previously distinguish "the author considered this and decided to ignore it" from "nobody noticed".
