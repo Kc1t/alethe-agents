@@ -1,10 +1,11 @@
 import { create } from 'zustand'
 
 import {
-  changeTriggerAcknowledge,
   CHANGE_TRIGGER_EVENT,
+  changeTriggerAcknowledge,
   type ChangeTriggerPayload,
 } from '../lib/api/changeTrigger'
+import { expected } from '../lib/resilience'
 import { listenEventBus } from '../lib/tauri'
 
 export type PendingChangeTrigger = {
@@ -83,7 +84,7 @@ export const useChangeTriggerStore = create<ChangeTriggerState>((set) => ({
     })
     return () => {
       active = false
-      void unlistenPromise.then((unlisten) => unlisten()).catch(() => {})
+      void unlistenPromise.then((unlisten) => unlisten()).catch(expected('unlisten_failed'))
     }
   },
 }))

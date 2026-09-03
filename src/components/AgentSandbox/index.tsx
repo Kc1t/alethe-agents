@@ -13,12 +13,12 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
-import { useProjectsStore } from '../../stores/projectsStore'
 import { useAgentSandboxStore } from '../../stores/agentSandboxStore'
+import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { Dropdown } from '../ui/Dropdown'
 import { XTermView } from '../XTermView'
 import styles from './AgentSandbox.module.css'
-import { Dropdown } from '../ui/Dropdown'
 
 export function AgentSandbox() {
   const t = useT()

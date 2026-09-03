@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { confirmAction } from '../../lib/confirmDialog'
 import { useT } from '../../lib/i18n'
+import { expected } from '../../lib/resilience'
 import {
   detectProjectStack,
   gitListBranches,
@@ -11,8 +12,8 @@ import {
   worktreeRemove,
 } from '../../lib/tauri'
 import { type AgentType, GROUP_COLORS } from '../../lib/types'
-import { getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
 import { useMergeStore } from '../../stores/mergeStore'
+import { getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { Dropdown } from '../ui/Dropdown'
 import { ColorPalettePopover } from './ColorPalettePopover'
@@ -143,7 +144,7 @@ export function EditProjectModal() {
               prev.trim() ? prev : detection.suggestedCommands.join('\n'),
             )
           })
-          .catch(() => {})
+          .catch(expected('join_failed'))
       }
     } else {
       setWorktrees([])

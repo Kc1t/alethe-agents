@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { useT } from '../../../lib/i18n'
+import type { EventBusPayload, MetricData, PlanningCommit } from '../../../lib/tauri'
 import {
   getPlanningAutocommit,
   getTelemetryMetrics,
@@ -8,13 +9,12 @@ import {
   planningAuditHistory,
   setPlanningAutocommit,
 } from '../../../lib/tauri'
-import type { EventBusPayload, MetricData, PlanningCommit } from '../../../lib/tauri'
 import { useProjectsStore } from '../../../stores/projectsStore'
 import { useSchedulerStore } from '../../../stores/schedulerStore'
+import { Dropdown } from '../../ui/Dropdown'
 import controls from '../controls.module.css'
 import styles from '../PreferencesModal.module.css'
 import { SettingsSection } from './primitives'
-import { Dropdown } from '../../ui/Dropdown'
 
 export function MultiagentPage() {
   const t = useT()

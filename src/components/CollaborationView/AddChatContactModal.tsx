@@ -140,8 +140,12 @@ export function AddChatContactModal({
       // (there's no central directory; see `sync_remote_invitation.rs`'s `PairingCode` doc).
       if (verified.rendezvousEndpoint) {
         void adoptDiscoveredRendezvousEndpoint(verified.rendezvousEndpoint)
-          .then(() => console.info('[chat-contact] adopted discovered endpoint', verified.rendezvousEndpoint))
-          .catch((cause) => console.error('[chat-contact] adoptDiscoveredRendezvousEndpoint failed', cause))
+          .then(() =>
+            console.info('[chat-contact] adopted discovered endpoint', verified.rendezvousEndpoint),
+          )
+          .catch((cause) =>
+            console.error('[chat-contact] adoptDiscoveredRendezvousEndpoint failed', cause),
+          )
       }
       await sendAckToIssuer()
       console.info('[chat-contact] ack sent to issuer, waiting for confirmation')

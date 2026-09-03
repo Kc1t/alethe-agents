@@ -15,9 +15,10 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { notifyGitChanged } from '../../hooks/useGitStatusSummary'
 import { readableError } from '../../lib/errors'
 import { type MessageKey, useT } from '../../lib/i18n'
-import { notifyGitChanged } from '../../hooks/useGitStatusSummary'
+import { withFallback } from '../../lib/resilience'
 import {
   getPtyCwd,
   gitCommit,
@@ -32,8 +33,8 @@ import {
   gitUnstage,
   openInFileExplorer,
 } from '../../lib/tauri'
-import { useProjectsStore } from '../../stores/projectsStore'
 import { getProjectRepoRoot } from '../../lib/terminalFactory'
+import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { Dropdown } from '../ui/Dropdown'
 import styles from './GitControl.module.css'
@@ -96,7 +97,7 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
       .then((value) => {
         if (!cancelled && value) setLiveCwd(value)
       })
-      .catch(() => undefined)
+      .catch(withFallback('setLiveCwd', undefined))
     return () => {
       cancelled = true
     }

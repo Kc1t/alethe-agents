@@ -1,8 +1,8 @@
 import { CheckSquare, ChevronDown, ChevronRight, Folder, Loader2, Square } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { type FolderTreeNode, scanProjectFolderTree } from '../../lib/tauri'
 import { useT } from '../../lib/i18n'
+import { type FolderTreeNode, scanProjectFolderTree } from '../../lib/tauri'
 import styles from './FolderScopePicker.module.css'
 
 /**

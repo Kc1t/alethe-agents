@@ -10,6 +10,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Não lançado]
 
+### Changed
+
+- **Every silently discarded failure in the app now states its verdict.** Roughly 430 sites across the Rust and TypeScript sides — a `let _ =`, an `Err(_)`, a `.catch(() => [])` — each ends either as a recorded failure or as a best-effort with a named reason. A discard with no stated reason is now a defect by definition rather than an open question, because the code could not previously distinguish "the author considered this and decided to ignore it" from "nobody noticed".
+
 ### Fixed
 
 - **"Why can't I connect?" is now a field instead of a guess.** The reconnect loop discarded the connection error entirely, so a refused certificate, a rejected token, an incompatible protocol version and a plain timeout all left the same trace — none — and on giving up the status reset to the same value that means "never tried". The error is kept and surfaced, and "stopped" is now distinct from "not attempted".

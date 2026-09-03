@@ -4,13 +4,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { useT } from '../../../lib/i18n'
 import { mcpErrorKey, parsePastedServer, unsupportedFor } from '../../../lib/mcp'
 import {
-  mcpRegistrySearch,
-  mcpUpsert,
   type McpCatalogEntry,
   type McpEnvInput,
   type McpInstallOption,
   type McpRegistryPage,
+  mcpRegistrySearch,
   type McpServerInput,
+  mcpUpsert,
 } from '../../../lib/tauri'
 import type { McpAgent, McpCapability, McpScope } from '../../../lib/types'
 import { AGENT_TYPE_LABELS, MCP_AGENTS } from '../../../lib/types'

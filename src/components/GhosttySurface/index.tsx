@@ -195,7 +195,12 @@ export function GhosttySurface({
           window.clearInterval(iv)
           onExitRef.current?.()
         }
-      } catch {}
+      } catch (cause) {
+        // The poll races surface teardown, so a failed probe during shutdown is routine. It is
+        // named rather than swallowed: a probe that fails for any other reason means the pane
+        // never learns its process exited and stays "running" forever.
+        console.debug('[expected] ghostty_exit_probe_failed', cause)
+      }
     }, EXIT_POLL_MS)
     return () => {
       stopped = true

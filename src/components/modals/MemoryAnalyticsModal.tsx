@@ -11,12 +11,13 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { intlLocale, useT, type Locale, type TFunction } from '../../lib/i18n'
+import { intlLocale, type Locale, type TFunction,useT } from '../../lib/i18n'
+import { expected } from '../../lib/resilience'
 import {
+  type CrashReport,
   getJobGuardStatus,
   getLastCrashReport,
   openLogsFolder,
-  type CrashReport,
 } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import type { MemorySample } from '../../stores/uiStore'
@@ -277,9 +278,7 @@ export function MemoryAnalyticsModal() {
 
   const [crash, setCrash] = useState<CrashReport | null>(null)
   useEffect(() => {
-    void getLastCrashReport()
-      .then(setCrash)
-      .catch(() => {})
+    void getLastCrashReport().then(setCrash).catch(expected('then_failed'))
   }, [])
 
   // saber de verdade.
@@ -352,7 +351,7 @@ export function MemoryAnalyticsModal() {
               <button
                 type="button"
                 className={controls.btn}
-                onClick={() => void openLogsFolder().catch(() => {})}
+                onClick={() => void openLogsFolder().catch(expected('open_logs_folder_failed'))}
               >
                 <FolderOpen size={14} />
                 {t('mod.openLogs')}

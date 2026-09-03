@@ -7,9 +7,9 @@ import {
   githubSyncPull,
   githubSyncPush,
   githubSyncSetToken,
+  type GithubSyncStatus,
   githubSyncStatus,
   openInBrowser,
-  type GithubSyncStatus,
 } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'

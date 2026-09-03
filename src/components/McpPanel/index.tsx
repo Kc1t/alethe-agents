@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { type MessageKey, useT } from '../../lib/i18n'
 import { groupServersByName, matchesQuery, mcpErrorKey } from '../../lib/mcp'
 import { groupSkillsByName, matchesSkillQuery } from '../../lib/skills'
-import { skillsScan, type SkillAgentSnapshot } from '../../lib/tauri'
+import { type SkillAgentSnapshot,skillsScan } from '../../lib/tauri'
+import { type PluginScopeSnapshot, pluginsScan } from '../../lib/tauri'
 import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import type { AgentType, McpAgent, McpAgentSnapshot, McpScope } from '../../lib/types'
 import { AGENT_TYPE_LABELS, MCP_AGENTS } from '../../lib/types'
@@ -14,13 +15,9 @@ import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
 import { AgentIcon } from '../icons/AgentIcons'
 import controls from '../modals/controls.module.css'
-import { ScopeSwitch } from './ScopeSwitch'
-import {
-  type PluginScopeSnapshot,
-  pluginsScan,
-} from '../../lib/tauri'
-import { ServerRow } from './ServerRow'
 import styles from './McpPanel.module.css'
+import { ScopeSwitch } from './ScopeSwitch'
+import { ServerRow } from './ServerRow'
 
 type View = 'servers' | 'skills' | 'plugins'
 
@@ -243,9 +240,7 @@ export function McpPanel() {
           <EmptyState
             compact
             icon={<Plug size={20} />}
-            title={
-              total === 0 ? t(`mcp.emptyOf.${view}` as MessageKey) : t('mcp.noMatch')
-            }
+            title={total === 0 ? t(`mcp.emptyOf.${view}` as MessageKey) : t('mcp.noMatch')}
             description={total === 0 && showingServers ? t('mcp.emptyDescription') : undefined}
           />
         </div>
@@ -267,48 +262,46 @@ export function McpPanel() {
                   <span className={styles.summary}>
                     {/* Scope is the whole point of the row: a plugin only on the machine is not
                         loaded by agents started here, and looks identical otherwise. */}
-                    {plugin.scope === 'alethe'
-                      ? t('plugins.scopeAlethe')
-                      : t('plugins.scopeUser')}
+                    {plugin.scope === 'alethe' ? t('plugins.scopeAlethe') : t('plugins.scopeUser')}
                   </span>
                 </button>
               ))
             : showingServers
-            ? visibleServers.map((group) => (
-                <ServerRow
-                  key={group.name}
-                  group={group}
-                  theme={theme}
-                  onOpen={(server) => openModal('mcpManager', { tab: 'servers', server })}
-                />
-              ))
-            : visibleSkills.map((group) => (
-                <button
-                  key={group.name}
-                  type="button"
-                  className={styles.row}
-                  onClick={() => openModal('mcpManager', { tab: 'skills' })}
-                >
-                  <span className={styles.rowTop}>
-                    <span className={styles.name}>{group.name}</span>
-                    {group.bundled ? <Lock size={11} /> : null}
-                    {group.sharedEntry ? <Link2 size={11} /> : null}
-                    <span className={styles.agentIcons} title={group.agents.join(', ')}>
-                      {group.agents.map((agent) => (
-                        <i key={agent} className={styles.agentOn}>
-                          <AgentIcon type={agent as AgentType} size={13} theme={theme} />
-                        </i>
-                      ))}
+              ? visibleServers.map((group) => (
+                  <ServerRow
+                    key={group.name}
+                    group={group}
+                    theme={theme}
+                    onOpen={(server) => openModal('mcpManager', { tab: 'servers', server })}
+                  />
+                ))
+              : visibleSkills.map((group) => (
+                  <button
+                    key={group.name}
+                    type="button"
+                    className={styles.row}
+                    onClick={() => openModal('mcpManager', { tab: 'skills' })}
+                  >
+                    <span className={styles.rowTop}>
+                      <span className={styles.name}>{group.name}</span>
+                      {group.bundled ? <Lock size={11} /> : null}
+                      {group.sharedEntry ? <Link2 size={11} /> : null}
+                      <span className={styles.agentIcons} title={group.agents.join(', ')}>
+                        {group.agents.map((agent) => (
+                          <i key={agent} className={styles.agentOn}>
+                            <AgentIcon type={agent as AgentType} size={13} theme={theme} />
+                          </i>
+                        ))}
+                      </span>
                     </span>
-                  </span>
-                  <span className={styles.summary}>
-                    {group.description ||
-                      group.agents
-                        .map((agent) => AGENT_TYPE_LABELS[agent as AgentType] ?? agent)
-                        .join(', ')}
-                  </span>
-                </button>
-              ))}
+                    <span className={styles.summary}>
+                      {group.description ||
+                        group.agents
+                          .map((agent) => AGENT_TYPE_LABELS[agent as AgentType] ?? agent)
+                          .join(', ')}
+                    </span>
+                  </button>
+                ))}
         </div>
       )}
 
@@ -316,10 +309,7 @@ export function McpPanel() {
         type="button"
         className={styles.addMore}
         onClick={() =>
-          openModal(
-            'mcpManager',
-            showingServers ? { tab: 'servers', add: true } : { tab: view },
-          )
+          openModal('mcpManager', showingServers ? { tab: 'servers', add: true } : { tab: view })
         }
       >
         <Plus size={13} />

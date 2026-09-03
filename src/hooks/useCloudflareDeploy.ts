@@ -5,6 +5,7 @@ import {
   getCloudflareDeployWorkdir,
   probeCloudflareState,
 } from '../lib/api/cloudflareDeploy'
+import { withFallback } from '../lib/resilience'
 import { killPty, listenPtyData, listenPtyExit, spawnPty, writePty } from '../lib/tauri'
 
 export type CloudflareDeployStep =
@@ -63,7 +64,7 @@ export function useCloudflareDeploy() {
     cleanupRef.current = []
     const ptyId = ptyIdRef.current
     ptyIdRef.current = null
-    if (ptyId) void killPty(ptyId).catch(() => undefined)
+    if (ptyId) void killPty(ptyId).catch(withFallback('killPty', undefined))
   }, [])
 
   useEffect(() => {
@@ -110,7 +111,7 @@ export function useCloudflareDeploy() {
       const ptyId = `cloudflare-deploy_${Date.now()}`
       const spawned = await spawnPty({ cols: 100, rows: 24, id: ptyId, cwd: workdir })
       if (disposedRef.current) {
-        void killPty(spawned.id).catch(() => undefined)
+        void killPty(spawned.id).catch(withFallback('killPty', undefined))
         return
       }
       ptyIdRef.current = spawned.id
@@ -149,7 +150,7 @@ export function useCloudflareDeploy() {
           // exactly what caused the deploy step to see no saved credentials and re-prompt login.
           if (!answeredSkillsPrompt && lower.includes('cloudflare skills')) {
             answeredSkillsPrompt = true
-            void writePty(spawned.id, 'n\r').catch(() => undefined)
+            void writePty(spawned.id, 'n\r').catch(withFallback('writePty', undefined))
           }
           // Generic fallback for any other Wrangler y/n prompt (e.g. confirming the `workers_dev`
           // default) — matches "(y/n)", "[y/n]", or "» (Y/n)" style hints. Debounced instead of a
@@ -161,7 +162,7 @@ export function useCloudflareDeploy() {
             Date.now() - lastGenericPromptAnswerAt > 2_000
           ) {
             lastGenericPromptAnswerAt = Date.now()
-            void writePty(spawned.id, 'y\r').catch(() => undefined)
+            void writePty(spawned.id, 'y\r').catch(withFallback('writePty', undefined))
           }
           if (lower.includes(NEEDS_WORKERS_DEV_SUBDOMAIN)) setNeedsWorkersDevSubdomain(true)
         }),

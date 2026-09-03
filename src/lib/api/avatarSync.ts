@@ -6,10 +6,10 @@
 // misses this update, no different from missing any other relay envelope.
 
 import { downscaleAvatar } from '../image/downscaleAvatar'
+import { syncLocalIdentity } from '../tauri'
 import { connectRendezvous, sendRendezvousFrame } from './syncRendezvous'
 import { syncListChatContacts, syncSealAvatarUpdate } from './syncSecurity'
 import { isTauriEnv } from './transport'
-import { syncLocalIdentity } from '../tauri'
 
 async function sealAndSendAvatarUpdate(
   thumbnail: string | null,
@@ -17,7 +17,11 @@ async function sealAndSendAvatarUpdate(
   recipientAccountRoute: string,
   recipientAgreementPublicKey: string,
 ): Promise<void> {
-  const ciphertext = await syncSealAvatarUpdate(identityAccountRoute, thumbnail, recipientAgreementPublicKey)
+  const ciphertext = await syncSealAvatarUpdate(
+    identityAccountRoute,
+    thumbnail,
+    recipientAgreementPublicKey,
+  )
   await sendRendezvousFrame({
     type: 'enqueue',
     kind: 'avatar_update',
@@ -43,11 +47,14 @@ export async function broadcastAvatarUpdate(profileImageUrl: string | null): Pro
     await connectRendezvous()
     await Promise.all(
       contacts.map((contact) =>
-        sealAndSendAvatarUpdate(thumbnail, identity.accountRoute, contact.accountRoute, contact.agreementPublicKey).catch(
-          (cause) => {
-            console.error('[avatar-sync] failed to notify contact', contact.accountRoute, cause)
-          },
-        ),
+        sealAndSendAvatarUpdate(
+          thumbnail,
+          identity.accountRoute,
+          contact.accountRoute,
+          contact.agreementPublicKey,
+        ).catch((cause) => {
+          console.error('[avatar-sync] failed to notify contact', contact.accountRoute, cause)
+        }),
       ),
     )
   } catch (cause) {
@@ -80,9 +87,17 @@ export async function sendAvatarUpdateTo(
   if (Date.now() - lastSentAt < RESEND_THROTTLE_MS) return
   lastSentAtByAccountRoute.set(recipientAccountRoute, Date.now())
   try {
-    const [thumbnail, identity] = await Promise.all([downscaleAvatar(profileImageUrl), syncLocalIdentity()])
+    const [thumbnail, identity] = await Promise.all([
+      downscaleAvatar(profileImageUrl),
+      syncLocalIdentity(),
+    ])
     await connectRendezvous()
-    await sealAndSendAvatarUpdate(thumbnail, identity.accountRoute, recipientAccountRoute, recipientAgreementPublicKey)
+    await sealAndSendAvatarUpdate(
+      thumbnail,
+      identity.accountRoute,
+      recipientAccountRoute,
+      recipientAgreementPublicKey,
+    )
   } catch (cause) {
     console.error('[avatar-sync] sendAvatarUpdateTo failed', recipientAccountRoute, cause)
   }

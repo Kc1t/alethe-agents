@@ -1,21 +1,21 @@
-import { useState } from 'react'
 import {
-  Play,
-  Send,
+  Activity,
   CheckCircle2,
-  XCircle,
   Circle,
   FileCode,
   Layers,
-  Wrench,
-  ScanSearch,
-  Activity,
   Loader2,
+  Play,
+  ScanSearch,
+  Send,
+  Wrench,
+  XCircle,
 } from 'lucide-react'
+import { useState } from 'react'
 
-import { useT, type MessageKey } from '../../lib/i18n'
-import { Modal } from './Modal'
+import { type MessageKey,useT } from '../../lib/i18n'
 import controls from './controls.module.css'
+import { Modal } from './Modal'
 
 export type ProcedureCategory = 'setup' | 'action' | 'verify'
 export type TestingItem = { id: string; text: string; category?: string }
@@ -43,7 +43,9 @@ export type BranchTestingModalProps = {
   onClose: () => void
   branchName: string
   projectName: string
-  changesSummary: Array<string | { path: string; status: string; additions?: number; deletions?: number }>
+  changesSummary: Array<
+    string | { path: string; status: string; additions?: number; deletions?: number }
+  >
   /** Shield layer 4 — 'idle' when the project has no `healthCheckCommand`
    *  configured (the section shows only a hint, never triggers on its own). */
   healthState: 'idle' | 'loading' | 'ok' | 'warn'

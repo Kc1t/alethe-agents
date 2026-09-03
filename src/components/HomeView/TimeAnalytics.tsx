@@ -1,9 +1,9 @@
 import { RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-import { intlLocale, useT, type MessageKey } from '../../lib/i18n'
 import { flushActivityTracker } from '../../lib/activityTracker'
-import { getActivitySummary, type ActivitySummary } from '../../lib/tauri'
+import { intlLocale, type MessageKey,useT } from '../../lib/i18n'
+import { type ActivitySummary,getActivitySummary } from '../../lib/tauri'
 import type { AgentType } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { AgentIcon } from '../icons/AgentIcons'

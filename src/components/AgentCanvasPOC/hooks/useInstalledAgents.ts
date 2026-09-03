@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { CORE_AGENTS } from '../../../lib/agentCanvasConfig'
 import { AGENT_LIBRARY } from '../../../lib/agentLibrary'
 import { useT } from '../../../lib/i18n'
+import { expected } from '../../../lib/resilience'
 import {
   economyAgentsEnabled,
   installAgent as installAgentCmd,
@@ -36,9 +37,7 @@ export function useInstalledAgents(session: Session | null) {
 
   useEffect(() => {
     if (!session) return
-    economyAgentsEnabled(session.folder)
-      .then(setEconomyOn)
-      .catch(() => {})
+    economyAgentsEnabled(session.folder).then(setEconomyOn).catch(expected('then_failed'))
     refreshInstalled()
   }, [session, refreshInstalled])
 

@@ -1,9 +1,8 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { type ReactNode,useLayoutEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { useOnClickOutside } from '../../hooks/useOnClickOutside'
 import { useOnEscape } from '../../hooks/useOnEscape'
-import { createPortal } from 'react-dom'
-
 import styles from './ContextMenu.module.css'
 
 export type MenuItem =

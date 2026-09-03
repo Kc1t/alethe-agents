@@ -1,9 +1,10 @@
 import { Clock, RefreshCw } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { type ReactNode,useState } from 'react'
+
+import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
 import { getCachedClaudeUsage } from '../../lib/claudeUsageCache'
 import { getCachedCodexUsage } from '../../lib/codexUsageCache'
-import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
-import { translate, getLocale, useT } from '../../lib/i18n'
+import { getLocale, translate, useT } from '../../lib/i18n'
 import type { AntigravityUsage, ClaudeUsage, CodexUsage } from '../../lib/tauri'
 import { useUiStore } from '../../stores/uiStore'
 import { AntigravityIcon, ClaudeIcon, CodexIcon } from '../icons/AgentIcons'

@@ -6,6 +6,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
 import { isOverlayPresent, subscribeOverlayPresence } from '../../lib/overlayPresence'
+import { expected } from '../../lib/resilience'
 import {
   type SurfaceRect,
   surfaceRectsEqual,
@@ -132,8 +133,8 @@ export function PrivateBrowserSurface({
       if (!disposed) setSurfaceState('loading')
       void closing
         .hide()
-        .catch(() => {})
-        .then(() => closing.close().catch(() => {}))
+        .catch(expected('hide_failed'))
+        .then(() => closing.close().catch(expected('close_failed')))
     }
 
     const scheduleEviction = () => {
@@ -169,13 +170,13 @@ export function PrivateBrowserSurface({
       void instance
         .once('tauri://created', () => {
           if (disposed || webview !== instance) {
-            void instance.close().catch(() => {})
+            void instance.close().catch(expected('close_failed'))
             return
           }
           created = true
           setSurfaceState('ready')
           setError('')
-          void instance.setZoom(zoom).catch(() => {})
+          void instance.setZoom(zoom).catch(expected('set_zoom_failed'))
           scheduleSync()
         })
         .then((unlisten) => {
@@ -294,7 +295,7 @@ export function PrivateBrowserSurface({
         if (disposed) unlisten()
         else unlistenScale = unlisten
       })
-      .catch(() => {})
+      .catch(expected('unlisten_failed'))
     scheduleSync()
 
     return () => {

@@ -58,9 +58,11 @@ describe('change procedure prompt', () => {
   it('asks for an explicit choice on files whose existing step went stale', () => {
     // Amending the step that already exists and adding a new one are different outcomes, and only
     // the agent can tell which is right — so the prompt has to ask rather than assume.
-    const prompt = buildChangeProcedurePrompt(t, [file('src/chat.tsx', 5, 2)], [
-      { path: 'src/chat.tsx', stepSummary: 'chat grid' },
-    ])
+    const prompt = buildChangeProcedurePrompt(
+      t,
+      [file('src/chat.tsx', 5, 2)],
+      [{ path: 'src/chat.tsx', stepSummary: 'chat grid' }],
+    )
 
     expect(prompt).toContain('- src/chat.tsx — covered by: "chat grid"')
     expect(prompt).toMatch(/amend that existing step or add a new step/)

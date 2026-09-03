@@ -18,6 +18,7 @@ import { getLocale, translate } from '../../lib/i18n'
 import { isLinux, isWindows } from '../../lib/platform'
 import { usePtyPanelVisible } from '../../lib/ptyVisibility'
 import { orEmpty, orEmptyList } from '../../lib/resilience'
+import { expected } from '../../lib/resilience'
 import {
   claimMostRecentSession,
   isSessionClaimed,
@@ -469,7 +470,7 @@ export function useXtermSession(params: {
     // cima do fallback do sistema por uma corrida de carregamento.
     const terminalFontReady = document.fonts
       .load('400 14px "Caskaydia Cove Nerd Font Mono"')
-      .catch(() => {})
+      .catch(expected('load_failed'))
     const fitAddon = new FitAddon()
     const searchAddon = new SearchAddon()
     terminal.loadAddon(fitAddon)
@@ -716,7 +717,7 @@ export function useXtermSession(params: {
           console.warn('[Alethe][xterm] terminal.write() falhou, ressincronizando', error)
           pendingWrites = []
           pendingWriteLength = 0
-          void resyncTerminalRef.current?.('reconnect').catch(() => {})
+          void resyncTerminalRef.current?.('reconnect').catch(expected('write_failed'))
           return
         }
       }
@@ -735,7 +736,7 @@ export function useXtermSession(params: {
       if (pendingWriteLength + chunk.length > MAX_PENDING_WRITE_BYTES) {
         pendingWrites = []
         pendingWriteLength = 0
-        void resyncTerminalRef.current?.('reconnect').catch(() => {})
+        void resyncTerminalRef.current?.('reconnect').catch(expected('if_failed'))
         return
       }
       pendingWrites.push(chunk)
@@ -1246,7 +1247,9 @@ export function useXtermSession(params: {
       const id = ptyIdRef.current
       if (!id) return
       const stableGrid = resolveStableGrid(cols, rows)
-      void resizePty(id, stableGrid.cols, stableGrid.rows, activeProfileId).catch(() => {})
+      void resizePty(id, stableGrid.cols, stableGrid.rows, activeProfileId).catch(
+        expected('resize_pty_failed'),
+      )
       // O dono acabou de medir o próprio container via fitAddon.fit(), então
       // renderiza sempre na fonte nativa — sem escala de observador.
       restoreBaseFontSize()
@@ -1640,7 +1643,9 @@ export function useXtermSession(params: {
       onSpawnedRef.current?.(existingId)
       // Sessão pode já existir de antes deste mount (reload do app, etc.) —
       // estabelece a visibilidade correta no backend desde já.
-      void setPtyVisible(existingId, isPanelVisibleRef.current, activeProfileId).catch(() => {})
+      void setPtyVisible(existingId, isPanelVisibleRef.current, activeProfileId).catch(
+        expected('set_pty_visible_failed'),
+      )
 
       if (command === 'claude' || command === 'codex' || command === 'opencode') {
         completionMonitor = new AgentCompletionMonitor({
@@ -2098,7 +2103,9 @@ export function useXtermSession(params: {
 
         // visibilidade correta desde o primeiro lote (ex.: pane aberto num
         // grupo/aba já invisível não deve gastar render à toa).
-        void setPtyVisible(response.id, isPanelVisibleRef.current, activeProfileId).catch(() => {})
+        void setPtyVisible(response.id, isPanelVisibleRef.current, activeProfileId).catch(
+          expected('set_pty_visible_failed'),
+        )
         if (command && cwd && launch.sessionId) {
           // Owned by the tab as well as the PTY: the PTY id changes on every
           // respawn, and a claim only reachable through a dead PTY id would make
@@ -2159,7 +2166,7 @@ export function useXtermSession(params: {
           terminal.write(
             '\r\n\x1b[33m[alethe] Codex session is busy — opening a fresh session…\x1b[0m\r\n',
           )
-          void killPty(response.id, activeProfileId).catch(() => {})
+          void killPty(response.id, activeProfileId).catch(expected('kill_pty_failed'))
           setRetryKey((value) => value + 1)
         }
 
@@ -2427,7 +2434,9 @@ export function useXtermSession(params: {
                   await new Promise((resolve) => window.setTimeout(resolve, 300))
                   const stillUnchanged = !disposed && readVisibleScreenText() === beforeRetry
                   if (stillUnchanged) {
-                    void writePty(response.id, '\r', activeProfileId).catch(() => {})
+                    void writePty(response.id, '\r', activeProfileId).catch(
+                      expected('write_pty_failed'),
+                    )
                   }
                 }
               }
@@ -2535,7 +2544,7 @@ export function useXtermSession(params: {
     if (!isPanelVisible) lastIoWhenHiddenRef.current = ioAtNow()
 
     void setPtyVisible(ptyId, isPanelVisible, activeProfileId)
-      .catch(() => {})
+      .catch(expected('set_pty_visible_failed'))
       .then(() => {
         if (cancelled || !isPanelVisible || wasVisible) return
         if (lastIoWhenHiddenRef.current !== null && ioAtNow() === lastIoWhenHiddenRef.current)

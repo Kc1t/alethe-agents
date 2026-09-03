@@ -1,10 +1,10 @@
 import { Check, Cloud, MemoryStick, UserRound } from 'lucide-react'
 
-import { AntigravityIcon, ClaudeIcon, CodexIcon } from '../icons/AgentIcons'
 import { useT } from '../../lib/i18n'
 import type { Preferences } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { AntigravityIcon, ClaudeIcon, CodexIcon } from '../icons/AgentIcons'
 import { Modal } from './Modal'
 import styles from './TopbarSettingsModal.module.css'
 

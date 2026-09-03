@@ -19,6 +19,7 @@ import { readableError } from '../../lib/errors'
 import { writeFileDragPayload } from '../../lib/fileDrag'
 import { useT } from '../../lib/i18n'
 import { basename } from '../../lib/paths'
+import { withFallback } from '../../lib/resilience'
 import {
   deleteFilesystemEntry,
   type DirectoryEntry,
@@ -71,7 +72,7 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
       .then((value) => {
         if (!cancelled && value) setLiveCwd(value)
       })
-      .catch(() => undefined)
+      .catch(withFallback('setLiveCwd', undefined))
     return () => {
       cancelled = true
     }

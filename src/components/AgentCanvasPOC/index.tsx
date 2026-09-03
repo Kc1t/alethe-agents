@@ -32,6 +32,7 @@ import { AGENT_LIBRARY } from '../../lib/agentLibrary'
 import { fmtTokens, fmtUsd, shortModel } from '../../lib/costFormat'
 import { useT } from '../../lib/i18n'
 import { normalizeCwd } from '../../lib/platform'
+import { expected } from '../../lib/resilience'
 import {
   agentHooksEndpoint,
   agentHooksSettingsPath,
@@ -216,15 +217,13 @@ function AgentCanvasInner() {
   }, [hooksRetryNonce])
 
   useEffect(() => {
-    getModelPricing()
-      .then(setPricing)
-      .catch(() => {})
+    getModelPricing().then(setPricing).catch(expected('then_failed'))
   }, [])
 
   const restartClaude = () => {
     if (!session) return
     console.log('[AgentCanvasPOC] reiniciando claude — matando PTY', session.ptyId)
-    void killPty(session.ptyId).catch(() => {})
+    void killPty(session.ptyId).catch(expected('kill_pty_failed'))
     setClaudeExited(null)
     setRestartHint(false)
 
@@ -363,7 +362,7 @@ function AgentCanvasInner() {
   const exitCanvas = () => {
     if (session) {
       console.log('[AgentCanvasPOC] saindo — matando PTY', session.ptyId)
-      void killPty(session.ptyId).catch(() => {})
+      void killPty(session.ptyId).catch(expected('kill_pty_failed'))
     }
 
     killAllWorkers()

@@ -17,11 +17,12 @@ import {
 } from 'lucide-react'
 
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
-import { pickFile, saveFile } from '../../lib/dialog'
-import { useT } from '../../lib/i18n'
 import { syncDeleteProjectConversation } from '../../lib/api/syncChat'
 import { syncDeleteProjectAccess } from '../../lib/api/syncSecurity'
 import { syncDeleteProjectTasks } from '../../lib/api/syncTasks'
+import { pickFile, saveFile } from '../../lib/dialog'
+import { useT } from '../../lib/i18n'
+import { withFallback } from '../../lib/resilience'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import { collectDescendants } from '../../lib/sidebarTree'
 import {
@@ -267,9 +268,15 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
           )
         ) {
           actions.deleteProject(project.id)
-          void syncDeleteProjectAccess(project.id).catch((error) => console.error('Failed to delete project access', error))
-          void syncDeleteProjectConversation(project.id).catch((error) => console.error('Failed to delete project conversation', error))
-          void syncDeleteProjectTasks(project.id).catch((error) => console.error('Failed to delete project tasks', error))
+          void syncDeleteProjectAccess(project.id).catch((error) =>
+            console.error('Failed to delete project access', error),
+          )
+          void syncDeleteProjectConversation(project.id).catch((error) =>
+            console.error('Failed to delete project conversation', error),
+          )
+          void syncDeleteProjectTasks(project.id).catch((error) =>
+            console.error('Failed to delete project tasks', error),
+          )
         }
       },
     },
@@ -398,7 +405,7 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
     const saved = activeTab?.cwd?.trim() || term.cwd?.trim()
     if (saved) return saved
     if (!activeTab?.ptyId) return null
-    return getPtyCwd(activeTab.ptyId).catch(() => null)
+    return getPtyCwd(activeTab.ptyId).catch(withFallback('getPtyCwd', null))
   }
 
   const openTerminalPath = async (

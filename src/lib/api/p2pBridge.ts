@@ -61,7 +61,6 @@ export async function parsePairingCode(code: string): Promise<PairingCode> {
   return invoke('sync_parse_pairing_code', { code })
 }
 
-
 /** This device's `classify_nat` result — see the Rust `NatClass` doc comments for what each
  * variant means and its caveats. `symmetric` on both sides of a session means a hole punch cannot
  * succeed (not "is unlikely to") and the caller should skip straight to the relay fallback. */

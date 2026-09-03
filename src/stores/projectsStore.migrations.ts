@@ -354,10 +354,7 @@ function migrateToV7(parsed: any): ProjectsFile {
   // when something was actually dropped — for every other file this path must stay a no-op.
   const droppedTerminals =
     projects.reduce((total: number, p: any) => total + (p.terminals?.length ?? 0), 0) !==
-    (parsed.projects ?? []).reduce(
-      (total: number, p: any) => total + (p.terminals?.length ?? 0),
-      0,
-    )
+    (parsed.projects ?? []).reduce((total: number, p: any) => total + (p.terminals?.length ?? 0), 0)
 
   return normalizeStoredAccents({
     ...parsed,

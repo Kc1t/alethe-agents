@@ -36,6 +36,7 @@ import {
   type TaskRecord,
 } from '../../lib/api/syncTasks'
 import { type TFunction, useT } from '../../lib/i18n'
+import { withFallback } from '../../lib/resilience'
 import { syncLocalIdentity, syncSecuritySnapshot } from '../../lib/tauri'
 import styles from './TasksPanel.module.css'
 
@@ -144,7 +145,7 @@ export function TasksPanel({ projectId }: { projectId: string }) {
         })
         setAssignable(merged)
       })
-      .catch(() => undefined)
+      .catch(withFallback('setAssignable', undefined))
     return () => {
       active = false
     }
@@ -392,7 +393,9 @@ export function TasksPanel({ projectId }: { projectId: string }) {
     void setTaskColumn(task, columnId)
   }
 
-  const activeDragTask = activeDragTaskId ? all.find((task) => task.taskId === activeDragTaskId) : null
+  const activeDragTask = activeDragTaskId
+    ? all.find((task) => task.taskId === activeDragTaskId)
+    : null
 
   return (
     <div className={styles.container}>

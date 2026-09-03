@@ -17,8 +17,8 @@ import { resolvePendingFsBrowser } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import { DirectoryEntry, DirectoryListing, listDirectory } from '../../lib/tauri'
 import { useUiStore } from '../../stores/uiStore'
-import { Modal } from './Modal'
 import styles from './FsBrowserModal.module.css'
+import { Modal } from './Modal'
 
 function formatBytes(bytes?: number | null): string {
   if (bytes === undefined || bytes === null) return ''

@@ -56,7 +56,8 @@ export const en = {
   'chat.attachFile': 'Attach a file',
   'chat.projectInvite.invite': 'Invite to a project',
   'chat.projectInvite.chooseProject': 'Project',
-  'chat.projectInvite.explain': 'They will be asked to accept. Nothing is shared until they do — the invite only names the project.',
+  'chat.projectInvite.explain':
+    'They will be asked to accept. Nothing is shared until they do — the invite only names the project.',
   'chat.projectInvite.send': 'Send invite',
   'chat.projectInvite.sent': 'Invite sent. You will be notified when they answer.',
   'chat.projectInvite.failed': 'Could not send the invite.',
@@ -117,7 +118,8 @@ export const en = {
   'chat.contacts.save': 'Save contact',
   'chat.contacts.saveFailed': 'Could not save this contact.',
   'chat.contacts.waitingConfirm': 'Waiting for the other device to confirm…',
-  'chat.contacts.confirmTimedOut': 'The other device did not confirm in time — make sure their app is open and try again.',
+  'chat.contacts.confirmTimedOut':
+    'The other device did not confirm in time — make sure their app is open and try again.',
   'chat.contacts.listFailed': 'Could not load your chat contacts.',
   'chat.contacts.empty': 'Add a chat contact to start a conversation — no project required.',
   'chat.contactInfo.open': 'Contact info',
@@ -150,7 +152,8 @@ export const en = {
   'tasks.renameCategory': 'Rename category',
   'tasks.deleteCategory': 'Delete category',
   'tasks.renameCategoryPrompt': 'New category name:',
-  'tasks.deleteCategoryConfirm': 'Delete this category? It will be removed from every task that has it.',
+  'tasks.deleteCategoryConfirm':
+    'Delete this category? It will be removed from every task that has it.',
   'tasks.commentPlaceholder': 'Write a comment…',
   'tasks.assignTo': 'Assign to',
   'tasks.assigneeSelf': 'Me',
@@ -160,7 +163,8 @@ export const en = {
   'mesh.projectSync': 'Project Synchronization',
   'mesh.inviteStepShare': 'Send this code to the person you want to share the project with.',
   'mesh.inviteStepRedeem': 'They open Chat → add contact and paste it there.',
-  'mesh.inviteStepApprove': 'Their request arrives here for you to approve — approve it with this project selected to share it along with the contact.',
+  'mesh.inviteStepApprove':
+    'Their request arrives here for you to approve — approve it with this project selected to share it along with the contact.',
   'mesh.inviteReviewRequests': 'Review {count} pending request(s)',
   'mesh.inviteFriend': 'Invite Friend',
   'mesh.vault': 'Vault & Folders',
@@ -270,14 +274,17 @@ export const en = {
   'vault.revokeInvitationConfirm':
     'Revoke this pending invitation? The recipient will not be able to redeem it.',
   'vault.collaboratorsTitle': 'Collaborators & permissions',
-  'vault.collaboratorsHint': 'Edit what each collaborator on this project can see and do — no need to revoke and re-invite just to change access.',
+  'vault.collaboratorsHint':
+    'Edit what each collaborator on this project can see and do — no need to revoke and re-invite just to change access.',
   'vault.loadFailed': 'Could not load collaborators.',
   'vault.noCollaborators': 'No one else has access to this project yet.',
   'vault.fullProjectScope': 'Whole project',
   'vault.revoke': 'Revoke access',
-  'vault.revokeConfirm': 'Revoke this collaborator\'s access to the project? This cannot be undone — they would need a new invitation.',
+  'vault.revokeConfirm':
+    "Revoke this collaborator's access to the project? This cannot be undone — they would need a new invitation.",
   'vault.backupTitle': 'Backup vault & folders',
-  'vault.backupHint': 'Choose which folders are protected by append-only backups, and manage existing archives.',
+  'vault.backupHint':
+    'Choose which folders are protected by append-only backups, and manage existing archives.',
   'vault.openBackupVault': 'Open backup vault',
   'vault.forProject': 'For project: {name}',
   'vault.addCollaborator': 'Add collaborator',
@@ -715,7 +722,7 @@ export const en = {
   'prefs.chatsProjects.categoryMessages': 'Messages',
   'prefs.chatsProjects.clearMessages': 'Clear messages',
   'prefs.chatsProjects.clearMessagesConfirm':
-    'Delete this conversation\'s entire message history? Attachments are not affected. This cannot be undone.',
+    "Delete this conversation's entire message history? Attachments are not affected. This cannot be undone.",
   'prefs.chatsProjects.categoryImage': 'Images',
   'prefs.chatsProjects.categoryVideo': 'Videos',
   'prefs.chatsProjects.categoryOther': 'Other files',
@@ -792,7 +799,8 @@ export const en = {
   'prefs.bioPlaceholder': 'Write something about yourself…',
   'prefs.bioHint': 'Shown to your chat contacts. Only you can change it.',
   'prefs.translationTitle': 'Commit message translation',
-  'prefs.translationDesc': 'Optional. With a DeepL API key configured, commit messages written in another language show a button to translate them into the app’s language. Translating sends that message to DeepL, outside your machine; nothing is ever sent without you clicking. Leave this empty to keep the feature off.',
+  'prefs.translationDesc':
+    'Optional. With a DeepL API key configured, commit messages written in another language show a button to translate them into the app’s language. Translating sends that message to DeepL, outside your machine; nothing is ever sent without you clicking. Leave this empty to keep the feature off.',
   'prefs.translationConfigured': 'API key configured',
   'prefs.translationKeyPlaceholder': 'DeepL API key',
   'prefs.translationKeyInvalid': 'That key was rejected by DeepL. Check it and try again.',
@@ -990,7 +998,8 @@ export const en = {
   'changeTrigger.subtitle': '{count} files changed and nothing is being written up.',
   'changeTrigger.loading': 'Reading the working tree…',
   'changeTrigger.loadFailed': 'Could not read what changed: {error}',
-  'changeTrigger.nothingChanged': 'Nothing is changed right now — it was probably committed or reverted.',
+  'changeTrigger.nothingChanged':
+    'Nothing is changed right now — it was probably committed or reverted.',
   'changeTrigger.noRepository': 'This project has no repository to compare against.',
   'changeTrigger.binary': 'binary',
   'changeTrigger.targetLabel': 'Send to',
@@ -1006,7 +1015,8 @@ export const en = {
     '{count} files changed in this project since the last write-up. Before moving on, record the procedure for this work.',
   'changeTrigger.promptFilesHeader': 'Files changed:',
   'changeTrigger.promptFilesOverflow': '- ...and {count} more files.',
-  'changeTrigger.promptRulesHeader': 'Write the procedure as numbered steps, following these rules:',
+  'changeTrigger.promptRulesHeader':
+    'Write the procedure as numbered steps, following these rules:',
   'changeTrigger.promptRuleCoverage':
     '1. Every file listed above must be named by at least one step. Nothing changed may go unmentioned.',
   'changeTrigger.promptRuleGrouping':
@@ -1828,7 +1838,8 @@ export const en = {
   'git.graph.detail.binaryFile': 'binary',
   'git.graph.detail.translate': 'Translate message',
   'git.graph.detail.translateConfirm': 'Send and translate',
-  'git.graph.detail.translateWarning': 'Translating sends this commit message to DeepL, a third-party service outside your machine. Do not translate messages containing anything confidential.',
+  'git.graph.detail.translateWarning':
+    'Translating sends this commit message to DeepL, a third-party service outside your machine. Do not translate messages containing anything confidential.',
   'git.graph.detail.translateFailed': 'Translation failed. Check the API key in Preferences.',
   'git.graph.detail.translatedFrom': 'Translated from {language}',
   'git.graph.detail.showOriginal': 'Show original',
@@ -2729,7 +2740,8 @@ export const en = {
   'plugins.importDoneBody': '{count} now load in Alethe, from the next launch.',
   'plugins.importRefusedTitle': '{name} was not imported',
   'plugins.importFailedTitle': 'Could not import',
-  'plugins.importStatus.skipped': 'A plugin with this name is already in Alethe. It was left untouched.',
+  'plugins.importStatus.skipped':
+    'A plugin with this name is already in Alethe. It was left untouched.',
   'plugins.importStatus.failed': 'The copy failed.',
   'plugins.badgeManaged': 'Alethe',
   'plugins.badgeManagedHint': 'Written by Alethe and rewritten on every launch.',
@@ -2817,7 +2829,8 @@ export const en = {
   'collaboration.githubSignaling.tokenLabel': 'Personal access token (scope: gist)',
   'collaboration.githubSignaling.save': 'Save',
   'collaboration.githubSignaling.remove': 'Remove',
-  'collaboration.githubSignaling.error': 'Could not validate or save this token — check it and try again.',
+  'collaboration.githubSignaling.error':
+    'Could not validate or save this token — check it and try again.',
   'collaboration.privacyTitle': 'What this service can and cannot see',
   'collaboration.privacyVisible':
     'It can see: anonymous device IDs, public keys, whether a device is online, and the size of encrypted data — never its content.',

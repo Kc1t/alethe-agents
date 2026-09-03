@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+
 import {
   type BackupArchiveEntry,
   type FolderTreeNode,
@@ -52,13 +53,28 @@ function getNodeIcon(node: FolderTreeNode) {
     return <ShieldCheck size={13} className={styles.fileEssential} />
   }
   const lower = node.name.toLowerCase()
-  if (lower.endsWith('.exe') || lower.endsWith('.dll') || lower.endsWith('.bin') || lower.endsWith('.so')) {
+  if (
+    lower.endsWith('.exe') ||
+    lower.endsWith('.dll') ||
+    lower.endsWith('.bin') ||
+    lower.endsWith('.so')
+  ) {
     return <FileCode size={13} className={styles.fileBinary} />
   }
-  if (lower.endsWith('.zip') || lower.endsWith('.tar') || lower.endsWith('.gz') || lower.endsWith('.7z')) {
+  if (
+    lower.endsWith('.zip') ||
+    lower.endsWith('.tar') ||
+    lower.endsWith('.gz') ||
+    lower.endsWith('.7z')
+  ) {
     return <Archive size={13} className={styles.fileArchive} />
   }
-  if (lower.endsWith('.md') || lower.endsWith('.txt') || lower.endsWith('.json') || lower.endsWith('.toml')) {
+  if (
+    lower.endsWith('.md') ||
+    lower.endsWith('.txt') ||
+    lower.endsWith('.json') ||
+    lower.endsWith('.toml')
+  ) {
     return <FileText size={13} className={styles.fileNormal} />
   }
   return <File size={13} className={node.isHeavy ? styles.fileHeavy : styles.fileNormal} />
@@ -73,7 +89,8 @@ export function ProjectFolderTreeModal() {
   // Prefer the terminal-derived root over the raw `defaultCwd` — a merge/conflict-resolution
   // agent's ephemeral folder can leave `defaultCwd` pointing at a dead `.alethe/merge-envs/*`
   // or `.alethe/worktrees/*` path; `getProjectRepoRoot` self-heals from live terminal cwds.
-  const projectRoot = (activeProject && getProjectRepoRoot(activeProject)) || activeProject?.defaultCwd || ''
+  const projectRoot =
+    (activeProject && getProjectRepoRoot(activeProject)) || activeProject?.defaultCwd || ''
 
   const [tree, setTree] = useState<FolderTreeNode[]>([])
   const [loading, setLoading] = useState(false)
@@ -241,7 +258,8 @@ export function ProjectFolderTreeModal() {
       else if (filterMode === 'heavy') matchesMode = isHeavy
       else if (filterMode === 'selected') matchesMode = isSelected
 
-      const matchesQuery = !query || node.name.toLowerCase().includes(query) || node.path.toLowerCase().includes(query)
+      const matchesQuery =
+        !query || node.name.toLowerCase().includes(query) || node.path.toLowerCase().includes(query)
 
       const filteredChildren: FolderTreeNode[] = []
       for (const child of node.children) {
@@ -353,7 +371,10 @@ export function ProjectFolderTreeModal() {
               ) : null}
 
               {isEssential ? (
-                <span className={styles.essentialBadge} title="Arquivo/Manifesto crítico indispensável para build e execução">
+                <span
+                  className={styles.essentialBadge}
+                  title="Arquivo/Manifesto crítico indispensável para build e execução"
+                >
                   Essencial
                 </span>
               ) : isHeavy ? (
@@ -413,7 +434,9 @@ export function ProjectFolderTreeModal() {
             <div className={styles.metricDivider} />
             <div className={styles.metricItem}>
               <span className={styles.metricLabel}>Caches/Pesados:</span>
-              <span className={`${styles.metricValue} ${stats.heavyCount > 0 ? styles.metricValueWarning : ''}`}>
+              <span
+                className={`${styles.metricValue} ${stats.heavyCount > 0 ? styles.metricValueWarning : ''}`}
+              >
                 {stats.heavyCount} ({formatBytes(stats.heavyBytes)})
               </span>
             </div>
@@ -555,7 +578,9 @@ export function ProjectFolderTreeModal() {
                   <li key={entry.filename} className={styles.backupRow}>
                     <Archive size={12} className={styles.backupRowIcon} />
                     <div className={styles.backupRowInfo}>
-                      <span className={styles.backupRowDate}>{formatBackupDate(entry.createdAt)}</span>
+                      <span className={styles.backupRowDate}>
+                        {formatBackupDate(entry.createdAt)}
+                      </span>
                       <span className={styles.backupRowHash} title={entry.sha256}>
                         sha256:{entry.sha256.slice(0, 12)}…
                       </span>
@@ -576,12 +601,14 @@ export function ProjectFolderTreeModal() {
                 <strong>AVISO CRÍTICO DE SEGURANÇA</strong>
               </div>
               <p className={styles.criticalDesc}>
-                Este cofre é a sua <strong>última linha de defesa</strong> contra perda irreversível de
-                código ou sobrescritas por outros computadores. Deseja realmente excluir todos os
+                Este cofre é a sua <strong>última linha de defesa</strong> contra perda irreversível
+                de código ou sobrescritas por outros computadores. Deseja realmente excluir todos os
                 backups?
               </p>
               <div className={styles.confirmPrompt}>
-                <span>Digite o nome do projeto (<code>{activeProject?.name}</code>) para confirmar:</span>
+                <span>
+                  Digite o nome do projeto (<code>{activeProject?.name}</code>) para confirmar:
+                </span>
                 <input
                   type="text"
                   className={styles.confirmInput}

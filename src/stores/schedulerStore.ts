@@ -1,15 +1,17 @@
 import { create } from 'zustand'
+
+import { getLocale,translate } from '../lib/i18n'
+import { expected } from '../lib/resilience'
 import {
-  getSchedulerTasks,
-  triggerSchedulerTick,
   cancelTask,
+  getSchedulerTasks,
   listenEventBus,
   publishEvent,
   type SchedulerTask,
+  triggerSchedulerTick,
 } from '../lib/tauri'
 import { useProjectsStore } from './projectsStore'
 import { useUiStore } from './uiStore'
-import { translate, getLocale } from '../lib/i18n'
 
 type SchedulerState = {
   tasks: SchedulerTask[]
@@ -123,7 +125,7 @@ export const useSchedulerStore = create<SchedulerState>((set, get) => ({
           task_id: realTaskId,
           agent_id: String(event.data?.agent_id ?? ''),
           data: { source: 'spawn' },
-        }).catch(() => {})
+        }).catch(expected('string_failed'))
         useUiStore.getState().pushToast({
           title: translate(getLocale(), 'scheduler.agentSpawnedTitle'),
           body: taskTitle,

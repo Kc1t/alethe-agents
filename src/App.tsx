@@ -14,10 +14,10 @@ import { AgentIcon } from './components/icons/AgentIcons'
 import { LinkViewerOverlay } from './components/LinkViewerOverlay'
 import { MainMenu } from './components/MainMenu'
 import { AddBrowserModal } from './components/modals/AddBrowserModal'
-import { ChangeProcedureModal } from './components/modals/ChangeProcedureModal'
 import { AddContentModal } from './components/modals/AddContentModal'
 import { AiUsageModal } from './components/modals/AiUsageModal'
 import { AuditModal } from './components/modals/AuditModal'
+import { ChangeProcedureModal } from './components/modals/ChangeProcedureModal'
 import { EditGroupModal } from './components/modals/EditGroupModal'
 import { EditProjectModal } from './components/modals/EditProjectModal'
 import { FindJumpModal } from './components/modals/FindJumpModal'
@@ -60,15 +60,15 @@ import { useMcpIntroPrompt } from './hooks/useMcpIntroPrompt'
 import { useRemoteControlService } from './hooks/useRemoteControlService'
 import { useResourceSupervisor } from './hooks/useResourceSupervisor'
 import { startActivityTracker } from './lib/activityTracker'
+import { changeTriggerStart, changeTriggerStop } from './lib/api/changeTrigger'
 import { isTauriEnv } from './lib/api/transport'
 import { APP_SHELL_ID } from './lib/appShell'
 import { installE2eHooks } from './lib/e2eHooks'
 import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
 import { intlLocale, translate, useT } from './lib/i18n'
+import { expected } from './lib/resilience'
 import { visibilityFromPanelResize, widthFromPanelResize } from './lib/sidebarPanelState'
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
-import { changeTriggerStart, changeTriggerStop } from './lib/api/changeTrigger'
-import { getProjectRepoRoot } from './lib/terminalFactory'
 import {
   ghosttyKillAll,
   setWindowOpacity,
@@ -76,13 +76,14 @@ import {
   stopPlanningWatcher,
   subscribeCoreSyncEvents,
 } from './lib/tauri'
-import type { Project } from './lib/types'
 import { getLastCrashReport } from './lib/tauri'
+import { getProjectRepoRoot } from './lib/terminalFactory'
 import { loadThemeIconBytes } from './lib/themeIcons'
+import type { Project } from './lib/types'
 import { checkForUpdate } from './lib/updater'
+import { useChangeTriggerStore } from './stores/changeTriggerStore'
 import { type ProjectsState, useProjectsStore } from './stores/projectsStore'
 import { useTerminalsStore } from './stores/terminalsStore'
-import { useChangeTriggerStore } from './stores/changeTriggerStore'
 import { type InAppToast, useUiStore } from './stores/uiStore'
 
 const AgentCanvasPOC = lazy(() =>
@@ -785,7 +786,7 @@ export default function App() {
           }),
         })
       })
-      .catch(() => {})
+      .catch(expected('intl_locale_failed'))
   }, [hydrated])
 
   if (!hydrated) {

@@ -1,19 +1,19 @@
+import { useProjectsStore } from '../stores/projectsStore'
 import {
+  type ConflictEnv,
   gitInit,
   gitStatus,
+  type MergeAnalysis,
   mergeAnalyze,
   mergeFinalize,
+  type MergeOutcome,
   mergePrepare,
   mergeValidate,
+  type WorktreeInfo,
   worktreeProvision,
   worktreeRemove,
-  type MergeAnalysis,
-  type MergeOutcome,
-  type ConflictEnv,
-  type WorktreeInfo,
 } from './api/git'
 import { attachPty, getPtySize, killPty, ptyExists, resizePty, spawnPty, writePty } from './api/pty'
-import { useProjectsStore } from '../stores/projectsStore'
 
 /**
  * Hook de instrumentação só pra e2e (Central de Merges — Partes 4/5).

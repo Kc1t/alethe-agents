@@ -9,7 +9,9 @@ const THUMBNAIL_JPEG_QUALITY = 0.72
 /** Downscales a `data:` image URI to a small square-fit JPEG thumbnail, returned as its own
  * `data:image/jpeg;base64,...` URI. Resolves to `null` if `imageDataUrl` is empty/blank (no
  * picture set) or decoding fails — callers treat that the same as "no thumbnail". */
-export async function downscaleAvatar(imageDataUrl: string | null | undefined): Promise<string | null> {
+export async function downscaleAvatar(
+  imageDataUrl: string | null | undefined,
+): Promise<string | null> {
   const trimmed = imageDataUrl?.trim()
   if (!trimmed || !trimmed.startsWith('data:')) return null
   try {

@@ -62,3 +62,33 @@ export async function ignoreExpected(promise: Promise<unknown>, reason: string):
     console.debug(`[expected] ${reason}`, cause)
   }
 }
+
+/**
+ * A `.catch` handler that returns a fallback and records the failure.
+ *
+ * Drop-in for `.catch(() => [])`, keeping the call shape while making the failure visible:
+ * `.catch(withFallback('sessions.list', []))`.
+ */
+export function withFallback<T>(context: string, value: T) {
+  return (cause: unknown): T => {
+    const corr = currentCorrelation()
+    console.warn(
+      `[fallback] ${context} failed; using the empty result${corr ? ` corr=${corr}` : ''}`,
+      cause,
+    )
+    return value
+  }
+}
+
+/**
+ * A `.catch` handler for a failure that is routine and named.
+ *
+ * Drop-in for `.catch(() => {})`: `.catch(expected('pty_already_gone'))`. Records nothing in normal
+ * operation — the value is that the code now states *which* expected failure this is, so the next
+ * reader does not have to work out whether anyone ever considered it.
+ */
+export function expected(reason: string) {
+  return (cause: unknown): void => {
+    console.debug(`[expected] ${reason}`, cause)
+  }
+}

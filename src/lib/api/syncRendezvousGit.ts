@@ -63,7 +63,10 @@ export async function githubSignalingPollCandidate(params: {
   })
 }
 
-export async function githubSignalingCleanupSession(gistId: string, sessionId: string): Promise<void> {
+export async function githubSignalingCleanupSession(
+  gistId: string,
+  sessionId: string,
+): Promise<void> {
   if (!isTauriEnv()) return
   await invoke('sync_github_signaling_cleanup_session', { gistId, sessionId })
 }

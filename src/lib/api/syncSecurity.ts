@@ -150,8 +150,6 @@ export async function syncRevokeInvitation(invitationId: string): Promise<SyncIn
   return invoke<SyncInvitationSummary>('sync_revoke_invitation', { invitationId })
 }
 
-
-
 /**
  * Fetches the backend-derived capability state (Phase 3 Step 3.7). Always parsed through
  * `parseProjectSyncCapabilities`, which fails closed to fully unavailable on any malformed,
@@ -301,7 +299,10 @@ export async function syncListChatContacts(): Promise<SyncChatContact[]> {
   return webApiFetch<SyncChatContact[]>('/api/sync/security/chat-contacts/list')
 }
 
-export async function syncRenameChatContact(accountRoute: string, displayLabel: string): Promise<void> {
+export async function syncRenameChatContact(
+  accountRoute: string,
+  displayLabel: string,
+): Promise<void> {
   if (isTauriEnv()) {
     await invoke('sync_rename_chat_contact', { accountRoute, displayLabel })
     return
@@ -365,7 +366,9 @@ export type ChatContactAckResult = {
  * summary, or `null` if the token didn't check out (the envelope was not addressed to a
  * currently-live invite code — ignore it).
  */
-export async function syncOpenChatContactAck(ciphertext: string): Promise<ChatContactAckResult | null> {
+export async function syncOpenChatContactAck(
+  ciphertext: string,
+): Promise<ChatContactAckResult | null> {
   if (!isTauriEnv()) throw new Error('chat_contact_ack_desktop_only')
   return invoke<ChatContactAckResult | null>('sync_open_chat_contact_ack', { ciphertext })
 }
@@ -381,7 +384,9 @@ export async function syncOpenChatContactConfirm(
   ciphertext: string,
 ): Promise<{ grant: SyncGrantRecord | null } | null> {
   if (!isTauriEnv()) throw new Error('chat_contact_confirm_desktop_only')
-  return invoke<{ grant: SyncGrantRecord | null } | null>('sync_open_chat_contact_confirm', { ciphertext })
+  return invoke<{ grant: SyncGrantRecord | null } | null>('sync_open_chat_contact_confirm', {
+    ciphertext,
+  })
 }
 
 export type PendingChatContactRequest = {

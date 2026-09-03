@@ -181,7 +181,6 @@ function TranslateMessage({ message }: { message: string }) {
   )
 }
 
-
 export type GitGraphCommitDetailProps = {
   repoRoot: string
   /** null while the commit isn't available yet in the already-loaded list

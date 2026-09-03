@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 
 import { planCliOpen } from '../lib/cliOpen'
 import { useT } from '../lib/i18n'
+import { expected } from '../lib/resilience'
 import { cliTakePendingOpen, listenCliOpenPath } from '../lib/tauri'
 import type { AgentType } from '../lib/types'
 import { useProjectsStore } from '../stores/projectsStore'
@@ -60,7 +61,7 @@ export function useCliOpenRequests(hydrated: boolean) {
       .then((path) => {
         if (!disposed && path) openFromCli(path)
       })
-      .catch(() => {})
+      .catch(expected('open_from_cli_failed'))
 
     const unlisten = listenCliOpenPath((path) => {
       if (!disposed) openFromCli(path)

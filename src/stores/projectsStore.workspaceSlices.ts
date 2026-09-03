@@ -35,15 +35,15 @@ function rememberGridLayout(
   )
 }
 import {
-  MAX_WORKSPACE_TABS,
   captureWorkspaceSnapshot,
   cloneWorkspaceSnapshot,
   compositionLabel,
+  MAX_WORKSPACE_TABS,
   replaceCurrentHistorySnapshot,
   sanitizeWorkspaceSnapshot,
 } from '../lib/workspaceNavigation'
-import { collectGroupProjectIds } from './projectsStore.migrations'
 import type { ProjectsState } from './projectsStore'
+import { collectGroupProjectIds } from './projectsStore.migrations'
 import type { SliceCtx } from './projectsStore.slices'
 
 type WorkspaceSliceCtx = SliceCtx & {

@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { type MessageKey, useT } from '../../../lib/i18n'
 import {
   type PluginDetail,
+  type PluginScopeSnapshot,
   pluginsDetail,
   pluginsImport,
   pluginsScan,
-  type PluginScopeSnapshot,
   type PluginSummary,
 } from '../../../lib/tauri'
 import { useUiStore } from '../../../stores/uiStore'

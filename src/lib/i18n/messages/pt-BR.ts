@@ -58,7 +58,8 @@ export const ptBR: Record<MessageKey, string> = {
   'chat.attachFile': 'Anexar arquivo',
   'chat.projectInvite.invite': 'Convidar para um projeto',
   'chat.projectInvite.chooseProject': 'Projeto',
-  'chat.projectInvite.explain': 'A pessoa precisará aceitar. Nada é compartilhado até lá — o convite apenas informa qual é o projeto.',
+  'chat.projectInvite.explain':
+    'A pessoa precisará aceitar. Nada é compartilhado até lá — o convite apenas informa qual é o projeto.',
   'chat.projectInvite.send': 'Enviar convite',
   'chat.projectInvite.sent': 'Convite enviado. Você será avisado quando ela responder.',
   'chat.projectInvite.failed': 'Não foi possível enviar o convite.',
@@ -119,9 +120,11 @@ export const ptBR: Record<MessageKey, string> = {
   'chat.contacts.save': 'Salvar contato',
   'chat.contacts.saveFailed': 'Não foi possível salvar esse contato.',
   'chat.contacts.waitingConfirm': 'Aguardando confirmação do outro dispositivo…',
-  'chat.contacts.confirmTimedOut': 'O outro dispositivo não confirmou a tempo — confirme que o app dele está aberto e tente de novo.',
+  'chat.contacts.confirmTimedOut':
+    'O outro dispositivo não confirmou a tempo — confirme que o app dele está aberto e tente de novo.',
   'chat.contacts.listFailed': 'Não foi possível carregar seus contatos de chat.',
-  'chat.contacts.empty': 'Adicione um contato de chat para começar a conversar — sem precisar de projeto.',
+  'chat.contacts.empty':
+    'Adicione um contato de chat para começar a conversar — sem precisar de projeto.',
   'chat.contactInfo.open': 'Dados do contato',
   'chat.contactInfo.title': 'Dados do contato',
   'chat.contacts.rename': 'Renomear contato',
@@ -152,7 +155,8 @@ export const ptBR: Record<MessageKey, string> = {
   'tasks.renameCategory': 'Renomear categoria',
   'tasks.deleteCategory': 'Excluir categoria',
   'tasks.renameCategoryPrompt': 'Novo nome da categoria:',
-  'tasks.deleteCategoryConfirm': 'Excluir esta categoria? Ela será removida de todas as tarefas que a têm.',
+  'tasks.deleteCategoryConfirm':
+    'Excluir esta categoria? Ela será removida de todas as tarefas que a têm.',
   'tasks.commentPlaceholder': 'Escreva um comentário…',
   'tasks.assignTo': 'Atribuir a',
   'tasks.assigneeSelf': 'Eu',
@@ -162,7 +166,8 @@ export const ptBR: Record<MessageKey, string> = {
   'mesh.projectSync': 'Sincronização do Projeto',
   'mesh.inviteStepShare': 'Envie este código para quem você quer compartilhar o projeto.',
   'mesh.inviteStepRedeem': 'A pessoa abre o Chat → adicionar contato e cola o código lá.',
-  'mesh.inviteStepApprove': 'O pedido dela chega aqui para você aprovar — aprove com este projeto selecionado para compartilhá-lo junto com o contato.',
+  'mesh.inviteStepApprove':
+    'O pedido dela chega aqui para você aprovar — aprove com este projeto selecionado para compartilhá-lo junto com o contato.',
   'mesh.inviteReviewRequests': 'Revisar {count} pedido(s) pendente(s)',
   'mesh.inviteFriend': 'Convidar Amigo',
   'mesh.vault': 'Cofre & Pastas',
@@ -273,14 +278,17 @@ export const ptBR: Record<MessageKey, string> = {
   'vault.revokeInvitationConfirm':
     'Revogar este convite pendente? O destinatário não poderá mais resgatá-lo.',
   'vault.collaboratorsTitle': 'Colaboradores e permissões',
-  'vault.collaboratorsHint': 'Edite o que cada colaborador deste projeto pode ver e fazer — sem precisar revogar e convidar de novo só pra mudar o acesso.',
+  'vault.collaboratorsHint':
+    'Edite o que cada colaborador deste projeto pode ver e fazer — sem precisar revogar e convidar de novo só pra mudar o acesso.',
   'vault.loadFailed': 'Não foi possível carregar os colaboradores.',
   'vault.noCollaborators': 'Ninguém mais tem acesso a este projeto ainda.',
   'vault.fullProjectScope': 'Projeto inteiro',
   'vault.revoke': 'Revogar acesso',
-  'vault.revokeConfirm': 'Revogar o acesso desse colaborador ao projeto? Isso não pode ser desfeito — ele precisaria de um novo convite.',
+  'vault.revokeConfirm':
+    'Revogar o acesso desse colaborador ao projeto? Isso não pode ser desfeito — ele precisaria de um novo convite.',
   'vault.backupTitle': 'Cofre de backups & pastas',
-  'vault.backupHint': 'Escolha quais pastas ficam protegidas por backups append-only, e gerencie os arquivos já existentes.',
+  'vault.backupHint':
+    'Escolha quais pastas ficam protegidas por backups append-only, e gerencie os arquivos já existentes.',
   'vault.openBackupVault': 'Abrir cofre de backups',
   'vault.forProject': 'Para o projeto: {name}',
   'vault.addCollaborator': 'Adicionar colaborador',
@@ -796,7 +804,8 @@ export const ptBR: Record<MessageKey, string> = {
   'prefs.bioPlaceholder': 'Escreva algo sobre você…',
   'prefs.bioHint': 'Aparece pros seus contatos de chat. Só você pode mudar.',
   'prefs.translationTitle': 'Tradução de mensagens de commit',
-  'prefs.translationDesc': 'Opcional. Com uma chave de API do DeepL configurada, mensagens de commit escritas em outro idioma passam a mostrar um botão para traduzi-las para o idioma do app. Traduzir envia essa mensagem para o DeepL, fora da sua máquina; nada é enviado sem você clicar. Deixe em branco para manter o recurso desligado.',
+  'prefs.translationDesc':
+    'Opcional. Com uma chave de API do DeepL configurada, mensagens de commit escritas em outro idioma passam a mostrar um botão para traduzi-las para o idioma do app. Traduzir envia essa mensagem para o DeepL, fora da sua máquina; nada é enviado sem você clicar. Deixe em branco para manter o recurso desligado.',
   'prefs.translationConfigured': 'Chave de API configurada',
   'prefs.translationKeyPlaceholder': 'Chave de API do DeepL',
   'prefs.translationKeyInvalid': 'O DeepL recusou essa chave. Verifique e tente de novo.',
@@ -1015,7 +1024,8 @@ export const ptBR: Record<MessageKey, string> = {
     '{count} arquivos mudaram neste projeto desde o último registro. Antes de seguir, registre o procedimento desse trabalho.',
   'changeTrigger.promptFilesHeader': 'Arquivos alterados:',
   'changeTrigger.promptFilesOverflow': '- ...e mais {count} arquivos.',
-  'changeTrigger.promptRulesHeader': 'Escreva o procedimento em passos numerados, seguindo estas regras:',
+  'changeTrigger.promptRulesHeader':
+    'Escreva o procedimento em passos numerados, seguindo estas regras:',
   'changeTrigger.promptRuleCoverage':
     '1. Todo arquivo listado acima precisa ser citado por pelo menos um passo. Nada que mudou pode ficar sem menção.',
   'changeTrigger.promptRuleGrouping':
@@ -1426,7 +1436,8 @@ export const ptBR: Record<MessageKey, string> = {
   'merge.modelCustom': 'Usar modelo personalizado: “{model}”',
   'crud.editProjectWorktrees': 'Worktrees',
   'crud.editProjectMerge': 'Merge',
-  'crud.removeWorktreeConfirm': 'Excluir o ambiente do agente “{agent}”? Isso não pode ser desfeito.',
+  'crud.removeWorktreeConfirm':
+    'Excluir o ambiente do agente “{agent}”? Isso não pode ser desfeito.',
   'crud.editProjectAgentSettings': 'Configurações dos agentes',
   'crud.editProjectAgentSettingsDesc':
     'Defina como este projeto cria e valida worktrees de agentes.',
@@ -1848,8 +1859,10 @@ export const ptBR: Record<MessageKey, string> = {
   'git.graph.detail.binaryFile': 'binário',
   'git.graph.detail.translate': 'Traduzir mensagem',
   'git.graph.detail.translateConfirm': 'Enviar e traduzir',
-  'git.graph.detail.translateWarning': 'Traduzir envia esta mensagem de commit para o DeepL, um serviço de terceiros fora da sua máquina. Não traduza mensagens que contenham algo confidencial.',
-  'git.graph.detail.translateFailed': 'A tradução falhou. Verifique a chave de API nas Preferências.',
+  'git.graph.detail.translateWarning':
+    'Traduzir envia esta mensagem de commit para o DeepL, um serviço de terceiros fora da sua máquina. Não traduza mensagens que contenham algo confidencial.',
+  'git.graph.detail.translateFailed':
+    'A tradução falhou. Verifique a chave de API nas Preferências.',
   'git.graph.detail.translatedFrom': 'Traduzido de {language}',
   'git.graph.detail.showOriginal': 'Ver original',
   'git.graph.detail.diffLoading': 'Carregando diff…',
@@ -2568,7 +2581,6 @@ export const ptBR: Record<MessageKey, string> = {
   'ui.terminal.suspendedTooltip': 'Terminal suspenso — clique para reativar',
   'ui.terminal.clickToReactivate': 'Clique para reativar',
 
-
   /* ---- fsBrowser ---- */
   'fsBrowser.titleFolder': 'Selecionar Pasta',
   'fsBrowser.titleFile': 'Selecionar Arquivo',
@@ -2837,7 +2849,8 @@ export const ptBR: Record<MessageKey, string> = {
   'collaboration.githubSignaling.tokenLabel': 'Token de acesso pessoal (escopo: gist)',
   'collaboration.githubSignaling.save': 'Salvar',
   'collaboration.githubSignaling.remove': 'Remover',
-  'collaboration.githubSignaling.error': 'Não foi possível validar ou salvar este token — confira e tente novamente.',
+  'collaboration.githubSignaling.error':
+    'Não foi possível validar ou salvar este token — confira e tente novamente.',
   'collaboration.privacyTitle': 'O que esse serviço consegue ver e o que não consegue',
   'collaboration.privacyVisible':
     'Ele consegue ver: IDs anônimos dos dispositivos, chaves públicas, se um dispositivo está online e o tamanho dos dados criptografados — nunca o conteúdo deles.',

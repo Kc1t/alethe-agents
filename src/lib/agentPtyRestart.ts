@@ -19,8 +19,10 @@
  * `beginRestart`) faria o hook tomar o atalho de "anexar a sessão viva" em
  * vez de spawnar, que nunca dispara a descoberta.
  */
-import { watchAndPersistDiscoveredSession, type AsyncResumableAgent } from './agentSessionDiscovery'
+import { useTerminalsStore } from '../stores/terminalsStore'
 import { preparePtyRuntimeLaunch } from './agentRuntimeAdapter'
+import { type AsyncResumableAgent,watchAndPersistDiscoveredSession } from './agentSessionDiscovery'
+import { withFallback } from './resilience'
 import { buildAgentLaunch } from './sessionLaunch'
 import { saveSession } from './sessionResume'
 import {
@@ -30,7 +32,6 @@ import {
   snapshotOpenCodeSessions,
 } from './tauri'
 import { agentCliCommand, type AgentRuntimeProfile, type AgentType } from './types'
-import { useTerminalsStore } from '../stores/terminalsStore'
 
 const ASYNC_RESUMABLE_AGENTS: ReadonlySet<AgentType> = new Set(['codex', 'antigravity', 'opencode'])
 const RESUMABLE_AGENTS: ReadonlySet<AgentType> = new Set([
@@ -45,9 +46,11 @@ function isAsyncResumable(agent: AgentType): agent is AsyncResumableAgent {
 }
 
 async function snapshotBefore(agent: AsyncResumableAgent, cwd: string) {
-  if (agent === 'codex') return snapshotCodexSessions(cwd).catch(() => [])
-  if (agent === 'antigravity') return snapshotAntigravitySessions(cwd).catch(() => [])
-  return snapshotOpenCodeSessions(cwd).catch(() => [])
+  if (agent === 'codex')
+    return snapshotCodexSessions(cwd).catch(withFallback('snapshotCodexSessions', []))
+  if (agent === 'antigravity')
+    return snapshotAntigravitySessions(cwd).catch(withFallback('snapshotAntigravitySessions', []))
+  return snapshotOpenCodeSessions(cwd).catch(withFallback('snapshotOpenCodeSessions', []))
 }
 
 export type RestartAgentPtyOpts = {

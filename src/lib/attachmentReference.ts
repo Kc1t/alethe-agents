@@ -11,14 +11,18 @@ export type AttachmentReference = { attachmentId: string; name: string }
 const ATTACHMENT_MARKER_PATTERN = /⟦attachment:([^:⟧]+):([^⟧]*)⟧/g
 
 export function encodeAttachmentReferences(attachments: AttachmentReference[]): string {
-  return attachments.map((attachment) => `⟦attachment:${attachment.attachmentId}:${attachment.name}⟧`).join('')
+  return attachments
+    .map((attachment) => `⟦attachment:${attachment.attachmentId}:${attachment.name}⟧`)
+    .join('')
 }
 
 /** Parses every attachment marker at the start of a message's text (there may be more than one —
  * several files sent together as one group/message), returning them plus whatever text follows
  * the last marker (the caption, or the locale-generated fallback text if none was typed). `null`
  * if the message carries no attachment marker at all (an ordinary text message). */
-export function parseAttachmentReferences(text: string): { attachments: AttachmentReference[]; rest: string } | null {
+export function parseAttachmentReferences(
+  text: string,
+): { attachments: AttachmentReference[]; rest: string } | null {
   const attachments: AttachmentReference[] = []
   let lastIndex = 0
   ATTACHMENT_MARKER_PATTERN.lastIndex = 0
@@ -26,7 +30,8 @@ export function parseAttachmentReferences(text: string): { attachments: Attachme
     // Markers must be contiguous from the very start — anything else means this isn't actually an
     // attachment message (e.g. someone typed the marker glyphs themselves), so bail out entirely
     // rather than misinterpret ordinary text as a broken attachment reference.
-    if (match.index !== lastIndex) return attachments.length > 0 ? { attachments, rest: text.slice(lastIndex) } : null
+    if (match.index !== lastIndex)
+      return attachments.length > 0 ? { attachments, rest: text.slice(lastIndex) } : null
     attachments.push({ attachmentId: match[1], name: match[2] })
     lastIndex = match.index + match[0].length
   }

@@ -1,10 +1,10 @@
 import { useMemo } from 'react'
 
+import { useT } from '../../lib/i18n'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { useT } from '../../lib/i18n'
-import { Modal } from './Modal'
 import controls from './controls.module.css'
+import { Modal } from './Modal'
 
 export function SuspendGroupModal() {
   const t = useT()

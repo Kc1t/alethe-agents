@@ -14,7 +14,12 @@ describe('agent prompt targets', () => {
     const targets = resolveAgentPromptTargets(
       project([
         { id: 't1', name: 'Dead', lastUsedAt: 5, tabs: [{ id: 'a', type: 'claude', ptyId: null }] },
-        { id: 't2', name: 'Live', lastUsedAt: 5, tabs: [{ id: 'b', type: 'claude', ptyId: 'pty-b' }] },
+        {
+          id: 't2',
+          name: 'Live',
+          lastUsedAt: 5,
+          tabs: [{ id: 'b', type: 'claude', ptyId: 'pty-b' }],
+        },
       ]),
     )
 
@@ -25,8 +30,18 @@ describe('agent prompt targets', () => {
     // A shell would take the prompt as a command line and fail on the first word.
     const targets = resolveAgentPromptTargets(
       project([
-        { id: 't1', name: 'Shell', lastUsedAt: 9, tabs: [{ id: 'a', type: 'shell', ptyId: 'pty-a' }] },
-        { id: 't2', name: 'Codex', lastUsedAt: 1, tabs: [{ id: 'b', type: 'codex', ptyId: 'pty-b' }] },
+        {
+          id: 't1',
+          name: 'Shell',
+          lastUsedAt: 9,
+          tabs: [{ id: 'a', type: 'shell', ptyId: 'pty-a' }],
+        },
+        {
+          id: 't2',
+          name: 'Codex',
+          lastUsedAt: 1,
+          tabs: [{ id: 'b', type: 'codex', ptyId: 'pty-b' }],
+        },
       ]),
     )
 
@@ -38,8 +53,18 @@ describe('agent prompt targets', () => {
     // were last talking to. It is a default, not a decision — the UI still offers the others.
     const targets = resolveAgentPromptTargets(
       project([
-        { id: 't1', name: 'Old', lastUsedAt: 1, tabs: [{ id: 'a', type: 'claude', ptyId: 'pty-a', lastUsedAt: 1 }] },
-        { id: 't2', name: 'Recent', lastUsedAt: 1, tabs: [{ id: 'b', type: 'codex', ptyId: 'pty-b', lastUsedAt: 99 }] },
+        {
+          id: 't1',
+          name: 'Old',
+          lastUsedAt: 1,
+          tabs: [{ id: 'a', type: 'claude', ptyId: 'pty-a', lastUsedAt: 1 }],
+        },
+        {
+          id: 't2',
+          name: 'Recent',
+          lastUsedAt: 1,
+          tabs: [{ id: 'b', type: 'codex', ptyId: 'pty-b', lastUsedAt: 99 }],
+        },
       ]),
     )
 

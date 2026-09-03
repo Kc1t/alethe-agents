@@ -1,22 +1,22 @@
 import { AlertTriangle, CircleCheck, GitBranch } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { readableError } from '../../lib/errors'
 import { confirmAction } from '../../lib/confirmDialog'
+import { readableError } from '../../lib/errors'
 import { useT } from '../../lib/i18n'
 import { discoverProviderModels, gitInit, gitStatus } from '../../lib/tauri'
 import {
   AGENT_TYPE_LABELS,
+  type AgentType,
   ALL_AGENT_TYPES,
   PROVIDER_MODELS,
-  type AgentType,
 } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AgentIcon } from '../icons/AgentIcons'
-import { ModelSearchablePicker, type ModelOption } from './ModelSearchablePicker'
 import controls from './controls.module.css'
 import styles from './EditProjectModal.module.css'
+import { type ModelOption,ModelSearchablePicker } from './ModelSearchablePicker'
 
 const ALL_AGENTS: { type: AgentType; label: string }[] = ALL_AGENT_TYPES.map((type) => ({
   type,

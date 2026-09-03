@@ -1,10 +1,10 @@
 import { useState } from 'react'
 
-import { useUiStore } from '../../stores/uiStore'
 import { useT } from '../../lib/i18n'
 import { installPendingUpdate } from '../../lib/updater'
-import { Modal } from './Modal'
+import { useUiStore } from '../../stores/uiStore'
 import controls from './controls.module.css'
+import { Modal } from './Modal'
 import styles from './UpdateModal.module.css'
 
 export function UpdateModal() {

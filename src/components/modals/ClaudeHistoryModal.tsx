@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 
-import { intlLocale, useT, type Locale, type TFunction } from '../../lib/i18n'
-import { listClaudeSessions, restartPty, type ClaudeSessionMeta } from '../../lib/tauri'
+import { intlLocale, type Locale, type TFunction,useT } from '../../lib/i18n'
+import { type ClaudeSessionMeta,listClaudeSessions, restartPty } from '../../lib/tauri'
 import { agentCliCommand, type AgentType } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
-import { Modal } from './Modal'
 import styles from './ClaudeHistoryModal.module.css'
+import { Modal } from './Modal'
 
 type Props = {
   open: boolean

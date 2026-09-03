@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
+import { expected } from '../../lib/resilience'
 import {
   completeAgentHandoff,
   type HandoffDraft,
@@ -49,7 +50,11 @@ export function HandoffModal() {
   const activeTab =
     terminal?.tabs.find((entry) => entry.id === terminal.activeTabId) ?? terminal?.tabs[0]
   const cwd =
-    activeTab?.cwd || terminal?.cwd || (project && getProjectRepoRoot(project)) || project?.defaultCwd || ''
+    activeTab?.cwd ||
+    terminal?.cwd ||
+    (project && getProjectRepoRoot(project)) ||
+    project?.defaultCwd ||
+    ''
   const sourceSessionId = requestedSessionId || activeTab?.sessionId
   const byteCount = useMemo(() => new TextEncoder().encode(content).length, [content])
   const warnings = draft
@@ -121,7 +126,10 @@ export function HandoffModal() {
       requestPaneFocus(created.id)
       closeModal()
     } catch (cause) {
-      if (artifact) await completeAgentHandoff(artifact.handoffId).catch(() => {})
+      if (artifact)
+        await completeAgentHandoff(artifact.handoffId).catch(
+          expected('complete_agent_handoff_failed'),
+        )
       setError(String(cause))
     } finally {
       setBusy(false)

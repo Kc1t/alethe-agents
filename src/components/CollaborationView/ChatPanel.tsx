@@ -50,6 +50,7 @@ import {
 import { withCorrelation } from '../../lib/correlation'
 import { useT } from '../../lib/i18n'
 import { DEFAULT_PROFILE_IMAGE_URL, getProfileImageUrl, getProfileInitial } from '../../lib/profile'
+import { withFallback } from '../../lib/resilience'
 import { readBinaryFile, syncLocalIdentity } from '../../lib/tauri'
 import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -691,7 +692,7 @@ export function ChatPanel({
         if (disposed) dispose()
         else unlisten = dispose
       })
-      .catch(() => undefined)
+      .catch(withFallback('dispose', undefined))
     return () => {
       disposed = true
       unlisten?.()

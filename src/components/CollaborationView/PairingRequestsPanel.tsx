@@ -10,13 +10,13 @@ import {
 } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
 import { DEFAULT_PROFILE_IMAGE_URL } from '../../lib/profile'
-import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import {
   EXPIRY_CHOICES_MS,
   type ExpiryChoiceId,
   PERMISSION_PRESETS,
   type PermissionPresetId,
 } from '../../lib/sync/permissionPresets'
+import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { Avatar } from '../ui/Avatar'
 import { FolderScopePicker } from './FolderScopePicker'
@@ -148,13 +148,19 @@ function RequestDecision({
         decision === 'withProject' && project
           ? {
               projectId: project.id,
-              permissions: [...(PERMISSION_PRESETS.find((p) => p.id === presetId)?.permissions ?? [])],
+              permissions: [
+                ...(PERMISSION_PRESETS.find((p) => p.id === presetId)?.permissions ?? []),
+              ],
               pathScopes:
                 scopeMode === 'whole'
                   ? []
-                  : Array.from(selectedPaths, (path) => ({ effect: 'allow' as const, pattern: `${path}/**` })),
+                  : Array.from(selectedPaths, (path) => ({
+                      effect: 'allow' as const,
+                      pattern: `${path}/**`,
+                    })),
               expiresAtMs:
-                Date.now() + (EXPIRY_CHOICES_MS.find((c) => c.id === expiryId)?.ms ?? EXPIRY_CHOICES_MS[0].ms),
+                Date.now() +
+                (EXPIRY_CHOICES_MS.find((c) => c.id === expiryId)?.ms ?? EXPIRY_CHOICES_MS[0].ms),
             }
           : null
       const resolved = await syncResolvePendingChatContactRequest(request.requestId, grant)
@@ -267,7 +273,10 @@ function RequestDecision({
           ) : null}
 
           <label className={styles.label}>{t('mesh.invitationExpiry')}</label>
-          <select value={expiryId} onChange={(event) => setExpiryId(event.target.value as ExpiryChoiceId)}>
+          <select
+            value={expiryId}
+            onChange={(event) => setExpiryId(event.target.value as ExpiryChoiceId)}
+          >
             {EXPIRY_CHOICES_MS.map((choice) => (
               <option key={choice.id} value={choice.id}>
                 {t(`mesh.invitationExpiry.${choice.id}`)}
@@ -283,7 +292,12 @@ function RequestDecision({
         <button type="button" className={styles.secondaryButton} onClick={onBack} disabled={busy}>
           {t('common.back')}
         </button>
-        <button type="button" className={styles.declineButton} onClick={() => void decline()} disabled={busy}>
+        <button
+          type="button"
+          className={styles.declineButton}
+          onClick={() => void decline()}
+          disabled={busy}
+        >
           {busy ? <Loader2 size={13} className={styles.spin} /> : <UserX size={13} />}
           {t('pairingRequests.decline')}
         </button>

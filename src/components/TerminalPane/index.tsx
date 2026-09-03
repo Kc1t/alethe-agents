@@ -20,6 +20,7 @@ import { restartAgentPty } from '../../lib/agentPtyRestart'
 import { buildGhosttyCommand } from '../../lib/ghosttyCommand'
 import { useT } from '../../lib/i18n'
 import { shouldUseNativeBackend } from '../../lib/platform'
+import { withFallback } from '../../lib/resilience'
 import { getActiveSessions, savedConversationIdFor } from '../../lib/sessionResume'
 import {
   completeAgentHandoff,
@@ -138,7 +139,6 @@ export const TerminalPane = memo(function TerminalPane({
   const nativeTerminalMacos = useProjectsStore((s) => s.preferences.nativeTerminalMacos ?? false)
   const useNativeBackend = shouldUseNativeBackend(nativeTerminalMacos)
 
-
   // Resize de span no grid do PROJETO (quando project.layoutMode === 'grid').
   const projectGrid = useProjectsStore((s) => {
     const p = s.projects.find((p) => p.id === projectId)
@@ -182,7 +182,7 @@ export const TerminalPane = memo(function TerminalPane({
   const openVscode = async () => {
     let target = cwd
     if (!target && activeTab?.ptyId) {
-      target = (await getPtyCwd(activeTab.ptyId).catch(() => null)) ?? ''
+      target = (await getPtyCwd(activeTab.ptyId).catch(withFallback('getPtyCwd', null))) ?? ''
     }
     if (!target) return
     await openInVscode(target).catch((err) => {
@@ -202,7 +202,7 @@ export const TerminalPane = memo(function TerminalPane({
     const ptyId = activeTab.ptyId
     let restartCwd = (activeTab.cwd || terminal.cwd || '').trim()
     if (!restartCwd) {
-      restartCwd = ((await getPtyCwd(ptyId).catch(() => null)) ?? '').trim()
+      restartCwd = ((await getPtyCwd(ptyId).catch(withFallback('getPtyCwd', null))) ?? '').trim()
     }
     const activeSessions = getActiveSessions()
     const savedSession = activeSessions[activeTab.id] ?? activeSessions[ptyId] ?? null
@@ -210,7 +210,9 @@ export const TerminalPane = memo(function TerminalPane({
       activeTab.sessionId ?? savedConversationIdFor(savedSession, activeTab.type, restartCwd)
 
     if (!resumeSessionId && activeTab.type === 'codex' && restartCwd) {
-      resumeSessionId = (await snapshotCodexSessions(restartCwd).catch(() => []))[0]?.id
+      resumeSessionId = (
+        await snapshotCodexSessions(restartCwd).catch(withFallback('snapshotCodexSessions', []))
+      )[0]?.id
     }
     const areaEl = paneRef.current?.querySelector<HTMLElement>(`.${styles.terminalArea}`)
     let startCols: number | undefined

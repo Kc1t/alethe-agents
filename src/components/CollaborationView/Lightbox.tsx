@@ -14,7 +14,15 @@ export type LightboxItem = { src: string; kind: 'image' | 'video'; alt?: string 
  * Also doubles as a gallery viewer when `items.length > 1` (e.g. opened from a grouped-attachment
  * grid) — prev/next arrows and Left/Right arrow keys step through the group without closing and
  * reopening the overlay. */
-export function Lightbox({ items, initialIndex = 0, onClose }: { items: LightboxItem[]; initialIndex?: number; onClose: () => void }) {
+export function Lightbox({
+  items,
+  initialIndex = 0,
+  onClose,
+}: {
+  items: LightboxItem[]
+  initialIndex?: number
+  onClose: () => void
+}) {
   const t = useT()
   const [index, setIndex] = useState(initialIndex)
   const [zoomed, setZoomed] = useState(false)

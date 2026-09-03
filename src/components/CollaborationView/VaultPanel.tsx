@@ -14,13 +14,13 @@ import { useEffect, useState } from 'react'
 
 import { exportPairingCode, regeneratePairingCode } from '../../lib/api/p2pBridge'
 import {
+  type SyncGrantRecord,
+  type SyncInvitationSummary,
   syncListProjectGrants,
   syncRevokeGrant,
   syncRevokeInvitation,
   syncSecuritySnapshot,
   syncUpdateGrant,
-  type SyncGrantRecord,
-  type SyncInvitationSummary,
 } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
 import { downscaleAvatar } from '../../lib/image/downscaleAvatar'
@@ -54,17 +54,13 @@ const PERMISSION_PRESETS = [
 
 function matchingPresetId(permissions: string[]): (typeof PERMISSION_PRESETS)[number]['id'] | null {
   const sorted = [...permissions].sort().join(',')
-  const preset = PERMISSION_PRESETS.find((candidate) => [...candidate.permissions].sort().join(',') === sorted)
+  const preset = PERMISSION_PRESETS.find(
+    (candidate) => [...candidate.permissions].sort().join(',') === sorted,
+  )
   return preset?.id ?? null
 }
 
-export function VaultPanel({
-  projectId,
-  onBack,
-}: {
-  projectId: string
-  onBack?: () => void
-}) {
+export function VaultPanel({ projectId, onBack }: { projectId: string; onBack?: () => void }) {
   const t = useT()
   const openModal = useUiStore((s) => s.openModal_)
   const preferences = useProjectsStore((s) => s.preferences)
@@ -157,7 +153,10 @@ export function VaultPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
-  const applyPreset = async (grant: SyncGrantRecord, preset: (typeof PERMISSION_PRESETS)[number]) => {
+  const applyPreset = async (
+    grant: SyncGrantRecord,
+    preset: (typeof PERMISSION_PRESETS)[number],
+  ) => {
     setBusyGrantId(grant.grantId)
     try {
       await syncUpdateGrant(grant.grantId, [...preset.permissions], grant.pathScopes)
@@ -182,7 +181,10 @@ export function VaultPanel({
       const pathScopes =
         editingPaths.size === 0
           ? []
-          : Array.from(editingPaths, (path) => ({ effect: 'allow' as const, pattern: `${path}/**` }))
+          : Array.from(editingPaths, (path) => ({
+              effect: 'allow' as const,
+              pattern: `${path}/**`,
+            }))
       await syncUpdateGrant(grant.grantId, grant.permissions, pathScopes)
       setEditingGrantId(null)
       reload()
@@ -236,7 +238,9 @@ export function VaultPanel({
           <span className={styles.sectionTitle}>{t('vault.collaboratorsTitle')}</span>
           <span className={styles.sectionCount}>{grants.length}</span>
         </div>
-        {project ? <p className={styles.projectContext}>{t('vault.forProject', { name: project.name })}</p> : null}
+        {project ? (
+          <p className={styles.projectContext}>{t('vault.forProject', { name: project.name })}</p>
+        ) : null}
         <p className={styles.sectionHint}>{t('vault.collaboratorsHint')}</p>
         <p className={styles.p2pNotice}>{t('vault.p2pTransferNotice')}</p>
 
@@ -360,7 +364,9 @@ export function VaultPanel({
                       className={styles.editFoldersButton}
                       disabled={busy}
                       title={t('vault.editFolders')}
-                      onClick={() => (isEditingFolders ? setEditingGrantId(null) : startEditFolders(grant))}
+                      onClick={() =>
+                        isEditingFolders ? setEditingGrantId(null) : startEditFolders(grant)
+                      }
                     >
                       <FolderCog size={12} />
                     </button>

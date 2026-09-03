@@ -1,6 +1,6 @@
 import { X } from 'lucide-react'
-import { useOnEscape } from '../../hooks/useOnEscape'
 
+import { useOnEscape } from '../../hooks/useOnEscape'
 import { fmtTokens, fmtUsd, shortModel } from '../../lib/costFormat'
 import { intlLocale, useT } from '../../lib/i18n'
 import { useAgentCanvasStore } from '../../stores/agentCanvasStore'

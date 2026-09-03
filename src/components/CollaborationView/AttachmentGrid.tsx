@@ -25,7 +25,12 @@ function GridTile({
   overlayCount?: number
 }) {
   const { ref: inViewRef, inView } = useInView<HTMLButtonElement>()
-  const { kind, url } = useAttachmentPreviewUrl(conversationId, attachment.attachmentId, attachment.name, inView)
+  const { kind, url } = useAttachmentPreviewUrl(
+    conversationId,
+    attachment.attachmentId,
+    attachment.name,
+    inView,
+  )
   return (
     <button ref={inViewRef} type="button" className={styles.tile} onClick={onOpen}>
       {kind === 'image' && url ? (
@@ -78,7 +83,9 @@ export function AttachmentGrid({
             conversationId={conversationId}
             attachment={attachment}
             onOpen={() => setLightboxIndex(index)}
-            overlayCount={index === VISIBLE_TILE_COUNT - 1 && overflowCount > 0 ? overflowCount : undefined}
+            overlayCount={
+              index === VISIBLE_TILE_COUNT - 1 && overflowCount > 0 ? overflowCount : undefined
+            }
           />
         ))}
       </div>
@@ -110,13 +117,21 @@ function AttachmentGridLightbox({
   onClose: () => void
 }) {
   const resolved = attachments.map((attachment) => {
-    // eslint-disable-next-line react-hooks/rules-of-hooks -- `attachments` is stable for the
-    // lifetime of one message/group; this map runs the same fixed number of hooks every render.
-    const { kind, url } = useAttachmentPreviewUrl(conversationId, attachment.attachmentId, attachment.name)
+    // `attachments` is stable for the lifetime of one message/group; this map runs the same fixed
+    // number of hooks every render.
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const { kind, url } = useAttachmentPreviewUrl(
+      conversationId,
+      attachment.attachmentId,
+      attachment.name,
+    )
     return { kind, url, name: attachment.name }
   })
   const items: LightboxItem[] = resolved
-    .filter((entry): entry is { kind: 'image' | 'video'; url: string; name: string } => entry.kind !== null && entry.url !== null)
+    .filter(
+      (entry): entry is { kind: 'image' | 'video'; url: string; name: string } =>
+        entry.kind !== null && entry.url !== null,
+    )
     .map((entry) => ({ src: entry.url, kind: entry.kind, alt: entry.name }))
   if (items.length === 0) return null
   // Attachments that failed to resolve (non-previewable, or still loading) are simply absent from

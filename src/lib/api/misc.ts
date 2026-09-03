@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
 import type { InstallToolchain } from '../agentInstall'
+import { withFallback } from '../resilience'
 import type { WorktreeMode } from './git'
 import type { ProfileMeta } from './profiles'
 import { canUseSharedCoreTransport, isTauriEnv, webApiFetch } from './transport'
@@ -334,7 +335,7 @@ export async function agentCliVersion(agent: string): Promise<string | null> {
   if (isTauriEnv()) return invoke<string | null>('agent_cli_version', { agent })
   return webApiFetch<string | null>(
     `/api/cli/agent_cli_version?agent=${encodeURIComponent(agent)}`,
-  ).catch(() => null)
+  ).catch(withFallback('encodeURIComponent', null))
 }
 
 export async function exportBackup(targetPath: string): Promise<void> {

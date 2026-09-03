@@ -35,6 +35,6 @@ describe('shared core storage identity configuration', () => {
     const viteConfig = readFileSync(resolve(process.cwd(), 'vite.config.ts'), 'utf8')
 
     expect(viteConfig).toContain("ALETHE_SERVER_PORT || '1423'")
-    expect(viteConfig).toContain("Number(process.env.ALETHE_DEV_PORT) || 1422")
+    expect(viteConfig).toContain('Number(process.env.ALETHE_DEV_PORT) || 1422')
   })
 })

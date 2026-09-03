@@ -4,10 +4,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useAgentInstall, useAgentOperationBusy } from '../../hooks/useAgentInstall'
 import { type InstallToolchain, uninstallMethodsFor } from '../../lib/agentInstall'
 import { useT } from '../../lib/i18n'
+import { withFallback } from '../../lib/resilience'
 import { probeInstallToolchain } from '../../lib/tauri'
 import type { AgentType } from '../../lib/types'
-import { Modal } from '../modals/Modal'
 import controls from '../modals/controls.module.css'
+import { Modal } from '../modals/Modal'
 import styles from './agentActions.module.css'
 
 type Props = {
@@ -17,7 +18,7 @@ type Props = {
   nested?: boolean
 }
 
-// eslint-disable-next-line no-control-regex
+ 
 const ANSI_PATTERN =
   /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|[\x00-\x08\x0b\x0c\x0e-\x1f]/g
 
@@ -35,7 +36,7 @@ export function AgentUninstallButton({ agent, label, onUninstalled, nested }: Pr
       .then((result) => {
         if (!cancelled) setToolchain(result)
       })
-      .catch(() => undefined)
+      .catch(withFallback('setToolchain', undefined))
     return () => {
       cancelled = true
     }

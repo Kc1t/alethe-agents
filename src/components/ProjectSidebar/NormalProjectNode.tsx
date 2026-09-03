@@ -10,9 +10,9 @@ import {
 } from 'lucide-react'
 
 import { useT } from '../../lib/i18n'
-import { useChangeTriggerStore } from '../../stores/changeTriggerStore'
 import { type SidebarDropEdge } from '../../lib/sidebarDrag'
 import { type Project, type Terminal } from '../../lib/types'
+import { useChangeTriggerStore } from '../../stores/changeTriggerStore'
 import { Collapse } from '../ui/Collapse'
 import { DotmCircular2 } from '../ui/dotm-circular-2'
 import styles from './NormalProjectSidebar.module.css'

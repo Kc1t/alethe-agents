@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
 import type { WorktreePendingChange } from '../../lib/tauri'
-import { Modal } from './Modal'
-import controls from './controls.module.css'
 import styles from './ConfirmWorktreeCommitModal.module.css'
+import controls from './controls.module.css'
+import { Modal } from './Modal'
 
 export type ConfirmWorktreeCommitModalProps = {
   open: boolean

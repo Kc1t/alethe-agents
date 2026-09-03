@@ -221,11 +221,7 @@ export function McpManagerModal() {
           <span className={styles.footerNote}>
             {/* Scope belongs to servers only — skills and plugins are not configured per project,
                 so repeating a server hint under them would describe the wrong thing. */}
-            {tab !== 'servers'
-              ? ''
-              : scope === 'project'
-                ? (repo ?? '')
-                : t('mcp.scopeGlobalHint')}
+            {tab !== 'servers' ? '' : scope === 'project' ? (repo ?? '') : t('mcp.scopeGlobalHint')}
           </span>
           <button type="button" className={controls.btn} onClick={closeModal}>
             {t('common.close')}

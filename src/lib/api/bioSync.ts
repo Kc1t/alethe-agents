@@ -2,10 +2,10 @@
 // changes) or a single one (when opening a conversation with them). Mirrors `avatarSync.ts`
 // exactly — same reasoning, same best-effort/throttle behavior — for the bio field instead.
 
+import { syncLocalIdentity } from '../tauri'
 import { connectRendezvous, sendRendezvousFrame } from './syncRendezvous'
 import { syncListChatContacts, syncSealBioUpdate } from './syncSecurity'
 import { isTauriEnv } from './transport'
-import { syncLocalIdentity } from '../tauri'
 
 async function sealAndSendBioUpdate(
   bio: string | null,
@@ -36,11 +36,14 @@ export async function broadcastBioUpdate(bio: string): Promise<void> {
     const trimmed = bio.trim()
     await Promise.all(
       contacts.map((contact) =>
-        sealAndSendBioUpdate(trimmed || null, identity.accountRoute, contact.accountRoute, contact.agreementPublicKey).catch(
-          (cause) => {
-            console.error('[bio-sync] failed to notify contact', contact.accountRoute, cause)
-          },
-        ),
+        sealAndSendBioUpdate(
+          trimmed || null,
+          identity.accountRoute,
+          contact.accountRoute,
+          contact.agreementPublicKey,
+        ).catch((cause) => {
+          console.error('[bio-sync] failed to notify contact', contact.accountRoute, cause)
+        }),
       ),
     )
   } catch (cause) {
@@ -69,7 +72,12 @@ export async function sendBioUpdateTo(
   try {
     const identity = await syncLocalIdentity()
     await connectRendezvous()
-    await sealAndSendBioUpdate(trimmed, identity.accountRoute, recipientAccountRoute, recipientAgreementPublicKey)
+    await sealAndSendBioUpdate(
+      trimmed,
+      identity.accountRoute,
+      recipientAccountRoute,
+      recipientAgreementPublicKey,
+    )
   } catch (cause) {
     console.error('[bio-sync] sendBioUpdateTo failed', recipientAccountRoute, cause)
   }

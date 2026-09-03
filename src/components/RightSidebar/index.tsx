@@ -28,12 +28,8 @@ import { hasFileDragPayload, readFileDragPayload } from '../../lib/fileDrag'
 import { useT } from '../../lib/i18n'
 import { isMarkdownPath } from '../../lib/markdownSidebarHistory'
 import { basename } from '../../lib/paths'
+import { listProjectPlans, readTextFile, writeClipboardText } from '../../lib/tauri'
 import { getProjectRepoRoot } from '../../lib/terminalFactory'
-import {
-  listProjectPlans,
-  readTextFile,
-  writeClipboardText,
-} from '../../lib/tauri'
 import type { Project, SubTab, Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -42,6 +38,7 @@ import { EmptyState } from '../EmptyState'
 const MarkdownRenderer = lazy(() =>
   import('../MarkdownPane/MarkdownRenderer').then((m) => ({ default: m.MarkdownRenderer })),
 )
+import { withFallback } from '../../lib/resilience'
 import { McpPanel } from '../McpPanel'
 import { GitControl } from '../ProjectSidebar/GitControl'
 import { TodoSidebar } from '../TodoSidebar'
@@ -401,7 +398,7 @@ function MarkdownSidebarViewer() {
         if (disposed) dispose()
         else unlisten = dispose
       })
-      .catch(() => undefined)
+      .catch(withFallback('dispose', undefined))
     return () => {
       disposed = true
       unlisten?.()

@@ -66,9 +66,7 @@ describe('formatDroppedPaths', () => {
   })
 
   it('joins multiple paths, quoting those with backslashes or spaces', () => {
-    expect(formatDroppedPaths(['a.txt', 'C:\\my dir\\b.txt'])).toBe(
-      'a.txt "C:\\my dir\\b.txt" ',
-    )
+    expect(formatDroppedPaths(['a.txt', 'C:\\my dir\\b.txt'])).toBe('a.txt "C:\\my dir\\b.txt" ')
   })
 
   it('returns empty string when no valid paths', () => {

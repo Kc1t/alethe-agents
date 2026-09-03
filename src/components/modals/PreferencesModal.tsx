@@ -219,7 +219,8 @@ export function PreferencesModal() {
         target: 'chats-projects-storage',
         label: t('prefs.chatsProjects.storageTitle'),
         description: t('prefs.chatsProjects.storageDesc'),
-        keywords: 'storage armazenamento espaço disk disco cleanup limpeza anexos attachments video imagem',
+        keywords:
+          'storage armazenamento espaço disk disco cleanup limpeza anexos attachments video imagem',
       },
       {
         category: 'features',

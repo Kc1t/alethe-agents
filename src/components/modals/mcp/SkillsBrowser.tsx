@@ -13,14 +13,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { type MessageKey, useT } from '../../../lib/i18n'
 import { groupSkillsByName, SKILL_STORES, type SkillGroup } from '../../../lib/skills'
 import {
-  skillsDetail,
-  skillsScan,
-  skillsSync,
-  skillsUninstall,
   type SkillAgentSnapshot,
   type SkillDetail,
   type SkillNode,
+  skillsDetail,
+  skillsScan,
+  skillsSync,
   type SkillSummary,
+  skillsUninstall,
 } from '../../../lib/tauri'
 import { AGENT_TYPE_LABELS, type AgentType } from '../../../lib/types'
 import { useUiStore } from '../../../stores/uiStore'

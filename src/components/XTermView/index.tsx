@@ -13,8 +13,6 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { AgentInstallButton } from '../AgentInstall/AgentInstallButton'
-import { DotmCircular2 } from '../ui/dotm-circular-2'
 import { cliPathMatchesAgent } from '../../lib/agentCliPath'
 import { normalizeBrowserUrl } from '../../lib/browserUrl'
 import { pickFile } from '../../lib/dialog'
@@ -30,6 +28,8 @@ import {
 } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { AgentInstallButton } from '../AgentInstall/AgentInstallButton'
+import { DotmCircular2 } from '../ui/dotm-circular-2'
 import { type DetectedTerminalLink } from './terminalLinks'
 import { applyPromptHistoryInput, loadPromptHistory, PROMPT_HISTORY_KEY } from './terminalWrite'
 import { useXtermSession } from './useXtermSession'
@@ -52,7 +52,6 @@ export type XTermViewProps = {
   sessionKey?: string
 
   env?: Record<string, string>
-
 
   trustSessionId?: boolean
 

@@ -83,8 +83,7 @@ export function Dropdown({
       label.toLocaleLowerCase() === normalizedSearch
     )
   })
-  const showCustomOption =
-    allowCustomValue && normalizedSearch.length >= 2 && !hasExactMatch
+  const showCustomOption = allowCustomValue && normalizedSearch.length >= 2 && !hasExactMatch
 
   const closeMenu = (restoreFocus = false) => {
     setOpen(false)

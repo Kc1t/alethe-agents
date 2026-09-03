@@ -28,6 +28,7 @@ import { getCachedCodexUsage } from '../../lib/codexUsageCache'
 import { useT } from '../../lib/i18n'
 import { observeClaudeReset, observeCodexReset } from '../../lib/limitResetWatch'
 import { formatShortcut } from '../../lib/platform'
+import { expected } from '../../lib/resilience'
 import { killPty, remoteControlConnectedDevices } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -140,7 +141,7 @@ export function TitleBar() {
       window.dispatchEvent(new CustomEvent('alethe:agent-canvas-exit'))
       return
     }
-    void killPty(agentCanvasSession.ptyId).catch(() => {})
+    void killPty(agentCanvasSession.ptyId).catch(expected('kill_pty_failed'))
     setAgentCanvasSession(null)
   }
 

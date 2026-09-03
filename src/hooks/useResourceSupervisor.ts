@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+
 import { isTauriEnv } from '../lib/api/transport'
 import { getLocale, translate } from '../lib/i18n'
 import { computeVisibleFocusedPtyIds } from '../lib/ptyVisibility'

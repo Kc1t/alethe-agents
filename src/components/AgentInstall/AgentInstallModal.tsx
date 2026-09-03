@@ -12,10 +12,11 @@ import {
   nodeInstallMethods,
 } from '../../lib/agentInstall'
 import { useT } from '../../lib/i18n'
+import { withFallback } from '../../lib/resilience'
 import { openInBrowser, probeInstallToolchain } from '../../lib/tauri'
 import type { AgentType } from '../../lib/types'
-import { Modal } from '../modals/Modal'
 import controls from '../modals/controls.module.css'
+import { Modal } from '../modals/Modal'
 import styles from './agentActions.module.css'
 
 type Props = {
@@ -27,7 +28,7 @@ type Props = {
   nested?: boolean
 }
 
-// eslint-disable-next-line no-control-regex
+ 
 const ANSI_PATTERN =
   /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|[\x00-\x08\x0b\x0c\x0e-\x1f]/g
 
@@ -53,7 +54,7 @@ export function AgentInstallModal({ agent, label, open, onClose, onInstalled, ne
     setProbing(true)
     return probeInstallToolchain()
       .then((result) => setToolchain(result))
-      .catch(() => undefined)
+      .catch(withFallback('setToolchain', undefined))
       .finally(() => setProbing(false))
   }
 
@@ -76,7 +77,7 @@ export function AgentInstallModal({ agent, label, open, onClose, onInstalled, ne
   useEffect(() => {
     if (nodeInstall.status !== 'success') return
     void probe()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [nodeInstall.status])
 
   const methods = installMethodsFor(agent, toolchain)
@@ -173,7 +174,11 @@ export function AgentInstallModal({ agent, label, open, onClose, onInstalled, ne
             <button
               type="button"
               className={styles.linkBtn}
-              onClick={() => void openInBrowser(NODE_DOWNLOAD_URL).catch(() => undefined)}
+              onClick={() =>
+                void openInBrowser(NODE_DOWNLOAD_URL).catch(
+                  withFallback('openInBrowser', undefined),
+                )
+              }
             >
               <ExternalLink size={13} /> {t('agentInstall.downloadNode')}
             </button>
@@ -197,7 +202,9 @@ export function AgentInstallModal({ agent, label, open, onClose, onInstalled, ne
         <button
           type="button"
           className={styles.docsLink}
-          onClick={() => void openInBrowser(docsUrl).catch(() => undefined)}
+          onClick={() =>
+            void openInBrowser(docsUrl).catch(withFallback('openInBrowser', undefined))
+          }
         >
           <ExternalLink size={12} /> {t('agentInstall.docs')}
         </button>

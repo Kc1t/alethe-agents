@@ -94,8 +94,7 @@ export async function skillsSync(
   name: string,
   overwrite = false,
 ): Promise<SkillSyncOutcome[]> {
-  if (isTauriEnv())
-    return invoke<SkillSyncOutcome[]>('skills_sync', { from, to, name, overwrite })
+  if (isTauriEnv()) return invoke<SkillSyncOutcome[]>('skills_sync', { from, to, name, overwrite })
   return webApiFetch<SkillSyncOutcome[]>('/api/skills/sync', {
     method: 'POST',
     body: JSON.stringify({ from, to, name, overwrite }),

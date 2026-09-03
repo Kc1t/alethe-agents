@@ -5,8 +5,8 @@ import {
   getActiveSessions,
   removeSession,
   savedConversationIdFor,
-  saveSession,
   type SavedSession,
+  saveSession,
 } from './sessionResume'
 import { setStorageNamespace } from './storageNamespace'
 

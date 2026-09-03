@@ -1,12 +1,13 @@
 import { Bell, Clock3, Eye, Github, Loader2, Radio, ShieldCheck, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { useT } from '../../../lib/i18n'
 import {
   githubSignalingClearToken,
   githubSignalingHasToken,
   githubSignalingSetToken,
 } from '../../../lib/api/syncRendezvousGit'
+import { useT } from '../../../lib/i18n'
+import { withFallback } from '../../../lib/resilience'
 import {
   type AccessRecord,
   type CollaborationActivationState,
@@ -91,7 +92,11 @@ function GithubSignalingSettings() {
           <strong>
             {hasToken === null
               ? '…'
-              : t(hasToken ? 'collaboration.githubSignaling.configured' : 'collaboration.githubSignaling.notConfigured')}
+              : t(
+                  hasToken
+                    ? 'collaboration.githubSignaling.configured'
+                    : 'collaboration.githubSignaling.notConfigured',
+                )}
           </strong>
         </div>
 
@@ -99,7 +104,12 @@ function GithubSignalingSettings() {
 
         {hasToken ? (
           <div className={styles.actions}>
-            <button type="button" className={controls.btn} disabled={busy} onClick={() => void remove()}>
+            <button
+              type="button"
+              className={controls.btn}
+              disabled={busy}
+              onClick={() => void remove()}
+            >
               {busy ? <Loader2 size={14} /> : null}
               {t('collaboration.githubSignaling.remove')}
             </button>
@@ -246,7 +256,7 @@ export function CollaborationSettings() {
       await refresh()
     } catch {
       setError(true)
-      await refresh().catch(() => undefined)
+      await refresh().catch(withFallback('refresh', undefined))
     } finally {
       setBusy(false)
     }

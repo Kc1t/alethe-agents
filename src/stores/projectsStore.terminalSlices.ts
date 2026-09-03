@@ -3,6 +3,7 @@
 import { nanoid } from 'nanoid'
 
 import { getLocale, translate } from '../lib/i18n'
+import { withFallback } from '../lib/resilience'
 import {
   clearTerminalPtyIds,
   collectTerminalPtyIds,
@@ -77,9 +78,7 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
         // folder is gone by then (confirmed live: a project's `defaultCwd`
         // ended up pointing at a deleted merge-env directory).
         const isPureCandidate =
-          !args.worktreeAgentId &&
-          !args.ephemeralConflictAgent &&
-          !args.ephemeralUtility
+          !args.worktreeAgentId && !args.ephemeralConflictAgent && !args.ephemeralUtility
         const projects = state.projects.map((p) =>
           p.id === projectId
             ? {
@@ -350,7 +349,7 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
       const { killPtyTree, worktreeRemove } = await import('../lib/tauri')
       const ptyIds = collectTerminalPtyIds([terminal])
 
-      await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(() => [])))
+      await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(withFallback('killPtyTree', []))))
       const repo = getProjectRepoRoot(project)
       if (repo) {
         try {

@@ -4,15 +4,16 @@ import { nanoid } from 'nanoid'
 
 import { restartAgentPty } from '../lib/agentPtyRestart'
 import { getLocale, translate } from '../lib/i18n'
+import { expected } from '../lib/resilience'
 import { getActiveSessions, savedConversationIdFor } from '../lib/sessionResume'
+import { killPty, listenPtyData } from '../lib/tauri'
 import {
   clearTerminalPtyIds,
   collectTerminalPtyIds,
   getProjectRepoRoot,
 } from '../lib/terminalFactory'
 import { cleanupPtys } from '../lib/terminalLifecycle'
-import { killPty, listenPtyData } from '../lib/tauri'
-import type { Group, Project, AgentType } from '../lib/types'
+import type { AgentType,Group, Project } from '../lib/types'
 import { GROUP_COLORS } from '../lib/types'
 import { sanitizeWorkspaceSnapshot } from '../lib/workspaceNavigation'
 import type { ProjectsState } from './projectsStore'
@@ -84,7 +85,7 @@ async function restartAgentPtyWithHangGuard(
   console.warn(
     `[projectsStore] resume cross-cwd de ${opts.agent} sem nenhuma saída em ${RESUME_HANG_GUARD_MS}ms (provável hang) — matando e reabrindo como sessão nova`,
   )
-  await killPty(result.id).catch(() => {})
+  await killPty(result.id).catch(expected('kill_pty_failed'))
   return restartAgentPty({ ...opts, resumeId: undefined })
 }
 
@@ -684,8 +685,7 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
         // created from HEAD (or a --local clone), so pending changes simply
         // stay in the main repository, untouched. The caller confirms once and
         // calls back with `allowDirty` — see `migrateDirtyConfirm`.
-        const pending =
-          status.staged.length + status.changes.length + status.untracked.length
+        const pending = status.staged.length + status.changes.length + status.untracked.length
         if (pending > 0 && !opts?.allowDirty) {
           return { status: 'dirty', pending }
         }

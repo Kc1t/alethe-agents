@@ -4,6 +4,7 @@ import { type MutableRefObject, useCallback, useEffect, useRef, useState } from 
 import { MAX_LIVE_WORKERS } from '../../../lib/agentCanvasConfig'
 import { type CodexWorker, execArgsFor, tailSummary } from '../../../lib/agentCanvasUtils'
 import { useT } from '../../../lib/i18n'
+import { expected } from '../../../lib/resilience'
 import { attachPty, killPty, listenPtyExit, spawnPty } from '../../../lib/tauri'
 import { agentCliCommand, type AgentType } from '../../../lib/types'
 import { useUiStore } from '../../../stores/uiStore'
@@ -73,7 +74,7 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
                   prev.map((w) => (w.ptyId === ptyId ? { ...w, result } : w)),
                 )
               })
-              .catch(() => {})
+              .catch(expected('map_failed'))
           })
             .then((unlisten) => {
               unlistenExit = unlisten
@@ -81,7 +82,7 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
               if (exited) unlisten()
               else workerExitUnlistenersRef.current.set(ptyId, unlisten)
             })
-            .catch(() => {})
+            .catch(expected('set_failed'))
         })
         .catch((err) => console.error('[AgentCanvasPOC] falha spawnando PTY do worker:', err))
       if (opts.open) setExpandedCodexId(ptyId)
@@ -100,7 +101,7 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
     console.log('[AgentCanvasPOC] matando worker', ptyId)
     workerExitUnlistenersRef.current.get(ptyId)?.()
     workerExitUnlistenersRef.current.delete(ptyId)
-    void killPty(ptyId).catch(() => {})
+    void killPty(ptyId).catch(expected('kill_pty_failed'))
     setCodexWorkers((prev) => prev.filter((w) => w.ptyId !== ptyId))
     setExpandedCodexId((cur) => (cur === ptyId ? null : cur))
   }, [])
@@ -160,7 +161,7 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
   const killAllWorkers = useCallback(() => {
     for (const w of codexWorkersRef.current) {
       workerExitUnlistenersRef.current.get(w.ptyId)?.()
-      void killPty(w.ptyId).catch(() => {})
+      void killPty(w.ptyId).catch(expected('kill_pty_failed'))
     }
     workerExitUnlistenersRef.current.clear()
   }, [])

@@ -51,7 +51,12 @@ function withDownloadSlot<T>(task: () => Promise<T>): Promise<T> {
  * fire a download+decrypt for every single one the instant the chat opens, saturating the main
  * thread and the P2P/relay channel at once (this is what made the whole app freeze and made the
  * message list unscrollable, since every render was competing with dozens of in-flight decrypts). */
-export function useAttachmentPreviewUrl(conversationId: string, attachmentId: string, name: string, enabled = true) {
+export function useAttachmentPreviewUrl(
+  conversationId: string,
+  attachmentId: string,
+  name: string,
+  enabled = true,
+) {
   const kind = previewKindFor(name)
   const [url, setUrl] = useState<string | null>(objectUrlCache.get(attachmentId) ?? null)
   const [failed, setFailed] = useState(false)

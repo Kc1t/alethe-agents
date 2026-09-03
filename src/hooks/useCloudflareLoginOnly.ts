@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { getCloudflareDeployWorkdir } from '../lib/api/cloudflareDeploy'
+import { withFallback } from '../lib/resilience'
 import { killPty, listenPtyData, listenPtyExit, spawnPty, writePty } from '../lib/tauri'
 
 export type CloudflareLoginStep = 'idle' | 'running' | 'success' | 'failed'
@@ -30,7 +31,7 @@ export function useCloudflareLoginOnly() {
     cleanupRef.current = []
     const ptyId = ptyIdRef.current
     ptyIdRef.current = null
-    if (ptyId) void killPty(ptyId).catch(() => undefined)
+    if (ptyId) void killPty(ptyId).catch(withFallback('killPty', undefined))
   }, [])
 
   useEffect(() => {
@@ -54,7 +55,7 @@ export function useCloudflareLoginOnly() {
       const ptyId = `cloudflare-login_${Date.now()}`
       const spawned = await spawnPty({ cols: 100, rows: 24, id: ptyId, cwd: workdir })
       if (disposedRef.current) {
-        void killPty(spawned.id).catch(() => undefined)
+        void killPty(spawned.id).catch(withFallback('killPty', undefined))
         return
       }
       ptyIdRef.current = spawned.id
@@ -68,7 +69,7 @@ export function useCloudflareLoginOnly() {
           // where Wrangler needs an open interactive stdin to finish persisting the OAuth token.
           if (!answeredSkillsPrompt && chunk.toLowerCase().includes('cloudflare skills')) {
             answeredSkillsPrompt = true
-            void writePty(spawned.id, 'n\r').catch(() => undefined)
+            void writePty(spawned.id, 'n\r').catch(withFallback('writePty', undefined))
           }
         }),
       )

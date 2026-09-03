@@ -26,6 +26,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
+import { useGitStatusSummary } from '../../hooks/useGitStatusSummary'
 import { useT } from '../../lib/i18n'
 import { formatShortcut } from '../../lib/platform'
 import {
@@ -34,19 +35,18 @@ import {
   sidebarInsertionIndex,
 } from '../../lib/sidebarDrag'
 import { getProjectRepoRoot } from '../../lib/terminalFactory'
-import { useGitStatusSummary } from '../../hooks/useGitStatusSummary'
 import { type Group, type Project } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
-import { MeshSidebarView } from './MeshSidebarView'
 import { SidebarNowPlaying } from '../SidebarNowPlaying'
 import { UserProfile } from '../UserProfile'
 import { ContextMenu, type MenuItem } from './ContextMenu'
 import { FileExplorer } from './FileExplorer'
 import { GitControl } from './GitControl'
-import { NormalGroupNode as GroupNode } from './NormalGroupNode'
 import { LayoutFooter, WorkspaceLayoutFooter } from './LayoutFooter'
+import { MeshSidebarView } from './MeshSidebarView'
+import { NormalGroupNode as GroupNode } from './NormalGroupNode'
 import { NormalProjectNode as ProjectNode } from './NormalProjectNode'
 import styles from './NormalProjectSidebar.module.css'
 import { createSidebarMenus } from './sidebarMenus'
@@ -419,8 +419,7 @@ export function NormalProjectSidebar() {
       onAddTerminal={() => openModal('newTerminal', { projectId: p.id })}
       onQuickOpen={() => activateProject(p, 'open')}
       onToggleDisabled={() => {
-        const allDisabled =
-          p.terminals.length > 0 && p.terminals.every((term) => term.disabled)
+        const allDisabled = p.terminals.length > 0 && p.terminals.every((term) => term.disabled)
         actions.setProjectDisabled(p.id, !allDisabled)
       }}
       dropEdge={dropIndicator?.id === `proj:${p.id}` ? dropIndicator.edge : null}

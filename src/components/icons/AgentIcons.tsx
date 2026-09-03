@@ -1,10 +1,10 @@
+import antigravityLogo from '../../assets/antigravity.png'
 import claudeLogo from '../../assets/claude-code.png'
 import codexLogo from '../../assets/codex.png'
 import freebuffLogo from '../../assets/freebuff.png'
-import antigravityLogo from '../../assets/antigravity.png'
 import { iconMap } from '../../assets/icons'
-import type { AgentType, Theme } from '../../lib/types'
 import { isLightTheme } from '../../lib/themes'
+import type { AgentType, Theme } from '../../lib/types'
 
 export function ShellIcon({ size = 16 }: { size?: number }) {
   return (

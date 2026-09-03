@@ -1,20 +1,12 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import {
-  Bot,
-  BrainCircuit,
-  Check,
-  GitBranch,
-  Globe,
-  ListTodo,
-  Plug,
-  Workflow,
-} from 'lucide-react'
+import { Bot, BrainCircuit, Check, GitBranch, Globe, ListTodo, Plug, Workflow } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { latestVersionFor } from '../../lib/agentVersions'
 import { FEATURES } from '../../lib/features'
 import { LOCALES, useT } from '../../lib/i18n'
 import { DEFAULT_PROFILE_IMAGE_URL, getProfileInitial } from '../../lib/profile'
+import { withFallback } from '../../lib/resilience'
 import { agentCliVersion, findCliLauncher, renameProfile } from '../../lib/tauri'
 import { APP_ICON_OPTIONS, getThemeIcon } from '../../lib/themeIcons'
 import { THEME_OPTIONS, themeDescription, themeLabel } from '../../lib/themes'
@@ -157,7 +149,7 @@ export function OnboardingModal() {
           agentCliVersion(command),
           CLI_DETECTION_TIMEOUT_MS,
           null,
-        ).catch(() => null)
+        ).catch(withFallback('agentCliVersion', null))
         if (version) setAgentVersions((current) => ({ ...current, [agent.id]: version }))
       }),
     )

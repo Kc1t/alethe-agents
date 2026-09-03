@@ -5,9 +5,9 @@ import { syncDownloadAttachment } from '../../lib/api/syncChat'
 import { guessMimeFromName } from '../../lib/attachmentReference'
 import { useT } from '../../lib/i18n'
 import styles from './AttachmentPreview.module.css'
-import { useInView } from './useInView'
 import { Lightbox } from './Lightbox'
 import { useAttachmentPreviewUrl } from './useAttachmentPreviewUrl'
+import { useInView } from './useInView'
 
 /** Renders an inline image/video preview for a chat attachment (decrypted on demand via
  * `syncDownloadAttachment`), or a clickable "download" file chip for anything else — instead of
@@ -55,11 +55,18 @@ export function AttachmentPreview({
 
   if (!kind || failed) {
     return (
-      <button type="button" className={styles.fileChip} onClick={() => void downloadToDisk()} disabled={downloading}>
+      <button
+        type="button"
+        className={styles.fileChip}
+        onClick={() => void downloadToDisk()}
+        disabled={downloading}
+      >
         {downloading ? <Loader2 size={14} className={styles.spin} /> : <FileIcon size={14} />}
         <span className={styles.fileName}>{name}</span>
         {!downloading ? <Download size={12} className={styles.downloadIcon} /> : null}
-        {failed ? <span className={styles.fileError}>{t('chat.attachmentPreviewFailed')}</span> : null}
+        {failed ? (
+          <span className={styles.fileError}>{t('chat.attachmentPreviewFailed')}</span>
+        ) : null}
       </button>
     )
   }
@@ -85,7 +92,12 @@ export function AttachmentPreview({
       ) : (
         // A click anywhere except the native controls strip opens the lightbox — `<video>`'s own
         // controls need their clicks to reach the element, so this can't just be a wrapping button.
-        <video src={url} controls className={styles.videoPreview} onClick={() => setLightboxOpen(true)} />
+        <video
+          src={url}
+          controls
+          className={styles.videoPreview}
+          onClick={() => setLightboxOpen(true)}
+        />
       )}
       {caption ? <p className={styles.caption}>{caption}</p> : null}
       {lightboxOpen ? (

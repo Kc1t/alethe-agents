@@ -2,13 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   consumeRemoteCandidate,
+  type DiscoveredCandidate,
   discoverP2pCandidate,
+  type NatClass,
   p2pConnect,
   p2pSendFrame,
   p2pSessionState,
   prepareRemoteCandidate,
-  type DiscoveredCandidate,
-  type NatClass,
 } from '../lib/api/p2pBridge'
 import { P2P_CHANNEL_CHAT, tagFrame } from '../lib/api/p2pChannel'
 import { subscribeToRendezvousEvents } from '../lib/api/rendezvousEventBus'
@@ -19,6 +19,7 @@ import {
   githubSignalingPollCandidate,
   githubSignalingPublishCandidate,
 } from '../lib/api/syncRendezvousGit'
+import { expected } from '../lib/resilience'
 import { syncFindTrustedDeviceForAccountRoute, syncLocalIdentity } from '../lib/tauri'
 
 export type P2pAutoConnectState = 'idle' | 'signaling' | 'p2p' | 'relay' | 'failed'
@@ -49,7 +50,13 @@ async function tryGithubSignalingFallback(params: {
   localGistId: string
   peerGistId: string
   ownEnvelopeCiphertext: string
-}): Promise<{ host: string; port: number; localHost: string | null; localPort: number | null; natClass: NatClass | null } | null> {
+}): Promise<{
+  host: string
+  port: number
+  localHost: string | null
+  localPort: number | null
+  natClass: NatClass | null
+} | null> {
   const { log, sessionId, localDeviceId, localGistId, peerGistId, ownEnvelopeCiphertext } = params
   try {
     if (!(await githubSignalingHasToken())) return null
@@ -62,7 +69,11 @@ async function tryGithubSignalingFallback(params: {
     })
     const deadline = Date.now() + GITHUB_FALLBACK_WAIT_MS
     while (Date.now() < deadline) {
-      const ciphertext = await githubSignalingPollCandidate({ gistId: peerGistId, sessionId, localDeviceId })
+      const ciphertext = await githubSignalingPollCandidate({
+        gistId: peerGistId,
+        sessionId,
+        localDeviceId,
+      })
       if (ciphertext) {
         const candidate = await consumeRemoteCandidate(ciphertext, sessionId)
         log('peer candidate received via the GitHub signaling fallback')
@@ -151,7 +162,10 @@ export function useP2pAutoConnect(
   // in ChatPanel.
   const setState: typeof setStateRaw = useCallback((next) => {
     setStateRaw((current) => {
-      const resolved = typeof next === 'function' ? (next as (prev: typeof current) => typeof current)(current) : next
+      const resolved =
+        typeof next === 'function'
+          ? (next as (prev: typeof current) => typeof current)(current)
+          : next
       if (resolved !== current) {
         console.info(`[p2p] state ${current} -> ${resolved} @ ${new Date().toISOString()}`)
       }
@@ -319,7 +333,9 @@ export function useP2pAutoConnect(
           // Best-effort — the entry also self-expires (see `sync_rendezvous_git.rs`'s
           // `CANDIDATE_TTL_MS`), so a failure here just means slightly more dead weight in the
           // Gist until it expires on its own, not a correctness problem.
-          void githubSignalingCleanupSession(gistIds.local, sessionId).catch(() => {})
+          void githubSignalingCleanupSession(gistIds.local, sessionId).catch(
+            expected('github_signaling_cleanup_session_failed'),
+          )
         }
       }
     } catch (cause) {
@@ -361,7 +377,8 @@ export function useP2pAutoConnect(
         if (event.eventType !== 'delivery' || event.envelopeKind !== 'candidate') continue
         if (!event.ciphertext) continue
         candidateInboxRef.current.push(event.ciphertext)
-        if (candidateInboxRef.current.length > CANDIDATE_INBOX_MAX) candidateInboxRef.current.shift()
+        if (candidateInboxRef.current.length > CANDIDATE_INBOX_MAX)
+          candidateInboxRef.current.shift()
         console.info(
           `[p2p] peer=${remotePeerAccountRoute} candidate envelope retained (inbox=${candidateInboxRef.current.length})`,
         )
@@ -393,12 +410,17 @@ export function useP2pAutoConnect(
         try {
           const existing = await p2pSessionState(remotePeerAccountRoute)
           if (existing === 'connected' && !cancelledRef.current) {
-            console.info(`[p2p] peer=${remotePeerAccountRoute} resuming an already-live backend session — skipping rediscovery/punch`)
+            console.info(
+              `[p2p] peer=${remotePeerAccountRoute} resuming an already-live backend session — skipping rediscovery/punch`,
+            )
             setState('p2p')
             return
           }
         } catch (cause) {
-          console.info(`[p2p] peer=${remotePeerAccountRoute} liveness check before connect failed, attempting fresh`, cause)
+          console.info(
+            `[p2p] peer=${remotePeerAccountRoute} liveness check before connect failed, attempting fresh`,
+            cause,
+          )
         }
         void attempt(remotePeerAccountRoute, peerAgreementPublicKey)
       })()
@@ -436,7 +458,9 @@ export function useP2pAutoConnect(
         try {
           const sessionState = await p2pSessionState(remotePeerAccountRoute)
           if (sessionState !== 'connected' && !cancelledRef.current) {
-            console.info(`[p2p] peer=${remotePeerAccountRoute} session reported "${sessionState}" — dropping back to relay`)
+            console.info(
+              `[p2p] peer=${remotePeerAccountRoute} session reported "${sessionState}" — dropping back to relay`,
+            )
             setState('relay')
           }
         } catch (cause) {

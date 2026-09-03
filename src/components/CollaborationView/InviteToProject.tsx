@@ -2,7 +2,6 @@ import { FolderSync, Loader2 } from 'lucide-react'
 import { useState } from 'react'
 
 import { rememberSentProjectInvite, sealProjectInvite } from '../../lib/api/projectInvite'
-
 import { sendRendezvousFrame } from '../../lib/api/syncRendezvous'
 import { syncListChatContacts, syncLocalIdentity } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'

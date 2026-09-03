@@ -84,13 +84,7 @@ export type VisualStyle = 'normal' | 'clean'
 export type MotionPreference = 'animated' | 'reduced'
 
 export type FeatureId =
-  | 'todos'
-  | 'git'
-  | 'browser'
-  | 'aiMemory'
-  | 'mcp'
-  | 'playwright'
-  | 'orchestrator'
+  'todos' | 'git' | 'browser' | 'aiMemory' | 'mcp' | 'playwright' | 'orchestrator'
 
 export type TodoItem = {
   id: string
@@ -158,8 +152,7 @@ export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
   antigravity: '--dangerously-skip-permissions',
 }
 
-export type PaneKind =
-  'terminal' | 'markdown' | 'file' | 'image' | 'video' | 'web' | 'diff'
+export type PaneKind = 'terminal' | 'markdown' | 'file' | 'image' | 'video' | 'web' | 'diff'
 
 export type BrowserResourceMode = 'app-first' | 'balanced' | 'keep-alive'
 
@@ -245,9 +238,7 @@ export type PaneGroup = {
  *  must confirm before the migration runs (those changes stay in the main
  *  repository — worktrees are always created from HEAD). */
 export type MigrateWorktreesResult =
-  | { status: 'done' }
-  | { status: 'aborted' }
-  | { status: 'dirty'; pending: number }
+  { status: 'done' } | { status: 'aborted' } | { status: 'dirty'; pending: number }
 
 export type OrphanWorktree = {
   path: string
@@ -517,7 +508,6 @@ export type Preferences = {
    * Injeta --max-old-space-size e UV_THREADPOOL_SIZE no ambiente do PTY.
    */
   nodeHeapProfile?: 'conservative' | 'balanced' | 'performance'
-
 }
 
 export type ResourcePolicyMode = 'smart-lru' | 'manual'

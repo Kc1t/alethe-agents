@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid'
 import { create } from 'zustand'
 
+import { withFallback } from '../lib/resilience'
 import { markStartup, markUiUsable, STARTUP_MARKS } from '../lib/startupPerformance'
 import { setStorageNamespace } from '../lib/storageNamespace'
 import {
@@ -430,7 +431,7 @@ function enqueueProjectsSave(
       throw error
     }
   })
-  saveQueue = task.catch(() => undefined)
+  saveQueue = task.catch(withFallback('schedulePersistenceRetry', undefined))
   return task
 }
 

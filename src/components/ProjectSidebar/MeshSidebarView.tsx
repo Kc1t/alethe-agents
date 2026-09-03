@@ -36,6 +36,7 @@ import {
 } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
 import { downscaleAvatar } from '../../lib/image/downscaleAvatar'
+import { withFallback } from '../../lib/resilience'
 import { PROJECT_SYNC_CAPABILITIES } from '../../lib/sync/contracts'
 import {
   configureGoogleSync,
@@ -199,7 +200,7 @@ export function MeshSidebarView() {
     setRendezvousError(false)
     try {
       if (rendezvousSettings?.enabled) {
-        await disconnectRendezvous().catch(() => undefined)
+        await disconnectRendezvous().catch(withFallback('disconnectRendezvous', undefined))
         await disableCollaborationService()
       } else {
         await enableCollaborationService()

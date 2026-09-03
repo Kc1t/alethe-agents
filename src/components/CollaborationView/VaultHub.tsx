@@ -1,11 +1,11 @@
 import { ChevronRight, Folder, Loader2, Users } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { syncSecuritySnapshot, type SyncSecuritySnapshot } from '../../lib/api/syncSecurity'
+import { type SyncSecuritySnapshot,syncSecuritySnapshot } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
 import { useProjectsStore } from '../../stores/projectsStore'
-import { VaultPanel } from './VaultPanel'
 import styles from './VaultHub.module.css'
+import { VaultPanel } from './VaultPanel'
 
 export function VaultHub() {
   const t = useT()

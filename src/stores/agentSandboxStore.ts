@@ -1,7 +1,8 @@
-import { create } from 'zustand'
-import { nanoid } from 'nanoid'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { nanoid } from 'nanoid'
+import { create } from 'zustand'
 
+import { expected } from '../lib/resilience'
 import {
   agentHooksEndpoint,
   agentHooksSettingsPath,
@@ -280,14 +281,17 @@ export const useAgentSandboxStore = create<AgentSandboxState>((set, get) => ({
             })
           }
           if (generation !== sandboxGeneration) {
-            if (ptyId) await killPty(ptyId).catch(() => {})
+            if (ptyId) await killPty(ptyId).catch(expected('kill_pty_failed'))
             console.info('[sandbox] discarded stale worker PTY', { ptyId })
             return
           }
           console.info('[sandbox] worker PTY ready', { ptyId, agent: node.command })
           const unlisten = ptyId
             ? await listenPtyExit(ptyId, () => {
-                if (node.appServerId) void codexAppServerStop(node.appServerId).catch(() => {})
+                if (node.appServerId)
+                  void codexAppServerStop(node.appServerId).catch(
+                    expected('codex_app_server_stop_failed'),
+                  )
                 appServerCleanups.get(node.appServerId ?? '')?.()
                 appServerCleanups.delete(node.appServerId ?? '')
                 outputCleanups.get(ptyId)?.()
@@ -431,7 +435,7 @@ export const useAgentSandboxStore = create<AgentSandboxState>((set, get) => ({
                   void codexAppServerSend(appServerId, {
                     id: requestId,
                     result: { decision: 'accept' },
-                  }).catch(() => {})
+                  }).catch(expected('codex_app_server_send_failed'))
               }
               if (event.id === 2 && threadId && task && !initialTurnRequested) {
                 initialTurnRequested = true
@@ -540,7 +544,7 @@ export const useAgentSandboxStore = create<AgentSandboxState>((set, get) => ({
           env: { ALETHE_AGENT_HOOKS_ENDPOINT: endpoint, ALETHE_AGENT_HOOKS_TOKEN: token },
         })
         if (generation !== sandboxGeneration) {
-          await killPty(ptyId).catch(() => {})
+          await killPty(ptyId).catch(expected('kill_pty_failed'))
           return
         }
         const unlisten = await listenPtyExit(ptyId, () => {
@@ -581,8 +585,10 @@ export const useAgentSandboxStore = create<AgentSandboxState>((set, get) => ({
     exitCleanups.forEach((cleanup) => cleanup())
     exitCleanups.clear()
     get().nodes.forEach((node) => {
-      if (node.managed !== false && node.ptyId) void killPty(node.ptyId).catch(() => {})
-      if (node.appServerId) void codexAppServerStop(node.appServerId).catch(() => {})
+      if (node.managed !== false && node.ptyId)
+        void killPty(node.ptyId).catch(expected('kill_pty_failed'))
+      if (node.appServerId)
+        void codexAppServerStop(node.appServerId).catch(expected('codex_app_server_stop_failed'))
     })
     set({ active: false, cwd: null, nodes: [], groups: [], messages: [], runningDemo: false })
   },

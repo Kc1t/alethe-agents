@@ -225,4 +225,3 @@ export async function syncDeleteProjectTasks(projectId: string): Promise<void> {
     body: JSON.stringify({ projectId }),
   })
 }
-

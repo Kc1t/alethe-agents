@@ -1,3 +1,6 @@
+import { useProjectsStore } from '../stores/projectsStore'
+import { useTerminalsStore } from '../stores/terminalsStore'
+import { withFallback } from './resilience'
 import { getActiveSessions, saveSession } from './sessionResume'
 import { acquireSpawnSlot, releaseSpawnSlot } from './spawnQueue'
 import {
@@ -9,8 +12,6 @@ import {
   snapshotOpenCodeSessions,
 } from './tauri'
 import type { AgentType } from './types'
-import { useProjectsStore } from '../stores/projectsStore'
-import { useTerminalsStore } from '../stores/terminalsStore'
 
 const RESUMABLE: AgentType[] = ['claude', 'codex', 'opencode', 'antigravity']
 
@@ -162,7 +163,7 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
     try {
       let cwd = target.cwd
       if (!cwd) {
-        const live = await getPtyCwd(target.ptyId).catch(() => null)
+        const live = await getPtyCwd(target.ptyId).catch(withFallback('getPtyCwd', null))
         cwd = (live ?? '').trim()
       }
 

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { confirmAction } from '../../lib/confirmDialog'
 import { type MessageKey, useT } from '../../lib/i18n'
+import { withFallback } from '../../lib/resilience'
 import {
   detectProjectStack,
   type DiffSummaryEntry,
@@ -398,7 +399,9 @@ export function SidebarMergePanel() {
     // never committed, stop and ask for confirmation (with the commit
     // message) before proceeding, instead of committing silently or
     // integrating a no-op (real bug, confirmed live: "merge complete" without moving anything).
-    const pending = await worktreePendingChanges(repo, item.worktreeAgentId).catch(() => [])
+    const pending = await worktreePendingChanges(repo, item.worktreeAgentId).catch(
+      withFallback('worktreePendingChanges', []),
+    )
     if (pending.length > 0) {
       const defaultMessage = await readTextFile(`${item.worktreePath}/.planning/goal.md`).catch(
         () => '',
@@ -449,7 +452,7 @@ export function SidebarMergePanel() {
       const ptyIds = (terminal?.tabs ?? [])
         .map((tab) => tab.ptyId)
         .filter((id): id is string => Boolean(id))
-      await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(() => [])))
+      await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(withFallback('killPtyTree', []))))
 
       // Only removes the worktree — the branch is deliberately preserved
       // (worktree_remove doesn't delete the branch), unlike Accept, which does a real merge.
@@ -576,8 +579,7 @@ export function SidebarMergePanel() {
   const handleStartTesting = async (item: PendingMergeCard) => {
     const proj = projects.find((p) => p.id === item.projectId)
 
-    const runCommand =
-      proj?.healthCheckCommand?.trim() || proj?.validationCommands?.[0]?.trim()
+    const runCommand = proj?.healthCheckCommand?.trim() || proj?.validationCommands?.[0]?.trim()
 
     let initialInput: string | undefined = runCommand ? `${runCommand}\r` : undefined
 
@@ -694,7 +696,6 @@ export function SidebarMergePanel() {
           ),
         )
     }
-
   }
 
   /** Sends the human confirmation checklist (passed/failed + notes)
@@ -868,24 +869,21 @@ export function SidebarMergePanel() {
                       }),
                     ]
           }
-          testingItems={
-            (testBriefing?.validation === 'loading'
-                  ? (
-                      projects.find((p) => p.id === testModalTarget.projectId)
-                        ?.validationCommands ?? []
-                    ).map((cmd) => t('merge.testBriefingRunning', { cmd }))
-                  : testBriefing?.validation && testBriefing.validation !== 'idle'
-                    ? testBriefing.validation.success
-                      ? [t('merge.testBriefingValidationPassed')]
-                      : [
-                          t('merge.testBriefingValidationFailed', {
-                            stage: testBriefing.validation.stage,
-                            output: testBriefing.validation.output.slice(0, 300),
-                          }),
-                        ]
-                    : [t('merge.testBriefingNoCommands')]
-                ).map((text, i): TestingItem => ({ id: `fallback-${i}`, text }))
-          }
+          testingItems={(testBriefing?.validation === 'loading'
+            ? (
+                projects.find((p) => p.id === testModalTarget.projectId)?.validationCommands ?? []
+              ).map((cmd) => t('merge.testBriefingRunning', { cmd }))
+            : testBriefing?.validation && testBriefing.validation !== 'idle'
+              ? testBriefing.validation.success
+                ? [t('merge.testBriefingValidationPassed')]
+                : [
+                    t('merge.testBriefingValidationFailed', {
+                      stage: testBriefing.validation.stage,
+                      output: testBriefing.validation.output.slice(0, 300),
+                    }),
+                  ]
+              : [t('merge.testBriefingNoCommands')]
+          ).map((text, i): TestingItem => ({ id: `fallback-${i}`, text }))}
           onStartTesting={() => handleStartTesting(testModalTarget)}
           onSendFeedback={(summary) => void handleSendTestFeedback(testModalTarget, summary)}
         />

@@ -1,7 +1,6 @@
 import { Film, Image as ImageIcon, Loader2, MessageSquare, Paperclip, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-import { useT } from '../../../lib/i18n'
 import { syncListChatContacts } from '../../../lib/api/syncSecurity'
 import {
   type AttachmentCategory,
@@ -10,6 +9,7 @@ import {
   syncStorageClearMessages,
   syncStorageUsage,
 } from '../../../lib/api/syncStorageUsage'
+import { useT } from '../../../lib/i18n'
 import { useProjectsStore } from '../../../stores/projectsStore'
 import controls from '../controls.module.css'
 import styles from './ChatsProjectsPage.module.css'
@@ -56,7 +56,9 @@ export function ChatsProjectsPage() {
     try {
       const [usage, contacts] = await Promise.all([syncStorageUsage(), syncListChatContacts()])
       setRows(usage)
-      setContactLabels(Object.fromEntries(contacts.map((contact) => [contact.accountRoute, contact.displayLabel])))
+      setContactLabels(
+        Object.fromEntries(contacts.map((contact) => [contact.accountRoute, contact.displayLabel])),
+      )
     } catch {
       setError(true)
     }
@@ -64,7 +66,7 @@ export function ChatsProjectsPage() {
 
   useEffect(() => {
     void refresh()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [])
 
   const groups = useMemo<StorageGroup[]>(() => {
@@ -76,9 +78,13 @@ export function ChatsProjectsPage() {
         // Skip orphan conversations for projects that have been removed/deleted from the workspace.
         continue
       }
-      const key = isDirect ? `direct:${row.otherAccountRoute ?? row.conversationId}` : `project:${row.projectId ?? row.conversationId}`
+      const key = isDirect
+        ? `direct:${row.otherAccountRoute ?? row.conversationId}`
+        : `project:${row.projectId ?? row.conversationId}`
       const label = isDirect
-        ? (row.otherAccountRoute && contactLabels[row.otherAccountRoute]) || row.otherAccountRoute || t('prefs.chatsProjects.unknownContact')
+        ? (row.otherAccountRoute && contactLabels[row.otherAccountRoute]) ||
+          row.otherAccountRoute ||
+          t('prefs.chatsProjects.unknownContact')
         : (row.projectId && projects.find((project) => project.id === row.projectId)?.name) ||
           row.projectId ||
           t('prefs.chatsProjects.unknownProject')
@@ -109,7 +115,11 @@ export function ChatsProjectsPage() {
     setBusyKey(`${group.key}:${category}`)
     setError(false)
     try {
-      await Promise.all(group.conversationIds.map((conversationId) => syncStorageCleanupAttachments(conversationId, category)))
+      await Promise.all(
+        group.conversationIds.map((conversationId) =>
+          syncStorageCleanupAttachments(conversationId, category),
+        ),
+      )
       await refresh()
     } catch {
       setError(true)
@@ -123,7 +133,9 @@ export function ChatsProjectsPage() {
     setBusyKey(`${group.key}:messages`)
     setError(false)
     try {
-      await Promise.all(group.conversationIds.map((conversationId) => syncStorageClearMessages(conversationId)))
+      await Promise.all(
+        group.conversationIds.map((conversationId) => syncStorageClearMessages(conversationId)),
+      )
       await refresh()
     } catch {
       setError(true)
@@ -203,16 +215,38 @@ export function ChatsProjectsPage() {
               <div key={group.key} className={styles.group}>
                 <div className={styles.groupHeader}>
                   <span className={styles.groupBadge}>
-                    {t(group.kind === 'project' ? 'prefs.chatsProjects.kindProject' : 'prefs.chatsProjects.kindDirect')}
+                    {t(
+                      group.kind === 'project'
+                        ? 'prefs.chatsProjects.kindProject'
+                        : 'prefs.chatsProjects.kindDirect',
+                    )}
                   </span>
                   <span className={styles.groupLabel}>{group.label}</span>
                   <span className={styles.groupTotal}>{formatBytes(totalBytes(group))}</span>
                 </div>
                 <div className={styles.categories}>
                   {messageRow(group, group.messageBytes)}
-                  {categoryRow(group, 'image', group.imageBytes, ImageIcon, t('prefs.chatsProjects.categoryImage'))}
-                  {categoryRow(group, 'video', group.videoBytes, Film, t('prefs.chatsProjects.categoryVideo'))}
-                  {categoryRow(group, 'other', group.otherBytes, Paperclip, t('prefs.chatsProjects.categoryOther'))}
+                  {categoryRow(
+                    group,
+                    'image',
+                    group.imageBytes,
+                    ImageIcon,
+                    t('prefs.chatsProjects.categoryImage'),
+                  )}
+                  {categoryRow(
+                    group,
+                    'video',
+                    group.videoBytes,
+                    Film,
+                    t('prefs.chatsProjects.categoryVideo'),
+                  )}
+                  {categoryRow(
+                    group,
+                    'other',
+                    group.otherBytes,
+                    Paperclip,
+                    t('prefs.chatsProjects.categoryOther'),
+                  )}
                 </div>
               </div>
             ))}

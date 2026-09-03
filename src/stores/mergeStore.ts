@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 
 import { getLocale, type Locale, translate } from '../lib/i18n'
+import { expected, withFallback } from '../lib/resilience'
 import {
   type ConflictEnv,
   gitStatus,
@@ -348,7 +349,7 @@ function beginResolvingWatch(env: ConflictEnv, agentTerminalId: string) {
       unlistenFile?.()
       unlistenExit?.()
       if (pollTimer) clearInterval(pollTimer)
-      void unwatchFile(markerPath).catch(() => {})
+      void unwatchFile(markerPath).catch(expected('unwatch_file_failed'))
     }
   })()
 
@@ -359,7 +360,7 @@ function beginResolvingWatch(env: ConflictEnv, agentTerminalId: string) {
       if (pollTimer) clearInterval(pollTimer)
       unlistenFile?.()
       unlistenExit?.()
-      void unwatchFile(markerPath).catch(() => {})
+      void unwatchFile(markerPath).catch(expected('unwatch_file_failed'))
     },
   }
 }
@@ -481,7 +482,7 @@ export const useMergeStore = create<MergeState>((set, get) => ({
       const ptyIds = (terminal?.tabs ?? [])
         .map((tab) => tab.ptyId)
         .filter((id): id is string => Boolean(id))
-      await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(() => [])))
+      await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(withFallback('killPtyTree', []))))
     }
 
     try {
@@ -691,7 +692,9 @@ export const useMergeStore = create<MergeState>((set, get) => ({
         const ptyIds = (terminal?.tabs ?? [])
           .map((tab) => tab.ptyId)
           .filter((id): id is string => Boolean(id))
-        await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(() => [])))
+        await Promise.all(
+          ptyIds.map((id) => killPtyTree(id).catch(withFallback('killPtyTree', []))),
+        )
 
         try {
           await worktreeRemove(repo, worktreeAgentId, true)

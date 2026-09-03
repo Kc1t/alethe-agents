@@ -6,6 +6,7 @@ import { type CloudflareDeployStep, useCloudflareDeploy } from '../../../hooks/u
 import { type InstallToolchain, nodeInstallMethods } from '../../../lib/agentInstall'
 import { plainTextFromPtyLog } from '../../../lib/ansi'
 import { useT } from '../../../lib/i18n'
+import { withFallback } from '../../../lib/resilience'
 import { probeInstallToolchain } from '../../../lib/tauri'
 import controls from '../controls.module.css'
 import styles from './CloudflareGuidedDeploy.module.css'
@@ -45,7 +46,7 @@ export function CloudflareGuidedDeploy({
       .then((result) => {
         if (active) setToolchain(result)
       })
-      .catch(() => undefined)
+      .catch(withFallback('setToolchain', undefined))
       .finally(() => {
         if (active) setProbing(false)
       })
@@ -153,7 +154,7 @@ export function CloudflareGuidedDeploy({
                       setLogCopied(true)
                       window.setTimeout(() => setLogCopied(false), 1500)
                     })
-                    .catch(() => undefined)
+                    .catch(withFallback('setLogCopied', undefined))
                 }}
                 title={t('collaboration.cloudflareDeploy.copyLog')}
               >

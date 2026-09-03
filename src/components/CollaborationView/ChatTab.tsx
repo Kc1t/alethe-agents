@@ -16,6 +16,7 @@ import {
 } from '../../lib/api/syncSecurity'
 import { useT } from '../../lib/i18n'
 import { DEFAULT_PROFILE_IMAGE_URL, getProfileInitial } from '../../lib/profile'
+import { withFallback } from '../../lib/resilience'
 import { Avatar } from '../ui/Avatar'
 import { AddChatContactModal } from './AddChatContactModal'
 import { ChatPanel, type ChatSource } from './ChatPanel'
@@ -45,7 +46,7 @@ export function ChatTab({
   const reloadPendingRequestCount = () => {
     syncListPendingChatContactRequests()
       .then((list) => setPendingRequestCount(list.length))
-      .catch(() => undefined)
+      .catch(withFallback('setPendingRequestCount', undefined))
   }
 
   const renameContact = async (contact: SyncChatContact, nextLabel: string) => {
@@ -187,7 +188,7 @@ export function ChatTab({
       active = false
       unsubscribe()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [])
 
   useEffect(() => {

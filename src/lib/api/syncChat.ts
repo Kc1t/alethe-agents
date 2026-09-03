@@ -157,11 +157,16 @@ export async function syncDownloadAttachment(
   attachmentId: string,
 ): Promise<Uint8Array> {
   if (isTauriEnv()) {
-    const buffer = await invoke<ArrayBuffer>('sync_download_attachment', { conversationId, attachmentId })
+    const buffer = await invoke<ArrayBuffer>('sync_download_attachment', {
+      conversationId,
+      attachmentId,
+    })
     return new Uint8Array(buffer)
   }
   const params = new URLSearchParams({ conversationId, attachmentId })
-  const bytes = await webApiFetch<number[]>(`/api/sync/chat/attachments/download?${params.toString()}`)
+  const bytes = await webApiFetch<number[]>(
+    `/api/sync/chat/attachments/download?${params.toString()}`,
+  )
   return new Uint8Array(bytes)
 }
 

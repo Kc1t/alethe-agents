@@ -274,9 +274,7 @@ export function getProjectRepoRoot(project: Project | null | undefined): string 
   // instead of the real repo.
   const pure = sorted.filter(
     (terminal) =>
-      !terminal.worktreeAgentId &&
-      !terminal.ephemeralConflictAgent &&
-      !terminal.ephemeralUtility,
+      !terminal.worktreeAgentId && !terminal.ephemeralConflictAgent && !terminal.ephemeralUtility,
   )
   for (const terminal of pure) {
     const cwd = resolveTerminalCwd(terminal)
