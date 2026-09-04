@@ -5,7 +5,7 @@ import {
   getTerminalScrollbackRows,
   getWheelScrollLines,
   normalizePastedText,
-  shouldScrollHostScrollback,
+  decideWheelAction,
 } from './terminalInput'
 
 describe('normalizePastedText', () => {
@@ -39,19 +39,35 @@ describe('getTerminalScrollbackRows', () => {
   })
 })
 
-describe('shouldScrollHostScrollback', () => {
+describe('decideWheelAction', () => {
+  const wheel = (
+    bufferType: 'normal' | 'alternate',
+    shiftKey: boolean,
+    mouseTrackingActive: boolean,
+  ) => decideWheelAction({ bufferType, shiftKey, mouseTrackingActive })
+
   it('scrolls the host buffer in a plain shell', () => {
-    expect(shouldScrollHostScrollback('normal', false)).toBe(true)
+    expect(wheel('normal', false, false)).toBe('host')
   })
 
-  it('forwards the wheel to TUIs in the alternate buffer', () => {
-    // claude/codex run in the alternate screen (no host scrollback) — let the app scroll itself.
-    expect(shouldScrollHostScrollback('alternate', false)).toBe(false)
+  it('forwards to a full-screen app that asked for mouse events', () => {
+    // OpenCode enables mouse tracking, so it scrolls its own view — verified in the recorded PTY
+    // stream, which turns it on nine times in one session.
+    expect(wheel('alternate', false, true)).toBe('app')
   })
 
-  it('lets Shift+wheel force host scrollback even in the alternate buffer', () => {
-    expect(shouldScrollHostScrollback('alternate', true)).toBe(true)
-    expect(shouldScrollHostScrollback('normal', true)).toBe(true)
+  it('swallows the wheel for a full-screen app that did NOT ask for mouse events', () => {
+    // The regression this exists for. xterm's default is to convert the wheel into cursor keys when
+    // the alternate buffer has no scrollback — and Claude Code, which never enables mouse tracking
+    // (also verified in the recorded stream), reads those arrows as input. Scrolling silently moved
+    // through its prompt history. Doing nothing is strictly better than typing for the user.
+    expect(wheel('alternate', false, false)).toBe('ignore')
+  })
+
+  it('lets Shift+wheel force host scrollback whatever the app is doing', () => {
+    expect(wheel('alternate', true, false)).toBe('host')
+    expect(wheel('alternate', true, true)).toBe('host')
+    expect(wheel('normal', true, false)).toBe('host')
   })
 })
 

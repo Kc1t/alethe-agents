@@ -80,7 +80,7 @@ import {
   getTerminalScrollbackRows,
   getWheelScrollLines,
   normalizePastedText,
-  shouldScrollHostScrollback,
+  decideWheelAction,
 } from './terminalInput'
 import {
   type DetectedTerminalLink,
@@ -780,12 +780,20 @@ export function useXtermSession(params: {
     }
 
     const onWheel = (event: WheelEvent) => {
-      // TUIs (claude/codex) entram no buffer `alternate` e ligam mouse tracking.
-      // Lá não há scrollback do host, então scrollLines() é no-op: se a gente
-      // interceptasse o wheel (preventDefault), o evento sumia e nem o host nem
-      // a app rolavam. Deixamos seguir pro xterm, que repassa o wheel pra app.
-      // Shift força o scrollback do host (convenção iTerm2 / Windows Terminal).
-      if (!shouldScrollHostScrollback(terminal.buffer.active.type, event.shiftKey)) return
+      // A full-screen app that asked for mouse events scrolls itself, so the event is left to
+      // xterm to forward. One that did NOT ask gets nothing: xterm would otherwise turn the wheel
+      // into cursor keys, which such an app reads as typing — see `decideWheelAction`.
+      const action = decideWheelAction({
+        bufferType: terminal.buffer.active.type,
+        shiftKey: event.shiftKey,
+        mouseTrackingActive: terminal.modes.mouseTrackingMode !== 'none',
+      })
+      if (action === 'app') return
+      if (action === 'ignore') {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
       const lines = getWheelScrollLines(event, getTerminalLineHeight())
       if (lines === 0) return
       event.preventDefault()

@@ -12,6 +12,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **Scrolling inside a full-screen agent no longer types into it.** With Claude Code open, turning the wheel sent arrow keys to the app instead of scrolling — the terminal's default when a full-screen app leaves no scrollback behind — so a scroll gesture quietly moved through the prompt history. The wheel is now forwarded only to an app that actually asked for mouse events (OpenCode does; Claude Code does not), and otherwise does nothing. `Shift`+wheel still forces the host's own scrollback.
+
+
 - **The merge panel no longer crashes when its list goes from empty to having items.** A hook was declared after the early return for the empty case, so it was skipped on those renders — and the first render with items then had one more hook than the previous one, which React refuses outright. Going from empty to non-empty is the ordinary case for that panel, not an edge one.
 
 
