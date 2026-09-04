@@ -33,6 +33,7 @@ import {
 } from '../../lib/api/syncChat'
 import {
   syncFilePipelineIngestFrame,
+  syncFilePipelineIngestRelayEnvelope,
   syncFilePipelineOfferProject,
 } from '../../lib/api/syncFilePipeline'
 import {
@@ -271,7 +272,14 @@ export function ChatPanel({
     setFileSyncBusy(true)
     setFileSyncStatus(null)
     try {
-      await syncFilePipelineOfferProject(otherMember.accountRoute, localProjectRoot)
+      // The peer's key travels with the offer so the transfer can fall back to the relay: without
+      // a direct session — which a symmetric NAT guarantees — there is nothing to seal fragments to
+      // and sharing simply does not happen, which is what it used to do.
+      await syncFilePipelineOfferProject(
+        otherMember.accountRoute,
+        localProjectRoot,
+        bytesToBase64(otherMember.x25519PublicKey),
+      )
       setFileSyncStatus(t('chat.fileSync.offered'))
     } catch (cause) {
       console.error('[chat] syncFilePipelineOfferProject failed', cause)
@@ -558,7 +566,11 @@ export function ChatPanel({
                 },
               )
             } else if (untagged.tag === P2P_CHANNEL_FILE_SYNC) {
-              await syncFilePipelineIngestFrame(accountRoute, untagged.payload)
+              await syncFilePipelineIngestFrame(
+                accountRoute,
+                untagged.payload,
+                otherMember ? bytesToBase64(otherMember.x25519PublicKey) : undefined,
+              )
                 .then((event) => {
                   if (event.type === 'stagingStarted')
                     setFileSyncStatus(t('chat.fileSync.receiving'))
@@ -584,6 +596,40 @@ export function ChatPanel({
       window.clearInterval(timer)
     }
   }, [conversation, otherMember, p2p.state])
+
+  // `filesync` relay deliveries — a project transfer from a peer with no direct session to this
+  // device. Same bus as chat for the same reason: `drainRendezvousEvents` removes what it reads, so
+  // a second independent poller would steal fragments and the transfer would stall with no error.
+  useEffect(() => {
+    if (!otherMember) return
+    const senderRoute = otherMember.accountRoute
+    const peerKey = bytesToBase64(otherMember.x25519PublicKey)
+    return subscribeToRendezvousEvents((events) => {
+      const fragments = events.filter(
+        (event) => event.envelopeKind === 'filesync' && event.eventType === 'delivery',
+      )
+      if (fragments.length === 0) return
+      void (async () => {
+        for (const event of fragments) {
+          if (!event.ciphertext) continue
+          try {
+            const result = await syncFilePipelineIngestRelayEnvelope(
+              senderRoute,
+              event.ciphertext,
+              peerKey,
+            )
+            // `null` means the transfer is still missing pieces, which is the ordinary case: a
+            // frame is cut into 10 KiB fragments to fit the relay, so most deliveries are a piece.
+            if (result?.type === 'stagingStarted') setFileSyncStatus(t('chat.fileSync.receiving'))
+            else if (result?.type === 'syncCompleted')
+              setFileSyncStatus(t('chat.fileSync.received', { path: result.destination }))
+          } catch (cause) {
+            console.warn('[chat] a relayed file-sync fragment could not be ingested', cause)
+          }
+        }
+      })()
+    })
+  }, [otherMember, t])
 
   // `chat_message` relay deliveries, via the shared event bus (see `rendezvousEventBus.ts`) so
   // this never competes with any other listener for the same drain-once queue.

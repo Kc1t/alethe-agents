@@ -231,13 +231,92 @@ pub fn ingest_inbound_frame(
 // Tauri commands
 // -------------------------------------------------------------------------------------------
 
+/// Sends one tagged pipeline frame, preferring the direct P2P path and falling back to the relay.
+///
+/// The `?` these two call sites used to have on `P2pSessionRegistry::send` is what made sharing a
+/// project impossible behind a symmetric NAT: no direct session meant `p2p_session_not_found`, and
+/// the transfer ended there. Chat has always fallen back to the relay in that situation; this gives
+/// project transfer the same second path.
+///
+/// The relay is slower and it is not a secret which one was used — the returned [`SentVia`] says
+/// so, and both outcomes are recorded, because "it went out" and "it went out the slow way" are
+/// different facts about the same send.
+async fn send_preferring_p2p(
+    rendezvous: &crate::sync_rendezvous::RendezvousRuntime,
+    p2p_registry: &P2pSessionRegistry,
+    remote_account_route: &str,
+    recipient_agreement_public_key: &[u8],
+    frame: Vec<u8>,
+) -> Result<crate::sync_file_pipeline_relay::SentVia, String> {
+    use crate::sync_file_pipeline_relay::SentVia;
+
+    let direct = p2p_registry.send(remote_account_route, frame.clone());
+    if direct.is_ok() {
+        crate::decide!(
+            target: "sync.file_pipeline",
+            attempted = "send_frame",
+            outcome = Ok,
+            because = "direct_session_available",
+            rule = "file_pipeline.send.prefer_p2p",
+            evidence = { bytes = frame.len() },
+        );
+        return Ok(SentVia::Direct);
+    }
+    let reason = direct.unwrap_err();
+
+    if recipient_agreement_public_key.is_empty() {
+        // Nothing to seal to. Reported rather than swallowed: without it the transfer cannot use
+        // the relay, and the caller needs to know that is why, not just that it failed.
+        crate::decide!(
+            target: "sync.file_pipeline",
+            attempted = "send_frame",
+            outcome = Failed,
+            because = "no_recipient_key_for_relay",
+            rule = "file_pipeline.send.relay_fallback",
+            evidence = { p2p_error = %reason },
+        );
+        return Err(format!("file_pipeline_relay_unavailable: {reason}"));
+    }
+
+    let transfer_id = nanoid::nanoid!(12);
+    let expires_at_ms = crate::provider_common::now_ms() + RELAY_ENVELOPE_TTL_MS;
+    let frames = crate::sync_file_pipeline_relay::relay_frames_for(
+        &frame,
+        &transfer_id,
+        remote_account_route,
+        recipient_agreement_public_key,
+        expires_at_ms,
+    )?;
+    let count = frames.len();
+    for envelope in frames {
+        crate::sync_rendezvous::send_at(rendezvous, envelope).await?;
+    }
+    crate::decide!(
+        target: "sync.file_pipeline",
+        attempted = "send_frame",
+        outcome = Deferred,
+        because = "relayed_no_direct_session",
+        rule = "file_pipeline.send.relay_fallback",
+        evidence = { bytes = frame.len(), fragments = count, p2p_error = %reason },
+    );
+    Ok(SentVia::Relay)
+}
+
+/// How long a queued fragment stays useful. Long enough for a peer that is briefly offline, short
+/// enough that an abandoned transfer does not sit on the relay for a week.
+const RELAY_ENVELOPE_TTL_MS: u64 = 60 * 60 * 1_000;
+
 #[tauri::command]
 pub async fn sync_file_pipeline_offer_project(
     app: tauri::AppHandle,
     p2p_registry: tauri::State<'_, Arc<P2pSessionRegistry>>,
     file_sync_registry: tauri::State<'_, Arc<FileSyncSessionRegistry>>,
+    rendezvous: tauri::State<'_, Arc<crate::sync_rendezvous::RendezvousRuntime>>,
     remote_account_route: String,
     project_root: String,
+    // The peer's X25519 public key, base64url. Required to seal fragments for the relay path; the
+    // caller already holds it — it is what chat seals its own relay messages with.
+    recipient_agreement_public_key: String,
 ) -> Result<String, String> {
     let (device_id, signing_key) = {
         let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
@@ -274,27 +353,97 @@ pub async fn sync_file_pipeline_offer_project(
 
     let outbound = begin_offer(&file_sync_registry, &remote_account_route, &manifest, chunk_bytes)
         .map_err(|error| error.to_string())?;
-    p2p_registry.send(&remote_account_route, outbound)?;
+    let recipient_key = decode_recipient_key(&recipient_agreement_public_key);
+    send_preferring_p2p(&rendezvous, &p2p_registry, &remote_account_route, &recipient_key, outbound)
+        .await?;
     Ok(manifest.project_id)
 }
 
+/// Decodes a base64url X25519 public key, or an empty vector when there is none to use — the
+/// caller reports that as `no_recipient_key_for_relay` rather than guessing a key.
+fn decode_recipient_key(encoded: &str) -> Vec<u8> {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    if encoded.trim().is_empty() {
+        return Vec::new();
+    }
+    URL_SAFE_NO_PAD.decode(encoded.trim()).unwrap_or_default()
+}
+
 #[tauri::command]
-pub fn sync_file_pipeline_ingest_frame(
+pub async fn sync_file_pipeline_ingest_frame(
     app: tauri::AppHandle,
     p2p_registry: tauri::State<'_, Arc<P2pSessionRegistry>>,
     file_sync_registry: tauri::State<'_, Arc<FileSyncSessionRegistry>>,
+    rendezvous: tauri::State<'_, Arc<crate::sync_rendezvous::RendezvousRuntime>>,
     remote_account_route: String,
     frame: Vec<u8>,
+    recipient_agreement_public_key: Option<String>,
 ) -> Result<FileSyncEvent, String> {
     let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
     let now_ms = crate::provider_common::now_ms();
     let (event, outbound_frames) =
         ingest_inbound_frame(&file_sync_registry, &data_root, &remote_account_route, &frame, now_ms)
             .map_err(|error| error.to_string())?;
+    let recipient_key = decode_recipient_key(recipient_agreement_public_key.as_deref().unwrap_or(""));
     for outbound in outbound_frames {
-        p2p_registry.send(&remote_account_route, outbound)?;
+        // The replies matter as much as the offer: a transfer where the offer relayed and the
+        // acknowledgements did not is a transfer that stalls silently after one frame.
+        send_preferring_p2p(&rendezvous, &p2p_registry, &remote_account_route, &recipient_key, outbound)
+            .await?;
     }
     Ok(event)
+}
+
+/// Consumes one `filesync` envelope delivered by the relay.
+///
+/// The mirror of the fallback in `send_preferring_p2p`: a peer with no direct session to this
+/// device relayed a fragment, and this reassembles it. Returns `None` while a transfer is still
+/// missing pieces — a normal state, not a failure, and the reason this is not a bare event: a
+/// partial transfer and a broken one must not look the same to the caller.
+#[tauri::command]
+pub async fn sync_file_pipeline_ingest_relay_envelope(
+    app: tauri::AppHandle,
+    p2p_registry: tauri::State<'_, Arc<P2pSessionRegistry>>,
+    file_sync_registry: tauri::State<'_, Arc<FileSyncSessionRegistry>>,
+    rendezvous: tauri::State<'_, Arc<crate::sync_rendezvous::RendezvousRuntime>>,
+    inbox: tauri::State<'_, Arc<crate::sync_file_pipeline_relay::RelayInbox>>,
+    sender_account_route: String,
+    ciphertext: String,
+    recipient_agreement_public_key: Option<String>,
+) -> Result<Option<FileSyncEvent>, String> {
+    let data_root = crate::profiles::resolve_tauri_data_root(&app)?;
+    let document = crate::sync_security::load_at(&data_root)?;
+    let local_device_id = document
+        .local_device_id
+        .ok_or_else(|| "security_device_missing".to_string())?;
+    let secret = crate::sync_security::load_device_agreement_secret(&local_device_id)?;
+
+    let fragment = crate::sync_file_pipeline_relay::open_fragment(&ciphertext, &secret)?;
+    let Some(frame) = inbox
+        .accept(&sender_account_route, &fragment)
+        .map_err(|error| error.to_string())?
+    else {
+        crate::decide!(
+            target: "sync.file_pipeline",
+            attempted = "ingest_relay_fragment",
+            outcome = Deferred,
+            because = "transfer_incomplete",
+            rule = "file_pipeline.receive.reassemble",
+            evidence = { index = fragment.index, total = fragment.total },
+        );
+        return Ok(None);
+    };
+
+    let now_ms = crate::provider_common::now_ms();
+    let (event, outbound_frames) =
+        ingest_inbound_frame(&file_sync_registry, &data_root, &sender_account_route, &frame, now_ms)
+            .map_err(|error| error.to_string())?;
+    let recipient_key = decode_recipient_key(recipient_agreement_public_key.as_deref().unwrap_or(""));
+    for outbound in outbound_frames {
+        send_preferring_p2p(&rendezvous, &p2p_registry, &sender_account_route, &recipient_key, outbound)
+            .await?;
+    }
+    Ok(Some(event))
 }
 
 #[cfg(test)]

@@ -443,7 +443,14 @@ async fn connect_once(
                             if event_type == "delivery"
                                 && !matches!(
                                     envelope_kind,
-                                    Some("candidate") | Some("avatar_update") | Some("bio_update") | Some("chat_contact_confirm")
+                                    Some("candidate")
+                                        | Some("avatar_update")
+                                        | Some("bio_update")
+                                        | Some("chat_contact_confirm")
+                                        // A file-transfer fragment is machinery too, and a large
+                                        // transfer is thousands of them — one notification each
+                                        // would bury everything else in the access centre.
+                                        | Some("filesync")
                                 )
                             {
                                 if let Some(subject) = value.get("id").and_then(Value::as_str) {

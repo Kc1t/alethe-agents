@@ -134,6 +134,9 @@ export type RendezvousEvent = {
     | 'bio_update'
     | 'project_invite'
     | 'project_invite_response'
+    // A fragment of a project transfer that could not take the direct path. Machinery, never a
+    // notification — see the delivery filter in `sync_rendezvous.rs`.
+    | 'filesync'
     | null
   senderDeviceId: string | null
   ciphertext: string | null

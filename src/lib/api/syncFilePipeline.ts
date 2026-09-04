@@ -8,6 +8,12 @@ import { isTauriEnv } from './transport'
  * publishes the incoming project tree. Frames for this exchange share the same underlying P2P
  * session chat uses, tagged (`p2pChannel.ts`) so `ChatPanel.tsx`'s single drain loop can route
  * them here instead of to `syncIngestChatTransportFrame`.
+ *
+ * When there is no direct session — behind a symmetric NAT there never will be — frames go over the
+ * rendezvous relay instead, cut into relay-sized fragments and sealed for the peer. That path is
+ * slower but it is the difference between a transfer that crawls and one that cannot happen at all,
+ * which is what this used to do. Every call therefore carries the peer's X25519 public key: it is
+ * what the fragments are sealed to, and without it only the direct path is available.
  */
 
 export type FileSyncEvent =
@@ -24,9 +30,14 @@ export type FileSyncEvent =
 export async function syncFilePipelineOfferProject(
   remoteAccountRoute: string,
   projectRoot: string,
+  recipientAgreementPublicKey: string,
 ): Promise<string> {
   if (!isTauriEnv()) throw new Error('p2p_desktop_only')
-  return invoke('sync_file_pipeline_offer_project', { remoteAccountRoute, projectRoot })
+  return invoke('sync_file_pipeline_offer_project', {
+    remoteAccountRoute,
+    projectRoot,
+    recipientAgreementPublicKey,
+  })
 }
 
 /** Feeds one already-untagged file-sync frame (drained from the shared P2P queue) into the local
@@ -34,7 +45,32 @@ export async function syncFilePipelineOfferProject(
 export async function syncFilePipelineIngestFrame(
   remoteAccountRoute: string,
   frame: number[],
+  recipientAgreementPublicKey?: string,
 ): Promise<FileSyncEvent> {
   if (!isTauriEnv()) throw new Error('p2p_desktop_only')
-  return invoke('sync_file_pipeline_ingest_frame', { remoteAccountRoute, frame })
+  return invoke('sync_file_pipeline_ingest_frame', {
+    remoteAccountRoute,
+    frame,
+    recipientAgreementPublicKey: recipientAgreementPublicKey ?? null,
+  })
+}
+
+/**
+ * Feeds one `filesync` envelope delivered by the relay into the local state machine.
+ *
+ * Resolves to `null` while the transfer is still missing fragments. That is the ordinary state, not
+ * an error: a frame is cut into 10 KiB pieces to fit the relay, so most deliveries are a piece of
+ * something rather than the whole of it.
+ */
+export async function syncFilePipelineIngestRelayEnvelope(
+  senderAccountRoute: string,
+  ciphertext: string,
+  recipientAgreementPublicKey?: string,
+): Promise<FileSyncEvent | null> {
+  if (!isTauriEnv()) throw new Error('p2p_desktop_only')
+  return invoke('sync_file_pipeline_ingest_relay_envelope', {
+    senderAccountRoute,
+    ciphertext,
+    recipientAgreementPublicKey: recipientAgreementPublicKey ?? null,
+  })
 }

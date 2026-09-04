@@ -83,6 +83,7 @@ pub mod sync_cloudflare_deploy;
 pub mod sync_crypto;
 pub mod sync_engine;
 pub mod sync_file_pipeline;
+pub mod sync_file_pipeline_relay;
 pub mod sync_file_pipeline_session;
 pub mod sync_invitation_bridge;
 pub mod sync_manifest;
@@ -193,6 +194,7 @@ pub fn run() {
         .manage(cli_launch::PendingOpen::default())
         .manage(std::sync::Arc::new(sync_rendezvous::RendezvousRuntime::default()))
         .manage(std::sync::Arc::new(sync_p2p_bridge::P2pSessionRegistry::default()))
+        .manage(std::sync::Arc::new(sync_file_pipeline_relay::RelayInbox::default()))
         .manage(std::sync::Arc::new(sync_file_pipeline_session::FileSyncSessionRegistry::default()))
         .manage(std::sync::Arc::new(change_trigger::ChangeTriggerRegistry::default()))
         .manage(orchestrator::OrchestratorState::default())
@@ -729,6 +731,7 @@ pub fn run() {
             sync_p2p_bridge::p2p_session_state,
             sync_file_pipeline_session::sync_file_pipeline_offer_project,
             sync_file_pipeline_session::sync_file_pipeline_ingest_frame,
+            sync_file_pipeline_session::sync_file_pipeline_ingest_relay_envelope,
             sync_rendezvous_git::sync_github_signaling_set_token,
             sync_rendezvous_git::sync_github_signaling_clear_token,
             sync_rendezvous_git::sync_github_signaling_has_token,

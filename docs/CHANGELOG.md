@@ -12,6 +12,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **Sharing a project works even when a direct connection is impossible.** It went out over the peer-to-peer path or not at all, so behind the kind of network that defeats hole punching — mobile and carrier-grade NAT, which the code already acknowledged defeats WebRTC and Tailscale the same way — sharing a project could not happen. Not slowly: never. Transfers now fall back to the relay the way chat always has, cut into pieces small enough for it and sealed for the recipient. The relay path is slower and says so, rather than looking the same as a direct transfer.
+
+
 - **An agent no longer starts with `No conversation found with session ID`.** Alethe mints Claude's session id itself and saved it as soon as it was requested — from the intent to create a session, not from evidence that one existed. A first launch that stopped at the trust prompt wrote no conversation file, and the next launch then tried to resume an id the CLI had never heard of. The stored id is now checked against the agent's own storage before being used, and dropped in favour of a fresh session when the conversation is not there. An agent whose storage cannot be read is left alone rather than having a valid id discarded.
 
 
