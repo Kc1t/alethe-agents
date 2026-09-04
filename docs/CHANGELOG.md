@@ -132,6 +132,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- Linux clipboard on KDE Plasma now falls back to Klipper via D-Bus (`qdbus`) when `wl-clipboard`
+  or `xclip` are not installed — text copy/paste works out of the box on KDE without extra
+  packages. Image and file paste still require `wl-clipboard` (Wayland) or `xclip` (X11); the
+  error message now clearly states which package to install instead of failing silently.
 - The Source Control panel in the right sidebar no longer stays empty for a selected project that
   has no open terminal — it now falls back to the project's default working directory.
 - The ephemeral conflict-resolution agent's initial prompt is now delivered reliably to OpenCode.
