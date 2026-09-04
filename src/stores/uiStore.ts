@@ -43,16 +43,18 @@ type ModalKind =
   | 'updateAvailable'
   | 'whatsNew'
   | 'remoteControl'
+  | 'confirmWorktreeCommit'
   | 'audit'
   | 'fsBrowser'
   | 'recentChats'
   | 'handoff'
   | 'mcpManager'
   | 'mcpIntro'
+  | 'meshFolderTree'
   | null
 
-export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox'
-export type RightSidebarMode = 'todo' | 'markdown' | 'git' | 'gsdSync' | 'mcp'
+export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox' | 'collaboration'
+export type RightSidebarMode = 'todo' | 'markdown' | 'git' | 'mcp' | 'plans'
 export type MarkdownSidebarTab = { path: string; title: string }
 
 export type MemorySample = MemoryStats & {
@@ -124,9 +126,6 @@ type UiState = {
   updateInfo: UpdateInfo | null
   /** URL aberta no visualizador in-app (overlay com iframe). null = fechado. */
   linkViewerUrl: string | null
-  /** GSD Sync child session open in the read-only activity feed (its own
-   *  overlay, no PTY terminal involved). null = closed. */
-  gsdSyncActivityView: { worktreePath: string; sessionId: string; title: string } | null
 
   openModal_: (kind: Exclude<ModalKind, null>, context?: Record<string, unknown>) => void
   closeModal: () => void
@@ -154,8 +153,8 @@ type UiState = {
   showMarkdownSidebar: () => void
   showTodoSidebar: () => void
   showGitSidebar: () => void
-  showGsdSyncSidebar: () => void
   showMcpSidebar: () => void
+  showPlansSidebar: () => void
   setAgentCanvasSession: (session: { folder: string; ptyId: string } | null) => void
   setAgentCanvasBudget: (usd: number | null) => void
   pushToast: (toast: {
@@ -171,9 +170,6 @@ type UiState = {
   setUpdateInfo: (info: UpdateInfo | null) => void
   openLinkViewer: (url: string) => void
   closeLinkViewer: () => void
-  setGsdSyncActivityView: (
-    view: { worktreePath: string; sessionId: string; title: string } | null,
-  ) => void
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -203,7 +199,6 @@ export const useUiStore = create<UiState>((set) => ({
   notifications: [],
   updateInfo: null,
   linkViewerUrl: null,
-  gsdSyncActivityView: null,
 
   openModal_: (kind, context) =>
     set({ openModal: kind, modalContext: context ?? null, showMainMenu: false }),
@@ -296,15 +291,20 @@ export const useUiStore = create<UiState>((set) => ({
   showMarkdownSidebar: () => set({ rightSidebarMode: 'markdown' }),
   showTodoSidebar: () => set({ rightSidebarMode: 'todo' }),
   showGitSidebar: () => set({ rightSidebarMode: 'git' }),
-  showGsdSyncSidebar: () => set({ rightSidebarMode: 'gsdSync' }),
   showMcpSidebar: () => set({ rightSidebarMode: 'mcp' }),
+  showPlansSidebar: () => set({ rightSidebarMode: 'plans' }),
   setAgentCanvasSession: (session) => set({ agentCanvasSession: session }),
   setAgentCanvasBudget: (usd) => set({ agentCanvasBudgetUsd: usd }),
   pushToast: ({ title, body, agent, actions, silent }) =>
     set((s) => {
       const now = Date.now()
       const last = s.notifications[0]
-      if (last && last.title === title && last.body === body && now - last.createdAt < DUPLICATE_TOAST_WINDOW_MS) {
+      if (
+        last &&
+        last.title === title &&
+        last.body === body &&
+        now - last.createdAt < DUPLICATE_TOAST_WINDOW_MS
+      ) {
         return s
       }
       const entry: InAppToast = {
@@ -325,5 +325,4 @@ export const useUiStore = create<UiState>((set) => ({
   setUpdateInfo: (info) => set({ updateInfo: info }),
   openLinkViewer: (url) => set({ linkViewerUrl: url }),
   closeLinkViewer: () => set({ linkViewerUrl: null }),
-  setGsdSyncActivityView: (view) => set({ gsdSyncActivityView: view }),
 }))

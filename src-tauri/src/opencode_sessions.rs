@@ -93,9 +93,9 @@ fn snapshot_opencode_sessions_inner(cwd: String) -> Result<Vec<OpenCodeSessionSn
 /// `tool`, `patch`, `step-start`, `step-finish` — and will likely gain more
 /// over time; a passthrough tolerates that without breaking).
 ///
-/// Used to render the GSD Sync child session as a read-only activity feed
-/// (no PTY terminal in the path) — see `useGsdSyncSessionsWatcher` in the
-/// frontend.
+/// Currently has no caller: it existed to render a session as a read-only activity feed, and the
+/// feature that did so was removed with GSD Sync. Kept because reading a session's history without
+/// attaching a PTY to it is generally useful, and the export format is the only way to get it.
 ///
 /// `async` + `spawn_blocking`: same reason as `snapshot_opencode_sessions`
 /// (a real subprocess, can't run on Tauri's dispatch thread).

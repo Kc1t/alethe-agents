@@ -1,5 +1,6 @@
 import { useDroppable } from '@dnd-kit/core'
 import { Ungroup } from 'lucide-react'
+import { lazy, Suspense } from 'react'
 import { Panel, Separator } from 'react-resizable-panels'
 
 import {
@@ -13,17 +14,16 @@ import { useT } from '../../lib/i18n'
 import type { GridLayout, LayoutMode, Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { DiffPane } from '../DiffPane'
-import { lazy, Suspense } from 'react'
-
 import { GridCellHandles } from '../GridCellHandles'
-
-const GraphifyView = lazy(() => import('../GraphifyView').then(m => ({ default: m.GraphifyView })))
-const MarkdownPane = lazy(() => import('../MarkdownPane').then(m => ({ default: m.MarkdownPane })))
 import { TerminalPane } from '../TerminalPane'
 import { VideoPane } from '../VideoPane'
 import { WebPane } from '../WebPane'
 import { PersistentPanelGroup as Group } from './PersistentPanelGroup'
 import styles from './WorkspaceView.module.css'
+
+const MarkdownPane = lazy(() =>
+  import('../MarkdownPane').then((m) => ({ default: m.MarkdownPane })),
+)
 
 const EMPTY_PANE_GROUPS: { id: string; paneIds: string[] }[] = []
 
@@ -43,13 +43,6 @@ function Pane({
     ? project?.paneGroups?.find((candidate) => candidate.paneIds[0] === terminal.id)
     : undefined
   if (group) return <PaneGroupView projectId={projectId} group={group} />
-  if (terminal.kind === 'graphify') {
-    return (
-      <Suspense fallback={<div className={styles.paneLoading}>Loading graph...</div>}>
-        <GraphifyView repo={terminal.cwd} projectId={projectId} terminalId={terminal.id} />
-      </Suspense>
-    )
-  }
   if (terminal.kind === 'markdown' || terminal.kind === 'file') {
     return (
       <Suspense fallback={<div className={styles.paneLoading}>Loading markdown...</div>}>

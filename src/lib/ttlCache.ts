@@ -9,7 +9,6 @@ const invalidators = new Set<() => void>()
 export function clearAllTtlCaches(): void {
   for (const invalidate of invalidators) invalidate()
 }
-
 export function makeTtlCache<T>(
   fetcher: () => Promise<T>,
   ttlMs: number,

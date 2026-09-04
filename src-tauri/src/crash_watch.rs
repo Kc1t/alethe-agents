@@ -91,7 +91,7 @@ pub fn start(app: AppHandle) {
     let Ok(dir) = crate::logging::logs_dir(&app) else {
         return;
     };
-    let _ = fs::create_dir_all(&dir);
+    crate::best_effort!(fs::create_dir_all(&dir), "dir_already_exists_or_unwritable");
     let path = dir.join("last_session.json");
 
     // raro do Job Object (`pty::install_kill_on_close_guard`) ter falhado

@@ -142,7 +142,7 @@ pub fn start_listener(app: AppHandle) {
             let url = request.url().to_string();
 
             if !check_token(&request) {
-                let _ = request.respond(tiny_http::Response::empty(401));
+                crate::best_effort!(request.respond(tiny_http::Response::empty(401)), "hook_client_disconnected");
                 continue;
             }
 
@@ -153,7 +153,7 @@ pub fn start_listener(app: AppHandle) {
                 .read_to_string(&mut body)
             {
                 eprintln!("[agent_events] erro lendo corpo: {e}");
-                let _ = request.respond(tiny_http::Response::empty(400));
+                crate::best_effort!(request.respond(tiny_http::Response::empty(400)), "hook_client_disconnected");
                 continue;
             }
 
@@ -170,12 +170,12 @@ pub fn start_listener(app: AppHandle) {
                             let header =
                                 tiny_http::Header::from_bytes("Content-Type", "application/json")
                                     .expect("static header");
-                            let _ = request.respond(
+                            crate::best_effort!(request.respond(
                                 tiny_http::Response::from_string(payload).with_header(header),
-                            );
+                            ), "hook_client_disconnected");
                         }
                         None => {
-                            let _ = request.respond(tiny_http::Response::empty(202));
+                            crate::best_effort!(request.respond(tiny_http::Response::empty(202)), "hook_client_disconnected");
                         }
                     }
                 });
@@ -191,12 +191,12 @@ pub fn start_listener(app: AppHandle) {
                             .unwrap_or("")
                             .to_string();
                         if !matches!(agent.as_str(), "shell" | "claude" | "codex" | "opencode") {
-                            let _ = request.respond(
+                            crate::best_effort!(request.respond(
                                 tiny_http::Response::from_string(
                                     "agent invalido (use claude|codex|opencode)",
                                 )
                                 .with_status_code(400),
-                            );
+                            ), "hook_client_disconnected");
                             continue;
                         }
                         let job_id = payload
@@ -212,25 +212,36 @@ pub fn start_listener(app: AppHandle) {
                             );
                         }
                         eprintln!("[agent_events] /spawn agent={agent} job_id={job_id}");
-                        let _ = app.emit("agent-spawn", &event_payload);
+                        // This event is how the UI learns an agent started. Dropped, the hook fired,
+                        // the agent is running, and nothing in the app ever shows it.
+                        if let Err(error) = app.emit("agent-spawn", &event_payload) {
+                            crate::decide!(
+                                target: "agent.events",
+                                attempted = "emit_agent_spawn",
+                                outcome = Failed,
+                                because = "webview_emit_failed",
+                                rule = "agent_events.spawn_reaches_the_ui",
+                                evidence = { error = %error },
+                            );
+                        }
                         let response = serde_json::json!({
                             "accepted": true,
                             "job_id": job_id,
                             "agent": agent,
                             "status": "queued"
                         });
-                        let _ = request.respond(
+                        crate::best_effort!(request.respond(
                             tiny_http::Response::from_string(response.to_string()).with_header(
                                 tiny_http::Header::from_bytes("Content-Type", "application/json")
                                     .unwrap(),
                             ),
-                        );
+                        ), "hook_client_disconnected");
                     }
                     Err(e) => {
-                        let _ = request.respond(
+                        crate::best_effort!(request.respond(
                             tiny_http::Response::from_string(format!("/spawn espera JSON: {e}"))
                                 .with_status_code(400),
-                        );
+                        ), "hook_client_disconnected");
                     }
                 }
                 continue;
@@ -243,10 +254,19 @@ pub fn start_listener(app: AppHandle) {
                 let task = body.trim().to_string();
                 eprintln!("[agent_events] /codex (legado) task ({} chars)", task.len());
                 let payload = serde_json::json!({ "agent": "codex", "task": task });
-                let _ = app.emit("agent-spawn", &payload);
-                let _ = request.respond(tiny_http::Response::from_string(
+                if let Err(error) = app.emit("agent-spawn", &payload) {
+                    crate::decide!(
+                        target: "agent.events",
+                        attempted = "emit_agent_spawn",
+                        outcome = Failed,
+                        because = "webview_emit_failed",
+                        rule = "agent_events.spawn_reaches_the_ui",
+                        evidence = { error = %error },
+                    );
+                }
+                crate::best_effort!(request.respond(tiny_http::Response::from_string(
                     "queued no terminal codex do Alethe",
-                ));
+                )), "hook_client_disconnected");
                 continue;
             }
 
@@ -257,11 +277,20 @@ pub fn start_listener(app: AppHandle) {
             if url.starts_with("/opencode-status") {
                 match serde_json::from_str::<serde_json::Value>(&body) {
                     Ok(payload) => {
-                        let _ = app.emit("opencode-bridge-status", &payload);
+                        if let Err(error) = app.emit("opencode-bridge-status", &payload) {
+                            crate::decide!(
+                                target: "agent.events",
+                                attempted = "emit_bridge_status",
+                                outcome = Failed,
+                                because = "webview_emit_failed",
+                                rule = "agent_events.bridge_status_reaches_the_ui",
+                                evidence = { error = %error },
+                            );
+                        }
                     }
                     Err(e) => eprintln!("[agent_events] /opencode-status payload inválido: {e}"),
                 }
-                let _ = request.respond(tiny_http::Response::empty(200));
+                crate::best_effort!(request.respond(tiny_http::Response::empty(200)), "hook_client_disconnected");
                 continue;
             }
 
@@ -290,7 +319,7 @@ pub fn start_listener(app: AppHandle) {
                 Err(e) => eprintln!("[agent_events] POST não-JSON ignorado: {e}"),
             }
 
-            let _ = request.respond(tiny_http::Response::empty(200));
+            crate::best_effort!(request.respond(tiny_http::Response::empty(200)), "hook_client_disconnected");
         }
     });
 }

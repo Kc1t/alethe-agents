@@ -13,12 +13,11 @@ import {
   TerminalSquare,
   Trash2,
 } from 'lucide-react'
-import { useMemo, useState, type ReactNode } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
-import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import { useT } from '../../lib/i18n'
-import { agentCliCommand, type SubTab, type Terminal } from '../../lib/types'
+import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import {
   getPtyCwd,
   openInBrowser,
@@ -26,6 +25,7 @@ import {
   openInVscode,
   restartPty,
 } from '../../lib/tauri'
+import { agentCliCommand, type SubTab, type Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'

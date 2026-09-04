@@ -1,21 +1,22 @@
 import { AlertTriangle, CircleCheck, GitBranch } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { confirmAction } from '../../lib/confirmDialog'
 import { readableError } from '../../lib/errors'
 import { useT } from '../../lib/i18n'
 import { discoverProviderModels, gitInit, gitStatus } from '../../lib/tauri'
 import {
   AGENT_TYPE_LABELS,
+  type AgentType,
   ALL_AGENT_TYPES,
   PROVIDER_MODELS,
-  type AgentType,
 } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AgentIcon } from '../icons/AgentIcons'
-import { ModelSearchablePicker, type ModelOption } from './ModelSearchablePicker'
 import controls from './controls.module.css'
 import styles from './EditProjectModal.module.css'
+import { type ModelOption, ModelSearchablePicker } from './ModelSearchablePicker'
 
 const ALL_AGENTS: { type: AgentType; label: string }[] = ALL_AGENT_TYPES.map((type) => ({
   type,
@@ -43,10 +44,6 @@ export function EditProjectAgentSettings({
   onConflictModelChange,
   autoWorktree,
   onAutoWorktreeChange,
-  graphifyEnabled,
-  onGraphifyEnabledChange,
-  gsdWatcherEnabled,
-  onGsdWatcherEnabledChange,
 }: {
   projectId: string
   cwd: string
@@ -64,10 +61,6 @@ export function EditProjectAgentSettings({
   onConflictModelChange: (modelId: string) => void
   autoWorktree: boolean
   onAutoWorktreeChange: (enabled: boolean) => void
-  graphifyEnabled: boolean
-  onGraphifyEnabledChange: (enabled: boolean) => void
-  gsdWatcherEnabled: boolean
-  onGsdWatcherEnabledChange: (enabled: boolean) => void
 }) {
   const t = useT()
   const pushToast = useUiStore((s) => s.pushToast)
@@ -109,7 +102,7 @@ export function EditProjectAgentSettings({
 
   const handleInitGit = async () => {
     if (!cwd || gitInitBusy) return
-    if (!confirm(t('git.initOffer.confirm'))) return
+    if (!(await confirmAction(t('git.initOffer.confirm')))) return
     setGitInitBusy(true)
     try {
       await gitInit(cwd)
@@ -309,11 +302,27 @@ export function EditProjectAgentSettings({
           disabled={migratingWorktrees}
           onClick={() => {
             if (migratingWorktrees) return
-            if (!confirm(t('multiAgent.migrateExistingConfirm'))) return
-            setMigratingWorktrees(true)
-            void migrateProjectTerminalsToWorktrees(projectId, gsdWatcherEnabled).finally(() =>
-              setMigratingWorktrees(false),
-            )
+            void (async () => {
+              // The confirmation is awaited inside the async body: `onClick` itself is not async,
+              // and awaiting in it is a compile error.
+              if (!(await confirmAction(t('multiAgent.migrateExistingConfirm')))) return
+              setMigratingWorktrees(true)
+              try {
+                const result = await migrateProjectTerminalsToWorktrees(projectId)
+                // Uncommitted work is a warning, never a block: it stays in the
+                // main repository (worktrees branch off HEAD).
+                if (result.status !== 'dirty') return
+                if (
+                  !(await confirmAction(
+                    t('multiAgent.migrateDirtyConfirm', { count: result.pending }),
+                  ))
+                )
+                  return
+                await migrateProjectTerminalsToWorktrees(projectId, { allowDirty: true })
+              } finally {
+                setMigratingWorktrees(false)
+              }
+            })()
           }}
         >
           {migratingWorktrees
@@ -323,30 +332,6 @@ export function EditProjectAgentSettings({
         <p style={{ fontSize: 10, color: 'var(--fg-muted)', marginTop: 4 }}>
           {t('multiAgent.migrateExistingHint')}
         </p>
-      </div>
-
-      <div className={`${controls.field} ${styles.toggleRow}`}>
-        <input
-          type="checkbox"
-          id="graphifyEnabled"
-          checked={graphifyEnabled}
-          onChange={(e) => onGraphifyEnabledChange(e.target.checked)}
-        />
-        <label htmlFor="graphifyEnabled" className={styles.toggleLabel}>
-          {t('project.graphifyEnabled')}
-        </label>
-      </div>
-
-      <div className={`${controls.field} ${styles.toggleRow}`}>
-        <input
-          type="checkbox"
-          id="gsdWatcher"
-          checked={gsdWatcherEnabled}
-          onChange={(e) => onGsdWatcherEnabledChange(e.target.checked)}
-        />
-        <label htmlFor="gsdWatcher" className={styles.toggleLabel}>
-          {t('crud.editProjectGsdWatcher')}
-        </label>
       </div>
     </>
   )

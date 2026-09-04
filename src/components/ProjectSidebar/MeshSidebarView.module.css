@@ -1,0 +1,746 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  padding: 12px;
+  gap: 16px;
+  overflow-y: auto;
+  color: var(--fg);
+  box-sizing: border-box;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.headerIcon {
+  color: var(--accent);
+}
+
+.title {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--fg);
+}
+
+.badgeOnline {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--status-working);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.badgeLocal {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  border: 1px solid var(--border);
+}
+
+.authCard {
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.authInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+}
+
+.authLabel {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.authStatus {
+  min-width: 0;
+  color: var(--fg-muted);
+  font-size: 10.5px;
+  line-height: 1.4;
+  overflow-wrap: break-word;
+}
+
+.authButtonsRow {
+  display: flex;
+  gap: 6px;
+}
+
+.loginGoogleBtn {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1;
+  transition: background-color 120ms ease;
+}
+
+.loginGoogleBtn:hover {
+  background: var(--panel-hover);
+}
+
+.loginGoogleBtnConnected {
+  color: var(--status-offline);
+}
+
+.loginGoogleBtnConnected:hover {
+  background: var(--panel-hover);
+  border-color: var(--status-offline);
+}
+
+.editOAuthConfigBtn {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+
+.editOAuthConfigBtn:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.oauthSetupWrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 220ms ease,
+    opacity 180ms ease;
+}
+
+.oauthSetupWrapOpen {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.oauthSetupWrap > div {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.oauthSetup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.oauthSetupInvalid {
+  border-color: var(--status-offline) !important;
+}
+
+.oauthSetupHint {
+  color: var(--status-offline) !important;
+}
+
+.infoHint {
+  color: var(--fg-muted);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.oauthSetup label {
+  color: var(--fg);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.oauthSetup input,
+.oauthSetup select {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.oauthSetup input:focus,
+.oauthSetup select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.oauthExplain {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.oauthExplain p {
+  margin: 0;
+  color: var(--fg);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.oauthExplain ol {
+  margin: 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--fg-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.reopenPageBtn {
+  padding: 5px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-size: 9.5px;
+}
+
+.reopenPageBtn:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.oauthSetup span {
+  color: var(--fg-muted);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.permissionSummary {
+  margin-top: -3px;
+  font-style: italic;
+}
+
+.folderScopeModeRow {
+  display: flex;
+  gap: 6px;
+}
+
+.folderScopeModeBtn {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.folderScopeModeBtn:hover {
+  border-color: var(--accent);
+}
+
+.folderScopeModeBtnActive {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.saveOAuthBtn {
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-on);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.saveOAuthBtn:disabled {
+  background: var(--bg);
+  color: var(--fg-muted);
+  cursor: default;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sectionTitle {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+}
+
+.deviceCard {
+  min-width: 0;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.deviceHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+
+.deviceIdRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.deviceId {
+  min-width: 0;
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--fg-muted);
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deviceTrust {
+  font-size: 10px;
+  color: var(--fg-muted);
+}
+
+.deviceTrust[data-trust='trusted'] {
+  color: var(--status-working);
+}
+
+.deviceTrust[data-trust='revoked'] {
+  color: var(--status-offline);
+}
+
+.deviceTrustPill {
+  margin-left: auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.deviceTrustPill[data-trust='trusted'] {
+  color: var(--status-working);
+  border-color: var(--status-working);
+  background: var(--status-working-soft);
+}
+
+.deviceTrustPill[data-trust='pending'] {
+  color: var(--status-waiting);
+  border-color: var(--status-waiting);
+  background: var(--status-waiting-soft);
+}
+
+.deviceTrustPill[data-trust='revoked'] {
+  color: var(--status-offline);
+  border-color: var(--status-offline);
+  background: var(--status-offline-soft);
+}
+
+.deviceNameRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.deviceName {
+  min-width: 0;
+  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deviceFingerprintRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.deviceFingerprintLabel {
+  flex-shrink: 0;
+  font-size: 9px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.deviceRenameRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.deviceRenameRow input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 11px;
+}
+
+.deviceRenameRow input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.redeemInputMono {
+  font-family: var(--font-mono);
+  font-size: 10.5px !important;
+}
+
+.redeemInputInvalid {
+  border-color: var(--status-offline) !important;
+}
+
+.deviceActionBtn {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.deviceActionBtn:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.deviceActionBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.deviceList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.deviceListItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+}
+
+.deviceListInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.deviceListName {
+  font-size: 11px;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deviceListActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.deviceActionError {
+  font-size: 10px;
+  color: var(--status-offline);
+}
+
+.accessGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.accessMetric {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  font-size: 9px;
+}
+
+.accessMetric span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.accessMetric strong {
+  color: var(--fg);
+  font-size: 11px;
+}
+
+.spin {
+  animation: mesh-spin 0.8s linear infinite;
+}
+
+@keyframes mesh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.copyBtn {
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  transition: color 120ms ease;
+}
+
+.copyBtn:hover {
+  color: var(--fg);
+}
+
+.successIcon {
+  color: var(--status-working);
+}
+
+.projectSyncCard {
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.projectInfo {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.syncIcon {
+  color: var(--accent);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.projectNames {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.projectNames strong {
+  font-size: 12px;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.projectPath {
+  font-size: 10px;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.actionButtons {
+  display: flex;
+  gap: 6px;
+}
+
+.primaryAction {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 11px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+.primaryAction:hover {
+  opacity: 0.9;
+}
+
+.secondaryAction {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.secondaryAction:hover {
+  background: var(--panel-hover);
+}
+
+.loginGoogleBtn:disabled,
+.primaryAction:disabled,
+.secondaryAction:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.securityPill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-size: 10px;
+  color: var(--fg-muted);
+}
+
+.shieldIcon {
+  color: var(--status-working);
+  flex-shrink: 0;
+}
+
+.loadingRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 0;
+  color: var(--fg-muted);
+}
+
+.successHint {
+  font-size: 10px;
+  color: var(--status-working);
+}
+
+/* The three steps of sharing a project. Numbered because the order matters and because the middle
+   step happens on the other person's machine — the reason the flow read as a dead end before. */
+.inviteSteps {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}

@@ -3,13 +3,19 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::OnceLock;
-use std::time::SystemTime;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime};
 
 #[cfg(windows)]
 use winreg::{enums::*, RegKey};
 
 static REBUILT_PATH: OnceLock<String> = OnceLock::new();
+
+/// Cache dos modelos descobertos por provider, com TTL curto — evita
+/// re-spawnar o CLI (ex.: `opencode models`, subprocesso lento, cold-start de
+/// Node/Bun) toda vez que o picker de modelo abre/reabre no mesmo provider.
+static MODEL_CACHE: OnceLock<Mutex<HashMap<String, (Instant, Vec<ModelOption>)>>> = OnceLock::new();
+const MODEL_CACHE_TTL: Duration = Duration::from_secs(300);
 
 pub fn default_shell() -> String {
     #[cfg(windows)]
@@ -455,16 +461,39 @@ pub fn agent_search_dirs() -> Vec<PathBuf> {
     dirs.extend(volta_bin_dirs());
     dirs.extend(pnpm_bin_dirs());
     dirs.extend(fnm_version_dirs());
+    // `ProgramData`/`ProgramFiles`/`ProgramFiles(x86)` são env vars sempre
+    // definidas pelo Windows (independente de qual drive o SO está instalado)
+    // — mesmo padrão já usado em `find_vscode_launcher` acima. O literal
+    // `C:\...` só entra como último recurso se a env var, por algum motivo
+    // muito raro, não estiver setada — nunca pior que o comportamento antigo.
+    let program_data = env::var_os("ProgramData").map(PathBuf::from);
     if let Some(global) = env::var_os("SCOOP_GLOBAL").map(PathBuf::from) {
         dirs.push(global.join("shims"));
+    } else if let Some(pd) = &program_data {
+        dirs.push(pd.join("scoop").join("shims"));
     } else {
         dirs.push(PathBuf::from(r"C:\ProgramData\scoop\shims"));
     }
-    dirs.push(PathBuf::from(r"C:\ProgramData\chocolatey\bin"));
+    if let Some(pd) = &program_data {
+        dirs.push(pd.join("chocolatey").join("bin"));
+    } else {
+        dirs.push(PathBuf::from(r"C:\ProgramData\chocolatey\bin"));
+    }
     dirs.extend(nvm_windows_version_dirs());
+    // Raiz de instalação padrão do próprio nvm-for-windows — não tem env var
+    // equivalente (é fixo pelo instalador dele, configurável só na hora da
+    // instalação); mantido como best-effort, mesmo comportamento de antes.
     dirs.push(PathBuf::from(r"C:\nvm4w\nodejs"));
-    dirs.push(PathBuf::from(r"C:\Program Files\nodejs"));
-    dirs.push(PathBuf::from(r"C:\Program Files (x86)\nodejs"));
+    if let Some(pf) = env::var_os("ProgramFiles").map(PathBuf::from) {
+        dirs.push(pf.join("nodejs"));
+    } else {
+        dirs.push(PathBuf::from(r"C:\Program Files\nodejs"));
+    }
+    if let Some(pf86) = env::var_os("ProgramFiles(x86)").map(PathBuf::from) {
+        dirs.push(pf86.join("nodejs"));
+    } else {
+        dirs.push(PathBuf::from(r"C:\Program Files (x86)\nodejs"));
+    }
     dirs
 }
 
@@ -619,9 +648,20 @@ pub(crate) fn build_rebuilt_path() -> String {
         paths.push(app_data.join("npm"));
     }
 
+    // Raiz de instalação padrão do próprio nvm-for-windows — sem env var
+    // equivalente, mantido como best-effort (ver comentário igual em
+    // `agent_search_dirs`).
     paths.push(PathBuf::from(r"C:\nvm4w\nodejs"));
-    paths.push(PathBuf::from(r"C:\Program Files\nodejs"));
-    paths.push(PathBuf::from(r"C:\Program Files (x86)\nodejs"));
+    if let Some(pf) = env::var_os("ProgramFiles").map(PathBuf::from) {
+        paths.push(pf.join("nodejs"));
+    } else {
+        paths.push(PathBuf::from(r"C:\Program Files\nodejs"));
+    }
+    if let Some(pf86) = env::var_os("ProgramFiles(x86)").map(PathBuf::from) {
+        paths.push(pf86.join("nodejs"));
+    } else {
+        paths.push(PathBuf::from(r"C:\Program Files (x86)\nodejs"));
+    }
 
     dedupe_paths(paths)
         .into_iter()
@@ -770,6 +810,20 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                     }
                 }
             }
+            if models.is_empty() {
+                models.push(ModelOption {
+                    id: "anthropic/claude-sonnet-4-5".into(),
+                    label: "Claude Sonnet 4.5 (Anthropic)".into(),
+                });
+                models.push(ModelOption {
+                    id: "opencode/grok-code".into(),
+                    label: "Grok Code (OpenCode Zen)".into(),
+                });
+                models.push(ModelOption {
+                    id: "github-copilot/gpt-5".into(),
+                    label: "GPT-5 (GitHub Copilot)".into(),
+                });
+            }
         }
         "claude" => {
             if let Ok(output) = std::process::Command::new(&bin_path).arg("models").output() {
@@ -789,22 +843,28 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                     }
                 }
             }
+            // The Claude CLI has no `models` subcommand, so this fallback is what the picker
+            // actually shows in practice — it is the model list, not a rarely-hit backstop, and
+            // every id here is passed straight through as `--model <id>`. Keep it current: the
+            // previous entries (`claude-3-7-sonnet`, `claude-3-5-sonnet`, `claude-3-5-haiku`,
+            // `claude-3-opus`) were both long superseded and never valid ids to begin with —
+            // that generation's real ids carried a date suffix.
             if models.is_empty() {
                 models.push(ModelOption {
-                    id: "claude-3-7-sonnet".into(),
-                    label: "Claude 3.7 Sonnet (Anthropic)".into(),
+                    id: "claude-opus-5".into(),
+                    label: "Claude Opus 5 (Anthropic)".into(),
                 });
                 models.push(ModelOption {
-                    id: "claude-3-5-sonnet".into(),
-                    label: "Claude 3.5 Sonnet (Anthropic)".into(),
+                    id: "claude-sonnet-5".into(),
+                    label: "Claude Sonnet 5 (Anthropic)".into(),
                 });
                 models.push(ModelOption {
-                    id: "claude-3-5-haiku".into(),
-                    label: "Claude 3.5 Haiku (Anthropic)".into(),
+                    id: "claude-opus-4-8".into(),
+                    label: "Claude Opus 4.8 (Anthropic)".into(),
                 });
                 models.push(ModelOption {
-                    id: "claude-3-opus".into(),
-                    label: "Claude 3 Opus (Anthropic)".into(),
+                    id: "claude-haiku-4-5".into(),
+                    label: "Claude Haiku 4.5 (Anthropic)".into(),
                 });
             }
         }
@@ -912,11 +972,33 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
 /// `discover_provider_models_inner` roda `std::process::Command::output()`
 
 /// `find_cli_launcher` acima.
+///
+/// Cacheado por `MODEL_CACHE_TTL` — o picker de modelo (`ModelSearchablePicker`)
+/// dispara essa chamada de novo toda vez que o modal de edição de projeto abre,
+/// e pro OpenCode isso é um cold-start de subprocesso Node/Bun real (lento).
+/// Sem cache, cada reabertura repetia o mesmo custo à toa.
 #[tauri::command]
 pub async fn discover_provider_models(provider: String) -> Result<Vec<ModelOption>, String> {
-    tokio::task::spawn_blocking(move || discover_provider_models_inner(provider))
-        .await
-        .map_err(|error| format!("discover_provider_models: falha na task bloqueante: {error}"))?
+    let cache = MODEL_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(guard) = cache.lock() {
+        if let Some((cached_at, models)) = guard.get(&provider) {
+            if cached_at.elapsed() < MODEL_CACHE_TTL {
+                return Ok(models.clone());
+            }
+        }
+    }
+
+    let result = tokio::task::spawn_blocking({
+        let provider = provider.clone();
+        move || discover_provider_models_inner(provider)
+    })
+    .await
+    .map_err(|error| format!("discover_provider_models: falha na task bloqueante: {error}"))??;
+
+    if let Ok(mut guard) = cache.lock() {
+        guard.insert(provider, (Instant::now(), result.clone()));
+    }
+    Ok(result)
 }
 
 #[cfg(test)]

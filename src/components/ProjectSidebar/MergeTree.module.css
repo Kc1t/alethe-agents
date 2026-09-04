@@ -151,3 +151,115 @@
   border-radius: var(--radius-md);
   background: var(--panel);
 }
+
+/* The row is a container now: the main action plus, when something went wrong, a warning button
+   that opens the reason. Two buttons instead of one, so clicking the warning does not also open
+   the merge detail. */
+.nodeMain {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+
+.nodeWarning {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-left: 4px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--status-waiting);
+  cursor: pointer;
+}
+
+.nodeWarning:hover {
+  background: var(--status-waiting-soft);
+}
+
+.nodeWarningFailed {
+  color: var(--status-offline);
+}
+
+.nodeWarningFailed:hover {
+  background: var(--status-offline-soft);
+}
+
+.warningPopup {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 4px 0 6px 18px;
+  padding: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+}
+
+.warningHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--status-offline);
+  font-size: 11.5px;
+}
+
+.warningHeader strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg);
+}
+
+.warningClose {
+  display: flex;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  padding: 2px;
+}
+
+.warningClose:hover {
+  color: var(--fg);
+}
+
+.warningStatus {
+  font-size: 10.5px;
+  color: var(--fg-muted);
+}
+
+/* Scrolls rather than wraps: gate output is command output, and wrapping it destroys the
+   alignment that makes it readable. */
+.warningDetail {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  padding: 6px;
+  border-radius: 4px;
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.45;
+  white-space: pre;
+}
+
+.warningEmpty {
+  font-size: 10.5px;
+  color: var(--fg-faint);
+}

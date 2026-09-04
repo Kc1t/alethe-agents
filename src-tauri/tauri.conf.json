@@ -18,7 +18,9 @@
         "minWidth": 800,
         "minHeight": 500,
         "resizable": true,
-        "decorations": false
+        "decorations": false,
+        "visible": true,
+        "focus": true
       }
     ],
     "security": {
@@ -44,12 +46,19 @@
         "frame-src": ["asset:", "http://asset.localhost", "http:", "https:"]
       },
       "devCsp": null
-    }
+    },
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,
     "createUpdaterArtifacts": true,
     "targets": "all",
+    "resources": {
+      "../services/rendezvous-cloudflare/src": "rendezvous-cloudflare/src",
+      "../services/rendezvous-cloudflare/package.json": "rendezvous-cloudflare/package.json",
+      "../services/rendezvous-cloudflare/wrangler.jsonc": "rendezvous-cloudflare/wrangler.jsonc",
+      "../services/rendezvous-cloudflare/tsconfig.json": "rendezvous-cloudflare/tsconfig.json"
+    },
     "publisher": "Kauã Miguel",
     "shortDescription": "Terminal multiplexer GUI",
     "longDescription": "Alethe is a Windows-first terminal multiplexer GUI: projects on the left, split-pane terminals on the right, with sub-tabs per pane.",
@@ -57,9 +66,15 @@
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
+      "icons/icon.png",
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "linux": {
+      "deb": {
+        "desktopTemplate": "linux/alethe.desktop"
+      }
+    },
     "windows": {
       "webviewInstallMode": {
         "type": "embedBootstrapper"

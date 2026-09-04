@@ -1,11 +1,5 @@
 import { useEffect, useRef } from 'react'
 
-   
-                                                                               
-                                                                           
-                                                                        
-                                                                      
-   
 export function useOnEscape(
   handler: (event: KeyboardEvent) => void,
   enabled = true,

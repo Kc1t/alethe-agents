@@ -1,0 +1,102 @@
+.container {
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.loadingRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  color: var(--fg-muted);
+  justify-content: center;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.error,
+.empty {
+  font-size: 11px;
+  color: var(--fg-muted);
+  padding: 8px 0;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border-radius: var(--radius-sm);
+}
+
+.item:hover {
+  background: var(--panel-hover);
+}
+
+.expandBtn {
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+}
+
+.expandPlaceholder {
+  width: 13px;
+  display: inline-block;
+}
+
+.checkboxBtn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.checkActive {
+  color: var(--status-working);
+}
+
+.checkInactive {
+  color: var(--fg-muted);
+}
+
+.folderIcon {
+  color: var(--accent);
+}
+
+.name {
+  color: var(--fg);
+}
+
+.children {
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+}

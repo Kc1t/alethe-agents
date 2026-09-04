@@ -17,9 +17,14 @@ import {
 } from 'lucide-react'
 
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
+import { syncDeleteProjectConversation } from '../../lib/api/syncChat'
+import { syncDeleteProjectAccess } from '../../lib/api/syncSecurity'
+import { syncDeleteProjectTasks } from '../../lib/api/syncTasks'
 import { pickFile, saveFile } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
+import { withFallback } from '../../lib/resilience'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
+import { collectDescendants } from '../../lib/sidebarTree'
 import {
   getPtyCwd,
   openInFileExplorer,
@@ -33,12 +38,10 @@ import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { type MenuItem } from './ContextMenu'
-import { collectDescendants } from './GroupNode'
 
 type ProjectsState = ReturnType<typeof useProjectsStore.getState>
 type UiState = ReturnType<typeof useUiStore.getState>
 
-                                                                                
 type MenuActions = Pick<
   ProjectsState,
   | 'openProjectWorkspace'
@@ -48,7 +51,6 @@ type MenuActions = Pick<
   | 'moveProjectToGroup'
   | 'setProjectDisabled'
   | 'deleteProject'
-  | 'createGraphifyPane'
   | 'openGroupWorkspace'
   | 'renameGroup'
   | 'moveGroupToParent'
@@ -72,7 +74,6 @@ type MenuActions = Pick<
 
 export type SidebarMenuDeps = {
   t: ReturnType<typeof useT>
-  graphifyEnabled: boolean
   browserEnabled: boolean
   groups: Group[]
   openPaneSets: Record<string, Set<string>>
@@ -85,16 +86,13 @@ export type SidebarMenuDeps = {
   openMarkdownSidebar: UiState['openMarkdownSidebar']
 }
 
-                                                                                        
 function visibleProjectTerminals(project: Project): Terminal[] {
-  return project.terminals.filter((term) => !term.gsdSyncViewer)
+  return project.terminals
 }
 
-                                                                         
 export function createSidebarMenus(deps: SidebarMenuDeps) {
   const {
     t,
-    graphifyEnabled,
     browserEnabled,
     groups,
     openPaneSets,
@@ -129,7 +127,7 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
     { kind: 'separator' },
     {
       kind: 'item',
-      label: t('ui.sidebar.editNameColor'),
+      label: t('ui.sidebar.projectSettings'),
       icon: <Pencil size={14} />,
       onClick: () => openModal('editProject', { projectId: project.id }),
     },
@@ -212,23 +210,6 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
       icon: <Layout size={14} />,
       onClick: () => openModal('layoutDesigner', { kind: 'project', id: project.id }),
     },
-    ...(graphifyEnabled
-      ? [
-          {
-            kind: 'item' as const,
-            label: t('graphify.startInProject'),
-            onClick: () => {
-              const repoPath = project.terminals[0]?.cwd
-              if (repoPath) {
-                actions.createGraphifyPane(project.id, repoPath)
-                setActiveView('workspace')
-              } else {
-                alert('Adicione um terminal ao projeto primeiro para obter a raiz do repositório.')
-              }
-            },
-          },
-        ]
-      : []),
     {
       kind: 'item',
       label: project.groupId ? t('ui.sidebar.removeFromGroup') : t('ui.sidebar.moveToGroup'),
@@ -287,6 +268,15 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
           )
         ) {
           actions.deleteProject(project.id)
+          void syncDeleteProjectAccess(project.id).catch((error) =>
+            console.error('Failed to delete project access', error),
+          )
+          void syncDeleteProjectConversation(project.id).catch((error) =>
+            console.error('Failed to delete project conversation', error),
+          )
+          void syncDeleteProjectTasks(project.id).catch((error) =>
+            console.error('Failed to delete project tasks', error),
+          )
         }
       },
     },
@@ -415,7 +405,7 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
     const saved = activeTab?.cwd?.trim() || term.cwd?.trim()
     if (saved) return saved
     if (!activeTab?.ptyId) return null
-    return getPtyCwd(activeTab.ptyId).catch(() => null)
+    return getPtyCwd(activeTab.ptyId).catch(withFallback('getPtyCwd', null))
   }
 
   const openTerminalPath = async (

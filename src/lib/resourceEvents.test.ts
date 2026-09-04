@@ -3,13 +3,13 @@ import { join } from 'node:path'
 
 import { describe, expect, it } from 'vitest'
 
-import { MEMORY_RELIEF_EVENTS } from './tauri/window'
+import { MEMORY_RELIEF_EVENTS } from './api/window'
 
 // The resource manager reacted to memory pressure by emitting an event per level. Nothing listened
 // to any of them, and the most severe one was emitted as `resource::drop-caches` — a name no
 // listener could ever match. The app measured itself running out of RAM and did nothing about it.
 const MANAGER = 'src-tauri/src/resource_manager.rs'
-const LISTENERS = 'src/lib/tauri/window.ts'
+const LISTENERS = 'src/lib/api/window.ts'
 
 const read = (path: string) => readFileSync(join(process.cwd(), path), 'utf8')
 

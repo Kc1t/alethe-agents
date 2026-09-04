@@ -1,12 +1,12 @@
-import { Bot, Boxes, Code2, Gift, Sparkles, Terminal, type LucideIcon } from 'lucide-react'
+import { Bot, Boxes, Code2, Gift, type LucideIcon, Sparkles, Terminal } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { useT } from '../../lib/i18n'
+import type { AgentType } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import type { AgentType } from '../../lib/types'
-import { useT } from '../../lib/i18n'
-import { Modal } from './Modal'
 import controls from './controls.module.css'
+import { Modal } from './Modal'
 
 const ICONS: Record<AgentType, LucideIcon> = {
   shell: Terminal,
@@ -43,7 +43,7 @@ export function FindJumpModal() {
     if (open) {
       setQuery('')
       setCursor(0)
-                                             
+
       setTimeout(() => inputRef.current?.focus(), 50)
     }
   }, [open])

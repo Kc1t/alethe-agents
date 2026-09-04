@@ -261,6 +261,13 @@ fn mcp_home(segments: &[&str]) -> Option<PathBuf> {
 
 fn opencode_config_dir() -> Option<PathBuf> {
     if std::env::var_os("ALETHE_MCP_HOME").is_none() {
+        // Alethe's own directory comes first, because it is the one the agents Alethe launches
+        // actually read (they are given it as `XDG_CONFIG_HOME` at spawn). Resolving the user's
+        // config here instead would make the MCP manager edit a file no agent started from Alethe
+        // ever opens — the screen would look like it worked and change nothing.
+        if let Some(root) = crate::agent_config::registered_agent_config_root() {
+            return Some(root.join("opencode"));
+        }
         if let Some(xdg) = std::env::var_os("XDG_CONFIG_HOME") {
             let base = PathBuf::from(xdg);
             if !base.as_os_str().is_empty() {

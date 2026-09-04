@@ -1,12 +1,13 @@
 import { useEffect } from 'react'
-import { UsageStrip } from '../HomeView/UsageStrip'
+
 import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
 import { getCachedClaudeUsage } from '../../lib/claudeUsageCache'
 import { getCachedCodexUsage } from '../../lib/codexUsageCache'
 import { useT } from '../../lib/i18n'
 import { useUiStore } from '../../stores/uiStore'
-import { Modal } from './Modal'
+import { UsageStrip } from '../HomeView/UsageStrip'
 import styles from './AiUsageModal.module.css'
+import { Modal } from './Modal'
 
 export function AiUsageModal() {
   const t = useT()

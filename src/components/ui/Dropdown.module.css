@@ -108,8 +108,10 @@
   width: 100%;
   min-height: 30px;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   flex: 0 0 auto;
-  padding: 0 8px;
+  padding: 5px 8px;
   overflow: hidden;
   color: var(--fg-muted);
   background: transparent;
@@ -120,11 +122,30 @@
   cursor: pointer;
 }
 
-.option span {
+.optionText {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.optionLabel,
+.optionDescription {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.optionDescription {
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+}
+
+.optionCheck {
+  flex: 0 0 auto;
+  color: var(--accent);
 }
 
 .option:hover:not(:disabled),

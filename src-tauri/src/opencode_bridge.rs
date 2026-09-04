@@ -8,8 +8,7 @@
 // Este modulo escreve um plugin real do OpenCode (formato confirmado em
 // opencode.ai/docs/plugins/) num diretorio GLOBAL do usuario
 
-// qualquer terminal opencode que o Alethe spawnar, nao so os com Graphify
-// habilitado. O plugin reporta session.idle/tool.execute.before de volta pro
+// qualquer terminal opencode que o Alethe spawnar. O plugin reporta session.idle/tool.execute.before de volta pro
 // Alethe via HTTP local, reaproveitando o listener ja existente em
 
 use std::path::PathBuf;
@@ -51,7 +50,17 @@ export const AletheBridgePlugin = async ({ directory }) => {
 }
 "#;
 
+/// Where the bridge plugin has to land for OpenCode to load it.
+///
+/// Alethe hands its agents its own configuration root (see `agent_config`), so the plugin belongs
+/// there — installing it under the user's `~/.config/opencode/` would put it somewhere no agent
+/// started from Alethe ever reads, and the working/idle signal would go quiet with nothing to
+/// explain why. The home directory stays as the fallback for the window before the root is
+/// registered.
 fn plugin_dir() -> Option<PathBuf> {
+    if let Some(root) = crate::agent_config::registered_agent_config_root() {
+        return Some(root.join("opencode").join("plugin"));
+    }
     Some(
         dirs_next::home_dir()?
             .join(".config")

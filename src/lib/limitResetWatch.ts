@@ -1,14 +1,3 @@
-   
-                                                                        
-                                                                            
-                                                                              
-                                         
-  
-                                                                            
-                                                                                
-                                                                             
-                                                      
-   
 import { useProjectsStore } from '../stores/projectsStore'
 import { getLocale, translate } from './i18n'
 import { notifyLimitReset } from './notifications'
@@ -20,9 +9,7 @@ type Entry = { resetsAt: number; notified: boolean; agent: AgentType; kind: Wind
 
 const entries = new Map<string, Entry>()
 const HEARTBEAT_MS = 60_000
-                                                                            
-                                                                               
-                                                                   
+
 const RESET_ROLLOVER_GRACE_MS = 5 * 60_000
 let heartbeat: number | null = null
 
@@ -66,19 +53,16 @@ function observe(key: string, agent: AgentType, kind: WindowKind, resetsAt: numb
   ensureHeartbeat()
   const prev = entries.get(key)
   if (!prev) {
-                                                             
     entries.set(key, { resetsAt, notified: false, agent, kind })
     return
   }
   if (resetsAt > prev.resetsAt) {
-                                                                                
-                                                                                 
     if (prev.resetsAt <= Date.now() + RESET_ROLLOVER_GRACE_MS && !prev.notified) {
       fire(prev)
     }
     entries.set(key, { resetsAt, notified: false, agent, kind })
   }
-                                                            
+
   // resetsAt < prev.resetsAt: dado mais velho (cache), ignora.
 }
 

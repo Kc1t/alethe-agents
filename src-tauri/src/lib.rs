@@ -1,83 +1,115 @@
-mod activity_stats;
-mod agent_cost;
-mod agent_events;
-mod agent_library;
-mod ai_memory;
-mod antigravity_sessions;
-mod antigravity_usage;
-mod backup;
-mod browser_pane;
-mod browser_session;
-mod cdp;
-mod claude_sessions;
-mod claude_usage;
-mod cli_launch;
-mod cli_resolver;
-mod cli_shim;
-mod codex_app_server;
-mod codex_sessions;
-mod codex_usage;
-mod conflict_resolution;
-mod contract_check;
-mod crash_watch;
-mod diagnostics;
-mod discord_presence;
-mod economy_agents;
-mod event_bus;
-mod filesystem;
-mod ghostty_bridge;
+pub mod activity_stats;
+pub mod agent_cost;
+pub mod agent_config;
+pub mod agent_events;
+pub mod agent_library;
+pub mod ai_memory;
+pub mod antigravity_sessions;
+pub mod antigravity_usage;
+pub mod backup;
+pub mod browser_pane;
+pub mod browser_session;
+pub mod cdp;
+pub mod change_trigger;
+pub mod claude_sessions;
+pub mod claude_usage;
+pub mod cli_launch;
+pub mod cli_resolver;
+pub mod cli_shim;
+pub mod codex_app_server;
+pub mod codex_sessions;
+pub mod codex_usage;
+pub mod conflict_resolution;
+pub mod contract_check;
+pub mod crash_watch;
+pub mod diagnostics;
+pub mod discord_presence;
+pub mod economy_agents;
+pub mod event_bus;
+pub mod filesystem;
+pub mod ghostty_bridge;
 #[cfg(all(target_os = "macos", ghostty_linked))]
-mod ghostty_ffi;
-mod git_control;
-mod github_sync;
-mod github_pr;
-mod graphify;
-mod handoff;
-mod health_probe;
-mod logging;
-mod mcp_agents;
-mod mcp_catalog;
-mod mcp_health;
-mod mcp_model;
-mod mcp_store;
-mod merge_analyzer;
-mod opencode_bridge;
-mod opencode_gsd_plugin;
-mod opencode_sessions;
+pub mod ghostty_ffi;
+pub mod git_control;
+pub mod github_pr;
+pub mod github_sync;
+pub mod handoff;
+pub mod health_probe;
+pub mod logging;
+pub mod mcp_agents;
+pub mod mcp_catalog;
+pub mod mcp_health;
+pub mod mcp_model;
+pub mod mcp_store;
+pub mod merge_analyzer;
+pub mod obs;
+pub mod obs_ipc;
+pub mod obs_sink;
+pub mod opencode_bridge;
+pub mod opencode_sessions;
 pub mod orchestrator;
 pub mod orchestrator_core;
-mod paths;
-mod planning;
-mod planning_gate;
-mod plugins;
-mod process_tree;
-mod profiles;
-mod project_detector;
-mod projects;
-mod provider_common;
-mod pty;
-mod remote;
-mod resource_manager;
-mod resources;
-mod scheduler;
-mod session_watcher;
-mod skills;
-mod speech;
-mod speech_capture;
-mod spotify;
-mod stats;
-mod supervisor;
-mod telemetry;
-mod validation;
-mod webview_media;
-mod window_style;
+pub mod paths;
+pub mod planning;
+pub mod planning_gate;
+pub mod plugins;
+pub mod procedure;
+pub mod process_tree;
+pub mod profiles;
+pub mod project_detector;
+pub mod project_file_watcher;
+pub mod projects;
+pub mod provider_common;
+pub mod pty;
+pub mod pty_sink;
+pub mod remote;
+pub mod resource_manager;
+pub mod resources;
+pub mod scheduler;
+pub mod self_test;
+pub mod server_main;
+pub mod session_presence;
+pub mod session_watcher;
+pub mod skills;
+pub mod speech;
+pub mod speech_capture;
+pub mod spotify;
+pub mod stats;
+pub mod supervisor;
+pub mod sync_access;
+pub mod sync_activation;
+pub mod sync_chat;
+pub mod sync_cloudflare_deploy;
+pub mod sync_crypto;
+pub mod sync_engine;
+pub mod sync_file_pipeline;
+pub mod sync_file_pipeline_relay;
+pub mod sync_file_pipeline_session;
+pub mod sync_invitation_bridge;
+pub mod sync_manifest;
+pub mod sync_mesh;
+pub mod sync_p2p_bridge;
+pub mod sync_project_invite;
+pub mod sync_protocol;
+pub mod sync_remote_invitation;
+pub mod sync_rendezvous;
+pub mod sync_rendezvous_git;
+pub mod sync_security;
+pub mod sync_staging;
+pub mod sync_subscription;
+pub mod sync_tasks;
+pub mod sync_transport;
+pub mod telemetry;
+pub mod translation;
+pub mod validation;
+pub mod webview_media;
+pub mod window_style;
 #[cfg(windows)]
-mod windows_webview;
-mod worktrees;
+pub mod windows_webview;
+pub mod worktrees;
 
-use crate::pty::{PtySession, PtySessions};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use crate::pty::PtySessions;
+use std::sync::Arc;
 
 #[cfg(windows)]
 #[tauri::command]
@@ -139,7 +171,7 @@ pub fn run() {
     logging::install_panic_hook();
 
     pty::install_kill_on_close_guard();
-    let sessions: PtySessions = Arc::new(Mutex::new(HashMap::<String, PtySession>::new()));
+    let sessions: PtySessions = pty::global_pty_sessions().clone();
     let browser_session_state = browser_session::BrowserSessionState::default();
     let browser_pane_state = browser_pane::BrowserPaneState::default();
     let codex_app_server_state = codex_app_server::CodexAppServerState::default();
@@ -160,6 +192,11 @@ pub fn run() {
         .manage(discord_presence::DiscordPresence::new())
         .manage(planning::PlanningWatchers::default())
         .manage(cli_launch::PendingOpen::default())
+        .manage(std::sync::Arc::new(sync_rendezvous::RendezvousRuntime::default()))
+        .manage(std::sync::Arc::new(sync_p2p_bridge::P2pSessionRegistry::default()))
+        .manage(std::sync::Arc::new(sync_file_pipeline_relay::RelayInbox::default()))
+        .manage(std::sync::Arc::new(sync_file_pipeline_session::FileSyncSessionRegistry::default()))
+        .manage(std::sync::Arc::new(change_trigger::ChangeTriggerRegistry::default()))
         .manage(orchestrator::OrchestratorState::default())
         .manage(speech::SpeechState::default())
         .plugin(tauri_plugin_dialog::init())
@@ -167,32 +204,65 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build());
 
+    // Impede execuções paralelas do Alethe — pré-requisito real da guarda de
+    // monotonicidade de `save_projects` (projects.rs): duas instâncias teriam
+    // cada uma seu próprio LAST_WRITE_SEQUENCE em memória, e a garantia de
+    // last-write-wins deixaria de valer entre processos. Segunda instância só
+    // foca a janela existente em vez de abrir outra — e, quando veio de
+    // `alethe <path>` no terminal, entrega o diretório pedido pra ela (ver
+    // cli_launch.rs) antes de morrer.
+    // A guarda de instância única é por `identifier` do app (D-Bus/named pipe),
+    // não por data dir — uma instância de E2E (mesmo identifier, data dir
+    // isolado por env var) seria detectada como "segunda instância" de um
+    // `tauri dev` interativo já aberto e sairia na hora (code=0) sem nunca
+    // subir. Sob `ALETHE_E2E=1` a instância de teste já é isolada por conta
+    // própria, então esse guard não é necessário nem desejável.
     #[cfg(desktop)]
-    {
+    if std::env::var_os("ALETHE_E2E").is_none() {
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             cli_launch::handle_second_instance(app, argv, cwd);
         }));
     }
 
+    // WebDriver automation (the E2E harness). Never compiled into a release build
+    // (`debug_assertions`) and, even in debug, only active with `ALETHE_E2E=1` in the environment.
+    // Without that variable an everyday `tauri dev` session exposes no automation surface at all.
+    //
+    // The two plugin crates cannot be put behind a Cargo feature: `capabilities/` declares the
+    // `wdio:default` permission, and Tauri resolves capabilities in the build script with no way to
+    // condition one on a feature, so the build fails before compilation starts.
+    #[cfg(debug_assertions)]
+    if std::env::var_os("ALETHE_E2E").is_some() {
+        // `-webdriver` runs the embedded WebDriver server itself; the other one provides the
+        // `browser.tauri.execute()` API and invoke mocking from the specs. The two pieces are
+        // independent in the wdio-tauri ecosystem.
+        builder = builder
+            .plugin(tauri_plugin_wdio_webdriver::init())
+            .plugin(tauri_plugin_wdio::init());
+    }
+
     builder
         .setup(move |app| {
-            #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
+                #[cfg(debug_assertions)]
                 let _ = window.set_title("(DEV) Alethe");
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
             }
 
             #[cfg(target_os = "linux")]
             if let Some(window) = app.get_webview_window("main") {
-                match image::load_from_memory(include_bytes!("../icons/128x128.png")) {
+                match image::load_from_memory(include_bytes!("../icons/128x128@2x.png")) {
                     Ok(decoded) => {
                         let rgba = decoded.to_rgba8();
                         let (width, height) = rgba.dimensions();
                         let icon = tauri::image::Image::new_owned(rgba.into_raw(), width, height);
                         if let Err(error) = window.set_icon(icon) {
-                            eprintln!("[icon] falha ao aplicar ícone da janela: {error}");
+                            eprintln!("[icon] failed to apply the Linux window icon: {error}");
                         }
                     }
-                    Err(error) => eprintln!("[icon] falha ao decodificar ícone embutido: {error}"),
+                    Err(error) => eprintln!("[icon] failed to decode the embedded icon: {error}"),
                 }
                 // Required for getUserMedia / voice dictation on WebKitGTK.
                 webview_media::grant_media_permissions(&window);
@@ -202,7 +272,50 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 webview_media::grant_media_permissions(&window);
             }
-            logging::set_logs_dir(app.handle());
+            // The log directory is established before anything else so that a failure here is
+            // reported instead of silently turning every later diagnostic into a no-op. An app
+            // that cannot write logs must say so once, loudly, rather than look like an app with
+            // nothing to report.
+            match logging::set_logs_dir(app.handle()) {
+                Ok(dir) => {
+                    if let Err(error) = obs_sink::install(&dir) {
+                        eprintln!("[obs] decision records are NOT being written: {error}");
+                    }
+                }
+                Err(error) => eprintln!("[obs] no log directory, diagnostics disabled: {error}"),
+            }
+            logging::record_platform_readiness();
+            let data_root = profiles::resolve_tauri_data_root(app.handle())
+                .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error))?;
+            let runtime = server_main::ServerRuntime::embedded(
+                app.config().identifier.clone(),
+                data_root,
+                app.handle().clone(),
+            );
+            // Bound synchronously, before `setup()` returns, so the port is
+            // already settled by the time the frontend runs its first probe —
+            // a second Alethe (e.g. a dev build next to the installed one)
+            // takes the next free port instead of failing to start.
+            let (listener, port) = tauri::async_runtime::block_on(
+                server_main::bind_server_listener(),
+            )
+            .map_err(|error| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("[Alethe Embedded Server] {error}"),
+                )
+            })?;
+            println!(
+                "[Alethe Embedded Server] Listening on http://{}:{port} (instance {}).",
+                server_main::SERVER_HOST,
+                runtime.instance_id()
+            );
+            tauri::async_runtime::spawn(async move {
+                let router = server_main::build_router(runtime);
+                if let Err(error) = axum::serve(listener, router).await {
+                    eprintln!("[Alethe Embedded Server] Server stopped with an error: {error}");
+                }
+            });
             // Keep the terminal launcher available after installation.
             #[cfg(not(debug_assertions))]
             let _ = cli_shim::cli_shim_install();
@@ -220,6 +333,19 @@ pub fn run() {
                 Arc::clone(&sessions_for_resources),
                 Arc::clone(&resource_supervisor_for_setup),
             );
+
+            // Alethe's own agent configuration directory, registered before anything can look it
+            // up. Registering late would let the MCP manager fall back to the user's own config for
+            // the first lookups, and the settings screen would then be editing a file the running
+            // agent never reads.
+            match paths::app_data_dir(app.handle())
+                .and_then(|root| agent_config::ensure_agent_config_at(&root))
+            {
+                Ok(root) => agent_config::register_agent_config_root(root),
+                Err(error) => {
+                    eprintln!("[agent-config] could not prepare the agent config directory: {error}")
+                }
+            }
 
             pty::cleanup_orphan_scrollback(app.handle());
             agent_events::start_listener(app.handle().clone());
@@ -239,7 +365,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+        .invoke_handler(crate::obs_ipc::correlated(tauri::generate_handler![
             agent_events::agent_hooks_settings_path,
             agent_events::agent_hooks_endpoint,
             agent_events::agent_hooks_token,
@@ -275,8 +401,8 @@ pub fn run() {
             economy_agents::set_economy_agents,
             economy_agents::economy_agents_enabled,
             filesystem::list_directory,
-            filesystem::browse_directory,
             filesystem::read_text_file,
+            filesystem::read_binary_file,
             filesystem::write_text_file,
             filesystem::write_project_marker,
             filesystem::read_project_marker,
@@ -306,6 +432,7 @@ pub fn run() {
             pty::kill_pty,
             pty::suspend_pty,
             pty::get_pty_cwd,
+            pty::get_pty_size,
             pty::set_pty_read_state,
             pty::set_pty_visible,
             pty::set_pty_priority,
@@ -320,10 +447,14 @@ pub fn run() {
             process_tree::get_pty_tree_info,
             process_tree::kill_pty_tree_cmd,
             projects::load_projects,
+            projects::load_projects_bootstrap,
             projects::save_projects,
+            projects::save_projects_for_profile,
             projects::clone_github_repo,
             cli_resolver::discover_provider_models,
             profiles::list_profiles,
+            profiles::get_core_storage_identity,
+            server_main::get_core_port,
             profiles::list_profile_summaries,
             profiles::get_active_profile,
             profiles::set_active_profile,
@@ -360,6 +491,13 @@ pub fn run() {
             git_control::git_diff_summary,
             git_control::git_log_graph,
             git_control::git_show_commit_files,
+            git_control::git_show_commit_stats,
+            git_control::git_working_tree_stats,
+            git_control::git_show_commit_file_diff,
+            translation::translation_has_api_key,
+            translation::translation_set_api_key,
+            translation::translation_clear_api_key,
+            translation::translation_translate,
             git_control::git_show_commit_message,
             git_control::git_create_branch_from_commit,
             git_control::git_cherry_pick_commit,
@@ -379,6 +517,7 @@ pub fn run() {
             diagnostics::open_logs_folder,
             diagnostics::export_logs,
             logging::record_frontend_error,
+            logging::record_console_log,
             logging::record_app_event,
             discord_presence::set_discord_presence,
             discord_presence::clear_discord_presence,
@@ -392,7 +531,6 @@ pub fn run() {
             spotify::spotify_get_current,
             claude_sessions::snapshot_claude_sessions,
             claude_sessions::list_claude_sessions,
-            claude_sessions::get_claude_session_title,
             claude_sessions::get_claude_session_title,
             claude_sessions::get_claude_activity,
             claude_sessions::get_multi_agent_activity,
@@ -426,11 +564,11 @@ pub fn run() {
             worktrees::worktree_remove,
             worktrees::worktree_cleanup,
             worktrees::worktree_fetch_branch,
-            worktrees::worktree_lock,
-            worktrees::worktree_unlock,
             worktrees::worktree_commit_pending,
             worktrees::worktree_pending_changes,
             worktrees::worktree_commit_worktree,
+            worktrees::worktree_lock,
+            worktrees::worktree_unlock,
             merge_analyzer::merge_analyze,
             conflict_resolution::merge_prepare,
             conflict_resolution::merge_validate,
@@ -443,44 +581,173 @@ pub fn run() {
             telemetry::get_telemetry_metrics,
             telemetry::get_telemetry_traces,
             validation::run_validation,
-            planning::start_gsd_watcher,
-            planning::stop_gsd_watcher,
+            agent_config::agent_config_root,
+            change_trigger::change_trigger_start,
+            change_trigger::change_trigger_stop,
+            change_trigger::change_trigger_acknowledge,
+            planning::start_planning_watcher,
+            planning::stop_planning_watcher,
             planning::planning_audit_record,
             planning::planning_audit_history,
+            planning::list_project_plans,
+            planning::save_project_plan,
+            planning::patch_project_plan,
+            planning::append_plan_diagram,
             planning::set_planning_autocommit,
             planning::get_planning_autocommit,
-            planning::list_project_plans,
             planning_gate::read_planning_status,
-            planning_gate::read_gsd_child_session,
-            planning_gate::read_gsd_child_state,
-            planning_gate::read_gsd_child_busy,
-            planning_gate::read_gsd_child_error,
-            planning_gate::read_gsd_procedure,
-            opencode_gsd_plugin::gsd_opencode_plugin_write,
             scheduler::get_scheduler_tasks,
             scheduler::trigger_scheduler_tick,
             scheduler::cancel_task,
             project_detector::detect_project_stack,
+            sync_mesh::scan_project_folder_tree,
+            sync_mesh::setup_project_mesh_isolation,
+            sync_mesh::trigger_project_archive_backup,
+            sync_mesh::list_project_backups,
+            sync_mesh::purge_project_backups_secured,
+            sync_mesh::start_google_sync_auth,
+            sync_mesh::configure_google_sync,
+            sync_mesh::get_google_sync_status,
+            sync_mesh::disconnect_google_sync,
+            sync_security::sync_security_snapshot,
+            sync_security::sync_local_identity,
+            sync_security::sync_find_trusted_device_for_account_route,
+            sync_security::sync_add_chat_contact,
+            sync_security::sync_list_chat_contacts,
+            sync_security::sync_remove_chat_contact,
+            sync_security::sync_rename_chat_contact,
+            sync_security::sync_prepare_collaborator_suggestion,
+            sync_security::sync_open_collaborator_suggestion,
+            sync_security::sync_seal_chat_contact_ack,
+            sync_security::sync_open_chat_contact_ack,
+            sync_security::sync_seal_avatar_update,
+            sync_security::sync_open_avatar_update,
+            sync_security::sync_seal_bio_update,
+            sync_security::sync_open_bio_update,
+            sync_security::sync_open_chat_contact_confirm,
+            sync_security::sync_list_pending_chat_contact_requests,
+            sync_security::sync_resolve_pending_chat_contact_request,
+            sync_security::sync_decline_pending_chat_contact_request,
+            sync_security::sync_approve_device,
+            sync_security::sync_reject_device,
+            sync_security::sync_rename_device,
+            sync_security::sync_revoke_device,
+            sync_security::sync_remove_device,
+            sync_security::sync_revoke_invitation,
+            sync_project_invite::sync_seal_project_invite,
+            sync_project_invite::sync_open_project_invite,
+            sync_project_invite::sync_seal_project_invite_response,
+            sync_project_invite::sync_open_project_invite_response,
+            sync_project_invite::sync_grant_project_to_invitee,
+            sync_security::sync_remember_sent_project_invite,
+            sync_security::sync_take_sent_project_invite,
+            sync_security::sync_revoke_grant,
+            sync_security::sync_update_grant,
+            sync_security::sync_list_project_grants,
+            sync_security::sync_rotate_device_keys,
+            sync_security::sync_export_account_data,
+            sync_security::sync_delete_project_access,
+            sync_security::sync_resolve_capabilities,
+            sync_subscription::sync_list_subscriptions,
+            sync_subscription::sync_offer_subscription,
+            sync_subscription::sync_configure_subscription_destination,
+            sync_subscription::sync_select_subscription_mode,
+            sync_subscription::sync_confirm_subscription,
+            sync_subscription::sync_defer_subscription,
+            sync_subscription::sync_decline_subscription,
+            sync_staging::sync_begin_staging,
+            sync_staging::sync_receive_chunk,
+            sync_staging::sync_verify_staged,
+            sync_staging::sync_publish_staging,
+            sync_staging::sync_load_staging,
+            sync_engine::sync_engine_pause,
+            sync_engine::sync_engine_resume,
+            sync_engine::sync_engine_mark_needs_rescan,
+            sync_engine::sync_engine_load,
+            sync_engine::sync_engine_resolve_conflict,
+            sync_engine::sync_engine_apply_local,
+            sync_tasks::sync_create_task,
+            sync_tasks::sync_list_visible_tasks,
+            sync_tasks::sync_get_task,
+            sync_tasks::sync_complete_task,
+            sync_tasks::sync_reopen_task,
+            sync_tasks::sync_add_task_comment,
+            sync_tasks::sync_update_task,
+            sync_tasks::sync_assign_task,
+            sync_tasks::sync_delete_task,
+            sync_tasks::sync_delete_project_tasks,
+            sync_chat::sync_create_conversation,
+            sync_chat::sync_get_conversation,
+            sync_chat::sync_add_conversation_member,
+            sync_chat::sync_remove_conversation_member,
+            sync_chat::sync_list_messages,
+            sync_chat::sync_react_to_message,
+            sync_chat::sync_mark_conversation_read,
+            sync_chat::sync_storage_usage,
+            sync_chat::sync_storage_clear_messages,
+            sync_chat::sync_storage_cleanup_attachments,
+            sync_chat::sync_ensure_project_conversation,
+            sync_chat::sync_start_direct_conversation,
+            sync_chat::sync_delete_direct_conversation,
+            sync_chat::sync_delete_project_conversation,
+            sync_chat::sync_send_message,
+            sync_chat::sync_send_message_for_transport,
+            sync_chat::sync_ingest_chat_transport_frame,
+            sync_chat::sync_list_decrypted_messages,
+            sync_chat::sync_edit_message,
+            sync_chat::sync_delete_message,
+            sync_chat::sync_upload_attachment,
+            sync_chat::sync_download_attachment,
+            sync_chat::sync_seal_chat_relay_message,
+            sync_chat::sync_open_chat_relay_message,
+            sync_activation::sync_get_activation_settings,
+            sync_activation::sync_set_activation_mode,
+            sync_activation::sync_enable_activation,
+            sync_activation::sync_disable_activation,
+            sync_activation::sync_resolve_activation_state,
+            sync_access::sync_access_list,
+            sync_access::sync_access_update,
+            sync_access::sync_access_update_many,
+            sync_access::sync_access_resolve_action,
+            sync_rendezvous::sync_rendezvous_connect,
+            sync_rendezvous::sync_rendezvous_status,
+            sync_rendezvous::sync_rendezvous_disconnect,
+            sync_rendezvous::sync_rendezvous_send,
+            sync_rendezvous::sync_rendezvous_drain_events,
+            sync_rendezvous::sync_rendezvous_validate_endpoint,
+            sync_rendezvous::sync_adopt_discovered_endpoint,
+            sync_invitation_bridge::sync_verify_discovered_device,
+            sync_invitation_bridge::sync_prepare_remote_invitation,
+            sync_invitation_bridge::sync_consume_remote_invitation,
+            sync_cloudflare_deploy::cloudflare_deploy_workdir,
+            sync_cloudflare_deploy::cloudflare_generate_secret,
+            sync_cloudflare_deploy::cloudflare_probe_state,
+            sync_p2p_bridge::sync_prepare_remote_candidate,
+            sync_p2p_bridge::sync_consume_remote_candidate,
+            sync_p2p_bridge::p2p_discover_candidate,
+            sync_p2p_bridge::sync_p2p_connect,
+            sync_p2p_bridge::p2p_send_frame,
+            sync_p2p_bridge::p2p_drain_frames,
+            sync_p2p_bridge::p2p_session_state,
+            sync_file_pipeline_session::sync_file_pipeline_offer_project,
+            sync_file_pipeline_session::sync_file_pipeline_ingest_frame,
+            sync_file_pipeline_session::sync_file_pipeline_ingest_relay_envelope,
+            sync_rendezvous_git::sync_github_signaling_set_token,
+            sync_rendezvous_git::sync_github_signaling_clear_token,
+            sync_rendezvous_git::sync_github_signaling_has_token,
+            sync_rendezvous_git::sync_github_signaling_create_gist,
+            sync_rendezvous_git::sync_github_signaling_publish_candidate,
+            sync_rendezvous_git::sync_github_signaling_poll_candidate,
+            sync_rendezvous_git::sync_github_signaling_cleanup_session,
+            sync_remote_invitation::sync_export_pairing_code,
+            sync_remote_invitation::sync_regenerate_pairing_code,
+            sync_remote_invitation::sync_parse_pairing_code,
             contract_check::contract_check,
             health_probe::health_probe,
-            graphify::graphify_ensure_graph,
-            graphify::graphify_detect,
-            graphify::graphify_mcp_config_path,
-            graphify::graphify_opencode_config_write,
-            graphify::graphify_codex_config_write,
-            graphify::graphify_read_graph,
-            graphify::graphify_snapshot,
-            graphify::graphify_list_snapshots,
-            graphify::graphify_diff_snapshot,
-            graphify::graphify_rollback,
-            graphify::graphify_prune_snapshots,
             ai_memory::ai_memory_detect,
             ai_memory::ai_memory_mcp_config_path,
             ai_memory::ai_memory_opencode_config_write,
             ai_memory::ai_memory_codex_config_write,
-            plugins::plugins_list,
-            plugins::plugin_install,
-            plugins::plugin_uninstall,
             mcp_store::mcp_scan,
             mcp_store::mcp_config_paths,
             mcp_store::mcp_capabilities,
@@ -494,10 +761,17 @@ pub fn run() {
             skills::skills_scan,
             skills::skills_detail,
             skills::skills_uninstall,
+            skills::skills_sync,
+            plugins::plugins_scan,
+            plugins::plugins_detail,
+            plugins::plugins_import,
             opencode_sessions::snapshot_opencode_sessions,
             opencode_sessions::opencode_export_session,
             ping,
-        ])
+            recorder_scratch_dir,
+            self_test::self_test,
+            session_presence::agent_session_presence,
+        ]))
         .build(tauri::generate_context!())
         .expect("error while building alethe")
         .run(move |_app_handle, event| {
@@ -528,6 +802,21 @@ fn quit_app(app: tauri::AppHandle, sessions: tauri::State<'_, PtySessions>) {
 #[tauri::command]
 fn ping() -> &'static str {
     "pong"
+}
+
+/// Só usado pelo gravador de procedimentos e2e (`e2e/support/recorder.ts`,
+/// painel `RecorderHelper`) — atalho "pular criação de projeto" pra não
+/// obrigar o dono a digitar uma pasta real toda vez que só quer gravar um
+/// procedimento. Mesmo padrão de `std::env::temp_dir()` já usado em dezenas
+/// de outros pontos do backend (testes, `agent_events.rs`
+/// etc.) — nunca exposto antes pro frontend porque nada até agora precisava.
+#[tauri::command]
+fn recorder_scratch_dir() -> Result<String, String> {
+    let dir = std::env::temp_dir()
+        .join("alethe-recorder")
+        .join(format!("rec-{}", nanoid::nanoid!(8)));
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir.to_string_lossy().to_string())
 }
 
 #[cfg(test)]

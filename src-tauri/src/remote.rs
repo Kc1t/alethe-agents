@@ -14,11 +14,12 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{IpAddr, TcpListener, TcpStream, UdpSocket};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 use tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tungstenite::{accept_hdr, Message};
 
@@ -503,7 +504,7 @@ pub fn hub() -> Arc<RemoteHub> {
     HUB.get_or_init(|| Arc::new(RemoteHub::new())).clone()
 }
 
-pub fn start(app: AppHandle, sessions: PtySessions) {
+pub fn start_core(projects_path: PathBuf, sessions: PtySessions) {
     let hub = hub();
     if hub.running.swap(true, Ordering::SeqCst) {
         return;
@@ -512,12 +513,18 @@ pub fn start(app: AppHandle, sessions: PtySessions) {
     let generation = hub.generation.fetch_add(1, Ordering::SeqCst) + 1;
     let http_hub = Arc::clone(&hub);
     let http_sessions = Arc::clone(&sessions);
-    let http_app = app.clone();
-    thread::spawn(move || run_http(http_app, http_hub, http_sessions, generation));
+    let http_projects_path = projects_path;
+    thread::spawn(move || run_http(http_projects_path, http_hub, http_sessions, generation));
 
     let ws_hub = Arc::clone(&hub);
     let ws_sessions = Arc::clone(&sessions);
     thread::spawn(move || run_websocket(ws_hub, ws_sessions, generation));
+}
+
+pub fn start(app: AppHandle, sessions: PtySessions) {
+    if let Ok(projects_path) = projects_file_path(&app) {
+        start_core(projects_path, sessions);
+    }
 }
 
 pub fn stop() {
@@ -606,15 +613,14 @@ pub fn remote_control_revoke_device(device_id: usize) -> RemoteInfo {
     remote.info()
 }
 
-#[tauri::command]
-pub fn remote_control_set_enabled(
-    app: AppHandle,
-    sessions: tauri::State<'_, PtySessions>,
+pub fn remote_control_set_enabled_core(
+    projects_path: &Path,
+    sessions: &PtySessions,
     enabled: bool,
 ) -> RemoteInfo {
     let remote = hub();
     if enabled {
-        start(app, Arc::clone(sessions.inner()));
+        start_core(projects_path.to_path_buf(), sessions.clone());
     } else {
         stop();
     }
@@ -640,7 +646,21 @@ impl Drop for ConnectionGuard {
     }
 }
 
-fn run_http(app: AppHandle, hub: Arc<RemoteHub>, sessions: PtySessions, generation: u64) {
+#[tauri::command]
+pub fn remote_control_set_enabled(
+    app: AppHandle,
+    sessions: tauri::State<'_, PtySessions>,
+    enabled: bool,
+) -> Result<RemoteInfo, String> {
+    let projects_path = projects_file_path(&app)?;
+    Ok(remote_control_set_enabled_core(
+        &projects_path,
+        sessions.inner(),
+        enabled,
+    ))
+}
+
+fn run_http(projects_path: PathBuf, hub: Arc<RemoteHub>, sessions: PtySessions, generation: u64) {
     let host = hub.host();
     let Some(listener) = bind_listener(&host, HTTP_START, HTTP_END) else {
         eprintln!("[remote] unable to bind LAN HTTP listener");
@@ -650,7 +670,7 @@ fn run_http(app: AppHandle, hub: Arc<RemoteHub>, sessions: PtySessions, generati
     let port = listener.local_addr().map(|addr| addr.port()).unwrap_or(0);
     hub.http_port.store(port, Ordering::SeqCst);
     eprintln!("[remote] LAN client available at http://{host}:{port}");
-    let _ = listener.set_nonblocking(true);
+    crate::best_effort!(listener.set_nonblocking(true), "socket_option_unsupported");
     while hub.is_active(generation) {
         let stream = match listener.accept() {
             Ok((stream, _)) => stream,
@@ -664,22 +684,22 @@ fn run_http(app: AppHandle, hub: Arc<RemoteHub>, sessions: PtySessions, generati
             continue;
         };
         let mut stream = stream;
-        let _ = stream.set_nonblocking(false);
-        let _ = stream.set_read_timeout(Some(SOCKET_TIMEOUT));
-        let _ = stream.set_write_timeout(Some(SOCKET_TIMEOUT));
+        crate::best_effort!(stream.set_nonblocking(false), "socket_option_unsupported");
+        crate::best_effort!(stream.set_read_timeout(Some(SOCKET_TIMEOUT)), "socket_option_unsupported");
+        crate::best_effort!(stream.set_write_timeout(Some(SOCKET_TIMEOUT)), "socket_option_unsupported");
         let hub = Arc::clone(&hub);
         let sessions = Arc::clone(&sessions);
-        let app = app.clone();
+        let projects_path = projects_path.clone();
         thread::spawn(move || {
             let _guard = guard;
-            if let Err(error) = handle_http(&mut stream, &app, &hub, &sessions) {
+            if let Err(error) = handle_http(&mut stream, &projects_path, &hub, &sessions) {
                 eprintln!("[remote] HTTP request failed: {error}");
-                let _ = respond(
+                crate::best_effort!(respond(
                     &mut stream,
                     400,
                     "application/json",
                     r#"{"error":"Bad request"}"#,
-                );
+                ), "remote_client_disconnected");
             }
         });
     }
@@ -697,7 +717,7 @@ fn run_websocket(hub: Arc<RemoteHub>, sessions: PtySessions, generation: u64) {
     };
     let port = listener.local_addr().map(|addr| addr.port()).unwrap_or(0);
     hub.ws_port.store(port, Ordering::SeqCst);
-    let _ = listener.set_nonblocking(true);
+    crate::best_effort!(listener.set_nonblocking(true), "socket_option_unsupported");
     while hub.is_active(generation) {
         let stream = match listener.accept() {
             Ok((stream, _)) => stream,
@@ -744,8 +764,8 @@ fn handle_websocket(
     if hub.auth_blocked(&address) {
         return;
     }
-    let _ = stream.set_read_timeout(Some(SOCKET_TIMEOUT));
-    let _ = stream.set_write_timeout(Some(SOCKET_TIMEOUT));
+    crate::best_effort!(stream.set_read_timeout(Some(SOCKET_TIMEOUT)), "socket_option_unsupported");
+    crate::best_effort!(stream.set_write_timeout(Some(SOCKET_TIMEOUT)), "socket_option_unsupported");
     let expected_origin = allowed_origin(&hub);
     let handshake = accept_hdr(
         stream,
@@ -763,7 +783,7 @@ fn handle_websocket(
         Ok(socket) => socket,
         Err(_) => return,
     };
-    let _ = socket.get_mut().set_nonblocking(true);
+    crate::best_effort!(socket.get_mut().set_nonblocking(true), "socket_option_unsupported");
     let (tx, rx) = mpsc::channel::<String>();
     let opened_at = Instant::now();
     let mut session_id: Option<usize> = None;
@@ -787,11 +807,11 @@ fn handle_websocket(
         }
         if let Some(id) = session_id {
             if !hub.session_alive(id) {
-                let _ = socket.send(Message::Text(
+                crate::best_effort!(socket.send(Message::Text(
                     json!({ "type": "error", "reason": "expired", "message": "Remote session expired" })
                         .to_string()
                         .into(),
-                ));
+                )), "remote_client_disconnected");
                 break;
             }
         }
@@ -813,11 +833,11 @@ fn handle_websocket(
                     if session_id.is_none() {
                         hub.record_auth_failure(&address);
                     }
-                    let _ = socket.send(Message::Text(
+                    crate::best_effort!(socket.send(Message::Text(
                         json!({ "type": "error", "reason": "unauthorized", "message": "Remote session is not valid" })
                             .to_string()
                             .into(),
-                    ));
+                    )), "remote_client_disconnected");
                     break;
                 };
                 if session_id.is_none() {
@@ -827,9 +847,9 @@ fn handle_websocket(
                     }
                     hub.attach_sender(id, tx.clone());
                     session_id = Some(id);
-                    let _ = socket.send(Message::Text(
+                    crate::best_effort!(socket.send(Message::Text(
                         json!({ "type": "authenticated" }).to_string().into(),
-                    ));
+                    )), "remote_client_disconnected");
                 }
                 if command.get("type").and_then(Value::as_str) == Some("subscribe") {
                     let pty_id = command.get("ptyId").and_then(Value::as_str);
@@ -838,7 +858,7 @@ fn handle_websocket(
                         let scrollback = read_scrollback(&sessions, pty_id, MAX_SCROLLBACK);
                         let payload =
                             json!({ "type": "scrollback", "ptyId": pty_id, "text": scrollback });
-                        let _ = socket.send(Message::Text(payload.to_string().into()));
+                        crate::best_effort!(socket.send(Message::Text(payload.to_string().into())), "remote_client_disconnected");
                     }
                 }
             }
@@ -919,7 +939,7 @@ fn bearer_token(head: &str) -> String {
 
 fn handle_http(
     stream: &mut TcpStream,
-    app: &AppHandle,
+    projects_path: &Path,
     hub: &Arc<RemoteHub>,
     sessions: &PtySessions,
 ) -> Result<(), String> {
@@ -987,7 +1007,7 @@ fn handle_http(
             stream,
             200,
             "application/json",
-            &remote_appearance(app).to_string(),
+            &remote_appearance(projects_path).to_string(),
         );
     }
 
@@ -1003,7 +1023,14 @@ fn handle_http(
         };
         hub.clear_auth_failures(&address);
         return handle_api(
-            stream, app, hub, sessions, session_id, method, target, &body,
+            stream,
+            projects_path,
+            hub,
+            sessions,
+            session_id,
+            method,
+            target,
+            &body,
         );
     }
 
@@ -1036,7 +1063,7 @@ fn handle_http(
             stream,
             200,
             "image/png",
-            selected_brand_icon(&projects_document(app)),
+            selected_brand_icon(&projects_document(projects_path)),
         ),
         "/assets/fonts/CaskaydiaCoveNerdFontMono-Regular.ttf" => respond_asset_bytes(
             stream,
@@ -1074,7 +1101,7 @@ fn handle_http(
 
 fn handle_api(
     stream: &mut TcpStream,
-    app: &AppHandle,
+    projects_path: &Path,
     hub: &Arc<RemoteHub>,
     sessions: &PtySessions,
     session_id: usize,
@@ -1103,12 +1130,12 @@ fn handle_api(
             stream,
             200,
             "application/json",
-            &workspace_snapshot(app)?.to_string(),
+            &workspace_snapshot(projects_path)?.to_string(),
         );
     }
     if path == "/api/scrollback" {
         let id = query_value(target, "id").ok_or_else(|| "Missing PTY id".to_string())?;
-        if !pty_is_shared(app, &id) {
+        if !pty_is_shared(projects_path, &id) {
             return respond(
                 stream,
                 403,
@@ -1145,7 +1172,7 @@ fn handle_api(
                 r#"{"error":"Message is empty or too large"}"#,
             );
         }
-        let agent = pty_agent(app, &payload.pty_id);
+        let agent = pty_agent(projects_path, &payload.pty_id);
         let Some(agent) = agent else {
             return respond(
                 stream,
@@ -1169,8 +1196,11 @@ fn handle_api(
             text.len(),
             payload.pty_id
         );
-        let _ = app.emit(
+        crate::event_bus::publish_event_simple(
             "remote://message",
+            &nanoid::nanoid!(8),
+            None,
+            None,
             json!({
                 "ptyId": payload.pty_id,
                 "deviceId": session_id,
@@ -1197,18 +1227,15 @@ struct RemoteMessage {
     text: String,
 }
 
-fn projects_document(app: &AppHandle) -> Value {
-    let Ok(path) = projects_file_path(app) else {
-        return json!({});
-    };
-    std::fs::read_to_string(path)
+fn projects_document(projects_path: &Path) -> Value {
+    std::fs::read_to_string(projects_path)
         .ok()
         .and_then(|content| serde_json::from_str::<Value>(&content).ok())
         .unwrap_or_else(|| json!({}))
 }
 
-fn remote_appearance(app: &AppHandle) -> Value {
-    json!(appearance_from_document(&projects_document(app)))
+fn remote_appearance(projects_path: &Path) -> Value {
+    json!(appearance_from_document(&projects_document(projects_path)))
 }
 
 fn appearance_from_document(document: &Value) -> RemoteAppearance {
@@ -1304,8 +1331,8 @@ fn tab_is_shared(terminal: &Value) -> bool {
     terminal.get("remoteExcluded").and_then(Value::as_bool) != Some(true)
 }
 
-fn shared_tabs(app: &AppHandle) -> Vec<(String, String)> {
-    let document = projects_document(app);
+fn shared_tabs(projects_path: &Path) -> Vec<(String, String)> {
+    let document = projects_document(projects_path);
     let mut tabs = Vec::new();
     for project in document
         .get("projects")
@@ -1343,19 +1370,19 @@ fn shared_tabs(app: &AppHandle) -> Vec<(String, String)> {
     tabs
 }
 
-fn pty_agent(app: &AppHandle, pty_id: &str) -> Option<String> {
-    shared_tabs(app)
+fn pty_agent(projects_path: &Path, pty_id: &str) -> Option<String> {
+    shared_tabs(projects_path)
         .into_iter()
         .find(|(id, _)| id == pty_id)
         .map(|(_, agent)| agent)
 }
 
-fn pty_is_shared(app: &AppHandle, pty_id: &str) -> bool {
-    shared_tabs(app).iter().any(|(id, _)| id == pty_id)
+fn pty_is_shared(projects_path: &Path, pty_id: &str) -> bool {
+    shared_tabs(projects_path).iter().any(|(id, _)| id == pty_id)
 }
 
-fn workspace_snapshot(app: &AppHandle) -> Result<Value, String> {
-    let document = projects_document(app);
+fn workspace_snapshot(projects_path: &Path) -> Result<Value, String> {
+    let document = projects_document(projects_path);
     let groups: Vec<Value> = document
         .get("groups")
         .and_then(Value::as_array)

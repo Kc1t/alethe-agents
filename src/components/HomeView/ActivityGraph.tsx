@@ -1,10 +1,10 @@
 import { RefreshCw } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-import { intlLocale, useT } from '../../lib/i18n'
 import { getCachedActivity } from '../../lib/activityCache'
-import { useProjectsStore } from '../../stores/projectsStore'
+import { intlLocale, useT } from '../../lib/i18n'
 import type { ActivityDay } from '../../lib/tauri'
+import { useProjectsStore } from '../../stores/projectsStore'
 import styles from './HomeView.module.css'
 
 const DAYS_TOTAL = 91 // 13 semanas × 7 dias
@@ -50,7 +50,6 @@ function totalAndDelta(days: ActivityDay[]): { total: number; deltaPct: number |
   return { total, deltaPct: ((recent - prev) / prev) * 100 }
 }
 
-                                                                                       
 export function computeStreak(days: ActivityDay[]): number {
   let i = days.length - 1
   while (i >= 0 && days[i].count === 0) i--

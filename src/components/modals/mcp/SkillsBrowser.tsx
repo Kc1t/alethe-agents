@@ -1,16 +1,26 @@
-import { ChevronDown, ChevronRight, FileText, Folder, Link2, Lock, Trash2 } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  FileText,
+  Folder,
+  Link2,
+  Lock,
+  Trash2,
+} from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-import { useT } from '../../../lib/i18n'
-import { groupSkillsByName, type SkillGroup } from '../../../lib/skills'
+import { type MessageKey, useT } from '../../../lib/i18n'
+import { groupSkillsByName, SKILL_STORES, type SkillGroup } from '../../../lib/skills'
 import {
-  skillsDetail,
-  skillsScan,
-  skillsUninstall,
   type SkillAgentSnapshot,
   type SkillDetail,
   type SkillNode,
+  skillsDetail,
+  skillsScan,
+  skillsSync,
   type SkillSummary,
+  skillsUninstall,
 } from '../../../lib/tauri'
 import { AGENT_TYPE_LABELS, type AgentType } from '../../../lib/types'
 import { useUiStore } from '../../../stores/uiStore'
@@ -69,6 +79,41 @@ export function SkillsBrowser({ dark }: { dark: boolean }) {
     }
   }, [active?.name])
 
+  /** Copies the skill into agents that do not have it. Mirrors the MCP copy: per-target outcomes,
+   *  reported together, because one agent refusing must not look like the whole action failing. */
+  const copyTo = async (targets: string[]) => {
+    if (!active || targets.length === 0) return
+    const source = active.entries[0]
+    setBusy(true)
+    try {
+      const outcomes = await skillsSync(source.agent, targets, active.name)
+      const copied = outcomes.filter((outcome) => outcome.status === 'ok')
+      const refused = outcomes.filter((outcome) => outcome.status !== 'ok')
+      if (copied.length > 0) {
+        pushToast({
+          title: t('skills.copyDoneTitle'),
+          body: t('skills.copyDoneBody', {
+            count: copied.length,
+            agents: copied.map((outcome) => agentLabel(outcome.agent)).join(', '),
+          }),
+        })
+      }
+      // Never folded into the success message: a target that was skipped or blocked did NOT get the
+      // skill, and saying "copied" for it would be a lie the user only discovers in the agent.
+      for (const outcome of refused) {
+        pushToast({
+          title: t('skills.copyRefusedTitle', { agent: agentLabel(outcome.agent) }),
+          body: outcome.reason ?? t(`skills.copyStatus.${outcome.status}` as MessageKey),
+        })
+      }
+      await load()
+    } catch (error) {
+      pushToast({ title: t('skills.copyFailedTitle'), body: String(error) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const confirmRemove = async () => {
     const target = removeTarget
     if (!target) return
@@ -96,9 +141,7 @@ export function SkillsBrowser({ dark }: { dark: boolean }) {
     if (removed.length > 0) {
       pushToast({
         title: t('skills.removed', { name: target.group.name }),
-        body: sharedKept
-          ? t('skills.removedLinkOnly', { path: sharedKept })
-          : removed.join(', '),
+        body: sharedKept ? t('skills.removedLinkOnly', { path: sharedKept }) : removed.join(', '),
       })
     }
     if (failed.length > 0) {
@@ -153,6 +196,7 @@ export function SkillsBrowser({ dark }: { dark: boolean }) {
             busy={busy}
             agentLabel={agentLabel}
             onRemove={(entries) => setRemoveTarget({ group: active, entries })}
+            onCopy={(targets) => void copyTo(targets)}
           />
         ) : (
           <div className={styles.placeholder}>
@@ -202,6 +246,21 @@ export function SkillsBrowser({ dark }: { dark: boolean }) {
   )
 }
 
+/** The shared store is not an agent, so the action there is not a copy: the skill moves into the
+ *  store and the agent it came from is left pointing at it. Going the other way, an agent receives
+ *  a link rather than a duplicate. Labelling all three "copy" would describe none of them. */
+function actionLabelFor(target: string, group: SkillGroup): MessageKey {
+  if (target === 'shared') return 'skills.shareAction'
+  if (group.entries[0]?.agent === 'shared') return 'skills.linkAction'
+  return 'skills.copyHere'
+}
+
+function actionHintFor(target: string, group: SkillGroup): MessageKey {
+  if (target === 'shared') return 'skills.shareHint'
+  if (group.entries[0]?.agent === 'shared') return 'skills.linkHint'
+  return 'skills.copyHereHint'
+}
+
 function SkillDetailView({
   group,
   detail,
@@ -209,6 +268,7 @@ function SkillDetailView({
   busy,
   agentLabel,
   onRemove,
+  onCopy,
 }: {
   group: SkillGroup
   detail: SkillDetail | null
@@ -216,10 +276,14 @@ function SkillDetailView({
   busy: boolean
   agentLabel: (agent: string) => string
   onRemove: (entries: SkillSummary[]) => void
+  onCopy: (targets: string[]) => void
 }) {
   const t = useT()
   const frontmatter = detail?.frontmatter ?? {}
   const lock = detail?.lock ?? null
+  // Stores that do not have this skill yet. `shared` is included on purpose: copying into it is how
+  // a skill stops belonging to one agent, which is the whole reason that store exists.
+  const missingAgents = SKILL_STORES.filter((store) => !group.agents.includes(store))
 
   return (
     <>
@@ -248,8 +312,37 @@ function SkillDetailView({
       </header>
 
       <section>
-        <div className={styles.sectionTitle}>{t('skills.installedOn')}</div>
+        <div className={styles.sectionTitle}>
+          {t('skills.installedOn')}
+          {missingAgents.length > 0 ? (
+            <button
+              type="button"
+              className={controls.btnLink}
+              disabled={busy}
+              onClick={() => onCopy(missingAgents)}
+            >
+              <Copy size={11} />
+              {t('skills.copyToAll', { count: missingAgents.length })}
+            </button>
+          ) : null}
+        </div>
         <div className={styles.agentRows}>
+          {missingAgents.map((agent) => (
+            <div key={`absent:${agent}`} className={`${styles.agentRow} ${styles.agentRowAbsent}`}>
+              <span className={styles.agentName}>{agentLabel(agent)}</span>
+              <span className={styles.path}>{t('skills.notInstalled')}</span>
+              <button
+                type="button"
+                className={`${controls.btn} ${controls.btnSm}`}
+                disabled={busy}
+                onClick={() => onCopy([agent])}
+                title={t(actionHintFor(agent, group))}
+              >
+                <Copy size={11} />
+                {t(actionLabelFor(agent, group))}
+              </button>
+            </div>
+          ))}
           {group.entries.map((entry) => (
             <div key={`${entry.agent}:${entry.path}`} className={styles.agentRow}>
               <span className={styles.agentName}>{agentLabel(entry.agent)}</span>
@@ -368,9 +461,7 @@ function TreeNode({ node, depth }: { node: SkillNode; depth: number }) {
         {node.name}
       </button>
       {open
-        ? node.children.map((child) => (
-            <TreeNode key={child.path} node={child} depth={depth + 1} />
-          ))
+        ? node.children.map((child) => <TreeNode key={child.path} node={child} depth={depth + 1} />)
         : null}
     </>
   )

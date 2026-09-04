@@ -1,6 +1,6 @@
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { Bell, X } from 'lucide-react'
+import { Bell, RefreshCw, X } from 'lucide-react'
 import { type CSSProperties, lazy, Suspense, useEffect, useRef } from 'react'
 import { Group as PanelGroup, Panel, Separator, usePanelRef } from 'react-resizable-panels'
 
@@ -10,7 +10,6 @@ import { AgentSandbox } from './components/AgentSandbox'
 import { DictationButton } from './components/DictationButton'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { FocusOverlay } from './components/FocusOverlay'
-import { GsdSyncActivityView } from './components/GsdSyncActivityView'
 import { AgentIcon } from './components/icons/AgentIcons'
 import { LinkViewerOverlay } from './components/LinkViewerOverlay'
 import { MainMenu } from './components/MainMenu'
@@ -18,10 +17,11 @@ import { AddBrowserModal } from './components/modals/AddBrowserModal'
 import { AddContentModal } from './components/modals/AddContentModal'
 import { AiUsageModal } from './components/modals/AiUsageModal'
 import { AuditModal } from './components/modals/AuditModal'
-import { FsBrowserModal } from './components/modals/FsBrowserModal'
+import { ChangeProcedureModal } from './components/modals/ChangeProcedureModal'
 import { EditGroupModal } from './components/modals/EditGroupModal'
 import { EditProjectModal } from './components/modals/EditProjectModal'
 import { FindJumpModal } from './components/modals/FindJumpModal'
+import { FsBrowserModal } from './components/modals/FsBrowserModal'
 import { HandoffModal } from './components/modals/HandoffModal'
 import { McpIntroModal } from './components/modals/McpIntroModal'
 import { McpManagerModal } from './components/modals/McpManagerModal'
@@ -43,6 +43,8 @@ import { UpdateModal } from './components/modals/UpdateModal'
 import { WelcomeModal } from './components/modals/WelcomeModal'
 import { WhatsNewModal } from './components/modals/WhatsNewModal'
 import { ProjectSidebar } from './components/ProjectSidebar'
+import { ProjectFolderTreeModal } from './components/ProjectSidebar/ProjectFolderTreeModal'
+import { RecorderHelper } from './components/RecorderHelper/RecorderHelper'
 import { RightSidebar } from './components/RightSidebar'
 import { TitleBar } from './components/TitleBar'
 import { TokenHud } from './components/TokenHud'
@@ -51,22 +53,37 @@ import { WorkspaceView } from './components/WorkspaceView'
 import { useAgentBrowserOffers } from './hooks/useAgentBrowserOffers'
 import { useCliOpenRequests } from './hooks/useCliOpenRequests'
 import { useCloseConfirmation } from './hooks/useCloseConfirmation'
+import { useCollaborationAccess } from './hooks/useCollaborationAccess'
 import { useDiscordPresence } from './hooks/useDiscordPresence'
 import { useKeybindings } from './hooks/useKeybindings'
 import { useMcpIntroPrompt } from './hooks/useMcpIntroPrompt'
 import { useRemoteControlService } from './hooks/useRemoteControlService'
 import { useResourceSupervisor } from './hooks/useResourceSupervisor'
 import { startActivityTracker } from './lib/activityTracker'
+import { changeTriggerStart, changeTriggerStop } from './lib/api/changeTrigger'
+import { isTauriEnv } from './lib/api/transport'
 import { APP_SHELL_ID } from './lib/appShell'
+import { installE2eHooks } from './lib/e2eHooks'
 import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
 import { intlLocale, translate, useT } from './lib/i18n'
+import { expected } from './lib/resilience'
 import { visibilityFromPanelResize, widthFromPanelResize } from './lib/sidebarPanelState'
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
-import { ghosttyKillAll, setWindowOpacity } from './lib/tauri'
+import {
+  ghosttyKillAll,
+  setWindowOpacity,
+  startPlanningWatcher,
+  stopPlanningWatcher,
+  subscribeCoreSyncEvents,
+} from './lib/tauri'
 import { getLastCrashReport } from './lib/tauri'
+import { getProjectRepoRoot } from './lib/terminalFactory'
 import { loadThemeIconBytes } from './lib/themeIcons'
+import type { Project } from './lib/types'
 import { checkForUpdate } from './lib/updater'
-import { useProjectsStore } from './stores/projectsStore'
+import { useChangeTriggerStore } from './stores/changeTriggerStore'
+import { type ProjectsState, useProjectsStore } from './stores/projectsStore'
+import { useTerminalsStore } from './stores/terminalsStore'
 import { type InAppToast, useUiStore } from './stores/uiStore'
 
 const AgentCanvasPOC = lazy(() =>
@@ -74,6 +91,11 @@ const AgentCanvasPOC = lazy(() =>
 )
 const HomeView = lazy(() =>
   import('./components/HomeView').then((module) => ({ default: module.HomeView })),
+)
+const CollaborationView = lazy(() =>
+  import('./components/CollaborationView').then((module) => ({
+    default: module.CollaborationView,
+  })),
 )
 const LayoutDesignerModal = lazy(() =>
   import('./components/modals/LayoutDesignerModal').then((module) => ({
@@ -92,10 +114,33 @@ const RIGHT_SIDEBAR_MIN_PX = 260
 const RIGHT_SIDEBAR_MAX_PX = 420
 const WORKSPACE_MIN_PX = 240
 
-function LoadingScreen({ reducedMotion = false }: { reducedMotion?: boolean }) {
+type BootstrapStatus = ProjectsState['bootstrapStatus']
+
+function LoadingScreen({
+  reducedMotion = false,
+  status = 'connecting',
+  onRetry,
+}: {
+  reducedMotion?: boolean
+  status?: BootstrapStatus
+  onRetry?: () => void
+}) {
   const t = useT()
+  const failed = status === 'unavailable' || status === 'incompatible'
+  const statusKey =
+    status === 'starting'
+      ? 'loading.startingCore'
+      : status === 'unavailable'
+        ? 'loading.coreUnavailable'
+        : status === 'incompatible'
+          ? 'loading.coreIncompatible'
+          : 'loading.connectingCore'
   return (
-    <div className={styles.loadingScreen} role="status" aria-label={t('loading.initializing')}>
+    <div
+      className={styles.loadingScreen}
+      role={failed ? 'alert' : 'status'}
+      aria-label={t(statusKey)}
+    >
       <div className={styles.loadingBackdrop} aria-hidden="true">
         <AsciiEffect
           imageSrc={homeBackground}
@@ -116,23 +161,48 @@ function LoadingScreen({ reducedMotion = false }: { reducedMotion?: boolean }) {
           backgroundColor="transparent"
         />
       </div>
-      <div className={styles.loadingInner}>
+      <div className={`${styles.loadingInner} ${failed ? styles.loadingFailure : ''}`}>
         <div className={styles.loadingWordmark}>Alethe</div>
         <div className={styles.loadingConsole}>
           <span className={styles.loadingPrompt} aria-hidden="true">
             ›
           </span>
-          <span>{t('loading.initializing')}</span>
-          <span className={styles.loadingCursor} aria-hidden="true" />
+          <span>{t(statusKey)}</span>
+          {!failed && <span className={styles.loadingCursor} aria-hidden="true" />}
         </div>
-        <div className={styles.loadingRail} aria-hidden="true">
-          {Array.from({ length: 12 }, (_, index) => (
-            <span key={index} />
-          ))}
-        </div>
+        {failed ? (
+          <>
+            <p className={styles.loadingHint}>
+              {t(
+                status === 'incompatible'
+                  ? 'loading.coreIncompatibleHint'
+                  : 'loading.coreUnavailableHint',
+              )}
+            </p>
+            <button type="button" className={styles.loadingRetry} onClick={onRetry}>
+              <RefreshCw size={13} />
+              {t('loading.retry')}
+            </button>
+          </>
+        ) : (
+          <div className={styles.loadingRail} aria-hidden="true">
+            {Array.from({ length: 12 }, (_, index) => (
+              <span key={index} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
+}
+
+/** Renders the change-procedure popup for whichever project the user opened it on. A gate rather
+ *  than a prop on the modal: the badge that opens it lives in two separate sidebar implementations,
+ *  and only the store is shared between them. */
+function ChangeProcedureGate() {
+  const projectId = useChangeTriggerStore((state) => state.openProjectId)
+  if (!projectId) return null
+  return <ChangeProcedureModal projectId={projectId} />
 }
 
 function ToastItem({ toast }: { toast: InAppToast }) {
@@ -217,6 +287,7 @@ function InAppNotifications() {
 export default function App() {
   const hydrate = useProjectsStore((s) => s.hydrate)
   const hydrated = useProjectsStore((s) => s.hydrated)
+  const bootstrapStatus = useProjectsStore((s) => s.bootstrapStatus)
   const uiTheme = useProjectsStore((s) => s.preferences.uiTheme)
   const visualStyle = useProjectsStore((s) => s.preferences.visualStyle ?? 'normal')
   const motionPreference = useProjectsStore((s) => s.preferences.motionPreference)
@@ -225,8 +296,10 @@ export default function App() {
   const windowOpacity = useProjectsStore((s) => s.preferences.windowOpacity)
   const language = useProjectsStore((s) => s.preferences.language)
   const spawnConcurrency = useProjectsStore((s) => s.preferences.spawnConcurrency)
+  const persistenceError = useProjectsStore((s) => s.persistenceError)
   const activeView = useUiStore((s) => s.activeView)
   const openModal = useUiStore((s) => s.openModal)
+  const pushToast = useUiStore((s) => s.pushToast)
   const restoreMarkdownSidebarHistory = useUiStore((s) => s.restoreMarkdownSidebarHistory)
   const activeProfileId = useProjectsStore((s) => s.activeProfileId)
   const leftSidebarVisible = useProjectsStore((s) => s.preferences.leftSidebarVisible)
@@ -257,6 +330,7 @@ export default function App() {
   const windowHiddenRef = useRef(false)
   const leftPanelElementRef = useRef<HTMLDivElement>(null)
   const rightPanelElementRef = useRef<HTMLDivElement>(null)
+  const reportedPersistenceErrorRef = useRef<string | null>(null)
 
   // Hydration completes before the panels mount. Capture the persisted widths
   // on that render so their first layout does not fall back to store defaults.
@@ -271,13 +345,212 @@ export default function App() {
   useMcpIntroPrompt()
   useRemoteControlService()
   useCloseConfirmation()
+  useCollaborationAccess()
   useResourceSupervisor(hydrated)
   useAgentBrowserOffers(playwrightEnabled)
   useCliOpenRequests(hydrated)
 
   useEffect(() => {
+    installE2eHooks()
+  }, [])
+
+  useEffect(() => {
     void hydrate()
   }, [hydrate])
+
+  useEffect(() => {
+    const flushBeforeSuspension = () => {
+      void useProjectsStore
+        .getState()
+        .flushPersistence(true)
+        .catch(() => {
+          // The persistence status reports the failure if the page remains open.
+        })
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') flushBeforeSuspension()
+    }
+    window.addEventListener('beforeunload', flushBeforeSuspension)
+    window.addEventListener('pagehide', flushBeforeSuspension)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      window.removeEventListener('beforeunload', flushBeforeSuspension)
+      window.removeEventListener('pagehide', flushBeforeSuspension)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [])
+
+  // Change triggers, one per project with a repository. The backend watches the source and raises
+  // an event once change has both piled up and gone quiet; the badge and popup are the only things
+  // that act on it, and neither spends a token until the user asks.
+  useEffect(() => {
+    if (!hydrated) return
+    const unlistenTriggers = useChangeTriggerStore.getState().initListener()
+    const watched = new Map<string, string>()
+
+    const sync = (projects: Project[]) => {
+      const wanted = new Map<string, string>()
+      for (const project of projects) {
+        const repo = getProjectRepoRoot(project)
+        if (repo) wanted.set(project.id, repo)
+      }
+      for (const [projectId, repo] of watched) {
+        if (wanted.get(projectId) === repo) continue
+        watched.delete(projectId)
+        // A project that is gone has no backend state left to acknowledge, so its badge is cleared
+        // rather than dismissed — dismissing would call a command for a watcher that no longer
+        // exists.
+        useChangeTriggerStore.getState().clear(projectId)
+        void changeTriggerStop(projectId).catch((error) => {
+          console.error(`[change-trigger] stop failed for ${projectId}:`, error)
+        })
+      }
+      for (const [projectId, repo] of wanted) {
+        if (watched.has(projectId)) continue
+        watched.set(projectId, repo)
+        void changeTriggerStart(projectId, repo)
+          .then((started) => {
+            // `false` means the platform gave us no watcher at all, which is not the same as
+            // "started and quiet" — without saying so, a project that can never raise a trigger
+            // looks exactly like one where nothing has changed.
+            if (!started) {
+              console.error(`[change-trigger] no watcher available for ${projectId} (${repo})`)
+            }
+          })
+          .catch((error) => {
+            console.error(`[change-trigger] start failed for ${projectId}:`, error)
+          })
+      }
+    }
+
+    sync(useProjectsStore.getState().projects)
+    const unsubscribe = useProjectsStore.subscribe((state, previous) => {
+      if (state.projects !== previous.projects) sync(state.projects)
+    })
+    return () => {
+      unlistenTriggers()
+      unsubscribe()
+      for (const projectId of watched.keys()) {
+        void changeTriggerStop(projectId).catch(() => {
+          // Teardown: the backend drops its watchers with the process anyway.
+        })
+      }
+    }
+  }, [hydrated])
+
+  // Planning watchers, one per project with a repository. They are the only source of the
+  // `PlanningUpdated` event, which drives the scheduler's autotick and the planning autocommit, so
+  // a project without one silently gets neither — which is why they are started here for every
+  // project rather than behind a setting somebody has to remember to switch on.
+  useEffect(() => {
+    if (!hydrated) return
+    const watched = new Map<string, string>()
+
+    const sync = (projects: Project[]) => {
+      const wanted = new Map<string, string>()
+      for (const project of projects) {
+        const repo = getProjectRepoRoot(project)
+        if (repo) wanted.set(project.id, repo)
+      }
+      for (const [projectId, repo] of watched) {
+        // A moved repository needs its old watcher stopped, not just a second one started.
+        if (wanted.get(projectId) === repo) continue
+        void stopPlanningWatcher(projectId, repo).catch((error) => {
+          console.error(`[planning-watcher] stop failed for ${projectId}:`, error)
+        })
+        watched.delete(projectId)
+      }
+      for (const [projectId, repo] of wanted) {
+        if (watched.has(projectId)) continue
+        watched.set(projectId, repo)
+        void startPlanningWatcher(projectId, repo).catch((error) => {
+          console.error(`[planning-watcher] start failed for ${projectId}:`, error)
+        })
+      }
+    }
+
+    sync(useProjectsStore.getState().projects)
+    const unsubscribe = useProjectsStore.subscribe((state, previous) => {
+      if (state.projects !== previous.projects) sync(state.projects)
+    })
+    return () => {
+      unsubscribe()
+      for (const [projectId, repo] of watched) {
+        void stopPlanningWatcher(projectId, repo).catch(() => {
+          // Teardown: the backend drops its watchers with the process anyway.
+        })
+      }
+    }
+  }, [hydrated])
+
+  // Keep the profile catalog and active document synchronized across clients.
+  useEffect(() => {
+    if (!hydrated) return
+    let applyQueue: Promise<void> = Promise.resolve()
+
+    return subscribeCoreSyncEvents((event) => {
+      applyQueue = applyQueue
+        .then(async () => {
+          let current = useProjectsStore.getState()
+          if (current.persistenceError === 'core-mismatch') {
+            useProjectsStore.setState({ persistenceError: null })
+            if (current.persistenceDirty) await useProjectsStore.getState().flushPersistence()
+            current = useProjectsStore.getState()
+          }
+
+          if (JSON.stringify(current.profiles) !== JSON.stringify(event.profiles)) {
+            useProjectsStore.setState({ profiles: event.profiles })
+          }
+
+          const activeProfileChanged = event.activeProfileId !== current.activeProfileId
+          const documentChanged = event.activeProjectsRevision !== current.projectsRevision
+          if (activeProfileChanged) {
+            if (current.persistenceDirty) await current.flushPersistence()
+            useTerminalsStore.getState().reset()
+            await hydrate()
+          } else if ((documentChanged || current.persistenceError) && !current.persistenceDirty) {
+            await hydrate()
+          }
+        })
+        .catch((error) => {
+          // Never let this disappear silently: hydrate() preserves the last
+          // known-good document on failure (it no longer wipes the store to
+          // empty for a transient error), and the server's periodic
+          // reconciliation snapshot (~15s) retries this same apply
+          // automatically, since the local revision stays stale until it
+          // succeeds.
+          console.error('[Alethe] Failed to apply a core sync event', error)
+        })
+      return applyQueue
+    })
+  }, [hydrated, hydrate])
+
+  useEffect(() => {
+    if (!persistenceError) {
+      reportedPersistenceErrorRef.current = null
+      return
+    }
+    if (reportedPersistenceErrorRef.current === persistenceError) return
+    reportedPersistenceErrorRef.current = persistenceError
+    pushToast({
+      title: translate(
+        language,
+        persistenceError === 'conflict'
+          ? 'persistence.conflictTitle'
+          : persistenceError === 'core-mismatch'
+            ? 'persistence.coreMismatchTitle'
+            : 'persistence.writeTitle',
+      ),
+      body: translate(
+        language,
+        persistenceError === 'conflict'
+          ? 'persistence.conflictBody'
+          : persistenceError === 'core-mismatch'
+            ? 'persistence.coreMismatchBody'
+            : 'persistence.writeBody',
+      ),
+    })
+  }, [language, persistenceError, pushToast])
 
   useEffect(() => {
     if (hydrated) restoreMarkdownSidebarHistory()
@@ -298,10 +571,11 @@ export default function App() {
   }, [visualStyle])
 
   useEffect(() => {
-    if (!hydrated) return
+    if (!hydrated || !isTauriEnv()) return
     void loadThemeIconBytes(appIconTheme)
       .then((bytes) => getCurrentWindow().setIcon(bytes))
       .catch((error) => {
+        // Browser/test environments do not expose the native window icon API.
         console.error('[app-icon] failed to apply window icon', error)
       })
   }, [appIconTheme, hydrated])
@@ -317,14 +591,18 @@ export default function App() {
   useEffect(() => {
     if (!hydrated) return
     document.documentElement.dataset.zoom = String(uiZoom)
-    void getCurrentWebview()
-      .setZoom(uiZoom)
-      .catch(() => {
-        /* Browser tests may not expose the Tauri permission. */
-      })
-      .finally(() => {
-        window.dispatchEvent(new CustomEvent('alethe:zoom-changed', { detail: { zoom: uiZoom } }))
-      })
+    if (isTauriEnv()) {
+      void getCurrentWebview()
+        .setZoom(uiZoom)
+        .catch(() => {
+          /* Browser tests may not expose the Tauri permission. */
+        })
+        .finally(() => {
+          window.dispatchEvent(new CustomEvent('alethe:zoom-changed', { detail: { zoom: uiZoom } }))
+        })
+    } else {
+      window.dispatchEvent(new CustomEvent('alethe:zoom-changed', { detail: { zoom: uiZoom } }))
+    }
   }, [hydrated, uiZoom])
 
   useEffect(() => {
@@ -475,7 +753,7 @@ export default function App() {
   )
 
   useEffect(() => {
-    if (!hydrated) return
+    if (!hydrated || !isTauriEnv()) return
     let cancelled = false
     void checkForUpdate()
       .then((info) => {
@@ -508,12 +786,12 @@ export default function App() {
           }),
         })
       })
-      .catch(() => {})
+      .catch(expected('intl_locale_failed'))
   }, [hydrated])
 
   if (!hydrated) {
     // Persisted preferences are not known yet, so keep startup decorative motion static.
-    return <LoadingScreen reducedMotion />
+    return <LoadingScreen reducedMotion status={bootstrapStatus} onRetry={() => void hydrate()} />
   }
 
   return (
@@ -607,6 +885,8 @@ export default function App() {
                     <AgentSandbox />
                   ) : activeView === 'agentCanvas' ? (
                     <AgentCanvasPOC />
+                  ) : activeView === 'collaboration' ? (
+                    <CollaborationView />
                   ) : (
                     <WorkspaceView />
                   )}
@@ -691,11 +971,11 @@ export default function App() {
         </PanelGroup>
       </div>
       <FocusOverlay />
-      <GsdSyncActivityView />
       <LinkViewerOverlay />
       <DictationButton />
       <MainMenu />
       <ErrorBoundary label="modals">
+        <ChangeProcedureGate />
         <NewProjectModal />
         <NewGroupModal />
         <EditGroupModal />
@@ -706,6 +986,7 @@ export default function App() {
         <NewSubTabModal />
         <PreferencesModal />
         <ProfilesModal />
+        <FsBrowserModal />
         <SyncModal />
         <FindJumpModal />
         <OnboardingModal />
@@ -733,10 +1014,12 @@ export default function App() {
         <McpIntroModal />
         <RemoteControlModal />
         <AuditModal />
+        {openModal === 'meshFolderTree' ? <ProjectFolderTreeModal /> : null}
         <FsBrowserModal />
       </ErrorBoundary>
       <InAppNotifications />
       {activeView === 'agentCanvas' ? <TokenHud /> : null}
+      <RecorderHelper />
     </>
   )
 }

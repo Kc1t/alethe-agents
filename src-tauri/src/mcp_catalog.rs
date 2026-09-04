@@ -107,7 +107,18 @@ fn write_cache(app: &tauri::AppHandle, cache: &RegistryCache) {
         }
     }
     if let Ok(raw) = serde_json::to_string(cache) {
-        let _ = fs::write(path, raw);
+        // A cache that silently never persists looks exactly like a cache that keeps missing:
+        // the catalog just feels slow, and nothing points at the write.
+        if let Err(error) = fs::write(path, raw) {
+            crate::decide!(
+                target: "mcp.catalog",
+                attempted = "write_cache",
+                outcome = Failed,
+                because = "cache_write_failed",
+                rule = "mcp_catalog.caches_queries",
+                evidence = { error = %error },
+            );
+        }
     }
 }
 

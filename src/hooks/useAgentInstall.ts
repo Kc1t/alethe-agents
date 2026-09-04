@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
-import { installShellLine, type InstallMethod } from '../lib/agentInstall'
+import { type InstallMethod, installShellLine } from '../lib/agentInstall'
+import { withFallback } from '../lib/resilience'
 import {
   agentCliVersion,
   findCliLauncher,
@@ -70,7 +71,7 @@ export function useAgentInstall(agent: AgentType, lockKey: string = agent) {
     cleanupRef.current = []
     const ptyId = ptyIdRef.current
     ptyIdRef.current = null
-    if (ptyId) void killPty(ptyId).catch(() => undefined)
+    if (ptyId) void killPty(ptyId).catch(withFallback('killPty', undefined))
     // Never leave the app-wide lock held by a run that is gone.
     if (busyAgent === lockKey) setBusyAgent(null)
   }, [lockKey])
@@ -104,7 +105,7 @@ export function useAgentInstall(agent: AgentType, lockKey: string = agent) {
         // launcher plus argv.
         const spawned = await spawnPty({ cols: 100, rows: 24, id: ptyId })
         if (disposedRef.current) {
-          void killPty(spawned.id).catch(() => undefined)
+          void killPty(spawned.id).catch(withFallback('killPty', undefined))
           return
         }
         ptyIdRef.current = spawned.id

@@ -19,8 +19,8 @@ At the repository root — the app directory. It contains:
 
 - `src/` — React frontend.
 - `src-tauri/` — Rust/Tauri backend.
-- `docs/` — versioned docs (`FEATURES.md`, `CHANGELOG.md`, `OVERVIEW.md`, `BRAND.md`,
-  `DIAGNOSTICO_MATURIDADE_TECNICA.md`).
+- `docs/` — versioned docs (`FEATURES.md`, `CHANGELOG.md`, `OVERVIEW.md`, `BRAND.md`, plus `adr/`
+  and `security/` for the project-collaboration feature — see §9).
 - `package.json`, `vite.config.ts`, `tsconfig.json`, `tests/`.
 
 ## 3. Stack
@@ -98,6 +98,20 @@ streaming through the Tauri events `pty://data/{id}` and `pty://exit/{id}`.
 
 - One `.module.css` file per component; color/spacing always through tokens, never literals.
 - New domain types go in `src/lib/types.ts`; reuse the existing ones.
+- **Every backend feature needs BOTH transports.** The app runs as a Tauri desktop app *and* as a
+  Web/Core client, and which one is live is decided at runtime by `isTauriEnv()`. So:
+  - Put the real logic in a plain `fn something_at(data_root: &Path, ...)`. The `#[tauri::command]`
+    resolves the data root and calls it; the Axum route in `src-tauri/src/server_main/*_routes.rs`
+    resolves it from `runtime.data_root()` and calls the same function. Never write the logic
+    inside the command itself — the Web route then has nothing to reuse.
+  - The TS wrapper must branch: `if (isTauriEnv()) return invoke(...)` else `webApiFetch(...)`.
+    A wrapper that calls `invoke` unconditionally silently does nothing in Web mode.
+  - `src/lib/api/coreRouteParity.contract.test.ts` fails when a Web operation has no matching
+    route — if it starts failing on your feature, the second transport is missing, not the test.
+- **Never swallow an error with `.catch(() => null)`** on a path that can legitimately return null.
+  "Not addressed to this device", "the command doesn't exist in this build" and "it arrived but
+  failed to open" then look identical — silence — and no amount of live testing can tell them
+  apart. Log the failure, and distinguish it from the expected empty case.
 - Lean Zustand selectors to avoid rerender loops; `projects.json` is saved with debounce and atomic
   writes (tmp → rename) — preserve that pattern.
 - The `projects.json` schema is versioned with migration/backfill — when changing its shape, keep the
@@ -124,12 +138,20 @@ Versioned in this repo:
 - [`docs/OVERVIEW.md`](docs/OVERVIEW.md) — domain model (Group, Project, Container, Pane, Terminal,
   Sub-tab, PTY), stack, and persistence.
 - [`docs/BRAND.md`](docs/BRAND.md).
-- [`docs/DIAGNOSTICO_MATURIDADE_TECNICA.md`](docs/DIAGNOSTICO_MATURIDADE_TECNICA.md) — diagnostic of
-  code organization, duplication, and performance, with prioritized recommendations.
+- [`docs/PRIVACY.md`](docs/PRIVACY.md) — data flow, what's stored where, what's encrypted.
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — aspirational, not a commitment; check before assuming an
+  item is unimplemented.
+- [`docs/THEMES.md`](docs/THEMES.md), [`docs/UI_VISUAL_STYLES.md`](docs/UI_VISUAL_STYLES.md) —
+  theming and the two sidebar visual styles (Normal/Clean).
+- [`docs/PROJECT_COLLABORATION_PLAN_AND_STATUS.md`](docs/PROJECT_COLLABORATION_PLAN_AND_STATUS.md)
+  — current status, known gaps, and next steps for the project-collaboration feature (P2P sync,
+  chat, tasks, mesh). Phase-by-phase history now lives in `docs/CHANGELOG.md`.
+- [`docs/adr/`](docs/adr) — Architecture Decision Records for project collaboration (never edit an
+  old ADR in place; a changed decision gets a new ADR that marks the old one superseded).
+- [`docs/security/`](docs/security) — per-phase security gates and the sync threat model; audit
+  history, not meant to be pruned as phases age.
 
 The domain glossary (Group, Project, Container, Pane, Sub-tab, PTY) is summarized in `CONTRIBUTING.md`.
-
-## graphify
 
 ## Language and comment rules
 
@@ -142,14 +164,3 @@ The domain glossary (Group, Project, Container, Pane, Sub-tab, PTY) is summarize
 - When editing existing mixed-language content, translate the touched content to English when practical
   instead of extending the language inconsistency.
 - Keep comments concise. Add them only when they explain non-obvious behavior, constraints, or decisions.
-
-This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
-
-Universal across the 3 agent providers Alethe spawns (Claude Code, Codex, OpenCode) when the project has Graphify enabled: each gets the Graphify MCP server wired into its session automatically (Claude via `--mcp-config`; Codex/OpenCode via `.codex/config.toml`/`opencode.json` in the project root — see `graphify_codex_config_write`/`graphify_opencode_config_write` in `src-tauri/src/graphify.rs`).
-
-Rules:
-- If a Graphify MCP tool (e.g. `graphify_query`/similar) is available in this session, prefer calling it directly over shelling out — same scoped-subgraph result, no extra process spawn.
-- Otherwise, for codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
-- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
-- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).

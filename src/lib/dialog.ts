@@ -1,10 +1,7 @@
-import { open, save, type DialogFilter } from '@tauri-apps/plugin-dialog'
+import { type DialogFilter, open, save } from '@tauri-apps/plugin-dialog'
 
 import { useUiStore } from '../stores/uiStore'
-
-function isTauriEnv(): boolean {
-  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
-}
+import { isTauriEnv } from './api/transport'
 
 export type FsBrowserCallback = (path: string | null) => void
 

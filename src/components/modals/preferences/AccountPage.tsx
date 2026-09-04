@@ -1,11 +1,25 @@
-import { Check, ChevronRight, UserRound } from 'lucide-react'
+import { Check, ChevronRight, Loader2, UserRound } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
+import { broadcastAvatarUpdate } from '../../../lib/api/avatarSync'
+import { broadcastBioUpdate } from '../../../lib/api/bioSync'
+import { MAX_BIO_LEN } from '../../../lib/api/syncSecurity'
 import { LOCALES, useT } from '../../../lib/i18n'
+import {
+  configureGoogleSync,
+  disconnectGoogleSync,
+  getGoogleSyncStatus,
+  type GoogleSyncUser,
+  startGoogleSyncAuth,
+} from '../../../lib/tauri'
 import { useProjectsStore } from '../../../stores/projectsStore'
-import { ImageInput } from '../ImageInput'
+import { GoogleIcon } from '../../icons/AgentIcons'
 import controls from '../controls.module.css'
+import { ImageInput } from '../ImageInput'
 import styles from '../PreferencesModal.module.css'
+import { CollaborationSettings } from './CollaborationSettings'
 import { Avatar, SettingsSection } from './primitives'
+import { TranslationSettings } from './TranslationSettings'
 
 export function AccountPage({
   avatarUrl,
@@ -20,6 +34,65 @@ export function AccountPage({
   const preferences = useProjectsStore((state) => state.preferences)
   const setLanguage = useProjectsStore((state) => state.setLanguage)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
+  const [google, setGoogle] = useState<GoogleSyncUser | null>(null)
+  const [googleBusy, setGoogleBusy] = useState(false)
+  const [googleError, setGoogleError] = useState(false)
+  const [showGoogleSetup, setShowGoogleSetup] = useState(false)
+  const [googleClientId, setGoogleClientId] = useState('')
+
+  useEffect(() => {
+    let active = true
+    void getGoogleSyncStatus()
+      .then((status) => {
+        if (active) setGoogle(status)
+      })
+      .catch(() => {
+        if (active) setGoogleError(true)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const runGoogleLogin = async () => {
+    setGoogleBusy(true)
+    setGoogleError(false)
+    try {
+      setGoogle(await startGoogleSyncAuth())
+    } catch {
+      setGoogleError(true)
+    } finally {
+      setGoogleBusy(false)
+    }
+  }
+
+  const saveGoogleConfiguration = async () => {
+    setGoogleBusy(true)
+    setGoogleError(false)
+    try {
+      await configureGoogleSync(googleClientId)
+      setGoogle(await getGoogleSyncStatus())
+      setShowGoogleSetup(false)
+      setGoogleClientId('')
+    } catch {
+      setGoogleError(true)
+    } finally {
+      setGoogleBusy(false)
+    }
+  }
+
+  const runGoogleDisconnect = async () => {
+    setGoogleBusy(true)
+    setGoogleError(false)
+    try {
+      await disconnectGoogleSync()
+      setGoogle(await getGoogleSyncStatus())
+    } catch {
+      setGoogleError(true)
+    } finally {
+      setGoogleBusy(false)
+    }
+  }
 
   return (
     <>
@@ -40,13 +113,41 @@ export function AccountPage({
             <ImageInput
               label={t('prefs.profilePhoto')}
               value={preferences.profileImageUrl}
-              onChange={(profileImageUrl) => setPreferences({ profileImageUrl })}
+              onChange={(profileImageUrl) => {
+                setPreferences({ profileImageUrl })
+                void broadcastAvatarUpdate(profileImageUrl)
+              }}
               placeholder={t('prefs.photoPlaceholder')}
               hint={t('image.urlOrUpload')}
             />
+            <label>
+              <span>
+                {t('prefs.bio')}
+                <span className={styles.bioCounter}>
+                  {preferences.bio.length}/{MAX_BIO_LEN}
+                </span>
+              </span>
+              <textarea
+                className={`${controls.input} ${styles.bioTextarea}`}
+                value={preferences.bio}
+                onChange={(event) =>
+                  setPreferences({ bio: event.target.value.slice(0, MAX_BIO_LEN) })
+                }
+                // Only sent to contacts on blur (not every keystroke) — this field is otherwise
+                // identical to the avatar's own "broadcast on change" pattern, just batched so
+                // typing a bio doesn't queue a relay envelope per character.
+                onBlur={() => void broadcastBioUpdate(preferences.bio)}
+                placeholder={t('prefs.bioPlaceholder')}
+                rows={3}
+                maxLength={MAX_BIO_LEN}
+              />
+              <span className={styles.bioHint}>{t('prefs.bioHint')}</span>
+            </label>
           </div>
         </div>
       </SettingsSection>
+
+      <CollaborationSettings />
 
       <SettingsSection
         id="language"
@@ -65,6 +166,117 @@ export function AccountPage({
               {preferences.language === locale.id ? <Check size={16} /> : null}
             </button>
           ))}
+        </div>
+      </SettingsSection>
+
+      <TranslationSettings />
+
+      <SettingsSection
+        id="google-sync"
+        title={t('prefs.googleSyncTitle')}
+        description={t('prefs.googleSyncDesc')}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '12px 14px',
+              background: 'var(--bg-sunken)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-md)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                <GoogleIcon size={18} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <strong style={{ fontSize: '13px', color: 'var(--fg)' }}>
+                  {t('prefs.googleSyncProvider')}
+                </strong>
+                <span style={{ fontSize: '11px', color: 'var(--fg-muted)' }}>
+                  {googleError
+                    ? t('mesh.oauthFailed')
+                    : google?.connected
+                      ? t('mesh.connectedAccount', { name: google.name })
+                      : google?.configured
+                        ? t('prefs.googleSyncReadyStatus')
+                        : t('mesh.oauthNotConfigured')}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                background: 'var(--bg)',
+                color: google?.connected ? 'var(--status-offline)' : 'var(--fg)',
+                fontWeight: 600,
+                fontSize: '12px',
+                padding: '7px 14px',
+                border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)',
+                cursor: googleBusy ? 'default' : 'pointer',
+                boxShadow: 'var(--shadow-xs)',
+              }}
+              disabled={googleBusy}
+              onClick={() => {
+                if (google?.connected) void runGoogleDisconnect()
+                else if (google?.configured) void runGoogleLogin()
+                else setShowGoogleSetup((visible) => !visible)
+              }}
+            >
+              {googleBusy ? <Loader2 size={15} /> : <GoogleIcon size={15} />}
+              <span>
+                {googleBusy
+                  ? t('mesh.authenticating')
+                  : google?.connected
+                    ? t('mesh.disconnectAccount')
+                    : google?.configured
+                      ? t('mesh.connectAccount')
+                      : t('mesh.configureGoogle')}
+              </span>
+            </button>
+          </div>
+          {showGoogleSetup && !google?.configured ? (
+            <div className={styles.integrationFields}>
+              <label>
+                <span>{t('mesh.googleClientId')}</span>
+                <input
+                  className={controls.input}
+                  value={googleClientId}
+                  placeholder="000000000000-example.apps.googleusercontent.com"
+                  spellCheck={false}
+                  autoComplete="off"
+                  onChange={(event) => setGoogleClientId(event.target.value)}
+                />
+              </label>
+              <p>{t('mesh.googleClientIdHint')}</p>
+              <button
+                type="button"
+                className={`${controls.btn} ${controls.btnPrimary}`}
+                disabled={googleBusy || !googleClientId.trim()}
+                onClick={() => void saveGoogleConfiguration()}
+              >
+                {t('mesh.saveConfiguration')}
+              </button>
+            </div>
+          ) : null}
         </div>
       </SettingsSection>
 

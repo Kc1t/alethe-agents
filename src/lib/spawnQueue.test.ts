@@ -7,7 +7,6 @@ import {
   setMaxConcurrentSpawns,
 } from './spawnQueue'
 
-                                                                     
 // restores the default cap (3) so module state does not leak between cases.
 afterEach(() => {
   let guard = 0
@@ -27,7 +26,7 @@ describe('acquireSpawnSlot / releaseSpawnSlot', () => {
 
   it('enfileira além do teto e acorda ao liberar', async () => {
     setMaxConcurrentSpawns(1)
-    await acquireSpawnSlot()                     
+    await acquireSpawnSlot()
 
     let thirdResolved = false
     const queued = acquireSpawnSlot().then(() => {
@@ -72,7 +71,6 @@ describe('acquireSpawnSlot / releaseSpawnSlot', () => {
     })
     await Promise.resolve()
 
-                                                                                 
     setMaxConcurrentSpawns(1)
     releaseSpawnSlot()
     await Promise.resolve()

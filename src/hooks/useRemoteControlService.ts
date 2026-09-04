@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
 
+import { translate } from '../lib/i18n'
+import { withFallback } from '../lib/resilience'
 import {
   listenRemoteMessages,
   setRemoteControlEnabled,
@@ -8,7 +10,6 @@ import {
   setRemoteControlSessionExpiry,
   setRemoteControlShellInput,
 } from '../lib/tauri'
-import { translate } from '../lib/i18n'
 import { useProjectsStore } from '../stores/projectsStore'
 import { useUiStore } from '../stores/uiStore'
 
@@ -29,7 +30,7 @@ export function useRemoteControlService() {
       await setRemoteControlShellInput(allowShellInput)
       await setRemoteControlEnabled(enabled)
     }
-    void sync().catch(() => undefined)
+    void sync().catch(withFallback('sync', undefined))
   }, [allowShellInput, enabled, expiry, hydrated, maxDevices, readOnly])
 
   useEffect(() => {
@@ -45,7 +46,7 @@ export function useRemoteControlService() {
       .then((stop) => {
         unlisten = stop
       })
-      .catch(() => undefined)
+      .catch(withFallback('then', undefined))
     return () => unlisten?.()
   }, [enabled])
 }

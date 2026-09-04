@@ -649,11 +649,10 @@ pub struct DiffSummaryEntry {
     pub deletions: Option<usize>,
 }
 
-/// `opencode.json` (MCP do Graphify + plugin GSD, escritos automaticamente a
-
-/// `.opencode/alethe-gsd-config.json`, `.planning/goal.md` etc. como se
-
-/// Alethe escrevendo essa infraestrutura na worktree.
+/// Paths Alethe writes into a worktree itself: the OpenCode configuration under `.opencode/` and
+/// the `opencode.json` beside it (written on spawn), plus the planning documents in `.planning/`.
+/// They are filtered out of a diff summary so a worktree where only Alethe's own infrastructure
+/// landed does not read as if the agent had done work in it.
 fn is_alethe_infra_path(path: &str) -> bool {
     path.starts_with(".planning/") || path.starts_with(".opencode/") || path == "opencode.json"
 }
@@ -1032,6 +1031,213 @@ pub async fn git_show_commit_files(
         .map_err(|error| format!("git_show_commit_files: blocking task failed: {error}"))?
 }
 
+/// Parses `--numstat -z` into `path -> (additions, deletions)`.
+///
+/// Columns are tab-separated (`adds\tdels\tpath`), so the split is on tabs rather than on
+/// whitespace — a path containing spaces is one field, not several. A rename or copy leaves the
+/// path column empty and emits the old and new paths as the next two NUL-separated fields; the new
+/// path is the one that matches `--name-status`. Binary files report `-` for both counts instead
+/// of a number, and are simply left out: they have no line counts to show.
+fn parse_numstat_z(raw: &str) -> std::collections::HashMap<String, (usize, usize)> {
+    let fields: Vec<&str> = raw.split('\0').collect();
+    let mut stats = std::collections::HashMap::new();
+    let mut i = 0;
+    while i < fields.len() {
+        let record = fields[i];
+        i += 1;
+        if record.is_empty() {
+            continue;
+        }
+        let mut columns = record.splitn(3, '\t');
+        let (Some(adds_raw), Some(dels_raw), Some(path_column)) =
+            (columns.next(), columns.next(), columns.next())
+        else {
+            continue;
+        };
+        let path = if path_column.is_empty() {
+            // Rename/copy: old path, then new path.
+            let new_path = fields.get(i + 1).copied().unwrap_or_default().to_string();
+            i += 2;
+            new_path
+        } else {
+            path_column.to_string()
+        };
+        if let (Ok(adds), Ok(dels)) = (adds_raw.parse::<usize>(), dels_raw.parse::<usize>()) {
+            stats.insert(path, (adds, dels));
+        }
+    }
+    stats
+}
+
+fn git_show_commit_stats_inner(
+    repo_root: String,
+    hash: String,
+) -> Result<Vec<DiffSummaryEntry>, String> {
+    let root = repository_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    // `--root` covers the root commit (no parent), which `diff-tree` alone ignores.
+    let name_status = checked_output(
+        &root,
+        &[
+            "diff-tree",
+            "--no-commit-id",
+            "--name-status",
+            "-r",
+            "--root",
+            "-z",
+            &hash,
+        ],
+    )?;
+    let numstat = checked_output(
+        &root,
+        &[
+            "diff-tree",
+            "--no-commit-id",
+            "--numstat",
+            "-r",
+            "--root",
+            "-z",
+            &hash,
+        ],
+    )?;
+    let stats = parse_numstat_z(&String::from_utf8_lossy(&numstat.stdout));
+    Ok(parse_name_status_z(&name_status.stdout)
+        .into_iter()
+        .map(|change| {
+            let (additions, deletions) = match stats.get(&change.path) {
+                Some((adds, dels)) => (Some(*adds), Some(*dels)),
+                None => (None, None),
+            };
+            DiffSummaryEntry {
+                path: change.path,
+                status: change.status,
+                additions,
+                deletions,
+            }
+        })
+        .collect())
+}
+
+fn git_show_commit_file_diff_inner(
+    repo_root: String,
+    hash: String,
+    path: String,
+) -> Result<String, String> {
+    let root = repository_root(&repo_root)?;
+    validate_commit_hash(&hash)?;
+    if path.is_empty() {
+        return Err("git_show_commit_file_diff: empty path".to_string());
+    }
+    // `--` separates revisions from paths, so a path is never taken for a revision or an option,
+    // whatever it happens to be named. Arguments are passed as a list (no shell), so the path
+    // needs no further quoting. `--format=` drops the commit header — the caller already shows it.
+    let output = checked_output(
+        &root,
+        &[
+            "show",
+            "--format=",
+            "--patch",
+            "--no-color",
+            "-M",
+            "--root",
+            &hash,
+            "--",
+            &path,
+        ],
+    )?;
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// The patch for a single file in a commit, for the expandable per-file diff in the commit detail
+/// screen.
+#[tauri::command]
+pub async fn git_show_commit_file_diff(
+    repo: String,
+    hash: String,
+    path: String,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || git_show_commit_file_diff_inner(repo, hash, path))
+        .await
+        .map_err(|error| format!("git_show_commit_file_diff: blocking task failed: {error}"))?
+}
+
+/// Per-file line counts for one commit — the changed-file list on its own only says *that* a file
+/// changed, not how much.
+#[tauri::command]
+pub async fn git_show_commit_stats(
+    repo: String,
+    hash: String,
+) -> Result<Vec<DiffSummaryEntry>, String> {
+    tokio::task::spawn_blocking(move || git_show_commit_stats_inner(repo, hash))
+        .await
+        .map_err(|error| format!("git_show_commit_stats: blocking task failed: {error}"))?
+}
+
+/// Per-file line counts for the *working tree* — the same shape `git_show_commit_stats` returns for
+/// a commit, but for work that has not been committed yet.
+///
+/// This is what the change trigger reports on: by the time a change is worth describing, it is
+/// still uncommitted, so a commit-based view would show nothing at all.
+///
+/// Untracked files are included deliberately. `git diff HEAD` ignores them, and a brand-new file is
+/// precisely the change most likely to go undescribed — leaving it out would let the popup call a
+/// change fully covered while a whole new file went unmentioned. They are reported as added, with
+/// their full line count, which is what `git diff` would say once staged.
+fn git_working_tree_stats_inner(repo_root: String) -> Result<Vec<DiffSummaryEntry>, String> {
+    let root = repository_root(&repo_root)?;
+    let name_status = checked_output(&root, &["diff", "--name-status", "-r", "-z", "HEAD"])?;
+    let numstat = checked_output(&root, &["diff", "--numstat", "-r", "-z", "HEAD"])?;
+    let stats = parse_numstat_z(&String::from_utf8_lossy(&numstat.stdout));
+
+    let mut entries: Vec<DiffSummaryEntry> = parse_name_status_z(&name_status.stdout)
+        .into_iter()
+        .map(|change| {
+            let (additions, deletions) = match stats.get(&change.path) {
+                Some((adds, dels)) => (Some(*adds), Some(*dels)),
+                None => (None, None),
+            };
+            DiffSummaryEntry {
+                path: change.path,
+                status: change.status,
+                additions,
+                deletions,
+            }
+        })
+        .collect();
+
+    let untracked = checked_output(
+        &root,
+        &["ls-files", "--others", "--exclude-standard", "-z"],
+    )?;
+    for path in String::from_utf8_lossy(&untracked.stdout)
+        .split(' ')
+        .filter(|p| !p.is_empty())
+    {
+        // Counted here rather than via `git diff --no-index`, which would cost one process per
+        // file. A file that cannot be read as text (binary, or gone between the listing and now)
+        // reports no counts, matching how `parse_numstat_z` already leaves binaries out.
+        let additions = std::fs::read_to_string(root.join(path))
+            .ok()
+            .map(|contents| contents.lines().count());
+        entries.push(DiffSummaryEntry {
+            path: path.to_string(),
+            status: "A".to_string(),
+            additions,
+            deletions: additions.map(|_| 0),
+        });
+    }
+
+    entries.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(entries)
+}
+
+#[tauri::command]
+pub async fn git_working_tree_stats(repo: String) -> Result<Vec<DiffSummaryEntry>, String> {
+    tokio::task::spawn_blocking(move || git_working_tree_stats_inner(repo))
+        .await
+        .map_err(|error| format!("git_working_tree_stats: blocking task failed: {error}"))?
+}
+
 /// The FULL commit message (`%B` — subject + body), for the commit detail
 /// screen (`git_log_graph` only returns `%s`, a single line).
 fn git_show_commit_message_inner(repo_root: String, hash: String) -> Result<String, String> {
@@ -1209,6 +1415,36 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
+    fn numstat_parses_spaced_paths_renames_and_skips_binaries() {
+        // A plain entry, a path containing spaces, a rename (empty path column, old and new paths
+        // as the following fields) and a binary file (`-` counts, no line numbers to report).
+        let raw = "12\t3\tsrc/main.rs\0\
+                   4\t0\tdocs/my notes.md\0\
+                   7\t2\t\0old/name.rs\0new/name.rs\0\
+                   -\t-\tassets/logo.png\0";
+        let stats = parse_numstat_z(raw);
+
+        assert_eq!(stats.get("src/main.rs"), Some(&(12, 3)));
+        assert_eq!(
+            stats.get("docs/my notes.md"),
+            Some(&(4, 0)),
+            "a tab-separated path keeps its spaces"
+        );
+        assert_eq!(
+            stats.get("new/name.rs"),
+            Some(&(7, 2)),
+            "a rename is keyed by its new path, matching --name-status"
+        );
+        assert_eq!(stats.get("old/name.rs"), None);
+        assert_eq!(
+            stats.get("assets/logo.png"),
+            None,
+            "binary files report '-' and carry no line counts"
+        );
+        assert_eq!(stats.len(), 3);
+    }
+
+    #[test]
     fn parses_staged_unstaged_untracked_conflict_and_rename() {
         let input = b"M  staged.txt\0 M changed file.txt\0?? new.txt\0UU conflict.txt\0R  renamed.txt\0old.txt\0";
         let (staged, changes, untracked, conflicts) = parse_porcelain(input);
@@ -1318,6 +1554,49 @@ mod tests {
         fs::write(root.join("untracked.txt"), "remove me\n").unwrap();
         git_discard(root_string, vec!["untracked.txt".to_string()], true).unwrap();
         assert!(!root.join("untracked.txt").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn working_tree_stats_counts_modified_and_untracked_files() {
+        // An untracked file is the case this exists for: `git diff HEAD` ignores it, so without
+        // the explicit `ls-files --others` pass a whole new file would be missing from the change
+        // report — and the popup would call the change fully covered while it went unmentioned.
+        let root = temp_dir("worktree-stats");
+        fs::write(root.join("tracked.txt"), "one
+two
+").unwrap();
+        let root_string = root.to_string_lossy().into_owned();
+        git_init(root_string.clone()).unwrap();
+
+        fs::write(root.join("tracked.txt"), "one
+two
+three
+").unwrap();
+        fs::write(root.join("brand-new.txt"), "a
+b
+c
+d
+").unwrap();
+
+        let stats = git_working_tree_stats_inner(root_string).unwrap();
+        let by_path: std::collections::HashMap<&str, &DiffSummaryEntry> =
+            stats.iter().map(|e| (e.path.as_str(), e)).collect();
+
+        let tracked = by_path.get("tracked.txt").expect("modified file reported");
+        assert_eq!(tracked.status, "M");
+        assert_eq!(tracked.additions, Some(1));
+        assert_eq!(tracked.deletions, Some(0));
+
+        let untracked = by_path.get("brand-new.txt").expect("untracked file reported");
+        assert_eq!(untracked.status, "A");
+        assert_eq!(
+            untracked.additions,
+            Some(4),
+            "an untracked file counts every line as added"
+        );
+        assert_eq!(untracked.deletions, Some(0));
+
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1447,14 +1726,8 @@ mod tests {
 
         fs::create_dir_all(root.join(".planning")).unwrap();
         fs::write(root.join(".planning").join("goal.md"), "").unwrap();
-        fs::create_dir_all(root.join(".opencode").join("plugins")).unwrap();
-        fs::write(
-            root.join(".opencode")
-                .join("plugins")
-                .join("alethe-gsd-state.ts"),
-            "",
-        )
-        .unwrap();
+        fs::create_dir_all(root.join(".opencode")).unwrap();
+        fs::write(root.join(".opencode").join("opencode.json"), "").unwrap();
         fs::write(root.join("opencode.json"), "{}").unwrap();
 
         let with_worktree = git_diff_summary(
@@ -1513,7 +1786,7 @@ mod tests {
         let lock_file_clone = lock_file.clone();
         std::thread::spawn(move || {
             sleep(Duration::from_millis(250));
-            let _ = fs::remove_file(&lock_file_clone);
+            crate::best_effort!(fs::remove_file(&lock_file_clone), "file_already_absent");
         });
 
         let result = checked_output(&root, &["status"]);

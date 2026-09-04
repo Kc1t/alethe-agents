@@ -24,24 +24,78 @@ fn unix_secs() -> u64 {
         .unwrap_or(0)
 }
 
+/// The log directory for an already-resolved data root.
+///
+/// Split out from [`logs_dir`] because the standalone `alethe-server` binary has no `AppHandle` at
+/// all, and every logging entry point used to require one — so the Web runtime could not write a
+/// single diagnostic line. Both runtimes now resolve their own root and call this.
+pub fn logs_dir_at(data_root: &Path) -> PathBuf {
+    data_root.join("logs")
+}
+
 pub fn logs_dir(app: &AppHandle) -> Result<PathBuf, String> {
     let root = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
-    Ok(root.join("logs"))
+    Ok(logs_dir_at(&root))
 }
 
-pub fn set_logs_dir(app: &AppHandle) {
-    if let Ok(dir) = logs_dir(app) {
-        let _ = fs::create_dir_all(&dir);
-        let _ = LOGS_DIR.set(dir);
-    }
+/// Registers the log directory and reports whether it is actually usable.
+///
+/// The old version discarded both the resolution error and the `create_dir_all` failure, so a
+/// profile directory that could not be created produced an app with **no diagnostics at all**, and
+/// the resulting empty log read exactly like "that code path never ran". Every other fix in this
+/// area depends on this one: without it, no other logging change can be confirmed.
+pub fn set_logs_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = logs_dir(app)?;
+    fs::create_dir_all(&dir)
+        .map_err(|error| format!("could not create {}: {error}", dir.display()))?;
+    let _ = LOGS_DIR.set(dir.clone());
+    Ok(dir)
 }
 
+/// Same, for a runtime that resolved its data root itself (the standalone server).
+pub fn set_logs_dir_at(data_root: &Path) -> Result<PathBuf, String> {
+    let dir = logs_dir_at(data_root);
+    fs::create_dir_all(&dir)
+        .map_err(|error| format!("could not create {}: {error}", dir.display()))?;
+    let _ = LOGS_DIR.set(dir.clone());
+    Ok(dir)
+}
+
+/// Appends one line, reporting to the decision stream when it cannot.
+///
+/// This function deliberately does not use `append_log` to report its own failures — that would
+/// recurse straight back into the failing path. It reports through `tracing`, which writes to a
+/// different file through a different handle, so a directory that cannot be created here still
+/// leaves evidence somewhere.
 fn append_log(path: &Path, message: &str) {
     if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
+        if let Err(error) = fs::create_dir_all(parent) {
+            tracing::warn!(
+                target: "alethe.logging",
+                path = %parent.display(),
+                error = %error,
+                "log directory could not be created; these lines are being lost",
+            );
+            return;
+        }
     }
-    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(path) {
-        let _ = writeln!(file, "[{}] {message}", timestamp_ms());
+    match fs::OpenOptions::new().create(true).append(true).open(path) {
+        Ok(mut file) => {
+            if let Err(error) = writeln!(file, "[{}] {message}", timestamp_ms()) {
+                tracing::warn!(
+                    target: "alethe.logging",
+                    path = %path.display(),
+                    error = %error,
+                    "log line could not be written",
+                );
+            }
+        }
+        Err(error) => tracing::warn!(
+            target: "alethe.logging",
+            path = %path.display(),
+            error = %error,
+            "log file could not be opened; these lines are being lost",
+        ),
     }
 }
 
@@ -95,7 +149,7 @@ fn prune(dir: &Path, prefix: &str) {
     files.sort();
     let remove_count = files.len() - MAX_FILES_PER_PREFIX;
     for path in files.into_iter().take(remove_count) {
-        let _ = fs::remove_file(path);
+        crate::best_effort!(fs::remove_file(path), "pruned_log_already_gone");
     }
 }
 
@@ -151,6 +205,95 @@ pub fn record_frontend_error(
     append_log(&path, &body);
     prune(dir, "frontend-");
     Ok(())
+}
+
+static TRACE_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// `logs/` at the process working directory (repo root under `tauri dev`), kept
+/// separate from the per-profile `LOGS_DIR` so it stays trivial to `tail -f`
+/// alongside the terminal during a live cross-device debugging session.
+fn trace_dir() -> &'static PathBuf {
+    TRACE_DIR.get_or_init(|| {
+        // Under `tauri dev` the Rust process runs with its working directory at `src-tauri/`, so
+        // resolving `logs/` naively puts it beside the crate instead of at the repo root next to
+        // the terminal log that `npm run app:logs` writes. Step out one level in that case so both
+        // logs always land in the same folder.
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let root = if cwd.file_name().is_some_and(|name| name == "src-tauri") {
+            cwd.parent().map(PathBuf::from).unwrap_or(cwd)
+        } else {
+            cwd
+        };
+        let dir = root.join("logs");
+        if let Err(error) = fs::create_dir_all(&dir) {
+            tracing::warn!(
+                target: "alethe.logging",
+                path = %dir.display(),
+                error = %error,
+                "trace directory could not be created",
+            );
+        }
+        dir
+    })
+}
+
+/// Mirrors a devtools console call (log/info/warn/error/debug) to `logs/frontend.log` and into the
+/// unified decision stream. Installed by `src/lib/debugTrace.ts` on every console call without
+/// replacing the original devtools output.
+///
+/// `corr` is the correlation id of the UI gesture the line belongs to. It is what lets a frontend
+/// line and the backend records it caused end up on **one** timeline: previously the two lived in
+/// separate files written by separate processes with no shared key, so "the UI says it sent it, did
+/// the socket ever see it?" could not be answered by reading either one.
+#[tauri::command]
+pub fn record_console_log(
+    level: String,
+    message: String,
+    corr: Option<String>,
+) -> Result<(), String> {
+    append_log(
+        &trace_dir().join("frontend.log"),
+        &format!("[{level}] {message}"),
+    );
+    record_ui_line(&level, &message, corr.as_deref());
+    Ok(())
+}
+
+/// Feeds one frontend console line into the same stream the backend writes to.
+pub fn record_ui_line(level: &str, message: &str, corr: Option<&str>) {
+    let corr = corr.unwrap_or("");
+    // The console level decides severity, so an `ALETHE_LOG=warn` run still shows frontend errors.
+    match level {
+        "error" => tracing::warn!(target: "alethe.ui", corr, message),
+        "warn" => tracing::info!(target: "alethe.ui", corr, message),
+        _ => tracing::debug!(target: "alethe.ui", corr, message),
+    }
+}
+
+/// Reports, once at startup, whether the platform services this app depends on are actually
+/// reachable here. These differ per OS and previously failed *silently*: on Linux the credential
+/// store is a D-Bus Secret Service (gnome-keyring/KWallet) that simply is not there in some
+/// sessions, and every device key read then fails with an opaque error far away from the cause.
+/// Writing the verdict at startup means a later failure can be explained by a line that was already
+/// captured, instead of needing the whole session reproduced.
+pub fn record_platform_readiness() {
+    let credential_store = match keyring::Entry::new("com.kc1t.alethe.probe", "startup-probe") {
+        // `NoEntry` is the expected, healthy answer: the store answered, it just holds nothing
+        // under this name. Anything else means the store itself could not be reached.
+        Ok(entry) => match entry.get_secret() {
+            Ok(_) => "reachable".to_string(),
+            Err(keyring::Error::NoEntry) => "reachable".to_string(),
+            Err(cause) => format!("UNAVAILABLE ({cause})"),
+        },
+        Err(cause) => format!("UNAVAILABLE ({cause})"),
+    };
+    let message = format!(
+        "os={} arch={} credential_store={credential_store}",
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+    );
+    eprintln!("[platform] {message}");
+    append_log(&trace_dir().join("frontend.log"), &format!("[platform] {message}"));
 }
 
 /// Records non-sensitive lifecycle facts used to diagnose persistence and UI

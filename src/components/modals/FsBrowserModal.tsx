@@ -15,10 +15,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { resolvePendingFsBrowser } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
-import { browseDirectory, type BrowseDirectoryEntry, type DirectoryListing } from '../../lib/tauri'
+import { DirectoryEntry, DirectoryListing, listDirectory } from '../../lib/tauri'
 import { useUiStore } from '../../stores/uiStore'
-import { Modal } from './Modal'
 import styles from './FsBrowserModal.module.css'
+import { Modal } from './Modal'
 
 function formatBytes(bytes?: number | null): string {
   if (bytes === undefined || bytes === null) return ''
@@ -60,7 +60,7 @@ export function FsBrowserModal() {
   const [parentPath, setParentPath] = useState<string | null>(null)
   const [homePath, setHomePath] = useState('')
   const [systemRoots, setSystemRoots] = useState<string[]>([])
-  const [entries, setEntries] = useState<BrowseDirectoryEntry[]>([])
+  const [entries, setEntries] = useState<DirectoryEntry[]>([])
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [selectedIndex, setSelectedIndex] = useState<number>(-1)
   const [searchQuery, setSearchQuery] = useState('')
@@ -78,14 +78,14 @@ export function FsBrowserModal() {
       setSelectedIndex(-1)
       itemRefs.current = []
       try {
-        const listing: DirectoryListing = await browseDirectory(targetPath)
-        setCurrentPath(listing.currentPath)
-        setParentPath(listing.parentPath)
-        setHomePath(listing.homePath)
-        setSystemRoots(listing.systemRoots || [])
+        const listing: DirectoryListing = await listDirectory(targetPath)
+        setCurrentPath(listing.current_path)
+        setParentPath(listing.parent_path)
+        setHomePath(listing.home_path)
+        setSystemRoots(listing.system_roots || [])
         setEntries(listing.entries || [])
-        setRawPathInput(listing.currentPath)
-        setSelectedPath(mode === 'folder' ? listing.currentPath : null)
+        setRawPathInput(listing.current_path)
+        setSelectedPath(mode === 'folder' ? listing.current_path : null)
       } catch {
         if (homePath && targetPath !== homePath) {
           void fetchDirectory(homePath)
@@ -159,13 +159,13 @@ export function FsBrowserModal() {
     closeModal()
   }
 
-  const handleEntryClick = (entry: BrowseDirectoryEntry, index: number) => {
+  const handleEntryClick = (entry: DirectoryEntry, index: number) => {
     setSelectedPath(entry.path)
     setSelectedIndex(index)
   }
 
-  const handleEntryDoubleClick = (entry: BrowseDirectoryEntry) => {
-    if (entry.isDir) {
+  const handleEntryDoubleClick = (entry: DirectoryEntry) => {
+    if (entry.is_dir) {
       void fetchDirectory(entry.path)
     } else {
       handleConfirm()
@@ -193,7 +193,7 @@ export function FsBrowserModal() {
       e.preventDefault()
       if (selectedIndex >= 0 && filteredEntries[selectedIndex]) {
         const item = filteredEntries[selectedIndex]
-        if (item.isDir) {
+        if (item.is_dir) {
           void fetchDirectory(item.path)
         } else {
           handleConfirm()
@@ -251,6 +251,7 @@ export function FsBrowserModal() {
       }
     >
       <div className={styles.container} onKeyDown={handleKeyDown}>
+        {/* Quick Bar: Home & Drives */}
         <div className={styles.quickBar}>
           {homePath && (
             <button
@@ -276,6 +277,7 @@ export function FsBrowserModal() {
           ))}
         </div>
 
+        {/* Path Bar / Breadcrumbs */}
         <div className={styles.pathBar}>
           <button
             type="button"
@@ -325,6 +327,7 @@ export function FsBrowserModal() {
           )}
         </div>
 
+        {/* Search Filter Bar */}
         <div className={styles.searchBar}>
           <Search size={14} className={styles.searchIcon} />
           <input
@@ -337,13 +340,13 @@ export function FsBrowserModal() {
           {searchQuery.trim() && (
             <>
               <span className={styles.searchResultBadge}>
-                {t('fsBrowser.itemsCount', { count: filteredEntries.length })}
+                {filteredEntries.length} {filteredEntries.length === 1 ? 'item' : 'itens'}
               </span>
               <button
                 type="button"
                 className={styles.clearSearchBtn}
                 onClick={() => setSearchQuery('')}
-                title={t('fsBrowser.clearSearch')}
+                title="Limpar busca"
               >
                 <X size={14} />
               </button>
@@ -351,6 +354,7 @@ export function FsBrowserModal() {
           )}
         </div>
 
+        {/* Folder Content List */}
         <div className={styles.listContainer} ref={listContainerRef} tabIndex={0} autoFocus>
           {loading ? (
             <div className={styles.skeletonContainer}>
@@ -382,19 +386,19 @@ export function FsBrowserModal() {
                     onDoubleClick={() => handleEntryDoubleClick(entry)}
                   >
                     <span
-                      className={`${styles.entryIcon} ${entry.isDir ? styles.folderIcon : styles.fileIcon}`}
+                      className={`${styles.entryIcon} ${entry.is_dir ? styles.folderIcon : styles.fileIcon}`}
                     >
-                      {entry.isDir ? <Folder size={18} /> : <FileText size={18} />}
+                      {entry.is_dir ? <Folder size={18} /> : <FileText size={18} />}
                     </span>
                     <span className={styles.entryName}>
                       {highlightMatch(entry.name, searchQuery)}
                     </span>
-                    {!entry.isDir && (
-                      <span className={styles.entrySize}>{formatBytes(entry.sizeBytes)}</span>
+                    {!entry.is_dir && (
+                      <span className={styles.entrySize}>{formatBytes(entry.size_bytes)}</span>
                     )}
                     <span className={styles.navHint}>
                       <CornerDownLeft size={12} />
-                      <span>{entry.isDir ? t('fsBrowser.enter') : t('fsBrowser.select')}</span>
+                      <span>{entry.is_dir ? 'Entrar' : 'Selecionar'}</span>
                     </span>
                   </div>
                 )

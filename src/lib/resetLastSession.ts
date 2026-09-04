@@ -1,14 +1,6 @@
-   
-                                                                        
-                                                                             
-                                                                           
-                                                                             
-                  
-  
-                                                                     
-                                                              
-   
-
+import { useProjectsStore } from '../stores/projectsStore'
+import { useTerminalsStore } from '../stores/terminalsStore'
+import { withFallback } from './resilience'
 import { getActiveSessions, saveSession } from './sessionResume'
 import { acquireSpawnSlot, releaseSpawnSlot } from './spawnQueue'
 import {
@@ -20,14 +12,11 @@ import {
   snapshotOpenCodeSessions,
 } from './tauri'
 import type { AgentType } from './types'
-import { useProjectsStore } from '../stores/projectsStore'
-import { useTerminalsStore } from '../stores/terminalsStore'
 
 const RESUMABLE: AgentType[] = ['claude', 'codex', 'opencode', 'antigravity']
 
 export type ResetLastSessionResult = { resumed: number; total: number }
 
-                                                                              
 function stripFlagWithValue(args: string[], flag: string): string[] {
   const out: string[] = []
   for (let i = 0; i < args.length; i++) {
@@ -40,20 +29,20 @@ function stripFlagWithValue(args: string[], flag: string): string[] {
   return out
 }
 
-                                                                               
-type SessionExclude = {
-                                                                             
+/** Filtro pra escolher a sessão "certa" excluindo a que está rodando agora. */
+export type SessionExclude = {
+  /** ID da conversa atualmente aberta no pane — não queremos resumir ela. */
   id?: string
-                                                                       
+
   before?: number
 }
 
-   
-                                                                             
-                                                                              
-                                                                            
-   
-function pickSessionId(
+/**
+ * Escolhe a conversa a retomar: a mais recente que NÃO é a que está rodando.
+ * Se o resume falhou, a CLI já criou uma sessão nova/vazia (a mais recente no
+ * disco) — então excluímos o id atual e priorizamos as anteriores ao spawn.
+ */
+export function pickSessionId(
   sessions: ReadonlyArray<{ id: string; modified_at_ms: number }>,
   exclude: SessionExclude,
 ): string | null {
@@ -76,10 +65,6 @@ async function latestSessionId(
     if (agent === 'codex') return pickSessionId(await snapshotCodexSessions(cwd), exclude)
     if (agent === 'claude') return pickSessionId(await snapshotClaudeSessions(cwd), exclude)
     if (agent === 'opencode') {
-                                                                          
-                                                         
-                                                                               
-                                                  
       if (savedOpenCodeId) return savedOpenCodeId
       const sessions = await snapshotOpenCodeSessions(cwd)
       if (sessions.length > 0) {
@@ -95,8 +80,12 @@ async function latestSessionId(
   return null
 }
 
-                                                                             
-function buildResumeArgs(agent: AgentType, baseArgs: string[], sessionId: string | null): string[] {
+/** Monta os args de resume seguindo o mesmo padrão do spawn do XTermView. */
+export function buildResumeArgs(
+  agent: AgentType,
+  baseArgs: string[],
+  sessionId: string | null,
+): string[] {
   if (agent === 'claude') {
     // Tira qualquer --resume <id> / --continue antigos e reinjeta o novo.
     const clean = stripFlagWithValue(baseArgs, '--resume').filter((a) => a !== '--continue')
@@ -118,8 +107,7 @@ function buildResumeArgs(agent: AgentType, baseArgs: string[], sessionId: string
     )
     return sessionId ? ['--conversation', sessionId, ...clean] : ['--continue', ...clean]
   }
-                                                                          
-                            
+
   const clean = stripFlagWithValue(baseArgs, '--session').filter(
     (a) => a !== '--resume' && a !== '--continue',
   )
@@ -136,7 +124,6 @@ type ResumeTarget = {
   extraArgs: string[]
 }
 
-                                                                       
 function collectLivePanes(): ResumeTarget[] {
   const { projects } = useProjectsStore.getState()
   const { byPtyId } = useTerminalsStore.getState()
@@ -162,24 +149,10 @@ function collectLivePanes(): ResumeTarget[] {
   return targets
 }
 
-   
-                                                                          
-                                                                           
-                                                            
-   
 export function countLiveResumablePanes(): number {
   return collectLivePanes().length
 }
 
-   
-                                                                   
-                                                                  
-  
-                                                                             
-                                                                            
-                                                                          
-                                                                    
-   
 export async function resetLastSession(): Promise<ResetLastSessionResult> {
   const targets = collectLivePanes()
   let resumed = 0
@@ -190,11 +163,10 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
     try {
       let cwd = target.cwd
       if (!cwd) {
-        const live = await getPtyCwd(target.ptyId).catch(() => null)
+        const live = await getPtyCwd(target.ptyId).catch(withFallback('getPtyCwd', null))
         cwd = (live ?? '').trim()
       }
 
-                                                                         
       const active = getActiveSessions()[target.ptyId]
       const exclude: SessionExclude = {
         id:
@@ -209,7 +181,6 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
       const sessionId = await latestSessionId(target.agent, cwd, exclude, savedOpenCodeId)
       const extraArgs = buildResumeArgs(target.agent, target.extraArgs, sessionId)
 
-                                                                        
       useTerminalsStore.getState().beginRestart(target.ptyId)
       await restartPty({
         id: target.ptyId,
@@ -223,7 +194,6 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
         new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: target.ptyId } }),
       )
 
-                                                                          
       saveSession(target.ptyId, {
         sessionId: target.ptyId,
         claudeSessionId: target.agent === 'claude' ? (sessionId ?? undefined) : undefined,
@@ -241,7 +211,7 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
 
       resumed++
     } catch {
-                                                 
+      // Uma falha num painel não aborta o resto.
     } finally {
       releaseSpawnSlot()
     }

@@ -20,6 +20,7 @@
 }
 
 .sidebarTab {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -34,8 +35,32 @@
   background: transparent;
 }
 
-.sidebarTab span {
+.sidebarTab > span:not(.gitBadge) {
   display: none;
+}
+
+.gitBadge {
+  position: absolute;
+  bottom: -2px;
+  right: -4px;
+  min-width: 12px;
+  height: 12px;
+  padding: 0 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--agent-antigravity, #3b82f6);
+  color: #ffffff;
+  font-family: var(--font-sans);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 9999px;
+  pointer-events: none;
+  border: 1.5px solid var(--bg);
+  box-sizing: content-box;
+  z-index: 2;
+  letter-spacing: -0.02em;
 }
 .sidebarTab {
   transition:
@@ -154,7 +179,6 @@
   min-width: 0;
 }
 
-                                                               
 .projectRow {
   display: flex;
   align-items: center;
@@ -257,7 +281,6 @@
   flex-shrink: 0;
 }
 
-                                                      
 .rowHoverBtn {
   width: 20px;
   height: 20px;
@@ -352,7 +375,6 @@
   min-width: 0;
 }
 
-                                                                                
 .groupTag {
   display: flex;
   align-items: center;
@@ -420,8 +442,6 @@
   text-overflow: ellipsis;
 }
 
-                                                                                
-                                                           
 .groupBody {
   display: flex;
   flex-direction: column;
@@ -433,8 +453,7 @@
 }
 
 .groupBox:hover .groupBody {
-  box-shadow: inset 1px 0 0
-    color-mix(in srgb, var(--group-color, var(--border)) 45%, var(--border));
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--group-color, var(--border)) 45%, var(--border));
 }
 
 .groupEmpty {
@@ -443,7 +462,6 @@
   color: var(--fg-faint);
 }
 
-                                                        
 .projectDisabled .projectName {
   color: var(--text-tertiary);
 }
@@ -488,7 +506,6 @@
   }
 }
 
-                                                        
 .ungroupedSection {
   margin-top: 2px;
   padding: 0;
@@ -531,8 +548,7 @@
 .terminalRow:hover {
   background: var(--panel-hover);
 }
-                                                                              
-                                                       
+
 .terminalHidden .agentIcon,
 .terminalDisabled .agentIcon {
   filter: grayscale(1);
@@ -579,14 +595,12 @@
   flex: 0 0 auto;
 }
 
-                                                                 
 .terminalFocused,
 .terminalFocused:hover {
   background: color-mix(in srgb, var(--panel-hover) 82%, var(--fg) 12%);
   color: var(--fg);
 }
 
-                                                               
 .monogram {
   display: grid;
   place-items: center;
@@ -769,4 +783,20 @@
 
 .rosterLoading {
   color: var(--status-working);
+}
+
+/* Change-trigger warning: work has piled up in this project with nothing written up. Uses the
+   waiting status token rather than the error one — nothing is broken, something is owed. */
+.changeTriggerBadge {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  padding: 2px;
+  color: var(--status-waiting);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.changeTriggerBadge:hover {
+  background: var(--panel-hover);
 }

@@ -1,8 +1,8 @@
 import { Check, Search } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { useT } from '../../../lib/i18n'
 import { isOutdated } from '../../../lib/agentVersions'
+import { useT } from '../../../lib/i18n'
 import type { AgentType, Theme } from '../../../lib/types'
 import { AgentInstallButton } from '../../AgentInstall/AgentInstallButton'
 import { AgentUninstallButton } from '../../AgentInstall/AgentUninstallButton'

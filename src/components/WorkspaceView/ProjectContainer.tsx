@@ -5,7 +5,6 @@ import {
   Maximize2,
   Minimize2,
   Minus,
-  Network,
   Plus,
   TerminalSquare,
 } from 'lucide-react'
@@ -43,8 +42,6 @@ export const ProjectContainer = memo(function ProjectContainer({
   const setWorkspaceFlat = useProjectsStore((s) => s.setWorkspaceFlat)
   const closeContainer = useProjectsStore((s) => s.closeContainer)
   const openContainerWithAllPanes = useProjectsStore((s) => s.openContainerWithAllPanes)
-  const createGraphifyPane = useProjectsStore((s) => s.createGraphifyPane)
-  const setGraphifyEnabled = useProjectsStore((s) => s.setGraphifyEnabled)
   const openModal = useUiStore((s) => s.openModal_)
 
   const dragId = `cont:${project.id}`
@@ -66,12 +63,6 @@ export const ProjectContainer = memo(function ProjectContainer({
     const map = new Map(project.terminals.map((t) => [t.id, t]))
     return container.paneIds.map((id) => map.get(id)).filter((t): t is Terminal => Boolean(t))
   }, [project.terminals, container.paneIds, isFullscreen, isolatedPaneId])
-  const graphifyPaneOpen = terminals.some((terminal) => terminal.kind === 'graphify')
-  const graphifyEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.graphify)
-  const graphifyCwd = terminals.find(
-    (terminal) => terminal.kind !== 'graphify' && terminal.cwd,
-  )?.cwd
-
   const storedAccent = project.color || group?.color
   const accent = storedAccent && CSS.supports('color', storedAccent) ? storedAccent : '#6ea8ff'
   const isRainbow = accent === 'rgb-rainbow'
@@ -143,21 +134,6 @@ export const ProjectContainer = memo(function ProjectContainer({
             >
               <Plus size={11} />
             </button>
-            {graphifyEnabled && !graphifyPaneOpen && graphifyCwd ? (
-              <button
-                type="button"
-                className={styles.tagBtn}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setGraphifyEnabled(project.id, true)
-                  createGraphifyPane(project.id, graphifyCwd)
-                }}
-                title={t('graphify.startInProject')}
-                aria-label={t('graphify.startInProject')}
-              >
-                <Network size={11} />
-              </button>
-            ) : null}
             <button
               type="button"
               className={styles.tagBtn}

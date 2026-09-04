@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { formatShortcut, isMacOS, normalizeCwd, shouldUseNativeBackend } from './platform'
+import { formatShortcut, isLinux, isMacOS, normalizeCwd, shouldUseNativeBackend } from './platform'
 
 function setUserAgent(ua: string) {
   vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(ua)
@@ -25,6 +25,17 @@ describe('isMacOS', () => {
   })
 })
 
+describe('isLinux', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('detects Linux webviews without matching Windows', () => {
+    setUserAgent('Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36')
+    expect(isLinux()).toBe(true)
+    setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+    expect(isLinux()).toBe(false)
+  })
+})
+
 describe('shouldUseNativeBackend', () => {
   it('usa nativo só com flag ligada E no macOS', () => {
     expect(shouldUseNativeBackend(true, true)).toBe(true)
@@ -36,7 +47,6 @@ describe('shouldUseNativeBackend', () => {
   })
 
   it('nunca usa nativo fora do macOS, mesmo com flag ligada', () => {
-                                                                                  
     expect(shouldUseNativeBackend(true, false)).toBe(false)
   })
 })
@@ -47,20 +57,18 @@ describe('normalizeCwd', () => {
   })
 
   it('uniformiza separador e caixa só quando o path tem letra de drive (Windows)', () => {
-    expect(normalizeCwd('C:/Users/Miguel/Project/')).toBe('c:\\users\\miguel\\project')
-    expect(normalizeCwd('C:\\Users\\Miguel\\Project')).toBe('c:\\users\\miguel\\project')
+    expect(normalizeCwd('X:/Users/Example/Project/')).toBe('x:\\users\\example\\project')
+    expect(normalizeCwd('X:\\Users\\Example\\Project')).toBe('x:\\users\\example\\project')
   })
 
   it('preserva caixa e separador em paths Unix (case-sensitive)', () => {
-                                                                           
-                                                                      
     expect(normalizeCwd('/home/user/Project')).toBe('/home/user/Project')
     expect(normalizeCwd('/home/user/project')).toBe('/home/user/project')
   })
 
   it('remove o prefixo verbatim \\\\?\\ antes de comparar, senão worktrees nunca batem com o path real', () => {
-    expect(normalizeCwd('\\\\?\\D:\\Projetos\\PICLESV2\\.alethe\\worktrees\\opencode-x')).toBe(
-      normalizeCwd('D:\\Projetos\\PICLESV2\\.alethe\\worktrees\\opencode-x'),
+    expect(normalizeCwd('\\\\?\\X:\\example\\repo\\.alethe\\worktrees\\opencode-x')).toBe(
+      normalizeCwd('X:\\example\\repo\\.alethe\\worktrees\\opencode-x'),
     )
   })
 

@@ -1,4 +1,4 @@
-import { getLocale, translate, type MessageKey, type TFunction } from './i18n'
+import { getLocale, type MessageKey, type TFunction, translate } from './i18n'
 import type { Theme } from './types'
 
 export type ThemeOption = {
@@ -41,12 +41,10 @@ export function themeLabel(t: TFunction, id: Theme): string {
   return t(`theme.${id}.label` as MessageKey)
 }
 
-                                                                        
 export function themeDescription(t: TFunction, id: Theme): string {
   return t(`theme.${id}.desc` as MessageKey)
 }
 
-                                                                           
 export function getThemeLabel(id: Theme): string {
   return translate(getLocale(), `theme.${id}.label` as MessageKey)
 }

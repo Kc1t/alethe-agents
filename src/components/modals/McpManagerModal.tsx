@@ -1,7 +1,7 @@
 import { AlertTriangle, Copy, Eye, Plus, Search, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
-import { useT } from '../../lib/i18n'
+import { type MessageKey, useT } from '../../lib/i18n'
 import {
   groupServersByName,
   matchesQuery,
@@ -25,11 +25,12 @@ import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../EmptyState'
 import controls from './controls.module.css'
 import { AddServerFlow } from './mcp/AddServerFlow'
+import { PluginsBrowser } from './mcp/PluginsBrowser'
 import { SkillsBrowser } from './mcp/SkillsBrowser'
 import styles from './McpManagerModal.module.css'
 import { Modal } from './Modal'
 
-type ManagerTab = 'servers' | 'skills'
+type ManagerTab = 'servers' | 'skills' | 'plugins'
 
 /** Must identify the exact value: two servers of one agent can share an env key name. */
 function revealKey(record: McpServerRecord, key: string, header: boolean): string {
@@ -76,10 +77,7 @@ export function McpManagerModal() {
   )
 
   const groups = useMemo(() => groupServersByName(snapshots), [snapshots])
-  const visible = useMemo(
-    () => groups.filter((group) => matchesQuery(group, term)),
-    [groups, term],
-  )
+  const visible = useMemo(() => groups.filter((group) => matchesQuery(group, term)), [groups, term])
   const active = groups.find((group) => group.name === selected) ?? visible[0] ?? null
 
   // Runs without an open guard so a revealed plaintext value does not sit in component
@@ -93,7 +91,8 @@ export function McpManagerModal() {
   useEffect(() => {
     if (!open) return
     if (typeof requestedServer === 'string') setSelected(requestedServer)
-    if (requestedTab === 'servers' || requestedTab === 'skills') setTab(requestedTab)
+    if (requestedTab === 'servers' || requestedTab === 'skills' || requestedTab === 'plugins')
+      setTab(requestedTab)
     if (requestedAdd === true) setAdding(true)
   }, [open, requestedServer, requestedTab, requestedAdd])
 
@@ -168,7 +167,9 @@ export function McpManagerModal() {
           title: t('mcp.syncBlocked', {
             agents: blocked.map((outcome) => AGENT_TYPE_LABELS[outcome.agent]).join(', '),
           }),
-          body: blocked.flatMap((outcome) => outcome.unsupported.map((item) => item.field)).join(', '),
+          body: blocked
+            .flatMap((outcome) => outcome.unsupported.map((item) => item.field))
+            .join(', '),
         })
       }
       if (failed) {
@@ -202,14 +203,7 @@ export function McpManagerModal() {
   const reveal = async (record: McpServerRecord, key: string, header: boolean) => {
     const cacheKey = revealKey(record, key, header)
     try {
-      const value = await mcpRevealEnv(
-        record.agent,
-        scope,
-        repo,
-        record.server.name,
-        key,
-        header,
-      )
+      const value = await mcpRevealEnv(record.agent, scope, repo, record.server.name, key, header)
       setRevealed((current) => ({ ...current, [cacheKey]: value }))
     } catch (error) {
       reportError(error)
@@ -225,7 +219,9 @@ export function McpManagerModal() {
       footer={
         <>
           <span className={styles.footerNote}>
-            {scope === 'project' ? repo ?? '' : t('mcp.scopeGlobalHint')}
+            {/* Scope belongs to servers only — skills and plugins are not configured per project,
+                so repeating a server hint under them would describe the wrong thing. */}
+            {tab !== 'servers' ? '' : scope === 'project' ? (repo ?? '') : t('mcp.scopeGlobalHint')}
           </span>
           <button type="button" className={controls.btn} onClick={closeModal}>
             {t('common.close')}
@@ -234,7 +230,7 @@ export function McpManagerModal() {
       }
     >
       <div className={controls.tabRow} role="tablist">
-        {(['servers', 'skills'] as ManagerTab[]).map((option) => (
+        {(['servers', 'skills', 'plugins'] as ManagerTab[]).map((option) => (
           <button
             key={option}
             type="button"
@@ -243,12 +239,13 @@ export function McpManagerModal() {
             className={`${controls.tabBtn} ${tab === option ? controls.tabBtnActive : ''}`}
             onClick={() => setTab(option)}
           >
-            {t(option === 'servers' ? 'mcp.tabServers' : 'mcp.tabSkills')}
+            {t(`mcp.tab.${option}` as MessageKey)}
           </button>
         ))}
       </div>
 
       {tab === 'skills' ? <SkillsBrowser dark={dark} /> : null}
+      {tab === 'plugins' ? <PluginsBrowser /> : null}
 
       <div className={styles.layout} hidden={tab !== 'servers'}>
         <aside className={styles.sidebar}>
@@ -334,11 +331,7 @@ export function McpManagerModal() {
           width={420}
           footer={
             <>
-              <button
-                type="button"
-                className={controls.btn}
-                onClick={() => setConfirmTarget(null)}
-              >
+              <button type="button" className={controls.btn} onClick={() => setConfirmTarget(null)}>
                 {t('common.cancel')}
               </button>
               <button
@@ -409,8 +402,7 @@ function ServerDetail({
   const t = useT()
   const primary = group.records[0]
   const importedFrom = group.records.find((record) => record.managedByImport)?.managedByImport
-  const headers =
-    primary.server.transport.kind === 'stdio' ? {} : primary.server.transport.headers
+  const headers = primary.server.transport.kind === 'stdio' ? {} : primary.server.transport.headers
 
   return (
     <>
@@ -429,9 +421,7 @@ function ServerDetail({
               : t('mcp.removeAction')}
           </button>
         </div>
-        <span className={styles.detailSummary}>
-          {transportSummary(primary.server.transport)}
-        </span>
+        <span className={styles.detailSummary}>{transportSummary(primary.server.transport)}</span>
       </div>
 
       {importedFrom ? (
@@ -461,10 +451,7 @@ function ServerDetail({
             const records = group.records.filter((item) => item.agent === agent)
             if (records.length === 0) {
               return [
-                <div
-                  key={agent}
-                  className={`${styles.agentCard} ${styles.agentCardAbsent}`}
-                >
+                <div key={agent} className={`${styles.agentCard} ${styles.agentCardAbsent}`}>
                   <span className={styles.agentName}>{AGENT_TYPE_LABELS[agent]}</span>
                   <span className={styles.agentPath}>{t('mcp.notConfigured')}</span>
                   {group.missingAgents.includes(agent) ? (

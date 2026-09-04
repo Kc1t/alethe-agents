@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 
+import { withFallback } from '../lib/resilience'
 import { clearDiscordPresence, setDiscordPresence } from '../lib/tauri'
 import { useProjectsStore } from '../stores/projectsStore'
 import { useUiStore } from '../stores/uiStore'
@@ -12,6 +13,7 @@ const VIEW_LABELS = {
   workspace: 'Managing terminals',
   agentCanvas: 'Orchestrating AI agents',
   agentSandbox: 'Testing agent orchestration',
+  collaboration: 'Managing project collaboration',
 } as const
 
 export function useDiscordPresence() {
@@ -23,7 +25,7 @@ export function useDiscordPresence() {
     if (!hydrated) return
 
     if (!enabled) {
-      void clearDiscordPresence().catch(() => undefined)
+      void clearDiscordPresence().catch(withFallback('clearDiscordPresence', undefined))
       return
     }
 

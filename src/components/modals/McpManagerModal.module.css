@@ -187,7 +187,6 @@
   margin-bottom: 7px;
 }
 
-
 .agentCards {
   display: flex;
   flex-direction: column;
@@ -255,7 +254,6 @@
   align-items: center;
   gap: 5px;
 }
-
 
 .envTable {
   display: flex;

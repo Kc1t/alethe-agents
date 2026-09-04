@@ -1,8 +1,8 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import {
+  ClipboardCopy,
   FileCode,
   FileText,
-  ClipboardCopy,
   FolderOpen,
   GripVertical,
   Maximize2,
@@ -15,25 +15,24 @@ import {
 } from 'lucide-react'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
-import { pathSegments } from '../../lib/paths'
 import { useT } from '../../lib/i18n'
+import { pathSegments } from '../../lib/paths'
+import { expected } from '../../lib/resilience'
 import {
   listenFileChanged,
   openInFileExplorer,
   readTextFile,
-  writeTextFile,
-  writeClipboardText,
   unwatchFile,
   watchFile,
+  writeClipboardText,
+  writeTextFile,
 } from '../../lib/tauri'
+import { isLightTheme } from '../../lib/themes'
+import type { Terminal as TerminalEntry } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import type { Terminal as TerminalEntry } from '../../lib/types'
-import { MarkdownRenderer } from './MarkdownRenderer'
 import styles from './MarkdownPane.module.css'
-import { isLightTheme } from '../../lib/themes'
-
-                                                                         
+import { MarkdownRenderer } from './MarkdownRenderer'
 
 const markdownPaneScrollPositions = new Map<string, number>()
 
@@ -126,26 +125,26 @@ export const MarkdownPane = memo(function MarkdownPane({
     }
   }
 
-                                                                         
   useEffect(() => {
     if (!filePath) return
     editingRef.current = false
     setEditing(false)
     void reload()
-    void watchFile(filePath).catch(() => {})
+    void watchFile(filePath).catch(expected('watch_file_failed'))
     const unlisten = listenFileChanged((changed) => {
       if (changed === filePath) void reload()
     })
     return () => {
-      void unwatchFile(filePath).catch(() => {})
-      void unlisten.then((fn) => fn()).catch(() => {})
+      void unwatchFile(filePath).catch(expected('unwatch_file_failed'))
+      void unlisten.then((fn) => fn()).catch(expected('fn_failed'))
     }
   }, [filePath, reload])
 
   useEffect(() => {
     if (!filePath || content === null) return
     const frame = window.requestAnimationFrame(() => {
-      if (scrollRef.current) scrollRef.current.scrollTop = markdownPaneScrollPositions.get(filePath) ?? 0
+      if (scrollRef.current)
+        scrollRef.current.scrollTop = markdownPaneScrollPositions.get(filePath) ?? 0
     })
     return () => window.cancelAnimationFrame(frame)
   }, [content, filePath])
@@ -157,7 +156,6 @@ export const MarkdownPane = memo(function MarkdownPane({
     paneRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
   }, [focusReq, terminal.id])
 
-                                                                              
   const onDelete = () => {
     if (window.confirm(t('ui.markdown.confirmClose', { name: terminal.name }))) {
       deleteTerminal(projectId, terminal.id)
@@ -359,7 +357,9 @@ export const MarkdownPane = memo(function MarkdownPane({
           <div
             ref={scrollRef}
             className={styles.scroll}
-            onScroll={(event) => markdownPaneScrollPositions.set(filePath, event.currentTarget.scrollTop)}
+            onScroll={(event) =>
+              markdownPaneScrollPositions.set(filePath, event.currentTarget.scrollTop)
+            }
           >
             <pre className={styles.textView}>{content}</pre>
           </div>
@@ -367,7 +367,9 @@ export const MarkdownPane = memo(function MarkdownPane({
           <div
             ref={scrollRef}
             className={styles.scroll}
-            onScroll={(event) => markdownPaneScrollPositions.set(filePath, event.currentTarget.scrollTop)}
+            onScroll={(event) =>
+              markdownPaneScrollPositions.set(filePath, event.currentTarget.scrollTop)
+            }
           >
             <MarkdownRenderer content={content} dark={dark} />
           </div>

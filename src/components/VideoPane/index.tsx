@@ -1,13 +1,13 @@
+import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { FolderOpen, GripVertical, Maximize2, Minimize2, Trash2 } from 'lucide-react'
 import { memo, useRef } from 'react'
-import { useDraggable, useDroppable } from '@dnd-kit/core'
 
 import { useT } from '../../lib/i18n'
-import { openInFileExplorer } from '../../lib/tauri'
 import { pathSegments } from '../../lib/paths'
+import { openInFileExplorer } from '../../lib/tauri'
+import type { Terminal as TerminalEntry } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import type { Terminal as TerminalEntry } from '../../lib/types'
 import { VideoPreview } from '../VideoPreview'
 import styles from './VideoPane.module.css'
 

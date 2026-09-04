@@ -12,6 +12,10 @@ const CODEX_SYSTEM_MARKER: &str = ".codex-system-skills.marker";
 const MAX_TREE_DEPTH: usize = 4;
 const MAX_TREE_CHILDREN: usize = 100;
 
+/// Name of the cross-agent store the other roots link into. Not an agent: nothing reads it
+/// directly, so a skill only reaches an agent through a link pointing here.
+pub const SHARED_AGENT: &str = "shared";
+
 /// `shared` is the cross-agent store the other roots link into, not an agent of its own.
 const ROOTS: [(&str, &[&str]); 5] = [
     ("claude", &[".claude", "skills"]),
@@ -455,6 +459,255 @@ pub async fn skills_uninstall(agent: String, name: String) -> Result<SkillRemove
         .map_err(|error| format!("skills_uninstall:{error}"))?
 }
 
+
+/// Result of copying one skill into one target agent.
+///
+/// Mirrors `McpSyncOutcome` on purpose: the copy is per target and never all-or-nothing, so one
+/// agent that cannot take the skill does not stop the others, and the caller is told *why* rather
+/// than being handed a bare failure.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillSyncOutcome {
+    pub agent: String,
+    /// `ok` | `skipped` | `blocked` | `failed`
+    pub status: &'static str,
+    /// Set for `blocked` and `failed`: what stopped this target specifically.
+    pub reason: Option<String>,
+    pub path: Option<String>,
+}
+
+fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(to)?;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let source = entry.path();
+        let target = to.join(entry.file_name());
+        // Follows links rather than reproducing them: a copy that points back at the source agent's
+        // store would break the moment that skill is uninstalled there, and the whole point of
+        // copying is to give the target a store of its own.
+        if resolve(&source).is_dir() {
+            copy_tree(&resolve(&source), &target)?;
+        } else {
+            fs::copy(resolve(&source), &target)?;
+        }
+    }
+    Ok(())
+}
+
+/// Creates a directory link at `link` pointing at `target`.
+///
+/// On Windows a directory symlink needs either administrator rights or developer mode, while a
+/// junction needs neither — so the symlink is tried first for its portable semantics and a junction
+/// is the fallback. It deliberately never falls back to copying: a copy would report success while
+/// quietly producing the very thing the shared store exists to avoid, a second file free to drift.
+fn link_dir(target: &Path, link: &Path) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        if std::os::windows::fs::symlink_dir(target, link).is_ok() {
+            return Ok(());
+        }
+        let mut command = std::process::Command::new("cmd");
+        command.args(["/c", "mklink", "/J"]);
+        command.arg(link);
+        command.arg(target);
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        let output = command
+            .output()
+            .map_err(|error| format!("link_failed:{error}"))?;
+        if output.status.success() {
+            return Ok(());
+        }
+        return Err(format!(
+            "link_unsupported:{}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    #[cfg(not(windows))]
+    {
+        std::os::unix::fs::symlink(target, link).map_err(|error| format!("link_failed:{error}"))
+    }
+}
+
+/// Moves a skill into the shared store and leaves a link behind in the agent it came from.
+///
+/// This is what the shared store is for: one real copy, every agent pointing at it. Copying the
+/// files in without relinking the source would leave two independent directories free to drift,
+/// which is the situation the store exists to prevent.
+fn promote_to_shared(source: &Path, shared_root: &Path, name: &str) -> Result<PathBuf, String> {
+    let destination = shared_root.join(name);
+    if !destination.exists() {
+        fs::create_dir_all(shared_root).map_err(|error| format!("mkdir_failed:{error}"))?;
+        copy_tree(&resolve(source), &destination).map_err(|error| error.to_string())?;
+    }
+    // The source is replaced only once the shared copy is safely in place, so a failure here can
+    // never leave the skill existing nowhere.
+    if is_link(source) {
+        fs::remove_dir(source)
+            .or_else(|_| fs::remove_file(source))
+            .map_err(|error| format!("unlink_failed:{error}"))?;
+    } else if source.exists() {
+        fs::remove_dir_all(source).map_err(|error| format!("remove_failed:{error}"))?;
+    }
+    link_dir(&destination, source)?;
+    Ok(destination)
+}
+
+/// Copies a skill from one agent's store into others, making it available there.
+///
+/// For a skill, being in the agent's store *is* being installed — there is no registration step —
+/// so a successful copy takes effect the next time that agent starts. That is the same property
+/// MCP sync relies on, which is why both can promise "copy and it works".
+///
+/// The source is read through its resolved path, so copying a skill that is itself a link into the
+/// shared store copies the real contents rather than a dangling link.
+///
+/// `resolve_root` is injected rather than read from the environment so the rule can be tested
+/// against temporary directories without a process-wide variable that parallel tests would race on.
+fn sync_at(
+    resolve_root: impl Fn(&str) -> Option<PathBuf>,
+    from: &str,
+    targets: Vec<String>,
+    name: &str,
+    overwrite: bool,
+) -> Result<Vec<SkillSyncOutcome>, String> {
+    // The name reaches this from the frontend, and every use below joins it onto a root. Without
+    // this check `../../` would walk the copy — and the delete that precedes an overwrite — clean
+    // out of the skills store. `locate` guards the read and uninstall paths the same way.
+    validate_name(name)?;
+    let source_root = resolve_root(from).ok_or_else(|| "unknown_agent".to_string())?;
+    let source = find_skill_dir(&source_root, name).ok_or_else(|| "skill_not_found".to_string())?;
+    let resolved_source = resolve(&source);
+
+    Ok(targets
+        .into_iter()
+        .filter(|agent| agent != from)
+        .map(|agent| {
+            let Some(root) = resolve_root(&agent) else {
+                return SkillSyncOutcome {
+                    agent,
+                    status: "blocked",
+                    reason: Some("unknown_agent".to_string()),
+                    path: None,
+                };
+            };
+            let destination = root.join(name);
+
+            // The shared store is not an agent, so "copying" into it means something different:
+            // the skill is moved there and the agent it came from is left pointing at it. A plain
+            // copy would put a file in a folder no agent reads, which is worse than doing nothing
+            // because it reports success.
+            if agent == SHARED_AGENT {
+                return match promote_to_shared(&source, &root, name) {
+                    Ok(path) => SkillSyncOutcome {
+                        agent,
+                        status: "ok",
+                        reason: None,
+                        path: Some(display_path(&path)),
+                    },
+                    Err(reason) => SkillSyncOutcome {
+                        agent,
+                        status: "failed",
+                        reason: Some(reason),
+                        path: None,
+                    },
+                };
+            }
+
+            // Coming FROM the shared store, the agent gets a link rather than a duplicate — that is
+            // the whole point of the skill living there.
+            if from == SHARED_AGENT && !destination.exists() {
+                // The agent may never have had a skills folder; linking into a directory that does
+                // not exist fails with a path error that says nothing about the real cause.
+                if let Err(error) = fs::create_dir_all(&root) {
+                    return SkillSyncOutcome {
+                        agent,
+                        status: "failed",
+                        reason: Some(format!("mkdir_failed:{error}")),
+                        path: None,
+                    };
+                }
+                return match link_dir(&resolved_source, &destination) {
+                    Ok(()) => SkillSyncOutcome {
+                        agent,
+                        status: "ok",
+                        reason: None,
+                        path: Some(display_path(&destination)),
+                    },
+                    Err(reason) => SkillSyncOutcome {
+                        agent,
+                        status: "failed",
+                        reason: Some(reason),
+                        path: None,
+                    },
+                };
+            }
+
+            if destination.exists() && !overwrite {
+                // Never clobbered silently: the target may hold a different skill under the same
+                // name, and overwriting it would be indistinguishable from a successful copy.
+                return SkillSyncOutcome {
+                    agent,
+                    status: "skipped",
+                    reason: None,
+                    path: Some(display_path(&destination)),
+                };
+            }
+            if destination.exists() {
+                if let Err(error) = fs::remove_dir_all(&destination) {
+                    return SkillSyncOutcome {
+                        agent,
+                        status: "failed",
+                        reason: Some(error.to_string()),
+                        path: None,
+                    };
+                }
+            }
+            match copy_tree(&resolved_source, &destination) {
+                Ok(()) => SkillSyncOutcome {
+                    agent,
+                    status: "ok",
+                    reason: None,
+                    path: Some(display_path(&destination)),
+                },
+                Err(error) => SkillSyncOutcome {
+                    agent,
+                    status: "failed",
+                    reason: Some(error.to_string()),
+                    path: None,
+                },
+            }
+        })
+        .collect())
+}
+
+/// Locates a skill directory by name, including the bundled ones kept under `.system`.
+fn find_skill_dir(root: &Path, name: &str) -> Option<PathBuf> {
+    let direct = root.join(name);
+    if read_skill_file(&direct).is_some() {
+        return Some(direct);
+    }
+    let bundled = root.join(".system").join(name);
+    read_skill_file(&bundled).map(|_| bundled)
+}
+
+#[tauri::command]
+pub async fn skills_sync(
+    from: String,
+    to: Vec<String>,
+    name: String,
+    overwrite: Option<bool>,
+) -> Result<Vec<SkillSyncOutcome>, String> {
+    tokio::task::spawn_blocking(move || {
+        sync_at(root_for, &from, to, &name, overwrite.unwrap_or(false))
+    })
+        .await
+        .map_err(|error| format!("skills_sync: blocking task failed: {error}"))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -510,6 +763,245 @@ mod tests {
         assert_eq!(validate_name("..").unwrap_err(), "invalid_name");
         assert_eq!(validate_name("   ").unwrap_err(), "invalid_name");
         assert!(validate_name("promo-film").is_ok());
+    }
+
+    fn temp_roots(label: &str) -> (PathBuf, impl Fn(&str) -> Option<PathBuf> + Clone) {
+        let suffix = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("alethe-skills-{label}-{suffix}"));
+        fs::create_dir_all(&base).unwrap();
+        let roots = base.clone();
+        // Only the agents ROOTS knows about resolve, so an unknown name is reported rather than
+        // silently given a directory of its own.
+        let resolver = move |agent: &str| -> Option<PathBuf> {
+            ROOTS
+                .iter()
+                .find(|(name, _)| *name == agent)
+                .map(|(name, _)| roots.join(name))
+        };
+        (base, resolver)
+    }
+
+    #[test]
+    fn promoting_to_the_shared_store_leaves_the_source_pointing_at_it() {
+        // The bug this fixes: a plain copy into the shared store put a directory in a folder no
+        // agent reads, reported success, and changed nothing for any agent. Promoting has to move
+        // the skill AND relink the source, or the store has no effect at all.
+        let (base, resolve_root) = temp_roots("promote");
+        let source = base.join("codex").join("graphify");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("SKILL.md"), "---
+description: d
+---
+body").unwrap();
+
+        let outcomes =
+            sync_at(resolve_root, "codex", vec!["shared".to_string()], "graphify", false).unwrap();
+
+        assert_eq!(outcomes[0].status, "ok", "{:?}", outcomes[0].reason);
+        let shared = base.join("shared").join("graphify");
+        assert!(shared.join("SKILL.md").is_file(), "shared store holds the real copy");
+        // The agent still resolves the skill, but through the shared copy rather than its own.
+        assert!(source.join("SKILL.md").is_file(), "source still resolves");
+        assert!(is_link(&source), "source became a link into the shared store");
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn copying_out_of_the_shared_store_links_instead_of_duplicating() {
+        // A duplicate would drift from the shared copy on the next edit, which is exactly what the
+        // store exists to prevent.
+        let (base, resolve_root) = temp_roots("link-out");
+        let shared = base.join("shared").join("graphify");
+        fs::create_dir_all(&shared).unwrap();
+        fs::write(shared.join("SKILL.md"), "---
+description: d
+---
+").unwrap();
+
+        let outcomes =
+            sync_at(resolve_root, "shared", vec!["claude".to_string()], "graphify", false).unwrap();
+
+        assert_eq!(outcomes[0].status, "ok", "{:?}", outcomes[0].reason);
+        let linked = base.join("claude").join("graphify");
+        assert!(linked.join("SKILL.md").is_file());
+        assert!(is_link(&linked), "the agent points at the shared copy");
+
+        // Editing through the shared store is visible to the agent — the single-source property.
+        fs::write(shared.join("SKILL.md"), "edited").unwrap();
+        assert_eq!(fs::read_to_string(linked.join("SKILL.md")).unwrap(), "edited");
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn a_crafted_name_cannot_escape_the_root_when_copying() {
+        // The copy path joins the name onto both roots and deletes the destination before an
+        // overwrite, so an unchecked `../../` here would be destructive, not just a bad read.
+        let (base, resolve_root) = temp_roots("copy-traversal");
+
+        let error = sync_at(
+            resolve_root,
+            "codex",
+            vec!["claude".to_string()],
+            "../../escape",
+            true,
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "invalid_name");
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn copying_a_skill_makes_it_present_in_the_target_store() {
+        // For a skill, being in the agent's store IS being installed — no registration step — which
+        // is what lets the copy promise "and it works".
+        let (base, resolve_root) = temp_roots("copy-ok");
+        let source = base.join("codex").join("graphify");
+        fs::create_dir_all(source.join("scripts")).unwrap();
+        fs::write(source.join("SKILL.md"), "---
+description: d
+---
+body").unwrap();
+        fs::write(source.join("scripts").join("run.py"), "print(1)").unwrap();
+
+        let outcomes =
+            sync_at(resolve_root, "codex", vec!["claude".to_string()], "graphify", false).unwrap();
+
+        assert_eq!(outcomes.len(), 1);
+        assert_eq!(outcomes[0].status, "ok");
+        let copied = base.join("claude").join("graphify");
+        assert!(copied.join("SKILL.md").is_file());
+        // The whole tree travels, not just the manifest: a skill whose scripts were left behind is
+        // present and broken, which is worse than absent.
+        assert!(copied.join("scripts").join("run.py").is_file());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn an_existing_skill_at_the_target_is_skipped_not_overwritten() {
+        // The target may hold a different skill under the same name; replacing it silently would be
+        // indistinguishable from a successful copy.
+        let (base, resolve_root) = temp_roots("copy-skip");
+        let source = base.join("codex").join("dup");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("SKILL.md"), "---
+description: new
+---
+").unwrap();
+        let existing = base.join("claude").join("dup");
+        fs::create_dir_all(&existing).unwrap();
+        fs::write(existing.join("SKILL.md"), "keep me").unwrap();
+
+        let outcomes =
+            sync_at(resolve_root, "codex", vec!["claude".to_string()], "dup", false).unwrap();
+
+        assert_eq!(outcomes[0].status, "skipped");
+        assert_eq!(fs::read_to_string(existing.join("SKILL.md")).unwrap(), "keep me");
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn overwrite_replaces_the_target_instead_of_merging_into_it() {
+        // Copying over a skill must not leave files from the old one behind: a stale script the new
+        // skill never mentions would still be there for the agent to find.
+        let (base, resolve_root) = temp_roots("copy-overwrite");
+        let source = base.join("codex").join("dup");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("SKILL.md"), "---
+description: new
+---
+").unwrap();
+        let existing = base.join("claude").join("dup");
+        fs::create_dir_all(&existing).unwrap();
+        fs::write(existing.join("SKILL.md"), "old").unwrap();
+        fs::write(existing.join("leftover.py"), "stale").unwrap();
+
+        let outcomes =
+            sync_at(resolve_root, "codex", vec!["claude".to_string()], "dup", true).unwrap();
+
+        assert_eq!(outcomes[0].status, "ok");
+        assert!(fs::read_to_string(existing.join("SKILL.md")).unwrap().contains("new"));
+        assert!(!existing.join("leftover.py").exists());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn one_bad_target_does_not_stop_the_others() {
+        // Per-target outcomes, like MCP sync: an agent that cannot take the skill is reported and
+        // the rest still receive it.
+        let (base, resolve_root) = temp_roots("copy-partial");
+        let source = base.join("codex").join("s");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("SKILL.md"), "---
+description: d
+---
+").unwrap();
+
+        let outcomes = sync_at(
+            resolve_root,
+            "codex",
+            vec!["claude".to_string(), "nope".to_string()],
+            "s",
+            false,
+        )
+        .unwrap();
+
+        let claude = outcomes.iter().find(|o| o.agent == "claude").unwrap();
+        let unknown = outcomes.iter().find(|o| o.agent == "nope").unwrap();
+        assert_eq!(claude.status, "ok");
+        assert_eq!(unknown.status, "blocked");
+        assert_eq!(unknown.reason.as_deref(), Some("unknown_agent"));
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn copying_to_the_source_agent_is_not_attempted() {
+        let (base, resolve_root) = temp_roots("copy-self");
+        let source = base.join("codex").join("s");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("SKILL.md"), "---
+description: d
+---
+").unwrap();
+
+        let outcomes =
+            sync_at(resolve_root, "codex", vec!["codex".to_string()], "s", false).unwrap();
+
+        assert!(outcomes.is_empty());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn a_bundled_skill_can_be_copied_out_of_the_system_folder() {
+        // The native ones live under `.system`; without looking there, copying a bundled skill
+        // would report "not found" for a skill the panel is showing right now.
+        let (base, resolve_root) = temp_roots("copy-bundled");
+        let source = base.join("codex").join(".system").join("skill-installer");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("SKILL.md"), "---
+description: d
+---
+").unwrap();
+
+        let outcomes = sync_at(
+            resolve_root,
+            "codex",
+            vec!["claude".to_string()],
+            "skill-installer",
+            false,
+        )
+        .unwrap();
+
+        assert_eq!(outcomes[0].status, "ok");
+        assert!(base
+            .join("claude")
+            .join("skill-installer")
+            .join("SKILL.md")
+            .is_file());
+        fs::remove_dir_all(base).unwrap();
     }
 
     #[test]

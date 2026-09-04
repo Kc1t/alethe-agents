@@ -19,6 +19,7 @@
 }
 
 .sidebarTab {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -36,8 +37,32 @@
   cursor: pointer;
 }
 
-.sidebarTab span {
+.sidebarTab > span:not(.gitBadge) {
   display: none;
+}
+
+.gitBadge {
+  position: absolute;
+  bottom: -2px;
+  right: -4px;
+  min-width: 12px;
+  height: 12px;
+  padding: 0 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--agent-antigravity, #3b82f6);
+  color: #ffffff;
+  font-family: var(--font-sans);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 9999px;
+  pointer-events: none;
+  border: 1.5px solid var(--bg);
+  box-sizing: content-box;
+  z-index: 2;
+  letter-spacing: -0.02em;
 }
 
 .sidebarTab:hover {
@@ -422,7 +447,6 @@
   padding: 5px 8px 0;
   overflow-x: auto;
   border-bottom: 1px solid var(--border);
-  scrollbar-width: thin;
 }
 
 .readmeTab {
@@ -505,89 +529,6 @@
   overflow-wrap: anywhere;
   font-size: 11px;
   line-height: 1.4;
-}
-
-.gsdPanel {
-  min-height: 0;
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px 6px 18px;
-}
-
-.gsdList {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.gsdRow {
-  min-height: 34px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 5px 6px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  color: var(--fg);
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-}
-
-.gsdRow:hover {
-  background: var(--panel-hover);
-  border-color: var(--border);
-}
-
-.gsdRowState {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-}
-
-.gsdIdleDot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--status-idle);
-}
-
-.gsdErrorDot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--status-offline);
-}
-
-.gsdRowBody {
-  min-width: 0;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.gsdRowName {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.gsdRowMeta {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--fg-faint);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
 }
 
 .cleanRedundantAction {

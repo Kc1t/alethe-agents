@@ -7,9 +7,9 @@ import {
   githubSyncPull,
   githubSyncPush,
   githubSyncSetToken,
+  type GithubSyncStatus,
   githubSyncStatus,
   openInBrowser,
-  type GithubSyncStatus,
 } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -22,8 +22,6 @@ const CREATE_TOKEN_URL =
 
 type Busy = null | 'connect' | 'push' | 'pull' | 'logout'
 
-                                                                            
-                                                         
 const KNOWN_ERRORS = new Set([
   'empty_token',
   'invalid_token',
@@ -120,7 +118,7 @@ export function SyncModal() {
       const next = await githubSyncPull()
       setStatus(next)
       // Regrava projects.json/activity-stats.json em disco → re-hidrata o store
-                                          
+
       await hydrate()
       setNotice(t('sync.github.pullDone'))
     } catch (e) {

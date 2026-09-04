@@ -179,12 +179,41 @@ pub(crate) fn merge_prepare_inner(
         &root,
         &["worktree", "add", "-b", &branch, &env_arg, &target],
     )?;
-    let merge = git_command(&env, &["merge", "--no-commit", "--no-ff", &source])?;
+
+    // From here on, any failure must tear the freshly created worktree back
+    // down. Left alone, it becomes an orphan: not reported to the user as a
+    // conflict, not cleaned up, and an obstacle the next merge attempt trips
+    // over (its directory still exists, its branch name is still taken).
+    // `merge_analyze`, the read-only trial, always cleans up after itself;
+    // this one used to only clean up on the happy path.
+    match merge_prepare_body(&root, &env, &id, source, target, project_id, branch.clone()) {
+        Ok(result) => Ok(result),
+        Err(error) => {
+            crate::best_effort!(git_command(&env, &["merge", "--abort"]), "git_cleanup_target_already_gone");
+            crate::best_effort!(git_command(&root, &["worktree", "remove", "--force", &env_arg]), "git_cleanup_target_already_gone");
+            crate::best_effort!(git_command(&root, &["branch", "-D", &branch]), "git_cleanup_target_already_gone");
+            crate::best_effort!(std::fs::remove_file(meta_path(&root, &id)), "file_already_absent");
+            Err(error)
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn merge_prepare_body(
+    root: &Path,
+    env: &Path,
+    id: &str,
+    source: String,
+    target: String,
+    project_id: Option<String>,
+    branch: String,
+) -> Result<ConflictEnv, String> {
+    let merge = git_command(env, &["merge", "--no-commit", "--no-ff", &source])?;
     let clean = merge.status.success();
     let conflicts: Vec<ConflictFile> = if clean {
         Vec::new()
     } else {
-        unmerged_files(&env)?
+        unmerged_files(env)?
             .into_iter()
             .map(|path| ConflictFile {
                 class: classify_path(&path),
@@ -194,14 +223,14 @@ pub(crate) fn merge_prepare_inner(
     };
 
     let meta = MergeMeta {
-        id: id.clone(),
+        id: id.to_string(),
         source,
         target,
         project_id,
         conflict_paths: conflicts.iter().map(|c| c.path.clone()).collect(),
     };
     let meta_body = serde_json::to_string_pretty(&meta).map_err(|e| e.to_string())?;
-    std::fs::write(meta_path(&root, &id), meta_body).map_err(|e| format!("write_failed:{e}"))?;
+    std::fs::write(meta_path(root, id), meta_body).map_err(|e| format!("write_failed:{e}"))?;
 
     let prompt_path = if clean {
         None
@@ -226,13 +255,13 @@ pub(crate) fn merge_prepare_inner(
     }
 
     Ok(ConflictEnv {
-        id,
-        // `env` comes from a `root` that's already canonicalized (`\\?\`
-        // prefix on Windows) — without stripping it here, the frontend uses
+        id: id.to_string(),
+        // `env` comes from a `root` that's already canonicalized (a `\\?\`
+        // prefix on Windows) - without stripping it here, the frontend uses
         // this `path` as the cwd to spawn the conflict resolution agent, and
         // not every CLI tolerates that prefix as a working directory (same
         // root cause fixed in `worktrees::worktree_provision`/`worktree_list`).
-        path: git_arg(&env),
+        path: git_arg(env),
         branch,
         clean,
         conflicts,
@@ -326,7 +355,7 @@ fn validate_and_stage(
     // existed) — it deleted the file on the first periodic poll (every 7s,
     // see `beginResolvingWatch` in the frontend) even while the agent was
     // still typing/confirming the initial prompt.
-    let _ = std::fs::remove_file(env.join(PROMPT_FILE));
+    crate::best_effort!(std::fs::remove_file(env.join(PROMPT_FILE)), "file_already_absent");
 
     checked_output(env, &["add", "-A"])?;
     if !pending.is_empty() {
@@ -578,22 +607,14 @@ pub(crate) fn merge_finalize_inner(
 
     // Teardown: worktree + temporary branch + metadata.
     let env_arg = git_arg(&env);
-    let _ = git_command(&root, &["worktree", "remove", "--force", &env_arg]);
-    let _ = git_command(&root, &["branch", "-d", &branch]);
-    let _ = std::fs::remove_file(meta_path(&root, &env_id));
+    crate::best_effort!(git_command(&root, &["worktree", "remove", "--force", &env_arg]), "git_cleanup_target_already_gone");
+    crate::best_effort!(git_command(&root, &["branch", "-d", &branch]), "git_cleanup_target_already_gone");
+    crate::best_effort!(std::fs::remove_file(meta_path(&root, &env_id)), "file_already_absent");
 
     emit(
         "MergeMerged",
         &meta,
         serde_json::json!({ "source": meta.source, "target": meta.target }),
-    );
-
-    // The graph is versioned knowledge: automatic post-integration snapshot
-    // (best-effort — with no graph in the repo, it's simply skipped). Ties
-    // RFC-004 ↔ RFC-006 together.
-    let _ = crate::graphify::graphify_snapshot_inner(
-        root.to_string_lossy().into_owned(),
-        meta.project_id.clone(),
     );
 
     Ok(MergeOutcome {
@@ -712,13 +733,33 @@ pub(crate) fn merge_rebase_onto_target_inner(
             })
             .collect();
         let prompt_path = env.join(PROMPT_FILE);
-        let _ = std::fs::write(&prompt_path, build_prompt(&meta, &conflicts));
+        // The prompt file is what the agent reads to know what to resolve. Missing, the
+        // environment exists and the agent has nothing to work from.
+        if let Err(error) = std::fs::write(&prompt_path, build_prompt(&meta, &conflicts)) {
+            crate::decide!(
+                target: "merge.conflict",
+                attempted = "write_prompt",
+                outcome = Failed,
+                because = "prompt_write_failed",
+                rule = "merge_env.has_a_prompt",
+                evidence = { error = %error },
+            );
+        }
         let updated_meta = MergeMeta {
             conflict_paths: conflicts.iter().map(|c| c.path.clone()).collect(),
             ..meta
         };
         if let Ok(body) = serde_json::to_string_pretty(&updated_meta) {
-            let _ = std::fs::write(meta_path(&root, &env_id), body);
+            if let Err(error) = std::fs::write(meta_path(&root, &env_id), body) {
+                crate::decide!(
+                    target: "merge.conflict",
+                    attempted = "write_meta",
+                    outcome = Failed,
+                    because = "meta_write_failed",
+                    rule = "merge_env.tracked_by_meta_file",
+                    evidence = { env_id = %env_id, error = %error },
+                );
+            }
         }
         let paths = conflicts
             .iter()
@@ -738,7 +779,7 @@ pub(crate) fn merge_rebase_onto_target_inner(
     let stderr = String::from_utf8_lossy(&reconcile.stderr)
         .trim()
         .to_string();
-    let _ = git_command(&env, &["merge", "--abort"]);
+    crate::best_effort!(git_command(&env, &["merge", "--abort"]), "git_cleanup_target_already_gone");
     Ok(MergeOutcome {
         merged: false,
         stage: "rebase_failed".to_string(),
@@ -799,7 +840,7 @@ pub(crate) fn merge_force_cleanup_inner(
     };
 
     let pruned = checked_output(&root, &["worktree", "prune"]).is_ok();
-    let _ = std::fs::remove_file(meta_path(&root, &env_id));
+    crate::best_effort!(std::fs::remove_file(meta_path(&root, &env_id)), "file_already_absent");
 
     Ok(ForceCleanupResult { deleted, pruned })
 }
@@ -819,9 +860,9 @@ pub(crate) fn merge_abort_inner(repo: String, env_id: String) -> Result<(), Stri
     let meta = read_meta(&root, &env_id).ok();
 
     let env_arg = git_arg(&env);
-    let _ = git_command(&root, &["worktree", "remove", "--force", &env_arg]);
-    let _ = git_command(&root, &["branch", "-D", &format!("alethe/merge-{env_id}")]);
-    let _ = std::fs::remove_file(meta_path(&root, &env_id));
+    crate::best_effort!(git_command(&root, &["worktree", "remove", "--force", &env_arg]), "git_cleanup_target_already_gone");
+    crate::best_effort!(git_command(&root, &["branch", "-D", &format!("alethe/merge-{env_id}")]), "git_cleanup_target_already_gone");
+    crate::best_effort!(std::fs::remove_file(meta_path(&root, &env_id)), "file_already_absent");
 
     if let Some(meta) = meta {
         emit("MergeAborted", &meta, serde_json::json!({}));

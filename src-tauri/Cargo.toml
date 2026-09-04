@@ -14,6 +14,14 @@ default-run = "alethe"
 name = "alethe_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "alethe"
+path = "src/main.rs"
+
+[[bin]]
+name = "alethe-server"
+path = "src/server_main_bin.rs"
+
 [lints.rust]
 # ghostty_linked é um cfg custom (ligado só quando o backend nativo Ghostty é
 # linkado no build, ver build.rs) — sem isso o compilador avisa "unexpected
@@ -38,16 +46,24 @@ tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "net", "time", "process", "io-util", "macros"] }
+tauri-plugin-wdio = "1.3.0"
+tauri-plugin-wdio-webdriver = "1.3.0"
+# Structured decision records (`src/obs.rs`). `tracing` itself is already in the lock file via
+# tower-http's `trace` feature, so only the subscriber is genuinely new.
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = false, features = ["registry", "env-filter", "std"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "net", "time", "process", "io-util", "macros", "signal"] }
 tungstenite = { version = "0.26", default-features = false, features = ["handshake"] }
-tokio-tungstenite = "0.26"
+# Shared loopback core used by both the embedded Desktop runtime and the
+# standalone Web runtime. Tauri IPC remains the fallback for native-only APIs.
+axum = { version = "0.7", features = ["ws", "json"] }
+tower-http = { version = "0.5", features = ["cors", "fs", "catch-panic", "trace"] }
 futures-util = "0.3"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 which = "6"
 zip = "0.6"
 sysinfo = "0.31"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
-sha2 = "0.10"
 hex = "0.4"
 cpal = "0.15"
 # On-device STT (Parakeet / Whisper / …). Build script downloads prebuilt libs when unset.
@@ -60,8 +76,23 @@ keyring = { version = "3", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["std"] }
 dirs-next = "2"
 base64 = "0.22"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+# Key-agreement keypair for encrypted peer sessions (ADR-0003); shares curve25519-dalek
+# with ed25519-dalek above so no duplicate curve implementation is pulled in.
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+rand_core = { version = "0.6", features = ["getrandom"] }
+sha2 = "0.10"
+# RS256 verification of Google ID tokens against Google's published JWKS (ADR account
+# routing depends on a locally verified `sub` claim; see sync_mesh.rs).
+jsonwebtoken = "9"
+# HKDF-SHA256 session-key derivation from the X25519 shared secret (ADR-0003).
+hkdf = "0.12"
+# AEAD frame encryption for the peer transport (ADR-0005).
+chacha20poly1305 = "0.10"
+tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
 image = { version = "0.25", default-features = false, features = ["png", "bmp"] }
 urlencoding = "2"
+url = "2"
 dotenvy = "0.15"
 discord-rich-presence = "1.1.0"
 notify = "6"
@@ -87,6 +118,11 @@ objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
 # Backend do Keychain (onde o Claude Code guarda o token OAuth no macOS).
 keyring = { version = "3", default-features = false, features = ["apple-native"] }
+# Backend de clipboard (texto + imagem) do macOS — mod macos_clipboard em
+# diagnostics.rs. Linux/BSD usa um backend diferente (wl-paste/wl-copy/xclip
+# via linha de comando, cobre paths de arquivo que o arboard não suporta);
+# Windows tem a implementação Win32 nativa (mod windows_clipboard).
+arboard = { version = "3", default-features = false, features = ["image-data"] }
 
 # Dependências só-Windows (registro + Win32). Em Linux/macOS o `winreg` nem
 # compila, então ficam atrás de `cfg(windows)`; o código que as usa já é gated.
@@ -96,6 +132,7 @@ winreg = "0.52"
 keyring = { version = "3", default-features = false, features = ["windows-native"] }
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
+  "Win32_Storage_FileSystem",
   "Win32_System_DataExchange",
   "Win32_System_JobObjects",
   "Win32_System_Memory",
@@ -119,6 +156,14 @@ webkit2gtk = { version = "2.0.1", features = ["v2_40"] }
 # app inteiro durante uma sessão de HMR. Release segue abort (binário menor).
 [profile.dev]
 panic = "unwind"
+# Dependencies are compiled once and then only linked; their debug info costs disk and link time on
+# every incremental rebuild while adding nothing to a backtrace through this crate's own code.
+debug = false
+
+[profile.dev.package.alethe]
+# Keep our own code debuggable. `line-tables-only` is enough for a backtrace with file and line
+# numbers, which is what the app's diagnostics actually use, without full variable info.
+debug = "line-tables-only"
 
 [profile.release]
 panic = "abort"

@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "alethe-rendezvous",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-21",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ACCOUNT_ROUTES",
+        "class_name": "AccountRoute",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["AccountRoute"],
+    },
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.05,
+  },
+  "env": {
+    "staging": {
+      "name": "alethe-rendezvous-staging",
+    },
+    "production": {
+      "name": "alethe-rendezvous-production",
+    },
+  },
+}
