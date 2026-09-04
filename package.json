@@ -28,6 +28,7 @@
     "test": "node scripts/run-seq.mjs \"vitest run\" \"npm run test:scripts\"",
     "test:scripts": "node --test \"scripts/*.test.mjs\" \"scripts/tui/**/*.test.mjs\"",
     "test:e2e:build": "node scripts/run-seq.mjs \"npm run build\" \"cross-env CARGO_TARGET_DIR=target-e2e tauri build --debug --no-bundle\"",
+    "test:e2e:probe": "node scripts/e2e-launch-probe.mjs",
     "test:e2e": "wdio run e2e/wdio.conf.ts",
     "test:e2e:git-pipeline": "wdio run e2e/wdio.conf.ts --spec e2e/specs/git-pipeline.spec.ts",
     "test:e2e:sync:build": "node scripts/run-seq.mjs \"npm run build\" \"cross-env CARGO_TARGET_DIR=target-e2e cargo build --manifest-path src-tauri/Cargo.toml --bin alethe --bin alethe-server\" \"cross-env CARGO_TARGET_DIR=target-e2e tauri build --debug --no-bundle\"",

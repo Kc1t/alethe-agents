@@ -133,6 +133,14 @@ jobs:
       - name: Build debug app (no bundle)
         run: npm run test:e2e:build
 
+      # Before the suite, because the suite cannot tell these apart. WebDriver reports
+      # `DevToolsActivePort file doesn't exist` both when the app crashed on startup and when the
+      # driver simply failed to attach, and the app's own output never reaches this log — the driver
+      # owns the process. The probe launches the same binary with the same isolation environment and
+      # says which of the two happened, with the app's output attached.
+      - name: Probe that the app can start at all
+        run: node scripts/e2e-launch-probe.mjs
+
       - name: Run E2E suite
         run: npm run test:e2e
 
