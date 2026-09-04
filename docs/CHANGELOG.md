@@ -10,7 +10,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Não lançado]
 
-### Fixed
+### Changed
+
+- **Direct project transfers are roughly thirty times faster.** The peer-to-peer link sent one 1.2 KB piece and waited for its acknowledgement before sending the next, which made speed depend on distance rather than bandwidth: about 30 KB/s over a typical internet connection, so a 100 MB project took the better part of an hour. Up to 32 pieces are now in flight at once, keeping the link busy while acknowledgements come back.
+
 
 - **Sharing a project works even when a direct connection is impossible.** It went out over the peer-to-peer path or not at all, so behind the kind of network that defeats hole punching — mobile and carrier-grade NAT, which the code already acknowledged defeats WebRTC and Tailscale the same way — sharing a project could not happen. Not slowly: never. Transfers now fall back to the relay the way chat always has, cut into pieces small enough for it and sealed for the recipient. The relay path is slower and says so, rather than looking the same as a direct transfer.
 

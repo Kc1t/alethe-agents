@@ -70,6 +70,18 @@ const RECV_POLL_TIMEOUT: Duration = Duration::from_secs(1);
 /// overhead), so a single reliable-stream chunk never needs IP-level fragmentation.
 const MAX_CHUNK_BYTES: usize = 1200;
 
+/// How many unacknowledged chunks may be in flight at once.
+///
+/// This module used to send one and wait for its ACK, which makes throughput a function of distance
+/// rather than of bandwidth: 1 200 bytes per round trip is about 30 KB/s at a 40 ms RTT, so a 100 MB
+/// project took roughly an hour. With 32 in flight the sender keeps the link busy while ACKs come
+/// back, and throughput becomes bandwidth-bound in the ordinary case.
+///
+/// 32 rather than something larger because this is Go-Back-N: a single loss retransmits the whole
+/// window, so the window is also the cost of a loss. 38 KB is a comfortable amount to resend and
+/// still enough to fill a typical consumer link at internet latencies.
+const SEND_WINDOW: usize = 32;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum P2pError {
     Stun,
@@ -674,14 +686,33 @@ impl ReliableUdpStream {
         }
     }
 
-    /// Acks and enqueues an inbound data packet seen while waiting on something else, so `read()`
-    /// can drain it later without another socket round-trip.
-    fn queue_inbound_data(&mut self, seq: u32, payload: Vec<u8>) -> std::io::Result<()> {
-        self.send_packet(PACKET_KIND_ACK, seq, &[])?;
-        if self.pending_data.len() < 256 {
-            self.pending_data.push_back((seq, payload));
+    /// Handles one inbound data packet, acknowledging it only if it is actually accepted.
+    ///
+    /// **An ACK means delivered.** That invariant is what lets the sender treat an ACK as covering
+    /// every earlier chunk, which is how a window works at all. The earlier code acknowledged every
+    /// data packet it saw and then dropped the out-of-order ones — harmless with a single chunk in
+    /// flight, since the only packet that could arrive was the expected one, and silent data loss
+    /// with a window: chunk 5 arriving before 4 would be acknowledged, discarded, and the sender
+    /// would move past 4 believing it had landed.
+    ///
+    /// A packet that is a duplicate of something already delivered is re-acknowledged, because that
+    /// means the previous ACK was lost and the sender is waiting on it. A packet from the future is
+    /// dropped in silence — acknowledging it is exactly the lie described above.
+    fn accept_inbound_data(&mut self, seq: u32, payload: Vec<u8>) -> std::io::Result<bool> {
+        if seq == self.recv_seq {
+            self.send_packet(PACKET_KIND_ACK, seq, &[])?;
+            if self.pending_data.len() < 256 {
+                self.pending_data.push_back((seq, payload));
+            }
+            self.recv_seq = self.recv_seq.wrapping_add(1);
+            return Ok(true);
         }
-        Ok(())
+        // Already delivered: `seq` sits behind the next expected one. Compared through wrapping
+        // subtraction so the sequence space can roll over without this misreading old as future.
+        if self.recv_seq.wrapping_sub(seq) <= u32::MAX / 2 {
+            self.send_packet(PACKET_KIND_ACK, seq, &[])?;
+        }
+        Ok(false)
     }
 
     /// Refreshes the NAT mapping opened by the punch. Unacknowledged and outside the ARQ on
@@ -704,21 +735,16 @@ impl ReliableUdpStream {
     /// getting stuck inside a long blocking read. Shares the same ACK/dedup/ordering logic as
     /// `Read::read` (via `pending_data`/`recv_seq`), just parameterized on the wait duration.
     fn poll_frame(&mut self, timeout: Duration) -> std::io::Result<Option<Vec<u8>>> {
-        let (seq, payload) = match self.pending_data.pop_front() {
-            Some(next) => next,
-            None => match self.recv_next(timeout)? {
-                Some((kind, seq, payload)) if kind == PACKET_KIND_DATA => {
-                    self.send_packet(PACKET_KIND_ACK, seq, &[])?;
-                    (seq, payload)
-                }
-                _ => return Ok(None),
-            },
-        };
-        if seq != self.recv_seq {
-            return Ok(None);
+        if let Some((_, payload)) = self.pending_data.pop_front() {
+            return Ok(Some(payload));
         }
-        self.recv_seq = self.recv_seq.wrapping_add(1);
-        Ok(Some(payload))
+        match self.recv_next(timeout)? {
+            Some((kind, seq, payload)) if kind == PACKET_KIND_DATA => {
+                self.accept_inbound_data(seq, payload)?;
+                Ok(self.pending_data.pop_front().map(|(_, payload)| payload))
+            }
+            _ => Ok(None),
+        }
     }
 
     fn recv_next(&self, timeout: Duration) -> std::io::Result<Option<(u8, u32, Vec<u8>)>> {
@@ -740,36 +766,77 @@ impl ReliableUdpStream {
 }
 
 impl Write for ReliableUdpStream {
+    /// Go-Back-N: up to [`SEND_WINDOW`] chunks in flight, retransmitting from the oldest
+    /// unacknowledged one when the timer expires.
+    ///
+    /// Go-Back-N rather than selective repeat because the receiver already behaves exactly like a
+    /// Go-Back-N receiver — it delivers strictly in order and drops anything ahead — so this is a
+    /// **sender-only** change. The packets on the wire are unchanged, which means a new sender and
+    /// an old one are interchangeable, and there is no version negotiation to get wrong.
+    ///
+    /// An ACK is treated as cumulative: acknowledging chunk *n* retires every chunk up to it. That
+    /// is sound only because `accept_inbound_data` acknowledges a packet solely when it is
+    /// delivered — see the invariant documented there, which had to be repaired for this to work.
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        for chunk in buf.chunks(MAX_CHUNK_BYTES) {
-            let seq = self.send_seq;
-            let mut acked = false;
-            for _ in 0..MAX_RETRANSMITS {
-                self.send_packet(PACKET_KIND_DATA, seq, chunk)?;
-                let deadline = Instant::now() + ACK_TIMEOUT;
-                while Instant::now() < deadline {
-                    let remaining = deadline.saturating_duration_since(Instant::now());
-                    if let Some((kind, packet_seq, payload)) = self.recv_next(remaining)? {
-                        if kind == PACKET_KIND_ACK && packet_seq == seq {
-                            acked = true;
-                            break;
-                        }
-                        // The peer sending concurrently while we wait for our own ACK: queue it
-                        // for `read()` instead of dropping it.
-                        if kind == PACKET_KIND_DATA {
-                            self.queue_inbound_data(packet_seq, payload)?;
-                        }
-                    }
-                }
-                if acked {
-                    break;
-                }
-            }
-            if !acked {
-                return Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "p2p_ack_timeout"));
-            }
-            self.send_seq = self.send_seq.wrapping_add(1);
+        let chunks: Vec<&[u8]> = buf.chunks(MAX_CHUNK_BYTES).collect();
+        if chunks.is_empty() {
+            return Ok(0);
         }
+        let base_seq = self.send_seq;
+        // Index, within `chunks`, of the oldest chunk not yet acknowledged and of the next one to
+        // put on the wire. `next - base` is what is in flight.
+        let mut base = 0usize;
+        let mut next = 0usize;
+        let mut retransmits = 0u32;
+        let mut timer = Instant::now();
+
+        while base < chunks.len() {
+            while next < chunks.len() && next - base < SEND_WINDOW {
+                let seq = base_seq.wrapping_add(next as u32);
+                self.send_packet(PACKET_KIND_DATA, seq, chunks[next])?;
+                next += 1;
+            }
+
+            let deadline = timer + ACK_TIMEOUT;
+            let mut advanced = false;
+            while Instant::now() < deadline {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                let Some((kind, packet_seq, payload)) = self.recv_next(remaining)? else {
+                    continue;
+                };
+                if kind == PACKET_KIND_ACK {
+                    // Wrapping subtraction so the sequence space can roll over mid-transfer; the
+                    // bounds check is what keeps a stale or bogus ACK from retiring anything.
+                    let index = packet_seq.wrapping_sub(base_seq) as usize;
+                    if index >= base && index < next {
+                        base = index + 1;
+                        advanced = true;
+                        retransmits = 0;
+                        timer = Instant::now();
+                        break;
+                    }
+                } else if kind == PACKET_KIND_DATA {
+                    // The peer sending while we wait for our own ACKs. Queue it for `read()`
+                    // instead of dropping it — the two directions share one socket.
+                    self.accept_inbound_data(packet_seq, payload)?;
+                }
+            }
+
+            if !advanced {
+                retransmits += 1;
+                if retransmits > MAX_RETRANSMITS {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "p2p_ack_timeout",
+                    ));
+                }
+                // Go back N: everything from the oldest unacknowledged chunk is sent again.
+                next = base;
+                timer = Instant::now();
+            }
+        }
+
+        self.send_seq = base_seq.wrapping_add(chunks.len() as u32);
         Ok(buf.len())
     }
 
@@ -800,30 +867,29 @@ impl Read for ReliableUdpStream {
                 }
                 // Bytes queued by a previous `write()` call while it waited for its own ACK take
                 // priority over the socket, since they already arrived and were already ACKed.
-                let (seq, payload) = match self.pending_data.pop_front() {
-                    Some(next) => next,
-                    None => {
-                        let remaining = deadline.saturating_duration_since(Instant::now());
-                        match self.recv_next(remaining.min(RECV_POLL_TIMEOUT))? {
-                            Some((kind, seq, payload)) if kind == PACKET_KIND_DATA => {
-                                self.send_packet(PACKET_KIND_ACK, seq, &[])?;
-                                (seq, payload)
-                            }
-                            _ => continue,
-                        }
-                    }
+                // Bytes queued by a previous call while it waited for its own ACKs take priority
+                // over the socket: they already arrived, in order, and were already acknowledged.
+                if let Some((_, payload)) = self.pending_data.pop_front() {
+                    self.read_buffer = payload;
+                    break;
+                }
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                let Some((kind, seq, payload)) = self.recv_next(remaining.min(RECV_POLL_TIMEOUT))?
+                else {
+                    continue;
                 };
-                if seq != self.recv_seq {
-                    // Out-of-order or a duplicate retransmit of an already-consumed chunk. It was
-                    // already ACKed (either just now or when it was first queued), which is what
-                    // lets the sender's stop-and-wait loop proceed; the payload itself is dropped
-                    // rather than reordered, matching the ordering guarantee `sync_transport.rs`'s
-                    // framing already assumes.
+                if kind != PACKET_KIND_DATA {
                     continue;
                 }
-                self.recv_seq = self.recv_seq.wrapping_add(1);
-                self.read_buffer = payload;
-                break;
+                // Ordering, acknowledgement and duplicate handling all live in one place now.
+                // Anything out of order is dropped without an ACK, which is what makes the
+                // sender's window correct — see `accept_inbound_data`.
+                if self.accept_inbound_data(seq, payload)? {
+                    if let Some((_, payload)) = self.pending_data.pop_front() {
+                        self.read_buffer = payload;
+                        break;
+                    }
+                }
             }
         }
         let available = self.read_buffer.len() - self.read_cursor;
@@ -1320,6 +1386,130 @@ mod tests {
         let read = receiver.read(&mut buffer).unwrap();
         assert_eq!(&buffer[..read], b"hello over udp");
         handle.join().unwrap();
+    }
+
+    #[test]
+    fn a_payload_far_larger_than_the_window_round_trips_intact() {
+        // Go-Back-N has to slide, not just fill once. Five windows' worth exercises the slide, the
+        // wrap of the in-flight accounting, and reassembly on the far side.
+        let (mut sender, mut receiver) = loopback_pair();
+        let payload: Vec<u8> = (0..(MAX_CHUNK_BYTES * SEND_WINDOW * 5 + 137))
+            .map(|index| (index % 251) as u8)
+            .collect();
+        let expected = payload.clone();
+
+        let handle = std::thread::spawn(move || {
+            sender.write_all(&payload).unwrap();
+            sender
+        });
+
+        let mut received = Vec::new();
+        let mut buffer = vec![0_u8; MAX_CHUNK_BYTES];
+        while received.len() < expected.len() {
+            let read = receiver.read(&mut buffer).unwrap();
+            assert!(read > 0, "the stream ended before the payload did");
+            received.extend_from_slice(&buffer[..read]);
+        }
+        handle.join().unwrap();
+        assert_eq!(received, expected);
+    }
+
+    #[test]
+    fn the_sender_actually_fills_the_window_instead_of_waiting_for_each_chunk() {
+        // The point of the change, stated as a property rather than a timing measurement: with a
+        // window, several data packets are on the wire before any ACK is sent. A stop-and-wait
+        // sender can never put more than one there, so counting what arrives before the first ACK
+        // distinguishes the two without depending on how fast the machine is.
+        let sender_socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let peer_socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let sender_addr = sender_socket.local_addr().unwrap();
+        let peer_addr = peer_socket.local_addr().unwrap();
+        sender_socket.connect(peer_addr).unwrap();
+        peer_socket.connect(sender_addr).unwrap();
+
+        let mut sender = ReliableUdpStream::new(sender_socket);
+        let payload = vec![0xA5_u8; MAX_CHUNK_BYTES * SEND_WINDOW];
+        let handle = std::thread::spawn(move || {
+            // Ignore the outcome: this side never acknowledges, so the write is expected to give
+            // up. What is under test is how many packets it managed to put on the wire first.
+            let _ = sender.write_all(&payload);
+        });
+
+        peer_socket
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let mut seen = 0;
+        let mut buffer = [0_u8; MAX_CHUNK_BYTES + 5];
+        while seen < SEND_WINDOW {
+            match peer_socket.recv(&mut buffer) {
+                Ok(length) if length >= 5 && buffer[0] == PACKET_KIND_DATA => seen += 1,
+                Ok(_) => continue,
+                Err(_) => break,
+            }
+        }
+        assert_eq!(
+            seen, SEND_WINDOW,
+            "only {seen} chunks reached the wire unacknowledged; the window is not being filled"
+        );
+        drop(peer_socket);
+        let _ = handle.join();
+    }
+
+    #[test]
+    fn a_packet_from_the_future_is_not_acknowledged() {
+        // The bug this change had to repair first. The receiver used to acknowledge every data
+        // packet and then discard the ones it could not deliver — harmless with one chunk in
+        // flight, and silent data loss with a window, because the sender treats an ACK as covering
+        // every earlier chunk. Chunk 5 arriving before 4 would have been acknowledged, dropped, and
+        // 4 would have been skipped as delivered.
+        let (mut receiver, peer) = loopback_pair();
+        let socket = peer.socket;
+        socket.set_read_timeout(Some(Duration::from_millis(300))).unwrap();
+
+        // Sequence 3 while the receiver is still waiting for 0.
+        let mut packet = vec![PACKET_KIND_DATA];
+        packet.extend_from_slice(&3_u32.to_be_bytes());
+        packet.extend_from_slice(b"from the future");
+        socket.send(&packet).unwrap();
+
+        assert!(
+            receiver.poll_frame(Duration::from_millis(200)).unwrap().is_none(),
+            "an out-of-order packet must not be delivered"
+        );
+        let mut buffer = [0_u8; 64];
+        assert!(
+            socket.recv(&mut buffer).is_err(),
+            "an out-of-order packet must not be acknowledged either"
+        );
+    }
+
+    #[test]
+    fn a_duplicate_of_a_delivered_chunk_is_acknowledged_again() {
+        // The other half of the same rule. A duplicate means the sender never saw the first ACK and
+        // is still waiting; staying silent would stall the transfer until it gave up.
+        let (mut receiver, peer) = loopback_pair();
+        let socket = peer.socket;
+        socket.set_read_timeout(Some(Duration::from_millis(500))).unwrap();
+
+        let mut first = vec![PACKET_KIND_DATA];
+        first.extend_from_slice(&0_u32.to_be_bytes());
+        first.extend_from_slice(b"hello");
+        socket.send(&first).unwrap();
+        assert_eq!(
+            receiver.poll_frame(Duration::from_millis(500)).unwrap(),
+            Some(b"hello".to_vec())
+        );
+        let mut buffer = [0_u8; 64];
+        socket.recv(&mut buffer).expect("the first delivery is acknowledged");
+
+        socket.send(&first).unwrap();
+        assert!(
+            receiver.poll_frame(Duration::from_millis(300)).unwrap().is_none(),
+            "a duplicate must not be delivered twice"
+        );
+        let length = socket.recv(&mut buffer).expect("but it is acknowledged again");
+        assert_eq!(buffer[0], PACKET_KIND_ACK);
+        assert_eq!(length, 5);
     }
 
     fn loopback_pair() -> (ReliableUdpStream, ReliableUdpStream) {
