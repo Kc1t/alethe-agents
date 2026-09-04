@@ -131,6 +131,35 @@ the code (e.g. it still described chat as "local to this install only, no cross-
 delivery" after cross-device chat delivery had shipped). For what actually exists today,
 prefer `docs/CHANGELOG.md` "Unreleased"/recent versions over anything in the archive.
 
+### Transfer performance — what is left, in order
+
+Ranked by measured gain over risk. The comparison these come from is a reading of the Syncthing
+source alongside ours; the constants named are from both codebases, not estimates.
+
+1. **LZ4 compression per frame** (`sync_transport.rs`) — Syncthing compresses above 128 bytes and
+   keeps the result only when it actually shrank (`errNotCompressible`). For source code, which is
+   what Alethe moves, that is usually 2–4× for free. Best effort-to-return ratio left: one
+   dependency, a per-frame decision, no protocol change.
+
+2. **Local network discovery** (new module) — Syncthing announces itself over UDP broadcast on port
+   21027 and finds a peer with no server, no NAT and no internet. Two machines on the same desk
+   still talk through the rendezvous today. This removes NAT entirely for that case and drops the
+   RTT from ~40 ms to ~1 ms, which multiplies directly against the send window that just landed.
+
+3. **Adaptive block size** (`sync_manifest.rs`) — non-text content uses a fixed `CHUNK_SIZE_BYTES`
+   of 4 MiB, so one lost block costs 4 MiB to resend. Syncthing targets ~2 000 blocks per file
+   between 128 KiB and 16 MiB (`DesiredPerFileBlocks`). Changes the manifest shape, so it needs a
+   migration.
+
+4. **UPnP-IGD / NAT-PMP** (`sync_p2p_bridge.rs`) — ask the router for a port mapping. Last on
+   purpose. It is the part Syncthing's own marketing highlights and the least important of the
+   three mechanisms that make it work; what actually carries is the global discovery directory plus
+   the public relay pool. Doing it before the items above would trade a slow transfer that connects
+   for a slow transfer that connects more often.
+
+Not a performance item, but open: **the E2E suite's driver**, isolated by the probe described in the
+handoff below.
+
 ## Architecture terms
 
 ### Rendezvous
@@ -152,48 +181,80 @@ A project grant authorizes a specific account or device to request specific oper
 
 - Repository: `Kc1t/alethe-agents`.
 - Pull request: `#153` (head: `MiguelSilvaPorto:feat/mesh-sync-p2p-vault`).
-- Development branch: `feat/mesh-sync-p2p-vault`.
-- Handoff date: 2026-08-24.
-- This handoff supersedes the previous one dated 2026-08-21. That handoff told the next agent to
-  resume at "Phase 1" — this was wrong by the time it was read; Phase 1 (device trust/recovery) was
-  already complete. An audit at the start of this session found several other checklist items
-  incorrectly marked `[ ]` for the same reason (later phases landed without updating earlier
-  summary tables). **Do not trust a stale summary table over the source code.** If in doubt, grep
-  the actual `.rs`/`.tsx` files this document names before believing a checkbox.
-- This session's real, tested deliverables (see `docs/CHANGELOG.md` "Não lançado" section for the
-  user-facing wording):
-  1. Google OAuth client-secret support (Google's Desktop client type still requires it despite
-     PKCE) — `src-tauri/src/sync_mesh.rs`.
-  2. Several sidebar UI bugs fixed (Google connect/disconnect state, raw English permission tokens
-     leaking into localized text, oversized `<select>` fonts, a device's identity fingerprint being
-     shown as if it were its display name, a missing icon/text gap, the "Conexão & Sincronização"
-     button not working in the default "Normal" sidebar visual style — only the less-common "Clean"
-     style was wired).
-  3. Folder allow/deny scopes are now selectable in the invite form (`MeshSidebarView.tsx`), wired
-     to the already-existing, already-tested `pathScopes` backend contract.
-  4. A new main-workspace-area view (`src/components/CollaborationView/`) that replaces the
-     terminal/Home view when the collaboration sidebar tab is active, with three sub-tabs: Chat,
-     Tasks, Vault & Folders (Vault & Folders is still a placeholder — see "Exact next implementation
-     step" below).
-  5. Collaboration tasks now have a real UI (`CollaborationView/TasksPanel.tsx`) — create, complete,
-     comment, filter by status. New Tauri commands/Web routes: `sync_update_task`, `sync_assign_task`,
-     `sync_delete_task` (the underlying core functions already existed; only the command/route
-     wrappers were missing).
-  6. Project chat now has a real UI (`CollaborationView/ChatPanel.tsx`, WhatsApp-style bubbles) —
-     send/list/edit/delete messages (text, code block, inert command block, test result, bug
-     report), upload/download encrypted attachments. New Tauri commands/Web routes:
-     `sync_ensure_project_conversation`, `sync_send_message`, `sync_list_decrypted_messages`,
-     `sync_edit_message`, `sync_delete_message`, `sync_upload_attachment`, `sync_download_attachment`
-     (`sync_chat.rs`), plus a new shared identity-resolution helper `sync_local_identity`/
-     `local_identity_at` (`sync_security.rs`) that both tasks and chat reuse instead of trusting a
-     client-supplied device ID/account route.
-  7. All of the above is covered by new Rust unit tests (`sync_chat.rs`, no keyring-dependent paths
-     were added to automated tests — see the note in that file's test module) and manually verified
-     live in the running dev app by the repository owner during this session (folder scopes, the
-     CollaborationView tab switch, task create/complete/comment, chat send/receive across content
-     types, the WhatsApp-style visual pass).
-- This handoff intentionally leaves a fully working, committed tree. No partial/broken feature
-  should exist in the working tree after this document's commit.
+- Development branch: `feat/mesh-sync-p2p-vault`, merged with `origin/main` at `3be28fe`.
+- Handoff date: 2026-09-04. Supersedes the handoff dated 2026-08-24.
+- The warning from that handoff still stands and is worth repeating: **do not trust a stale
+  summary table over the source code.** Grep the `.rs`/`.tsx` files this document names before
+  believing a checkbox.
+
+#### What this session changed about transfer
+
+Project sharing was unusable in two independent ways, both now fixed. The numbers below are
+derived from the constants in the code, not measured over a real network; what *is* measured is
+the behaviour, by the tests each commit names.
+
+| | Before | After |
+|---|---|---|
+| Bytes in flight on the direct path | 1 200 | 38 400 (32 chunks) |
+| Throughput at a 40 ms RTT | ~30 KB/s | ~1 MB/s |
+| A 100 MB project | ~58 min | ~2 min |
+| With no direct session | never transferred | falls back to the relay |
+
+1. **`d4261c6` — a send window.** The P2P link was stop-and-wait: one 1 200-byte chunk, then a
+   blocking wait for its ACK, which makes throughput a function of round-trip time rather than
+   bandwidth. Now Go-Back-N with 32 chunks in flight. This is a **sender-only** change with an
+   unchanged wire format, because the receiver already behaved exactly like a Go-Back-N receiver
+   (in-order delivery, drop anything ahead) — so a new sender and an old one are interchangeable.
+
+   One defect had to be repaired first: the receiver acknowledged every data packet and then
+   discarded the ones it could not deliver in order. Harmless with a single chunk in flight, and
+   silent data loss with a window — chunk 5 arriving before chunk 4 would have been acknowledged,
+   dropped, and skipped as delivered. **An ACK now means delivered**: a packet from the future gets
+   no ACK, and a duplicate of something already delivered is re-ACKed.
+
+2. **`f7da90d` — a relay fallback for project transfer.** `sync_file_pipeline_offer_project` ended
+   at `p2p_registry.send(...)?`. No direct session meant the offer simply did not happen, so behind
+   a symmetric NAT sharing a project could not work at all. Chat has always had this fallback;
+   transfers now do too, in `sync_file_pipeline_relay.rs`.
+
+   The substance is fragmentation, not the fallback itself: the relay rejects any frame over
+   24 KiB and a pipeline frame is far larger (a chunk subframe is 150 KiB; a `ManifestOffer` has no
+   bound). The fragment size is 10 KiB because a payload inflates about 1.8× before the relay sees
+   it — base64 into its own JSON, sealed, base64url again, wrapped in the enqueue frame. 12 KiB
+   left only 2 KiB of the frame spare; the test that caught this models the whole chain, and an
+   earlier version measured only the fragment's own JSON.
+
+#### Other defects fixed this session
+
+- **`6244bab`** — the correlation wrapper from the observability work took the whole UI down on
+  builds where `window.__TAURI_INTERNALS__.invoke` is a read-only property. It runs at module scope,
+  so the throw produced a blank window. Every failure path now degrades to "correlation is off".
+- **`7100c51`** — `No conversation found with session ID`. Alethe mints Claude's session id itself
+  and saved it from the *intent* to create a session rather than evidence one existed; a first
+  launch that stopped at the trust prompt wrote no conversation file. `session_presence.rs` now
+  checks before resuming, with a third `unknown` state so an agent whose storage cannot be read
+  never has a valid id discarded.
+- **`d93b65a`** — scrolling a full-screen agent was sending arrow keys into it. In the alternate
+  buffer the terminal converts the wheel to cursor keys, which Claude Code reads as input.
+  Diagnosed from the recorded PTY streams: Claude Code enters the alternate screen seven times in
+  one session and never enables mouse tracking, while OpenCode enables it nine times.
+
+#### CI
+
+The four build/test checks are green. E2E (Windows) is red and **is not a regression** — it has
+never passed, across the last 60 runs on any branch. `scripts/e2e-launch-probe.mjs` (`752ad63`)
+now separates the two causes the WebDriver error conflates, and answered on its first run: the app
+starts fine on the runner, the driver is the problem (`tauri-driver`/`msedgedriver`).
+
+#### Gotchas on the primary Windows checkout
+
+- **`CARGO_INCREMENTAL=0` is required to run the Rust tests here.** `rustc` crashes with
+  `STATUS_STACK_BUFFER_OVERRUN` during incremental compilation — the Defender-corrupts-the-toolchain
+  problem `CLAUDE.md` already documents. It looks exactly like a code error and is not one.
+- **Run `prettier --check .` from the repository root.** From inside `src-tauri` it walks `target/`
+  and reports thousands of files.
+- **This checkout's dev port is 1594, not 1422** — it is derived from the checkout path by
+  `dev-instance.mjs`, which is the whole point of that file.
 
 ### Decisions that must be preserved
 
