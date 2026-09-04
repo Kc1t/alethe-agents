@@ -24,6 +24,7 @@ import {
   isSessionClaimed,
   registerSessionClaim,
 } from '../../lib/sessionDiscovery'
+import { resolveResumeId } from '../../lib/api/sessionPresence'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import {
   peekSession,
@@ -1890,6 +1891,27 @@ export function useXtermSession(params: {
           resumeId = undefined
           removeSession(sessionPersistenceKey)
           onSessionIdRef.current?.(undefined)
+        }
+        // Last guard before the id is used: does that session actually exist?
+        //
+        // Alethe mints Claude's session id itself (`--session-id <uuid>` on a first launch) and
+        // saves it right away — from the intent to create a session, not from evidence that one
+        // was created. A first launch that stops at the trust prompt writes no conversation file,
+        // and the next launch then says `--resume <uuid>` for a session that never existed, which
+        // the CLI answers with `No conversation found with session ID: …` in red. Reproduced from
+        // the user's disk: the id in that error existed nowhere under `~/.claude`, and the project
+        // had no session directory at all.
+        //
+        // Only a checked absence drops the id. An agent whose storage cannot be read comes back
+        // `unknown` and resumes as before — see `resolveResumeId`.
+        if (resumeId && command) {
+          const verified = await resolveResumeId(command, cwd ?? '', resumeId)
+          if (disposed) return
+          if (!verified) {
+            resumeId = undefined
+            removeSession(sessionPersistenceKey)
+            onSessionIdRef.current?.(undefined)
+          }
         }
         // Reserve the resume ID before creating the PTY. Without this early
         // claim, two panes can pass the check above at the same time and both

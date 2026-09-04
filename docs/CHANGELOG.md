@@ -12,6 +12,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **An agent no longer starts with `No conversation found with session ID`.** Alethe mints Claude's session id itself and saved it as soon as it was requested — from the intent to create a session, not from evidence that one existed. A first launch that stopped at the trust prompt wrote no conversation file, and the next launch then tried to resume an id the CLI had never heard of. The stored id is now checked against the agent's own storage before being used, and dropped in favour of a fresh session when the conversation is not there. An agent whose storage cannot be read is left alone rather than having a valid id discarded.
+
+
 - **Scrolling inside a full-screen agent no longer types into it.** With Claude Code open, turning the wheel sent arrow keys to the app instead of scrolling — the terminal's default when a full-screen app leaves no scrollback behind — so a scroll gesture quietly moved through the prompt history. The wheel is now forwarded only to an app that actually asked for mouse events (OpenCode does; Claude Code does not), and otherwise does nothing. `Shift`+wheel still forces the host's own scrollback.
 
 

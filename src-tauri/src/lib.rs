@@ -68,6 +68,7 @@ pub mod resources;
 pub mod scheduler;
 pub mod self_test;
 pub mod server_main;
+pub mod session_presence;
 pub mod session_watcher;
 pub mod skills;
 pub mod speech;
@@ -766,6 +767,7 @@ pub fn run() {
             ping,
             recorder_scratch_dir,
             self_test::self_test,
+            session_presence::agent_session_presence,
         ]))
         .build(tauri::generate_context!())
         .expect("error while building alethe")
