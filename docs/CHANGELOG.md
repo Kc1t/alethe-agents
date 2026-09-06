@@ -132,6 +132,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- AppImage no longer crashes on Arch Linux and other non-Ubuntu distributions with AMD/NVIDIA GPUs
+  under Wayland (`EGL_BAD_PARAMETER` on startup). The Wayland client libraries bundled by
+  `linuxdeploy` conflicted with the host system's versions; the build now tells the bundler to
+  leave them out and let the OS supply them.
 - The Source Control panel in the right sidebar no longer stays empty for a selected project that
   has no open terminal — it now falls back to the project's default working directory.
 - The ephemeral conflict-resolution agent's initial prompt is now delivered reliably to OpenCode.

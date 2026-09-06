@@ -68,6 +68,9 @@ jobs:
           # `npm run tauri signer generate` e cadastre nos secrets do repo.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Evita empacotar as bibliotecas do Wayland para não dar conflito com as do host.
+          # Isso previne o crash EGL_BAD_PARAMETER no WebKit ao abrir no Arch e Fedora.
+          LINUXDEPLOY_PLUGIN_GTK_OMIT_LIBRARIES: "libwayland-client.so.1:libwayland-egl.so.1"
         with:
           tagName: v__VERSION__
           releaseName: 'Alethe v__VERSION__'
