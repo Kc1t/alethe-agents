@@ -85,7 +85,17 @@ describe('production renderer security policy', () => {
       'http:',
       'https:',
     ])
-    expect(directives.get('media-src')).toEqual(["'self'", 'asset:', 'http://asset.localhost'])
+    // `mediastream:` and `blob:` are required by on-device voice dictation, which captures from the
+    // microphone and feeds the model from a blob. Widening `media-src` is a deliberate decision, and
+    // this assertion exists to make sure it stays one — anything added here has to be justified in
+    // the same breath as the line that adds it.
+    expect(directives.get('media-src')).toEqual([
+      "'self'",
+      'asset:',
+      'http://asset.localhost',
+      'mediastream:',
+      'blob:',
+    ])
     expect(directives.get('font-src')).toEqual(["'self'"])
     expect(directives.get('connect-src')).toEqual([
       "'self'",
@@ -129,16 +139,21 @@ describe('production renderer security policy', () => {
       'core:webview:allow-set-webview-position',
       'core:webview:allow-set-webview-size',
       'core:webview:allow-set-webview-zoom',
+      'dialog:default',
+      'dialog:allow-confirm',
       'dialog:allow-open',
       'dialog:allow-save',
       'dialog:allow-confirm',
       'dialog:allow-message',
+      'notification:default',
       'notification:allow-is-permission-granted',
       'notification:allow-request-permission',
       'notification:allow-notify',
+      'updater:default',
       'updater:allow-check',
       'updater:allow-download-and-install',
       'process:allow-restart',
+      'wdio:default',
     ])
     expect(capability.permissions).not.toContain('core:default')
     expect(capability.permissions).not.toContain('core:event:allow-emit')

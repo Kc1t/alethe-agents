@@ -4,8 +4,8 @@ import { useT } from '../../lib/i18n'
 import { THEME_OPTIONS, themeDescription, themeLabel } from '../../lib/themes'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { Modal } from './Modal'
 import controls from './controls.module.css'
+import { Modal } from './Modal'
 
 export function ThemePickerModal() {
   const t = useT()

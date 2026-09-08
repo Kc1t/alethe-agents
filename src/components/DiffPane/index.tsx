@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import { memo, useEffect, useState } from 'react'
+
 import { useT } from '../../lib/i18n'
 import { gitDiff } from '../../lib/tauri'
 import { type Terminal } from '../../lib/types'

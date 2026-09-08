@@ -1,17 +1,12 @@
 import { Smartphone, Wifi, WifiOff } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
 
-import {
-  openRemoteControlPairing,
-  remoteControlInfo,
-  remoteControlRevoke,
-  type RemoteControlInfo,
-} from '../../lib/tauri'
+import { useRemoteControl } from '../../hooks/useRemoteControl'
 import { useT } from '../../lib/i18n'
+import { openRemoteControlPairing, remoteControlRevoke } from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { Modal } from './Modal'
 import controls from './controls.module.css'
+import { Modal } from './Modal'
 import styles from './RemoteControlModal.module.css'
 
 export function RemoteControlModal() {
@@ -20,39 +15,7 @@ export function RemoteControlModal() {
   const closeModal = useUiStore((state) => state.closeModal)
   const openModal = useUiStore((state) => state.openModal_)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
-  const [info, setInfo] = useState<RemoteControlInfo | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const refresh = useCallback(async () => {
-    try {
-      setInfo(await remoteControlInfo())
-      setError(null)
-    } catch (value) {
-      setError(String(value))
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!open) return
-    void refresh()
-    const timer = window.setInterval(() => void refresh(), 1000)
-    return () => window.clearInterval(timer)
-  }, [open, refresh])
-
-  const run = async (operation: () => Promise<RemoteControlInfo>) => {
-    setBusy(true)
-    try {
-      setInfo(await operation())
-      setError(null)
-    } catch (value) {
-      setError(String(value))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const enabled = info?.enabled === true
-  const pairingOpen = info?.pairing_open === true
+  const { busy, enabled, error, info, pairingOpen, run } = useRemoteControl(open)
 
   return (
     <Modal
@@ -137,19 +100,39 @@ export function RemoteControlModal() {
           <section className={styles.details}>
             <div className={styles.metric}>
               <span className={styles.metricLabel}>{t('remote.connectedDevices')}</span>
-              <strong>{info?.connected_devices ?? 0}/{info?.max_devices ?? 1}</strong>
+              <strong>
+                {info?.connected_devices ?? 0}/{info?.max_devices ?? 1}
+              </strong>
               <span className={styles.metricHint}>
-                {info?.connected_devices === 1 ? t('remote.deviceSingular') : t('remote.devicePlural')}
+                {info?.connected_devices === 1
+                  ? t('remote.deviceSingular')
+                  : t('remote.devicePlural')}
               </span>
             </div>
-            <button type="button" className={controls.btn} onClick={() => { closeModal(); openModal('preferences', { category: 'remoteControl' }) }}>
+            <button
+              type="button"
+              className={controls.btn}
+              onClick={() => {
+                closeModal()
+                openModal('preferences', { category: 'remoteControl' })
+              }}
+            >
               {t('remote.openSettings')}
             </button>
             <div className={styles.urlBlock}>
               <span className={styles.metricLabel}>{t('remote.urlLabel')}</span>
-              <code>{pairingOpen && info?.pairing_url ? info.pairing_url : t('remote.hiddenAddressPlaceholder')}</code>
+              <code>
+                {pairingOpen && info?.pairing_url
+                  ? info.pairing_url
+                  : t('remote.hiddenAddressPlaceholder')}
+              </code>
             </div>
-            <button type="button" className={controls.btn} onClick={() => void run(remoteControlRevoke)} disabled={busy}>
+            <button
+              type="button"
+              className={controls.btn}
+              onClick={() => void run(remoteControlRevoke)}
+              disabled={busy}
+            >
               {t('remote.revoke')}
             </button>
           </section>

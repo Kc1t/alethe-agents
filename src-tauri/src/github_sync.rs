@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use tauri::AppHandle;
 
-use crate::paths::{activity_stats_file_path, app_data_dir, projects_file_path};
+use crate::paths::app_data_dir;
 use crate::provider_common::now_ms;
 
 const GIST_DESCRIPTION: &str = "Alethe sync — projects & activity (managed by the app)";
@@ -42,22 +42,20 @@ pub struct GithubSyncStatus {
     pub last_pull_ms: Option<u64>,
 }
 
-fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(app_data_dir(app)?.join("github_sync.json"))
+fn config_path(dir: &Path) -> PathBuf {
+    dir.join("github_sync.json")
 }
 
-fn load_config(app: &AppHandle) -> SyncConfig {
-    let Ok(path) = config_path(app) else {
-        return SyncConfig::default();
-    };
+fn load_config(dir: &Path) -> SyncConfig {
+    let path = config_path(dir);
     let Ok(raw) = fs::read_to_string(&path) else {
         return SyncConfig::default();
     };
     serde_json::from_str(&raw).unwrap_or_default()
 }
 
-fn save_config(app: &AppHandle, cfg: &SyncConfig) -> Result<(), String> {
-    let path = config_path(app)?;
+fn save_config(dir: &Path, cfg: &SyncConfig) -> Result<(), String> {
+    let path = config_path(dir);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -79,16 +77,19 @@ fn status_from(cfg: &SyncConfig) -> GithubSyncStatus {
     }
 }
 
-fn collect_files(app: &AppHandle) -> Result<Vec<(String, String)>, String> {
+/// Lê os arquivos locais que devem ser sincronizados. `projects.json` é
+/// obrigatório; `activity-stats.json` é opcional. Pula arquivos vazios — o
+/// Gist rejeita conteúdo vazio com 422.
+fn collect_files(dir: &Path) -> Result<Vec<(String, String)>, String> {
     let mut files = Vec::new();
-    let projects = projects_file_path(app)?;
+    let projects = dir.join("projects.json");
     if projects.is_file() {
         let content = fs::read_to_string(&projects).map_err(|e| e.to_string())?;
         if !content.trim().is_empty() {
             files.push(("projects.json".to_string(), content));
         }
     }
-    let activity = activity_stats_file_path(app)?;
+    let activity = dir.join("activity-stats.json");
     if activity.is_file() {
         let content = fs::read_to_string(&activity).map_err(|e| e.to_string())?;
         if !content.trim().is_empty() {
@@ -183,12 +184,23 @@ async fn gist_file_content(
 
 #[tauri::command]
 pub fn github_sync_status(app: AppHandle) -> Result<GithubSyncStatus, String> {
-    Ok(status_from(&load_config(&app)))
+    Ok(github_sync_status_core(&app_data_dir(&app)?))
+}
+
+pub fn github_sync_status_core(dir: &Path) -> GithubSyncStatus {
+    status_from(&load_config(dir))
 }
 
 #[tauri::command]
 pub async fn github_sync_set_token(
     app: AppHandle,
+    token: String,
+) -> Result<GithubSyncStatus, String> {
+    github_sync_set_token_core(&app_data_dir(&app)?, token).await
+}
+
+pub async fn github_sync_set_token_core(
+    dir: &Path,
     token: String,
 ) -> Result<GithubSyncStatus, String> {
     let token = token.trim().to_string();
@@ -212,30 +224,38 @@ pub async fn github_sync_set_token(
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    let mut cfg = load_config(&app);
+    let mut cfg = load_config(dir);
     cfg.token = token;
     cfg.login = login;
-    save_config(&app, &cfg)?;
+    save_config(dir, &cfg)?;
     Ok(status_from(&cfg))
 }
 
 #[tauri::command]
 pub fn github_sync_logout(app: AppHandle) -> Result<GithubSyncStatus, String> {
-    let mut cfg = load_config(&app);
+    github_sync_logout_core(&app_data_dir(&app)?)
+}
+
+pub fn github_sync_logout_core(dir: &Path) -> Result<GithubSyncStatus, String> {
+    let mut cfg = load_config(dir);
     cfg.token = String::new();
     cfg.login = None;
-    save_config(&app, &cfg)?;
+    save_config(dir, &cfg)?;
     Ok(status_from(&cfg))
 }
 
 /// guardado sumiu (404/422), recria.
 #[tauri::command]
 pub async fn github_sync_push(app: AppHandle) -> Result<GithubSyncStatus, String> {
-    let mut cfg = load_config(&app);
+    github_sync_push_core(&app_data_dir(&app)?).await
+}
+
+pub async fn github_sync_push_core(dir: &Path) -> Result<GithubSyncStatus, String> {
+    let mut cfg = load_config(dir);
     if cfg.token.trim().is_empty() {
         return Err("not_connected".to_string());
     }
-    let files = collect_files(&app)?;
+    let files = collect_files(dir)?;
     if files.is_empty() {
         return Err("nothing_to_sync".to_string());
     }
@@ -265,13 +285,17 @@ pub async fn github_sync_push(app: AppHandle) -> Result<GithubSyncStatus, String
         cfg.gist_id = Some(id);
     }
     cfg.last_push_ms = Some(now_ms());
-    save_config(&app, &cfg)?;
+    save_config(dir, &cfg)?;
     Ok(status_from(&cfg))
 }
 
 #[tauri::command]
 pub async fn github_sync_pull(app: AppHandle) -> Result<GithubSyncStatus, String> {
-    let mut cfg = load_config(&app);
+    github_sync_pull_core(&app_data_dir(&app)?).await
+}
+
+pub async fn github_sync_pull_core(dir: &Path) -> Result<GithubSyncStatus, String> {
+    let mut cfg = load_config(dir);
     if cfg.token.trim().is_empty() {
         return Err("not_connected".to_string());
     }
@@ -296,17 +320,17 @@ pub async fn github_sync_pull(app: AppHandle) -> Result<GithubSyncStatus, String
         .ok_or_else(|| "malformed gist".to_string())?;
 
     if let Some(content) = gist_file_content(&client, &cfg.token, files, "projects.json").await? {
-        write_atomic(&projects_file_path(&app)?, &content)?;
+        write_atomic(&dir.join("projects.json"), &content)?;
     } else {
         return Err("remote_missing_projects".to_string());
     }
     if let Some(content) =
         gist_file_content(&client, &cfg.token, files, "activity-stats.json").await?
     {
-        write_atomic(&activity_stats_file_path(&app)?, &content)?;
+        write_atomic(&dir.join("activity-stats.json"), &content)?;
     }
 
     cfg.last_pull_ms = Some(now_ms());
-    save_config(&app, &cfg)?;
+    save_config(dir, &cfg)?;
     Ok(status_from(&cfg))
 }

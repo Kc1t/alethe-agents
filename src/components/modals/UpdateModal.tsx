@@ -1,10 +1,10 @@
 import { useState } from 'react'
 
-import { useUiStore } from '../../stores/uiStore'
 import { useT } from '../../lib/i18n'
 import { installPendingUpdate } from '../../lib/updater'
-import { Modal } from './Modal'
+import { useUiStore } from '../../stores/uiStore'
 import controls from './controls.module.css'
+import { Modal } from './Modal'
 import styles from './UpdateModal.module.css'
 
 export function UpdateModal() {
@@ -27,7 +27,6 @@ export function UpdateModal() {
       await installPendingUpdate(({ downloaded, total }) => {
         setPercent(total > 0 ? Math.min(100, Math.round((downloaded / total) * 100)) : 0)
       })
-                                                                                           
     } catch (err) {
       setPhase('error')
       setError(String(err))
@@ -37,7 +36,7 @@ export function UpdateModal() {
   return (
     <Modal
       open={open}
-                                                                                 
+
       onClose={installing ? () => {} : closeModal}
       title={t('update.availableTitle', { version: info.version })}
       footer={

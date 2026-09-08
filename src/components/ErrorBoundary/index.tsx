@@ -1,7 +1,10 @@
+// Este foi feito para conectar o ErrorBoundary à Central de Auditoria (auditLogger), registrando erros de renderização e permitindo copiar relatórios de diagnósticos.
+
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 
+import { auditLogger } from '../../lib/auditLogger'
 import { getLocale, type MessageKey, translate } from '../../lib/i18n'
-import { recordFrontendError } from '../../lib/tauri'
+import { recordFrontendError, writeClipboardText } from '../../lib/tauri'
 import styles from './ErrorBoundary.module.css'
 
 type Props = {
@@ -24,6 +27,15 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     const kind = this.props.label ? `react:${this.props.label}` : 'react'
+
+    auditLogger.log({
+      level: 'error',
+      category: 'REACT',
+      message: `Render Error [${kind}]: ${error.message || String(error)}`,
+      stack: error.stack ?? info.componentStack ?? undefined,
+      context: { label: this.props.label, componentStack: info.componentStack },
+    })
+
     if (import.meta.env.DEV) {
       console.groupCollapsed(`[Alethe][${kind}] render error`)
       console.error(error)
@@ -40,12 +52,15 @@ export class ErrorBoundary extends Component<Props, State> {
 
   private reset = () => this.setState({ error: null })
   private reload = () => window.location.reload()
+  private copyReport = () => {
+    const report = auditLogger.exportReport()
+    void writeClipboardText(report)
+  }
 
   render() {
     const { error } = this.state
     if (!error) return this.props.children
 
-    // Class components cannot use hooks; translate() reads the locale from the store.
     const locale = getLocale()
     const tr = (key: MessageKey) => translate(locale, key)
 
@@ -59,7 +74,10 @@ export class ErrorBoundary extends Component<Props, State> {
             <button type="button" className={styles.btn} onClick={this.reset}>
               {tr('errorBoundary.retry')}
             </button>
-            <button type="button" className={styles.btnPrimary} onClick={this.reload}>
+            <button type="button" className={styles.btn} onClick={this.copyReport}>
+              Copiar relatório de diagnósticos
+            </button>
+            <button type="button" className={styles.btn} onClick={this.reload}>
               {tr('errorBoundary.reload')}
             </button>
           </div>

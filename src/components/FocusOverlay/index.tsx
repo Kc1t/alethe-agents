@@ -2,10 +2,6 @@ import { useOnEscape } from '../../hooks/useOnEscape'
 import { useUiStore } from '../../stores/uiStore'
 import styles from './FocusOverlay.module.css'
 
-   
-                                                                            
-                                                                               
-   
 export function FocusOverlay() {
   const focusedTerminalId = useUiStore((s) => s.focusedTerminalId)
   const setFocusedTerminal = useUiStore((s) => s.setFocusedTerminal)

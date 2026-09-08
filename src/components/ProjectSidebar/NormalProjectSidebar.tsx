@@ -14,6 +14,7 @@ import {
   Folder,
   FolderPlus,
   GitBranch,
+  Globe,
   Grid3x3,
   Home,
   MoreHorizontal,
@@ -25,6 +26,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
+import { useGitStatusSummary } from '../../hooks/useGitStatusSummary'
 import { useT } from '../../lib/i18n'
 import { formatShortcut } from '../../lib/platform'
 import {
@@ -32,6 +34,7 @@ import {
   type SidebarDropIndicator,
   sidebarInsertionIndex,
 } from '../../lib/sidebarDrag'
+import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import { type Group, type Project } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -41,8 +44,9 @@ import { UserProfile } from '../UserProfile'
 import { ContextMenu, type MenuItem } from './ContextMenu'
 import { FileExplorer } from './FileExplorer'
 import { GitControl } from './GitControl'
-import { NormalGroupNode as GroupNode } from './NormalGroupNode'
 import { LayoutFooter, WorkspaceLayoutFooter } from './LayoutFooter'
+import { MeshSidebarView } from './MeshSidebarView'
+import { NormalGroupNode as GroupNode } from './NormalGroupNode'
 import { NormalProjectNode as ProjectNode } from './NormalProjectNode'
 import styles from './NormalProjectSidebar.module.css'
 import { createSidebarMenus } from './sidebarMenus'
@@ -150,7 +154,6 @@ export function NormalProjectSidebar() {
       setTerminalRemoteExcluded: s.setTerminalRemoteExcluded,
       setSubTabCompletionUnread: s.setSubTabCompletionUnread,
       createFilePane: s.createFilePane,
-      createGraphifyPane: s.createGraphifyPane,
       setFullscreenPane: s.setFullscreenPane,
     })),
   )
@@ -167,14 +170,13 @@ export function NormalProjectSidebar() {
   const [menu, setMenu] = useState<ContextMenuState>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropIndicator, setDropIndicator] = useState<SidebarDropIndicator | null>(null)
-  const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects'>('projects')
+  const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects' | 'mesh'>('projects')
   const keepHome = activeView === 'home'
 
   useEffect(() => {
     if (!showGitControl && sidebarTab === 'git') setSidebarTab('projects')
   }, [showGitControl, sidebarTab])
 
-                                                                         
   const openPaneSets = useMemo(() => {
     const map: Record<string, Set<string>> = {}
     for (const c of containers) map[c.projectId] = new Set(c.paneIds)
@@ -216,6 +218,38 @@ export function NormalProjectSidebar() {
     sidebarTerminal?.tabs.find((tab) => tab.id === sidebarTerminal.activeTabId) ??
     sidebarTerminal?.tabs[0]
 
+  // The project's own repository comes FIRST, ahead of the selected terminal's cwd. When an agent
+  // is running in an isolated worktree its terminal's cwd is `.alethe/worktrees/<id>`, so leading
+  // with it pointed source control at the agent's worktree and its `alethe/agent-*` branch instead
+  // of the project — reported live, with the panel showing a clean tree for a repo the user was
+  // not working in. `getProjectRepoRoot` already skips worktree terminals and, failing that,
+  // derives the real root from a worktree path, so it is the right answer whenever it has one.
+  const activeCwd = useMemo(
+    () =>
+      (activeProject ? getProjectRepoRoot(activeProject) : '') ||
+      activeProject?.defaultCwd ||
+      sidebarSubTab?.cwd ||
+      sidebarTerminal?.cwd ||
+      '',
+    [sidebarSubTab?.cwd, sidebarTerminal?.cwd, activeProject],
+  )
+  const gitSummary = useGitStatusSummary(activeCwd)
+
+  const gitButtonTitle = useMemo(() => {
+    if (!gitSummary.hasRepo || gitSummary.total === 0) {
+      return t('ui.sidebar.git')
+    }
+    if (gitSummary.staged > 0 || gitSummary.changes > 0 || gitSummary.untracked > 0) {
+      return t('ui.sidebar.gitTooltipDetailed', {
+        total: gitSummary.total.toLocaleString(),
+        staged: gitSummary.staged.toLocaleString(),
+        changes: gitSummary.changes.toLocaleString(),
+        untracked: gitSummary.untracked.toLocaleString(),
+      })
+    }
+    return t('ui.sidebar.gitWithChanges', { count: gitSummary.total.toLocaleString() })
+  }, [gitSummary, t])
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   const clearDragState = () => {
@@ -239,7 +273,6 @@ export function NormalProjectSidebar() {
     const target = String(over.id)
     if (dragged === target) return
 
-                                                                                        
     if (dragged.startsWith('term:') && target.startsWith('proj:')) {
       const [, fromProject, terminalId] = dragged.split(':')
       const [, toProject] = target.split(':')
@@ -247,8 +280,6 @@ export function NormalProjectSidebar() {
       return
     }
 
-                                                                                
-                                                                              
     if (dragged.startsWith('proj:') && target.startsWith('proj:')) {
       const fromId = dragged.slice('proj:'.length)
       const toId = target.slice('proj:'.length)
@@ -291,7 +322,6 @@ export function NormalProjectSidebar() {
       return
     }
 
-                                                                           
     if (dragged.startsWith('proj:') && target.startsWith('group:')) {
       const [, projectId] = dragged.split(':')
       const [, groupId] = target.split(':')
@@ -317,7 +347,6 @@ export function NormalProjectSidebar() {
       return
     }
 
-                                                                        
     if (dragged.startsWith('grp:') && target.startsWith('group:')) {
       const [, srcGroupId] = dragged.split(':')
       const [, parentId] = target.split(':')
@@ -339,7 +368,6 @@ export function NormalProjectSidebar() {
 
   const { projectMenu, groupMenu, terminalMenu } = createSidebarMenus({
     t,
-    graphifyEnabled: preferences.enabledFeatures.graphify,
     browserEnabled: preferences.enabledFeatures.browser,
     groups: groups.filter((group) => !group.archived),
     openPaneSets,
@@ -369,15 +397,6 @@ export function NormalProjectSidebar() {
       }}
       onToggleCollapsed={() => actions.toggleProjectCollapsed(p.id)}
       onTerminalClick={(t) => {
-                                                                             
-                                                                           
-                                                                           
-                                                               
-        if (t.gsdSyncViewer) {
-          actions.setFullscreenPane(t.id)
-          setActiveView('workspace')
-          return
-        }
         actions.focusWorkspaceTerminal(p.id, t.id)
         setActiveTerminal(p.id, t.id)
         const activeTab = t.tabs.find((tab) => tab.id === t.activeTabId) ?? t.tabs[0]
@@ -388,11 +407,6 @@ export function NormalProjectSidebar() {
         setActiveView(p.mode === 'agentSandbox' ? 'agentSandbox' : 'workspace')
       }}
       onTerminalDoubleClick={(t) => {
-        if (t.gsdSyncViewer) {
-          actions.setFullscreenPane(t.id)
-          setActiveView('workspace')
-          return
-        }
         actions.openTerminalWorkspace(p.id, t.id)
         setActiveTerminal(p.id, t.id)
         requestPaneFocus(t.id)
@@ -405,8 +419,7 @@ export function NormalProjectSidebar() {
       onAddTerminal={() => openModal('newTerminal', { projectId: p.id })}
       onQuickOpen={() => activateProject(p, 'open')}
       onToggleDisabled={() => {
-        const visible = p.terminals.filter((term) => !term.gsdSyncViewer)
-        const allDisabled = visible.length > 0 && visible.every((term) => term.disabled)
+        const allDisabled = p.terminals.length > 0 && p.terminals.every((term) => term.disabled)
         actions.setProjectDisabled(p.id, !allDisabled)
       }}
       dropEdge={dropIndicator?.id === `proj:${p.id}` ? dropIndicator.edge : null}
@@ -520,8 +533,8 @@ export function NormalProjectSidebar() {
             type="button"
             role="tab"
             aria-selected={sidebarTab === 'git'}
-            aria-label={t('ui.sidebar.git')}
-            title={t('ui.sidebar.git')}
+            aria-label={gitButtonTitle}
+            title={gitButtonTitle}
             className={`${styles.sidebarTab} ${sidebarTab === 'git' ? styles.sidebarTabActive : ''}`}
             onClick={() => {
               setSidebarTab('git')
@@ -529,9 +542,29 @@ export function NormalProjectSidebar() {
             }}
           >
             <GitBranch size={14} />
+            {gitSummary.formatted ? (
+              <span className={styles.gitBadge} aria-hidden="true">
+                {gitSummary.formatted}
+              </span>
+            ) : null}
             <span>{t('ui.sidebar.git')}</span>
           </button>
         ) : null}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={sidebarTab === 'mesh' && activeView === 'collaboration'}
+          aria-label={t('mesh.title')}
+          title={t('mesh.title')}
+          className={`${styles.sidebarTab} ${sidebarTab === 'mesh' && activeView === 'collaboration' ? styles.sidebarTabActive : ''}`}
+          onClick={() => {
+            setSidebarTab('mesh')
+            setActiveView('collaboration')
+          }}
+        >
+          <Globe size={14} />
+          <span>{t('mesh.title')}</span>
+        </button>
       </div>
 
       <div className={styles.quickNavList}>
@@ -581,7 +614,7 @@ export function NormalProjectSidebar() {
           {sidebarTerminal && sidebarSubTab && activeProject ? (
             <FileExplorer
               projectId={activeProject.id}
-              cwd={sidebarSubTab.cwd || sidebarTerminal.cwd}
+              cwd={activeCwd || sidebarSubTab.cwd || sidebarTerminal.cwd}
               ptyId={sidebarSubTab.ptyId}
               terminalName={sidebarTerminal.name}
             />
@@ -630,6 +663,8 @@ export function NormalProjectSidebar() {
           )}
         </section>
       ) : null}
+
+      {sidebarTab === 'mesh' ? <MeshSidebarView /> : null}
 
       {sidebarTab === 'projects' ? (
         <DndContext

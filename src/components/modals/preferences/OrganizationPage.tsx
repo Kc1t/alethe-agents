@@ -49,7 +49,9 @@ export function OrganizationPage() {
                   title={t('prefs.deleteArchivedGroup')}
                   aria-label={t('prefs.deleteArchivedGroup')}
                   onClick={() => {
-                    if (window.confirm(t('prefs.deleteArchivedGroupConfirm', { name: group.name }))) {
+                    if (
+                      window.confirm(t('prefs.deleteArchivedGroupConfirm', { name: group.name }))
+                    ) {
                       deleteGroup(group.id, 'unassign')
                     }
                   }}
@@ -73,7 +75,9 @@ export function OrganizationPage() {
             <div key={project.id} className={styles.optionRow}>
               <div className={styles.optionCopy}>
                 <strong>{project.name}</strong>
-                <span>{t('prefs.archivedProjectTerminals', { count: project.terminals.length })}</span>
+                <span>
+                  {t('prefs.archivedProjectTerminals', { count: project.terminals.length })}
+                </span>
               </div>
               <button
                 type="button"

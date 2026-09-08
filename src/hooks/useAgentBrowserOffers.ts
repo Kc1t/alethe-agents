@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 
 import { getLocale, translate } from '../lib/i18n'
+import { expected } from '../lib/resilience'
 import {
   browserPaneObserve,
   listenBrowserTargetOpened,
@@ -33,7 +34,7 @@ export function useAgentBrowserOffers(enabled: boolean): void {
 
     // Nothing else connects the app to the shared browser. A pane connects only when it opens, so
     // without this the first page an agent opens is the one nobody sees.
-    void browserPaneObserve().catch(() => {})
+    void browserPaneObserve().catch(expected('browser_pane_observe_failed'))
 
     void listenBrowserTargetOpened((page) => {
       if (cancelled) return
@@ -62,7 +63,7 @@ export function useAgentBrowserOffers(enabled: boolean): void {
             run: () => {
               // A copy in the reader's own browser, not the agent's tab: nothing can drive a page
               // in someone else's browser, so this shows the page but not the work happening on it.
-              void openInBrowser(page.url).catch(() => {})
+              void openInBrowser(page.url).catch(expected('open_in_browser_failed'))
             },
           },
           {

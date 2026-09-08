@@ -1,6 +1,6 @@
+import { useT } from '../../lib/i18n'
 import type { McpServerGroup } from '../../lib/mcp'
 import { transportSummary } from '../../lib/mcp'
-import { useT } from '../../lib/i18n'
 import { AGENT_TYPE_LABELS, MCP_AGENTS, type Theme } from '../../lib/types'
 import { AgentIcon } from '../icons/AgentIcons'
 import styles from './McpPanel.module.css'

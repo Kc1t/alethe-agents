@@ -120,6 +120,8 @@ describe('uninstallMethodsFor', () => {
 
 describe('installShellLine', () => {
   it('closes the shell so the runner can detect completion', () => {
-    expect(installShellLine('npm install -g opencode-ai')).toBe('npm install -g opencode-ai; exit\r')
+    expect(installShellLine('npm install -g opencode-ai')).toBe(
+      'npm install -g opencode-ai; exit\r',
+    )
   })
 })

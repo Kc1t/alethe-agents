@@ -70,7 +70,6 @@
   margin-bottom: 10px;
 }
 
-                                                                                 
 .crashPanel {
   border-color: var(--status-offline);
   background: color-mix(in srgb, var(--status-offline) 8%, transparent);
@@ -179,10 +178,13 @@
 }
 
 .chartDot {
-  fill: var(--bg-sunken);
-  stroke: var(--accent);
-  stroke-width: 1.6;
-  vector-effect: non-scaling-stroke;
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  border-radius: 50%;
+  background: var(--bg-sunken);
+  border: 1.5px solid var(--accent);
   pointer-events: none;
 }
 

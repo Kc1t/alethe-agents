@@ -4,8 +4,8 @@ import { CHANGELOG_RELEASES, CURRENT_VERSION } from '../../lib/changelogData'
 import { intlLocale, useT } from '../../lib/i18n'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { Modal } from './Modal'
 import controls from './controls.module.css'
+import { Modal } from './Modal'
 import styles from './WhatsNewModal.module.css'
 
 export function WhatsNewModal() {

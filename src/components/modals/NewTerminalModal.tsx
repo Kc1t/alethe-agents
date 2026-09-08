@@ -1,21 +1,23 @@
 import { CircleCheck, Folder, Info, Zap } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
+import { useAgentCreationForm } from '../../hooks/useAgentCreationForm'
+import { AGENT_OPTIONS, unrestrictedArgsForAgent } from '../../lib/agentCreation'
 import { pickDirectory } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import { basename } from '../../lib/paths'
-import { AGENT_TYPE_LABELS, type AgentRuntimeProfile, type AgentType,ALL_AGENT_TYPES, UNRESTRICTED_FLAG } from '../../lib/types'
-import { getProjectDefaultCwd, useProjectsStore } from '../../stores/projectsStore'
+import { UNRESTRICTED_FLAG } from '../../lib/types'
+import {
+  getProjectDefaultCwd,
+  getProjectRepoRoot,
+  useProjectsStore,
+} from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AgentIcon } from '../icons/AgentIcons'
 import controls from './controls.module.css'
 import { Modal } from './Modal'
 import styles from './NewTerminalModal.module.css'
-
-const AGENTS: { type: AgentType; label: string }[] = ALL_AGENT_TYPES.map((type) => ({
-  type,
-  label: AGENT_TYPE_LABELS[type],
-}))
+import { RuntimeProfileField } from './RuntimeProfileField'
 
 export function NewTerminalModal() {
   const t = useT()
@@ -23,6 +25,11 @@ export function NewTerminalModal() {
   const context = useUiStore((s) => s.modalContext) as { projectId?: string } | null
   const closeModal = useUiStore((s) => s.closeModal)
   const createAgentTerminal = useProjectsStore((s) => s.createAgentTerminal)
+  const setActiveProjectOnly = useProjectsStore((s) => s.setActiveProjectOnly)
+  const focusWorkspaceTerminal = useProjectsStore((s) => s.focusWorkspaceTerminal)
+  const setActiveView = useUiStore((s) => s.setActiveView)
+  const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
+  const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
   const alwaysStartUnrestricted = useProjectsStore((s) => s.preferences.alwaysStartUnrestricted)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const project = useProjectsStore((s) =>
@@ -34,31 +41,35 @@ export function NewTerminalModal() {
     (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,
   )
 
-  const [type, setType] = useState<AgentType>('claude')
-  const [runtimeProfile, setRuntimeProfile] = useState<AgentRuntimeProfile>('lean')
   const [cwd, setCwd] = useState('')
-  const [unrestricted, setUnrestricted] = useState<Record<AgentType, boolean>>({
-    shell: false,
-    claude: false,
-    codex: false,
-    copilot: false,
-    antigravity: false,
-    opencode: false,
-    freebuff: false,
-    mimo: false,
-  })
+  const {
+    resetAgentCreation,
+    runtimeProfile,
+    setRuntimeProfile,
+    setType,
+    toggleUnrestricted,
+    type,
+    unrestricted,
+  } = useAgentCreationForm('claude')
 
-  const visibleAgents = AGENTS.filter((a) => enabled[a.type])
+  const visibleAgents = AGENT_OPTIONS.filter((agent) => enabled[agent.type])
   const defaultType =
     visibleAgents.find((agent) => agent.type === 'claude')?.type ??
     visibleAgents[0]?.type ??
     'shell'
-  const selectedAgent = AGENTS.find((agent) => agent.type === type) ?? AGENTS[0]
-  const inheritedCwd = useMemo(() => getProjectDefaultCwd(project, projects), [project, projects])
+  const selectedAgent = AGENT_OPTIONS.find((agent) => agent.type === type) ?? AGENT_OPTIONS[0]
+  // Prefer the repository root because the most recently used terminal may belong to an
+  // isolated agent worktree. This mirrors createAgentTerminal's fallback order.
+  const inheritedCwd = useMemo(
+    () => getProjectRepoRoot(project) || getProjectDefaultCwd(project, projects),
+    [project, projects],
+  )
   const recentFolders = useMemo(() => {
     const folders = new Map<string, { path: string; lastUsedAt: number }>()
     for (const candidate of projects) {
+      // Agent worktrees are not useful shortcuts for starting a regular project terminal.
       for (const terminal of candidate.terminals) {
+        if (terminal.worktreeAgentId) continue
         const paths = [terminal.cwd, ...terminal.tabs.map((tab) => tab.cwd)]
         for (const path of paths) {
           const trimmed = path?.trim()
@@ -78,48 +89,39 @@ export function NewTerminalModal() {
   useEffect(() => {
     if (!open) return
     setCwd(inheritedCwd)
-    setType(defaultType)
-    setUnrestricted({
-      shell: alwaysStartUnrestricted,
-      claude: alwaysStartUnrestricted,
-      codex: alwaysStartUnrestricted,
-      copilot: alwaysStartUnrestricted,
-      antigravity: alwaysStartUnrestricted,
-      opencode: alwaysStartUnrestricted,
-      freebuff: alwaysStartUnrestricted,
-      mimo: alwaysStartUnrestricted,
-    })
-  }, [open, context?.projectId, inheritedCwd, defaultType, alwaysStartUnrestricted])
+    resetAgentCreation(defaultType, alwaysStartUnrestricted)
+  }, [
+    open,
+    context?.projectId,
+    inheritedCwd,
+    defaultType,
+    alwaysStartUnrestricted,
+    resetAgentCreation,
+  ])
 
   const reset = () => {
-    setType(defaultType)
-    setRuntimeProfile('lean')
     setCwd('')
-    setUnrestricted({
-      shell: false,
-      claude: false,
-      codex: false,
-      copilot: false,
-      antigravity: false,
-      opencode: false,
-      freebuff: false,
-      mimo: false,
-    })
+    resetAgentCreation(defaultType)
   }
 
   const submit = async () => {
     if (!context?.projectId) return
     const finalName = selectedAgent.label
     const finalCwd = cwd.trim() || inheritedCwd
-    const flag = UNRESTRICTED_FLAG[type]
-    const extraArgs = unrestricted[type] && flag ? [flag] : undefined
+    const extraArgs = unrestrictedArgsForAgent(type, unrestricted)
     const creation = {
       name: finalName,
       cwd: finalCwd,
       firstTab: { type, cwd: finalCwd, extraArgs, runtimeProfile },
     }
-    await createAgentTerminal(context.projectId, creation)
+    const terminal = await createAgentTerminal(context.projectId, creation)
     setPreferences({ lastTerminalCreation: creation })
+    // Creation only persists the terminal; explicitly navigate and focus it so the xterm mounts.
+    setActiveProjectOnly(context.projectId)
+    focusWorkspaceTerminal(context.projectId, terminal.id)
+    setActiveTerminal(context.projectId, terminal.id)
+    requestPaneFocus(terminal.id)
+    setActiveView('workspace')
     reset()
     closeModal()
   }
@@ -182,7 +184,7 @@ export function NewTerminalModal() {
           <button
             type="button"
             className={`${styles.permissionToggle} ${unrestricted[type] ? styles.permissionToggleActive : ''}`}
-            onClick={() => setUnrestricted((value) => ({ ...value, [type]: !value[type] }))}
+            onClick={() => toggleUnrestricted(type)}
             aria-pressed={unrestricted[type]}
           >
             <span className={styles.permissionToggleIcon}>
@@ -260,25 +262,11 @@ export function NewTerminalModal() {
         <details className={styles.advanced}>
           <summary>{t('term.advancedOptions')}</summary>
           <div className={styles.advancedBody}>
-            <div className={controls.field}>
-              <label className={controls.label}>{t('term.runtimeProfile')}</label>
-              <div className={controls.pillRow}>
-                {(['full', 'lean', 'diagnostic'] as const).map((profile) => (
-                  <button
-                    key={profile}
-                    type="button"
-                    className={`${controls.pill} ${runtimeProfile === profile ? controls.pillActive : ''}`}
-                    onClick={() => setRuntimeProfile(profile)}
-                    title={t(`term.runtimeProfile.${profile}.desc`)}
-                  >
-                    {t(`term.runtimeProfile.${profile}`)}
-                  </button>
-                ))}
-              </div>
-              <span className={controls.hint}>
-                {t(`term.runtimeProfile.${runtimeProfile}.desc`)}
-              </span>
-            </div>
+            <RuntimeProfileField
+              agentType={type}
+              value={runtimeProfile}
+              onChange={setRuntimeProfile}
+            />
           </div>
         </details>
       ) : null}

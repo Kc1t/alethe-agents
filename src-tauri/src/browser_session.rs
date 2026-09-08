@@ -323,7 +323,7 @@ pub fn mcp_server_spec_for(endpoint: Option<&str>) -> serde_json::Value {
     serde_json::json!({ "command": "npx", "args": args })
 }
 
-/// Mirrors `graphify_mcp_config_path`: an ephemeral config Claude is pointed at with `--mcp-config`.
+/// An ephemeral config Claude is pointed at with `--mcp-config`.
 #[tauri::command]
 pub fn playwright_mcp_config_path(state: State<'_, BrowserSessionState>) -> Result<String, String> {
     let info = state

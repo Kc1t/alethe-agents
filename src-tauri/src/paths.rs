@@ -1,19 +1,12 @@
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 const PROFILES_DIR_NAME: &str = "profiles";
 
-fn root_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path()
-        .app_local_data_dir()
-        .map_err(|error| error.to_string())
-}
-
-///
-
+/// Diretório de dados do perfil ativo.
 pub fn profile_data_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let root = root_data_dir(app)?;
-    let index = crate::profiles::ensure_profiles_index(app)?;
+    let root = crate::profiles::resolve_tauri_data_root(app)?;
+    let index = crate::profiles::ensure_profiles_index_at(&root)?;
     Ok(root.join(PROFILES_DIR_NAME).join(&index.active_profile_id))
 }
 
@@ -26,6 +19,7 @@ pub fn scrollback_dir(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 pub fn scrollback_path(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
+    crate::pty::validate_pty_id(id)?;
     Ok(scrollback_dir(app)?.join(format!("{id}.bin")))
 }
 

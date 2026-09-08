@@ -1,7 +1,7 @@
 import { getLocale, translate } from './i18n'
-import type { AgentType } from './types'
 import { notifyAgentDone } from './notifications'
 import { pathSegments } from './paths'
+import type { AgentType } from './types'
 
 const RESPONSE_IDLE_MS = 4500
 const MIN_RESPONSE_MS = 700
@@ -17,7 +17,7 @@ export type AgentCompletionMonitorOptions = {
   cwd?: string | null
   onStatusChange?: (status: 'working' | 'waiting') => void
   onComplete?: () => void
-                                                                                    
+
   notifyOnComplete?: boolean
 }
 

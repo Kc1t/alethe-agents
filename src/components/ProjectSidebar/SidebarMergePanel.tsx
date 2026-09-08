@@ -2,8 +2,9 @@ import { ChevronDown, ChevronUp, GitMerge } from 'lucide-react'
 import type React from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { useGsdSyncSessionsWatcher } from '../../hooks/useGsdSyncSessions'
+import { confirmAction } from '../../lib/confirmDialog'
 import { type MessageKey, useT } from '../../lib/i18n'
+import { withFallback } from '../../lib/resilience'
 import {
   detectProjectStack,
   type DiffSummaryEntry,
@@ -11,12 +12,10 @@ import {
   gitStatus,
   githubPrFind,
   githubPrMerge,
-  type GsdProcedureStep,
   healthProbe,
   type HealthProbeResult,
   killPtyTree,
   type PullRequestSummary,
-  readGsdProcedure,
   readTextFile,
   runValidation,
   type ValidationResult,
@@ -78,19 +77,12 @@ export type PendingMergeCard = {
   /** Provider of the agent running in this worktree (terminal's active tab)
    *  — only used to pick the right icon (AgentIcon), has no effect on the gate. */
   agentType: AgentType
-  gsdWatcherEnabled: boolean
-  /** false when this worktree's provider isn't OpenCode — the GSD plugin
-   *  (which writes `.planning/status.md`) is only installed in OpenCode
-   *  terminals, so gate Layer 1 could never pass here. */
-  gsdGateApplicable: boolean
 }
 
-/** Stages of the GSD Planning Completion Gate (opt-in via
- *  `gsdWatcherEnabled`) — `hidden`/`checking` never show up in the list,
- *  only `ready`/`failed`. `failed` means "planning says complete, but the
- *  automatic check (real diff or validation) didn't confirm it" — shown,
- *  never hidden, because hiding a real problem is worse than showing it. */
-export type GateStage = 'hidden' | 'checking' | 'ready' | 'failed' | 'unverified'
+/** Stages of the merge readiness check. `checking` never shows up in the list, only
+ *  `ready`/`failed`/`unverified`. A card is never hidden by its stage: hiding a branch because its
+ *  check went wrong is how a real problem goes unnoticed. */
+export type GateStage = 'checking' | 'ready' | 'failed' | 'unverified'
 export type GateResult = { stage: GateStage; detail?: string }
 
 /** Derives the card's label/tone from mergeStore's real phase — only the
@@ -175,10 +167,6 @@ export function SidebarMergePanel() {
     /** null = still loading the real diff. */
     diff: DiffSummaryEntry[] | null
     validation: 'idle' | 'loading' | ValidationResult
-    /** Structured test steps, recorded by the child session via a dedicated
-     *  tool (`gsd_record_step`) — null = still loading; [] = no GSD planning
-     *  in this project (falls back to the deterministic fallback). */
-    procedure: GsdProcedureStep[] | null
     /** Shield Layer 4 — 'idle' when there's no `healthCheckCommand`
      *  configured on this project (never fires on its own). */
     health: 'idle' | 'loading' | HealthProbeResult
@@ -259,7 +247,7 @@ export function SidebarMergePanel() {
 
   // Collects all active worktrees from projects that have pending
   // changes/branches. useMemo avoids a new array identity on every render —
-  // without this, the GSD Gate polling effect (below) would keep firing nonstop.
+  // without this, the readiness-check polling effect (below) would keep firing nonstop.
   const pendingMerges: PendingMergeCard[] = useMemo(() => {
     const result: PendingMergeCard[] = []
     for (const proj of projects) {
@@ -278,8 +266,6 @@ export function SidebarMergePanel() {
             worktreePath: term.cwd,
             agentName: term.name,
             agentType: activeTab?.type ?? 'shell',
-            gsdWatcherEnabled: Boolean(proj.gsdWatcherEnabled),
-            gsdGateApplicable: term.tabs.some((tab) => tab.type === 'opencode'),
           })
         }
       }
@@ -287,14 +273,13 @@ export function SidebarMergePanel() {
     return result
   }, [projects])
 
-  /** GSD Planning Completion Gate — only runs for cards of projects with
-   *  `gsdWatcherEnabled`. Layer 1 (complete planning, `.planning/STATE.md`/
-   *  `roadmap.md` in the worktree ITSELF) decides whether the card stays
-   *  hidden; only once it passes do Layer 2 (real diff exists) and Layer 3
-   *  (validation passes) run. Failing 2/3 NEVER hides the card — it shows
-   *  with a failed status, because hiding a real problem would be worse
-   *  than showing it. `probingRef` prevents a duplicate fire if the next
-   *  poll fires before the previous promise resolves. */
+  /** Merge readiness check: the branch has a real diff against its target, and the project's
+   *  validation commands pass. Neither result ever hides the card — a failure is shown, because
+   *  hiding a real problem is worse than showing it. `probingRef` prevents a duplicate fire if the
+   *  next poll fires before the previous promise resolves.
+   *
+   *  Runs for every agent card. It was once opt-in per project and had a third check that read the
+   *  project's planning files; that check is gone, and what remains applies to any branch. */
   const checkCard = async (item: PendingMergeCard) => {
     if (probingRef.current.has(item.id)) return
     probingRef.current.add(item.id)
@@ -303,14 +288,11 @@ export function SidebarMergePanel() {
       [item.id]: prev[item.id]?.stage === 'failed' ? prev[item.id] : { stage: 'checking' },
     }))
     try {
-      // Layer 1 (GSD planning) doesn't block the card: even with
-      // `item.gsdGateApplicable`, a planning still in progress doesn't hide
-      // or lock the card forever — Layer 2 (real diff) below already
-      // decides that on its own, so there's no planning check here.
       const proj = projects.find((p) => p.id === item.projectId)
       const repo = proj ? getProjectRepoRoot(proj) : ''
       if (!repo) {
-        setGateStatus((prev) => ({ ...prev, [item.id]: { stage: 'hidden' } }))
+        // Nothing could be checked, which is not the same as nothing being wrong.
+        setGateStatus((prev) => ({ ...prev, [item.id]: { stage: 'unverified' } }))
         return
       }
       let target = 'main'
@@ -371,9 +353,8 @@ export function SidebarMergePanel() {
 
   useEffect(() => {
     const gatedPending = pendingMerges.filter((item) => {
-      if (!item.gsdWatcherEnabled) return false
       const stage = gateStatus[item.id]?.stage
-      return !stage || stage === 'hidden' || stage === 'checking'
+      return !stage || stage === 'checking'
     })
     if (gatedPending.length === 0) return
 
@@ -387,33 +368,7 @@ export function SidebarMergePanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingMerges, gateStatus])
 
-  // Isolated child session discovery and status reading (busy/error) —
-  // extracted into the `useGsdSyncSessions` hook (also used by the GSD
-  // Sync drawer). The "GSD Sync" pane is NEVER opened on its own in the
-  // normal project grid here; opening it is an explicit user action from the drawer only.
-  useGsdSyncSessionsWatcher((_session, childError) => {
-    // Defense: in web mode, a backend route not yet implemented returns a
-    // generic `{status, path}` JSON instead of the real error text —
-    // without this check, `childError` becomes an object and `.slice`
-    // blows up in a loop on every poll (5s), flooding the console even with no real error.
-    const message = typeof childError === 'string' ? childError : JSON.stringify(childError)
-    pushToast({
-      title: t('merge.gsdChildErrorTitle'),
-      body: t('merge.gsdChildErrorBody', { error: message.slice(0, 300) }),
-    })
-  })
-
-  const visiblePendingMerges = pendingMerges.filter((item) => {
-    if (!item.gsdWatcherEnabled) return true
-    const stage = gateStatus[item.id]?.stage
-    return (
-      stage === 'ready' ||
-      stage === 'failed' ||
-      stage === 'unverified' ||
-      !stage ||
-      stage === 'checking'
-    )
-  })
+  const visiblePendingMerges = pendingMerges
 
   // Slice used only for the sidebar tree — the detail popup keeps
   // navigating the whole `visiblePendingMerges` (all projects); only the
@@ -466,7 +421,9 @@ export function SidebarMergePanel() {
     // never committed, stop and ask for confirmation (with the commit
     // message) before proceeding, instead of committing silently or
     // integrating a no-op (real bug, confirmed live: "merge complete" without moving anything).
-    const pending = await worktreePendingChanges(repo, item.worktreeAgentId).catch(() => [])
+    const pending = await worktreePendingChanges(repo, item.worktreeAgentId).catch(
+      withFallback('worktreePendingChanges', []),
+    )
     if (pending.length > 0) {
       const defaultMessage = await readTextFile(`${item.worktreePath}/.planning/goal.md`).catch(
         () => '',
@@ -502,7 +459,7 @@ export function SidebarMergePanel() {
     if (!proj) return
     const repo = getProjectRepoRoot(proj)
     if (!repo) return
-    if (!confirm(t('merge.rejectConfirm', { branch: item.branchName }))) return
+    if (!(await confirmAction(t('merge.rejectConfirm', { branch: item.branchName })))) return
     // Same here: only closes the detail popup after the native confirm passes.
     setCenterModalOpen(false)
 
@@ -517,7 +474,7 @@ export function SidebarMergePanel() {
       const ptyIds = (terminal?.tabs ?? [])
         .map((tab) => tab.ptyId)
         .filter((id): id is string => Boolean(id))
-      await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(() => [])))
+      await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(withFallback('killPtyTree', []))))
 
       // Only removes the worktree — the branch is deliberately preserved
       // (worktree_remove doesn't delete the branch), unlike Accept, which does a real merge.
@@ -729,24 +686,7 @@ export function SidebarMergePanel() {
   const handleStartTesting = async (item: PendingMergeCard) => {
     const proj = projects.find((p) => p.id === item.projectId)
 
-    // 1. Look for explicit action/run commands in the procedure recorded by GSD
-    let runCommand = testBriefing?.procedure
-      ?.map((step) => {
-        const match = /["'`](.+?)["'`]/.exec(step.description)
-        return match ? match[1].trim() : null
-      })
-      .find((cmd): cmd is string => Boolean(cmd) && (cmd!.startsWith('go run') || cmd!.startsWith('npm') || cmd!.startsWith('cargo run') || cmd!.startsWith('python') || cmd!.startsWith('make') || cmd!.startsWith('go build')))
-
-    if (runCommand && runCommand.startsWith('go build')) {
-      // If it's "go build ./cmd/animego", chain the generated binary's execution right after
-      const binName = runCommand.split('/').pop() || 'app'
-      runCommand = `${runCommand} && .\\${binName}.exe`
-    }
-
-    // 2. If not in the procedure, look in healthCheck / validationCommands
-    if (!runCommand) {
-      runCommand = proj?.healthCheckCommand?.trim() || proj?.validationCommands?.[0]?.trim()
-    }
+    const runCommand = proj?.healthCheckCommand?.trim() || proj?.validationCommands?.[0]?.trim()
 
     let initialInput: string | undefined = runCommand ? `${runCommand}\r` : undefined
 
@@ -796,7 +736,6 @@ export function SidebarMergePanel() {
       id: item.id,
       diff: repo ? null : [],
       validation: commands.length > 0 ? 'loading' : 'idle',
-      procedure: null,
       health: healthCommand ? 'loading' : 'idle',
     })
 
@@ -864,18 +803,6 @@ export function SidebarMergePanel() {
           ),
         )
     }
-
-    // Structured test procedure, recorded by the child session via a
-    // dedicated tool (gsd_record_step) — never by parsing loose markdown.
-    // Empty list: no GSD planning in this project (or the cycle hasn't run
-    // yet), the modal falls back to the deterministic fallback that already existed before.
-    readGsdProcedure(item.worktreePath)
-      .then((procedure) =>
-        setTestBriefing((prev) => (prev?.id === item.id ? { ...prev, procedure } : prev)),
-      )
-      .catch(() =>
-        setTestBriefing((prev) => (prev?.id === item.id ? { ...prev, procedure: [] } : prev)),
-      )
   }
 
   /** Sends the human confirmation checklist (passed/failed + notes)
@@ -1050,30 +977,21 @@ export function SidebarMergePanel() {
                       }),
                     ]
           }
-          testingItems={
-            testBriefing?.procedure && testBriefing.procedure.length > 0
-              ? testBriefing.procedure.map((step, i): TestingItem => ({
-                  id: `step-${i}`,
-                  text: step.description,
-                  category: step.category,
-                }))
-              : (testBriefing?.validation === 'loading'
-                  ? (
-                      projects.find((p) => p.id === testModalTarget.projectId)
-                        ?.validationCommands ?? []
-                    ).map((cmd) => t('merge.testBriefingRunning', { cmd }))
-                  : testBriefing?.validation && testBriefing.validation !== 'idle'
-                    ? testBriefing.validation.success
-                      ? [t('merge.testBriefingValidationPassed')]
-                      : [
-                          t('merge.testBriefingValidationFailed', {
-                            stage: testBriefing.validation.stage,
-                            output: testBriefing.validation.output.slice(0, 300),
-                          }),
-                        ]
-                    : [t('merge.testBriefingNoCommands')]
-                ).map((text, i): TestingItem => ({ id: `fallback-${i}`, text }))
-          }
+          testingItems={(testBriefing?.validation === 'loading'
+            ? (
+                projects.find((p) => p.id === testModalTarget.projectId)?.validationCommands ?? []
+              ).map((cmd) => t('merge.testBriefingRunning', { cmd }))
+            : testBriefing?.validation && testBriefing.validation !== 'idle'
+              ? testBriefing.validation.success
+                ? [t('merge.testBriefingValidationPassed')]
+                : [
+                    t('merge.testBriefingValidationFailed', {
+                      stage: testBriefing.validation.stage,
+                      output: testBriefing.validation.output.slice(0, 300),
+                    }),
+                  ]
+              : [t('merge.testBriefingNoCommands')]
+          ).map((text, i): TestingItem => ({ id: `fallback-${i}`, text }))}
           onStartTesting={() => handleStartTesting(testModalTarget)}
           onSendFeedback={(summary) => void handleSendTestFeedback(testModalTarget, summary)}
         />

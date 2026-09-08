@@ -13,12 +13,12 @@ import {
   TerminalSquare,
   Trash2,
 } from 'lucide-react'
-import { useMemo, useState, type ReactNode } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 
+import { agentLaunchEnv } from '../../lib/agentConfigIsolation'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
-import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import { useT } from '../../lib/i18n'
-import { agentCliCommand, type SubTab, type Terminal } from '../../lib/types'
+import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import {
   getPtyCwd,
   openInBrowser,
@@ -26,6 +26,7 @@ import {
   openInVscode,
   restartPty,
 } from '../../lib/tauri'
+import { agentCliCommand, type SubTab, type Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -140,7 +141,7 @@ function InspectorBody({ projectId, terminal }: { projectId: string; terminal: T
         command: agentCliCommand(activeTab.type),
         cwd: activeTab.cwd || undefined,
         extraArgs: launch.args,
-        env: preparedRuntime.env,
+        env: await agentLaunchEnv(agentCliCommand(activeTab.type), preparedRuntime.env),
       })
       window.dispatchEvent(
         new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: activeTab.ptyId } }),

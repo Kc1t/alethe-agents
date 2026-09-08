@@ -1,0 +1,882 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--bg-elevated);
+}
+
+/* Dragging an image (or any file) from Explorer/another app over the chat — same visual language
+ * as the markdown-viewer drop target in RightSidebar.module.css. */
+.dropActive {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Horizontal row below the header: the conversation itself, plus — when open — the contact-info
+ * panel as a normal flex sibling (not an overlay). This is what makes the panel push the
+ * conversation to the left and shrink it, instead of floating on top and hiding whatever was
+ * underneath. */
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.bodyMain {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.contactInfoPanel {
+  flex-shrink: 0;
+  width: 260px;
+  max-width: 40%;
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.contactInfoHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* Balances the header row when there is no rename button (e.g. no `contactActions` supplied) —
+ * keeps the title centered between the close button and this empty space instead of drifting
+ * toward the close button. Same footprint as `.iconButton`. */
+.iconButtonSpacer {
+  width: 30px;
+  height: 30px;
+}
+
+.contactInfoTitle {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--fg-muted);
+}
+
+.contactInfoIdentity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 24px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.contactInfoAvatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--fg);
+  font-size: 24px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.contactInfoName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+  text-align: center;
+}
+
+.contactInfoRenameForm {
+  width: 100%;
+}
+
+.contactInfoRenameInput {
+  width: 100%;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+  background: var(--bg-sunken);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.contactInfoRenameInput:focus {
+  outline: none;
+}
+
+.contactInfoStatus {
+  font-size: 10.5px;
+  color: var(--fg-muted);
+}
+
+.contactInfoBio {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+  text-align: center;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.contactInfoActions {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  gap: 2px;
+}
+
+.contactInfoAction {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px;
+  border-radius: 8px;
+  border: none;
+  background: none;
+  color: var(--fg);
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.contactInfoAction:hover {
+  background: var(--bg-sunken);
+}
+
+.contactInfoActionDanger {
+  color: var(--status-offline);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* The whole header opens the contact-info panel for a direct chat (not just the avatar/name) —
+ * interactive children (search, sync-now) stop propagation so they still work independently. */
+.headerClickable {
+  cursor: pointer;
+}
+
+.headerClickable:hover .headerTitle {
+  color: var(--accent);
+}
+
+.headerDirectAvatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--fg);
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  object-fit: cover;
+}
+
+.headerTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.headerMembers {
+  display: flex;
+  align-items: center;
+}
+
+.headerMemberAvatar {
+  width: 22px;
+  height: 22px;
+  font-size: 9px;
+  border: 2px solid var(--panel);
+  border-radius: 999px;
+  margin-left: -6px;
+}
+
+.headerMemberAvatar:first-child {
+  margin-left: 0;
+}
+
+.headerMemberOverflow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: -6px;
+  border: 2px solid var(--panel);
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.headerSearchButton {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.headerSearchButton:hover:not(:disabled) {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.headerSearchButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.searchBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.searchIcon {
+  color: var(--fg-muted);
+  flex-shrink: 0;
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 13px;
+  outline: none;
+}
+
+.searchInput::placeholder {
+  color: var(--fg-muted);
+}
+
+.searchHighlight {
+  background: var(--status-waiting-soft);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.e2eBadge {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.e2eBadge_local {
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+}
+
+.e2eBadge_connecting {
+  background: var(--status-waiting-soft);
+  border: 1px solid var(--status-waiting);
+  color: var(--status-waiting);
+}
+
+.e2eBadge_p2p {
+  background: var(--status-working-soft);
+  border: 1px solid var(--status-working);
+  color: var(--status-working);
+}
+
+.headerAction {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.headerAction:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.headerAction:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.e2eBadge_relay {
+  background: var(--accent-soft, var(--status-working-soft));
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
+
+.messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 16px 20px;
+}
+
+/* Keeps a short conversation pinned to the bottom of the panel (what `justify-content: flex-end`
+ * used to do here) WITHOUT breaking the scroll: in a scroll container, content overflowing past a
+ * `flex-end`/`center` justification spills out the top edge, and overflow in the "start" direction
+ * generates no scrollable area at all — the older messages were rendered, just physically
+ * unreachable. `margin-top: auto` on the first child gives the same pinning when content is short
+ * and collapses to zero once it overflows, so scrolling up works. */
+.messages > *:first-child {
+  margin-top: auto;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+
+.emptyIcon {
+  color: var(--fg-faint);
+  opacity: 0.7;
+}
+
+.messageRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  max-width: 72%;
+}
+
+.messageRowOwn {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.avatar {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+.avatarImg {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.messageBubbleWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.messageRowOwn .messageBubbleWrap {
+  align-items: flex-end;
+}
+
+.messageMeta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.messageAuthor {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--fg-muted);
+}
+
+.messageTime {
+  font-size: 9px;
+  color: var(--fg-muted);
+}
+
+.messageText {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 14px;
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bubbleOther {
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+
+.bubbleOwn {
+  background: var(--accent);
+  color: var(--accent-on);
+  border-bottom-right-radius: 4px;
+}
+
+.codeBlock {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg);
+  overflow-x: auto;
+}
+
+.commandBlock {
+  padding: 10px 12px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--status-waiting);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg);
+}
+
+.commandLabel {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 5px;
+  color: var(--status-waiting);
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.structuredBlock {
+  padding: 10px 12px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.structuredLabel {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.structuredBlock p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--fg);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.error {
+  padding: 0 16px;
+  color: var(--status-offline);
+  font-size: 11.5px;
+}
+
+.syncNotice {
+  padding: 6px 16px;
+  color: var(--fg-muted);
+  font-size: 10.5px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+
+.composer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* The actual input+send row — split out from `.composer` (now a column) so a pinned attachment
+ * chip or the active-type pill stacks *above* the input instead of squeezing into the same row
+ * and narrowing the text field. */
+.composerRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.activeTypePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  padding: 6px 6px 6px 12px;
+  border-radius: 999px;
+  background: var(--accent-soft, var(--status-working-soft));
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.activeTypePillClear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.activeTypePillClear:hover {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.pendingAttachmentRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 6px;
+  /* Bounded so pasting/picking many files at once can't grow the composer (`flex-shrink: 0`)
+   * without limit and squeeze the message list out of view — it scrolls internally instead. */
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.pendingAttachment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  max-width: 220px;
+}
+
+.pendingAttachmentPreviewTrigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  border: 1px solid transparent;
+  background: none;
+  padding: 3px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease;
+}
+
+.pendingAttachmentPreviewTrigger:disabled {
+  cursor: default;
+}
+
+.pendingAttachmentPreviewTrigger:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.pendingAttachmentPreviewTrigger:hover:not(:disabled) .pendingAttachmentName {
+  color: var(--fg);
+}
+
+.pendingAttachmentThumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.pendingAttachmentName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--fg-muted);
+}
+
+.pendingAttachmentClear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.pendingAttachmentClear:hover {
+  background: var(--bg-elevated);
+  color: var(--fg);
+}
+
+.slashMenu {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 100%;
+  margin-bottom: 8px;
+  background: var(--surface-card-default);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  z-index: 5;
+}
+
+.slashMenuHint {
+  padding: 8px 12px 4px;
+  color: var(--fg-muted);
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.slashMenuEmpty {
+  padding: 10px 12px 12px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.slashOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.slashOption:last-child {
+  padding-bottom: 10px;
+}
+
+.slashOptionActive {
+  background: var(--panel-hover);
+}
+
+.slashOptionKeyword {
+  font-family: var(--font-mono);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.slashOptionLabel {
+  color: var(--fg-muted);
+}
+
+.mentionHighlight {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.inputPill {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 4px 6px 4px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-sunken);
+}
+
+.inputPill:focus-within {
+  border-color: var(--accent);
+}
+
+.textInput {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: 13px;
+  padding: 6px 0;
+}
+
+.textInput:focus {
+  outline: none;
+}
+
+.hiddenFileInput {
+  display: none;
+}
+
+.iconButton {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.iconButton:hover:not(:disabled) {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+
+.sendButton {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-on);
+  cursor: pointer;
+  transition: filter 120ms ease;
+}
+
+.sendButton:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.iconButton:disabled,
+.sendButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Project invite, sent from the contact panel. */
+.projectInviteForm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.projectInviteLabel {
+  color: var(--fg-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.projectInviteActions {
+  display: flex;
+  gap: 6px;
+}
+
+.contactInfoHint {
+  color: var(--fg-faint);
+  font-size: 10.5px;
+  line-height: 1.4;
+}

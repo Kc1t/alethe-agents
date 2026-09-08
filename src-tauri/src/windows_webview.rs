@@ -8,8 +8,12 @@
 /// usar macros `#![allow(non_snake_case)]` com bindings `windows`/`windows-sys`
 /// para chamar o COM diretamente via `IWebView2WebView::QueryInterface`.
 ///
-
+/// Até lá, as funções são **stubs funcionais**: registram a intenção (log) e
+/// retornam Ok(()). O ResourceManager já enfileira as tarefas corretamente;
+/// quando os bindings COM forem adicionados, basta substituir o corpo.
 ///
+/// Módulo inteiro só compila no Windows (`#[cfg(windows)] mod windows_webview;`
+/// em lib.rs) — sem `#[cfg(not(windows))]` aqui dentro.
 use serde::Serialize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

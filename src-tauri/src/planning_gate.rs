@@ -1,31 +1,22 @@
+//! Reads a checkout's `.planning/` folder and reports how far its planning says the work has got.
 //!
-
+//! Three files, each optional, read in order of authority:
 //!
-
+//! - `status.md` — `Status: <value>` / `Progress: <pct>%`. When present it decides, and an explicit
+//!   status wins over a conflicting percentage.
+//! - `task.md` — a markdown checklist. Used as the fallback when there is no `status.md`: zero
+//!   pending items among at least one checkbox counts as complete, so a project that only keeps a
+//!   checklist still reports progress.
+//! - `plan.md` — the step-by-step plan, passed through as prose for the UI to present.
 //!
-//! Estrutura de `.planning/` (ver `assets/opencode-plugins/alethe-gsd-state.ts`):
-
-//! sobrescrever o outro.
+//! Everything here resolves the path it is given through `repository_root`, so a worktree reports
+//! its own planning rather than the main checkout's — an agent working in isolation has planning of
+//! its own, and reading the wrong one would report another branch's progress as this one's.
+//!
+//! Nothing in Alethe writes these files; they are whatever the user or an agent puts there.
 
 use serde::Serialize;
 use std::path::Path;
-
-/// dedicada (`gsd_record_step`, em `alethe-gsd-state.ts`) — nunca por parsing
-
-#[derive(Debug, Clone, Serialize, serde::Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct ProcedureStep {
-    pub description: String,
-    pub category: String,
-}
-
-#[derive(Debug, Clone, Serialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct GsdChildState {
-    pub session_id: Option<String>,
-    pub busy: bool,
-    pub error: Option<String>,
-}
 
 #[derive(Debug, Clone, Serialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
@@ -36,16 +27,16 @@ pub struct PlanningStatus {
     pub roadmap_pending_count: Option<usize>,
     pub roadmap_total_count: Option<usize>,
 
-    /// (`alethe-gsd-state.ts`) com o plano passo a passo, incluindo o
-
-    /// exibir (ex.: dividir em linhas pro checklist do Briefing de Testes).
+    /// First lines of `.planning/plan.md`, when it exists — the step-by-step plan, handed to the
+    /// frontend as raw text for it to present however it needs (the test briefing splits it into a
+    /// checklist, for instance).
     pub notes: Option<String>,
 }
 
-/// Parse de `status.md`: linhas `Status: <valor>` / `Progress: <pct>%`.
-
-/// (`Status: In Progress` + `Progress: 100%` esquecido) seja lido como
-/// completo por engano.
+/// Parses `status.md`: `Status: <value>` / `Progress: <pct>%` lines, in any order, quotes and a
+/// trailing `%` tolerated. Both are returned rather than reconciled here, so the caller can let an
+/// explicit status win — a file left at `Status: In Progress` with a stale `Progress: 100%` must
+/// not read as complete.
 fn parse_status_md(content: &str) -> (Option<String>, Option<u8>) {
     let mut status = None;
     let mut progress = None;
@@ -68,8 +59,8 @@ fn is_complete_status(status: &str) -> bool {
     matches!(status, "completed" | "complete" | "done")
 }
 
-/// Um item de checklist markdown (`- [ ] texto`/`- [x] texto`), com o texto
-
+/// One markdown checklist item (`- [ ] text` / `- [x] text`). Any mark other than a space counts
+/// as checked, since `[x]` and `[X]` are both common and neither is worth failing over.
 pub(crate) struct RoadmapItem {
     pub checked: bool,
     pub text: String,
@@ -129,6 +120,8 @@ pub(crate) fn compute_planning_status(worktree_root: &Path) -> PlanningStatus {
         .filter(|c| !c.is_empty());
 
     let Some(status_content) = status_content.filter(|c| !c.trim().is_empty()) else {
+        // Sem status.md: fallback pro task.md — 0 pendentes entre pelo menos
+        // uma checkbox conta como completo pra quem não quer manter status.md.
         let reported_complete =
             roadmap_total_count.unwrap_or(0) > 0 && roadmap_pending_count == Some(0);
         return PlanningStatus {
@@ -157,89 +150,14 @@ pub(crate) fn compute_planning_status(worktree_root: &Path) -> PlanningStatus {
     }
 }
 
-/// principal) — `repository_root` resolve a raiz real do checkout passado,
-
+/// Planning status for the checkout at `repo_path`. `repository_root` resolves the real root of
+/// *that* checkout, so passing a worktree reports the worktree's own planning rather than the main
+/// repository's — an agent working in isolation has planning of its own, and reading the main
+/// checkout's would report another branch's progress as this one's.
 #[tauri::command]
 pub fn read_planning_status(repo_path: String) -> Result<PlanningStatus, String> {
     let root = crate::git_control::repository_root(&repo_path)?;
     Ok(compute_planning_status(&root))
-}
-
-#[tauri::command]
-pub fn read_gsd_child_session(repo_path: String) -> Result<Option<String>, String> {
-    let root = crate::git_control::repository_root(&repo_path)?;
-    let content = std::fs::read_to_string(root.join(".planning").join(".gsd-child-session"))
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-    Ok(content)
-}
-
-/// `laneVisible` da pane "GSD Sync" (aparece enquanto ocupada, colapsa
-
-#[tauri::command]
-pub fn read_gsd_child_busy(repo_path: String) -> Result<bool, String> {
-    let root = crate::git_control::repository_root(&repo_path)?;
-    Ok(root.join(".planning").join(".gsd-child-busy").is_file())
-}
-
-#[tauri::command]
-pub fn read_gsd_child_error(repo_path: String) -> Result<Option<String>, String> {
-    let root = crate::git_control::repository_root(&repo_path)?;
-    let path = root.join(".planning").join(".gsd-child-error");
-    let content = std::fs::read_to_string(&path)
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-    if content.is_some() {
-        let _ = std::fs::remove_file(&path);
-    }
-    Ok(content)
-}
-
-fn read_gsd_child_state_inner(repo_path: String) -> Result<GsdChildState, String> {
-    let root = crate::git_control::repository_root(&repo_path)?;
-    let planning = root.join(".planning");
-    let session_id = std::fs::read_to_string(planning.join(".gsd-child-session"))
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-    let busy = planning.join(".gsd-child-busy").is_file();
-    let error = if session_id.is_some() {
-        let path = planning.join(".gsd-child-error");
-        let content = std::fs::read_to_string(&path)
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty());
-        if content.is_some() {
-            let _ = std::fs::remove_file(path);
-        }
-        content
-    } else {
-        None
-    };
-    Ok(GsdChildState {
-        session_id,
-        busy,
-        error,
-    })
-}
-
-#[tauri::command]
-pub async fn read_gsd_child_state(repo_path: String) -> Result<GsdChildState, String> {
-    tokio::task::spawn_blocking(move || read_gsd_child_state_inner(repo_path))
-        .await
-        .map_err(|error| format!("read_gsd_child_state task failed: {error}"))?
-}
-
-#[tauri::command]
-pub fn read_gsd_procedure(repo_path: String) -> Result<Vec<ProcedureStep>, String> {
-    let root = crate::git_control::repository_root(&repo_path)?;
-    let content = std::fs::read_to_string(root.join(".planning").join("procedure.json")).ok();
-    let steps = content
-        .and_then(|c| serde_json::from_str::<Vec<ProcedureStep>>(&c).ok())
-        .unwrap_or_default();
-    Ok(steps)
 }
 
 #[cfg(test)]
@@ -416,108 +334,4 @@ mod tests {
         fs::remove_dir_all(&root).unwrap();
     }
 
-    /// `read_gsd_child_session`/`read_gsd_child_busy` passam por
-    /// `repository_root` (igual `read_planning_status`) — precisam de um repo
-
-    fn temp_git_repo(label: &str) -> std::path::PathBuf {
-        let root = temp_dir(label);
-        crate::git_control::checked_output(&root, &["init", "-b", "main"]).unwrap();
-        crate::git_control::checked_output(&root, &["config", "user.name", "Alethe Test"]).unwrap();
-        crate::git_control::checked_output(
-            &root,
-            &["config", "user.email", "alethe@example.invalid"],
-        )
-        .unwrap();
-        fs::write(root.join("a.txt"), "a\n").unwrap();
-        crate::git_control::checked_output(&root, &["add", "-A"]).unwrap();
-        crate::git_control::checked_output(&root, &["commit", "-m", "base"]).unwrap();
-        root
-    }
-
-    #[test]
-    fn gsd_child_session_is_none_when_sentinel_missing() {
-        let root = temp_git_repo("child-session-missing");
-        fs::create_dir_all(root.join(".planning")).unwrap();
-        assert_eq!(
-            read_gsd_child_session(root.to_string_lossy().into_owned()).unwrap(),
-            None
-        );
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn gsd_child_session_reads_trimmed_sentinel_content() {
-        let root = temp_git_repo("child-session-present");
-        fs::create_dir_all(root.join(".planning")).unwrap();
-        fs::write(
-            root.join(".planning").join(".gsd-child-session"),
-            "ses_abc123\n",
-        )
-        .unwrap();
-        assert_eq!(
-            read_gsd_child_session(root.to_string_lossy().into_owned()).unwrap(),
-            Some("ses_abc123".to_string())
-        );
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn gsd_child_busy_reflects_sentinel_presence() {
-        let root = temp_git_repo("child-busy");
-        fs::create_dir_all(root.join(".planning")).unwrap();
-        assert!(!read_gsd_child_busy(root.to_string_lossy().into_owned()).unwrap());
-        fs::write(root.join(".planning").join(".gsd-child-busy"), "1").unwrap();
-        assert!(read_gsd_child_busy(root.to_string_lossy().into_owned()).unwrap());
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn gsd_child_error_is_none_when_sentinel_missing() {
-        let root = temp_git_repo("child-error-missing");
-        fs::create_dir_all(root.join(".planning")).unwrap();
-        assert_eq!(
-            read_gsd_child_error(root.to_string_lossy().into_owned()).unwrap(),
-            None
-        );
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn gsd_child_error_reads_and_consumes_sentinel() {
-        let root = temp_git_repo("child-error-present");
-        fs::create_dir_all(root.join(".planning")).unwrap();
-        fs::write(
-            root.join(".planning").join(".gsd-child-error"),
-            "todos os modelos falharam\n",
-        )
-        .unwrap();
-        assert_eq!(
-            read_gsd_child_error(root.to_string_lossy().into_owned()).unwrap(),
-            Some("todos os modelos falharam".to_string())
-        );
-
-        assert_eq!(
-            read_gsd_child_error(root.to_string_lossy().into_owned()).unwrap(),
-            None
-        );
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
-    fn gsd_child_state_reads_all_sentinels_with_one_root_resolution() {
-        let root = temp_git_repo("child-state");
-        let planning = root.join(".planning");
-        fs::create_dir_all(&planning).unwrap();
-        fs::write(planning.join(".gsd-child-session"), "ses_combined\n").unwrap();
-        fs::write(planning.join(".gsd-child-busy"), "1").unwrap();
-        fs::write(planning.join(".gsd-child-error"), "model failed\n").unwrap();
-
-        let state = read_gsd_child_state_inner(root.to_string_lossy().into_owned()).unwrap();
-
-        assert_eq!(state.session_id.as_deref(), Some("ses_combined"));
-        assert!(state.busy);
-        assert_eq!(state.error.as_deref(), Some("model failed"));
-        assert!(!planning.join(".gsd-child-error").exists());
-        fs::remove_dir_all(root).unwrap();
-    }
 }

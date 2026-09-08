@@ -33,7 +33,7 @@ pub async fn export_profile_backup(
         .map_err(|error| format!("export_profile_backup: falha na task bloqueante: {error}"))?
 }
 
-fn export_backup_from_dir(dir: PathBuf, target_path: String) -> Result<(), String> {
+pub fn export_backup_from_dir(dir: PathBuf, target_path: String) -> Result<(), String> {
     let target = PathBuf::from(target_path);
     let source_root = dir.canonicalize().map_err(|e| e.to_string())?;
     let target_parent = target
@@ -119,13 +119,21 @@ fn add_dir_to_zip<W: Write + io::Seek>(
 
 #[tauri::command]
 pub async fn import_backup(app: AppHandle, source_path: String) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || import_backup_inner(app, source_path))
+    let dir = app_data_dir(&app)?;
+    let activity_stats = activity_stats_file_path(&app)?;
+    tokio::task::spawn_blocking(move || import_backup_from_dir(dir, activity_stats, source_path))
         .await
         .map_err(|error| format!("import_backup: falha na task bloqueante: {error}"))?
 }
 
-fn import_backup_inner(app: AppHandle, source_path: String) -> Result<(), String> {
-    let dir = app_data_dir(&app)?;
+/// Núcleo sem `AppHandle` — reaproveitado pelo `alethe-server`
+/// (`server_main/backup_routes.rs`), que resolve os mesmos caminhos à mão
+/// (mesmo padrão de `profile_routes.rs`).
+pub fn import_backup_from_dir(
+    dir: PathBuf,
+    activity_stats: PathBuf,
+    source_path: String,
+) -> Result<(), String> {
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
     let file = fs::File::open(&source_path).map_err(|e| e.to_string())?;
@@ -142,7 +150,6 @@ fn import_backup_inner(app: AppHandle, source_path: String) -> Result<(), String
     if scrollback.exists() {
         fs::remove_dir_all(&scrollback).map_err(|e| e.to_string())?;
     }
-    let activity_stats = activity_stats_file_path(&app)?;
     if activity_stats.exists() {
         fs::remove_file(activity_stats).map_err(|e| e.to_string())?;
     }

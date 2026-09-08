@@ -7,10 +7,19 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::provider_common::now_ms;
 use crate::pty::{self, PtySessions};
+use crate::pty_sink::TauriSink;
 use crate::stats::MemoryStats;
 
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 const META_STALE_MS: u64 = 30_000;
+// Real process churn (agents/PTYs spawning and exiting) can make effective
+// memory hover right at a level boundary, crossing it again on the very
+// next 5s sample even with the existing critical-exit hysteresis. Without a
+// minimum dwell before a *notification* is accepted, that produces a fresh
+// toast every single cycle. The dwell only gates the notification — the
+// protective spawn-block/suspend logic below always reacts to the raw,
+// instantaneous level, never delayed.
+const PRESSURE_NOTIFY_DWELL_MS: u64 = 30_000;
 const RESOURCE_LOG_INTERVAL_MS: u64 = 60_000;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -138,7 +147,19 @@ struct ResourceState {
     policy: ResourcePolicy,
     metas: HashMap<String, PtyRuntimeMeta>,
     latest: Option<RuntimeSnapshot>,
+    pressure_active: bool,
+    /// Raw/instant level from the previous cycle — feeds the existing
+    /// critical-exit hysteresis above (`was_critical`) and `pressure_active`.
+    /// Always up to date every cycle, never delayed.
     last_level: &'static str,
+    /// Debounced level actually exposed via `RuntimeSnapshot`/polling and
+    /// the `resource://pressure` push event — only promoted from
+    /// `pending_level` once it holds for `PRESSURE_NOTIFY_DWELL_MS`.
+    stable_level: &'static str,
+    /// Raw level currently being observed as a candidate to become the next
+    /// `stable_level`, and when it was first observed.
+    pending_level: &'static str,
+    pending_since_ms: u64,
     last_log_at_ms: u64,
 }
 
@@ -154,7 +175,11 @@ impl Default for ResourceSupervisor {
                 policy: ResourcePolicy::default(),
                 metas: HashMap::new(),
                 latest: None,
+                pressure_active: false,
                 last_level: "normal",
+                stable_level: "normal",
+                pending_level: "normal",
+                pending_since_ms: 0,
                 last_log_at_ms: 0,
             }),
             system: Mutex::new(System::new()),
@@ -282,7 +307,15 @@ impl ResourceSupervisor {
         }
 
         let app_pid = std::process::id();
-        let app_tree = descendants(app_pid, &children);
+        let mut app_tree = descendants(app_pid, &children);
+
+        for (_, root_pid, _, _) in &roots {
+            if let Some(pid) = root_pid {
+                let pty_tree = descendants(*pid, &children);
+                app_tree.extend(pty_tree);
+            }
+        }
+
         let mut app_bytes = 0_u64;
         let mut webview_bytes = 0_u64;
         let mut pty_bytes = 0_u64;
@@ -292,17 +325,48 @@ impl ResourceSupervisor {
                 continue;
             };
             let working = process.memory();
-
-            // processos.
             let private = process_private_commit_bytes(*pid, working);
             private_total += private;
             let name = process.name().to_string_lossy().to_ascii_lowercase();
             if *pid == app_pid || name.contains("alethe") {
                 app_bytes += private;
-            } else if name.contains("msedgewebview2") || name.contains("webkit") {
+            } else if name.contains("msedgewebview2")
+                || name.contains("webkit")
+                || name.contains("chrome")
+                || name.contains("chromium")
+                || name.contains("firefox")
+                || name.contains("brave")
+                || name.contains("edge")
+                || name.contains("opera")
+            {
                 webview_bytes += private;
             } else {
                 pty_bytes += private;
+            }
+        }
+
+        if webview_bytes == 0 {
+            for (pid, process) in system.processes() {
+                if process.thread_kind().is_some() {
+                    continue;
+                }
+                let name = process.name().to_string_lossy().to_ascii_lowercase();
+                if name.contains("chrome")
+                    || name.contains("chromium")
+                    || name.contains("firefox")
+                    || name.contains("brave")
+                    || name.contains("msedge")
+                    || name.contains("edge")
+                    || name.contains("webkit")
+                {
+                    let working = process.memory();
+                    let private = process_private_commit_bytes(pid.as_u32(), working);
+                    if private > 30 * 1024 * 1024 && private < 2000 * 1024 * 1024 {
+                        webview_bytes += private;
+                        app_tree.insert(pid.as_u32());
+                        break;
+                    }
+                }
             }
         }
 
@@ -455,35 +519,85 @@ fn pressure_level(memory: &MemoryStats, previous: &'static str) -> &'static str 
 fn run_cycle(app: &AppHandle, sessions: &PtySessions, supervisor: &ResourceSupervisor) {
     let mut snapshot = supervisor.collect(sessions);
     let now = snapshot.sampled_at_ms;
-    let (policy, metas, previous_level, last_log_at_ms) = {
+    let (
+        policy,
+        metas,
+        was_active,
+        previous_level,
+        previous_stable_level,
+        mut pending_level,
+        mut pending_since_ms,
+        last_log_at_ms,
+    ) = {
         let state = supervisor.state.lock().unwrap_or_else(|p| p.into_inner());
         (
             state.policy.clone(),
             state.metas.clone(),
+            state.pressure_active,
             state.last_level,
+            state.stable_level,
+            state.pending_level,
+            state.pending_since_ms,
             state.last_log_at_ms,
         )
     };
+    let automatic = policy.mode == "smart-lru";
+    // Histerese: sem isso, uso oscilando perto do orçamento vira "critical" e
+    // volta pra "warning"/"normal" a cada ciclo (5s), disparando uma
+    // notificação nova a cada troca — nunca "assenta". Uma vez crítico, só
+    // sai desse nível quando cair abaixo do recovery_target_mb (mesma lógica
+    // que pressure_active já usa).
+    let was_critical = previous_level == "critical";
+    let critical = snapshot.effective_total_mb >= policy.memory_budget_mb
+        || (was_critical && snapshot.effective_total_mb > policy.recovery_target_mb);
+    let pressure_active =
+        critical || (was_active && snapshot.effective_total_mb > policy.recovery_target_mb);
     let candidates = eligible_candidates(&snapshot, &metas, &policy, now);
-    let level = pressure_level(&snapshot.memory, previous_level);
-    // Suspending is not a pause: the process tree is killed and nothing ever brings it back, so a
-    // terminal loses its running agent until it is started again by hand. Doing that to someone who
-    // never asked for it is why manual mode has to be honoured even under critical pressure — the
-    // warning is what manual mode offers instead.
-    let suspended_id = if may_suspend(level, &policy) {
-        candidates.first().and_then(|id| {
-            match pty::suspend_session_with_reason(app, sessions, id, "memory-pressure") {
-                Ok(true) => Some(id.clone()),
-                _ => None,
+    let mut suspended_id = None;
+    if automatic && pressure_active {
+        if let Some(id) = candidates.first() {
+            let log_path = crate::paths::spawn_log_path(app).ok();
+            if pty::suspend_session(&TauriSink(app.clone()), log_path.as_deref(), sessions, id)
+                .unwrap_or(false)
+            {
+                suspended_id = Some(id.clone());
             }
-        })
+        }
+    }
+    // O modo manual desativa apenas o estacionamento automático; não deve
+    // permitir que novos PTYs agravem uma pressão crítica e congelem o sistema.
+    // Sessões já abertas continuam intactas para o usuário decidir o que
+    // suspender/encerrar.
+    let spawn_blocked = critical;
+    let level = if critical {
+        "critical"
+    } else if snapshot.effective_total_mb >= policy.warning_threshold_mb || pressure_active {
+        "warning"
     } else {
-        None
+        "normal"
     };
+    // Debounce: only promote a raw level change to the exposed/notified
+    // "stable" level after it holds for PRESSURE_NOTIFY_DWELL_MS straight.
+    // This is what the poll path (`get_runtime_snapshot`) and the push
+    // event both read, so neither can flap on a boundary re-crossed every
+    // 5s sample — the protective `spawn_blocked` above stays instantaneous
+    // regardless, since it's computed from the raw `level`/`critical`.
+    if level != pending_level {
+        pending_level = level;
+        pending_since_ms = now;
+    }
+    let stable_level = if pending_level != previous_stable_level
+        && now.saturating_sub(pending_since_ms) >= PRESSURE_NOTIFY_DWELL_MS
+    {
+        pending_level
+    } else {
+        previous_stable_level
+    };
+
     snapshot.pressure = PressureState {
-        level,
-        spawn_blocked: false,
-        automatic: suspended_id.is_some(),
+        level: stable_level,
+        spawn_blocked,
+        automatic,
         candidate_count: candidates.len(),
         last_suspended_id: suspended_id.clone(),
     };
@@ -493,7 +607,11 @@ fn run_cycle(app: &AppHandle, sessions: &PtySessions, supervisor: &ResourceSuper
         || now.saturating_sub(last_log_at_ms) >= RESOURCE_LOG_INTERVAL_MS;
     {
         let mut state = supervisor.state.lock().unwrap_or_else(|p| p.into_inner());
+        state.pressure_active = pressure_active && level != "normal";
         state.last_level = level;
+        state.stable_level = stable_level;
+        state.pending_level = pending_level;
+        state.pending_since_ms = pending_since_ms;
         if let Some(id) = &suspended_id {
             state.metas.remove(id);
         }
@@ -517,11 +635,11 @@ fn run_cycle(app: &AppHandle, sessions: &PtySessions, supervisor: &ResourceSuper
         );
     }
 
-    if previous_level != level || suspended_id.is_some() {
+    if previous_stable_level != stable_level || suspended_id.is_some() {
         let _ = app.emit(
             "resource://pressure",
             ResourcePressurePayload {
-                level,
+                level: stable_level,
                 total_mb: snapshot.effective_total_mb,
                 budget_mb: policy.memory_budget_mb,
                 spawn_blocked: false,
@@ -592,6 +710,22 @@ pub fn update_pty_runtime_meta(
     for meta in metas {
         state.metas.insert(meta.id.clone(), meta);
     }
+}
+
+pub fn get_runtime_snapshot_core(sessions: &PtySessions) -> RuntimeSnapshot {
+    static SUPERVISOR: std::sync::OnceLock<std::sync::Arc<ResourceSupervisor>> =
+        std::sync::OnceLock::new();
+    let supervisor = SUPERVISOR.get_or_init(|| std::sync::Arc::new(ResourceSupervisor::default()));
+    if let Some(snapshot) = supervisor
+        .state
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .latest
+        .clone()
+    {
+        return snapshot;
+    }
+    supervisor.collect(sessions)
 }
 
 #[tauri::command]

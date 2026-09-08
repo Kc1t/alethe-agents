@@ -224,13 +224,23 @@ export function VoiceDictationSection() {
                 : t('prefs.dictationModelMissing')}
             </p>
             {downloadFraction != null ? (
-              <p>{t('prefs.dictationModelProgress', { percent: Math.round(downloadFraction * 100) })}</p>
+              <p>
+                {t('prefs.dictationModelProgress', { percent: Math.round(downloadFraction * 100) })}
+              </p>
             ) : null}
             <div className={styles.segmented}>
-              <button type="button" disabled={busy || modelState?.status === 'ready'} onClick={() => void downloadModel()}>
+              <button
+                type="button"
+                disabled={busy || modelState?.status === 'ready'}
+                onClick={() => void downloadModel()}
+              >
                 {t('prefs.dictationModelDownload')}
               </button>
-              <button type="button" disabled={busy || modelState?.status !== 'ready'} onClick={() => void deleteModel()}>
+              <button
+                type="button"
+                disabled={busy || modelState?.status !== 'ready'}
+                onClick={() => void deleteModel()}
+              >
                 {t('prefs.dictationModelDelete')}
               </button>
             </div>

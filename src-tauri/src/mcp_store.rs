@@ -80,6 +80,8 @@ fn repo_path(repo: Option<String>) -> Option<PathBuf> {
 fn is_writable(path: &Path) -> bool {
     match fs::metadata(path) {
         Ok(metadata) => !metadata.permissions().readonly(),
+        // A missing file is writable if its directory exists — that is the ordinary "not created
+        // yet" case, not an error worth reporting.
         Err(_) => path.parent().map(|parent| parent.is_dir()).unwrap_or(false),
     }
 }
@@ -479,7 +481,7 @@ fn prune_backups(dir: &Path, prefix: &str) {
     }
     matching.sort();
     for stale in &matching[..matching.len() - MAX_BACKUPS] {
-        let _ = fs::remove_file(stale);
+        crate::best_effort!(fs::remove_file(stale), "stale_backup_already_gone");
     }
 }
 
@@ -492,13 +494,26 @@ fn atomic_write(path: &Path, contents: &str) -> Result<(), String> {
     let tmp = PathBuf::from(tmp);
     fs::write(&tmp, contents).map_err(|error| format!("write_failed:{error}"))?;
     // A fresh temp file is created with the default mode, which would widen a config the
-    // user deliberately locked down to 0600.
+    // user deliberately locked down to 0600. This file can hold API keys, so a copy that silently
+    // fails leaves them world-readable while the app reports the write as successful — the failure
+    // mode is not "the setting did not stick", it is "the secret leaked and nobody was told".
     #[cfg(unix)]
     if let Ok(metadata) = fs::metadata(path) {
-        let _ = fs::set_permissions(&tmp, metadata.permissions());
+        if let Err(error) = fs::set_permissions(&tmp, metadata.permissions()) {
+            crate::decide!(
+                target: "mcp.store",
+                attempted = "preserve_permissions",
+                outcome = Failed,
+                because = "set_permissions_failed",
+                rule = "mcp_store.atomic_write_preserves_mode",
+                evidence = { error = %error },
+            );
+            crate::best_effort!(fs::remove_file(&tmp), "temp_file_already_gone");
+            return Err(format!("write_failed:permissions_not_preserved:{error}"));
+        }
     }
     fs::rename(&tmp, path).map_err(|error| {
-        let _ = fs::remove_file(&tmp);
+        crate::best_effort!(fs::remove_file(&tmp), "temp_file_already_gone");
         format!("write_failed:{error}")
     })
 }
@@ -961,7 +976,7 @@ name = "gate"
             "alethe-mcp-test-{}-{index}-{name}",
             std::process::id()
         ));
-        let _ = fs::remove_dir_all(&dir);
+        crate::best_effort!(fs::remove_dir_all(&dir), "test_dir_already_absent");
         fs::create_dir_all(&dir).expect("scratch dir");
         dir
     }
@@ -1014,7 +1029,7 @@ name = "gate"
         assert_eq!(servers.len(), 1);
         assert_eq!(servers[0].name, "azure-devops");
 
-        let _ = fs::remove_dir_all(&dir);
+        crate::best_effort!(fs::remove_dir_all(&dir), "test_dir_already_absent");
     }
 
     #[test]
@@ -1075,7 +1090,7 @@ name = "gate"
             .expect("parses");
         assert_eq!(local_servers.len(), 2);
 
-        let _ = fs::remove_dir_all(&dir);
+        crate::best_effort!(fs::remove_dir_all(&dir), "test_dir_already_absent");
     }
 
     #[test]
@@ -1104,7 +1119,7 @@ name = "gate"
             1
         );
 
-        let _ = fs::remove_dir_all(&dir);
+        crate::best_effort!(fs::remove_dir_all(&dir), "test_dir_already_absent");
     }
 
     #[test]
@@ -1147,7 +1162,7 @@ name = "gate"
         assert!(written.contains("[mcp_servers.discord.env]"));
         assert!(written.contains("alethe-probe"));
 
-        let _ = fs::remove_dir_all(&dir);
+        crate::best_effort!(fs::remove_dir_all(&dir), "test_dir_already_absent");
     }
 
     #[test]
@@ -1170,7 +1185,7 @@ name = "gate"
         assert!(written.contains("[[hooks.PreToolUse]]"));
         assert!(written.contains("trust_level"));
 
-        let _ = fs::remove_dir_all(&dir);
+        crate::best_effort!(fs::remove_dir_all(&dir), "test_dir_already_absent");
     }
 
     #[test]
@@ -1190,7 +1205,7 @@ name = "gate"
         assert!(written.contains("\"mcpServers\""));
         assert!(written.contains("alethe-probe"));
 
-        let _ = fs::remove_dir_all(&dir);
+        crate::best_effort!(fs::remove_dir_all(&dir), "test_dir_already_absent");
     }
 
     #[test]
@@ -1215,7 +1230,7 @@ name = "gate"
         assert_eq!(error, "unsupported_fields:env.TOKEN");
         assert_eq!(fs::read_to_string(&config).expect("unchanged"), "{}");
 
-        let _ = fs::remove_dir_all(&dir);
+        crate::best_effort!(fs::remove_dir_all(&dir), "test_dir_already_absent");
     }
 
     #[test]
@@ -1238,7 +1253,7 @@ name = "gate"
             "{\"mcp\":{}}}}"
         );
 
-        let _ = fs::remove_dir_all(&dir);
+        crate::best_effort!(fs::remove_dir_all(&dir), "test_dir_already_absent");
     }
 
     #[test]
@@ -1260,7 +1275,7 @@ name = "gate"
             .expect("unchanged")
             .contains("// keep me"));
 
-        let _ = fs::remove_dir_all(&dir);
+        crate::best_effort!(fs::remove_dir_all(&dir), "test_dir_already_absent");
     }
 
     #[test]
@@ -1275,7 +1290,7 @@ name = "gate"
         )
         .unwrap_err();
         assert_eq!(error, "not_found");
-        let _ = fs::remove_dir_all(&dir);
+        crate::best_effort!(fs::remove_dir_all(&dir), "test_dir_already_absent");
     }
 
     #[test]
@@ -1289,7 +1304,7 @@ name = "gate"
         prune_backups(&backups, "codex-user-");
         let kept = fs::read_dir(&backups).expect("read").count();
         assert_eq!(kept, MAX_BACKUPS);
-        let _ = fs::remove_dir_all(&dir);
+        crate::best_effort!(fs::remove_dir_all(&dir), "test_dir_already_absent");
     }
 
     #[test]

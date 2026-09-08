@@ -1,8 +1,8 @@
 import { Copy, Download, ShieldAlert, Trash2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { useT } from '../../lib/i18n'
 import { type AuditEntry, auditLogger, type AuditLogLevel } from '../../lib/auditLogger'
+import { useT } from '../../lib/i18n'
 import { writeClipboardText } from '../../lib/tauri'
 import { useUiStore } from '../../stores/uiStore'
 import styles from './AuditModal.module.css'

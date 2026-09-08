@@ -27,8 +27,11 @@
     flex-basis 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.shellBody :global([data-panel-group]:active [data-panel]),
-.shellBody :global([data-panel-group][data-resize-handle-active] [data-panel]) {
+/* react-resizable-panels never emits `data-panel-group`/`data-resize-handle-active` — the group
+   root only has a static `data-group` marker and the separator's `data-separator` value becomes
+   "active" while dragging. Without this selector matching, panels kept animating their
+   flex-basis during drag instead of tracking the pointer 1:1. */
+.shellBody :global([data-group]:has([data-separator='active']) [data-panel]) {
   transition: none !important;
 }
 
@@ -167,6 +170,37 @@
   user-select: none;
   pointer-events: none;
   animation: loadingEnter 360ms ease-out both;
+}
+
+.loadingFailure {
+  pointer-events: auto;
+}
+
+.loadingHint {
+  max-width: 360px;
+  margin: 2px 0 4px;
+  color: var(--fg-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.loadingRetry {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  color: var(--fg);
+  font: 600 11px var(--font-ui);
+  cursor: pointer;
+}
+
+.loadingRetry:hover {
+  border-color: var(--accent);
 }
 
 .loadingWordmark {

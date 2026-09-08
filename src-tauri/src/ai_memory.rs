@@ -7,7 +7,6 @@
 //!
 
 use std::net::{TcpStream, ToSocketAddrs};
-use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 

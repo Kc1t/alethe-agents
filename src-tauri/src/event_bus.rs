@@ -31,10 +31,22 @@ pub fn get_sender() -> &'static broadcast::Sender<EventBusPayload> {
 
 pub fn publish(event: EventBusPayload) {
     let sender = get_sender();
-    let _ = sender.send(event.clone());
+    // A broadcast with no receivers is ordinary — nothing is subscribed yet at startup.
+    crate::best_effort!(sender.send(event.clone()), "no_event_bus_subscriber");
     if let Some(app) = APP_HANDLE.get() {
         use tauri::Emitter;
-        let _ = app.emit("alethe://event-bus", &event);
+        // The frontend half of the bus. This channel was silently dead once already, through a
+        // name mismatch, and nothing anywhere reported it — so a failure to emit is recorded.
+        if let Err(error) = app.emit("alethe://event-bus", &event) {
+            crate::decide!(
+                target: "event_bus",
+                attempted = "emit_to_frontend",
+                outcome = Failed,
+                because = "webview_emit_failed",
+                rule = "event_bus.reaches_the_frontend",
+                evidence = { error = %error },
+            );
+        }
     }
 }
 

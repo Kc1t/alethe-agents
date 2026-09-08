@@ -2,8 +2,8 @@ import { Plus, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 import { useT } from '../../lib/i18n'
-import { useProjectsStore } from '../../stores/projectsStore'
 import type { SubTab } from '../../lib/types'
+import { useProjectsStore } from '../../stores/projectsStore'
 import { AgentIcon } from '../icons/AgentIcons'
 import styles from './SubTabsLane.module.css'
 

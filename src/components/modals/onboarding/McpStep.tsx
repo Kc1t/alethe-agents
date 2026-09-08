@@ -138,7 +138,8 @@ export function McpStep() {
         </div>
       ) : (
         <p className={styles.note}>
-          <Check size={13} /> {synced > 0 ? t('onboarding.mcpSynced', { count: synced }) : t('onboarding.mcpAligned')}
+          <Check size={13} />{' '}
+          {synced > 0 ? t('onboarding.mcpSynced', { count: synced }) : t('onboarding.mcpAligned')}
         </p>
       )}
     </div>

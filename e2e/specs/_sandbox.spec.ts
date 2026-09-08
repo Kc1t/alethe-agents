@@ -88,7 +88,9 @@ describe('sandbox: ad-hoc exploration', () => {
       const terminal = await findLatestTerminal(projectId)
       const worktreeAgentId = terminal.worktreeAgentId
       if (!worktreeAgentId) {
-        throw new Error('terminal was not born with a worktreeAgentId — did autoWorktree not take effect?')
+        throw new Error(
+          'terminal was not born with a worktreeAgentId — did autoWorktree not take effect?',
+        )
       }
       const worktreePath = join(repoPath, '.alethe', 'worktrees', worktreeAgentId)
       const ptyId = terminal.ptyId

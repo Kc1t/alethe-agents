@@ -1,13 +1,9 @@
 import { ArrowUpCircle } from 'lucide-react'
 
-import { useUiStore } from '../../stores/uiStore'
 import { useT } from '../../lib/i18n'
+import { useUiStore } from '../../stores/uiStore'
 import styles from './SidebarUpdate.module.css'
 
-   
-                                                                             
-                                                                  
-   
 export function SidebarUpdate() {
   const t = useT()
   const info = useUiStore((s) => s.updateInfo)

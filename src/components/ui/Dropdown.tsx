@@ -1,4 +1,4 @@
-import { ChevronDown, Search } from 'lucide-react'
+import { Check, ChevronDown, Search } from 'lucide-react'
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -15,6 +15,9 @@ import styles from './Dropdown.module.css'
 export type DropdownOption = {
   value: string
   label: ReactNode
+  /** Secondary line under the label — for the literal value behind a friendly label (a model id,
+   * say), which is otherwise invisible even though it is what actually gets used. */
+  description?: ReactNode
   disabled?: boolean
   searchText?: string
 }
@@ -59,6 +62,7 @@ export function Dropdown({
   const [position, setPosition] = useState({ left: 0, top: 0, width: 220, maxHeight: 240 })
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const optionsRef = useRef<HTMLDivElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const listboxId = useId()
   const selected = options.find((option) => option.value === value)
@@ -79,8 +83,7 @@ export function Dropdown({
       label.toLocaleLowerCase() === normalizedSearch
     )
   })
-  const showCustomOption =
-    allowCustomValue && normalizedSearch.length >= 2 && !hasExactMatch
+  const showCustomOption = allowCustomValue && normalizedSearch.length >= 2 && !hasExactMatch
 
   const closeMenu = (restoreFocus = false) => {
     setOpen(false)
@@ -88,9 +91,27 @@ export function Dropdown({
     if (restoreFocus) window.requestAnimationFrame(() => triggerRef.current?.focus())
   }
 
+  /**
+   * Where the menu is mounted.
+   *
+   * `document.body` everywhere except inside a modal. A modal is a Radix `Dialog.Content`, which
+   * traps focus: it listens for focus landing outside itself and pulls it straight back. A menu
+   * portalled to the body is outside, so clicking its search field focused it and lost it again in
+   * the same tick — the field looked dead while the options, which act on pointer-down, kept
+   * working. Mounting inside the dialog puts the menu in the focus scope and the field behaves.
+   *
+   * Read on every open rather than once: the same Dropdown component is used both inside modals and
+   * out, and a modal can open around it after mount.
+   */
+  const menuHost = (): HTMLElement =>
+    triggerRef.current?.closest<HTMLElement>('[data-alethe-modal-content]') ?? document.body
+
   useLayoutEffect(() => {
     if (!open) return
-    const updatePosition = () => {
+    const updatePosition = (event?: Event) => {
+      // The scroll listener below is capturing, so it also sees the menu's own list scrolling.
+      // Repositioning against the (unmoved) trigger on every one of those ticks is pure churn.
+      if (event && menuRef.current?.contains(event.target as Node)) return
       const rect = triggerRef.current?.getBoundingClientRect()
       if (!rect) return
       const width = Math.min(320, Math.max(220, rect.width), window.innerWidth - 16)
@@ -105,7 +126,17 @@ export function Dropdown({
       const maxHeight = Math.max(96, Math.min(280, opensBelow ? spaceBelow : spaceAbove))
       const top = opensBelow ? rect.bottom + 5 : rect.top - maxHeight - 5
       const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8))
-      setPosition({ left, top: Math.max(8, top), width, maxHeight })
+      // The modal is `transform`ed, and a transformed ancestor is what `position: fixed` resolves
+      // against — so inside one, viewport coordinates have to be rebased onto the dialog or the
+      // menu lands half a screen away. Outside a modal the offset is zero and nothing changes.
+      const host = menuHost()
+      const offset = host === document.body ? { left: 0, top: 0 } : host.getBoundingClientRect()
+      setPosition({
+        left: left - offset.left,
+        top: Math.max(8, top) - offset.top,
+        width,
+        maxHeight,
+      })
     }
     updatePosition()
     window.addEventListener('resize', updatePosition)
@@ -142,6 +173,26 @@ export function Dropdown({
       if (focusFrame !== null) window.cancelAnimationFrame(focusFrame)
     }
   }, [open, searchable])
+
+  // Scrolls the option list itself instead of relying on the browser's native wheel handling.
+  // This menu is portalled to `document.body`, so when it is opened from inside a modal it sits
+  // outside the Radix dialog's content — and a modal Radix dialog mounts `react-remove-scroll`,
+  // which cancels wheel events originating outside that content. The list could be clicked (the
+  // menu already opts back into pointer events) but never scrolled, so any option past the
+  // visible few was unreachable. Registered natively because React routes `onWheel` through a
+  // passive listener, where `preventDefault` is a no-op.
+  useEffect(() => {
+    const list = optionsRef.current
+    if (!open || !list) return
+    const scrollOnWheel = (event: WheelEvent) => {
+      const { scrollTop, scrollHeight, clientHeight } = list
+      if (scrollHeight <= clientHeight) return
+      event.preventDefault()
+      list.scrollTop = Math.max(0, Math.min(scrollHeight - clientHeight, scrollTop + event.deltaY))
+    }
+    list.addEventListener('wheel', scrollOnWheel, { passive: false })
+    return () => list.removeEventListener('wheel', scrollOnWheel)
+  }, [open])
 
   const choose = (nextValue: string) => {
     onChange(nextValue)
@@ -218,7 +269,13 @@ export function Dropdown({
                   />
                 </div>
               ) : null}
-              <div className={styles.options} id={listboxId} role="listbox" aria-label={ariaLabel}>
+              <div
+                ref={optionsRef}
+                className={styles.options}
+                id={listboxId}
+                role="listbox"
+                aria-label={ariaLabel}
+              >
                 {visibleOptions.map((option) => (
                   <button
                     key={option.value}
@@ -233,7 +290,15 @@ export function Dropdown({
                       if (!option.disabled) choose(option.value)
                     }}
                   >
-                    <span>{option.label}</span>
+                    <span className={styles.optionText}>
+                      <span className={styles.optionLabel}>{option.label}</span>
+                      {option.description ? (
+                        <span className={styles.optionDescription}>{option.description}</span>
+                      ) : null}
+                    </span>
+                    {option.value === value ? (
+                      <Check className={styles.optionCheck} size={13} aria-hidden="true" />
+                    ) : null}
                   </button>
                 ))}
                 {showCustomOption ? (
@@ -257,7 +322,7 @@ export function Dropdown({
                 ) : null}
               </div>
             </div>,
-            document.body,
+            menuHost(),
           )
         : null}
     </div>

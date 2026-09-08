@@ -74,6 +74,15 @@ export async function deliverOpenCodePrompt(
   const normalizedPrompt = normalizeForMatch(prompt)
   const fingerprintStart = normalizedPrompt.slice(0, 20)
   const fingerprintEnd = normalizedPrompt.slice(-20)
+  // A fingerprint of the MIDDLE as well: confirming only start OR end let a prompt through that had
+  // been cut in half, when a stretch of the middle was lost during chunked typing (a redraw of the
+  // box, a write race). The start and end still matched while the actual content was truncated. The
+  // middle is the only point that proves nothing vanished between the two ends.
+  const midPoint = Math.floor(normalizedPrompt.length / 2)
+  const fingerprintMid = normalizedPrompt.slice(
+    Math.max(0, midPoint - 10),
+    Math.max(0, midPoint - 10) + 20,
+  )
   const boxLooksEmpty = async () => {
     const screenNorm = normalizeForMatch(await io.readScreenText())
     return (
@@ -105,10 +114,9 @@ export async function deliverOpenCodePrompt(
     const roundDeadline = Math.min(deadline, Date.now() + CONFIRM_ROUND_BUDGET_MS)
     while (!io.isCancelled() && Date.now() < roundDeadline) {
       const screenNorm = normalizeForMatch(await io.readScreenText())
-      if (
-        (fingerprintStart.length > 0 && screenNorm.includes(fingerprintStart)) ||
-        (fingerprintEnd.length > 0 && screenNorm.includes(fingerprintEnd))
-      ) {
+      const endMatches = fingerprintEnd.length > 0 && screenNorm.includes(fingerprintEnd)
+      const midMatches = fingerprintMid.length === 0 || screenNorm.includes(fingerprintMid)
+      if (endMatches && midMatches) {
         confirmedOnScreen = true
         break
       }

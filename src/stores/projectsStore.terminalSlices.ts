@@ -3,6 +3,7 @@
 import { nanoid } from 'nanoid'
 
 import { getLocale, translate } from '../lib/i18n'
+import { withFallback } from '../lib/resilience'
 import {
   clearTerminalPtyIds,
   collectTerminalPtyIds,
@@ -19,11 +20,10 @@ import {
   touchTerminalUsage,
 } from '../lib/terminalFactory'
 import { cleanupPtys } from '../lib/terminalLifecycle'
-import type { Terminal } from '../lib/types'
 import { sanitizeWorkspaceSnapshot } from '../lib/workspaceNavigation'
-import { useUiStore } from './uiStore'
 import type { ProjectsState } from './projectsStore'
 import type { SliceCtx } from './projectsStore.slices'
+import { useUiStore } from './uiStore'
 
 function t(key: Parameters<typeof translate>[1], params?: Record<string, string | number>) {
   return translate(getLocale(), key, params)
@@ -36,10 +36,8 @@ type TerminalsSlice = Pick<
   | 'createFilePane'
   | 'createDiffPane'
   | 'createWebPane'
-  | 'createGraphifyPane'
   | 'renameTerminal'
   | 'setBrowserEngine'
-  | 'markGsdSyncViewer'
   | 'deleteTerminal'
   | 'deleteTerminalWithWorktreeCleanup'
   | 'killTerminal'
@@ -68,11 +66,24 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
             cwd: args.firstTab.cwd.trim() || finalCwd,
           },
         })
+        // Mirrors the exact exclusion `getProjectRepoRoot` (terminalFactory.ts)
+        // already applies when READING the project's root: a terminal whose
+        // cwd is its own worktree-agent folder, an
+        // ephemeral conflict-resolution agent, or another ephemeral utility
+        // is never a legitimate "project root" candidate. Missing this same
+        // exclusion on the WRITE side let e.g. a merge conflict's throwaway
+        // trial folder (`.alethe/merge-envs/<id>`, deleted once the merge
+        // resolves) silently become the project's `defaultCwd` — poisoning
+        // every later merge/terminal spawn that falls back to it, since that
+        // folder is gone by then (confirmed live: a project's `defaultCwd`
+        // ended up pointing at a deleted merge-env directory).
+        const isPureCandidate =
+          !args.worktreeAgentId && !args.ephemeralConflictAgent && !args.ephemeralUtility
         const projects = state.projects.map((p) =>
           p.id === projectId
             ? {
                 ...p,
-                ...(!args.worktreeAgentId && finalCwd ? { defaultCwd: finalCwd } : {}),
+                ...(isPureCandidate && finalCwd ? { defaultCwd: finalCwd } : {}),
                 terminals: [...p.terminals, terminal],
               }
             : p,
@@ -254,47 +265,6 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
       return pane
     },
 
-    createGraphifyPane: (projectId, cwd) => {
-      const pane: Terminal = {
-        id: `graphify-${nanoid()}`,
-        name: 'Visualização de Grafo (Graphify)',
-        cwd,
-        tabs: [],
-        activeTabId: '',
-        disabled: false,
-        laneVisible: true,
-        kind: 'graphify',
-      }
-      update((state) => {
-        const projects = state.projects.map((p) =>
-          p.id === projectId ? { ...p, terminals: [...p.terminals, pane] } : p,
-        )
-        const project = projects.find((p) => p.id === projectId)
-        const layout = project?.layoutMode ?? 'auto'
-        const existing = state.workspace.containers.find((c) => c.projectId === projectId)
-        const containers = existing
-          ? state.workspace.containers.map((c) =>
-              c.projectId === projectId
-                ? { ...c, paneIds: [...c.paneIds, pane.id], lastUsedAt: Date.now() }
-                : c,
-            )
-          : [...state.workspace.containers, newContainer(projectId, [pane.id], layout)]
-        return {
-          projects,
-          workspace: {
-            ...state.workspace,
-            containers,
-            recentProjectIds: rememberProjectTab(state.workspace.recentProjectIds, projectId),
-            recentTabs: rememberWorkspaceTab(state.workspace.recentTabs, {
-              kind: 'project',
-              id: projectId,
-            }),
-          },
-        }
-      })
-      return pane
-    },
-
     renameTerminal: (projectId, terminalId, name) =>
       updateTerminal(projectId, terminalId, (t) => ({ ...t, name })),
 
@@ -304,24 +274,10 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
         browserConfig: { ...t.browserConfig, engine },
       })),
 
-    markGsdSyncViewer: (projectId, terminalId) =>
-      updateTerminal(projectId, terminalId, (t) =>
-        t.gsdSyncViewer ? t : { ...t, gsdSyncViewer: true },
-      ),
-
     deleteTerminal: (projectId, terminalId) =>
       update((state) => {
         const project = state.projects.find((p) => p.id === projectId)
-        const terminal = project?.terminals.find((t) => t.id === terminalId)
-
-        // teardown da worktree inteira — arrasta junto o terminal "viewer" GSD
-
         const idsToRemove = new Set([terminalId])
-        if (terminal?.worktreeAgentId && terminal.cwd) {
-          for (const sibling of project?.terminals ?? []) {
-            if (sibling.gsdSyncViewer && sibling.cwd === terminal.cwd) idsToRemove.add(sibling.id)
-          }
-        }
         const terminalsToClean = (project?.terminals ?? []).filter((t) => idsToRemove.has(t.id))
         if (terminalsToClean.length > 0) cleanupPtys(collectTerminalPtyIds(terminalsToClean))
         const projects = state.projects.map((p) => {
@@ -393,13 +349,14 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
       const { killPtyTree, worktreeRemove } = await import('../lib/tauri')
       const ptyIds = collectTerminalPtyIds([terminal])
 
-      await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(() => [])))
+      await Promise.all(ptyIds.map((id) => killPtyTree(id).catch(withFallback('killPtyTree', []))))
       const repo = getProjectRepoRoot(project)
       if (repo) {
         try {
           await worktreeRemove(repo, terminal.worktreeAgentId, true)
         } catch (firstErr) {
           if (String(firstErr).includes('worktree_not_found')) {
+            // Already removed, harmless — nothing to do.
           } else {
             await new Promise((resolve) => setTimeout(resolve, 400))
             try {

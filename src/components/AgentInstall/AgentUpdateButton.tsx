@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useAgentInstall, useAgentOperationBusy } from '../../hooks/useAgentInstall'
 import { installMethodsFor, type InstallToolchain } from '../../lib/agentInstall'
 import { useT } from '../../lib/i18n'
+import { withFallback } from '../../lib/resilience'
 import { probeInstallToolchain } from '../../lib/tauri'
 import type { AgentType } from '../../lib/types'
 import { useUiStore } from '../../stores/uiStore'
@@ -33,7 +34,7 @@ export function AgentUpdateButton({ agent, label, onUpdated }: Props) {
       .then((result) => {
         if (!cancelled) setToolchain(result)
       })
-      .catch(() => undefined)
+      .catch(withFallback('setToolchain', undefined))
     return () => {
       cancelled = true
     }

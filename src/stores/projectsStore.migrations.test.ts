@@ -85,4 +85,91 @@ describe('projects file migration', () => {
     expect(migrated.groups[0].gridLayoutHistory).toEqual([])
     expect(migrated.preferences.workspaceGridLayoutHistory).toEqual([])
   })
+
+  it('drops GSD Sync viewer terminals and every reference left pointing at them', () => {
+    // These are in every projects.json written while GSD Sync was live. Keeping them would
+    // resurrect them as ordinary terminals the user never opened (the flag is what hid them),
+    // pointing into agent worktrees that are usually gone.
+    const migrated = migrate({
+      ...EMPTY_PROJECTS_FILE,
+      version: 7,
+      projects: [
+        {
+          id: 'project',
+          terminals: [
+            { id: 'real', tabs: [] },
+            { id: 'viewer', gsdSyncViewer: true, tabs: [] },
+          ],
+          paneGroups: [{ id: 'group-a', paneIds: ['real', 'viewer'] }],
+          gridLayout: {
+            cols: 2,
+            rows: 1,
+            cells: {
+              real: { col: 0, row: 0, colSpan: 1, rowSpan: 1 },
+              viewer: { col: 1, row: 0, colSpan: 1, rowSpan: 1 },
+            },
+          },
+          gridLayoutHistory: [
+            {
+              id: 'saved',
+              savedAt: 1,
+              layout: {
+                cols: 2,
+                rows: 1,
+                cells: {
+                  real: { col: 0, row: 0, colSpan: 1, rowSpan: 1 },
+                  viewer: { col: 1, row: 0, colSpan: 1, rowSpan: 1 },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    })
+
+    const project = migrated.projects[0]
+    expect(project.terminals.map((terminal) => terminal.id)).toEqual(['real'])
+    expect(project.gridLayout?.cells).not.toHaveProperty('viewer')
+    expect(project.gridLayoutHistory?.[0].layout.cells).not.toHaveProperty('viewer')
+    // A pane group down to a single member is no longer a group — the same rule deleteTerminal
+    // applies when it removes a pane.
+    expect(project.paneGroups).toBeUndefined()
+  })
+
+  it('rewrites the workspace only when a viewer terminal was actually dropped', () => {
+    // Pruning re-runs workspace navigation to clear pane ids left pointing at dropped terminals.
+    // That rewrite must not touch files with nothing to prune — which is every normal file — so
+    // the check is that an unrelated stale pane id survives in one case and not in the other.
+    const workspace = {
+      ...EMPTY_PROJECTS_FILE.workspace,
+      containers: [{ id: 'container', projectId: 'project', paneIds: ['real', 'stale'] }],
+    }
+
+    const untouched = migrate({
+      ...EMPTY_PROJECTS_FILE,
+      version: 7,
+      projects: [{ id: 'project', terminals: [{ id: 'real', tabs: [] }] }],
+      workspace,
+    })
+    expect(untouched.workspace.containers[0].paneIds).toEqual(['real', 'stale'])
+
+    const pruned = migrate({
+      ...EMPTY_PROJECTS_FILE,
+      version: 7,
+      projects: [
+        {
+          id: 'project',
+          terminals: [
+            { id: 'real', tabs: [] },
+            { id: 'viewer', gsdSyncViewer: true, tabs: [] },
+          ],
+        },
+      ],
+      workspace: {
+        ...workspace,
+        containers: [{ id: 'container', projectId: 'project', paneIds: ['real', 'viewer'] }],
+      },
+    })
+    expect(pruned.workspace.containers[0].paneIds).toEqual(['real'])
+  })
 })

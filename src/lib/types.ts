@@ -84,14 +84,7 @@ export type VisualStyle = 'normal' | 'clean'
 export type MotionPreference = 'animated' | 'reduced'
 
 export type FeatureId =
-  | 'todos'
-  | 'git'
-  | 'browser'
-  | 'graphify'
-  | 'aiMemory'
-  | 'mcp'
-  | 'playwright'
-  | 'orchestrator'
+  'todos' | 'git' | 'browser' | 'aiMemory' | 'mcp' | 'playwright' | 'orchestrator'
 
 export type TodoItem = {
   id: string
@@ -123,6 +116,15 @@ export type SubTab = {
   handoff?: AgentHandoffBootstrap
 
   runtimeProfile?: AgentRuntimeProfile
+  /**
+   * `true` só na criação da tab, consumido (limpo) no primeiro spawn.
+   * Impede o fallback de "reivindicar a conversa OpenCode mais recente
+   * ainda não pega nesse cwd" (pensado pra recuperar depois de reiniciar o
+   * app, quando o localStorage se perde) de herdar sem querer uma sessão
+   * antiga de OUTRO projeto/uso anterior da mesma pasta, num terminal
+   * genuinamente novo que nunca rodou antes.
+   */
+  skipSessionClaim?: boolean
 }
 
 export type AgentHandoffBootstrap = {
@@ -150,8 +152,7 @@ export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
   antigravity: '--dangerously-skip-permissions',
 }
 
-export type PaneKind =
-  'terminal' | 'markdown' | 'file' | 'image' | 'video' | 'web' | 'graphify' | 'diff'
+export type PaneKind = 'terminal' | 'markdown' | 'file' | 'image' | 'video' | 'web' | 'diff'
 
 export type BrowserResourceMode = 'app-first' | 'balanced' | 'keep-alive'
 
@@ -207,28 +208,20 @@ export type Terminal = {
 
   staged?: boolean
 
-  gsdSyncViewer?: boolean
   /**
    * Marks this terminal as the EPHEMERAL conflict-resolution agent
    * (`mergeStore.ts` — "born, resolves, dies"). Must never be treated as a
-   * trackable agent worktree: excluded from the GSD Sync watcher/plugin
-   * (`useGsdSyncSessionsWatcher`/`gsdOpenCodePluginWrite`) — without this
-   * exclusion the GSD plugin got installed on this disposable terminal like
-   * any normal worktree, creating a real child session that went orphaned
-   * (pointing at an already-deleted folder) the moment the ephemeral agent
-   * was torn down at the end of the merge.
+   * trackable agent worktree.
    */
   ephemeralConflictAgent?: boolean
   /**
    * Marks a disposable utility terminal (a "Review"/"Test" session from the
    * Merge Center — born, serves manual review, dies) that must NEVER be
    * treated as a candidate "pure repository root" in `getProjectRepoRoot`.
-   * These terminals have `cwd` = the worktree of the agent under review, but
-   * no `worktreeAgentId`/`gsdSyncViewer`, so the root heuristic picked them
-   * as a reference by mistake, contaminating `repo` with the worktree path
-   * instead of the real root, and the agent's card vanished from the Merge
-   * Center while the review/test session was open (same bug class already
-   * fixed for `gsdSyncViewer`).
+   * These terminals have `cwd` = the worktree of the agent under review, but no
+   * `worktreeAgentId`, so the root heuristic picked them as a reference by mistake, contaminating
+   * `repo` with the worktree path instead of the real root, and the agent's card vanished from the
+   * Merge Center while the review/test session was open.
    */
   ephemeralUtility?: boolean
   /** Hides this terminal and its output from every paired remote device. */
@@ -239,6 +232,13 @@ export type PaneGroup = {
   id: string
   paneIds: string[]
 }
+
+/** Outcome of migrating a project's existing terminals into isolated worktrees.
+ *  `dirty` is not a failure: the repository has uncommitted work and the caller
+ *  must confirm before the migration runs (those changes stay in the main
+ *  repository — worktrees are always created from HEAD). */
+export type MigrateWorktreesResult =
+  { status: 'done' } | { status: 'aborted' } | { status: 'dirty'; pending: number }
 
 export type OrphanWorktree = {
   path: string
@@ -288,7 +288,6 @@ export type Project = {
   healthCheckCommand?: string
   /** HTTP path checked by the probe (e.g. "/", "/health"). Defaults to '/' when empty. */
   healthCheckPath?: string
-  gsdWatcherEnabled?: boolean
 
   conflictAgentProvider?: AgentType
 
@@ -298,17 +297,13 @@ export type Project = {
 
   reviewAgentModel?: string
 
-  graphifyEnabled?: boolean
-
   autoWorktree?: boolean
 
   githubUrl?: string
 
   firstBootPending?: boolean
-
   /** Terminal behavior after a merge is accepted (relocate to a new branch or close). */
   mergePostAction?: 'relocateToNewBranch' | 'relocateKeepSession' | 'closeTerminal'
-
   orphanWorktrees?: OrphanWorktree[]
 }
 
@@ -438,6 +433,10 @@ export type Preferences = {
   displayName: string
   /** URL da foto de perfil escolhida no cadastro local. */
   profileImageUrl: string
+  /** Short self-written bio (Discord-style "About Me"), shown to chat contacts — see
+   * `bioSync.ts`. Editable only here, by the account owner; a contact's own bio is read-only,
+   * received via `SyncChatContact.bio`. */
+  bio: string
 
   accountCreated: boolean
 
@@ -486,7 +485,11 @@ export type Preferences = {
   rightSidebarVisible: boolean
   leftSidebarWidth: number
   rightSidebarWidth: number
-
+  /**
+   * Position of split handles between panes, per pane group (`groupId` -> `panelId` -> 0..100 percentage).
+   * Stored as proportions so it adapts across different window sizes and between Desktop and Web.
+   */
+  paneLayouts?: Record<string, Record<string, number>>
   notifyOnLimitReset: boolean
   /** Local speech-to-text into the active terminal. Off by default. */
   dictationEnabled: boolean
@@ -513,8 +516,6 @@ export type Preferences = {
    * Injeta --max-old-space-size e UV_THREADPOOL_SIZE no ambiente do PTY.
    */
   nodeHeapProfile?: 'conservative' | 'balanced' | 'performance'
-
-  gsdSyncModelChain?: string[]
 }
 
 export type ResourcePolicyMode = 'smart-lru' | 'manual'
@@ -587,6 +588,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   firstLaunchAt: null,
   displayName: '',
   profileImageUrl: '',
+  bio: '',
   accountCreated: false,
   alwaysStartOnHome: false,
   alwaysStartUnrestricted: false,
@@ -611,7 +613,6 @@ export const DEFAULT_PREFERENCES: Preferences = {
     todos: true,
     git: true,
     browser: true,
-    graphify: true,
     aiMemory: false,
     mcp: true,
     playwright: false,
@@ -681,11 +682,14 @@ export const GROUP_COLORS = [
 ] as const
 
 export const PROVIDER_MODELS: Record<AgentType, { id: string; label: string }[]> = {
+  // Kept in sync with the `"claude"` fallback list in `src-tauri/src/cli_resolver.rs` — this one
+  // is used when the backend discovery call itself fails, that one when it succeeds but the CLI
+  // reports nothing (which is always, since the Claude CLI has no `models` subcommand).
   claude: [
-    { id: 'claude-3-7-sonnet', label: 'Claude 3.7 Sonnet (Padrão)' },
-    { id: 'claude-3-5-sonnet', label: 'Claude 3.5 Sonnet' },
-    { id: 'claude-3-5-haiku', label: 'Claude 3.5 Haiku' },
-    { id: 'claude-3-opus', label: 'Claude 3 Opus' },
+    { id: 'claude-opus-5', label: 'Claude Opus 5' },
+    { id: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
+    { id: 'claude-opus-4-8', label: 'Claude Opus 4.8' },
+    { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' },
   ],
   codex: [
     { id: 'gpt-4o', label: 'GPT-4o (Padrão)' },

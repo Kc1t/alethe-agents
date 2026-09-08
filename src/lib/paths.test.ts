@@ -4,7 +4,7 @@ import { basename, pathSegments, sameCwd } from './paths'
 
 describe('pathSegments', () => {
   it('separa caminhos POSIX', () => {
-    expect(pathSegments('/home/kauam/dev')).toEqual(['home', 'kauam', 'dev'])
+    expect(pathSegments('/home/user/dev')).toEqual(['home', 'user', 'dev'])
   })
 
   it('separa caminhos Windows', () => {

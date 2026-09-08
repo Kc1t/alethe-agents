@@ -9,3 +9,4 @@ package-lock.json
 *.yaml
 .github
 assets
+.alethe

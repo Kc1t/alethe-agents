@@ -13,6 +13,9 @@ export default tseslint.config(
       'node_modules',
       'src-tauri',
       'graphify-out',
+      '.claude',
+      'target-e2e',
+      '**/.wrangler',
       'scripts',
       'tests',
       '*.config.js',
@@ -36,24 +39,22 @@ export default tseslint.config(
       'simple-import-sort': simpleImportSort,
     },
     rules: {
-      // App de terminal: regexes casam sequências ANSI/controle (\x1b, \x07…)
-      // de propósito — a regra é só falso-positivo aqui.
+      // Terminal app: these regexes intentionally match ANSI/control sequences.
       'no-control-regex': 'off',
-      // Hooks — a regra dura fica em error (bug real), deps fica em warn.
+      // Hooks: rule violations are errors; dependency advice remains a warning.
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
-      // Ordem de import/export determinística (autofix).
+      // Deterministic import/export ordering (autofixable).
       'simple-import-sort/imports': 'warn',
       'simple-import-sort/exports': 'warn',
-      // Rigor de tipos — warn por enquanto (os `any` estão na migração do store).
+      // Type strictness remains a warning while the store migration still contains `any`.
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': [
         'warn',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true },
       ],
-      // Todo IPC do backend passa por um wrapper de lib (tauri.ts / spotify.ts),
-      // nunca invoke() cru em componente/store/hook (convenção do projeto).
+      // Backend IPC goes through a library wrapper, never raw invoke() in UI or stores.
       'no-restricted-imports': [
         'error',
         {
@@ -61,7 +62,7 @@ export default tseslint.config(
             {
               name: '@tauri-apps/api/core',
               importNames: ['invoke'],
-              message: 'Use as funções de lib/tauri.ts em vez de invoke() cru.',
+              message: 'Use the lib/tauri API wrappers instead of raw invoke().',
             },
           ],
         },
@@ -69,14 +70,19 @@ export default tseslint.config(
     },
   },
   {
-    // Wrappers de IPC — os únicos autorizados a chamar invoke() diretamente.
-    files: ['src/lib/tauri/**', 'src/lib/spotify.ts'],
+    // IPC wrappers are the only modules allowed to call invoke() directly.
+    files: ['src/lib/tauri/**', 'src/lib/api/**', 'src/lib/spotify.ts'],
     rules: { 'no-restricted-imports': 'off' },
   },
   {
-    // Testes: relaxa regras que atrapalham setup/mocks.
+    // Tests relax rules that interfere with setup and mocks.
     files: ['**/*.test.{ts,tsx}'],
     rules: { '@typescript-eslint/no-explicit-any': 'off' },
+  },
+  {
+    // Rendezvous smoke tests run in Node with its built-in Web APIs enabled.
+    files: ['services/rendezvous-cloudflare/test/**/*.mjs'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
   prettier,
 )

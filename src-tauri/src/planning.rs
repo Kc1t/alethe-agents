@@ -12,20 +12,20 @@ use crate::git_control::{checked_output, git_command};
 pub struct PlanningWatchers(pub Arc<Mutex<HashMap<String, RecommendedWatcher>>>);
 
 #[tauri::command]
-pub fn start_gsd_watcher(
+pub fn start_planning_watcher(
     _app: tauri::AppHandle,
     state: tauri::State<'_, PlanningWatchers>,
     project_id: String,
     repo_path: String,
 ) -> Result<(), String> {
-    start_gsd_watcher_core(&state, project_id, repo_path)
+    start_planning_watcher_core(&state, project_id, repo_path)
 }
 
 /// Core without `AppHandle`/`tauri::State` — split out so the watcher logic
 /// can be driven by any owner of a `PlanningWatchers`, not just the one
 /// Tauri manages. The `State` wrapper above never used anything besides the
 /// inner map anyway.
-pub fn start_gsd_watcher_core(
+pub fn start_planning_watcher_core(
     watchers: &PlanningWatchers,
     project_id: String,
     repo_path: String,
@@ -55,7 +55,7 @@ pub fn start_gsd_watcher_core(
             }
 
             // Publica no EventBus com correlation_id usando nanoid!()
-            let correlation_id = format!("gsd-{}", nanoid!());
+            let correlation_id = format!("planning-{}", nanoid!());
             crate::event_bus::publish_event_simple(
                 "PlanningUpdated",
                 &correlation_id,
@@ -80,15 +80,15 @@ pub fn start_gsd_watcher_core(
 }
 
 #[tauri::command]
-pub fn stop_gsd_watcher(
+pub fn stop_planning_watcher(
     state: tauri::State<'_, PlanningWatchers>,
     project_id: String,
     repo_path: String,
 ) -> Result<(), String> {
-    stop_gsd_watcher_core(&state, project_id, repo_path)
+    stop_planning_watcher_core(&state, project_id, repo_path)
 }
 
-pub fn stop_gsd_watcher_core(
+pub fn stop_planning_watcher_core(
     watchers: &PlanningWatchers,
     project_id: String,
     repo_path: String,
@@ -146,7 +146,7 @@ fn audit_record(
 
     checked_output(root, &["add", "--", PLANNING_DIR])?;
     let subject = format!(
-        "gsd(alethe): {}",
+        "planning(alethe): {}",
         reason
             .map(str::trim)
             .filter(|r| !r.is_empty())
@@ -175,7 +175,7 @@ fn audit_record(
     };
     crate::event_bus::publish_event_simple(
         "PlanningCommitted",
-        &format!("gsd-audit-{}", nanoid!()),
+        &format!("planning-audit-{}", nanoid!()),
         project_id,
         commit.agent_id.clone(),
         serde_json::json!({ "hash": hash, "subject": commit.subject }),
@@ -614,7 +614,7 @@ mod tests {
         let history = planning_audit_history(root_str, Some(10)).unwrap();
         assert_eq!(history.len(), 2); // base + auditoria
         assert_eq!(history[0].agent_id.as_deref(), Some("agent-42"));
-        assert!(history[0].subject.contains("gsd(alethe)"));
+        assert!(history[0].subject.contains("planning(alethe)"));
         assert!(history[0].timestamp_ms > 0);
         assert_eq!(history[1].agent_id, None);
 

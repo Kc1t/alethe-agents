@@ -33,66 +33,19 @@ const TODO_TEMPLATE: &str = r#"// Alethe Todo template
 
 #[derive(Serialize)]
 pub struct DirectoryEntry {
-    name: String,
-    path: String,
-    is_dir: bool,
-    size: Option<u64>,
-}
-
-#[tauri::command]
-pub fn list_directory(path: String) -> Result<Vec<DirectoryEntry>, String> {
-    let directory = PathBuf::from(path.trim());
-    if !directory.is_dir() {
-        return Err("directory not found".to_string());
-    }
-
-    let mut entries = fs::read_dir(&directory)
-        .map_err(|error| error.to_string())?
-        .filter_map(|entry| {
-            let entry = entry.ok()?;
-            let file_type = entry.file_type().ok()?;
-            Some(DirectoryEntry {
-                name: entry.file_name().to_string_lossy().into_owned(),
-                path: entry.path().to_string_lossy().into_owned(),
-                is_dir: file_type.is_dir(),
-                size: entry
-                    .metadata()
-                    .ok()
-                    .filter(|_| file_type.is_file())
-                    .map(|value| value.len()),
-            })
-        })
-        .collect::<Vec<_>>();
-
-    entries.sort_by(|a, b| {
-        b.is_dir
-            .cmp(&a.is_dir)
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
-    Ok(entries)
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BrowseDirectoryEntry {
     pub name: String,
     pub path: String,
     pub is_dir: bool,
     pub size_bytes: Option<u64>,
 }
 
-/// In-app folder/file browser used by `FsBrowserModal` as an alternative to
-/// the native OS picker — separate from `list_directory`/`DirectoryEntry`
-/// (used by the sidebar file explorer) since this returns navigation context
-/// (parent/home/drive roots) that explorer callers don't need or expect.
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct DirectoryListing {
     pub current_path: String,
     pub parent_path: Option<String>,
     pub home_path: String,
     pub system_roots: Vec<String>,
-    pub entries: Vec<BrowseDirectoryEntry>,
+    pub entries: Vec<DirectoryEntry>,
 }
 
 fn get_home_dir() -> PathBuf {
@@ -136,7 +89,7 @@ fn get_system_roots() -> Vec<String> {
 }
 
 #[tauri::command]
-pub fn browse_directory(path: String) -> Result<DirectoryListing, String> {
+pub fn list_directory(path: String) -> Result<DirectoryListing, String> {
     let home = get_home_dir();
     let trimmed = path.trim();
     let directory = if trimmed.is_empty() || trimmed == "~" {
@@ -145,7 +98,9 @@ pub fn browse_directory(path: String) -> Result<DirectoryListing, String> {
         let p = PathBuf::from(trimmed);
         if p.exists() {
             if p.is_file() {
-                p.parent().map(|parent| parent.to_path_buf()).unwrap_or(home.clone())
+                p.parent()
+                    .map(|parent| parent.to_path_buf())
+                    .unwrap_or(home.clone())
             } else {
                 p
             }
@@ -154,7 +109,9 @@ pub fn browse_directory(path: String) -> Result<DirectoryListing, String> {
         }
     };
 
-    let canonical = directory.canonicalize().unwrap_or_else(|_| directory.clone());
+    let canonical = directory
+        .canonicalize()
+        .unwrap_or_else(|_| directory.clone());
     let current_path_str = canonical.to_string_lossy().into_owned();
     let clean_current_path = current_path_str
         .strip_prefix(r"\\?\")
@@ -177,8 +134,11 @@ pub fn browse_directory(path: String) -> Result<DirectoryListing, String> {
                     return None;
                 }
                 let full_path = entry.path().to_string_lossy().into_owned();
-                let clean_path = full_path.strip_prefix(r"\\?\").unwrap_or(&full_path).to_string();
-                Some(BrowseDirectoryEntry {
+                let clean_path = full_path
+                    .strip_prefix(r"\\?\")
+                    .unwrap_or(&full_path)
+                    .to_string();
+                Some(DirectoryEntry {
                     name,
                     path: clean_path,
                     is_dir: file_type.is_dir(),
@@ -196,7 +156,10 @@ pub fn browse_directory(path: String) -> Result<DirectoryListing, String> {
     });
 
     let clean_home = home.to_string_lossy().into_owned();
-    let home_path = clean_home.strip_prefix(r"\\?\").unwrap_or(&clean_home).to_string();
+    let home_path = clean_home
+        .strip_prefix(r"\\?\")
+        .unwrap_or(&clean_home)
+        .to_string();
 
     Ok(DirectoryListing {
         current_path: clean_current_path,
@@ -260,6 +223,26 @@ pub fn read_text_file(path: String) -> Result<String, String> {
         return Err("file not found".to_string());
     }
     fs::read_to_string(&file).map_err(|error| error.to_string())
+}
+
+/// Reads a file as raw bytes — used for turning a natively-dragged file path
+/// (Tauri's `onDragDropEvent`, which only ever gives paths, never `File`
+/// objects/bytes like the browser's own drag API) into an attachment the
+/// same way a picked/pasted file already is. Capped at the same ceiling
+/// `sync_chat::MAX_ATTACHMENT_BYTES` enforces server-side, so a huge file
+/// dropped by mistake fails fast here instead of loading it fully into
+/// memory just to have the upload reject it a moment later.
+#[tauri::command]
+pub fn read_binary_file(path: String) -> Result<Vec<u8>, String> {
+    let file = PathBuf::from(path.trim());
+    if !file.is_file() {
+        return Err("file not found".to_string());
+    }
+    let metadata = fs::metadata(&file).map_err(|error| error.to_string())?;
+    if metadata.len() as usize > crate::sync_chat::MAX_ATTACHMENT_BYTES {
+        return Err("file too large".to_string());
+    }
+    fs::read(&file).map_err(|error| error.to_string())
 }
 
 #[tauri::command]

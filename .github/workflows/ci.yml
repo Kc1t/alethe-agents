@@ -62,7 +62,8 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          # libasound2-dev: ALSA headers for `cpal`, which on-device voice dictation records through.
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -86,6 +87,69 @@ jobs:
         run: cargo clippy --all-targets
         continue-on-error: true
 
+      - name: Storage sync contract tests
+        working-directory: src-tauri
+        run: cargo test --test profile_sync_contract
+
       - name: cargo test
         working-directory: src-tauri
         run: cargo test
+
+  # Windows primeiro por ser a plataforma prioritária do app (ver CONTRIBUTING.md);
+  # roda a instância buildada em profile de teste isolado (nunca `tauri dev`
+  # interativo) via @wdio/tauri-service com o provider `tauri-driver` real
+  # (instalado explicitamente abaixo — o provider embedded caía num fallback
+  # silencioso pro Edge comum, ver comentário em e2e/wdio.conf.ts).
+  e2e:
+    name: E2E (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      # wdio.conf.ts força `driverProvider: 'tauri-driver'` (não o provider
+      # embedded/msedgedriver) para evitar o fallback silencioso pro Edge
+      # comum documentado ali — precisa do binário instalado antes do teste.
+      - name: Install tauri-driver
+        run: cargo install tauri-driver --locked
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build debug app (no bundle)
+        run: npm run test:e2e:build
+
+      # Before the suite, because the suite cannot tell these apart. WebDriver reports
+      # `DevToolsActivePort file doesn't exist` both when the app crashed on startup and when the
+      # driver simply failed to attach, and the app's own output never reaches this log — the driver
+      # owns the process. The probe launches the same binary with the same isolation environment and
+      # says which of the two happened, with the app's output attached.
+      - name: Probe that the app can start at all
+        run: node scripts/e2e-launch-probe.mjs
+
+      - name: Run E2E suite
+        run: npm run test:e2e
+
+      - name: Upload screenshots + reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: |
+            e2e/__screenshots__/
+            e2e/__reports__/
+          retention-days: 14

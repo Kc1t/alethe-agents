@@ -13,8 +13,6 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { AgentInstallButton } from '../AgentInstall/AgentInstallButton'
-import { DotmCircular2 } from '../ui/dotm-circular-2'
 import { cliPathMatchesAgent } from '../../lib/agentCliPath'
 import { normalizeBrowserUrl } from '../../lib/browserUrl'
 import { pickFile } from '../../lib/dialog'
@@ -30,6 +28,8 @@ import {
 } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { AgentInstallButton } from '../AgentInstall/AgentInstallButton'
+import { DotmCircular2 } from '../ui/dotm-circular-2'
 import { type DetectedTerminalLink } from './terminalLinks'
 import { applyPromptHistoryInput, loadPromptHistory, PROMPT_HISTORY_KEY } from './terminalWrite'
 import { useXtermSession } from './useXtermSession'
@@ -53,18 +53,24 @@ export type XTermViewProps = {
 
   env?: Record<string, string>
 
-  graphifyRepo?: string | null
-
-  gsdWatcherEnabled?: boolean
-
   trustSessionId?: boolean
 
   readOnly?: boolean
+  /**
+   * `true` só na primeira montagem de uma tab recém-criada — impede o
+   * fallback de "reivindicar a conversa OpenCode mais recente ainda não
+   * pega nesse cwd" (pensado pra recuperação após reiniciar o app) de
+   * herdar sem querer uma sessão de outro projeto/uso anterior da mesma
+   * pasta. Consumido via `onSessionClaimSkipped` no primeiro spawn — a
+   * partir daí a tab já existe de verdade e o fallback normal passa a valer.
+   */
+  skipSessionClaim?: boolean
   runtimeProfile?: AgentRuntimeProfile
   terminalTheme?: Theme
   onSpawned?: (id: string) => void
   onSessionId?: (id: string | undefined) => void
   onInitialInputSent?: () => void
+  onSessionClaimSkipped?: () => void
   onExit?: (code: number | null) => void
   onLaunchError?: (error: unknown) => void
   onAgentComplete?: () => void
@@ -85,16 +91,18 @@ export function XTermView({
   sessionId,
   sessionKey,
   env,
-  graphifyRepo,
-  gsdWatcherEnabled,
   trustSessionId,
   readOnly,
-
+  skipSessionClaim,
+  // Terminais antigos sem perfil persistido entram no modo lean para não
+  // iniciar Claude com concorrência/MCP ilimitados por acidente. `full` segue
+  // disponível quando o usuário escolhe explicitamente no modal.
   runtimeProfile = 'lean',
   terminalTheme = 'dark',
   onSpawned,
   onSessionId,
   onInitialInputSent,
+  onSessionClaimSkipped,
   onExit,
   onLaunchError,
   onAgentComplete,
@@ -115,6 +123,7 @@ export function XTermView({
   const onSpawnedRef = useRef(onSpawned)
   const onSessionIdRef = useRef(onSessionId)
   const onInitialInputSentRef = useRef(onInitialInputSent)
+  const onSessionClaimSkippedRef = useRef(onSessionClaimSkipped)
   const onExitRef = useRef(onExit)
   const onLaunchErrorRef = useRef(onLaunchError)
   const onAgentCompleteRef = useRef(onAgentComplete)
@@ -122,6 +131,7 @@ export function XTermView({
     onSpawnedRef.current = onSpawned
     onSessionIdRef.current = onSessionId
     onInitialInputSentRef.current = onInitialInputSent
+    onSessionClaimSkippedRef.current = onSessionClaimSkipped
     onExitRef.current = onExit
     onLaunchErrorRef.current = onLaunchError
     onAgentCompleteRef.current = onAgentComplete
@@ -318,10 +328,9 @@ export function XTermView({
     initialInput,
     sessionId,
     env,
-    graphifyRepo,
-    gsdWatcherEnabled,
     trustSessionId,
     readOnly,
+    skipSessionClaim,
     runtimeProfile,
     terminalTheme,
     cliPathOverride,
@@ -339,6 +348,7 @@ export function XTermView({
     onSpawnedRef,
     onSessionIdRef,
     onInitialInputSentRef,
+    onSessionClaimSkippedRef,
     onExitRef,
     onLaunchErrorRef,
     onAgentCompleteRef,

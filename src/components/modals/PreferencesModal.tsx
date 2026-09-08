@@ -5,14 +5,15 @@ import {
   Blocks,
   ChevronRight,
   Info,
+  type LucideIcon,
+  MessagesSquare,
   Palette,
-  ShieldCheck,
   Plug,
   Search,
+  ShieldCheck,
   TerminalSquare,
   UserRound,
   X,
-  type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -24,13 +25,14 @@ import { ErrorBoundary } from '../ErrorBoundary'
 import { AboutPage } from './preferences/AboutPage'
 import { AccountPage } from './preferences/AccountPage'
 import { AppearancePage } from './preferences/AppearancePage'
+import { ChatsProjectsPage } from './preferences/ChatsProjectsPage'
 import { FeaturesPage } from './preferences/FeaturesPage'
 import { IntegrationsPage } from './preferences/IntegrationsPage'
 import { MultiagentPage } from './preferences/MultiagentPage'
 import { OrganizationPage } from './preferences/OrganizationPage'
-import { TerminalPage } from './preferences/TerminalPage'
-import { RemoteControlPage } from './preferences/RemoteControlPage'
 import { Avatar } from './preferences/primitives'
+import { RemoteControlPage } from './preferences/RemoteControlPage'
+import { TerminalPage } from './preferences/TerminalPage'
 import styles from './PreferencesModal.module.css'
 
 type CategoryId =
@@ -43,6 +45,7 @@ type CategoryId =
   | 'organization'
   | 'about'
   | 'remoteControl'
+  | 'chatsProjects'
 
 type Category = {
   id: CategoryId
@@ -100,6 +103,12 @@ export function PreferencesModal() {
         Icon: ShieldCheck,
       },
       {
+        id: 'chatsProjects',
+        label: t('prefs.categoryChatsProjects'),
+        description: t('prefs.categoryChatsProjectsDesc'),
+        Icon: MessagesSquare,
+      },
+      {
         id: 'features',
         label: t('prefs.features'),
         description: t('prefs.featuresDesc'),
@@ -119,8 +128,8 @@ export function PreferencesModal() {
       },
       {
         id: 'multiagent',
-        label: 'Multi-Agent & Telemetry',
-        description: 'Real-time metrics, event traces, and structured logs.',
+        label: t('prefs.categoryMultiagent'),
+        description: t('prefs.categoryMultiagentDesc'),
         Icon: Activity,
       },
       {
@@ -204,6 +213,14 @@ export function PreferencesModal() {
         label: t('prefs.gitControlPlacement'),
         description: t('prefs.gitControlPlacementDesc'),
         keywords: 'git source control sidebar esquerda direita left right',
+      },
+      {
+        category: 'chatsProjects',
+        target: 'chats-projects-storage',
+        label: t('prefs.chatsProjects.storageTitle'),
+        description: t('prefs.chatsProjects.storageDesc'),
+        keywords:
+          'storage armazenamento espaço disk disco cleanup limpeza anexos attachments video imagem',
       },
       {
         category: 'features',
@@ -321,7 +338,7 @@ export function PreferencesModal() {
     setCategory(initial)
     setQuery('')
     setResultCursor(0)
-    setPendingTarget(null)
+    setPendingTarget((modalContext?.settingTarget as string) ?? null)
   }, [open, modalContext])
 
   useEffect(() => {
@@ -479,21 +496,22 @@ export function PreferencesModal() {
             <div ref={contentRef} className={styles.content}>
               <div className={styles.contentInner}>
                 <ErrorBoundary label="preferences-page">
-                {category === 'account' ? (
-                  <AccountPage
-                    avatarUrl={avatarUrl}
-                    initial={initial}
-                    onManageAccounts={() => openModal('profiles')}
-                  />
-                ) : null}
-                {category === 'appearance' ? <AppearancePage /> : null}
-                {category === 'features' ? <FeaturesPage /> : null}
-                {category === 'terminal' ? <TerminalPage enabledCount={enabledCount} /> : null}
-                {category === 'integrations' ? <IntegrationsPage /> : null}
-                {category === 'multiagent' ? <MultiagentPage /> : null}
-                {category === 'organization' ? <OrganizationPage /> : null}
-                {category === 'about' ? <AboutPage /> : null}
-                {category === 'remoteControl' ? <RemoteControlPage /> : null}
+                  {category === 'account' ? (
+                    <AccountPage
+                      avatarUrl={avatarUrl}
+                      initial={initial}
+                      onManageAccounts={() => openModal('profiles')}
+                    />
+                  ) : null}
+                  {category === 'appearance' ? <AppearancePage /> : null}
+                  {category === 'chatsProjects' ? <ChatsProjectsPage /> : null}
+                  {category === 'features' ? <FeaturesPage /> : null}
+                  {category === 'terminal' ? <TerminalPage enabledCount={enabledCount} /> : null}
+                  {category === 'integrations' ? <IntegrationsPage /> : null}
+                  {category === 'multiagent' ? <MultiagentPage /> : null}
+                  {category === 'organization' ? <OrganizationPage /> : null}
+                  {category === 'about' ? <AboutPage /> : null}
+                  {category === 'remoteControl' ? <RemoteControlPage /> : null}
                 </ErrorBoundary>
               </div>
             </div>

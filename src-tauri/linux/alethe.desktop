@@ -1,0 +1,14 @@
+[Desktop Entry]
+Categories={{categories}}
+Comment={{comment}}
+Exec={{exec}}
+Icon={{icon}}
+Name={{name}}
+Terminal=false
+Type=Application
+# Must match the window's app_id, which GTK derives from the executable name — `alethe`, lowercase,
+# not the capitalised productName. Wayland has no per-window icon protocol, so this string is the
+# only thing that lets the compositor associate the window with this entry and find its icon;
+# getting the case wrong is indistinguishable from omitting it, and shows a placeholder icon.
+StartupWMClass=alethe
+StartupNotify=true

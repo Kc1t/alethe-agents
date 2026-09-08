@@ -1,19 +1,19 @@
 import { Bot, GitBranch, GitMerge, Palette } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
+import { confirmAction } from '../../lib/confirmDialog'
 import { useT } from '../../lib/i18n'
+import { expected } from '../../lib/resilience'
 import {
   detectProjectStack,
   gitListBranches,
-  startGsdWatcher,
-  stopGsdWatcher,
   worktreeList,
   worktreeProvision,
   worktreeRemove,
 } from '../../lib/tauri'
 import { type AgentType, GROUP_COLORS } from '../../lib/types'
-import { getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
 import { useMergeStore } from '../../stores/mergeStore'
+import { getProjectRepoRoot, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { Dropdown } from '../ui/Dropdown'
 import { ColorPalettePopover } from './ColorPalettePopover'
@@ -37,10 +37,8 @@ export function EditProjectModal() {
   const setValidationCommands = useProjectsStore((s) => s.setValidationCommands)
   const setHealthCheckCommand = useProjectsStore((s) => s.setHealthCheckCommand)
   const setHealthCheckPath = useProjectsStore((s) => s.setHealthCheckPath)
-  const setGsdWatcherEnabled = useProjectsStore((s) => s.setGsdWatcherEnabled)
   const setConflictAgentProvider = useProjectsStore((s) => s.setConflictAgentProvider)
   const setConflictAgentModel = useProjectsStore((s) => s.setConflictAgentModel)
-  const setGraphifyEnabled = useProjectsStore((s) => s.setGraphifyEnabled)
   const setAutoWorktree = useProjectsStore((s) => s.setAutoWorktree)
   const cleanupOrphanWorktrees = useProjectsStore((s) => s.cleanupOrphanWorktrees)
   const isCleaningOrphans = useProjectsStore((s) => s.isCleaningOrphans)
@@ -58,12 +56,10 @@ export function EditProjectModal() {
   const [validationCommandsStr, setValidationCommandsStr] = useState('')
   const [healthCheckCommand, setHealthCheckCommandState] = useState('')
   const [healthCheckPath, setHealthCheckPathState] = useState('')
-  const [gsdWatcherEnabled, setGsdWatcherEnabledState] = useState(false)
   const [worktrees, setWorktrees] = useState<any[]>([])
   const [loadingWorktrees, setLoadingWorktrees] = useState(false)
   const [conflictProvider, setConflictProviderState] = useState<AgentType>('claude')
   const [conflictModel, setConflictModelState] = useState('')
-  const [graphifyEnabled, setGraphifyEnabledState] = useState(false)
   const [autoWorktree, setAutoWorktreeState] = useState(false)
   const [mergePostAction, setMergePostActionState] = useState<
     'relocateToNewBranch' | 'relocateKeepSession' | 'closeTerminal'
@@ -107,11 +103,9 @@ export function EditProjectModal() {
     setValidationCommandsStr((project.validationCommands ?? []).join('\n'))
     setHealthCheckCommandState(project.healthCheckCommand ?? '')
     setHealthCheckPathState(project.healthCheckPath ?? '')
-    setGsdWatcherEnabledState(project.gsdWatcherEnabled ?? false)
 
     setConflictProviderState(project.conflictAgentProvider ?? 'claude')
     setConflictModelState(project.conflictAgentModel ?? '')
-    setGraphifyEnabledState(project.graphifyEnabled ?? false)
     setAutoWorktreeState(project.autoWorktree ?? false)
     setActiveTab('focus')
     setIsColorPopoverOpen(false)
@@ -150,7 +144,7 @@ export function EditProjectModal() {
               prev.trim() ? prev : detection.suggestedCommands.join('\n'),
             )
           })
-          .catch(() => {})
+          .catch(expected('join_failed'))
       }
     } else {
       setWorktrees([])
@@ -162,7 +156,7 @@ export function EditProjectModal() {
   const handleRemoveWorktree = async (agentId: string) => {
     const repoPath = project.terminals[0]?.cwd
     if (!repoPath) return
-    if (confirm(`Tem certeza que deseja excluir o ambiente do agente "${agentId}"?`)) {
+    if (await confirmAction(t('crud.removeWorktreeConfirm', { agent: agentId }))) {
       try {
         await worktreeRemove(repoPath, agentId, true)
         void loadWorktrees(repoPath)
@@ -249,24 +243,8 @@ export function EditProjectModal() {
       setConflictAgentModel(project.id, conflictModel)
     }
 
-    if (graphifyEnabled !== (project.graphifyEnabled ?? false)) {
-      setGraphifyEnabled(project.id, graphifyEnabled)
-    }
-
     if (autoWorktree !== (project.autoWorktree ?? false)) {
       setAutoWorktree(project.id, autoWorktree)
-    }
-
-    if (gsdWatcherEnabled !== project.gsdWatcherEnabled) {
-      setGsdWatcherEnabled(project.id, gsdWatcherEnabled)
-      const repoPath = project.terminals[0]?.cwd
-      if (repoPath) {
-        if (gsdWatcherEnabled) {
-          startGsdWatcher(project.id, repoPath).catch(console.error)
-        } else {
-          stopGsdWatcher(project.id, repoPath).catch(console.error)
-        }
-      }
     }
 
     closeModal()
@@ -464,7 +442,12 @@ export function EditProjectModal() {
             <div>
               <EditProjectAgentSettings
                 projectId={project.id}
-                cwd={project.terminals[0]?.cwd ?? project.defaultCwd ?? ''}
+                cwd={
+                  getProjectRepoRoot(project) ||
+                  project.terminals[0]?.cwd ||
+                  project.defaultCwd ||
+                  ''
+                }
                 worktreeMode={worktreeMode}
                 onWorktreeModeChange={setWorktreeModeState}
                 validationCommandsStr={validationCommandsStr}
@@ -479,10 +462,6 @@ export function EditProjectModal() {
                 onConflictModelChange={setConflictModelState}
                 autoWorktree={autoWorktree}
                 onAutoWorktreeChange={setAutoWorktreeState}
-                graphifyEnabled={graphifyEnabled}
-                onGraphifyEnabledChange={setGraphifyEnabledState}
-                gsdWatcherEnabled={gsdWatcherEnabled}
-                onGsdWatcherEnabledChange={setGsdWatcherEnabledState}
               />
             </div>
           ) : null}

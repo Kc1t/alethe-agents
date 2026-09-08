@@ -4,22 +4,60 @@ import { useT } from '../../lib/i18n'
 import type { GitCommitEntry } from '../../lib/tauri'
 import styles from './GitGraph.module.css'
 
-// More spaced out (GitLens/GitKraken style) than the original value — more
-// breathing room between lanes and between commit rows. `ROW_HEIGHT` has to
-// match `.row { height: ... }` in GitGraph.module.css (CSS can't import a
-// TS constant, so both need to be changed together).
-// The ROW_HEIGHT×LANE_WIDTH ratio controls how "smooth" each divergence/
-// convergence curve looks: the curve covers LANE_WIDTH horizontally in only
-// HALF of ROW_HEIGHT vertically (see `GraphRowView`) — with the old ratio
-// (20×28, curve using only 14px of vertical space) the diagonal ended up
-// steep and looked like an "elbow" instead of a curve, especially in
-// histories with several short branches stacked in sequence. Raising
-// ROW_HEIGHT and lowering LANE_WIDTH a bit makes the curve noticeably
-// smoother without changing the drawing logic.
-export const ROW_HEIGHT = 34
-const LANE_WIDTH = 18
-const DOT_RADIUS = 5
+// Row height covers two text lines — subject above, author/date and badges below (see `.info` in
+// the stylesheet). On a narrow sidebar a single line forced the subject to share its width with
+// the badges and the author/date and the subject lost, clipped to a few characters ("fix(u…",
+// "Merg…") with the row's most important information off screen. Stacking gives it the full width.
+//
+// It also sets how smooth each divergence/convergence curve looks: a curve crosses one lane width
+// horizontally in only HALF of ROW_HEIGHT vertically (see `GraphRowView`), so a short row against
+// a wide lane turns the diagonal into an "elbow" rather than a curve.
+//
+// Must match `.row { height: ... }` in GitGraph.module.css — CSS can't import a TS constant, so
+// the two have to be changed together.
+export const ROW_HEIGHT = 40
+const LANE_WIDTH_MAX = 14
+/** Lanes never get narrower than this. Scaling the whole graph down to fit an arbitrary lane count
+ *  (the previous approach) drove lanes to a few pixels and strokes below 1px, which sub-pixel
+ *  rendering turns into a blur — a graph too small to actually read. */
+const LANE_WIDTH_MIN = 10
+const DOT_RADIUS = 4
 const OVERSCAN = 8
+
+/** Ceiling on the graph gutter's total width. The SVG is `flex-shrink: 0`, so whatever it takes
+ *  comes out of the commit text's share — and the width used to be the GLOBAL maximum lane count
+ *  across the whole history times a fixed lane width, so a repository with a dozen concurrent
+ *  branches produced a gutter wider than the sidebar itself and pushed the subject, badges and
+ *  author line off the panel.
+ *
+ *  Deep lanes are never MERGED onto a shared column: that stacked unrelated strands at one x and
+ *  put commits on a line that wasn't theirs. Lanes are given as much width as fits, down to a
+ *  legible floor (`LANE_WIDTH_MIN`); only past `MAX_DRAWN_LANES` — nine concurrent lanes — is
+ *  anything left out, and what is drawn always sits in its own column at a readable size. */
+const GRAPH_GUTTER_MAX = 96
+
+/** How many lanes fit at the minimum legible width. Beyond this the extra lanes are left undrawn —
+ *  the honest tradeoff for never rendering a blurred graph, and far enough out (nine concurrent
+ *  lanes) that ordinary histories never reach it. Dots and strokes keep a fixed size at every lane
+ *  count, since the minimum lane width already leaves room for them. */
+const MAX_DRAWN_LANES = Math.floor(GRAPH_GUTTER_MAX / LANE_WIDTH_MIN)
+
+function laneMetrics(laneCount: number) {
+  const drawnLanes = Math.max(1, Math.min(laneCount, MAX_DRAWN_LANES))
+  // Whole pixels: a fractional lane width puts every line on a fractional x, which is exactly what
+  // makes vertical strokes render soft instead of crisp.
+  const width = Math.max(
+    LANE_WIDTH_MIN,
+    Math.min(LANE_WIDTH_MAX, Math.floor(GRAPH_GUTTER_MAX / drawnLanes)),
+  )
+  return { width, drawnLanes }
+}
+
+type LaneMetrics = ReturnType<typeof laneMetrics>
+
+function laneX(lane: number, laneWidth: number): number {
+  return lane * laneWidth + laneWidth / 2
+}
 
 /** Lane colors — cycles through the `--agent-*` palette already defined in
  *  the theme (never a new hardcoded hex, per design-system rules). Excludes
@@ -281,27 +319,36 @@ export function RefBadges({ refs }: { refs: string[] }) {
 function GraphRowView({
   row,
   t,
-  laneCount,
-  dimmed,
+  metrics,
+  strandsHidden,
   onSelect,
   onOpenMenu,
 }: {
   row: GraphRow
   t: ReturnType<typeof useT>
-  laneCount: number
-  dimmed: boolean
+  metrics: LaneMetrics
+  /** Set while a search is filtering the list: the commits between these results aren't on screen,
+   *  so connecting strands would describe a history that isn't being shown. Only the dot is drawn,
+   *  which still carries the branch color. */
+  strandsHidden: boolean
   onSelect: () => void
   onOpenMenu: (x: number, y: number) => void
 }) {
-  const cx = row.lane * LANE_WIDTH + LANE_WIDTH / 2
+  const cx = laneX(row.lane, metrics.width)
   const cy = ROW_HEIGHT / 2
+  // Two lines rather than one long one: the native tooltip cannot be repositioned, so a single
+  // wide string gets clipped by the window edge on a right-docked sidebar.
+  const rowTooltip = `${row.commit.hash.slice(0, 7)}\n${row.commit.subject}`
+  const dotColor = laneColorForId(row.lane, row.laneId)
+  const dotRadius = row.lane === MAIN_LANE ? DOT_RADIUS + 1.5 : DOT_RADIUS
 
   const elements: React.ReactNode[] = []
 
   // 1. Process the top half (0 -> cy)
-  for (let l = 0; l < row.lanesBefore.length; l++) {
+  const laneLimit = metrics.drawnLanes
+  for (let l = 0; l < Math.min(row.lanesBefore.length, laneLimit) && !strandsHidden; l++) {
     if (row.lanesBefore[l] != null) {
-      const fromX = l * LANE_WIDTH + LANE_WIDTH / 2
+      const fromX = laneX(l, metrics.width)
       const color = laneColorForId(l, row.laneIdsBefore[l] ?? null)
 
       if (l === row.lane) {
@@ -352,11 +399,11 @@ function GraphRowView({
   }
 
   // 2. Process the bottom half (cy -> ROW_HEIGHT) — only if this isn't the last row
-  if (!row.isLastRow) {
-    for (let l = 0; l < row.lanesAfter.length; l++) {
+  if (!row.isLastRow && !strandsHidden) {
+    for (let l = 0; l < Math.min(row.lanesAfter.length, laneLimit); l++) {
       const parent = row.lanesAfter[l]
       if (parent != null) {
-        const toX = l * LANE_WIDTH + LANE_WIDTH / 2
+        const toX = laneX(l, metrics.width)
         const color = laneColorForId(l, row.laneIdsAfter[l] ?? null)
 
         if (l === row.lane) {
@@ -404,8 +451,8 @@ function GraphRowView({
 
   return (
     <div
-      className={`${styles.row} ${dimmed ? styles.rowDimmed : ''}`}
-      title={`${row.commit.hash.slice(0, 10)} — ${row.commit.subject}`}
+      className={styles.row}
+      title={rowTooltip}
       onClick={onSelect}
       onContextMenu={(e) => {
         e.preventDefault()
@@ -414,7 +461,7 @@ function GraphRowView({
     >
       <svg
         className={styles.svg}
-        width={laneCount * LANE_WIDTH}
+        width={metrics.drawnLanes * metrics.width}
         height={ROW_HEIGHT}
         aria-hidden="true"
       >
@@ -424,20 +471,32 @@ function GraphRowView({
             in the background color visually "cuts" the lines that pass
             behind the dot, GitLens/GitKraken style. */}
         <circle
+          className={styles.dot}
           cx={cx}
           cy={cy}
-          r={row.lane === MAIN_LANE ? DOT_RADIUS + 1.5 : DOT_RADIUS}
-          fill={laneColorForId(row.lane, row.laneId)}
+          fill={dotColor}
           stroke="var(--bg)"
           strokeWidth={2}
+          style={
+            {
+              // `color` feeds the hover glow's `drop-shadow(... currentColor)`, and the two radii
+              // drive the grow-on-hover — both live in CSS so the transition is the compositor's
+              // job rather than React's. Chromium resolves the SVG geometry property `r` from CSS.
+              color: dotColor,
+              '--dot-r': `${dotRadius}px`,
+              '--dot-r-hover': `${dotRadius + 2}px`,
+            } as React.CSSProperties
+          }
         />
       </svg>
 
       <div className={styles.info}>
         <span className={styles.subject}>{row.commit.subject}</span>
-        <RefBadges refs={row.commit.refs} />
-        <span className={styles.meta}>
-          {row.commit.authorName} · {relativeTime(row.commit.timestamp, t)}
+        <span className={styles.infoBottom}>
+          <span className={styles.meta}>
+            {row.commit.authorName} · {relativeTime(row.commit.timestamp, t)}
+          </span>
+          <RefBadges refs={row.commit.refs} />
         </span>
       </div>
     </div>
@@ -485,26 +544,30 @@ export function GitGraphList({
     return max
   }, [rows])
 
-  // null = no active search (nothing gets dimmed). Never shrinks `rows` —
-  // only marks which commits match, to never lose the graph's visual
-  // continuity (see comment on `buildGraphRows`).
-  const matchingHashes = useMemo(() => {
+  // Lane geometry is derived once for the whole list, never per row: every row has to place its
+  // text at the same x, or a busier row's extra lanes would shove its message out of line with
+  // its neighbours'.
+  const metrics = useMemo(() => laneMetrics(laneCount), [laneCount])
+
+  // Search FILTERS the list rather than dimming non-matches in place. Dimming kept the graph's
+  // strands continuous, but it also kept every non-match on screen — the results were needles in
+  // the same haystack, just faded, so searching barely narrowed anything down. The topology is
+  // still computed over the FULL history (`buildGraphRows` above, never over a filtered list), so
+  // filtering here only changes what is displayed, never how lanes were assigned.
+  const filteredRows = useMemo(() => {
     const query = searchQuery.toLowerCase().trim()
-    if (!query) return null
-    const set = new Set<string>()
-    for (const row of rows) {
-      const c = row.commit
-      if (
-        c.subject.toLowerCase().includes(query) ||
-        c.hash.toLowerCase().includes(query) ||
-        c.authorName.toLowerCase().includes(query) ||
-        c.refs.some((r) => r.toLowerCase().includes(query))
-      ) {
-        set.add(c.hash)
-      }
-    }
-    return set
+    if (!query) return rows
+    return rows.filter(({ commit }) => {
+      return (
+        commit.subject.toLowerCase().includes(query) ||
+        commit.hash.toLowerCase().includes(query) ||
+        commit.authorName.toLowerCase().includes(query) ||
+        commit.refs.some((ref) => ref.toLowerCase().includes(query))
+      )
+    })
   }, [rows, searchQuery])
+
+  const searching = searchQuery.trim().length > 0
 
   // Restores the saved scroll position when returning from the detail
   // screen — only on mount (the whole component unmounts/remounts when the view changes).
@@ -522,6 +585,14 @@ export function GitGraphList({
     return () => observer.disconnect()
   }, [])
 
+  // Back to the top whenever the query changes: now that searching actually shortens the list, a
+  // scroll position kept from the unfiltered list can point past the end of the results and leave
+  // the panel looking empty.
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0
+    setScrollTop(0)
+  }, [searchQuery])
+
   const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const top = e.currentTarget.scrollTop
     // rAF-throttled — without this, `onScroll` fires on every pixel
@@ -536,25 +607,25 @@ export function GitGraphList({
 
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
   const endIndex = Math.min(
-    rows.length,
+    filteredRows.length,
     Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN,
   )
-  const visibleRows = rows.slice(startIndex, endIndex)
-  const noMatches = matchingHashes != null && matchingHashes.size === 0
+  const visibleRows = filteredRows.slice(startIndex, endIndex)
+  const noMatches = searching && filteredRows.length === 0
 
   return (
     <>
       {noMatches ? <p className={styles.empty}>{t('git.graph.noSearchResults')}</p> : null}
       <div className={styles.body} ref={scrollRef} onScroll={onScroll}>
-        <div style={{ height: rows.length * ROW_HEIGHT, position: 'relative' }}>
+        <div style={{ height: filteredRows.length * ROW_HEIGHT, position: 'relative' }}>
           <div style={{ position: 'absolute', top: startIndex * ROW_HEIGHT, left: 0, right: 0 }}>
             {visibleRows.map((row) => (
               <GraphRowView
                 key={row.commit.hash}
                 row={row}
                 t={t}
-                laneCount={laneCount}
-                dimmed={matchingHashes != null && !matchingHashes.has(row.commit.hash)}
+                metrics={metrics}
+                strandsHidden={searching}
                 onSelect={() =>
                   onSelectCommit(row.commit.hash, scrollRef.current?.scrollTop ?? scrollTop)
                 }

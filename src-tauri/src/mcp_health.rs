@@ -162,7 +162,19 @@ pub async fn mcp_health_check(agent: String) -> Result<Vec<McpHealth>, String> {
     let task = tokio::task::spawn_blocking(move || probe(agent));
     match tokio::time::timeout(PROBE_TIMEOUT, task).await {
         Ok(joined) => joined.map_err(|error| format!("mcp_health_check:{error}"))?,
-        Err(_) => Err("cli_timeout".to_string()),
+        Err(_) => {
+            // A timeout is a real verdict about the agent's CLI, not a missing answer: the health
+            // panel shows nothing, which reads as "no servers configured".
+            crate::decide!(
+                target: "mcp.health",
+                attempted = "probe_agent",
+                outcome = Failed,
+                because = "cli_probe_timed_out",
+                rule = "mcp_health.probe_deadline",
+                evidence = { agent = ?agent, timeout_ms = PROBE_TIMEOUT.as_millis() as u64 },
+            );
+            Err("cli_timeout".to_string())
+        }
     }
 }
 

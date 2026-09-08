@@ -39,8 +39,10 @@ pub struct Scheduler {
 
 static SCHEDULER: OnceLock<Mutex<Scheduler>> = OnceLock::new();
 
-/// o front informa o modo no `trigger_scheduler_tick` e o autotick (event-loop,
-
+/// Worktree mode per project, remembered from the last `trigger_scheduler_tick` that carried one.
+/// The autotick fires from an event loop with no project settings in hand, so without this it would
+/// have to guess the mode; here it reuses whatever the frontend last reported, falling back to
+/// `GitWorktree`.
 static PROJECT_MODES: OnceLock<Mutex<HashMap<String, crate::worktrees::WorktreeMode>>> =
     OnceLock::new();
 
@@ -65,17 +67,22 @@ pub fn get_scheduler() -> &'static Mutex<Scheduler> {
     })
 }
 
-/// (`task.md`) — hash do texto do item. Namespacing por `project_id` corrige
-
+/// Stable id for a backlog item, derived from its text so the same item keeps its id across
+/// reloads. Namespaced by `project_id` so two projects with an identically worded item do not
+/// collide on one task.
 fn derive_item_task_id(project_id: &str, text: &str) -> String {
     let mut hasher = DefaultHasher::new();
     text.hash(&mut hasher);
-    format!("{project_id}-gsd-{:x}", hasher.finish())
+    format!("{project_id}-task-{:x}", hasher.finish())
 }
 
-/// formato real (escrito por `alethe-gsd-state.ts` a partir de `todowrite`)
-
-pub fn load_gsd_tasks(project_id: &str, repo_path: &str) -> Result<(), String> {
+/// Loads the scheduler's backlog from `.planning/task.md` — a markdown checklist, where each item
+/// becomes a task and each task depends on the one before it, so they run in the order written.
+///
+/// Nothing in Alethe writes that file any more; it used to be maintained by the OpenCode plugin
+/// that was removed with GSD Sync. It is now whatever the user or an agent puts there, and a
+/// project without one simply has no backlog (missing file is `Ok(())`, not an error).
+pub fn load_planning_tasks(project_id: &str, repo_path: &str) -> Result<(), String> {
     let repo_root = crate::git_control::repository_root(repo_path)?;
     let task_md_path = repo_root.join(".planning").join("task.md");
     let Ok(content) = std::fs::read_to_string(&task_md_path) else {
@@ -328,7 +335,7 @@ pub fn trigger_scheduler_tick(
             map.insert(project_id.clone(), mode);
         }
     }
-    let _ = load_gsd_tasks(&project_id, &repo_path);
+    let _ = load_planning_tasks(&project_id, &repo_path);
     run_scheduler_tick(&project_id, &repo_path)?;
     Ok(())
 }
@@ -441,7 +448,7 @@ mod tests {
     }
 
     #[test]
-    fn load_gsd_tasks_reads_real_task_md_and_builds_sequential_chain() {
+    fn load_planning_tasks_reads_real_task_md_and_builds_sequential_chain() {
         let project_id = unique_project_id("chain");
         let root = temp_git_repo("chain");
         fs::create_dir_all(root.join(".planning")).unwrap();
@@ -451,7 +458,7 @@ mod tests {
         )
         .unwrap();
 
-        load_gsd_tasks(&project_id, root.to_string_lossy().as_ref()).unwrap();
+        load_planning_tasks(&project_id, root.to_string_lossy().as_ref()).unwrap();
 
         let scheduler = get_scheduler().lock().unwrap();
         let mut tasks: Vec<&Task> = scheduler
@@ -477,7 +484,7 @@ mod tests {
     }
 
     #[test]
-    fn load_gsd_tasks_reload_preserves_running_and_drops_stale_pending() {
+    fn load_planning_tasks_reload_preserves_running_and_drops_stale_pending() {
         let project_id = unique_project_id("reload");
         let root = temp_git_repo("reload");
         fs::create_dir_all(root.join(".planning")).unwrap();
@@ -486,7 +493,7 @@ mod tests {
             "- [ ] Item A\n- [ ] Item B\n",
         )
         .unwrap();
-        load_gsd_tasks(&project_id, root.to_string_lossy().as_ref()).unwrap();
+        load_planning_tasks(&project_id, root.to_string_lossy().as_ref()).unwrap();
 
         let item_a_id = derive_item_task_id(&project_id, "Item A");
         let item_b_id = derive_item_task_id(&project_id, "Item B");
@@ -498,7 +505,7 @@ mod tests {
         }
 
         fs::write(root.join(".planning").join("task.md"), "- [ ] Item C\n").unwrap();
-        load_gsd_tasks(&project_id, root.to_string_lossy().as_ref()).unwrap();
+        load_planning_tasks(&project_id, root.to_string_lossy().as_ref()).unwrap();
 
         let scheduler = get_scheduler().lock().unwrap();
         let a = scheduler

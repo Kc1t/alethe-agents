@@ -1,8 +1,11 @@
+// Este foi feito para adicionar a verificação de isTauriEnv() antes de chamar getCurrentWindow() no useCloseConfirmation.ts, evitando o lançamento de exceção não tratada na Web que causava a tela branca no navegador.
+
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { confirm } from '@tauri-apps/plugin-dialog'
 import { useEffect } from 'react'
 
-import { type CloseFailureStage,createCloseCoordinator } from '../lib/closeCoordinator'
+import { isTauriEnv } from '../lib/api/transport'
+import { type CloseFailureStage, createCloseCoordinator } from '../lib/closeCoordinator'
 import { getLocale, translate } from '../lib/i18n'
 import { quitApp, recordFrontendError } from '../lib/tauri'
 import { flushProjectsState } from '../stores/projectsStore'
@@ -31,7 +34,16 @@ function reportCloseFailure(stage: CloseFailureStage, error: unknown): void {
   })
 }
 
-const appWindow = getCurrentWindow()
+const getAppWindowSafely = () => {
+  if (typeof window === 'undefined' || !isTauriEnv()) return null
+  try {
+    return getCurrentWindow()
+  } catch {
+    return null
+  }
+}
+
+const appWindow = getAppWindowSafely()
 const closeCoordinator = createCloseCoordinator({
   confirmNative: () => {
     const locale = getLocale()
@@ -44,7 +56,7 @@ const closeCoordinator = createCloseCoordinator({
   },
   confirmFallback: () => window.confirm(translate(getLocale(), 'appClose.message')),
   beforeClose: flushProjectsState,
-  destroyWindow: () => appWindow.destroy(),
+  destroyWindow: () => (appWindow ? appWindow.destroy() : Promise.resolve()),
   quitApp: () => quitApp(),
   onFailure: reportCloseFailure,
 })
@@ -53,23 +65,16 @@ export function requestAppClose(): Promise<void> {
   return closeCoordinator.handleCloseRequest({ preventDefault: () => {} })
 }
 
-                                                                                    
 export function useCloseConfirmation(): void {
   useEffect(() => {
-    let cancelled = false
-    let unlisten: (() => void) | null = null
-
-    void appWindow
-      .onCloseRequested((event) => closeCoordinator.handleCloseRequest(event))
-      .then((stopListening) => {
-        if (cancelled) stopListening()
-        else unlisten = stopListening
-      })
-      .catch((error) => reportCloseFailure('confirm', error))
+    if (!appWindow) return
+    const unlistenPromise = appWindow.onCloseRequested((event) => {
+      event.preventDefault()
+      void requestAppClose()
+    })
 
     return () => {
-      cancelled = true
-      unlisten?.()
+      void unlistenPromise.then((unlisten) => unlisten())
     }
   }, [])
 }

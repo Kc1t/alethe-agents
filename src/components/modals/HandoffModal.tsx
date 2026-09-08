@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
+import { expected } from '../../lib/resilience'
 import {
   completeAgentHandoff,
   type HandoffDraft,
@@ -8,6 +9,7 @@ import {
   materializeAgentHandoff,
   prepareAgentHandoff,
 } from '../../lib/tauri'
+import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import { AGENT_TYPE_LABELS, UNRESTRICTED_FLAG } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -29,9 +31,7 @@ export function HandoffModal() {
   const requestPaneFocus = useUiStore((state) => state.requestPaneFocus)
   const projects = useProjectsStore((state) => state.projects)
   const createTerminal = useProjectsStore((state) => state.createTerminal)
-  const unrestrictedDefault = useProjectsStore(
-    (state) => state.preferences.alwaysStartUnrestricted,
-  )
+  const unrestrictedDefault = useProjectsStore((state) => state.preferences.alwaysStartUnrestricted)
 
   const [draft, setDraft] = useState<HandoffDraft | null>(null)
   const [content, setContent] = useState('')
@@ -47,8 +47,14 @@ export function HandoffModal() {
     typeof context?.sourceSessionId === 'string' ? context.sourceSessionId : undefined
   const project = projects.find((entry) => entry.id === projectId) ?? null
   const terminal = project?.terminals.find((entry) => entry.id === terminalId) ?? null
-  const activeTab = terminal?.tabs.find((entry) => entry.id === terminal.activeTabId) ?? terminal?.tabs[0]
-  const cwd = activeTab?.cwd || terminal?.cwd || project?.defaultCwd || ''
+  const activeTab =
+    terminal?.tabs.find((entry) => entry.id === terminal.activeTabId) ?? terminal?.tabs[0]
+  const cwd =
+    activeTab?.cwd ||
+    terminal?.cwd ||
+    (project && getProjectRepoRoot(project)) ||
+    project?.defaultCwd ||
+    ''
   const sourceSessionId = requestedSessionId || activeTab?.sessionId
   const byteCount = useMemo(() => new TextEncoder().encode(content).length, [content])
   const warnings = draft
@@ -120,7 +126,10 @@ export function HandoffModal() {
       requestPaneFocus(created.id)
       closeModal()
     } catch (cause) {
-      if (artifact) await completeAgentHandoff(artifact.handoffId).catch(() => {})
+      if (artifact)
+        await completeAgentHandoff(artifact.handoffId).catch(
+          expected('complete_agent_handoff_failed'),
+        )
       setError(String(cause))
     } finally {
       setBusy(false)
@@ -131,7 +140,10 @@ export function HandoffModal() {
     <Modal
       open={open}
       onClose={closeModal}
-      title={t('handoff.title', { source: AGENT_TYPE_LABELS[source], target: AGENT_TYPE_LABELS[target] })}
+      title={t('handoff.title', {
+        source: AGENT_TYPE_LABELS[source],
+        target: AGENT_TYPE_LABELS[target],
+      })}
       width={720}
       footer={
         <>
@@ -144,7 +156,9 @@ export function HandoffModal() {
             onClick={() => void continueInTarget()}
             disabled={!draft || busy || !content.trim() || byteCount > MAX_HANDOFF_BYTES}
           >
-            {busy ? t('handoff.starting') : t('handoff.continue', { agent: AGENT_TYPE_LABELS[target] })}
+            {busy
+              ? t('handoff.starting')
+              : t('handoff.continue', { agent: AGENT_TYPE_LABELS[target] })}
           </button>
         </>
       }
@@ -162,7 +176,9 @@ export function HandoffModal() {
           </div>
           {warnings.length ? (
             <ul className={styles.warnings}>
-              {warnings.map((warning) => <li key={warning}>{warning}</li>)}
+              {warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
             </ul>
           ) : null}
           <label className={styles.label} htmlFor="handoff-content">
@@ -175,7 +191,9 @@ export function HandoffModal() {
             onChange={(event) => setContent(event.target.value)}
             spellCheck={false}
           />
-          <div className={`${styles.counter} ${byteCount > MAX_HANDOFF_BYTES ? styles.counterError : ''}`}>
+          <div
+            className={`${styles.counter} ${byteCount > MAX_HANDOFF_BYTES ? styles.counterError : ''}`}
+          >
             {t('handoff.size', { current: byteCount, max: MAX_HANDOFF_BYTES })}
           </div>
           <label className={styles.unrestricted}>

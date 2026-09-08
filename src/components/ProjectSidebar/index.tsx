@@ -15,6 +15,7 @@ import {
   Folder,
   FolderPlus,
   GitBranch,
+  Globe,
   Home,
   MoreHorizontal,
   Plus,
@@ -27,6 +28,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
+import { useGitStatusSummary } from '../../hooks/useGitStatusSummary'
 import { useT } from '../../lib/i18n'
 import { formatShortcut } from '../../lib/platform'
 import {
@@ -34,6 +36,7 @@ import {
   type SidebarDropIndicator,
   sidebarInsertionIndex,
 } from '../../lib/sidebarDrag'
+import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import { type Group, type Project } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -44,8 +47,9 @@ import { ContextMenu, type MenuItem } from './ContextMenu'
 import { FileExplorer } from './FileExplorer'
 import { GitControl } from './GitControl'
 import { GroupNode } from './GroupNode'
-import { NormalProjectSidebar } from './NormalProjectSidebar'
 import { LayoutFooter, WorkspaceLayoutFooter } from './LayoutFooter'
+import { MeshSidebarView } from './MeshSidebarView'
+import { NormalProjectSidebar } from './NormalProjectSidebar'
 import { ProjectNode } from './ProjectNode'
 import styles from './ProjectSidebar.module.css'
 import { createSidebarMenus } from './sidebarMenus'
@@ -113,7 +117,15 @@ export function ProjectSidebar() {
 function CleanProjectSidebar() {
   const t = useT()
   // --- data selectors (reactive) ---
-  const { projects, groups, ungroupedOrder, containers, activeProjectId, showGitControl, preferences } = useProjectsStore(
+  const {
+    projects,
+    groups,
+    ungroupedOrder,
+    containers,
+    activeProjectId,
+    showGitControl,
+    preferences,
+  } = useProjectsStore(
     useShallow((s) => ({
       projects: s.projects,
       groups: s.groups,
@@ -122,7 +134,7 @@ function CleanProjectSidebar() {
       activeProjectId: s.activeProjectId,
       showGitControl: s.preferences.enabledFeatures.git,
       preferences: s.preferences,
-    }))
+    })),
   )
 
   // --- action selectors (stable refs, grouped for readability) ---
@@ -162,7 +174,6 @@ function CleanProjectSidebar() {
       setTerminalRemoteExcluded: s.setTerminalRemoteExcluded,
       setSubTabCompletionUnread: s.setSubTabCompletionUnread,
       createFilePane: s.createFilePane,
-      createGraphifyPane: s.createGraphifyPane,
       setFullscreenPane: s.setFullscreenPane,
     })),
   )
@@ -186,19 +197,18 @@ function CleanProjectSidebar() {
       setActiveTerminal: s.setActiveTerminal,
       setFocusedTerminal: s.setFocusedTerminal,
       openMarkdownSidebar: s.openMarkdownSidebar,
-    }))
+    })),
   )
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const [menu, setMenu] = useState<ContextMenuState>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropIndicator, setDropIndicator] = useState<SidebarDropIndicator | null>(null)
-  const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects'>('projects')
+  const [sidebarTab, setSidebarTab] = useState<'files' | 'git' | 'projects' | 'mesh'>('projects')
 
   useEffect(() => {
     if (!showGitControl && sidebarTab === 'git') setSidebarTab('projects')
   }, [showGitControl, sidebarTab])
 
-                                                                         
   const openPaneSets = useMemo(() => {
     const map: Record<string, Set<string>> = {}
     for (const c of containers) map[c.projectId] = new Set(c.paneIds)
@@ -240,6 +250,38 @@ function CleanProjectSidebar() {
     sidebarTerminal?.tabs.find((tab) => tab.id === sidebarTerminal.activeTabId) ??
     sidebarTerminal?.tabs[0]
 
+  // The project's own repository comes FIRST, ahead of the selected terminal's cwd. When an agent
+  // is running in an isolated worktree its terminal's cwd is `.alethe/worktrees/<id>`, so leading
+  // with it pointed source control at the agent's worktree and its `alethe/agent-*` branch instead
+  // of the project — reported live, with the panel showing a clean tree for a repo the user was
+  // not working in. `getProjectRepoRoot` already skips worktree terminals and, failing that,
+  // derives the real root from a worktree path, so it is the right answer whenever it has one.
+  const activeCwd = useMemo(
+    () =>
+      (activeProject ? getProjectRepoRoot(activeProject) : '') ||
+      activeProject?.defaultCwd ||
+      sidebarSubTab?.cwd ||
+      sidebarTerminal?.cwd ||
+      '',
+    [sidebarSubTab?.cwd, sidebarTerminal?.cwd, activeProject],
+  )
+  const gitSummary = useGitStatusSummary(activeCwd)
+
+  const gitButtonTitle = useMemo(() => {
+    if (!gitSummary.hasRepo || gitSummary.total === 0) {
+      return t('ui.sidebar.git')
+    }
+    if (gitSummary.staged > 0 || gitSummary.changes > 0 || gitSummary.untracked > 0) {
+      return t('ui.sidebar.gitTooltipDetailed', {
+        total: gitSummary.total.toLocaleString(),
+        staged: gitSummary.staged.toLocaleString(),
+        changes: gitSummary.changes.toLocaleString(),
+        untracked: gitSummary.untracked.toLocaleString(),
+      })
+    }
+    return t('ui.sidebar.gitWithChanges', { count: gitSummary.total.toLocaleString() })
+  }, [gitSummary, t])
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   const clearDragState = () => {
@@ -263,7 +305,6 @@ function CleanProjectSidebar() {
     const target = String(over.id)
     if (dragged === target) return
 
-                                                                                        
     if (dragged.startsWith('term:') && target.startsWith('proj:')) {
       const [, fromProject, terminalId] = dragged.split(':')
       const [, toProject] = target.split(':')
@@ -271,8 +312,6 @@ function CleanProjectSidebar() {
       return
     }
 
-                                                                                
-                                                                              
     if (dragged.startsWith('proj:') && target.startsWith('proj:')) {
       const fromId = dragged.slice('proj:'.length)
       const toId = target.slice('proj:'.length)
@@ -315,7 +354,6 @@ function CleanProjectSidebar() {
       return
     }
 
-                                                                           
     if (dragged.startsWith('proj:') && target.startsWith('group:')) {
       const [, projectId] = dragged.split(':')
       const [, groupId] = target.split(':')
@@ -341,7 +379,6 @@ function CleanProjectSidebar() {
       return
     }
 
-                                                                        
     if (dragged.startsWith('grp:') && target.startsWith('group:')) {
       const [, srcGroupId] = dragged.split(':')
       const [, parentId] = target.split(':')
@@ -363,7 +400,6 @@ function CleanProjectSidebar() {
 
   const { projectMenu, groupMenu, terminalMenu } = createSidebarMenus({
     t,
-    graphifyEnabled: preferences.enabledFeatures.graphify,
     browserEnabled: preferences.enabledFeatures.browser,
     groups: groups.filter((group) => !group.archived),
     openPaneSets,
@@ -392,15 +428,6 @@ function CleanProjectSidebar() {
         activateProject(p)
       }}
       onTerminalClick={(t) => {
-                                                                             
-                                                                           
-                                                                           
-                                                               
-        if (t.gsdSyncViewer) {
-          actions.setFullscreenPane(t.id)
-          setActiveView('workspace')
-          return
-        }
         actions.focusWorkspaceTerminal(p.id, t.id)
         setActiveTerminal(p.id, t.id)
         const activeTab = t.tabs.find((tab) => tab.id === t.activeTabId) ?? t.tabs[0]
@@ -411,11 +438,6 @@ function CleanProjectSidebar() {
         setActiveView(p.mode === 'agentSandbox' ? 'agentSandbox' : 'workspace')
       }}
       onTerminalDoubleClick={(t) => {
-        if (t.gsdSyncViewer) {
-          actions.setFullscreenPane(t.id)
-          setActiveView('workspace')
-          return
-        }
         actions.openTerminalWorkspace(p.id, t.id)
         setActiveTerminal(p.id, t.id)
         requestPaneFocus(t.id)
@@ -520,8 +542,8 @@ function CleanProjectSidebar() {
         {showGitControl && preferences.gitControlPlacement === 'left' ? (
           <button
             type="button"
-            aria-label={t('ui.sidebar.git')}
-            title={t('ui.sidebar.git')}
+            aria-label={gitButtonTitle}
+            title={gitButtonTitle}
             className={`${styles.toolbarButton} ${activeView !== 'home' && sidebarTab === 'git' ? styles.toolbarButtonActive : ''}`}
             onClick={() => {
               setSidebarTab('git')
@@ -529,8 +551,25 @@ function CleanProjectSidebar() {
             }}
           >
             <GitBranch size={14} />
+            {gitSummary.formatted ? (
+              <span className={styles.gitBadge} aria-hidden="true">
+                {gitSummary.formatted}
+              </span>
+            ) : null}
           </button>
         ) : null}
+        <button
+          type="button"
+          aria-label={t('mesh.title')}
+          title={t('mesh.title')}
+          className={`${styles.toolbarButton} ${sidebarTab === 'mesh' && activeView === 'collaboration' ? styles.toolbarButtonActive : ''}`}
+          onClick={() => {
+            setSidebarTab('mesh')
+            setActiveView('collaboration')
+          }}
+        >
+          <Globe size={14} />
+        </button>
         <span className={styles.toolbarSpacer} />
         <button
           type="button"
@@ -586,7 +625,7 @@ function CleanProjectSidebar() {
           {sidebarTerminal && sidebarSubTab && activeProject ? (
             <FileExplorer
               projectId={activeProject.id}
-              cwd={sidebarSubTab.cwd || sidebarTerminal.cwd}
+              cwd={activeCwd || sidebarSubTab.cwd || sidebarTerminal.cwd}
               ptyId={sidebarSubTab.ptyId}
               terminalName={sidebarTerminal.name}
             />
@@ -635,6 +674,8 @@ function CleanProjectSidebar() {
           )}
         </section>
       ) : null}
+
+      {sidebarTab === 'mesh' ? <MeshSidebarView /> : null}
 
       {sidebarTab === 'projects' ? (
         <DndContext

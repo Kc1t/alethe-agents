@@ -290,7 +290,6 @@
   flex-shrink: 0;
 }
 
-                                                                    
 .projectChip {
   width: 16px;
   height: 16px;
@@ -405,7 +404,6 @@
   color: var(--fg-faint);
 }
 
-                                               
 .groupCollapsed {
   display: flex;
   align-items: center;
@@ -458,7 +456,6 @@
   flex-shrink: 0;
 }
 
-                                                        
 .projectDisabled .projectName {
   color: var(--text-tertiary);
 }
@@ -503,7 +500,6 @@
   }
 }
 
-                                                        
 .ungroupedSection {
   margin-top: 2px;
   padding: 0;
@@ -599,7 +595,6 @@
   flex: 0 0 auto;
 }
 
-                                                                          
 .terminalMenuBtn {
   width: 20px;
   height: 20px;
@@ -622,7 +617,6 @@
   color: var(--fg);
 }
 
-                                                              
 .rowMenuBtn {
   width: 22px;
   height: 22px;
@@ -641,7 +635,6 @@
   color: var(--fg);
 }
 
-                                                                             
 .terminalState {
   width: 16px;
   display: grid;
@@ -672,7 +665,6 @@
   flex: none;
 }
 
-                                                               
 .monogram {
   display: grid;
   place-items: center;
@@ -1075,7 +1067,6 @@
   line-height: 1;
 }
 
-                                                                                     
 .stateGutter {
   width: 16px;
   display: grid;
@@ -1170,6 +1161,7 @@
 }
 
 .toolbarButton {
+  position: relative;
   width: 24px;
   height: 24px;
   display: grid;
@@ -1179,6 +1171,30 @@
   background: transparent;
   border-radius: 4px;
   cursor: pointer;
+}
+
+.gitBadge {
+  position: absolute;
+  bottom: -2px;
+  right: -5px;
+  min-width: 12px;
+  height: 12px;
+  padding: 0 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--agent-antigravity, #3b82f6);
+  color: #ffffff;
+  font-family: var(--font-sans);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 9999px;
+  pointer-events: none;
+  border: 1.5px solid var(--bg);
+  box-sizing: content-box;
+  z-index: 2;
+  letter-spacing: -0.02em;
 }
 
 .toolbarButton:hover,
@@ -1220,7 +1236,6 @@
   border-radius: 0;
 }
 
-                                                                        
 .groupTag,
 .ungroupedHeader {
   width: 100%;
@@ -1307,8 +1322,6 @@
   background: transparent;
 }
 
-                                                                                
-                                                           
 .groupBody {
   margin: 0 0 0 3px;
   padding: 0 0 0 7px;
@@ -1320,8 +1333,7 @@
 }
 
 .groupBox:hover .groupBody {
-  box-shadow: inset 1px 0 0
-    color-mix(in srgb, var(--group-color, var(--border)) 45%, var(--border));
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--group-color, var(--border)) 45%, var(--border));
 }
 
 .groupBody .groupBox {
@@ -1513,7 +1525,6 @@
   transform: rotate(-90deg);
 }
 
-                                                                                    
 .terminals {
   display: flex;
   flex-direction: column;
@@ -1551,7 +1562,6 @@
   box-shadow: none;
 }
 
-                                                                                    
 .terminalHidden .agentStack,
 .terminalDisabled .agentStack {
   opacity: 0.6;
@@ -1772,4 +1782,20 @@
   width: 24px;
   height: 24px;
   border-radius: 4px;
+}
+
+/* Change-trigger warning: work has piled up in this project with nothing written up. Uses the
+   waiting status token rather than the error one — nothing is broken, something is owed. */
+.changeTriggerBadge {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  padding: 2px;
+  color: var(--status-waiting);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.changeTriggerBadge:hover {
+  background: var(--panel-hover);
 }

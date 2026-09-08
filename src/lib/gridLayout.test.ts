@@ -75,7 +75,6 @@ describe('reconcileGridLayout', () => {
   })
 
   it('expande linhas quando não há espaço no grid declarado', () => {
-                                                                              
     const layout: GridLayout = {
       cols: 2,
       rows: 1,

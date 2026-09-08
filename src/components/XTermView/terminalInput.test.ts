@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  decideWheelAction,
   formatDroppedPaths,
   getTerminalScrollbackRows,
   getWheelScrollLines,
+  isSoftNewline,
   normalizePastedText,
-  shouldScrollHostScrollback,
+  SOFT_NEWLINE_SEQUENCE,
 } from './terminalInput'
 
 describe('normalizePastedText', () => {
@@ -39,35 +41,90 @@ describe('getTerminalScrollbackRows', () => {
   })
 })
 
-describe('shouldScrollHostScrollback', () => {
+describe('isSoftNewline', () => {
+  const press = (over: Partial<Parameters<typeof isSoftNewline>[0]> = {}) => ({
+    key: 'Enter',
+    shiftKey: true,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    ...over,
+  })
+
+  it('treats Shift+Enter in an agent as a new line', () => {
+    // A terminal cannot tell the application that Shift was held — Enter is a carriage return
+    // either way — so the agent read it as submit. The translation has to happen here.
+    expect(isSoftNewline(press(), 'opencode')).toBe(true)
+    expect(isSoftNewline(press(), 'claude')).toBe(true)
+  })
+
+  it('leaves a plain Enter alone', () => {
+    expect(isSoftNewline(press({ shiftKey: false }), 'claude')).toBe(false)
+  })
+
+  it('leaves other modifiers alone', () => {
+    // Ctrl+Enter and Alt+Enter already mean things to these apps; only Shift is being translated.
+    expect(isSoftNewline(press({ ctrlKey: true }), 'claude')).toBe(false)
+    expect(isSoftNewline(press({ altKey: true }), 'claude')).toBe(false)
+    expect(isSoftNewline(press({ metaKey: true }), 'claude')).toBe(false)
+  })
+
+  it('does not touch a plain shell', () => {
+    // There is no multi-line prompt to continue there, so translating would replace a working
+    // submit with a sequence most shells do nothing with.
+    expect(isSoftNewline(press(), 'shell')).toBe(false)
+    expect(isSoftNewline(press(), undefined)).toBe(false)
+  })
+
+  it('sends escape then return, which is what the agents accept', () => {
+    expect(SOFT_NEWLINE_SEQUENCE).toBe('\x1b\r')
+  })
+})
+
+describe('decideWheelAction', () => {
+  const wheel = (
+    bufferType: 'normal' | 'alternate',
+    shiftKey: boolean,
+    mouseTrackingActive: boolean,
+  ) => decideWheelAction({ bufferType, shiftKey, mouseTrackingActive })
+
   it('scrolls the host buffer in a plain shell', () => {
-    expect(shouldScrollHostScrollback('normal', false)).toBe(true)
+    expect(wheel('normal', false, false)).toBe('host')
   })
 
-  it('forwards the wheel to TUIs in the alternate buffer', () => {
-    // claude/codex run in the alternate screen (no host scrollback) — let the app scroll itself.
-    expect(shouldScrollHostScrollback('alternate', false)).toBe(false)
+  it('forwards to a full-screen app that asked for mouse events', () => {
+    // OpenCode enables mouse tracking, so it scrolls its own view — verified in the recorded PTY
+    // stream, which turns it on nine times in one session.
+    expect(wheel('alternate', false, true)).toBe('app')
   })
 
-  it('lets Shift+wheel force host scrollback even in the alternate buffer', () => {
-    expect(shouldScrollHostScrollback('alternate', true)).toBe(true)
-    expect(shouldScrollHostScrollback('normal', true)).toBe(true)
+  it('swallows the wheel for a full-screen app that did NOT ask for mouse events', () => {
+    // The regression this exists for. xterm's default is to convert the wheel into cursor keys when
+    // the alternate buffer has no scrollback — and Claude Code, which never enables mouse tracking
+    // (also verified in the recorded stream), reads those arrows as input. Scrolling silently moved
+    // through its prompt history. Doing nothing is strictly better than typing for the user.
+    expect(wheel('alternate', false, false)).toBe('ignore')
+  })
+
+  it('lets Shift+wheel force host scrollback whatever the app is doing', () => {
+    expect(wheel('alternate', true, false)).toBe('host')
+    expect(wheel('alternate', true, true)).toBe('host')
+    expect(wheel('normal', true, false)).toBe('host')
   })
 })
 
 describe('formatDroppedPaths', () => {
-  it('leaves space-free paths unquoted with a trailing space', () => {
-    expect(formatDroppedPaths(['C:\\a\\b.txt'])).toBe('C:\\a\\b.txt ')
-  })
-
-  it('quotes paths containing whitespace', () => {
+  it('quotes paths containing backslashes or whitespace', () => {
+    expect(formatDroppedPaths(['C:\\a\\b.txt'])).toBe('"C:\\a\\b.txt" ')
     expect(formatDroppedPaths(['C:\\meu path\\f.txt'])).toBe('"C:\\meu path\\f.txt" ')
   })
 
-  it('joins multiple paths, quoting only those with spaces', () => {
-    expect(formatDroppedPaths(['C:\\a.txt', 'C:\\my dir\\b.txt'])).toBe(
-      'C:\\a.txt "C:\\my dir\\b.txt" ',
-    )
+  it('leaves simple slash-free paths unquoted with trailing space', () => {
+    expect(formatDroppedPaths(['file.txt'])).toBe('file.txt ')
+  })
+
+  it('joins multiple paths, quoting those with backslashes or spaces', () => {
+    expect(formatDroppedPaths(['a.txt', 'C:\\my dir\\b.txt'])).toBe('a.txt "C:\\my dir\\b.txt" ')
   })
 
   it('returns empty string when no valid paths', () => {

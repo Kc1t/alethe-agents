@@ -1,4 +1,4 @@
-import { getClaudeUsage } from './tauri'
+import { getClaudeUsage } from './api/usage'
 import { makeTtlCache } from './ttlCache'
 
 const TTL_MS = 60_000

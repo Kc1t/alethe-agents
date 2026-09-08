@@ -15,6 +15,48 @@ export const PTY_WRITE_TIMEOUT_MS = 5_000
 export const TERMINAL_WRITE_FRAME_BUDGET = 16 * 1024
 
 /**
+ * Finds a safe cut point for the terminal frame budget:
+ * 1. Doesn't split UTF-16 surrogate pairs (emojis / CJK / Unicode).
+ * 2. Doesn't cut in the middle of ANSI escape sequences (CSI '\x1b[...', OSC '\x1b]...', DCS, ST).
+ */
+export function findSafeChunkBoundary(text: string, maxTake: number): number {
+  if (maxTake >= text.length) return text.length
+  let take = maxTake
+
+  // 1. Avoid splitting UTF-16 surrogate pairs
+  if (
+    take > 0 &&
+    take < text.length &&
+    text.charCodeAt(take - 1) >= 0xd800 &&
+    text.charCodeAt(take - 1) <= 0xdbff &&
+    text.charCodeAt(take) >= 0xdc00 &&
+    text.charCodeAt(take) <= 0xdfff
+  ) {
+    take -= 1
+  }
+
+  // 2. Avoid splitting ANSI escape sequence (\x1b...)
+  const lastEsc = text.lastIndexOf('\x1b', take - 1)
+  if (lastEsc !== -1 && take - lastEsc < 64) {
+    let isTerminated = false
+    for (let i = lastEsc + 1; i < take; i++) {
+      const ch = text.charCodeAt(i)
+      if ((ch >= 0x40 && ch <= 0x7e) || ch === 0x07) {
+        isTerminated = true
+        break
+      }
+    }
+    if (!isTerminated) {
+      if (lastEsc > 0) {
+        take = lastEsc
+      }
+    }
+  }
+
+  return take > 0 ? take : maxTake
+}
+
+/**
  * A PTY can hand over 64 KB every 16 ms while a frame drains 16 KB, so a command that prints fast
  * outruns the terminal four to one. Left unbounded the queue keeps growing, the pane renders output
  * from minutes ago, and the frame it asks for every 16 ms never stops arriving — which stalls every
@@ -111,6 +153,11 @@ export function applyPromptHistoryInput(
   return historyChanged
 }
 
+// Bracketed paste (DECSET 2004): quando a app liga, envolvemos a colagem
+// inteira nos marcadores 200~/201~ pra ela tratar como um bloco único. Sem
+// isso, cada \r interno vira Enter e TUIs como o Claude submetem só a
+// primeira linha — a colagem grande chegava cortada. Os marcadores ficam
+// FORA do chunking pra nunca serem partidos no meio.
 export async function writePtyChunked(id: string, text: string, bracketed: boolean): Promise<void> {
   const open = bracketed ? '\x1b[200~' : ''
   const close = bracketed ? '\x1b[201~' : ''

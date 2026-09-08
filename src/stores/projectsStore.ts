@@ -1,15 +1,19 @@
 import { nanoid } from 'nanoid'
 import { create } from 'zustand'
 
+import { withFallback } from '../lib/resilience'
+import { markStartup, markUiUsable, STARTUP_MARKS } from '../lib/startupPerformance'
 import { setStorageNamespace } from '../lib/storageNamespace'
 import {
-  listProfiles,
-  loadProjectsFile,
+  CORE_IDENTITY_MISMATCH,
+  isTauriEnv,
+  loadProjectsBootstrap,
   type ProfileMeta,
-  type ProfilesState,
   recordAppEvent,
   recordFrontendError,
   saveProjectsFile,
+  saveProjectsForProfile,
+  writeProjectMarker,
 } from '../lib/tauri'
 import { getProjectDefaultCwd, getProjectRepoRoot } from '../lib/terminalFactory'
 import {
@@ -23,6 +27,7 @@ import {
   type Group,
   type LayoutMode,
   type Locale,
+  type MigrateWorktreesResult,
   type OrphanWorktree,
   type Preferences,
   type Project,
@@ -63,13 +68,17 @@ export {
 } from './projectsStore.constants'
 
 const SAVE_DEBOUNCE_MS = 500
-const SAVE_RETRY_MS = 2_000
 
 export type ProjectsState = ProjectsFile & {
   activeProfileId: string
   profiles: ProfileMeta[]
+  projectsRevision: string
+  persistenceDirty: boolean
+  persistenceError: 'conflict' | 'core-mismatch' | 'write' | null
+  bootstrapStatus: 'idle' | 'connecting' | 'starting' | 'ready' | 'unavailable' | 'incompatible'
   hydrated: boolean
   hydrate: () => Promise<void>
+  flushPersistence: (keepalive?: boolean) => Promise<void>
   /** True while handleCleanupWorktrees is running, preventing duplicate clicks. */
   isCleaningOrphans: boolean
 
@@ -104,6 +113,11 @@ export type ProjectsState = ProjectsFile & {
     githubUrl?: string
     firstBootPending?: boolean
   }) => Project
+  /** Creates a new project from an exported `Project` (a JSON file the user picked) or one detected
+   *  in `.alethe/project.json` — mints a new `id` rather than reusing the original, which would
+   *  collide with an existing project, and zeroes every tab's `ptyId` because no live process
+   *  exists to reuse. `sessionId` is deliberately kept: resuming on the next spawn is the point,
+   *  the same reasoning as the worktree migration item. */
   importProjectFromFile: (data: Project, groupId?: string | null) => Project
   renameProject: (id: string, name: string) => void
   archiveProject: (id: string) => void
@@ -119,12 +133,10 @@ export type ProjectsState = ProjectsFile & {
   setValidationCommands: (id: string, commands: string[]) => void
   setHealthCheckCommand: (id: string, command: string) => void
   setHealthCheckPath: (id: string, path: string) => void
-  setGsdWatcherEnabled: (id: string, enabled: boolean) => void
   setConflictAgentProvider: (id: string, provider: AgentType) => void
   setConflictAgentModel: (id: string, model: string) => void
   setReviewAgentProvider: (id: string, provider: AgentType) => void
   setReviewAgentModel: (id: string, model: string) => void
-  setGraphifyEnabled: (id: string, enabled: boolean) => void
   setAutoWorktree: (id: string, enabled: boolean) => void
   setMergePostAction: (
     id: string,
@@ -135,11 +147,10 @@ export type ProjectsState = ProjectsFile & {
     terminalId: string,
     opts: { keepSession: boolean },
   ) => Promise<{ ok: boolean; error?: string }>
-
   migrateProjectTerminalsToWorktrees: (
     projectId: string,
-    gsdWatcherEnabledOverride?: boolean,
-  ) => Promise<void>
+    opts?: { allowDirty?: boolean },
+  ) => Promise<MigrateWorktreesResult>
 
   addOrphanWorktree: (projectId: string, entry: OrphanWorktree) => void
   removeOrphanWorktree: (projectId: string, path: string) => void
@@ -201,7 +212,6 @@ export type ProjectsState = ProjectsFile & {
         runtimeProfile?: AgentRuntimeProfile
       }
       worktreeAgentId?: string
-      gsdSyncViewer?: boolean
       ephemeralConflictAgent?: boolean
       ephemeralUtility?: boolean
     },
@@ -231,11 +241,9 @@ export type ProjectsState = ProjectsFile & {
   ) => Terminal
 
   createWebPane: (projectId: string, args: BrowserPaneOptions) => Terminal
-  createGraphifyPane: (projectId: string, cwd: string) => Terminal
   renameTerminal: (projectId: string, terminalId: string, name: string) => void
   setBrowserEngine: (projectId: string, terminalId: string, engine: BrowserEngine) => void
 
-  markGsdSyncViewer: (projectId: string, terminalId: string) => void
   deleteTerminal: (projectId: string, terminalId: string) => void
 
   deleteTerminalWithWorktreeCleanup: (projectId: string, terminalId: string) => Promise<void>
@@ -315,6 +323,12 @@ export type ProjectsState = ProjectsFile & {
     tabId: string,
     initialInput: string | undefined,
   ) => void
+  setSubTabSkipSessionClaim: (
+    projectId: string,
+    terminalId: string,
+    tabId: string,
+    skipSessionClaim: boolean,
+  ) => void
   setSubTabHandoff: (
     projectId: string,
     terminalId: string,
@@ -335,13 +349,141 @@ export type ProjectsState = ProjectsFile & {
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let pendingSave = false
+let hydrationGeneration = 0
+let saveGeneration = 0
+let saveQueue: Promise<void> = Promise.resolve()
+let retryTimer: ReturnType<typeof setTimeout> | null = null
+let retryAttempt = 0
+const profileRevisions = new Map<string, string>()
 let lastSaveErrorLoggedAt = 0
-
 let lastWriteSequence = Date.now()
+
+function createEmptyProjectsFile(): ProjectsFile {
+  return JSON.parse(JSON.stringify(EMPTY_PROJECTS_FILE)) as ProjectsFile
+}
 
 function nextWriteSequence(): number {
   lastWriteSequence = Math.max(Date.now(), lastWriteSequence + 1)
   return lastWriteSequence
+}
+
+function persistedDocument(state: ProjectsState): ProjectsFile {
+  return {
+    version: 7,
+    groups: state.groups,
+    ungroupedOrder: state.ungroupedOrder,
+    projects: state.projects,
+    todos: state.todos,
+    activeProjectId: state.activeProjectId,
+    workspace: state.workspace,
+    preferences: state.preferences,
+    cliPaths: state.cliPaths,
+  }
+}
+
+function enqueueProjectsSave(
+  state: ProjectsState,
+  generation: number,
+  keepalive = false,
+): Promise<void> {
+  const profileId = state.activeProfileId
+  const content = JSON.stringify(persistedDocument(state), null, 2)
+  const fallbackRevision = state.projectsRevision
+
+  // Serialize saves so a later snapshot always observes the revision returned
+  // by the previous write. The profile id is captured with the payload, so a
+  // profile switch cannot redirect an in-flight write.
+  const task = saveQueue.then(async () => {
+    const expectedRevision = profileRevisions.get(profileId) ?? fallbackRevision
+    try {
+      const result = await saveProjectsForProfile(profileId, content, expectedRevision, keepalive)
+      profileRevisions.set(profileId, result.revision)
+      retryAttempt = 0
+      if (retryTimer) {
+        clearTimeout(retryTimer)
+        retryTimer = null
+      }
+      const current = useProjectsStore.getState()
+      if (current.activeProfileId === profileId && generation === saveGeneration) {
+        useProjectsStore.setState({
+          projectsRevision: result.revision,
+          persistenceDirty: false,
+          persistenceError: null,
+        })
+      }
+    } catch (error) {
+      const conflict = String(error).includes('projects_revision_conflict')
+      const coreMismatch = String(error).includes(CORE_IDENTITY_MISMATCH)
+      const current = useProjectsStore.getState()
+      if (current.activeProfileId === profileId) {
+        useProjectsStore.setState({
+          persistenceError: conflict ? 'conflict' : coreMismatch ? 'core-mismatch' : 'write',
+        })
+        if (conflict && generation !== saveGeneration) {
+          const latestGeneration = saveGeneration
+          void enqueueProjectsSave(current, latestGeneration, keepalive).catch(() => {
+            // The second conflict stores the newest local snapshot as a recovery copy.
+          })
+        }
+      }
+      if (!conflict && !coreMismatch) schedulePersistenceRetry()
+      throw error
+    }
+  })
+  saveQueue = task.catch(withFallback('schedulePersistenceRetry', undefined))
+  return task
+}
+
+function schedulePersistenceRetry() {
+  if (retryTimer) return
+  const delay = Math.min(1000 * 2 ** retryAttempt, 30_000)
+  retryAttempt += 1
+  retryTimer = setTimeout(() => {
+    retryTimer = null
+    const state = useProjectsStore.getState()
+    if (
+      !state.hydrated ||
+      !state.persistenceDirty ||
+      state.persistenceError === 'conflict' ||
+      state.persistenceError === 'core-mismatch'
+    ) {
+      retryAttempt = 0
+      return
+    }
+    const generation = ++saveGeneration
+    void enqueueProjectsSave(state, generation).catch(() => {
+      // The failed save schedules the next bounded retry.
+    })
+  }, delay)
+}
+
+// Espelho automático de cada projeto em `<repo>/.alethe/project.json` — feito
+// de propósito num chokepoint só (`updateProject`, chamado por praticamente
+// toda mutação de projeto/terminal/tab) em vez de espalhar chamadas manuais.
+// Debounce por projectId (não um só global) pra não perder a escrita de um
+// projeto enquanto outro está sendo editado rapidamente.
+const MARKER_DEBOUNCE_MS = 1500
+const markerTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+function scheduleProjectMarkerWrite(projectId: string, getState: () => ProjectsState) {
+  const existing = markerTimers.get(projectId)
+  if (existing) clearTimeout(existing)
+  markerTimers.set(
+    projectId,
+    setTimeout(() => {
+      markerTimers.delete(projectId)
+      const project = getState().projects.find((p) => p.id === projectId)
+      if (!project) return
+      const repoRoot = getProjectRepoRoot(project)
+      if (!repoRoot) return
+      void writeProjectMarker(repoRoot, JSON.stringify(project, null, 2)).catch((error) => {
+        console.error(
+          `[projectsStore] falha escrevendo .alethe/project.json de ${project.name}:`,
+          error,
+        )
+      })
+    }, MARKER_DEBOUNCE_MS),
+  )
 }
 
 function projectsPayload(state: ProjectsState): ProjectsFile {
@@ -359,27 +501,41 @@ function projectsPayload(state: ProjectsState): ProjectsFile {
 }
 
 function scheduleSave(getState: () => ProjectsState) {
-  if (!getState().hydrated) return
+  const initialState = getState()
+  // Never bind an edit to a guessed namespace after bootstrap failed. A later
+  // successful bootstrap will replace this temporary in-memory fallback.
+  if (
+    !initialState.hydrated ||
+    !initialState.profiles.some((profile) => profile.id === initialState.activeProfileId)
+  ) {
+    return
+  }
   pendingSave = true
+  if (retryTimer) {
+    clearTimeout(retryTimer)
+    retryTimer = null
+  }
+  retryAttempt = 0
+  const scheduledGeneration = ++saveGeneration
+  useProjectsStore.setState({ persistenceDirty: true })
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {
     saveTimer = null
     if (!pendingSave) return
     pendingSave = false
-    const state = getState()
-    const payload = projectsPayload(state)
-    void saveProjectsFile(JSON.stringify(payload, null, 2), nextWriteSequence()).catch((error) => {
-      pendingSave = true
-      console.error('Failed to persist projects.json; retrying.', error)
+    if (
+      getState().persistenceError === 'conflict' ||
+      getState().persistenceError === 'core-mismatch'
+    ) {
+      return
+    }
+    void enqueueProjectsSave(getState(), scheduledGeneration).catch((error) => {
+      console.error('Failed to persist projects.json', error)
       const now = Date.now()
       if (now - lastSaveErrorLoggedAt >= 30_000) {
         lastSaveErrorLoggedAt = now
         void recordFrontendError(String(error), null, 'projects.save')
       }
-      saveTimer = setTimeout(() => {
-        saveTimer = null
-        scheduleSave(getState)
-      }, SAVE_RETRY_MS)
     })
   }, SAVE_DEBOUNCE_MS)
 }
@@ -472,10 +628,12 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
     }
   }
 
-  const updateProject = (projectId: string, fn: (p: Project) => Project) =>
+  const updateProject = (projectId: string, fn: (p: Project) => Project) => {
     update((state) => ({
       projects: state.projects.map((p) => (p.id === projectId ? fn(p) : p)),
     }))
+    scheduleProjectMarkerWrite(projectId, get)
+  }
 
   const updateTerminal = (projectId: string, terminalId: string, fn: (t: Terminal) => Terminal) =>
     updateProject(projectId, (p) => ({
@@ -654,62 +812,120 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
     ...EMPTY_PROJECTS_FILE,
     activeProfileId: 'default',
     profiles: [],
+    projectsRevision: 'missing',
+    persistenceDirty: false,
+    persistenceError: null,
+    bootstrapStatus: 'idle',
     hydrated: false,
     isCleaningOrphans: false,
 
     hydrate: async () => {
+      markStartup(STARTUP_MARKS.bootstrapRequested)
+      const generation = ++hydrationGeneration
+      const wasHydrated = get().hydrated
+      if (!wasHydrated) set({ bootstrapStatus: 'connecting' })
+      saveGeneration += 1
       // A profile switch replaces the in-memory document. Never let a delayed
       // save from the previous profile write into the newly selected namespace.
       if (saveTimer) {
         clearTimeout(saveTimer)
         saveTimer = null
       }
+      if (retryTimer) {
+        clearTimeout(retryTimer)
+        retryTimer = null
+      }
+      retryAttempt = 0
       pendingSave = false
-      let profileState: ProfilesState = {
-        active_profile_id: 'default',
-        profiles: [],
-      }
-      try {
-        profileState = await listProfiles()
-        setStorageNamespace(profileState.active_profile_id)
-      } catch (err) {
-        console.error('Falha ao carregar profiles.json — usando default', err)
-        void recordFrontendError(String(err), null, 'profiles.load')
-        setStorageNamespace('default')
-      }
+      const maxRetries = isTauriEnv() ? 1 : 6
 
-      try {
-        const raw = await loadProjectsFile()
-        if (!raw) {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          const bootstrap = await loadProjectsBootstrap()
+          if (generation !== hydrationGeneration) return
+
+          setStorageNamespace(bootstrap.active_profile_id)
+          profileRevisions.set(bootstrap.active_profile_id, bootstrap.revision)
+          const document = bootstrap.content
+            ? migrate(JSON.parse(bootstrap.content))
+            : createEmptyProjectsFile()
           set({
+            ...document,
             hydrated: true,
-            activeProfileId: profileState.active_profile_id,
-            profiles: profileState.profiles,
+            activeProfileId: bootstrap.active_profile_id,
+            profiles: bootstrap.profiles,
+            projectsRevision: bootstrap.revision,
+            persistenceDirty: false,
+            persistenceError: null,
+            bootstrapStatus: 'ready',
           })
+          markUiUsable()
           void recordAppEvent('projects.hydrate', 'source=empty')
           return
+        } catch (err) {
+          const coreMismatch = String(err).includes(CORE_IDENTITY_MISMATCH)
+          if (attempt < maxRetries && !coreMismatch) {
+            if (!wasHydrated) set({ bootstrapStatus: 'starting' })
+            if (attempt === 1 || attempt % 10 === 0) {
+              console.log(
+                `[Alethe] Waiting for the Web server (attempt ${attempt}/${maxRetries})...`,
+              )
+            }
+            await new Promise((resolve) =>
+              setTimeout(resolve, Math.min(500 * 1.5 ** (attempt - 1), 2000)),
+            )
+          } else {
+            if (generation !== hydrationGeneration) return
+            console.error('Failed to load the profile bootstrap', err)
+            if (wasHydrated) {
+              // A re-hydrate (triggered by a core sync event, not the
+              // initial boot) must never wipe an already-good document over
+              // a transient/temporary failure — only surface the error.
+              // The local revision stays stale, so the server's periodic
+              // reconciliation snapshot retries this automatically.
+              set({ persistenceError: coreMismatch ? 'core-mismatch' : 'write' })
+            } else {
+              setStorageNamespace('default')
+              set({
+                ...createEmptyProjectsFile(),
+                hydrated: false,
+                activeProfileId: 'default',
+                profiles: [],
+                projectsRevision: 'missing',
+                persistenceDirty: false,
+                persistenceError: coreMismatch ? 'core-mismatch' : 'write',
+                bootstrapStatus: coreMismatch ? 'incompatible' : 'unavailable',
+              })
+            }
+            return
+          }
         }
-        const parsed = JSON.parse(raw)
-        const migrated = migrate(parsed)
-        set({
-          ...migrated,
-          hydrated: true,
-          activeProfileId: profileState.active_profile_id,
-          profiles: profileState.profiles,
-        })
-        void recordAppEvent(
-          'projects.hydrate',
-          `source=disk projects=${migrated.projects.length} groups=${migrated.groups.length} tabs=${migrated.workspace.tabs.length} active_tab=${Boolean(migrated.workspace.activeTabId)} left_sidebar=${migrated.preferences.leftSidebarVisible} right_sidebar=${migrated.preferences.rightSidebarVisible}`,
-        )
-      } catch (err) {
-        console.error('Falha ao carregar projects.json — usando estado vazio', err)
-        void recordFrontendError(String(err), null, 'projects.load')
-        set({
-          hydrated: true,
-          activeProfileId: profileState.active_profile_id,
-          profiles: profileState.profiles,
-        })
       }
+    },
+
+    flushPersistence: async (keepalive = false) => {
+      if (saveTimer) {
+        clearTimeout(saveTimer)
+        saveTimer = null
+      }
+      if (retryTimer) {
+        clearTimeout(retryTimer)
+        retryTimer = null
+      }
+      pendingSave = false
+      const state = get()
+      if (state.persistenceError === 'conflict') {
+        throw new Error('projects_revision_conflict:pending_resolution')
+      }
+      if (state.persistenceError === 'core-mismatch') {
+        throw new Error(CORE_IDENTITY_MISMATCH)
+      }
+      if (!state.hydrated || !state.persistenceDirty) {
+        await saveQueue
+        return
+      }
+      const generation = ++saveGeneration
+      await enqueueProjectsSave(state, generation, keepalive)
     },
 
     ...createGroupsSlice(sliceCtx),

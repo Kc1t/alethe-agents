@@ -309,6 +309,7 @@ fn get_session_cost_inner(
                 let tokens_cache_write: u64 = row.get(4).unwrap_or(0);
                 let cost: f64 = row.get(5).unwrap_or(0.0);
 
+                // A coluna `model` pode ser JSON ({"id": "..."}) ou string simples.
                 let model_name =
                     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&model_raw) {
                         v.get("id")

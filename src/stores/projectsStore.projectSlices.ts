@@ -2,31 +2,92 @@
 
 import { nanoid } from 'nanoid'
 
-import { preparePtyRuntimeLaunch } from '../lib/agentRuntimeAdapter'
+import { restartAgentPty } from '../lib/agentPtyRestart'
 import { getLocale, translate } from '../lib/i18n'
-import { buildAgentLaunch } from '../lib/sessionLaunch'
+import { expected } from '../lib/resilience'
+import { getActiveSessions, savedConversationIdFor } from '../lib/sessionResume'
+import { killPty, listenPtyData } from '../lib/tauri'
 import {
   clearTerminalPtyIds,
   collectTerminalPtyIds,
   getProjectRepoRoot,
 } from '../lib/terminalFactory'
 import { cleanupPtys } from '../lib/terminalLifecycle'
-import type { Group, Project } from '../lib/types'
-import { agentCliCommand, GROUP_COLORS } from '../lib/types'
+import type { AgentType, Group, Project } from '../lib/types'
+import { GROUP_COLORS } from '../lib/types'
 import { sanitizeWorkspaceSnapshot } from '../lib/workspaceNavigation'
 import type { ProjectsState } from './projectsStore'
 import { collectGroupProjectIds } from './projectsStore.migrations'
 import type { SliceCtx } from './projectsStore.slices'
-import { useTerminalsStore } from './terminalsStore'
 import { useUiStore } from './uiStore'
 
 function t(key: Parameters<typeof translate>[1], params?: Record<string, string | number>) {
   return translate(getLocale(), key, params)
 }
 
-                                                                              
-                                                                              
 const migratingWorktreeProjectIds = new Set<string>()
+
+/**
+ * Providers cujo `--resume`/`--session <id>` foi CONFIRMADO (testado de
+ * verdade, não suposto) funcionar vindo de um cwd diferente de onde a
+ * sessão nasceu — relevante só pra migração pra worktree, onde o cwd
+ * necessariamente muda. Storage de sessão de todo provider já é global por
+ * usuário (não por pasta — Claude em `~/.claude/`, Codex em `~/.codex/`,
+ * OpenCode em `~/.local/share/opencode/opencode.db`), então em teoria os
+ * dados sempre existem; a dúvida real é só se o CLI aceita retomar por ID
+ * cru vindo de outro diretório.
+ *
+ * `opencode` testado nesta sessão: `opencode --session <id>` a partir de um
+ * cwd diferente do original TRAVA indefinidamente (sem erro, sem saída —
+ * matado manualmente após 150s) — não é um "resume falhou", é um hang.
+ * `false` de propósito até haver confirmação equivalente. Codex/Claude
+ * ainda não testados (CLI indisponível na máquina de dev) — tratados com a
+ * mesma cautela até serem verificados.
+ */
+const CROSS_CWD_RESUME_OK: Partial<Record<AgentType, boolean>> = {
+  opencode: false,
+}
+
+/** Migração tentando um resume cross-cwd pode travar (hang, não erro —
+ *  confirmado com OpenCode) em vez de falhar rápido. Corre entre "chegou
+ *  algum byte de saída" e um teto de tempo; sem nenhuma saída no prazo,
+ *  mata o processo travado e tenta de novo como sessão nova, sem propagar
+ *  a falha pro restante do loop de migração. */
+const RESUME_HANG_GUARD_MS = 8_000
+
+async function restartAgentPtyWithHangGuard(
+  opts: Parameters<typeof restartAgentPty>[0],
+): Promise<ReturnType<typeof restartAgentPty>> {
+  if (!opts.resumeId) return restartAgentPty(opts)
+
+  const result = await restartAgentPty(opts)
+  const gotOutput = await new Promise<boolean>((resolve) => {
+    let settled = false
+    const timer = window.setTimeout(() => {
+      if (settled) return
+      settled = true
+      resolve(false)
+    }, RESUME_HANG_GUARD_MS)
+    void listenPtyData(result.id, () => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timer)
+      resolve(true)
+    }).catch(() => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timer)
+      resolve(false)
+    })
+  })
+  if (gotOutput) return result
+
+  console.warn(
+    `[projectsStore] resume cross-cwd de ${opts.agent} sem nenhuma saída em ${RESUME_HANG_GUARD_MS}ms (provável hang) — matando e reabrindo como sessão nova`,
+  )
+  await killPty(result.id).catch(expected('kill_pty_failed'))
+  return restartAgentPty({ ...opts, resumeId: undefined })
+}
 
 type GroupsSlice = Pick<
   ProjectsState,
@@ -372,12 +433,10 @@ type ProjectsSlice = Pick<
   | 'setValidationCommands'
   | 'setHealthCheckCommand'
   | 'setHealthCheckPath'
-  | 'setGsdWatcherEnabled'
   | 'setConflictAgentProvider'
   | 'setConflictAgentModel'
   | 'setReviewAgentProvider'
   | 'setReviewAgentModel'
-  | 'setGraphifyEnabled'
   | 'setAutoWorktree'
   | 'setMergePostAction'
   | 'relocateMergeAgentTerminal'
@@ -501,9 +560,6 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
     setHealthCheckPath: (id, healthCheckPath) =>
       updateProject(id, (p) => ({ ...p, healthCheckPath })),
 
-    setGsdWatcherEnabled: (id, gsdWatcherEnabled) =>
-      updateProject(id, (p) => ({ ...p, gsdWatcherEnabled })),
-
     setConflictAgentProvider: (id, conflictAgentProvider) =>
       updateProject(id, (p) => ({ ...p, conflictAgentProvider })),
 
@@ -516,25 +572,12 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
     setReviewAgentModel: (id, reviewAgentModel) =>
       updateProject(id, (p) => ({ ...p, reviewAgentModel })),
 
-    setGraphifyEnabled: (id, graphifyEnabled) =>
-      updateProject(id, (p) => ({ ...p, graphifyEnabled })),
-
-                                                                         
-                                                                               
-                                                                              
-                                                                             
-                                                                                          
-                                                          
     setAutoWorktree: (id, autoWorktree) => updateProject(id, (p) => ({ ...p, autoWorktree })),
 
     setMergePostAction: (id, mergePostAction) =>
       updateProject(id, (p) => ({ ...p, mergePostAction })),
 
-    relocateMergeAgentTerminal: async (projectId, terminalId, _opts) => {
-      // `keepSession` is disabled in the UI (resuming a session from a different
-      // directory hangs indefinitely on every agent CLI tested so far) — every
-      // relocation currently starts a fresh conversation, same as
-      // migrateProjectTerminalsToWorktrees.
+    relocateMergeAgentTerminal: async (projectId, terminalId, opts) => {
       const project = get().projects.find((p) => p.id === projectId)
       const terminal = project?.terminals.find((t) => t.id === terminalId)
       if (!project || !terminal) return { ok: false, error: 'terminal_not_found' }
@@ -543,35 +586,9 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
       if (!repo) return { ok: false, error: 'no_repo' }
 
       try {
-        const { worktreeProvision, restartPty } = await import('../lib/tauri')
+        const { worktreeProvision } = await import('../lib/tauri')
         const agentId = `merge-${nanoid(6)}`
         const info = await worktreeProvision(repo, agentId, project.worktreeMode ?? 'gitWorktree')
-
-        for (const tab of terminal.tabs) {
-          if (!tab.ptyId) continue
-          const runtime = preparePtyRuntimeLaunch(tab.type, tab.runtimeProfile, tab.extraArgs ?? [])
-          const launch = buildAgentLaunch(tab.type, runtime.args)
-          useTerminalsStore.getState().beginRestart(tab.ptyId)
-          try {
-            await restartPty({
-              id: tab.ptyId,
-              cols: 80,
-              rows: 24,
-              command: agentCliCommand(tab.type),
-              cwd: info.path,
-              extraArgs: launch.args,
-              env: runtime.env,
-            })
-            window.dispatchEvent(
-              new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: tab.ptyId } }),
-            )
-          } catch (restartErr) {
-            console.warn(
-              `[projectsStore] failed restarting the merge terminal on the new worktree:`,
-              restartErr,
-            )
-          }
-        }
 
         updateProject(projectId, (p) => ({
           ...p,
@@ -586,37 +603,74 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
           }),
         }))
 
+        for (const tab of terminal.tabs) {
+          if (!tab.ptyId) continue
+          const activeSessions = getActiveSessions()
+          const savedSession = activeSessions[tab.id] ?? activeSessions[tab.ptyId] ?? null
+          const preservedResumeId =
+            tab.sessionId ?? savedConversationIdFor(savedSession, tab.type, terminal.cwd)
+          const effectiveResumeId =
+            opts.keepSession && CROSS_CWD_RESUME_OK[tab.type] ? preservedResumeId : undefined
+          try {
+            await restartAgentPtyWithHangGuard({
+              ptyId: tab.ptyId,
+              sessionPersistenceKey: tab.id,
+              agent: tab.type,
+              cwd: info.path,
+              runtimeProfile: tab.runtimeProfile,
+              extraArgs: tab.extraArgs ?? [],
+              resumeId: effectiveResumeId,
+              onSessionId: (id) =>
+                updateProject(projectId, (p) => ({
+                  ...p,
+                  terminals: p.terminals.map((t) =>
+                    t.id !== terminalId
+                      ? t
+                      : {
+                          ...t,
+                          tabs: t.tabs.map((tb) =>
+                            tb.id === tab.id ? { ...tb, sessionId: id } : tb,
+                          ),
+                        },
+                  ),
+                })),
+            })
+            window.dispatchEvent(
+              new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId: tab.ptyId } }),
+            )
+          } catch (restartErr) {
+            console.warn(
+              '[projectsStore] failed restarting merge terminal in the new worktree:',
+              restartErr,
+            )
+          }
+        }
+
         return { ok: true }
       } catch (err) {
         return { ok: false, error: String(err) }
       }
     },
 
-    migrateProjectTerminalsToWorktrees: async (projectId, gsdWatcherEnabledOverride) => {
-      if (migratingWorktreeProjectIds.has(projectId)) return                                             
+    migrateProjectTerminalsToWorktrees: async (projectId, opts) => {
+      if (migratingWorktreeProjectIds.has(projectId)) return { status: 'aborted' }
       const project = get().projects.find((p) => p.id === projectId)
-      if (!project) return
+      if (!project) return { status: 'aborted' }
       const repo = getProjectRepoRoot(project)
       if (!repo) {
         useUiStore.getState().pushToast({
           title: t('multiAgent.migrateNoRepoTitle'),
           body: t('multiAgent.migrateNoRepoBody'),
         })
-        return
+        return { status: 'aborted' }
       }
 
       migratingWorktreeProjectIds.add(projectId)
       try {
-        const { worktreeProvision, restartPty, gitStatus, gsdOpenCodePluginWrite } =
-          await import('../lib/tauri')
+        const { worktreeProvision, gitStatus } = await import('../lib/tauri')
 
-                                                                                 
-                                                                            
-                                                                            
-                                                                           
-                                                                              
-                                                                             
-        // o erro cru not_a_git_repository vazando pro toast final).
+        // Probed up front so a non-repo is reported as such, instead of the raw
+        // not_a_git_repository error leaking into the final toast.
         let status: Awaited<ReturnType<typeof gitStatus>> | null = null
         try {
           status = await gitStatus(repo)
@@ -625,15 +679,15 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
             title: t('multiAgent.migrateNoRepoTitle'),
             body: t('multiAgent.migrateNoRepoBody'),
           })
-          return
+          return { status: 'aborted' }
         }
-        const dirty = status.staged.length + status.changes.length + status.untracked.length > 0
-        if (dirty) {
-          useUiStore.getState().pushToast({
-            title: t('multiAgent.migrateDirtyTitle'),
-            body: t('multiAgent.migrateDirtyBody'),
-          })
-          return
+        // Uncommitted work does NOT block the migration: every worktree is
+        // created from HEAD (or a --local clone), so pending changes simply
+        // stay in the main repository, untouched. The caller confirms once and
+        // calls back with `allowDirty` — see `migrateDirtyConfirm`.
+        const pending = status.staged.length + status.changes.length + status.untracked.length
+        if (pending > 0 && !opts?.allowDirty) {
+          return { status: 'dirty', pending }
         }
 
         const targets = project.terminals.filter(
@@ -655,67 +709,13 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
               project.worktreeMode ?? 'gitWorktree',
             )
 
-            // Terminal migrado com watcher GSD ligado e rodando OpenCode nunca
-                                                                                
-                                                                              
-                                                                               
-                                                                           
-                                                                                
-                                                           
-            const gsdWatcherEnabled = gsdWatcherEnabledOverride ?? project.gsdWatcherEnabled
-            if (gsdWatcherEnabled && terminal.tabs.some((tab) => tab.type === 'opencode')) {
-              const modelChain = get().preferences.gsdSyncModelChain ?? []
-              await gsdOpenCodePluginWrite(info.path, modelChain).catch((error) => {
-                console.error(
-                  `[projectsStore] gsdOpenCodePluginWrite falhou pra ${info.path}:`,
-                  error,
-                )
-              })
-            }
-
-                                                                               
-                                                                               
-                                                                               
-                                                                                
-                                                                               
-                                                                            
-                                                                             
-                                                                              
-                                                                            
-                                                                               
-                                                          
-            for (const tab of terminal.tabs) {
-              if (!tab.ptyId) continue
-              const runtime = preparePtyRuntimeLaunch(
-                tab.type,
-                tab.runtimeProfile,
-                tab.extraArgs ?? [],
-              )
-              const launch = buildAgentLaunch(tab.type, runtime.args)
-              useTerminalsStore.getState().beginRestart(tab.ptyId)
-              try {
-                await restartPty({
-                  id: tab.ptyId,
-                  cols: 80,
-                  rows: 24,
-                  command: agentCliCommand(tab.type),
-                  cwd: info.path,
-                  extraArgs: launch.args,
-                  env: runtime.env,
-                })
-                window.dispatchEvent(
-                  new CustomEvent('alethe:terminal-resize-request', {
-                    detail: { ptyId: tab.ptyId },
-                  }),
-                )
-              } catch (restartErr) {
-                console.warn(
-                  `[projectsStore] falha reiniciando aba na worktree nova (${terminal.name}):`,
-                  restartErr,
-                )
-              }
-            }
-
+            // Update cwd/worktreeAgentId/sessionId (cleared — the new session
+            // has no known ID yet) BEFORE restarting the tabs. Order matters:
+            // `onSessionId` below writes the new ID (synchronously for Claude,
+            // asynchronously for the other 3 via
+            // `watchAndPersistDiscoveredSession`) always AFTER this clear,
+            // never before — without that guaranteed order a synchronous write
+            // could be overwritten back by a late "clear".
             updateProject(projectId, (p) => ({
               ...p,
               terminals: p.terminals.map((t) => {
@@ -724,14 +724,73 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
                   ...t,
                   cwd: info.path,
                   worktreeAgentId: agentId,
-                  tabs: t.tabs.map((tab) => ({
-                    ...tab,
-                    cwd: info.path,
-                    sessionId: undefined,
-                  })),
+                  tabs: t.tabs.map((tab) => ({ ...tab, cwd: info.path, sessionId: undefined })),
                 }
               }),
             }))
+
+            // Each tab's pane is already mounted (`key={tab.id}`, stable) and
+            // the XTermView mount effect only reacts to `sessionPersistenceKey`/
+            // `retryKey` — changing `cwd` in the store alone makes the pane
+            // notice nothing, it keeps showing the old session in the old folder
+            // (a real bug, seen directly: the toast said "done" but the terminal
+            // never moved). Restart EVERY tab with a live PTY ON THE SAME ptyId
+            // (the same mechanism as the context menu's "Restart", via
+            // `restartAgentPty`) — the pane already listens on that channel, so
+            // it does not need to remount. Each provider's session storage is
+            // global per user, not per folder — the old conversation MAY really
+            // exist in the new worktree; only reuse it for providers with
+            // confirmed cross-cwd resume (`CROSS_CWD_RESUME_OK`, empty today —
+            // none proven safe yet), guarded against hangs
+            // (`restartAgentPtyWithHangGuard`). Tabs without a PTY (never
+            // opened) only need the updated cwd — their first mount already
+            // starts in the right place.
+            for (const tab of terminal.tabs) {
+              if (!tab.ptyId) continue
+              const activeSessions = getActiveSessions()
+              const savedSession = activeSessions[tab.id] ?? activeSessions[tab.ptyId] ?? null
+              const preservedResumeId =
+                tab.sessionId ?? savedConversationIdFor(savedSession, tab.type, terminal.cwd)
+              const effectiveResumeId = CROSS_CWD_RESUME_OK[tab.type]
+                ? preservedResumeId
+                : undefined
+              try {
+                await restartAgentPtyWithHangGuard({
+                  ptyId: tab.ptyId,
+                  sessionPersistenceKey: tab.id,
+                  agent: tab.type,
+                  cwd: info.path,
+                  runtimeProfile: tab.runtimeProfile,
+                  extraArgs: tab.extraArgs ?? [],
+                  resumeId: effectiveResumeId,
+                  onSessionId: (id) =>
+                    updateProject(projectId, (p) => ({
+                      ...p,
+                      terminals: p.terminals.map((t) =>
+                        t.id !== terminal.id
+                          ? t
+                          : {
+                              ...t,
+                              tabs: t.tabs.map((tb) =>
+                                tb.id === tab.id ? { ...tb, sessionId: id } : tb,
+                              ),
+                            },
+                      ),
+                    })),
+                })
+                window.dispatchEvent(
+                  new CustomEvent('alethe:terminal-resize-request', {
+                    detail: { ptyId: tab.ptyId },
+                  }),
+                )
+              } catch (restartErr) {
+                console.warn(
+                  `[projectsStore] failed restarting tab in the new worktree (${terminal.name}):`,
+                  restartErr,
+                )
+              }
+            }
+
             succeeded.push(terminal.name)
           } catch (err) {
             failed.push({ name: terminal.name, error: String(err) })
@@ -763,6 +822,7 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
             }),
           })
         }
+        return { status: 'done' }
       } finally {
         migratingWorktreeProjectIds.delete(projectId)
       }
@@ -779,9 +839,7 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
         next[index] = {
           ...existing[index],
           ...entry,
-                                                                       
-                                                                                 
-                                                                           
+
           adminLockReason: entry.adminLockReason,
         }
         return { ...p, orphanWorktrees: next }
@@ -805,12 +863,9 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
       const { worktreeCleanup, worktreeRemove } = await import('../lib/tauri')
       set({ isCleaningOrphans: true })
 
-                                                                              
-                                                                         
       for (const orphan of orphans) {
         try {
           if (orphan.pruneOnly) {
-                                                                              
             // fantasma do git.
             await worktreeCleanup(repoPath)
             get().removeOrphanWorktree(projectId, orphan.path)
@@ -819,18 +874,15 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
           }
 
           // requiresRawDeletion (ou nenhuma flag ainda — primeira tentativa):
-                                                                             
-                                                                              
+
           const agentId = orphan.path.split(/[\\/]/).filter(Boolean).pop() ?? ''
           await worktreeRemove(repoPath, agentId, true)
 
-                                                                             
           try {
             await worktreeCleanup(repoPath)
             get().removeOrphanWorktree(projectId, orphan.path)
             summary.cleaned++
           } catch {
-                                                                           
             get().addOrphanWorktree(projectId, {
               path: orphan.path,
               mode: orphan.mode,

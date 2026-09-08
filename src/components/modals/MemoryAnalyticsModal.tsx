@@ -11,8 +11,14 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { intlLocale, type Locale, type TFunction,useT } from '../../lib/i18n'
-import { type CrashReport,getJobGuardStatus, getLastCrashReport, openLogsFolder } from '../../lib/tauri'
+import { intlLocale, type Locale, type TFunction, useT } from '../../lib/i18n'
+import { expected } from '../../lib/resilience'
+import {
+  type CrashReport,
+  getJobGuardStatus,
+  getLastCrashReport,
+  openLogsFolder,
+} from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import type { MemorySample } from '../../stores/uiStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -131,9 +137,6 @@ function buildDiagnostics(history: MemorySample[], t: TFunction): string[] {
 
 type ChartPoint = { x: number; y: number }
 
-                                                                          
-                                                                      
-                                              
 function smoothPath(points: ChartPoint[]): string {
   if (points.length < 2) return ''
   if (points.length === 2) {
@@ -209,7 +212,6 @@ function Sparkline({ samples }: { samples: MemorySample[] }) {
               y1={4}
               y2={96}
             />
-            <circle className={styles.chartDot} cx={hoveredPoint.x} cy={hoveredPoint.y} r={2.4} />
           </>
         ) : null}
         <rect
@@ -222,6 +224,16 @@ function Sparkline({ samples }: { samples: MemorySample[] }) {
           onPointerLeave={() => setHoverIndex(null)}
         />
       </svg>
+      {hoveredPoint ? (
+        // Outside the SVG on purpose. The chart stretches to fill a wide, short box
+        // (`preserveAspectRatio="none"`), so a `<circle>` drawn in its coordinates is squashed into
+        // a flat ellipse — the marker read as a dash rather than a point. Percentages map onto the
+        // same 0–100 coordinates, and a fixed pixel size stays round whatever the box is.
+        <span
+          className={styles.chartDot}
+          style={{ left: `${hoveredPoint.x}%`, top: `${hoveredPoint.y}%` }}
+        />
+      ) : null}
       <div className={styles.chartScale}>
         <span>{formatMb(max)}</span>
         <span>{formatMb(min)}</span>
@@ -273,16 +285,11 @@ export function MemoryAnalyticsModal() {
   const runtimeSnapshot = useUiStore((s) => s.runtimeSnapshot)
   const clearMemoryHistory = useUiStore((s) => s.clearMemoryHistory)
 
-                                                                      
   const [crash, setCrash] = useState<CrashReport | null>(null)
   useEffect(() => {
-    void getLastCrashReport()
-      .then(setCrash)
-      .catch(() => {})
+    void getLastCrashReport().then(setCrash).catch(expected('then_failed'))
   }, [])
 
-                                                                       
-                                                                             
   // saber de verdade.
   const [jobGuardActive, setJobGuardActive] = useState<boolean | null>(null)
   useEffect(() => {
@@ -337,7 +344,10 @@ export function MemoryAnalyticsModal() {
                     total: Math.round(crash.session.total_mb),
                     ptys: Math.round(crash.session.ptys_mb),
                     procs: crash.session.process_count,
-                    time: formatTime(crash.session.last_heartbeat_ms || crash.session.started_at_ms, language),
+                    time: formatTime(
+                      crash.session.last_heartbeat_ms || crash.session.started_at_ms,
+                      language,
+                    ),
                   })}
                 </p>
                 {crash.orphans_reaped > 0 ? (
@@ -350,7 +360,7 @@ export function MemoryAnalyticsModal() {
               <button
                 type="button"
                 className={controls.btn}
-                onClick={() => void openLogsFolder().catch(() => {})}
+                onClick={() => void openLogsFolder().catch(expected('open_logs_folder_failed'))}
               >
                 <FolderOpen size={14} />
                 {t('mod.openLogs')}

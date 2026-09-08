@@ -96,33 +96,51 @@ pub fn detect_project_stack(repo: String) -> Result<StackDetection, String> {
     let mut suggested_commands = Vec::new();
     match stack {
         ProjectStack::Desktop => {
+            suggested_commands.push("npm run tauri dev".to_string());
+            suggested_commands.push("npm run dev".to_string());
             suggested_commands.push("npm run build".to_string());
-            suggested_commands.push("cargo check --manifest-path src-tauri/Cargo.toml".to_string());
         }
         ProjectStack::Web => {
+            suggested_commands.push("npm run dev".to_string());
+            suggested_commands.push("npm start".to_string());
             suggested_commands.push("npm run build".to_string());
         }
         ProjectStack::Fullstack => {
-            suggested_commands.push("npm run build".to_string());
-            if has_file(root, "requirements.txt") || has_file(root, "pyproject.toml") {
-                suggested_commands.push("python -m py_compile .".to_string());
-            }
-            if has_file(root, "Cargo.toml") {
-                suggested_commands.push("cargo check".to_string());
+            if has_file(root, "Makefile") {
+                suggested_commands.push("make run".to_string());
             }
             if has_file(root, "go.mod") {
-                suggested_commands.push("go build ./...".to_string());
+                if root.join("cmd").is_dir() {
+                    suggested_commands.push("go run ./cmd/...".to_string());
+                } else {
+                    suggested_commands.push("go run .".to_string());
+                }
+            }
+            suggested_commands.push("npm run dev".to_string());
+            if has_file(root, "Cargo.toml") {
+                suggested_commands.push("cargo run".to_string());
+            }
+            if has_file(root, "requirements.txt") || has_file(root, "pyproject.toml") {
+                suggested_commands.push("python main.py".to_string());
             }
         }
         ProjectStack::Cli => {
-            if has_file(root, "Cargo.toml") {
-                suggested_commands.push("cargo check".to_string());
+            if has_file(root, "Makefile") {
+                suggested_commands.push("make run".to_string());
+                suggested_commands.push("make build".to_string());
             }
             if has_file(root, "go.mod") {
-                suggested_commands.push("go build ./...".to_string());
+                if root.join("cmd").is_dir() {
+                    suggested_commands.push("go run ./cmd/...".to_string());
+                } else {
+                    suggested_commands.push("go run .".to_string());
+                }
+            }
+            if has_file(root, "Cargo.toml") {
+                suggested_commands.push("cargo run".to_string());
             }
             if has_file(root, "requirements.txt") || has_file(root, "pyproject.toml") {
-                suggested_commands.push("python -m py_compile .".to_string());
+                suggested_commands.push("python main.py".to_string());
             }
         }
         ProjectStack::Unknown => {}

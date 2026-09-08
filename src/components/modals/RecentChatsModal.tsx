@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { intlLocale, type Locale, type TFunction,useT } from '../../lib/i18n'
+import { agentLaunchEnv } from '../../lib/agentConfigIsolation'
+import { intlLocale, type Locale, type TFunction, useT } from '../../lib/i18n'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import {
   type ClaudeSessionMeta,
@@ -78,7 +79,8 @@ export function RecentChatsModal() {
 
   // The panel is opened from a pane toolbar, so the pane that asked for it is
   // the target. Falling back to the selected pane keeps it usable elsewhere.
-  const contextProjectId = typeof modalContext?.projectId === 'string' ? modalContext.projectId : null
+  const contextProjectId =
+    typeof modalContext?.projectId === 'string' ? modalContext.projectId : null
   const contextTerminalId =
     typeof modalContext?.terminalId === 'string' ? modalContext.terminalId : null
   const contextAgent = modalContext?.agent === 'codex' ? 'codex' : 'claude'
@@ -175,6 +177,7 @@ export function RecentChatsModal() {
         cols: 80,
         rows: 24,
         command: agentCliCommand(agent),
+        env: await agentLaunchEnv(agentCliCommand(agent)),
         cwd: tab.cwd || cwd || undefined,
         extraArgs: launch.args,
       })

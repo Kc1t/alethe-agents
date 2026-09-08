@@ -128,6 +128,7 @@ type SubTabsSlice = Pick<
   | 'setSubTabCompletionUnread'
   | 'setSubTabSessionId'
   | 'setSubTabInitialInput'
+  | 'setSubTabSkipSessionClaim'
   | 'setSubTabHandoff'
 >
 
@@ -145,6 +146,7 @@ export function createSubTabsSlice({ updateTerminal, updateSubTab }: SliceCtx): 
         extraArgs: args.extraArgs,
         handoff: args.handoff,
         runtimeProfile: args.runtimeProfile,
+        skipSessionClaim: true,
       }
       updateTerminal(projectId, terminalId, (t) => ({
         ...t,
@@ -169,13 +171,13 @@ export function createSubTabsSlice({ updateTerminal, updateSubTab }: SliceCtx): 
         const remaining = t.tabs.filter((s) => s.id !== tabId)
         if (remaining.length === 0) return t
         const adjacentTab =
-          closingIndex >= 0
-            ? (t.tabs[closingIndex + 1] ?? t.tabs[closingIndex - 1])
-            : undefined
+          closingIndex >= 0 ? (t.tabs[closingIndex + 1] ?? t.tabs[closingIndex - 1]) : undefined
         const activeTabId =
           t.activeTabId === tabId
             ? (adjacentTab?.id ?? remaining[0].id)
-            : (remaining.some((tab) => tab.id === t.activeTabId) ? t.activeTabId : remaining[0].id)
+            : remaining.some((tab) => tab.id === t.activeTabId)
+              ? t.activeTabId
+              : remaining[0].id
         const next = { ...t, tabs: remaining, activeTabId }
         return activeTabId ? touchTerminalUsage(next, activeTabId) : next
       }),
@@ -211,6 +213,9 @@ export function createSubTabsSlice({ updateTerminal, updateSubTab }: SliceCtx): 
 
     setSubTabInitialInput: (projectId, terminalId, tabId, initialInput) =>
       updateSubTab(projectId, terminalId, tabId, (s) => ({ ...s, initialInput })),
+
+    setSubTabSkipSessionClaim: (projectId, terminalId, tabId, skipSessionClaim) =>
+      updateSubTab(projectId, terminalId, tabId, (s) => ({ ...s, skipSessionClaim })),
 
     setSubTabHandoff: (projectId, terminalId, tabId, handoff) =>
       updateSubTab(projectId, terminalId, tabId, (s) => ({ ...s, handoff })),

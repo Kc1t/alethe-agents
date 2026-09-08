@@ -729,7 +729,7 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-                                                                             
+
   overflow: hidden;
   cursor: grab;
   background: var(--bg);
@@ -796,9 +796,6 @@
   color: var(--fg-faint);
 }
 
-                                                                               
-                                                                             
-                                             
 .stage {
   position: relative;
   display: flex;
@@ -910,7 +907,6 @@
   padding: 0 24px 40px;
 }
 
-                                                                               
 .agentGroup {
   display: flex;
   flex-direction: column;
@@ -1157,7 +1153,6 @@
   color: var(--text-quaternary);
 }
 
-                                                   
 .cardCost {
   display: flex;
   align-items: center;
@@ -1183,7 +1178,6 @@
   font: 700 11px var(--font-mono);
 }
 
-                                                            
 .costPill {
   display: inline-flex;
   align-items: center;
@@ -1196,7 +1190,6 @@
   border: 1px solid var(--border);
 }
 
-                                                         
 .costLow {
   color: var(--accent);
 }
@@ -1222,7 +1215,6 @@
   border: 1px solid color-mix(in srgb, var(--status-working) 40%, transparent);
 }
 
-                                                            
 .budgetControl {
   display: inline-flex;
   align-items: center;
@@ -1248,7 +1240,6 @@
   color: var(--fg-faint);
 }
 
-                                                               
 .budgetBannerCrit {
   border-color: var(--status-offline);
   background: color-mix(in srgb, var(--status-offline) 12%, transparent);

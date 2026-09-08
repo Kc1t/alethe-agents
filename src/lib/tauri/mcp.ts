@@ -1,12 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 
-import type {
-  McpAgent,
-  McpAgentSnapshot,
-  McpCapability,
-  McpScope,
-  McpSourceKind,
-} from '../types'
+import type { McpAgent, McpAgentSnapshot, McpCapability, McpScope, McpSourceKind } from '../types'
 
 export type McpConfigPath = {
   agent: McpAgent
@@ -21,7 +15,11 @@ export async function mcpScan(
   repo?: string | null,
   agents?: McpAgent[],
 ): Promise<McpAgentSnapshot[]> {
-  return invoke<McpAgentSnapshot[]>('mcp_scan', { scope, repo: repo ?? null, agents: agents ?? null })
+  return invoke<McpAgentSnapshot[]>('mcp_scan', {
+    scope,
+    repo: repo ?? null,
+    agents: agents ?? null,
+  })
 }
 
 export async function mcpConfigPaths(

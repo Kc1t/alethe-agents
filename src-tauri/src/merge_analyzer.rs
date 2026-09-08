@@ -10,7 +10,7 @@
 //!                                        └yes→ Classifier → skill → Resolution Agent`
 //!
 //! The Classifier maps each conflicted file to a class (Rust, TS, UI, Cargo,
-//! Package, JSON, Config, Asset, Planning, Graph, Other) and each class
+//! Package, JSON, Config, Asset, Planning, Other) and each class
 //! carries a strategy — that's what the Conflict Resolution Agent (RFC-007)
 //! receives as minimal context.
 
@@ -32,10 +32,9 @@ pub enum ConflictClass {
     Config,
     Asset,
     Planning,
-    /// Sentinel for ephemeral machine state (e.g. `.gsd-child-session`) — an
-    /// opaque value (session ID, busy flag), not mergeable prose.
+    /// Sentinel for ephemeral machine state — an opaque single-line value (a session id, a busy
+    /// flag), not mergeable prose.
     Sentinel,
-    Graph,
     Other,
 }
 
@@ -64,14 +63,15 @@ pub fn classify_path(path: &str) -> ConflictClass {
     let lower = normalized.to_lowercase();
     let file_name = lower.rsplit('/').next().unwrap_or(&lower).to_string();
 
-    // Ephemeral machine-state sentinels from GSD Sync (session ID, busy flag,
-    // error message) — checked BEFORE the generic `.planning/` fallback:
-    // they're opaque, single-line values with no cross-branch "intent" to
-    // preserve. Confirmed live: treating them as `Planning` ("preserve both
-    // branches' history") led the agent to paste both values together with
-    // a real conflict marker inside the file — which was then read raw as if
-    // it were a valid session ID
-    // (`--session <<<<<<< HEAD\nses_...\n=======\n...`), breaking the spawn.
+    // Ephemeral machine-state sentinels, checked BEFORE the generic `.planning/` fallback: they
+    // are opaque, single-line values with no cross-branch "intent" to preserve. Confirmed live:
+    // classifying them as `Planning` ("preserve both branches' history") led the agent to paste
+    // both values together with a real conflict marker inside the file, which was then read raw as
+    // if it were a valid session id, breaking the spawn.
+    //
+    // Nothing writes these files any more — they belonged to a removed feature. They are still
+    // classified because they survive in branches and worktrees created while it existed, and a
+    // conflict on one still has to be resolved correctly.
     if file_name == ".gsd-child-session"
         || file_name == ".gsd-child-busy"
         || file_name == ".gsd-child-error"
@@ -80,9 +80,6 @@ pub fn classify_path(path: &str) -> ConflictClass {
     }
     if lower.starts_with(".planning/") || lower.contains("/.planning/") {
         return ConflictClass::Planning;
-    }
-    if lower.starts_with("graphify-out/") || lower.contains("/graphify-out/") {
-        return ConflictClass::Graph;
     }
     match file_name.as_str() {
         "cargo.toml" | "cargo.lock" => return ConflictClass::Cargo,
@@ -137,10 +134,7 @@ pub fn class_strategy(class: ConflictClass) -> &'static str {
             "Planning (.planning/): preserve both branches' history; never discard tasks from either side."
         }
         ConflictClass::Sentinel => {
-            "Ephemeral machine state from GSD Sync (session ID, busy/error flag) — this is NOT content to merge, it's a single-line opaque value. NEVER paste both values together nor leave any conflict marker (<<<<<<<, =======, >>>>>>>) in the file. Resolve by deleting the file entirely (it is recreated on its own on the next GSD Sync cycle) — never pick a 'middle ground' value."
-        }
-        ConflictClass::Graph => {
-            "Graph (graphify-out/): don't resolve by hand — the graph is generated; pick either side and regenerate with Graphify afterward."
+            "Ephemeral machine state (a session id or busy/error flag) left over from a removed feature — this is NOT content to merge, it's a single-line opaque value. NEVER paste both values together nor leave any conflict marker (<<<<<<<, =======, >>>>>>>) in the file. Resolve by deleting the file entirely: nothing reads it and nothing recreates it. Never pick a 'middle ground' value."
         }
         ConflictClass::Other => {
             "Preserve both intentions; if unsure, keep both snippets and flag it in the commit."
@@ -265,10 +259,6 @@ pub(crate) mod tests {
         assert_eq!(
             classify_path(".planning/roadmap.md"),
             ConflictClass::Planning
-        );
-        assert_eq!(
-            classify_path("graphify-out/graph.json"),
-            ConflictClass::Graph
         );
         assert_eq!(classify_path("README.md"), ConflictClass::Other);
         // Windows path separator also classifies correctly.

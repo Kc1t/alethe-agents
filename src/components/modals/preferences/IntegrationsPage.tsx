@@ -13,11 +13,6 @@ import styles from '../PreferencesModal.module.css'
 import { SettingsSection } from './primitives'
 import { VoiceDictationSection } from './VoiceDictationSection'
 
-   
-                                                                            
-                                                                           
-                                                       
-   
 function TerminalCommandSection() {
   const t = useT()
   const [status, setStatus] = useState<CliShimStatus | null>(null)

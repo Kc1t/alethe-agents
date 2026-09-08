@@ -734,7 +734,8 @@ mod functional_tests {
         assert!(!last_key_composing(), "letra normal não é composing");
 
         type_char(surface, "", 36); // Enter
-
+                                    // UCKeyTranslate traduz Enter -> "\r" (carriage return) — é o que faz o
+                                    // shell executar. O importante: NÃO pode ficar travado em composing.
         assert_eq!(last_key_text(), "\r", "Enter deve emitir CR");
         assert!(!last_key_composing(), "Enter NÃO pode ficar composing");
 
@@ -904,7 +905,7 @@ mod functional_tests {
         send(surface, "echo IME_");
 
         let marked = CString::new("\u{00b4}").unwrap(); // ´
-        let final_ = CString::new("\u{00e1}").unwrap();
+        let final_ = CString::new("\u{00e1}").unwrap(); // á
         let ok =
             unsafe { alethe_ghostty_test_ime_compose(surface, marked.as_ptr(), final_.as_ptr()) };
         assert!(ok, "test_ime_compose não achou a view");

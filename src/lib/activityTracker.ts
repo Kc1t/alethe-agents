@@ -1,18 +1,19 @@
-import { AgentCompletionMonitor } from './agentCompletionMonitor'
-import { normalizeCwd } from './platform'
-import {
-  listenOpenCodeBridgeStatus,
-  listenPtyActivity,
-  listenPtyData,
-  recordActivitySamples,
-  type ActivityAgentSample,
-  type ActivitySample,
-  type OpenCodeBridgeStatus,
-} from './tauri'
-import type { AgentType } from './types'
 import { useProjectsStore } from '../stores/projectsStore'
 import { useTerminalsStore } from '../stores/terminalsStore'
 import { useUiStore } from '../stores/uiStore'
+import { AgentCompletionMonitor } from './agentCompletionMonitor'
+import { normalizeCwd } from './platform'
+import { expected } from './resilience'
+import {
+  type ActivityAgentSample,
+  type ActivitySample,
+  listenOpenCodeBridgeStatus,
+  listenPtyActivity,
+  listenPtyData,
+  type OpenCodeBridgeStatus,
+  recordActivitySamples,
+} from './tauri'
+import type { AgentType } from './types'
 
 const SAMPLE_MS = 5_000
 const FLUSH_MS = 30_000
@@ -39,10 +40,6 @@ let started = false
 let lastInteractionAt = Date.now()
 let lastSampleAt = Date.now()
 
-                                                                          
-                                                          
-                                                                           
-                                                       
 const bridgeActivePtyIds = new Set<string>()
 
 function applyOpenCodeBridgeStatus({ directory, state }: OpenCodeBridgeStatus): void {
@@ -109,8 +106,6 @@ function syncTrackedAgents(): void {
       cwd: meta.cwd,
       notifyOnComplete: false,
       onStatusChange: (status) => {
-                                                                              
-                                            
         if (bridgeActivePtyIds.has(ptyId)) return
         useTerminalsStore.getState().setStatus(ptyId, status)
       },
@@ -123,15 +118,14 @@ function syncTrackedAgents(): void {
         else entry.unlisten = unlisten
       })
       .catch(() => tracked.delete(ptyId))
-    // O backend para de emitir `pty:                                         
-                                                                            
-                                                                             
+    // O backend para de emitir `pty:
+
     void listenPtyActivity(ptyId, (chunk) => monitor.handleOutput(chunk))
       .then((unlisten) => {
         if (tracked.get(ptyId) !== entry) unlisten()
         else entry.unlistenActivity = unlisten
       })
-      .catch(() => {})
+      .catch(expected('unlisten_failed'))
   }
   for (const [ptyId, entry] of tracked) {
     if (!metadata.has(ptyId) || !runtimes[ptyId]?.alive) {
@@ -144,9 +138,6 @@ function syncTrackedAgents(): void {
   }
 }
 
-                                                                                 
-                                                                            
-                                                                               
 let syncDebounceTimer: number | null = null
 function scheduleSyncTrackedAgents(): void {
   if (syncDebounceTimer !== null) return
@@ -251,9 +242,7 @@ export function startActivityTracker(): () => void {
       if (bridgeDisposed) unlisten()
       else unlistenBridge = unlisten
     })
-    .catch(() => {
-                                                                          
-    })
+    .catch(expected('unlisten_failed'))
 
   const flushOnHide = () => {
     sample()

@@ -345,10 +345,10 @@ fn resolve_worktree_env(repo: &str, agent_id: &str) -> Result<PathBuf, String> {
     Ok(env)
 }
 
-/// Mirrors `isRealWork()` in `assets/opencode-plugins/alethe-gsd-state.ts` —
-/// Alethe's own infrastructure (GSD plugin in `.opencode/`, GSD Sync state in
-/// `.planning/`, the `opencode.json` Alethe writes on every spawn) is never
-/// real agent work in this worktree and must not be auto-committed/merged.
+/// Alethe's own infrastructure is never real agent work in this worktree and must not be
+/// auto-committed or merged: the OpenCode configuration under `.opencode/` (written on spawn, e.g.
+/// by the AI-memory integration), the planning documents in `.planning/`, and the `opencode.json`
+/// Alethe writes alongside them. A worktree holding only these has nothing worth reviewing in it.
 fn is_real_work(path: &str) -> bool {
     !path.is_empty()
         && !path.starts_with(".planning/")
@@ -646,16 +646,11 @@ mod tests {
         checked_output(env, &["config", "user.name", "Alethe Test"]).unwrap();
         checked_output(env, &["config", "user.email", "alethe@example.invalid"]).unwrap();
 
-        // Only Alethe infrastructure pending (GSD plugin + OpenCode config
-        // auto-written on spawn) — no real agent work.
-        fs::create_dir_all(env.join(".opencode").join("plugins")).unwrap();
-        fs::write(
-            env.join(".opencode")
-                .join("plugins")
-                .join("alethe-gsd-state.ts"),
-            "// alethe-managed: v1\n",
-        )
-        .unwrap();
+        // Only Alethe infrastructure pending (OpenCode config auto-written on spawn, plus
+        // planning documents) — no real agent work.
+        fs::create_dir_all(env.join(".opencode")).unwrap();
+        fs::write(env.join(".opencode").join("opencode.json"), "{}
+").unwrap();
         fs::create_dir_all(env.join(".planning")).unwrap();
         fs::write(env.join(".planning").join("goal.md"), "goal\n").unwrap();
         fs::write(env.join("opencode.json"), "{}\n").unwrap();
@@ -825,9 +820,9 @@ mod tests {
             raw_events: Vec<serde_json::Value>,
         }
 
-        /// Runs `opencode run` non-interactively, without --pure (graphify needs
-        /// to show up), with --auto (approves permissions without stalling the
-        /// script), and captures the --format json stream line by line.
+        /// Runs `opencode run` non-interactively, without --pure, with --auto
+        /// (approves permissions without stalling the script), and captures
+        /// the --format json stream line by line.
         fn run_opencode(
             bin: &Path,
             cwd: &Path,
@@ -914,11 +909,6 @@ mod tests {
                 )
                 .expect("worktree_provision falhou");
                 let wt_path = PathBuf::from(&wt.path);
-
-                let _ = crate::graphify::graphify_opencode_config_write_inner(
-                    wt_path.to_string_lossy().into_owned(),
-                    None,
-                );
                 let (prompt, expected_file, expected_content) =
                     pick_pseudo_random(&pool, i as u128 * 7919);
                 worktrees.push((agent_id, wt_path, prompt, expected_file, expected_content));

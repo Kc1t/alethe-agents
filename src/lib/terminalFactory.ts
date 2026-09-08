@@ -62,7 +62,6 @@ export function makeDefaultTerminal(args: {
     runtimeProfile?: AgentRuntimeProfile
   }
   worktreeAgentId?: string
-  gsdSyncViewer?: boolean
   ephemeralConflictAgent?: boolean
   ephemeralUtility?: boolean
 }): Terminal {
@@ -77,7 +76,6 @@ export function makeDefaultTerminal(args: {
     laneVisible: null,
     lastUsedAt: now,
     worktreeAgentId: args.worktreeAgentId,
-    gsdSyncViewer: args.gsdSyncViewer,
     ephemeralConflictAgent: args.ephemeralConflictAgent,
     ephemeralUtility: args.ephemeralUtility,
     tabs: [
@@ -229,7 +227,11 @@ export function getProjectDefaultCwd(
   projects: Project[] = [],
 ): string {
   if (!project) return ''
-  if (project.defaultCwd?.trim()) return project.defaultCwd.trim()
+  if (project.defaultCwd?.trim()) {
+    const raw = project.defaultCwd.trim()
+    const derived = deriveRepoRootFromWorktreeCwd(raw)
+    return derived || raw
+  }
   const candidates = [project]
   if (project.groupId) {
     candidates.push(...projects.filter((p) => p.id !== project.id && p.groupId === project.groupId))
@@ -265,18 +267,14 @@ export function getProjectRepoRoot(project: Project | null | undefined): string 
   if (!project) return ''
   const sorted = [...project.terminals].sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0))
 
-  // `gsdSyncViewer`/`ephemeralConflictAgent`/`ephemeralUtility` never count as
-  // "pure": their cwd IS the agent's worktree (they just lack
-  // `worktreeAgentId` because they aren't the isolated agent itself — they're
-  // a secondary viewer, the ephemeral conflict agent, or a "Review"/"Test"
-  // session). Without this exclusion any of them can become the root
-  // reference by mistake, returning the worktree path instead of the real repo.
+  // `ephemeralConflictAgent`/`ephemeralUtility` never count as "pure": their cwd IS the
+  // agent's worktree (they just lack `worktreeAgentId` because they aren't the isolated agent
+  // itself — they're the ephemeral conflict agent, or a "Review"/"Test" session). Without this
+  // exclusion either can become the root reference by mistake, returning the worktree path
+  // instead of the real repo.
   const pure = sorted.filter(
     (terminal) =>
-      !terminal.worktreeAgentId &&
-      !terminal.gsdSyncViewer &&
-      !terminal.ephemeralConflictAgent &&
-      !terminal.ephemeralUtility,
+      !terminal.worktreeAgentId && !terminal.ephemeralConflictAgent && !terminal.ephemeralUtility,
   )
   for (const terminal of pure) {
     const cwd = resolveTerminalCwd(terminal)

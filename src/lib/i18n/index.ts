@@ -4,16 +4,15 @@ import { ptBR } from './messages/pt-BR'
 
 export type { MessageKey }
 
-                                                                            
 export type Locale = 'en' | 'pt-BR'
 
 export const DEFAULT_LOCALE: Locale = 'en'
 
 export type LocaleMeta = {
   id: Locale
-                                                        
+
   nativeName: string
-                                                
+
   intl: string
 }
 
@@ -40,26 +39,18 @@ function interpolate(message: string, params?: Params): string {
   )
 }
 
-   
-                                                                           
-                                                                        
-   
 export function translate(locale: Locale, key: MessageKey, params?: Params): string {
   const dict = DICTIONARIES[locale] ?? en
   const message = dict[key] ?? en[key] ?? key
   return interpolate(message, params)
 }
 
-                                                                             
 export function getLocale(): Locale {
   return useProjectsStore.getState().preferences.language
 }
 
 export type TFunction = (key: MessageKey, params?: Params) => string
 
-   
-                                                                    
-   
 export function useT(): TFunction {
   const locale = useProjectsStore((s) => s.preferences.language)
   return (key, params) => translate(locale, key, params)

@@ -16,7 +16,10 @@
   font-size: 12px;
   color: var(--fg);
   cursor: pointer;
-  transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    box-shadow 120ms ease;
   text-align: left;
 }
 .trigger:hover {
@@ -91,7 +94,9 @@
   font-size: 11px;
   cursor: pointer;
   text-align: left;
-  transition: background-color 100ms ease, color 100ms ease;
+  transition:
+    background-color 100ms ease,
+    color 100ms ease;
 }
 .optionItem:hover {
   background: var(--panel-hover);

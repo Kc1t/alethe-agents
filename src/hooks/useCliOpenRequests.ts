@@ -2,21 +2,12 @@ import { useEffect } from 'react'
 
 import { planCliOpen } from '../lib/cliOpen'
 import { useT } from '../lib/i18n'
+import { expected } from '../lib/resilience'
 import { cliTakePendingOpen, listenCliOpenPath } from '../lib/tauri'
 import type { AgentType } from '../lib/types'
 import { useProjectsStore } from '../stores/projectsStore'
 import { useUiStore } from '../stores/uiStore'
 
-   
-                                                                            
-                                                        
-  
-                            
-                                                                        
-                                                 
-   
-
-                                                                           
 const AGENT_PREFERENCE: AgentType[] = [
   'claude',
   'codex',
@@ -41,8 +32,6 @@ export function useCliOpenRequests(hydrated: boolean) {
   const t = useT()
 
   useEffect(() => {
-                                                                            
-                                                                      
     if (!hydrated) return
     let disposed = false
 
@@ -68,15 +57,11 @@ export function useCliOpenRequests(hydrated: boolean) {
       useUiStore.getState().pushToast({ title: t('notif.cliProjectCreated'), body: plan.name })
     }
 
-                                                                               
-                                                   
     void cliTakePendingOpen()
       .then((path) => {
         if (!disposed && path) openFromCli(path)
       })
-      .catch(() => {
-                                                    
-      })
+      .catch(expected('open_from_cli_failed'))
 
     const unlisten = listenCliOpenPath((path) => {
       if (!disposed) openFromCli(path)

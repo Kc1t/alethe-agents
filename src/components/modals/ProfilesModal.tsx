@@ -54,6 +54,7 @@ export function ProfilesModal() {
   const closeModal = useUiStore((s) => s.closeModal)
   const profiles = useProjectsStore((s) => s.profiles)
   const hydrate = useProjectsStore((s) => s.hydrate)
+  const flushPersistence = useProjectsStore((s) => s.flushPersistence)
   const activeProfileId = useProjectsStore((s) => s.activeProfileId)
   const projects = useProjectsStore((s) => s.projects)
   const preferences = useProjectsStore((s) => s.preferences)
@@ -172,6 +173,7 @@ export function ProfilesModal() {
     }
     let parked = false
     try {
+      await flushPersistence()
       const created = await createProfile(trimmed)
       const createdProfile = created.profiles.find((profile) => profile.name === trimmed)
       if (!createdProfile) throw new Error('created profile not found')
@@ -192,6 +194,7 @@ export function ProfilesModal() {
     setError(null)
     setNotice(t('profiles.switchBusy'))
     try {
+      await flushPersistence()
       await parkCurrentProfile()
       await setActiveProfile(profile.id)
       await applyProfileSwitch()
@@ -211,6 +214,7 @@ export function ProfilesModal() {
     setBusy('rename')
     setError(null)
     try {
+      await flushPersistence()
       await renameProfile(editingId, trimmed)
       reload()
     } catch (err) {
@@ -245,6 +249,7 @@ export function ProfilesModal() {
     setBusy('delete')
     setError(null)
     try {
+      await flushPersistence()
       if (pendingDelete.id === activeProfileId) await parkCurrentProfile()
       await deleteProfile(pendingDelete.id)
       reload()

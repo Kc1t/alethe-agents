@@ -2,22 +2,11 @@ import { create } from 'zustand'
 
 import { getTranscriptCost, type SessionCost } from '../lib/tauri'
 
-   
-                                                                           
-                                                                                
-                                                                               
-                                                                              
-                                                                                
-                                                                        
-  
-                                                                               
-   
-
 type NodeLike = { id: string; transcriptPath: string | null }
 
 type NodeCostState = {
   byNodeId: Record<string, SessionCost>
-                                                           
+
   refresh: (nodes: NodeLike[]) => Promise<void>
   clear: () => void
 }
@@ -37,7 +26,6 @@ export const useNodeCostStore = create<NodeCostState>((set) => ({
           const cost = await getTranscriptCost(n.transcriptPath)
           return [n.id, cost] as const
         } catch {
-                                                                               
           return null
         }
       }),
@@ -53,7 +41,6 @@ export const useNodeCostStore = create<NodeCostState>((set) => ({
   clear: () => set({ byNodeId: {} }),
 }))
 
-                                                                       
 export function selectNodeCostTotals(byNodeId: Record<string, SessionCost>): {
   costUsd: number
   totalTokens: number

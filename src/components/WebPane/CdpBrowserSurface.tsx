@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
+import { expected, withFallback } from '../../lib/resilience'
 import {
   type BrowserFrame,
   browserPaneClose,
@@ -160,7 +161,7 @@ export function CdpBrowserSurface({
       disposed = true
       readyRef.current = false
       unlisten?.()
-      void browserPaneClose(paneId).catch(() => {})
+      void browserPaneClose(paneId).catch(expected('browser_pane_close_failed'))
     }
   }, [paneId, url, watchTargetId, measure])
 
@@ -171,7 +172,7 @@ export function CdpBrowserSurface({
     if (appliedReloadRef.current === reloadKey) return
     appliedReloadRef.current = reloadKey
     if (!readyRef.current || !isTauri()) return
-    void browserPaneReload(paneId).catch(() => {})
+    void browserPaneReload(paneId).catch(expected('browser_pane_reload_failed'))
   }, [paneId, reloadKey])
 
   useEffect(() => {
@@ -183,7 +184,9 @@ export function CdpBrowserSurface({
       timer = window.setTimeout(() => {
         if (!readyRef.current) return
         const size = measure()
-        void browserPaneResize(paneId, size.width, size.height).catch(() => {})
+        void browserPaneResize(paneId, size.width, size.height).catch(
+          expected('browser_pane_resize_failed'),
+        )
       }, RESIZE_DEBOUNCE_MS)
     })
     observer.observe(host)
@@ -196,7 +199,9 @@ export function CdpBrowserSurface({
   useEffect(() => {
     if (!readyRef.current || !isTauri()) return
     const size = measure()
-    void browserPaneSetStreaming(paneId, visible, size.width, size.height).catch(() => {})
+    void browserPaneSetStreaming(paneId, visible, size.width, size.height).catch(
+      expected('browser_pane_set_streaming_failed'),
+    )
   }, [paneId, visible, measure, painted])
 
   // An agent driving the shared browser opens its own tabs. Listing them is what turns the pane
@@ -205,7 +210,7 @@ export function CdpBrowserSurface({
     if (!visible || !isTauri()) return
     let cancelled = false
     const refresh = async () => {
-      const list = await browserPaneTargets().catch(() => [])
+      const list = await browserPaneTargets().catch(withFallback('browserPaneTargets', []))
       if (!cancelled) setTargets(list)
     }
     void refresh()
@@ -217,14 +222,16 @@ export function CdpBrowserSurface({
   }, [visible, painted])
 
   const closeTarget = useCallback(async (targetId: string) => {
-    await browserPaneCloseTarget(targetId).catch(() => {})
+    await browserPaneCloseTarget(targetId).catch(expected('browser_pane_close_target_failed'))
     setTargets((current) => current.filter((target) => target.targetId !== targetId))
   }, [])
 
   const watch = useCallback(
     async (targetId: string) => {
       const size = measure()
-      await browserPaneWatch(paneId, targetId, size.width, size.height).catch(() => {})
+      await browserPaneWatch(paneId, targetId, size.width, size.height).catch(
+        expected('browser_pane_watch_failed'),
+      )
       setActiveTarget(targetId)
     },
     [paneId, measure],
@@ -250,7 +257,7 @@ export function CdpBrowserSurface({
         clickCount: kind === 'mousePressed' || kind === 'mouseReleased' ? 1 : 0,
         modifiers: modifiersOf(event),
         ...extra,
-      }).catch(() => {})
+      }).catch(expected('modifiers_of_failed'))
     },
     [paneId],
   )
@@ -260,7 +267,7 @@ export function CdpBrowserSurface({
       if (!readyRef.current) return
       if (isAppShortcut(event)) return
       event.preventDefault()
-      void browserPaneKey(paneId, toKeyInput(kind, event)).catch(() => {})
+      void browserPaneKey(paneId, toKeyInput(kind, event)).catch(expected('to_key_input_failed'))
     },
     [paneId],
   )

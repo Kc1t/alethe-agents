@@ -16,27 +16,31 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
+import homeBackground from '../../assets/home-bg-right.png'
 import { getCachedActivity } from '../../lib/activityCache'
 import { pickDirectory } from '../../lib/dialog'
 import { formatHomeDate, formatRelativeTimestamp, getGreeting } from '../../lib/greeting'
-import { useT, type TFunction } from '../../lib/i18n'
+import { type TFunction, useT } from '../../lib/i18n'
 import { formatShortcut } from '../../lib/platform'
 import { getFirstName, getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { openInBrowser } from '../../lib/tauri'
-import { getProjectDefaultCwd, useProjectsStore } from '../../stores/projectsStore'
+import { type AgentType, type Project, UNRESTRICTED_FLAG } from '../../lib/types'
+import {
+  getProjectDefaultCwd,
+  getProjectRepoRoot,
+  useProjectsStore,
+} from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { UNRESTRICTED_FLAG, type AgentType, type Project } from '../../lib/types'
+import { EmptyState } from '../EmptyState'
 import { AgentIcon } from '../icons/AgentIcons'
 import { AsciiEffect } from '../ui/ascii-effect'
 import { Avatar } from '../ui/Avatar'
-import { EmptyState } from '../EmptyState'
-import homeBackground from '../../assets/home-bg-right.png'
 import { computeStreak } from './ActivityGraph'
-import { NowPlayingWidget } from './NowPlayingWidget'
-import { UsageStrip } from './UsageStrip'
 import { ActivityGraph } from './ActivityGraph'
-import { TimeAnalytics } from './TimeAnalytics'
 import styles from './HomeView.module.css'
+import { NowPlayingWidget } from './NowPlayingWidget'
+import { TimeAnalytics } from './TimeAnalytics'
+import { UsageStrip } from './UsageStrip'
 
 const RECENT_PROJECTS_LIMIT = 6
 const NOTIFICATIONS_LIMIT = 5
@@ -91,7 +95,7 @@ export function HomeView() {
       openContainerWithAllPanes: s.openContainerWithAllPanes,
       setActiveProjectOnly: s.setActiveProjectOnly,
       createAgentTerminal: s.createAgentTerminal,
-    }))
+    })),
   )
 
   const {
@@ -109,10 +113,9 @@ export function HomeView() {
       requestPaneFocus: s.requestPaneFocus,
       notifications: s.notifications,
       clearNotifications: s.clearNotifications,
-    }))
+    })),
   )
 
-                                                                                   
   const lastUsedByProject = useMemo(() => {
     const map = new Map<string, number>()
     for (const c of containers) {
@@ -188,8 +191,7 @@ export function HomeView() {
   const [quickUnrestricted, setQuickUnrestricted] = useState(false)
   const quickPromptRef = useRef<HTMLInputElement>(null)
   const [quickCwd, setQuickCwd] = useState('')
-                                                                                
-                                                                           
+
   const quickAgent = quickAgents.some((agent) => agent.type === quickAgentRaw)
     ? quickAgentRaw
     : (quickAgents[0]?.type ?? 'claude')
@@ -201,7 +203,10 @@ export function HomeView() {
   }, [quickProjectId, quickTarget])
 
   useEffect(() => {
-    if (!quickCwd && quickTarget) setQuickCwd(getProjectDefaultCwd(quickTarget, projects))
+    // Mesma ordem de fallback de NewTerminalModal: raiz real do repo antes do
+    // cwd do terminal mais recente, que pode ser uma worktree isolada.
+    if (!quickCwd && quickTarget)
+      setQuickCwd(getProjectRepoRoot(quickTarget) || getProjectDefaultCwd(quickTarget, projects))
   }, [projects, quickCwd, quickTarget])
 
   const browseQuickFolder = async () => {
@@ -213,7 +218,10 @@ export function HomeView() {
     event.preventDefault()
     const prompt = quickPromptRef.current?.value.trim() ?? ''
     if (!quickTarget || !prompt) return
-    const cwd = quickCwd.trim() || getProjectDefaultCwd(quickTarget, projects)
+    const cwd =
+      quickCwd.trim() ||
+      getProjectRepoRoot(quickTarget) ||
+      getProjectDefaultCwd(quickTarget, projects)
     const flag = quickUnrestricted ? UNRESTRICTED_FLAG[quickAgent] : null
     const label = QUICK_AGENTS.find((agent) => agent.type === quickAgent)?.label ?? quickAgent
     const terminal = await createAgentTerminal(quickTarget.id, {

@@ -16,10 +16,6 @@ type AgentLibraryPaletteProps = {
   onInstall: (name: string) => void
 }
 
-   
-                                                                          
-                                                                   
-   
 export function AgentLibraryPalette({
   open,
   setOpen,
