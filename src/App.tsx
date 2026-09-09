@@ -18,10 +18,10 @@ import { AddBrowserModal } from './components/modals/AddBrowserModal'
 import { AddContentModal } from './components/modals/AddContentModal'
 import { AiUsageModal } from './components/modals/AiUsageModal'
 import { AuditModal } from './components/modals/AuditModal'
-import { FsBrowserModal } from './components/modals/FsBrowserModal'
 import { EditGroupModal } from './components/modals/EditGroupModal'
 import { EditProjectModal } from './components/modals/EditProjectModal'
 import { FindJumpModal } from './components/modals/FindJumpModal'
+import { FsBrowserModal } from './components/modals/FsBrowserModal'
 import { HandoffModal } from './components/modals/HandoffModal'
 import { McpIntroModal } from './components/modals/McpIntroModal'
 import { McpManagerModal } from './components/modals/McpManagerModal'
@@ -62,7 +62,7 @@ import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
 import { intlLocale, translate, useT } from './lib/i18n'
 import { visibilityFromPanelResize, widthFromPanelResize } from './lib/sidebarPanelState'
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
-import { ghosttyKillAll, setWindowOpacity } from './lib/tauri'
+import { ghosttyKillAll, setWindowOpacity, setWslIntegrationEnabled } from './lib/tauri'
 import { getLastCrashReport } from './lib/tauri'
 import { loadThemeIconBytes } from './lib/themeIcons'
 import { checkForUpdate } from './lib/updater'
@@ -237,6 +237,7 @@ export default function App() {
   const playwrightEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.playwright)
   const gitEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.git)
   const mcpEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.mcp)
+  const wslEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.wsl)
   const gitControlPlacement = useProjectsStore((s) => s.preferences.gitControlPlacement)
   const rightPanelEnabled =
     todosEnabled || mcpEnabled || (gitEnabled && gitControlPlacement === 'right')
@@ -313,6 +314,10 @@ export default function App() {
   useEffect(() => {
     setMaxConcurrentSpawns(spawnConcurrency)
   }, [spawnConcurrency])
+  useEffect(() => {
+    if (!hydrated) return
+    void setWslIntegrationEnabled(wslEnabled).catch(() => {})
+  }, [hydrated, wslEnabled])
 
   useEffect(() => {
     if (!hydrated) return

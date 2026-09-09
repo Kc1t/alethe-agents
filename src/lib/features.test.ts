@@ -13,6 +13,7 @@ describe('normalizeEnabledFeatures', () => {
       mcp: true,
       playwright: false,
       orchestrator: false,
+      wsl: true,
     })
   })
 
@@ -26,6 +27,7 @@ describe('normalizeEnabledFeatures', () => {
       mcp: true,
       playwright: false,
       orchestrator: false,
+      wsl: true,
     })
   })
 
@@ -39,6 +41,7 @@ describe('normalizeEnabledFeatures', () => {
       mcp: true,
       playwright: false,
       orchestrator: false,
+      wsl: true,
     })
   })
 
@@ -54,6 +57,7 @@ describe('normalizeEnabledFeatures', () => {
       mcp: true,
       playwright: false,
       orchestrator: false,
+      wsl: true,
     })
   })
 
@@ -76,5 +80,17 @@ describe('normalizeEnabledFeatures', () => {
 
   it('preserves an explicit Graphify preference', () => {
     expect(normalizeEnabledFeatures({ enabledFeatures: { graphify: false } }).graphify).toBe(false)
+  })
+})
+
+describe('the WSL integration preference', () => {
+  it('is on by default, since the integration works out of the box', () => {
+    expect(normalizeEnabledFeatures(undefined).wsl).toBe(true)
+    expect(normalizeEnabledFeatures({ showGitControl: false }).wsl).toBe(true)
+    expect(normalizeEnabledFeatures({ enabledFeatures: { todos: false } }).wsl).toBe(true)
+  })
+
+  it('stays off once explicitly disabled', () => {
+    expect(normalizeEnabledFeatures({ enabledFeatures: { wsl: false } }).wsl).toBe(false)
   })
 })

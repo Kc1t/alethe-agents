@@ -92,6 +92,7 @@ export type FeatureId =
   | 'mcp'
   | 'playwright'
   | 'orchestrator'
+  | 'wsl'
 
 export type TodoItem = {
   id: string
@@ -616,6 +617,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
     mcp: true,
     playwright: false,
     orchestrator: false,
+    wsl: true,
   },
   todoStoragePath: '',
   mcpDefaultScope: 'global',

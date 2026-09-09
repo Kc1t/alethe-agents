@@ -12,9 +12,10 @@ type Props = {
   label: string
   onInstalled?: () => void
   nested?: boolean
+  cwd?: string | null
 }
 
-export function AgentInstallButton({ agent, label, onInstalled, nested }: Props) {
+export function AgentInstallButton({ agent, label, onInstalled, nested, cwd }: Props) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const busyAgent = useAgentOperationBusy()
@@ -36,6 +37,7 @@ export function AgentInstallButton({ agent, label, onInstalled, nested }: Props)
         onClose={() => setOpen(false)}
         onInstalled={onInstalled}
         nested={nested}
+        cwd={cwd}
       />
     </>
   )

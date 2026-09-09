@@ -39,6 +39,11 @@ export const FEATURES: readonly FeatureDefinition[] = [
     descriptionKey: 'features.playwright.description',
   },
   {
+    id: 'wsl',
+    titleKey: 'features.wsl.title',
+    descriptionKey: 'features.wsl.description',
+  },
+  {
     id: 'orchestrator',
     titleKey: 'features.orchestrator.title',
     descriptionKey: 'features.orchestrator.description',
@@ -66,6 +71,7 @@ export function normalizeEnabledFeatures(
       playwright: raw.enabledFeatures.playwright ?? false,
       // Opt-in: it lets the lead agent spawn worker agents that write to disk.
       orchestrator: raw.enabledFeatures.orchestrator ?? false,
+      wsl: raw.enabledFeatures.wsl ?? true,
     }
   }
   return {
@@ -77,5 +83,6 @@ export function normalizeEnabledFeatures(
     mcp: true,
     playwright: false,
     orchestrator: false,
+    wsl: true,
   }
 }

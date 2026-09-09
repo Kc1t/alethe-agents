@@ -4,13 +4,21 @@ import { useEffect, useMemo, useState } from 'react'
 import { pickDirectory } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
 import { basename } from '../../lib/paths'
-import { AGENT_TYPE_LABELS, type AgentRuntimeProfile, type AgentType,ALL_AGENT_TYPES, UNRESTRICTED_FLAG } from '../../lib/types'
+import {
+  AGENT_TYPE_LABELS,
+  type AgentRuntimeProfile,
+  type AgentType,
+  ALL_AGENT_TYPES,
+  UNRESTRICTED_FLAG,
+} from '../../lib/types'
+import { wslTargetFor } from '../../lib/wsl'
 import { getProjectDefaultCwd, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AgentIcon } from '../icons/AgentIcons'
 import controls from './controls.module.css'
 import { Modal } from './Modal'
 import styles from './NewTerminalModal.module.css'
+import { WslPathPicker } from './WslPathPicker'
 
 const AGENTS: { type: AgentType; label: string }[] = ALL_AGENT_TYPES.map((type) => ({
   type,
@@ -30,6 +38,7 @@ export function NewTerminalModal() {
   )
   const projects = useProjectsStore((s) => s.projects)
   const enabled = useProjectsStore((s) => s.preferences.enabledAgents)
+  const wslEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.wsl)
   const terminalTheme = useProjectsStore(
     (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,
   )
@@ -123,6 +132,8 @@ export function NewTerminalModal() {
     reset()
     closeModal()
   }
+
+  const wslTarget = wslTargetFor(cwd || inheritedCwd, wslEnabled)
 
   const browse = async () => {
     const dir = await pickDirectory({ defaultPath: cwd || inheritedCwd || undefined })
@@ -226,7 +237,13 @@ export function NewTerminalModal() {
           <button type="button" className={styles.browseButton} onClick={browse}>
             {t('term.browse')}
           </button>
+          <WslPathPicker compact onPick={setCwd} />
         </div>
+        {wslTarget ? (
+          <span className={controls.wslHint}>
+            {t('crud.wslHint', { distro: wslTarget.distro })}
+          </span>
+        ) : null}
 
         {recentFolders.length > 0 ? (
           <div className={styles.recentBlock}>

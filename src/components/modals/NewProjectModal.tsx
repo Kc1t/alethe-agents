@@ -6,6 +6,7 @@ import { AGENT_SANDBOX_ENABLED } from '../../lib/featureFlags'
 import { useT } from '../../lib/i18n'
 import { cloneGithubRepo, readProjectMarker } from '../../lib/tauri'
 import { GROUP_COLORS, type Project } from '../../lib/types'
+import { wslTargetFor } from '../../lib/wsl'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { Dropdown } from '../ui/Dropdown'
@@ -13,6 +14,7 @@ import { ColorPalettePopover } from './ColorPalettePopover'
 import controls from './controls.module.css'
 import { ImageInput } from './ImageInput'
 import { Modal } from './Modal'
+import { WslPathPicker } from './WslPathPicker'
 
 export function NewProjectModal() {
   const t = useT()
@@ -38,6 +40,8 @@ export function NewProjectModal() {
   const [groupId, setGroupId] = useState<string | null>(context?.groupId ?? null)
   const [isColorPopoverOpen, setIsColorPopoverOpen] = useState(false)
   const [detectedConfig, setDetectedConfig] = useState<Project | null>(null)
+  const wslEnabled = useProjectsStore((s) => s.preferences.enabledFeatures.wsl)
+  const wslTarget = wslTargetFor(defaultCwd, wslEnabled)
 
   useEffect(() => {
     if (open && context?.defaultCwd) setDefaultCwd(context.defaultCwd)
@@ -74,6 +78,11 @@ export function NewProjectModal() {
     if (!directory) return
     setDefaultCwd(directory)
     void checkForDetectedConfig(directory)
+  }
+
+  const pickDistroPath = (path: string) => {
+    setDefaultCwd(path)
+    void checkForDetectedConfig(path)
   }
 
   const restoreDetected = () => {
@@ -250,8 +259,14 @@ export function NewProjectModal() {
           <button type="button" className={controls.btn} onClick={() => void browse()}>
             {t('term.browse')}
           </button>
+          <WslPathPicker onPick={pickDistroPath} />
         </div>
         <span className={controls.hint}>{t('crud.projectPathHint')}</span>
+        {wslTarget ? (
+          <span className={controls.wslHint}>
+            {t('crud.wslHint', { distro: wslTarget.distro })}
+          </span>
+        ) : null}
         {detectedConfig ? (
           <div
             style={{

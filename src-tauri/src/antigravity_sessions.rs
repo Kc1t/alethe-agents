@@ -3,7 +3,9 @@ use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
 
-use crate::provider_common::{file_modified_ms, normalize_cwd, provider_home_dir};
+use crate::provider_common::{
+    file_modified_ms, normalize_cwd_for, provider_home_dir, provider_scope,
+};
 
 #[derive(Serialize, Debug, Clone)]
 pub struct AntigravitySessionSnapshot {
@@ -12,13 +14,15 @@ pub struct AntigravitySessionSnapshot {
     pub modified_at_ms: u128,
 }
 
+const METADATA_SEGMENTS: [&str; 4] = [
+    ".gemini",
+    "antigravity-cli",
+    "cache",
+    "conversation_metadata.json",
+];
+
 pub(crate) fn antigravity_metadata_file() -> Option<PathBuf> {
-    provider_home_dir(&[
-        ".gemini",
-        "antigravity-cli",
-        "cache",
-        "conversation_metadata.json",
-    ])
+    provider_home_dir(&METADATA_SEGMENTS)
 }
 
 fn conversation_modified_ms(item: &serde_json::Value, default_ms: u128) -> u128 {
@@ -39,18 +43,20 @@ fn conversation_modified_ms(item: &serde_json::Value, default_ms: u128) -> u128 
     default_ms
 }
 
-fn normalize_uri_path(uri: &str) -> String {
+fn normalize_uri_path(uri: &str, guest: bool) -> String {
     let mut clean = uri.trim();
-    if clean.starts_with("file:///") {
-        clean = &clean["file:///".len()..];
-    } else if clean.starts_with("file://") {
-        clean = &clean["file://".len()..];
+    if let Some(rest) = clean.strip_prefix("file://") {
+        clean = rest;
     }
     let decoded = clean
         .replace("%3A", ":")
         .replace("%3a", ":")
         .replace("%5C", "\\")
         .replace("%5c", "\\");
+    if guest {
+        // The leading slash of a guest URI is part of the path, not a separator to strip.
+        return normalize_cwd_for(&decoded, true);
+    }
     let trimmed = decoded.trim_matches('/');
     if cfg!(windows) {
         trimmed.replace('/', "\\").to_ascii_lowercase()
@@ -59,15 +65,13 @@ fn normalize_uri_path(uri: &str) -> String {
     }
 }
 
-/// outro (workspace root vs subpasta — o Antigravity registra `WorkspaceURIs`
-
-/// "c:\users\foo\project" e "c:\users\foo\project2" combinariam
-
-fn cwd_matches(norm: &str, target_cwd: &str) -> bool {
+/// True when one path contains the other (Antigravity records `WorkspaceURIs`, which
+/// may be the workspace root or a subfolder). The separator check keeps
+/// `c:\users\dev\project` from matching `c:\users\dev\project2`.
+fn cwd_matches(norm: &str, target_cwd: &str, sep: char) -> bool {
     if norm == target_cwd {
         return true;
     }
-    let sep = if cfg!(windows) { '\\' } else { '/' };
     if let Some(rest) = norm.strip_prefix(target_cwd) {
         if rest.starts_with(sep) {
             return true;
@@ -95,8 +99,23 @@ pub async fn snapshot_antigravity_sessions(
 fn snapshot_antigravity_sessions_inner(
     cwd: String,
 ) -> Result<Vec<AntigravitySessionSnapshot>, String> {
-    let Some(meta_path) = antigravity_metadata_file() else {
-        return Ok(Vec::new());
+    let trimmed = cwd.trim();
+    let (meta_path, target_cwd, sep, guest) = if trimmed.is_empty() {
+        let Some(path) = antigravity_metadata_file() else {
+            return Ok(Vec::new());
+        };
+        let host_sep = if cfg!(windows) { '\\' } else { '/' };
+        (path, String::new(), host_sep, false)
+    } else {
+        let Some(scope) = provider_scope(trimmed, &METADATA_SEGMENTS) else {
+            return Ok(Vec::new());
+        };
+        (
+            scope.root.clone(),
+            scope.match_key(),
+            scope.separator(),
+            scope.is_guest(),
+        )
     };
 
     if !meta_path.is_file() {
@@ -109,7 +128,6 @@ fn snapshot_antigravity_sessions_inner(
     let contents = fs::read_to_string(&meta_path).map_err(|e| e.to_string())?;
     let json: serde_json::Value = serde_json::from_str(&contents).map_err(|e| e.to_string())?;
 
-    let target_cwd = normalize_cwd(&cwd);
     let mut snapshots = Vec::new();
 
     let conversations = json.get("conversations").and_then(|v| v.as_object());
@@ -130,8 +148,8 @@ fn snapshot_antigravity_sessions_inner(
             if let Some(uri_list) = uris {
                 for uri in uri_list {
                     if let Some(u_str) = uri.as_str() {
-                        let norm = normalize_uri_path(u_str);
-                        if cwd_matches(&norm, &target_cwd) {
+                        let norm = normalize_uri_path(u_str, guest);
+                        if cwd_matches(&norm, &target_cwd, sep) {
                             matches_cwd = true;
                             break;
                         }
@@ -151,4 +169,31 @@ fn snapshot_antigravity_sessions_inner(
 
     snapshots.sort_by(|a, b| b.modified_at_ms.cmp(&a.modified_at_ms));
     Ok(snapshots)
+}
+
+#[cfg(test)]
+mod cwd_match_tests {
+    use super::*;
+    use crate::provider_common::normalize_cwd;
+
+    #[test]
+    fn a_guest_workspace_uri_keeps_its_leading_slash_and_its_case() {
+        let norm = normalize_uri_path("file:///home/Dev/App", true);
+        assert_eq!(norm, "/home/Dev/App");
+        assert!(cwd_matches(&norm, "/home/Dev/App", '/'));
+        assert!(cwd_matches(
+            &normalize_uri_path("file:///home/Dev/App/pkg", true),
+            "/home/Dev/App",
+            '/'
+        ));
+        assert!(!cwd_matches(&norm, "/home/Dev/Other", '/'));
+    }
+
+    #[test]
+    fn a_windows_workspace_uri_is_folded_the_way_the_host_demands() {
+        assert_eq!(
+            normalize_uri_path("file:///c%3A/projects/Acme", false),
+            normalize_cwd("c:/projects/Acme")
+        );
+    }
 }
