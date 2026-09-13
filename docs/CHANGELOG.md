@@ -19,6 +19,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   re-reads the machine's environment on every check, so a CLI that adds itself to PATH is found
   without restarting the app.
 
+- Renaming a project, group, or terminal now also updates its pinned/recent tab in the topbar. The
+  tab strip snapshotted its label only once, when the tab was first created, so a later rename kept
+  showing the old name there even though the workspace itself reflected the new one.
+
 ### Added
 
 - Git status decorations and standard file type icons in the File Explorer. Changed, uncommitted,

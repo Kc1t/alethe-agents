@@ -47,7 +47,7 @@ type GroupsSlice = Pick<
   | 'reorderUngrouped'
 >
 
-export function createGroupsSlice({ update }: SliceCtx): GroupsSlice {
+export function createGroupsSlice({ update, navigationUpdate }: SliceCtx): GroupsSlice {
   return {
     createGroup: (name, color, parentGroupId = null) => {
       const group: Group = {
@@ -99,8 +99,18 @@ export function createGroupsSlice({ update }: SliceCtx): GroupsSlice {
       }),
 
     renameGroup: (id, name) =>
-      update((state) => ({
+      // navigationUpdate: the topbar's saved/pinned tab strip snapshots its label at creation
+      // time and never rereads the group, so a rename has to be pushed into it explicitly here —
+      // and a plain `update` touching `workspace` would have its own active-tab composition
+      // resync immediately overwrite that targeted relabel.
+      navigationUpdate((state) => ({
         groups: state.groups.map((g) => (g.id === id ? { ...g, name } : g)),
+        workspace: {
+          ...state.workspace,
+          tabs: state.workspace.tabs.map((tab) =>
+            tab.kind === 'group' && tab.sourceId === id ? { ...tab, label: name } : tab,
+          ),
+        },
       })),
 
     setGroupColor: (id, color) =>
@@ -389,7 +399,13 @@ type ProjectsSlice = Pick<
   | 'deleteProject'
 >
 
-export function createProjectsSlice({ set, get, update, updateProject }: SliceCtx): ProjectsSlice {
+export function createProjectsSlice({
+  set,
+  get,
+  update,
+  updateProject,
+  navigationUpdate,
+}: SliceCtx): ProjectsSlice {
   return {
     createProject: ({
       name,
@@ -465,7 +481,21 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
       return project
     },
 
-    renameProject: (id, name) => updateProject(id, (p) => ({ ...p, name })),
+    renameProject: (id, name) => {
+      updateProject(id, (p) => ({ ...p, name }))
+      // The topbar's saved/pinned tab strip snapshots its label at creation time and never
+      // rereads the project, so a rename has to be pushed into it explicitly here. Uses
+      // `navigationUpdate` so this targeted relabel isn't immediately overwritten by the active-tab
+      // composition resync that a plain `update` touching `workspace` would trigger.
+      navigationUpdate((state) => ({
+        workspace: {
+          ...state.workspace,
+          tabs: state.workspace.tabs.map((tab) =>
+            tab.kind === 'project' && tab.sourceId === id ? { ...tab, label: name } : tab,
+          ),
+        },
+      }))
+    },
 
     archiveProject: (id) => updateProject(id, (p) => ({ ...p, archived: true })),
 

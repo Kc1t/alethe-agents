@@ -20,6 +20,13 @@ export type SliceCtx = {
   set: StoreApi<ProjectsState>['setState']
   get: () => ProjectsState
   update: (mutator: (state: ProjectsState) => Partial<ProjectsState> | void) => void
+  /**
+   * Same as `update`, but suppresses the active-tab resync that `update` otherwise runs whenever
+   * the result touches `workspace` — that resync recomputes the active tab as a live
+   * group/composition snapshot and would stomp a deliberate, targeted edit to `workspace.tabs`
+   * (e.g. relabeling a tab after a rename) before it's ever rendered.
+   */
+  navigationUpdate: (mutator: (state: ProjectsState) => Partial<ProjectsState> | void) => void
   updateProject: (projectId: string, fn: (p: Project) => Project) => void
   updateTerminal: (projectId: string, terminalId: string, fn: (t: Terminal) => Terminal) => void
   updateSubTab: (
