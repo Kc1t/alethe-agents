@@ -209,6 +209,13 @@ export type Terminal = {
   laneVisible: boolean | null
   /** Keeps terminal controls in a fixed topbar instead of revealing them on hover. */
   topbarPinned?: boolean
+  /**
+   * Set once the user renames this pane through the sidebar's Rename action. Sidebar rows
+   * otherwise prefer a live auto-derived title (the Claude session title, or the active
+   * sub-tab's agent-type name) over `name` — this flag lets an explicit rename win instead of
+   * being silently shadowed by that.
+   */
+  customName?: boolean
 
   lastUsedAt?: number
 

@@ -301,7 +301,9 @@ export function createTerminalsSlice({
     },
 
     renameTerminal: (projectId, terminalId, name) => {
-      updateTerminal(projectId, terminalId, (t) => ({ ...t, name }))
+      // `customName` lets the sidebar rows prefer this over their own live auto-title (Claude's
+      // session title, or the active sub-tab's agent-type name) — see the Terminal type.
+      updateTerminal(projectId, terminalId, (t) => ({ ...t, name, customName: true }))
       // The topbar's saved/pinned tab strip snapshots its label at creation time and never
       // rereads the terminal, so a rename has to be pushed into it explicitly here. Uses
       // `navigationUpdate` so this targeted relabel isn't immediately overwritten by the active-tab

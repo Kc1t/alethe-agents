@@ -92,6 +92,12 @@ describe('workspace tab label sync on rename', () => {
     expect(updatedTab?.kind).toBe('terminal')
     expect(updatedTab?.sourceId).toBe(terminal.id)
     expect(updatedTab?.sourceProjectId).toBe(projectId)
+
+    // Sidebar rows otherwise shadow the rename behind a live auto-title (see
+    // sidebarTerminalDisplayName) — this flag is how the rename wins there too.
+    const updatedProject = useProjectsStore.getState().projects.find((p) => p.id === projectId)
+    const updatedTerminal = updatedProject?.terminals.find((term) => term.id === terminal.id)
+    expect(updatedTerminal?.customName).toBe(true)
   })
 
   it('renameProject updates the label of the matching project tab', () => {
