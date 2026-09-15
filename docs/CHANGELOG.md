@@ -12,6 +12,14 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **The lead agent now knows it is working inside Alethe from its very first turn.** When it
+  connects, Alethe hands it a short briefing: which workers it can delegate to right now, how many
+  run at once, and how to collect their reports. It used to find out only by reading a tool's full
+  description, by which time it had often already reached for its own subagents instead.
+- **The lead agent can now explain Alethe to you.** Ask it how to do something in Alethe — where a
+  setting lives, how to start an orchestration, what a shortcut does — and it reads a built-in
+  guide to the app before answering, then walks you through the screens instead of guessing. It is
+  told never to edit Alethe's own settings files, which the running app would overwrite.
 - **WSL terminals.** WSL (Windows Subsystem for Linux) is now available as a terminal type
   alongside Shell in the new-terminal and new-tab pickers — it opens the default WSL distro in the
   chosen folder. It behaves like a plain shell (no agent session, resume, or completion tracking)
@@ -95,6 +103,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **A worker's report could vanish before reaching the lead agent.** Waiting on workers held the
+  lead's call open for up to ten minutes, long past the point where Claude Code gives up on it, so
+  the call failed with "The operation timed out" and any report it had already collected was lost
+  with it. A wait now answers within 45 seconds and says to check again, and a report stays in line
+  until the lead confirms it received it — one that never arrived comes back on the next check.
 - The "Browser" sub-option under Playwright browser in the onboarding feature list had no icon,
   unlike every other row. It now shows the Browser module glyph, aligned with the icon column.
 - A plugin installed from disk never loaded on Windows: its files were requested at an address the

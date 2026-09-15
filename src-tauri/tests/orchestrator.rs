@@ -42,6 +42,21 @@ fn call(core: &Core, name: &str, arguments: Value) -> Value {
     serde_json::from_str(&text).unwrap_or_else(|_| json!({ "raw": text }))
 }
 
+/// One check blocks for at most 45 seconds, so waiting on real workers means calling again,
+/// acknowledging what already arrived, until nothing is left running.
+fn check_until_settled(core: &Core) -> (Value, Vec<Value>) {
+    let mut deliveries = Vec::new();
+    let mut ack = Value::Null;
+    loop {
+        let checked = call(core, "alethe_check", json!({ "wait": true, "ack": ack }));
+        deliveries.extend(checked["deliveries"].as_array().expect("deliveries").iter().cloned());
+        ack = checked["ack"].clone();
+        if checked["workersStillBusy"] == json!(0) {
+            return (checked, deliveries);
+        }
+    }
+}
+
 fn codex_launcher() -> Launcher {
     let output = Command::new("where")
         .arg("codex")
@@ -129,6 +144,71 @@ fn the_handshake_advertises_every_tool() {
     ] {
         assert!(names.contains(&expected), "missing {expected} in {names:?}");
     }
+}
+
+#[test]
+fn the_handshake_tells_the_planner_it_is_inside_alethe() {
+    let core = Core::default();
+    core.set_launcher(silent_launcher());
+    let initialized = rpc(&core, 1, "initialize", json!({}));
+    let text = initialized["result"]["instructions"]
+        .as_str()
+        .expect("server instructions");
+
+    assert!(text.contains("inside Alethe"), "{text}");
+    assert!(text.contains("alethe_delegate"), "{text}");
+    assert!(text.contains("Workers available now: codex."), "{text}");
+    assert!(text.contains("Up to 4 run at once"), "{text}");
+}
+
+#[test]
+fn with_no_worker_configured_the_instructions_say_delegation_will_fail() {
+    let core = Core::default();
+    let initialized = rpc(&core, 1, "initialize", json!({}));
+    let text = initialized["result"]["instructions"]
+        .as_str()
+        .expect("server instructions");
+
+    assert!(!text.contains("Workers available now"), "{text}");
+    assert!(text.contains("No worker is configured"), "{text}");
+}
+
+#[test]
+fn the_guide_tool_answers_in_plain_markdown() {
+    let core = Core::default();
+    let listed = rpc(&core, 1, "tools/list", json!({}));
+    assert!(
+        listed["result"]["tools"]
+            .as_array()
+            .expect("tools")
+            .iter()
+            .any(|tool| tool["name"] == "alethe_guide"),
+        "{listed}"
+    );
+
+    let response = rpc(
+        &core,
+        2,
+        "tools/call",
+        json!({ "name": "alethe_guide", "arguments": {} }),
+    );
+    let text = response["result"]["content"][0]["text"]
+        .as_str()
+        .expect("guide text");
+    let opening: String = text.chars().take(80).collect();
+    assert!(text.starts_with("# "), "markdown, not an escaped JSON string: {opening}");
+    assert!(text.contains("Preferences"), "{opening}");
+    assert!(text.contains("orchestration board"), "{opening}");
+}
+
+#[test]
+fn the_instructions_send_questions_about_alethe_to_the_guide() {
+    let core = Core::default();
+    let initialized = rpc(&core, 1, "initialize", json!({}));
+    let text = initialized["result"]["instructions"]
+        .as_str()
+        .expect("server instructions");
+    assert!(text.contains("alethe_guide"), "{text}");
 }
 
 #[test]
@@ -343,6 +423,93 @@ fn a_job_fails_cleanly_when_no_launcher_is_configured() {
 }
 
 #[test]
+fn a_delivery_stays_until_the_planner_acknowledges_it() {
+    let core = Core::default();
+    let dir = workspace("ack");
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "cwd": dir.to_string_lossy(), "tasks": ["anything"] }),
+    );
+
+    let first = call(&core, "alethe_check", json!({ "wait": true, "timeoutMs": 5000 }));
+    let seq = first["deliveries"][0]["seq"].as_u64().expect("a delivery");
+    assert_eq!(first["deliveries"][0]["repeat"], json!(false), "{first}");
+    assert_eq!(first["ack"], json!(seq), "the response names what to acknowledge: {first}");
+
+    // The client gave up before that response arrived, so the planner never saw it.
+    let retried = call(&core, "alethe_check", json!({}));
+    let again = retried["deliveries"].as_array().expect("deliveries");
+    assert_eq!(again.len(), 1, "an unacknowledged delivery was dropped: {retried}");
+    assert_eq!(again[0]["seq"], json!(seq), "{retried}");
+    assert_eq!(again[0]["repeat"], json!(true), "{retried}");
+
+    let acked = call(&core, "alethe_check", json!({ "ack": seq }));
+    assert_eq!(
+        acked["deliveries"].as_array().expect("deliveries").len(),
+        0,
+        "an acknowledged delivery came back: {acked}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+#[ignore = "waits out the whole cap, about 45 seconds"]
+fn a_blocking_check_returns_before_the_mcp_client_gives_up() {
+    let core = Core::default();
+    core.set_launcher(silent_launcher());
+    let dir = workspace("cap");
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "cwd": dir.to_string_lossy(), "tasks": ["hold"], "timeoutSeconds": 120 }),
+    );
+
+    let started = std::time::Instant::now();
+    let checked = call(&core, "alethe_check", json!({ "wait": true, "timeoutMs": 600000 }));
+    let waited = started.elapsed();
+
+    // Claude Code drops an MCP call somewhere past 45 seconds. A check still blocked by then
+    // answers into a closed connection, and whatever it handed out is lost with it.
+    assert!(waited < Duration::from_secs(50), "blocked for {waited:?}: {checked}");
+    assert_eq!(checked["workersStillBusy"], json!(1), "{checked}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_unacknowledged_delivery_does_not_cut_short_a_wait_for_the_next_one() {
+    let core = Core::default();
+    core.set_launcher(silent_launcher());
+    let dir = workspace("stale");
+    // One worker holds its slot; the other fails at once, since no Claude launcher is set.
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "cwd": dir.to_string_lossy(), "tasks": ["hold"], "timeoutSeconds": 120 }),
+    );
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "cwd": dir.to_string_lossy(), "agent": "claude", "tasks": ["fail"] }),
+    );
+
+    let wait_for_first = json!({ "wait": true, "untilAllSettled": false, "timeoutMs": 2000 });
+    let first = call(&core, "alethe_check", wait_for_first.clone());
+    assert_eq!(first["deliveries"].as_array().expect("deliveries").len(), 1, "{first}");
+
+    let started = std::time::Instant::now();
+    let second = call(&core, "alethe_check", wait_for_first);
+    assert!(
+        started.elapsed() >= Duration::from_millis(1500),
+        "returned at once on a delivery it had already handed out: {second}"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn the_observer_sees_every_state_change() {
     let core = Core::default();
     let seen = Arc::new(Mutex::new(Vec::<Value>::new()));
@@ -386,11 +553,7 @@ fn two_workers_overlap_and_check_waits_for_both() {
     );
     assert_eq!(delegated["accepted"], json!(2), "{delegated}");
 
-    let checked = call(
-        &core,
-        "alethe_check",
-        json!({ "wait": true, "timeoutMs": 540000 }),
-    );
+    let (checked, deliveries) = check_until_settled(&core);
     let peak = watcher.finish();
 
     assert_eq!(
@@ -398,11 +561,7 @@ fn two_workers_overlap_and_check_waits_for_both() {
         json!(0),
         "untilAllSettled returned early: {checked}"
     );
-    assert_eq!(
-        checked["deliveries"].as_array().expect("deliveries").len(),
-        2,
-        "both workers must land in one call: {checked}"
-    );
+    assert_eq!(deliveries.len(), 2, "both workers must land: {deliveries:?}");
     assert_eq!(peak, 2, "the workers never overlapped");
     assert!(dir.join("ALPHA.txt").exists(), "ALPHA.txt missing: {checked}");
     assert!(dir.join("BETA.txt").exists(), "BETA.txt missing: {checked}");
@@ -435,19 +594,11 @@ fn the_queue_never_breaches_the_concurrency_limit() {
     assert!(running <= 2, "started {running} workers over the limit");
     assert_eq!(queued, 2, "the remainder must queue");
 
-    let checked = call(
-        &core,
-        "alethe_check",
-        json!({ "wait": true, "timeoutMs": 600000 }),
-    );
+    let (_, deliveries) = check_until_settled(&core);
     let peak = watcher.finish();
 
     assert_eq!(peak, 2, "the limit was breached, peak was {peak}");
-    assert_eq!(
-        checked["deliveries"].as_array().expect("deliveries").len(),
-        4,
-        "every queued job must drain: {checked}"
-    );
+    assert_eq!(deliveries.len(), 4, "every queued job must drain: {deliveries:?}");
 
     let _ = std::fs::remove_dir_all(&dir);
 }
