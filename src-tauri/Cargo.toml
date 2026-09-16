@@ -114,6 +114,10 @@ keyring = { version = "3", default-features = false, features = ["sync-secret-se
 # Match the webkit2gtk version Tauri already pulls so we can enable media-stream
 # and answer permission-request for getUserMedia (voice dictation).
 webkit2gtk = { version = "2.0.1", features = ["v2_40"] }
+# Same major the single-instance plugin already resolves to (5.x), so the crate
+# is not duplicated in the tree. Used only by the D-Bus handoff diagnostic probe
+# in single_instance_probe.rs.
+zbus = "5"
 
 # Em dev, unwind permite que um panic de comando vire Err em vez de derrubar o
 # app inteiro durante uma sessão de HMR. Release segue abort (binário menor).

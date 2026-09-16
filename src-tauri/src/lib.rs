@@ -62,6 +62,7 @@ mod resource_manager;
 mod resources;
 mod scheduler;
 mod session_watcher;
+mod single_instance_probe;
 mod skills;
 mod speech;
 mod speech_capture;
@@ -138,6 +139,48 @@ pub fn run() {
     }
 
     logging::install_panic_hook();
+
+    // Built once and handed to `build()` below: `generate_context!` embeds the
+    // whole frontend bundle, so expanding it twice would duplicate it.
+    let context: tauri::Context<tauri::Wry> = tauri::generate_context!();
+
+    // `tauri-plugin-single-instance` exits the second process with status 0 and
+    // prints nothing, so a stale owner looks exactly like a broken install.
+    // Report what is about to happen while this process can still write to the
+    // terminal that started it. See single_instance_probe.rs.
+    #[cfg(target_os = "linux")]
+    {
+        use single_instance_probe::ProbeOutcome;
+
+        // The identifier comes from the same context the plugin reads, so
+        // `--config tauri.dev.json` and release builds probe the name that is
+        // actually registered.
+        match single_instance_probe::probe(&context.config().identifier) {
+            ProbeOutcome::HandoffAccepted { pid } => {
+                let owner = match pid {
+                    Some(pid) => format!("pid {pid}"),
+                    None => "outro processo".to_string(),
+                };
+                eprintln!(
+                    "[single-instance] Alethe já está em execução ({owner}) — \
+                     focando a janela existente."
+                );
+            }
+            ProbeOutcome::StaleOwner { pid } => {
+                let owner = match pid {
+                    Some(pid) => format!("o processo {pid}"),
+                    None => "um processo".to_string(),
+                };
+                eprintln!(
+                    "[single-instance] {owner} retém o nome D-Bus mas não respondeu em 1s; \
+                     a janela não será aberta. Encerre a instância travada \
+                     (`busctl --user list | grep alethe`) e tente de novo."
+                );
+                std::process::exit(1);
+            }
+            ProbeOutcome::NameFree | ProbeOutcome::Inconclusive => {}
+        }
+    }
 
     pty::install_kill_on_close_guard();
     let sessions: PtySessions = Arc::new(Mutex::new(HashMap::<String, PtySession>::new()));
@@ -502,7 +545,7 @@ pub fn run() {
             opencode_sessions::opencode_export_session,
             ping,
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building alethe")
         .run(move |_app_handle, event| {
             // emitir `Exit`; esperar esse evento deixa shells/agentes vivos
