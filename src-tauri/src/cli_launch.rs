@@ -87,6 +87,7 @@ pub fn capture_cold_start(app: &AppHandle) {
 }
 
 pub fn handle_second_instance(app: &AppHandle, argv: Vec<String>, cwd: String) {
+    eprintln!("[single-instance] handoff received from a second launch");
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.set_focus();
