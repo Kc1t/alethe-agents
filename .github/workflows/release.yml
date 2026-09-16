@@ -7,8 +7,12 @@ on:
   workflow_dispatch:
 
 jobs:
+  quality:
+    uses: ./.github/workflows/ci.yml
+
   build:
     name: Build ${{ matrix.label }}
+    needs: quality
     permissions:
       contents: write
     strategy:
