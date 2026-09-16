@@ -19,6 +19,14 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   re-reads the machine's environment on every check, so a CLI that adds itself to PATH is found
   without restarting the app.
 
+- The Linux AppImage no longer opens to an empty window on modern Wayland desktops (Ubuntu 24.04+,
+  Fedora 40+, Arch). It shipped its own copy of a system graphics library, which clashed with the
+  one the machine's own graphics driver has to load, so the interface died before drawing anything
+  while the app itself kept running behind it — the AppImage now uses the libraries already on the
+  system. The `.deb` and `.rpm` installers were never affected and stayed a working alternative.
+  An earlier release announced this same crash as fixed, but that change never took effect; the
+  build now inspects the finished installer, so it cannot be reported as fixed again without being.
+
 ### Added
 
 - Git status decorations and standard file type icons in the File Explorer. Changed, uncommitted,
