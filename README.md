@@ -208,7 +208,7 @@ Requirements: Node.js 18+, Rust stable, Visual Studio Build Tools on Windows, Ta
 dependencies on Linux:
 
 ```sh
-sudo apt install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+sudo apt install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libasound2-dev patchelf
 ```
 
 ```sh

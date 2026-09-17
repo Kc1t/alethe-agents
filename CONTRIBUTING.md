@@ -75,7 +75,7 @@ with the *Desktop development with C++* workload (this gives you MSVC, which Rus
 
 ```sh
 sudo apt update
-sudo apt install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+sudo apt install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libasound2-dev patchelf
 ```
 
 **macOS** — install Xcode Command Line Tools: `xcode-select --install`.
