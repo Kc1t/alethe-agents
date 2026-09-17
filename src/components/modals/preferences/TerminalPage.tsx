@@ -4,12 +4,13 @@ import { useState } from 'react'
 import { cliPathMatchesAgent } from '../../../lib/agentCliPath'
 import { pickFile } from '../../../lib/dialog'
 import { useT } from '../../../lib/i18n'
-import { isMacOS } from '../../../lib/platform'
+import { isMacOS, isWindows } from '../../../lib/platform'
 import { countLiveResumablePanes, resetLastSession } from '../../../lib/resetLastSession'
-import { agentCliCommand, type AgentType } from '../../../lib/types'
+import { agentCliCommand, type AgentType, DEFAULT_TERMINAL_FONT_FAMILY } from '../../../lib/types'
 import { SPAWN_CONCURRENCY_LIMITS, useProjectsStore } from '../../../stores/projectsStore'
 import { useUiStore } from '../../../stores/uiStore'
 import { AgentIcon } from '../../icons/AgentIcons'
+import controls from '../controls.module.css'
 import styles from '../PreferencesModal.module.css'
 import { SettingsSection } from './primitives'
 
@@ -35,6 +36,7 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
   const pushToast = useUiStore((state) => state.pushToast)
   const openModal = useUiStore((state) => state.openModal_)
   const [resetting, setResetting] = useState(false)
+  const [fontDraft, setFontDraft] = useState(preferences.terminalFontFamily)
   const concurrency = preferences.spawnConcurrency
   const setConcurrency = (n: number) =>
     setPreferences({
@@ -61,6 +63,29 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
       return
     }
     setCliPath(agent, picked)
+  }
+
+  const commitFont = () => {
+    const next = fontDraft.trim() || DEFAULT_TERMINAL_FONT_FAMILY
+    setFontDraft(next)
+    if (next === preferences.terminalFontFamily) return
+    setPreferences({ terminalFontFamily: next })
+    // Mounted terminals reread the font and refit, the way they follow `alethe:zoom-changed`.
+    window.dispatchEvent(new CustomEvent('alethe:terminal-font-changed'))
+  }
+
+  const onPickShellPath = async () => {
+    const picked = await pickFile({
+      title: t('prefs.shellPathPick'),
+      // A shell is spawned directly, so it has to be an executable — `.cmd`, `.bat` and `.ps1` are
+      // scripts an interpreter runs, unlike the agent CLI shims the section below accepts.
+      filters: [
+        ...(isWindows() ? [{ name: 'Executable', extensions: ['exe'] }] : []),
+        { name: 'All files', extensions: ['*'] },
+      ],
+    })
+    if (!picked) return
+    setPreferences({ shellPath: picked })
   }
 
   const onResetLastSession = async () => {
@@ -175,6 +200,48 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
               </label>
             )
           })}
+        </div>
+      </SettingsSection>
+
+      <SettingsSection id="shell-path" title={t('prefs.shell')} description={t('prefs.shellDesc')}>
+        <div className={styles.shellPathRow}>
+          <span className={styles.cliPathValue} title={preferences.shellPath ?? undefined}>
+            {preferences.shellPath ?? t('prefs.cliPathAuto')}
+          </span>
+          <span className={styles.cliPathActions}>
+            <button type="button" onClick={() => void onPickShellPath()}>
+              {t('prefs.cliPathSet')}
+            </button>
+            {preferences.shellPath ? (
+              <button type="button" onClick={() => setPreferences({ shellPath: null })}>
+                {t('prefs.cliPathReset')}
+              </button>
+            ) : null}
+          </span>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection
+        id="terminal-font"
+        title={t('prefs.terminalFont')}
+        description={t('prefs.terminalFontDesc')}
+      >
+        <div className={styles.integrationFields}>
+          <label>
+            <span>{t('prefs.terminalFontFamily')}</span>
+            <input
+              className={controls.input}
+              value={fontDraft}
+              placeholder={DEFAULT_TERMINAL_FONT_FAMILY}
+              // Committing per keystroke would reflow every mounted terminal on partial font names.
+              onChange={(event) => setFontDraft(event.target.value)}
+              onBlur={commitFont}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') event.currentTarget.blur()
+              }}
+              spellCheck={false}
+            />
+          </label>
         </div>
       </SettingsSection>
 

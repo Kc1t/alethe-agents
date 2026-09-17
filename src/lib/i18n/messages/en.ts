@@ -78,7 +78,7 @@ export const en = {
   'onboarding.finish': 'Finish setup',
 
   /* ---- agents ---- */
-  'agent.shell.desc': 'PowerShell · cmd',
+  'agent.shell.desc': 'PowerShell · bash · zsh',
   'agent.claude.desc': 'Anthropic CLI',
   'agent.codex.desc': 'OpenAI CLI',
   'agent.copilot.desc': 'GitHub CLI agent',
@@ -697,6 +697,14 @@ export const en = {
 
   'prefs.agentsTitle': 'Enabled agents',
   'prefs.agentsDesc': 'Choose which agents are available when creating terminals and sub-tabs.',
+  'prefs.shell': 'Shell',
+  'prefs.shellDesc':
+    'Alethe picks the shell on its own (PowerShell 7 when available, then Windows PowerShell; $SHELL elsewhere). Point it at another binary to override that — it applies to Shell tabs, not to agent tabs.',
+  'prefs.shellPathPick': 'Select the shell executable',
+  'prefs.terminalFont': 'Terminal font',
+  'prefs.terminalFontDesc':
+    'Font stack used by the terminal panes. Prompts such as oh-my-posh and Starship need a Nerd Font installed on the system — for example "CaskaydiaCove Nerd Font".',
+  'prefs.terminalFontFamily': 'Font family',
   'prefs.cliPaths': 'Agent CLI paths',
   'prefs.cliPathsDesc':
     'Alethe finds each agent CLI on its own. Override it only when the CLI lives somewhere unusual — and point it at the command-line tool, not at a desktop app.',
