@@ -739,7 +739,12 @@ pub async fn spawn_pty(
 /// that same global lock, so a single slow kill stops every terminal in the app from accepting a
 /// keystroke while output, which never touches the lock, keeps arriving.
 fn kill_tree_without_holding_child(child: &Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>) {
-    let pid = child.lock().ok().and_then(|mut child| child.process_id());
+    // Scope the guard explicitly: the kill below must not run under the child
+    // lock, and `a_kill_never_runs_while_the_child_lock_is_held` checks that by
+    // scanning this source, so the release has to be visible in the text.
+    let pid = {
+        child.lock().ok().and_then(|mut child| child.process_id())
+    };
     if let Some(pid) = pid {
         kill_process_tree(pid);
     }
