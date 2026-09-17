@@ -551,6 +551,13 @@ export type Preferences = {
 
   nativeTerminalMacos?: boolean
   /**
+   * Absolute path to the binary plain shell tabs spawn. Null keeps the per-platform auto-detect
+   * (`pwsh` → `powershell` on Windows, `$SHELL` elsewhere).
+   */
+  shellPath: string | null
+  /** Font stack for the terminal. A Nerd Font is required for prompts such as oh-my-posh. */
+  terminalFontFamily: string
+  /**
    * v3 — perfil de heap do Node.js para agentes (Claude, Codex, OpenCode).
    * Injeta --max-old-space-size e UV_THREADPOOL_SIZE no ambiente do PTY.
    */
@@ -609,6 +616,9 @@ export type ProjectsFile = {
   preferences: Preferences
   cliPaths: Partial<Record<AgentType, string>>
 }
+
+/** Ships with Windows and macOS; none of these carry Powerline or Nerd Font glyphs. */
+export const DEFAULT_TERMINAL_FONT_FAMILY = 'Cascadia Mono, Consolas, "Courier New", monospace'
 
 export const DEFAULT_PREFERENCES: Preferences = {
   language: 'en',
@@ -693,6 +703,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
     spawnGraceSeconds: 120,
   },
   nodeHeapProfile: 'balanced',
+  shellPath: null,
+  terminalFontFamily: DEFAULT_TERMINAL_FONT_FAMILY,
   pomodoroWorkMinutes: 25,
   pomodoroShortBreakMinutes: 5,
   pomodoroLongBreakMinutes: 15,

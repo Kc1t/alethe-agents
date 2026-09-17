@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { DEFAULT_PREFERENCES, EMPTY_PROJECTS_FILE } from '../lib/types'
+import {
+  DEFAULT_PREFERENCES,
+  DEFAULT_TERMINAL_FONT_FAMILY,
+  EMPTY_PROJECTS_FILE,
+} from '../lib/types'
 import { migrate, normalizePreferences, normalizeTodos } from './projectsStore.migrations'
 
 describe('preference normalization', () => {
@@ -19,6 +23,35 @@ describe('preference normalization', () => {
       leftSidebarWidth: 337,
       rightSidebarWidth: 391,
     })
+  })
+
+  it('backfills the shell and terminal font of a file saved before they existed', () => {
+    const preferences = normalizePreferences({})
+
+    expect(preferences.shellPath).toBeNull()
+    expect(preferences.terminalFontFamily).toBe(DEFAULT_TERMINAL_FONT_FAMILY)
+  })
+
+  it('keeps a configured shell and trims it', () => {
+    const preferences = normalizePreferences({
+      ...DEFAULT_PREFERENCES,
+      shellPath: '  C:\\Program Files\\PowerShell\\7\\pwsh.exe  ',
+      terminalFontFamily: '  CaskaydiaCove Nerd Font  ',
+    })
+
+    expect(preferences.shellPath).toBe('C:\\Program Files\\PowerShell\\7\\pwsh.exe')
+    expect(preferences.terminalFontFamily).toBe('CaskaydiaCove Nerd Font')
+  })
+
+  it('falls back when the shell or the font was cleared to a blank string', () => {
+    const preferences = normalizePreferences({
+      ...DEFAULT_PREFERENCES,
+      shellPath: '   ',
+      terminalFontFamily: '',
+    })
+
+    expect(preferences.shellPath).toBeNull()
+    expect(preferences.terminalFontFamily).toBe(DEFAULT_TERMINAL_FONT_FAMILY)
   })
 
   it('disables legacy automatic parking preferences', () => {

@@ -13,6 +13,7 @@ import { deliverOpenCodePrompt } from '../../lib/agentPromptDelivery'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { getLocale, translate } from '../../lib/i18n'
 import { isWindows } from '../../lib/platform'
+import { ptyLaunchTarget } from '../../lib/ptyLaunchTarget'
 import { usePtyPanelVisible } from '../../lib/ptyVisibility'
 import {
   claimDiscoveredSession,
@@ -251,7 +252,8 @@ export function useXtermSession(params: {
     // and loses the session it had just started.
     let initialInputInFlight = false
 
-    const resourcePolicy = useProjectsStore.getState().preferences.resourcePolicy
+    const preferences = useProjectsStore.getState().preferences
+    const resourcePolicy = preferences.resourcePolicy
     const terminal = new Terminal({
       cursorBlink: !readOnly,
 
@@ -267,7 +269,7 @@ export function useXtermSession(params: {
       // (como o ConPTY faz), o que corrompe o repaint de TUIs densas que
 
       ...(isWindows() ? { windowsPty: { backend: 'conpty' as const, buildNumber: 22000 } } : {}),
-      fontFamily: 'Cascadia Mono, Consolas, "Courier New", monospace',
+      fontFamily: preferences.terminalFontFamily,
       fontSize: 14,
       theme: getXtermTheme(terminalTheme),
     })
@@ -696,7 +698,13 @@ export function useXtermSession(params: {
       terminal.options.fontSize = currentFontSize
       scheduleResize(true)
     }
+    const onFontChanged = () => {
+      terminal.options.fontFamily = useProjectsStore.getState().preferences.terminalFontFamily
+      // Cell metrics come from the font, so the pane refits before the PTY hears a new size.
+      scheduleResize(true)
+    }
     window.addEventListener('alethe:zoom-changed', onZoomChanged)
+    window.addEventListener('alethe:terminal-font-changed', onFontChanged)
     window.addEventListener('alethe:terminal-resize-request', onResizeRequest)
 
     const initialFitTimer = window.setTimeout(() => {
@@ -905,6 +913,11 @@ export function useXtermSession(params: {
               useTerminalsStore.getState().setStatus(ptyId, 'offline')
               return
             }
+          }
+        } else {
+          launcherOverride = ptyLaunchTarget(command).launcherOverride
+          if (launcherOverride) {
+            console.info(`[pty-launch] shell using override: ${launcherOverride}`)
           }
         }
 
@@ -1488,6 +1501,7 @@ export function useXtermSession(params: {
       document.removeEventListener('visibilitychange', restoreLastTerminalFocus)
       container.removeEventListener('contextmenu', onContextMenu)
       window.removeEventListener('alethe:zoom-changed', onZoomChanged)
+      window.removeEventListener('alethe:terminal-font-changed', onFontChanged)
       window.removeEventListener('alethe:terminal-resize-request', onResizeRequest)
       ro.disconnect()
       if (resizeTimer !== null) window.clearTimeout(resizeTimer)

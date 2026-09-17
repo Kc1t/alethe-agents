@@ -19,6 +19,7 @@ import {
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { pickFile, saveFile } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
+import { ptyLaunchTarget } from '../../lib/ptyLaunchTarget'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import {
   getPtyCwd,
@@ -28,7 +29,7 @@ import {
   restartPty,
   writeTextFile,
 } from '../../lib/tauri'
-import { agentCliCommand, type Group, type Project, type Terminal } from '../../lib/types'
+import { type Group, type Project, type Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -38,7 +39,6 @@ import { collectDescendants } from './GroupNode'
 type ProjectsState = ReturnType<typeof useProjectsStore.getState>
 type UiState = ReturnType<typeof useUiStore.getState>
 
-                                                                                
 type MenuActions = Pick<
   ProjectsState,
   | 'openProjectWorkspace'
@@ -85,12 +85,10 @@ export type SidebarMenuDeps = {
   openMarkdownSidebar: UiState['openMarkdownSidebar']
 }
 
-                                                                                        
 function visibleProjectTerminals(project: Project): Terminal[] {
   return project.terminals.filter((term) => !term.gsdSyncViewer)
 }
 
-                                                                         
 export function createSidebarMenus(deps: SidebarMenuDeps) {
   const {
     t,
@@ -450,7 +448,7 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
         id: activeTab.ptyId,
         cols: 80,
         rows: 24,
-        command: agentCliCommand(activeTab.type),
+        ...ptyLaunchTarget(activeTab.type),
         cwd: activeTab.cwd || undefined,
         extraArgs: launch.args,
         env: runtime.env,

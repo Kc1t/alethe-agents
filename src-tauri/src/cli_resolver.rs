@@ -29,6 +29,16 @@ pub fn default_shell() -> String {
     }
 }
 
+/// Whether the shell accepts PowerShell's own switches. Matched on the file stem so an absolute
+/// override such as `C:\Program Files\PowerShell\7\pwsh.exe` is recognized just like a bare `pwsh`.
+/// Both separators are split on: a Windows path can reach a Unix build through a synced
+/// `projects.json`, where `std::path` would not treat the backslashes as separators.
+fn is_powershell(shell: &str) -> bool {
+    let name = shell.rsplit(['/', '\\']).next().unwrap_or(shell);
+    let stem = name.rsplit_once('.').map_or(name, |(stem, _)| stem);
+    stem.eq_ignore_ascii_case("pwsh") || stem.eq_ignore_ascii_case("powershell")
+}
+
 pub fn command_builder_for_terminal(
     initial_command: Option<&str>,
     resolved_launcher: Option<&str>,
@@ -74,11 +84,14 @@ pub fn command_builder_for_terminal(
             }
         }
         None => {
-            let shell = default_shell();
+            // A plain shell tab carries no command, so `resolved_launcher` is the shell the user
+            // picked in Preferences. `pty.rs` only forwards it after confirming it is a real file.
+            let shell = resolved_launcher
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .unwrap_or_else(default_shell);
             let mut builder = CommandBuilder::new(&shell);
-            if shell.eq_ignore_ascii_case("pwsh.exe")
-                || shell.eq_ignore_ascii_case("powershell.exe")
-            {
+            if is_powershell(&shell) {
                 builder.arg("-NoLogo");
             }
             builder
@@ -984,6 +997,51 @@ pub async fn discover_provider_models(provider: String) -> Result<Vec<ModelOptio
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn recognizes_powershell_by_file_stem() {
+        for shell in [
+            "pwsh",
+            "pwsh.exe",
+            "PowerShell.exe",
+            r"C:\Program Files\PowerShell\7\pwsh.exe",
+            "/usr/bin/pwsh",
+        ] {
+            assert!(is_powershell(shell), "expected a PowerShell shell: {shell}");
+        }
+
+        for shell in ["bash", "/bin/zsh", "nu.exe", "cmd.exe", "fish", ""] {
+            assert!(!is_powershell(shell), "expected a non-PowerShell shell: {shell}");
+        }
+    }
+
+    #[test]
+    fn plain_shell_tab_uses_the_configured_shell() {
+        let shell = if cfg!(windows) { "nu.exe" } else { "/bin/zsh" };
+        let builder = command_builder_for_terminal(None, Some(shell), &[]);
+        assert_eq!(builder.get_argv()[0], shell);
+        // A non-PowerShell shell must not inherit PowerShell's switches.
+        assert_eq!(builder.get_argv().len(), 1);
+    }
+
+    #[test]
+    fn plain_shell_tab_falls_back_to_the_default_shell() {
+        for override_value in [None, Some("")] {
+            let builder = command_builder_for_terminal(None, override_value, &[]);
+            assert_eq!(builder.get_argv()[0], default_shell().as_str());
+        }
+    }
+
+    #[test]
+    fn powershell_override_keeps_the_nologo_switch() {
+        let shell = if cfg!(windows) {
+            r"C:\Program Files\PowerShell\7\pwsh.exe"
+        } else {
+            "/usr/bin/pwsh"
+        };
+        let builder = command_builder_for_terminal(None, Some(shell), &[]);
+        assert_eq!(builder.get_argv()[1], "-NoLogo");
+    }
 
     #[test]
     fn accepts_model_ids_and_rejects_cli_prose() {
