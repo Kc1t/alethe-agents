@@ -18,6 +18,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   never exit — so the dialog closes on its own as soon as the CLI is really there. Detection also
   re-reads the machine's environment on every check, so a CLI that adds itself to PATH is found
   without restarting the app.
+- On Linux, launching Alethe while another instance is running no longer exits silently: the new
+  process now says it is focusing the existing window. If that instance is wedged and never answers,
+  it reports which process is holding the lock and exits with an error instead of doing nothing.
 
 ### Added
 

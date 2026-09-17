@@ -87,6 +87,7 @@ dependencies = [
  "which",
  "windows-sys 0.61.2",
  "winreg 0.52.0",
+ "zbus 5.18.0",
  "zip 0.6.6",
 ]
 
