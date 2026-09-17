@@ -79,8 +79,8 @@ jobs:
               BODY="$(slice "${REL_BODY:-Nova versao publicada.}" 3200)"
               DESC="$BODY
 
-📥 Baixar (Windows / macOS / Linux): $REL_URL
-🌐 $SITE"
+              📥 Baixar (Windows / macOS / Linux): $REL_URL
+              🌐 $SITE"
               FOOTER="Alethe Agents • release ${REL_TAG:-}"
               ;;
             issues)
