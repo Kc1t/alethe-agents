@@ -21,6 +21,17 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Preferences → Terminal → Shell** picks which binary plain Shell tabs open. Alethe still detects
+  one on its own (PowerShell 7 when available, then Windows PowerShell; `$SHELL` elsewhere), so the
+  setting only matters when you want a specific shell — PowerShell 7 installed outside PATH, or
+  `bash`, `zsh` and `nu`. The choice survives restarting a tab, and a path that no longer exists
+  falls back to the automatic detection instead of failing to open.
+- **Preferences → Terminal → Terminal font** sets the font the terminal panes render with. Custom
+  prompts such as oh-my-posh and Starship draw their separators and icons with Powerline/Nerd Font
+  glyphs, which the previous fixed font stack did not carry — they showed up as empty boxes. Point
+  this at an installed Nerd Font (for example `CaskaydiaCove Nerd Font`) and the prompt renders as
+  intended.
+
 - Two new themes: **Catppuccin Frappé** (cool slate surfaces with a soft pink accent) and
   **Gruvbox Material** (muted earthy tones on a hard dark background). Both cover the full UI
   palette and ship a matching 16-colour terminal palette, and are selectable under
