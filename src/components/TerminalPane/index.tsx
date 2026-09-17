@@ -19,6 +19,7 @@ import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { buildGhosttyCommand } from '../../lib/ghosttyCommand'
 import { useT } from '../../lib/i18n'
 import { shouldUseNativeBackend } from '../../lib/platform'
+import { ptyLaunchTarget } from '../../lib/ptyLaunchTarget'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import {
   conversationFields,
@@ -34,7 +35,6 @@ import {
   snapshotCodexSessions,
 } from '../../lib/tauri'
 import {
-  agentCliCommand,
   type AgentType,
   type SubTab,
   type Terminal as TerminalEntry,
@@ -234,7 +234,7 @@ export const TerminalPane = memo(function TerminalPane({
         id: ptyId,
         cols: 80,
         rows: 24,
-        command: agentCliCommand(activeTab.type),
+        ...ptyLaunchTarget(activeTab.type),
         cwd: restartCwd || undefined,
         extraArgs: launch.args,
         env: preparedRuntime.env,

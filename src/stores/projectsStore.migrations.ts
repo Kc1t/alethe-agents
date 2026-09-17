@@ -5,6 +5,7 @@ import { normalizeAppIconTheme } from '../lib/themeIcons'
 import { normalizeTodoTags, normalizeTodoTitle } from '../lib/todos'
 import {
   DEFAULT_PREFERENCES,
+  DEFAULT_TERMINAL_FONT_FAMILY,
   EMPTY_PROJECTS_FILE,
   type Group,
   GROUP_COLORS,
@@ -159,7 +160,17 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
       DEFAULT_PREFERENCES.pomodoroLongBreakMinutes,
     ),
     pomodoroSession: normalizePomodoroSession(raw?.pomodoroSession),
+    shellPath: normalizeNonEmptyString(raw?.shellPath),
+    terminalFontFamily:
+      normalizeNonEmptyString(raw?.terminalFontFamily) ?? DEFAULT_TERMINAL_FONT_FAMILY,
   }
+}
+
+/** A cleared input persists as `''`; it must fall back instead of spawning an empty binary. */
+function normalizeNonEmptyString(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
 }
 
 function clampPomodoroMinutes(value: unknown, fallback: number): number {
@@ -185,7 +196,8 @@ function normalizePomodoroSession(raw: unknown): Preferences['pomodoroSession'] 
   // finished (waiting for a manual "start next") instead of a stale "running" with negative
   // remaining time. Normalized here, not just in pomodoroStore, so every reader of persisted
   // preferences (not only the store's own hydration) sees a consistent, already-sane session.
-  const resolvedStatus = status === 'running' && endsAt !== null && endsAt <= Date.now() ? 'finished' : status
+  const resolvedStatus =
+    status === 'running' && endsAt !== null && endsAt <= Date.now() ? 'finished' : status
   return {
     phase,
     status: resolvedStatus,

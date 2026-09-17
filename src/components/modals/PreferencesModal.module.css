@@ -1066,7 +1066,8 @@
 }
 
 /* Same shell as .agentList label, but a row of actions instead of a single toggle. */
-.cliPathRow {
+.cliPathRow,
+.shellPathRow {
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr) auto;
   align-items: center;
@@ -1075,6 +1076,11 @@
   background: var(--bg-sunken);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+}
+
+/* Same row, without the agent-icon column. */
+.shellPathRow {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .cliPathValue,

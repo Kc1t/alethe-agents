@@ -76,7 +76,7 @@ export const ptBR: Record<MessageKey, string> = {
   'onboarding.finish': 'Finalizar configuração',
 
   /* ---- agents ---- */
-  'agent.shell.desc': 'PowerShell · cmd',
+  'agent.shell.desc': 'PowerShell · bash · zsh',
   'agent.claude.desc': 'Anthropic CLI',
   'agent.codex.desc': 'OpenAI CLI',
   'agent.copilot.desc': 'Agente CLI do GitHub',
@@ -706,6 +706,14 @@ export const ptBR: Record<MessageKey, string> = {
 
   'prefs.agentsTitle': 'Agentes habilitados',
   'prefs.agentsDesc': 'Escolha quais agentes podem ser usados ao criar terminais e sub-tabs.',
+  'prefs.shell': 'Shell',
+  'prefs.shellDesc':
+    'O Alethe escolhe o shell sozinho (PowerShell 7 quando disponível, senão o Windows PowerShell; $SHELL nos demais sistemas). Aponte outro binário para sobrescrever — vale para abas Shell, não para abas de agente.',
+  'prefs.shellPathPick': 'Selecione o executável do shell',
+  'prefs.terminalFont': 'Fonte do terminal',
+  'prefs.terminalFontDesc':
+    'Fontes usadas nos painéis de terminal. Prompts como oh-my-posh e Starship precisam de uma Nerd Font instalada no sistema — por exemplo "CaskaydiaCove Nerd Font".',
+  'prefs.terminalFontFamily': 'Família da fonte',
   'prefs.cliPaths': 'Caminhos dos CLIs',
   'prefs.cliPathsDesc':
     'O Alethe encontra o CLI de cada agente sozinho. Só defina um caminho se o CLI estiver num lugar fora do comum — e aponte para a ferramenta de linha de comando, não para o aplicativo gráfico.',
