@@ -252,6 +252,7 @@ export function MultiagentPage() {
 
       <SettingsSection
         id="multiagent-metrics"
+        defaultCollapsed
         title={t('prefs.multiagentMetricsTitle')}
         description={t('prefs.multiagentMetricsDesc')}
       >
@@ -283,6 +284,7 @@ export function MultiagentPage() {
 
       <SettingsSection
         id="multiagent-traces"
+        defaultCollapsed
         title={t('prefs.multiagentTracesTitle')}
         description={t('prefs.multiagentTracesDesc')}
       >
@@ -316,6 +318,7 @@ export function MultiagentPage() {
 
       <SettingsSection
         id="multiagent-gsd-audit"
+        defaultCollapsed
         title={t('prefs.multiagentAuditTitle')}
         description={t('prefs.multiagentAuditDesc')}
       >

@@ -193,6 +193,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Changed
 
+- **Preferences sections fold away.** Every section on a Preferences page now has a clickable
+  heading, so a long page reads as a list of subjects instead of one wall of settings. Alethe
+  remembers what you left open. On Multi-Agent & Telemetry the bulky read-only sections
+  — metrics, traces and the audit log — start folded; jumping to a setting from the search
+  opens its section on the way.
+
 - **The lead agent can now see how much of each vendor's limit is left.** Every orchestrator tool
   answers with the current headroom for Claude and Codex — which window is closest to full, when it
   resets, the detected plan — so the agent doing the delegating decides with the same numbers the
