@@ -18,6 +18,7 @@ function job(
     plannerId: null,
     agent: 'codex',
     runLabel: null,
+    rules: null,
     spec: 'spec',
     cwd: 'C:/repo',
     status: 'running',
@@ -57,6 +58,19 @@ describe('groupRuns', () => {
       job({ id: 'job-02', runId: 'run-a', runLabel: ' refactor pty ' }),
     ])
     expect(run.label).toBe('refactor pty')
+  })
+
+  it('carries no rule set when no worker in the run was briefed with one', () => {
+    const [run] = groupRuns([job({ id: 'job-01', runId: 'run-a' })])
+    expect(run.rules).toBeNull()
+  })
+
+  it('takes the rule set from the first worker that has one', () => {
+    const [run] = groupRuns([
+      job({ id: 'job-01', runId: 'run-a', rules: '   ' }),
+      job({ id: 'job-02', runId: 'run-a', rules: ' frontend ' }),
+    ])
+    expect(run.rules).toBe('frontend')
   })
 
   it('reports the worst state among the workers of a run', () => {

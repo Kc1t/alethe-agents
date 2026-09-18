@@ -21,6 +21,8 @@ export function nativeSubagentJobs(nodes: readonly AgentNode[]): OrchestratorJob
     agent: node.sourceAgent,
     runId: runIdFor(node.plannerId),
     runLabel: 'Subagents',
+    // A native subagent never went through delegation, so no rule set was briefed to it.
+    rules: null,
     spec: node.prompt ?? node.agentType,
     cwd: '',
     status: statusOf(node),

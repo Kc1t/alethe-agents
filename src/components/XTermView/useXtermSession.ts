@@ -13,6 +13,8 @@ import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
 import { deliverOpenCodePrompt } from '../../lib/agentPromptDelivery'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { getLocale, translate } from '../../lib/i18n'
+import { isOrchestratorShellPty } from '../../lib/orchestratorShells'
+import { terminalNameForPty } from '../../lib/plannerLabel'
 import { isWindows } from '../../lib/platform'
 import { usePtyPanelVisible } from '../../lib/ptyVisibility'
 import { router9EnvFor } from '../../lib/router9'
@@ -69,7 +71,7 @@ import {
   writeClipboardText,
   writePty,
 } from '../../lib/tauri'
-import { resolveAgentCliCommand } from '../../lib/agentProviders'
+import { agentLabel, resolveAgentCliCommand } from '../../lib/agentProviders'
 import { isShellAgentType, type AgentRuntimeProfile, type AgentType, type Theme } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
@@ -112,14 +114,14 @@ function isBrowserInputPending(): boolean {
 
 let aiMemoryMissingWarned = false
 
-/** The terminal's own name is what the person recognises a planner by, not its pty id. */
-function plannerLabelFor(ptyId: string): string {
-  for (const project of useProjectsStore.getState().projects) {
-    for (const terminal of project.terminals) {
-      if (terminal.tabs.some((tab) => tab.ptyId === ptyId)) return terminal.name
-    }
-  }
-  return ptyId
+/**
+ * The terminal's own name is what the person recognises a planner by, not its pty id or the
+ * agent's generic name. `terminalNameForPty` also matches a tab still spawning (its own id stands
+ * in for the pty id until the real one is known), so this only falls back to the agent's name in
+ * the rare case neither is found yet - never to the raw, unreadable id.
+ */
+function plannerLabelFor(ptyId: string, agent: AgentType): string {
+  return terminalNameForPty(useProjectsStore.getState().projects, ptyId) ?? agentLabel(agent)
 }
 
 type BootPhase = 'preparing' | 'queued' | 'spawning' | 'attaching' | 'ready'
@@ -906,6 +908,14 @@ export function useXtermSession(params: {
           return
         }
 
+        // Only the board starts an orchestrator shell. A view that outlived it, such as one left
+        // open across an app restart, must not spawn an empty shell under its id.
+        if (isOrchestratorShellPty(ptyId)) {
+          terminal.write(`\r\n${translate(getLocale(), 'orchestrator.shell.viewGone')}\r\n`)
+          setBootPhase('ready')
+          return
+        }
+
         let launcherOverride: string | undefined
         if (command && command !== 'shell') {
           if (cliPathOverride) {
@@ -1099,9 +1109,11 @@ export function useXtermSession(params: {
         const orchestratorEnabled =
           useProjectsStore.getState().preferences.enabledFeatures.orchestrator
         if (orchestratorEnabled && command === 'claude') {
-          const p = await orchestratorMcpConfigPath(ptyId, plannerLabelFor(ptyId), command).catch(
-            () => undefined,
-          )
+          const p = await orchestratorMcpConfigPath(
+            ptyId,
+            plannerLabelFor(ptyId, command),
+            command,
+          ).catch(() => undefined)
           if (p) mcpConfigPaths.push(p)
           if (disposed) return
         }
@@ -1124,7 +1136,9 @@ export function useXtermSession(params: {
           if (disposed) return
 
           // Registers this Codex terminal as a planner too, so it can call alethe_delegate.
-          await codexMcpConfigWrite(cwd, ptyId, plannerLabelFor(ptyId), command).catch(() => undefined)
+          await codexMcpConfigWrite(cwd, ptyId, plannerLabelFor(ptyId, command), command).catch(
+            () => undefined,
+          )
           if (disposed) return
         }
 

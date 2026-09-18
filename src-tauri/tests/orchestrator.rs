@@ -17,20 +17,31 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use orchestrator_core::{handle_mcp_body, Core, Launcher};
+use orchestrator_core::{handle_mcp_body, Core, Launcher, RuleSet, ShellHost};
 
 fn rpc(core: &Core, id: u32, method: &str, params: Value) -> Value {
+    rpc_as(core, id, method, params, None)
+}
+
+fn rpc_as(core: &Core, id: u32, method: &str, params: Value, planner: Option<&str>) -> Value {
     let body = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
-    let raw = handle_mcp_body(core, &body.to_string(), None).expect("a response");
+    let raw = handle_mcp_body(core, &body.to_string(), planner).expect("a response");
     serde_json::from_str(&raw).expect("valid json")
 }
 
 fn call(core: &Core, name: &str, arguments: Value) -> Value {
-    let response = rpc(
+    call_as(core, None, name, arguments)
+}
+
+/// Like `call`, but on behalf of a named planner - for tools whose behaviour depends on which
+/// planner is calling, such as `alethe_open_shell` adopting an already-running shell.
+fn call_as(core: &Core, planner: Option<&str>, name: &str, arguments: Value) -> Value {
+    let response = rpc_as(
         core,
         10,
         "tools/call",
         json!({ "name": name, "arguments": arguments }),
+        planner,
     );
     let text = response["result"]["content"][0]["text"]
         .as_str()
@@ -55,6 +66,57 @@ fn check_until_settled(core: &Core) -> (Value, Vec<Value>) {
             return (checked, deliveries);
         }
     }
+}
+
+#[derive(Default)]
+struct FakeShellHost {
+    calls: Mutex<Vec<String>>,
+    printed: Mutex<String>,
+    refuse_open: bool,
+}
+
+impl ShellHost for FakeShellHost {
+    fn open(&self, pty_id: &str, run: u64, command_line: &str, cwd: &str) -> Result<(), String> {
+        self.calls
+            .lock()
+            .expect("calls")
+            .push(format!("open {pty_id} run={run} {command_line} @ {cwd}"));
+        if self.refuse_open {
+            Err("the folder does not exist".to_string())
+        } else {
+            Ok(())
+        }
+    }
+
+    fn output(&self, pty_id: &str, _max_bytes: usize) -> Result<String, String> {
+        self.calls.lock().expect("calls").push(format!("output {pty_id}"));
+        Ok(self.printed.lock().expect("printed").clone())
+    }
+
+    fn stop(&self, pty_id: &str) -> Result<(), String> {
+        self.calls.lock().expect("calls").push(format!("stop {pty_id}"));
+        Ok(())
+    }
+}
+
+fn shell_core() -> (Core, Arc<FakeShellHost>) {
+    let core = Core::default();
+    let host = Arc::new(FakeShellHost::default());
+    core.set_shell_host(host.clone());
+    (core, host)
+}
+
+fn tool_names(listed: &Value) -> Vec<String> {
+    listed["result"]["tools"]
+        .as_array()
+        .expect("tools")
+        .iter()
+        .filter_map(|tool| tool["name"].as_str().map(ToOwned::to_owned))
+        .collect()
+}
+
+fn open_npm(core: &Core) -> Value {
+    call(core, "alethe_open_shell", json!({ "command": "npm run dev", "cwd": "C:\\app" }))
 }
 
 fn codex_launcher() -> Launcher {
@@ -116,6 +178,235 @@ impl PeakWatcher {
         let peak = *self.peak.lock().expect("peak");
         peak
     }
+}
+
+#[test]
+fn the_core_serves_the_shipped_rules_until_the_app_injects_its_own() {
+    let core = Core::default();
+    let names: Vec<String> = core.rule_sets().into_iter().map(|set| set.name).collect();
+    assert_eq!(names, vec!["General", "Backend", "Frontend"]);
+
+    core.set_rule_sets(vec![RuleSet {
+        id: "general".into(),
+        name: "Geral".into(),
+        text: "minhas regras".into(),
+    }]);
+    let names: Vec<String> = core.rule_sets().into_iter().map(|set| set.name).collect();
+    assert_eq!(names, vec!["Geral"], "the person's list replaces ours entirely");
+
+    core.set_rule_sets(vec![]);
+    assert!(
+        core.rule_sets().is_empty(),
+        "an empty injection is the person's choice and must not fall back to ours"
+    );
+}
+
+#[test]
+fn shells_are_offered_only_where_something_can_run_them() {
+    let bare = Core::default();
+    let names = tool_names(&rpc(&bare, 1, "tools/list", json!({})));
+    assert!(!names.iter().any(|name| name == "alethe_open_shell"), "{names:?}");
+
+    let (core, _) = shell_core();
+    let names = tool_names(&rpc(&core, 1, "tools/list", json!({})));
+    assert!(names.iter().any(|name| name == "alethe_open_shell"), "{names:?}");
+    assert!(names.iter().any(|name| name == "alethe_shell_output"), "{names:?}");
+}
+
+#[test]
+fn opening_a_shell_starts_it_and_lists_it() {
+    let (core, host) = shell_core();
+    let opened = open_npm(&core);
+    assert_eq!(opened["shellId"], "shell-01", "{opened}");
+    assert_eq!(opened["status"], "running", "{opened}");
+    assert_eq!(
+        host.calls.lock().expect("calls")[0],
+        "open orchestrator-shell-01 run=1 npm run dev @ C:\\app"
+    );
+    let listed = &core.snapshot()["shells"][0];
+    assert_eq!(listed["name"], "npm", "{listed}");
+    assert_eq!(listed["ptyId"], "orchestrator-shell-01", "{listed}");
+}
+
+#[test]
+fn a_shell_that_fails_to_open_leaves_nothing_behind() {
+    let core = Core::default();
+    core.set_shell_host(Arc::new(FakeShellHost {
+        refuse_open: true,
+        ..FakeShellHost::default()
+    }));
+    let opened = open_npm(&core);
+    assert!(
+        opened["error"].as_str().unwrap_or_default().contains("does not exist"),
+        "{opened}"
+    );
+    assert_eq!(core.snapshot()["shells"].as_array().expect("shells").len(), 0);
+}
+
+#[test]
+fn the_output_is_the_clean_tail() {
+    let (core, host) = shell_core();
+    open_npm(&core);
+    *host.printed.lock().expect("printed") =
+        "\u{1b}[32mcompiled\u{1b}[0m\r\nlistening on :3000\r\n".to_string();
+    let read = call(&core, "alethe_shell_output", json!({ "shellId": "shell-01", "lines": 1 }));
+    assert_eq!(read["output"], "listening on :3000", "{read}");
+    assert_eq!(read["status"], "running", "{read}");
+}
+
+#[test]
+fn an_unknown_shell_is_refused() {
+    let (core, _) = shell_core();
+    let read = call(&core, "alethe_shell_output", json!({ "shellId": "shell-99" }));
+    assert!(
+        read["error"].as_str().unwrap_or_default().contains("unknown shell"),
+        "{read}"
+    );
+}
+
+#[test]
+fn an_exit_report_marks_the_shell_exited_and_keeps_what_it_printed() {
+    let (core, host) = shell_core();
+    open_npm(&core);
+    *host.printed.lock().expect("printed") = "Error: port 3000 is taken\r\n".to_string();
+    core.shell_exited("shell-01", 1, Some(1));
+
+    let shell = &core.snapshot()["shells"][0];
+    assert_eq!(shell["status"], "exited", "{shell}");
+    assert_eq!(shell["exitCode"], 1, "{shell}");
+
+    *host.printed.lock().expect("printed") = String::new();
+    let read = call(&core, "alethe_shell_output", json!({ "shellId": "shell-01" }));
+    assert_eq!(read["output"], "Error: port 3000 is taken", "{read}");
+}
+
+#[test]
+fn an_exit_report_from_an_earlier_run_is_ignored() {
+    let (core, _) = shell_core();
+    open_npm(&core);
+    core.shell_exited("shell-01", 0, Some(1));
+    assert_eq!(core.snapshot()["shells"][0]["status"], "running");
+}
+
+#[test]
+fn stopping_a_shell_ignores_the_exit_its_own_stop_causes() {
+    let (core, host) = shell_core();
+    open_npm(&core);
+    core.stop_shell("shell-01").expect("stopped");
+    core.shell_exited("shell-01", 1, Some(-1073741510));
+
+    let shell = &core.snapshot()["shells"][0];
+    assert_eq!(shell["status"], "stopped", "{shell}");
+    assert!(host
+        .calls
+        .lock()
+        .expect("calls")
+        .contains(&"stop orchestrator-shell-01".to_string()));
+}
+
+#[test]
+fn restarting_runs_the_same_command_again_as_a_new_run() {
+    let (core, host) = shell_core();
+    open_npm(&core);
+    core.shell_exited("shell-01", 1, Some(1));
+    core.restart_shell("shell-01").expect("restarted");
+
+    let calls = host.calls.lock().expect("calls").clone();
+    assert!(calls.contains(&"stop orchestrator-shell-01".to_string()), "{calls:?}");
+    assert_eq!(
+        calls.last().map(String::as_str),
+        Some("open orchestrator-shell-01 run=2 npm run dev @ C:\\app"),
+        "{calls:?}"
+    );
+    let shell = &core.snapshot()["shells"][0];
+    assert_eq!(shell["status"], "running", "{shell}");
+    assert_eq!(shell["exitCode"], Value::Null, "{shell}");
+}
+
+#[test]
+fn a_running_shell_cannot_be_removed() {
+    let (core, _) = shell_core();
+    open_npm(&core);
+    assert!(core.remove_shell("shell-01").is_err());
+    core.stop_shell("shell-01").expect("stopped");
+    core.remove_shell("shell-01").expect("removed");
+    assert_eq!(core.snapshot()["shells"].as_array().expect("shells").len(), 0);
+}
+
+#[test]
+fn a_second_open_with_the_same_command_and_cwd_adopts_the_running_shell() {
+    let (core, host) = shell_core();
+    let first = call_as(
+        &core,
+        Some("planner-a"),
+        "alethe_open_shell",
+        json!({ "command": "npm run dev", "cwd": "C:\\app" }),
+    );
+    assert_eq!(first["shellId"], "shell-01", "{first}");
+    assert!(first.get("reused").is_none(), "{first}");
+
+    let second = call_as(
+        &core,
+        Some("planner-b"),
+        "alethe_open_shell",
+        json!({ "command": "npm run dev", "cwd": "C:\\app" }),
+    );
+    assert_eq!(second["shellId"], "shell-01", "a second call must adopt the same shell: {second}");
+    assert_eq!(second["reused"], json!(true), "{second}");
+
+    let calls = host.calls.lock().expect("calls").clone();
+    assert_eq!(
+        calls.iter().filter(|call| call.starts_with("open ")).count(),
+        1,
+        "a second process must not be spawned: {calls:?}"
+    );
+    let shells = core.snapshot()["shells"].as_array().expect("shells").clone();
+    assert_eq!(shells.len(), 1, "only one shell must remain in the snapshot");
+    assert_eq!(shells[0]["owner"]["kind"], json!("planner"), "{shells:?}");
+    assert_eq!(
+        shells[0]["owner"]["id"], json!("planner-b"),
+        "the new planner must adopt the shell: {shells:?}"
+    );
+}
+
+#[test]
+fn a_stopped_shell_is_not_reused_and_a_fresh_one_opens_instead() {
+    let (core, host) = shell_core();
+    open_npm(&core);
+    core.stop_shell("shell-01").expect("stopped");
+
+    let reopened = open_npm(&core);
+    assert_eq!(reopened["shellId"], "shell-02", "a stopped shell must not be reused: {reopened}");
+    assert!(reopened.get("reused").is_none(), "{reopened}");
+
+    let calls = host.calls.lock().expect("calls").clone();
+    assert_eq!(
+        calls.iter().filter(|call| call.starts_with("open ")).count(),
+        2,
+        "{calls:?}"
+    );
+}
+
+#[test]
+fn shells_come_back_stopped_after_a_restart_and_keep_counting() {
+    let dir = workspace("shell-store");
+    let store = dir.join("orchestrator.json");
+    let (core, _) = shell_core();
+    core.set_store(store.clone());
+    open_npm(&core);
+
+    let (reopened, _) = shell_core();
+    reopened.set_store(store);
+    reopened.restore();
+    assert_eq!(reopened.snapshot()["shells"][0]["status"], "stopped");
+    let next = call(
+        &reopened,
+        "alethe_open_shell",
+        json!({ "command": "cargo watch", "cwd": "C:\\app" }),
+    );
+    assert_eq!(next["shellId"], "shell-02", "{next}");
+
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -202,13 +493,117 @@ fn the_guide_tool_answers_in_plain_markdown() {
 }
 
 #[test]
-fn the_instructions_send_questions_about_alethe_to_the_guide() {
+fn the_briefing_names_the_rule_sets_and_says_to_choose_one() {
     let core = Core::default();
     let initialized = rpc(&core, 1, "initialize", json!({}));
-    let text = initialized["result"]["instructions"]
+    let text = initialized["result"]["instructions"].as_str().expect("instructions");
+
+    assert!(text.contains("General (always applied)"), "{text}");
+    assert!(text.contains("Backend") && text.contains("Frontend"), "{text}");
+    assert!(text.contains("name the set"), "it tells the planner to choose: {text}");
+
+    // With the general set alone there is nothing to choose, so asking for a choice would send the
+    // planner looking for names that do not exist.
+    core.set_rule_sets(vec![RuleSet {
+        id: "general".into(),
+        name: "General".into(),
+        text: "always".into(),
+    }]);
+    let alone = instructions_of(&core);
+    assert!(alone.contains("General (always applied)"), "{alone}");
+    assert!(!alone.contains("name the set"), "nothing to name: {alone}");
+    assert!(alone.contains("alethe_rules"), "reading one still applies: {alone}");
+}
+
+#[test]
+fn the_briefing_names_come_from_live_state_not_the_defaults() {
+    // Proves the section is built from `core.rule_sets()` rather than a hardcoded string: a
+    // custom list replaces the shipped names entirely, the same way `the_core_serves_the_shipped_
+    // rules_until_the_app_injects_its_own` proves it for `rule_sets()` itself.
+    let core = Core::default();
+    core.set_rule_sets(vec![
+        RuleSet { id: "general".into(), name: "General".into(), text: "g".into() },
+        RuleSet { id: "db".into(), name: "Banco de Dados".into(), text: "sql".into() },
+    ]);
+    let text = instructions_of(&core);
+    assert!(text.contains("Banco de Dados"), "{text}");
+    assert!(!text.contains("Backend"), "stale defaults must not leak through: {text}");
+}
+
+#[test]
+fn with_no_rule_sets_at_all_the_briefing_says_nothing_about_them() {
+    let core = Core::default();
+    core.set_rule_sets(vec![]);
+    let text = instructions_of(&core);
+    assert!(!text.contains("Rule sets"), "{text}");
+    assert!(!text.contains("General (always applied)"), "{text}");
+}
+
+#[test]
+fn without_a_general_set_the_briefing_does_not_claim_one_applies() {
+    // The core trusts nothing but its own state: General cannot be deleted through the editor,
+    // but that invariant lives in the frontend, not here.
+    let core = Core::default();
+    core.set_rule_sets(vec![RuleSet {
+        id: "db".into(),
+        name: "Banco de Dados".into(),
+        text: "sql".into(),
+    }]);
+    let text = instructions_of(&core);
+    assert!(text.contains("Banco de Dados"), "{text}");
+    assert!(!text.contains("General (always applied)"), "{text}");
+}
+
+#[test]
+fn the_rules_tool_lists_names_and_returns_one_set() {
+    let core = Core::default();
+    let listed = call(&core, "alethe_rules", json!({}));
+    let names = listed["sets"].as_array().expect("names");
+    assert!(names.iter().any(|value| value == "Frontend"), "{listed}");
+
+    let one = rpc(
+        &core,
+        2,
+        "tools/call",
+        json!({ "name": "alethe_rules", "arguments": { "name": "frontend" } }),
+    );
+    let text = one["result"]["content"][0]["text"].as_str().expect("text");
+    assert!(text.starts_with("# Frontend"), "plain markdown, not escaped JSON: {text}");
+}
+
+#[test]
+fn the_rules_tool_refuses_an_unknown_name() {
+    let core = Core::default();
+    let result = call(&core, "alethe_rules", json!({ "name": "Backhand" }));
+    let text = result["error"].as_str().unwrap_or_default();
+    assert!(text.contains("unknown rule set"), "the call must be refused: {result}");
+    assert!(text.contains("Backend"), "the refusal lists what exists: {text}");
+}
+
+fn instructions_of(core: &Core) -> String {
+    rpc(core, 1, "initialize", json!({}))["result"]["instructions"]
         .as_str()
-        .expect("server instructions");
+        .expect("server instructions")
+        .to_string()
+}
+
+#[test]
+fn the_instructions_send_questions_about_alethe_to_the_guide() {
+    let core = Core::default();
+    let text = instructions_of(&core);
     assert!(text.contains("alethe_guide"), "{text}");
+}
+
+#[test]
+fn the_instructions_teach_shells_only_where_they_exist() {
+    let bare = instructions_of(&Core::default());
+    assert!(!bare.contains("alethe_open_shell"), "{bare}");
+
+    let (core, _) = shell_core();
+    let text = instructions_of(&core);
+    assert!(text.contains("alethe_open_shell"), "{text}");
+    assert!(text.contains("in two ways"), "{text}");
+    assert!(text.contains("up -d"), "{text}");
 }
 
 #[test]
@@ -775,6 +1170,55 @@ fn a_worker_that_never_finishes_is_stopped_by_its_budget() {
 }
 
 #[test]
+fn a_delegated_job_records_the_rule_set_it_was_given() {
+    let core = Core::default();
+    core.set_launcher(silent_launcher());
+    let dir = workspace("rules-name");
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "cwd": dir.to_string_lossy(), "tasks": ["one"], "rules": "backend" }),
+    );
+
+    let job = &core.snapshot()["jobs"][0];
+    // Resolved, not as typed: the board shows the set that was actually used.
+    assert_eq!(job["rules"], json!("Backend"), "{job}");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn delegating_without_a_rule_set_records_none() {
+    let core = Core::default();
+    core.set_launcher(silent_launcher());
+    let dir = workspace("rules-none");
+    call(&core, "alethe_delegate", json!({ "cwd": dir.to_string_lossy(), "tasks": ["one"] }));
+
+    assert_eq!(core.snapshot()["jobs"][0]["rules"], json!(null));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_unknown_rule_set_refuses_the_call_and_starts_no_worker() {
+    let core = Core::default();
+    core.set_launcher(silent_launcher());
+    let dir = workspace("rules-unknown");
+    let result = call(
+        &core,
+        "alethe_delegate",
+        json!({ "cwd": dir.to_string_lossy(), "tasks": ["one"], "rules": "Backhand" }),
+    );
+
+    let text = result["error"].as_str().unwrap_or_default();
+    assert!(text.contains("unknown rule set"), "the call must be refused: {result}");
+    assert!(text.contains("Backend"), "the refusal lists what exists: {text}");
+    assert_eq!(core.snapshot()["jobs"].as_array().map(Vec::len), Some(0), "no worker started");
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn isolating_outside_a_repository_says_so() {
     let core = Core::default();
     core.set_launcher(silent_launcher());
@@ -918,6 +1362,27 @@ fn steering_a_running_claude_worker_interrupts_instead_of_waiting_out_the_turn()
     );
 
     let _ = call(&core, "alethe_cancel", json!({ "jobIds": [&job_id] }));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn cancelling_through_the_core_settles_the_worker() {
+    let core = Core::default();
+    core.set_launcher(silent_launcher());
+    let dir = workspace("cancel-method");
+    call(
+        &core,
+        "alethe_delegate",
+        json!({ "cwd": dir.to_string_lossy(), "tasks": ["hold"], "timeoutSeconds": 120 }),
+    );
+    let job_id = core.snapshot()["jobs"][0]["id"].as_str().expect("a job").to_string();
+
+    let cancelled = core.cancel_jobs(&[job_id.clone()]);
+
+    assert_eq!(cancelled, vec![job_id.clone()]);
+    let status = core.snapshot()["jobs"][0]["status"].clone();
+    assert_eq!(status, json!("cancelled"), "{status}");
+
     let _ = std::fs::remove_dir_all(&dir);
 }
 

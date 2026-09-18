@@ -122,6 +122,13 @@ type UiState = {
 
   agentCanvasSession: { folder: string; ptyId: string } | null
 
+  /**
+   * The shell PTY shown in the orchestration board's inspector overlay. It belongs to no workspace
+   * pane, so it has to be named here for `computeVisibleFocusedPtyIds` to report it visible —
+   * otherwise it gets no scrollback replay and its output stream is switched off. null = closed.
+   */
+  inspectorPtyId: string | null
+
   agentCanvasBudgetUsd: number | null
   /** Ephemeral in-app notifications. */
   toasts: InAppToast[]
@@ -165,6 +172,7 @@ type UiState = {
   showGsdSyncSidebar: () => void
   showMcpSidebar: () => void
   setAgentCanvasSession: (session: { folder: string; ptyId: string } | null) => void
+  setInspectorPty: (ptyId: string | null) => void
   setAgentCanvasBudget: (usd: number | null) => void
   pushToast: (toast: {
     title: string
@@ -207,6 +215,7 @@ export const useUiStore = create<UiState>((set) => ({
   rightSidebarMarkdown: null,
   rightSidebarMarkdownTabs: [],
   agentCanvasSession: null,
+  inspectorPtyId: null,
   agentCanvasBudgetUsd: null,
   toasts: [],
   notifications: [],
@@ -309,6 +318,7 @@ export const useUiStore = create<UiState>((set) => ({
   showGsdSyncSidebar: () => set({ rightSidebarMode: 'gsdSync' }),
   showMcpSidebar: () => set({ rightSidebarMode: 'mcp' }),
   setAgentCanvasSession: (session) => set({ agentCanvasSession: session }),
+  setInspectorPty: (ptyId) => set({ inspectorPtyId: ptyId }),
   setAgentCanvasBudget: (usd) => set({ agentCanvasBudgetUsd: usd }),
   pushToast: ({ title, body, agent, actions, silent }) =>
     set((s) => {

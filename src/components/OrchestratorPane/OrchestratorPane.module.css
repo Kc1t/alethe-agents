@@ -113,6 +113,14 @@
   background: var(--status-offline-soft);
 }
 
+.emptyState {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .empty {
   display: flex;
   flex: 1;
@@ -236,24 +244,13 @@
   color: var(--fg-muted);
 }
 
-.tab[data-state='running'] .dot {
-  background: var(--status-working);
+/* The tab's dot is liveness, not job state: whether this planner's own terminal is still running,
+   never whether its workers happen to be idle right now. */
+.tab[data-live='true'] .dot {
+  background: var(--status-active);
 }
 
-.tab[data-state='queued'] .dot {
-  background: var(--status-waiting);
-}
-
-.tab[data-state='interrupted'] .dot {
-  background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--status-waiting);
-}
-
-.tab[data-state='failed'] .dot {
-  background: var(--status-offline);
-}
-
-.tab[data-state='finished'] .dot {
+.tab[data-live='false'] .dot {
   background: var(--status-stopped);
 }
 
@@ -624,13 +621,42 @@
   background: var(--status-stopped);
 }
 
-/* ---------- worker node ---------- */
+/* ---------- shell group node: laid out like a run root, but never clickable ---------- */
 
-.worker {
+.shellGroup {
   position: absolute;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+}
+
+.shellGroup[data-attachment='detached'] {
+  background: color-mix(in srgb, var(--bg-sunken) 45%, var(--bg-elevated));
+}
+
+.shellGroupCard {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px 13px 12px;
+}
+
+/* ---------- worker node ---------- */
+
+/* Visible, not hidden: a hidden overflow would clip .workerControls below, which sits above the
+   card at a negative top offset (see ShellNode's .node, which solves the same problem for shells).
+   The card's own rounded corners do not depend on this - border-radius still applies to .worker's
+   own background/border regardless of overflow. What DID depend on it is any full-width child with
+   its own background sitting flush against the bottom edge (.ask, .contextTrack): those get their
+   own bottom radius below instead of relying on the parent to crop them. */
+.worker {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -653,6 +679,68 @@
 .worker[data-lane='finished'][data-selected='true'],
 .worker[data-lane='finished']:hover {
   opacity: 1;
+}
+
+.workerControls {
+  position: absolute;
+  top: -30px;
+  right: 0;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--anim-fast);
+}
+
+.worker:hover .workerControls,
+.worker:focus-within .workerControls {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.workerControlIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition:
+    background var(--anim-fast),
+    color var(--anim-fast);
+}
+
+.workerControlIcon:hover {
+  background: var(--panel-hover);
+  color: var(--status-offline);
+}
+
+.workerControlLabel {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 10px;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.workerControlLabel:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
 }
 
 .worker[data-status='failed'] {
@@ -777,6 +865,16 @@
   background: var(--fg-faint);
 }
 
+/* .worker no longer clips its children (see the comment on .worker above), so whichever of these
+   two ends up last - the context track almost always does, the ask panel only when a blocked
+   worker has no context share to show - needs its own bottom radius to match the card's corners,
+   instead of relying on the parent to crop a square edge into a rounded one. .errBar is excluded:
+   it paints no background of its own, so it has nothing that needs cropping. */
+.worker > .ask:last-child,
+.worker > .contextTrack:last-child {
+  border-radius: 0 0 7px 7px;
+}
+
 .errBar {
   display: flex;
   align-items: center;
@@ -791,149 +889,6 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-}
-
-.detail {
-  padding: 10px 12px 11px 14px;
-  border-top: 1px solid var(--border);
-}
-
-.detailLabel {
-  margin-bottom: 5px;
-  font-size: 9px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--fg-faint);
-}
-
-.plan + .detailLabel,
-.report + .detailLabel {
-  margin-top: 10px;
-}
-
-.plan {
-  margin: 0;
-  padding-left: 14px;
-  font-size: 11px;
-  line-height: 1.55;
-  color: var(--fg-muted);
-}
-
-.report {
-  margin: 0;
-  font-size: 11px;
-  line-height: 1.55;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  color: var(--fg-muted);
-}
-
-.detailActions {
-  display: flex;
-  gap: 6px;
-  margin-top: 10px;
-}
-
-.action {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  font: inherit;
-  font-size: 10px;
-  color: var(--fg-muted);
-  background: transparent;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.action:hover {
-  color: var(--fg);
-  border-color: var(--accent);
-}
-
-.diffBlock {
-  margin-top: 10px;
-  max-height: 260px;
-  overflow: auto;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg-sunken);
-}
-
-.diffText {
-  margin: 0;
-  padding: 6px 0;
-  font-family: var(--font-mono, monospace);
-  font-size: 10px;
-  line-height: 1.5;
-  white-space: pre;
-  tab-size: 4;
-}
-
-.diffAdded {
-  display: block;
-  min-width: fit-content;
-  padding: 0 8px;
-  color: var(--status-working);
-  background: var(--status-working-soft);
-}
-
-.diffRemoved {
-  display: block;
-  min-width: fit-content;
-  padding: 0 8px;
-  color: var(--status-offline);
-  background: var(--status-offline-soft);
-}
-
-.diffHunk {
-  display: block;
-  min-width: fit-content;
-  padding: 0 8px;
-  color: var(--accent);
-  background: var(--accent-bg-soft);
-}
-
-.diffHeaderLine {
-  display: block;
-  min-width: fit-content;
-  padding: 0 8px;
-  color: var(--fg-faint);
-}
-
-.mediaStrip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.mediaFigure {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  width: 96px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  cursor: zoom-in;
-}
-
-.mediaThumb {
-  width: 96px;
-  height: 96px;
-  object-fit: cover;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--bg-sunken);
-  transition: border-color 0.15s, opacity 0.15s;
-}
-
-.mediaFigure:hover .mediaThumb {
-  border-color: var(--accent);
-  opacity: 0.9;
 }
 
 .media {
@@ -981,50 +936,6 @@
   font-size: 9px;
   color: var(--fg-faint);
   text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mediaLink {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 240px;
-  padding: 6px 9px;
-  overflow: hidden;
-  font: inherit;
-  color: var(--fg-muted);
-  text-align: left;
-  background: transparent;
-  border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.mediaLink:hover {
-  color: var(--fg);
-  border-color: var(--accent);
-}
-
-.mediaLinkText {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  overflow: hidden;
-}
-
-.mediaLinkHost {
-  overflow: hidden;
-  font-size: 11px;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mediaLinkPath {
-  overflow: hidden;
-  font-size: 9px;
-  color: var(--fg-faint);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1180,14 +1091,13 @@
   background: var(--status-idle);
 }
 
-/* Blocked is the only dot that breathes: it is the one state costing a worker right now. */
-.tab[data-state='blocked'] .dot,
+/* Blocked is the only dot that breathes: it is the one state costing a worker right now. Not the
+   planner tab's own dot, which reads liveness rather than job state - see .tab[data-live] above. */
 .run[data-lane='blocked'] .dot,
 .worker[data-status='blocked'] .dot,
 .railRow[data-status='blocked'] .dot,
 .railRow[data-lane='blocked'] .dot,
-.branchRow[data-lane='blocked'] .dot,
-.composerTarget[data-status='blocked'] .dot {
+.branchRow[data-lane='blocked'] .dot {
   background: var(--status-waiting);
   animation: block-pulse 1.8s ease-in-out infinite;
 }
@@ -1267,149 +1177,6 @@
   text-align: center;
   color: var(--fg-faint);
   font-variant-numeric: tabular-nums;
-}
-
-/* ---------- composer: the canvas' own input line ---------- */
-
-.composer {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  flex: none;
-  padding: 8px 12px;
-  background: var(--bg-elevated);
-  border-top: 1px solid var(--border);
-  transition: border-color var(--anim-fast) ease;
-}
-
-.composer:focus-within {
-  border-top-color: var(--accent-border);
-}
-
-.composerTarget {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  flex: none;
-  max-width: 38%;
-  overflow: hidden;
-}
-
-.composerId {
-  overflow: hidden;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--fg-muted);
-}
-
-.composerId[data-idle='true'] {
-  font-family: inherit;
-  color: var(--fg-faint);
-}
-
-.composerTarget[data-status='running'] .dot {
-  background: var(--status-working);
-}
-
-.composerTarget[data-status='queued'] .dot {
-  background: var(--status-waiting);
-}
-
-.composerTarget[data-status='failed'] .dot {
-  background: var(--status-offline);
-}
-
-.composerTarget[data-status='done'] .dot {
-  background: var(--status-active);
-}
-
-.composerTarget[data-status='interrupted'] .dot {
-  background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--status-waiting);
-}
-
-.composerInput {
-  flex: 1;
-  min-width: 0;
-  height: 26px;
-  padding: 0 8px;
-  font: inherit;
-  font-size: 11px;
-  color: var(--fg);
-  background: var(--bg-sunken);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-}
-
-.composerInput:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.composerInput::placeholder {
-  color: var(--fg-faint);
-}
-
-.composerInput:disabled {
-  cursor: default;
-  opacity: 0.6;
-}
-
-.composerMode {
-  flex: none;
-  padding: 2px 6px;
-  font-size: 9px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--fg-faint);
-  background: var(--bg-sunken);
-  border-radius: 3px;
-}
-
-.composerMode[data-mode='steer'] {
-  color: var(--status-working);
-  background: var(--status-working-soft);
-}
-
-.composerMode[data-mode='resume'] {
-  color: var(--status-waiting);
-  background: var(--status-waiting-soft);
-}
-
-.composerNote {
-  overflow: hidden;
-  flex: none;
-  max-width: 34ch;
-  font-size: 10px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--status-waiting);
-}
-
-.composerSend {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  color: var(--fg-muted);
-  background: var(--bg-sunken);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.composerSend:hover:not(:disabled) {
-  color: var(--fg);
-  background: var(--accent-bg-soft);
-  border-color: var(--accent);
-}
-
-.composerSend:disabled {
-  cursor: default;
-  opacity: 0.45;
 }
 
 /* ---------- summary rail ---------- */
@@ -1910,7 +1677,6 @@
 @media (prefers-reduced-motion: reduce) {
   .edge[data-lane='running'],
     .hint,
-  .composer,
   .tab {
     transition: none;
   }
@@ -1920,8 +1686,7 @@
   .worker[data-status='blocked'] .dot,
   .railRow[data-status='blocked'] .dot,
   .railRow[data-lane='blocked'] .dot,
-  .branchRow[data-lane='blocked'] .dot,
-  .composerTarget[data-status='blocked'] .dot {
+  .branchRow[data-lane='blocked'] .dot {
     animation: none;
     box-shadow: 0 0 0 2px var(--status-waiting-soft);
   }

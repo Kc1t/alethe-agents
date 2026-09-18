@@ -49,9 +49,16 @@ fullscreen; flat mode mixes panes from several projects.
   the background.
 - A worker that needs permission shows **Waiting on you** and leads the board. Its card offers
   approve once, approve for the session, decline or abort.
-- A worker card can show the diff it produced; one that worked in its own worktree can be applied
-  to the branch from the card.
+- A worker card can show the diff it produced. Applying an isolated worker's work - one that used
+  its own worktree - is not a button on the card: the person asks the lead agent to do it, and the
+  board offers a shortcut that writes that instruction into the lead's terminal, ready to edit and
+  send.
 - The board header warns when Claude or Codex is close to its usage limit.
+- A planner can start long-running commands (a dev server, `docker compose up`) as **shells**. They
+  show up on the board as their own cards, joined by a line to the agent that opened them, with
+  stop, restart, run again, open terminal and remove appearing when the person hovers a card.
+  Clicking a shell's card opens a panel with its live terminal. Closing that terminal only detaches
+  from it; the command keeps running until it is stopped on the board.
 
 ## Preferences
 
@@ -65,7 +72,7 @@ fullscreen; flat mode mixes panes from several projects.
 | Plugins | Extensions that add themes, panes, sidebar tabs and commands. |
 | Terminal and agents | Terminal appearance and which agents are available. |
 | Integrations | External services, including 9router and Spotify. |
-| Multi-Agent & Telemetry | Real-time metrics, event traces and structured logs. |
+| Multi-Agent & Telemetry | Real-time metrics, event traces, structured logs and the rule sets sent to workers. |
 | About & updates | The installed version and software updates. |
 
 **Features** toggles: Browser (websites as panes), Graphify (the code graph), MCP & Skills (every
@@ -75,6 +82,11 @@ OpenCode terminal) and AI Memory (long-term memory shared across agents; needs t
 
 **Plugins** ships Todo List, Theme Pack and Git Control, and can install local plugins or ones
 from the catalogue. A pane whose plugin is disabled says so instead of opening.
+
+**Multi-Agent & Telemetry** is also where the rule sets live — the engineering rules Alethe prefixes
+to a worker's first message. General always applies; the person edits it, adds sets of their own, and
+restores Alethe's with a button. You name the set a task needs in `rules` when you delegate, and read
+one with alethe_rules before writing code yourself.
 
 **9router** (Integrations) is a local proxy that spreads Claude Code, Codex and OpenCode traffic
 across providers with fallback. The page installs or detects it, starts and stops it, opens its

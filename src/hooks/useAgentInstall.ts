@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
-import { installShellLine, type InstallMethod } from '../lib/agentInstall'
+import { installCommandLine, type InstallMethod } from '../lib/agentInstall'
 import {
   agentCliVersion,
+  attachPty,
   findCliLauncher,
   killPty,
   listenPtyData,
   listenPtyExit,
+  ptyExists,
   spawnPty,
-  writePty,
 } from '../lib/tauri'
 import { resolveAgentCliCommand } from '../lib/agentProviders'
 import type { AgentType } from '../lib/types'
@@ -24,7 +25,12 @@ export type AgentInstallStatus = 'idle' | 'running' | 'success' | 'failed'
 export type AgentInstallShadowConflict = { path: string }
 
 const MAX_LOG_CHARS = 12_000
-const PROMPT_SETTLE_MS = 400
+/**
+ * A run that never reports back used to sit on "installing" forever, holding the app-wide package
+ * lock with it — no other install could start until the app was restarted. Long enough for a slow
+ * network, short enough that the person gets a real answer.
+ */
+const INSTALL_TIMEOUT_MS = 10 * 60_000
 
 function trimLog(value: string): string {
   return value.length > MAX_LOG_CHARS ? value.slice(value.length - MAX_LOG_CHARS) : value
@@ -78,8 +84,15 @@ export function useAgentInstall(agent: AgentType, lockKey: string = agent) {
   const ptyIdRef = useRef<string | null>(null)
   const cleanupRef = useRef<Array<() => void>>([])
   const disposedRef = useRef(false)
+  const timerRef = useRef<number | null>(null)
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current)
+    timerRef.current = null
+  }, [])
 
   const teardown = useCallback(() => {
+    clearTimer()
     cleanupRef.current.forEach((stop) => stop())
     cleanupRef.current = []
     const ptyId = ptyIdRef.current
@@ -116,69 +129,96 @@ export function useAgentInstall(agent: AgentType, lockKey: string = agent) {
         // A bare shell, then the command written into it: the native installers
         // are pipelines (`irm ... | iex`), which cannot be expressed as a
         // launcher plus argv.
-        const spawned = await spawnPty({ cols: 100, rows: 24, id: ptyId })
+        // The shell runs the line and ends with it, so `pty://exit` is the honest signal that the
+        // run is over — see `installCommandLine`.
+        const spawned = await spawnPty({
+          cols: 100,
+          rows: 24,
+          id: ptyId,
+          commandLine: installCommandLine(method.command),
+        })
         if (disposedRef.current) {
           void killPty(spawned.id).catch(() => undefined)
           return
         }
         ptyIdRef.current = spawned.id
+        timerRef.current = window.setTimeout(() => {
+          if (disposedRef.current || ptyIdRef.current !== spawned.id) return
+          setLog((current) => trimLog(`${current}\n[alethe] timed out; stopping.`))
+          setStatus('failed')
+          teardown()
+        }, INSTALL_TIMEOUT_MS)
 
         cleanupRef.current.push(
           await listenPtyData(spawned.id, (chunk) => {
             setLog((current) => trimLog(current + chunk))
           }),
         )
-        cleanupRef.current.push(
-          await listenPtyExit(spawned.id, (payload) => {
-            ptyIdRef.current = null
-            if (busyAgent === lockKey) setBusyAgent(null)
-            // `installShellLine` ends the shell with a bare `exit`, which carries the
-            // installer command's own exit status. A non-zero code means the installer
-            // itself reported failure (network error, permission denied, ...) — trust it
-            // instead of falling through to the resolver, which would still find the
-            // previous binary on PATH and misreport the run as a success.
-            if (payload.code !== 0) {
-              setStatus('failed')
-              return
-            }
-            if (!command) {
-              setStatus('failed')
-              return
-            }
-            // A zero exit code still doesn't confirm the binary landed somewhere we
-            // can launch it from, so ask the resolver.
-            void findCliLauncher(command)
-              .then(async (found) => {
+        // The command starts with the shell, so the first lines can land before the listener above
+        // exists. Ask for what it already printed rather than showing a pane that looks stalled.
+        void attachPty(spawned.id)
+          .then((replay) => {
+            if (!disposedRef.current && replay) setLog((current) => trimLog(replay + current))
+          })
+          .catch(() => undefined)
+        // `code` is null when the run ended before the exit listener existed. A real non-zero code
+        // is still trusted: the installer itself reported failure (network error, permission
+        // denied, ...), and falling through to the resolver would find the previous binary on PATH
+        // and misreport the run as a success.
+        let settled = false
+        const settle = (code: number | null) => {
+          if (settled) return
+          settled = true
+          ptyIdRef.current = null
+          clearTimer()
+          if (busyAgent === lockKey) setBusyAgent(null)
+          if (code !== null && code !== 0) {
+            setStatus('failed')
+            return
+          }
+          if (!command) {
+            setStatus('failed')
+            return
+          }
+          // A clean exit still doesn't confirm the binary landed somewhere we can launch it from,
+          // so ask the resolver.
+          void findCliLauncher(command)
+            .then(async (found) => {
+              if (disposedRef.current) return
+              const worked = method.verifyAbsent ? !found : Boolean(found)
+              if (!worked) {
+                setStatus('failed')
+                return
+              }
+              // The resolver found a binary and the installer exited clean, but if that
+              // binary's version is exactly what it was before, the installer likely
+              // reached a different install of this CLI than the one PATH resolves to —
+              // a shadowing install earlier on PATH that the update never touched.
+              if (beforeVersion && found) {
+                const afterVersion = await agentCliVersion(command)
                 if (disposedRef.current) return
-                const worked = method.verifyAbsent ? !found : Boolean(found)
-                if (!worked) {
+                if (afterVersion && afterVersion === beforeVersion) {
+                  setShadowConflict({ path: found })
                   setStatus('failed')
                   return
                 }
-                // The resolver found a binary and the installer exited clean, but if that
-                // binary's version is exactly what it was before, the installer likely
-                // reached a different install of this CLI than the one PATH resolves to —
-                // a shadowing install earlier on PATH that the update never touched.
-                if (beforeVersion && found) {
-                  const afterVersion = await agentCliVersion(command)
-                  if (disposedRef.current) return
-                  if (afterVersion && afterVersion === beforeVersion) {
-                    setShadowConflict({ path: found })
-                    setStatus('failed')
-                    return
-                  }
-                }
-                setStatus('success')
-              })
-              .catch(() => {
-                if (!disposedRef.current) setStatus('failed')
-              })
-          }),
+              }
+              setStatus('success')
+            })
+            .catch(() => {
+              if (!disposedRef.current) setStatus('failed')
+            })
+        }
+
+        cleanupRef.current.push(
+          await listenPtyExit(spawned.id, (payload) => settle(payload.code)),
         )
 
-        await new Promise((resolve) => setTimeout(resolve, PROMPT_SETTLE_MS))
-        if (disposedRef.current) return
-        await writePty(spawned.id, installShellLine(method.command))
+        // The command starts with the shell, so a fast one can be over before the listener above
+        // exists — and its exit event is emitted to nobody, leaving the run stuck on "running"
+        // forever. Ask whether the PTY is still there; if it is already gone, the run is done.
+        if (!(await ptyExists(spawned.id).catch(() => true))) settle(null)
+
       } catch (error) {
         setLog((current) => trimLog(`${current}\n${String(error)}`))
         setStatus('failed')

@@ -39,6 +39,10 @@ export function Router9Settings() {
   const external = status?.external
   const running = Boolean(status?.running)
   const npmReady = toolchain?.npm === true
+  /** Alethe pins one version, so an install that already matches it has nothing to update to. */
+  const managedUpToDate = Boolean(
+    managed?.installed && status?.pinnedVersion && managed.version === status.pinnedVersion,
+  )
   const probing = status === null || toolchain === null
 
   const state = !config.enabled ? 'off' : running ? 'running' : 'ready'
@@ -158,7 +162,11 @@ export function Router9Settings() {
                   onClick={() => setInstallAction('install')}
                 >
                   <Download size={12} />
-                  {managed?.installed ? t('router9.update', { version: status?.pinnedVersion ?? '' }) : t('router9.install')}
+                  {!managed?.installed
+                    ? t('router9.install')
+                    : managedUpToDate
+                      ? t('router9.reinstall')
+                      : t('router9.update', { version: status?.pinnedVersion ?? '' })}
                 </button>
                 {managed?.installed ? (
                   <button

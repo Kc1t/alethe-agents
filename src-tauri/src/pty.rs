@@ -243,6 +243,8 @@ pub async fn spawn_pty(
 
     // canvas) — nunca polui o ambiente global nem outros terminais.
     env: Option<std::collections::HashMap<String, String>>,
+    // Set only by orchestrator shells: the line the shell runs and exits with.
+    command_line: Option<String>,
 ) -> Result<SpawnPtyResponse, String> {
     // OUTRO comando IPC (spawn de outro terminal, poll do GSD Sync, leitura de
 
@@ -306,6 +308,7 @@ pub async fn spawn_pty(
             requested_command.as_deref(),
             resolved_launcher.as_deref(),
             &extras,
+            command_line.as_deref(),
         );
         if let Some(extra_env) = env.as_ref() {
             for (key, value) in extra_env {
@@ -703,6 +706,7 @@ pub async fn spawn_pty(
             ),
         );
 
+        let child_for_watch = Arc::clone(&child);
         let session = PtySession {
             pty_id: id.clone(),
             master: Arc::new(Mutex::new(pair.master)),
@@ -723,6 +727,49 @@ pub async fn spawn_pty(
             .map_err(|_| "PTY sessions lock poisoned".to_string())?
             .insert(id.clone(), session);
 
+        // A PTY that runs a one-shot line (an installer, an orchestrator shell) is supposed to end
+        // with its command — but nothing here would notice. Teardown is only ever started by the
+        // app (kill, restart, suspend), and the reader does not reach EOF on its own while this
+        // process still holds the master's writer open, so a child that exits by itself leaves the
+        // session registered forever and `pty://exit` is never emitted: an install that finished
+        // sits on "installing" until the app is restarted. Watching the child closes that gap.
+        // Interactive shells keep the old behaviour, since they end only when the app says so.
+        if command_line.is_some() {
+            let watch_sessions = Arc::clone(&sessions);
+            let watch_child = Arc::clone(&child_for_watch);
+            let watch_id = id.clone();
+            thread::spawn(move || loop {
+                thread::sleep(Duration::from_millis(250));
+                let exited = watch_child
+                    .lock()
+                    .ok()
+                    .and_then(|mut child| child.try_wait().ok())
+                    .flatten()
+                    .is_some();
+                if !exited {
+                    // Someone else (kill, restart) already took the session: stop watching.
+                    let known = watch_sessions
+                        .lock()
+                        .map(|sessions| sessions.contains_key(&watch_id))
+                        .unwrap_or(false);
+                    if !known {
+                        break;
+                    }
+                    continue;
+                }
+                // Dropping the session releases the master and its writer, which ends the reader and
+                // runs the ordinary teardown: the exit is emitted with its code and reason.
+                let session = watch_sessions
+                    .lock()
+                    .ok()
+                    .and_then(|mut sessions| sessions.remove(&watch_id));
+                if let Some(session) = session {
+                    terminate_session(session);
+                }
+                break;
+            });
+        }
+
         Ok(SpawnPtyResponse { id })
     })
     .await
@@ -739,7 +786,10 @@ pub async fn spawn_pty(
 /// that same global lock, so a single slow kill stops every terminal in the app from accepting a
 /// keystroke while output, which never touches the lock, keeps arriving.
 fn kill_tree_without_holding_child(child: &Arc<Mutex<Box<dyn portable_pty::Child + Send + Sync>>>) {
-    let pid = child.lock().ok().and_then(|mut child| child.process_id());
+    // Scoped so the guard is visibly dropped before the kill, not merely at the end of a line.
+    let pid = {
+        child.lock().ok().and_then(|mut child| child.process_id())
+    };
     if let Some(pid) = pid {
         kill_process_tree(pid);
     }
@@ -770,6 +820,7 @@ pub async fn restart_pty(
     extra_args: Option<Vec<String>>,
     launcher_override: Option<String>,
     env: Option<HashMap<String, String>>,
+    command_line: Option<String>,
 ) -> Result<SpawnPtyResponse, String> {
     // apagar o scrollback antigo rodava direto no corpo async, fora de
 
@@ -807,6 +858,7 @@ pub async fn restart_pty(
         extra_args,
         launcher_override,
         env,
+        command_line,
     )
     .await
 }
@@ -1462,7 +1514,7 @@ fn scrollback_writer() -> &'static std::sync::mpsc::Sender<ScrollbackWrite> {
     })
 }
 
-fn wait_for_scrollback_writer() -> Result<(), String> {
+pub(crate) fn wait_for_scrollback_writer() -> Result<(), String> {
     let (done_tx, done_rx) = std::sync::mpsc::channel();
     scrollback_writer()
         .send(ScrollbackWrite::Barrier(done_tx))

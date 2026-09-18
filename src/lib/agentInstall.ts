@@ -1,3 +1,4 @@
+import { isWindows } from './platform'
 import type { AgentType } from './types'
 
 export type InstallToolchain = {
@@ -170,9 +171,15 @@ export function uninstallMethodsFor(
   })
 }
 
-/** Line handed to the shell PTY: run the installer, then close the shell. */
-export function installShellLine(command: string): string {
-  return `${command}; exit\r`
+/**
+ * The line the install PTY runs as its command, so the shell ends with the installer and the caller
+ * can trust `pty://exit`. It is NOT typed into an interactive shell: a pasted `exit` depends on the
+ * person's shell profile behaving, and when it does not the run never reports back and the install
+ * appears to hang forever. On Windows the exit code has to be forwarded explicitly, or PowerShell
+ * reports success for an installer that failed.
+ */
+export function installCommandLine(command: string): string {
+  return isWindows() ? `${command}; exit $LASTEXITCODE` : command
 }
 
 // eslint-disable-next-line no-control-regex

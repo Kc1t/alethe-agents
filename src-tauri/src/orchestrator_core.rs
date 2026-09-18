@@ -9,6 +9,7 @@ use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
@@ -16,11 +17,23 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde_json::{json, Map, Value};
 
+#[path = "orchestrator_shells.rs"]
+mod shells;
+pub use shells::{Shell, ShellHost, ShellOwner, SHELL_EXITED, SHELL_RUNNING, SHELL_STOPPED};
+
+#[path = "orchestrator_rules.rs"]
+mod rules;
+pub use rules::{default_rule_sets, find_set, rules_block, unknown_set_error, RuleSet, GENERAL_ID};
+
 const DEFAULT_MAX_CONCURRENT: usize = 4;
 /// Claude Code drops an MCP call somewhere past 45 seconds, and a check still blocked by then
 /// answers into a closed connection. Returning first and letting the planner call again is safe.
 const MAX_WAIT_MS: u64 = 45_000;
 const REPLY_LIMIT: usize = 16_000;
+const DEFAULT_OUTPUT_LINES: usize = 40;
+const MAX_OUTPUT_LINES: usize = 200;
+/// Enough scrollback to hold `MAX_OUTPUT_LINES` of ordinary output.
+const OUTPUT_BYTES: usize = 64 * 1024;
 
 pub const STATUS_QUEUED: &str = "queued";
 pub const STATUS_RUNNING: &str = "running";
@@ -176,6 +189,9 @@ struct Job {
     run_id: String,
     run_label: Option<String>,
     spec: String,
+    /// The rule set this job was delegated with, resolved to its real name. `None` means the
+    /// general set only.
+    rules_name: Option<String>,
     cwd: String,
     status: String,
     thread_id: Option<String>,
@@ -225,6 +241,7 @@ impl Job {
             "runId": self.run_id,
             "runLabel": self.run_label,
             "spec": self.spec,
+            "rules": self.rules_name,
             "cwd": self.cwd,
             "status": self.status,
             "threadId": self.thread_id,
@@ -249,6 +266,7 @@ impl Job {
             "runId": self.run_id,
             "runLabel": self.run_label,
             "spec": self.spec,
+            "rules": self.rules_name,
             "cwd": self.cwd,
             "status": self.status,
             "threadId": self.thread_id,
@@ -280,6 +298,7 @@ impl Job {
             run_id: text("runId").unwrap_or_else(|| "run-00".to_string()),
             run_label: text("runLabel"),
             spec: text("spec").unwrap_or_default(),
+            rules_name: text("rules"),
             cwd: text("cwd").unwrap_or_default(),
             status,
             thread_id: text("threadId"),
@@ -374,6 +393,8 @@ struct Inner {
     job_counter: u64,
     run_counter: u64,
     planners: HashMap<String, Planner>,
+    shells: Vec<Shell>,
+    shell_counter: u64,
 }
 
 impl Inner {
@@ -394,6 +415,7 @@ impl Inner {
         json!({
             "jobs": jobs,
             "planners": planners,
+            "shells": self.shells.iter().map(Shell::snapshot).collect::<Vec<_>>(),
             "running": self.running,
             "queued": self.queue.len(),
             "concurrencyLimit": self.max_concurrent
@@ -427,6 +449,12 @@ pub struct Core {
     observer: Arc<Mutex<Option<Observer>>>,
     dispatch: Arc<Mutex<Option<Sender<Value>>>>,
     store: Arc<Mutex<Option<PathBuf>>>,
+    /// Runs shells for planners. Set by the desktop app; the standalone binary has none.
+    shell_host: Arc<Mutex<Option<Arc<dyn ShellHost>>>>,
+    /// The person's sets, injected by the app. Empty until then, which means "use ours".
+    rule_sets: Arc<Mutex<Vec<RuleSet>>>,
+    /// Distinguishes "the app never spoke" from "the person removed them all".
+    rules_injected: Arc<AtomicBool>,
 }
 
 impl Default for Core {
@@ -442,6 +470,9 @@ impl Default for Core {
             observer: Arc::new(Mutex::new(None)),
             dispatch: Arc::new(Mutex::new(None)),
             store: Arc::new(Mutex::new(None)),
+            shell_host: Arc::new(Mutex::new(None)),
+            rule_sets: Arc::new(Mutex::new(Vec::new())),
+            rules_injected: Arc::new(AtomicBool::new(false)),
         }
     }
 }
@@ -600,6 +631,13 @@ impl Core {
                 },
             );
         }
+        for record in value.get("shells").and_then(Value::as_array).unwrap_or(&vec![]) {
+            let Some(shell) = Shell::from_record(record) else {
+                continue;
+            };
+            inner.shell_counter = inner.shell_counter.max(trailing_number(&shell.id));
+            inner.shells.push(shell);
+        }
         self.notify(&inner);
     }
 
@@ -627,6 +665,7 @@ impl Core {
                         "agent": planner.agent
                     }))
                     .collect::<Vec<_>>(),
+                "shells": inner.shells.iter().map(Shell::record).collect::<Vec<_>>(),
             })
         };
         let Ok(bytes) = serde_json::to_vec_pretty(&payload) else {
@@ -643,6 +682,283 @@ impl Core {
 
     pub fn set_launcher(&self, launcher: Launcher) {
         guard(&self.launchers).insert(launcher.kind.clone(), launcher);
+    }
+
+    pub fn set_rule_sets(&self, sets: Vec<RuleSet>) {
+        let mut stored = guard(&self.rule_sets);
+        *stored = sets;
+        self.rules_injected.store(true, Ordering::SeqCst);
+    }
+
+    /// Ours until the app says otherwise. An empty injected list is the person's choice to have
+    /// none, and is honoured: only "never injected" falls back.
+    pub fn rule_sets(&self) -> Vec<RuleSet> {
+        let stored = guard(&self.rule_sets);
+        if stored.is_empty() && !self.rules_injected.load(Ordering::SeqCst) {
+            return default_rule_sets();
+        }
+        stored.clone()
+    }
+
+    pub fn set_shell_host(&self, host: Arc<dyn ShellHost>) {
+        *guard(&self.shell_host) = Some(host);
+    }
+
+    pub fn has_shell_host(&self) -> bool {
+        guard(&self.shell_host).is_some()
+    }
+
+    fn shell_host(&self) -> Result<Arc<dyn ShellHost>, String> {
+        guard(&self.shell_host)
+            .clone()
+            .ok_or_else(|| "shells are not available in this build".to_string())
+    }
+
+    /// Registers the shell before starting it: a command that fails at once reports its exit
+    /// while `open` is still returning, and that report needs a shell to land on.
+    pub fn open_shell(
+        &self,
+        planner: Option<&str>,
+        command: &str,
+        name: Option<&str>,
+        cwd: &str,
+    ) -> Result<Value, String> {
+        let host = self.shell_host()?;
+        let command = command.trim();
+        if command.is_empty() {
+            return Err("command is empty".to_string());
+        }
+        // A planner that reconnected (app reopened, a fresh planner terminal) has no memory of a
+        // shell it started earlier and calls this again with the same command. Adopting the
+        // running one instead of starting a second process avoids a duplicate dev server/watcher
+        // on the board. A shell that already stopped or exited does not match: the person may
+        // want a fresh run.
+        {
+            let mut inner = guard(&self.inner);
+            if let Some(shell) = inner
+                .shells
+                .iter_mut()
+                .find(|entry| shells::is_equivalent_running(entry, command, cwd))
+            {
+                shell.owner = planner.map(ShellOwner::planner);
+                let payload = json!({
+                    "shellId": shell.id,
+                    "name": shell.name,
+                    "cwd": shell.cwd,
+                    "status": shell.status,
+                    "reused": true
+                });
+                self.notify(&inner);
+                drop(inner);
+                self.persist();
+                return Ok(payload);
+            }
+        }
+        let shell = {
+            let mut inner = guard(&self.inner);
+            inner.shell_counter += 1;
+            let shell = Shell {
+                id: format!("shell-{:02}", inner.shell_counter),
+                name: name
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToOwned::to_owned)
+                    .unwrap_or_else(|| shells::default_name(command)),
+                command: command.to_string(),
+                cwd: cwd.to_string(),
+                owner: planner.map(ShellOwner::planner),
+                status: SHELL_RUNNING.to_string(),
+                exit_code: None,
+                started_at_ms: now_ms(),
+                run: 1,
+                last_output: String::new(),
+            };
+            inner.shells.push(shell.clone());
+            self.notify(&inner);
+            shell
+        };
+        if let Err(error) = host.open(&shell.pty_id(), shell.run, &shell.command, &shell.cwd) {
+            let mut inner = guard(&self.inner);
+            inner.shells.retain(|entry| entry.id != shell.id);
+            self.notify(&inner);
+            return Err(error);
+        }
+        self.persist();
+        Ok(json!({
+            "shellId": shell.id,
+            "name": shell.name,
+            "cwd": shell.cwd,
+            "status": shell.status
+        }))
+    }
+
+    pub fn shell_output(&self, shell_id: &str, lines: usize) -> Result<Value, String> {
+        let host = self.shell_host()?;
+        let shell = guard(&self.inner)
+            .shells
+            .iter()
+            .find(|entry| entry.id == shell_id)
+            .cloned()
+            .ok_or_else(|| format!("unknown shell {shell_id}"))?;
+        let lines = lines.clamp(1, MAX_OUTPUT_LINES);
+        let output = if shell.status == SHELL_RUNNING {
+            shells::tail_lines(&host.output(&shell.pty_id(), OUTPUT_BYTES).unwrap_or_default(), lines)
+        } else {
+            shells::tail_lines(&shell.last_output, lines)
+        };
+        Ok(json!({
+            "shellId": shell.id,
+            "status": shell.status,
+            "exitCode": shell.exit_code,
+            "output": output
+        }))
+    }
+
+    /// `run` ties the report to one start of the shell: after a restart, the old process's exit
+    /// arrives late and must not mark the new one exited.
+    pub fn shell_exited(&self, shell_id: &str, run: u64, code: Option<i32>) {
+        let is_current = |entry: &Shell| {
+            entry.id == shell_id && entry.run == run && entry.status == SHELL_RUNNING
+        };
+        let Some(pty_id) = guard(&self.inner)
+            .shells
+            .iter()
+            .find(|entry| is_current(entry))
+            .map(Shell::pty_id)
+        else {
+            return;
+        };
+        let printed = self
+            .shell_host()
+            .ok()
+            .and_then(|host| host.output(&pty_id, OUTPUT_BYTES).ok())
+            .unwrap_or_default();
+        {
+            let mut inner = guard(&self.inner);
+            let Some(shell) = inner.shells.iter_mut().find(|entry| is_current(entry)) else {
+                return;
+            };
+            shell.status = SHELL_EXITED.to_string();
+            shell.exit_code = code;
+            shell.last_output = shells::tail_lines(&printed, MAX_OUTPUT_LINES);
+            self.notify(&inner);
+        }
+        self.persist();
+    }
+
+    /// Marks the shell stopped before stopping it, so the exit its own Ctrl+C causes is not
+    /// reported as the command failing.
+    pub fn stop_shell(&self, shell_id: &str) -> Result<Value, String> {
+        let host = self.shell_host()?;
+        let pty_id = {
+            let inner = guard(&self.inner);
+            let shell = inner
+                .shells
+                .iter()
+                .find(|entry| entry.id == shell_id)
+                .ok_or_else(|| format!("unknown shell {shell_id}"))?;
+            if shell.status != SHELL_RUNNING {
+                return Err(format!("{shell_id} is not running"));
+            }
+            shell.pty_id()
+        };
+        let printed = host.output(&pty_id, OUTPUT_BYTES).unwrap_or_default();
+        {
+            let mut inner = guard(&self.inner);
+            if let Some(shell) = inner.shells.iter_mut().find(|entry| entry.id == shell_id) {
+                shell.status = SHELL_STOPPED.to_string();
+                shell.last_output = shells::tail_lines(&printed, MAX_OUTPUT_LINES);
+            }
+            self.notify(&inner);
+        }
+        self.persist();
+        // The stopped status set above stands even if `host.stop` fails here: it records the
+        // person's intent, and the error still reaches the board as a toast. Play (`restart_shell`)
+        // and remove both call `host.stop` again, so a failed Ctrl+C/kill is retried from there. The
+        // shell's own exit report for this Ctrl+C, if it does land late, is already ignored — see
+        // `shell_exited`'s `is_current` check, which requires `SHELL_RUNNING` — because the status
+        // was set to stopped before this call.
+        host.stop(&pty_id)?;
+        self.shell_snapshot(shell_id)
+    }
+
+    /// Also the play of a shell that exited or was stopped. The old PTY is released first: a
+    /// process that ended on its own still holds its session, and a new one cannot start under the
+    /// same id until it is gone.
+    pub fn restart_shell(&self, shell_id: &str) -> Result<Value, String> {
+        let host = self.shell_host()?;
+        let shell = {
+            let mut inner = guard(&self.inner);
+            let shell = inner
+                .shells
+                .iter_mut()
+                .find(|entry| entry.id == shell_id)
+                .ok_or_else(|| format!("unknown shell {shell_id}"))?;
+            // Stopped first, so the old process's exit is not read as the new run failing.
+            shell.status = SHELL_STOPPED.to_string();
+            shell.clone()
+        };
+        host.stop(&shell.pty_id())?;
+        let run = {
+            let mut inner = guard(&self.inner);
+            let entry = inner
+                .shells
+                .iter_mut()
+                .find(|entry| entry.id == shell_id)
+                .ok_or_else(|| format!("unknown shell {shell_id}"))?;
+            entry.run += 1;
+            entry.status = SHELL_RUNNING.to_string();
+            entry.exit_code = None;
+            entry.started_at_ms = now_ms();
+            entry.last_output.clear();
+            let run = entry.run;
+            self.notify(&inner);
+            run
+        };
+        if let Err(error) = host.open(&shell.pty_id(), run, &shell.command, &shell.cwd) {
+            let mut inner = guard(&self.inner);
+            if let Some(entry) = inner.shells.iter_mut().find(|entry| entry.id == shell_id) {
+                entry.status = SHELL_STOPPED.to_string();
+            }
+            self.notify(&inner);
+            return Err(error);
+        }
+        self.persist();
+        self.shell_snapshot(shell_id)
+    }
+
+    pub fn remove_shell(&self, shell_id: &str) -> Result<Value, String> {
+        let host = self.shell_host()?;
+        let pty_id = {
+            let inner = guard(&self.inner);
+            let shell = inner
+                .shells
+                .iter()
+                .find(|entry| entry.id == shell_id)
+                .ok_or_else(|| format!("unknown shell {shell_id}"))?;
+            if shell.status == SHELL_RUNNING {
+                return Err(format!("stop {shell_id} before removing it"));
+            }
+            shell.pty_id()
+        };
+        // Releases a session and scrollback an exited process may still hold.
+        let _ = host.stop(&pty_id);
+        {
+            let mut inner = guard(&self.inner);
+            inner.shells.retain(|entry| entry.id != shell_id);
+            self.notify(&inner);
+        }
+        self.persist();
+        Ok(json!({ "removed": shell_id }))
+    }
+
+    fn shell_snapshot(&self, shell_id: &str) -> Result<Value, String> {
+        guard(&self.inner)
+            .shells
+            .iter()
+            .find(|entry| entry.id == shell_id)
+            .map(Shell::snapshot)
+            .ok_or_else(|| format!("unknown shell {shell_id}"))
     }
 
     fn set_job_routing(&self, job_id: &str, routing: Value) {
@@ -719,6 +1035,9 @@ impl Core {
     }
 
     fn spawn_worker(&self, job_id: &str) {
+        // Read before `inner` is locked: `Core::rule_sets` takes its own lock, and holding both at
+        // once is how this file deadlocks.
+        let sets = self.rule_sets();
         let (agent, cwd, spec, resume_thread, approval_policy, sandbox, web_search) = {
             let mut inner = guard(&self.inner);
             let Some(job) = inner.jobs.get_mut(job_id) else {
@@ -728,7 +1047,11 @@ impl Core {
             job.started_at = Some(now_ms());
             job.ended_at = None;
             // Work that arrived while the worker was down leads; otherwise this is its first turn.
-            let first_turn = job.inbox.pop_front().unwrap_or_else(|| job.spec.clone());
+            // Rules ride only on that first turn: a follow-up already has them in its conversation.
+            let first_turn = match job.inbox.pop_front() {
+                Some(queued) => queued,
+                None => first_turn_for(&sets, job),
+            };
             let started = (
                 job.agent.clone(),
                 job.cwd.clone(),
@@ -1033,6 +1356,81 @@ impl Core {
             .get(job_id)
             .ok_or_else(|| format!("unknown job {job_id}"))?;
         Ok(job.diff.clone().unwrap_or_default())
+    }
+
+    /// Interrupts running workers and settles them as cancelled. Returns the ids it acted on.
+    /// Both `alethe_cancel` and the app's cancel command go through here.
+    pub fn cancel_jobs(&self, job_ids: &[String]) -> Vec<String> {
+        let mut cancelled = Vec::new();
+        for job_id in job_ids.iter().cloned() {
+            let claude = {
+                let inner = guard(&self.inner);
+                inner.jobs.get(&job_id).map(|job| job.agent == "claude")
+            };
+            if claude == Some(true) {
+                // `cancel_queued` clears the CLI's own queue in the same round trip, so nothing
+                // it was holding starts a turn between the abort and the teardown below.
+                let staged = {
+                    let mut inner = guard(&self.inner);
+                    inner.jobs.get_mut(&job_id).and_then(|job| {
+                        job.awaiting_steer = false;
+                        job.next_request_id += 1;
+                        let request_id = format!("{job_id}-interrupt-{}", job.next_request_id);
+                        job.stdin.clone().map(|stdin| {
+                            (
+                                stdin,
+                                json!({
+                                    "type": "control_request",
+                                    "request_id": request_id,
+                                    "request": { "subtype": "interrupt", "cancel_queued": true }
+                                }),
+                            )
+                        })
+                    })
+                };
+                if let Some((stdin, request)) = staged {
+                    let _ = send_rpc(&stdin, &request);
+                }
+                self.finish(
+                    &job_id,
+                    STATUS_CANCELLED,
+                    Some("cancelled".into()),
+                    "cancelled by the lead".into(),
+                    true,
+                );
+                cancelled.push(job_id);
+                continue;
+            }
+            let payload = {
+                let inner = guard(&self.inner);
+                inner.jobs.get(&job_id).and_then(|job| {
+                    match (job.thread_id.clone(), job.active_turn_id.clone()) {
+                        (Some(thread_id), Some(turn_id)) => {
+                            Some(json!({ "threadId": thread_id, "turnId": turn_id }))
+                        }
+                        _ => None,
+                    }
+                })
+            };
+            if let Some(payload) = payload {
+                let staged = {
+                    let mut inner = guard(&self.inner);
+                    stage_rpc(&mut inner, &job_id, "turn/interrupt", payload)
+                };
+                if let Ok((stdin, request)) = staged {
+                    let _ = send_rpc(&stdin, &request);
+                }
+            }
+            self.finish(
+                &job_id,
+                STATUS_CANCELLED,
+                Some("cancelled".into()),
+                "cancelled by the lead".into(),
+                true,
+            );
+            cancelled.push(job_id);
+        }
+        cancelled
     }
 
     fn on_worker_message(
@@ -1410,6 +1808,127 @@ impl Core {
     }
 }
 
+/// The text a worker's first turn carries: its rules, then the task. Split out so the composition
+/// is testable without starting a process.
+fn first_turn_text(block: &str, spec: &str) -> String {
+    if block.is_empty() {
+        return spec.to_string();
+    }
+    format!("{block}<task>\n{spec}\n</task>")
+}
+
+/// Exactly what `spawn_worker` hands a worker on its first turn — production and its tests call
+/// this one function, so the seam from `rules_name` to the process is exercised, not read.
+///
+/// The named set can be gone by now: `alethe_delegate` refuses an unknown name, but a job can sit
+/// in the queue, or in the store across a restart, while the person renames or deletes that set.
+/// A miss falls back to the general block rather than to nothing — General always applies, and
+/// losing it silently is worse than losing the specialised set. `rules_name` is left as delegated:
+/// it records what was asked for, which is what the board reports.
+fn first_turn_for(sets: &[RuleSet], job: &Job) -> String {
+    let block = rules_block(sets, job.rules_name.as_deref())
+        .or_else(|_| rules_block(sets, None))
+        .unwrap_or_default();
+    first_turn_text(&block, &job.spec)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_first_turn_carries_the_rules_then_the_task() {
+        let text = first_turn_text("<alethe-rules>\nR\n</alethe-rules>\n\n", "do the thing");
+        assert!(text.starts_with("<alethe-rules>"), "{text}");
+        assert!(text.contains("<task>\ndo the thing\n</task>"), "{text}");
+    }
+
+    #[test]
+    fn without_rules_the_first_turn_is_just_the_task() {
+        assert_eq!(first_turn_text("", "do the thing"), "do the thing");
+    }
+
+    fn two_sets() -> Vec<RuleSet> {
+        vec![
+            RuleSet { id: GENERAL_ID.into(), name: "General".into(), text: "always this".into() },
+            RuleSet { id: "backend".into(), name: "Backend".into(), text: "server side".into() },
+        ]
+    }
+
+    /// Creates the job the way a planner does, so the test reads the `rules_name` the tool actually
+    /// recorded instead of one it wrote itself. No launcher is registered: the job is created and
+    /// then settles as unlaunchable, which leaves exactly the record the spawn path composes from.
+    fn delegate(core: &Core, rules: Option<&str>) {
+        let mut arguments = Map::new();
+        arguments.insert("cwd".into(), json!(std::env::temp_dir().to_string_lossy()));
+        arguments.insert("tasks".into(), json!(["do the thing"]));
+        if let Some(name) = rules {
+            arguments.insert("rules".into(), json!(name));
+        }
+        dispatch_tool(core, "alethe_delegate", &arguments, None).expect("the call is accepted");
+    }
+
+    /// The same composition `spawn_worker` performs, over the same stored job.
+    fn first_turn_of(core: &Core) -> String {
+        let sets = core.rule_sets();
+        let inner = guard(&core.inner);
+        let job = inner.jobs.values().next().expect("the delegated job");
+        first_turn_for(&sets, job)
+    }
+
+    #[test]
+    fn a_delegated_job_is_handed_its_named_set_and_the_general_one() {
+        let core = Core::default();
+        core.set_rule_sets(two_sets());
+        delegate(&core, Some("backend"));
+
+        let text = first_turn_of(&core);
+        assert!(text.starts_with("<alethe-rules>"), "{text}");
+        // Order is part of the contract (design §6): the general rules come first, so a named
+        // set that contradicts them reads as the narrower rule, not a correction out of nowhere.
+        let general = text.find("always this").expect("the general set travels too");
+        let named = text.find("server side").expect("the named set is there");
+        assert!(general < named, "general comes first: {text}");
+        assert!(text.contains("the repository wins"), "the precedence line: {text}");
+        assert!(text.contains("<task>\ndo the thing\n</task>"), "{text}");
+    }
+
+    #[test]
+    fn a_job_delegated_without_a_set_is_handed_the_general_rules() {
+        let core = Core::default();
+        core.set_rule_sets(two_sets());
+        delegate(&core, None);
+
+        let text = first_turn_of(&core);
+        assert!(text.contains("always this"), "{text}");
+        assert!(!text.contains("server side"), "nothing was named: {text}");
+    }
+
+    #[test]
+    fn a_set_deleted_while_the_job_waited_costs_the_set_and_not_the_general_rules() {
+        // The window `alethe_delegate`'s check cannot cover: the name was valid when the planner
+        // called, and the person edited the list while the job sat in the queue.
+        let core = Core::default();
+        core.set_rule_sets(two_sets());
+        delegate(&core, Some("Backend"));
+        core.set_rule_sets(vec![RuleSet {
+            id: GENERAL_ID.into(),
+            name: "General".into(),
+            text: "always this".into(),
+        }]);
+
+        let text = first_turn_of(&core);
+        assert!(text.contains("always this"), "the general rules survive the miss: {text}");
+        assert!(text.contains("the repository wins"), "a real block, not a fragment: {text}");
+        assert!(text.contains("<task>\ndo the thing\n</task>"), "{text}");
+        assert_eq!(
+            core.snapshot()["jobs"][0]["rules"],
+            json!("Backend"),
+            "the job still records what was requested"
+        );
+    }
+}
+
 // ---------------------------------------------------------------------- tools
 
 /// How to use and configure Alethe, for a planner the person asks for help. Read on demand through
@@ -1425,15 +1944,26 @@ fn tool_text(value: Value) -> String {
     }
 }
 
-const PLANNER_INTRO: &str = "\
-You are running inside Alethe, a desktop workspace that runs coding agents and shells side by side.
-This session is a planner: besides your own tools, Alethe can run other agents as workers for you.
+const PLANNER_OPENING: &str =
+    "You are running inside Alethe, a desktop workspace that runs coding agents and shells side by side.";
 
+const PLANNER_WORKERS: &str = "
 Workers - other agents
 - Work that splits into two or more independent units, each needing its own reading and
   judgement: send every unit in one alethe_delegate call instead of using your own subagents.
   Workers are separate processes on their own token budget, and they outlive your turn.
 - Do not delegate what one command does, or what is quicker to do than to describe.
+";
+
+const PLANNER_SHELLS: &str = "
+Shells - plain terminals
+- For anything that should keep running where the person can see it (a dev server, a watcher,
+  logs, a long build), open it with alethe_open_shell instead of running it hidden in your own
+  shell. The person sees it on Alethe's board, can stop and restart it there, and it outlives
+  you. Read what it printed with alethe_shell_output.
+- Keep the command in the foreground (docker compose up, not up -d): a detached command returns
+  at once, and the person can no longer stop it from the board.
+- Pass the project's folder as cwd; without it the shell starts in Alethe's own directory.
 ";
 
 const PLANNER_WORKING: &str = "
@@ -1468,7 +1998,95 @@ fn planner_instructions(core: &Core) -> String {
             workers.join(", ")
         )
     };
-    format!("{PLANNER_INTRO}{available}{PLANNER_WORKING}")
+    let shells = core.has_shell_host();
+    let reach = if shells {
+        "Alethe can run work for you in two ways."
+    } else {
+        "Alethe can run other agents as workers for you."
+    };
+    let shells_section = if shells { PLANNER_SHELLS } else { "" };
+    // Built from live state like `available` above: a set the person deleted never appears here.
+    // Nothing but that state is trusted — the rule that General cannot be deleted is enforced in
+    // the frontend editor, not here, so its clause only prints when a `GENERAL_ID` set is present.
+    let sets = core.rule_sets();
+    let rules = if sets.is_empty() {
+        String::new()
+    } else {
+        let has_general = sets.iter().any(|set| set.id == GENERAL_ID);
+        let names: Vec<&str> = sets
+            .iter()
+            .filter(|set| set.id != GENERAL_ID)
+            .map(|set| set.name.as_str())
+            .collect();
+        let listed = if has_general {
+            format!(
+                "General (always applied){}{}",
+                if names.is_empty() { "" } else { ", " },
+                names.join(", ")
+            )
+        } else {
+            names.join(", ")
+        };
+        // Only worth asking for a choice when there is something to choose: with the general set
+        // alone, every worker gets it whatever the planner names.
+        let choose = if names.is_empty() {
+            String::new()
+        } else {
+            "- When you delegate, name the set that matches the work, in `rules`. Omit it and the \
+             worker gets the general rules only.\n"
+                .to_string()
+        };
+        format!(
+            "\nRule sets: {listed}\n{choose}- Read a set with alethe_rules before writing code \
+             yourself.\n"
+        )
+    };
+    format!(
+        "{PLANNER_OPENING}\nThis session is a planner: besides your own tools, {reach}\n\
+         {PLANNER_WORKERS}{available}{shells_section}{rules}{PLANNER_WORKING}"
+    )
+}
+
+/// The shell tools exist only where something can run them: the desktop app registers a host,
+/// the standalone binary does not.
+fn tools_for(core: &Core) -> Value {
+    let mut list = tools();
+    if core.has_shell_host() {
+        if let Some(array) = list.as_array_mut() {
+            array.extend(shell_tools());
+        }
+    }
+    list
+}
+
+fn shell_tools() -> Vec<Value> {
+    vec![
+        json!({
+            "name": "alethe_open_shell",
+            "description": "Start a long-running command (a dev server, docker compose up, a watcher, a long build) as a shell Alethe keeps running and shows the person on its board, where they can stop and restart it. Keep the command in the foreground: a detached one returns at once. If a shell with the same command and cwd is already running - for example because you reconnected and forgot about it - this adopts that shell as yours instead of starting a duplicate, and the result carries \"reused\": true. Returns a shellId for alethe_shell_output.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "command": { "type": "string", "description": "The command line, run by the system shell exactly as typed." },
+                    "cwd": { "type": "string", "description": "Folder to run it in. Pass the project's folder; without it the shell starts in Alethe's own directory." },
+                    "name": { "type": "string", "description": "A short name the person will recognise on the board. Defaults to the command's first word." }
+                },
+                "required": ["command"]
+            }
+        }),
+        json!({
+            "name": "alethe_shell_output",
+            "description": "Read what a shell printed last, with terminal escape codes removed, and whether it is still running or has exited, with its exit code.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "shellId": { "type": "string" },
+                    "lines": { "type": "number", "description": "How many lines from the end, 40 by default, at most 200." }
+                },
+                "required": ["shellId"]
+            }
+        }),
+    ]
 }
 
 pub fn tools() -> Value {
@@ -1490,6 +2108,10 @@ pub fn tools() -> Value {
                         "description": "Which CLI runs the worker. Defaults to codex. A Claude worker runs without an approval channel (bypasses permissions) and does not yet report a live diff. Each vendor meters a different set of windows - Codex a 5 hour and a weekly one, Claude those two plus a separate weekly budget for Opus - so how much room one has left says nothing about the other. Do not reason about that from here: every response these tools return carries a fitness block with the current reading and names the side with room in headroom. Read it and prefer that side when one is running out."
                     },
                     "cwd": { "type": "string", "description": "Working directory. Defaults to the lead's directory." },
+                    "rules": {
+                        "type": "string",
+                        "description": "Name of the rule set this work belongs to (for example Backend or Frontend). The general rules always apply; this adds the ones for the area. Omit it when none fits. An unknown name is refused with the list of valid ones."
+                    },
                     "label": { "type": "string", "description": "A short name for this batch, in the user's words - what it is for, not how it is done. It is how the person watching tells one round of delegation from another." },
                     "isolate": {
                         "type": "boolean",
@@ -1537,6 +2159,16 @@ pub fn tools() -> Value {
             "name": "alethe_guide",
             "description": "How to use and configure Alethe: its workspace model, how to open terminals and agents, the orchestration board, every Preferences page, shortcuts and where its data lives. Call it before answering the person's questions about Alethe itself.",
             "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "alethe_rules",
+            "description": "The engineering rules Alethe applies here. Without a name it lists the sets; with one it returns that set's text. Read the set that matches before writing code yourself.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "description": "Set name, for example Backend." }
+                }
+            }
         },
         {
             "name": "alethe_status",
@@ -1863,6 +2495,22 @@ fn dispatch_tool(
                 .unwrap_or("codex")
                 .to_string();
 
+            // Resolved here so the refusal happens before anything is created, and so the job
+            // records the set's real name rather than whatever spelling the planner used.
+            let sets = core.rule_sets();
+            let rules_name = match arguments
+                .get("rules")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                Some(name) => match find_set(&sets, name) {
+                    Some(found) => Some(found.name.clone()),
+                    None => return Err(unknown_set_error(&sets, name)),
+                },
+                None => None,
+            };
+
             let (run_id, ids): (String, Vec<String>) = {
                 let mut inner = guard(&core.inner);
                 inner.run_counter += 1;
@@ -1918,6 +2566,7 @@ fn dispatch_tool(
                             run_id: run_id.clone(),
                             run_label: label.clone(),
                             spec: spec.clone(),
+                            rules_name: rules_name.clone(),
                             cwd: job_cwd,
                             status: STATUS_QUEUED.to_string(),
                             thread_id: None,
@@ -2029,7 +2678,47 @@ fn dispatch_tool(
             }))
         }
 
+        "alethe_open_shell" => {
+            let command = required_str(arguments, "command")?;
+            let name = arguments.get("name").and_then(Value::as_str);
+            let cwd = arguments
+                .get("cwd")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+                .or_else(|| {
+                    std::env::current_dir()
+                        .ok()
+                        .map(|path| path.to_string_lossy().into_owned())
+                })
+                .unwrap_or_default();
+            core.open_shell(planner, &command, name, &cwd)
+        }
+        "alethe_shell_output" => {
+            let shell_id = required_str(arguments, "shellId")?;
+            let lines = arguments
+                .get("lines")
+                .and_then(Value::as_u64)
+                .map_or(DEFAULT_OUTPUT_LINES, |value| value as usize);
+            core.shell_output(&shell_id, lines)
+        }
+
         "alethe_guide" => Ok(Value::String(PLANNER_GUIDE.to_string())),
+        "alethe_rules" => {
+            let sets = core.rule_sets();
+            match arguments
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                Some(name) => find_set(&sets, name)
+                    .map(|found| Value::String(found.text.clone()))
+                    .ok_or_else(|| unknown_set_error(&sets, name)),
+                None => Ok(json!({
+                    "sets": sets.iter().map(|set| set.name.clone()).collect::<Vec<_>>()
+                })),
+            }
+        }
         "alethe_status" => Ok(core.snapshot()),
 
         "alethe_steer" => {
@@ -2204,76 +2893,7 @@ fn dispatch_tool(
         }
 
         "alethe_cancel" => {
-            let ids = string_list(arguments, "jobIds");
-            let mut cancelled = Vec::new();
-            for job_id in ids {
-                let claude = {
-                    let inner = guard(&core.inner);
-                    inner.jobs.get(&job_id).map(|job| job.agent == "claude")
-                };
-                if claude == Some(true) {
-                    // `cancel_queued` clears the CLI's own queue in the same round trip, so nothing
-                    // it was holding starts a turn between the abort and the teardown below.
-                    let staged = {
-                        let mut inner = guard(&core.inner);
-                        inner.jobs.get_mut(&job_id).and_then(|job| {
-                            job.awaiting_steer = false;
-                            job.next_request_id += 1;
-                            let request_id = format!("{job_id}-interrupt-{}", job.next_request_id);
-                            job.stdin.clone().map(|stdin| {
-                                (
-                                    stdin,
-                                    json!({
-                                        "type": "control_request",
-                                        "request_id": request_id,
-                                        "request": { "subtype": "interrupt", "cancel_queued": true }
-                                    }),
-                                )
-                            })
-                        })
-                    };
-                    if let Some((stdin, request)) = staged {
-                        let _ = send_rpc(&stdin, &request);
-                    }
-                    core.finish(
-                        &job_id,
-                        STATUS_CANCELLED,
-                        Some("cancelled".into()),
-                        "cancelled by the lead".into(),
-                        true,
-                    );
-                    cancelled.push(job_id);
-                    continue;
-                }
-                let payload = {
-                    let inner = guard(&core.inner);
-                    inner.jobs.get(&job_id).and_then(|job| {
-                        match (job.thread_id.clone(), job.active_turn_id.clone()) {
-                            (Some(thread_id), Some(turn_id)) => {
-                                Some(json!({ "threadId": thread_id, "turnId": turn_id }))
-                            }
-                            _ => None,
-                        }
-                    })
-                };
-                if let Some(payload) = payload {
-                    let staged = {
-                        let mut inner = guard(&core.inner);
-                        stage_rpc(&mut inner, &job_id, "turn/interrupt", payload)
-                    };
-                    if let Ok((stdin, request)) = staged {
-                        let _ = send_rpc(&stdin, &request);
-                    }
-                }
-                core.finish(
-                    &job_id,
-                    STATUS_CANCELLED,
-                    Some("cancelled".into()),
-                    "cancelled by the lead".into(),
-                    true,
-                );
-                cancelled.push(job_id);
-            }
+            let cancelled = core.cancel_jobs(&string_list(arguments, "jobIds"));
             Ok(json!({ "cancelled": cancelled }))
         }
 
@@ -2336,7 +2956,7 @@ pub fn handle_mcp_body(core: &Core, body: &str, planner: Option<&str>) -> Option
                 "instructions": planner_instructions(core)
             }
         }),
-        "tools/list" => json!({ "jsonrpc": "2.0", "id": id, "result": { "tools": tools() } }),
+        "tools/list" => json!({ "jsonrpc": "2.0", "id": id, "result": { "tools": tools_for(core) } }),
         "tools/call" => {
             let name = params.get("name").and_then(Value::as_str).unwrap_or_default();
             let empty = Map::new();

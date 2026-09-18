@@ -39,6 +39,8 @@ export type RunCounts = Record<RunLane, number>
 export type OrchestratorRun = {
   id: string
   label: string
+  /** Rule set this run was delegated with, by name; null when none applied. */
+  rules: string | null
   jobs: OrchestratorJob[]
   counts: RunCounts
   state: RunLane
@@ -90,9 +92,11 @@ export function groupRuns(jobs: OrchestratorJob[]): OrchestratorRun[] {
     const runJobs = grouped.get(runId) ?? []
     const counts = countLanes(runJobs)
     const labelled = runJobs.find((job) => (job.runLabel ?? '').trim().length > 0)
+    const ruled = runJobs.find((job) => (job.rules ?? '').trim().length > 0)
     return {
       id: runId,
       label: labelled?.runLabel?.trim() || runId,
+      rules: ruled?.rules?.trim() || null,
       jobs: runJobs,
       counts,
       state: worstState(counts),

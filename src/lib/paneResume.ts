@@ -1,10 +1,11 @@
 import { useProjectsStore } from '../stores/projectsStore'
 import { preparePtyRuntimeLaunch } from './agentRuntimeAdapter'
+import { agentLabel, resolveAgentCliCommand } from './agentProviders'
+import { terminalNameForPty } from './plannerLabel'
 import { registerSessionClaim, releaseSessionClaim } from './sessionDiscovery'
 import { buildAgentLaunch } from './sessionLaunch'
 import { saveSession } from './sessionResume'
-import { agentHooksSettingsPath, restartPty } from './tauri'
-import { resolveAgentCliCommand } from './agentProviders'
+import { agentHooksSettingsPath, orchestratorMcpConfigPath, restartPty } from './tauri'
 import type { AgentRuntimeProfile, AgentType } from './types'
 
 export type ResumeSessionInPaneParams = {
@@ -41,12 +42,24 @@ export async function resumeSessionInPane({
   const prepared = preparePtyRuntimeLaunch(agent, runtimeProfile, extraArgs ?? [])
 
   let hooksSettingsPath: string | undefined
+  const mcpConfigPaths: string[] = []
   if (agent === 'claude') {
     const orchestratorEnabled =
       useProjectsStore.getState().preferences.enabledFeatures.orchestrator
     hooksSettingsPath = await agentHooksSettingsPath(ptyId, orchestratorEnabled).catch(
       () => undefined,
     )
+    // Mirrors the normal spawn path (see useXtermSession's orchestratorEnabled/command==='claude'
+    // branch): without this, a session resumed from history starts without the orchestrator MCP
+    // server and silently cannot delegate or open shells.
+    if (orchestratorEnabled) {
+      const label =
+        terminalNameForPty(useProjectsStore.getState().projects, ptyId) ?? agentLabel(agent)
+      const mcpConfigPath = await orchestratorMcpConfigPath(ptyId, label, agent).catch(
+        () => undefined,
+      )
+      if (mcpConfigPath) mcpConfigPaths.push(mcpConfigPath)
+    }
   }
 
   const launch = buildAgentLaunch(
@@ -54,7 +67,7 @@ export async function resumeSessionInPane({
     prepared.args,
     sessionId,
     undefined,
-    undefined,
+    mcpConfigPaths,
     hooksSettingsPath,
   )
 

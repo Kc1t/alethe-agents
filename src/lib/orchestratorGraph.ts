@@ -1,5 +1,7 @@
 import type { MediaItem } from './orchestratorMedia'
 import { LANE_OF, type OrchestratorRun, type RunLane } from './orchestratorRuns'
+import type { ShellAttachment } from './orchestratorShells'
+import type { OrchestratorShellStatus } from './tauri/orchestrator'
 
 export const NODE_WIDTH = 252
 export const SIBLING_GAP = 24
@@ -14,8 +16,16 @@ export const MAX_SCALE = 1.6
 
 const ROOT_PREFIX = 'run:'
 const PLANNER_PREFIX = 'planner:'
+const SHELL_GROUP_PREFIX = 'shells:'
 
-export type GraphNodeKind = 'planner' | 'run' | 'worker' | 'media'
+export type GraphNodeKind = 'planner' | 'run' | 'worker' | 'media' | 'shellGroup' | 'shell'
+
+/** What the layout needs of a shell: identity, where it hangs, and whether it is running. */
+export type LayoutShell = {
+  id: string
+  attachment: ShellAttachment
+  status: OrchestratorShellStatus
+}
 
 export type GraphNode = {
   id: string
@@ -68,6 +78,8 @@ export type BoardGraph = {
   roots: GraphNode[]
   workers: GraphNode[]
   media: GraphNode[]
+  shellGroups: GraphNode[]
+  shells: GraphNode[]
   edges: GraphEdge[]
   width: number
   height: number
@@ -89,6 +101,8 @@ export const EMPTY_BOARD: BoardGraph = {
   roots: [],
   workers: [],
   media: [],
+  shellGroups: [],
+  shells: [],
   edges: [],
   width: 0,
   height: 0,
@@ -105,6 +119,10 @@ export function plannerNodeId(plannerId: string): string {
 /** A worker's promoted image gets one card, directly below it. */
 export function mediaNodeId(jobId: string): string {
   return `${jobId}:media`
+}
+
+export function shellGroupNodeId(attachment: ShellAttachment): string {
+  return `${SHELL_GROUP_PREFIX}${attachment}`
 }
 
 function heightOf(heights: NodeHeights | undefined, id: string): number {
@@ -153,14 +171,27 @@ export function layoutPlannerBoard(
   heights?: NodeHeights,
   plannerId?: string | null,
   mediaByJobId?: ReadonlyMap<string, MediaItem>,
+  shells: readonly LayoutShell[] = [],
 ): BoardGraph {
-  if (runs.length === 0) return EMPTY_BOARD
+  if (runs.length === 0 && shells.length === 0) return EMPTY_BOARD
 
-  const spans = runs.map((run) =>
-    run.jobs.length > 0
-      ? run.jobs.length * NODE_WIDTH + (run.jobs.length - 1) * SIBLING_GAP
-      : NODE_WIDTH,
+  const groupsByAttachment: ShellAttachment[] = (['attached', 'detached'] as const).filter(
+    (attachment) => shells.some((shell) => shell.attachment === attachment),
   )
+
+  const shellSpan = (attachment: ShellAttachment): number => {
+    const count = shells.filter((shell) => shell.attachment === attachment).length
+    return count * NODE_WIDTH + (count - 1) * SIBLING_GAP
+  }
+
+  const spans = [
+    ...runs.map((run) =>
+      run.jobs.length > 0
+        ? run.jobs.length * NODE_WIDTH + (run.jobs.length - 1) * SIBLING_GAP
+        : NODE_WIDTH,
+    ),
+    ...groupsByAttachment.map(shellSpan),
+  ]
 
   const lefts: number[] = []
   let cursor = CANVAS_PADDING
@@ -172,8 +203,12 @@ export function layoutPlannerBoard(
   const plannerHeight = plannerId ? heightOf(heights, plannerNodeId(plannerId)) : 0
   const runTop = CANVAS_PADDING + (plannerId ? plannerHeight + LEVEL_GAP : 0)
   const runHeights = runs.map((run) => heightOf(heights, rootNodeId(run.id)))
-  // Every worker in the forest shares one baseline, so the levels read as levels.
-  const workerTop = runTop + Math.max(...runHeights) + LEVEL_GAP
+  const groupHeights = groupsByAttachment.map((attachment) =>
+    heightOf(heights, shellGroupNodeId(attachment)),
+  )
+  const rowHeights = [...runHeights, ...groupHeights]
+  // Every worker and shell in the forest shares one baseline, so the levels read as levels.
+  const workerTop = runTop + Math.max(...rowHeights) + LEVEL_GAP
 
   const roots: GraphNode[] = runs.map((run, index) => ({
     id: rootNodeId(run.id),
@@ -260,17 +295,82 @@ export function layoutPlannerBoard(
     })
   })
 
+  const shellGroups: GraphNode[] = []
+  const shellNodes: GraphNode[] = []
+
+  groupsByAttachment.forEach((attachment, groupIndex) => {
+    const index = runs.length + groupIndex
+    const groupId = shellGroupNodeId(attachment)
+    const members = shells.filter((shell) => shell.attachment === attachment)
+    const group: GraphNode = {
+      id: groupId,
+      kind: 'shellGroup',
+      depth: plannerId ? 1 : 0,
+      index,
+      x: Math.round(lefts[index] + (spans[index] - NODE_WIDTH) / 2),
+      y: runTop,
+      width: NODE_WIDTH,
+      height: groupHeights[groupIndex],
+    }
+    shellGroups.push(group)
+    let bottom = group.y + group.height
+
+    members.forEach((shell, column) => {
+      const node: GraphNode = {
+        id: shell.id,
+        kind: 'shell',
+        depth: group.depth + 1,
+        index: column,
+        x: lefts[index] + column * (NODE_WIDTH + SIBLING_GAP),
+        y: workerTop,
+        width: NODE_WIDTH,
+        height: heightOf(heights, shell.id),
+      }
+      shellNodes.push(node)
+      bottom = Math.max(bottom, node.y + node.height)
+      runEdges.push({
+        id: `${groupId}->${node.id}`,
+        from: groupId,
+        to: node.id,
+        lane: shell.status === 'running' ? 'running' : 'finished',
+        d: connectorPath(centerX(group), group.y + group.height, centerX(node), node.y),
+        note: null,
+      })
+    })
+
+    trees.push({
+      id: groupId,
+      label: attachment,
+      lane: members.some((shell) => shell.status === 'running') ? 'running' : 'finished',
+      x: lefts[index],
+      y: group.y,
+      width: spans[index],
+      height: bottom - group.y,
+    })
+  })
+
   let planner: GraphNode | null = null
   const plannerEdges: GraphEdge[] = []
   if (plannerId) {
-    const first = centerX(roots[0])
-    const last = centerX(roots[roots.length - 1])
+    const attached = shellGroups.find((group) => group.id === shellGroupNodeId('attached')) ?? null
+    // The tab is open because someone is looking at this planner, so it always gets a node: centre
+    // it over the runs and attached group when there are any, else over whatever shell groups exist
+    // (the detached group), else park it at the corner of an otherwise empty board.
+    const heads = [...roots, ...(attached ? [attached] : [])]
+    const centeringNodes = heads.length > 0 ? heads : shellGroups
+    const x =
+      centeringNodes.length > 0
+        ? Math.round(
+            (centerX(centeringNodes[0]) + centerX(centeringNodes[centeringNodes.length - 1])) / 2 -
+              NODE_WIDTH / 2,
+          )
+        : CANVAS_PADDING
     planner = {
       id: plannerNodeId(plannerId),
       kind: 'planner',
       depth: 0,
       index: 0,
-      x: Math.round((first + last) / 2 - NODE_WIDTH / 2),
+      x,
       y: CANVAS_PADDING,
       width: NODE_WIDTH,
       height: plannerHeight,
@@ -285,6 +385,21 @@ export function layoutPlannerBoard(
         note: null,
       })
     })
+    if (attached) {
+      plannerEdges.push({
+        id: `${planner.id}->${attached.id}`,
+        from: planner.id,
+        to: attached.id,
+        lane: 'running',
+        d: connectorPath(
+          centerX(planner),
+          planner.y + planner.height,
+          centerX(attached),
+          attached.y,
+        ),
+        note: null,
+      })
+    }
   }
 
   return {
@@ -293,6 +408,8 @@ export function layoutPlannerBoard(
     roots,
     workers,
     media,
+    shellGroups,
+    shells: shellNodes,
     edges: [...plannerEdges, ...runEdges],
     width: cursor - TREE_GAP + CANVAS_PADDING,
     height: Math.max(...trees.map((tree) => tree.y + tree.height)) + CANVAS_PADDING,

@@ -12,6 +12,33 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Alethe now hands its own engineering rules to the agents it delegates to.** Every delegated task
+  carries a general set — verify before you report, write the failing test first, record an
+  architecture decision in the same change, never weaken shared CI to make your change pass — and the
+  lead agent names the set that matches the work, so a frontend worker gets frontend rules instead of
+  database ones. Alethe ships General, Backend and Frontend, written to hold in any language or
+  framework; a repository's own conventions always win over them. Edit them, add your own — "Banco de
+  Dados", "Pesquisa" — or remove them entirely in Preferences → Multi-Agent & Telemetry, and the
+  board shows which set each run was delegated with.
+- **Shells the lead agent starts now live on the orchestration board.** Ask it to run your dev
+  server or `docker compose up` and it opens a shell Alethe owns: it keeps running when the project
+  is off screen or the agent is done, and shows up on the canvas as its own card joined by a line to
+  the agent that started it, with stop, restart, run again, open terminal and remove on hover. A
+  shell whose agent has closed keeps showing under its own "Shells with no agent" group instead of
+  disappearing. Stopping sends Ctrl+C first, so `docker compose up` brings its containers down
+  cleanly, and closing the terminal view never stops the service. The agent reads what the shell
+  printed to react to it.
+- **Worker, subagent and shell details now open in a panel over the board** instead of expanding the
+  card in place. Click any node to read its full report, open the diff tab for its complete diff,
+  or — for a shell — its live terminal, in colour, that you can type into, all without the canvas
+  reflowing around it. The rail's old "Shells" list is gone now that shells live on the canvas.
+- **The buttons on a finished worker became instructions you send to the lead agent.** Apply,
+  Review and Continue no longer act behind your back: each writes a ready-to-edit message into the
+  planner's own terminal, which you review and send yourself. Reword them, add your own, or remove
+  ones you don't use, in Preferences → Multi-Agent & Telemetry. If a worker's lead agent is no
+  longer open, the panel says so instead of showing buttons that would go nowhere.
+- **A worker can now be stopped right from the board**, without asking its lead agent to cancel it
+  for you — the same stop control a shell already has.
 - **The lead agent now knows it is working inside Alethe from its very first turn.** When it
   connects, Alethe hands it a short briefing: which workers it can delegate to right now, how many
   run at once, and how to collect their reports. It used to find out only by reading a tool's full
@@ -103,6 +130,40 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **Installing something from Alethe could sit on "Installing…" forever, even after the install had
+  already worked.** The installer was typed into a shell as if you were at the keyboard, including
+  the command that closes it at the end — and when a shell's own startup files got in the way of
+  that last command, the shell stayed open and nothing ever reported the run as finished. The button
+  spun indefinitely, and because one install runs at a time, nothing else could be installed until
+  the app was restarted. Installs now run as the shell's own command, so it ends with them and the
+  result is reported either way; a run that stops responding gives up after ten minutes and shows
+  its log instead of spinning. Anything installed during a stuck run was really installed and shows
+  up as such on the next launch.
+- **Reconnecting a planner no longer starts a duplicate shell.** Asking the lead agent to open a dev
+  server or watcher it already has running on the board (for example after reopening the app, or
+  from a new planner terminal) now reuses that running shell and adopts it under the new planner,
+  instead of starting a second copy of the same command. A shell that already stopped or exited
+  still opens a fresh one, as before.
+- A planner's tab could look disconnected even while its terminal was working fine: the status dot
+  was driven by its jobs' state, so a planner with no delegated work yet, or whose work had all
+  finished, showed the same grey dot as one whose terminal had actually closed. The dot now reflects
+  whether the planner's own terminal is alive, and its count badge is hidden entirely instead of
+  showing "(0)" when there is nothing to report.
+- Resuming a conversation from history (Recent Chats or Claude's own history) could silently drop
+  the Alethe orchestrator connection: the agent came back without its MCP config and could no longer
+  delegate work or open shells. It also occasionally showed up on the board under a raw, unreadable
+  id instead of its terminal's name. Both are now resolved the same way a freshly spawned session is.
+- An orchestrator shell's last output could occasionally be lost right after it exited: the
+  scrollback write to disk raced the exit report, so a command that failed at once could come back
+  with an empty or stale error instead of what it actually printed.
+- Running orchestrator shells no longer disappear from the board when the planner that started them
+  closes its terminal — they keep showing there, in their own group, matched by working directory,
+  so they can still be stopped, restarted or reopened.
+- "Open terminal" on an orchestrator shell could land back on a dead view left over from before an
+  app restart, still saying the shell was not running. It now opens a fresh terminal whenever the
+  previous one has no live process to attach to.
+- Parking a project or switching profiles could hard-kill an orchestrator shell you had open, with
+  no chance for it to shut down gracefully. Both now leave orchestrator shells running.
 - **A worker's report could vanish before reaching the lead agent.** Waiting on workers held the
   lead's call open for up to ten minutes, long past the point where Claude Code gives up on it, so
   the call failed with "The operation timed out" and any report it had already collected was lost
@@ -176,6 +237,13 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   (`Open Claude Code` / `Create orchestration`) with a `Ctrl`/`Cmd` + `Enter` shortcut. The dialog
   itself is rounder and its title reads `New session` instead of a lowercase `new terminal`.
 
+### Removed
+
+- **The board's per-worker message box is gone.** The input line under the board that could steer a
+  worker mid-turn, resume one that had been interrupted, or hand a finished one more work is no
+  longer there. Talking to a worker now goes through its lead agent instead — the same instruction
+  the box used to send is what the message shortcuts write into the lead's terminal for you to send.
+
 ### Added
 
 - Empty project and group workspaces now use a quiet launcher-style state with a large Alethe mark
@@ -200,9 +268,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   without replacing or rearranging the project's surrounding terminal layout.
 - A worker on the orchestration board whose report mentions an image it produced now gets its own
   card on the canvas, directly below it, automatically — no click needed to see it (previously it
-  was a small thumbnail hidden inside the worker card's click-to-expand detail panel). Click the
-  card to open a full-size preview. Only the first image is promoted this way; a second one or a
-  plain link still show in the expanded detail panel as before.
+  was a small thumbnail hidden inside the worker's detail panel). Click the card to open a
+  full-size preview. Only the first image is promoted this way; a second one or a plain link still
+  show in the worker's panel as before.
 - Clicking an image link in a terminal (png, jpg, gif, webp, bmp, avif, ico, svg) now offers "Open
   in grid" like markdown and text files already did — it opens in its own pane with a header
   (drag, open in Explorer, focus mode, close) and the image scaled to fit.

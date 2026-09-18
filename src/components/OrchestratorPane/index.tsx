@@ -3,14 +3,12 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  CornerDownLeft,
-  Cpu,
   FilePen,
   GitBranch,
-  Globe2,
   Minus,
   Network,
   Plus,
+  Square,
   Terminal as TerminalIcon,
   X,
 } from 'lucide-react'
@@ -33,6 +31,7 @@ import {
   fitView,
   focusView,
   type GraphNode,
+  type LayoutShell,
   layoutPlannerBoard,
   mediaNodeId,
   type NodeHeights,
@@ -40,7 +39,7 @@ import {
   type ViewTransform,
   zoomAt,
 } from '../../lib/orchestratorGraph'
-import { extractMediaItems, type MediaItem } from '../../lib/orchestratorMedia'
+import { extractMediaItems, splitPromotedMedia, type MediaItem } from '../../lib/orchestratorMedia'
 import {
   type Attention,
   type AttentionLane,
@@ -53,35 +52,42 @@ import {
   RUN_LANE_ORDER,
   type RunLane,
 } from '../../lib/orchestratorRuns'
+import { resolveShortcuts, renderShortcut, shortcutsForJob } from '../../lib/orchestratorShortcuts'
 import { nativeSubagentJobs } from '../../lib/orchestratorSubagents'
 import { basename } from '../../lib/paths'
 import {
-  gitStatus,
   listenOrchestratorJobs,
-  mergeAnalyze,
-  mergeFinalize,
-  mergePrepare,
   orchestratorAnswer,
+  orchestratorCancelJob,
   type OrchestratorDecision,
   type OrchestratorJob,
   orchestratorJobDiff,
   orchestratorJobs,
-  orchestratorMessage,
   type OrchestratorPendingApproval,
+  orchestratorShellRemove,
+  orchestratorShellRestart,
+  orchestratorShellStop,
+  type OrchestratorShell,
   type OrchestratorSnapshot,
-  worktreeCommitWorktree,
-  worktreeFetchBranch,
-  worktreeRemove,
 } from '../../lib/tauri'
-import { parseAgentType } from '../../lib/agentProviders'
-import type { Project, Terminal, Theme } from '../../lib/types'
+import {
+  plannerTabActivity,
+  type ShellAttachment,
+  type ShellControl,
+  shellsForBoard,
+  shellTerminalPlan,
+} from '../../lib/orchestratorShells'
+import type { OrchestratorShortcut, Project, Terminal, Theme } from '../../lib/types'
 import { useAgentCanvasStore } from '../../stores/agentCanvasStore'
 import { useProjectsStore } from '../../stores/projectsStore'
+import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { AgentIcon } from '../icons/AgentIcons'
-import { MarkdownRenderer } from '../MarkdownPane/MarkdownRenderer'
 import { Modal } from '../modals/Modal'
 import { Collapse } from '../ui/Collapse'
+import { writePtyChunked } from '../XTermView/terminalWrite'
+import { AgentGlyph, contextShare, formatElapsed, formatTokens, statusTitle } from './nodeFormat'
+import { OrchestratorInspector, type InspectorTarget } from './OrchestratorInspector'
+import { ShellNode } from './ShellNode'
 import styles from './OrchestratorPane.module.css'
 
 const EMPTY: OrchestratorSnapshot = {
@@ -90,6 +96,7 @@ const EMPTY: OrchestratorSnapshot = {
   running: 0,
   queued: 0,
   concurrencyLimit: 0,
+  shells: [],
 }
 
 const LIVE_TICK_MS = 1_000
@@ -138,26 +145,6 @@ function plannerKey(group: PlannerGroup): string {
   return group.id ?? ''
 }
 
-function formatElapsed(seconds: number | null): string | null {
-  if (seconds === null) return null
-  const whole = Math.floor(seconds)
-  if (whole < 60) return `${whole}s`
-  return `${Math.floor(whole / 60)}m ${String(whole % 60).padStart(2, '0')}s`
-}
-
-function formatTokens(total: number | undefined): string | null {
-  if (!total) return null
-  if (total < 1000) return `${total}`
-  return `${(total / 1000).toFixed(total < 10_000 ? 1 : 0)}k`
-}
-
-function contextShare(job: OrchestratorJob): number | null {
-  const used = job.tokens?.total?.totalTokens
-  const window = job.tokens?.modelContextWindow
-  if (!used || !window) return null
-  return Math.min(100, Math.round((used / window) * 100))
-}
-
 /** A worker's conclusion is the last thing it says: its opening line is narration, not a result. */
 function latestLine(text: string): string {
   const lines = text
@@ -167,77 +154,11 @@ function latestLine(text: string): string {
   return lines[lines.length - 1] ?? ''
 }
 
-type MessageMode = 'steer' | 'resume' | 'next'
-
-const MODE_PLACEHOLDER: Record<MessageMode, MessageKey> = {
-  steer: 'orchestrator.steerPlaceholder',
-  resume: 'orchestrator.resumePlaceholder',
-  next: 'orchestrator.sendPlaceholder',
-}
-
-const MODE_HINT: Record<MessageMode, MessageKey> = {
-  steer: 'orchestrator.steerHint',
-  resume: 'orchestrator.resumeHint',
-  next: 'orchestrator.sendHint',
-}
-
-const MODE_LABEL: Record<MessageMode, MessageKey> = {
-  steer: 'orchestrator.modeSteer',
-  resume: 'orchestrator.modeResume',
-  next: 'orchestrator.modeNext',
-}
-
-// Released and cancelled workers are gone for good. An interrupted one is not: `alethe_send`
-// re-queues a worker whose process died and resumes its thread, so a message is how it comes back.
-function canMessage(job: OrchestratorJob): boolean {
-  if (job.native) return false
-  if (job.status === 'released' || job.status === 'cancelled') return false
-  if (job.status === 'interrupted') return job.threadId !== null
-  return true
-}
-
-function hostnameOf(url: string): string {
-  try {
-    return new URL(url).hostname
-  } catch {
-    return url
-  }
-}
-
-function pathOf(url: string): string {
-  try {
-    const parsed = new URL(url)
-    return `${parsed.pathname}${parsed.search}` || '/'
-  } catch {
-    return ''
-  }
-}
-
-function diffLineClass(line: string): string | undefined {
-  if (line.startsWith('+') && !line.startsWith('+++')) return styles.diffAdded
-  if (line.startsWith('-') && !line.startsWith('---')) return styles.diffRemoved
-  if (line.startsWith('@@ ')) return styles.diffHunk
-  if (
-    line.startsWith('diff ') ||
-    line.startsWith('index ') ||
-    line.startsWith('--- ') ||
-    line.startsWith('+++ ')
-  ) {
-    return styles.diffHeaderLine
-  }
-  return undefined
-}
-
-function messageMode(job: OrchestratorJob): MessageMode {
-  if (job.status === 'running') return 'steer'
-  if (job.status === 'interrupted') return 'resume'
-  return 'next'
-}
-
-function statusTitle(status: OrchestratorJob['status'], t: TFunction): string | undefined {
-  if (status === 'interrupted') return t('orchestrator.interruptedTitle')
-  if (status === 'blocked') return t('orchestrator.blockedTitle')
-  return undefined
+/** A live worker still holds a slot, so stopping it means something; native subagents have none. */
+function canStop(job: OrchestratorJob): boolean {
+  return (
+    !job.native && (job.status === 'queued' || job.status === 'running' || job.status === 'blocked')
+  )
 }
 
 function laneTitle(lane: RunLane, t: TFunction): string | undefined {
@@ -270,22 +191,6 @@ function findPlannerTerminal(projects: Project[], ptyId: string): PlannerTarget 
     }
   }
   return null
-}
-
-type AgentGlyphProps = {
-  agent: string | null
-  theme: Theme
-  size?: number
-  title?: string
-}
-
-function AgentGlyph({ agent, theme, size = 15, title }: AgentGlyphProps) {
-  const type = parseAgentType(agent)
-  return (
-    <span className={styles.glyph} title={title} aria-hidden>
-      {type ? <AgentIcon type={type} size={size} theme={theme} /> : <Cpu size={size} />}
-    </span>
-  )
 }
 
 type BindNode = (id: string, element: HTMLElement | null) => void
@@ -355,18 +260,12 @@ type WorkerNodeProps = {
   node: GraphNode
   selected: boolean
   answering: boolean
-  applying: boolean
-  applied: boolean
-  projectId: string
-  diffOpen: boolean
-  diffText: string | undefined
-  diffLoading: boolean
   theme: Theme
+  shortcuts: readonly OrchestratorShortcut[]
   onSelect: (id: string) => void
-  onMessage: (id: string) => void
   onAnswer: AnswerFn
-  onToggleDiff: (id: string) => void
-  onApply: (job: OrchestratorJob) => void
+  onStop: (id: string) => void
+  onShortcut: (job: OrchestratorJob, shortcut: OrchestratorShortcut) => void
   bind: BindNode
   t: TFunction
 }
@@ -376,18 +275,12 @@ function WorkerNode({
   node,
   selected,
   answering,
-  applying,
-  applied,
-  projectId,
-  diffOpen,
-  diffText,
-  diffLoading,
   theme,
+  shortcuts,
   onSelect,
-  onMessage,
   onAnswer,
-  onToggleDiff,
-  onApply,
+  onStop,
+  onShortcut,
   bind,
   t,
 }: WorkerNodeProps) {
@@ -395,17 +288,8 @@ function WorkerNode({
   const tokens = formatTokens(job.tokens?.total?.totalTokens)
   const elapsed = formatElapsed(job.seconds)
   const live = latestLine(job.summary) || latestLine(job.spec)
-  const plan = job.plan.filter((step) => step.trim().length > 0)
-  const report = job.summary.trim()
-  // The first image already has its own card below this node (see `promotedMediaByJobId` in the
-  // parent) — the strip here only ever shows what didn't get promoted: links, and any 2nd+ image.
-  const remainingMedia = useMemo(() => {
-    if (!report) return []
-    const items = extractMediaItems(report)
-    const promotedIndex = items.findIndex((item) => item.kind !== 'link')
-    return promotedIndex === -1 ? items : items.filter((_, index) => index !== promotedIndex)
-  }, [report])
-  const [previewMedia, setPreviewMedia] = useState<MediaItem | null>(null)
+  const stoppable = canStop(job)
+  const applicableShortcuts = shortcutsForJob(shortcuts, job)
 
   return (
     <article
@@ -416,6 +300,34 @@ function WorkerNode({
       data-lane={LANE_OF[job.status]}
       data-selected={selected ? 'true' : undefined}
     >
+      {(stoppable || applicableShortcuts.length > 0) && (
+        <div className={styles.workerControls}>
+          {stoppable && (
+            <button
+              type="button"
+              className={styles.workerControlIcon}
+              title={t('orchestrator.stopWorker')}
+              aria-label={t('orchestrator.stopWorker')}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => onStop(job.id)}
+            >
+              <Square size={12} />
+            </button>
+          )}
+          {applicableShortcuts.map((shortcut) => (
+            <button
+              key={shortcut.id}
+              type="button"
+              className={styles.workerControlLabel}
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => onShortcut(job, shortcut)}
+            >
+              {shortcut.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       <button
         type="button"
         className={styles.workerCard}
@@ -428,6 +340,7 @@ function WorkerNode({
             agent={job.agent}
             theme={theme}
             title={t('orchestrator.agentTitle', { agent: job.agent })}
+            className={styles.glyph}
           />
           <span className={styles.dot} aria-hidden />
           <span className={styles.workerId}>{job.id}</span>
@@ -471,144 +384,6 @@ function WorkerNode({
           <span className={styles.errText} title={job.outcome}>
             {job.outcome}
           </span>
-        </div>
-      )}
-
-      {selected && (
-        <div className={styles.detail}>
-          {plan.length > 0 && (
-            <>
-              <div className={styles.detailLabel}>{t('orchestrator.planLabel')}</div>
-              <ul className={styles.plan}>
-                {plan.map((step, index) => (
-                  <li key={`${job.id}-plan-${index}`}>{step}</li>
-                ))}
-              </ul>
-            </>
-          )}
-          <div className={styles.detailLabel}>{t('orchestrator.summaryLabel')}</div>
-          {report ? (
-            <div className={styles.report}>
-              <MarkdownRenderer content={report} dark={theme === 'dark'} />
-            </div>
-          ) : (
-            <p className={styles.report}>{t('orchestrator.noReport')}</p>
-          )}
-          {remainingMedia.length > 0 && (
-            <div className={styles.mediaStrip}>
-              {remainingMedia.map((item) =>
-                item.kind === 'link' ? (
-                  <button
-                    key={item.value}
-                    type="button"
-                    className={styles.mediaLink}
-                    title={item.value}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={() =>
-                      useProjectsStore.getState().createWebPane(projectId, { url: item.value })
-                    }
-                  >
-                    <Globe2 size={13} />
-                    <span className={styles.mediaLinkText}>
-                      <span className={styles.mediaLinkHost}>{hostnameOf(item.value)}</span>
-                      <span className={styles.mediaLinkPath}>{pathOf(item.value)}</span>
-                    </span>
-                  </button>
-                ) : (
-                  <button
-                    key={item.value}
-                    type="button"
-                    className={styles.mediaFigure}
-                    title={item.value}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={() => setPreviewMedia(item)}
-                  >
-                    <img
-                      className={styles.mediaThumb}
-                      src={item.kind === 'image-local' ? convertFileSrc(item.value) : item.value}
-                      alt=""
-                      loading="lazy"
-                    />
-                    <span className={styles.mediaCaption}>{basename(item.value)}</span>
-                  </button>
-                ),
-              )}
-            </div>
-          )}
-          {previewMedia && (
-            <Modal
-              open
-              onClose={() => setPreviewMedia(null)}
-              title={basename(previewMedia.value)}
-              width={720}
-            >
-              <div className={styles.mediaPreviewBody}>
-                <img
-                  className={styles.mediaPreviewImage}
-                  src={
-                    previewMedia.kind === 'image-local'
-                      ? convertFileSrc(previewMedia.value)
-                      : previewMedia.value
-                  }
-                  alt=""
-                />
-                <div className={styles.mediaPreviewPath} title={previewMedia.value}>
-                  {previewMedia.value}
-                </div>
-              </div>
-            </Modal>
-          )}
-          {(canMessage(job) || job.hasDiff || (job.worktree && job.status === 'done')) && (
-            <div className={styles.detailActions}>
-              {canMessage(job) && (
-                <button
-                  type="button"
-                  className={styles.action}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={() => onMessage(job.id)}
-                >
-                  {t('orchestrator.messageAction')}
-                </button>
-              )}
-              {job.hasDiff && (
-                <button
-                  type="button"
-                  className={styles.action}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={() => onToggleDiff(job.id)}
-                >
-                  {t(diffOpen ? 'orchestrator.hideDiff' : 'orchestrator.viewDiff')}
-                </button>
-              )}
-              {job.worktree && job.status === 'done' && !applied && (
-                <button
-                  type="button"
-                  className={styles.action}
-                  disabled={applying}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={() => onApply(job)}
-                >
-                  {t(applying ? 'orchestrator.applying' : 'orchestrator.applyAction')}
-                </button>
-              )}
-            </div>
-          )}
-          {diffOpen && (
-            <div className={styles.diffBlock} onPointerDown={(event) => event.stopPropagation()}>
-              {diffLoading ? (
-                <p className={styles.report}>{t('orchestrator.diffLoading')}</p>
-              ) : (
-                <pre className={styles.diffText}>
-                  {(diffText || t('diff.empty')).split('\n').map((line, index) => (
-                    <span key={index} className={diffLineClass(line)}>
-                      {line}
-                      {'\n'}
-                    </span>
-                  ))}
-                </pre>
-              )}
-            </div>
-          )}
         </div>
       )}
 
@@ -700,6 +475,7 @@ function RunNode({ run, node, onClear, bind, t }: RunNodeProps) {
         <span className={styles.runLabel}>{run.label}</span>
         <span className={styles.runFoot}>
           <span>{t('orchestrator.workerCount', { count: total })}</span>
+          {run.rules ? <span title={t('orchestrator.runRulesTitle')}>{run.rules}</span> : null}
           {run.counts.blocked > 0 && (
             <em className={styles.runBlocked} title={t('orchestrator.blockedTitle')}>
               {t('orchestrator.runBlocked', { count: run.counts.blocked })}
@@ -743,6 +519,7 @@ function PlannerNode({ group, node, theme, onReveal, bind, t }: PlannerNodeProps
           theme={theme}
           size={17}
           title={group.agent ? t('orchestrator.agentTitle', { agent: group.agent }) : undefined}
+          className={styles.glyph}
         />
         <span className={styles.plannerText}>
           <span className={styles.plannerKind}>{t('orchestrator.plannerEyebrow')}</span>
@@ -782,7 +559,7 @@ function RailRow({ job, depth, selected, theme, onSelect, t }: RailRowProps) {
       onClick={() => onSelect(job.id)}
     >
       <span className={styles.dot} aria-hidden />
-      <AgentGlyph agent={job.agent} theme={theme} size={12} />
+      <AgentGlyph agent={job.agent} theme={theme} size={12} className={styles.glyph} />
       <span className={styles.railName}>{job.id}</span>
       <span className={styles.railValue}>{value}</span>
     </button>
@@ -839,16 +616,25 @@ type PlannerTabProps = {
   group: PlannerGroup
   selected: boolean
   theme: Theme
+  shells: OrchestratorShell[]
   onSelect: (key: string) => void
   t: TFunction
 }
 
-function PlannerTab({ group, selected, theme, onSelect, t }: PlannerTabProps) {
+function PlannerTab({ group, selected, theme, shells, onSelect, t }: PlannerTabProps) {
   const name = group.label ?? t('orchestrator.noPlanner')
+  // Liveness of the planner's own terminal - never derived from its jobs, which can all be
+  // finished (or there may be none at all) while the terminal itself is still very much connected.
+  const terminalAlive = useTerminalsStore((state) =>
+    group.id !== null ? (state.byPtyId[group.id]?.alive ?? false) : false,
+  )
+  const { count, live } = plannerTabActivity(group.jobs.length, shells, group.id, terminalAlive)
   const title = group.label
-    ? group.agent
-      ? t('orchestrator.plannerTitle', { label: group.label, agent: group.agent })
-      : group.label
+    ? live
+      ? group.agent
+        ? t('orchestrator.plannerTitle', { label: group.label, agent: group.agent })
+        : group.label
+      : t('orchestrator.plannerGone')
     : t('orchestrator.noPlannerTitle')
   const alert = selected ? null : attentionOf(group.counts)
 
@@ -859,22 +645,63 @@ function PlannerTab({ group, selected, theme, onSelect, t }: PlannerTabProps) {
       aria-selected={selected}
       className={styles.tab}
       data-state={group.state}
+      data-live={live ? 'true' : 'false'}
       data-selected={selected ? 'true' : undefined}
       title={title}
+      aria-label={title}
       onPointerDown={(event) => event.stopPropagation()}
       onClick={() => onSelect(plannerKey(group))}
     >
-      <AgentGlyph agent={group.agent} theme={theme} size={13} />
+      <AgentGlyph agent={group.agent} theme={theme} size={13} className={styles.glyph} />
       <span className={styles.dot} aria-hidden />
       <span className={styles.tabName}>{name}</span>
       {alert ? (
         <span className={styles.tabAlert} data-lane={alert.lane}>
           {t(ATTENTION_LABEL[alert.lane], { count: alert.count })}
         </span>
-      ) : (
-        <span className={styles.tabCount}>{group.jobs.length}</span>
-      )}
+      ) : count > 0 ? (
+        <span className={styles.tabCount}>{count}</span>
+      ) : null}
     </button>
+  )
+}
+
+type ShellGroupNodeProps = {
+  node: GraphNode
+  attachment: ShellAttachment
+  count: number
+  bind: BindNode
+  t: TFunction
+}
+
+/** Laid out like `RunNode`, but never clickable — it groups shells, it does not steer anything. */
+function ShellGroupNode({ node, attachment, count, bind, t }: ShellGroupNodeProps) {
+  return (
+    <article
+      ref={(element) => bind(node.id, element)}
+      className={styles.shellGroup}
+      style={{ left: node.x, top: node.y, width: node.width }}
+      data-attachment={attachment}
+    >
+      <div className={styles.shellGroupCard}>
+        <span className={styles.runEyebrow}>
+          <span className={styles.dot} aria-hidden />
+          <span className={styles.runKind}>{t('orchestrator.shellsEyebrow')}</span>
+        </span>
+        <span className={styles.runLabel}>
+          {t(
+            attachment === 'attached'
+              ? 'orchestrator.shellsLabel'
+              : 'orchestrator.shellsOrphanLabel',
+          )}
+        </span>
+        <span className={styles.runFoot}>
+          <span>
+            {t(count === 1 ? 'orchestrator.shellCount' : 'orchestrator.shellCountPlural', { count })}
+          </span>
+        </span>
+      </div>
+    </article>
   )
 }
 
@@ -892,28 +719,37 @@ export const OrchestratorPane = memo(function OrchestratorPane({
   const closePane = useProjectsStore((state) => state.closePane)
   const projects = useProjectsStore((state) => state.projects)
   const openTerminalWorkspace = useProjectsStore((state) => state.openTerminalWorkspace)
+  const createTerminal = useProjectsStore((state) => state.createTerminal)
+  const deleteTerminal = useProjectsStore((state) => state.deleteTerminal)
+  const setActiveTab = useProjectsStore((state) => state.setActiveTab)
   const pushToast = useUiStore((state) => state.pushToast)
   const openModal = useUiStore((state) => state.openModal_)
   const setActiveTerminal = useUiStore((state) => state.setActiveTerminal)
   const setActiveView = useUiStore((state) => state.setActiveView)
   const requestPaneFocus = useUiStore((state) => state.requestPaneFocus)
+  const setInspectorPty = useUiStore((state) => state.setInspectorPty)
   const [snapshot, setSnapshot] = useState<OrchestratorSnapshot>(EMPTY)
   const quotaWarnings = useOrchestratorQuotaWarnings()
   const [selectedPlanner, setSelectedPlanner] = useState<string | null>(null)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [inspecting, setInspecting] = useState<{ kind: 'worker' | 'shell'; id: string } | null>(
+    null,
+  )
   const [openRuns, setOpenRuns] = useState<Record<string, boolean>>({})
   const [summaryOpen, setSummaryOpen] = useState(true)
-  const [draft, setDraft] = useState('')
-  const [sending, setSending] = useState(false)
   const [answering, setAnswering] = useState<ReadonlySet<string>>(() => new Set())
-  const [applying, setApplying] = useState<ReadonlySet<string>>(() => new Set())
-  const [applied, setApplied] = useState<ReadonlySet<string>>(() => new Set())
-  const [diffOpenFor, setDiffOpenFor] = useState<string | null>(null)
   const [diffText, setDiffText] = useState<Record<string, string>>({})
   const [diffLoading, setDiffLoading] = useState<ReadonlySet<string>>(() => new Set())
+  const [shellBusy, setShellBusy] = useState<ReadonlySet<string>>(() => new Set())
   const [heights, setHeights] = useState<NodeHeights>({})
   const [view, setView] = useState<ViewTransform>(IDENTITY_VIEW)
   const [panning, setPanning] = useState(false)
+  // The pane has no terminal theme of its own yet; every other host of XTermView derives it this
+  // way (see TerminalPane/index.tsx:138-140).
+  const terminalTheme = useProjectsStore(
+    (state) => state.preferences.terminalTheme ?? state.preferences.uiTheme,
+  )
+  const storedShortcuts = useProjectsStore((state) => state.preferences.orchestratorShortcuts)
+  const shortcuts = useMemo(() => resolveShortcuts(storedShortcuts, t), [storedShortcuts, t])
   // A planner is an agent terminal, so adding one is opening one. The shared new-terminal modal
   // does the asking, narrowed to the agents that can actually drive the orchestrator.
   const addPlanner = useCallback(() => {
@@ -925,7 +761,6 @@ export const OrchestratorPane = memo(function OrchestratorPane({
   }, [openModal, projectId])
 
   const nodes = useRef(new Map<string, HTMLElement>())
-  const composer = useRef<HTMLInputElement | null>(null)
   const board = useRef<HTMLDivElement | null>(null)
   const world = useRef<HTMLDivElement | null>(null)
   const pan = useRef<{ id: number; x: number; y: number } | null>(null)
@@ -989,6 +824,24 @@ export const OrchestratorPane = memo(function OrchestratorPane({
           : true,
     )
   }, [snapshot.jobs, subagentNodes, projectPtyIds, project])
+  // Every planner id these jobs could point at, so a shortcut's visibility can react to that one
+  // terminal dying without depending on the whole `byPtyId` map (which changes for any terminal).
+  const jobPlannerIds = useMemo(
+    () => [...new Set(jobs.map((job) => job.plannerId).filter((id): id is string => id !== null))],
+    [jobs],
+  )
+  // A sorted, joined string is a stable primitive: Zustand's default equality (Object.is) skips a
+  // re-render unless the set of alive planners actually changed, unlike a freshly-built array/Set.
+  const alivePlannerKey = useTerminalsStore((state) =>
+    jobPlannerIds
+      .filter((id) => state.byPtyId[id]?.alive)
+      .sort()
+      .join(','),
+  )
+  const alivePlannerIds = useMemo(
+    () => new Set(alivePlannerKey ? alivePlannerKey.split(',') : []),
+    [alivePlannerKey],
+  )
   const planners = useMemo(
     () => snapshot.planners.filter((p) => projectPtyIds.has(p.id)),
     [snapshot.planners, projectPtyIds],
@@ -999,14 +852,35 @@ export const OrchestratorPane = memo(function OrchestratorPane({
   const groupJobs = useMemo(() => activeGroup?.jobs ?? [], [activeGroup])
   const runs = useMemo(() => activeGroup?.runs ?? [], [activeGroup])
   const plannerId = activeGroup?.id ?? null
+  // The planners of every group on screen right now — a shell of one of these stays under its own
+  // tab; anything else (no planner, or one whose terminal closed) falls back to this project's cwd.
+  const livePlannerIds = useMemo(
+    () => new Set(groups.map((group) => group.id).filter((id): id is string => id !== null)),
+    [groups],
+  )
+  const shells = useMemo(
+    () =>
+      shellsForBoard(snapshot.shells, {
+        activePlannerId: plannerId,
+        livePlannerIds,
+        projectCwd: project?.defaultCwd ?? null,
+      }),
+    [snapshot.shells, plannerId, livePlannerIds, project],
+  )
+  const shellById = useMemo(() => new Map(shells.map((shell) => [shell.id, shell])), [shells])
+  const layoutShells = useMemo<LayoutShell[]>(
+    () => shells.map((shell) => ({ id: shell.id, attachment: shell.attachment, status: shell.status })),
+    [shells],
+  )
   // Only the first image a worker's report mentions gets promoted to its own canvas card — enough
   // to surface "the thing it made" without the layout having to reflow siblings for 2nd/3rd images.
+  // See `splitPromotedMedia`, shared with the inspector's own media strip.
   const promotedMediaByJobId = useMemo(() => {
     const map = new Map<string, MediaItem>()
     for (const job of groupJobs) {
       const report = job.summary.trim()
       if (!report) continue
-      const promoted = extractMediaItems(report).find((item) => item.kind !== 'link')
+      const { promoted } = splitPromotedMedia(extractMediaItems(report))
       if (promoted) map.set(job.id, promoted)
     }
     return map
@@ -1017,21 +891,33 @@ export const OrchestratorPane = memo(function OrchestratorPane({
     return map
   }, [promotedMediaByJobId])
   const graph = useMemo(
-    () => layoutPlannerBoard(runs, heights, plannerId, promotedMediaByJobId),
-    [runs, heights, plannerId, promotedMediaByJobId],
+    () => layoutPlannerBoard(runs, heights, plannerId, promotedMediaByJobId, layoutShells),
+    [runs, heights, plannerId, promotedMediaByJobId, layoutShells],
   )
   const jobById = useMemo(() => new Map(groupJobs.map((job) => [job.id, job])), [groupJobs])
-  const selected = selectedId ? (jobById.get(selectedId) ?? null) : null
   const plannerTarget = useMemo(
     () => (plannerId ? findPlannerTerminal(projects, plannerId) : null),
     [projects, plannerId],
   )
+  const inspectorTarget = useMemo((): InspectorTarget | null => {
+    if (!inspecting) return null
+    if (inspecting.kind === 'worker') {
+      const job = jobById.get(inspecting.id)
+      return job ? { kind: 'worker', job } : null
+    }
+    const shell = shellById.get(inspecting.id)
+    return shell ? { kind: 'shell', shell } : null
+  }, [inspecting, jobById, shellById])
+  const selectedWorkerId = inspecting?.kind === 'worker' ? inspecting.id : null
 
   useEffect(() => {
-    if (selectedId && !jobById.has(selectedId)) setSelectedId(null)
-  }, [jobById, selectedId])
+    if (!inspecting) return
+    if (inspecting.kind === 'worker' && !jobById.has(inspecting.id)) setInspecting(null)
+    if (inspecting.kind === 'shell' && !shellById.has(inspecting.id)) setInspecting(null)
+  }, [jobById, shellById, inspecting])
 
-  // Cards grow when a worker is opened or reports more, so the column has to be re-measured.
+  // Cards grow as a worker reports more, so the column has to be re-measured; the hover bar and
+  // the inspector panel are overlays and never change a node's own box.
   useLayoutEffect(() => {
     setHeights((prev) => {
       let next: Record<string, number> | null = null
@@ -1044,7 +930,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
       }
       return next ?? prev
     })
-  }, [groupJobs, plannerId, selectedId])
+  }, [groupJobs, plannerId, shells])
 
   const viewport = useCallback(() => {
     const element = board.current
@@ -1149,7 +1035,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
 
   const openPlanner = (key: string) => {
     setSelectedPlanner(key)
-    setSelectedId(null)
+    setInspecting(null)
   }
 
   const bind = useCallback<BindNode>((id, element) => {
@@ -1157,13 +1043,10 @@ export const OrchestratorPane = memo(function OrchestratorPane({
     else nodes.current.delete(id)
   }, [])
 
+  // Selecting a worker from the rail always opens the panel, which covers the board — so there is
+  // nothing to gain from panning the canvas underneath it first.
   const reveal = (id: string) => {
-    setSelectedId(id)
-    const node = graphRef.current.workers.find((entry) => entry.id === id)
-    if (!node) return
-    const size = viewport()
-    moved.current = true
-    setView((prev) => focusView(node, prev, size))
+    setInspecting({ kind: 'worker', id })
   }
 
   const revealRun = (id: string) => {
@@ -1189,14 +1072,6 @@ export const OrchestratorPane = memo(function OrchestratorPane({
       }
     : null
 
-  const focusComposer = (id: string) => {
-    setSelectedId(id)
-    composer.current?.focus()
-  }
-
-  const mode: MessageMode = selected ? messageMode(selected) : 'next'
-  const canSend = selected !== null && canMessage(selected)
-
   const answer = async (jobId: string, decision: OrchestratorDecision) => {
     if (answering.has(jobId)) return
     setAnswering((prev) => new Set(prev).add(jobId))
@@ -1216,60 +1091,41 @@ export const OrchestratorPane = memo(function OrchestratorPane({
     }
   }
 
-  const applyWorktree = async (job: OrchestratorJob) => {
-    if (!job.worktree || applying.has(job.id) || applied.has(job.id)) return
-    const repo = job.worktree
-    setApplying((prev) => new Set(prev).add(job.id))
+  const stopJob = async (jobId: string) => {
     try {
-      await worktreeCommitWorktree(repo, job.id, `Alethe orchestrator: ${job.id}`)
-      await worktreeFetchBranch(repo, job.id).catch(() => undefined)
-      const target = (await gitStatus(repo)).branch
-      const source = `alethe/agent-${job.id}`
-      const analysis = await mergeAnalyze(repo, source, target, projectId)
-      if (!analysis.clean) {
-        pushToast({
-          title: t('orchestrator.applyConflict'),
-          body: t('orchestrator.applyConflictBody', { id: job.id }),
-        })
-        return
-      }
-      const env = await mergePrepare(repo, source, target, projectId)
-      const outcome = await mergeFinalize(repo, env.id, [])
-      if (!outcome.merged) {
-        pushToast({ title: t('orchestrator.applyFailed'), body: outcome.output })
-        return
-      }
-      await worktreeRemove(repo, job.id, false).catch(() => undefined)
-      setApplied((prev) => new Set(prev).add(job.id))
-      pushToast({
-        title: t('orchestrator.applySuccess'),
-        body: t('orchestrator.applySuccessBody', { branch: target }),
-      })
+      await orchestratorCancelJob(jobId)
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      if (message.includes('worktree_not_found')) {
-        // Already applied (or removed some other way) in an earlier attempt — the backend still
-        // reports `worktree` for this job because nothing clears it after a successful apply, so
-        // treat "gone from disk" as done rather than a failure to retry forever.
-        setApplied((prev) => new Set(prev).add(job.id))
-        return
-      }
-      pushToast({ title: t('orchestrator.applyFailed'), body: message })
-    } finally {
-      setApplying((prev) => {
-        const next = new Set(prev)
-        next.delete(job.id)
-        return next
+      pushToast({
+        title: t('orchestrator.stopFailed'),
+        body: error instanceof Error ? error.message : String(error),
       })
     }
   }
 
-  const toggleDiff = async (jobId: string) => {
-    if (diffOpenFor === jobId) {
-      setDiffOpenFor(null)
+  // Whether the terminal this job's agent runs in is still alive, independent of the job's own
+  // status — a finished worker's planner can easily have moved on to another terminal by then.
+  // Backed by the subscribed `alivePlannerIds` above, so a planner dying while its jobs sit idle
+  // still hides its shortcuts instead of leaving stale buttons pointed at a dead terminal.
+  const plannerAliveFor = (job: OrchestratorJob): boolean =>
+    job.plannerId ? alivePlannerIds.has(job.plannerId) : false
+
+  // The instruction is typed into the planner's input and left there: the person edits it and sends.
+  const sendShortcut = async (job: OrchestratorJob, shortcut: OrchestratorShortcut) => {
+    const target = job.plannerId ? findPlannerTerminal(projects, job.plannerId) : null
+    const alive = plannerAliveFor(job)
+    if (!target || !alive || !job.plannerId) {
+      pushToast({ title: t('orchestrator.noPlannerForShortcuts'), body: '' })
       return
     }
-    setDiffOpenFor(jobId)
+    setInspecting(null)
+    openTerminalWorkspace(target.projectId, target.terminalId)
+    setActiveTerminal(target.projectId, target.terminalId)
+    requestPaneFocus(target.terminalId)
+    setActiveView('workspace')
+    await writePtyChunked(job.plannerId, renderShortcut(shortcut, job, project?.defaultCwd ?? null), true)
+  }
+
+  const loadDiff = async (jobId: string) => {
     if (diffText[jobId] !== undefined || diffLoading.has(jobId)) return
     setDiffLoading((prev) => new Set(prev).add(jobId))
     try {
@@ -1280,7 +1136,6 @@ export const OrchestratorPane = memo(function OrchestratorPane({
         title: t('orchestrator.diffFailed'),
         body: error instanceof Error ? error.message : String(error),
       })
-      setDiffOpenFor((current) => (current === jobId ? null : current))
     } finally {
       setDiffLoading((prev) => {
         const next = new Set(prev)
@@ -1290,21 +1145,87 @@ export const OrchestratorPane = memo(function OrchestratorPane({
     }
   }
 
-  const send = async () => {
-    const message = draft.trim()
-    if (!selected || !message || sending || !canSend) return
-    setSending(true)
+  // The check spans every project, not just the one on screen: a shell's live terminal tab can sit
+  // in a project other than this one, and reusing it there beats opening a second view of the same
+  // PTY here. Only when no live view exists anywhere does cleanup/creation stay scoped to this
+  // project, since that is the board the person is acting from.
+  const planShellTerminal = (shell: OrchestratorShell) => {
+    const isLive = (ptyId: string) => useTerminalsStore.getState().byPtyId[ptyId]?.alive ?? false
+    for (const proj of projects) {
+      const candidate = shellTerminalPlan(proj.terminals, shell, isLive)
+      if (candidate.action === 'reuse') return { plan: candidate, ownerProjectId: proj.id }
+    }
+    return { plan: shellTerminalPlan(project?.terminals ?? [], shell, isLive), ownerProjectId: projectId }
+  }
+
+  // A view onto the running shell, never a new one — except a tab left over from a view that
+  // outlived its PTY (e.g. across an app restart) never comes back on its own (`viewGone` in
+  // useXtermSession), so it is dropped in favor of a fresh tab rather than reused dead. Opening the
+  // terminal tab always closes the panel first — one process, one view.
+  const openShellTerminal = (shell: OrchestratorShell) => {
+    setInspecting(null)
+    const { plan, ownerProjectId } = planShellTerminal(shell)
+    let terminalId: string
+    if (plan.action === 'reuse') {
+      terminalId = plan.terminalId
+      setActiveTab(ownerProjectId, terminalId, plan.tabId)
+      // An existing terminal may live in a workspace tab other than the one on screen, so it has to
+      // be brought into view. A freshly created one must NOT go through here: `createTerminal`
+      // already put it in the project's container, and opening a workspace tab for it as well would
+      // show the same shell twice — once in the grid the person is looking at, once in a new tab.
+      openTerminalWorkspace(ownerProjectId, terminalId)
+    } else {
+      if (plan.staleTerminalId) deleteTerminal(ownerProjectId, plan.staleTerminalId)
+      terminalId = createTerminal(ownerProjectId, {
+        name: shell.name,
+        cwd: shell.cwd,
+        firstTab: { type: 'shell', cwd: shell.cwd, ptyId: shell.ptyId },
+      }).id
+    }
+    setActiveTerminal(ownerProjectId, terminalId)
+    requestPaneFocus(terminalId)
+    setActiveView('workspace')
+  }
+
+  const controlShell = async (shell: OrchestratorShell, control: ShellControl) => {
+    if (control === 'openTerminal') {
+      openShellTerminal(shell)
+      return
+    }
+    if (shellBusy.has(shell.id)) return
+    setShellBusy((prev) => new Set(prev).add(shell.id))
     try {
-      await orchestratorMessage(selected.id, message, mode === 'steer')
-      setDraft('')
+      if (control === 'stop') await orchestratorShellStop(shell.id)
+      else if (control === 'remove') await orchestratorShellRemove(shell.id)
+      else await orchestratorShellRestart(shell.id)
     } catch (error) {
       pushToast({
-        title: t('orchestrator.sendFailed'),
+        title: t('orchestrator.shell.failed'),
         body: error instanceof Error ? error.message : String(error),
       })
     } finally {
-      setSending(false)
+      setShellBusy((prev) => {
+        const next = new Set(prev)
+        next.delete(shell.id)
+        return next
+      })
     }
+  }
+
+  // Respects the one-process-one-view rule: a shell already attached to a live terminal in any
+  // project activates that tab instead of opening the panel, so a detached shell whose view sits
+  // outside the project on screen is still found instead of getting a second, duplicate view.
+  const openShellInspector = (shell: OrchestratorShell) => {
+    const { plan } = planShellTerminal(shell)
+    if (plan.action === 'reuse') {
+      openShellTerminal(shell)
+      return
+    }
+    // Claimed here rather than in the panel: a child's effect runs before its parent's, so the
+    // terminal inside the panel would ask whether it is on screen before the panel could answer —
+    // and open without the shell's scrollback. The panel re-asserts it and clears it on close.
+    setInspectorPty(shell.ptyId)
+    setInspecting({ kind: 'shell', id: shell.id })
   }
 
   return (
@@ -1368,10 +1289,12 @@ export const OrchestratorPane = memo(function OrchestratorPane({
         </div>
       </header>
 
-      {groups.length === 0 ? (
-        <div className={styles.empty}>
-          <p>{t('orchestrator.emptyTitle')}</p>
-          <small>{t('orchestrator.emptyBody')}</small>
+      {groups.length === 0 && shells.length === 0 ? (
+        <div className={styles.emptyState}>
+          <div className={styles.empty}>
+            <p>{t('orchestrator.emptyTitle')}</p>
+            <small>{t('orchestrator.emptyBody')}</small>
+          </div>
         </div>
       ) : (
         <div className={styles.body}>
@@ -1382,6 +1305,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                 group={group}
                 selected={plannerKey(group) === activeKey}
                 theme={theme}
+                shells={snapshot.shells}
                 onSelect={openPlanner}
                 t={t}
               />
@@ -1413,7 +1337,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                 onPointerUp={endPan}
                 onPointerCancel={endPan}
               >
-                {runs.length === 0 ? (
+                {runs.length === 0 && shells.length === 0 ? (
                   <div className={styles.blank}>{t('orchestrator.emptyPlanner')}</div>
                 ) : (
                   <div
@@ -1431,7 +1355,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                           key={edge.id}
                           className={styles.edge}
                           data-lane={edge.lane}
-                          data-selected={edge.to === selectedId ? 'true' : undefined}
+                          data-selected={edge.to === selectedWorkerId ? 'true' : undefined}
                           d={edge.d}
                         />
                       ))}
@@ -1475,7 +1399,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                         key={rootNodeId(runs[index].id)}
                         run={runs[index]}
                         node={node}
-                        onClear={() => setSelectedId(null)}
+                        onClear={() => setInspecting(null)}
                         bind={bind}
                         t={t}
                       />
@@ -1489,20 +1413,14 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                           key={node.id}
                           job={job}
                           node={node}
-                          selected={node.id === selectedId}
+                          selected={inspecting?.kind === 'worker' && inspecting.id === node.id}
                           answering={answering.has(node.id)}
-                          applying={applying.has(node.id)}
-                          applied={applied.has(node.id)}
-                          projectId={projectId}
-                          diffOpen={diffOpenFor === node.id}
-                          diffText={diffText[node.id]}
-                          diffLoading={diffLoading.has(node.id)}
                           theme={theme}
-                          onSelect={(id) => setSelectedId(id === selectedId ? null : id)}
-                          onMessage={focusComposer}
+                          shortcuts={plannerAliveFor(job) ? shortcuts : []}
+                          onSelect={(id) => setInspecting({ kind: 'worker', id })}
                           onAnswer={(id, decision) => void answer(id, decision)}
-                          onToggleDiff={(id) => void toggleDiff(id)}
-                          onApply={(job) => void applyWorktree(job)}
+                          onStop={(id) => void stopJob(id)}
+                          onShortcut={(job, shortcut) => void sendShortcut(job, shortcut)}
                           bind={bind}
                           t={t}
                         />
@@ -1513,6 +1431,41 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                       const item = mediaByNodeId.get(node.id)
                       if (!item) return null
                       return <MediaCardNode key={node.id} node={node} item={item} bind={bind} />
+                    })}
+
+                    {graph.shellGroups.map((node) => (
+                      <ShellGroupNode
+                        key={node.id}
+                        node={node}
+                        attachment={node.id.endsWith('detached') ? 'detached' : 'attached'}
+                        count={
+                          shells.filter((shell) =>
+                            node.id.endsWith('detached')
+                              ? shell.attachment === 'detached'
+                              : shell.attachment === 'attached',
+                          ).length
+                        }
+                        bind={bind}
+                        t={t}
+                      />
+                    ))}
+
+                    {graph.shells.map((node) => {
+                      const shell = shellById.get(node.id)
+                      if (!shell) return null
+                      return (
+                        <ShellNode
+                          key={node.id}
+                          shell={shell}
+                          node={node}
+                          selected={inspecting?.kind === 'shell' && inspecting.id === shell.id}
+                          busy={shellBusy.has(shell.id)}
+                          onOpen={openShellInspector}
+                          onControl={(target, control) => void controlShell(target, control)}
+                          bind={bind}
+                          t={t}
+                        />
+                      )
                     })}
                   </div>
                 )}
@@ -1557,56 +1510,6 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                   </button>
                 </div>
               </div>
-
-              <form
-                className={styles.composer}
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  void send()
-                }}
-              >
-                {selected ? (
-                  <span className={styles.composerTarget} data-status={selected.status}>
-                    <span className={styles.dot} aria-hidden />
-                    <AgentGlyph agent={selected.agent} theme={theme} size={13} />
-                    <span className={styles.composerId}>
-                      {t('orchestrator.composeTo', { id: selected.id })}
-                    </span>
-                  </span>
-                ) : (
-                  <span className={styles.composerTarget}>
-                    <span className={styles.composerId} data-idle="true">
-                      {t('orchestrator.composeNoTarget')}
-                    </span>
-                  </span>
-                )}
-                <input
-                  ref={composer}
-                  className={styles.composerInput}
-                  value={draft}
-                  disabled={!canSend || sending}
-                  placeholder={t(MODE_PLACEHOLDER[mode])}
-                  onChange={(event) => setDraft(event.target.value)}
-                  onPointerDown={(event) => event.stopPropagation()}
-                />
-                {canSend && mode === 'resume' && (
-                  <span className={styles.composerNote}>{t('orchestrator.resumeNote')}</span>
-                )}
-                {canSend && (
-                  <span className={styles.composerMode} data-mode={mode}>
-                    {t(MODE_LABEL[mode])}
-                  </span>
-                )}
-                <button
-                  type="submit"
-                  className={styles.composerSend}
-                  disabled={!canSend || sending || draft.trim().length === 0}
-                  title={t(MODE_HINT[mode])}
-                  aria-label={t(MODE_HINT[mode])}
-                >
-                  <CornerDownLeft size={12} />
-                </button>
-              </form>
             </div>
 
             <aside className={styles.rail} data-collapsed={summaryOpen ? undefined : 'true'}>
@@ -1667,7 +1570,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                       key={run.id}
                       run={run}
                       open={openRuns[run.id] ?? opensByDefault(run)}
-                      selectedId={selectedId}
+                      selectedId={selectedWorkerId}
                       theme={theme}
                       onToggle={toggleRun}
                       onSelectWorker={reveal}
@@ -1690,7 +1593,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                         onPointerDown={(event) => event.stopPropagation()}
                         onClick={() => openPlanner(plannerKey(group))}
                       >
-                        <AgentGlyph agent={group.agent} theme={theme} size={12} />
+                        <AgentGlyph agent={group.agent} theme={theme} size={12} className={styles.glyph} />
                         <span className={styles.attentionName}>
                           {group.label ?? t('orchestrator.noPlanner')}
                         </span>
@@ -1705,6 +1608,31 @@ export const OrchestratorPane = memo(function OrchestratorPane({
             </aside>
           </div>
         </div>
+      )}
+
+      {inspectorTarget && (
+        <OrchestratorInspector
+          target={inspectorTarget}
+          projectId={projectId}
+          theme={theme}
+          terminalTheme={terminalTheme}
+          diffText={diffText[inspectorTarget.kind === 'worker' ? inspectorTarget.job.id : '']}
+          diffLoading={diffLoading.has(
+            inspectorTarget.kind === 'worker' ? inspectorTarget.job.id : '',
+          )}
+          shortcuts={shortcuts}
+          plannerAlive={inspectorTarget.kind === 'worker' ? plannerAliveFor(inspectorTarget.job) : true}
+          shellBusy={
+            inspectorTarget.kind === 'shell' ? shellBusy.has(inspectorTarget.shell.id) : false
+          }
+          canStopJob={inspectorTarget.kind === 'worker' && canStop(inspectorTarget.job)}
+          onClose={() => setInspecting(null)}
+          onLoadDiff={(jobId) => void loadDiff(jobId)}
+          onStopJob={(jobId) => void stopJob(jobId)}
+          onShortcut={(job, shortcut) => void sendShortcut(job, shortcut)}
+          onShellControl={(shell, control) => void controlShell(shell, control)}
+          t={t}
+        />
       )}
     </section>
   )

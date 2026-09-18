@@ -32,6 +32,7 @@ pub fn command_builder_for_terminal(
     initial_command: Option<&str>,
     resolved_launcher: Option<&str>,
     extra_args: &[String],
+    command_line: Option<&str>,
 ) -> CommandBuilder {
     let trimmed = initial_command
         .map(str::trim)
@@ -79,6 +80,12 @@ pub fn command_builder_for_terminal(
                 || shell.eq_ignore_ascii_case("powershell.exe")
             {
                 builder.arg("-NoLogo");
+            }
+            // An orchestrator shell: the line runs through the shell and the PTY ends with it, so
+            // the board can tell a running service from one that exited.
+            if let Some(line) = command_line.map(str::trim).filter(|line| !line.is_empty()) {
+                builder.arg(if cfg!(windows) { "-Command" } else { "-lc" });
+                builder.arg(line);
             }
             builder
         }
@@ -901,6 +908,28 @@ pub async fn discover_provider_models(provider: String) -> Result<Vec<ModelOptio
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    fn argv_of(builder: &CommandBuilder) -> Vec<String> {
+        builder
+            .get_argv()
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    #[test]
+    fn a_shell_given_a_command_line_runs_it_and_exits_with_it() {
+        let argv = argv_of(&command_builder_for_terminal(None, None, &[], Some("npm run dev")));
+        assert_eq!(argv.last().map(String::as_str), Some("npm run dev"), "{argv:?}");
+        let flag = if cfg!(windows) { "-Command" } else { "-lc" };
+        assert_eq!(argv[argv.len() - 2], flag, "{argv:?}");
+    }
+
+    #[test]
+    fn a_plain_shell_stays_interactive() {
+        let argv = argv_of(&command_builder_for_terminal(None, None, &[], None));
+        assert!(!argv.iter().any(|arg| arg == "-Command" || arg == "-lc"), "{argv:?}");
+    }
 
     #[test]
     fn accepts_model_ids_and_rejects_cli_prose() {

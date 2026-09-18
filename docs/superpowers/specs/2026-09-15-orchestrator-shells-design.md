@@ -58,7 +58,9 @@ stopped it from the board, or it was running when the app closed. Both can be pl
 `spawn_pty` (`pty.rs:231`), `attach_pty` (`pty.rs:815`, returns the tail of the scrollback from
 memory or disk), `restart_pty` (`pty.rs:763`), `write_pty` (`pty.rs:901`), `kill_pty`
 (`pty.rs:1041`). The PTY is spawned by the backend with no view attached (120x30), so the
-command runs even when its project is not on screen. The shell id doubles as the PTY id.
+command runs even when its project is not on screen. Its PTY id is the shell id with an
+`orchestrator-` prefix (`orchestrator-shell-01`); the prefix is how the frontend recognises a view
+of an orchestrator shell without asking the backend.
 
 ## 5. Running a command line
 
@@ -84,8 +86,10 @@ say to use the foreground form when the person should be able to stop it from th
 ## 6. Planner tools
 
 **`alethe_open_shell { command, name?, cwd? }`** registers a shell, opens it through the host and
-returns `{ shellId, name, cwd, status }`. `cwd` defaults to the planner's directory; `name`
-defaults to the first word of the command. Registered only when a shell host is set.
+returns `{ shellId, name, cwd, status }`. The core does not know the planner's folder, so, like
+`alethe_delegate`, a missing `cwd` falls back to Alethe's own working directory; the tool
+description and the instructions tell the planner to pass the project's folder. `name` defaults
+to the first word of the command. Registered only when a shell host is set.
 
 **`alethe_shell_output { shellId, lines? }`** returns `{ shellId, status, exitCode, output }`,
 where `output` is the last `lines` lines (default 40, at most 200) with ANSI escape sequences
@@ -102,10 +106,14 @@ outright would leave its containers running; `Ctrl+C` lets it bring them down.
 
 **Restart** stops as above, then spawns again with the stored command line and cwd.
 
-**Exit detection.** The host listens on the Rust side for the PTY exit event (`pty://exit/{id}`)
-and reports it to the core, which sets `exited` and the exit code and emits a snapshot. Whether
-the event payload carries the exit code is verified during planning; without it the shell still
-reports `exited`, with no code.
+**Exit detection.** The host listens on the Rust side for the PTY exit event (`pty://exit/{id}`),
+whose payload is `PtyExitPayload { code, reason }` (`pty.rs:199`), and reports it to the core
+with the run it belongs to. The core sets `exited` and the code, ignores a report for a shell the
+person stopped or for an earlier run, and emits a snapshot.
+
+**Last output.** Stopping releases the PTY and its scrollback. So when a shell leaves `running`,
+by exiting or by being stopped, the core keeps its last lines, and `alethe_shell_output` and the
+card read those from then on.
 
 **The person's controls** are Tauri commands the board calls: `orchestrator_shell_stop`,
 `orchestrator_shell_restart` (also the "play" of a stopped or exited shell) and
@@ -113,8 +121,10 @@ reports `exited`, with no code.
 
 ## 8. The board
 
-Shells appear in a **"Shells"** group per planner, beside the existing "Subagents" group built by
-`src/lib/orchestratorSubagents.ts`. A shell card shows:
+Shells appear in a **Shells** section of the board's side rail, for the selected planner, below its
+runs. They are not canvas nodes: the canvas layout (`layoutPlannerBoard`) and `WorkerNode` are
+built around delegated jobs (steering, diffs, approvals), none of which a shell has. A shell card
+shows:
 
 - name, command and cwd;
 - status: running, exited with its code, or stopped;
@@ -128,9 +138,13 @@ the card would then misreport. The last output of a finished shell stays readabl
 
 **Open terminal** adds a tab to the project grid whose `ptyId` is the shell id. The existing
 attach path in `useXtermSession.ts:903-905` (`ptyExists` then `attachExistingPty`) connects it to
-the running process. The tab is marked with the shell id it views, and closing it **only
-detaches**: it never kills the PTY, unlike closing an ordinary terminal. The service keeps running
-until it is stopped from the board.
+the running process. Closing it **only detaches**: `cleanupPtys` (`src/lib/terminalLifecycle.ts`),
+the one place closing a terminal kills its PTY, skips ids with the `orchestrator-shell-` prefix.
+The service keeps running until it is stopped from the board. Restarting from that tab goes
+through the orchestrator (`restartPty` in `src/lib/tauri/pty.ts` routes the prefix to
+`orchestrator_shell_restart`), so the command runs again instead of an empty shell taking over its
+id. A view that outlives its shell, such as one left open across an app restart, never spawns a
+PTY of its own under that id: it says the shell is not running and points to the board.
 
 A shell belongs to its planner's project, so the board's existing per-project filtering applies
 to shells unchanged.
