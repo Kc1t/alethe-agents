@@ -399,8 +399,7 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
         try {
           await worktreeRemove(repo, terminal.worktreeAgentId, true)
         } catch (firstErr) {
-          if (String(firstErr).includes('worktree_not_found')) {
-          } else {
+          if (!String(firstErr).includes('worktree_not_found')) {
             await new Promise((resolve) => setTimeout(resolve, 400))
             try {
               await worktreeRemove(repo, terminal.worktreeAgentId, true)
@@ -412,7 +411,7 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
                 })
               }
               console.warn(
-                '[projectsStore] falha removendo worktree ao deletar terminal:',
+                '[projectsStore] failed to remove the worktree while deleting the terminal:',
                 secondErr,
               )
             }
