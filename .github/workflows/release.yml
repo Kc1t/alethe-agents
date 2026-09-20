@@ -59,6 +59,24 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      # tauri-bundler downloads linuxdeploy into ~/.cache/tauri and reuses whatever is already
+      # there. The build it pins (2024-07-29) predates the excludelist entry that keeps
+      # libwayland-client out of AppImages (added 2024-11-03), and it does not understand
+      # LINUXDEPLOY_EXCLUDED_LIBRARIES either, so seeding a newer one here is what fixes both.
+      # Remove this step once tauri-apps/binary-releases ships a build from after 2024-11-03.
+      - name: Pin a linuxdeploy that excludes the Wayland libraries
+        if: matrix.platform == 'ubuntu-22.04'
+        env:
+          LINUXDEPLOY_TAG: 1-alpha-20251107-1
+          LINUXDEPLOY_SHA256: c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.cache/tauri
+          curl -fsSL --retry 3 --retry-all-errors -o ~/.cache/tauri/linuxdeploy-x86_64.AppImage \
+            "https://github.com/linuxdeploy/linuxdeploy/releases/download/${LINUXDEPLOY_TAG}/linuxdeploy-x86_64.AppImage"
+          echo "${LINUXDEPLOY_SHA256}  $HOME/.cache/tauri/linuxdeploy-x86_64.AppImage" | sha256sum -c -
+          chmod +x ~/.cache/tauri/linuxdeploy-x86_64.AppImage
+
       - name: Build and upload Tauri bundles
         uses: tauri-apps/tauri-action@v0
         env:
@@ -68,16 +86,27 @@ jobs:
           # `npm run tauri signer generate` e cadastre nos secrets do repo.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Evita empacotar as bibliotecas do Wayland para não dar conflito com as do host.
-          # Isso previne o crash EGL_BAD_PARAMETER no WebKit ao abrir no Arch e Fedora.
-          LINUXDEPLOY_PLUGIN_GTK_OMIT_LIBRARIES: "libwayland-client.so.1:libwayland-egl.so.1"
+          # Keep the Wayland libraries out of the AppImage — scripts/verify-appimage.sh explains
+          # why a bundled one leaves the window blank. libwayland-client is already dropped by
+          # the excludelist of the linuxdeploy pinned above; the rest of the ABI family has to
+          # be named here. The separator is ";", not ":".
+          LINUXDEPLOY_EXCLUDED_LIBRARIES: "libwayland-client.so.0;libwayland-cursor.so.0;libwayland-egl.so.1;libwayland-server.so.0"
         with:
           tagName: v__VERSION__
           releaseName: 'Alethe v__VERSION__'
           releaseBody: 'Free desktop build of Alethe for Windows, macOS and Linux. Local app is free; cloud/sync services may be offered separately.'
-          releaseDraft: false
+          # Promoted to a real release at the end of fix-updater-target, once every check ran.
+          releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      # The step above lives in a tool cache, invisible from the repository: if the cache path
+      # or the pinned tool ever changes, the build stays green and ships a broken AppImage —
+      # which is exactly how the previous attempt at this fix went unnoticed. This is the part
+      # that fails, while the release is still a draft.
+      - name: Verify the AppImage bundles no Wayland library
+        if: matrix.platform == 'ubuntu-22.04'
+        run: ./scripts/verify-appimage.sh
 
   # O tauri-action escolhe sozinho qual bundle do Windows vai na chave genérica
   # `windows-x86_64` do latest.json, e escolhe o MSI. Quase todo mundo instala
@@ -92,13 +121,29 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
+      # Derived from the same file tauri-action interpolates v__VERSION__ from, so it names the
+      # release deterministically and every step below acts on that one. Asking for "the newest
+      # draft" instead would happily follow a draft left behind by a failed or concurrent run.
+      - name: Resolve the release tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="v$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          if [ "$(gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')" != "true" ]; then
+            echo "$VERSION is not a draft release — refusing to touch it" >&2
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Draft release: $VERSION"
+
       - name: Rewrite latest.json
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          VERSION=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq '.[0].tagName')
-          echo "Release: $VERSION"
 
           gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" --pattern latest.json --output latest.json --clobber
 
@@ -123,7 +168,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          VERSION=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq '.[0].tagName')
           gh release download "$VERSION" --repo "$GITHUB_REPOSITORY" --pattern latest.json --output check.json --clobber
 
           node <<'NODE'
@@ -151,3 +195,40 @@ jobs:
           }
           console.log('\nManifest OK')
           NODE
+
+      # Everything above ran against a draft. Promoting it here is what makes the installers
+      # downloadable and what lets the updater see the release, so it must stay last: any
+      # earlier step failing leaves the draft unpublished instead of shipping a broken build.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release edit "$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false
+          echo "Published: $VERSION"
+
+  # Without this, a run that fails the AppImage check leaves its draft behind and nothing ever
+  # cleans it up — the next run would then be working around state left by the failed one.
+  discard-failed-draft:
+    name: Discard the draft of a failed run
+    needs: [build, fix-updater-target]
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Delete the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="v$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          # Deletes a draft only: a published release carrying the same tag is left untouched.
+          if [ "$(gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft' 2>/dev/null)" = "true" ]; then
+            gh release delete "$VERSION" --repo "$GITHUB_REPOSITORY" --yes
+            echo "Deleted draft: $VERSION"
+          else
+            echo "Nothing to discard for $VERSION"
+          fi
