@@ -193,6 +193,18 @@ export function touchTerminalUsage(terminal: Terminal, tabId = terminal.activeTa
   }
 }
 
+/**
+ * Sidebar rows prefer a live auto-derived title — Claude's own session title, or the active
+ * sub-tab's agent-type name — over the terminal's own `name`. That makes sense for an
+ * unrenamed pane, but it silently shadows an explicit rename forever, since the sub-tab name is
+ * always truthy. `customName` (set only by the rename action) lets that explicit choice win.
+ */
+export function sidebarTerminalDisplayName(terminal: Terminal, chatTitle: string | null): string {
+  if (terminal.customName) return terminal.name
+  const activeTab = terminal.tabs.find((tab) => tab.id === terminal.activeTabId) ?? terminal.tabs[0]
+  return chatTitle ?? activeTab?.name ?? terminal.name
+}
+
 export function pickMostRecentTab(terminal: Terminal, excludeTabId?: string): SubTab | null {
   const candidates = terminal.tabs.filter((tab) => tab.id !== excludeTabId)
   if (candidates.length === 0) return null

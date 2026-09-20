@@ -21,6 +21,14 @@ goes; **remote control** grown into a real mobile client with a live terminal, a
 interactive questions; **optional project grids**; **9router** routing; **cloud sync** for
 preferences; and three new agents — **Cursor CLI**, **Kiro CLI** and plain **WSL** terminals.
 
+- Renaming a project, group, or terminal now also updates its pinned/recent tab in the topbar. The
+  tab strip snapshotted its label only once, when the tab was first created, so a later rename kept
+  showing the old name there even though the workspace itself reflected the new one.
+
+- Renaming a terminal from the sidebar now actually sticks there too. The row's display name
+  preferred a live auto-title — Claude's own session title, or the active sub-tab's agent-type
+  name — over the renamed value, so the rename looked like it silently did nothing.
+
 ### Added
 
 - **Per-agent orchestration spend.** Worker cards now show their session cost, while the header totals reported spend by provider for the selected planner and preserves delegated-worker usage across app restarts.

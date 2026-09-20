@@ -53,7 +53,12 @@ type TerminalsSlice = Pick<
   | 'markTerminalUsed'
 >
 
-export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx): TerminalsSlice {
+export function createTerminalsSlice({
+  get,
+  update,
+  updateTerminal,
+  navigationUpdate,
+}: SliceCtx): TerminalsSlice {
   return {
     createTerminal: (projectId, args) => {
       let terminal = makeDefaultTerminal(args)
@@ -341,8 +346,27 @@ export function createTerminalsSlice({ get, update, updateTerminal }: SliceCtx):
       return pane
     },
 
-    renameTerminal: (projectId, terminalId, name) =>
-      updateTerminal(projectId, terminalId, (t) => ({ ...t, name })),
+    renameTerminal: (projectId, terminalId, name) => {
+      // `customName` lets the sidebar rows prefer this over their own live auto-title (Claude's
+      // session title, or the active sub-tab's agent-type name) — see the Terminal type.
+      updateTerminal(projectId, terminalId, (t) => ({ ...t, name, customName: true }))
+      // The topbar's saved/pinned tab strip snapshots its label at creation time and never
+      // rereads the terminal, so a rename has to be pushed into it explicitly here. Uses
+      // `navigationUpdate` so this targeted relabel isn't immediately overwritten by the active-tab
+      // composition resync that a plain `update` touching `workspace` would trigger.
+      navigationUpdate((state) => ({
+        workspace: {
+          ...state.workspace,
+          tabs: state.workspace.tabs.map((tab) =>
+            tab.kind === 'terminal' &&
+            tab.sourceId === terminalId &&
+            tab.sourceProjectId === projectId
+              ? { ...tab, label: name }
+              : tab,
+          ),
+        },
+      }))
+    },
 
     setBrowserEngine: (projectId, terminalId, engine) =>
       updateTerminal(projectId, terminalId, (t) => ({
