@@ -10,7 +10,28 @@
       "downloadUrl": "https://github.com/Kc1t/alethe-agents/tree/main/docs/examples/notes-plugin",
       "version": "1.0.0",
       "minApiVersion": 1,
-      "capabilities": ["ui.sidebarTab", "ui.command"]
+      "capabilities": [
+        "ui.sidebarTab",
+        "ui.command"
+      ]
+    },
+    {
+      "id": "jbnado.hello",
+      "name": "Hello World",
+      "description": "A worked example plugin: a sidebar tab, a command, its own storage and two languages.",
+      "author": "João Bernardo",
+      "repo": "Jbnado/alethe-plugin-hello",
+      "downloadUrl": "https://github.com/Jbnado/alethe-plugin-hello/releases",
+      "version": "0.1.0",
+      "package": {
+        "url": "https://github.com/Jbnado/alethe-plugin-hello/releases/download/v0.1.0/jbnado.hello-0.1.0.zip",
+        "sha256": "ad794479a19c6eb69df9c29cbc05a843a6c28f5418a67f83a8e9265c8c987f44"
+      },
+      "minApiVersion": 1,
+      "capabilities": [
+        "ui.sidebarTab",
+        "ui.command"
+      ]
     }
   ]
 }
