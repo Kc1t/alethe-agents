@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+
 import type { AgentFitness } from '../agentFitness'
 import type { RuleSet } from '../types'
 
@@ -41,6 +42,7 @@ export type OrchestratorTokenCount = {
   inputTokens?: number
   outputTokens?: number
   cachedInputTokens?: number
+  cacheCreationInputTokens?: number
   reasoningOutputTokens?: number
 }
 
@@ -85,6 +87,8 @@ export type OrchestratorJob = {
   seconds: number | null
   plan: string[]
   tokens: OrchestratorTokens | null
+  /** Reported session cost. Null when the provider does not expose a monetary price. */
+  costUsd: number | null
   /** Claude's per-turn usage report; null for Codex workers. */
   quota: OrchestratorClaudeQuota | null
   /** Why this worker ran on this agent; null when neither side was running out at the time. */

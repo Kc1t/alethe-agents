@@ -148,6 +148,7 @@ export function RowSelect({
               aria-label={ariaLabel}
               onPointerDown={(event) => event.stopPropagation()}
               onMouseDown={(event) => event.stopPropagation()}
+              onWheel={(event) => event.stopPropagation()}
               style={{
                 left: position.left,
                 top: position.top,

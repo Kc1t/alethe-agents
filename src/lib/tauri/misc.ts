@@ -156,6 +156,15 @@ export async function findCliLauncher(agent: string): Promise<string | null> {
   return invoke<string | null>('find_cli_launcher', { agent })
 }
 
+/**
+ * Same lookup as `findCliLauncher`, but re-reads the machine's environment first. An installer
+ * that puts its CLI on PATH only reaches processes started afterwards, so this is what an install
+ * screen asks to see a CLI that landed while the app was already running.
+ */
+export async function refreshCliLauncher(command: string): Promise<string | null> {
+  return invoke<string | null>('refresh_cli_launcher', { command })
+}
+
 export async function probeInstallToolchain(): Promise<InstallToolchain> {
   return invoke<InstallToolchain>('probe_install_toolchain')
 }

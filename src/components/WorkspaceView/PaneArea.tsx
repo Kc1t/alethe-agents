@@ -112,16 +112,18 @@ function PaneGroupView({
 
 export type PaneAreaProps = {
   projectId: string
+  gridId?: string
 
   idPrefix: string
   terminals: Terminal[]
   layoutMode: LayoutMode
 }
 
-export function PaneArea({ projectId, idPrefix, terminals, layoutMode }: PaneAreaProps) {
+export function PaneArea({ projectId, gridId, idPrefix, terminals, layoutMode }: PaneAreaProps) {
   const groups = useProjectsStore(
     (s) => s.projects.find((p) => p.id === projectId)?.paneGroups ?? EMPTY_PANE_GROUPS,
   )
+  if (gridId && gridId !== 'default') idPrefix = `${idPrefix}-grid-${gridId}`
   if (terminals.length === 0) return null
   const groupedIds = new Set(groups.flatMap((group) => group.paneIds.slice(1)))
   const visibleTerminals = terminals.filter((terminal) => !groupedIds.has(terminal.id))
@@ -133,7 +135,7 @@ export function PaneArea({ projectId, idPrefix, terminals, layoutMode }: PaneAre
     )
   }
   if (layoutMode === 'grid')
-    return <GridLayoutComponent projectId={projectId} terminals={visibleTerminals} />
+    return <GridLayoutComponent projectId={projectId} gridId={gridId} terminals={visibleTerminals} />
   if (layoutMode === 'spotlight')
     return (
       <SpotlightLayout projectId={projectId} idPrefix={idPrefix} terminals={visibleTerminals} />
@@ -145,14 +147,16 @@ export function PaneArea({ projectId, idPrefix, terminals, layoutMode }: PaneAre
 
 function GridLayoutComponent({
   projectId,
+  gridId,
   terminals,
 }: {
   projectId: string
+  gridId?: string
   terminals: Terminal[]
 }) {
   const project = useProjectsStore((s) => s.projects.find((p) => p.id === projectId))
   const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
-  const layout: GridLayout | undefined = project?.gridLayout
+  const layout: GridLayout | undefined = gridId ? project?.grids?.find((grid) => grid.id === gridId)?.gridLayout : project?.gridLayout
   const ids = terminals.map((t) => t.id)
   const reconciled = layout ? reconcileGridLayout(layout, ids) : autoGridLayout(ids, 2)
   return (

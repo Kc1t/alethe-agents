@@ -1,4 +1,5 @@
 use serde::Serialize;
+use serde_json::Value;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
@@ -26,6 +27,16 @@ pub struct CodexUsage {
     pub rate_limited: bool,
 
     pub reset_credits: u64,
+    pub reset_credit_items: Vec<CodexResetCredit>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct CodexResetCredit {
+    pub id: String,
+    pub status: String,
+    pub expires_at_ms: f64,
+    pub title: String,
+    pub description: String,
 }
 
 fn resolve_codex() -> Option<std::path::PathBuf> {
@@ -148,6 +159,38 @@ fn fetch_usage() -> Result<CodexUsage, String> {
         .and_then(|v| v.get("availableCount"))
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
+    let reset_credit_items = result
+        .get("rateLimitResetCredits")
+        .and_then(|v| v.get("credits"))
+        .and_then(|v| v.as_array())
+        .map(|credits| {
+            credits
+                .iter()
+                .filter(|credit| credit.get("status").and_then(|v| v.as_str()) == Some("available"))
+                .filter_map(|credit| {
+                    Some(CodexResetCredit {
+                        id: credit.get("id")?.as_str()?.to_string(),
+                        status: credit.get("status")?.as_str()?.to_string(),
+                        expires_at_ms: credit
+                            .get("expiresAt")
+                            .and_then(|v| v.as_f64())
+                            .map(|secs| secs * 1000.0)
+                            .unwrap_or(0.0),
+                        title: credit
+                            .get("title")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        description: credit
+                            .get("description")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
 
     Ok(CodexUsage {
         primary: parse_window(rate_limits.get("primary")),
@@ -155,12 +198,86 @@ fn fetch_usage() -> Result<CodexUsage, String> {
         plan,
         rate_limited,
         reset_credits,
+        reset_credit_items,
     })
+}
+
+fn consume_reset_credit(credit_id: Option<String>) -> Result<CodexUsage, String> {
+    let exe = resolve_codex().ok_or_else(|| "codex_not_found".to_string())?;
+    let key = nanoid::nanoid!();
+    let mut params = serde_json::json!({ "idempotencyKey": key });
+    if let Some(credit_id) = credit_id.filter(|id| !id.is_empty()) {
+        params["creditId"] = Value::String(credit_id);
+    }
+    let request = serde_json::json!({
+        "id": 2,
+        "method": "account/rateLimitResetCredit/consume",
+        "params": params
+    });
+
+    let mut command = Command::new(exe);
+    command
+        .arg("app-server")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    crate::git_control::hide_console(&mut command);
+    let mut child = command.spawn().map_err(|e| format!("spawn failed: {e}"))?;
+    let mut stdin = child.stdin.take().ok_or("no stdin")?;
+    let stdout = child.stdout.take().ok_or("no stdout")?;
+    let requests = format!(
+        "{}\n{}\n{}\n",
+        r#"{"id":1,"method":"initialize","params":{"clientInfo":{"name":"alethe","version":"1.2.0"}}}"#,
+        r#"{"method":"initialized"}"#,
+        serde_json::to_string(&request).map_err(|e| e.to_string())?
+    );
+    stdin
+        .write_all(requests.as_bytes())
+        .map_err(|e| format!("write failed: {e}"))?;
+    stdin.flush().map_err(|e| format!("flush failed: {e}"))?;
+
+    let (tx, rx) = mpsc::channel();
+    let reader_handle = thread::spawn(move || {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines().map_while(Result::ok) {
+            if let Ok(value) = serde_json::from_str::<Value>(&line) {
+                if value.get("id").and_then(Value::as_i64) == Some(2) {
+                    let _ = tx.send(value);
+                    break;
+                }
+            }
+        }
+    });
+    let received = rx.recv_timeout(Duration::from_secs(12));
+    let _ = child.kill();
+    let _ = child.wait();
+    drop(stdin);
+    let _ = reader_handle.join();
+    let message = received.map_err(|_| "timeout".to_string())?;
+    if let Some(error) = message.get("error") {
+        return Err(format!("rpc error: {error}"));
+    }
+    let outcome = message
+        .get("result")
+        .and_then(|result| result.get("outcome"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if outcome != "reset" && outcome != "alreadyRedeemed" {
+        return Err(format!("reset credit was not consumed: {outcome}"));
+    }
+    fetch_usage()
 }
 
 #[tauri::command]
 pub async fn get_codex_usage() -> Result<CodexUsage, String> {
     tokio::task::spawn_blocking(fetch_usage)
+        .await
+        .map_err(|e| format!("join error: {e}"))?
+}
+
+#[tauri::command]
+pub async fn consume_codex_reset_credit(credit_id: Option<String>) -> Result<CodexUsage, String> {
+    tokio::task::spawn_blocking(move || consume_reset_credit(credit_id))
         .await
         .map_err(|e| format!("join error: {e}"))?
 }

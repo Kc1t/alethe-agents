@@ -3,13 +3,14 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{OnceLock, RwLock};
 use std::time::SystemTime;
 
 #[cfg(windows)]
 use winreg::{enums::*, RegKey};
 
-static REBUILT_PATH: OnceLock<String> = OnceLock::new();
+/// `None` until the first lookup, and reset to it by `invalidate_rebuilt_path` after an install.
+static REBUILT_PATH: RwLock<Option<String>> = RwLock::new(None);
 
 pub fn default_shell() -> String {
     #[cfg(windows)]
@@ -168,7 +169,20 @@ pub fn find_windows_cli_launcher(command: &str) -> Option<PathBuf> {
     Some(resolved)
 }
 
+/// Binary name for an agent whose CLI is not called after the vendor: Antigravity ships `agy`, and
+/// Cursor ships `cursor-agent` (its bare `agent` alias collides with other vendors' CLIs). Callers
+/// normally pass the binary name already, so this only has to catch the ones that pass an agent id.
+fn canonical_cli_name(command: &str) -> &str {
+    match command {
+        "antigravity" => "agy",
+        "cursor" => "cursor-agent",
+        other => other,
+    }
+}
+
 fn resolve_cli_launcher(command: &str) -> Option<PathBuf> {
+    let command = canonical_cli_name(command);
+
     #[cfg(not(windows))]
     {
         if let Ok(path) = which::which(command) {
@@ -185,6 +199,10 @@ fn resolve_cli_launcher(command: &str) -> Option<PathBuf> {
         // mesmo estando no disco. Cobrir os prefixos padrão do Homebrew
         // (Apple Silicon e Intel) como fallback fixo.
         dirs.extend(homebrew_dirs());
+        // Linux user-scoped installers (nvm, bun, npm --prefix, pnpm, volta) —
+        // invisible under the minimal PATH a desktop menu inherits.
+        #[cfg(target_os = "linux")]
+        dirs.extend(linux_user_bin_dirs());
         for dir in dirs {
             let candidate = dir.join(command);
             if candidate.is_file() {
@@ -200,19 +218,11 @@ fn resolve_cli_launcher(command: &str) -> Option<PathBuf> {
         dirs.extend(split_windows_path_expanded(&rebuilt_path()));
         dirs.extend(agent_search_dirs());
 
-        // exclusivamente `agy`. Nunca use o desktop como fallback para o CLI.
-        let candidates_to_try = match command {
-            "antigravity" | "agy" => vec!["agy"],
-            other => vec![other],
-        };
-
-        for cmd_name in candidates_to_try {
-            for dir in &dirs {
-                for extension in ["cmd", "exe", "bat", "ps1"] {
-                    let candidate = dir.join(format!("{cmd_name}.{extension}"));
-                    if candidate.is_file() {
-                        return Some(candidate);
-                    }
+        for dir in &dirs {
+            for extension in ["cmd", "exe", "bat", "ps1"] {
+                let candidate = dir.join(format!("{command}.{extension}"));
+                if candidate.is_file() {
+                    return Some(candidate);
                 }
             }
         }
@@ -324,6 +334,56 @@ fn homebrew_dirs() -> Vec<PathBuf> {
     ]
 }
 
+/// Standard user bin dirs for Linux package managers. Desktop menus launch the
+/// app with a minimal PATH, so agents installed via `npm --prefix`, bun, pnpm,
+/// volta or nvm are invisible to `which`; these are the default install roots
+/// for each tool (mirrors `agent_search_dirs` on Windows and the fixed Homebrew
+/// fallback on macOS).
+#[cfg(target_os = "linux")]
+fn linux_user_bin_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::<PathBuf>::new();
+    if let Some(home) = env::var_os("HOME").map(PathBuf::from) {
+        dirs.push(home.join(".npm-global").join("bin"));
+        dirs.push(home.join(".bun").join("bin"));
+        dirs.push(home.join(".volta").join("bin"));
+        dirs.push(home.join(".local").join("share").join("pnpm"));
+    }
+    if let Some(pnpm_home) = env::var_os("PNPM_HOME").map(PathBuf::from) {
+        dirs.push(pnpm_home);
+    }
+    // nvm installs one versioned bin dir per node release; pick every one
+    // newest first (same pattern as `fnm_version_dirs`).
+    let nvm_root = env::var_os("NVM_DIR")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".nvm")));
+    if let Some(root) = nvm_root {
+        let versions_dir = root.join("versions").join("node");
+        if let Ok(entries) = fs::read_dir(&versions_dir) {
+            let mut versions: Vec<(PathBuf, SystemTime)> = entries
+                .filter_map(|entry| entry.ok())
+                .filter_map(|entry| {
+                    let path = entry.path();
+                    let name = path.file_name()?.to_str()?.to_string();
+                    if !name.starts_with('v') {
+                        return None;
+                    }
+                    let bin = path.join("bin");
+                    if !bin.is_dir() {
+                        return None;
+                    }
+                    let modified = entry.metadata().and_then(|m| m.modified()).ok()?;
+                    Some((bin, modified))
+                })
+                .collect();
+            versions.sort_by(|a, b| b.1.cmp(&a.1));
+            for (bin, _) in versions {
+                dirs.push(bin);
+            }
+        }
+    }
+    dirs
+}
+
 /// Looks for the VS Code launcher (`code`) in common locations plus PATH.
 /// Returns the first one that exists.
 pub fn find_vscode_launcher() -> Option<PathBuf> {
@@ -403,6 +463,9 @@ pub fn agent_search_dirs() -> Vec<PathBuf> {
                 .join("antigravity")
                 .join("bin"),
         );
+        // Cursor's installer drops its shims at the root of this folder, not in a `bin` subdir,
+        // and only puts it on PATH for shells started afterwards.
+        dirs.push(profile.join("AppData").join("Local").join("cursor-agent"));
     }
     if let Some(app_data) = env::var_os("APPDATA").map(PathBuf::from) {
         dirs.push(app_data.join("npm"));
@@ -521,7 +584,37 @@ fn scrub_editor_environment(builder: &mut CommandBuilder) {
 }
 
 pub fn rebuilt_path() -> String {
-    REBUILT_PATH.get_or_init(build_rebuilt_path).clone()
+    if let Ok(cached) = REBUILT_PATH.read() {
+        if let Some(value) = cached.as_ref() {
+            return value.clone();
+        }
+    }
+    let built = build_rebuilt_path();
+    if let Ok(mut cached) = REBUILT_PATH.write() {
+        *cached = Some(built.clone());
+    }
+    built
+}
+
+/// Drops the cached PATH so the next lookup reads what an installer just wrote to the registry.
+/// Windows only hands a new environment to processes started after the change, and this one is
+/// long-lived: without this, a CLI installed from inside Alethe stays invisible until a restart.
+pub fn invalidate_rebuilt_path() {
+    if let Ok(mut cached) = REBUILT_PATH.write() {
+        *cached = None;
+    }
+}
+
+/// Re-reads the machine's environment, then reports the launcher for `command` — what an install
+/// screen calls to find out whether the CLI it was installing has actually landed.
+#[tauri::command]
+pub async fn refresh_cli_launcher(command: String) -> Option<String> {
+    tokio::task::spawn_blocking(move || {
+        invalidate_rebuilt_path();
+        find_windows_cli_launcher(&command).map(|path| path.to_string_lossy().to_string())
+    })
+    .await
+    .unwrap_or(None)
 }
 
 pub(crate) fn build_rebuilt_path() -> String {
@@ -663,6 +756,7 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
     let cmd_name = match provider_lower.as_str() {
         "antigravity" | "agy" => "agy",
         "kiro" => "kiro-cli",
+        "cursor" | "cursor-agent" => "cursor-agent",
         other => other,
     };
 
@@ -706,6 +800,27 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                     id: "deepseek-r1".into(),
                     label: "DeepSeek R1 (Reasoning)".into(),
                 });
+            }
+        }
+        // `cursor-agent models` lists what the signed-in account can actually reach, which is the
+        // only reliable source: Cursor's line-up changes per plan and over time.
+        "cursor" | "cursor-agent" => {
+            if let Ok(output) = std::process::Command::new(&bin_path).arg("models").output() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let trimmed = line.trim();
+                    let id = trimmed
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or(trimmed)
+                        .to_string();
+                    if is_valid_model_id(&id) {
+                        models.push(ModelOption {
+                            label: format!("{id} (Cursor)"),
+                            id,
+                        });
+                    }
+                }
             }
         }
         "opencode" => {
@@ -1000,5 +1115,41 @@ mod tests {
     fn resolves_cli_launcher_on_unix() {
         assert!(find_windows_cli_launcher("sh").is_some());
         assert!(find_windows_cli_launcher("non_existent_binary_xyz_123").is_none());
+    }
+
+    /// With the Linux user-bin-dirs fallback, an agent installed via
+    /// `npm --prefix ~/.npm-global` is found even under a minimal desktop-menu
+    /// PATH.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_user_bin_dirs_finds_npm_global_agents() {
+        let home = std::env::temp_dir().join("alethe-audit-home");
+        let npm_global = home.join(".npm-global").join("bin");
+        std::fs::create_dir_all(&npm_global).expect("create npm-global dir");
+        std::fs::write(npm_global.join("fake-agent-audit"), "#!/bin/sh\necho hi\n")
+            .expect("write fake agent");
+        let original_home = std::env::var_os("HOME");
+        let original_path = std::env::var_os("PATH");
+        std::env::set_var("HOME", &home);
+        std::env::set_var(
+            "PATH",
+            "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        );
+        let found = find_windows_cli_launcher("fake-agent-audit");
+        assert!(
+            found.is_some(),
+            "linux_user_bin_dirs should find npm-global installs: {found:?}"
+        );
+        if let Some(h) = original_home {
+            std::env::set_var("HOME", h);
+        } else {
+            std::env::remove_var("HOME");
+        }
+        if let Some(p) = original_path {
+            std::env::set_var("PATH", p);
+        } else {
+            std::env::remove_var("PATH");
+        }
+        let _ = std::fs::remove_dir_all(&home);
     }
 }

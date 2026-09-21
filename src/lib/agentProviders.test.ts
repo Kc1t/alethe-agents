@@ -17,12 +17,12 @@ import {
 } from './agentProviders'
 import type { Disposable } from './plugins/types'
 
-const CURSOR: AgentProviderContribution = {
-  id: 'cursor',
-  label: 'Cursor CLI',
-  cliCommand: 'cursor-agent',
+const AIDER: AgentProviderContribution = {
+  id: 'aider-plus',
+  label: 'Aider Plus',
+  cliCommand: 'aider-plus-cli',
   unrestrictedFlag: '--force',
-  accentToken: '--agent-cursor',
+  accentToken: '--agent-aider-plus',
 }
 
 const registered: Disposable[] = []
@@ -53,23 +53,23 @@ describe('builtin agent types', () => {
 
   it('lists every built-in before any contribution', () => {
     expect(allAgentTypes()).toContain('shell')
-    register(CURSOR)
-    expect(allAgentTypes().at(-1)).toBe('cursor')
+    register(AIDER)
+    expect(allAgentTypes().at(-1)).toBe('aider-plus')
   })
 })
 
 describe('contributed agent providers', () => {
   it('resolves everything the contribution declares', () => {
-    register(CURSOR)
+    register(AIDER)
 
-    expect(isBuiltinAgentType('cursor')).toBe(false)
-    expect(isKnownAgentType('cursor')).toBe(true)
-    expect(findAgentProvider('cursor')?.label).toBe('Cursor CLI')
-    expect(agentLabel('cursor')).toBe('Cursor CLI')
-    expect(resolveAgentCliCommand('cursor')).toBe('cursor-agent')
-    expect(resolveUnrestrictedFlag('cursor')).toBe('--force')
-    expect(agentAccentToken('cursor')).toBe('--agent-cursor')
-    expect(allAgentTypes()).toContain('cursor')
+    expect(isBuiltinAgentType('aider-plus')).toBe(false)
+    expect(isKnownAgentType('aider-plus')).toBe(true)
+    expect(findAgentProvider('aider-plus')?.label).toBe('Aider Plus')
+    expect(agentLabel('aider-plus')).toBe('Aider Plus')
+    expect(resolveAgentCliCommand('aider-plus')).toBe('aider-plus-cli')
+    expect(resolveUnrestrictedFlag('aider-plus')).toBe('--force')
+    expect(agentAccentToken('aider-plus')).toBe('--agent-aider-plus')
+    expect(allAgentTypes()).toContain('aider-plus')
   })
 
   it('falls back per field when the contribution omits it', () => {
@@ -87,17 +87,17 @@ describe('contributed agent providers', () => {
   })
 
   it('stops resolving once the contribution is disposed', () => {
-    const handle = register(CURSOR)
-    expect(isKnownAgentType('cursor')).toBe(true)
+    const handle = register(AIDER)
+    expect(isKnownAgentType('aider-plus')).toBe(true)
 
     handle.dispose()
 
-    expect(isKnownAgentType('cursor')).toBe(false)
-    expect(findAgentProvider('cursor')).toBeUndefined()
-    expect(agentLabel('cursor')).toBe('cursor')
-    expect(resolveAgentCliCommand('cursor')).toBeUndefined()
-    expect(allAgentTypes()).not.toContain('cursor')
-    expect(parseAgentType('cursor')).toBeNull()
+    expect(isKnownAgentType('aider-plus')).toBe(false)
+    expect(findAgentProvider('aider-plus')).toBeUndefined()
+    expect(agentLabel('aider-plus')).toBe('aider-plus')
+    expect(resolveAgentCliCommand('aider-plus')).toBeUndefined()
+    expect(allAgentTypes()).not.toContain('aider-plus')
+    expect(parseAgentType('aider-plus')).toBeNull()
   })
 })
 
@@ -123,23 +123,23 @@ describe('parseAgentType', () => {
   })
 
   it('accepts a contributed id, including one that is not lowercase', () => {
-    register(CURSOR)
+    register(AIDER)
     register({ id: 'Zed', label: 'Zed' })
 
-    expect(parseAgentType('cursor')).toBe('cursor')
-    expect(parseAgentType(' CURSOR ')).toBe('cursor')
+    expect(parseAgentType('aider-plus')).toBe('aider-plus')
+    expect(parseAgentType(' AIDER-PLUS ')).toBe('aider-plus')
     expect(parseAgentType('Zed')).toBe('Zed')
   })
 })
 
 describe('isAgentEnabled', () => {
   it('honours the stored flag and defaults contributed providers to on', () => {
-    register(CURSOR)
+    register(AIDER)
 
     expect(isAgentEnabled({ claude: true }, 'claude')).toBe(true)
     expect(isAgentEnabled({ claude: false }, 'claude')).toBe(false)
     expect(isAgentEnabled({}, 'claude')).toBe(false)
-    expect(isAgentEnabled({}, 'cursor')).toBe(true)
-    expect(isAgentEnabled({ cursor: false }, 'cursor')).toBe(false)
+    expect(isAgentEnabled({}, 'aider-plus')).toBe(true)
+    expect(isAgentEnabled({ 'aider-plus': false }, 'aider-plus')).toBe(false)
   })
 })

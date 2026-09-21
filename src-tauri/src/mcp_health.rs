@@ -126,8 +126,9 @@ fn cli_for(agent: McpAgent) -> Option<(&'static str, Vec<&'static str>)> {
         McpAgent::Claude => Some(("claude", vec!["mcp", "list"])),
         McpAgent::Codex => Some(("codex", vec!["mcp", "list", "--json"])),
         McpAgent::Opencode => Some(("opencode", vec!["mcp", "list"])),
-        // `agy` has no mcp subcommand at all.
-        McpAgent::Antigravity => None,
+        // `agy` has no mcp subcommand at all, and `cursor-agent mcp list` has no stable output
+        // contract to read a status out of — both are config-only here.
+        McpAgent::Antigravity | McpAgent::Cursor => None,
     }
 }
 
@@ -150,7 +151,7 @@ fn probe(agent: McpAgent) -> Result<Vec<McpHealth>, String> {
         McpAgent::Claude => parse_claude(&stdout),
         McpAgent::Codex => parse_codex(&stdout),
         McpAgent::Opencode => parse_opencode(&stdout),
-        McpAgent::Antigravity => Vec::new(),
+        McpAgent::Antigravity | McpAgent::Cursor => Vec::new(),
     })
 }
 

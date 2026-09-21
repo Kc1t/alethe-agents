@@ -1,3 +1,4 @@
+import { normalizeProjectGrids } from '../lib/projectGrids'
 /** Group and project actions extracted from the main store. */
 
 import { nanoid } from 'nanoid'
@@ -402,7 +403,7 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
       githubUrl,
       firstBootPending,
     }) => {
-      const project: Project = {
+      const project: Project = normalizeProjectGrids({
         id: nanoid(),
         name,
         mode,
@@ -416,7 +417,7 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
         layoutMode: 'auto',
         collapsed: false,
         createdAt: Date.now(),
-      }
+      })
       update((state) => {
         const groups =
           groupId === null
@@ -437,7 +438,7 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
     },
 
     importProjectFromFile: (data, groupId = null) => {
-      const project: Project = {
+      const project: Project = normalizeProjectGrids({
         ...data,
         id: nanoid(),
         groupId,
@@ -451,7 +452,7 @@ export function createProjectsSlice({ set, get, update, updateProject }: SliceCt
           ...terminal,
           tabs: terminal.tabs.map((tab) => ({ ...tab, ptyId: null })),
         })),
-      }
+      })
       update((state) => {
         const groups =
           groupId === null

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_PREFERENCES, EMPTY_PROJECTS_FILE } from '../lib/types'
-import { migrate, normalizePreferences } from './projectsStore.migrations'
+import { migrate, normalizePreferences, normalizeTodos } from './projectsStore.migrations'
 
 describe('preference normalization', () => {
   it('preserves persisted sidebar visibility and widths', () => {
@@ -68,6 +68,60 @@ describe('preference normalization', () => {
       }).motionPreference,
     ).toBe('animated')
   })
+
+  it('clamps Pomodoro durations to a sane range and falls back on invalid input', () => {
+    expect(
+      normalizePreferences({
+        ...DEFAULT_PREFERENCES,
+        pomodoroWorkMinutes: 0,
+        pomodoroShortBreakMinutes: 999,
+        pomodoroLongBreakMinutes: Number.NaN,
+      }),
+    ).toMatchObject({
+      pomodoroWorkMinutes: 1,
+      pomodoroShortBreakMinutes: 120,
+      pomodoroLongBreakMinutes: DEFAULT_PREFERENCES.pomodoroLongBreakMinutes,
+    })
+  })
+
+  it('discards a running Pomodoro session that already ended', () => {
+    const preferences = normalizePreferences({
+      ...DEFAULT_PREFERENCES,
+      pomodoroSession: {
+        phase: 'work',
+        status: 'running',
+        endsAt: Date.now() - 60_000,
+        remainingMsAtPause: null,
+        cyclesCompleted: 1,
+        focusTodoId: null,
+      },
+    })
+
+    expect(preferences.pomodoroSession).toMatchObject({ status: 'finished', endsAt: null })
+  })
+})
+
+describe('todos normalization', () => {
+  it('backfills PR fields when present and drops them when absent', () => {
+    const todos = normalizeTodos([
+      {
+        id: 'a',
+        title: 'Review PR',
+        completed: false,
+        prUrl: 'https://x',
+        prNumber: 12,
+        prRepo: 'o/r',
+      },
+      { id: 'b', title: 'Plain task', completed: false },
+    ])
+
+    expect(todos.find((t) => t.id === 'a')).toMatchObject({
+      prUrl: 'https://x',
+      prNumber: 12,
+      prRepo: 'o/r',
+    })
+    expect(todos.find((t) => t.id === 'b')).not.toHaveProperty('prUrl')
+  })
 })
 
 describe('projects file migration', () => {
@@ -80,7 +134,7 @@ describe('projects file migration', () => {
       preferences: { ...DEFAULT_PREFERENCES, workspaceGridLayoutHistory: undefined },
     })
 
-    expect(migrated.version).toBe(8)
+    expect(migrated.version).toBe(9)
     expect(migrated.projects[0].gridLayoutHistory).toEqual([])
     expect(migrated.groups[0].gridLayoutHistory).toEqual([])
     expect(migrated.preferences.workspaceGridLayoutHistory).toEqual([])
@@ -102,7 +156,7 @@ describe('projects file migration', () => {
       ],
     })
 
-    expect(migrated.version).toBe(8)
+    expect(migrated.version).toBe(9)
     const terminals = migrated.projects[0].terminals
     expect(terminals.find((t) => t.id === 'excluded')?.remoteShared).toBe(false)
     expect(terminals.find((t) => t.id === 'shared')?.remoteShared).toBe(true)

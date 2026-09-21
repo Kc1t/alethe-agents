@@ -193,6 +193,51 @@ const ELITE_BLUSH_THEME = {
   brightWhite: '#3b2a22',
 } as const
 
+const CATPPUCCIN_FRAPPE_THEME = {
+  background: '#303446',
+  foreground: '#c6d0f5',
+  cursor: '#f2d5cf',
+  selectionBackground: '#51576d',
+  black: '#51576d',
+  red: '#e78284',
+  green: '#a6d189',
+  yellow: '#e5c890',
+  blue: '#8caaee',
+  magenta: '#ca9ee6',
+  cyan: '#81c8be',
+  white: '#b5bfe2',
+  brightBlack: '#626880',
+  brightRed: '#e78284',
+  brightGreen: '#a6d189',
+  brightYellow: '#e5c890',
+  brightBlue: '#8caaee',
+  brightMagenta: '#ca9ee6',
+  brightCyan: '#81c8be',
+  brightWhite: '#c6d0f5',
+} as const
+const GRUVBOX_MATERIAL_THEME = {
+  background: '#1d2021',
+  foreground: '#d4be98',
+  cursor: '#a89984',
+  selectionBackground: '#3c3836',
+  black: '#665c54',
+  red: '#ea6962',
+  green: '#a9b665',
+  yellow: '#e78a4e',
+  blue: '#7daea3',
+  magenta: '#d3869b',
+  cyan: '#89b482',
+  white: '#d4be98',
+  brightBlack: '#928374',
+  brightRed: '#ea6962',
+  brightGreen: '#a9b665',
+  brightYellow: '#d8a657',
+  brightBlue: '#7daea3',
+  brightMagenta: '#d3869b',
+  brightCyan: '#89b482',
+  brightWhite: '#d4be98',
+} as const
+
 const XTERM_THEMES = {
   dark: DARK_THEME,
   light: LIGHT_THEME,
@@ -208,6 +253,8 @@ const XTERM_THEMES = {
   'elite-pure-black': ELITE_PURE_BLACK_THEME,
   'elite-indigo': ELITE_INDIGO_THEME,
   'elite-blush': ELITE_BLUSH_THEME,
+  'catppuccin-frappe': CATPPUCCIN_FRAPPE_THEME,
+  'gruvbox-material': GRUVBOX_MATERIAL_THEME,
 } satisfies Record<BuiltinTheme, unknown>
 
 /**

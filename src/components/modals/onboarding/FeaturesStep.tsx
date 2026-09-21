@@ -18,6 +18,7 @@ const GROUP_OF: Record<FeatureId, GroupId> = {
   graphify: 'others',
   aiMemory: 'others',
   gsdSync: 'agents',
+  prs: 'workspace',
 }
 
 const GROUPS: GroupId[] = ['workspace', 'agents', 'others']

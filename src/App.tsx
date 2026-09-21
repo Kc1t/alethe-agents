@@ -1,3 +1,5 @@
+import { ProjectGridModal } from './components/modals/ProjectGridModal'
+import { ResetCreditModal } from './components/modals/ResetCreditModal'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Bell, X } from 'lucide-react'
@@ -749,6 +751,8 @@ export default function App() {
           </Suspense>
         ) : null}
         <SuspendGroupModal />
+        <ProjectGridModal />
+        <ResetCreditModal />
         {openModal === 'memoryAnalytics' ? (
           <Suspense fallback={null}>
             <MemoryAnalyticsModal />

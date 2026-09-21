@@ -359,3 +359,36 @@
   color: var(--fg-faint);
   font-size: 11px;
 }
+
+.catalogActions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.catalogPinned {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0;
+  color: var(--status-active);
+  font-size: 11px;
+}
+
+.catalogSource {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--fg-faint);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.catalogSource:hover {
+  color: var(--fg);
+}

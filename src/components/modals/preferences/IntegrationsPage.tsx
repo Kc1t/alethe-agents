@@ -12,6 +12,7 @@ import { Router9Settings } from '../../Router9/Router9Settings'
 import controls from '../controls.module.css'
 import styles from '../PreferencesModal.module.css'
 import { SettingsSection } from './primitives'
+import { VoiceDictationSection } from './VoiceDictationSection'
 
    
                                                                             
@@ -169,29 +170,7 @@ export function IntegrationsPage() {
         </div>
       </SettingsSection>
 
-      <SettingsSection
-        id="dictation"
-        title={t('prefs.dictation')}
-        description={t('prefs.dictationDesc')}
-      >
-        <div className={styles.segmented}>
-          <button
-            type="button"
-            className={preferences.dictationEnabled ? styles.segmentActive : undefined}
-            onClick={() => setPreferences({ dictationEnabled: true })}
-          >
-            {t('prefs.dictationOn')}
-          </button>
-          <button
-            type="button"
-            className={!preferences.dictationEnabled ? styles.segmentActive : undefined}
-            onClick={() => setPreferences({ dictationEnabled: false })}
-          >
-            {t('prefs.dictationOff')}
-          </button>
-        </div>
-        <p>{t('prefs.dictationHandyHint')}</p>
-      </SettingsSection>
+      <VoiceDictationSection />
     </>
   )
 }

@@ -1,0 +1,135 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.62);
+}
+.modal {
+  width: min(680px, 100%);
+  max-height: min(760px, 90vh);
+  overflow: auto;
+  background: var(--bg-elevated, #202126);
+  border: 1px solid var(--border, #3a3b42);
+  border-radius: 12px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  color: var(--fg, #fff);
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  padding: 20px;
+  border-bottom: 1px solid var(--border, #3a3b42);
+}
+.header > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.header p {
+  margin: 4px 0 0;
+  color: var(--fg-muted, #a2a3ad);
+  font-size: 12px;
+}
+.close {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 24px;
+  cursor: pointer;
+}
+.state,
+.error {
+  margin: 16px;
+  padding: 18px;
+  border-radius: 8px;
+  background: var(--bg-surface, #292a30);
+  color: var(--fg-muted, #a2a3ad);
+}
+.error {
+  color: var(--status-error, #ff8585);
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+.list {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+.card {
+  padding: 16px;
+  border: 1px solid var(--border, #3a3b42);
+  border-radius: 9px;
+  background: var(--bg-surface, #292a30);
+}
+.cardTop {
+  display: flex;
+  justify-content: space-between;
+  color: var(--fg-muted, #a2a3ad);
+  font-size: 12px;
+}
+.good {
+  color: var(--status-success, #85d99b);
+}
+.warn {
+  color: var(--status-warning, #e5bd76);
+}
+.card h3 {
+  margin: 8px 0;
+  font-size: 16px;
+}
+.meta,
+.body {
+  margin: 0;
+  color: var(--fg-muted, #a2a3ad);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.body {
+  margin-top: 10px;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+.actions a,
+.actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--border, #484951);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.actions button:hover,
+.actions a:hover {
+  background: var(--bg-hover, #35363e);
+}
+.actions .merge {
+  border-color: var(--accent, #8fb7ff);
+  background: var(--accent, #8fb7ff);
+  color: #101116;
+}
+.actions .merge:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

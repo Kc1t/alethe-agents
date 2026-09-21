@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  aggregateAgentSpend,
   attentionOf,
   countLanes,
   emptyCounts,
@@ -27,6 +28,7 @@ function job(
     seconds: null,
     plan: [],
     tokens: null,
+    costUsd: null,
     worktree: null,
     pendingApproval: null,
     hasDiff: false,
@@ -34,6 +36,55 @@ function job(
     ...partial,
   }
 }
+
+describe('aggregateAgentSpend', () => {
+  it('groups reported session spend by worker provider', () => {
+    expect(
+      aggregateAgentSpend([
+        job({
+          id: 'claude-1',
+          runId: 'run-a',
+          agent: 'claude',
+          tokens: { total: { totalTokens: 1200 } },
+          costUsd: 0.012,
+        }),
+        job({
+          id: 'claude-2',
+          runId: 'run-a',
+          agent: 'claude',
+          tokens: { total: { totalTokens: 800 } },
+          costUsd: 0.008,
+        }),
+        job({
+          id: 'codex-1',
+          runId: 'run-a',
+          agent: 'codex',
+          tokens: { total: { totalTokens: 500 } },
+          costUsd: null,
+        }),
+      ]),
+    ).toEqual([
+      {
+        agent: 'claude',
+        totalTokens: 2000,
+        costUsd: 0.02,
+        pricedWorkers: 2,
+        unpricedWorkers: 0,
+      },
+      {
+        agent: 'codex',
+        totalTokens: 500,
+        costUsd: 0,
+        pricedWorkers: 0,
+        unpricedWorkers: 1,
+      },
+    ])
+  })
+
+  it('ignores workers that have not reported usage yet', () => {
+    expect(aggregateAgentSpend([job({ id: 'empty', runId: 'run-a' })])).toEqual([])
+  })
+})
 
 describe('groupRuns', () => {
   it('groups jobs by run id, keeping first-seen order', () => {

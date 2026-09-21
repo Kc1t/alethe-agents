@@ -1,9 +1,9 @@
 name: Release
 
 on:
-  # Tag NÃO dispara release. `npm run release` só marca a versão no git;
-  # publicar instaladores é uma ação deliberada via `npm run release:publish`
-  # (gh workflow run) ou pela aba Actions -> Release -> Run workflow.
+  # A tag does NOT trigger a release. `npm run release` only stamps the version in
+  # git; publishing installers is a deliberate action, through
+  # `npm run release:publish` (gh workflow run) or Actions -> Release -> Run workflow.
   workflow_dispatch:
 
 jobs:
@@ -37,7 +37,9 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          # libasound2-dev is ALSA: `cpal` (on-device voice dictation) links against it
+          # through alsa-sys, and without it the Linux build panics in its build script.
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -63,25 +65,57 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Assinatura do updater (minisign). Sem estes secrets o build FALHA,
-          # porque bundle.createUpdaterArtifacts está ligado. Gere o par com
-          # `npm run tauri signer generate` e cadastre nos secrets do repo.
+          # Updater signature (minisign). Without these secrets the build FAILS,
+          # because bundle.createUpdaterArtifacts is on. Generate the pair with
+          # `npm run tauri signer generate` and register it in the repo secrets.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Evita empacotar as bibliotecas do Wayland para não dar conflito com as do host.
+          # Isso previne o crash EGL_BAD_PARAMETER no WebKit ao abrir no Arch e Fedora.
+          LINUXDEPLOY_PLUGIN_GTK_OMIT_LIBRARIES: "libwayland-client.so.1:libwayland-egl.so.1"
         with:
           tagName: v__VERSION__
           releaseName: 'Alethe v__VERSION__'
+          # Placeholder only. The release-notes job below replaces it with
+          # docs/releases/<tag>.md once every platform has finished uploading.
           releaseBody: 'Free desktop build of Alethe for Windows, macOS and Linux. Local app is free; cloud/sync services may be offered separately.'
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
 
-  # O tauri-action escolhe sozinho qual bundle do Windows vai na chave genérica
-  # `windows-x86_64` do latest.json, e escolhe o MSI. Quase todo mundo instala
-  # pelo NSIS (a landing serve o setup.exe), e um MSI aplicado sobre uma
-  # instalação NSIS não faz upgrade dela nem reinicia o app — o updater fecha o
-  # Alethe e nada volta. Aqui a chave genérica é reapontada para o NSIS, sem
-  # remover as chaves `-msi` / `-nsis`, que continuam publicadas.
+  # The release body written by tauri-action is a single generic line, the same for
+  # every version. The real notes live in the repo, one file per version, so they are
+  # reviewed in a PR like anything else. A version with no notes file keeps the
+  # placeholder instead of failing the release.
+  release-notes:
+    name: Publish the release notes
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply docs/releases/<tag>.md as the release body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq '.[0].tagName')
+          NOTES="docs/releases/${VERSION}.md"
+          if [ ! -f "$NOTES" ]; then
+            echo "::warning::$NOTES not found — keeping the generic release body for $VERSION"
+            exit 0
+          fi
+          gh release edit "$VERSION" --repo "$GITHUB_REPOSITORY" --notes-file "$NOTES"
+          echo "Release body for $VERSION set from $NOTES"
+
+  # tauri-action picks the Windows bundle for the generic `windows-x86_64` key of
+  # latest.json on its own, and it picks the MSI. Almost everyone installs through
+  # NSIS (the landing page serves setup.exe), and an MSI applied over an NSIS install
+  # neither upgrades it nor restarts the app — the updater closes Alethe and nothing
+  # comes back. Here the generic key is repointed at NSIS, without dropping the
+  # `-msi` / `-nsis` keys, which stay published.
   fix-updater-target:
     name: Point windows-x86_64 at NSIS
     needs: build

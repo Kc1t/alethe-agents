@@ -22,6 +22,8 @@ import type { UpdateInfo } from '../lib/updater'
 /** Ephemeral UI state. Persisted state belongs in `projectsStore`. */
 
 type ModalKind =
+  | 'resetCredit'
+  | 'projectGrid'
   | 'newProject'
   | 'newGroup'
   | 'editGroup'
@@ -57,7 +59,7 @@ type ModalKind =
 
 export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox'
 /** Open on purpose: plugins contribute right-sidebar tabs at runtime. */
-export type RightSidebarMode = 'markdown' | 'gsdSync' | 'mcp' | (string & {})
+export type RightSidebarMode = 'markdown' | 'gsdSync' | 'mcp' | 'prs' | (string & {})
 export type MarkdownSidebarTab = { path: string; title: string }
 
 export type MemorySample = MemoryStats & {
@@ -171,6 +173,7 @@ type UiState = {
   setLeftSidebarTab: (tab: string) => void
   showGsdSyncSidebar: () => void
   showMcpSidebar: () => void
+  showPrsSidebar: () => void
   setAgentCanvasSession: (session: { folder: string; ptyId: string } | null) => void
   setInspectorPty: (ptyId: string | null) => void
   setAgentCanvasBudget: (usd: number | null) => void
@@ -317,6 +320,7 @@ export const useUiStore = create<UiState>((set) => ({
   setLeftSidebarTab: (tab) => set({ leftSidebarTab: tab }),
   showGsdSyncSidebar: () => set({ rightSidebarMode: 'gsdSync' }),
   showMcpSidebar: () => set({ rightSidebarMode: 'mcp' }),
+  showPrsSidebar: () => set({ rightSidebarMode: 'prs' }),
   setAgentCanvasSession: (session) => set({ agentCanvasSession: session }),
   setInspectorPty: (ptyId) => set({ inspectorPtyId: ptyId }),
   setAgentCanvasBudget: (usd) => set({ agentCanvasBudgetUsd: usd }),

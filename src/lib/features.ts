@@ -57,6 +57,12 @@ export const FEATURES: readonly FeatureDefinition[] = [
     keywordsKey: 'features.aiMemory.keywords',
     secondary: true,
   },
+  {
+    id: 'prs',
+    titleKey: 'features.prs.title',
+    descriptionKey: 'features.prs.description',
+    keywordsKey: 'features.prs.keywords',
+  },
 ]
 
 type StoredFeaturePreferences = {
@@ -71,7 +77,9 @@ export type LegacyFeatureFlags = { git?: boolean; todos?: boolean }
  * Git Control is a plugin now. Returns the legacy flag once, so the caller can
  * carry the user's old choice over to the plugin's enabled state.
  */
-export function legacyGitFeatureFlag(raw: StoredFeaturePreferences | undefined): boolean | undefined {
+export function legacyGitFeatureFlag(
+  raw: StoredFeaturePreferences | undefined,
+): boolean | undefined {
   return raw?.enabledFeatures?.git ?? raw?.showGitControl
 }
 
@@ -105,6 +113,7 @@ export function normalizeEnabledFeatures(
       orchestrator: raw.enabledFeatures.orchestrator ?? false,
       // Opt-in: OpenCode-only, and it polls the worktrees of every watched project.
       gsdSync: raw.enabledFeatures.gsdSync ?? false,
+      prs: raw.enabledFeatures.prs ?? true,
     }
   }
   return {
@@ -115,5 +124,6 @@ export function normalizeEnabledFeatures(
     playwright: false,
     orchestrator: false,
     gsdSync: false,
+    prs: true,
   }
 }

@@ -49,6 +49,7 @@ const QUICK_AGENTS: Array<{ type: AgentType; label: string }> = [
   { type: 'claude', label: 'Claude' },
   { type: 'codex', label: 'Codex' },
   { type: 'copilot', label: 'GitHub Copilot' },
+  { type: 'cursor', label: 'Cursor' },
   { type: 'antigravity', label: 'Antigravity' },
   { type: 'opencode', label: 'OpenCode' },
 ]
@@ -65,6 +66,7 @@ const NOTIF_AGENT_CLASS: Record<BuiltinAgentType, string> = {
   claude: styles.notifClaude,
   codex: styles.notifCodex,
   copilot: styles.notifCodex,
+  cursor: styles.notifCursor,
   antigravity: styles.notifAntigravity,
   shell: styles.notifShell,
   wsl: styles.notifShell,

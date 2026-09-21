@@ -30,10 +30,23 @@ export type CodexUsage = {
   plan: string
   rate_limited: boolean
   reset_credits: number
+  reset_credit_items?: CodexResetCredit[]
+}
+
+export type CodexResetCredit = {
+  id: string
+  status: string
+  expires_at_ms: number
+  title: string
+  description: string
 }
 
 export async function getCodexUsage(): Promise<CodexUsage> {
   return invoke<CodexUsage>('get_codex_usage')
+}
+
+export async function consumeCodexResetCredit(creditId?: string): Promise<CodexUsage> {
+  return invoke<CodexUsage>('consume_codex_reset_credit', { creditId })
 }
 
 export type AntigravityQuotaBucket = {

@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 import {
   listenRemoteAutoDisabled,
@@ -16,6 +16,7 @@ import { useProjectsStore } from '../stores/projectsStore'
 import { useUiStore } from '../stores/uiStore'
 
 export function useRemoteControlService() {
+  const startupSyncedRef = useRef(false)
   const hydrated = useProjectsStore((store) => store.hydrated)
   const enabled = useProjectsStore((store) => store.preferences.remoteEnabled)
   const maxDevices = useProjectsStore((store) => store.preferences.remoteMaxDevices)
@@ -27,6 +28,16 @@ export function useRemoteControlService() {
   useEffect(() => {
     if (!hydrated) return
     const sync = async () => {
+      // Remote Control is intentionally session-scoped. A saved preference must
+      // not silently reopen a network listener after the app is restarted.
+      if (!startupSyncedRef.current) {
+        startupSyncedRef.current = true
+        if (enabled) {
+          useProjectsStore.getState().setPreferences({ remoteEnabled: false })
+          await setRemoteControlEnabled(false)
+          return
+        }
+      }
       await setRemoteControlMaxDevices(maxDevices)
       await setRemoteControlSessionExpiry(expiry)
       await setRemoteControlReadOnly(readOnly)

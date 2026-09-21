@@ -99,6 +99,13 @@ export async function pluginStorageWrite(id: string, body: string | null): Promi
   await invoke('plugin_storage_write', { id, body })
 }
 
+export type CatalogPackage = {
+  /** The zip that is fetched, unlike `downloadUrl`, which is a page for a human. */
+  url: string
+  /** Pins the bytes to what the index was reviewed against. */
+  sha256: string
+}
+
 export type CatalogPlugin = {
   id: string
   name: string
@@ -109,6 +116,8 @@ export type CatalogPlugin = {
   version: string
   minApiVersion: number
   capabilities: string[]
+  /** Present when the plugin can be installed from inside the app. */
+  package?: CatalogPackage
 }
 
 export type CatalogSnapshot = {
@@ -128,4 +137,17 @@ export async function pluginCatalog(
 /** Opens a catalogue listing in the browser. Refused unless the catalogue offers it. */
 export async function pluginCatalogOpen(apiVersion: number, url: string): Promise<void> {
   await invoke('plugin_catalog_open', { apiVersion, url })
+}
+
+/**
+ * Downloads and unpacks a plugin the catalogue offers. Only the id crosses the
+ * boundary: the URL and the hash are read from the cached index in Rust, so a
+ * caller cannot point this at something the catalogue never listed. The plugin
+ * arrives disabled.
+ */
+export async function pluginInstallFromCatalog(
+  apiVersion: number,
+  id: string,
+): Promise<PluginManifest> {
+  return invoke<PluginManifest>('plugin_install_from_catalog', { apiVersion, id })
 }

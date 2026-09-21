@@ -1,6 +1,7 @@
 import { listen } from '@tauri-apps/api/event'
 import { useEffect } from 'react'
 
+import { trackClaudeSessionHook } from '../lib/claudeSessionTracking'
 import { type AgentHookPayload, useAgentCanvasStore } from '../stores/agentCanvasStore'
 
 /**
@@ -14,6 +15,8 @@ export function useAgentHookBridge(): void {
     let unlisten: (() => void) | undefined
     let cancelled = false
     void listen<AgentHookPayload>('agent-hook', (event) => {
+      if (cancelled) return
+      trackClaudeSessionHook(event.payload)
       useAgentCanvasStore.getState().ingest(event.payload)
     }).then((off) => {
       if (cancelled) off()

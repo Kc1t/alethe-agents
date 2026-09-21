@@ -56,7 +56,7 @@ export const ProjectContainer = memo(function ProjectContainer({
   }
   const isDropTarget = droppable.isOver && !draggable.isDragging
 
-  // renderizados. O terminal isolado busca direto em `project.terminals`,
+  // Resolve the isolated terminal independently of the visible container panes.
 
   const terminals = useMemo<Terminal[]>(() => {
     if (isFullscreen && isolatedPaneId) {
@@ -73,7 +73,7 @@ export const ProjectContainer = memo(function ProjectContainer({
   )?.cwd
 
   const storedAccent = project.color || group?.color
-  const accent = storedAccent && CSS.supports('color', storedAccent) ? storedAccent : '#6ea8ff'
+  const accent = storedAccent && CSS.supports('color', storedAccent) ? storedAccent : 'var(--accent)'
   const isRainbow = accent === 'rgb-rainbow'
 
   if (container.collapsed) {
@@ -226,6 +226,7 @@ export const ProjectContainer = memo(function ProjectContainer({
           </div>
         ) : (
           <PaneArea
+            gridId={container.gridId}
             projectId={project.id}
             idPrefix={`c-${project.id}`}
             terminals={terminals}

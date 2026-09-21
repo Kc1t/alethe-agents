@@ -302,24 +302,101 @@ Preferences → Plugins lists plugins published by other people. The index is a 
 }
 ```
 
-**The catalogue downloads nothing and runs nothing.** *Get plugin* opens the author's page in a
-browser; the user fetches the folder and imports it, which is the same reviewed path as before, trust
-dialog included. That is deliberate: auto-installing third-party code is not defensible while the
-capability gate is advisory rather than a sandbox.
+An entry with a `package` can be installed from inside the app; one without it is a pointer, and
+*Get plugin* opens the author's page for a manual download and import.
+
+**Installing from the app is not a weaker path than importing by hand.** The manual route has no
+integrity check at all — a zip from a link is whatever the link served today. The `package.sha256`
+in the index pins the bytes to what the reviewer of the pull request saw, so the installed plugin is
+verifiable in a way a hand-dropped folder never was. The power granted is identical either way; only
+the evidence differs.
+
+What installing does *not* do is grant permission to run. The plugin lands disabled, exactly like an
+imported one, and turning it on still goes through the trust dialog listing its capabilities.
 
 A listing is dropped, not shown, when its id is not a plain id, its name is empty, its
-`downloadUrl` is not `https`, or its `minApiVersion` is above this build. `plugin_catalog_open`
+`downloadUrl` is not `https`, its `minApiVersion` is above this build, or it carries a `package`
+whose URL is not `https` or whose `sha256` is not 64 hex characters. `plugin_catalog_open`
 re-checks the URL against the cached catalogue, so a link can never be turned into a general
 opener, and it launches the browser without a shell in the chain. The command is on the
 forbidden list, so no plugin can call it.
+
+`plugin_install_from_catalog` takes only an id. The URL and the hash are read from the cached index
+inside Rust, so a caller cannot aim it at something the catalogue never listed. Beyond the hash, the
+unpacking refuses archive entries that escape the destination (`..`, absolute paths, drive letters,
+UNC roots), caps the download, the unpacked size and the entry count, and requires the `id` inside
+the archive's own `plugin.json` to match the id being installed — without that last check a listing
+could ship an archive claiming to be a plugin the user already trusted and replace it.
 
 The index is cached in `<profile>/plugins/catalog-cache.json` for six hours. When the network
 fails the cache is served and flagged stale — a directory the user cannot reach is more useful
 stale than empty. The fetch happens in Rust, so no CSP change was needed.
 
-Publishing is a pull request adding one entry. The plugin itself lives in its author's repository;
-nothing is hosted here. Keeping the index in the app repository is the simple starting point —
-moving it to its own repository later changes one constant and keeps the URL shape.
+Keeping the index in the app repository is the simple starting point — moving it to its own
+repository later changes one constant and keeps the URL shape.
+
+### Publishing a plugin
+
+The plugin lives in its author's repository; nothing is hosted here. Getting listed is a pull
+request against `main` adding one entry to `plugins.json`.
+
+1. Publish the plugin somewhere a person can download it — a release asset, or a folder in the
+   repository. The link must be reachable without signing in.
+2. Open a pull request adding one object to `plugins`, keeping the file valid JSON.
+3. Once it is merged, the entry reaches everyone within six hours, or immediately on *Refresh*.
+
+| Field | Required | Meaning |
+|---|---|---|
+| `id` | yes | Must match the `id` in `plugin.json`. Letters, digits, `-`, `_`, `.` only. |
+| `name` | yes | Shown in the list. |
+| `downloadUrl` | yes | `https` only. Where *Get plugin* sends the user. |
+| `description` | no | One line. |
+| `author` | no | Shown as *By …*. |
+| `repo` | no | `owner/name`, displayed only — never used to build a path. |
+| `version` | no | Shown next to the name. |
+| `minApiVersion` | no | Defaults to `1`. Older apps hide the entry instead of failing on it. |
+| `capabilities` | no | Copy them from `plugin.json` so the list can show what the plugin asks for. |
+| `package.url` | no | `https` link to a zip. Adding it makes the plugin installable from the app. |
+| `package.sha256` | with `package` | 64 hex characters over the exact zip bytes. |
+
+An entry that breaks the rules is **dropped silently** rather than shown, so a listing that never
+appears is usually a malformed `id`, an empty `name`, a non-`https` link, or a `minApiVersion`
+above the running build. `capabilities` here is a label for the user: the app enforces the ones in
+the installed `plugin.json`, not the ones claimed in the index.
+
+Review is a human reading the pull request. Listing is not an endorsement and not an audit — the
+plugin still arrives switched off and still goes through the trust dialog, which is why the
+catalogue can afford to be an open directory.
+
+An empty `plugins` array is a valid index and the correct thing to publish while nothing is ready:
+the app shows an empty catalogue instead of an error.
+
+`package` is optional and older builds ignore it, so adding one does not need a schema bump and does
+not break an app that predates installing.
+
+### Building the package
+
+The zip holds the plugin directory — `plugin.json` at the root, or inside a single wrapping folder,
+which is the shape a forge's "download zip" produces. Anything else is refused as ambiguous.
+
+```powershell
+Compress-Archive -Path my-plugin\* -DestinationPath my-plugin.zip
+(Get-FileHash my-plugin.zip -Algorithm SHA256).Hash.ToLower()
+```
+
+```bash
+zip -r my-plugin.zip my-plugin
+sha256sum my-plugin.zip
+```
+
+Attach the zip to a release and put that URL in `package.url`. **Re-hash whenever the zip changes**:
+a stale hash does not install a stale plugin, it fails the check and installs nothing.
+
+The plugin's `main.js` must be a bundle that binds against `window.alethe` rather than importing the
+host. Do not bundle React — take it from `window.alethe.react`, which is why the surface is
+string-keyed: the app is minified with `mangle.toplevel`, so nothing is reachable by module name.
+`docs/examples/notes-plugin/` is a working plugin in plain JavaScript with no build step at all, and
+is the shortest way to see the contract.
 
 ## Where things live
 
@@ -339,6 +416,7 @@ moving it to its own repository later changes one constant and keeps the URL sha
 | `src/components/modals/preferences/PluginsPage.tsx` | the management UI |
 | `src/components/ContributedModals/` | mounts the contributed modal matching `openModal` |
 | `src-tauri/src/plugin_catalog.rs` | the catalogue index: fetch, cache and validation |
+| `src-tauri/src/plugin_package.rs` | download, checksum and safe unpacking of a package |
 | `src/components/modals/preferences/PluginCatalog.tsx` | the catalogue UI |
 | `plugins.json` | the published index |
 | `src/plugins/` | bundled plugins |

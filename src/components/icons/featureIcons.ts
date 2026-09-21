@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   AppWindow,
   BrainCircuit,
+  GitPullRequest,
   Network,
   Plug,
   Share2,
@@ -20,4 +21,5 @@ export const FEATURE_ICONS: Record<FeatureId, LucideIcon> = {
   graphify: Share2,
   aiMemory: BrainCircuit,
   gsdSync: Sparkles,
+  prs: GitPullRequest,
 }

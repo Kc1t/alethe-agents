@@ -37,7 +37,7 @@ export function AiUsageModal() {
   return (
     <Modal open={open} onClose={closeModal} title={t('usageModal.title')} width={920}>
       <p className={styles.description}>{t('usageModal.description')}</p>
-      <UsageStrip showActivity={false} />
+      <UsageStrip showActivity={false} showResetCreditAction />
     </Modal>
   )
 }

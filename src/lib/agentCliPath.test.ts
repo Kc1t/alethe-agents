@@ -8,6 +8,13 @@ describe('cliPathMatchesAgent', () => {
     expect(cliPathMatchesAgent('antigravity', String.raw`C:\Apps\Antigravity.exe`)).toBe(false)
   })
 
+  it('accepts the Cursor CLI and rejects the editor binary', () => {
+    expect(cliPathMatchesAgent('cursor', String.raw`C:\Users\me\.local\bin\cursor-agent.exe`)).toBe(
+      true,
+    )
+    expect(cliPathMatchesAgent('cursor', String.raw`C:\Programs\cursor\Cursor.exe`)).toBe(false)
+  })
+
   it('accepts Windows launcher extensions for GitHub Copilot', () => {
     expect(cliPathMatchesAgent('copilot', String.raw`C:\npm\copilot.cmd`)).toBe(true)
   })

@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import {
   claimDiscoveredSession,
-  pickSwitchedSession,
+  isSessionClaimed,
   registerSessionClaim,
+  releaseSessionClaim,
   resetSessionClaimsForTests,
 } from './sessionDiscovery'
 
@@ -64,73 +65,30 @@ describe('claimDiscoveredSession', () => {
   })
 })
 
-describe('pickSwitchedSession', () => {
-  beforeEach(() => {
-    resetSessionClaimsForTests()
+describe('session claim ownership', () => {
+  beforeEach(resetSessionClaimsForTests)
+
+  it('retains a claim until both the tab and its PTY have released it', () => {
+    registerSessionClaim('claude', 'D:/repo', 'chat', 'tab')
+    registerSessionClaim('claude', 'D:/repo', 'chat', 'pty')
+    releaseSessionClaim('pty')
+    expect(isSessionClaimed('claude', 'D:/repo', 'chat', 'other-tab')).toBe(true)
+    expect(isSessionClaimed('claude', 'D:/repo', 'chat', 'tab')).toBe(false)
+    releaseSessionClaim('tab')
+    expect(isSessionClaimed('claude', 'D:/repo', 'chat')).toBe(false)
   })
 
-  it('adopts the single unclaimed session written after the pane stopped writing its own', () => {
-    const switched = pickSwitchedSession(
-      'claude',
-      'D:/repo',
-      { id: 'mine', modified_at_ms: 10 },
-      [
-        { id: 'mine', modified_at_ms: 10 },
-        { id: 'resumed', modified_at_ms: 20 },
-      ],
-      'tab-1',
-    )
-
-    expect(switched?.id).toBe('resumed')
-  })
-
-  it('never adopts the session another pane in the same folder is writing', () => {
-    registerSessionClaim('claude', 'D:/repo', 'neighbour', 'tab-2')
-
-    const switched = pickSwitchedSession(
-      'claude',
-      'd:/REPO',
-      { id: 'mine', modified_at_ms: 10 },
-      [
-        { id: 'mine', modified_at_ms: 10 },
-        { id: 'neighbour', modified_at_ms: 99 },
-      ],
-      'tab-1',
-    )
-
-    expect(switched).toBeUndefined()
-  })
-
-  it('still adopts a session this same pane already claims', () => {
-    registerSessionClaim('claude', 'D:/repo', 'resumed', 'tab-1')
-
-    const switched = pickSwitchedSession(
-      'claude',
-      'D:/repo',
-      { id: 'mine', modified_at_ms: 10 },
-      [
-        { id: 'mine', modified_at_ms: 10 },
-        { id: 'resumed', modified_at_ms: 20 },
-      ],
-      'tab-1',
-    )
-
-    expect(switched?.id).toBe('resumed')
-  })
-
-  it('stays put when more than one unclaimed session is newer', () => {
-    const switched = pickSwitchedSession(
-      'claude',
-      'D:/repo',
-      { id: 'mine', modified_at_ms: 10 },
-      [
-        { id: 'mine', modified_at_ms: 10 },
-        { id: 'a', modified_at_ms: 20 },
-        { id: 'b', modified_at_ms: 30 },
-      ],
-      'tab-1',
-    )
-
-    expect(switched).toBeUndefined()
+  it('treats equivalent Windows paths as the same conversation directory', () => {
+    registerSessionClaim('claude', 'D:/Work/Repo/', 'chat', 'tab')
+    expect(isSessionClaimed('claude', 'd:\\work\\repo', 'chat', 'other')).toBe(true)
+    expect(
+      claimDiscoveredSession(
+        'claude',
+        'D:\\Work\\Repo\\',
+        new Set(),
+        [{ id: 'chat', modified_at_ms: 1 }],
+        'other',
+      ),
+    ).toBeUndefined()
   })
 })

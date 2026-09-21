@@ -173,6 +173,38 @@ fn now_ms() -> u64 {
         .unwrap_or_default()
 }
 
+fn token_value(value: &Value, key: &str) -> u64 {
+    value.get(key).and_then(Value::as_u64).unwrap_or_default()
+}
+
+fn claude_token_count(usage: &Value) -> Value {
+    let input = token_value(usage, "input_tokens");
+    let output = token_value(usage, "output_tokens");
+    let cached = token_value(usage, "cache_read_input_tokens");
+    let cache_creation = token_value(usage, "cache_creation_input_tokens");
+    json!({
+        "totalTokens": input
+            .saturating_add(output)
+            .saturating_add(cached)
+            .saturating_add(cache_creation),
+        "inputTokens": input,
+        "outputTokens": output,
+        "cachedInputTokens": cached,
+        "cacheCreationInputTokens": cache_creation,
+    })
+}
+
+fn add_token_counts(total: &Value, turn: &Value) -> Value {
+    let add = |key: &str| token_value(total, key).saturating_add(token_value(turn, key));
+    json!({
+        "totalTokens": add("totalTokens"),
+        "inputTokens": add("inputTokens"),
+        "outputTokens": add("outputTokens"),
+        "cachedInputTokens": add("cachedInputTokens"),
+        "cacheCreationInputTokens": add("cacheCreationInputTokens"),
+    })
+}
+
 /// The agent session that called the tools. Alethe writes one MCP config per terminal, so the
 /// request carries the terminal's own id and the app can say which session a run belongs to.
 #[derive(Clone)]
@@ -203,7 +235,8 @@ struct Job {
     plan: Vec<String>,
     diff: Option<String>,
     tokens: Option<Value>,
-    /// Live only, like `tokens`/`diff` — never persisted.
+    cost_usd: Option<f64>,
+    /// Live only, like `diff` — never persisted.
     quota: Option<Value>,
     outcome: Option<String>,
     started_at: Option<u64>,
@@ -249,6 +282,7 @@ impl Job {
             "seconds": elapsed,
             "plan": self.plan,
             "tokens": self.tokens,
+            "costUsd": self.cost_usd,
             "quota": self.quota,
             "routing": self.routing,
             "worktree": self.worktree,
@@ -272,6 +306,8 @@ impl Job {
             "threadId": self.thread_id,
             "outcome": self.outcome,
             "plan": self.plan,
+            "tokens": self.tokens,
+            "costUsd": self.cost_usd,
             "worktree": self.worktree,
             "approvalPolicy": self.approval_policy,
             "sandbox": self.sandbox,
@@ -283,7 +319,12 @@ impl Job {
     }
 
     fn from_record(value: &Value) -> Option<Self> {
-        let text = |key: &str| value.get(key).and_then(Value::as_str).map(ToOwned::to_owned);
+        let text = |key: &str| {
+            value
+                .get(key)
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+        };
         let status = text("status").unwrap_or_else(|| STATUS_DONE.to_string());
         // Work that was in flight did not finish and its process is gone. Restoring it as running
         // would show a live worker that does not exist.
@@ -317,7 +358,11 @@ impl Job {
                 })
                 .unwrap_or_default(),
             diff: None,
-            tokens: None,
+            tokens: value
+                .get("tokens")
+                .cloned()
+                .filter(|entry| !entry.is_null()),
+            cost_usd: value.get("costUsd").and_then(Value::as_f64),
             quota: None,
             outcome: text("outcome"),
             started_at: value.get("startedAt").and_then(Value::as_u64),
@@ -326,7 +371,10 @@ impl Job {
             timeout_ms: Some(DEFAULT_JOB_TIMEOUT_MS),
             approval_policy: text("approvalPolicy").unwrap_or_else(|| "never".to_string()),
             sandbox: text("sandbox").unwrap_or_else(|| "workspace-write".to_string()),
-            web_search: value.get("webSearch").and_then(Value::as_bool).unwrap_or(false),
+            web_search: value
+                .get("webSearch")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
             pending: None,
             child: None,
             stdin: None,
@@ -518,10 +566,7 @@ fn stage_rpc(
 
 /// Pops the next queued message for a worker and turns it into a fresh turn on its own thread, so
 /// the follow-up keeps everything the worker already read.
-fn next_from_inbox(
-    inner: &mut Inner,
-    job_id: &str,
-) -> Option<(Arc<Mutex<ChildStdin>>, Value)> {
+fn next_from_inbox(inner: &mut Inner, job_id: &str) -> Option<(Arc<Mutex<ChildStdin>>, Value)> {
     let job = inner.jobs.get_mut(job_id)?;
     let stdin = job.stdin.clone()?;
     let thread_id = job.thread_id.clone()?;
@@ -605,7 +650,11 @@ impl Core {
             return;
         };
         let mut inner = guard(&self.inner);
-        for record in value.get("jobs").and_then(Value::as_array).unwrap_or(&vec![]) {
+        for record in value
+            .get("jobs")
+            .and_then(Value::as_array)
+            .unwrap_or(&vec![])
+        {
             let Some(job) = Job::from_record(record) else {
                 continue;
             };
@@ -620,7 +669,12 @@ impl Core {
             .and_then(Value::as_array)
             .unwrap_or(&vec![])
         {
-            let text = |key: &str| record.get(key).and_then(Value::as_str).map(ToOwned::to_owned);
+            let text = |key: &str| {
+                record
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned)
+            };
             let Some(id) = text("id") else { continue };
             inner.planners.insert(
                 id.clone(),
@@ -649,7 +703,7 @@ impl Core {
         let payload = {
             let inner = guard(&self.inner);
             json!({
-                "version": 1,
+                "version": 2,
                 "jobs": inner
                     .order
                     .iter()
@@ -1254,7 +1308,10 @@ impl Core {
                 &job_id,
                 STATUS_FAILED,
                 Some("timeout".into()),
-                format!("worker passed its {}s budget and was stopped", timeout_ms / 1000),
+                format!(
+                    "worker passed its {}s budget and was stopped",
+                    timeout_ms / 1000
+                ),
                 true,
             );
         });
@@ -1343,7 +1400,10 @@ impl Core {
             self.notify(&inner);
             (stdin, rpc_id)
         };
-        send_rpc(&stdin, &json!({ "id": rpc_id, "result": { "decision": decision } }))?;
+        send_rpc(
+            &stdin,
+            &json!({ "id": rpc_id, "result": { "decision": decision } }),
+        )?;
         Ok(json!({ "answered": job_id, "decision": decision }))
     }
 
@@ -1562,8 +1622,16 @@ impl Core {
                 drop(inner);
                 self.finish(
                     job_id,
-                    if completed { STATUS_DONE } else { STATUS_FAILED },
-                    Some(if completed { "succeeded".into() } else { "failed".into() }),
+                    if completed {
+                        STATUS_DONE
+                    } else {
+                        STATUS_FAILED
+                    },
+                    Some(if completed {
+                        "succeeded".into()
+                    } else {
+                        "failed".into()
+                    }),
                     summary,
                     false,
                 );
@@ -1589,35 +1657,32 @@ impl Core {
                 }
                 self.notify(&inner);
             }
-            "system" => {
-                match message.get("subtype").and_then(Value::as_str).unwrap_or("") {
-                    "init" => {
-                        let Some(session_id) = message.get("session_id").and_then(Value::as_str)
-                        else {
-                            return;
-                        };
-                        let mut inner = guard(&self.inner);
-                        if let Some(job) = inner.jobs.get_mut(job_id) {
-                            if job.thread_id.is_none() {
-                                job.thread_id = Some(session_id.to_string());
-                            }
+            "system" => match message.get("subtype").and_then(Value::as_str).unwrap_or("") {
+                "init" => {
+                    let Some(session_id) = message.get("session_id").and_then(Value::as_str) else {
+                        return;
+                    };
+                    let mut inner = guard(&self.inner);
+                    if let Some(job) = inner.jobs.get_mut(job_id) {
+                        if job.thread_id.is_none() {
+                            job.thread_id = Some(session_id.to_string());
                         }
-                        self.notify(&inner);
                     }
-                    "permission_denied" => {
-                        let note = message
-                            .get("message")
-                            .and_then(Value::as_str)
-                            .unwrap_or("a tool call was denied permission");
-                        let mut inner = guard(&self.inner);
-                        if let Some(job) = inner.jobs.get_mut(job_id) {
-                            job.reply.push_str(&format!("\n[blocked] {note}\n"));
-                        }
-                        self.notify(&inner);
-                    }
-                    _ => {}
+                    self.notify(&inner);
                 }
-            }
+                "permission_denied" => {
+                    let note = message
+                        .get("message")
+                        .and_then(Value::as_str)
+                        .unwrap_or("a tool call was denied permission");
+                    let mut inner = guard(&self.inner);
+                    if let Some(job) = inner.jobs.get_mut(job_id) {
+                        job.reply.push_str(&format!("\n[blocked] {note}\n"));
+                    }
+                    self.notify(&inner);
+                }
+                _ => {}
+            },
             "assistant" => {
                 let text = message
                     .get("message")
@@ -1626,7 +1691,9 @@ impl Core {
                     .map(|blocks| {
                         blocks
                             .iter()
-                            .filter(|block| block.get("type").and_then(Value::as_str) == Some("text"))
+                            .filter(|block| {
+                                block.get("type").and_then(Value::as_str) == Some("text")
+                            })
                             .filter_map(|block| block.get("text").and_then(Value::as_str))
                             .collect::<Vec<_>>()
                             .join("")
@@ -1646,19 +1713,37 @@ impl Core {
                 self.notify(&inner);
             }
             "result" => {
-                let is_error = message.get("is_error").and_then(Value::as_bool).unwrap_or(false);
+                let is_error = message
+                    .get("is_error")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
                 let result_text = message
                     .get("result")
                     .and_then(Value::as_str)
                     .unwrap_or_default()
                     .trim()
                     .to_string();
-                let tokens = message.get("usage").cloned();
+                let usage = message.get("usage");
+                let turn_cost = message.get("total_cost_usd").and_then(Value::as_f64);
                 let cwd = {
                     let mut inner = guard(&self.inner);
                     let cwd = inner.jobs.get(job_id).map(|job| job.cwd.clone());
-                    if let (Some(job), Some(tokens)) = (inner.jobs.get_mut(job_id), tokens) {
-                        job.tokens = Some(tokens);
+                    if let Some(job) = inner.jobs.get_mut(job_id) {
+                        if let Some(usage) = usage {
+                            let last = claude_token_count(usage);
+                            let total = job
+                                .tokens
+                                .as_ref()
+                                .and_then(|tokens| tokens.get("total"))
+                                .map(|current| add_token_counts(current, &last))
+                                .unwrap_or_else(|| last.clone());
+                            job.tokens = Some(json!({ "total": total, "last": last }));
+                        }
+                        if let Some(cost) =
+                            turn_cost.filter(|cost| cost.is_finite() && *cost >= 0.0)
+                        {
+                            job.cost_usd = Some(job.cost_usd.unwrap_or_default() + cost);
+                        }
                     }
                     cwd
                 };
@@ -1704,7 +1789,11 @@ impl Core {
                 self.finish(
                     job_id,
                     if is_error { STATUS_FAILED } else { STATUS_DONE },
-                    Some(if is_error { "failed".into() } else { "succeeded".into() }),
+                    Some(if is_error {
+                        "failed".into()
+                    } else {
+                        "succeeded".into()
+                    }),
                     summary,
                     false,
                 );
@@ -2576,6 +2665,7 @@ fn dispatch_tool(
                             plan: Vec::new(),
                             diff: None,
                             tokens: None,
+                            cost_usd: None,
                             quota: None,
                             outcome: None,
                             started_at: None,
@@ -2617,7 +2707,10 @@ fn dispatch_tool(
         }
 
         "alethe_check" => {
-            let wait = arguments.get("wait").and_then(Value::as_bool).unwrap_or(false);
+            let wait = arguments
+                .get("wait")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
             let until_all_settled = arguments
                 .get("untilAllSettled")
                 .and_then(Value::as_bool)
@@ -2820,7 +2913,9 @@ fn dispatch_tool(
                     true
                 };
                 core.drain_queue();
-                return Ok(json!({ "revived": job_id, "resumedThread": thread_id, "queued": queued }));
+                return Ok(
+                    json!({ "revived": job_id, "resumedThread": thread_id, "queued": queued }),
+                );
             }
             // Waiting beats both alternatives: refusing would make the lead babysit the worker,
             // and steering would bend the turn already in flight instead of adding to it.
@@ -2958,7 +3053,10 @@ pub fn handle_mcp_body(core: &Core, body: &str, planner: Option<&str>) -> Option
         }),
         "tools/list" => json!({ "jsonrpc": "2.0", "id": id, "result": { "tools": tools_for(core) } }),
         "tools/call" => {
-            let name = params.get("name").and_then(Value::as_str).unwrap_or_default();
+            let name = params
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             let empty = Map::new();
             let arguments = params
                 .get("arguments")

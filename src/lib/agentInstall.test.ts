@@ -61,6 +61,11 @@ describe('installMethodsFor', () => {
     expect(installMethodsFor('antigravity', null).map((m) => m.id)).toEqual(['native'])
   })
 
+  it('installs Cursor through its own script, with or without a toolchain', () => {
+    expect(installMethodsFor('cursor', BARE).map((method) => method.id)).toEqual(['native'])
+    expect(installMethodsFor('cursor', null)[0].command).toContain('cursor.com/install')
+  })
+
   it('installs Freebuff through npm and Mimo through its own script', () => {
     expect(installMethodsFor('freebuff', { ...BARE, npm: true })[0].command).toBe(
       'npm install -g freebuff',

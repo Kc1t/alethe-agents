@@ -887,8 +887,6 @@
   transition: color 0.15s;
 }
 
-                                                                
-
 .bottomGrid {
   display: grid;
   grid-template-columns: 1.4fr 1fr;
@@ -959,6 +957,11 @@
   color: var(--agent-antigravity);
   background: color-mix(in srgb, var(--agent-antigravity) 14%, transparent);
   border-color: color-mix(in srgb, var(--agent-antigravity) 28%, transparent);
+}
+.notifCursor {
+  color: var(--agent-cursor);
+  background: color-mix(in srgb, var(--agent-cursor) 14%, transparent);
+  border-color: color-mix(in srgb, var(--agent-cursor) 28%, transparent);
 }
 .notifShell {
   color: var(--agent-shell);
@@ -1276,8 +1279,6 @@
   color: var(--status-offline);
 }
 
-                                                     
-
 /* corpo distribui barras (topo) e grade de stats (base) preenchendo a altura */
 .cardBody {
   flex: 1;
@@ -1328,7 +1329,75 @@
   color: var(--status-offline);
 }
 
-                                                    
+.resetCreditBox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 13px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--fg-faint);
+  font: 10px var(--font-sans);
+}
+
+.resetCreditTitle {
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.resetCreditInfo {
+  color: var(--fg-faint);
+}
+
+.resetCreditItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.resetCreditItem > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.resetCreditItem strong {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.resetCreditItem span,
+.resetCreditItem small {
+  color: var(--fg-faint);
+  font-size: 10px;
+}
+
+.resetCreditButton {
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  font: 11px var(--font-sans);
+  cursor: pointer;
+}
+
+.resetCreditButton:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+
+.resetCreditButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
 
 .cardFoot {
   display: flex;
@@ -1361,8 +1430,6 @@
   color: var(--text-quaternary);
   flex-shrink: 0;
 }
-
-                            
 
 .usageEmpty {
   flex: 1;
@@ -1898,7 +1965,6 @@
   width: min(100%, 940px);
   margin-inline: auto;
 }
-
 
 .homeBackdrop {
   position: absolute;

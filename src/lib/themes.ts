@@ -25,6 +25,8 @@ export const BUILTIN_THEME_OPTIONS: { id: BuiltinTheme; colors: [string, string,
   { id: 'vscode', colors: ['#1e1e1e', '#007acc', '#cccccc'] },
   { id: 'min-dark', colors: ['#1f1f1f', '#fafafa', '#888888'] },
   { id: 'min-light', colors: ['#ffffff', '#1976D2', '#6f42c1'] },
+  { id: 'catppuccin-frappe', colors: ['#303446', '#f4b8e4', '#b5bfe2'] },
+  { id: 'gruvbox-material', colors: ['#1d2021', '#e78a4e', '#d4be98'] },
 ]
 
 const BUILTIN_IDS = new Set<string>(BUILTIN_THEME_OPTIONS.map((option) => option.id))

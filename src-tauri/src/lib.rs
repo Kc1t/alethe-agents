@@ -21,6 +21,7 @@ mod codex_usage;
 mod conflict_resolution;
 mod contract_check;
 mod crash_watch;
+mod cursor_sessions;
 mod diagnostics;
 mod discord_presence;
 mod economy_agents;
@@ -30,6 +31,7 @@ mod ghostty_bridge;
 #[cfg(all(target_os = "macos", ghostty_linked))]
 mod ghostty_ffi;
 mod git_control;
+mod github_pr;
 mod github_sync;
 mod graphify;
 mod handoff;
@@ -52,6 +54,7 @@ mod planning;
 mod planning_gate;
 mod plugin_assets;
 mod plugin_catalog;
+mod plugin_package;
 mod plugins;
 mod process_tree;
 mod profiles;
@@ -66,11 +69,14 @@ mod router9;
 mod scheduler;
 mod session_watcher;
 mod skills;
+mod speech;
+mod speech_capture;
 mod spotify;
 mod stats;
 mod supervisor;
 mod telemetry;
 mod validation;
+mod webview_media;
 mod window_style;
 #[cfg(windows)]
 mod windows_webview;
@@ -163,6 +169,7 @@ pub fn run() {
         .manage(cli_launch::PendingOpen::default())
         .manage(orchestrator::OrchestratorState::default())
         .manage(router9::Router9Process::default())
+        .manage(speech::SpeechState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
@@ -198,6 +205,13 @@ pub fn run() {
                     }
                     Err(error) => eprintln!("[icon] falha ao decodificar ícone embutido: {error}"),
                 }
+                // Required for getUserMedia / voice dictation on WebKitGTK.
+                webview_media::grant_media_permissions(&window);
+            }
+
+            #[cfg(not(target_os = "linux"))]
+            if let Some(window) = app.get_webview_window("main") {
+                webview_media::grant_media_permissions(&window);
             }
             logging::set_logs_dir(app.handle());
             if let Ok(dir) = paths::profile_data_dir(app.handle()) {
@@ -349,6 +363,7 @@ pub fn run() {
             profiles::rename_profile,
             profiles::delete_profile,
             cli_resolver::find_cli_launcher,
+            cli_resolver::refresh_cli_launcher,
             cli_resolver::probe_install_toolchain,
             cli_resolver::agent_cli_version,
             cli_launch::cli_take_pending_open,
@@ -369,6 +384,9 @@ pub fn run() {
             cloud_sync::cloud_sync_logout,
             cloud_sync::cloud_sync_push,
             cloud_sync::cloud_sync_pull,
+            github_pr::github_pr_find,
+            github_pr::github_pr_merge,
+            github_pr::github_pr_list_mine,
             git_control::git_init,
             git_control::git_status,
             git_control::git_diff,
@@ -423,8 +441,10 @@ pub fn run() {
             handoff::materialize_agent_handoff,
             handoff::complete_agent_handoff,
             antigravity_sessions::snapshot_antigravity_sessions,
+            cursor_sessions::create_cursor_chat,
             claude_usage::get_claude_usage,
             codex_usage::get_codex_usage,
+            codex_usage::consume_codex_reset_credit,
             antigravity_usage::get_antigravity_usage,
             agent_cost::get_session_cost,
             agent_cost::get_transcript_cost,
@@ -433,6 +453,15 @@ pub fn run() {
             crash_watch::get_last_crash_report,
             crash_watch::get_job_guard_status,
             set_window_opacity,
+            speech::speech_list_models,
+            speech::speech_list_input_devices,
+            speech::speech_model_states,
+            speech::speech_download_model,
+            speech::speech_delete_model,
+            speech::speech_start_capture,
+            speech::speech_stop_capture,
+            speech::speech_stop_and_transcribe,
+            speech::speech_transcribe,
             quit_app,
             worktrees::worktree_provision,
             worktrees::worktree_list,
@@ -505,6 +534,7 @@ pub fn run() {
             plugins::plugin_set_enabled,
             plugin_catalog::plugin_catalog,
             plugin_catalog::plugin_catalog_open,
+            plugin_catalog::plugin_install_from_catalog,
             plugins::plugin_storage_read,
             plugins::plugin_storage_write,
             mcp_store::mcp_scan,

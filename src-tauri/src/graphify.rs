@@ -267,6 +267,9 @@ pub(crate) fn graphify_opencode_config_write_inner(
     repo: String,
     command: Option<String>,
 ) -> Result<(), String> {
+    let _guard = crate::provider_common::opencode_json_lock()
+        .lock()
+        .map_err(|_| "opencode.json lock poisoned".to_string())?;
     let root = repository_root(&repo)?;
     let cmd = command.unwrap_or_else(|| DEFAULT_COMMAND.to_string());
     let path = root.join("opencode.json");

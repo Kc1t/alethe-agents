@@ -1304,8 +1304,11 @@ name = "gate"
 
     #[test]
     fn requested_agents_falls_back_to_every_agent() {
-        assert_eq!(requested_agents(None).len(), 4);
-        assert_eq!(requested_agents(Some(vec!["nonsense".into()])).len(), 4);
+        assert_eq!(requested_agents(None).len(), ALL_MCP_AGENTS.len());
+        assert_eq!(
+            requested_agents(Some(vec!["nonsense".into()])).len(),
+            ALL_MCP_AGENTS.len()
+        );
         assert_eq!(
             requested_agents(Some(vec!["codex".into()])),
             vec![McpAgent::Codex]

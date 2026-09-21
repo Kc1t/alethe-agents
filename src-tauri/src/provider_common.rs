@@ -1,6 +1,7 @@
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Resolve `~/<segments>` a partir de `USERPROFILE` (Windows) ou `HOME` (Unix).
@@ -35,6 +36,14 @@ pub(crate) fn normalize_cwd(cwd: &str) -> String {
     } else {
         trimmed.to_string()
     }
+}
+
+/// Serializes all read-modify-write cycles on `opencode.json`. Multiple writers
+/// (Graphify, GSD plugin, AI Memory) race to insert their MCP entry into the
+/// same file; without a lock the last writer clobbers the others.
+pub(crate) fn opencode_json_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
 }
 
 #[cfg(test)]

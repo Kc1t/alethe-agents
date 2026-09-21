@@ -56,13 +56,15 @@ pub struct McpSourceState {
 pub enum McpAgent {
     Claude,
     Codex,
+    Cursor,
     Opencode,
     Antigravity,
 }
 
-pub const ALL_MCP_AGENTS: [McpAgent; 4] = [
+pub const ALL_MCP_AGENTS: [McpAgent; 5] = [
     McpAgent::Claude,
     McpAgent::Codex,
+    McpAgent::Cursor,
     McpAgent::Opencode,
     McpAgent::Antigravity,
 ];
@@ -72,6 +74,7 @@ impl McpAgent {
         match self {
             McpAgent::Claude => "claude",
             McpAgent::Codex => "codex",
+            McpAgent::Cursor => "cursor",
             McpAgent::Opencode => "opencode",
             McpAgent::Antigravity => "antigravity",
         }
@@ -81,6 +84,7 @@ impl McpAgent {
         match raw.trim().to_ascii_lowercase().as_str() {
             "claude" => Some(McpAgent::Claude),
             "codex" => Some(McpAgent::Codex),
+            "cursor" | "cursor-agent" => Some(McpAgent::Cursor),
             "opencode" => Some(McpAgent::Opencode),
             "antigravity" | "agy" => Some(McpAgent::Antigravity),
             _ => None,
@@ -351,6 +355,15 @@ pub fn capability(agent: McpAgent) -> McpCapability {
             env_passthrough: true,
             timeouts: true,
             headers: false,
+            remote: true,
+        },
+        McpAgent::Cursor => McpCapability {
+            agent,
+            project_scope: true,
+            enabled_flag: false,
+            env_passthrough: false,
+            timeouts: false,
+            headers: true,
             remote: true,
         },
         McpAgent::Opencode => McpCapability {

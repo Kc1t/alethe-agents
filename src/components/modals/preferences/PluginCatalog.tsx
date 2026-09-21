@@ -1,9 +1,14 @@
-import { CloudOff, Download, RefreshCw } from 'lucide-react'
+import { CloudOff, Download, ExternalLink, RefreshCw, ShieldCheck } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 
 import { useT } from '../../../lib/i18n'
-import { PLUGIN_API_VERSION, usePlugins } from '../../../lib/plugins'
-import { type CatalogPlugin, pluginCatalog, pluginCatalogOpen } from '../../../lib/tauri'
+import { PLUGIN_API_VERSION, refreshLocalPlugins, usePlugins } from '../../../lib/plugins'
+import {
+  type CatalogPlugin,
+  pluginCatalog,
+  pluginCatalogOpen,
+  pluginInstallFromCatalog,
+} from '../../../lib/tauri'
 import { useUiStore } from '../../../stores/uiStore'
 import controls from '../controls.module.css'
 import { CapabilityList } from './pluginCapabilities'
@@ -18,24 +23,22 @@ export function PluginCatalog() {
   const [stale, setStale] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [installing, setInstalling] = useState<string | null>(null)
 
-  const load = useCallback(
-    async (refresh: boolean) => {
-      setLoading(true)
-      try {
-        const snapshot = await pluginCatalog(PLUGIN_API_VERSION, refresh)
-        setEntries(snapshot.plugins)
-        setStale(snapshot.stale)
-        setError(null)
-      } catch (cause) {
-        setEntries([])
-        setError(String(cause))
-      } finally {
-        setLoading(false)
-      }
-    },
-    [],
-  )
+  const load = useCallback(async (refresh: boolean) => {
+    setLoading(true)
+    try {
+      const snapshot = await pluginCatalog(PLUGIN_API_VERSION, refresh)
+      setEntries(snapshot.plugins)
+      setStale(snapshot.stale)
+      setError(null)
+    } catch (cause) {
+      setEntries([])
+      setError(String(cause))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     void load(false)
@@ -46,6 +49,22 @@ export function PluginCatalog() {
       await pluginCatalogOpen(PLUGIN_API_VERSION, plugin.downloadUrl)
     } catch (cause) {
       pushToast({ title: t('prefs.pluginsCatalogOpenError'), body: String(cause) })
+    }
+  }
+
+  const install = async (plugin: CatalogPlugin) => {
+    setInstalling(plugin.id)
+    try {
+      await pluginInstallFromCatalog(PLUGIN_API_VERSION, plugin.id)
+      await refreshLocalPlugins()
+      pushToast({
+        title: t('prefs.pluginsCatalogInstallDone', { name: plugin.name }),
+        body: t('prefs.pluginsCatalogInstallDoneBody'),
+      })
+    } catch (cause) {
+      pushToast({ title: t('prefs.pluginsCatalogInstallError'), body: String(cause) })
+    } finally {
+      setInstalling(null)
     }
   }
 
@@ -82,7 +101,13 @@ export function PluginCatalog() {
       ) : (
         <div className={styles.list}>
           {entries.map((plugin) => {
-            const alreadyInstalled = installed.some((entry) => entry.manifest.id === plugin.id)
+            const local = installed.find((entry) => entry.manifest.id === plugin.id)
+            const alreadyInstalled = local !== undefined
+            const outdated =
+              local !== undefined &&
+              plugin.version !== '' &&
+              local.manifest.version !== plugin.version
+            const busy = installing === plugin.id
             return (
               <div key={plugin.id} className={styles.row}>
                 <div className={styles.rowHead}>
@@ -94,7 +119,13 @@ export function PluginCatalog() {
                           {t('prefs.pluginsVersion', { version: plugin.version })}
                         </span>
                       ) : null}
-                      {alreadyInstalled ? (
+                      {outdated ? (
+                        <span className={styles.badge}>
+                          {t('prefs.pluginsCatalogUpdateAvailable', {
+                            version: local.manifest.version,
+                          })}
+                        </span>
+                      ) : alreadyInstalled ? (
                         <span className={styles.badge}>{t('prefs.pluginsCatalogInstalled')}</span>
                       ) : null}
                     </div>
@@ -106,15 +137,49 @@ export function PluginCatalog() {
                         {t('prefs.pluginsCatalogBy', { author: plugin.author })}
                       </p>
                     ) : null}
+                    {plugin.package ? (
+                      <p className={styles.catalogPinned}>
+                        <ShieldCheck size={13} />
+                        {t('prefs.pluginsCatalogPinned')}
+                      </p>
+                    ) : null}
                   </div>
-                  <button
-                    type="button"
-                    className={`${controls.btn} ${controls.btnSm}`}
-                    onClick={() => void open(plugin)}
-                  >
-                    <Download size={13} />
-                    {t('prefs.pluginsCatalogGet')}
-                  </button>
+                  <div className={styles.catalogActions}>
+                    {plugin.package ? (
+                      <button
+                        type="button"
+                        className={`${controls.btn} ${controls.btnSm}`}
+                        disabled={busy || installing !== null}
+                        onClick={() => void install(plugin)}
+                      >
+                        <Download size={13} />
+                        {busy
+                          ? t('prefs.pluginsCatalogInstalling')
+                          : outdated
+                            ? t('prefs.pluginsCatalogUpdate')
+                            : alreadyInstalled
+                              ? t('prefs.pluginsCatalogReinstall')
+                              : t('prefs.pluginsCatalogInstall')}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={`${controls.btn} ${controls.btnSm}`}
+                        onClick={() => void open(plugin)}
+                      >
+                        <Download size={13} />
+                        {t('prefs.pluginsCatalogGet')}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className={styles.catalogSource}
+                      onClick={() => void open(plugin)}
+                    >
+                      <ExternalLink size={12} />
+                      {t('prefs.pluginsCatalogSource')}
+                    </button>
+                  </div>
                 </div>
                 <CapabilityList capabilities={plugin.capabilities} />
               </div>

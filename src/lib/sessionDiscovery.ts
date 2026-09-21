@@ -1,14 +1,16 @@
+import { normalizeCwd } from './platform'
+
 export type SessionSnapshot = {
   id: string
   modified_at_ms: number
 }
 
 const claimedIds = new Map<string, Set<string>>()
-                                                                                                   
+
 const claimOwners = new Map<string, Array<{ key: string; sessionId: string }>>()
 
 function claimKey(agent: string, cwd: string): string {
-  return `${agent}\0${cwd.toLowerCase()}`
+  return `${agent}\0${normalizeCwd(cwd)}`
 }
 
 function trackOwner(ptyId: string | undefined, key: string, sessionId: string): void {
@@ -42,37 +44,11 @@ export function isSessionClaimed(
   const key = claimKey(agent, cwd)
   if (!claimedIds.get(key)?.has(sessionId)) return false
   if (!ownerId) return true
-  return claimOwners.get(ownerId)?.some((claim) => claim.key === key && claim.sessionId === sessionId) !== true
-}
-
-   
-                                                                            
-                                                                            
-                                                                          
-   
-/**
- * The session a pane moved to when the CLI switched conversation under it — an in-CLI `/clear` or
- * `/resume` leaves no other trace than a sibling file that is now newer than the pane's own.
- *
- * A session another pane already claims is never a candidate: two panes on the same folder are
- * always writing newer-than-each-other files, and without this guard the idle one adopts whatever
- * its neighbour is typing into, collapsing both rows onto a single conversation.
- */
-export function pickSwitchedSession(
-  agent: string,
-  cwd: string,
-  current: SessionSnapshot | undefined,
-  sessions: readonly SessionSnapshot[],
-  ownerId?: string,
-): SessionSnapshot | undefined {
-  if (!current) return undefined
-  const candidates = sessions.filter(
-    (session) =>
-      session.id !== current.id &&
-      session.modified_at_ms > current.modified_at_ms &&
-      !isSessionClaimed(agent, cwd, session.id, ownerId),
+  return (
+    claimOwners
+      .get(ownerId)
+      ?.some((claim) => claim.key === key && claim.sessionId === sessionId) !== true
   )
-  return candidates.length === 1 ? candidates[0] : undefined
 }
 
 export function claimDiscoveredSession(
@@ -96,14 +72,6 @@ export function claimDiscoveredSession(
   return candidate
 }
 
-   
-                                                                          
-                                                                            
-                                                                       
-                                                                            
-                                                                            
-                                      
-   
 export function claimMostRecentSession(
   agent: string,
   cwd: string,
@@ -122,17 +90,19 @@ export function claimMostRecentSession(
   return candidate
 }
 
-   
-                                                                        
-                                                                                
-                                                                                
-                                                                         
-   
 export function releaseSessionClaim(ptyId: string): void {
   const owned = claimOwners.get(ptyId)
   if (!owned) return
   claimOwners.delete(ptyId)
   for (const { key, sessionId } of owned) {
+    // A tab and its live PTY can both own the same claim. Releasing either must
+    // not make the conversation available while the other owner still holds it.
+    if (
+      [...claimOwners.values()].some((claims) =>
+        claims.some((claim) => claim.key === key && claim.sessionId === sessionId),
+      )
+    )
+      continue
     const set = claimedIds.get(key)
     if (!set) continue
     set.delete(sessionId)

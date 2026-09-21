@@ -11,7 +11,9 @@ import { recordAgentActivityInput } from '../../lib/activityTracker'
 import { cliPathMatchesAgent } from '../../lib/agentCliPath'
 import { AgentCompletionMonitor } from '../../lib/agentCompletionMonitor'
 import { deliverOpenCodePrompt } from '../../lib/agentPromptDelivery'
+import { agentLabel, resolveAgentCliCommand } from '../../lib/agentProviders'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
+import { claudeSessionFromHook } from '../../lib/claudeSessionTracking'
 import { getLocale, translate } from '../../lib/i18n'
 import { isOrchestratorShellPty } from '../../lib/orchestratorShells'
 import { terminalNameForPty } from '../../lib/plannerLabel'
@@ -22,10 +24,8 @@ import {
   claimDiscoveredSession,
   claimMostRecentSession,
   isSessionClaimed,
-  pickSwitchedSession,
   registerSessionClaim,
   releaseSessionClaim,
-  type SessionSnapshot,
 } from '../../lib/sessionDiscovery'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
 import {
@@ -46,6 +46,7 @@ import {
   clearPtyScrollback,
   codexHooksConfigWrite,
   codexMcpConfigWrite,
+  createCursorChat,
   findCliLauncher,
   graphifyCodexConfigWrite,
   graphifyEnsureGraph,
@@ -71,8 +72,13 @@ import {
   writeClipboardText,
   writePty,
 } from '../../lib/tauri'
-import { agentLabel, resolveAgentCliCommand } from '../../lib/agentProviders'
-import { isShellAgentType, type AgentRuntimeProfile, type AgentType, type Theme } from '../../lib/types'
+import {
+  type AgentRuntimeProfile,
+  type AgentType,
+  isShellAgentType,
+  type Theme,
+} from '../../lib/types'
+import type { AgentHookPayload } from '../../stores/agentCanvasStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -125,12 +131,6 @@ function plannerLabelFor(ptyId: string, agent: AgentType): string {
 }
 
 type BootPhase = 'preparing' | 'queued' | 'spawning' | 'attaching' | 'ready'
-
-type ClaudeSessionHookPayload = {
-  hook_event_name?: string
-  session_id?: string
-  plannerId?: string
-}
 
 export function useXtermSession(params: {
   ptyId: string
@@ -243,12 +243,50 @@ export function useXtermSession(params: {
     }
 
     let disposed = false
+    // Keep lifecycle callbacks bound to this XTermView instance. The parent updates the refs on
+    // every render, but a late async launch result must never write a session into a different tab
+    // after the active tab has changed.
+    const emitSessionId = onSessionIdRef.current
     const spawnQueueAbort = new AbortController()
     let unlistenData: (() => void) | null = null
     let unlistenActivity: (() => void) | null = null
     let unlistenExit: (() => void) | null = null
     let unlistenDragDrop: (() => void) | null = null
     let unlistenSessionHook: (() => void) | null = null
+    const savedAttachedSessionId = savedConversationIdFor(
+      peekSession(sessionPersistenceKey),
+      command,
+      cwd,
+    )
+    let attachedSessionId = trustSessionId
+      ? (sessionId ?? savedAttachedSessionId)
+      : (savedAttachedSessionId ?? sessionId)
+    let attachedPtyId = ptyId
+    const persistAttachedSession = () => {
+      if (disposed || !command || readOnly) return
+      saveSession(sessionPersistenceKey, {
+        sessionId: attachedPtyId,
+        claudeSessionId: command === 'claude' ? attachedSessionId : undefined,
+        codexSessionId: command === 'codex' ? attachedSessionId : undefined,
+        opencodeSessionId: command === 'opencode' ? attachedSessionId : undefined,
+        antigravitySessionId: command === 'antigravity' ? attachedSessionId : undefined,
+        cwd: cwd ?? '',
+        agent: command,
+        timestamp: Date.now(),
+      })
+    }
+    const adoptSession = (nextSessionId: string) => {
+      if (disposed || !command || readOnly || nextSessionId === attachedSessionId) return
+      attachedSessionId = nextSessionId
+      if (cwd) {
+        releaseSessionClaim(sessionPersistenceKey)
+        releaseSessionClaim(attachedPtyId)
+        registerSessionClaim(command, cwd, nextSessionId, sessionPersistenceKey)
+        registerSessionClaim(command, cwd, nextSessionId, attachedPtyId)
+      }
+      persistAttachedSession()
+      emitSessionId?.(nextSessionId)
+    }
     let resizeTimer: number | null = null
     let writeFrame: number | null = null
     let writeFallback: number | null = null
@@ -288,8 +326,7 @@ export function useXtermSession(params: {
         memoryBudgetMb: resourcePolicy.memoryBudgetMb,
       }),
 
-      // xterm.js passa a assumir que o backend redesenha a tela sozinho
-      // (como o ConPTY faz), o que corrompe o repaint de TUIs densas que
+      // Match the Windows ConPTY backend when configuring terminal repaint behavior.
 
       ...(isWindows() ? { windowsPty: { backend: 'conpty' as const, buildNumber: 22000 } } : {}),
       fontFamily: 'Cascadia Mono, Consolas, "Courier New", monospace',
@@ -377,7 +414,9 @@ export function useXtermSession(params: {
               : undefined,
           )
           clampHorizontalScroll()
-        } catch {}
+        } catch {
+          /* The terminal may have been disposed before the queued write. */
+        }
       }
       if (pendingWriteLength > 0) scheduleFlush()
     }
@@ -415,7 +454,9 @@ export function useXtermSession(params: {
           terminal.write(replay, () => {
             try {
               terminal.scrollToBottom()
-            } catch {}
+            } catch {
+              /* The terminal may have been disposed before scrolling. */
+            }
             resolve()
           })
         } catch {
@@ -429,9 +470,7 @@ export function useXtermSession(params: {
     }
 
     const onWheel = (event: WheelEvent) => {
-      // TUIs (claude/codex) entram no buffer `alternate` e ligam mouse tracking.
-
-      // interceptasse o wheel (preventDefault), o evento sumia e nem o host nem
+      // Let alternate-screen TUIs handle their own mouse tracking and scrolling.
 
       if (!shouldScrollHostScrollback(terminal.buffer.active.type, event.shiftKey)) return
       const lines = getWheelScrollLines(event, getTerminalLineHeight())
@@ -440,7 +479,9 @@ export function useXtermSession(params: {
       event.stopPropagation()
       try {
         terminal.scrollLines(lines)
-      } catch {}
+      } catch {
+        /* Ignore scrolling after the terminal has been disposed. */
+      }
     }
     container.addEventListener('wheel', onWheel, { passive: false, capture: true })
 
@@ -482,7 +523,7 @@ export function useXtermSession(params: {
       }
     }
 
-    // texto puro; arquivos do Explorer (CF_HDROP) e imagens cruas (CF_DIB /
+    // Resolve clipboard text, Explorer file drops, and native image payloads.
 
     const resolveClipboardPaste = async (): Promise<string> => {
       const payload = await readClipboardPayload()
@@ -711,7 +752,7 @@ export function useXtermSession(params: {
       void resizePty(id, terminal.cols, terminal.rows)
     }
     const scheduleResize = (force = false) => {
-      // Guard de unmount: neutraliza os setTimeout(120/320ms) de onResizeRequest
+      // Ignore delayed resize callbacks after unmount.
 
       if (disposed) return
       forceNextResize ||= force
@@ -740,7 +781,7 @@ export function useXtermSession(params: {
       scheduleResize()
     }, 150)
 
-    // zero em vez de tentar reconciliar incrementalmente. `reset()` + replay
+    // Rebuild the terminal screen from the backend replay.
 
     const doResync = async () => {
       const id = ptyIdRef.current
@@ -763,9 +804,7 @@ export function useXtermSession(params: {
     }
     resyncTerminalRef.current = doResync
 
-    // Registra os dois listeners de streaming: `data` (canal caro — escreve
-
-    // chunk ser processado em duplicidade.
+    // Separate rendered data from lightweight activity updates.
 
     const registerPtyStreamListeners = async (
       id: string,
@@ -799,6 +838,12 @@ export function useXtermSession(params: {
 
     const attachExistingPty = async (existingId: string) => {
       setBootPhase('attaching')
+      attachedPtyId = existingId
+      if (command && cwd && !readOnly) {
+        registerSessionClaim(command, cwd, attachedSessionId, sessionPersistenceKey)
+        registerSessionClaim(command, cwd, attachedSessionId, existingId)
+      }
+      if (attachedSessionId !== sessionId) emitSessionId?.(attachedSessionId)
       ptyIdRef.current = existingId
       useTerminalsStore.getState().registerPty(existingId)
       onSpawnedRef.current?.(existingId)
@@ -816,7 +861,7 @@ export function useXtermSession(params: {
         })
       }
 
-      // gastar o burst de write mais pesado (TUIs como o OpenCode) enquanto
+      // Defer replay work until the pane is visible.
 
       if (isPanelVisibleRef.current) {
         const replay = await attachPty(existingId)
@@ -885,15 +930,31 @@ export function useXtermSession(params: {
       }
     })
 
-    const RESUMABLE_AGENTS = ['claude', 'codex', 'opencode', 'antigravity']
+    const RESUMABLE_AGENTS = ['claude', 'codex', 'cursor', 'opencode', 'antigravity']
 
     async function start() {
       try {
+        // Subscribe before either spawning or attaching. A SessionStart can arrive
+        // before spawnPty resolves, and remounting a live PTY must restore tracking.
+        if (command === 'claude' && !readOnly) {
+          const off = await listen<AgentHookPayload>('agent-hook', (event) => {
+            if (event.payload.plannerId !== attachedPtyId) return
+            const reported = claudeSessionFromHook(event.payload)
+            if (reported) adoptSession(reported)
+          })
+          if (disposed) {
+            off()
+            return
+          }
+          unlistenSessionHook = off
+        }
         // Skip zero-sized panes; the observer retries after layout settles.
         try {
           const rect = container?.getBoundingClientRect()
           if (rect && rect.width >= 50 && rect.height >= 30) fitAddon.fit()
-        } catch {}
+        } catch {
+          /* Resize observation will retry fitting after layout settles. */
+        }
         setCommandNotFound(null)
         setBootPhase('preparing')
 
@@ -950,11 +1011,14 @@ export function useXtermSession(params: {
         const savedSession =
           command && RESUMABLE_AGENTS.includes(command) ? peekSession(sessionPersistenceKey) : null
         const savedConversationId = savedConversationIdFor(savedSession, command, cwd)
-        let resumeId = sessionId ?? savedConversationId
-        // Fallback: se a tentativa anterior morreu no nascimento usando resume,
+        // The synchronous session record may be newer than projects.json after closing.
+        let resumeId = trustSessionId
+          ? (sessionId ?? savedConversationId)
+          : (savedConversationId ?? sessionId)
+        // Retry an unavailable resumed conversation with a fresh session.
 
         if (forceFreshRef.current) {
-          console.warn(`[pty-launch] ${command} reabrindo SEM resume (fallback de early-exit)`)
+          console.warn(`[pty-launch] ${command} reopening without resume (early-exit fallback)`)
           resumeId = undefined
         }
         if (
@@ -968,7 +1032,7 @@ export function useXtermSession(params: {
           )
           resumeId = undefined
           removeSession(sessionPersistenceKey)
-          onSessionIdRef.current?.(undefined)
+          emitSessionId?.(undefined)
         }
         // Reserve the resume ID before creating the PTY. Without this early
         // claim, two panes can pass the check above at the same time and both
@@ -977,9 +1041,7 @@ export function useXtermSession(params: {
           registerSessionClaim(command, cwd, resumeId, sessionPersistenceKey)
         }
 
-        // `trustSessionId` pula essa checagem — confirmado empiricamente que
-
-        // verdade e descarta o resume, apagando `sessionId` do tab.
+        // Trusted session IDs can precede their transcript appearing in a snapshot.
         if (
           !trustSessionId &&
           (command === 'claude' ||
@@ -1001,12 +1063,21 @@ export function useXtermSession(params: {
             const notListed = !existing.some((session) => session.id === resumeId)
 
             if (notListed && command !== 'opencode') {
-              console.warn(`[pty-launch] ${command} ignorando sessão órfã ${resumeId}`)
+              console.warn(`[pty-launch] ${command} ignoring orphaned session ${resumeId}`)
               resumeId = undefined
               removeSession(sessionPersistenceKey)
-              onSessionIdRef.current?.(undefined)
+              emitSessionId?.(undefined)
             }
-          } catch {}
+          } catch {
+            /* A failed snapshot must not discard a known conversation. */
+          }
+          if (disposed) return
+        }
+
+        // Cursor keeps its chats in an opaque store, so there is nothing to scan for afterwards:
+        // the pane asks the CLI for a chat up front and holds that ID for every later relaunch.
+        if (command === 'cursor' && !resumeId && cwd) {
+          resumeId = (await createCursorChat(cwd).catch(() => undefined)) || undefined
           if (disposed) return
         }
 
@@ -1014,17 +1085,15 @@ export function useXtermSession(params: {
           try {
             const sessions = await snapshotOpenCodeSessions(cwd)
 
-            // — e como `useGsdSyncSessions` acha o terminal certo justamente
-
-            // escondendo/fechando a pane dele.
-
-            // `.gsd-child-session` em algum momento (spawn anterior com o
+            // Exclude the GSD child session from parent-session discovery.
 
             const gsdChildId = await readGsdChildSession(cwd).catch(() => null)
             const candidates = gsdChildId ? sessions.filter((s) => s.id !== gsdChildId) : sessions
             const claimed = claimMostRecentSession('opencode', cwd, candidates)
             if (claimed) resumeId = claimed.id
-          } catch {}
+          } catch {
+            /* Discovery is optional when no previous OpenCode session is available. */
+          }
           if (disposed) return
         }
         const preparedRuntime = command
@@ -1042,7 +1111,7 @@ export function useXtermSession(params: {
             ? { ...(preparedRuntime.env ?? {}), ...router9Env }
             : preparedRuntime.env
 
-        // o spawn.
+        // Prepare optional integrations before spawning.
         const mcpConfigPaths: string[] = []
         let hooksSettingsPath: string | undefined
 
@@ -1143,11 +1212,16 @@ export function useXtermSession(params: {
         }
 
         const { preferences } = useProjectsStore.getState()
-        if (command === 'opencode' && cwd && gsdWatcherEnabled && preferences.enabledFeatures.gsdSync) {
+        if (
+          command === 'opencode' &&
+          cwd &&
+          gsdWatcherEnabled &&
+          preferences.enabledFeatures.gsdSync
+        ) {
           const modelChain = preferences.gsdSyncModelChain ?? []
 
           await gsdOpenCodePluginWrite(cwd, modelChain).catch((error) => {
-            console.error(`[pty-launch] gsdOpenCodePluginWrite falhou pra ${cwd}:`, error)
+            console.error(`[pty-launch] gsdOpenCodePluginWrite failed for ${cwd}:`, error)
           })
           if (disposed) return
         }
@@ -1163,32 +1237,30 @@ export function useXtermSession(params: {
             )
           : { args: preparedRuntime.args, sessionId: undefined, createdSession: false }
         const spawnArgs = launch.args.length > 0 ? launch.args : undefined
+        attachedSessionId = launch.sessionId
         if (command && command !== 'shell') {
           console.info(
             `[pty-launch] ${command} args=${JSON.stringify(spawnArgs ?? [])} resumeId=${resumeId ?? '—'} launcherOverride=${launcherOverride ?? '(auto/PATH)'}`,
           )
         }
         if (launch.sessionId && launch.sessionId !== sessionId) {
-          onSessionIdRef.current?.(launch.sessionId)
+          emitSessionId?.(launch.sessionId)
         }
         if (command && cwd) {
           registerSessionClaim(command, cwd, launch.sessionId, sessionPersistenceKey)
         }
 
-        // Claude gets its id up front through --session-id, but /new and /resume
-        // typed inside the CLI move it to another conversation. Baselining the
-        // directory here lets the watcher below adopt whatever it moves to.
+        // Claude reports identity through its own hooks. Shared-directory timestamps
+        // cannot tell which pane created or resumed a conversation.
         const discoveredSessionsBeforePromise =
-          cwd && (!launch.sessionId || command === 'claude')
+          cwd && !launch.sessionId
             ? command === 'codex'
               ? snapshotCodexSessions(cwd).catch(() => [])
               : command === 'antigravity'
                 ? snapshotAntigravitySessions(cwd).catch(() => [])
                 : command === 'opencode'
                   ? snapshotOpenCodeSessions(cwd).catch(() => [])
-                  : command === 'claude'
-                    ? snapshotClaudeSessions(cwd).catch(() => [])
-                    : null
+                  : null
             : null
 
         // Too many parallel PTY spawns can stall the app.
@@ -1220,19 +1292,20 @@ export function useXtermSession(params: {
         usedResumeRef.current = Boolean(resumeId)
         if (disposed) return
         setBootPhase('attaching')
+        attachedPtyId = response.id
         ptyIdRef.current = response.id
         useTerminalsStore.getState().registerPty(response.id)
         onSpawnedRef.current?.(response.id)
 
-        // visibilidade correta desde o primeiro lote (ex.: pane aberto num
+        // Apply visibility before the first output batch.
 
         void setPtyVisible(response.id, isPanelVisibleRef.current).catch(() => {})
-        if (command && cwd && launch.sessionId) {
+        if (command && cwd && attachedSessionId) {
           // Owned by the tab as well as the PTY: the PTY id changes on every
           // respawn, and a claim only reachable through a dead PTY id would make
           // the tab treat its own conversation as taken and start a fresh one.
-          registerSessionClaim(command, cwd, launch.sessionId, sessionPersistenceKey)
-          registerSessionClaim(command, cwd, launch.sessionId, response.id)
+          registerSessionClaim(command, cwd, attachedSessionId, sessionPersistenceKey)
+          registerSessionClaim(command, cwd, attachedSessionId, response.id)
         }
 
         if (command === 'claude' || command === 'codex' || command === 'opencode') {
@@ -1246,70 +1319,12 @@ export function useXtermSession(params: {
           })
         }
 
-        // spawn vai consumir essa entrada e injetar o resume adequado da CLI.
+        // Preserve the latest identity, including hooks received during spawn.
         if (command && RESUMABLE_AGENTS.includes(command)) {
-          let attachedSessionId = launch.sessionId
-
-          const adoptSession = (nextSessionId: string) => {
-            if (!command || nextSessionId === attachedSessionId) return
-            attachedSessionId = nextSessionId
-            if (cwd) {
-              // The conversation this pane just left is free for another pane to resume; holding
-              // its claim would make the pane that owns it start a fresh chat instead.
-              releaseSessionClaim(sessionPersistenceKey)
-              releaseSessionClaim(response.id)
-              registerSessionClaim(command, cwd, nextSessionId, sessionPersistenceKey)
-              registerSessionClaim(command, cwd, nextSessionId, response.id)
-            }
-            saveSession(sessionPersistenceKey, {
-              sessionId: response.id,
-              claudeSessionId: command === 'claude' ? nextSessionId : undefined,
-              codexSessionId: command === 'codex' ? nextSessionId : undefined,
-              opencodeSessionId: command === 'opencode' ? nextSessionId : undefined,
-              antigravitySessionId: command === 'antigravity' ? nextSessionId : undefined,
-              cwd: cwd ?? '',
-              agent: command,
-              timestamp: Date.now(),
-            })
-            onSessionIdRef.current?.(nextSessionId)
-          }
-
-          saveSession(sessionPersistenceKey, {
-            sessionId: response.id,
-            claudeSessionId: command === 'claude' ? launch.sessionId : undefined,
-            codexSessionId: command === 'codex' ? launch.sessionId : undefined,
-            opencodeSessionId: command === 'opencode' ? launch.sessionId : undefined,
-            antigravitySessionId: command === 'antigravity' ? launch.sessionId : undefined,
-            cwd: cwd ?? '',
-            agent: command,
-            timestamp: Date.now(),
-          })
-
-          // Claude's own hooks are the only source that cannot be wrong about which conversation
-          // the CLI moved to: the mtime watcher below can only guess, and guesses badly when two
-          // panes share a folder. It stays as the fallback for panes launched without --settings.
-          if (command === 'claude') {
-            void listen<ClaudeSessionHookPayload>('agent-hook', (event) => {
-              const payload = event.payload
-              if (payload.plannerId !== ptyId && payload.plannerId !== response.id) return
-              const name = payload.hook_event_name
-              if (name !== 'SessionStart' && name !== 'UserPromptSubmit') return
-              const reported = payload.session_id
-              if (!reported || disposed) return
-              adoptSession(reported)
-            })
-              .then((off) => {
-                if (disposed) off()
-                else unlistenSessionHook = off
-              })
-              .catch(() => {})
-          }
+          persistAttachedSession()
 
           if (
-            (command === 'codex' ||
-              command === 'antigravity' ||
-              command === 'opencode' ||
-              command === 'claude') &&
+            (command === 'codex' || command === 'antigravity' || command === 'opencode') &&
             cwd &&
             discoveredSessionsBeforePromise
           ) {
@@ -1317,39 +1332,24 @@ export function useXtermSession(params: {
               const before = new Set((await discoveredSessionsBeforePromise).map((s) => s.id))
               if (launch.sessionId) before.add(launch.sessionId)
 
-              // Tracks the session this pane is currently attached to so an
-              // in-CLI `/resume` to an already-existing session (not just a
-              // brand-new one) can be detected once the pane's own session
-              // file shows up in a snapshot.
-              let claudeTrackedId = command === 'claude' ? launch.sessionId : undefined
-              const syncTrackedId = () => {
-                if (command === 'claude' && attachedSessionId !== claudeTrackedId) {
-                  claudeTrackedId = attachedSessionId
-                  if (claudeTrackedId) before.add(claudeTrackedId)
-                }
-              }
-
               let attempt = 0
               while (!disposed) {
                 const delayMs = attempt < 10 ? 3000 : 15000
-                if (command === 'codex' || command === 'claude') {
+                if (command === 'codex') {
                   await Promise.race([
                     new Promise((resolve) => setTimeout(resolve, delayMs)),
-                    waitForSessionHint(command === 'codex' ? 'codex' : 'claude'),
+                    waitForSessionHint('codex'),
                   ])
                 } else {
                   await new Promise((resolve) => setTimeout(resolve, delayMs))
                 }
                 if (disposed) return
-                syncTrackedId()
                 const sessions =
                   command === 'codex'
                     ? await snapshotCodexSessions(cwd).catch(() => [])
                     : command === 'antigravity'
                       ? await snapshotAntigravitySessions(cwd).catch(() => [])
-                      : command === 'claude'
-                        ? await snapshotClaudeSessions(cwd).catch(() => [])
-                        : await snapshotOpenCodeSessions(cwd).catch(() => [])
+                      : await snapshotOpenCodeSessions(cwd).catch(() => [])
 
                 // Same filtering as the resume block above.
                 let filteredSessions = sessions
@@ -1358,33 +1358,17 @@ export function useXtermSession(params: {
                   if (gsdChildId) filteredSessions = sessions.filter((s) => s.id !== gsdChildId)
                 }
 
-                let newSession: SessionSnapshot | undefined
-                if (command === 'claude' && claudeTrackedId) {
-                  newSession = pickSwitchedSession(
-                    command,
-                    cwd,
-                    filteredSessions.find((s) => s.id === claudeTrackedId),
-                    filteredSessions,
-                    sessionPersistenceKey,
-                  )
-                }
-                if (!newSession) {
-                  newSession = claimDiscoveredSession(
-                    command,
-                    cwd,
-                    before,
-                    filteredSessions,
-                    sessionPersistenceKey,
-                  )
-                }
+                if (disposed) return
+                const newSession = claimDiscoveredSession(
+                  command,
+                  cwd,
+                  before,
+                  filteredSessions,
+                  sessionPersistenceKey,
+                )
                 if (newSession) {
                   adoptSession(newSession.id)
-                  if (command !== 'claude') return
-                  // Claude can switch conversation again through /new or /resume,
-                  // so the watcher stays alive for the life of the pane.
-                  syncTrackedId()
-                  attempt = 0
-                  continue
+                  return
                 }
                 attempt += 1
               }
@@ -1399,7 +1383,7 @@ export function useXtermSession(params: {
           earlyExitRetriedRef.current = true
           forceFreshRef.current = true
           removeSession(sessionPersistenceKey)
-          onSessionIdRef.current?.(undefined)
+          emitSessionId?.(undefined)
           terminal.write(
             '\r\n\x1b[33m[alethe] Codex session is busy — opening a fresh session…\x1b[0m\r\n',
           )
@@ -1420,7 +1404,7 @@ export function useXtermSession(params: {
           }
         }
 
-        // registrado logo abaixo, que roda nos dois canais de streaming.
+        // Inspect the initial replay before registering live stream listeners.
         if (isPanelVisibleRef.current) {
           const replay = await attachPty(response.id)
           if (disposed) return
@@ -1463,11 +1447,7 @@ export function useXtermSession(params: {
             completionMonitor = null
             return
           }
-          const isAgent =
-            command === 'claude' ||
-            command === 'codex' ||
-            command === 'opencode' ||
-            command === 'antigravity'
+          const isAgent = command ? RESUMABLE_AGENTS.includes(command) : false
           const elapsed = Date.now() - spawnedAtRef.current
 
           if (
@@ -1479,13 +1459,13 @@ export function useXtermSession(params: {
             earlyExitRetriedRef.current = true
             forceFreshRef.current = true
             console.warn(
-              `[pty-launch] ${command} saiu em ${elapsed}ms com resume — reabrindo sessão nova (fallback)`,
+              `[pty-launch] ${command} exited after ${elapsed}ms with resume — opening a fresh session (fallback)`,
             )
             useTerminalsStore.getState().markExited(response.id)
             completionMonitor?.dispose()
             completionMonitor = null
             removeSession(sessionPersistenceKey)
-            onSessionIdRef.current?.(undefined)
+            emitSessionId?.(undefined)
             terminal.write(
               '\r\n\x1b[33m[alethe] sessão anterior indisponível — reabrindo sessão nova…\x1b[0m\r\n',
             )
@@ -1495,7 +1475,7 @@ export function useXtermSession(params: {
 
           if (isAgent && elapsed < EARLY_EXIT_MS) {
             console.warn(
-              `[pty-launch] ${command} saiu em ${elapsed}ms (code ${payload.code ?? '—'}) — sem retry`,
+              `[pty-launch] ${command} exited after ${elapsed}ms (code ${payload.code ?? '—'}) — no retry`,
             )
             terminal.write(
               `\r\n\x1b[31m[alethe] ${command} encerrou imediatamente (code ${payload.code ?? '—'}).\x1b[0m\r\n` +

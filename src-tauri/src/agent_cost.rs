@@ -338,19 +338,27 @@ fn get_session_cost_inner(
 }
 
 #[tauri::command]
-pub async fn get_transcript_cost(path: String) -> Result<SessionCost, String> {
-    tokio::task::spawn_blocking(move || get_transcript_cost_inner(path))
+pub async fn get_transcript_cost(
+    path: String,
+    agent: Option<String>,
+) -> Result<SessionCost, String> {
+    tokio::task::spawn_blocking(move || get_transcript_cost_inner(path, agent))
         .await
         .map_err(|e| e.to_string())?
 }
 
-fn get_transcript_cost_inner(path: String) -> Result<SessionCost, String> {
+fn get_transcript_cost_inner(path: String, agent: Option<String>) -> Result<SessionCost, String> {
     let pb = PathBuf::from(&path);
     if !pb.is_file() {
-        return Err(format!("transcript não encontrado: {path}"));
+        return Err(format!("transcript not found: {path}"));
     }
-    let by_model: Vec<ModelCost> = parse_claude_cost(&pb).into_values().collect();
-    Ok(aggregate("claude".to_string(), path, by_model))
+    let agent = agent.unwrap_or_else(|| "claude".to_string());
+    let by_model: Vec<ModelCost> = match agent.as_str() {
+        "claude" => parse_claude_cost(&pb).into_values().collect(),
+        "codex" => vec![parse_codex_cost(&pb)],
+        other => return Err(format!("unsupported agent transcript cost: {other}")),
+    };
+    Ok(aggregate(agent, path, by_model))
 }
 
 /// modelo dominante por output). Compartilhado por get_session_cost e

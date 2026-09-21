@@ -113,6 +113,10 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
   } = deps
 
   const projectMenu = (project: Project): MenuItem[] => [
+    ...(project.mode !== 'agentSandbox' ? [{
+      kind: 'item' as const, label: t('projectGrid.create'),
+      onClick: () => openModal('projectGrid', { projectId: project.id, action: 'create' }),
+    }] : []),
     {
       kind: 'item',
       label: t('ui.workspace.openIndividually'),
@@ -493,11 +497,16 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
   }
 
   const terminalMenu = (projectId: string, term: Terminal): MenuItem[] => {
+    const project = useProjectsStore.getState().projects.find((item) => item.id === projectId)
     const inSplit = openPaneSets[projectId]?.has(term.id) ?? false
     const activeTab = activeTerminalTab(term)
     const isTerminalPane = !term.kind || term.kind === 'terminal'
     const effectiveLaneVisible = term.tabs.length > 1 ? true : term.laneVisible === true
     return [
+      ...(project?.mode !== 'agentSandbox' && (project?.grids?.length ?? 0) > 0 ? [{
+        kind: 'item' as const, label: t('projectGrid.move'),
+        onClick: () => openModal('projectGrid', { projectId, terminalId: term.id, action: 'move' }),
+      }] : []),
       {
         kind: 'item',
         label: t('terminalInspector.reveal'),

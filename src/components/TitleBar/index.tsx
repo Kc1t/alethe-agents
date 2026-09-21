@@ -2,6 +2,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import {
   ArrowLeft,
   ArrowRight,
+  Coffee,
   Maximize2,
   Menu,
   Minus,
@@ -10,10 +11,13 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
+  Pause,
   Pencil,
   Pin,
+  Play,
   RefreshCw,
   Smartphone,
+  Timer,
   Users,
   Workflow,
   X,
@@ -30,6 +34,7 @@ import { useSidebarViews } from '../../lib/viewPlacement'
 import { observeClaudeReset, observeCodexReset } from '../../lib/limitResetWatch'
 import { formatShortcut } from '../../lib/platform'
 import { killPty, remoteControlInfo } from '../../lib/tauri'
+import { usePomodoroStore } from '../../stores/pomodoroStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AntigravityIcon, ClaudeIcon, CodexIcon } from '../icons/AgentIcons'
@@ -108,6 +113,142 @@ function Router9PillButton() {
   )
 }
 
+/** Small circular progress ring (SVG) showing how much of the current phase has
+ *  elapsed. `progress` is 0..1; the icon sits centered on top of it. */
+function PomodoroRing({
+  progress,
+  color,
+  children,
+}: {
+  progress: number
+  color: string
+  children: React.ReactNode
+}) {
+  const size = 18
+  const strokeWidth = 2
+  const radius = (size - strokeWidth) / 2
+  const circumference = 2 * Math.PI * radius
+  const offset = circumference * (1 - Math.min(1, Math.max(0, progress)))
+  return (
+    <span className={styles.pomodoroRing}>
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        className={styles.pomodoroRingSvg}
+        aria-hidden="true"
+      >
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeOpacity={0.22}
+          strokeWidth={strokeWidth}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+        />
+      </svg>
+      <span className={styles.pomodoroRingIcon} style={{ color }}>
+        {children}
+      </span>
+    </span>
+  )
+}
+
+function PomodoroTitleBarPill() {
+  const t = useT()
+  const phase = usePomodoroStore((s) => s.phase)
+  const status = usePomodoroStore((s) => s.status)
+  const endsAt = usePomodoroStore((s) => s.endsAt)
+  const remainingMsAtPause = usePomodoroStore((s) => s.remainingMsAtPause)
+  const start = usePomodoroStore((s) => s.start)
+  const pause = usePomodoroStore((s) => s.pause)
+  const resume = usePomodoroStore((s) => s.resume)
+  const showTodoSidebar = useUiStore((s) => s.showTodoSidebar)
+  const setPreferences = useProjectsStore((s) => s.setPreferences)
+  const workMinutes = useProjectsStore((s) => s.preferences.pomodoroWorkMinutes)
+  const shortBreakMinutes = useProjectsStore((s) => s.preferences.pomodoroShortBreakMinutes)
+  const longBreakMinutes = useProjectsStore((s) => s.preferences.pomodoroLongBreakMinutes)
+  const [, forceTick] = useState(0)
+
+  useEffect(() => {
+    if (status !== 'running') return
+    const id = window.setInterval(() => forceTick((n) => n + 1), 1000)
+    return () => window.clearInterval(id)
+  }, [status])
+
+  if (status === 'idle') return null
+
+  const isBreak = phase === 'shortBreak' || phase === 'longBreak'
+  const totalMinutes =
+    phase === 'work' ? workMinutes : phase === 'longBreak' ? longBreakMinutes : shortBreakMinutes
+  const totalMs = Math.max(1, totalMinutes) * 60_000
+  const remainingMs =
+    status === 'paused'
+      ? (remainingMsAtPause ?? 0)
+      : status === 'running' && endsAt !== null
+        ? Math.max(0, endsAt - Date.now())
+        : 0
+  const progress = status === 'finished' ? 1 : 1 - remainingMs / totalMs
+  const totalSeconds = Math.ceil(remainingMs / 1000)
+  const countdownLabel = `${Math.floor(totalSeconds / 60)}:${(totalSeconds % 60).toString().padStart(2, '0')}`
+  const phaseLabel =
+    phase === 'work'
+      ? t('pomodoro.phaseWork')
+      : phase === 'shortBreak'
+        ? t('pomodoro.phaseShortBreak')
+        : t('pomodoro.phaseLongBreak')
+  const ringColor = isBreak ? 'var(--status-waiting)' : 'var(--status-working)'
+  const PhaseIcon = isBreak ? Coffee : Timer
+
+  const handleToggle = () => {
+    if (status === 'running') pause()
+    else if (status === 'paused') resume()
+    else start()
+  }
+
+  return (
+    <div className={styles.pomodoroPill} data-status={status}>
+      <button
+        type="button"
+        className={styles.pomodoroPillMain}
+        onClick={() => {
+          setPreferences({ rightSidebarVisible: true })
+          showTodoSidebar()
+        }}
+        title={t('pomodoro.titlebarOpen')}
+        aria-label={`${phaseLabel} ${countdownLabel}`}
+      >
+        <PomodoroRing progress={progress} color={ringColor}>
+          <PhaseIcon size={10} />
+        </PomodoroRing>
+        <span className={styles.pomodoroCountdown}>{countdownLabel}</span>
+      </button>
+      <span className={styles.pomodoroDivider} />
+      <button
+        type="button"
+        className={styles.pomodoroToggle}
+        onClick={handleToggle}
+        title={t(status === 'running' ? 'pomodoro.pause' : 'pomodoro.resume')}
+        aria-label={t(status === 'running' ? 'pomodoro.pause' : 'pomodoro.resume')}
+      >
+        {status === 'running' ? <Pause size={11} /> : <Play size={11} />}
+      </button>
+    </div>
+  )
+}
+
 export function TitleBar() {
   const t = useT()
   const toggleMainMenu = useUiStore((s) => s.toggleMainMenu)
@@ -162,14 +303,10 @@ export function TitleBar() {
       window.dispatchEvent(new CustomEvent('alethe:agent-canvas-exit'))
       return
     }
-    void killPty(agentCanvasSession.ptyId).catch(() => {
-                                   
-    })
+    void killPty(agentCanvasSession.ptyId).catch(() => {})
     setAgentCanvasSession(null)
   }
 
-                                                                             
-                                                                        
   const activeRef = useRef(true)
 
   useEffect(() => {
@@ -200,7 +337,6 @@ export function TitleBar() {
     }
   }, [])
 
-                                                                            
   useEffect(() => {
     let cancelled = false
     let interval: number | null = null
@@ -215,8 +351,6 @@ export function TitleBar() {
           consecutiveFailures = 0
         }
       } catch {
-                                                                               
-                                                                                  
         consecutiveFailures += 1
         if (consecutiveFailures >= 3 && !cancelled) {
           setClaudeUsage(null)
@@ -234,8 +368,6 @@ export function TitleBar() {
     }
   }, [setClaudeUsage])
 
-                                                                                
-                                                                       
   useEffect(() => {
     let cancelled = false
     let interval: number | null = null
@@ -267,7 +399,6 @@ export function TitleBar() {
     }
   }, [setCodexUsage])
 
-                                                                                                     
   useEffect(() => {
     let cancelled = false
     let interval: number | null = null
@@ -297,7 +428,6 @@ export function TitleBar() {
 
   const win = getCurrentWindow()
 
-                                                                             
   useEffect(() => {
     const update = (focused: boolean) => {
       activeRef.current = focused && document.visibilityState === 'visible'
@@ -543,16 +673,18 @@ export function TitleBar() {
       <div className={styles.barEnd}>
         <div className={styles.widgets}>
           <div className={styles.utilityGroup}>
-            {!threeAreas ? <button
-              type="button"
-              className={`${styles.iconBtn} ${updateInfo ? styles.whatsNewPending : ''}`}
-              onClick={() => openModal('whatsNew')}
-              title={t('whatsNew.button')}
-              aria-label={t('whatsNew.button')}
-            >
-              <Newspaper size={13} />
-              {updateInfo ? <span className={styles.whatsNewDot} /> : null}
-            </button> : null}
+            {!threeAreas ? (
+              <button
+                type="button"
+                className={`${styles.iconBtn} ${updateInfo ? styles.whatsNewPending : ''}`}
+                onClick={() => openModal('whatsNew')}
+                title={t('whatsNew.button')}
+                aria-label={t('whatsNew.button')}
+              >
+                <Newspaper size={13} />
+                {updateInfo ? <span className={styles.whatsNewDot} /> : null}
+              </button>
+            ) : null}
             {!threeAreas && preferences.topbarShowSync ? (
               <button
                 type="button"
@@ -564,6 +696,7 @@ export function TitleBar() {
                 <RefreshCw size={12} />
               </button>
             ) : null}
+            <PomodoroTitleBarPill />
             {!threeAreas && preferences.topbarShowProfile ? (
               <button
                 type="button"

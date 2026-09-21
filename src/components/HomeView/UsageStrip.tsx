@@ -4,7 +4,7 @@ import { getCachedClaudeUsage } from '../../lib/claudeUsageCache'
 import { getCachedCodexUsage } from '../../lib/codexUsageCache'
 import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
 import { translate, getLocale, useT } from '../../lib/i18n'
-import type { AntigravityUsage, ClaudeUsage, CodexUsage } from '../../lib/tauri'
+import { type AntigravityUsage, type ClaudeUsage, type CodexUsage } from '../../lib/tauri'
 import { useUiStore } from '../../stores/uiStore'
 import { AntigravityIcon, ClaudeIcon, CodexIcon } from '../icons/AgentIcons'
 import { ActivityGraph } from './ActivityGraph'
@@ -36,7 +36,6 @@ function formatResetMs(resetsAtMs: number): string {
   return formatDiff(resetsAtMs - Date.now())
 }
 
-                                                                                   
 function meterColor(util: number, base: string): string {
   if (util >= 80) return 'var(--status-offline)'
   if (util >= 50) return 'var(--status-waiting)'
@@ -292,9 +291,16 @@ function ClaudeCard({ usage }: { usage: ClaudeUsage | null }) {
   )
 }
 
-function CodexCard({ usage }: { usage: CodexUsage | null }) {
+function CodexCard({
+  usage,
+  showResetCreditAction,
+}: {
+  usage: CodexUsage | null
+  showResetCreditAction: boolean
+}) {
   const t = useT()
   const setCodexUsage = useUiStore((s) => s.setCodexUsage)
+  const openModal = useUiStore((s) => s.openModal_)
   const accent = 'var(--agent-codex)'
 
   const refresh = async () => {
@@ -380,8 +386,19 @@ function CodexCard({ usage }: { usage: CodexUsage | null }) {
             value={usage.rate_limited ? t('widget.statusLimited') : t('widget.statusOk')}
             crit={usage.rate_limited}
           />
-          <StatCell label={t('widget.creditsLabel')} value={String(usage.reset_credits)} />
         </div>
+        {showResetCreditAction && usage.reset_credits > 0 ? (
+          <div className={styles.resetCreditBox}>
+            <span className={styles.resetCreditTitle}>{t('widget.resetCreditHeading')}</span>
+            <button
+              type="button"
+              className={styles.resetCreditButton}
+              onClick={() => openModal('resetCredit')}
+            >
+              {t('widget.resetCredits', { n: usage.reset_credits })}
+            </button>
+          </div>
+        ) : null}
       </div>
       <CardFoot
         accent={accent}
@@ -494,7 +511,13 @@ function AntigravityCard({ usage }: { usage: AntigravityUsage | null }) {
   )
 }
 
-export function UsageStrip({ showActivity = true }: { showActivity?: boolean }) {
+export function UsageStrip({
+  showActivity = true,
+  showResetCreditAction = false,
+}: {
+  showActivity?: boolean
+  showResetCreditAction?: boolean
+}) {
   const claudeUsage = useUiStore((s) => s.claudeUsage)
   const codexUsage = useUiStore((s) => s.codexUsage)
   const antigravityUsage = useUiStore((s) => s.antigravityUsage)
@@ -502,7 +525,7 @@ export function UsageStrip({ showActivity = true }: { showActivity?: boolean }) 
   return (
     <div className={`${styles.usageStrip} ${showActivity ? '' : styles.usageStripTwo}`}>
       <ClaudeCard usage={claudeUsage} />
-      <CodexCard usage={codexUsage} />
+      <CodexCard usage={codexUsage} showResetCreditAction={showResetCreditAction} />
       {!showActivity ? <AntigravityCard usage={antigravityUsage} /> : null}
       {showActivity ? <ActivityGraph /> : null}
     </div>

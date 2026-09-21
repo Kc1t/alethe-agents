@@ -26,7 +26,7 @@ import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AgentInstallButton } from '../AgentInstall/AgentInstallButton'
 import { DotmCircular2 } from '../ui/dotm-circular-2'
-import { type DetectedTerminalLink } from './terminalLinks'
+import { resolveTerminalFilePath, type DetectedTerminalLink } from './terminalLinks'
 import { applyPromptHistoryInput, loadPromptHistory, PROMPT_HISTORY_KEY } from './terminalWrite'
 import { useXtermSession } from './useXtermSession'
 import { getXtermTheme, type LinkActionState } from './xtermThemes'
@@ -166,13 +166,13 @@ export function XTermView({
 
     setLinkActions({
       text: link.text,
-      target: link.target,
+      target: link.kind === 'path' ? resolveTerminalFilePath(link.target, cwd) : link.target,
       kind: link.kind,
       fileKind: link.fileKind,
       x,
       y,
     })
-  }, [])
+  }, [cwd])
 
   useEffect(() => {
     linkActionsRef.current = linkActions
@@ -475,7 +475,7 @@ export function XTermView({
                     className={styles.linkMenuItem}
                     role="menuitem"
                     onClick={() => {
-                      openFileInGrid(linkActions.text)
+                      openFileInGrid(linkActions.target)
                       hideLinkActions()
                     }}
                   >
@@ -520,7 +520,7 @@ export function XTermView({
                       className={styles.linkMenuItem}
                       role="menuitem"
                       onClick={() => {
-                        openLinkInAppViewer(linkActions.text)
+                        openLinkInAppViewer(linkActions.target)
                         hideLinkActions()
                       }}
                     >
@@ -535,7 +535,7 @@ export function XTermView({
                         useUiStore
                           .getState()
                           .openMarkdownSidebar(
-                            linkActions.text,
+                            linkActions.target,
                             linkActions.text.split(/[\\/]/).pop(),
                           )
                         useProjectsStore.getState().setPreferences({ rightSidebarVisible: true })
@@ -569,7 +569,7 @@ export function XTermView({
                     className={styles.linkMenuItem}
                     role="menuitem"
                     onClick={() => {
-                      void openLinkInFolder(linkActions.text)
+                      void openLinkInFolder(linkActions.target)
                       hideLinkActions()
                     }}
                   >
@@ -582,7 +582,7 @@ export function XTermView({
                   className={styles.linkMenuItem}
                   role="menuitem"
                   onClick={() => {
-                    void copyLinkText(linkActions.text)
+                    void copyLinkText(linkActions.target)
                     hideLinkActions()
                   }}
                 >

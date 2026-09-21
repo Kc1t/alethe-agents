@@ -1,3 +1,4 @@
+import { DEFAULT_GRID_ID, gridTerminals, projectGrids } from './projectGrids'
 import type {
   GridLayout,
   Preferences,
@@ -62,6 +63,16 @@ export function sanitizeWorkspaceSnapshot(
   const containers = snapshot.containers.flatMap((container) => {
     const project = projectsById.get(container.projectId)
     if (!project) return []
+    if (container.gridId) {
+      const gridId = projectGrids(project).some((grid) => grid.id === container.gridId)
+        ? container.gridId : DEFAULT_GRID_ID
+      const members = gridTerminals(project, gridId)
+      const memberIds = new Set(members.map((terminal) => terminal.id))
+      const grid = projectGrids(project).find((item) => item.id === gridId)!
+      return [{ ...container, gridId, internalLayout: grid.layoutMode,
+        paneIds: gridId === container.gridId ? container.paneIds.filter((id) => memberIds.has(id)) : members.map((item) => item.id),
+      }]
+    }
     const terminalIds = new Set(project.terminals.map((terminal) => terminal.id))
     const paneIds = container.paneIds.filter((id) => terminalIds.has(id))
     return paneIds.length > 0 ? [{ ...container, paneIds }] : []

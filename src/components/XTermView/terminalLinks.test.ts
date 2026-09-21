@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { detectTerminalLinks, getLogicalTerminalLine, terminalLinkRange } from './terminalLinks'
+import {
+  detectTerminalLinks,
+  getLogicalTerminalLine,
+  resolveTerminalFilePath,
+  terminalLinkRange,
+} from './terminalLinks'
 
 describe('terminal links', () => {
   it('ends URLs at whitespace while preserving spaces inside local paths', () => {
@@ -95,6 +100,26 @@ describe('terminal links', () => {
     expect(detectTerminalLinks('https://example.com/x')[0].fileKind).toBeUndefined()
   })
 
+  it('detects relative files printed by coding agents', () => {
+    expect(detectTerminalLinks('Updated README.md')[0]).toEqual(
+      expect.objectContaining({ text: 'README.md', kind: 'path', fileKind: 'markdown' }),
+    )
+    expect(detectTerminalLinks('See src/components/App.tsx:42')[0]).toEqual(
+      expect.objectContaining({ text: 'src/components/App.tsx:42', kind: 'path', fileKind: 'text' }),
+    )
+    expect(detectTerminalLinks('user@example.com')).toEqual([])
+  })
+
+  it('resolves relative agent links from the terminal working directory', () => {
+    expect(resolveTerminalFilePath('README.md', 'D:\\repo')).toBe('D:\\repo\\README.md')
+    expect(resolveTerminalFilePath('./docs/README.md:12', '/workspace/repo')).toBe(
+      '/workspace/repo/docs/README.md',
+    )
+    expect(resolveTerminalFilePath('D:\\repo\\README.md', 'D:\\other')).toBe(
+      'D:\\repo\\README.md',
+    )
+  })
+
   it('stops an extensionless path at the first space instead of eating the sentence', () => {
     const [link] = detectTerminalLinks(
       '/pt-br/vitrine-dupla/trajetoria — 5 variações de trajetória',
@@ -120,7 +145,9 @@ describe('terminal links', () => {
     expect(detectTerminalLinks('/ Zambia / India')).toEqual([])
     expect(detectTerminalLinks('IP residencial/mobile + UA')).toEqual([])
     expect(detectTerminalLinks('foo/bar')).toEqual([])
-    expect(detectTerminalLinks('src/file.ts package.json user@example.com')).toEqual([])
+    expect(
+      detectTerminalLinks('src/file.ts package.json user@example.com').map((link) => link.text),
+    ).toEqual(['src/file.ts', 'package.json'])
   })
 
   it('keeps two bracketed paths apart instead of linking the whole parenthetical', () => {

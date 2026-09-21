@@ -88,6 +88,28 @@ export function OpenCodeIcon({ size = 16, theme }: { size?: number; theme: Theme
   )
 }
 
+// Cursor's cube mark, redrawn as three faces so it reads at 16px and takes the pane's accent
+// through `currentColor` instead of shipping a fixed-palette bitmap.
+export function CursorIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M8 1.4 14.1 5v6L8 14.6 1.9 11V5L8 1.4Z"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 8 14.1 5M8 8v6.6M8 8 1.9 5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+        opacity="0.55"
+      />
+    </svg>
+  )
+}
+
 export function VSCodeIcon({ size = 14 }: { size?: number }) {
   return <img src={iconMap.vscode} alt="" width={size} height={size} draggable={false} />
 }
@@ -126,6 +148,7 @@ export function AgentIcon({
   if (type === 'claude') return <ClaudeIcon size={size} />
   if (type === 'codex') return <CodexIcon size={size} />
   if (type === 'copilot') return <CopilotIcon size={size} />
+  if (type === 'cursor') return <CursorIcon size={size} />
   if (type === 'freebuff') return <FreebuffIcon size={size} />
   if (type === 'mimo') return <MimoIcon size={size} />
   if (type === 'kiro') return <KiroIcon size={size} />

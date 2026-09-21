@@ -100,7 +100,13 @@ describe('production renderer security policy', () => {
       'http:',
       'https:',
     ])
-    expect(directives.get('media-src')).toEqual(["'self'", 'asset:', 'http://asset.localhost'])
+    expect(directives.get('media-src')).toEqual([
+      "'self'",
+      'asset:',
+      'http://asset.localhost',
+      'mediastream:',
+      'blob:',
+    ])
     expect(directives.get('font-src')).toEqual([
       "'self'",
       'alethe-plugin:',

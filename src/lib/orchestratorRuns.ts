@@ -46,6 +46,38 @@ export type OrchestratorRun = {
   state: RunLane
 }
 
+export type AgentSpend = {
+  agent: string
+  totalTokens: number
+  costUsd: number
+  pricedWorkers: number
+  unpricedWorkers: number
+}
+
+/** Session spend for each worker provider, preserving the order first seen on the board. */
+export function aggregateAgentSpend(jobs: readonly OrchestratorJob[]): AgentSpend[] {
+  const byAgent = new Map<string, AgentSpend>()
+  for (const job of jobs) {
+    const totalTokens = job.tokens?.total?.totalTokens ?? 0
+    if (totalTokens <= 0 && job.costUsd === null) continue
+    const current = byAgent.get(job.agent) ?? {
+      agent: job.agent,
+      totalTokens: 0,
+      costUsd: 0,
+      pricedWorkers: 0,
+      unpricedWorkers: 0,
+    }
+    current.totalTokens += totalTokens
+    if (job.costUsd === null) current.unpricedWorkers += 1
+    else {
+      current.costUsd += job.costUsd
+      current.pricedWorkers += 1
+    }
+    byAgent.set(job.agent, current)
+  }
+  return [...byAgent.values()]
+}
+
 export function emptyCounts(): RunCounts {
   return { blocked: 0, running: 0, queued: 0, interrupted: 0, failed: 0, finished: 0 }
 }

@@ -3,7 +3,6 @@ import {
   ChevronDown,
   ChevronRight,
   Eye,
-  File,
   Folder,
   FolderOpen,
   FolderSearch,
@@ -13,7 +12,7 @@ import {
   RefreshCw,
   Trash2,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { readableError } from '../../lib/errors'
 import { writeFileDragPayload } from '../../lib/fileDrag'
@@ -23,6 +22,7 @@ import {
   deleteFilesystemEntry,
   type DirectoryEntry,
   getPtyCwd,
+  gitStatus,
   listDirectory,
   openInFileExplorer,
   readTextFile,
@@ -31,6 +31,12 @@ import {
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { Modal } from '../modals/Modal'
+import {
+  buildGitExplorerIndex,
+  getGitEntryStatus,
+  type GitExplorerIndex,
+} from './fileExplorerGit'
+import { FileIcon } from './FileIcon'
 import styles from './FileExplorer.module.css'
 
 type FileExplorerProps = {
@@ -61,7 +67,46 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
   const [liveCwd, setLiveCwd] = useState(cwd)
   const [preview, setPreview] = useState<Preview | null>(null)
   const [menu, setMenu] = useState<ContextMenu | null>(null)
+  const [gitIndex, setGitIndex] = useState<GitExplorerIndex | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const lastGitRefreshRef = useRef(0)
+
+  const refreshGit = useCallback(
+    async (quiet = false) => {
+      if (quiet) {
+        const now = Date.now()
+        if (now - lastGitRefreshRef.current < 1500) return
+        lastGitRefreshRef.current = now
+      }
+      if (!liveCwd) {
+        setGitIndex(null)
+        return
+      }
+      try {
+        const status = await gitStatus(liveCwd)
+        setGitIndex(buildGitExplorerIndex(status))
+      } catch {
+        setGitIndex(null)
+      }
+    },
+    [liveCwd],
+  )
+
+  useEffect(() => {
+    void refreshGit(false)
+  }, [refreshGit, reloadKey])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void refreshGit(true)
+    }, 3000)
+    const onFocus = () => void refreshGit(true)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [refreshGit])
 
   useEffect(() => {
     setLiveCwd(cwd)
@@ -184,6 +229,7 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
         depth={0}
         initialOpen
         reloadKey={reloadKey}
+        gitIndex={gitIndex}
         onOpen={addToGrid}
         onPreview={showPreview}
         onOpenMarkdownSidebar={openMarkdownInSidebar}
@@ -237,6 +283,7 @@ function DirectoryNode({
   depth,
   initialOpen = false,
   reloadKey,
+  gitIndex,
   onOpen,
   onPreview,
   onOpenMarkdownSidebar,
@@ -248,6 +295,7 @@ function DirectoryNode({
   depth: number
   initialOpen?: boolean
   reloadKey: number
+  gitIndex: GitExplorerIndex | null
   onOpen: (entry: DirectoryEntry) => void
   onPreview: (entry: DirectoryEntry) => void
   onOpenMarkdownSidebar: (entry: DirectoryEntry) => void
@@ -258,6 +306,11 @@ function DirectoryNode({
   const [entries, setEntries] = useState<DirectoryEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(false)
+
+  const dirGit = getGitEntryStatus(gitIndex, path, true)
+  const dirKindClass = dirGit ? styles[`git_${dirGit.kind}`] : ''
+  const dirDotClass = dirGit ? styles[`dot_${dirGit.kind}`] : ''
+  const dirTitle = dirGit ? `${path} (${t(dirGit.labelKey)})` : path
 
   useEffect(() => {
     if (!open) return
@@ -283,7 +336,7 @@ function DirectoryNode({
     <div>
       <button
         type="button"
-        className={`${styles.row} ${depth === 0 ? styles.rootRow : ''}`}
+        className={`${styles.row} ${depth === 0 ? styles.rootRow : ''} ${dirKindClass}`}
         style={{ paddingLeft: 8 + depth * 14 }}
         onClick={() => setOpen((value) => !value)}
         onContextMenu={
@@ -291,37 +344,65 @@ function DirectoryNode({
             ? undefined
             : (event) => onContextMenu(event, { name, path, is_dir: true, size: null })
         }
-        title={path}
+        title={dirTitle}
       >
-        {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
-        {open ? <FolderOpen size={14} /> : <Folder size={14} />}
-        <span>{name}</span>
+        {open ? (
+          <ChevronDown size={13} className={styles.chevron} />
+        ) : (
+          <ChevronRight size={13} className={styles.chevron} />
+        )}
+        {open ? (
+          <FolderOpen size={14} className={styles.dirIcon} />
+        ) : (
+          <Folder size={14} className={styles.dirIcon} />
+        )}
+        <span className={styles.name}>{name}</span>
+        {dirGit && depth > 0 ? (
+          <span
+            className={`${styles.gitFolderDot} ${dirDotClass}`}
+            title={t(dirGit.labelKey)}
+            aria-label={t(dirGit.labelKey)}
+          />
+        ) : null}
       </button>
       {open ? (
         <div>
           {loading ? <div className={styles.message}>{t('files.loading')}</div> : null}
           {error ? <div className={styles.message}>{t('files.readError')}</div> : null}
           {!loading && !error
-            ? entries.map((entry) =>
-                entry.is_dir ? (
-                  <DirectoryNode
-                    key={entry.path}
-                    projectId={projectId}
-                    path={entry.path}
-                    name={entry.name}
-                    depth={depth + 1}
-                    reloadKey={reloadKey}
-                    onOpen={onOpen}
-                    onPreview={onPreview}
-                    onOpenMarkdownSidebar={onOpenMarkdownSidebar}
-                    onContextMenu={onContextMenu}
-                  />
-                ) : (
+            ? entries.map((entry) => {
+                if (entry.is_dir) {
+                  return (
+                    <DirectoryNode
+                      key={entry.path}
+                      projectId={projectId}
+                      path={entry.path}
+                      name={entry.name}
+                      depth={depth + 1}
+                      reloadKey={reloadKey}
+                      gitIndex={gitIndex}
+                      onOpen={onOpen}
+                      onPreview={onPreview}
+                      onOpenMarkdownSidebar={onOpenMarkdownSidebar}
+                      onContextMenu={onContextMenu}
+                    />
+                  )
+                }
+
+                const fileGit = getGitEntryStatus(gitIndex, entry.path, false)
+                const fileKindClass = fileGit ? styles[`git_${fileGit.kind}`] : ''
+                const fileBadgeClass = fileGit ? styles[`badge_${fileGit.kind}`] : ''
+                const fileBadge = fileGit && 'badge' in fileGit ? fileGit.badge : ''
+                const fileTitle = fileGit
+                  ? `${t('files.dragHint', { path: entry.path })} (${t(fileGit.labelKey)})`
+                  : t('files.dragHint', { path: entry.path })
+
+                return (
                   <div
                     key={entry.path}
-                    className={styles.row}
+                    className={`${styles.row} ${fileKindClass}`}
                     style={{ paddingLeft: 22 + depth * 14 }}
-                    title={t('files.dragHint', { path: entry.path })}
+                    title={fileTitle}
                     draggable
                     onDragStart={(event) => {
                       writeFileDragPayload(event.dataTransfer, { projectId, path: entry.path })
@@ -330,11 +411,31 @@ function DirectoryNode({
                     onDoubleClick={() => onOpen(entry)}
                     onContextMenu={(event) => onContextMenu(event, entry)}
                   >
-                    <File size={13} />
-                    <span>{entry.name}</span>
+                    <FileIcon fileName={entry.name} size={13} className={styles.fileIcon} />
+                    <span className={styles.name}>{entry.name}</span>
                     <span className={styles.rowActions}>
-                      <button type="button" onClick={(event) => { event.stopPropagation(); onOpen(entry) }} title={t('files.addToGrid')} aria-label={t('files.addToGrid')}><LayoutGrid size={12} /></button>
-                      <button type="button" onClick={(event) => { event.stopPropagation(); void onPreview(entry) }} title={t('files.preview')} aria-label={t('files.preview')}><Eye size={12} /></button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          onOpen(entry)
+                        }}
+                        title={t('files.addToGrid')}
+                        aria-label={t('files.addToGrid')}
+                      >
+                        <LayoutGrid size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          void onPreview(entry)
+                        }}
+                        title={t('files.preview')}
+                        aria-label={t('files.preview')}
+                      >
+                        <Eye size={12} />
+                      </button>
                       {MARKDOWN_PATTERN.test(entry.path) ? (
                         <button
                           type="button"
@@ -349,9 +450,18 @@ function DirectoryNode({
                         </button>
                       ) : null}
                     </span>
+                    {fileGit ? (
+                      <span
+                        className={`${styles.gitFileBadge} ${fileBadgeClass}`}
+                        title={t(fileGit.labelKey)}
+                        aria-label={t(fileGit.labelKey)}
+                      >
+                        {fileBadge}
+                      </span>
+                    ) : null}
                   </div>
-                ),
-              )
+                )
+              })
             : null}
         </div>
       ) : null}

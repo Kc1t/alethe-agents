@@ -133,9 +133,6 @@ export function UsageDropdown({
               {codexUsage.rate_limited ? t('ws.usageLimited') : t('ws.usageOk')}
             </span>
             {codexUsage.plan ? <span>{codexUsage.plan}</span> : null}
-            <span>
-              {t('ws.usageCredits')}: {codexUsage.reset_credits}
-            </span>
           </div>
         </div>
       ) : (

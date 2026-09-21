@@ -60,6 +60,10 @@ export const AGENT_INSTALL_CATALOG: Partial<Record<AgentType, AgentInstallCatalo
       { id: 'npm', command: 'npm install -g @github/copilot', requires: 'npm' },
     ],
   },
+  cursor: {
+    docsUrl: 'https://cursor.com/docs/cli/installation',
+    methods: [{ id: 'native', command: "irm 'https://cursor.com/install?win32=true' | iex" }],
+  },
   antigravity: {
     docsUrl: 'https://antigravity.google/docs/cli/install',
     methods: [{ id: 'native', command: 'irm https://antigravity.google/cli/install.ps1 | iex' }],
@@ -180,6 +184,11 @@ export function uninstallMethodsFor(
  */
 export function installCommandLine(command: string): string {
   return isWindows() ? `${command}; exit $LASTEXITCODE` : command
+}
+
+/** Line handed to the shell PTY: run the installer, then close the shell. */
+export function installShellLine(command: string): string {
+  return `${command}; exit`
 }
 
 // eslint-disable-next-line no-control-regex

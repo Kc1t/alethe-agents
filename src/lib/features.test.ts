@@ -16,6 +16,7 @@ describe('normalizeEnabledFeatures', () => {
       playwright: false,
       orchestrator: false,
       gsdSync: false,
+      prs: true,
     })
   })
 
@@ -28,6 +29,7 @@ describe('normalizeEnabledFeatures', () => {
       playwright: false,
       orchestrator: false,
       gsdSync: false,
+      prs: true,
     })
   })
 
@@ -40,6 +42,7 @@ describe('normalizeEnabledFeatures', () => {
       playwright: false,
       orchestrator: false,
       gsdSync: false,
+      prs: true,
     })
   })
 
@@ -54,6 +57,7 @@ describe('normalizeEnabledFeatures', () => {
       playwright: false,
       orchestrator: false,
       gsdSync: false,
+      prs: true,
     })
   })
 
@@ -86,6 +90,11 @@ describe('normalizeEnabledFeatures', () => {
   it('no longer carries Git, which is a plugin now', () => {
     expect(normalizeEnabledFeatures(undefined)).not.toHaveProperty('git')
     expect(normalizeEnabledFeatures({ enabledFeatures: { git: false } })).not.toHaveProperty('git')
+  })
+
+  it('enables Open PRs by default and preserves an explicit choice', () => {
+    expect(normalizeEnabledFeatures(undefined).prs).toBe(true)
+    expect(normalizeEnabledFeatures({ enabledFeatures: { prs: false } }).prs).toBe(false)
   })
 })
 

@@ -35,6 +35,16 @@ describe('savedConversationIdFor', () => {
     ).toBe('antigravity-chat')
   })
 
+  it('returns the saved Cursor chat id', () => {
+    expect(
+      savedConversationIdFor(
+        { ...baseSession, agent: 'cursor', cursorSessionId: 'cursor-chat' },
+        'cursor',
+        'D:/Work/Project',
+      ),
+    ).toBe('cursor-chat')
+  })
+
   it('returns the saved OpenCode session id', () => {
     expect(
       savedConversationIdFor(

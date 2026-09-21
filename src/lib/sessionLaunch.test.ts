@@ -51,6 +51,22 @@ describe('buildAgentLaunch', () => {
     ).toEqual(['--session', 'open-pane', '--model', 'x'])
   })
 
+  it('Cursor resumes the chat its pane owns and drops every stale resume flag', () => {
+    expect(
+      buildAgentLaunch(
+        'cursor',
+        ['--continue', '--resume', 'old', '--resume=older', '--force'],
+        'cursor-chat',
+      ).args,
+    ).toEqual(['--resume', 'cursor-chat', '--force'])
+  })
+
+  it('Cursor without a chat id starts fresh instead of continuing the last one', () => {
+    const launch = buildAgentLaunch('cursor', ['--continue', '--force'])
+    expect(launch.args).toEqual(['--force'])
+    expect(launch.sessionId).toBeUndefined()
+  })
+
   it('Antigravity keeps agy flags and uses its pane-specific conversation', () => {
     expect(
       buildAgentLaunch(

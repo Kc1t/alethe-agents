@@ -20,7 +20,7 @@ const MAX_INDEX_BYTES: usize = 512 * 1024;
 
 static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
-fn client() -> &'static reqwest::Client {
+pub fn http_client() -> &'static reqwest::Client {
     CLIENT.get_or_init(|| {
         reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
@@ -50,6 +50,19 @@ pub struct CatalogPlugin {
     pub min_api_version: u32,
     #[serde(default)]
     pub capabilities: Vec<String>,
+    /// Present when the plugin can be installed from inside the app. Absent
+    /// means the listing is a pointer and the user installs by hand.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<CatalogPackage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogPackage {
+    /// The zip itself. Fetched, unlike `download_url`.
+    pub url: String,
+    /// Pins the bytes to what the index was reviewed against.
+    pub sha256: String,
 }
 
 fn one() -> u32 {
@@ -83,7 +96,17 @@ fn now() -> u64 {
 
 /// Only `https` links are offered, so a listing cannot point the user's browser
 /// at a local file or a scheme handler of its choosing.
+fn is_installable(package: &CatalogPackage) -> bool {
+    package.url.starts_with("https://") && crate::plugin_package::is_sha256(&package.sha256)
+}
+
 fn is_offerable(plugin: &CatalogPlugin, api_version: u32) -> bool {
+    // A package whose integrity data is malformed drops the whole entry. Quietly
+    // degrading it to a manual listing would hide a broken hash from both the
+    // user and whoever published it.
+    if plugin.package.as_ref().is_some_and(|p| !is_installable(p)) {
+        return false;
+    }
     !plugin.id.is_empty()
         && plugin
             .id
@@ -149,7 +172,7 @@ pub async fn plugin_catalog(
     }
 
     let fetched = async {
-        let response = client()
+        let response = http_client()
             .get(INDEX_URL)
             .send()
             .await
@@ -157,7 +180,10 @@ pub async fn plugin_catalog(
         if !response.status().is_success() {
             return Err(format!("http_{}", response.status().as_u16()));
         }
-        let body = response.text().await.map_err(|e| format!("read_failed:{e}"))?;
+        let body = response
+            .text()
+            .await
+            .map_err(|e| format!("read_failed:{e}"))?;
         if body.len() > MAX_INDEX_BYTES {
             return Err("index_too_large".to_string());
         }
@@ -223,6 +249,53 @@ pub async fn plugin_catalog_open(
     result.map(|_| ()).map_err(|e| format!("open_failed:{e}"))
 }
 
+/// Installs a plugin the catalogue offered. The entry is looked up by id in the
+/// cached index rather than trusting anything the caller passes, so a URL and a
+/// hash can only ever come from a reviewed listing.
+///
+/// The plugin lands disabled, exactly like a hand-imported one: downloading is
+/// not consent to run.
+#[tauri::command]
+pub async fn plugin_install_from_catalog(
+    app: tauri::AppHandle,
+    api_version: u32,
+    id: String,
+) -> Result<crate::plugins::PluginManifest, String> {
+    let snapshot = read_cache(&app).ok_or_else(|| "catalog_unavailable".to_string())?;
+    let entry = snapshot
+        .plugins
+        .iter()
+        .find(|plugin| plugin.id == id && plugin.min_api_version <= api_version)
+        .ok_or_else(|| "not_in_catalog".to_string())?;
+    let package = entry
+        .package
+        .as_ref()
+        .filter(|package| is_installable(package))
+        .ok_or_else(|| "not_installable".to_string())?;
+
+    let bytes = crate::plugin_package::download(&package.url).await?;
+    crate::plugin_package::verify_sha256(&bytes, &package.sha256)?;
+
+    let staging = std::env::temp_dir().join(format!("alethe-plugin-install-{}", entry.id));
+    let _ = fs::remove_dir_all(&staging);
+    let result = (|| {
+        crate::plugin_package::extract_zip(&bytes, &staging)?;
+        let root = crate::plugin_package::find_manifest_root(&staging)?;
+        // The archive declares its own id. Without this it could claim any id and
+        // replace an installed plugin the user already trusted.
+        let raw = fs::read_to_string(root.join("plugin.json"))
+            .map_err(|_| "manifest_missing".to_string())?;
+        let declared: serde_json::Value =
+            serde_json::from_str(&raw).map_err(|e| format!("invalid_manifest:{e}"))?;
+        if declared.get("id").and_then(|v| v.as_str()) != Some(entry.id.as_str()) {
+            return Err("manifest_id_mismatch".to_string());
+        }
+        crate::plugins::import_dir(&app, &root)
+    })();
+    let _ = fs::remove_dir_all(&staging);
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,6 +354,46 @@ mod tests {
         ] {
             assert!(parse_index(&index(entry), 1).unwrap().is_empty(), "{entry}");
         }
+    }
+
+    const HASH: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+    fn with_package(url: &str, sha: &str) -> String {
+        format!(
+            r#"{{ "id": "a.b", "name": "N", "downloadUrl": "https://a/b",
+                  "package": {{ "url": "{url}", "sha256": "{sha}" }} }}"#
+        )
+    }
+
+    #[test]
+    fn a_well_formed_package_is_kept_and_marks_the_entry_installable() {
+        let entry = with_package("https://a/b.zip", HASH);
+        let plugins = parse_index(&index(&entry), 1).unwrap();
+        assert_eq!(plugins.len(), 1);
+        assert!(plugins[0].package.as_ref().is_some_and(is_installable));
+    }
+
+    #[test]
+    fn a_package_with_broken_integrity_data_drops_the_whole_entry() {
+        for (url, sha) in [
+            ("http://a/b.zip", HASH),
+            ("https://a/b.zip", "not-a-hash"),
+            ("https://a/b.zip", ""),
+            ("file:///c/b.zip", HASH),
+        ] {
+            let entry = with_package(url, sha);
+            assert!(
+                parse_index(&index(&entry), 1).unwrap().is_empty(),
+                "{url} {sha}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_entry_without_a_package_is_still_listed_for_manual_install() {
+        let plugins = parse_index(&index(GOOD), 1).unwrap();
+        assert_eq!(plugins.len(), 1);
+        assert!(plugins[0].package.is_none());
     }
 
     #[test]

@@ -43,6 +43,12 @@ function stripAntigravitySessionArgs(args: string[]): string[] {
   )
 }
 
+function stripCursorSessionArgs(args: string[]): string[] {
+  return stripFlagWithValue(args, new Set(['--resume'])).filter(
+    (arg) => arg !== '--continue' && !arg.startsWith('--resume='),
+  )
+}
+
    
                                                                             
                                                                              
@@ -121,6 +127,17 @@ export function buildAgentLaunch(
     // kiro-cli only accepts flags like --trust-all-tools under the `chat`
     // subcommand — passed bare, it rejects them before falling back to it.
     return { args: ['chat', ...baseArgs], sessionId: undefined, createdSession: false }
+  }
+
+  // Cursor mints its own chat IDs (`cursor-agent create-chat`), so the pane arrives here already
+  // holding one: there is nothing to generate, only a `--resume` to attach.
+  if (agent === 'cursor') {
+    const clean = stripCursorSessionArgs([...baseArgs])
+    return {
+      args: sessionId ? ['--resume', sessionId, ...clean] : clean,
+      sessionId,
+      createdSession: false,
+    }
   }
 
                                                                                   

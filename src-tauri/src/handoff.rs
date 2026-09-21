@@ -41,6 +41,31 @@ impl Provider {
 pub(crate) struct HandoffEvent {
     role: &'static str,
     text: String,
+    #[serde(rename = "questionSetId", skip_serializing_if = "Option::is_none")]
+    question_set_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    questions: Option<Vec<RemoteQuestion>>,
+}
+
+pub(crate) struct ActiveRemoteQuestions {
+    pub id: String,
+    pub questions: Vec<RemoteQuestion>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RemoteQuestion {
+    pub id: String,
+    pub header: String,
+    pub question: String,
+    pub multi_select: bool,
+    pub options: Vec<RemoteQuestionOption>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct RemoteQuestionOption {
+    pub label: String,
+    pub description: String,
 }
 
 #[derive(Serialize)]
@@ -134,6 +159,86 @@ fn content_text(content: &Value) -> String {
     }
 }
 
+fn remote_questions(name: &str, input: &Value) -> Option<Vec<RemoteQuestion>> {
+    if !name.eq_ignore_ascii_case("AskUserQuestion")
+        && !name.eq_ignore_ascii_case("request_user_input")
+    {
+        return None;
+    }
+    let parsed;
+    let input = if let Value::String(value) = input {
+        parsed = serde_json::from_str::<Value>(value).ok()?;
+        &parsed
+    } else {
+        input
+    };
+    let questions = input.get("questions")?.as_array()?;
+    let result = questions
+        .iter()
+        .take(3)
+        .enumerate()
+        .filter_map(|(index, value)| {
+            let question = clipped(value.get("question")?.as_str()?, 1_000);
+            let options = value
+                .get("options")?
+                .as_array()?
+                .iter()
+                .take(8)
+                .filter_map(|option| {
+                    let label = clipped(option.get("label")?.as_str()?, 160);
+                    (!label.is_empty()).then(|| RemoteQuestionOption {
+                        label,
+                        description: clipped(
+                            option
+                                .get("description")
+                                .and_then(Value::as_str)
+                                .unwrap_or_default(),
+                            500,
+                        ),
+                    })
+                })
+                .collect::<Vec<_>>();
+            (!question.is_empty() && !options.is_empty()).then(|| RemoteQuestion {
+                id: value
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .map(|id| clipped(id, 80))
+                    .unwrap_or_else(|| format!("question-{}", index + 1)),
+                header: clipped(
+                    value
+                        .get("header")
+                        .and_then(Value::as_str)
+                        .unwrap_or("Question"),
+                    80,
+                ),
+                question,
+                multi_select: value
+                    .get("multiSelect")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                options,
+            })
+        })
+        .collect::<Vec<_>>();
+    (!result.is_empty()).then_some(result)
+}
+
+fn question_text(questions: &[RemoteQuestion]) -> String {
+    questions
+        .iter()
+        .map(|question| {
+            let options = question
+                .options
+                .iter()
+                .map(|option| option.label.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{}: {} ({options})", question.header, question.question)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 fn claude_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
     let file = fs::File::open(path).map_err(|error| error.to_string())?;
     let mut reader = BufReader::with_capacity(64 * 1024, file);
@@ -162,6 +267,8 @@ fn claude_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
             events.push(HandoffEvent {
                 role: if kind == "user" { "user" } else { "assistant" },
                 text: clipped(&text, if kind == "user" { 8_000 } else { 5_000 }),
+                question_set_id: None,
+                questions: None,
             });
         }
         let Value::Array(blocks) = content else {
@@ -172,9 +279,28 @@ fn claude_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
                 "tool_use" => {
                     let name = block.get("name").and_then(Value::as_str).unwrap_or("tool");
                     let input = block.get("input").cloned().unwrap_or(Value::Null);
+                    let questions = remote_questions(name, &input);
+                    let question_set_id = questions.as_ref().map(|_| {
+                        clipped(
+                            block
+                                .get("id")
+                                .and_then(Value::as_str)
+                                .unwrap_or("claude-question"),
+                            160,
+                        )
+                    });
                     events.push(HandoffEvent {
-                        role: "tool",
-                        text: clipped(&format!("{name}: {input}"), 1_200),
+                        role: if questions.is_some() {
+                            "question"
+                        } else {
+                            "tool"
+                        },
+                        text: questions
+                            .as_deref()
+                            .map(question_text)
+                            .unwrap_or_else(|| clipped(&format!("{name}: {input}"), 1_200)),
+                        question_set_id,
+                        questions,
                     });
                 }
                 "tool_result" => {
@@ -183,6 +309,8 @@ fn claude_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
                         events.push(HandoffEvent {
                             role: "tool-result",
                             text: clipped(&output, 800),
+                            question_set_id: None,
+                            questions: None,
                         });
                     }
                 }
@@ -222,6 +350,8 @@ fn codex_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
                     events.push(HandoffEvent {
                         role: if role == "user" { "user" } else { "assistant" },
                         text: clipped(&text, if role == "user" { 8_000 } else { 5_000 }),
+                        question_set_id: None,
+                        questions: None,
                     });
                 }
             }
@@ -235,9 +365,29 @@ fn codex_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
                     .or_else(|| payload.get("arguments"))
                     .cloned()
                     .unwrap_or(Value::Null);
+                let questions = remote_questions(name, &input);
+                let question_set_id = questions.as_ref().map(|_| {
+                    clipped(
+                        payload
+                            .get("call_id")
+                            .or_else(|| payload.get("id"))
+                            .and_then(Value::as_str)
+                            .unwrap_or("codex-question"),
+                        160,
+                    )
+                });
                 events.push(HandoffEvent {
-                    role: "tool",
-                    text: clipped(&format!("{name}: {input}"), 1_200),
+                    role: if questions.is_some() {
+                        "question"
+                    } else {
+                        "tool"
+                    },
+                    text: questions
+                        .as_deref()
+                        .map(question_text)
+                        .unwrap_or_else(|| clipped(&format!("{name}: {input}"), 1_200)),
+                    question_set_id,
+                    questions,
                 });
             }
             "custom_tool_call_output" | "function_call_output" => {
@@ -246,6 +396,8 @@ fn codex_events(path: &Path) -> Result<Vec<HandoffEvent>, String> {
                     events.push(HandoffEvent {
                         role: "tool-result",
                         text: clipped(&output, 800),
+                        question_set_id: None,
+                        questions: None,
                     });
                 }
             }
@@ -390,6 +542,29 @@ pub(crate) fn transcript_snapshot(
     })
 }
 
+pub(crate) fn active_remote_questions(
+    provider: &str,
+    cwd: &str,
+    session_id: Option<&str>,
+) -> Result<Option<ActiveRemoteQuestions>, String> {
+    let provider = Provider::parse(provider)?;
+    let (_, path, _) = resolve_source_file(provider, cwd, session_id)
+        .or_else(|_| resolve_source_file(provider, cwd, None))?;
+    let events = match provider {
+        Provider::Claude => claude_events(&path)?,
+        Provider::Codex => codex_events(&path)?,
+    };
+    Ok(events.last().and_then(|event| {
+        event
+            .questions
+            .clone()
+            .map(|questions| ActiveRemoteQuestions {
+                id: event.question_set_id.clone().unwrap_or_default(),
+                questions,
+            })
+    }))
+}
+
 fn run_git(cwd: &str, args: &[&str]) -> Option<String> {
     let output = Command::new("git")
         .arg("-C")
@@ -489,7 +664,7 @@ fn render_capsule(
             let label = match event.role {
                 "user" => "User",
                 "assistant" => "Assistant",
-                "tool" => "Tool call",
+                "tool" | "question" => "Tool call",
                 _ => "Tool output",
             };
             let limit = if event.role == "user" {
@@ -633,6 +808,7 @@ pub async fn complete_agent_handoff(app: AppHandle, handoff_id: String) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn redacts_common_secrets() {
@@ -649,18 +825,26 @@ mod tests {
             HandoffEvent {
                 role: "user",
                 text: "Build the feature".into(),
+                question_set_id: None,
+                questions: None,
             },
             HandoffEvent {
                 role: "assistant",
                 text: "Implemented parser".into(),
+                question_set_id: None,
+                questions: None,
             },
             HandoffEvent {
                 role: "tool",
                 text: "cargo test".into(),
+                question_set_id: None,
+                questions: None,
             },
             HandoffEvent {
                 role: "user",
                 text: "Keep the old terminal open".into(),
+                question_set_id: None,
+                questions: None,
             },
         ];
         let (capsule, _) = render_capsule(
@@ -680,5 +864,68 @@ mod tests {
         assert!(validate_handoff_id("safe_123-id").is_ok());
         assert!(validate_handoff_id("../outside").is_err());
         assert!(validate_handoff_id("").is_err());
+    }
+
+    #[test]
+    fn parses_codex_and_claude_questions() {
+        let codex = remote_questions(
+            "request_user_input",
+            &Value::String(
+                r#"{"questions":[{"id":"scope","header":"Scope","question":"Which scope?","options":[{"label":"Focused","description":"Only Codex and Claude"}]}]}"#.into(),
+            ),
+        )
+        .expect("Codex question");
+        assert_eq!(codex[0].id, "scope");
+        assert!(!codex[0].multi_select);
+
+        let claude = remote_questions(
+            "AskUserQuestion",
+            &serde_json::json!({
+                "questions": [{
+                    "header": "Files",
+                    "question": "Which files?",
+                    "multiSelect": true,
+                    "options": [
+                        { "label": "Source", "description": "Application code" },
+                        { "label": "Tests", "description": "Test code" }
+                    ]
+                }]
+            }),
+        )
+        .expect("Claude question");
+        assert!(claude[0].multi_select);
+        assert_eq!(claude[0].options.len(), 2);
+    }
+
+    #[test]
+    fn preserves_agent_call_ids_for_remote_questions() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos();
+        let root = std::env::temp_dir();
+        let codex_path = root.join(format!("alethe-codex-question-{suffix}.jsonl"));
+        let claude_path = root.join(format!("alethe-claude-question-{suffix}.jsonl"));
+        fs::write(
+            &codex_path,
+            r#"{"type":"response_item","payload":{"type":"function_call","name":"request_user_input","call_id":"call-codex-42","arguments":"{\"questions\":[{\"id\":\"scope\",\"header\":\"Scope\",\"question\":\"Which scope?\",\"options\":[{\"label\":\"Focused\",\"description\":\"Only this area\"}]}]}"}}"#,
+        )
+        .expect("write Codex fixture");
+        fs::write(
+            &claude_path,
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu-claude-42","name":"AskUserQuestion","input":{"questions":[{"header":"Scope","question":"Which scope?","multiSelect":false,"options":[{"label":"Focused","description":"Only this area"}]}]}}]}}"#,
+        )
+        .expect("write Claude fixture");
+
+        let codex = codex_events(&codex_path).expect("parse Codex fixture");
+        let claude = claude_events(&claude_path).expect("parse Claude fixture");
+        fs::remove_file(codex_path).expect("remove Codex fixture");
+        fs::remove_file(claude_path).expect("remove Claude fixture");
+
+        assert_eq!(codex[0].question_set_id.as_deref(), Some("call-codex-42"));
+        assert_eq!(
+            claude[0].question_set_id.as_deref(),
+            Some("toolu-claude-42")
+        );
     }
 }

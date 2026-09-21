@@ -35,6 +35,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  max-width: calc(100% - 32px);
   flex-shrink: 0;
 }
 
@@ -61,9 +63,34 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+  scrollbar-width: none;
   color: var(--fg-muted);
+}
+
+.counts::-webkit-scrollbar {
+  display: none;
+}
+
+.spendChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 1px 6px;
+  color: var(--fg-muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.spendChip b {
+  color: var(--fg);
+  font-weight: 600;
 }
 
 .countAlert {
@@ -923,7 +950,9 @@
   border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--bg-sunken);
-  transition: border-color 0.15s, opacity 0.15s;
+  transition:
+    border-color 0.15s,
+    opacity 0.15s;
 }
 
 .mediaCard:hover .mediaCardImage {
@@ -1676,7 +1705,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .edge[data-lane='running'],
-    .hint,
+  .hint,
+  .composer,
   .tab {
     transition: none;
   }

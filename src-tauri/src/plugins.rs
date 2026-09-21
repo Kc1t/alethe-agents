@@ -338,7 +338,9 @@ fn copy_tree(
     let entries = std::fs::read_dir(source).map_err(|e| format!("read_dir_failed:{e}"))?;
     for entry in entries {
         let entry = entry.map_err(|e| format!("read_dir_failed:{e}"))?;
-        let kind = entry.file_type().map_err(|e| format!("read_dir_failed:{e}"))?;
+        let kind = entry
+            .file_type()
+            .map_err(|e| format!("read_dir_failed:{e}"))?;
         if kind.is_symlink() {
             return Err("plugin_contains_symlink".to_string());
         }
@@ -465,18 +467,22 @@ pub fn plugin_install(app: AppHandle, manifest: PluginManifest) -> Result<(), St
     Ok(())
 }
 
-/// Copies a plugin directory the user picked into the profile's plugins folder.
-/// The plugin stays disabled: importing is not consent to run it.
-#[tauri::command]
-pub fn plugin_import_dir(app: AppHandle, source: String) -> Result<PluginManifest, String> {
-    let root = plugins_root(&app)?;
-    let manifest = import_dir_into(&root, Path::new(&source))?;
+/// Copies a plugin directory into the profile's plugins folder. The plugin stays
+/// disabled: arriving on disk is not consent to run.
+pub fn import_dir(app: &AppHandle, source: &Path) -> Result<PluginManifest, String> {
+    let root = plugins_root(app)?;
+    let manifest = import_dir_into(&root, source)?;
     emit(
         "PluginInstalled",
         &manifest.id,
         serde_json::json!({ "id": manifest.id, "kind": manifest.kind, "version": manifest.version }),
     );
     Ok(manifest)
+}
+
+#[tauri::command]
+pub fn plugin_import_dir(app: AppHandle, source: String) -> Result<PluginManifest, String> {
+    import_dir(&app, Path::new(&source))
 }
 
 /// A plugin's own data. Deliberately outside `plugins/`: everything under a
@@ -715,9 +721,15 @@ mod tests {
             }
         }"#;
         let parsed: PluginManifest = serde_json::from_str(raw).unwrap();
-        assert_eq!(parsed.activation, vec!["onView:git", "onCommand:git.reveal"]);
+        assert_eq!(
+            parsed.activation,
+            vec!["onView:git", "onCommand:git.reveal"]
+        );
         assert_eq!(parsed.contributes.views.len(), 1);
-        assert_eq!(parsed.contributes.views[0].container, ViewContainer::LeftSidebar);
+        assert_eq!(
+            parsed.contributes.views[0].container,
+            ViewContainer::LeftSidebar
+        );
         assert_eq!(parsed.contributes.commands[0].id, "git.reveal");
         assert!(validate_contributes(&parsed.contributes).is_ok());
 

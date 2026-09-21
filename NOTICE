@@ -1,5 +1,12 @@
 Alethe
-Copyright (C) 2026 Kauã Miguel
+Created by Kauã Miguel
+Copyright (C) 2026 Kauã Miguel and Alethe contributors
 
-The Alethe source code is licensed under AGPL-3.0-or-later.
-The Alethe name, logo, and official branding are covered by TRADEMARK.md.
+The Alethe source code is licensed under AGPL-3.0-or-later. Redistributions and
+modified versions must preserve the copyright, license, warranty, and attribution
+notices required by that license.
+
+The Alethe name, logo, and official branding are not licensed under the AGPL.
+They are governed separately by TRADEMARK.md. The software license does not grant
+permission to present a fork, modified build, product, or service as Alethe or as
+an official release.

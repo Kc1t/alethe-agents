@@ -1,0 +1,35 @@
+.info {
+  margin: 0 0 14px;
+  color: var(--fg-muted);
+  line-height: 1.5;
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-sunken);
+}
+.copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+.copy strong {
+  color: var(--fg);
+  font-size: 13px;
+}
+.copy span,
+.copy small {
+  color: var(--fg-muted);
+  font-size: 11px;
+}

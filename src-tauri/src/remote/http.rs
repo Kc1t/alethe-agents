@@ -26,7 +26,12 @@ const MAX_TRANSCRIPT_EVENTS: usize = 160;
 const CACHE_NO_STORE: &str = "no-store";
 const CACHE_IMMUTABLE: &str = "public, max-age=31536000, immutable";
 
-pub(crate) fn run_http(app: AppHandle, hub: Arc<RemoteHub>, sessions: PtySessions, generation: u64) {
+pub(crate) fn run_http(
+    app: AppHandle,
+    hub: Arc<RemoteHub>,
+    sessions: PtySessions,
+    generation: u64,
+) {
     let host = hub.host();
     let Some(listener) = bind_listener(&host, HTTP_START, HTTP_END) else {
         eprintln!("[remote] unable to bind LAN HTTP listener");
@@ -184,6 +189,12 @@ fn handle_http(
             200,
             "text/javascript; charset=utf-8",
             include_str!("../../remote/app.js"),
+        ),
+        "/locales.js" => respond(
+            stream,
+            200,
+            "application/javascript; charset=utf-8",
+            include_str!("../../remote/locales.js"),
         ),
         "/app.css" => respond(
             stream,
@@ -375,6 +386,148 @@ fn handle_api(
             ),
         };
     }
+    if path == "/api/question-answer" && method == "POST" {
+        if hub.is_read_only() {
+            return respond(
+                stream,
+                403,
+                "application/json",
+                r#"{"error":"Remote control is in read-only mode"}"#,
+            );
+        }
+        if !hub.allow_message(session_id) {
+            return respond(
+                stream,
+                429,
+                "application/json",
+                r#"{"error":"Too many messages, slow down"}"#,
+            );
+        }
+        let payload: RemoteQuestionAnswer =
+            serde_json::from_slice(body).map_err(|error| error.to_string())?;
+        let Some(tab) = shared_tab(app, &payload.pty_id) else {
+            return respond(
+                stream,
+                403,
+                "application/json",
+                r#"{"error":"This terminal is not available remotely"}"#,
+            );
+        };
+        if tab.agent != "claude" && tab.agent != "codex" {
+            return respond(
+                stream,
+                409,
+                "application/json",
+                r#"{"error":"This agent does not expose interactive questions"}"#,
+            );
+        }
+        let active = crate::handoff::active_remote_questions(
+            &tab.agent,
+            &tab.cwd,
+            tab.session_id.as_deref(),
+        )
+        .ok()
+        .flatten();
+        let Some(active) = active.filter(|active| active.id == payload.question_set_id) else {
+            return respond(
+                stream,
+                409,
+                "application/json",
+                r#"{"error":"This question changed before the answer was sent"}"#,
+            );
+        };
+        let input = match question_answer_input(
+            &active.questions,
+            &payload.selections,
+            &payload.custom_answers,
+        ) {
+            Ok(input) => input,
+            Err(error) => {
+                return respond(
+                    stream,
+                    409,
+                    "application/json",
+                    &json!({ "error": error }).to_string(),
+                )
+            }
+        };
+        write_remote(sessions, &payload.pty_id, &input)?;
+        let device_name = hub.device_name(session_id);
+        eprintln!(
+            "[remote] {device_name} (device {session_id}) answered an interactive question in {}",
+            payload.pty_id
+        );
+        let _ = app.emit(
+            "remote://message",
+            json!({
+                "ptyId": payload.pty_id,
+                "deviceId": session_id,
+                "deviceName": device_name,
+                "preview": "Answered an interactive agent question",
+            }),
+        );
+        return respond(stream, 204, "text/plain", "");
+    }
+    if path == "/api/agent-control" && method == "POST" {
+        if hub.is_read_only() {
+            return respond(
+                stream,
+                403,
+                "application/json",
+                r#"{"error":"Remote control is in read-only mode"}"#,
+            );
+        }
+        if !hub.allow_message(session_id) {
+            return respond(
+                stream,
+                429,
+                "application/json",
+                r#"{"error":"Too many messages, slow down"}"#,
+            );
+        }
+        let payload: RemoteAgentControl =
+            serde_json::from_slice(body).map_err(|error| error.to_string())?;
+        let Some(agent) = pty_agent(app, &payload.pty_id) else {
+            return respond(
+                stream,
+                403,
+                "application/json",
+                r#"{"error":"This terminal is not available remotely"}"#,
+            );
+        };
+        if agent != "claude" && agent != "codex" {
+            return respond(
+                stream,
+                409,
+                "application/json",
+                r#"{"error":"Only Codex and Claude Code can be controlled remotely"}"#,
+            );
+        }
+        if payload.action != "interrupt" {
+            return respond(
+                stream,
+                400,
+                "application/json",
+                r#"{"error":"Unknown agent control action"}"#,
+            );
+        }
+        write_remote(sessions, &payload.pty_id, "\x03")?;
+        let device_name = hub.device_name(session_id);
+        eprintln!(
+            "[remote] {device_name} (device {session_id}) interrupted {}",
+            payload.pty_id
+        );
+        let _ = app.emit(
+            "remote://message",
+            json!({
+                "ptyId": payload.pty_id,
+                "deviceId": session_id,
+                "deviceName": device_name,
+                "preview": "Interrupted the active agent turn",
+            }),
+        );
+        return respond(stream, 204, "text/plain", "");
+    }
     if path == "/api/message" && method == "POST" {
         if hub.is_read_only() {
             return respond(
@@ -453,6 +606,77 @@ struct RemoteMessage {
     #[serde(rename = "ptyId")]
     pty_id: String,
     text: String,
+}
+
+#[derive(Deserialize)]
+struct RemoteQuestionAnswer {
+    #[serde(rename = "ptyId")]
+    pty_id: String,
+    #[serde(rename = "questionSetId")]
+    question_set_id: String,
+    selections: Vec<Vec<usize>>,
+    #[serde(default, rename = "customAnswers")]
+    custom_answers: Vec<Option<String>>,
+}
+
+#[derive(Deserialize)]
+struct RemoteAgentControl {
+    #[serde(rename = "ptyId")]
+    pty_id: String,
+    action: String,
+}
+
+fn question_answer_input(
+    questions: &[crate::handoff::RemoteQuestion],
+    selections: &[Vec<usize>],
+    custom_answers: &[Option<String>],
+) -> Result<String, String> {
+    if questions.is_empty()
+        || questions.len() != selections.len()
+        || (!custom_answers.is_empty() && questions.len() != custom_answers.len())
+    {
+        return Err("The interactive question is no longer active".into());
+    }
+    let mut input = String::new();
+    for (question_index, (question, selected)) in questions.iter().zip(selections).enumerate() {
+        let custom = custom_answers
+            .get(question_index)
+            .and_then(|value| value.as_deref())
+            .map(sanitize_remote_message)
+            .map(|value| value.trim().chars().take(1_000).collect::<String>())
+            .filter(|value| !value.is_empty());
+        if (selected.is_empty() && custom.is_none())
+            || (!question.multi_select && selected.len() != 1 && custom.is_none())
+            || (!selected.is_empty() && custom.is_some())
+        {
+            return Err("Select an answer for every question".into());
+        }
+        let mut unique = selected.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        if unique.len() != selected.len()
+            || unique.iter().any(|index| *index >= question.options.len())
+        {
+            return Err("An answer option is invalid".into());
+        }
+        if let Some(custom) = custom {
+            input.push_str(&"\x1b[A".repeat(question.options.len() + 2));
+            input.push_str(&"\x1b[B".repeat(question.options.len()));
+            input.push('\r');
+            input.push_str(&custom);
+        } else if question.multi_select {
+            for index in unique {
+                input.push_str(&"\x1b[A".repeat(question.options.len() + 2));
+                input.push_str(&"\x1b[B".repeat(index));
+                input.push(' ');
+            }
+        } else {
+            input.push_str(&"\x1b[A".repeat(question.options.len() + 2));
+            input.push_str(&"\x1b[B".repeat(unique[0]));
+        }
+        input.push('\r');
+    }
+    Ok(input)
 }
 
 fn read_request(stream: &mut TcpStream) -> Result<(String, Vec<u8>), String> {
@@ -610,6 +834,7 @@ fn respond_bytes_with_limit(
         401 => "Unauthorized",
         403 => "Forbidden",
         404 => "Not Found",
+        409 => "Conflict",
         429 => "Too Many Requests",
         _ => "Error",
     };
@@ -622,7 +847,8 @@ fn respond_bytes_with_limit(
 
 #[cfg(test)]
 mod tests {
-    use super::{bearer_token, find_headers_end, header_value};
+    use super::{bearer_token, find_headers_end, header_value, question_answer_input};
+    use crate::handoff::{RemoteQuestion, RemoteQuestionOption};
 
     #[test]
     fn request_headers_end_is_detected_across_chunks() {
@@ -636,5 +862,32 @@ mod tests {
 
         assert_eq!(header_value(head, "content-length"), Some("42".into()));
         assert_eq!(bearer_token(head), "abc");
+    }
+
+    #[test]
+    fn interactive_answers_become_terminal_navigation() {
+        let questions = vec![RemoteQuestion {
+            id: "scope".into(),
+            header: "Scope".into(),
+            question: "Which scope?".into(),
+            multi_select: false,
+            options: vec![
+                RemoteQuestionOption {
+                    label: "Focused".into(),
+                    description: String::new(),
+                },
+                RemoteQuestionOption {
+                    label: "Broad".into(),
+                    description: String::new(),
+                },
+            ],
+        }];
+        let input = question_answer_input(&questions, &[vec![1]], &[]).expect("valid answer");
+        assert!(input.ends_with("\x1b[B\r"));
+        assert!(question_answer_input(&questions, &[vec![2]], &[]).is_err());
+        assert!(question_answer_input(&questions, &[], &[]).is_err());
+        let custom = question_answer_input(&questions, &[vec![]], &[Some("A custom scope".into())])
+            .expect("custom answer");
+        assert!(custom.ends_with("\x1b[B\x1b[B\rA custom scope\r"));
     }
 }

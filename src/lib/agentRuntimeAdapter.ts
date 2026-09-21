@@ -21,7 +21,17 @@ export const AGENT_RUNTIME_ADAPTERS: AgentRuntimeAdapter[] = [
     label: 'PTY / ConPTY',
     experimental: false,
     available: true,
-    agents: ['shell', 'wsl', 'claude', 'codex', 'opencode', 'freebuff', 'mimo', 'kiro'],
+    agents: [
+      'shell',
+      'wsl',
+      'claude',
+      'codex',
+      'cursor',
+      'opencode',
+      'freebuff',
+      'mimo',
+      'kiro',
+    ],
   },
   {
     id: 'codex-app-server',

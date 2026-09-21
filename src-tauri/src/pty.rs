@@ -807,7 +807,24 @@ pub(crate) fn kill_process_tree(pid: u32) {
 }
 
 #[cfg(not(windows))]
-pub(crate) fn kill_process_tree(_pid: u32) {}
+pub(crate) fn kill_process_tree(pid: u32) {
+    // portable-pty calls setsid() on Linux, so the shell owns its own process
+    // group. Sending a signal to the negative PID targets the entire group.
+    let _ = std::process::Command::new("kill")
+        .args(["-TERM", &format!("-{pid}")])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .and_then(|mut child| child.wait());
+    // Give well-behaved processes a moment to exit cleanly, then escalate.
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let _ = std::process::Command::new("kill")
+        .args(["-9", &format!("-{pid}")])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .and_then(|mut child| child.wait());
+}
 
 #[tauri::command]
 pub async fn restart_pty(
@@ -1737,7 +1754,12 @@ pub fn install_kill_on_close_guard() {
 
 #[cfg(not(windows))]
 pub fn install_kill_on_close_guard() {
-    let _ = JOB_GUARD_ACTIVE.set(false);
+    // On Linux there is no equivalent of a Windows Job Object. Instead, the shutdown
+    // handler in lib.rs calls kill_all_sessions_background() on ExitRequested, which
+    // now works thanks to the SIGTERM/SIGKILL process-group kill in kill_process_tree.
+    // On the next startup, sweep_orphans_from_previous_session() kills any grandchild
+    // processes that escaped the previous shutdown.
+    let _ = JOB_GUARD_ACTIVE.set(true);
 }
 
 #[cfg(test)]
@@ -1777,6 +1799,11 @@ mod tests {
         let source = include_str!("pty.rs");
         for (index, _) in source.match_indices("child.lock()") {
             let tail = &source[index..];
+            let statement_end = tail.find(';').unwrap_or(tail.len());
+            let guard_scope = tail.find('{').unwrap_or(tail.len());
+            if statement_end < guard_scope {
+                continue;
+            }
             let block_end = tail
                 .find(
                     "

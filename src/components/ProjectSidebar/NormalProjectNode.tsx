@@ -1,3 +1,4 @@
+import { ProjectGrids } from './ProjectGrids'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { ChevronDown, Folder, MoreHorizontal, Network, Pause, Plus } from 'lucide-react'
 
@@ -150,7 +151,7 @@ export function NormalProjectNode({
             <MoreHorizontal size={14} />
           </button>
         </span>
-        {!isEmpty ? (
+        {(!isEmpty || project.mode !== 'agentSandbox') ? (
           <button
             type="button"
             className={styles.rowChevronBtn}
@@ -169,8 +170,8 @@ export function NormalProjectNode({
         ) : null}
       </div>
 
-      <Collapse open={!project.collapsed && visibleTerminals.length > 0}>
-        {visibleTerminals.map((term) => (
+      <Collapse open={!project.collapsed}>
+        <ProjectGrids project={project} isActive={isActive}>{(term) => (
           <NormalTerminalNode
             key={term.id}
             project={project}
@@ -181,7 +182,7 @@ export function NormalProjectNode({
             onDoubleClick={() => onTerminalDoubleClick(term)}
             onMenu={(e) => onTerminalMenu(term, e)}
           />
-        ))}
+        )}</ProjectGrids>
       </Collapse>
     </div>
   )

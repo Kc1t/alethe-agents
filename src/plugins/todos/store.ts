@@ -13,6 +13,10 @@ type TodosState = {
   storagePath: string
   hydrated: boolean
   createTodo: (title: string, tags?: string[], projectId?: string) => TodoItem | null
+  createTodoFromPullRequest: (
+    pr: { number: number; title: string; url: string; repo: string },
+    projectId?: string,
+  ) => TodoItem
   renameTodo: (id: string, title: string) => void
   updateTodoTags: (id: string, tags: string[]) => void
   setTodoProject: (id: string, projectId: string | null | undefined) => void
@@ -49,6 +53,28 @@ export const useTodosStore = create<TodosState>((set, get) => {
         completed: false,
         tags: normalizeTodoTags(rawTags),
         ...(projectId ? { projectId } : {}),
+      }
+      const todos = get().todos
+      const completedIndex = todos.findIndex((item) => item.completed)
+      const insertAt = completedIndex === -1 ? todos.length : completedIndex
+      write([...todos.slice(0, insertAt), todo, ...todos.slice(insertAt)])
+      return todo
+    },
+
+    createTodoFromPullRequest: (pr, projectId) => {
+      const existing = get().todos.find(
+        (item) => item.prRepo === pr.repo && item.prNumber === pr.number,
+      )
+      if (existing) return existing
+      const todo: TodoItem = {
+        id: nanoid(),
+        title: normalizeTodoTitle(`PR #${pr.number}: ${pr.title}`),
+        completed: false,
+        tags: ['pr'],
+        ...(projectId ? { projectId } : {}),
+        prUrl: pr.url,
+        prNumber: pr.number,
+        prRepo: pr.repo,
       }
       const todos = get().todos
       const completedIndex = todos.findIndex((item) => item.completed)

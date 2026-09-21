@@ -136,6 +136,7 @@
   --agent-mimo: #ff7a1a;
   --agent-antigravity: #4285f4;
   --agent-kiro: #9046ff;
+  --agent-cursor: #78849b;
   --agent-shell-soft: rgba(16, 185, 129, 0.14);
   --agent-claude-soft: rgba(236, 147, 51, 0.15);
   --agent-codex-soft: rgba(6, 182, 212, 0.15);
@@ -144,6 +145,7 @@
   --agent-mimo-soft: rgba(255, 122, 26, 0.15);
   --agent-antigravity-soft: rgba(66, 133, 244, 0.15);
   --agent-kiro-soft: rgba(144, 70, 255, 0.15);
+  --agent-cursor-soft: rgba(120, 132, 155, 0.15);
 
   --project-orange: #f97316;
   --project-pink: #ec4899;
@@ -288,6 +290,117 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.38);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.46);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.58);
+}
+
+/* Catppuccin Frappé. Pink accent (#f4b8e4) instead of the palette's own
+   blue (#8caaee): the blue reads too close to nord/tokyo-night/vscode in the
+   picker, and the pink clears AAA (7.52:1) on this background. The blue is
+   kept as --agent-codex so the palette still shows up in agent badges. */
+[data-theme='catppuccin-frappe'] {
+  --bg: #303446;
+  --bg-elevated: #414559;
+  --bg-sunken: #292c3c;
+  --panel: #414559;
+  --panel-hover: #51576d;
+  --border: #51576d;
+  --border-strong: rgba(198, 208, 245, 0.24);
+  --fg: #c6d0f5;
+  --fg-muted: #b5bfe2;
+  --fg-faint: #a5adce;
+  --text-primary: #c6d0f5;
+  --text-secondary: #b5bfe2;
+  --text-tertiary: #a5adce;
+  --text-quaternary: #838ba7;
+  --accent: #f4b8e4;
+  --accent-strong: #eebebe;
+  --accent-on: #303446;
+  --accent-soft: rgba(244, 184, 228, 0.14);
+  --accent-faint: rgba(244, 184, 228, 0.14);
+  --accent-border: rgba(244, 184, 228, 0.42);
+  --accent-ring: rgba(244, 184, 228, 0.18);
+  --accent-bg-soft: rgba(244, 184, 228, 0.14);
+  --accent-border-soft: rgba(244, 184, 228, 0.36);
+  --surface-modal: #414559;
+  --surface-card-default: #414559;
+  --surface-card-default-strong: #51576d;
+  --surface-card-selected: rgba(244, 184, 228, 0.14);
+  --border-subtle: #51576d;
+  --border-accent: rgba(244, 184, 228, 0.42);
+  --status-working: #a6d189;
+  --status-working-soft: rgba(166, 209, 137, 0.16);
+  --status-waiting: #e5c890;
+  --status-waiting-soft: rgba(229, 200, 144, 0.16);
+  --status-stopped: #a5adce;
+  --status-stopped-soft: rgba(165, 173, 206, 0.14);
+  --status-disabled: #51576d;
+  --status-offline: #e78284;
+  --status-offline-soft: rgba(231, 130, 132, 0.16);
+  --agent-shell: #a6d189;
+  --agent-claude: #ef9f76;
+  --agent-codex: #8caaee;
+  --agent-opencode: #ca9ee6;
+  --focus-ring: #f4b8e4;
+  --shape-tabs-lane-bg: #292c3c;
+  --shape-tabs-lane-border: rgba(198, 208, 245, 0.08);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.42);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.54);
+}
+
+/* Gruvbox Material (sainnhe), hard dark background. Uses the `hard` variant
+   (#1d2021) rather than `medium` (#282828) because medium is the exact
+   background of the existing `gruvbox` theme — the two would be hard to tell
+   apart in the picker. The palette is also markedly less saturated than
+   classic Gruvbox, which is what distinguishes it. */
+[data-theme='gruvbox-material'] {
+  --bg: #1d2021;
+  --bg-elevated: #282828;
+  --bg-sunken: #141617;
+  --panel: #32302f;
+  --panel-hover: #3c3836;
+  --border: #3c3836;
+  --border-strong: rgba(212, 190, 152, 0.24);
+  --fg: #d4be98;
+  --fg-muted: #c2b193;
+  --fg-faint: #a89984;
+  --text-primary: #d4be98;
+  --text-secondary: #c2b193;
+  --text-tertiary: #a89984;
+  --text-quaternary: #928374;
+  --accent: #e78a4e;
+  --accent-strong: #d8a657;
+  --accent-on: #1d2021;
+  --accent-soft: rgba(231, 138, 78, 0.14);
+  --accent-faint: rgba(231, 138, 78, 0.14);
+  --accent-border: rgba(231, 138, 78, 0.42);
+  --accent-ring: rgba(231, 138, 78, 0.18);
+  --accent-bg-soft: rgba(231, 138, 78, 0.14);
+  --accent-border-soft: rgba(231, 138, 78, 0.36);
+  --surface-modal: #282828;
+  --surface-card-default: #32302f;
+  --surface-card-default-strong: #3c3836;
+  --surface-card-selected: rgba(231, 138, 78, 0.14);
+  --border-subtle: #3c3836;
+  --border-accent: rgba(231, 138, 78, 0.42);
+  --status-working: #a9b665;
+  --status-working-soft: rgba(169, 182, 101, 0.16);
+  --status-waiting: #d8a657;
+  --status-waiting-soft: rgba(216, 166, 87, 0.16);
+  --status-stopped: #a89984;
+  --status-stopped-soft: rgba(168, 153, 132, 0.14);
+  --status-disabled: #3c3836;
+  --status-offline: #ea6962;
+  --status-offline-soft: rgba(234, 105, 98, 0.16);
+  --agent-shell: #a9b665;
+  --agent-claude: #e78a4e;
+  --agent-codex: #7daea3;
+  --agent-opencode: #d3869b;
+  --focus-ring: #e78a4e;
+  --shape-tabs-lane-bg: #141617;
+  --shape-tabs-lane-border: rgba(212, 190, 152, 0.08);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
 }
 
 [data-theme='nord'] {

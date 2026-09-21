@@ -5,6 +5,7 @@ export type BuiltinAgentType =
   | 'claude'
   | 'codex'
   | 'copilot'
+  | 'cursor'
   | 'opencode'
   | 'freebuff'
   | 'mimo'
@@ -23,6 +24,7 @@ export const AGENT_TYPE_LABELS: Record<BuiltinAgentType, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
   copilot: 'GitHub Copilot',
+  cursor: 'Cursor',
   antigravity: 'Antigravity',
   opencode: 'OpenCode',
   mimo: 'Mimo',
@@ -36,6 +38,7 @@ export const ALL_AGENT_TYPES: BuiltinAgentType[] = [
   'claude',
   'codex',
   'copilot',
+  'cursor',
   'antigravity',
   'opencode',
   'mimo',
@@ -55,6 +58,7 @@ const BUILTIN_CLI_COMMANDS: Partial<Record<BuiltinAgentType, string | null>> = {
   shell: null,
   wsl: 'wsl.exe',
   antigravity: 'agy',
+  cursor: 'cursor-agent',
   kiro: 'kiro-cli',
 }
 
@@ -110,6 +114,8 @@ export type BuiltinTheme =
   | 'elite-pure-black'
   | 'elite-indigo'
   | 'elite-blush'
+  | 'catppuccin-frappe'
+  | 'gruvbox-material'
 
 /**
  * A theme id. Open on purpose: plugins contribute themes at runtime, so an
@@ -130,7 +136,7 @@ export type SetupWalkthroughStep = 'project' | 'appearance'
 export const SETUP_WALKTHROUGH_STEPS: SetupWalkthroughStep[] = ['project', 'appearance']
 
 export type FeatureId =
-  'browser' | 'graphify' | 'aiMemory' | 'mcp' | 'playwright' | 'orchestrator' | 'gsdSync'
+  'browser' | 'graphify' | 'aiMemory' | 'mcp' | 'playwright' | 'orchestrator' | 'prs' | 'gsdSync'
 
 export type TodoItem = {
   id: string
@@ -139,6 +145,28 @@ export type TodoItem = {
   tags: string[]
 
   projectId?: string
+
+  /** Set when this todo was created from a GitHub PR via the Open PRs tab. */
+  prUrl?: string
+  prNumber?: number
+  /** "owner/name". */
+  prRepo?: string
+}
+
+export type PomodoroPhase = 'idle' | 'work' | 'shortBreak' | 'longBreak'
+export type PomodoroStatus = 'idle' | 'running' | 'paused' | 'finished'
+
+/** Durable snapshot mirrored from `pomodoroStore` into `preferences` so a running
+ *  session survives an app restart (see `src/stores/pomodoroStore.ts`). */
+export type PomodoroSessionSnapshot = {
+  phase: PomodoroPhase
+  status: PomodoroStatus
+  /** Epoch ms when the current phase ends. Null when idle or paused. */
+  endsAt: number | null
+  /** Frozen remaining time, set only while paused. */
+  remainingMsAtPause: number | null
+  cyclesCompleted: number
+  focusTodoId: string | null
 }
 
 export type SubTab = {
@@ -183,6 +211,7 @@ export const UNRESTRICTED_FLAG: Record<BuiltinAgentType, string | null> = {
   claude: '--dangerously-skip-permissions',
   codex: '--dangerously-bypass-approvals-and-sandbox',
   copilot: '--allow-all',
+  cursor: '--force',
   opencode: '--dangerously-skip-permissions',
 
   freebuff: null,
@@ -232,6 +261,7 @@ export type BrowserPaneOptions = BrowserPaneConfig & {
 }
 
 export type Terminal = {
+  gridId?: string
   id: string
   name: string
   cwd: string
@@ -306,7 +336,18 @@ export type OrphanWorktree = {
   adminLockReason?: string
 }
 
+export type ProjectGrid = {
+  id: string
+  name: string
+  collapsed: boolean
+  layoutMode: LayoutMode
+  gridLayout?: GridLayout
+  gridLayoutHistory?: GridLayoutHistoryEntry[]
+}
+
 export type Project = {
+  grids?: ProjectGrid[]
+  activeGridId?: string
   id: string
   name: string
   /** Determines which workspace opens when the project is selected. */
@@ -400,6 +441,8 @@ export type Group = {
 }
 
 export type WorkspaceContainer = {
+  /** Present for a project grid; absent for explicitly composed pane selections. */
+  gridId?: string
   projectId: string
 
   paneIds: string[]
@@ -601,9 +644,17 @@ export type Preferences = {
   rightSidebarWidth: number
 
   notifyOnLimitReset: boolean
-  /** Ditado por voz (speech-to-text) escreve no terminal ativo. Default false. */
+  /** Local speech-to-text into the active terminal. Off by default. */
   dictationEnabled: boolean
-  /** Quantos PTYs podem ser spawnados em paralelo (fila global). Default 3. */
+  /** Toggle = press Ctrl+E to start/stop; Hold = dictate while Ctrl+E is held. */
+  dictationMode: 'toggle' | 'hold'
+  /** Selected on-device STT model id (Parakeet TDT v3 by default). */
+  dictationModelId: string
+  /** Preferred microphone deviceId, or null for the OS default. */
+  dictationMicrophoneId: string | null
+  /** Cached microphone label when the preferred device is unplugged. */
+  dictationMicrophoneLabel: string | null
+  /** How many PTYs may spawn in parallel (global queue). Default 3. */
   spawnConcurrency: number
 
   resourcePolicy: ResourcePolicyPreferences
@@ -628,6 +679,13 @@ export type Preferences = {
   workerRuleSets: RuleSet[] | null
 
   router9?: Router9Preferences
+
+  /** Pomodoro cycle durations, in minutes. */
+  pomodoroWorkMinutes: number
+  pomodoroShortBreakMinutes: number
+  pomodoroLongBreakMinutes: number
+  /** Mirrors `pomodoroStore`'s running session so it survives an app restart. */
+  pomodoroSession: PomodoroSessionSnapshot | null
 }
 
 export type ResourcePolicyMode = 'smart-lru' | 'manual'
@@ -645,7 +703,7 @@ export type ResourcePolicyPreferences = {
 }
 
 export type ProjectsFile = {
-  version: 8
+  version: 9
   groups: Group[]
 
   ungroupedOrder: string[]
@@ -693,6 +751,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
     claude: true,
     codex: true,
     copilot: true,
+    cursor: true,
     antigravity: true,
     opencode: true,
     freebuff: true,
@@ -736,6 +795,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
     mcp: true,
     playwright: false,
     orchestrator: false,
+    prs: true,
   },
   playwrightBrowserMode: 'shared',
   playwrightDedicatedHeadless: false,
@@ -750,6 +810,10 @@ export const DEFAULT_PREFERENCES: Preferences = {
   rightSidebarWidth: 300,
   notifyOnLimitReset: true,
   dictationEnabled: false,
+  dictationMode: 'toggle',
+  dictationModelId: 'parakeet-tdt-0.6b-v3-int8',
+  dictationMicrophoneId: null,
+  dictationMicrophoneLabel: null,
   spawnConcurrency: 3,
   resourcePolicy: {
     mode: 'manual',
@@ -764,10 +828,14 @@ export const DEFAULT_PREFERENCES: Preferences = {
   nodeHeapProfile: 'balanced',
   orchestratorShortcuts: null,
   workerRuleSets: null,
+  pomodoroWorkMinutes: 25,
+  pomodoroShortBreakMinutes: 5,
+  pomodoroLongBreakMinutes: 15,
+  pomodoroSession: null,
 }
 
 export const EMPTY_PROJECTS_FILE: ProjectsFile = {
-  version: 8,
+  version: 9,
   groups: [],
   ungroupedOrder: [],
   projects: [],
@@ -816,6 +884,9 @@ export const PROVIDER_MODELS: Record<BuiltinAgentType, { id: string; label: stri
     { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
   ],
   copilot: [],
+  // Cursor rotates its model list per account and answers `cursor-agent models`, so nothing is
+  // hardcoded here — discovery fills the picker.
+  cursor: [],
   opencode: [
     { id: 'deepseek/deepseek-r1', label: 'DeepSeek R1 (Raciocínio)' },
     { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3' },
@@ -842,9 +913,18 @@ export const PROVIDER_MODELS: Record<BuiltinAgentType, { id: string; label: stri
 
 export type McpScope = 'global' | 'project'
 
-export type McpAgent = Extract<BuiltinAgentType, 'claude' | 'codex' | 'opencode' | 'antigravity'>
+export type McpAgent = Extract<
+  BuiltinAgentType,
+  'claude' | 'codex' | 'cursor' | 'opencode' | 'antigravity'
+>
 
-export const MCP_AGENTS: McpAgent[] = ['claude', 'codex', 'opencode', 'antigravity']
+export const MCP_AGENTS: McpAgent[] = ['claude', 'codex', 'cursor', 'opencode', 'antigravity']
+
+/**
+ * Agents whose CLI can report how each configured server is actually doing. The others only have
+ * their config file read back, so the panel has no live status to offer for them.
+ */
+export const MCP_HEALTH_AGENTS: McpAgent[] = ['claude', 'codex', 'opencode']
 
 /** Literal values never leave Rust: `preview` is masked, use mcpRevealEnv for the real one. */
 export type McpEnvEntry = {

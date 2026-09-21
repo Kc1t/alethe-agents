@@ -1,17 +1,17 @@
 import { ChevronDown, ChevronRight, FileText, Folder, Link2, Lock, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useT } from '../../../lib/i18n'
 import { groupSkillsByName, type SkillGroup } from '../../../lib/skills'
 import {
   skillsDetail,
-  skillsScan,
   skillsUninstall,
   type SkillAgentSnapshot,
   type SkillDetail,
   type SkillNode,
   type SkillSummary,
 } from '../../../lib/tauri'
+import { scanSkills } from '../../../lib/skillsScan'
 import { agentLabel as agentTypeLabel } from '../../../lib/agentProviders'
 import { useUiStore } from '../../../stores/uiStore'
 import { EmptyState } from '../../EmptyState'
@@ -25,6 +25,7 @@ type RemoveTarget = { group: SkillGroup; entries: SkillSummary[] }
 export function SkillsBrowser({ dark }: { dark: boolean }) {
   const t = useT()
   const pushToast = useUiStore((state) => state.pushToast)
+  const mountedRef = useRef(true)
   const agentLabel = (agent: string) =>
     agent === 'shared' ? t('skills.sharedStore') : agentTypeLabel(agent)
 
@@ -34,11 +35,16 @@ export function SkillsBrowser({ dark }: { dark: boolean }) {
   const [removeTarget, setRemoveTarget] = useState<RemoveTarget | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const load = async () => {
+  useEffect(() => () => {
+    mountedRef.current = false
+  }, [])
+
+  const load = async (force = false) => {
     try {
-      setSnapshots(await skillsScan())
+      const next = await scanSkills(force)
+      if (mountedRef.current) setSnapshots(next)
     } catch {
-      setSnapshots([])
+      if (mountedRef.current) setSnapshots([])
     }
   }
 
@@ -79,6 +85,7 @@ export function SkillsBrowser({ dark }: { dark: boolean }) {
     const failed: string[] = []
     let sharedKept: string | null = null
     for (const entry of target.entries) {
+      if (!mountedRef.current) return
       try {
         const report = await skillsUninstall(entry.agent, entry.name)
         removed.push(agentLabel(entry.agent))
@@ -104,9 +111,10 @@ export function SkillsBrowser({ dark }: { dark: boolean }) {
     if (failed.length > 0) {
       pushToast({ title: t('skills.removeFailed'), body: failed.join(' · ') })
     }
+    if (!mountedRef.current) return
     setSelected(null)
-    await load()
-    setBusy(false)
+    await load(true)
+    if (mountedRef.current) setBusy(false)
   }
 
   if (snapshots === null) return <p className={styles.muted}>{t('skills.loading')}</p>

@@ -189,8 +189,7 @@
 .groupTabClose {
   display: grid;
   place-items: center;
-                                                                           
-                                                                  
+
   width: 0;
   height: 18px;
   margin-left: 0;
@@ -274,8 +273,6 @@
 }
 
 .spacer {
-                                                                             
-                                                                               
   flex: 1 1 0;
   height: 100%;
   min-width: 12px;
@@ -335,6 +332,90 @@
 
 .remoteDevicePill svg {
   flex-shrink: 0;
+}
+
+.pomodoroPill {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  pointer-events: auto;
+}
+
+.pomodoroPillMain {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 8px 0 2px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.pomodoroPillMain:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.pomodoroRing {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.pomodoroRingSvg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+  transition: stroke-dashoffset 900ms linear;
+}
+
+.pomodoroRingIcon {
+  display: grid;
+  place-items: center;
+}
+
+.pomodoroCountdown {
+  min-width: 30px;
+}
+
+.pomodoroDivider {
+  width: 1px;
+  height: 12px;
+  background: var(--border-strong);
+}
+
+.pomodoroToggle {
+  width: 18px;
+  height: 18px;
+  margin: 0 2px 0 4px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--fg-muted);
+}
+
+.pomodoroToggle:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+
+.pomodoroPill[data-status='paused'] .pomodoroCountdown,
+.pomodoroPill[data-status='finished'] .pomodoroCountdown {
+  color: var(--status-waiting);
 }
 
 .rightSidebarBtn {
@@ -759,7 +840,8 @@
 :global([data-visual-style='clean']) .profilePill,
 :global([data-visual-style='clean']) .syncPill,
 :global([data-visual-style='clean']) .ramPill,
-:global([data-visual-style='clean']) .remoteDevicePill {
+:global([data-visual-style='clean']) .remoteDevicePill,
+:global([data-visual-style='clean']) .pomodoroPill {
   border-radius: 4px;
   border-color: transparent;
   background: transparent;
@@ -775,6 +857,11 @@
   color: var(--fg);
   background: var(--panel-hover);
   border-color: transparent;
+}
+
+:global([data-visual-style='clean']) .pomodoroPillMain,
+:global([data-visual-style='clean']) .pomodoroToggle {
+  border-radius: 4px;
 }
 
 :global([data-visual-style='clean']) .ramPressureLow,

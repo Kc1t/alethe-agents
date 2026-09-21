@@ -1,5 +1,5 @@
 import { AlertTriangle, Copy, Eye, Plus, Search, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
 import {
@@ -18,7 +18,7 @@ import {
   mcpSync,
 } from '../../lib/tauri'
 import type { McpAgent, McpEnvEntry, McpServerRecord } from '../../lib/types'
-import { AGENT_TYPE_LABELS, MCP_AGENTS } from '../../lib/types'
+import { AGENT_TYPE_LABELS, MCP_AGENTS, MCP_HEALTH_AGENTS } from '../../lib/types'
 import { useMcpStore } from '../../stores/mcpStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -44,6 +44,7 @@ export function McpManagerModal() {
   const requestedAdd = useUiStore((state) => state.modalContext?.add)
   const closeModal = useUiStore((state) => state.closeModal)
   const pushToast = useUiStore((state) => state.pushToast)
+  const mountedRef = useRef(true)
 
   const scope = useMcpStore((state) => state.scope)
   const repo = useMcpStore((state) => state.repo)
@@ -64,6 +65,10 @@ export function McpManagerModal() {
   const [adding, setAdding] = useState(false)
   const [health, setHealth] = useState<Partial<Record<McpAgent, McpHealth[]>>>({})
   const [checking, setChecking] = useState<McpAgent | null>(null)
+
+  useEffect(() => () => {
+    mountedRef.current = false
+  }, [])
 
   const writableAgents = useMemo(
     () =>
@@ -100,6 +105,7 @@ export function McpManagerModal() {
   if (!open) return null
 
   const reportError = (error: unknown) => {
+    if (!mountedRef.current) return
     const raw = error instanceof Error ? error.message : String(error)
     pushToast({ title: t('mcp.writeFailed'), body: t(mcpErrorKey(raw)) })
   }
@@ -108,11 +114,12 @@ export function McpManagerModal() {
     setPending(key)
     try {
       await action()
+      if (!mountedRef.current) return
       await refresh()
     } catch (error) {
       reportError(error)
     } finally {
-      setPending(null)
+      if (mountedRef.current) setPending(null)
     }
   }
 
@@ -143,6 +150,7 @@ export function McpManagerModal() {
     setPending(`sync:${targets.join(',')}`)
     try {
       const outcomes = await mcpSync(from, targets, scope, repo, name)
+      if (!mountedRef.current) return
       const names = (status: string) =>
         outcomes
           .filter((outcome) => outcome.status === status)
@@ -179,11 +187,11 @@ export function McpManagerModal() {
           ].join(' '),
         })
       }
-      await refresh()
+      if (mountedRef.current) await refresh()
     } catch (error) {
       reportError(error)
     } finally {
-      setPending(null)
+      if (mountedRef.current) setPending(null)
     }
   }
 
@@ -191,11 +199,11 @@ export function McpManagerModal() {
     setChecking(agent)
     try {
       const probed = await mcpHealthCheck(agent)
-      setHealth((current) => ({ ...current, [agent]: probed }))
+      if (mountedRef.current) setHealth((current) => ({ ...current, [agent]: probed }))
     } catch (error) {
       reportError(error)
     } finally {
-      setChecking(null)
+      if (mountedRef.current) setChecking(null)
     }
   }
 
@@ -210,7 +218,7 @@ export function McpManagerModal() {
         key,
         header,
       )
-      setRevealed((current) => ({ ...current, [cacheKey]: value }))
+      if (mountedRef.current) setRevealed((current) => ({ ...current, [cacheKey]: value }))
     } catch (error) {
       reportError(error)
     }
@@ -508,7 +516,7 @@ function ServerDetail({
                   {record.sourcePath}
                 </span>
                 <span className={styles.agentActions}>
-                  {agent !== 'antigravity' ? (
+                  {MCP_HEALTH_AGENTS.includes(agent) ? (
                     <button
                       type="button"
                       className={`${controls.btn} ${controls.btnSm}`}

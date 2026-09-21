@@ -1,6 +1,7 @@
 import {
   Folder,
   FolderSearch,
+  Grid2X2,
   ListChecks,
   SquareTerminal,
   Waypoints,
@@ -10,17 +11,18 @@ import {
 import { type KeyboardEvent, useEffect, useMemo, useState } from 'react'
 
 import { useRouter9Runtime } from '../../hooks/useRouter9Runtime'
-import { pickDirectory } from '../../lib/dialog'
-import { useT } from '../../lib/i18n'
-import { basename, pathSegments } from '../../lib/paths'
-import { formatShortcut } from '../../lib/platform'
-import { router9SupportsAgent } from '../../lib/router9'
 import {
   agentLabel,
   isAgentEnabled,
   resolveUnrestrictedFlag,
   useAgentTypes,
 } from '../../lib/agentProviders'
+import { pickDirectory } from '../../lib/dialog'
+import { useT } from '../../lib/i18n'
+import { basename, pathSegments } from '../../lib/paths'
+import { formatShortcut } from '../../lib/platform'
+import { DEFAULT_GRID_ID } from '../../lib/projectGrids'
+import { router9SupportsAgent } from '../../lib/router9'
 import { isShellAgentType, type AgentRuntimeProfile, type AgentType } from '../../lib/types'
 import { getProjectDefaultCwd, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -33,6 +35,7 @@ import { RowSelect, type RowSelectOption } from './RowSelect'
 const PLANNER_AGENTS: AgentType[] = ['claude', 'codex']
 
 const BROWSE_OPTION = '__browse__'
+const UNGROUPED_GRID = '__ungrouped__'
 
 type SessionMode = 'terminal' | 'orchestration'
 
@@ -48,6 +51,7 @@ export function NewTerminalModal() {
   const open = useUiStore((s) => s.openModal === 'newTerminal')
   const context = useUiStore((s) => s.modalContext) as {
     projectId?: string
+    gridId?: string
     // Callers that need a particular kind of terminal narrow the choice rather than opening a
     // second modal that would drift from this one.
     only?: AgentType[]
@@ -78,6 +82,7 @@ export function NewTerminalModal() {
   const [runtimeProfile, setRuntimeProfile] = useState<AgentRuntimeProfile>('lean')
   const [cwd, setCwd] = useState('')
   const [unrestricted, setUnrestricted] = useState<Partial<Record<AgentType, boolean>>>({})
+  const [selectedGridId, setSelectedGridId] = useState(UNGROUPED_GRID)
 
   const only = context?.only
   const isPlannerContext = context?.titleKey === 'term.newPlannerTitle'
@@ -90,7 +95,9 @@ export function NewTerminalModal() {
   const orchestrating = canOrchestrate && mode === 'orchestration'
   const modeAgents = orchestrating ? plannerAgents : visibleAgents
   const defaultType =
-    visibleAgents.find((agent) => agent.type === 'claude')?.type ?? visibleAgents[0]?.type ?? 'shell'
+    visibleAgents.find((agent) => agent.type === 'claude')?.type ??
+    visibleAgents[0]?.type ??
+    'shell'
   const selectedAgent = allAgents.find((agent) => agent.type === type) ?? allAgents[0]
   const inheritedCwd = useMemo(() => getProjectDefaultCwd(project, projects), [project, projects])
   const recentFolders = useMemo(() => {
@@ -132,9 +139,11 @@ export function NewTerminalModal() {
       mimo: alwaysStartUnrestricted,
       kiro: alwaysStartUnrestricted,
     })
+    setSelectedGridId(context?.gridId ?? UNGROUPED_GRID)
   }, [
     open,
     context?.projectId,
+    context?.gridId,
     inheritedCwd,
     defaultType,
     alwaysStartUnrestricted,
@@ -160,14 +169,15 @@ export function NewTerminalModal() {
       mimo: false,
       kiro: false,
     })
+    setSelectedGridId(UNGROUPED_GRID)
   }
 
   // Without a key the injected environment would be empty, so the toggle would silently do nothing.
   const routingAvailable = Boolean(
     router9.config.enabled &&
-      router9.config.apiKey.trim() &&
-      router9.hasInstall &&
-      router9SupportsAgent(type),
+    router9.config.apiKey.trim() &&
+    router9.hasInstall &&
+    router9SupportsAgent(type),
   )
 
   const submit = async () => {
@@ -195,7 +205,10 @@ export function NewTerminalModal() {
       ...(orchestrating ? { enabledFeatures: { ...enabledFeatures, orchestrator: true } } : {}),
       lastTerminalCreation: creation,
     })
-    const terminal = await createAgentTerminal(context.projectId, creation)
+    const terminal = await createAgentTerminal(context.projectId, {
+      ...creation,
+      gridId: selectedGridId === UNGROUPED_GRID ? undefined : selectedGridId,
+    })
     if (orchestrating) {
       const canvas = createOrchestratorPane(context.projectId, finalCwd)
       groupPanes(context.projectId, [terminal.id, canvas.id], { kind: 'orchestration' })
@@ -255,6 +268,12 @@ export function NewTerminalModal() {
       icon: <FolderSearch size={15} />,
     },
   ]
+  const gridOptions: RowSelectOption[] = [
+    { value: UNGROUPED_GRID, title: t('term.gridUngrouped'), icon: <SquareTerminal size={15} /> },
+    ...(project?.grids ?? [])
+      .filter((grid) => grid.id !== DEFAULT_GRID_ID)
+      .map((grid) => ({ value: grid.id, title: grid.name, icon: <Grid2X2 size={15} /> })),
+  ]
 
   const handleShortcut = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return
@@ -289,11 +308,7 @@ export function NewTerminalModal() {
             </button>
           ) : null}
           <span className={styles.footerFill} />
-          <button
-            type="button"
-            className={controls.btn}
-            onClick={closeModal}
-          >
+          <button type="button" className={controls.btn} onClick={closeModal}>
             {t('term.cancel')}
           </button>
           <button
@@ -412,6 +427,31 @@ export function NewTerminalModal() {
             <span className={styles.advancedHint}>{t('term.advancedHint')}</span>
           </summary>
           <div className={styles.advancedBody}>
+            {project && gridOptions.length > 1 ? (
+              <div className={styles.field}>
+                <span className={styles.fieldLabel}>
+                  <span className={styles.fieldLabelText}>{t('term.gridLabel')}</span>
+                </span>
+                <RowSelect
+                  field="grid"
+                  ariaLabel={t('term.gridLabel')}
+                  value={selectedGridId}
+                  options={gridOptions}
+                  onChange={setSelectedGridId}
+                  icon={
+                    selectedGridId === UNGROUPED_GRID ? (
+                      <SquareTerminal size={15} />
+                    ) : (
+                      <Grid2X2 size={15} />
+                    )
+                  }
+                  title={
+                    gridOptions.find((option) => option.value === selectedGridId)?.title ??
+                    t('term.gridUngrouped')
+                  }
+                />
+              </div>
+            ) : null}
             {resolveUnrestrictedFlag(type) ? (
               <>
                 <button

@@ -20,7 +20,12 @@ import { buildGhosttyCommand } from '../../lib/ghosttyCommand'
 import { useT } from '../../lib/i18n'
 import { shouldUseNativeBackend } from '../../lib/platform'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
-import { getActiveSessions, savedConversationIdFor, saveSession } from '../../lib/sessionResume'
+import {
+  conversationFields,
+  getActiveSessions,
+  savedConversationIdFor,
+  saveSession,
+} from '../../lib/sessionResume'
 import {
   agentHooksSettingsPath,
   completeAgentHandoff,
@@ -255,9 +260,7 @@ export const TerminalPane = memo(function TerminalPane({
       if (launch.sessionId) {
         saveSession(activeTab.id, {
           sessionId: ptyId,
-          claudeSessionId: activeTab.type === 'claude' ? launch.sessionId : undefined,
-          codexSessionId: activeTab.type === 'codex' ? launch.sessionId : undefined,
-          antigravitySessionId: activeTab.type === 'antigravity' ? launch.sessionId : undefined,
+          ...conversationFields(activeTab.type, launch.sessionId),
           cwd: restartCwd,
           agent: activeTab.type,
           timestamp: Date.now(),

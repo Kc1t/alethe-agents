@@ -59,6 +59,7 @@ pub trait McpAdapter: Send + Sync {
 
 static CLAUDE: ClaudeAdapter = ClaudeAdapter;
 static CODEX: CodexAdapter = CodexAdapter;
+static CURSOR: CursorAdapter = CursorAdapter;
 static OPENCODE: OpenCodeAdapter = OpenCodeAdapter;
 static ANTIGRAVITY: AntigravityAdapter = AntigravityAdapter;
 
@@ -66,6 +67,7 @@ pub fn adapter(agent: McpAgent) -> &'static dyn McpAdapter {
     match agent {
         McpAgent::Claude => &CLAUDE,
         McpAgent::Codex => &CODEX,
+        McpAgent::Cursor => &CURSOR,
         McpAgent::Opencode => &OPENCODE,
         McpAgent::Antigravity => &ANTIGRAVITY,
     }
@@ -73,6 +75,7 @@ pub fn adapter(agent: McpAgent) -> &'static dyn McpAdapter {
 
 pub struct ClaudeAdapter;
 pub struct CodexAdapter;
+pub struct CursorAdapter;
 pub struct OpenCodeAdapter;
 pub struct AntigravityAdapter;
 
@@ -101,6 +104,48 @@ impl McpAdapter for ClaudeAdapter {
                 ));
                 sources
             }
+        }
+    }
+
+    fn parse(&self, raw: &str, source: &McpSource) -> Result<Vec<McpServer>, String> {
+        parse_json_servers(raw, "mcpServers", false, source)
+    }
+
+    fn upsert(&self, raw: &str, source: &McpSource, server: &McpServer) -> Result<String, String> {
+        json_upsert(raw, "mcpServers", CLAUDE_MANAGED, false, source, server)
+    }
+
+    fn remove(&self, raw: &str, source: &McpSource, name: &str) -> Result<String, String> {
+        json_remove(raw, "mcpServers", source, name)
+    }
+
+    fn set_enabled(
+        &self,
+        _raw: &str,
+        _source: &McpSource,
+        _name: &str,
+        _on: bool,
+    ) -> Result<String, String> {
+        Err("unsupported_disable".to_string())
+    }
+}
+
+/// Cursor reads `mcpServers` in the Claude shape from `~/.cursor/mcp.json`, and per repo from
+/// `<repo>/.cursor/mcp.json` — the file it also writes when a server is added from inside the IDE.
+impl McpAdapter for CursorAdapter {
+    fn config_sources(&self, scope: McpScope, repo: Option<&Path>) -> Vec<McpSource> {
+        match scope {
+            McpScope::Global => mcp_home(&[".cursor", "mcp.json"])
+                .map(|path| vec![McpSource::file(path, McpSourceKind::User)])
+                .unwrap_or_default(),
+            McpScope::Project => repo
+                .map(|root| {
+                    vec![McpSource::file(
+                        root.join(".cursor").join("mcp.json"),
+                        McpSourceKind::Project,
+                    )]
+                })
+                .unwrap_or_default(),
         }
     }
 
@@ -1093,6 +1138,20 @@ name = "gate"
             .parse(r#"{"model":"a/b"}"#, &user_src())
             .expect("parses")
             .is_empty());
+    }
+
+    #[test]
+    fn cursor_reads_the_claude_shape_and_keeps_a_project_file() {
+        let raw = r#"{"mcpServers":{"figma":{"url":"https://mcp.figma.com/sse"}}}"#;
+        assert_eq!(
+            CursorAdapter.parse(raw, &user_src()).expect("parses").len(),
+            1
+        );
+
+        let repo = PathBuf::from("D:/repo");
+        let sources = CursorAdapter.config_sources(McpScope::Project, Some(&repo));
+        assert_eq!(sources.len(), 1);
+        assert!(sources[0].path.ends_with(PathBuf::from(".cursor/mcp.json")));
     }
 
     #[test]

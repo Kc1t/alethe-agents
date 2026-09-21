@@ -24,7 +24,9 @@ import {
 } from 'react'
 
 import { useOrchestratorQuotaWarnings } from '../../hooks/useOrchestratorQuotaWarnings'
+import { COST_POLL_MS } from '../../lib/agentCanvasConfig'
 import { formatReset } from '../../lib/agentCanvasUtils'
+import { fmtUsd } from '../../lib/costFormat'
 import { type MessageKey, type TFunction, useT } from '../../lib/i18n'
 import {
   DOT_SPACING,
@@ -41,6 +43,7 @@ import {
 } from '../../lib/orchestratorGraph'
 import { extractMediaItems, splitPromotedMedia, type MediaItem } from '../../lib/orchestratorMedia'
 import {
+  aggregateAgentSpend,
   type Attention,
   type AttentionLane,
   attentionOf,
@@ -79,6 +82,7 @@ import {
 } from '../../lib/orchestratorShells'
 import type { OrchestratorShortcut, Project, Terminal, Theme } from '../../lib/types'
 import { useAgentCanvasStore } from '../../stores/agentCanvasStore'
+import { useNodeCostStore } from '../../stores/nodeCostStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -286,6 +290,8 @@ function WorkerNode({
 }: WorkerNodeProps) {
   const share = contextShare(job)
   const tokens = formatTokens(job.tokens?.total?.totalTokens)
+  const cost =
+    job.costUsd !== null ? fmtUsd(job.costUsd) : tokens ? t('orchestrator.noPrice') : null
   const elapsed = formatElapsed(job.seconds)
   const live = latestLine(job.summary) || latestLine(job.spec)
   const stoppable = canStop(job)
@@ -359,6 +365,7 @@ function WorkerNode({
             </span>
           )}
           {tokens && <span title={t('orchestrator.tokensTitle')}>{tokens}</span>}
+          {cost && <span title={t('orchestrator.costTitle')}>{cost}</span>}
           {job.worktree && (
             <span className={styles.metaIcon} title={job.worktree}>
               <GitBranch size={9} aria-hidden />
@@ -800,10 +807,14 @@ export const OrchestratorPane = memo(function OrchestratorPane({
   }, [busy])
 
   const subagentNodes = useAgentCanvasStore((s) => s.nodes)
+  const nodeCosts = useNodeCostStore((s) => s.byNodeId)
 
   // Planners live app-wide (one per agent terminal, anywhere), so the snapshot is global — but the
   // board is opened from one project, and a planner from another project is noise here, not signal.
-  const project = useMemo(() => projects.find((p) => p.id === projectId) ?? null, [projects, projectId])
+  const project = useMemo(
+    () => projects.find((p) => p.id === projectId) ?? null,
+    [projects, projectId],
+  )
   const projectPtyIds = useMemo(() => {
     const ids = new Set<string>()
     if (!project) return ids
@@ -813,8 +824,21 @@ export const OrchestratorPane = memo(function OrchestratorPane({
     return ids
   }, [project])
 
+  const projectSubagentNodes = useMemo(
+    () => subagentNodes.filter((node) => !node.plannerId || projectPtyIds.has(node.plannerId)),
+    [subagentNodes, projectPtyIds],
+  )
+
+  useEffect(() => {
+    if (!projectSubagentNodes.some((node) => node.transcriptPath)) return
+    const refresh = () => void useNodeCostStore.getState().refresh(projectSubagentNodes)
+    refresh()
+    const timer = window.setInterval(refresh, COST_POLL_MS)
+    return () => window.clearInterval(timer)
+  }, [projectSubagentNodes])
+
   const jobs = useMemo(() => {
-    const native = nativeSubagentJobs(subagentNodes)
+    const native = nativeSubagentJobs(subagentNodes, nodeCosts)
     const all = native.length > 0 ? [...snapshot.jobs, ...native] : snapshot.jobs
     return all.filter((job) =>
       job.plannerId
@@ -823,7 +847,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
           ? job.cwd.startsWith(project.defaultCwd)
           : true,
     )
-  }, [snapshot.jobs, subagentNodes, projectPtyIds, project])
+  }, [snapshot.jobs, subagentNodes, nodeCosts, projectPtyIds, project])
   // Every planner id these jobs could point at, so a shortcut's visibility can react to that one
   // terminal dying without depending on the whole `byPtyId` map (which changes for any terminal).
   const jobPlannerIds = useMemo(
@@ -850,6 +874,7 @@ export const OrchestratorPane = memo(function OrchestratorPane({
   const activeGroup =
     groups.find((group) => plannerKey(group) === selectedPlanner) ?? groups[0] ?? null
   const groupJobs = useMemo(() => activeGroup?.jobs ?? [], [activeGroup])
+  const spendByAgent = useMemo(() => aggregateAgentSpend(groupJobs), [groupJobs])
   const runs = useMemo(() => activeGroup?.runs ?? [], [activeGroup])
   const plannerId = activeGroup?.id ?? null
   // The planners of every group on screen right now — a shell of one of these stays under its own
@@ -1239,16 +1264,40 @@ export const OrchestratorPane = memo(function OrchestratorPane({
         </div>
         <div className={styles.headRight}>
           <div className={styles.counts}>
+            {spendByAgent.map((spend) => {
+              const price =
+                spend.pricedWorkers > 0 ? fmtUsd(spend.costUsd) : t('orchestrator.noPrice')
+              return (
+                <span
+                  key={spend.agent}
+                  className={styles.spendChip}
+                  title={t('orchestrator.agentSpendTitle', {
+                    agent: spend.agent,
+                    cost: price,
+                    tokens: formatTokens(spend.totalTokens) ?? '0',
+                  })}
+                >
+                  <AgentGlyph agent={spend.agent} theme={theme} size={11} className={styles.glyph} />
+                  <span>{spend.agent}</span>
+                  <b>{price}</b>
+                </span>
+              )
+            })}
             {quotaWarnings.map((warning) => (
               <span
                 key={warning.agent}
                 className={styles.countAlert}
-                title={t('orchestrator.quotaWarningTitle', { agent: warning.agent, pct: warning.pct })}
+                title={t('orchestrator.quotaWarningTitle', {
+                  agent: warning.agent,
+                  pct: warning.pct,
+                })}
               >
                 {t('orchestrator.quotaWarning', {
                   agent: warning.agent,
                   pct: warning.pct,
-                  resets: warning.resetsAt ? formatReset(warning.resetsAt, t('orchestrator.quotaResetsNow')) : '—',
+                  resets: warning.resetsAt
+                    ? formatReset(warning.resetsAt, t('orchestrator.quotaResetsNow'))
+                    : '—',
                 })}
               </span>
             ))}
@@ -1349,7 +1398,12 @@ export const OrchestratorPane = memo(function OrchestratorPane({
                       transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
                     }}
                   >
-                    <svg className={styles.edges} width={graph.width} height={graph.height} aria-hidden>
+                    <svg
+                      className={styles.edges}
+                      width={graph.width}
+                      height={graph.height}
+                      aria-hidden
+                    >
                       {graph.edges.map((edge) => (
                         <path
                           key={edge.id}
@@ -1516,7 +1570,9 @@ export const OrchestratorPane = memo(function OrchestratorPane({
               <button
                 type="button"
                 className={styles.railHead}
-                title={t(summaryOpen ? 'orchestrator.summaryCollapse' : 'orchestrator.summaryExpand')}
+                title={t(
+                  summaryOpen ? 'orchestrator.summaryCollapse' : 'orchestrator.summaryExpand',
+                )}
                 aria-expanded={summaryOpen}
                 onPointerDown={(event) => event.stopPropagation()}
                 onClick={() => setSummaryOpen((open) => !open)}

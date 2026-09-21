@@ -39,6 +39,7 @@ function job(
     seconds: null,
     plan: [],
     tokens: null,
+    costUsd: null,
     routing: null,
     worktree: null,
     hasDiff: false,

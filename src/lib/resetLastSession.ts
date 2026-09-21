@@ -9,7 +9,7 @@
                                                               
    
 
-import { getActiveSessions, saveSession } from './sessionResume'
+import { conversationFields, getActiveSessions, saveSession } from './sessionResume'
 import { acquireSpawnSlot, releaseSpawnSlot } from './spawnQueue'
 import {
   getPtyCwd,
@@ -23,7 +23,7 @@ import type { AgentType } from './types'
 import { useProjectsStore } from '../stores/projectsStore'
 import { useTerminalsStore } from '../stores/terminalsStore'
 
-const RESUMABLE: AgentType[] = ['claude', 'codex', 'opencode', 'antigravity']
+const RESUMABLE: AgentType[] = ['claude', 'codex', 'cursor', 'opencode', 'antigravity']
 
 export type ResetLastSessionResult = { resumed: number; total: number }
 
@@ -117,6 +117,12 @@ function buildResumeArgs(agent: AgentType, baseArgs: string[], sessionId: string
       (a) => a !== '--continue' && a !== '-c',
     )
     return sessionId ? ['--conversation', sessionId, ...clean] : ['--continue', ...clean]
+  }
+  if (agent === 'cursor') {
+    const clean = stripFlagWithValue(baseArgs, '--resume').filter(
+      (a) => a !== '--continue' && !a.startsWith('--resume='),
+    )
+    return sessionId ? ['--resume', sessionId, ...clean] : ['--continue', ...clean]
   }
                                                                           
                             
@@ -226,9 +232,7 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
                                                                           
       saveSession(target.ptyId, {
         sessionId: target.ptyId,
-        claudeSessionId: target.agent === 'claude' ? (sessionId ?? undefined) : undefined,
-        codexSessionId: target.agent === 'codex' ? (sessionId ?? undefined) : undefined,
-        opencodeSessionId: target.agent === 'opencode' ? (sessionId ?? undefined) : undefined,
+        ...conversationFields(target.agent, sessionId ?? undefined),
         cwd,
         agent: target.agent,
         timestamp: Date.now(),

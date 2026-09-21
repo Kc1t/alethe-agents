@@ -1,5 +1,5 @@
 import { Plus, X } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useT } from '../../../lib/i18n'
 import { mcpErrorKey, parsePastedServer, unsupportedFor } from '../../../lib/mcp'
@@ -162,6 +162,7 @@ export function AddServerFlow({
 }: Props) {
   const t = useT()
   const pushToast = useUiStore((state) => state.pushToast)
+  const mountedRef = useRef(true)
 
   const [source, setSource] = useState<Source>(initialSource)
   const [name, setName] = useState('')
@@ -173,6 +174,10 @@ export function AddServerFlow({
   const [paste, setPaste] = useState('')
   const [targets, setTargets] = useState<McpAgent[]>(availableAgents)
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => () => {
+    mountedRef.current = false
+  }, [])
 
   const manualServer: McpServerInput | null = useMemo(() => {
     const envInputs: McpEnvInput[] = rows
@@ -244,6 +249,7 @@ export function AddServerFlow({
     const failed: string[] = []
     for (const agent of selectable) {
       for (const server of servers) {
+        if (!mountedRef.current) return
         try {
           await mcpUpsert(agent, scope, repo, server)
           written.push(AGENT_TYPE_LABELS[agent])
@@ -253,6 +259,7 @@ export function AddServerFlow({
         }
       }
     }
+    if (!mountedRef.current) return
     setBusy(false)
     if (written.length > 0) {
       pushToast({
@@ -271,12 +278,14 @@ export function AddServerFlow({
     <Modal
       nested
       open
-      onClose={onClose}
+      onClose={() => {
+        if (!busy) onClose()
+      }}
       title={t('mcp.addTitle')}
       width={620}
       footer={
         <>
-          <button type="button" className={controls.btn} onClick={onClose}>
+          <button type="button" className={controls.btn} onClick={onClose} disabled={busy}>
             {t('common.cancel')}
           </button>
           <button

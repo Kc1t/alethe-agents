@@ -45,6 +45,9 @@ Roughly ordered from "you can do this today" to "talk to us first":
    Bigger, less hand-held, still well-defined.
 6. **Propose a feature.** Open an issue describing the *workflow* it would improve before writing
    code — it's the cheapest way to avoid building something that won't be merged.
+7. **Write a plugin.** Features can live outside the core. The [plugin guide](docs/PLUGINS.md)
+   covers the manifest, capabilities and contribution points, and how to get a plugin listed in
+   the in-app catalogue.
 
 > For anything larger than a bug fix, open an issue first so the direction can be agreed on
 > before you spend your evening on it.
@@ -199,8 +202,9 @@ CSS Modules + custom properties. No Tailwind, no styled-components, no global st
 
 **4. Feature changes update the changelog.**
 Any feature added, changed, or removed gets a short, user-facing line in
-[`docs/CHANGELOG.md`](docs/CHANGELOG.md) under the `[Não lançado]` section at the top. Release
-notes are generated from it. Pure bug fixes and refactors don't need an entry.
+[`docs/CHANGELOG.md`](docs/CHANGELOG.md) under the `[Unreleased]` section at the top. That section
+becomes the dated version at release time, and the release notes are written from it — see
+[`docs/RELEASING.md`](docs/RELEASING.md). Pure bug fixes and refactors don't need an entry.
 
 **5. Reuse the domain types.**
 New domain types go in `src/lib/types.ts`. Check what's there before defining a near-duplicate.
@@ -283,5 +287,8 @@ The Rust backend compiles from scratch the first time. Grab a coffee; it's cache
 ## License
 
 Alethe is licensed under **AGPL-3.0-or-later**. By contributing, you agree that your contribution
-is licensed under the same terms. The **Alethe** name, logo, and branding are reserved for
-official builds — see [`TRADEMARK.md`](TRADEMARK.md).
+is licensed under the same terms. Preserve the project's copyright, license, attribution, and
+warranty notices when redistributing the code. The **Alethe** name, logo, application icon, and
+branding are reserved for official builds and are not licensed under the AGPL. Modified builds
+must be independently branded unless Kauã Miguel grants prior written permission — see
+[`NOTICE`](NOTICE) and [`TRADEMARK.md`](TRADEMARK.md).

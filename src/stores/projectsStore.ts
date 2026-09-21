@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid'
+import { DEFAULT_GRID_ID, normalizeProjectGrids, selectProjectGrid } from '../lib/projectGrids'
 import { create } from 'zustand'
 
 import { setStorageNamespace } from '../lib/storageNamespace'
@@ -46,10 +47,7 @@ import {
 } from '../lib/workspaceNavigation'
 import { migrate } from './projectsStore.migrations'
 import { createGroupsSlice, createProjectsSlice } from './projectsStore.projectSlices'
-import {
-  createPreferencesSlice,
-  createSubTabsSlice,
-} from './projectsStore.slices'
+import { createPreferencesSlice, createSubTabsSlice } from './projectsStore.slices'
 import { createContainersSlice, createTerminalsSlice } from './projectsStore.terminalSlices'
 import { createWorkspaceSlice } from './projectsStore.workspaceSlices'
 
@@ -90,6 +88,14 @@ export type ProjectsState = ProjectsFile & {
   moveProjectToGroup: (projectId: string, groupId: string | null, atIndex?: number) => void
   reorderProjectInGroup: (projectId: string, fromIndex: number, toIndex: number) => void
   reorderUngrouped: (projectId: string, fromIndex: number, toIndex: number) => void
+
+  // Named grids within a project.
+  createProjectGrid: (projectId: string, name: string) => string | null
+  renameProjectGrid: (projectId: string, gridId: string, name: string) => boolean
+  toggleProjectGridCollapsed: (projectId: string, gridId: string) => void
+  openProjectGrid: (projectId: string, gridId: string) => void
+  moveTerminalToGrid: (projectId: string, terminalId: string, gridId: string) => void
+  deleteProjectGrid: (projectId: string, gridId: string, mode: 'move' | 'delete') => Promise<void>
 
   // projects
   createProject: (args: {
@@ -175,12 +181,12 @@ export type ProjectsState = ProjectsFile & {
   setGroupGridLayout: (groupId: string, layout: GridLayout, recordHistory?: boolean) => void
   setWorkspaceGridLayout: (layout: GridLayout | null, recordHistory?: boolean) => void
 
-
   // terminals
   createTerminal: (
     projectId: string,
     args: {
       name: string
+      gridId?: string
       cwd: string
       firstTab: {
         type: AgentType
@@ -203,6 +209,7 @@ export type ProjectsState = ProjectsFile & {
     projectId: string,
     args: {
       name: string
+      gridId?: string
       cwd: string
       firstTab: {
         type: AgentType
@@ -261,11 +268,7 @@ export type ProjectsState = ProjectsFile & {
   closeOtherContainers: (keepProjectId: string) => void
   reorderContainers: (fromIndex: number, toIndex: number) => void
   reorderPaneInContainer: (projectId: string, fromIndex: number, toIndex: number) => void
-  groupPanes: (
-    projectId: string,
-    paneIds: string[],
-    options?: { kind?: 'orchestration' },
-  ) => void
+  groupPanes: (projectId: string, paneIds: string[], options?: { kind?: 'orchestration' }) => void
   ungroupPanes: (projectId: string, groupId: string) => void
   setContainerCollapsed: (projectId: string, collapsed: boolean) => void
   setContainerInternalLayout: (projectId: string, layout: LayoutMode) => void
@@ -345,7 +348,7 @@ function nextWriteSequence(): number {
 
 function projectsPayload(state: ProjectsState): ProjectsFile {
   return {
-    version: 8,
+    version: 9,
     groups: state.groups,
     ungroupedOrder: state.ungroupedOrder,
     projects: state.projects,
@@ -391,6 +394,45 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
     set((state) => {
       let result = mutator(state)
       if (!result || Object.keys(result).length === 0) return state
+      if (result.projects) {
+        result.projects = result.projects.map((project) => {
+          const previous = state.projects.find((item) => item.id === project.id)
+          return project === previous ? project : normalizeProjectGrids(project, previous)
+        })
+      }
+      // Navigation restores the grid carried by each scoped container.
+      if (result.workspace) {
+        const projects = result.projects ?? state.projects
+        result.workspace = {
+          ...result.workspace,
+          containers: result.workspace.containers.map((container) => {
+            if (!container.gridId) return container
+            const project = projects.find((item) => item.id === container.projectId)
+            if (!project) return container
+            if (container.gridId === DEFAULT_GRID_ID && !project.grids?.length) {
+              return {
+                ...container,
+                gridId: undefined,
+                paneIds: project.terminals.map((terminal) => terminal.id),
+              }
+            }
+            const members = new Set(
+              project.terminals
+                .filter((terminal) => (terminal.gridId ?? DEFAULT_GRID_ID) === container.gridId)
+                .map((terminal) => terminal.id),
+            )
+            return { ...container, paneIds: container.paneIds.filter((id) => members.has(id)) }
+          }),
+        }
+        result.projects = projects.map((project) => {
+          const container = result!.workspace!.containers.find(
+            (item) => item.projectId === project.id,
+          )
+          return container?.gridId && container.gridId !== project.activeGridId
+            ? selectProjectGrid(project, container.gridId)
+            : project
+        })
+      }
       const workspaceChanged = Boolean(result.workspace)
       const visualPreferencesChanged = Boolean(
         result.preferences &&
@@ -418,27 +460,34 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           const groupForTab = keepsGroupIdentity
             ? nextState.groups.find((g) => g.id === liveGroupId)
             : undefined
-          const updatedTab: WorkspaceTab = groupForTab
-            ? {
-                ...activeTab,
-                kind: 'group',
-                sourceId: groupForTab.id,
-                sourceProjectId: undefined,
-                label: groupForTab.name,
-                color: groupForTab.color,
-                iconUrl: groupForTab.iconUrl,
-                snapshot,
-                updatedAt: now,
-              }
-            : {
-                ...activeTab,
-                kind: 'composition',
-                sourceId: undefined,
-                sourceProjectId: undefined,
-                label: compositionLabel(snapshot, nextState.projects),
-                snapshot,
-                updatedAt: now,
-              }
+          const scopedProject =
+            activeTab.kind === 'project' &&
+            snapshot.containers.length === 1 &&
+            snapshot.containers[0].projectId === activeTab.sourceId &&
+            snapshot.containers[0].gridId
+          const updatedTab: WorkspaceTab = scopedProject
+            ? { ...activeTab, snapshot, updatedAt: now }
+            : groupForTab
+              ? {
+                  ...activeTab,
+                  kind: 'group',
+                  sourceId: groupForTab.id,
+                  sourceProjectId: undefined,
+                  label: groupForTab.name,
+                  color: groupForTab.color,
+                  iconUrl: groupForTab.iconUrl,
+                  snapshot,
+                  updatedAt: now,
+                }
+              : {
+                  ...activeTab,
+                  kind: 'composition',
+                  sourceId: undefined,
+                  sourceProjectId: undefined,
+                  label: compositionLabel(snapshot, nextState.projects),
+                  snapshot,
+                  updatedAt: now,
+                }
           const tabs = nextState.workspace.tabs.map((tab) =>
             tab.id === activeTab.id ? updatedTab : tab,
           )
@@ -590,6 +639,7 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
     for (const added of incoming.containers) {
       const existing = containers.find((container) => container.projectId === added.projectId)
       if (existing) {
+        existing.gridId = undefined
         existing.paneIds = [...new Set([...existing.paneIds, ...added.paneIds])]
       } else {
         containers.push({ ...added, paneIds: [...added.paneIds] })
