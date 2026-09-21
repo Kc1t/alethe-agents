@@ -12,6 +12,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **A plugin can now open its own tab.** A command a plugin contributes to Ctrl+P can reveal
+  the plugin's own panel, and a plugin can open a modal it contributed — wherever you moved
+  that panel to. Until now only the plugins that ship with Alethe could do this, which meant a
+  plugin you installed yourself could draw a panel but never take you to it.
+
 - **Alethe now hands its own engineering rules to the agents it delegates to.** Every delegated task
   carries a general set — verify before you report, write the failing test first, record an
   architecture decision in the same change, never weaken shared CI to make your change pass — and the

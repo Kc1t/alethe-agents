@@ -1,6 +1,5 @@
 import type { PluginContext, PluginModule } from '../../lib/plugins'
 import { useProjectsStore } from '../../stores/projectsStore'
-import { useUiStore } from '../../stores/uiStore'
 import { TODO_SETTINGS_MODAL_ID } from './manifest'
 import { hydrateTodos } from './store'
 import { TodoSettingsModal } from './TodoSettingsModal'
@@ -19,15 +18,10 @@ const plugin: PluginModule = {
     context.registerView(VIEW_ID, TodoSidebar)
     context.contributes.modal({ id: TODO_SETTINGS_MODAL_ID, component: TodoSettingsModal })
 
+    // Through the same surface a third-party plugin gets: being bundled is not a licence to
+    // reach into the app's stores for something every plugin needs.
     context.registerCommand('todos.reveal', () => {
-      const { preferences: current, setPreferences } = useProjectsStore.getState()
-      if (current.viewPlacements?.[VIEW_ID] === 'left') {
-        useUiStore.getState().setLeftSidebarTab(VIEW_ID)
-        setPreferences({ leftSidebarVisible: true })
-        return
-      }
-      useUiStore.getState().setRightSidebarMode(VIEW_ID)
-      setPreferences({ rightSidebarVisible: true })
+      context.ui.revealView(VIEW_ID)
     })
   },
 }
