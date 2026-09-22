@@ -174,7 +174,7 @@ fn write_codex_mcp_bridge(port: u16, planner_id: &str, safe_planner: &str) -> Re
         "while ($line = [Console]::In.ReadLine()) {{\r\n\
          \x20\x20if ([string]::IsNullOrWhiteSpace($line)) {{ continue }}\r\n\
          \x20\x20try {{\r\n\
-         \x20\x20\x20\x20$resp = Invoke-WebRequest -Uri '{endpoint}/mcp' -Method Post -Body $line -ContentType 'application/json' -Headers @{{ 'X-Alethe-Token' = '{token}'; 'X-Alethe-Planner' = '{planner}' }}\r\n\
+         \x20\x20\x20\x20$resp = Invoke-WebRequest -UseBasicParsing -Uri '{endpoint}/mcp' -Method Post -Body $line -ContentType 'application/json' -Headers @{{ 'X-Alethe-Token' = '{token}'; 'X-Alethe-Planner' = '{planner}' }}\r\n\
          \x20\x20\x20\x20if ($resp.Content) {{\r\n\
          \x20\x20\x20\x20\x20\x20[Console]::Out.WriteLine($resp.Content)\r\n\
          \x20\x20\x20\x20\x20\x20[Console]::Out.Flush()\r\n\
@@ -565,5 +565,32 @@ mod tests {
             .expect("generated path should be valid TOML");
 
         assert_eq!(document["path"].as_str(), Some(path));
+    }
+
+    #[test]
+    fn codex_mcp_bridge_script_requests_with_basic_parsing() {
+        let unique_planner = format!(
+            "test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system time should be after the UNIX epoch")
+                .as_nanos()
+        );
+
+        let path = super::write_codex_mcp_bridge(8123, "test-planner", &unique_planner)
+            .expect("bridge script should be written");
+        let script = std::fs::read_to_string(&path).expect("bridge script should be readable");
+        let removed = std::fs::remove_file(&path);
+
+        assert!(
+            script.contains("Invoke-WebRequest -UseBasicParsing -Uri"),
+            "bridge script should pass -UseBasicParsing before -Uri to Invoke-WebRequest"
+        );
+        assert!(
+            !script.contains("Invoke-WebRequest -Uri"),
+            "bridge script should not call Invoke-WebRequest without -UseBasicParsing"
+        );
+        removed.expect("generated bridge script should be removable");
     }
 }
