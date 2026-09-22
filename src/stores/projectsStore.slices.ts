@@ -3,9 +3,19 @@
 import { nanoid } from 'nanoid'
 import type { StoreApi } from 'zustand'
 
+import { customAgentIconComponent } from '../components/icons/customAgentIcons'
+import { syncCustomAgentProviders } from '../lib/agentProviders'
+import { sanitizeCustomAgents } from '../lib/customAgents'
+import { removeCustomAgentIconAsset } from '../lib/customAgentIconAssets'
 import { resolveTerminalCwd, touchTerminalUsage } from '../lib/terminalFactory'
 import { cleanupPtys } from '../lib/terminalLifecycle'
-import type { Project, SubTab, Terminal, WorkspaceContainer } from '../lib/types'
+import type {
+  CustomAgentDefinition,
+  Project,
+  SubTab,
+  Terminal,
+  WorkspaceContainer,
+} from '../lib/types'
 import type { ProjectsState } from './projectsStore'
 import { clampUiZoom } from './projectsStore.constants'
 
@@ -141,7 +151,16 @@ type PreferencesSlice = Pick<
   | 'setOnboardingDone'
   | 'setPreferences'
   | 'setCliPath'
+  | 'addCustomAgent'
+  | 'updateCustomAgent'
+  | 'removeCustomAgent'
 >
+
+export function syncCustomAgentsFromState(customAgents: readonly CustomAgentDefinition[]): void {
+  syncCustomAgentProviders(customAgents, (definition) =>
+    customAgentIconComponent(definition.iconSpec ?? definition.icon ?? 'bot'),
+  )
+}
 
 export function createPreferencesSlice({ update }: SliceCtx): PreferencesSlice {
   return {
@@ -173,7 +192,14 @@ export function createPreferencesSlice({ update }: SliceCtx): PreferencesSlice {
       update((state) => ({ preferences: { ...state.preferences, onboardingDone: done } })),
 
     setPreferences: (patch) =>
-      update((state) => ({ preferences: { ...state.preferences, ...patch } })),
+      update((state) => {
+        const preferences = { ...state.preferences, ...patch }
+        if (patch.customAgents) {
+          preferences.customAgents = sanitizeCustomAgents(patch.customAgents)
+          syncCustomAgentsFromState(preferences.customAgents)
+        }
+        return { preferences }
+      }),
 
     setCliPath: (agent, path) =>
       update((state) => {
@@ -181,6 +207,37 @@ export function createPreferencesSlice({ update }: SliceCtx): PreferencesSlice {
         if (path === null) delete cliPaths[agent]
         else cliPaths[agent] = path
         return { cliPaths }
+      }),
+
+    addCustomAgent: (definition) =>
+      update((state) => {
+        const customAgents = sanitizeCustomAgents([...state.preferences.customAgents, definition])
+        syncCustomAgentsFromState(customAgents)
+        return { preferences: { ...state.preferences, customAgents } }
+      }),
+
+    updateCustomAgent: (id, patch) =>
+      update((state) => {
+        const next = state.preferences.customAgents.map((item) =>
+          item.id === id ? { ...item, ...patch, id } : item,
+        )
+        const customAgents = sanitizeCustomAgents(next)
+        syncCustomAgentsFromState(customAgents)
+        return { preferences: { ...state.preferences, customAgents } }
+      }),
+
+    removeCustomAgent: (id) =>
+      update((state) => {
+        const customAgents = state.preferences.customAgents.filter((item) => item.id !== id)
+        syncCustomAgentsFromState(customAgents)
+        const enabledAgents = { ...state.preferences.enabledAgents }
+        delete enabledAgents[id]
+        const cliPaths = { ...state.cliPaths }
+        delete cliPaths[id]
+        void removeCustomAgentIconAsset(id).catch((error: unknown) => {
+          console.error('Failed to remove custom agent icon asset', error)
+        })
+        return { preferences: { ...state.preferences, customAgents, enabledAgents }, cliPaths }
       }),
   }
 }

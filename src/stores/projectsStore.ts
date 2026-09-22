@@ -1,7 +1,9 @@
 import { nanoid } from 'nanoid'
-import { DEFAULT_GRID_ID, normalizeProjectGrids, selectProjectGrid } from '../lib/projectGrids'
 import { create } from 'zustand'
 
+import { customAgentIconComponent } from '../components/icons/customAgentIcons'
+import { syncCustomAgentProviders } from '../lib/agentProviders'
+import { DEFAULT_GRID_ID, normalizeProjectGrids, selectProjectGrid } from '../lib/projectGrids'
 import { setStorageNamespace } from '../lib/storageNamespace'
 import {
   listProfiles,
@@ -19,6 +21,7 @@ import {
   type AgentType,
   type BrowserEngine,
   type BrowserPaneOptions,
+  type CustomAgentDefinition,
   EMPTY_PROJECTS_FILE,
   type GridLayout,
   type Group,
@@ -332,6 +335,9 @@ export type ProjectsState = ProjectsFile & {
   setOnboardingDone: (done: boolean) => void
   setPreferences: (patch: Partial<Preferences>) => void
   setCliPath: (agent: AgentType, path: string | null) => void
+  addCustomAgent: (definition: CustomAgentDefinition) => void
+  updateCustomAgent: (id: string, patch: Partial<CustomAgentDefinition>) => void
+  removeCustomAgent: (id: string) => void
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -745,6 +751,9 @@ export const useProjectsStore = create<ProjectsState>((set, get) => {
           activeProfileId: profileState.active_profile_id,
           profiles: profileState.profiles,
         })
+        syncCustomAgentProviders(migrated.preferences.customAgents, (definition) =>
+          customAgentIconComponent(definition.iconSpec ?? definition.icon ?? 'bot'),
+        )
         void recordAppEvent(
           'projects.hydrate',
           `source=disk projects=${migrated.projects.length} groups=${migrated.groups.length} tabs=${migrated.workspace.tabs.length} active_tab=${Boolean(migrated.workspace.activeTabId)} left_sidebar=${migrated.preferences.leftSidebarVisible} right_sidebar=${migrated.preferences.rightSidebarVisible}`,

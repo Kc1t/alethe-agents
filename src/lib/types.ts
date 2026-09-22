@@ -70,6 +70,30 @@ export function agentCliCommand(agent: AgentType): string | undefined {
   return mapped ?? agent
 }
 
+/** Where a custom agent icon comes from: a built-in preset, a local .ico asset, or a PNG link. */
+export type CustomAgentIconSpec =
+  | { kind: 'preset'; key: string }
+  | { kind: 'file'; assetId: string }
+  | { kind: 'url'; href: string }
+
+/** User-defined custom agent stored in preferences. Never a built-in. */
+export type CustomAgentDefinition = {
+  /** Slug: ^[a-z0-9-]{2,32}$, unique, never a BuiltinAgentType. */
+  id: string
+  /** Display label shown everywhere the built-ins appear. */
+  label: string
+  /** CLI invocation as typed by the user: binary plus optional default args. */
+  cliCommand: string
+  /** Optional flag that skips permission prompts (e.g. --allow-all). */
+  unrestrictedFlag?: string | null
+  /** An `--agent-*` CSS custom property, including the leading dashes. */
+  accentToken?: string
+  /** Legacy icon preset key. Prefer `iconSpec`; kept so older files still render. */
+  icon?: string
+  /** Discriminated icon spec. Absent means the legacy `icon` preset key. */
+  iconSpec?: CustomAgentIconSpec
+}
+
 export type Locale = 'en' | 'pt-BR'
 
 export type LayoutMode = 'auto' | 'spotlight' | 'sidebar' | 'grid'
@@ -547,6 +571,7 @@ export type Preferences = {
   windowOpacity: number
   terminalTheme: Theme | null
   enabledAgents: Record<AgentType, boolean>
+  customAgents: CustomAgentDefinition[]
   onboardingDone: boolean
 
   workspaceFlat: boolean
@@ -734,6 +759,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
     mimo: true,
     kiro: true,
   },
+  customAgents: [],
   onboardingDone: false,
   workspaceFlat: false,
   fullscreenContainerId: null,

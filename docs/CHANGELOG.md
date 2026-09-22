@@ -10,6 +10,20 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Added
+
+- **Custom agents.** Preferences → Terminal and agents now has a Custom agents section where
+  you can add your own agent CLIs with an ID, display name, CLI command, optional unrestricted
+  flag, accent color and icon. Custom agents appear alongside the built-ins in the new-terminal
+  and new-tab pickers, open a real terminal with the configured command, and persist across
+  restarts.
+
+- **Custom agent icons.** Custom agents now support three icon sources with a live preview: a
+  built-in preset, a local square `.ico` file (up to 512KB, kept in app data), or an `https`
+  image link ending in `.png`, `.jpg` or `.jpeg`. Icons render everywhere the built-ins do and
+  fall back to the bot icon when a file or link cannot be shown. Rejected `.ico` files now
+  report the reason (too large, not square, or not a valid icon).
+
 ## [1.7.0] — 2026-09-20
 
 The release where Alethe stops being one fixed app and becomes a platform. Features now load as

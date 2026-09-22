@@ -22,6 +22,7 @@ mod conflict_resolution;
 mod contract_check;
 mod crash_watch;
 mod cursor_sessions;
+mod custom_agent_icons;
 mod diagnostics;
 mod discord_presence;
 mod economy_agents;
@@ -295,6 +296,9 @@ pub fn run() {
             agent_library::uninstall_agent,
             economy_agents::set_economy_agents,
             economy_agents::economy_agents_enabled,
+            custom_agent_icons::import_custom_agent_icon,
+            custom_agent_icons::custom_agent_icon_path,
+            custom_agent_icons::remove_custom_agent_icon,
             filesystem::list_directory,
             filesystem::browse_directory,
             filesystem::read_text_file,

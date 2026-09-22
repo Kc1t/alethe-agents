@@ -2,15 +2,17 @@ import { Activity, Minus, Plus, RotateCcw } from 'lucide-react'
 import { useState } from 'react'
 
 import { cliPathMatchesAgent } from '../../../lib/agentCliPath'
+import { agentLabel, resolveAgentCliCommand } from '../../../lib/agentProviders'
 import { pickFile } from '../../../lib/dialog'
 import { useT, useTDynamic } from '../../../lib/i18n'
 import { isMacOS } from '../../../lib/platform'
 import { countLiveResumablePanes, resetLastSession } from '../../../lib/resetLastSession'
-import { agentCliCommand, isShellAgentType, type AgentType } from '../../../lib/types'
+import { agentCliCommand, type AgentType,isShellAgentType } from '../../../lib/types'
 import { SPAWN_CONCURRENCY_LIMITS, useProjectsStore } from '../../../stores/projectsStore'
 import { useUiStore } from '../../../stores/uiStore'
 import { AgentIcon } from '../../icons/AgentIcons'
 import styles from '../PreferencesModal.module.css'
+import { CustomAgentsSection } from './CustomAgentsSection'
 import { SettingsSection } from './primitives'
 
 const AGENTS: { id: AgentType; label: string }[] = [
@@ -59,7 +61,10 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
     if (!cliPathMatchesAgent(agent, picked)) {
       pushToast({
         title: t('prefs.cliPathMismatch'),
-        body: t('prefs.cliPathMismatchBody', { agent, command: agentCliCommand(agent) ?? agent }),
+        body: t('prefs.cliPathMismatchBody', {
+          agent,
+          command: resolveAgentCliCommand(agent) ?? agentCliCommand(agent) ?? agent,
+        }),
       })
       return
     }
@@ -182,12 +187,26 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
       </SettingsSection>
 
       <SettingsSection
+        id="custom-agents"
+        title={t('prefs.customAgents')}
+        description={t('prefs.customAgentsDesc')}
+      >
+        <CustomAgentsSection enabledCount={enabledCount} />
+      </SettingsSection>
+
+      <SettingsSection
         id="cli-paths"
         title={t('prefs.cliPaths')}
         description={t('prefs.cliPathsDesc')}
       >
         <div className={styles.agentList}>
-          {AGENTS.filter((agent) => !isShellAgentType(agent.id)).map((agent) => {
+          {[
+            ...AGENTS.filter((agent) => !isShellAgentType(agent.id)),
+            ...preferences.customAgents.map((custom) => ({
+              id: custom.id as AgentType,
+              label: custom.label || agentLabel(custom.id),
+            })),
+          ].map((agent) => {
             const override = cliPaths[agent.id]
             const mismatch = override ? !cliPathMatchesAgent(agent.id, override) : false
             return (

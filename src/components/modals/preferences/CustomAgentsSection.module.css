@@ -1,0 +1,256 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.empty {
+  margin: 0;
+  color: var(--fg-faint);
+  font-size: 11px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.row:hover {
+  border-color: var(--border-strong);
+}
+
+.icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  background: var(--panel);
+  border-radius: 9px;
+}
+
+.copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.copy strong {
+  font-size: 12px;
+}
+
+.copy span {
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.actions input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.actions button {
+  height: 28px;
+  padding: 0 10px;
+  color: var(--fg-muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 11px;
+}
+
+.actions button:hover {
+  color: var(--fg);
+  border-color: var(--border-strong);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field > span {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.field input,
+.field select {
+  height: 32px;
+  padding: 0 10px;
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+}
+
+.field input:focus,
+.field select:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.field input:disabled {
+  opacity: 0.6;
+}
+
+.hint {
+  margin: 0;
+  color: var(--fg-faint);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.error {
+  margin: 0;
+  color: var(--status-waiting);
+  font-size: 11px;
+}
+
+.formActions {
+  display: flex;
+  gap: 8px;
+}
+
+.formActions button {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+}
+
+.primary {
+  color: var(--accent-on);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.primary:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+.ghost {
+  color: var(--fg-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
+.ghost:hover {
+  color: var(--fg);
+  border-color: var(--border-strong);
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.addButton {
+  align-self: flex-start;
+  height: 32px;
+  padding: 0 14px;
+  color: var(--fg-muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+}
+
+.addButton:hover {
+  color: var(--fg);
+  border-color: var(--border-strong);
+}
+
+.iconModes {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.iconModesLabel {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.radioRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+.radioRow input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.previewBox {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+
+.previewBox img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+.pickButton {
+  align-self: flex-start;
+  height: 32px;
+  padding: 0 14px;
+  color: var(--fg-muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+}
+
+.pickButton:hover {
+  color: var(--fg);
+  border-color: var(--border-strong);
+}

@@ -1,13 +1,15 @@
 import type { ComponentType } from 'react'
 
+import { splitCustomCliCommand } from './customAgents'
 import { ContributionList, useContributions } from './plugins/registry'
 import {
   AGENT_TYPE_LABELS,
-  ALL_AGENT_TYPES,
-  UNRESTRICTED_FLAG,
   agentCliCommand,
   type AgentType,
+  ALL_AGENT_TYPES,
   type BuiltinAgentType,
+  type CustomAgentDefinition,
+  UNRESTRICTED_FLAG,
 } from './types'
 
 export type AgentProviderContribution = {
@@ -95,4 +97,70 @@ export function isAgentEnabled(
   id: AgentType,
 ): boolean {
   return enabled[id] ?? !isBuiltinAgentType(id)
+}
+
+const CUSTOM_OWNER = 'custom-agents'
+
+type CustomRegistryState = {
+  dispose: () => void
+  args: string[]
+}
+
+const customRegistry = new Map<string, CustomRegistryState>()
+
+function customContributionFor(
+  definition: CustomAgentDefinition,
+  icon?: ComponentType<{ size?: number | string }>,
+): AgentProviderContribution {
+  const split = splitCustomCliCommand(definition.cliCommand)
+  return {
+    id: definition.id,
+    label: definition.label,
+    cliCommand: split?.binary,
+    unrestrictedFlag: definition.unrestrictedFlag ?? null,
+    accentToken: definition.accentToken,
+    icon,
+  }
+}
+
+export function syncCustomAgentProviders(
+  definitions: readonly CustomAgentDefinition[],
+  resolveIcon?: (
+    definition: CustomAgentDefinition,
+  ) => ComponentType<{ size?: number | string }> | undefined,
+): void {
+  const wanted = new Map<string, CustomAgentDefinition>()
+  for (const definition of definitions) {
+    if (isBuiltinAgentType(definition.id)) continue
+    if (wanted.has(definition.id)) continue
+    wanted.set(definition.id, definition)
+  }
+  for (const [id, state] of [...customRegistry]) {
+    if (!wanted.has(id)) {
+      state.dispose()
+      customRegistry.delete(id)
+    }
+  }
+  for (const definition of wanted.values()) {
+    const split = splitCustomCliCommand(definition.cliCommand)
+    if (!split) continue
+    const contribution = customContributionFor(definition, resolveIcon?.(definition))
+    const existing = customRegistry.get(definition.id)
+    if (existing) {
+      existing.args = split.args
+      agentProviderContributions.update(CUSTOM_OWNER, definition.id, contribution)
+      continue
+    }
+    if (agentProviderContributions.has(definition.id)) continue
+    try {
+      const handle = agentProviderContributions.add(CUSTOM_OWNER, contribution)
+      customRegistry.set(definition.id, { dispose: () => handle.dispose(), args: split.args })
+    } catch {
+      continue
+    }
+  }
+}
+
+export function resolveCustomAgentArgs(id: AgentType): string[] {
+  return customRegistry.get(id)?.args ?? []
 }
