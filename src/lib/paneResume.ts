@@ -42,8 +42,7 @@ export async function resumeSessionInPane({
 
   let hooksSettingsPath: string | undefined
   if (agent === 'claude') {
-    const orchestratorEnabled =
-      useProjectsStore.getState().preferences.enabledFeatures.orchestrator
+    const orchestratorEnabled = useProjectsStore.getState().preferences.enabledFeatures.orchestrator
     hooksSettingsPath = await agentHooksSettingsPath(ptyId, orchestratorEnabled).catch(
       () => undefined,
     )
@@ -84,7 +83,5 @@ export async function resumeSessionInPane({
   })
   useProjectsStore.getState().setSubTabSessionId(projectId, terminalId, tabId, sessionId)
 
-  window.dispatchEvent(
-    new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId } }),
-  )
+  window.dispatchEvent(new CustomEvent('alethe:terminal-resize-request', { detail: { ptyId } }))
 }

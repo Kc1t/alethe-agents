@@ -12,9 +12,7 @@ export function cleanupPtys(ptyIds: Array<string | null | undefined>): void {
     removeSession(ptyId)
     releaseSessionClaim(ptyId)
     unregister(ptyId)
-    void ghosttyKill(ptyId).catch(() => {
-                                                        
-    })
+    void ghosttyKill(ptyId).catch(() => {})
   }
   void killPtys(uniqueIds).catch(() => {
     // The PTYs may already have exited or been killed by another action.

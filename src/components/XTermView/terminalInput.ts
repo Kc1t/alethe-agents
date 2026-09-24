@@ -17,17 +17,6 @@ export function getTerminalScrollbackRows(options?: {
   return options.agent ? 10_000 : 6_000
 }
 
-   
-                                                                             
-                                   
-  
-                                                                               
-                                                                                
-                                                                                
-                                                                                  
-                                                                               
-                    
-   
 export function shouldScrollHostScrollback(
   bufferType: 'normal' | 'alternate',
   shiftKey: boolean,
@@ -40,11 +29,6 @@ export function normalizePastedText(text: string): string {
   return text.replace(/\r\n?/g, '\n').replace(/\n/g, '\r')
 }
 
-   
-                                                                             
-                                                                           
-                                                                           
-   
 export function formatDroppedPaths(paths: string[]): string {
   const formatted = paths
     .filter(Boolean)

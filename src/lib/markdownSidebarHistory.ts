@@ -42,8 +42,7 @@ export function parseMarkdownSidebarHistory(raw: string | null): MarkdownSidebar
       if (typeof entry.path !== 'string' || typeof entry.title !== 'string') continue
       tabs = addMarkdownSidebarHistoryEntry(tabs, { path: entry.path, title: entry.title })
     }
-    const requestedActivePath =
-      typeof value.activePath === 'string' ? value.activePath.trim() : ''
+    const requestedActivePath = typeof value.activePath === 'string' ? value.activePath.trim() : ''
     const activePath = tabs.some((tab) => tab.path === requestedActivePath)
       ? requestedActivePath
       : (tabs[tabs.length - 1]?.path ?? null)

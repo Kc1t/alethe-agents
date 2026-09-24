@@ -10,6 +10,9 @@ use std::time::{Duration, Instant};
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
 use crate::pty::kill_process_tree;
 
 #[derive(Debug, Clone, Serialize)]
@@ -199,6 +202,12 @@ pub async fn health_probe(
     } else {
         let mut c = Command::new("sh");
         c.args(["-c", &start_command]);
+        // `kill_process_tree` signals `-PID`, which only reaches this child when
+        // it leads its own process group. A plain `sh -c` inherits ours, so the
+        // signal lands on whatever group happens to carry that id — on a CI
+        // runner, its own step group, which takes the whole test run down.
+        #[cfg(unix)]
+        c.process_group(0);
         c
     };
     command

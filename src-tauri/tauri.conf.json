@@ -29,7 +29,12 @@
         "form-action": ["'none'"],
         "frame-ancestors": ["'none'"],
         "script-src": ["'self'", "alethe-plugin:", "http://alethe-plugin.localhost"],
-        "style-src": ["'self'", "'unsafe-inline'", "alethe-plugin:", "http://alethe-plugin.localhost"],
+        "style-src": [
+          "'self'",
+          "'unsafe-inline'",
+          "alethe-plugin:",
+          "http://alethe-plugin.localhost"
+        ],
         "img-src": [
           "'self'",
           "data:",

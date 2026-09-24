@@ -73,7 +73,8 @@ export const ProjectContainer = memo(function ProjectContainer({
   )?.cwd
 
   const storedAccent = project.color || group?.color
-  const accent = storedAccent && CSS.supports('color', storedAccent) ? storedAccent : 'var(--accent)'
+  const accent =
+    storedAccent && CSS.supports('color', storedAccent) ? storedAccent : 'var(--accent)'
   const isRainbow = accent === 'rgb-rainbow'
 
   if (container.collapsed) {

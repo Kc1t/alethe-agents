@@ -40,8 +40,7 @@ export function gridTerminals(
 export function selectProjectGrid(project: Project, gridId: string): Project {
   const grid = projectGrids(project).find((item) => item.id === gridId)
   if (project.mode === 'agentSandbox') return project
-  if (!grid)
-    return gridId === DEFAULT_GRID_ID ? { ...project, activeGridId: undefined } : project
+  if (!grid) return gridId === DEFAULT_GRID_ID ? { ...project, activeGridId: undefined } : project
   return {
     ...project,
     activeGridId: grid.id,

@@ -6,16 +6,15 @@ import { ptBR } from './messages/pt-BR'
 
 export type { MessageKey }
 
-                                                                            
 export type Locale = 'en' | 'pt-BR'
 
 export const DEFAULT_LOCALE: Locale = 'en'
 
 export type LocaleMeta = {
   id: Locale
-                                                        
+
   nativeName: string
-                                                
+
   intl: string
 }
 
@@ -52,10 +51,7 @@ function notifyRuntimeMessages() {
  * Adds messages for a locale and returns the undo. Callers own the namespacing;
  * the plugin host prefixes every key with `plugin.<id>.`.
  */
-export function registerMessages(
-  locale: Locale,
-  messages: Record<string, string>,
-): () => void {
+export function registerMessages(locale: Locale, messages: Record<string, string>): () => void {
   const target = RUNTIME_MESSAGES[locale]
   if (!target) return () => {}
   const owner = Symbol(locale)
@@ -102,10 +98,6 @@ function interpolate(message: string, params?: Params): string {
   )
 }
 
-   
-                                                                           
-                                                                        
-   
 export function translate(locale: Locale, key: MessageKey, params?: Params): string {
   return interpolate(lookup(locale, key) ?? key, params)
 }
@@ -118,16 +110,12 @@ export function translateDynamic(locale: Locale, key: string, params?: Params): 
   return interpolate(lookup(locale, key) ?? key, params)
 }
 
-                                                                             
 export function getLocale(): Locale {
   return useProjectsStore.getState().preferences.language
 }
 
 export type TFunction = (key: MessageKey, params?: Params) => string
 
-   
-                                                                    
-   
 export function useT(): TFunction {
   const locale = useProjectsStore((s) => s.preferences.language)
   useRuntimeMessagesVersion()

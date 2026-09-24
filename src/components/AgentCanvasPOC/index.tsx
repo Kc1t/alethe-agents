@@ -108,7 +108,6 @@ function AgentCanvasInner() {
   const select = useAgentCanvasStore((s) => s.select)
   const clearStore = useAgentCanvasStore((s) => s.clear)
 
-                                                                                   
   const nodeCosts = useNodeCostStore((s) => s.byNodeId)
   const leadCost = useAgentCostStore((s) =>
     session ? (s.byPtyId[session.ptyId]?.cost ?? null) : null,
@@ -129,7 +128,6 @@ function AgentCanvasInner() {
   const [usageOpen, setUsageOpen] = useState(false)
   const [usageTab, setUsageTab] = useState<UsageTab>('claude')
 
-                                                                          
   const sessionRef = useRef(session)
   useEffect(() => {
     sessionRef.current = session
@@ -148,7 +146,7 @@ function AgentCanvasInner() {
   const taskRefs = useRef(new Map<string, HTMLDivElement>())
 
   // Workers reais (PTYs claude/codex/opencode) + fallback/uso + zoom/pan +
-                                                            
+
   const {
     codexWorkers,
     setCodexWorkers,
@@ -201,8 +199,6 @@ function AgentCanvasInner() {
     window.addEventListener('pointercancel', onEnd)
   }
 
-                                                                            
-                                                                   
   useEffect(() => {
     if (!session) return
     setHooksError(null)
@@ -214,15 +210,12 @@ function AgentCanvasInner() {
         setHooksSettingsPath(path)
       })
       .catch((err) => {
-                                                                       
-                                                                          
         // de tentar de novo.
         console.error('[AgentCanvasPOC] falha gerando hooks settings:', err)
         setHooksError(String(err))
       })
   }, [hooksRetryNonce, session])
 
-                                                                     
   useEffect(() => {
     getModelPricing()
       .then(setPricing)
@@ -232,13 +225,10 @@ function AgentCanvasInner() {
   const restartClaude = () => {
     if (!session) return
     console.log('[AgentCanvasPOC] reiniciando claude — matando PTY', session.ptyId)
-    void killPty(session.ptyId).catch(() => {
-                                   
-    })
+    void killPty(session.ptyId).catch(() => {})
     setClaudeExited(null)
     setRestartHint(false)
-                                                                          
-                                                          
+
     useUiStore.getState().setAgentCanvasSession({
       folder: session.folder,
       ptyId: `agent-canvas-${Date.now()}`,
@@ -262,8 +252,6 @@ function AgentCanvasInner() {
 
   useEffect(() => {
     const unlistenPromise = listen<AgentHookPayload>('agent-hook', (event) => {
-                                                                            
-                                                                  
       const cwd = (event.payload as { cwd?: string }).cwd
       if (session && cwd && normalizeCwd(cwd) !== normalizeCwd(session.folder)) {
         console.log('[AgentCanvasPOC] evento de outra sessão ignorado (cwd):', cwd)
@@ -277,30 +265,24 @@ function AgentCanvasInner() {
     }
   }, [session])
 
-                                                           
   useOnClickOutside(usageAnchorRef, () => setUsageOpen(false), usageOpen)
   useOnEscape(() => setUsageOpen(false), usageOpen)
-                                             
+
   useOnEscape(() => setPaletteOpen(false))
 
-                                                                            
   useLayoutEffect(() => {
     const recompute = () => {
       const container = containerRef.current
       const plane = planeRef.current
       const stage = stageRef.current
       if (!container || !plane || !stage) return
-                                                                               
-                                                                          
-                                                                                 
+
       const sRect = stage.getBoundingClientRect()
       const k = zoom || 1
       const pRect = plane.getBoundingClientRect()
       const x1 = (pRect.left + pRect.width / 2 - sRect.left) / k
       const y1 = (pRect.bottom - sRect.top) / k
-                                                                             
-                                                                              
-                                                                  
+
       const subs = nodes.filter((n) => n.kind === 'subagent')
       const groupTypes = [...new Set(subs.map((n) => n.agentType))]
       const targets = [
@@ -313,7 +295,7 @@ function AgentCanvasInner() {
           done: !subs.some((n) => n.agentType === type && n.status === 'running'),
         })),
       ]
-                                                    
+
       const nodeEdges: Edge[] = targets.flatMap((target) => {
         const el = cardRefs.current.get(target.id)
         if (!el) return []
@@ -329,8 +311,7 @@ function AgentCanvasInner() {
           },
         ]
       })
-                                                                                   
-                                                                               
+
       const taskEdges: Edge[] = Object.values(tasks).flatMap((task) => {
         const taskEl = taskRefs.current.get(task.id)
         if (!taskEl) return []
@@ -351,15 +332,13 @@ function AgentCanvasInner() {
       setEdges([...nodeEdges, ...taskEdges])
     }
     recompute()
-                                                                           
-                                                                                 
+
     const raf = requestAnimationFrame(() => requestAnimationFrame(recompute))
     const observer = new ResizeObserver(recompute)
     const container = containerRef.current
     if (container) {
       observer.observe(container)
-                                                                             
-                                                        
+
       cardRefs.current.forEach((el) => observer.observe(el))
       taskRefs.current.forEach((el) => observer.observe(el))
       container.addEventListener('scroll', recompute, { passive: true })
@@ -371,10 +350,6 @@ function AgentCanvasInner() {
     }
   }, [nodes, codexWorkers, tasks, zoom])
 
-                                                                                 
-                                                                              
-                                                                              
-                                   
   useEffect(() => {
     if (!session) return
     const tick = () => {
@@ -389,14 +364,11 @@ function AgentCanvasInner() {
   const exitCanvas = () => {
     if (session) {
       console.log('[AgentCanvasPOC] saindo — matando PTY', session.ptyId)
-      void killPty(session.ptyId).catch(() => {
-                                     
-      })
+      void killPty(session.ptyId).catch(() => {})
     }
-                                                                       
+
     killAllWorkers()
-                                                                             
-                                                            
+
     clearStore()
     useNodeCostStore.getState().clear()
     useUiStore.getState().setAgentCanvasBudget(null)
@@ -404,9 +376,6 @@ function AgentCanvasInner() {
     setActiveView('home')
   }
 
-                                                                              
-                                                                            
-                                                                                  
   const exitCanvasRef = useRef(exitCanvas)
   exitCanvasRef.current = exitCanvas
   useEffect(() => {
@@ -417,7 +386,7 @@ function AgentCanvasInner() {
 
   const clearCanvas = () => {
     // Mata os workers reais (PTYs claude/codex = processos pesados) — assim o
-                                                             
+
     killAllWorkers()
     setCodexWorkers([])
     setExpandedCodexId(null)
@@ -440,8 +409,6 @@ function AgentCanvasInner() {
   const done = nodes.filter((n) => n.status === 'done').length
   const taskList = Object.values(tasks)
 
-                                                                              
-                                                                       
   const subagentGroups: Array<[string, AgentNode[]]> = (() => {
     const map = new Map<string, AgentNode[]>()
     for (const n of subagents) {
@@ -452,16 +419,13 @@ function AgentCanvasInner() {
     return [...map]
   })()
 
-                                                                               
   const nodeTotals = selectNodeCostTotals(nodeCosts)
   const sessionCostUsd = nodeTotals.costUsd + (leadCost?.cost_usd ?? 0)
   const sessionTokens = nodeTotals.totalTokens + (leadCost?.total_tokens ?? 0)
   const hasCost = sessionTokens > 0
 
-                                                                          
   const routingSavings = estimateRoutingSavings(nodeCosts, leadCost?.model ?? null, pricing)
 
-                                                               
   const budgetRatio = budgetUsd && budgetUsd > 0 ? sessionCostUsd / budgetUsd : 0
   const budgetWarn = budgetUsd != null && budgetUsd > 0 && budgetRatio >= 0.8
   const budgetCrit = budgetUsd != null && budgetUsd > 0 && sessionCostUsd >= budgetUsd

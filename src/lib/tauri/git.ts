@@ -22,7 +22,6 @@ export async function gitStatus(path: string): Promise<GitRepositoryStatus> {
   return invoke<GitRepositoryStatus>('git_status', { path })
 }
 
-                                                                                                         
 export async function gitInit(path: string): Promise<string> {
   return invoke<string>('git_init', { path })
 }
@@ -69,9 +68,6 @@ export async function cloneGithubRepo(url: string, targetDir: string): Promise<s
 
 export type DiffSummaryEntry = { path: string; status: string }
 
-                                                                                            
-                                                                                              
-                                                                                                   
 export async function gitDiffSummary(
   repoRoot: string,
   source: string,
@@ -113,7 +109,6 @@ export async function worktreeCleanup(repo: string): Promise<void> {
   await invoke('worktree_cleanup', { repo })
 }
 
-                                                                                                    
 export async function worktreeFetchBranch(repo: string, agentId: string): Promise<void> {
   await invoke('worktree_fetch_branch', { repo, agentId })
 }
@@ -317,7 +312,6 @@ export async function mergeForceCleanup(
   return invoke<MergeForceCleanupResult>('merge_force_cleanup', { repo, envId })
 }
 
-
 export type ProjectStack = 'web' | 'cli' | 'desktop' | 'fullstack' | 'unknown'
 
 export type StackDetection = {
@@ -328,9 +322,6 @@ export type StackDetection = {
   suggestedCommands: string[]
 }
 
-                                                                             
-                                                                      
-                           
 export async function detectProjectStack(repo: string): Promise<StackDetection> {
   return invoke<StackDetection>('detect_project_stack', { repo })
 }
@@ -347,8 +338,6 @@ export type ContractWarning = {
   reason: string
 }
 
-                                                                         
-                                                   
 export async function contractCheck(envPath: string): Promise<ContractWarning[]> {
   return invoke<ContractWarning[]>('contract_check', { envPath })
 }
@@ -362,9 +351,6 @@ export type HealthProbeResult = {
   terminalVerified: boolean | null
 }
 
-                                                                             
-                                                                            
-                                                                         
 export async function healthProbe(
   envPath: string,
   startCommand: string,

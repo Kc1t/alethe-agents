@@ -51,7 +51,14 @@ fn prepare(app: &AppHandle, state: &OrchestratorState) {
         #[cfg(windows)]
         launcher
             .env
-            .push(("Path".to_string(), crate::orchestrator_core::path_without_store_aliases(&cli_resolver::rebuilt_path())));
+            .push((
+                "Path".to_string(),
+                crate::orchestrator_core::path_without_store_aliases(&cli_resolver::rebuilt_path()),
+            ));
+        #[cfg(not(windows))]
+        launcher
+            .env
+            .push(("PATH".to_string(), cli_resolver::rebuilt_path()));
         core.set_launcher(launcher);
     }
     if let Some(program) = cli_resolver::find_windows_cli_launcher("claude") {

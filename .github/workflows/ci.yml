@@ -66,6 +66,19 @@ jobs:
           # through alsa-sys, and without it the Linux build panics in its build script.
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
 
+      # The remote surface embeds xterm.js via `include_str!(".../node_modules/@xterm/...")`
+      # in src/remote/http.rs, so the Rust build needs node_modules on disk even though
+      # it is gitignored. Install the JS deps here too.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install JS dependencies
+        run: npm ci
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -80,9 +93,9 @@ jobs:
         working-directory: src-tauri
         run: cargo check
 
-      # Não-bloqueante por enquanto: já há ~37 warnings pré-existentes no
-      # código atual (nenhum deles deste PR). Endurecer pra `-D warnings`
-      # depois de uma limpeza dedicada, não junto de outra tarefa.
+      # Non-blocking for now: the current code already carries ~37 pre-existing
+      # warnings (none from this change). Tighten it to `-D warnings` in a
+      # dedicated cleanup, not alongside another task.
       - name: cargo clippy
         working-directory: src-tauri
         run: cargo clippy --all-targets

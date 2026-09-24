@@ -129,7 +129,7 @@ export function WorkspaceView() {
       focusedTerminalId: s.workspace.focusedTerminalId,
       createFilePane: s.createFilePane,
       openPane: s.openPane,
-    }))
+    })),
   )
 
   const { openModal, requestPaneFocus, setKeptAlivePanes, setMountedPanes } = useUiStore(
@@ -138,7 +138,7 @@ export function WorkspaceView() {
       requestPaneFocus: s.requestPaneFocus,
       setKeptAlivePanes: s.setKeptAlivePanes,
       setMountedPanes: s.setMountedPanes,
-    }))
+    })),
   )
   const initialWorkspaceEnsured = useRef(false)
   const fileDragDepth = useRef(0)
@@ -488,9 +488,7 @@ export function WorkspaceView() {
                 <NoWorkspace
                   project={activeProject}
                   group={
-                    surface.activeGroupId
-                      ? (groupsById.get(surface.activeGroupId) ?? null)
-                      : null
+                    surface.activeGroupId ? (groupsById.get(surface.activeGroupId) ?? null) : null
                   }
                   onAddTerminal={(defaultCwd) =>
                     activeProject
@@ -910,9 +908,7 @@ function NoWorkspace({
     () =>
       (
         ['claude', 'codex', 'cursor', 'antigravity', 'opencode', 'shell', 'wsl'] as AgentType[]
-      ).filter(
-        (agent) => enabledAgents[agent],
-      ),
+      ).filter((agent) => enabledAgents[agent]),
     [enabledAgents],
   )
   const [quickAgent, setQuickAgent] = useState<AgentType>('claude')

@@ -2,13 +2,7 @@ import { normalizeCwd } from '../../lib/paths'
 import type { GitRepositoryStatus } from '../../lib/tauri'
 
 export type GitItemKind =
-  | 'conflict'
-  | 'modified'
-  | 'staged-modified'
-  | 'added'
-  | 'untracked'
-  | 'deleted'
-  | 'renamed'
+  'conflict' | 'modified' | 'staged-modified' | 'added' | 'untracked' | 'deleted' | 'renamed'
 
 export interface GitItemBadge {
   kind: GitItemKind

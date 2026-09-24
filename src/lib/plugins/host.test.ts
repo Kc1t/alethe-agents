@@ -71,9 +71,7 @@ function declaringManifest(overrides: Partial<PluginManifest> = {}): PluginManif
     capabilities: ['ui.sidebarTab', 'ui.command'],
     activation: ['onView:test.view', 'onCommand:test.cmd'],
     contributes: {
-      views: [
-        { id: 'test.view', container: 'rightSidebar', title: 'Test View', icon: 'puzzle' },
-      ],
+      views: [{ id: 'test.view', container: 'rightSidebar', title: 'Test View', icon: 'puzzle' }],
       commands: [{ id: 'test.cmd', title: 'Test Command' }],
     },
     ...overrides,
@@ -286,7 +284,11 @@ describe('imperative contributions', () => {
       manifest: manifest({ capabilities: ['agent.provider'] }),
       load: async () => ({
         activate: (ctx: PluginContext) =>
-          ctx.contributes.agentProvider({ id: 'cursor', label: 'Cursor CLI', cliCommand: 'cursor' }),
+          ctx.contributes.agentProvider({
+            id: 'cursor',
+            label: 'Cursor CLI',
+            cliCommand: 'cursor',
+          }),
       }),
     })
 

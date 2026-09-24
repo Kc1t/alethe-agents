@@ -79,6 +79,8 @@ pub fn codex_app_server_start(
 
     #[cfg(windows)]
     command.env("Path", cli_resolver::rebuilt_path());
+    #[cfg(not(windows))]
+    command.env("PATH", cli_resolver::rebuilt_path());
 
     crate::git_control::hide_console(&mut command);
     let mut child = command

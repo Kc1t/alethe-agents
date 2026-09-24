@@ -3,7 +3,6 @@ import { isLightTheme } from '../../lib/themes'
 import type { BuiltinTheme, Theme } from '../../lib/types'
 import type { FileLinkKind } from './terminalLinks'
 
-                                                                    
 export type LinkActionState = {
   text: string
   target: string
@@ -269,7 +268,5 @@ function contributedXtermTheme(theme: Theme) {
 }
 
 export function getXtermTheme(theme: Theme) {
-  return (
-    XTERM_THEMES[theme as BuiltinTheme] ?? contributedXtermTheme(theme) ?? DARK_THEME
-  )
+  return XTERM_THEMES[theme as BuiltinTheme] ?? contributedXtermTheme(theme) ?? DARK_THEME
 }

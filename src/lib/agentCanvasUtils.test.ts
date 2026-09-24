@@ -12,7 +12,9 @@ import {
 import type { ModelRate, SessionCost } from './tauri'
 import type { AgentType } from './types'
 
-function sessionCost(partial: Partial<SessionCost> & Pick<SessionCost, 'model' | 'cost_usd'>): SessionCost {
+function sessionCost(
+  partial: Partial<SessionCost> & Pick<SessionCost, 'model' | 'cost_usd'>,
+): SessionCost {
   return {
     session_id: 's1',
     agent: 'claude',

@@ -239,7 +239,6 @@
   height: 22px;
 }
 
-                        
 .tree {
   padding: 0 4px 4px;
 }
@@ -303,7 +302,6 @@
   color: var(--fg-muted);
 }
 
-                                                    
 .stAdded {
   color: var(--status-working);
 }

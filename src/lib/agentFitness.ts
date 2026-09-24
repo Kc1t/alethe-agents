@@ -21,8 +21,16 @@ function isoFromMs(ms: number): string | null {
 export function claudeFitness(usage: ClaudeUsage): AgentFitness {
   const worst = worstOf([
     { label: '5h', used: usage.five_hour.utilization, resetsAt: usage.five_hour.resets_at || null },
-    { label: 'week', used: usage.seven_day.utilization, resetsAt: usage.seven_day.resets_at || null },
-    { label: 'opus', used: usage.seven_day_opus.utilization, resetsAt: usage.seven_day_opus.resets_at || null },
+    {
+      label: 'week',
+      used: usage.seven_day.utilization,
+      resetsAt: usage.seven_day.resets_at || null,
+    },
+    {
+      label: 'opus',
+      used: usage.seven_day_opus.utilization,
+      resetsAt: usage.seven_day_opus.resets_at || null,
+    },
   ])
   return {
     worst: worst.label,
@@ -34,8 +42,16 @@ export function claudeFitness(usage: ClaudeUsage): AgentFitness {
 
 export function codexFitness(usage: CodexUsage): AgentFitness {
   const worst = worstOf([
-    { label: '5h', used: usage.primary.used_percent, resetsAt: isoFromMs(usage.primary.resets_at_ms) },
-    { label: 'week', used: usage.secondary.used_percent, resetsAt: isoFromMs(usage.secondary.resets_at_ms) },
+    {
+      label: '5h',
+      used: usage.primary.used_percent,
+      resetsAt: isoFromMs(usage.primary.resets_at_ms),
+    },
+    {
+      label: 'week',
+      used: usage.secondary.used_percent,
+      resetsAt: isoFromMs(usage.secondary.resets_at_ms),
+    },
   ])
   return {
     worst: worst.label,

@@ -79,7 +79,9 @@ const emptyInstall = { installed: false, version: null, path: null }
 function statusWith(managed: boolean, external: boolean) {
   return {
     managed: managed ? { installed: true, version: '0.5.59', path: null } : emptyInstall,
-    external: external ? { installed: true, version: '0.5.40', path: 'C:/bin/9router' } : emptyInstall,
+    external: external
+      ? { installed: true, version: '0.5.40', path: 'C:/bin/9router' }
+      : emptyInstall,
     running: false,
     portInUse: false,
     port: 20128,

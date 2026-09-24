@@ -583,15 +583,16 @@ export function useXtermSession(params: {
         return false
       }
 
-      if (key === 'c' && terminal.hasSelection()) {
+      if (key === 'c' && (event.shiftKey || terminal.hasSelection())) {
         const selection = terminal.getSelection()
         if (selection) {
           void writeClipboardText(selection).catch(() => navigator.clipboard?.writeText(selection))
           terminal.clearSelection()
           return false
         }
+        if (event.shiftKey) return false
       }
-      if (key === 'c' && !readOnly) {
+      if (key === 'c' && !event.shiftKey && !readOnly) {
         const now = Date.now()
         const id = ptyIdRef.current
         if (id && now - lastCtrlCRef.current < 1500) {
@@ -601,12 +602,16 @@ export function useXtermSession(params: {
           return false
         }
         lastCtrlCRef.current = now
+        return true
       }
 
       if (key === 'v' && !readOnly) {
         event.preventDefault()
-        void resolveClipboardPaste()
-          .catch(() => navigator.clipboard?.readText() ?? '')
+        // WebKitGTK clipboard APIs may be unavailable or denied in a Tauri
+        // webview. The native reader is the Linux fallback for Ctrl+V.
+        void (navigator.clipboard?.readText?.() ?? Promise.resolve(''))
+          .then((text) => text || resolveClipboardPaste())
+          .catch(() => resolveClipboardPaste())
           .then(pasteText)
           .catch(() => {
             terminal.focus()

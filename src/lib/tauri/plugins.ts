@@ -84,10 +84,7 @@ export async function pluginSetEnabled(id: string, enabled: boolean): Promise<vo
  * Generic bridge for the plugin host. Every call is gated by the caller against
  * the plugin's declared capabilities before it reaches this function.
  */
-export async function pluginInvoke<T>(
-  command: string,
-  args?: Record<string, unknown>,
-): Promise<T> {
+export async function pluginInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   return invoke<T>(command, args)
 }
 
@@ -127,10 +124,7 @@ export type CatalogSnapshot = {
   stale: boolean
 }
 
-export async function pluginCatalog(
-  apiVersion: number,
-  refresh = false,
-): Promise<CatalogSnapshot> {
+export async function pluginCatalog(apiVersion: number, refresh = false): Promise<CatalogSnapshot> {
   return invoke<CatalogSnapshot>('plugin_catalog', { apiVersion, refresh })
 }
 

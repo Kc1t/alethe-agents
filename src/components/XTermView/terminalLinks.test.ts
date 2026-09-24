@@ -105,7 +105,11 @@ describe('terminal links', () => {
       expect.objectContaining({ text: 'README.md', kind: 'path', fileKind: 'markdown' }),
     )
     expect(detectTerminalLinks('See src/components/App.tsx:42')[0]).toEqual(
-      expect.objectContaining({ text: 'src/components/App.tsx:42', kind: 'path', fileKind: 'text' }),
+      expect.objectContaining({
+        text: 'src/components/App.tsx:42',
+        kind: 'path',
+        fileKind: 'text',
+      }),
     )
     expect(detectTerminalLinks('user@example.com')).toEqual([])
   })
@@ -115,9 +119,7 @@ describe('terminal links', () => {
     expect(resolveTerminalFilePath('./docs/README.md:12', '/workspace/repo')).toBe(
       '/workspace/repo/docs/README.md',
     )
-    expect(resolveTerminalFilePath('D:\\repo\\README.md', 'D:\\other')).toBe(
-      'D:\\repo\\README.md',
-    )
+    expect(resolveTerminalFilePath('D:\\repo\\README.md', 'D:\\other')).toBe('D:\\repo\\README.md')
   })
 
   it('stops an extensionless path at the first space instead of eating the sentence', () => {

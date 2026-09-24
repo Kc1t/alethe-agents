@@ -9,7 +9,6 @@ import styles from './GraphifyView.module.css'
 /** Quantos snapshots manter ao compactar (memory policy). */
 const KEEP_LAST = 10
 
-                                                                            
 function token(name: string, fallback: string): string {
   if (typeof window === 'undefined') return fallback
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
@@ -17,19 +16,13 @@ function token(name: string, fallback: string): string {
 }
 
 type GraphifyViewProps = {
-                                                            
   repo: string
-                                                                
+
   projectId: string
-                                                                         
+
   terminalId: string
 }
 
-   
-                                                                         
-                                                                                
-                             
-   
 export function GraphifyView({ repo, projectId, terminalId }: GraphifyViewProps) {
   const t = useT()
   const {
@@ -52,10 +45,6 @@ export function GraphifyView({ repo, projectId, terminalId }: GraphifyViewProps)
     void load(repo)
   }, [repo, load])
 
-                                                                           
-                                                                        
-                                                                            
-                                                                      
   const RENDER_NODE_LIMIT = 250
   const { elements, renderTruncated } = useMemo(() => {
     if (!graph) return { elements: [] as cytoscape.ElementDefinition[], renderTruncated: false }
@@ -95,12 +84,6 @@ export function GraphifyView({ repo, projectId, terminalId }: GraphifyViewProps)
     const container = canvasRef.current
     if (!container || !graph) return
 
-                                                                         
-                                                                        
-                                                                            
-                                                                           
-                                                                           
-                                                                         
     // clustering visual realmente compensa o custo.
     const COSE_NODE_LIMIT = 300
     const layout: cytoscape.LayoutOptions =
@@ -147,9 +130,7 @@ export function GraphifyView({ repo, projectId, terminalId }: GraphifyViewProps)
         },
       ],
       layout,
-                                                                          
-                                                                            
-                                                                 
+
       wheelSensitivity: 3,
     })
     cyRef.current = cy

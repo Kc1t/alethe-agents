@@ -17,7 +17,7 @@ export type AgentCompletionMonitorOptions = {
   cwd?: string | null
   onStatusChange?: (status: 'working' | 'waiting') => void
   onComplete?: () => void
-                                                                                    
+
   notifyOnComplete?: boolean
 }
 

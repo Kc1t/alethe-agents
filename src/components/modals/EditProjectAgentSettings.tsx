@@ -5,18 +5,14 @@ import { useGsdSyncFeatureEnabled } from '../../hooks/useGsdSyncSessions'
 import { readableError } from '../../lib/errors'
 import { useT } from '../../lib/i18n'
 import { discoverProviderModels, gitInit, gitStatus } from '../../lib/tauri'
-import {
-  agentLabel,
-  isAgentEnabled,
-  useAgentTypes,
-} from '../../lib/agentProviders'
+import { agentLabel, isAgentEnabled, useAgentTypes } from '../../lib/agentProviders'
 import { type AgentType, type BuiltinAgentType, PROVIDER_MODELS } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AgentIcon } from '../icons/AgentIcons'
 import controls from './controls.module.css'
 import styles from './EditProjectModal.module.css'
-import { type ModelOption,ModelSearchablePicker } from './ModelSearchablePicker'
+import { type ModelOption, ModelSearchablePicker } from './ModelSearchablePicker'
 
 // Cache module-level (sobrevive a troca de aba/remount deste componente) —
 

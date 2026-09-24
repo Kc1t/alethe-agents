@@ -314,7 +314,6 @@ function GsdSyncRow({ session, onOpen }: { session: GsdSyncSession; onOpen: () =
   )
 }
 
-
 function MarkdownSidebarViewer() {
   const t = useT()
   const markdown = useUiStore((state) => state.rightSidebarMarkdown)

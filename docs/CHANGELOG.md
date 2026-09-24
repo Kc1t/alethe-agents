@@ -10,6 +10,15 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Fixed
+
+- Build: the Rust check no longer fails on Linux, macOS and Windows because the remote surface
+  embeds `@xterm/xterm` through `include_str!`, which needs `node_modules` on disk — the CI now
+  installs the JS dependencies in the Rust job too. Lint errors in example plugins and a few
+  `prefer-const`/empty-`catch` cases in components are fixed as well.
+- Terminal paste now uses the native clipboard fallback when browser clipboard access is unavailable,
+  Ctrl+Shift+C copies selected text, and Ctrl+C reaches the running process.
+
 ## [1.7.0] — 2026-09-20
 
 The release where Alethe stops being one fixed app and becomes a platform. Features now load as
@@ -896,6 +905,12 @@ preferences; and three new agents — **Cursor CLI**, **Kiro CLI** and plain **W
 - The **Continue in Claude Code** button in the agent handoff dialog was unreadable. It painted its
   label with a colour token that does not exist anywhere in the app, so the text fell back to the
   inherited foreground and sat light-on-accent.
+- On Linux, agents installed through user-local toolchains were invisible to the CLI resolver. The
+  app only probed Homebrew prefixes on Unix, so CLIs installed via volta, pnpm, fnm, nvm, cargo, bun
+  or `npm i -g` were never found and agent terminals could not start. The resolver now also scans
+  `~/.local/bin`, `~/.cargo/bin`, `~/.bun/bin`, `~/.npm-global/bin`, Volta, pnpm, fnm and nvm
+  directories, and the rebuilt `PATH` (with those entries) is now propagated to child processes on
+  every platform, not just Windows.
 
 - Installing a CLI from inside Alethe no longer ends in a dialog that spins forever. The install
   screen now watches for the CLI itself while the installer runs, instead of waiting only for the

@@ -634,6 +634,7 @@ fn idle_expired(now_secs: u64, last_active_secs: u64, threshold_secs: u64) -> bo
 #[cfg(test)]
 mod tests {
     use super::{idle_expired, RemoteHub};
+    use crate::remote::util::tailscale_ip;
     use std::cell::Cell;
 
     #[test]
@@ -762,9 +763,15 @@ mod tests {
 
         hub.refresh_host();
 
-        // No real Tailscale install in CI, so detection returns `None` and
-        // `host()` must resolve to something `bind_listener` cannot parse —
-        // never the LAN address or `0.0.0.0`.
+        // `tailscale_ip()` asks the real client, so a machine that has Tailscale
+        // installed resolves to the detected address instead of the fail-closed
+        // empty string. Only the undetected case is what this test is about, so
+        // assert the other branch rather than failing on the developer's setup.
+        if tailscale_ip().is_some() {
+            assert!(hub.host().parse::<std::net::IpAddr>().is_ok());
+            return;
+        }
+
         assert!(hub.host().parse::<std::net::IpAddr>().is_err());
     }
 

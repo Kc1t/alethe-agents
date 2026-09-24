@@ -35,7 +35,12 @@ describe('ContributionList', () => {
     // Disposing twice is harmless and does not evict a later same-id entry.
     list.add('owner-c', { id: 'one' })
     a.dispose()
-    expect(list.getSnapshot().map((i) => i.id).sort()).toEqual(['one', 'two'])
+    expect(
+      list
+        .getSnapshot()
+        .map((i) => i.id)
+        .sort(),
+    ).toEqual(['one', 'two'])
   })
 
   it('notifies subscribers on every mutation and stops after unsubscribe', () => {

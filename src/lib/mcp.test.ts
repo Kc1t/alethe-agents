@@ -126,9 +126,9 @@ describe('transportSummary', () => {
   })
 
   it('uses the url for remote transports', () => {
-    expect(
-      transportSummary({ kind: 'http', url: 'https://mcp.figma.com/mcp', headers: {} }),
-    ).toBe('https://mcp.figma.com/mcp')
+    expect(transportSummary({ kind: 'http', url: 'https://mcp.figma.com/mcp', headers: {} })).toBe(
+      'https://mcp.figma.com/mcp',
+    )
   })
 })
 

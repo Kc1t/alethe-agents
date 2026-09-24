@@ -2,7 +2,7 @@ import { Download, ExternalLink, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { useAgentInstall, useAgentOperationBusy } from '../../hooks/useAgentInstall'
-import { type Router9InstallAction,useRouter9Install } from '../../hooks/useRouter9Install'
+import { type Router9InstallAction, useRouter9Install } from '../../hooks/useRouter9Install'
 import {
   type InstallToolchain,
   NODE_DOWNLOAD_URL,
@@ -54,7 +54,6 @@ export function Router9InstallModal({ action, open, onClose, onSettled, nested }
       .then(setToolchain)
       .catch(() => undefined)
       .finally(() => setProbing(false))
-     
   }, [nodeInstall.status])
 
   const running = status === 'running'
