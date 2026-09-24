@@ -19,6 +19,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
 import { getProfileImageUrl, getProfileInitial } from '../../lib/profile'
+import { setSectionCollapsed } from '../../lib/settingsSections'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { ErrorBoundary } from '../ErrorBoundary'
@@ -363,6 +364,8 @@ export function PreferencesModal() {
 
   useEffect(() => {
     if (!pendingTarget) return
+    // Jumping to a folded section would land on a closed heading, so open it before scrolling.
+    setSectionCollapsed(pendingTarget, false)
     const frame = window.requestAnimationFrame(() => {
       const target = contentRef.current?.querySelector<HTMLElement>(
         `[data-setting-id="${pendingTarget}"]`,

@@ -65,6 +65,8 @@ export function Router9InstallModal({ action, open, onClose, onSettled, nested }
   const cleanLog = stripInstallLogAnsi(log)
   const nodeLog = stripInstallLogAnsi(nodeInstall.log)
   const installing = action === 'install'
+  /** The run is over, one way or the other: the dialog now reports instead of offering. */
+  const settled = status === 'success' || status === 'failed'
 
   return (
     <Modal
@@ -84,23 +86,28 @@ export function Router9InstallModal({ action, open, onClose, onSettled, nested }
             disabled={running || nodeRunning}
             onClick={onClose}
           >
-            {t('agentInstall.cancel')}
+            {settled ? t('common.close') : t('agentInstall.cancel')}
           </button>
-          <button
-            type="button"
-            className={`${controls.btn} ${installing ? controls.btnPrimary : controls.btnDanger}`}
-            disabled={running || blocked || (installing && missingNode)}
-            onClick={() => void run(action)}
-          >
-            {installing ? <Download size={13} /> : <Trash2 size={13} />}
-            {running
-              ? installing
-                ? t('agentInstall.installing')
-                : t('agentInstall.uninstalling')
-              : installing
-                ? t('agentInstall.install')
-                : t('agentInstall.uninstall')}
-          </button>
+          {/* The run is over and it worked: offering to do it again would undo what just happened. */}
+          {status !== 'success' ? (
+            <button
+              type="button"
+              className={`${controls.btn} ${installing ? controls.btnPrimary : controls.btnDanger}`}
+              disabled={running || blocked || (installing && missingNode)}
+              onClick={() => void run(action)}
+            >
+              {installing ? <Download size={13} /> : <Trash2 size={13} />}
+              {running
+                ? installing
+                  ? t('agentInstall.installing')
+                  : t('agentInstall.uninstalling')
+                : status === 'failed'
+                  ? t('router9.retry')
+                  : installing
+                    ? t('agentInstall.install')
+                    : t('agentInstall.uninstall')}
+            </button>
+          ) : null}
         </>
       }
     >
@@ -153,12 +160,18 @@ export function Router9InstallModal({ action, open, onClose, onSettled, nested }
         </div>
       ) : null}
 
+      {/* Uninstalling and installing fail and succeed differently, and "Installed" on a removal
+          reads as the opposite of what happened. */}
       {status === 'failed' ? (
-        <p className={`${styles.modalText} ${styles.statusFailed}`}>{t('agentInstall.failed')}</p>
+        <p className={`${styles.modalText} ${styles.statusFailed}`}>
+          {t(installing ? 'router9.installFailed' : 'router9.uninstallFailed')}
+        </p>
       ) : null}
 
       {status === 'success' ? (
-        <p className={`${styles.modalText} ${styles.statusSuccess}`}>{t('agentInstall.done')}</p>
+        <p className={`${styles.modalText} ${styles.statusSuccess}`}>
+          {t(installing ? 'router9.installDone' : 'router9.uninstallDone')}
+        </p>
       ) : null}
 
       {cleanLog.trim() ? <pre className={styles.log}>{cleanLog}</pre> : null}

@@ -29,6 +29,47 @@ preferences; and three new agents — **Cursor CLI**, **Kiro CLI** and plain **W
 
 ### Added
 
+- **A plugin can now open its own tab.** A command a plugin contributes to Ctrl+P can reveal
+  the plugin's own panel, and a plugin can open a modal it contributed — wherever you moved
+  that panel to. Until now only the plugins that ship with Alethe could do this, which meant a
+  plugin you installed yourself could draw a panel but never take you to it.
+
+- **Alethe now hands its own engineering rules to the agents it delegates to.** Every delegated task
+  carries a general set — verify before you report, write the failing test first, record an
+  architecture decision in the same change, never weaken shared CI to make your change pass — and the
+  lead agent names the set that matches the work, so a frontend worker gets frontend rules instead of
+  database ones. Alethe ships General, Backend and Frontend, written to hold in any language or
+  framework; a repository's own conventions always win over them. Edit them, add your own — "Banco de
+  Dados", "Pesquisa" — or remove them entirely in Preferences → Multi-Agent & Telemetry, and the
+  board shows which set each run was delegated with.
+- **Shells the lead agent starts now live on the orchestration board.** Ask it to run your dev
+  server or `docker compose up` and it opens a shell Alethe owns: it keeps running when the project
+  is off screen or the agent is done, and shows up on the canvas as its own card joined by a line to
+  the agent that started it, with stop, restart, run again, open terminal and remove on hover. A
+  shell whose agent has closed keeps showing under its own "Shells with no agent" group instead of
+  disappearing. Stopping sends Ctrl+C first, so `docker compose up` brings its containers down
+  cleanly, and closing the terminal view never stops the service. The agent reads what the shell
+  printed to react to it.
+- **Worker, subagent and shell details now open in a panel over the board** instead of expanding the
+  card in place. Click any node to read its full report, open the diff tab for its complete diff,
+  or — for a shell — its live terminal, in colour, that you can type into, all without the canvas
+  reflowing around it. The rail's old "Shells" list is gone now that shells live on the canvas.
+- **The buttons on a finished worker became instructions you send to the lead agent.** Apply,
+  Review and Continue no longer act behind your back: each writes a ready-to-edit message into the
+  planner's own terminal, which you review and send yourself. Reword them, add your own, or remove
+  ones you don't use, in Preferences → Multi-Agent & Telemetry. If a worker's lead agent is no
+  longer open, the panel says so instead of showing buttons that would go nowhere.
+- **A worker can now be stopped right from the board**, without asking its lead agent to cancel it
+  for you — the same stop control a shell already has.
+- **The lead agent now knows it is working inside Alethe from its very first turn.** When it
+  connects, Alethe hands it a short briefing: which workers it can delegate to right now, how many
+  run at once, and how to collect their reports. It used to find out only by reading a tool's full
+  description, by which time it had often already reached for its own subagents instead.
+- **The lead agent can now explain Alethe to you.** Ask it how to do something in Alethe — where a
+  setting lives, how to start an orchestration, what a shortcut does — and it reads a built-in
+  guide to the app before answering, then walks you through the screens instead of guessing. It is
+  told never to edit Alethe's own settings files, which the running app would overwrite.
+
 - **Per-agent orchestration spend.** Worker cards now show their session cost, while the header totals reported spend by provider for the selected planner and preserves delegated-worker usage across app restarts.
 
 - **Reset credit details.** The Codex reset credit is now shown as a compact button beside the credit count; clicking it opens a separate modal with expiry information and the action to use the credit.
@@ -142,6 +183,131 @@ preferences; and three new agents — **Cursor CLI**, **Kiro CLI** and plain **W
   and saying outright that nobody has reviewed it, and plugins installed that way can be uninstalled
   from the same page, which also links straight to the plugins folder.
 
+
+### Fixed
+
+- **Installing something from Alethe could sit on "Installing…" forever, even after the install had
+  already worked.** The installer was typed into a shell as if you were at the keyboard, including
+  the command that closes it at the end — and when a shell's own startup files got in the way of
+  that last command, the shell stayed open and nothing ever reported the run as finished. The button
+  spun indefinitely, and because one install runs at a time, nothing else could be installed until
+  the app was restarted. Installs now run as the shell's own command, so it ends with them and the
+  result is reported either way; a run that stops responding gives up after ten minutes and shows
+  its log instead of spinning. Anything installed during a stuck run was really installed and shows
+  up as such on the next launch.
+- **Reconnecting a planner no longer starts a duplicate shell.** Asking the lead agent to open a dev
+  server or watcher it already has running on the board (for example after reopening the app, or
+  from a new planner terminal) now reuses that running shell and adopts it under the new planner,
+  instead of starting a second copy of the same command. A shell that already stopped or exited
+  still opens a fresh one, as before.
+- A planner's tab could look disconnected even while its terminal was working fine: the status dot
+  was driven by its jobs' state, so a planner with no delegated work yet, or whose work had all
+  finished, showed the same grey dot as one whose terminal had actually closed. The dot now reflects
+  whether the planner's own terminal is alive, and its count badge is hidden entirely instead of
+  showing "(0)" when there is nothing to report.
+- Resuming a conversation from history (Recent Chats or Claude's own history) could silently drop
+  the Alethe orchestrator connection: the agent came back without its MCP config and could no longer
+  delegate work or open shells. It also occasionally showed up on the board under a raw, unreadable
+  id instead of its terminal's name. Both are now resolved the same way a freshly spawned session is.
+- An orchestrator shell's last output could occasionally be lost right after it exited: the
+  scrollback write to disk raced the exit report, so a command that failed at once could come back
+  with an empty or stale error instead of what it actually printed.
+- Running orchestrator shells no longer disappear from the board when the planner that started them
+  closes its terminal — they keep showing there, in their own group, matched by working directory,
+  so they can still be stopped, restarted or reopened.
+- "Open terminal" on an orchestrator shell could land back on a dead view left over from before an
+  app restart, still saying the shell was not running. It now opens a fresh terminal whenever the
+  previous one has no live process to attach to.
+- Parking a project or switching profiles could hard-kill an orchestrator shell you had open, with
+  no chance for it to shut down gracefully. Both now leave orchestrator shells running.
+- **A worker's report could vanish before reaching the lead agent.** Waiting on workers held the
+  lead's call open for up to ten minutes, long past the point where Claude Code gives up on it, so
+  the call failed with "The operation timed out" and any report it had already collected was lost
+  with it. A wait now answers within 45 seconds and says to check again, and a report stays in line
+  until the lead confirms it received it — one that never arrived comes back on the next check.
+- The "Browser" sub-option under Playwright browser in the onboarding feature list had no icon,
+  unlike every other row. It now shows the Browser module glyph, aligned with the icon column.
+- A plugin installed from disk never loaded on Windows: its files were requested at an address the
+  webview does not resolve there. It also failed silently, leaving an empty panel with no
+  explanation — a panel whose plugin failed to start now says so, and why.
+- A plugin whose folder name did not match its identifier appeared in the list but could never load
+  its code, failing with no explanation. Such a folder is now ignored outright.
+- A plugin folder dropped straight into the plugins directory started out enabled, skipping the
+  confirmation that was supposed to gate anything unreviewed. A local plugin now runs only after you
+  turn it on yourself.
+- Uninstalling a plugin used its display name instead of its identifier, so any plugin whose name
+  differed from its id could not be removed.
+- The loading placeholder shown while a graph or markdown pane opened had no styling at all, because
+  it referenced a CSS class that was never defined.
+- Switching the sidebar's visual style no longer resets which sidebar tab was open: the two sidebar
+  shells kept separate copies of that state.
+- Putting a group or project on standby now tears all of its terminal and agent process trees down
+  through one reliable batch operation. Per-instance PTY registries also prevent Claude, Codex,
+  shell, and MCP wrapper processes from surviving an app update or overlapping Alethe instance.
+- Codex handoffs on Windows now write escaped bridge-script paths to project `config.toml` files,
+  preventing `\U` TOML parse errors from blocking the receiving session.
+
+### Changed
+
+- **Preferences sections fold away.** Every section on a Preferences page now has a clickable
+  heading, so a long page reads as a list of subjects instead of one wall of settings. Alethe
+  remembers what you left open. On Multi-Agent & Telemetry the bulky read-only sections
+  — metrics, traces and the audit log — start folded; jumping to a setting from the search
+  opens its section on the way.
+
+- **The lead agent can now see how much of each vendor's limit is left.** Every orchestrator tool
+  answers with the current headroom for Claude and Codex — which window is closest to full, when it
+  resets, the detected plan — so the agent doing the delegating decides with the same numbers the
+  usage widget shows you, instead of delegating blind. Ask it to send work to a side that is running
+  out and it is told which side has more room, with the figures behind the call — and when both
+  sides are running out it is told that too, rather than being pointed at an agent that is just as
+  close to its ceiling. It is still the one that chooses: Alethe reports, it never silently moves
+  work to another vendor.
+- **The board now shows why a worker ran where it ran.** When one agent is running out, the line
+  from a delegation to its worker is labelled with the reason — `chosen · codex week 91%` when the
+  lead went to the side with room, `ignored hint · codex week 91%` when it sent work into the
+  strained one anyway. Lines stay clean when both sides had room, so a label always means something.
+
+- **The quota warning no longer misses a worker that ran out for the week.** It compared only the
+  5-hour window, so an agent sitting at 60% of its weekly limit while comfortable on the hour raised
+  no warning at all. Both the chip and the lead agent now read whichever window is closest to full.
+
+- **Correcting a Claude worker now actually stops it.** Steering one used to wait out whatever it was
+  already doing and only apply the correction on the following turn — precisely when the run was
+  going the wrong way. The correction now interrupts the turn in flight and starts as the next one,
+  the same way steering a Codex worker already behaved. Cancelling a Claude worker also clears
+  anything it still had queued, so nothing starts a last turn on the way out.
+
+- A pane whose type has no provider — because the plugin that supplies it is disabled — now says
+  so instead of quietly turning into a terminal pointed at that pane's folder.
+- **9router settings rebuilt around state.** The Integrations panel now opens with a single status
+  line (off / ready / routing through the address it is using) with the start, stop, and dashboard
+  actions beside it, instead of hiding whether the proxy runs inside a button label. What is shown
+  depends on what is true: with nothing installed you get only the install offer; the endpoint key,
+  port, and auto-start appear once routing is on; the install picker appears only when you actually
+  have two installs. Scattered coloured warnings were folded into one notice list with severity, and
+  the "only new terminals change route" note dropped from a permanent warning to a hint shown while
+  routing is actually running.
+
+- **New session modal redesigned.** The dialog is now a single stack of identical rows: an
+  **Open as** field that switches between a plain terminal and an orchestration, then the
+  agent (planner), then the folder (project). Choosing orchestration relabels the fields, limits
+  the agent list to the planners, and reveals an optional **Goal** that is sent to the planner as
+  its first message. Permissions, 9router routing, the runtime profile, and the manual folder path
+  moved into **Advanced**. The footer gained a **Create more** switch that keeps the dialog open
+  after opening a terminal, and the primary button now states what it will do
+  (`Open Claude Code` / `Create orchestration`) with a `Ctrl`/`Cmd` + `Enter` shortcut. The dialog
+  itself is rounder and its title reads `New session` instead of a lowercase `new terminal`.
+
+### Removed
+
+- **The board's per-worker message box is gone.** The input line under the board that could steer a
+  worker mid-turn, resume one that had been interrupted, or hand a finished one more work is no
+  longer there. Talking to a worker now goes through its lead agent instead — the same instruction
+  the box used to send is what the message shortcuts write into the lead's terminal for you to send.
+
+### Added
+
 - Empty project and group workspaces now use a quiet launcher-style state with a large Alethe mark
   and direct keyboard-labelled actions instead of boxed empty-state cards.
 
@@ -168,10 +334,9 @@ preferences; and three new agents — **Cursor CLI**, **Kiro CLI** and plain **W
 
 - A worker on the orchestration board whose report mentions an image it produced now gets its own
   card on the canvas, directly below it, automatically — no click needed to see it (previously it
-  was a small thumbnail hidden inside the worker card's click-to-expand detail panel). Click the
-  card to open a full-size preview. Only the first image is promoted this way; a second one or a
-  plain link still show in the expanded detail panel as before.
-
+  was a small thumbnail hidden inside the worker's detail panel). Click the card to open a
+  full-size preview. Only the first image is promoted this way; a second one or a plain link still
+  show in the worker's panel as before.
 - Clicking an image link in a terminal (png, jpg, gif, webp, bmp, avif, ico, svg) now offers "Open
   in grid" like markdown and text files already did — it opens in its own pane with a header
   (drag, open in Explorer, focus mode, close) and the image scaled to fit.

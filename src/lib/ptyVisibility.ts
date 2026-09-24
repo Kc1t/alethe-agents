@@ -71,6 +71,16 @@ export function computeVisibleFocusedPtyIds(): PtyVisibilitySets {
     focused.add(canvasId)
   }
 
+  // The orchestration board's inspector shows a shell's terminal in an overlay, which is no pane of
+  // any workspace tab. Without this the loop above never sees it: its PTY would be reported hidden,
+  // so it would get no scrollback replay and its output stream would be switched off while the
+  // overlay still accepts keystrokes. The overlay clears this the moment it closes.
+  const inspectorId = ui.inspectorPtyId
+  if (inspectorId) {
+    visible.add(inspectorId)
+    focused.add(inspectorId)
+  }
+
   return { visible, focused }
 }
 

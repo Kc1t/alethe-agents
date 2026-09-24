@@ -48,6 +48,7 @@ mod opencode_gsd_plugin;
 mod opencode_sessions;
 pub mod orchestrator;
 pub mod orchestrator_core;
+mod orchestrator_shell_host;
 mod paths;
 mod planning;
 mod planning_gate;
@@ -264,9 +265,16 @@ pub fn run() {
             orchestrator::orchestrator_jobs,
             orchestrator::orchestrator_set_concurrency,
             orchestrator::orchestrator_set_agent_fitness,
+            orchestrator::orchestrator_set_rule_sets,
+            orchestrator::orchestrator_default_rule_sets,
             orchestrator::orchestrator_message,
             orchestrator::orchestrator_answer,
             orchestrator::orchestrator_job_diff,
+            orchestrator::orchestrator_cancel_job,
+            orchestrator::orchestrator_shell_output,
+            orchestrator::orchestrator_shell_stop,
+            orchestrator::orchestrator_shell_restart,
+            orchestrator::orchestrator_shell_remove,
             browser_session::browser_session_start,
             browser_session::browser_session_stop,
             browser_session::browser_session_status,

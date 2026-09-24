@@ -110,6 +110,7 @@ const plugin: PluginModule = {
     context.registerCommand('git.reveal', run)   // implements a declared command
     context.registerMessages('en', { title: 'My Panel' })
     context.contributes.theme({ /* … */ })       // themes and panes stay imperative
+    context.ui.revealView('git')                 // opens its own tab, wherever it is placed
   },
   deactivate() {
     // Optional. Everything registered through `context` is disposed for you.
@@ -118,6 +119,25 @@ const plugin: PluginModule = {
 
 export default plugin
 ```
+
+### Opening your own view or modal
+
+`context.ui` is the only way a plugin moves the app, and it moves nothing that is not its own:
+
+```ts
+context.ui.revealView('git')          // reveals a view this plugin declared
+context.ui.openModal('git.settings')  // opens a modal this plugin contributed
+```
+
+`revealView` opens whichever sidebar currently holds the view, honouring a placement the person
+chose over the container the manifest declared. Both refuse an id the plugin does not own, the same
+way `registerView` does — a plugin steering another plugin's interface would be worse than not
+steering at all.
+
+This exists because a local plugin has no other route. A bundled plugin could always import the
+app's stores directly, being part of the same build; a plugin loaded over `alethe-plugin://` gets
+`window.alethe` and its context and nothing else. Without `context.ui`, a command that reveals its
+own panel — the first thing any plugin author writes — was possible only for our own plugins.
 
 `registerView` and `registerCommand` refuse an id the manifest does not declare — announcing is the
 manifest's job, implementing is the code's. Everything registered through the context returns a

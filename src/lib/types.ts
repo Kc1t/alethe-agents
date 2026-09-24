@@ -508,6 +508,24 @@ export type TerminalCreationPreset = {
 
 export const ROUTER9_DEFAULT_PORT = 20128
 
+/** When a message shortcut shows on a worker. */
+export type ShortcutRule = 'any' | 'finished' | 'finishedIsolated'
+
+/** A one-click instruction for the planner, written into its terminal for the person to edit. */
+export type OrchestratorShortcut = {
+  id: string
+  name: string
+  text: string
+  rule: ShortcutRule
+}
+
+/** One named body of engineering rules handed to workers. `general` always applies. */
+export type RuleSet = {
+  id: string
+  name: string
+  text: string
+}
+
 /** Which 9router install Alethe runs: the one it manages, or one the user installed themselves. */
 export type Router9Source = 'managed' | 'external'
 
@@ -653,6 +671,12 @@ export type Preferences = {
   nodeHeapProfile?: 'conservative' | 'balanced' | 'performance'
 
   gsdSyncModelChain?: string[]
+
+  /** `null` means "use Alethe's built-ins"; any array — including an empty one — is the person's own list. */
+  orchestratorShortcuts: OrchestratorShortcut[] | null
+
+  /** null means "use Alethe's"; any array — empty included — is the person's own list. */
+  workerRuleSets: RuleSet[] | null
 
   router9?: Router9Preferences
 
@@ -802,6 +826,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
     spawnGraceSeconds: 120,
   },
   nodeHeapProfile: 'balanced',
+  orchestratorShortcuts: null,
+  workerRuleSets: null,
   pomodoroWorkMinutes: 25,
   pomodoroShortBreakMinutes: 5,
   pomodoroLongBreakMinutes: 15,

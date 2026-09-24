@@ -196,6 +196,7 @@ export type ProjectsState = ProjectsFile & {
         handoff?: AgentHandoffBootstrap
         runtimeProfile?: AgentRuntimeProfile
         useRouter9?: boolean
+        ptyId?: string
       }
       worktreeAgentId?: string
       gsdSyncViewer?: boolean

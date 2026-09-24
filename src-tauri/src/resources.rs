@@ -404,6 +404,12 @@ fn eligible_candidates(
         .values()
         .filter_map(|meta| {
             let stats = live.get(meta.id.as_str())?;
+            // Parking must not reach an orchestrator shell (spec §12): it has no view of its own to
+            // ask before being suspended, and a hard suspend gives its process no chance for a
+            // graceful Ctrl+C shutdown the way the board's own stop control does.
+            if meta.id.starts_with("orchestrator-shell-") {
+                return None;
+            }
             if meta.visible
                 || meta.focused
                 || meta.protected
@@ -708,6 +714,22 @@ mod tests {
             eligible_candidates(&snapshot("a"), &metas, &policy, 1_000_000),
             vec!["a".to_string()]
         );
+    }
+
+    #[test]
+    fn orchestrator_shell_ptys_are_never_candidates() {
+        let policy = ResourcePolicy::default();
+        let mut shell = meta("orchestrator-shell-01");
+        shell.kind = "shell".to_string();
+        shell.reported_at_ms = 2_000_000;
+        let metas = HashMap::from([("orchestrator-shell-01".to_string(), shell)]);
+        assert!(eligible_candidates(
+            &snapshot("orchestrator-shell-01"),
+            &metas,
+            &policy,
+            2_000_000,
+        )
+        .is_empty());
     }
 
     #[test]

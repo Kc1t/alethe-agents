@@ -8,15 +8,9 @@ import {
   type SidebarTabContribution,
 } from './plugins'
 
-export type ViewPlacements = Record<string, SidebarSide>
+import { resolveViewSide, type ViewPlacements } from './plugins/placement'
 
-/** The manifest declares a container; the user may move the view from it. */
-export function resolveViewSide(
-  view: SidebarTabContribution,
-  placements: ViewPlacements | undefined,
-): SidebarSide {
-  return placements?.[view.id] ?? view.side
-}
+export { resolveViewSide, type ViewPlacements }
 
 function bySide(
   views: readonly SidebarTabContribution[],
