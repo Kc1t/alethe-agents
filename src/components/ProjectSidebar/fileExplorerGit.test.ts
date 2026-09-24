@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  buildGitExplorerIndex,
-  getGitEntryStatus,
-  normalizeGitPath,
-} from './fileExplorerGit'
+import { buildGitExplorerIndex, getGitEntryStatus, normalizeGitPath } from './fileExplorerGit'
 import type { GitRepositoryStatus } from '../../lib/tauri'
 
 describe('fileExplorerGit', () => {
@@ -21,16 +17,12 @@ describe('fileExplorerGit', () => {
       ahead: 0,
       behind: 0,
       conflicts: [],
-      staged: [
-        { path: 'src/staged.ts', originalPath: null, status: 'A' },
-      ],
+      staged: [{ path: 'src/staged.ts', originalPath: null, status: 'A' }],
       changes: [
         { path: 'scripts/build.js', originalPath: null, status: 'M' },
         { path: 'src/components/Button.tsx', originalPath: null, status: 'M' },
       ],
-      untracked: [
-        { path: 'docs/new-guide.md', originalPath: null, status: '?' },
-      ],
+      untracked: [{ path: 'docs/new-guide.md', originalPath: null, status: '?' }],
     }
 
     const index = buildGitExplorerIndex(mockStatus)
@@ -97,13 +89,9 @@ describe('fileExplorerGit', () => {
       detached: false,
       ahead: 0,
       behind: 0,
-      conflicts: [
-        { path: 'conflict.txt', originalPath: null, status: 'U' },
-      ],
+      conflicts: [{ path: 'conflict.txt', originalPath: null, status: 'U' }],
       staged: [],
-      changes: [
-        { path: 'conflict.txt', originalPath: null, status: 'M' },
-      ],
+      changes: [{ path: 'conflict.txt', originalPath: null, status: 'M' }],
       untracked: [],
     }
 

@@ -331,23 +331,24 @@ export const TerminalPane = memo(function TerminalPane({
     const agentType = sessionTitleAgentType
     const sessionId = sessionTitleId
     let cancelled = false
-    let intervalId: number | undefined
     const fetchTitle = () => {
       const request =
-        agentType === 'claude' ? getClaudeSessionTitle(cwd, sessionId) : getCodexSessionTitle(sessionId)
+        agentType === 'claude'
+          ? getClaudeSessionTitle(cwd, sessionId)
+          : getCodexSessionTitle(sessionId)
       request
         .then((title) => {
           if (cancelled || !title) return
           setSessionTitle(title)
-          if (intervalId !== undefined) window.clearInterval(intervalId)
+          window.clearInterval(intervalId)
         })
         .catch(() => {})
     }
     fetchTitle()
-    intervalId = window.setInterval(fetchTitle, 6000)
+    const intervalId = window.setInterval(fetchTitle, 6000)
     return () => {
       cancelled = true
-      if (intervalId !== undefined) window.clearInterval(intervalId)
+      window.clearInterval(intervalId)
     }
   }, [sessionTitleAgentType, sessionTitleId, cwd])
 

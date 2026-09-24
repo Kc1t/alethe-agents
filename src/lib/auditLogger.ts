@@ -1,5 +1,6 @@
 export type AuditLogLevel = 'error' | 'warn' | 'info' | 'debug'
-export type AuditLogCategory = 'SYSTEM' | 'HTTP' | 'WS' | 'TAURI' | 'REACT' | 'ROUTER' | 'DOM' | 'PTY'
+export type AuditLogCategory =
+  'SYSTEM' | 'HTTP' | 'WS' | 'TAURI' | 'REACT' | 'ROUTER' | 'DOM' | 'PTY'
 
 export interface AuditEntry {
   id: string

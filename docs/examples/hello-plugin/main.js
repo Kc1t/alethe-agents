@@ -1,5 +1,6 @@
 // A local Alethe plugin: plain JavaScript, no build step, no bundler.
 // Alethe injects this file over alethe-plugin:// and hands it window.alethe.
+/* global window */
 ;(function () {
   var api = window.alethe
   if (!api) return

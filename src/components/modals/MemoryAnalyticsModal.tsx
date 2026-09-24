@@ -11,8 +11,13 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
-import { intlLocale, type Locale, type TFunction,useT } from '../../lib/i18n'
-import { type CrashReport,getJobGuardStatus, getLastCrashReport, openLogsFolder } from '../../lib/tauri'
+import { intlLocale, type Locale, type TFunction, useT } from '../../lib/i18n'
+import {
+  type CrashReport,
+  getJobGuardStatus,
+  getLastCrashReport,
+  openLogsFolder,
+} from '../../lib/tauri'
 import { useProjectsStore } from '../../stores/projectsStore'
 import type { MemorySample } from '../../stores/uiStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -131,9 +136,6 @@ function buildDiagnostics(history: MemorySample[], t: TFunction): string[] {
 
 type ChartPoint = { x: number; y: number }
 
-                                                                          
-                                                                      
-                                              
 function smoothPath(points: ChartPoint[]): string {
   if (points.length < 2) return ''
   if (points.length === 2) {
@@ -273,7 +275,6 @@ export function MemoryAnalyticsModal() {
   const runtimeSnapshot = useUiStore((s) => s.runtimeSnapshot)
   const clearMemoryHistory = useUiStore((s) => s.clearMemoryHistory)
 
-                                                                      
   const [crash, setCrash] = useState<CrashReport | null>(null)
   useEffect(() => {
     void getLastCrashReport()
@@ -281,8 +282,6 @@ export function MemoryAnalyticsModal() {
       .catch(() => {})
   }, [])
 
-                                                                       
-                                                                             
   // saber de verdade.
   const [jobGuardActive, setJobGuardActive] = useState<boolean | null>(null)
   useEffect(() => {
@@ -337,7 +336,10 @@ export function MemoryAnalyticsModal() {
                     total: Math.round(crash.session.total_mb),
                     ptys: Math.round(crash.session.ptys_mb),
                     procs: crash.session.process_count,
-                    time: formatTime(crash.session.last_heartbeat_ms || crash.session.started_at_ms, language),
+                    time: formatTime(
+                      crash.session.last_heartbeat_ms || crash.session.started_at_ms,
+                      language,
+                    ),
                   })}
                 </p>
                 {crash.orphans_reaped > 0 ? (

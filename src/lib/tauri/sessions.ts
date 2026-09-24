@@ -20,7 +20,6 @@ export async function createCursorChat(cwd: string): Promise<string> {
   return invoke<string>('create_cursor_chat', { cwd })
 }
 
-                                                            
 export type ModelCost = {
   model: string
   input: number

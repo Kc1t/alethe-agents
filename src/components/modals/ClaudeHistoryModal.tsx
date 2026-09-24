@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 
-import { intlLocale, type Locale, type TFunction,useT } from '../../lib/i18n'
+import { intlLocale, type Locale, type TFunction, useT } from '../../lib/i18n'
 import { resumeSessionInPane } from '../../lib/paneResume'
-import { type ClaudeSessionMeta,listClaudeSessions } from '../../lib/tauri'
+import { type ClaudeSessionMeta, listClaudeSessions } from '../../lib/tauri'
 import { type AgentType } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import styles from './ClaudeHistoryModal.module.css'

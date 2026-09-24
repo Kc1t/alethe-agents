@@ -14,11 +14,6 @@ import styles from '../PreferencesModal.module.css'
 import { SettingsSection } from './primitives'
 import { VoiceDictationSection } from './VoiceDictationSection'
 
-   
-                                                                            
-                                                                           
-                                                       
-   
 function TerminalCommandSection() {
   const t = useT()
   const [status, setStatus] = useState<CliShimStatus | null>(null)
@@ -106,7 +101,6 @@ function TerminalCommandSection() {
 }
 
 export function IntegrationsPage() {
-
   const t = useT()
   const preferences = useProjectsStore((state) => state.preferences)
   const setPreferences = useProjectsStore((state) => state.setPreferences)

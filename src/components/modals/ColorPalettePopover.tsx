@@ -14,7 +14,20 @@ export type ColorPalettePopoverProps = {
 const PALETTE_GROUPS = [
   {
     nameKey: 'palette.vibrant' as const,
-    colors: ['#6ea8ff', '#22d3ee', '#a78bfa', '#34d399', '#f59e0b', '#ef4444', '#ec4899', '#10b981', '#3b82f6', '#06b6d4', '#8b5cf6', '#f97316'],
+    colors: [
+      '#6ea8ff',
+      '#22d3ee',
+      '#a78bfa',
+      '#34d399',
+      '#f59e0b',
+      '#ef4444',
+      '#ec4899',
+      '#10b981',
+      '#3b82f6',
+      '#06b6d4',
+      '#8b5cf6',
+      '#f97316',
+    ],
   },
   {
     nameKey: 'palette.neutral' as const,
@@ -22,7 +35,16 @@ const PALETTE_GROUPS = [
   },
   {
     nameKey: 'palette.pastel' as const,
-    colors: ['#93c5fd', '#a5f3fc', '#c4b5fd', '#6ee7b7', '#fde047', '#fca5a5', '#f472b6', '#fed7aa'],
+    colors: [
+      '#93c5fd',
+      '#a5f3fc',
+      '#c4b5fd',
+      '#6ee7b7',
+      '#fde047',
+      '#fca5a5',
+      '#f472b6',
+      '#fed7aa',
+    ],
   },
   {
     nameKey: 'palette.neon' as const,
@@ -99,10 +121,25 @@ export function ColorPalettePopover({
           </button>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 280, overflowY: 'auto' }}>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 10,
+            maxHeight: 280,
+            overflowY: 'auto',
+          }}
+        >
           {PALETTE_GROUPS.map((group) => (
             <div key={group.nameKey} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--fg-faint)', textTransform: 'uppercase' }}>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: 'var(--fg-faint)',
+                  textTransform: 'uppercase',
+                }}
+              >
                 {t(group.nameKey)}
               </span>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -144,9 +181,7 @@ export function ColorPalettePopover({
             justifyContent: 'space-between',
           }}
         >
-          <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>
-            {t('crud.customColor')}
-          </span>
+          <span style={{ fontSize: 11, color: 'var(--fg-muted)' }}>{t('crud.customColor')}</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
               type="button"
@@ -168,7 +203,13 @@ export function ColorPalettePopover({
               type="color"
               value={selectedColor?.startsWith('#') ? selectedColor : '#64748b'}
               onChange={(e) => onSelectColor(e.target.value)}
-              style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
+              style={{
+                position: 'absolute',
+                opacity: 0,
+                width: 0,
+                height: 0,
+                pointerEvents: 'none',
+              }}
             />
           </div>
         </div>

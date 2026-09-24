@@ -2,23 +2,6 @@ import { create } from 'zustand'
 
 import { basename } from '../lib/paths'
 
-   
-                                                                      
-  
-                                                                           
-                                                                             
-                                                                      
-                                                                          
-                                  
-  
-                                                                          
-                                                                         
-                                                                         
-                                                                            
-                                                                             
-                   
-   
-
 export type AgentHookPayload = {
   hook_event_name?: string
   session_id?: string
@@ -79,7 +62,6 @@ export type TeamTask = {
   owner: string | null
 }
 
-                                                                     
 const FEED_CAP = 300
 
 const SPAWNER_TOOLS = new Set(['Agent', 'Task'])
@@ -88,7 +70,6 @@ function str(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null
 }
 
-                                                                 
 export function summarizeTool(toolName: string, input?: Record<string, unknown>): string {
   if (!input) return ''
   const clip = (s: string, n = 80) => (s.length > n ? `${s.slice(0, n)}…` : s)
@@ -124,7 +105,7 @@ type AgentCanvasState = {
   nodes: AgentNode[]
   selectedId: string | null
   lastEventAt: number | null
-                                                                            
+
   pendingPrompts: Record<string, PendingPrompt[]>
   /** Active team name from the lead's TeamCreate event. */
   teamName: string | null
@@ -216,8 +197,6 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
       const id = raw.agent_id
       if (!id) return
       set((s) => {
-                                                                             
-                                                
         const teammateNodeId = s.incarnations[id]
         const idx = s.nodes.findIndex((n) => n.id === (teammateNodeId ?? id))
         if (idx === -1) {
@@ -307,7 +286,6 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
       const agentId = raw.agent_id
       const input = raw.tool_input ?? {}
 
-                                                             
       if (raw.tool_name === 'TaskUpdate') {
         const taskId = str(input.taskId) ?? str(input.task_id)
         if (taskId) {
@@ -329,11 +307,9 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
             }
           })
         }
-                                                                            
       }
 
       if (!agentId) {
-                                   
         if (raw.tool_name === 'TeamCreate') {
           const teamName = str(input.team_name)
           console.log('[agentCanvasStore] TeamCreate:', teamName)
@@ -345,7 +321,7 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
           const teamName = str(input.team_name)
           if (teammateName && teamName) {
             // Spawn de TEAMMATE (tool_input tem name+team_name; subagent comum
-                                                                  
+
             const nodeId = `teammate:${teammateName}`
             console.log(`[agentCanvasStore] teammate spawnado: ${teammateName} (${teamName})`)
             set((s) => {
@@ -375,14 +351,12 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
             })
             return
           }
-                                                                           
-                                       
+
           const subagentType = str(input.subagent_type) ?? 'general-purpose'
           set((s) => ({
             pendingPrompts: {
               ...s.pendingPrompts,
-                                                                                  
-                                     
+
               [subagentType]: [
                 ...(s.pendingPrompts[subagentType] ?? []),
                 { description: str(input.description), prompt: str(input.prompt) },
@@ -403,9 +377,6 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
         const targetId = s.incarnations[agentId] ?? agentId
         const idx = s.nodes.findIndex((n) => n.id === targetId)
         if (idx === -1) {
-                                                                              
-                                                                            
-                                             
           console.warn(
             `[agentCanvasStore] PreToolUse sem node, criando via ensureNode id=${agentId}`,
           )
@@ -495,8 +466,6 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
       })
       return
     }
-
-                                                                              
   },
 
   select: (id) => {

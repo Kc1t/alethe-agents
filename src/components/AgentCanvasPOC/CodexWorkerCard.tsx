@@ -9,7 +9,7 @@ import styles from './AgentCanvasPOC.module.css'
 type CodexWorkerCardProps = {
   worker: CodexWorker
   onOpen: (ptyId: string) => void
-                                                                       
+
   cardRefs: MutableRefObject<Map<string, HTMLDivElement>>
 }
 

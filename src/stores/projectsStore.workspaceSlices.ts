@@ -326,8 +326,7 @@ export function createWorkspaceSlice({
         const project = state.projects.find((item) => item.id === projectId)
         if (
           !project ||
-          (gridId !== DEFAULT_GRID_ID &&
-            !projectGrids(project).some((grid) => grid.id === gridId))
+          (gridId !== DEFAULT_GRID_ID && !projectGrids(project).some((grid) => grid.id === gridId))
         )
           return
         const ids = relatedGridPaneIds(project, terminalId)

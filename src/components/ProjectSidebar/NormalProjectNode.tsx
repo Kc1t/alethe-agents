@@ -58,10 +58,6 @@ export function NormalProjectNode({
           ? styles.dropInside
           : ''
 
-                                                                              
-                                                                          
-                                                                             
-                                                           
   const visibleTerminals = project.terminals.filter((term) => !term.gsdSyncViewer)
   const isEmpty = visibleTerminals.length === 0
 
@@ -151,7 +147,7 @@ export function NormalProjectNode({
             <MoreHorizontal size={14} />
           </button>
         </span>
-        {(!isEmpty || project.mode !== 'agentSandbox') ? (
+        {!isEmpty || project.mode !== 'agentSandbox' ? (
           <button
             type="button"
             className={styles.rowChevronBtn}
@@ -171,18 +167,20 @@ export function NormalProjectNode({
       </div>
 
       <Collapse open={!project.collapsed}>
-        <ProjectGrids project={project} isActive={isActive}>{(term) => (
-          <NormalTerminalNode
-            key={term.id}
-            project={project}
-            terminal={term}
-            selected={openPanes?.has(term.id) ?? false}
-            focused={focusedTerminalId === term.id}
-            onClick={() => onTerminalClick(term)}
-            onDoubleClick={() => onTerminalDoubleClick(term)}
-            onMenu={(e) => onTerminalMenu(term, e)}
-          />
-        )}</ProjectGrids>
+        <ProjectGrids project={project} isActive={isActive}>
+          {(term) => (
+            <NormalTerminalNode
+              key={term.id}
+              project={project}
+              terminal={term}
+              selected={openPanes?.has(term.id) ?? false}
+              focused={focusedTerminalId === term.id}
+              onClick={() => onTerminalClick(term)}
+              onDoubleClick={() => onTerminalDoubleClick(term)}
+              onMenu={(e) => onTerminalMenu(term, e)}
+            />
+          )}
+        </ProjectGrids>
       </Collapse>
     </div>
   )

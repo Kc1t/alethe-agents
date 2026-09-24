@@ -290,7 +290,6 @@
   flex-shrink: 0;
 }
 
-                                                                    
 .projectChip {
   width: 16px;
   height: 16px;
@@ -405,7 +404,6 @@
   color: var(--fg-faint);
 }
 
-                                               
 .groupCollapsed {
   display: flex;
   align-items: center;
@@ -458,7 +456,6 @@
   flex-shrink: 0;
 }
 
-                                                        
 .projectDisabled .projectName {
   color: var(--text-tertiary);
 }
@@ -503,7 +500,6 @@
   }
 }
 
-                                                        
 .ungroupedSection {
   margin-top: 2px;
   padding: 0;
@@ -599,7 +595,6 @@
   flex: 0 0 auto;
 }
 
-                                                                          
 .terminalMenuBtn {
   width: 20px;
   height: 20px;
@@ -622,7 +617,6 @@
   color: var(--fg);
 }
 
-                                                              
 .rowMenuBtn {
   width: 22px;
   height: 22px;
@@ -641,7 +635,6 @@
   color: var(--fg);
 }
 
-                                                                             
 .terminalState {
   width: 16px;
   display: grid;
@@ -672,7 +665,6 @@
   flex: none;
 }
 
-                                                               
 .monogram {
   display: grid;
   place-items: center;
@@ -1075,7 +1067,6 @@
   line-height: 1;
 }
 
-                                                                                     
 .stateGutter {
   width: 16px;
   display: grid;
@@ -1220,7 +1211,6 @@
   border-radius: 0;
 }
 
-                                                                        
 .groupTag,
 .ungroupedHeader {
   width: 100%;
@@ -1307,8 +1297,6 @@
   background: transparent;
 }
 
-                                                                                
-                                                           
 .groupBody {
   margin: 0 0 0 3px;
   padding: 0 0 0 7px;
@@ -1320,8 +1308,7 @@
 }
 
 .groupBox:hover .groupBody {
-  box-shadow: inset 1px 0 0
-    color-mix(in srgb, var(--group-color, var(--border)) 45%, var(--border));
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--group-color, var(--border)) 45%, var(--border));
 }
 
 .groupBody .groupBox {
@@ -1513,7 +1500,6 @@
   transform: rotate(-90deg);
 }
 
-                                                                                    
 .terminals {
   display: flex;
   flex-direction: column;
@@ -1551,7 +1537,6 @@
   box-shadow: none;
 }
 
-                                                                                    
 .terminalHidden .agentStack,
 .terminalDisabled .agentStack {
   opacity: 0.6;

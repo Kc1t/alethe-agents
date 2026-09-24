@@ -1,13 +1,5 @@
 import { useEffect, useRef } from 'react'
 
-   
-                                                                                
-                                                                            
-                                                       
-  
-                                                                           
-                                                
-   
 export function useOnClickOutside<T extends HTMLElement>(
   ref: React.RefObject<T | null>,
   handler: (event: PointerEvent) => void,

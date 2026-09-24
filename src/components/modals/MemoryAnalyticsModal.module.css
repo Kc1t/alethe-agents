@@ -70,7 +70,6 @@
   margin-bottom: 10px;
 }
 
-                                                                                 
 .crashPanel {
   border-color: var(--status-offline);
   background: color-mix(in srgb, var(--status-offline) 8%, transparent);

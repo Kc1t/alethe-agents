@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
@@ -43,14 +43,18 @@ fn call(core: &Core, name: &str, arguments: Value) -> Value {
 }
 
 fn codex_launcher() -> Launcher {
-    let output = Command::new("where")
-        .arg("codex")
-        .output()
-        .expect("where codex");
+    let output = {
+        #[cfg(windows)]
+        let mut finder = Command::new("where");
+        #[cfg(not(windows))]
+        let mut finder = Command::new("which");
+        finder.arg("codex").output()
+    }
+    .expect("locate codex");
     let found = String::from_utf8_lossy(&output.stdout)
         .lines()
         .map(str::trim)
-        .find(|line| line.to_ascii_lowercase().ends_with(".cmd"))
+        .find(|line| !line.is_empty())
         .map(ToOwned::to_owned)
         .expect("codex on PATH");
     Launcher::codex_app_server(PathBuf::from(found))
@@ -371,6 +375,14 @@ fn the_observer_sees_every_state_change() {
         json!({ "cwd": dir.to_string_lossy(), "tasks": ["anything"] }),
     );
 
+    // Snapshots reach the observer through a channel, so the first one lands a
+    // moment after `alethe_delegate` returns. Asserting immediately raced the
+    // dispatch thread and failed whenever the scheduler took its time.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while seen.lock().expect("seen").is_empty() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
     let snapshots = seen.lock().expect("seen");
     assert!(!snapshots.is_empty(), "the observer was never called");
     let last = snapshots.last().expect("a snapshot");
@@ -472,16 +484,18 @@ fn the_queue_never_breaches_the_concurrency_limit() {
 /// watchdog without spending a real Codex turn. Registered under the "codex" kind: `alethe_delegate`
 /// defaults a job's agent to "codex" when the call does not name one, same as these tests do.
 fn silent_launcher() -> Launcher {
+    #[cfg(windows)]
+    let (program, args) = (
+        PathBuf::from("cmd"),
+        vec!["/c", "ping", "-n", "60", "127.0.0.1"],
+    );
+    #[cfg(not(windows))]
+    let (program, args) = (PathBuf::from("sleep"), vec!["60"]);
+
     Launcher {
         kind: "codex".into(),
-        program: PathBuf::from("cmd"),
-        args: vec![
-            "/c".into(),
-            "ping".into(),
-            "-n".into(),
-            "60".into(),
-            "127.0.0.1".into(),
-        ],
+        program,
+        args: args.into_iter().map(Into::into).collect(),
         env: Vec::new(),
     }
 }
@@ -490,14 +504,25 @@ fn silent_launcher() -> Launcher {
 fn fake_claude_launcher(dir: &std::path::Path, transcript: &str) -> Launcher {
     let path = dir.join("transcript.jsonl");
     std::fs::write(&path, transcript).expect("write fake transcript");
-    Launcher {
-        kind: "claude".into(),
-        program: PathBuf::from("cmd"),
-        args: vec![
-            "/c".into(),
-            "type".into(),
+    #[cfg(windows)]
+    let (program, args) = (
+        PathBuf::from("cmd"),
+        vec![
+            "/c".to_string(),
+            "type".to_string(),
             path.to_string_lossy().into_owned(),
         ],
+    );
+    #[cfg(not(windows))]
+    let (program, args) = (
+        PathBuf::from("cat"),
+        vec![path.to_string_lossy().into_owned()],
+    );
+
+    Launcher {
+        kind: "claude".into(),
+        program,
+        args,
         env: Vec::new(),
     }
 }
@@ -765,22 +790,43 @@ fn isolating_gives_each_worker_its_own_worktree() {
 fn fake_claude_holding_launcher(dir: &std::path::Path, transcript: &str) -> Launcher {
     let path = dir.join("holding.jsonl");
     std::fs::write(&path, transcript).expect("write fake transcript");
-    let script = dir.join("holding.bat");
-    std::fs::write(
-        &script,
-        format!(
-            "@echo off
+    #[cfg(windows)]
+    let (program, args) = {
+        let script = dir.join("holding.bat");
+        std::fs::write(
+            &script,
+            format!(
+                "@echo off
 type \"{}\"
 ping -n 60 127.0.0.1 >NUL
 ",
-            path.to_string_lossy()
-        ),
-    )
-    .expect("write holding script");
+                path.to_string_lossy()
+            ),
+        )
+        .expect("write holding script");
+        (
+            PathBuf::from("cmd"),
+            vec!["/c".to_string(), script.to_string_lossy().into_owned()],
+        )
+    };
+    #[cfg(not(windows))]
+    let (program, args) = {
+        let script = dir.join("holding.sh");
+        std::fs::write(
+            &script,
+            format!("cat \"{}\"\nsleep 60\n", path.to_string_lossy()),
+        )
+        .expect("write holding script");
+        (
+            PathBuf::from("sh"),
+            vec![script.to_string_lossy().into_owned()],
+        )
+    };
+
     Launcher {
         kind: "claude".into(),
-        program: PathBuf::from("cmd"),
-        args: vec!["/c".into(), script.to_string_lossy().into_owned()],
+        program,
+        args,
         env: Vec::new(),
     }
 }

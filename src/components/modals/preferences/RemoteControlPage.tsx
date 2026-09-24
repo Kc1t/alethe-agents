@@ -43,7 +43,10 @@ export function RemoteControlPage() {
   }, [refresh])
 
   useEffect(() => {
-    const check = () => void remoteControlTailscaleStatus().then(setTailscale).catch(() => undefined)
+    const check = () =>
+      void remoteControlTailscaleStatus()
+        .then(setTailscale)
+        .catch(() => undefined)
     check()
     // Spawns the Tailscale CLI on every tick — a slower poll than the info
     // refresh above is deliberate, not an oversight.
@@ -88,10 +91,18 @@ export function RemoteControlPage() {
         description={t('remote.settingsStatusDesc')}
       >
         <div className={styles.statusCard} data-enabled={enabled}>
-          <span className={styles.statusIcon}>{enabled ? <Wifi size={18} /> : <WifiOff size={18} />}</span>
+          <span className={styles.statusIcon}>
+            {enabled ? <Wifi size={18} /> : <WifiOff size={18} />}
+          </span>
           <div>
             <strong>{enabled ? t('remote.statusOn') : t('remote.statusOff')}</strong>
-            <p>{enabled ? (info?.connected_devices ? info.http_url : t('remote.hiddenAddressPlaceholder')) : t('remote.disabledDescription')}</p>
+            <p>
+              {enabled
+                ? info?.connected_devices
+                  ? info.http_url
+                  : t('remote.hiddenAddressPlaceholder')
+                : t('remote.disabledDescription')}
+            </p>
           </div>
           <button
             type="button"
@@ -128,7 +139,9 @@ export function RemoteControlPage() {
           description={t('remote.pairingDesc')}
         >
           <div className={styles.statusCard} data-enabled={pairingOpen}>
-            <span className={styles.statusIcon}><Smartphone size={18} /></span>
+            <span className={styles.statusIcon}>
+              <Smartphone size={18} />
+            </span>
             <div>
               <strong>{pairingOpen ? t('remote.pairingOpen') : t('remote.pairingClosed')}</strong>
               <p>
@@ -140,7 +153,9 @@ export function RemoteControlPage() {
             <button
               type="button"
               className={`${controls.btn} ${pairingOpen ? '' : controls.btnPrimary}`}
-              onClick={() => void update(pairingOpen ? closeRemoteControlPairing : openRemoteControlPairing)}
+              onClick={() =>
+                void update(pairingOpen ? closeRemoteControlPairing : openRemoteControlPairing)
+              }
               disabled={busy}
             >
               {pairingOpen ? t('remote.pairingClose') : t('remote.pairingOpenAction')}
@@ -171,24 +186,43 @@ export function RemoteControlPage() {
         description={t('remote.settingsDevicesDesc')}
       >
         <div className={styles.deviceList}>
-          {info?.devices.length ? info.devices.map((device) => (
-            <div className={styles.device} key={device.id}>
-              <span className={styles.deviceIcon}><Smartphone size={16} /></span>
-              <div className={styles.deviceCopy}>
-                <strong>{device.name}</strong>
-                <span>
-                  {device.address} · {device.online ? t('remote.deviceOnline') : t('remote.deviceOffline')} ·{' '}
-                  {t('remote.deviceExpiresAt', { time: new Date(device.expires_at * 1000).toLocaleTimeString() })}
+          {info?.devices.length ? (
+            info.devices.map((device) => (
+              <div className={styles.device} key={device.id}>
+                <span className={styles.deviceIcon}>
+                  <Smartphone size={16} />
                 </span>
+                <div className={styles.deviceCopy}>
+                  <strong>{device.name}</strong>
+                  <span>
+                    {device.address} ·{' '}
+                    {device.online ? t('remote.deviceOnline') : t('remote.deviceOffline')} ·{' '}
+                    {t('remote.deviceExpiresAt', {
+                      time: new Date(device.expires_at * 1000).toLocaleTimeString(),
+                    })}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`${controls.btn} ${controls.btnDanger}`}
+                  onClick={() => void update(() => revokeRemoteControlDevice(device.id))}
+                  disabled={busy}
+                >
+                  {t('remote.revokeDevice')}
+                </button>
               </div>
-              <button type="button" className={`${controls.btn} ${controls.btnDanger}`} onClick={() => void update(() => revokeRemoteControlDevice(device.id))} disabled={busy}>
-                {t('remote.revokeDevice')}
-              </button>
-            </div>
-          )) : <p className={styles.empty}>{t('remote.noDevices')}</p>}
+            ))
+          ) : (
+            <p className={styles.empty}>{t('remote.noDevices')}</p>
+          )}
         </div>
         {info?.devices.length ? (
-          <button type="button" className={`${controls.btn} ${controls.btnDanger}`} onClick={() => void update(remoteControlRevoke)} disabled={busy}>
+          <button
+            type="button"
+            className={`${controls.btn} ${controls.btnDanger}`}
+            onClick={() => void update(remoteControlRevoke)}
+            disabled={busy}
+          >
             {t('remote.revokeAll')}
           </button>
         ) : null}

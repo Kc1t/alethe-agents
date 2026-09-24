@@ -46,7 +46,10 @@ export function RemoteControlModal() {
 
   useEffect(() => {
     if (!open) return
-    const check = () => void remoteControlTailscaleStatus().then(setTailscale).catch(() => undefined)
+    const check = () =>
+      void remoteControlTailscaleStatus()
+        .then(setTailscale)
+        .catch(() => undefined)
     check()
     const timer = window.setInterval(check, 5000)
     return () => window.clearInterval(timer)
@@ -166,16 +169,29 @@ export function RemoteControlModal() {
               <section className={styles.details}>
                 <div className={styles.metric}>
                   <span className={styles.metricLabel}>{t('remote.connectedDevices')}</span>
-                  <strong>{info?.connected_devices ?? 0}/{info?.max_devices ?? 1}</strong>
+                  <strong>
+                    {info?.connected_devices ?? 0}/{info?.max_devices ?? 1}
+                  </strong>
                   <span className={styles.metricHint}>
-                    {info?.connected_devices === 1 ? t('remote.deviceSingular') : t('remote.devicePlural')}
+                    {info?.connected_devices === 1
+                      ? t('remote.deviceSingular')
+                      : t('remote.devicePlural')}
                   </span>
                 </div>
                 <div className={styles.urlBlock}>
                   <span className={styles.metricLabel}>{t('remote.urlLabel')}</span>
-                  <code>{pairingOpen && info?.pairing_url ? info.pairing_url : t('remote.hiddenAddressPlaceholder')}</code>
+                  <code>
+                    {pairingOpen && info?.pairing_url
+                      ? info.pairing_url
+                      : t('remote.hiddenAddressPlaceholder')}
+                  </code>
                 </div>
-                <button type="button" className={controls.btn} onClick={() => void run(remoteControlRevoke)} disabled={busy}>
+                <button
+                  type="button"
+                  className={controls.btn}
+                  onClick={() => void run(remoteControlRevoke)}
+                  disabled={busy}
+                >
                   {t('remote.revoke')}
                 </button>
               </section>
@@ -191,13 +207,18 @@ export function RemoteControlModal() {
 
       <p className={styles.hint}>{t('remote.hint')}</p>
       <p className={styles.securityNote}>
-        {t(info?.reach_mode === 'tailscale' ? 'remote.securityNoteTailscale' : 'remote.securityNote')}
+        {t(
+          info?.reach_mode === 'tailscale' ? 'remote.securityNoteTailscale' : 'remote.securityNote',
+        )}
       </p>
 
       <button
         type="button"
         className={`${controls.btn} ${styles.advancedLink}`}
-        onClick={() => { closeModal(); openModal('preferences', { category: 'remoteControl' }) }}
+        onClick={() => {
+          closeModal()
+          openModal('preferences', { category: 'remoteControl' })
+        }}
       >
         {t('remote.openSettings')}
       </button>

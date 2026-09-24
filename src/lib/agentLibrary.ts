@@ -1,13 +1,3 @@
-   
-                                           
-  
-                                                                         
-                                                                             
-                                                                           
-                                                                              
-                 
-   
-
 export type AgentTemplate = {
   name: string
   category: 'orquestra' | 'front' | 'back' | 'qa' | 'docs' | 'economia'

@@ -73,7 +73,6 @@ export function AgentInstallModal({ agent, label, open, onClose, onInstalled, ne
   useEffect(() => {
     if (nodeInstall.status !== 'success') return
     void probe()
-     
   }, [nodeInstall.status])
 
   const methods = installMethodsFor(agent, toolchain)

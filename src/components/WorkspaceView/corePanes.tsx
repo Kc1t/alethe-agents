@@ -15,7 +15,9 @@ import styles from './WorkspaceView.module.css'
 const GraphifyView = lazy(() =>
   import('../GraphifyView').then((m) => ({ default: m.GraphifyView })),
 )
-const MarkdownPane = lazy(() => import('../MarkdownPane').then((m) => ({ default: m.MarkdownPane })))
+const MarkdownPane = lazy(() =>
+  import('../MarkdownPane').then((m) => ({ default: m.MarkdownPane })),
+)
 
 function PaneLoading({ messageKey }: { messageKey: MessageKey }) {
   const t = useT()

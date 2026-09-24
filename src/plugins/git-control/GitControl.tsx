@@ -16,7 +16,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { readableError } from '../../lib/errors'
-import { type MessageKey,useT } from '../../lib/i18n'
+import { type MessageKey, useT } from '../../lib/i18n'
 import {
   getPtyCwd,
   gitCommit,
@@ -62,7 +62,7 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const requestId = useRef(0)
-                                                                            
+
   // rajadas de eventos de foco que poderiam disparar git em loop. Refresh manual
   // (quiet=false) ignora o throttle.
   const lastAutoRefreshRef = useRef(0)
@@ -163,8 +163,6 @@ export function GitControl({ projectId, cwd, ptyId, terminalName }: GitControlPr
     }, t('git.commit.done'))
   }
 
-                                                                            
-                                                                       
   const sync = async () => {
     if (!status || busy) return
     await run(async () => {
@@ -644,8 +642,6 @@ function GitMessage({
   )
 }
 
-                                                                       
-
 type DirNode = { type: 'dir'; name: string; path: string; children: TreeNode[] }
 type FileNode = { type: 'file'; name: string; change: GitFileChange }
 type TreeNode = DirNode | FileNode
@@ -673,7 +669,6 @@ function buildTree(items: GitFileChange[]): TreeNode[] {
   return root.children.map(compress).sort(compareNodes)
 }
 
-                                                                                   
 function compress(node: TreeNode): TreeNode {
   if (node.type === 'file') return node
   let current = node
@@ -690,7 +685,6 @@ function compress(node: TreeNode): TreeNode {
   return current
 }
 
-                                                                
 function compareNodes(a: TreeNode, b: TreeNode): number {
   if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
   return a.name.localeCompare(b.name)

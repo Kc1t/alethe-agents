@@ -1,5 +1,6 @@
 // Scratch Notes — a local Alethe plugin. Plain JavaScript, no build step.
 // Its stylesheet is declared as "styles" in plugin.json and loaded by Alethe.
+/* global window */
 ;(function () {
   var api = window.alethe
   if (!api) return

@@ -175,9 +175,12 @@ export function AddServerFlow({
   const [targets, setTargets] = useState<McpAgent[]>(availableAgents)
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => () => {
-    mountedRef.current = false
-  }, [])
+  useEffect(
+    () => () => {
+      mountedRef.current = false
+    },
+    [],
+  )
 
   const manualServer: McpServerInput | null = useMemo(() => {
     const envInputs: McpEnvInput[] = rows
@@ -215,13 +218,7 @@ export function AddServerFlow({
 
   const pasted = source === 'paste' ? parsePastedServer(paste, name) : null
   const servers: McpServerInput[] =
-    source === 'paste'
-      ? pasted?.ok
-        ? pasted.servers
-        : []
-      : manualServer
-        ? [manualServer]
-        : []
+    source === 'paste' ? (pasted?.ok ? pasted.servers : []) : manualServer ? [manualServer] : []
 
   const blockedByAgent = useMemo(() => {
     const map = new Map<McpAgent, string[]>()
@@ -263,7 +260,10 @@ export function AddServerFlow({
     setBusy(false)
     if (written.length > 0) {
       pushToast({
-        title: t('mcp.addWritten', { count: servers.length, agents: [...new Set(written)].join(', ') }),
+        title: t('mcp.addWritten', {
+          count: servers.length,
+          agents: [...new Set(written)].join(', '),
+        }),
         body: servers.map((server) => server.name).join(', '),
       })
     }
@@ -486,7 +486,9 @@ export function AddServerFlow({
               className={styles.mono}
               value={paste}
               onChange={(event) => setPaste(event.target.value)}
-              placeholder={'{\n  "mcpServers": {\n    "playwright": {\n      "command": "npx",\n      "args": ["@playwright/mcp@latest"]\n    }\n  }\n}'}
+              placeholder={
+                '{\n  "mcpServers": {\n    "playwright": {\n      "command": "npx",\n      "args": ["@playwright/mcp@latest"]\n    }\n  }\n}'
+              }
             />
             <span className={styles.hint}>
               {paste.trim().length === 0
