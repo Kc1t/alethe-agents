@@ -27,7 +27,6 @@ export function UpdateModal() {
       await installPendingUpdate(({ downloaded, total }) => {
         setPercent(total > 0 ? Math.min(100, Math.round((downloaded / total) * 100)) : 0)
       })
-                                                                                           
     } catch (err) {
       setPhase('error')
       setError(String(err))
@@ -37,7 +36,7 @@ export function UpdateModal() {
   return (
     <Modal
       open={open}
-                                                                                 
+
       onClose={installing ? () => {} : closeModal}
       title={t('update.availableTitle', { version: info.version })}
       footer={

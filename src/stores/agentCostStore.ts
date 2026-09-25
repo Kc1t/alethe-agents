@@ -4,32 +4,22 @@ import { getActiveSessions } from '../lib/sessionResume'
 import { getSessionCost, type SessionCost } from '../lib/tauri'
 import { useTerminalsStore } from './terminalsStore'
 
-   
-                                                                                
-                                                                              
-                                                                                
-                                                                           
-  
-                                                                                  
-   
-
 export type AgentCostEntry = {
   ptyId: string
   agent: string
   sessionId: string
   cwd: string
   cost: SessionCost | null
-                                               
+
   updatedAt: number
 }
 
 type AgentCostState = {
   byPtyId: Record<string, AgentCostEntry>
-                                                                
+
   refresh: () => Promise<void>
 }
 
-                                                                                          
 function liveAgentSessions(): Array<{
   ptyId: string
   agent: string
@@ -67,7 +57,6 @@ export const useAgentCostStore = create<AgentCostState>((set) => ({
           const cost = await getSessionCost(s.agent, s.cwd, s.sessionId)
           return { ...s, cost, updatedAt: Date.now() } as AgentCostEntry
         } catch {
-                                                                                    
           return null
         }
       }),
@@ -75,7 +64,7 @@ export const useAgentCostStore = create<AgentCostState>((set) => ({
 
     set((state) => {
       const next: Record<string, AgentCostEntry> = {}
-                                                                                  
+
       for (const s of live) {
         const fresh = results.find((r) => r && r.ptyId === s.ptyId) ?? null
         next[s.ptyId] = fresh ??
@@ -95,7 +84,6 @@ export const useAgentCostStore = create<AgentCostState>((set) => ({
   },
 }))
 
-                                                                   
 export function selectCostTotals(state: AgentCostState): {
   costUsd: number
   totalTokens: number

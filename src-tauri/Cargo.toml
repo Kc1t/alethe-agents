@@ -115,6 +115,10 @@ keyring = { version = "3", default-features = false, features = ["sync-secret-se
 # and answer permission-request for getUserMedia (voice dictation).
 webkit2gtk = { version = "2.0.1", features = ["v2_40"] }
 
+# kill(2) on a process group (pty::kill_process_tree). Already in the tree through tokio.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # Em dev, unwind permite que um panic de comando vire Err em vez de derrubar o
 # app inteiro durante uma sessão de HMR. Release segue abort (binário menor).
 [profile.dev]

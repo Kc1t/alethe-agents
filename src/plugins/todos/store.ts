@@ -2,7 +2,12 @@ import { nanoid } from 'nanoid'
 import { create } from 'zustand'
 
 import type { PluginStorage } from '../../lib/plugins'
-import { DEFAULT_TODOS, normalizeTodoTags, normalizeTodoTitle, reorderTodoItems } from '../../lib/todos'
+import {
+  DEFAULT_TODOS,
+  normalizeTodoTags,
+  normalizeTodoTitle,
+  reorderTodoItems,
+} from '../../lib/todos'
 import type { TodoItem } from '../../lib/types'
 
 const TODOS_KEY = 'todos'
@@ -124,11 +129,9 @@ export const useTodosStore = create<TodosState>((set, get) => {
 
     deleteTodo: (id) => write(get().todos.filter((item) => item.id !== id)),
 
-    reorderTodo: (draggedId, targetId) =>
-      write(reorderTodoItems(get().todos, draggedId, targetId)),
+    reorderTodo: (draggedId, targetId) => write(reorderTodoItems(get().todos, draggedId, targetId)),
 
-    resetTodosToDefault: () =>
-      write(DEFAULT_TODOS.map((item) => ({ ...item, id: nanoid() }))),
+    resetTodosToDefault: () => write(DEFAULT_TODOS.map((item) => ({ ...item, id: nanoid() }))),
 
     setStoragePath: (path) => {
       void storage?.set(STORAGE_PATH_KEY, path)

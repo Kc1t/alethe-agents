@@ -16,6 +16,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   default dark theme, and its card, backdrop and progress indicator follow the design system
   tokens used across the rest of the app.
 
+### Fixed
+
+- On Linux, closing a terminal could end every process of your user session instead of only that
+  terminal's processes, depending on the process ID it got. Terminals are now stopped directly
+  through the system call, so only their own processes are affected.
+
 ## [1.7.0] — 2026-09-20
 
 The release where Alethe stops being one fixed app and becomes a platform. Features now load as

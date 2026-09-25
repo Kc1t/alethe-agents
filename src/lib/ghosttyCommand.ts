@@ -1,17 +1,6 @@
 import { resolveAgentCliCommand } from './agentProviders'
 import type { AgentType } from './types'
 
-   
-                                                                              
-                                                                            
-                                                                   
-  
-                                                                        
-                                                                                         
-  
-                                                                                
-                       
-   
 export function buildGhosttyCommand(type: AgentType, extraArgs?: string[]): string | undefined {
   const command = resolveAgentCliCommand(type)
   if (!command) return undefined
@@ -20,7 +9,6 @@ export function buildGhosttyCommand(type: AgentType, extraArgs?: string[]): stri
 }
 
 function shellQuote(arg: string): string {
-                                                                              
   if (/^[A-Za-z0-9_\-./=:@]+$/.test(arg)) return arg
   return `'${arg.replace(/'/g, "'\\''")}'`
 }

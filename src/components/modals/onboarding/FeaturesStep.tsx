@@ -1,8 +1,8 @@
 import { AppWindow, ChevronDown, Search, X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-import { type FeatureDefinition,FEATURES } from '../../../lib/features'
-import { type TFunction,useT } from '../../../lib/i18n'
+import { type FeatureDefinition, FEATURES } from '../../../lib/features'
+import { type TFunction, useT } from '../../../lib/i18n'
 import type { FeatureId } from '../../../lib/types'
 import { useProjectsStore } from '../../../stores/projectsStore'
 import { FEATURE_ICONS } from '../../icons/featureIcons'

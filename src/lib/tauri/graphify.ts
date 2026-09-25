@@ -41,10 +41,6 @@ export async function graphifyDetect(command?: string): Promise<GraphifyStatus> 
   return invoke<GraphifyStatus>('graphify_detect', { command })
 }
 
-   
-                                                                             
-                                                                                  
-   
 export async function graphifyEnsureGraph(
   repo: string,
   command?: string,
@@ -59,12 +55,10 @@ export async function graphifyMcpConfigPath(repo: string, command?: string): Pro
   return invoke<string>('graphify_mcp_config_path', { repo, command })
 }
 
-                                                                                                                                  
 export async function graphifyOpenCodeConfigWrite(repo: string, command?: string): Promise<void> {
   await invoke('graphify_opencode_config_write', { repo, command })
 }
 
-                                                                                                                                                               
 export async function graphifyCodexConfigWrite(repo: string, command?: string): Promise<void> {
   await invoke('graphify_codex_config_write', { repo, command })
 }

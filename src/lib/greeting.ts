@@ -1,9 +1,5 @@
 import { getLocale, intlLocale, translate, type Locale } from './i18n'
 
-   
-                                                       
-                                                                
-   
 export function getGreeting(date: Date = new Date(), locale: Locale = getLocale()): string {
   const h = date.getHours()
   if (h >= 5 && h < 12) return translate(locale, 'greeting.morning')
@@ -11,7 +7,6 @@ export function getGreeting(date: Date = new Date(), locale: Locale = getLocale(
   return translate(locale, 'greeting.evening')
 }
 
-                                                                       
 function weekdayShort(date: Date, locale: Locale): string {
   return new Intl.DateTimeFormat(intlLocale(locale), { weekday: 'short' })
     .format(date)
@@ -19,7 +14,6 @@ function weekdayShort(date: Date, locale: Locale): string {
     .toLowerCase()
 }
 
-                                                             
 function monthShort(date: Date, locale: Locale): string {
   return new Intl.DateTimeFormat(intlLocale(locale), { month: 'short' })
     .format(date)

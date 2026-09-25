@@ -2,11 +2,9 @@ import { useEffect, useState } from 'react'
 
 import { gitStatus } from '../../lib/tauri'
 
-                                                                     
 const branchCache = new Map<string, string | null>()
 const branchInflight = new Map<string, Promise<void>>()
 
-                                                                                                
 export function useProjectBranch(cwd?: string): string | null {
   const [branch, setBranch] = useState<string | null>(() =>
     cwd ? (branchCache.get(cwd) ?? null) : null,

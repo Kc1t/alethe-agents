@@ -15,7 +15,8 @@ const MAX_TOKEN_VALUE_LENGTH = 240
  * Anything that can reach the network, escape the declaration, or smuggle a
  * second rule. `\` is refused outright so a CSS escape cannot rebuild `url(`.
  */
-const FORBIDDEN_VALUE = /url\s*\(|image\s*(-set)?\s*\(|expression\s*\(|javascript:|data:|[@;{}<>\\]|\/\*|\*\//i
+const FORBIDDEN_VALUE =
+  /url\s*\(|image\s*(-set)?\s*\(|expression\s*\(|javascript:|data:|[@;{}<>\\]|\/\*|\*\//i
 
 /** Colors, lengths, easings and shadow lists all fit inside this charset. */
 const ALLOWED_VALUE_CHARS = /^[A-Za-z0-9#%.,()+\-_/\s'"]+$/

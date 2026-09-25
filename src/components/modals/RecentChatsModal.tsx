@@ -1,12 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { intlLocale, type Locale, type TFunction,useT } from '../../lib/i18n'
+import { intlLocale, type Locale, type TFunction, useT } from '../../lib/i18n'
 import { resumeSessionInPane } from '../../lib/paneResume'
-import {
-  type ClaudeSessionMeta,
-  listClaudeSessions,
-  snapshotCodexSessions,
-} from '../../lib/tauri'
+import { type ClaudeSessionMeta, listClaudeSessions, snapshotCodexSessions } from '../../lib/tauri'
 import { UNRESTRICTED_FLAG } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -77,7 +73,8 @@ export function RecentChatsModal() {
 
   // The panel is opened from a pane toolbar, so the pane that asked for it is
   // the target. Falling back to the selected pane keeps it usable elsewhere.
-  const contextProjectId = typeof modalContext?.projectId === 'string' ? modalContext.projectId : null
+  const contextProjectId =
+    typeof modalContext?.projectId === 'string' ? modalContext.projectId : null
   const contextTerminalId =
     typeof modalContext?.terminalId === 'string' ? modalContext.terminalId : null
   const contextAgent = modalContext?.agent === 'codex' ? 'codex' : 'claude'

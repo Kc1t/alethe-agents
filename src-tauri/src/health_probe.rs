@@ -305,8 +305,10 @@ mod tests {
 
     #[tokio::test]
     async fn kills_process_and_reports_no_response_on_timeout() {
-        let dir = std::env::temp_dir().join(format!("alethe-healthprobe-{}", nanoid::nanoid!(6)));
-        std::fs::create_dir_all(&dir).unwrap();
+        // Any existing directory will do; the command writes nothing. A directory of its own
+        // made the test flaky on Windows: `taskkill /T` returns before the killed `ping` lets go
+        // of its working directory, so removing it afterwards could fail with os error 32.
+        let dir = std::env::temp_dir();
 
         let sleep_cmd = if cfg!(windows) {
             "ping -n 30 127.0.0.1 >NUL"
@@ -327,6 +329,5 @@ mod tests {
         // respond — `terminal_verified` is only `Some` after a `responded: true`
         // confirmed as alethe-core.
         assert!(result.terminal_verified.is_none());
-        std::fs::remove_dir_all(dir).unwrap();
     }
 }

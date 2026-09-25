@@ -69,7 +69,6 @@ export async function getAntigravityUsage(): Promise<AntigravityUsage> {
   return invoke<AntigravityUsage>('get_antigravity_usage')
 }
 
-                                                                        
 export type ModelRate = {
   family: string
   input: number
@@ -79,14 +78,10 @@ export type ModelRate = {
   cache_read: number
 }
 
-                                                                                 
 export async function getModelPricing(): Promise<ModelRate[]> {
   return invoke<ModelRate[]>('get_model_pricing')
 }
 
-                                                                        
-                                                                       
-                                                                 
 export type OpenCodeUsageSummary = {
   cost_usd: number
   input_tokens: number
@@ -110,8 +105,6 @@ export async function getClaudeActivity(days = 91): Promise<ActivityDay[]> {
   return invoke<ActivityDay[]>('get_claude_activity', { days }).catch(() => [])
 }
 
-                                                             
-                                                                                  
 export async function getMultiAgentActivity(days: number): Promise<ActivityDay[]> {
   return invoke<ActivityDay[]>('get_multi_agent_activity', { days })
 }

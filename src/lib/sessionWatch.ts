@@ -1,19 +1,9 @@
-   
-                                                                                 
-                                                                                 
-                                                                        
-                                                                               
-                                             
-   
-
 import { listen } from '@tauri-apps/api/event'
 
 type WatchAgent = 'claude' | 'codex' | 'opencode'
 
 const waiters: Record<WatchAgent, Array<() => void>> = { claude: [], codex: [], opencode: [] }
-                                                                               
-                                                                             
-                                                                                    
+
 const MAX_WAITERS = 64
 let started = false
 
@@ -29,7 +19,6 @@ function ensureStarted(): void {
   })
 }
 
-                                                                                          
 export function waitForSessionHint(agent: WatchAgent): Promise<void> {
   ensureStarted()
   const arr = waiters[agent]

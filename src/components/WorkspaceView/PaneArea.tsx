@@ -53,11 +53,7 @@ function Pane({
   const pane = (
     <Component projectId={projectId} terminal={terminal} paneDragEnabled={paneDragEnabled} />
   )
-  return contribution.fallback ? (
-    <Suspense fallback={contribution.fallback}>{pane}</Suspense>
-  ) : (
-    pane
-  )
+  return contribution.fallback ? <Suspense fallback={contribution.fallback}>{pane}</Suspense> : pane
 }
 
 function UnavailablePane({ kind }: { kind: string }) {
@@ -65,13 +61,7 @@ function UnavailablePane({ kind }: { kind: string }) {
   return <div className={styles.paneLoading}>{t('ws.paneUnavailable', { kind })}</div>
 }
 
-function PaneGroupView({
-  projectId,
-  group,
-}: {
-  projectId: string
-  group: PaneGroup
-}) {
+function PaneGroupView({ projectId, group }: { projectId: string; group: PaneGroup }) {
   const t = useT()
   const ungroupPanes = useProjectsStore((s) => s.ungroupPanes)
   const project = useProjectsStore((s) => s.projects.find((p) => p.id === projectId))
@@ -135,7 +125,9 @@ export function PaneArea({ projectId, gridId, idPrefix, terminals, layoutMode }:
     )
   }
   if (layoutMode === 'grid')
-    return <GridLayoutComponent projectId={projectId} gridId={gridId} terminals={visibleTerminals} />
+    return (
+      <GridLayoutComponent projectId={projectId} gridId={gridId} terminals={visibleTerminals} />
+    )
   if (layoutMode === 'spotlight')
     return (
       <SpotlightLayout projectId={projectId} idPrefix={idPrefix} terminals={visibleTerminals} />
@@ -156,7 +148,9 @@ function GridLayoutComponent({
 }) {
   const project = useProjectsStore((s) => s.projects.find((p) => p.id === projectId))
   const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
-  const layout: GridLayout | undefined = gridId ? project?.grids?.find((grid) => grid.id === gridId)?.gridLayout : project?.gridLayout
+  const layout: GridLayout | undefined = gridId
+    ? project?.grids?.find((grid) => grid.id === gridId)?.gridLayout
+    : project?.gridLayout
   const ids = terminals.map((t) => t.id)
   const reconciled = layout ? reconcileGridLayout(layout, ids) : autoGridLayout(ids, 2)
   return (

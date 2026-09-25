@@ -8,11 +8,6 @@ import { type ClaudeUsage, type CodexUsage, writePty } from '../../../lib/tauri'
 
 type Session = { folder: string; ptyId: string }
 
-   
-                                                                             
-                                                                           
-                                                                         
-   
 export function useUsagePolling(
   session: Session | null,
   sessionRef: MutableRefObject<Session | null>,
@@ -24,11 +19,6 @@ export function useUsagePolling(
   const fallbackActiveRef = useRef(false)
   const leadNotifiedRef = useRef(false)
 
-                                                                          
-                                                                             
-                                                                        
-                                                                            
-                                        
   const activateFallback = useCallback(
     (u: ClaudeUsage | null, forced = false) => {
       if (fallbackActiveRef.current) return
@@ -39,8 +29,7 @@ export function useUsagePolling(
       if (!leadNotifiedRef.current && sessionRef.current) {
         leadNotifiedRef.current = true
         const reset = u ? formatReset(u.five_hour.resets_at) : '—'
-                                                                                
-                                                                                     
+
         const endpoint = hooksEndpoint ?? 'http://127.0.0.1:9123'
         const note = `[Alethe] Claude 5h usage at ${pct}% (resets in ${reset}). Conserve Claude tokens: from now on, offload heavy/long/mechanical work to the codex terminal by running: curl -s -X POST ${endpoint}/codex -d "<task as one self-contained English instruction>". It runs in the codex terminal worker shown in the canvas. `
         void writePty(sessionRef.current.ptyId, note).catch(() => {})
@@ -49,7 +38,6 @@ export function useUsagePolling(
     [hooksEndpoint, sessionRef],
   )
 
-                                                                              
   useEffect(() => {
     if (!session) return
     let cancelled = false
@@ -63,7 +51,6 @@ export function useUsagePolling(
         if (util >= USAGE_FALLBACK_THRESHOLD) {
           activateFallback(u)
         } else if (fallbackActiveRef.current) {
-                                                                               
           fallbackActiveRef.current = false
           setFallbackActive(false)
           console.log('[AgentCanvasPOC] fallback codex OFF — usage voltou a', util)
@@ -71,7 +58,7 @@ export function useUsagePolling(
       } catch (err) {
         console.warn('[AgentCanvasPOC] usage indisponível (sem token?):', err)
       }
-                                                                             
+
       try {
         const cu = await getCachedCodexUsage()
         if (!cancelled) setCodexUsage(cu)

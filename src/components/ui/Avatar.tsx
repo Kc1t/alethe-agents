@@ -1,14 +1,5 @@
 import { useState } from 'react'
 
-   
-                                                                              
-                                                                          
-                                                                          
-                                                               
-  
-                                                                           
-            
-   
 export function Avatar({
   src,
   initial,

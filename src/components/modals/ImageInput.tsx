@@ -58,7 +58,7 @@ export function ImageInput({
     <div className={controls.field}>
       <label className={controls.label}>{label}</label>
       <div className={controls.inputActionRow} style={{ alignItems: 'center' }}>
-        {                                                      }
+        {}
         <div
           style={{
             width: 44,

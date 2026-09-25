@@ -756,24 +756,30 @@ pub(crate) fn kill_process_tree(pid: u32) {
     let _ = command.output();
 }
 
+/// The `kill(2)` target for the process group led by `pid`. 0 and 1 are refused: as
+/// group ids they mean "our own group" and "every process we may signal".
+#[cfg(not(windows))]
+fn process_group_target(pid: u32) -> Option<i32> {
+    i32::try_from(pid)
+        .ok()
+        .filter(|&pid| pid > 1)
+        .map(|pid| -pid)
+}
+
 #[cfg(not(windows))]
 pub(crate) fn kill_process_tree(pid: u32) {
     // portable-pty calls setsid() on Linux, so the shell owns its own process
     // group. Sending a signal to the negative PID targets the entire group.
-    let _ = std::process::Command::new("kill")
-        .args(["-TERM", &format!("-{pid}")])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .and_then(|mut child| child.wait());
+    // kill(2) directly, not the `kill` binary: procps reads `kill -TERM -<pid>` as an
+    // unknown option and keeps only its first digit, so a PID starting with 1 became
+    // `kill(-1)` and signalled every process of the user (#222).
+    let Some(group) = process_group_target(pid) else {
+        return;
+    };
+    unsafe { libc::kill(group, libc::SIGTERM) };
     // Give well-behaved processes a moment to exit cleanly, then escalate.
     std::thread::sleep(std::time::Duration::from_millis(200));
-    let _ = std::process::Command::new("kill")
-        .args(["-9", &format!("-{pid}")])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .and_then(|mut child| child.wait());
+    unsafe { libc::kill(group, libc::SIGKILL) };
 }
 
 #[tauri::command]
@@ -1713,6 +1719,29 @@ pub fn install_kill_on_close_guard() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(windows))]
+    #[test]
+    fn process_group_target_never_widens_to_every_process() {
+        assert_eq!(process_group_target(1234), Some(-1234));
+        assert_eq!(process_group_target(0), None);
+        assert_eq!(process_group_target(1), None);
+        assert_eq!(process_group_target(u32::MAX), None);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn kill_process_tree_ends_the_whole_group() {
+        use std::os::unix::process::{CommandExt, ExitStatusExt};
+        // Its own group, like the setsid() portable-pty does for a real shell.
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        kill_process_tree(child.id());
+        assert_eq!(child.wait().unwrap().signal(), Some(libc::SIGTERM));
+    }
 
     /// Guards the invariant that made every terminal stop accepting keystrokes at once:
     /// `kill_process_tree` runs `taskkill` and waits for it, and holding the child lock across

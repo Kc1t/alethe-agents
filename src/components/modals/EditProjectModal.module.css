@@ -21,9 +21,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.tab:hover { color: var(--fg); background: var(--panel-hover); }
-.tabActive { color: var(--fg); background: var(--panel); box-shadow: 0 0 0 1px var(--border-strong) inset; }
-.panel { min-width: 0; }
+.tab:hover {
+  color: var(--fg);
+  background: var(--panel-hover);
+}
+.tabActive {
+  color: var(--fg);
+  background: var(--panel);
+  box-shadow: 0 0 0 1px var(--border-strong) inset;
+}
+.panel {
+  min-width: 0;
+}
 .sectionIntro {
   margin: 0 0 16px;
   padding-bottom: 12px;
@@ -84,4 +93,8 @@
   line-height: 1.35;
   cursor: pointer;
 }
-@media (max-width: 520px) { .tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) {
+  .tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

@@ -20,7 +20,7 @@ npm install
 npm run app      # = tauri dev — runs the full app with hot reload (RECOMMENDED WAY)
 npm run dev      # Vite frontend only, at http://localhost:1422 (strictPort)
 npm run build    # tsc + vite build — tsc typechecks and VALIDATES i18n (see §3)
-npm test         # vitest run over tests/**/*.test.ts (test:node runs via node --test, separately)
+npm test         # vitest run over src/**/*.test.{ts,tsx}
 ```
 
 **Building the Windows installer (MSI/NSIS)** requires the MSVC environment (`vcvars64`):
@@ -28,6 +28,10 @@ npm test         # vitest run over tests/**/*.test.ts (test:node runs via node -
 ```powershell
 cmd /c '"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >NUL && npm run tauri build'
 ```
+
+The folder depends on the Build Tools version: `2022\BuildTools` for Visual Studio 2022,
+`18\BuildTools` for Visual Studio 2026. `vswhere -products * -property installationPath` (in
+`C:\Program Files (x86)\Microsoft Visual Studio\Installer`) prints the installed one.
 
 When returning the path of a generated installer, always report the **full absolute path on the PC**
 (for example, `D:\project\src-tauri\target\release\bundle\nsis\Alethe_setup.exe`), never just the

@@ -39,7 +39,6 @@ function getCurrentTrack(credentials: SpotifyCredentials): Promise<NowPlaying | 
   return promise
 }
 
-                                                                     
 function loadLastTrack(): NowPlaying | null {
   try {
     const raw = readScopedStorage(LAST_TRACK_KEY, true)
@@ -52,7 +51,6 @@ function loadLastTrack(): NowPlaying | null {
   }
 }
 
-                                                                    
 function saveLastTrack(np: NowPlaying): void {
   try {
     writeScopedStorage(LAST_TRACK_KEY, JSON.stringify(np))
@@ -64,7 +62,7 @@ function saveLastTrack(np: NowPlaying): void {
 export type NowPlayingState = {
   /** null means the connection status is still being checked. */
   connected: boolean | null
-                                           
+
   current: NowPlaying | null
   error: string | null
   loading: boolean
@@ -73,16 +71,11 @@ export type NowPlayingState = {
   refresh: () => Promise<void>
 }
 
-   
-                                                          
-                                                              
-                                                                       
-   
 export function useNowPlaying(enabled: boolean): NowPlayingState {
   const spotifyClientId = useProjectsStore((s) => s.preferences.spotifyClientId)
   const spotifyClientSecret = useProjectsStore((s) => s.preferences.spotifyClientSecret)
   const [connected, setConnected] = useState<boolean | null>(null)
-                                                                       
+
   const [current, setCurrent] = useState<NowPlaying | null>(() => loadLastTrack())
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -104,7 +97,6 @@ export function useNowPlaying(enabled: boolean): NowPlayingState {
         setCurrent(np)
         saveLastTrack(np)
       } else {
-                                                                     
         setCurrent((previous) => (previous ? { ...previous, playing: false } : null))
       }
       setError(null)

@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  legacyGitFeatureFlag,
-  legacyTodosFeatureFlag,
-  normalizeEnabledFeatures,
-} from './features'
+import { legacyGitFeatureFlag, legacyTodosFeatureFlag, normalizeEnabledFeatures } from './features'
 
 describe('normalizeEnabledFeatures', () => {
   it('enables the initial modules for a fresh profile', () => {
@@ -47,9 +43,7 @@ describe('normalizeEnabledFeatures', () => {
   })
 
   it('keeps AI Memory off unless explicitly enabled', () => {
-    expect(
-      normalizeEnabledFeatures({ enabledFeatures: { aiMemory: true } }),
-    ).toEqual({
+    expect(normalizeEnabledFeatures({ enabledFeatures: { aiMemory: true } })).toEqual({
       browser: true,
       graphify: true,
       aiMemory: true,

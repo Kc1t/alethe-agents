@@ -55,6 +55,7 @@ dependencies = [
  "hex",
  "image",
  "keyring",
+ "libc",
  "nanoid",
  "notify",
  "objc2",

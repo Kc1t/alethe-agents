@@ -334,7 +334,9 @@ export const TerminalPane = memo(function TerminalPane({
     let cancelled = false
     const fetchTitle = () => {
       const request =
-        agentType === 'claude' ? getClaudeSessionTitle(cwd, sessionId) : getCodexSessionTitle(sessionId)
+        agentType === 'claude'
+          ? getClaudeSessionTitle(cwd, sessionId)
+          : getCodexSessionTitle(sessionId)
       request
         .then((title) => {
           if (cancelled || !title) return

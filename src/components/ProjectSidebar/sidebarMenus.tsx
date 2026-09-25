@@ -40,7 +40,6 @@ import { collectDescendants } from './GroupNode'
 type ProjectsState = ReturnType<typeof useProjectsStore.getState>
 type UiState = ReturnType<typeof useUiStore.getState>
 
-                                                                                
 type MenuActions = Pick<
   ProjectsState,
   | 'openProjectWorkspace'
@@ -89,12 +88,10 @@ export type SidebarMenuDeps = {
   openMarkdownSidebar: UiState['openMarkdownSidebar']
 }
 
-                                                                                        
 function visibleProjectTerminals(project: Project): Terminal[] {
   return project.terminals.filter((term) => !term.gsdSyncViewer)
 }
 
-                                                                         
 export function createSidebarMenus(deps: SidebarMenuDeps) {
   const {
     t,
@@ -113,10 +110,15 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
   } = deps
 
   const projectMenu = (project: Project): MenuItem[] => [
-    ...(project.mode !== 'agentSandbox' ? [{
-      kind: 'item' as const, label: t('projectGrid.create'),
-      onClick: () => openModal('projectGrid', { projectId: project.id, action: 'create' }),
-    }] : []),
+    ...(project.mode !== 'agentSandbox'
+      ? [
+          {
+            kind: 'item' as const,
+            label: t('projectGrid.create'),
+            onClick: () => openModal('projectGrid', { projectId: project.id, action: 'create' }),
+          },
+        ]
+      : []),
     {
       kind: 'item',
       label: t('ui.workspace.openIndividually'),
@@ -503,10 +505,16 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
     const isTerminalPane = !term.kind || term.kind === 'terminal'
     const effectiveLaneVisible = term.tabs.length > 1 ? true : term.laneVisible === true
     return [
-      ...(project?.mode !== 'agentSandbox' && (project?.grids?.length ?? 0) > 0 ? [{
-        kind: 'item' as const, label: t('projectGrid.move'),
-        onClick: () => openModal('projectGrid', { projectId, terminalId: term.id, action: 'move' }),
-      }] : []),
+      ...(project?.mode !== 'agentSandbox' && (project?.grids?.length ?? 0) > 0
+        ? [
+            {
+              kind: 'item' as const,
+              label: t('projectGrid.move'),
+              onClick: () =>
+                openModal('projectGrid', { projectId, terminalId: term.id, action: 'move' }),
+            },
+          ]
+        : []),
       {
         kind: 'item',
         label: t('terminalInspector.reveal'),

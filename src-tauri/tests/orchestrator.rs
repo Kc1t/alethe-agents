@@ -472,32 +472,49 @@ fn the_queue_never_breaches_the_concurrency_limit() {
 /// watchdog without spending a real Codex turn. Registered under the "codex" kind: `alethe_delegate`
 /// defaults a job's agent to "codex" when the call does not name one, same as these tests do.
 fn silent_launcher() -> Launcher {
-    Launcher {
-        kind: "codex".into(),
-        program: PathBuf::from("cmd"),
-        args: vec![
+    #[cfg(windows)]
+    let (program, args): (&str, Vec<String>) = (
+        "cmd",
+        vec![
             "/c".into(),
             "ping".into(),
             "-n".into(),
             "60".into(),
             "127.0.0.1".into(),
         ],
+    );
+    #[cfg(not(windows))]
+    let (program, args): (&str, Vec<String>) = ("sleep", vec!["60".into()]);
+    Launcher {
+        kind: "codex".into(),
+        program: PathBuf::from(program),
+        args,
         env: Vec::new(),
     }
 }
 
-/// Plays back a fixed Claude stream-json transcript instead of spawning the real CLI.
+/// Plays back a fixed Claude stream-json transcript instead of spawning the real CLI. Arguments the
+/// core appends (such as `--resume`) are ignored: `type` only complains on stderr, and after
+/// `sh -c` they become unused positional parameters.
 fn fake_claude_launcher(dir: &std::path::Path, transcript: &str) -> Launcher {
     let path = dir.join("transcript.jsonl");
     std::fs::write(&path, transcript).expect("write fake transcript");
-    Launcher {
-        kind: "claude".into(),
-        program: PathBuf::from("cmd"),
-        args: vec![
+    #[cfg(windows)]
+    let (program, args): (&str, Vec<String>) = (
+        "cmd",
+        vec![
             "/c".into(),
             "type".into(),
             path.to_string_lossy().into_owned(),
         ],
+    );
+    #[cfg(not(windows))]
+    let (program, args): (&str, Vec<String>) =
+        ("sh", vec!["-c".into(), format!("cat '{}'", path.display())]);
+    Launcher {
+        kind: "claude".into(),
+        program: PathBuf::from(program),
+        args,
         env: Vec::new(),
     }
 }
@@ -765,22 +782,34 @@ fn isolating_gives_each_worker_its_own_worktree() {
 fn fake_claude_holding_launcher(dir: &std::path::Path, transcript: &str) -> Launcher {
     let path = dir.join("holding.jsonl");
     std::fs::write(&path, transcript).expect("write fake transcript");
-    let script = dir.join("holding.bat");
-    std::fs::write(
-        &script,
-        format!(
-            "@echo off
+    #[cfg(windows)]
+    let (program, args): (&str, Vec<String>) = {
+        let script = dir.join("holding.bat");
+        std::fs::write(
+            &script,
+            format!(
+                "@echo off
 type \"{}\"
 ping -n 60 127.0.0.1 >NUL
 ",
-            path.to_string_lossy()
-        ),
-    )
-    .expect("write holding script");
+                path.to_string_lossy()
+            ),
+        )
+        .expect("write holding script");
+        (
+            "cmd",
+            vec!["/c".into(), script.to_string_lossy().into_owned()],
+        )
+    };
+    #[cfg(not(windows))]
+    let (program, args): (&str, Vec<String>) = (
+        "sh",
+        vec!["-c".into(), format!("cat '{}'; sleep 60", path.display())],
+    );
     Launcher {
         kind: "claude".into(),
-        program: PathBuf::from("cmd"),
-        args: vec!["/c".into(), script.to_string_lossy().into_owned()],
+        program: PathBuf::from(program),
+        args,
         env: Vec::new(),
     }
 }

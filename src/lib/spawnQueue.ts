@@ -1,13 +1,3 @@
-   
-                                                                           
-                                                                              
-                                                               
-  
-       
-                             
-                                                               
-   
-
 let maxConcurrentSpawns = 3
 
 let active = 0
@@ -35,10 +25,6 @@ function drain(limit = maxConcurrentSpawns): void {
   }
 }
 
-   
-                                                                               
-                                                                             
-   
 export function setMaxConcurrentSpawns(n: number): void {
   const next = Math.max(1, Math.round(n))
   if (next === maxConcurrentSpawns) return
@@ -76,10 +62,6 @@ export function getSpawnQueueSnapshot(): SpawnQueueSnapshot {
   }
 }
 
-   
-                                                                            
-                                                                 
-   
 export function acquireSpawnSlot(signal?: AbortSignal): Promise<boolean> {
   if (signal?.aborted) return Promise.resolve(false)
   if (active < maxConcurrentSpawns) {

@@ -144,7 +144,7 @@ export function ProjectNode({
             <MoreHorizontal size={13} />
           </button>
         </span>
-        {(!isEmpty || project.mode !== 'agentSandbox') ? (
+        {!isEmpty || project.mode !== 'agentSandbox' ? (
           <button
             type="button"
             className={styles.projectChevronBtn}
@@ -168,18 +168,20 @@ export function ProjectNode({
 
       <Collapse open={expanded}>
         <div className={styles.terminals}>
-          <ProjectGrids project={project} isActive={isActive}>{(terminal) => (
-            <TerminalNode
-              key={terminal.id}
-              project={project}
-              terminal={terminal}
-              selected={openPanes?.has(terminal.id) ?? false}
-              focused={focusedTerminalId === terminal.id}
-              onClick={() => onTerminalClick(terminal)}
-              onDoubleClick={() => onTerminalDoubleClick(terminal)}
-              onMenu={(event) => onTerminalMenu(terminal, event)}
-            />
-          )}</ProjectGrids>
+          <ProjectGrids project={project} isActive={isActive}>
+            {(terminal) => (
+              <TerminalNode
+                key={terminal.id}
+                project={project}
+                terminal={terminal}
+                selected={openPanes?.has(terminal.id) ?? false}
+                focused={focusedTerminalId === terminal.id}
+                onClick={() => onTerminalClick(terminal)}
+                onDoubleClick={() => onTerminalDoubleClick(terminal)}
+                onMenu={(event) => onTerminalMenu(terminal, event)}
+              />
+            )}
+          </ProjectGrids>
         </div>
       </Collapse>
     </div>
