@@ -12,6 +12,8 @@ export type BuiltinAgentType =
   | 'antigravity'
   | 'kiro'
   | 'kimi'
+  | 'grok'
+  | 'codewhale'
 
 /**
  * An agent type id. Open on purpose: plugins contribute agent providers at
@@ -32,6 +34,8 @@ export const AGENT_TYPE_LABELS: Record<BuiltinAgentType, string> = {
   freebuff: 'Freebuff',
   kiro: 'Kiro CLI',
   kimi: 'Kimi Code',
+  grok: 'Grok Build',
+  codewhale: 'Codewhale',
   shell: 'Shell',
   wsl: 'WSL',
 }
@@ -47,6 +51,8 @@ export const ALL_AGENT_TYPES: BuiltinAgentType[] = [
   'freebuff',
   'kiro',
   'kimi',
+  'grok',
+  'codewhale',
   'shell',
   'wsl',
 ]
@@ -222,6 +228,9 @@ export const UNRESTRICTED_FLAG: Record<BuiltinAgentType, string | null> = {
   antigravity: '--dangerously-skip-permissions',
   kiro: '--trust-all-tools',
   kimi: '--yolo',
+  grok: '--yolo',
+  // Codewhale Full Access is a TUI posture (Shift+Tab / /config), not a launch flag.
+  codewhale: null,
 }
 
 export type PaneKind =
@@ -750,6 +759,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
     mimo: true,
     kiro: true,
     kimi: true,
+    grok: true,
+    codewhale: true,
   },
   onboardingDone: false,
   workspaceFlat: false,
@@ -905,6 +916,9 @@ export const PROVIDER_MODELS: Record<BuiltinAgentType, { id: string; label: stri
   // Kimi Code uses the account default model established at login, so nothing is
   // hardcoded here — the same rationale as `cursor`.
   kimi: [],
+  // Grok Build and Codewhale expose live model lists via their CLIs; discovery fills the picker.
+  grok: [],
+  codewhale: [],
   shell: [{ id: 'default', label: 'Shell Padrão' }],
   wsl: [{ id: 'default', label: 'WSL' }],
 }

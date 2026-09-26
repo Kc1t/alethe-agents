@@ -94,6 +94,17 @@ export const AGENT_INSTALL_CATALOG: Partial<Record<AgentType, AgentInstallCatalo
     docsUrl: 'https://www.kimi.com/code/docs/en/kimi-code-cli/guides/getting-started.html',
     methods: [{ id: 'npm', command: 'npm install -g @moonshot-ai/kimi-code', requires: 'npm' }],
   },
+  grok: {
+    docsUrl: 'https://docs.x.ai/build/overview',
+    methods: [
+      { id: 'native', command: 'irm https://x.ai/cli/install.ps1 | iex' },
+      { id: 'npm', command: 'npm install -g @xai-official/grok', requires: 'npm' },
+    ],
+  },
+  codewhale: {
+    docsUrl: 'https://codewhale.net/en',
+    methods: [{ id: 'npm', command: 'npm install -g codewhale', requires: 'npm' }],
+  },
 }
 
 export function installDocsUrl(agent: AgentType): string | undefined {

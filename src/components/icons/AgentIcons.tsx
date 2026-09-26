@@ -152,6 +152,49 @@ export function KimiIcon({ size = 16 }: { size?: number }) {
   )
 }
 
+// Grok Build mark: rounded square + stylized "G", stroke-based for 16px + currentColor.
+export function GrokIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
+      <rect x="2" y="2" width="12" height="12" rx="3" />
+      <path
+        d="M10.2 6.2A2.8 2.8 0 1 0 10.4 9.4H8.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+// Codewhale mark: rounded square + wave, stroke-based for 16px + currentColor.
+export function CodewhaleIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
+      <rect x="2" y="2" width="12" height="12" rx="3" />
+      <path
+        d="M4.2 8.2c1.2-1.4 2.4-1.4 3.6 0s2.4 1.4 3.6 0"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M11.5 6.2c.7.2 1.1.7 1.1 1.4" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export function AgentIcon({
   type,
   size = 16,
@@ -171,6 +214,8 @@ export function AgentIcon({
   if (type === 'mimo') return <MimoIcon size={size} />
   if (type === 'kiro') return <KiroIcon size={size} />
   if (type === 'kimi') return <KimiIcon size={size} />
+  if (type === 'grok') return <GrokIcon size={size} />
+  if (type === 'codewhale') return <CodewhaleIcon size={size} />
   if (type === 'antigravity') return <AntigravityIcon size={size} />
   if (type === 'opencode') return <OpenCodeIcon size={size} theme={theme} />
   const ProviderIcon = findAgentProvider(type)?.icon

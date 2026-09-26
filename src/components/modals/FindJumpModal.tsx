@@ -9,6 +9,8 @@ import {
   MousePointer2,
   Sparkles,
   Terminal,
+  Waves,
+  Zap,
   type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -34,6 +36,8 @@ const ICONS: Record<BuiltinAgentType, LucideIcon> = {
   mimo: Bot,
   kiro: Cloud,
   kimi: Moon,
+  grok: Zap,
+  codewhale: Waves,
 }
 
 type TerminalHit = {

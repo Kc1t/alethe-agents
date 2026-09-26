@@ -139,6 +139,8 @@ export function NewTerminalModal() {
       mimo: alwaysStartUnrestricted,
       kiro: alwaysStartUnrestricted,
       kimi: alwaysStartUnrestricted,
+      grok: alwaysStartUnrestricted,
+      codewhale: alwaysStartUnrestricted,
     })
     setSelectedGridId(context?.gridId ?? UNGROUPED_GRID)
   }, [
@@ -170,6 +172,8 @@ export function NewTerminalModal() {
       mimo: false,
       kiro: false,
       kimi: false,
+      grok: false,
+      codewhale: false,
     })
     setSelectedGridId(UNGROUPED_GRID)
   }

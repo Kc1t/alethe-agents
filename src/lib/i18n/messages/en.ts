@@ -98,6 +98,8 @@ export const en = {
   'agent.antigravity.desc': 'Google Antigravity CLI',
   'agent.kiro.desc': 'AWS agentic CLI',
   'agent.kimi.desc': 'Moonshot AI coding CLI',
+  'agent.grok.desc': 'xAI Grok Build coding agent',
+  'agent.codewhale.desc': 'Open-source coding agent (any model)',
 
   /* ---- image input ---- */
   'image.placeholder': 'https://example.com/icon.png',

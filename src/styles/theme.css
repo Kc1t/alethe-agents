@@ -138,6 +138,8 @@
   --agent-kiro: #9046ff;
   --agent-cursor: #78849b;
   --agent-kimi: #2e6be6;
+  --agent-grok: #1da1f2;
+  --agent-codewhale: #0ea5e9;
   --agent-shell-soft: rgba(16, 185, 129, 0.14);
   --agent-claude-soft: rgba(236, 147, 51, 0.15);
   --agent-codex-soft: rgba(6, 182, 212, 0.15);
@@ -148,6 +150,8 @@
   --agent-kiro-soft: rgba(144, 70, 255, 0.15);
   --agent-cursor-soft: rgba(120, 132, 155, 0.15);
   --agent-kimi-soft: rgba(46, 107, 230, 0.15);
+  --agent-grok-soft: rgba(29, 161, 242, 0.15);
+  --agent-codewhale-soft: rgba(14, 165, 233, 0.15);
 
   --project-orange: #f97316;
   --project-pink: #ec4899;
