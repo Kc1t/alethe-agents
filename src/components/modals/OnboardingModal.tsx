@@ -299,7 +299,7 @@ export function OnboardingModal() {
                   data-active={preferences.language === locale.id}
                   onClick={() => setLanguage(locale.id)}
                 >
-                  {locale.id === 'en' ? 'EN' : 'PT'}
+                  {locale.id.split('-')[0].toUpperCase()}
                 </button>
               ))}
             </span>
