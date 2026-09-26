@@ -12,10 +12,15 @@
  * hand, only runs after the entire session (with all framework
  * hooks) has already finished — mocha guarantees this.
  */
-export const E2E_LOCALE: 'en' | 'pt-BR' = process.env.ALETHE_E2E_LOCALE === 'pt-BR' ? 'pt-BR' : 'en'
+export const E2E_LOCALE: 'en' | 'pt-BR' | 'zh-CN' =
+  process.env.ALETHE_E2E_LOCALE === 'pt-BR'
+    ? 'pt-BR'
+    : process.env.ALETHE_E2E_LOCALE === 'zh-CN'
+      ? 'zh-CN'
+      : 'en'
 
 export async function applyE2eLocale(): Promise<void> {
   await browser.execute((locale) => {
-    window.__ALETHE_E2E__?.setLanguage(locale as 'en' | 'pt-BR')
+    window.__ALETHE_E2E__?.setLanguage(locale as 'en' | 'pt-BR' | 'zh-CN')
   }, E2E_LOCALE)
 }

@@ -12,7 +12,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 
 import { saveFile } from '../../lib/dialog'
-import { useT } from '../../lib/i18n'
+import { intlLocale, useT } from '../../lib/i18n'
 import {
   DEFAULT_PROFILE_IMAGE_URL,
   getProfileAccountName,
@@ -367,10 +367,7 @@ export function ProfilesModal() {
                         <span>{t('profiles.terminals', { count: profile.terminal_count })}</span>
                         <span>
                           {t('profiles.lastUsed', {
-                            date: formatDate(
-                              profile.last_used_at_ms,
-                              language === 'pt-BR' ? 'pt-BR' : 'en-US',
-                            ),
+                            date: formatDate(profile.last_used_at_ms, intlLocale(language)),
                           })}
                         </span>
                       </div>

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { en } from './lib/i18n/messages/en'
 import { ptBR } from './lib/i18n/messages/pt-BR'
+import { zhCN } from './lib/i18n/messages/zh-CN'
 
 const source =
   readFileSync('src-tauri/remote/locales.js', 'utf8').replace(
@@ -548,6 +549,7 @@ describe('remote mobile conversations', () => {
     ] as const) {
       expect(ui.messages.en[key]).toBe(en[key])
       expect(ui.messages['pt-BR'][key]).toBe(ptBR[key])
+      expect(ui.messages['zh-CN'][key]).toBe(zhCN[key])
     }
   })
 })

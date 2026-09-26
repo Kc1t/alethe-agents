@@ -324,7 +324,7 @@ export default function App() {
   }, [appIconTheme, hydrated])
 
   useEffect(() => {
-    document.documentElement.lang = language === 'pt-BR' ? 'pt-BR' : 'en'
+    document.documentElement.lang = intlLocale(language)
   }, [language])
 
   useEffect(() => {
