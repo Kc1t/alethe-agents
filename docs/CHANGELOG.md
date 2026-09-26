@@ -10,11 +10,112 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ## [Unreleased]
 
+### Added
+
+- **Kimi Code is now a native agent.** Kimi Code (Moonshot AI) appears in every agent picker with
+  its own icon and accent color, launches through the `kimi` CLI (unrestricted mode maps to
+  `--yolo`), ships an install entry (`npm install -g @moonshot-ai/kimi-code`), and is part of the
+  MCP manager, which reads and writes `~/.kimi-code/mcp.json` (or `$KIMI_CODE_HOME`) and
+  per-project `.kimi-code/mcp.json`.
+- **AI usage items are customizable.** The AI usage details modal gained a customize button that
+  opens an editor where each provider (Claude Code, Codex, Antigravity) is shown or hidden
+  independently in the usage panel and in the topbar. The existing topbar toggles stay in sync,
+  and hiding every item shows an empty-state hint instead of the cards.
+- **Memory-aware terminal startup feedback.** When system memory is below the safe spawn
+  threshold, terminal panes now show the available memory and elapsed wait instead of an opaque
+  loading state; the wait is also recorded separately in diagnostics.
+- **Voice commands into the workspace.** `Ctrl+Shift+Space` opens a command bar where you say or
+  type what you want, and Alethe routes it into a real action: launching one or more agents in a
+  project, handing the task to a terminal that is already open, bringing one up, or stopping one.
+  Routing runs on TypeSafe Jev, a model that only picks between options built from live workspace
+  state, so the prompt handed over is a verbatim span of what you said, never text the model wrote.
+  The plan, its confidences, latency and cost are shown before anything runs, and nothing runs
+  without confirmation. The first time the bar opens it asks for a decisions API key and remembers
+  it. A mic button starts and stops recording by click, F9 still works as push to talk, and a live
+  spectrum shows the audio actually coming in, so a dead microphone is visible immediately rather
+  than after the fact. Plans now run the moment they are decided; the bar only stops to ask when the
+  request looks destructive, when it would stop a running agent, or when the task would be handed to
+  an agent that is already busy. Held plans show Run and Cancel buttons next to the Enter and Esc
+  shortcuts. Plain
+  shell and WSL panes are never offered as the agent for a task, so an unclear agent name falls back
+  to a coding agent instead of typing the request into a PowerShell prompt.
+- **One sentence can now delegate different jobs to different agents.** Saying "open one agent to
+  run the build and another to read the first line of main.ts" starts two agents, each with its own
+  task, instead of starting two copies of the same request. The sentence is split into clauses and
+  the model picks which clause is each job and which agent should carry it, so every prompt handed
+  over is still a verbatim piece of what was said. Repeating one task across several agents still
+  works and still says so.
+- **Faster, English-first dictation.** A Zipformer model trained on conversational speech replaces
+  the multilingual Parakeet as the default: roughly nine times smaller and several times quicker to
+  transcribe. Agent and command words such as Codex, Claude Code, terminal and git status are now
+  boosted during decoding, so a coding request is recognised as one instead of being spelled out
+  phonetically. Parakeet stays available for other languages and keeps its original decoding.
+- **Counts are honoured per agent.** Asking for "two claude codes and two codex" opens two of each
+  instead of one of each, and a sentence that names no number still opens one.
+- **Voice tells a shell apart from an AI agent.** Open panes reach the model labelled by what they
+  are, so "run the build" goes to a shell that is already open while "read this file and explain it"
+  goes to a coding agent, without either being named out loud.
+- **Voice can answer an agent that is already open.** Terminals now reach the model with their pane
+  name and the order they were opened in, so "agent one, answer yes" or "tell the codex to continue"
+  lands on the right pane, and a one word reply counts as something to hand over.
+- **Jev history in the right sidebar.** A new tab records every voice command of the session: what
+  was heard, what it was routed to, the prompt handed over, any warnings, and the action and agent
+  confidences alongside latency and cost. Failures are recorded with their reason instead of
+  disappearing, which makes a request that did nothing traceable after the fact. Releasing the key
+  closes the bar immediately and the sidebar takes over, so transcription and routing no longer hold
+  a modal open; only a destructive plan reopens it to ask. Each entry also lists what actually
+  happened, terminal by terminal, so the plan and the result can be told apart.
+
 ### Changed
 
 - The startup loading screen now opens in your selected theme and visual style instead of the
   default dark theme, and its card, backdrop and progress indicator follow the design system
   tokens used across the rest of the app.
+- **The voice command UI is fully localized.** Every string in the command bar, the plan summary,
+  the block and warning reasons, and the Jev history now goes through i18n in English and pt-BR,
+  so nothing in the voice flow is hardcoded to a single language anymore.
+
+### Fixed
+
+- Every coding agent reached the routing model described the same way, so a request that named no
+  agent had nothing to choose on and the answer spread evenly across them, which showed up as a low
+  confidence and a fallback. Agents now carry how many panes they have open and whether one of them
+  is the pane in front of the user, which is what an unnamed follow up actually refers to.
+- Voice history no longer leaves a command that asked for confirmation stuck on “waiting”.
+  Confirming the plan now settles the entry as ran, with the actions it actually performed.
+- Jev routing requests now have a hard timeout and retry transient failures (network errors, 429
+  and 5xx) before giving up, instead of failing the whole command on a single network blip.
+- Naming a pane out loud left the pane's name inside the command that was handed over, so "run git
+  status in the shell" typed the whole sentence into the shell whenever dictation misheard the pane
+  name. The trailing place is now dropped by shape as well as by name, while a place that is part of
+  the work, such as "in the web folder", is kept. "Shell" is also boosted during dictation now.
+- A prompt handed to a freshly launched agent could stay typed but unsent when the CLI was still
+  drawing its first screen or sitting on a trust prompt, which swallowed the return. Sending it now
+  retries a few times instead of once.
+- Boosted command words had no effect on the English dictation model, because biasing on a
+  BPE model also needs its vocabulary, which was never downloaded or passed along. It ships with the
+  model now, so agent names are recognised as words instead of being spelled out phonetically.
+- Codex asked to review and trust its hooks on every single launch, and kept asking even after the
+  script stopped being written per terminal, because the listener port reached the filename too and
+  that port moves between runs. The scripts are now named per install, so the command Codex reads
+  stays the same and trusting once holds.
+- Dictation rebuilt the whole speech recogniser on every utterance, reading the model from disk and
+  creating fresh ONNX sessions each time a sentence was transcribed. The recogniser is now kept for
+  as long as the model stays the same, it is loaded as soon as the voice bar opens rather than after
+  a sentence ends, decoding uses the machine's cores instead of a fixed pair of threads, and leading
+  and trailing silence is dropped before decoding instead of being transcribed along with speech.
+  The voice history now reports transcription and routing time separately, so the two are no longer
+  guessed at from a single number.
+- Voice commands could stop responding entirely after a decision request hung, because the request
+  had no timeout and the bar stayed permanently busy without saying so. Requests now give up after
+  20 seconds, and every refusal to act reports why instead of ignoring the keystroke.
+- Removed the duplicate Pomodoro widget embedded between the Todo List composer and tasks; the
+  timer remains available in the title bar.
+- Markdown tabs in the sidebar viewer now keep readable labels at narrow widths and scroll
+  horizontally instead of collapsing into a row of close buttons.
+- Opening a pull request now uses the system browser instead of creating an unexpected app surface.
+- The Features preferences page now matches the grouped, searchable feature selector used during
+  onboarding, with consistent Browser and Playwright controls.
 
 ## [1.7.0] — 2026-09-20
 

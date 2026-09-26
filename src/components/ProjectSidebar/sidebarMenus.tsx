@@ -1,6 +1,8 @@
 import {
   Archive,
   Download,
+  Eye,
+  EyeOff,
   FileText,
   FolderOpen,
   Globe2,
@@ -49,6 +51,7 @@ type MenuActions = Pick<
   | 'archiveProject'
   | 'moveProjectToGroup'
   | 'setProjectDisabled'
+  | 'setProjectHidden'
   | 'deleteProject'
   | 'createGraphifyPane'
   | 'createOrchestratorPane'
@@ -281,6 +284,12 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
       label: t('ui.sidebar.archiveProject'),
       icon: <Archive size={14} />,
       onClick: () => actions.archiveProject(project.id),
+    },
+    {
+      kind: 'item',
+      label: project.hidden ? t('ui.sidebar.unhideProject') : t('ui.sidebar.hideProject'),
+      icon: project.hidden ? <Eye size={14} /> : <EyeOff size={14} />,
+      onClick: () => actions.setProjectHidden(project.id, !project.hidden),
     },
     {
       kind: 'item',
@@ -649,5 +658,37 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
     ]
   }
 
-  return { projectMenu, groupMenu, terminalMenu }
+  const backgroundMenu = (): MenuItem[] => {
+    const hiddenCount = useProjectsStore.getState().projects.filter((p) => p.hidden).length
+    const revealed = useUiStore.getState().revealHiddenProjects
+    return [
+      {
+        kind: 'item',
+        label: t('ui.sidebar.newProject'),
+        icon: <Plus size={14} />,
+        onClick: () => openModal('newProject'),
+      },
+      {
+        kind: 'item',
+        label: t('ui.sidebar.newGroup'),
+        icon: <Plus size={14} />,
+        onClick: () => openModal('newGroup'),
+      },
+      ...(hiddenCount > 0 || revealed
+        ? [
+            { kind: 'separator' as const },
+            {
+              kind: 'item' as const,
+              label: revealed
+                ? t('ui.sidebar.hideHiddenProjects')
+                : t('ui.sidebar.revealHiddenProjects', { count: hiddenCount }),
+              icon: revealed ? <EyeOff size={14} /> : <Eye size={14} />,
+              onClick: () => useUiStore.getState().setRevealHiddenProjects(!revealed),
+            },
+          ]
+        : []),
+    ]
+  }
+
+  return { projectMenu, groupMenu, terminalMenu, backgroundMenu }
 }

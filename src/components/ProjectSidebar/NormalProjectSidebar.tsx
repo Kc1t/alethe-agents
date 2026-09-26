@@ -165,6 +165,8 @@ export function NormalProjectSidebar() {
   const setFocusedTerminal = useUiStore((s) => s.setFocusedTerminal)
   const openMarkdownSidebar = useUiStore((s) => s.openMarkdownSidebar)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
+  const setProjectHidden = useProjectsStore((s) => s.setProjectHidden)
+  const revealHiddenProjects = useUiStore((s) => s.revealHiddenProjects)
   const [menu, setMenu] = useState<ContextMenuState>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropIndicator, setDropIndicator] = useState<SidebarDropIndicator | null>(null)
@@ -344,14 +346,14 @@ export function NormalProjectSidebar() {
     : null
   const draggingKind = sidebarDragKind(draggingId)
 
-  const { projectMenu, groupMenu, terminalMenu } = createSidebarMenus({
+  const { projectMenu, groupMenu, terminalMenu, backgroundMenu } = createSidebarMenus({
     t,
     graphifyEnabled: preferences.enabledFeatures.graphify,
     orchestratorEnabled: preferences.enabledFeatures.orchestrator,
     browserEnabled: preferences.enabledFeatures.browser,
     groups: groups.filter((group) => !group.archived),
     openPaneSets,
-    actions: { ...actions, setPreferences },
+    actions: { ...actions, setPreferences, setProjectHidden },
     openModal,
     setActiveView,
     setActiveTerminal,
@@ -423,7 +425,10 @@ export function NormalProjectSidebar() {
 
   const ungroupedProjects = ungroupedOrder
     .map((id) => projectsById.get(id))
-    .filter((p): p is Project => p !== undefined && !p.archived)
+    .filter(
+      (p): p is Project =>
+        p !== undefined && !p.archived && (revealHiddenProjects || !p.hidden),
+    )
 
   const groupsByParent = useMemo(() => {
     const map = new Map<string | null, Group[]>()
@@ -447,7 +452,10 @@ export function NormalProjectSidebar() {
   const renderGroup = (g: Group): React.ReactNode => {
     const projectsInGroup = g.projectIds
       .map((id) => projectsById.get(id))
-      .filter((p): p is Project => p !== undefined && !p.archived)
+      .filter(
+      (p): p is Project =>
+        p !== undefined && !p.archived && (revealHiddenProjects || !p.hidden),
+    )
     const childGroups = groupsByParent.get(g.id) ?? []
     return (
       <GroupNode
@@ -643,7 +651,14 @@ export function NormalProjectSidebar() {
           onDragCancel={clearDragState}
           onDragEnd={onDragEnd}
         >
-          <div className={styles.list}>
+          <div
+            className={styles.list}
+            onContextMenu={(e) => {
+              if (e.target !== e.currentTarget) return
+              e.preventDefault()
+              setMenu({ x: e.clientX, y: e.clientY, items: backgroundMenu() })
+            }}
+          >
             {projects.length === 0 && groups.length === 0 ? (
               <div className={styles.emptyWrap}>
                 <EmptyState

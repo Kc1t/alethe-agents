@@ -6,7 +6,7 @@
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -62,6 +62,7 @@ struct CatalogEntry {
     label: &'static str,
     description: &'static str,
     language: &'static str,
+    model_type: &'static str,
     recommended: bool,
     files: &'static [ModelFile],
 }
@@ -72,7 +73,8 @@ const PARAKEET_V3: CatalogEntry = CatalogEntry {
     label: "Parakeet TDT v3",
     description: "Highest accuracy for 25 European languages. Punctuation, capitalization, and word-level timestamps.",
     language: "multilingual",
-    recommended: true,
+    model_type: "nemo_transducer",
+    recommended: false,
     files: &[
         ModelFile {
             name: "encoder.int8.onnx",
@@ -101,13 +103,87 @@ const PARAKEET_V3: CatalogEntry = CatalogEntry {
     ],
 };
 
-const CATALOG: &[CatalogEntry] = &[PARAKEET_V3];
+/// Zipformer small, English only: a 26 MB encoder against Parakeet's 622 MB.
+const ZIPFORMER_SMALL_EN: CatalogEntry = CatalogEntry {
+    id: "zipformer-small-en-int8",
+    label: "Zipformer Small (English)",
+    description: "English only and roughly twenty times smaller than Parakeet, for the fastest transcription on CPU.",
+    language: "en",
+    model_type: "transducer",
+    recommended: false,
+    files: &[
+        ModelFile {
+            name: "encoder.int8.onnx",
+            url: "https://huggingface.co/csukuangfj/sherpa-onnx-zipformer-small-en-2023-06-26/resolve/e8add5377a6cb7b629b5a0e08d6afe7a73442814/encoder-epoch-99-avg-1.int8.onnx?download=true",
+            size_bytes: 26_015_366,
+            sha256: "3a6ac78a31cc2c60ca8c1e2e2f43c878fbbcaf051ada4900e0a42ef8ba53d375",
+        },
+        ModelFile {
+            name: "decoder.int8.onnx",
+            url: "https://huggingface.co/csukuangfj/sherpa-onnx-zipformer-small-en-2023-06-26/resolve/e8add5377a6cb7b629b5a0e08d6afe7a73442814/decoder-epoch-99-avg-1.int8.onnx?download=true",
+            size_bytes: 1_307_236,
+            sha256: "f462ab9189ba6f9b2658774e6bf3d651913de54a3833655dc5e093e2f5e4c2b6",
+        },
+        ModelFile {
+            name: "joiner.int8.onnx",
+            url: "https://huggingface.co/csukuangfj/sherpa-onnx-zipformer-small-en-2023-06-26/resolve/e8add5377a6cb7b629b5a0e08d6afe7a73442814/joiner-epoch-99-avg-1.int8.onnx?download=true",
+            size_bytes: 259_335,
+            sha256: "6b183b6ec656e4d3ca6b86d0aeca992dac14df80aae6b416d7c068d0ff2bd4d7",
+        },
+        ModelFile {
+            name: "tokens.txt",
+            url: "https://huggingface.co/csukuangfj/sherpa-onnx-zipformer-small-en-2023-06-26/resolve/e8add5377a6cb7b629b5a0e08d6afe7a73442814/tokens.txt?download=true",
+            size_bytes: 5_048,
+            sha256: "49e3c2646595fd907228b3c6787069658f67b17377c60aeb8619c4551b2316fb",
+        },
+    ],
+};
+
+/// GigaSpeech: podcast and video speech rather than audiobooks, so technical words survive.
+const ZIPFORMER_GIGASPEECH: CatalogEntry = CatalogEntry {
+    id: "zipformer-gigaspeech-en-int8",
+    label: "Zipformer GigaSpeech (English)",
+    description: "English only, trained on conversational speech. Nine times smaller than Parakeet and far better than the LibriSpeech model on technical words.",
+    language: "en",
+    model_type: "transducer",
+    recommended: true,
+    files: &[
+        ModelFile {
+            name: "encoder.int8.onnx",
+            url: "https://huggingface.co/k2-fsa/sherpa-onnx-zipformer-gigaspeech-2023-12-12/resolve/8d79d9340119fb44fc06873321cbc10e876cd05d/encoder-epoch-30-avg-1.int8.onnx?download=true",
+            size_bytes: 72_850_681,
+            sha256: "60d83e92a412b137e89c369d7b99ab00effc3cfedb06bc678041cc4dc7e3d0d6",
+        },
+        ModelFile {
+            name: "decoder.int8.onnx",
+            url: "https://huggingface.co/k2-fsa/sherpa-onnx-zipformer-gigaspeech-2023-12-12/resolve/8d79d9340119fb44fc06873321cbc10e876cd05d/decoder-epoch-30-avg-1.int8.onnx?download=true",
+            size_bytes: 540_688,
+            sha256: "2b0580feb757696fa929922670b7126aaee609630349a1809fd5a2aee926d56e",
+        },
+        ModelFile {
+            name: "joiner.int8.onnx",
+            url: "https://huggingface.co/k2-fsa/sherpa-onnx-zipformer-gigaspeech-2023-12-12/resolve/8d79d9340119fb44fc06873321cbc10e876cd05d/joiner-epoch-30-avg-1.int8.onnx?download=true",
+            size_bytes: 259_417,
+            sha256: "80160e45cca71dd52f6b0a6d3d12be18126f5308b2d4ba03f001300fea377c64",
+        },
+        ModelFile {
+            name: "tokens.txt",
+            url: "https://huggingface.co/k2-fsa/sherpa-onnx-zipformer-gigaspeech-2023-12-12/resolve/8d79d9340119fb44fc06873321cbc10e876cd05d/tokens.txt?download=true",
+            size_bytes: 5_020,
+            sha256: "0ef7d736bf4de3ef947292e4b119ef13f6808cd5f3aec225a843a7135ac1c2ce",
+        },
+    ],
+};
+
+const CATALOG: &[CatalogEntry] = &[ZIPFORMER_GIGASPEECH, ZIPFORMER_SMALL_EN, PARAKEET_V3];
 
 pub struct SpeechState {
     /// Serializes downloads so two prefs clicks don't race the same folder.
     download_lock: AsyncMutex<()>,
     /// Active native mic capture (stream lives on a dedicated thread).
     capture: Mutex<Option<CaptureSession>>,
+    /// Loading the encoder costs hundreds of megabytes of disk read per utterance.
+    recognizer: Mutex<Option<(PathBuf, Arc<OfflineRecognizer>)>>,
 }
 
 impl Default for SpeechState {
@@ -115,7 +191,29 @@ impl Default for SpeechState {
         Self {
             download_lock: AsyncMutex::new(()),
             capture: Mutex::new(None),
+            recognizer: Mutex::new(None),
         }
+    }
+}
+
+impl SpeechState {
+    fn recognizer_for(
+        &self,
+        dir: &Path,
+        model_type: &str,
+    ) -> Result<Arc<OfflineRecognizer>, String> {
+        let mut slot = self
+            .recognizer
+            .lock()
+            .map_err(|_| "speech recognizer lock poisoned".to_string())?;
+        if let Some((cached_dir, recognizer)) = slot.as_ref() {
+            if cached_dir == dir {
+                return Ok(Arc::clone(recognizer));
+            }
+        }
+        let recognizer = Arc::new(build_recognizer(dir, model_type)?);
+        *slot = Some((dir.to_path_buf(), Arc::clone(&recognizer)));
+        Ok(recognizer)
     }
 }
 
@@ -319,7 +417,21 @@ pub fn speech_start_capture(
 }
 
 #[tauri::command]
+pub fn speech_capture_level(state: State<'_, SpeechState>) -> f32 {
+    state
+        .capture
+        .lock()
+        .ok()
+        .and_then(|slot| slot.as_ref().map(|capture| capture.level()))
+        .unwrap_or(0.0)
+}
+
+#[tauri::command]
 pub fn speech_stop_capture(state: State<'_, SpeechState>) -> Result<CapturedAudio, String> {
+    stop_capture(&state)
+}
+
+fn stop_capture(state: &SpeechState) -> Result<CapturedAudio, String> {
     let mut slot = state
         .capture
         .lock()
@@ -330,7 +442,52 @@ pub fn speech_stop_capture(state: State<'_, SpeechState>) -> Result<CapturedAudi
     capture.stop()
 }
 
-fn build_recognizer(dir: &Path) -> Result<OfflineRecognizer, String> {
+fn decode_threads() -> i32 {
+    let cores = std::thread::available_parallelism()
+        .map(|value| value.get())
+        .unwrap_or(2);
+    cores.saturating_sub(1).clamp(2, 8) as i32
+}
+
+const HOTWORDS: &[&str] = &[
+    "CODEX",
+    "CLAUDE",
+    "CLAUDE CODE",
+    "COPILOT",
+    "CURSOR",
+    "OPENCODE",
+    "TERMINAL",
+    "TERMINALS",
+    "AGENT",
+    "AGENTS",
+    "SHELL",
+    "IN THE SHELL",
+    "SPIN UP",
+    "GIT STATUS",
+    "RUN THE BUILD",
+    "PACKAGE JSON",
+    "FRONTEND",
+    "BACKEND",
+];
+
+fn is_text_vocab(path: &Path) -> bool {
+    let Ok(body) = fs::read_to_string(path) else {
+        return false;
+    };
+    body.lines()
+        .filter(|line| !line.trim().is_empty())
+        .all(|line| line.split_whitespace().count() == 2)
+}
+
+fn write_hotwords(dir: &Path) -> Result<PathBuf, String> {
+    let path = dir.join("hotwords.txt");
+    let body = HOTWORDS.join("
+");
+    fs::write(&path, body).map_err(|e| format!("write hotwords: {e}"))?;
+    Ok(path)
+}
+
+fn build_recognizer(dir: &Path, model_type: &str) -> Result<OfflineRecognizer, String> {
     let encoder = dir.join("encoder.int8.onnx");
     let decoder = dir.join("decoder.int8.onnx");
     let joiner = dir.join("joiner.int8.onnx");
@@ -348,22 +505,53 @@ fn build_recognizer(dir: &Path) -> Result<OfflineRecognizer, String> {
         joiner: Some(joiner.to_string_lossy().into_owned()),
     };
     config.model_config.tokens = Some(tokens.to_string_lossy().into_owned());
-    config.model_config.model_type = Some("nemo_transducer".into());
-    config.model_config.num_threads = 2;
+    config.model_config.model_type = Some(model_type.to_string());
+    config.model_config.num_threads = decode_threads();
     config.feat_config.sample_rate = SAMPLE_RATE;
+
+    // Biasing only bites on a BPE model when the vocab is handed over too, and sherpa wants the
+    // text vocab, not the sentencepiece model: the binary one takes the process down.
+    let bpe = dir.join("bpe.vocab");
+    if model_type == "transducer" && is_text_vocab(&bpe) {
+        if let Ok(hotwords) = write_hotwords(dir) {
+            config.decoding_method = Some("modified_beam_search".into());
+            config.max_active_paths = 4;
+            config.hotwords_file = Some(hotwords.to_string_lossy().into_owned());
+            config.hotwords_score = 3.0;
+            config.model_config.modeling_unit = Some("bpe".into());
+            config.model_config.bpe_vocab = Some(bpe.to_string_lossy().into_owned());
+        }
+    }
 
     OfflineRecognizer::create(&config).ok_or_else(|| "failed to create OfflineRecognizer".into())
 }
 
-fn transcribe_samples(dir: &Path, samples: &[f32], sample_rate: u32) -> Result<String, String> {
-    let recognizer = build_recognizer(dir)?;
+const TRIM_THRESHOLD: f32 = 0.012;
+const TRIM_PAD_SAMPLES: usize = (SAMPLE_RATE as usize) / 10;
+
+fn trim_silence(samples: &[f32]) -> &[f32] {
+    let loud = |sample: &f32| sample.abs() > TRIM_THRESHOLD;
+    let Some(first) = samples.iter().position(loud) else {
+        return samples;
+    };
+    let last = samples.iter().rposition(loud).unwrap_or(samples.len() - 1);
+    let start = first.saturating_sub(TRIM_PAD_SAMPLES);
+    let end = (last + TRIM_PAD_SAMPLES).min(samples.len() - 1);
+    &samples[start..=end]
+}
+
+fn transcribe_samples(
+    recognizer: &OfflineRecognizer,
+    samples: &[f32],
+    sample_rate: u32,
+) -> Result<String, String> {
     let rate = if sample_rate == 0 {
         SAMPLE_RATE
     } else {
         sample_rate as i32
     };
     let stream = recognizer.create_stream();
-    stream.accept_waveform(rate, samples);
+    stream.accept_waveform(rate, trim_silence(samples));
     recognizer.decode(&stream);
     let result = stream
         .get_result()
@@ -372,12 +560,27 @@ fn transcribe_samples(dir: &Path, samples: &[f32], sample_rate: u32) -> Result<S
 }
 
 #[tauri::command]
+pub async fn speech_prepare(
+    app: AppHandle,
+    state: State<'_, SpeechState>,
+    model_id: String,
+) -> Result<bool, String> {
+    let entry = find_entry(&model_id)?;
+    let dir = model_dir(&app, &model_id)?;
+    if !model_ready(&dir, entry) {
+        return Ok(false);
+    }
+    state.recognizer_for(&dir, entry.model_type)?;
+    Ok(true)
+}
+
+#[tauri::command]
 pub async fn speech_stop_and_transcribe(
     app: AppHandle,
     state: State<'_, SpeechState>,
     model_id: String,
 ) -> Result<String, String> {
-    let audio = speech_stop_capture(state)?;
+    let audio = stop_capture(&state)?;
     if audio.samples.len() < (SAMPLE_RATE as usize) / 6 {
         return Err("Recording was too short — hold a bit longer, then release.".into());
     }
@@ -397,7 +600,8 @@ pub async fn speech_stop_and_transcribe(
 
     let samples = audio.samples;
     let sample_rate = audio.sample_rate;
-    tokio::task::spawn_blocking(move || transcribe_samples(&dir, &samples, sample_rate))
+    let recognizer = state.recognizer_for(&dir, entry.model_type)?;
+    tokio::task::spawn_blocking(move || transcribe_samples(&recognizer, &samples, sample_rate))
         .await
         .map_err(|e| format!("speech worker join: {e}"))?
 }
@@ -405,6 +609,7 @@ pub async fn speech_stop_and_transcribe(
 #[tauri::command]
 pub async fn speech_transcribe(
     app: AppHandle,
+    state: State<'_, SpeechState>,
     model_id: String,
     samples: Vec<f32>,
     sample_rate: u32,
@@ -420,7 +625,8 @@ pub async fn speech_transcribe(
         ));
     }
 
-    tokio::task::spawn_blocking(move || transcribe_samples(&dir, &samples, sample_rate))
+    let recognizer = state.recognizer_for(&dir, entry.model_type)?;
+    tokio::task::spawn_blocking(move || transcribe_samples(&recognizer, &samples, sample_rate))
         .await
         .map_err(|e| format!("speech worker join: {e}"))?
 }

@@ -112,6 +112,7 @@ export type ProjectsState = ProjectsFile & {
   renameProject: (id: string, name: string) => void
   archiveProject: (id: string) => void
   unarchiveProject: (id: string) => void
+  setProjectHidden: (id: string, hidden: boolean) => void
   setProjectColor: (id: string, color: string | undefined) => void
   setProjectIconUrl: (id: string, iconUrl: string | undefined) => void
   addMarkdownComment: (
@@ -232,6 +233,7 @@ export type ProjectsState = ProjectsFile & {
   createWebPane: (projectId: string, args: BrowserPaneOptions) => Terminal
   createGraphifyPane: (projectId: string, cwd: string) => Terminal
   createOrchestratorPane: (projectId: string, cwd: string) => Terminal
+  createPluginPane: (projectId: string, pluginId: string, name: string) => Terminal
   renameTerminal: (projectId: string, terminalId: string, name: string) => void
   setBrowserEngine: (projectId: string, terminalId: string, engine: BrowserEngine) => void
 

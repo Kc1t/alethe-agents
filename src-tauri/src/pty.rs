@@ -35,15 +35,31 @@ const SPAWN_MEMORY_WAIT_POLL_MS: u64 = 1_000;
 
 const SPAWN_MEMORY_WAIT_MAX_MS: u128 = 45_000;
 
-fn wait_for_spawnable_memory() {
+#[derive(Clone, Serialize)]
+pub struct PtySpawnMemoryWaitPayload {
+    pub available_mb: f64,
+    pub waited_ms: u128,
+    pub threshold_mb: f64,
+}
+
+fn wait_for_spawnable_memory(app: &AppHandle, id: &str) -> u128 {
     let started = Instant::now();
     loop {
         let available_mb = crate::stats::memory_stats_cached().system_available_mb;
         if available_mb >= SPAWN_MIN_AVAILABLE_MB {
-            return;
+            return started.elapsed().as_millis();
         }
-        if started.elapsed().as_millis() >= SPAWN_MEMORY_WAIT_MAX_MS {
-            return;
+        let waited_ms = started.elapsed().as_millis();
+        let _ = app.emit(
+            &format!("pty://spawn-wait/{id}"),
+            PtySpawnMemoryWaitPayload {
+                available_mb,
+                waited_ms,
+                threshold_mb: SPAWN_MIN_AVAILABLE_MB,
+            },
+        );
+        if waited_ms >= SPAWN_MEMORY_WAIT_MAX_MS {
+            return waited_ms;
         }
         thread::sleep(Duration::from_millis(SPAWN_MEMORY_WAIT_POLL_MS));
     }
@@ -51,8 +67,8 @@ fn wait_for_spawnable_memory() {
 
 // (~5.8 GB de folga) enquanto a RAM "livre" parecia OK. Comprometer de
 
-fn prepare_memory_for_boot() {
-    wait_for_spawnable_memory();
+fn prepare_memory_for_boot(app: &AppHandle, id: &str) -> u128 {
+    wait_for_spawnable_memory(app, id)
 }
 
 pub struct ScrollbackBuffer {
@@ -262,7 +278,7 @@ pub async fn spawn_pty(
                                                                         
                                                                             
         // `prepare_memory_for_boot`).
-        prepare_memory_for_boot();
+        let memory_wait_ms = prepare_memory_for_boot(&app, &id);
 
         let scrollback = Arc::new(Mutex::new(ScrollbackBuffer::new(load_scrollback(
             &app, &id,
@@ -696,7 +712,7 @@ pub async fn spawn_pty(
         let _ = append_spawn_log(
             &app,
             &format!(
-                "spawn id={id} command={:?} launcher={:?} resolve_ms={resolve_ms} builder_ms={builder_ms} shell_spawn_ms={shell_spawn_ms} total_ms={} path_preview={effective_path_preview:?}",
+                "spawn id={id} command={:?} launcher={:?} memory_wait_ms={memory_wait_ms} resolve_ms={resolve_ms} builder_ms={builder_ms} shell_spawn_ms={shell_spawn_ms} total_ms={} path_preview={effective_path_preview:?}",
                 requested_command,
                 resolved_launcher,
                 spawn_started.elapsed().as_millis()

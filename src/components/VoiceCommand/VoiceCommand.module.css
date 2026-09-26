@@ -1,0 +1,244 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 22vh;
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.panel {
+  width: min(760px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 22px;
+  color: var(--fg);
+  background: var(--bg-elevated, var(--bg-sunken));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
+}
+
+.inputRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  color: var(--fg);
+  background: transparent;
+  border: 0;
+  outline: none;
+  font-size: 19px;
+  line-height: 1.4;
+}
+
+.input::placeholder {
+  color: var(--fg-faint);
+}
+
+.summary {
+  margin: 0;
+  color: var(--status-ready, var(--accent));
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.blocked {
+  margin: 0;
+  color: var(--status-waiting);
+  font-size: 13px;
+}
+
+.prompt {
+  margin: 0;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.detail {
+  margin: 0;
+  color: var(--fg-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.warning {
+  margin: 0;
+  color: var(--status-waiting);
+  font-size: 11px;
+}
+
+.hint {
+  margin: 4px 0 0;
+  color: var(--fg-faint);
+  font-size: 10px;
+}
+
+.listening {
+  color: var(--status-offline);
+}
+
+.spin {
+  color: var(--status-waiting);
+  animation: voiceSpin 1s linear infinite;
+}
+
+@keyframes voiceSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.micButton {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  color: var(--fg-muted);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    background 0.12s,
+    border-color 0.12s;
+}
+
+.micButton:hover:not(:disabled) {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.micButton:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.micButtonLive {
+  color: #fff;
+  background: var(--status-offline);
+  border-color: var(--status-offline);
+  animation: voicePulse 1.5s ease-out infinite;
+}
+
+@keyframes voicePulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--status-offline) 55%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 10px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.spectrumRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 48px;
+}
+
+.spectrum {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0.35;
+  transition: opacity 0.2s;
+}
+
+.spectrum[data-live='true'] {
+  opacity: 1;
+}
+
+.spectrumBar {
+  flex: 1;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--fg-faint);
+  transform-origin: center;
+  transition: transform 0.07s linear;
+}
+
+.spectrum[data-live='true'] .spectrumBar {
+  background: var(--status-offline);
+}
+
+.micSelect {
+  flex: none;
+  max-width: 190px;
+  padding: 2px 4px;
+  color: var(--fg-faint);
+  background: transparent;
+  border: 0;
+  outline: none;
+  font-size: 10px;
+}
+
+.micSelect:disabled {
+  opacity: 0.5;
+}
+
+.confirmRow {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.confirmRun,
+.confirmCancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    background 0.12s,
+    border-color 0.12s,
+    filter 0.12s;
+}
+
+.confirmRun {
+  color: var(--accent-on);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+.confirmRun:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+.confirmCancel {
+  color: var(--fg-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
+.confirmCancel:hover {
+  color: var(--fg);
+  border-color: var(--fg-muted);
+}

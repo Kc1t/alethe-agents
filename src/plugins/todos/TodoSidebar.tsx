@@ -29,7 +29,6 @@ import type { Terminal, TodoItem } from '../../lib/types'
 import { selectActiveProject, useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { TODO_SETTINGS_MODAL_ID } from './manifest'
-import { PomodoroWidget } from './PomodoroWidget'
 import { useTodosStore } from './store'
 import styles from './TodoSidebar.module.css'
 
@@ -595,7 +594,6 @@ export function TodoSidebar() {
       </form>
 
       <div className={styles.content}>
-        <PomodoroWidget />
         {filter !== 'completed' ? <GsdSyncSection /> : null}
         {todos.length === 0 ? (
           <div className={styles.empty}>

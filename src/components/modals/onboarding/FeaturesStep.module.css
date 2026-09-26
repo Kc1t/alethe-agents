@@ -220,6 +220,23 @@
   color: var(--fg);
 }
 
+.subCheckbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0 9px 40px;
+  border-top: 1px dashed var(--border);
+  color: var(--fg-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.subCheckbox input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+}
+
 .more {
   display: flex;
   align-items: center;

@@ -134,6 +134,24 @@ export function CopilotIcon({ size = 16 }: { size?: number }) {
   )
 }
 
+// Kimi Code mark: rounded square + "K" glyph, redrawn as strokes so it reads at 16px and
+// takes the pane's accent through `currentColor`. Swap for an official asset if one ships.
+export function KimiIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
+      <rect x="2" y="2" width="12" height="12" rx="3" />
+      <path d="M6 12V4.8M6 8.4l3.4-3.6M6 8.4l3.6 3.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 export function AgentIcon({
   type,
   size = 16,
@@ -152,6 +170,7 @@ export function AgentIcon({
   if (type === 'freebuff') return <FreebuffIcon size={size} />
   if (type === 'mimo') return <MimoIcon size={size} />
   if (type === 'kiro') return <KiroIcon size={size} />
+  if (type === 'kimi') return <KimiIcon size={size} />
   if (type === 'antigravity') return <AntigravityIcon size={size} />
   if (type === 'opencode') return <OpenCodeIcon size={size} theme={theme} />
   const ProviderIcon = findAgentProvider(type)?.icon

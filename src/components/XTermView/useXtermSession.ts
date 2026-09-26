@@ -167,6 +167,7 @@ export function useXtermSession(params: {
   onLaunchErrorRef: MutableRefObject<((error: unknown) => void) | undefined>
   onAgentCompleteRef: MutableRefObject<(() => void) | undefined>
   setBootPhase: Dispatch<SetStateAction<BootPhase>>
+  setMemoryWait?: Dispatch<SetStateAction<{ availableMb: number; waitedMs: number; thresholdMb: number } | null>>
   setCommandNotFound: Dispatch<SetStateAction<string | null>>
   setLinkActions: Dispatch<SetStateAction<LinkActionState | null>>
   setRetryKey: Dispatch<SetStateAction<number>>
@@ -209,6 +210,7 @@ export function useXtermSession(params: {
     onLaunchErrorRef,
     onAgentCompleteRef,
     setBootPhase,
+    setMemoryWait,
     setCommandNotFound,
     setLinkActions,
     setRetryKey,
@@ -251,11 +253,26 @@ export function useXtermSession(params: {
     let unlistenExit: (() => void) | null = null
     let unlistenDragDrop: (() => void) | null = null
     let unlistenSessionHook: (() => void) | null = null
+    let unlistenMemoryWait: (() => void) | null = null
     const savedAttachedSessionId = savedConversationIdFor(
       peekSession(sessionPersistenceKey),
       command,
       cwd,
     )
+    const memoryWaitListener = listen<{ available_mb: number; waited_ms: number; threshold_mb: number }>(
+      `pty://spawn-wait/${ptyId}`,
+      (event) => {
+        setMemoryWait?.({
+          availableMb: event.payload.available_mb,
+          waitedMs: event.payload.waited_ms,
+          thresholdMb: event.payload.threshold_mb,
+        })
+      },
+    )
+    void memoryWaitListener.then((off) => {
+      if (disposed) off()
+      else unlistenMemoryWait = off
+    })
     let attachedSessionId = trustSessionId
       ? (sessionId ?? savedAttachedSessionId)
       : (savedAttachedSessionId ?? sessionId)
@@ -897,7 +914,10 @@ export function useXtermSession(params: {
       unlistenExit = exitUnlisten
 
       scheduleResize()
-      if (!disposed) setBootPhase('ready')
+      if (!disposed) {
+        setMemoryWait?.(null)
+        setBootPhase('ready')
+      }
     }
 
     terminal.onData((data) => {
@@ -955,6 +975,8 @@ export function useXtermSession(params: {
         }
         setCommandNotFound(null)
         setBootPhase('preparing')
+        setMemoryWait?.(null)
+        await memoryWaitListener.catch(() => undefined)
 
         const existingRuntime = useTerminalsStore.getState().byPtyId[ptyId]
         if (existingRuntime?.alive && !existingRuntime.parked) {
@@ -1096,10 +1118,13 @@ export function useXtermSession(params: {
           useRouter9 && command
             ? router9EnvFor(command, useProjectsStore.getState().preferences.router9)
             : {}
-        const launchEnv =
-          Object.keys(router9Env).length > 0
-            ? { ...(preparedRuntime.env ?? {}), ...router9Env }
-            : preparedRuntime.env
+        // The Codex hook forwarder and MCP bridge are shared per port, so they read the terminal
+        // they belong to from here instead of from a path Codex would ask to trust again.
+        const launchEnv = {
+          ...(preparedRuntime.env ?? {}),
+          ...router9Env,
+          ALETHE_PLANNER: ptyId,
+        }
 
         // Prepare optional integrations before spawning.
         const mcpConfigPaths: string[] = []
@@ -1566,7 +1591,11 @@ export function useXtermSession(params: {
                 await writePtyChunked(response.id, prompt, terminal.modes.bracketedPasteMode)
                 await new Promise((resolve) => window.setTimeout(resolve, 150))
                 await writePty(response.id, '\r')
-                window.setTimeout(() => void writePty(response.id, '\r').catch(() => {}), 1_200)
+                // A CLI still drawing its first screen, or sitting on a trust prompt, swallows the
+                // first returns, so the text stays typed but unsent. Extra ones only submit empty.
+                for (const delay of [1_200, 3_000, 6_000]) {
+                  window.setTimeout(() => void writePty(response.id, '\r').catch(() => {}), delay)
+                }
               }
               onInitialInputSentRef.current?.()
             } catch (error) {
@@ -1580,12 +1609,18 @@ export function useXtermSession(params: {
         }
 
         scheduleResize()
-        if (!disposed) setBootPhase('ready')
+        if (!disposed) {
+          setMemoryWait?.(null)
+          setBootPhase('ready')
+        }
       } catch (err) {
         console.error(`[pty-launch] ${command ?? 'shell'} FAILED to start:`, err)
         onLaunchErrorRef.current?.(err)
         if (!disposed) terminal.writeln(`Failed to start PTY: ${String(err)}`)
-        if (!disposed) setBootPhase('ready')
+        if (!disposed) {
+          setMemoryWait?.(null)
+          setBootPhase('ready')
+        }
       }
     }
     void start()
@@ -1625,6 +1660,7 @@ export function useXtermSession(params: {
       unlistenExit?.()
       unlistenDragDrop?.()
       unlistenSessionHook?.()
+      unlistenMemoryWait?.()
       linkProviderDisposable?.dispose()
       linkScrollDisposable?.dispose()
       completionMonitor?.dispose()

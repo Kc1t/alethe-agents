@@ -6,6 +6,7 @@
 //! `cpal::Stream` is `!Send` on this platform, so the live stream lives on a
 //! dedicated thread and only Send handles cross into Tauri managed state.
 
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -38,6 +39,7 @@ pub struct CapturedAudio {
 pub struct CaptureSession {
     stop_tx: mpsc::Sender<()>,
     join: JoinHandle<Result<CapturedAudio, String>>,
+    level: Arc<AtomicU32>,
 }
 
 fn host() -> cpal::Host {
@@ -102,6 +104,10 @@ fn to_mono(interleaved: &[f32], channels: usize) -> Vec<f32> {
         .collect()
 }
 
+fn publish_level(level: &Arc<AtomicU32>, mono: &[f32]) {
+    level.store(peak_amplitude(mono).to_bits(), Ordering::Relaxed);
+}
+
 fn append_mono(dst: &Arc<Mutex<Vec<f32>>>, mono: &[f32]) {
     if let Ok(mut buf) = dst.lock() {
         if buf.len() >= MAX_SAMPLES {
@@ -142,6 +148,8 @@ fn peak_amplitude(samples: &[f32]) -> f32 {
 pub fn start_capture(device_id: Option<String>) -> Result<CaptureSession, String> {
     let (stop_tx, stop_rx) = mpsc::channel::<()>();
     let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
+    let level = Arc::new(AtomicU32::new(0));
+    let level_for_thread = Arc::clone(&level);
 
     let join = std::thread::Builder::new()
         .name("alethe-speech-capture".into())
@@ -166,15 +174,18 @@ pub fn start_capture(device_id: Option<String>) -> Result<CaptureSession, String
             let sample_format = supported.sample_format();
             let config: StreamConfig = supported.into();
             let samples = Arc::new(Mutex::new(Vec::with_capacity(TARGET_RATE as usize * 8)));
+            let level = level_for_thread;
             let err_fn = |err| eprintln!("[speech] capture stream error: {err}");
 
             let stream = match sample_format {
                 SampleFormat::F32 => {
                     let samples = Arc::clone(&samples);
+                    let level = Arc::clone(&level);
                     device.build_input_stream(
                         &config,
                         move |data: &[f32], _| {
                             let mono = to_mono(data, channels);
+                            publish_level(&level, &mono);
                             append_mono(&samples, &mono);
                         },
                         err_fn,
@@ -183,12 +194,14 @@ pub fn start_capture(device_id: Option<String>) -> Result<CaptureSession, String
                 }
                 SampleFormat::I16 => {
                     let samples = Arc::clone(&samples);
+                    let level = Arc::clone(&level);
                     device.build_input_stream(
                         &config,
                         move |data: &[i16], _| {
                             let floats: Vec<f32> =
                                 data.iter().map(|&s| s as f32 / 32768.0).collect();
                             let mono = to_mono(&floats, channels);
+                            publish_level(&level, &mono);
                             append_mono(&samples, &mono);
                         },
                         err_fn,
@@ -197,6 +210,7 @@ pub fn start_capture(device_id: Option<String>) -> Result<CaptureSession, String
                 }
                 SampleFormat::U16 => {
                     let samples = Arc::clone(&samples);
+                    let level = Arc::clone(&level);
                     device.build_input_stream(
                         &config,
                         move |data: &[u16], _| {
@@ -205,6 +219,7 @@ pub fn start_capture(device_id: Option<String>) -> Result<CaptureSession, String
                                 .map(|&s| (s as f32 / 65535.0) * 2.0 - 1.0)
                                 .collect();
                             let mono = to_mono(&floats, channels);
+                            publish_level(&level, &mono);
                             append_mono(&samples, &mono);
                         },
                         err_fn,
@@ -249,7 +264,11 @@ pub fn start_capture(device_id: Option<String>) -> Result<CaptureSession, String
         .map_err(|e| format!("spawn capture thread: {e}"))?;
 
     match ready_rx.recv() {
-        Ok(Ok(())) => Ok(CaptureSession { stop_tx, join }),
+        Ok(Ok(())) => Ok(CaptureSession {
+            stop_tx,
+            join,
+            level,
+        }),
         Ok(Err(error)) => {
             let _ = join.join();
             Err(error)
@@ -262,6 +281,10 @@ pub fn start_capture(device_id: Option<String>) -> Result<CaptureSession, String
 }
 
 impl CaptureSession {
+    pub fn level(&self) -> f32 {
+        f32::from_bits(self.level.load(Ordering::Relaxed))
+    }
+
     pub fn stop(self) -> Result<CapturedAudio, String> {
         let _ = self.stop_tx.send(());
         match self.join.join() {

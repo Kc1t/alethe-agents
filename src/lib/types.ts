@@ -11,6 +11,7 @@ export type BuiltinAgentType =
   | 'mimo'
   | 'antigravity'
   | 'kiro'
+  | 'kimi'
 
 /**
  * An agent type id. Open on purpose: plugins contribute agent providers at
@@ -30,6 +31,7 @@ export const AGENT_TYPE_LABELS: Record<BuiltinAgentType, string> = {
   mimo: 'Mimo',
   freebuff: 'Freebuff',
   kiro: 'Kiro CLI',
+  kimi: 'Kimi Code',
   shell: 'Shell',
   wsl: 'WSL',
 }
@@ -44,6 +46,7 @@ export const ALL_AGENT_TYPES: BuiltinAgentType[] = [
   'mimo',
   'freebuff',
   'kiro',
+  'kimi',
   'shell',
   'wsl',
 ]
@@ -218,6 +221,7 @@ export const UNRESTRICTED_FLAG: Record<BuiltinAgentType, string | null> = {
   mimo: null,
   antigravity: '--dangerously-skip-permissions',
   kiro: '--trust-all-tools',
+  kimi: '--yolo',
 }
 
 export type PaneKind =
@@ -230,6 +234,7 @@ export type PaneKind =
   | 'graphify'
   | 'diff'
   | 'orchestrator'
+  | 'plugin'
 
 export type BrowserResourceMode = 'app-first' | 'balanced' | 'keep-alive'
 
@@ -281,6 +286,9 @@ export type Terminal = {
   url?: string
   /** Runtime settings for a private native browser pane. */
   browserConfig?: BrowserPaneConfig
+
+  /** The plugin this pane shows the profile of, on a `plugin` pane. */
+  pluginId?: string
 
   worktreeAgentId?: string
 
@@ -372,6 +380,8 @@ export type Project = {
   collapsed: boolean
   /** Hidden from the sidebar until restored from Preferences. */
   archived?: boolean
+  /** Kept out of the sidebar until hidden projects are revealed for the session. */
+  hidden?: boolean
   createdAt: number
   // --- RFC-009 / RFC-003 — Multi-Agent settings ---
   worktreeMode?: 'gitWorktree' | 'localCopy'
@@ -581,6 +591,10 @@ export type Preferences = {
   spotifyClientSecret: string
   /** Exibe a atividade atual do Alethe no perfil do Discord. */
   discordRichPresenceEnabled: boolean
+  /** Usage cards shown in the AI usage details modal and the home usage strip. */
+  usageShowClaude: boolean
+  usageShowCodex: boolean
+  usageShowAntigravity: boolean
   /** Itens opcionais exibidos no canto direito da topbar. */
   topbarShowClaudeUsage: boolean
   topbarShowCodexUsage: boolean
@@ -636,6 +650,8 @@ export type Preferences = {
   dictationMicrophoneId: string | null
   /** Cached microphone label when the preferred device is unplugged. */
   dictationMicrophoneLabel: string | null
+  /** Decisions API key for voice commands. Empty disables the command bar. */
+  voiceCommandApiKey: string
   /** How many PTYs may spawn in parallel (global queue). Default 3. */
   spawnConcurrency: number
 
@@ -733,6 +749,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
     freebuff: true,
     mimo: true,
     kiro: true,
+    kimi: true,
   },
   onboardingDone: false,
   workspaceFlat: false,
@@ -750,6 +767,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   spotifyClientId: '',
   spotifyClientSecret: '',
   discordRichPresenceEnabled: false,
+  usageShowClaude: true,
+  usageShowCodex: true,
+  usageShowAntigravity: true,
   topbarShowClaudeUsage: true,
   topbarShowCodexUsage: true,
   topbarShowAntigravityUsage: true,
@@ -790,6 +810,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   dictationModelId: 'parakeet-tdt-0.6b-v3-int8',
   dictationMicrophoneId: null,
   dictationMicrophoneLabel: null,
+  voiceCommandApiKey: '',
   spawnConcurrency: 3,
   resourcePolicy: {
     mode: 'manual',
@@ -881,6 +902,9 @@ export const PROVIDER_MODELS: Record<BuiltinAgentType, { id: string; label: stri
     { id: 'claude-sonnet-4.5', label: 'Claude Sonnet 4.5 (Padrão)' },
     { id: 'claude-haiku-4.5', label: 'Claude Haiku 4.5' },
   ],
+  // Kimi Code uses the account default model established at login, so nothing is
+  // hardcoded here — the same rationale as `cursor`.
+  kimi: [],
   shell: [{ id: 'default', label: 'Shell Padrão' }],
   wsl: [{ id: 'default', label: 'WSL' }],
 }
@@ -889,10 +913,17 @@ export type McpScope = 'global' | 'project'
 
 export type McpAgent = Extract<
   BuiltinAgentType,
-  'claude' | 'codex' | 'cursor' | 'opencode' | 'antigravity'
+  'claude' | 'codex' | 'cursor' | 'opencode' | 'antigravity' | 'kimi'
 >
 
-export const MCP_AGENTS: McpAgent[] = ['claude', 'codex', 'cursor', 'opencode', 'antigravity']
+export const MCP_AGENTS: McpAgent[] = [
+  'claude',
+  'codex',
+  'cursor',
+  'opencode',
+  'antigravity',
+  'kimi',
+]
 
 /**
  * Agents whose CLI can report how each configured server is actually doing. The others only have

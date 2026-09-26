@@ -74,6 +74,7 @@ const NOTIF_AGENT_CLASS: Record<BuiltinAgentType, string> = {
   freebuff: styles.notifFreebuff,
   mimo: styles.notifMimo,
   kiro: styles.notifKiro,
+  kimi: styles.notifKimi,
 }
 
 function notifAgentClass(agent: AgentType): string {

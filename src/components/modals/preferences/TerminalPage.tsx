@@ -25,6 +25,7 @@ const AGENTS: { id: AgentType; label: string }[] = [
   { id: 'freebuff', label: 'Freebuff' },
   { id: 'mimo', label: 'Mimo Code' },
   { id: 'kiro', label: 'Kiro CLI' },
+  { id: 'kimi', label: 'Kimi Code' },
 ]
 
 export function TerminalPage({ enabledCount }: { enabledCount: number }) {

@@ -1,34 +1,40 @@
 import { ExternalLink, GitPullRequest, LoaderCircle, RefreshCw } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
-import { githubPrListMine, type MyPullRequestSummary } from '../../lib/tauri'
+import { githubPrListMine, type MyPullRequestSummary, openInBrowser } from '../../lib/tauri'
+import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import { useTodosStore } from '../../plugins/todos/store'
+import { useProjectsStore } from '../../stores/projectsStore'
 import styles from './PullRequestsSidebar.module.css'
 
 export function PullRequestsSidebar() {
   const t = useT()
   const todos = useTodosStore((state) => state.todos)
   const createTodoFromPullRequest = useTodosStore((state) => state.createTodoFromPullRequest)
+  const activeProject = useProjectsStore((state) =>
+    state.projects.find((project) => project.id === state.activeProjectId),
+  )
+  const repo = getProjectRepoRoot(activeProject)
   const [prs, setPrs] = useState<MyPullRequestSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      setPrs(await githubPrListMine())
+      setPrs(await githubPrListMine(repo))
     } catch (err) {
       setError(String(err))
     } finally {
       setLoading(false)
     }
-  }
+  }, [repo])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const isLinked = (pr: MyPullRequestSummary) =>
     todos.some((todo) => todo.prRepo === pr.repo && todo.prNumber === pr.number)
@@ -39,6 +45,11 @@ export function PullRequestsSidebar() {
         <div className={styles.heading}>
           <GitPullRequest size={16} />
           <span>{t('prs.title')}</span>
+          <span className={styles.scope} title={repo || undefined}>
+            {repo
+              ? t('prs.scopeProject', { project: activeProject?.name ?? '' })
+              : t('prs.scopeAll')}
+          </span>
         </div>
         <button
           type="button"
@@ -66,7 +77,7 @@ export function PullRequestsSidebar() {
               <GitPullRequest size={20} />
             </div>
             <strong>{t('prs.emptyTitle')}</strong>
-            <span>{t('prs.emptyDescription')}</span>
+            <span>{repo ? t('prs.emptyDescriptionProject') : t('prs.emptyDescription')}</span>
           </div>
         ) : (
           <div className={styles.list}>
@@ -91,16 +102,15 @@ export function PullRequestsSidebar() {
                     {t('prs.updatedLabel', { date: new Date(pr.updatedAt).toLocaleDateString() })}
                   </p>
                   <div className={styles.actions}>
-                    <a
-                      href={pr.url}
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
+                      type="button"
                       className={styles.actionLink}
+                      onClick={() => void openInBrowser(pr.url).catch(() => undefined)}
                       title={t('prs.openInBrowser')}
                       aria-label={t('prs.openInBrowser')}
                     >
                       <ExternalLink size={13} />
-                    </a>
+                    </button>
                     <button
                       type="button"
                       className={`${styles.actionButton} ${linked ? styles.actionButtonDone : ''}`}

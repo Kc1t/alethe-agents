@@ -5,6 +5,9 @@ export default defineConfig({
   plugins: [react()],
   clearScreen: false,
   server: {
+    // Sem host explícito o vite escolhe ::1 ou 127.0.0.1 por sorte da resolução
+    // de "localhost", e a webview fica na família errada: tela branca.
+    host: '127.0.0.1',
     port: 1422,
     strictPort: true,
     // Não vigie o backend Rust: o watcher do vite tenta observar

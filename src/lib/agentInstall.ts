@@ -90,6 +90,10 @@ export const AGENT_INSTALL_CATALOG: Partial<Record<AgentType, AgentInstallCatalo
     docsUrl: 'https://kiro.dev/cli/',
     methods: [{ id: 'native', command: "irm 'https://cli.kiro.dev/install.ps1' | iex" }],
   },
+  kimi: {
+    docsUrl: 'https://www.kimi.com/code/docs/en/kimi-code-cli/guides/getting-started.html',
+    methods: [{ id: 'npm', command: 'npm install -g @moonshot-ai/kimi-code', requires: 'npm' }],
+  },
 }
 
 export function installDocsUrl(agent: AgentType): string | undefined {

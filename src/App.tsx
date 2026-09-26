@@ -1,5 +1,3 @@
-import { ProjectGridModal } from './components/modals/ProjectGridModal'
-import { ResetCreditModal } from './components/modals/ResetCreditModal'
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { Bell, X } from 'lucide-react'
@@ -35,8 +33,10 @@ import { NewTerminalModal } from './components/modals/NewTerminalModal'
 import { OnboardingModal } from './components/modals/OnboardingModal'
 import { PreferencesModal } from './components/modals/PreferencesModal'
 import { ProfilesModal } from './components/modals/ProfilesModal'
+import { ProjectGridModal } from './components/modals/ProjectGridModal'
 import { RecentChatsModal } from './components/modals/RecentChatsModal'
 import { RemoteControlModal } from './components/modals/RemoteControlModal'
+import { ResetCreditModal } from './components/modals/ResetCreditModal'
 import { SuspendGroupModal } from './components/modals/SuspendGroupModal'
 import { SyncModal } from './components/modals/SyncModal'
 import { ThemePickerModal } from './components/modals/ThemePickerModal'
@@ -49,6 +49,7 @@ import { RightSidebar } from './components/RightSidebar'
 import { TitleBar } from './components/TitleBar'
 import { TokenHud } from './components/TokenHud'
 import { AsciiEffect } from './components/ui/ascii-effect'
+import { VoiceCommand } from './components/VoiceCommand'
 import { WorkspaceView } from './components/WorkspaceView'
 import { useAgentBrowserOffers } from './hooks/useAgentBrowserOffers'
 import { useAgentHookBridge } from './hooks/useAgentHookBridge'
@@ -65,16 +66,16 @@ import { agentAccentVar } from './lib/agentProviders'
 import { APP_SHELL_ID } from './lib/appShell'
 import { AGENT_SANDBOX_ENABLED } from './lib/featureFlags'
 import { intlLocale, translate, useT } from './lib/i18n'
+import { applyLegacyPluginMigrations } from './lib/plugins'
 import { visibilityFromPanelResize, widthFromPanelResize } from './lib/sidebarPanelState'
 import { setMaxConcurrentSpawns } from './lib/spawnQueue'
 import { ghosttyKillAll, setWindowOpacity } from './lib/tauri'
 import { getLastCrashReport } from './lib/tauri'
-import { applyLegacyPluginMigrations } from './lib/plugins'
-import { useSidebarViews } from './lib/viewPlacement'
 import { rememberBootAppearance } from './lib/bootAppearance'
-import { useAppliedTheme } from './lib/themes'
 import { loadThemeIconBytes } from './lib/themeIcons'
+import { useAppliedTheme } from './lib/themes'
 import { checkForUpdate } from './lib/updater'
+import { useSidebarViews } from './lib/viewPlacement'
 import { useProjectsStore } from './stores/projectsStore'
 import { type InAppToast, useUiStore } from './stores/uiStore'
 
@@ -710,6 +711,7 @@ export default function App() {
       <GsdSyncActivityView />
       <LinkViewerOverlay />
       <DictationButton />
+      <VoiceCommand />
       <MainMenu />
       <ErrorBoundary label="modals">
         <NewProjectModal />

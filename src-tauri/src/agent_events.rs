@@ -134,6 +134,20 @@ pub fn agent_hooks_settings_path(
 const CODEX_HOOKS_MARK_START: &str = "# alethe-managed-hooks-start";
 const CODEX_HOOKS_MARK_END: &str = "# alethe-managed-hooks-end";
 
+// The listener port moves between runs, so it must not reach the filename: Codex would read a
+// changed command and ask to trust the hooks again. The exe path keeps dev and prod apart.
+fn install_tag() -> &'static str {
+    static TAG: OnceLock<String> = OnceLock::new();
+    TAG.get_or_init(|| {
+        use sha2::{Digest, Sha256};
+        let exe = std::env::current_exe()
+            .map(|p| p.to_string_lossy().to_lowercase())
+            .unwrap_or_else(|_| "alethe".to_string());
+        let digest = Sha256::digest(exe.as_bytes());
+        digest.iter().take(4).map(|b| format!("{b:02x}")).collect()
+    })
+}
+
 fn ps_escape(value: &str) -> String {
     value.replace('\'', "''")
 }
@@ -143,21 +157,23 @@ fn toml_string(value: &str) -> String {
 }
 
 /// Codex CLI hooks only run `command`/`commandWindows` handlers — there is no built-in http type
-/// like Claude Code's. So a tiny PowerShell forwarder is generated per terminal, carrying its own
-/// endpoint/token/planner baked in, and piped Codex's hook JSON on stdin.
-fn write_codex_hook_forwarder(port: u16, planner_id: &str, safe_planner: &str) -> Result<PathBuf, String> {
+/// like Claude Code's, so a PowerShell forwarder is piped Codex's hook JSON on stdin. One script
+/// per install, never per terminal or per port: Codex asks to trust .codex/config.toml again
+/// whenever it changes, so the endpoint lives inside the script and the terminal identifies itself
+/// through ALETHE_PLANNER at run time.
+fn write_codex_hook_forwarder(port: u16) -> Result<PathBuf, String> {
     let endpoint = listener_endpoint(port);
     let token = init_token();
     let script = format!(
         "$body = [Console]::In.ReadToEnd()\r\n\
+         $planner = $env:ALETHE_PLANNER\r\n\
          try {{\r\n\
-         \x20\x20Invoke-RestMethod -Uri '{endpoint}/hook' -Method Post -Body $body -ContentType 'application/json' -Headers @{{ 'X-Alethe-Token' = '{token}'; 'X-Alethe-Planner' = '{planner}'; 'X-Alethe-Agent' = 'codex' }} | Out-Null\r\n\
+         \x20\x20Invoke-RestMethod -Uri '{endpoint}/hook' -Method Post -Body $body -ContentType 'application/json' -Headers @{{ 'X-Alethe-Token' = '{token}'; 'X-Alethe-Planner' = $planner; 'X-Alethe-Agent' = 'codex' }} | Out-Null\r\n\
          }} catch {{}}\r\n",
         endpoint = endpoint,
         token = ps_escape(token),
-        planner = ps_escape(planner_id),
     );
-    let path = std::env::temp_dir().join(format!("alethe-codex-hook-forward-{port}-{safe_planner}.ps1"));
+    let path = std::env::temp_dir().join(format!("alethe-codex-hook-forward-{}.ps1", install_tag()));
     std::fs::write(&path, script).map_err(|e| format!("write_failed:{e}"))?;
     Ok(path)
 }
@@ -167,14 +183,15 @@ const CODEX_MCP_MARK_END: &str = "# alethe-managed-mcp-end";
 
 /// Codex's MCP client only declares servers via `command`/`args` (stdio), unlike Claude Code's
 /// remote `http` support — this script bridges stdin/stdout JSON-RPC to Alethe's `/mcp` endpoint.
-fn write_codex_mcp_bridge(port: u16, planner_id: &str, safe_planner: &str) -> Result<PathBuf, String> {
+fn write_codex_mcp_bridge(port: u16) -> Result<PathBuf, String> {
     let endpoint = listener_endpoint(port);
     let token = init_token();
     let script = format!(
-        "while ($line = [Console]::In.ReadLine()) {{\r\n\
+        "$planner = $env:ALETHE_PLANNER\r\n\
+         while ($line = [Console]::In.ReadLine()) {{\r\n\
          \x20\x20if ([string]::IsNullOrWhiteSpace($line)) {{ continue }}\r\n\
          \x20\x20try {{\r\n\
-         \x20\x20\x20\x20$resp = Invoke-WebRequest -Uri '{endpoint}/mcp' -Method Post -Body $line -ContentType 'application/json' -Headers @{{ 'X-Alethe-Token' = '{token}'; 'X-Alethe-Planner' = '{planner}' }}\r\n\
+         \x20\x20\x20\x20$resp = Invoke-WebRequest -Uri '{endpoint}/mcp' -Method Post -Body $line -ContentType 'application/json' -Headers @{{ 'X-Alethe-Token' = '{token}'; 'X-Alethe-Planner' = $planner }}\r\n\
          \x20\x20\x20\x20if ($resp.Content) {{\r\n\
          \x20\x20\x20\x20\x20\x20[Console]::Out.WriteLine($resp.Content)\r\n\
          \x20\x20\x20\x20\x20\x20[Console]::Out.Flush()\r\n\
@@ -183,21 +200,16 @@ fn write_codex_mcp_bridge(port: u16, planner_id: &str, safe_planner: &str) -> Re
          }}\r\n",
         endpoint = endpoint,
         token = ps_escape(token),
-        planner = ps_escape(planner_id),
     );
-    let path = std::env::temp_dir().join(format!("alethe-codex-mcp-bridge-{port}-{safe_planner}.ps1"));
+    let path = std::env::temp_dir().join(format!("alethe-codex-mcp-bridge-{}.ps1", install_tag()));
     std::fs::write(&path, script).map_err(|e| format!("write_failed:{e}"))?;
     Ok(path)
 }
 
-fn codex_mcp_config_write_inner(repo: String, planner_id: String) -> Result<(), String> {
+fn codex_mcp_config_write_inner(repo: String, _planner_id: String) -> Result<(), String> {
     let port = wait_for_listener_port()
         .ok_or_else(|| "listener de agents ainda nao esta disponivel".to_string())?;
-    let safe_planner: String = planner_id
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-        .collect();
-    let script_path = write_codex_mcp_bridge(port, &planner_id, &safe_planner)?;
+    let script_path = write_codex_mcp_bridge(port)?;
 
     let root = crate::git_control::repository_root(&repo)?;
     let codex_dir = root.join(".codex");
@@ -261,14 +273,10 @@ pub async fn codex_mcp_config_write(
         .map_err(|error| format!("codex_mcp_config_write: falha na task bloqueante: {error}"))?
 }
 
-fn codex_hooks_config_write_inner(repo: String, planner_id: String) -> Result<(), String> {
+fn codex_hooks_config_write_inner(repo: String, _planner_id: String) -> Result<(), String> {
     let port = wait_for_listener_port()
         .ok_or_else(|| "listener de agents ainda nao esta disponivel".to_string())?;
-    let safe_planner: String = planner_id
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-        .collect();
-    let script_path = write_codex_hook_forwarder(port, &planner_id, &safe_planner)?;
+    let script_path = write_codex_hook_forwarder(port)?;
 
     let root = crate::git_control::repository_root(&repo)?;
     let codex_dir = root.join(".codex");

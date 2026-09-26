@@ -1,10 +1,12 @@
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import {
   ArrowLeft,
+  Blocks,
   ClipboardCopy,
   FileText,
   GitPullRequest,
   Maximize2,
+  Mic,
   PanelRightClose,
   Plug,
   RefreshCw,
@@ -48,8 +50,10 @@ const MarkdownRenderer = lazy(() =>
 )
 import { ContributedView } from '../ContributedView'
 import { McpPanel } from '../McpPanel'
+import { PluginsSidebar } from '../PluginsSidebar'
 import { PullRequestsSidebar } from '../PullRequestsSidebar'
 import { DotmCircular2 } from '../ui/dotm-circular-2'
+import { VoiceHistoryPanel } from '../VoiceHistoryPanel'
 import styles from './RightSidebar.module.css'
 
 const markdownScrollPositions = new Map<string, number>()
@@ -90,6 +94,8 @@ export function RightSidebar() {
       (mode === 'gsdSync' && gsdSyncAvailable) ||
       (mode === 'mcp' && mcpEnabled) ||
       (mode === 'prs' && prsEnabled) ||
+      mode === 'jev' ||
+      mode === 'plugins' ||
       contributedTabs.some((tab) => tab.id === mode)
     if (modeStillEnabled) return
     openMarkdown()
@@ -153,6 +159,17 @@ export function RightSidebar() {
             <span>{t('mcp.tab')}</span>
           </button>
         ) : null}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'jev'}
+          className={`${styles.sidebarTab} ${mode === 'jev' ? styles.sidebarTabActive : ''}`}
+          onClick={() => setRightSidebarMode('jev')}
+          title={t('voice.history.tabTitle')}
+        >
+          <Mic size={14} />
+          <span>Jev</span>
+        </button>
         {prsEnabled ? (
           <button
             type="button"
@@ -166,6 +183,17 @@ export function RightSidebar() {
             <span>{t('rightSidebar.prsTab')}</span>
           </button>
         ) : null}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'plugins'}
+          className={`${styles.sidebarTab} ${mode === 'plugins' ? styles.sidebarTabActive : ''}`}
+          onClick={() => setRightSidebarMode('plugins')}
+          title={t('pluginsTab.title')}
+        >
+          <Blocks size={14} />
+          <span>{t('pluginsTab.title')}</span>
+        </button>
         <span className={styles.toolbarSpacer} />
         {mode === 'mcp' && mcpEnabled ? (
           <button
@@ -194,6 +222,8 @@ export function RightSidebar() {
         {mode === 'gsdSync' && gsdSyncAvailable ? <GsdSyncSidebarContent /> : null}
         {mode === 'mcp' && mcpEnabled ? <McpPanel /> : null}
         {mode === 'prs' && prsEnabled ? <PullRequestsSidebar /> : null}
+        {mode === 'jev' ? <VoiceHistoryPanel /> : null}
+        {mode === 'plugins' ? <PluginsSidebar /> : null}
         {contributedTab ? (
           <section className={styles.contributedPanel}>
             <header className={styles.panelHeader}>
@@ -313,7 +343,6 @@ function GsdSyncRow({ session, onOpen }: { session: GsdSyncSession; onOpen: () =
     </button>
   )
 }
-
 
 function MarkdownSidebarViewer() {
   const t = useT()

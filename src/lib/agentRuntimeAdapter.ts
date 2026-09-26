@@ -31,6 +31,7 @@ export const AGENT_RUNTIME_ADAPTERS: AgentRuntimeAdapter[] = [
       'freebuff',
       'mimo',
       'kiro',
+      'kimi',
     ],
   },
   {

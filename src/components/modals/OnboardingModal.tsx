@@ -62,6 +62,7 @@ const AGENTS: { id: CodingAgent; label: string }[] = [
   { id: 'freebuff', label: 'Freebuff' },
   { id: 'mimo', label: 'Mimo' },
   { id: 'kiro', label: 'Kiro CLI' },
+  { id: 'kimi', label: 'Kimi Code' },
 ]
 
 export function OnboardingModal() {

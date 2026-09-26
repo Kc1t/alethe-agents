@@ -7,6 +7,7 @@ import { paneContributions } from '../../lib/plugins'
 import { DiffPane } from '../DiffPane'
 import { ImagePane } from '../ImagePane'
 import { OrchestratorPane } from '../OrchestratorPane'
+import { PluginDetailPane } from '../PluginDetailPane'
 import { TerminalPane } from '../TerminalPane'
 import { VideoPane } from '../VideoPane'
 import { WebPane } from '../WebPane'
@@ -15,7 +16,9 @@ import styles from './WorkspaceView.module.css'
 const GraphifyView = lazy(() =>
   import('../GraphifyView').then((m) => ({ default: m.GraphifyView })),
 )
-const MarkdownPane = lazy(() => import('../MarkdownPane').then((m) => ({ default: m.MarkdownPane })))
+const MarkdownPane = lazy(() =>
+  import('../MarkdownPane').then((m) => ({ default: m.MarkdownPane })),
+)
 
 function PaneLoading({ messageKey }: { messageKey: MessageKey }) {
   const t = useT()
@@ -57,4 +60,5 @@ export function registerCorePanes(): void {
   paneContributions.add('core', { id: 'image', component: ImagePane })
   paneContributions.add('core', { id: 'diff', component: DiffPane })
   paneContributions.add('core', { id: 'orchestrator', component: OrchestratorPane })
+  paneContributions.add('core', { id: 'plugin', component: PluginDetailPane })
 }

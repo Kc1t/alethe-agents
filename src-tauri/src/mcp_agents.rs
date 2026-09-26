@@ -62,6 +62,7 @@ static CODEX: CodexAdapter = CodexAdapter;
 static CURSOR: CursorAdapter = CursorAdapter;
 static OPENCODE: OpenCodeAdapter = OpenCodeAdapter;
 static ANTIGRAVITY: AntigravityAdapter = AntigravityAdapter;
+static KIMI: KimiAdapter = KimiAdapter;
 
 pub fn adapter(agent: McpAgent) -> &'static dyn McpAdapter {
     match agent {
@@ -70,6 +71,7 @@ pub fn adapter(agent: McpAgent) -> &'static dyn McpAdapter {
         McpAgent::Cursor => &CURSOR,
         McpAgent::Opencode => &OPENCODE,
         McpAgent::Antigravity => &ANTIGRAVITY,
+        McpAgent::Kimi => &KIMI,
     }
 }
 
@@ -78,6 +80,7 @@ pub struct CodexAdapter;
 pub struct CursorAdapter;
 pub struct OpenCodeAdapter;
 pub struct AntigravityAdapter;
+pub struct KimiAdapter;
 
 impl McpAdapter for ClaudeAdapter {
     fn config_sources(&self, scope: McpScope, repo: Option<&Path>) -> Vec<McpSource> {
@@ -203,6 +206,183 @@ impl McpAdapter for AntigravityAdapter {
     ) -> Result<String, String> {
         Err("unsupported_disable".to_string())
     }
+}
+
+impl McpAdapter for KimiAdapter {
+    fn config_sources(&self, scope: McpScope, repo: Option<&Path>) -> Vec<McpSource> {
+        match scope {
+            McpScope::Global => kimi_config_dir()
+                .map(|dir| vec![McpSource::file(dir.join("mcp.json"), McpSourceKind::User)])
+                .unwrap_or_default(),
+            McpScope::Project => repo
+                .map(|root| {
+                    vec![McpSource::file(
+                        root.join(".kimi-code").join("mcp.json"),
+                        McpSourceKind::Project,
+                    )]
+                })
+                .unwrap_or_default(),
+        }
+    }
+
+    fn parse(&self, raw: &str, source: &McpSource) -> Result<Vec<McpServer>, String> {
+        parse_kimi_servers(raw, source)
+    }
+
+    fn upsert(&self, raw: &str, source: &McpSource, server: &McpServer) -> Result<String, String> {
+        kimi_upsert(raw, source, server)
+    }
+
+    fn remove(&self, raw: &str, source: &McpSource, name: &str) -> Result<String, String> {
+        json_remove(raw, "mcpServers", source, name)
+    }
+
+    fn set_enabled(
+        &self,
+        raw: &str,
+        _source: &McpSource,
+        name: &str,
+        on: bool,
+    ) -> Result<String, String> {
+        json_set_enabled(raw, "mcpServers", name, on)
+    }
+}
+
+/// Kimi reads `mcpServers` from `~/.kimi-code/mcp.json` (or `$KIMI_CODE_HOME/mcp.json`) and per
+/// repo from `<repo>/.kimi-code/mcp.json`. stdio entries carry `command`/`args`/`env`, remote
+/// ones a bare `url`, and legacy SSE ones `transport: "sse"` plus `url`; `enabled` is explicit.
+/// Fields the adapter does not model (timeouts, bearerTokenEnvVar, tool allow/block lists)
+/// survive a rewrite because only the managed keys are touched.
+fn kimi_config_dir() -> Option<PathBuf> {
+    if std::env::var_os("ALETHE_MCP_HOME").is_none() {
+        if let Some(home) = std::env::var_os("KIMI_CODE_HOME") {
+            let base = PathBuf::from(home);
+            if !base.as_os_str().is_empty() {
+                return Some(base);
+            }
+        }
+    }
+    mcp_home(&[".kimi-code"])
+}
+
+const KIMI_MANAGED: &[&str] = &[
+    "type",
+    "transport",
+    "command",
+    "args",
+    "cwd",
+    "env",
+    "url",
+    "headers",
+    "enabled",
+    "disabled",
+];
+
+fn parse_kimi_servers(raw: &str, source: &McpSource) -> Result<Vec<McpServer>, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    let value: Value = serde_json::from_str(trimmed).map_err(json_error)?;
+    let Some(map) = json_servers_map(&value, "mcpServers", source) else {
+        return Ok(Vec::new());
+    };
+    let mut out: Vec<McpServer> = map
+        .iter()
+        .filter_map(|(name, entry)| entry.as_object().map(|obj| kimi_server(name, obj)))
+        .collect();
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+/// Same shape as `json_server`, but Kimi discriminates SSE via `transport` (not `type`) and
+/// carries an explicit `enabled` flag instead of Claude's `disabled`.
+fn kimi_server(name: &str, obj: &Map<String, Value>) -> McpServer {
+    let declared = obj
+        .get("type")
+        .or_else(|| obj.get("transport"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let url = obj.get("url").and_then(Value::as_str);
+    let headers = json_env(obj.get("headers"), false);
+    let transport = match (declared, url) {
+        ("sse", Some(url)) => McpTransport::Sse {
+            url: url.to_string(),
+            headers,
+        },
+        (_, Some(url)) => McpTransport::Http {
+            url: url.to_string(),
+            headers,
+        },
+        _ => McpTransport::Stdio {
+            command: obj
+                .get("command")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            args: json_string_array(obj.get("args")),
+            cwd: obj.get("cwd").and_then(Value::as_str).map(str::to_string),
+        },
+    };
+    McpServer {
+        name: name.to_string(),
+        transport,
+        env: json_env(obj.get("env"), false),
+        enabled: obj.get("enabled").and_then(Value::as_bool).unwrap_or(true),
+        timeouts: McpTimeouts::default(),
+        bearer_token_env_var: None,
+    }
+}
+
+fn kimi_upsert(
+    raw: &str,
+    source: &McpSource,
+    server: &McpServer,
+) -> Result<String, String> {
+    let mut root = json_root(raw)?;
+    let servers = servers_container_mut(&mut root, "mcpServers", source, true)?
+        .ok_or_else(|| "unparsable:mcpServers".to_string())?;
+
+    let mut entry = servers
+        .get(&server.name)
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    for key in KIMI_MANAGED {
+        entry.shift_remove(*key);
+    }
+
+    if let Some(env) = json_env_object(&server.env, false) {
+        entry.insert("env".to_string(), env);
+    }
+
+    match &server.transport {
+        McpTransport::Stdio { command, args, cwd } => {
+            entry.insert("command".to_string(), Value::String(command.clone()));
+            if !args.is_empty() {
+                entry.insert(
+                    "args".to_string(),
+                    Value::Array(args.iter().map(|arg| Value::String(arg.clone())).collect()),
+                );
+            }
+            if let Some(cwd) = cwd {
+                entry.insert("cwd".to_string(), Value::String(cwd.clone()));
+            }
+        }
+        McpTransport::Http { url, headers } | McpTransport::Sse { url, headers } => {
+            if matches!(server.transport, McpTransport::Sse { .. }) {
+                entry.insert("transport".to_string(), Value::String("sse".to_string()));
+            }
+            entry.insert("url".to_string(), Value::String(url.clone()));
+            if let Some(headers) = json_env_object(headers, false) {
+                entry.insert("headers".to_string(), headers);
+            }
+        }
+    }
+
+    entry.insert("enabled".to_string(), Value::Bool(server.enabled));
+    servers.insert(server.name.clone(), Value::Object(entry));
+    Ok(json_render(&root))
 }
 
 impl McpAdapter for OpenCodeAdapter {
@@ -1172,6 +1352,65 @@ name = "gate"
         assert!(AntigravityAdapter
             .config_sources(McpScope::Project, Some(&repo))
             .is_empty());
+    }
+
+    #[test]
+    fn kimi_reads_its_own_shape_and_writes_enabled() {
+        let raw = r#"{
+          "mcpServers": {
+            "filesystem": {
+              "command": "npx",
+              "args": ["-y", "server"],
+              "env": { "MODE": "prod" },
+              "enabled": false,
+              "startupTimeoutMs": 30000
+            },
+            "legacy": { "transport": "sse", "url": "https://mcp.example.com/sse" },
+            "remote": { "url": "https://mcp.example.com/mcp" }
+          }
+        }"#;
+        let servers = KimiAdapter.parse(raw, &user_src()).expect("parses");
+        assert_eq!(servers.len(), 3);
+
+        let filesystem = by_name(&servers, "filesystem");
+        assert!(!filesystem.enabled);
+        assert_eq!(
+            filesystem.env.get("MODE").and_then(|e| e.literal.as_deref()),
+            Some("prod")
+        );
+        assert!(matches!(
+            by_name(&servers, "legacy").transport,
+            McpTransport::Sse { .. }
+        ));
+        assert!(matches!(
+            by_name(&servers, "remote").transport,
+            McpTransport::Http { .. }
+        ));
+
+        let next = kimi_upsert(raw, &user_src(), &probe("alethe-probe")).expect("writes");
+        let reparsed = KimiAdapter.parse(&next, &user_src()).expect("reparses");
+        assert_eq!(reparsed.len(), 4);
+        assert!(!by_name(&reparsed, "filesystem").enabled);
+        assert!(matches!(
+            by_name(&reparsed, "filesystem").transport,
+            McpTransport::Stdio { .. }
+        ));
+        // Fields outside the adapter's managed set survive the rewrite untouched.
+        let rendered: Value = serde_json::from_str(&next).expect("renders");
+        assert_eq!(
+            rendered["mcpServers"]["filesystem"]["startupTimeoutMs"],
+            Value::from(30000)
+        );
+    }
+
+    #[test]
+    fn kimi_keeps_a_project_file_under_dot_kimi_code() {
+        let repo = PathBuf::from("D:/repo");
+        let sources = KimiAdapter.config_sources(McpScope::Project, Some(&repo));
+        assert_eq!(sources.len(), 1);
+        assert!(sources[0]
+            .path
+            .ends_with(PathBuf::from(".kimi-code/mcp.json")));
     }
 
     fn probe(name: &str) -> McpServer {

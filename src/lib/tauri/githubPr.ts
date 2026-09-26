@@ -40,6 +40,7 @@ export type MyPullRequestSummary = {
   updatedAt: string
 }
 
-export async function githubPrListMine(): Promise<MyPullRequestSummary[]> {
-  return invoke<MyPullRequestSummary[]>('github_pr_list_mine')
+/** Without a repo path, falls back to every open PR the `gh` user is involved in. */
+export async function githubPrListMine(repo?: string): Promise<MyPullRequestSummary[]> {
+  return invoke<MyPullRequestSummary[]>('github_pr_list_mine', { repo: repo ?? null })
 }

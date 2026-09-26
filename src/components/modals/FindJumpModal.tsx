@@ -5,6 +5,7 @@ import {
   Cloud,
   Code2,
   Gift,
+  Moon,
   MousePointer2,
   Sparkles,
   Terminal,
@@ -32,6 +33,7 @@ const ICONS: Record<BuiltinAgentType, LucideIcon> = {
   freebuff: Gift,
   mimo: Bot,
   kiro: Cloud,
+  kimi: Moon,
 }
 
 type TerminalHit = {

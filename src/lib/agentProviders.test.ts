@@ -46,6 +46,9 @@ describe('builtin agent types', () => {
 
     expect(resolveAgentCliCommand('antigravity')).toBe('agy')
     expect(resolveAgentCliCommand('kiro')).toBe('kiro-cli')
+    expect(resolveAgentCliCommand('kimi')).toBe('kimi')
+    expect(agentLabel('kimi')).toBe('Kimi Code')
+    expect(resolveUnrestrictedFlag('kimi')).toBe('--yolo')
     expect(resolveAgentCliCommand('shell')).toBeUndefined()
     expect(resolveUnrestrictedFlag('shell')).toBeNull()
     expect(agentAccentToken('claude')).toBe('--agent-claude')

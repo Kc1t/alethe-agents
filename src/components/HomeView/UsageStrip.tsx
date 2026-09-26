@@ -5,6 +5,7 @@ import { getCachedCodexUsage } from '../../lib/codexUsageCache'
 import { getCachedAntigravityUsage } from '../../lib/antigravityUsageCache'
 import { translate, getLocale, useT } from '../../lib/i18n'
 import { type AntigravityUsage, type ClaudeUsage, type CodexUsage } from '../../lib/tauri'
+import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AntigravityIcon, ClaudeIcon, CodexIcon } from '../icons/AgentIcons'
 import { ActivityGraph } from './ActivityGraph'
@@ -518,15 +519,29 @@ export function UsageStrip({
   showActivity?: boolean
   showResetCreditAction?: boolean
 }) {
+  const t = useT()
   const claudeUsage = useUiStore((s) => s.claudeUsage)
   const codexUsage = useUiStore((s) => s.codexUsage)
   const antigravityUsage = useUiStore((s) => s.antigravityUsage)
+  const showClaude = useProjectsStore((s) => s.preferences.usageShowClaude)
+  const showCodex = useProjectsStore((s) => s.preferences.usageShowCodex)
+  const showAntigravity = useProjectsStore((s) => s.preferences.usageShowAntigravity)
+
+  if (!showClaude && !showCodex && !showAntigravity) {
+    return (
+      <div className={`${styles.usageStrip} ${showActivity ? '' : styles.usageStripTwo}`}>
+        <div className={styles.usageEmpty}>{t('usageModal.allHidden')}</div>
+      </div>
+    )
+  }
 
   return (
     <div className={`${styles.usageStrip} ${showActivity ? '' : styles.usageStripTwo}`}>
-      <ClaudeCard usage={claudeUsage} />
-      <CodexCard usage={codexUsage} showResetCreditAction={showResetCreditAction} />
-      {!showActivity ? <AntigravityCard usage={antigravityUsage} /> : null}
+      {showClaude ? <ClaudeCard usage={claudeUsage} /> : null}
+      {showCodex ? (
+        <CodexCard usage={codexUsage} showResetCreditAction={showResetCreditAction} />
+      ) : null}
+      {!showActivity && showAntigravity ? <AntigravityCard usage={antigravityUsage} /> : null}
       {showActivity ? <ActivityGraph /> : null}
     </div>
   )

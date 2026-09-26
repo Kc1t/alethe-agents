@@ -36,6 +36,7 @@ mod github_sync;
 mod graphify;
 mod handoff;
 mod health_probe;
+mod jev;
 mod logging;
 mod mcp_agents;
 mod mcp_catalog;
@@ -445,13 +446,16 @@ pub fn run() {
             crash_watch::get_last_crash_report,
             crash_watch::get_job_guard_status,
             set_window_opacity,
+            jev::jev_decide,
             speech::speech_list_models,
             speech::speech_list_input_devices,
             speech::speech_model_states,
             speech::speech_download_model,
             speech::speech_delete_model,
             speech::speech_start_capture,
+            speech::speech_capture_level,
             speech::speech_stop_capture,
+            speech::speech_prepare,
             speech::speech_stop_and_transcribe,
             speech::speech_transcribe,
             quit_app,

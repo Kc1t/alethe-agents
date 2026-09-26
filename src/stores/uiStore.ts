@@ -59,7 +59,7 @@ type ModalKind =
 
 export type ActiveView = 'home' | 'workspace' | 'agentCanvas' | 'agentSandbox'
 /** Open on purpose: plugins contribute right-sidebar tabs at runtime. */
-export type RightSidebarMode = 'markdown' | 'gsdSync' | 'mcp' | 'prs' | (string & {})
+export type RightSidebarMode = 'markdown' | 'gsdSync' | 'mcp' | 'prs' | 'plugins' | (string & {})
 export type MarkdownSidebarTab = { path: string; title: string }
 
 export type MemorySample = MemoryStats & {
@@ -119,6 +119,8 @@ type UiState = {
   rightSidebarMode: RightSidebarMode
   /** Active left-sidebar tab. Shared so both shells and commands address the same one. */
   leftSidebarTab: string
+  /** Reveals projects marked as hidden; resets on every app start. */
+  revealHiddenProjects: boolean
   rightSidebarMarkdown: { path: string; title: string } | null
   rightSidebarMarkdownTabs: MarkdownSidebarTab[]
 
@@ -164,6 +166,7 @@ type UiState = {
   showTodoSidebar: () => void
   setRightSidebarMode: (mode: RightSidebarMode) => void
   setLeftSidebarTab: (tab: string) => void
+  setRevealHiddenProjects: (reveal: boolean) => void
   showGsdSyncSidebar: () => void
   showMcpSidebar: () => void
   showPrsSidebar: () => void
@@ -207,6 +210,7 @@ export const useUiStore = create<UiState>((set) => ({
   activeView: 'workspace',
   rightSidebarMode: TODOS_VIEW_ID,
   leftSidebarTab: 'projects',
+  revealHiddenProjects: false,
   rightSidebarMarkdown: null,
   rightSidebarMarkdownTabs: [],
   agentCanvasSession: null,
@@ -309,6 +313,7 @@ export const useUiStore = create<UiState>((set) => ({
   showTodoSidebar: () => set({ rightSidebarMode: TODOS_VIEW_ID }),
   setRightSidebarMode: (mode) => set({ rightSidebarMode: mode }),
   setLeftSidebarTab: (tab) => set({ leftSidebarTab: tab }),
+  setRevealHiddenProjects: (reveal) => set({ revealHiddenProjects: reveal }),
   showGsdSyncSidebar: () => set({ rightSidebarMode: 'gsdSync' }),
   showMcpSidebar: () => set({ rightSidebarMode: 'mcp' }),
   showPrsSidebar: () => set({ rightSidebarMode: 'prs' }),

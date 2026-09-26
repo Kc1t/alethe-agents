@@ -140,6 +140,11 @@ export function XTermView({
   const [bootPhase, setBootPhase] = useState<
     'preparing' | 'queued' | 'spawning' | 'attaching' | 'ready'
   >('preparing')
+  const [memoryWait, setMemoryWait] = useState<{
+    availableMb: number
+    waitedMs: number
+    thresholdMb: number
+  } | null>(null)
   const [linkActions, setLinkActions] = useState<LinkActionState | null>(null)
   const [dropActive, setDropActive] = useState(false)
   const sessionPersistenceKey = sessionKey ?? ptyId
@@ -342,6 +347,7 @@ export function XTermView({
     onLaunchErrorRef,
     onAgentCompleteRef,
     setBootPhase,
+    setMemoryWait,
     setCommandNotFound,
     setLinkActions,
     setRetryKey,
@@ -387,7 +393,13 @@ export function XTermView({
   )
 
   const bootLabel =
-    bootPhase === 'preparing'
+    memoryWait
+      ? t('term.bootMemoryWait', {
+          available: Math.round(memoryWait.availableMb),
+          threshold: Math.round(memoryWait.thresholdMb),
+          seconds: Math.floor(memoryWait.waitedMs / 1000),
+        })
+      : bootPhase === 'preparing'
       ? t('term.bootPreparing')
       : bootPhase === 'queued'
         ? t('term.bootQueued')

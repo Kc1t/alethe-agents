@@ -1,7 +1,7 @@
 /** Target sample rate for Parakeet / sherpa-onnx offline models. */
 export const SPEECH_TARGET_SAMPLE_RATE = 16_000
 
-export const DEFAULT_SPEECH_MODEL_ID = 'parakeet-tdt-0.6b-v3-int8'
+export const DEFAULT_SPEECH_MODEL_ID = 'zipformer-gigaspeech-en-int8'
 
 /** Linear resample Float32 PCM to `targetRate`. */
 export function resampleLinear(

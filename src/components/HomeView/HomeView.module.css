@@ -988,6 +988,11 @@
   background: color-mix(in srgb, var(--agent-kiro) 16%, transparent);
   border-color: color-mix(in srgb, var(--agent-kiro) 28%, transparent);
 }
+.notifKimi {
+  color: var(--agent-kimi);
+  background: color-mix(in srgb, var(--agent-kimi) 16%, transparent);
+  border-color: color-mix(in srgb, var(--agent-kimi) 28%, transparent);
+}
 
 .notifBody {
   display: flex;
@@ -1039,6 +1044,17 @@
 
 .usageStripTwo {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.usageEmpty {
+  grid-column: 1 / -1;
+  padding: 28px 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 @container home (max-width: 1100px) {

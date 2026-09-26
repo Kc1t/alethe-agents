@@ -430,6 +430,7 @@
 .readmeTab {
   display: inline-flex;
   align-items: center;
+  flex: 0 0 auto;
   min-width: 0;
   max-width: 180px;
   padding: 0;
@@ -442,6 +443,7 @@
 .readmeTabSelect {
   display: inline-flex;
   min-width: 0;
+  max-width: 150px;
   align-items: center;
   gap: 5px;
   padding: 5px 4px 5px 7px;
@@ -451,6 +453,7 @@
 }
 
 .readmeTabSelect span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
