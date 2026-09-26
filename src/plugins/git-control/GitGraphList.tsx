@@ -39,6 +39,8 @@ const LANE_COLOR_VARS = [
   '--agent-kiro',
   '--agent-cursor',
   '--agent-kimi',
+  '--agent-grok',
+  '--agent-codewhale',
 ]
 
 /** Lane 0 is always the main lane (the first one allocated, in practice the

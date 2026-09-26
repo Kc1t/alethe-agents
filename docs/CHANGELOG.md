@@ -12,6 +12,14 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Grok Build and Codewhale are now native agents.** Grok Build (xAI, `grok` CLI) and
+  Codewhale (`codewhale` CLI) appear in every agent picker with their own icons and accent
+  colors. Install entries cover the official Grok PowerShell/npm installers and
+  `npm install -g codewhale`. Unrestricted mode maps to Grok's `--yolo` (alias of
+  `--always-approve`); Codewhale has no documented launch-time unrestricted flag, so Full
+  Access remains a TUI posture. Launch can pass a known session id (`grok --resume <id>`,
+  `codewhale resume <id>`), but Alethe does not yet mint or discover those ids across
+  restarts — pane auto-resume is therefore not wired the way Claude/Codex are.
 - **Kimi Code is now a native agent.** Kimi Code (Moonshot AI) appears in every agent picker with
   its own icon and accent color, launches through the `kimi` CLI (unrestricted mode maps to
   `--yolo`), ships an install entry (`npm install -g @moonshot-ai/kimi-code`), and is part of the

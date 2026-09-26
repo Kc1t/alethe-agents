@@ -185,6 +185,8 @@ fn resolve_cli_launcher(command: &str) -> Option<PathBuf> {
         if let Some(home) = env::var_os("HOME").map(PathBuf::from) {
             dirs.push(home.join(".local").join("bin"));
             dirs.push(home.join(".cargo").join("bin"));
+            // Official Grok Build installer links into ~/.grok/bin.
+            dirs.push(home.join(".grok").join("bin"));
         }
         // App .app lançado via Finder/DMG não roda como login shell: herda o
         // PATH mínimo do Launch Services (sem .zshrc/.zprofile), então CLIs
@@ -440,6 +442,7 @@ pub fn agent_search_dirs() -> Vec<PathBuf> {
         dirs.push(profile.join("AppData").join("Roaming").join("npm"));
         dirs.push(profile.join(".local").join("bin"));
         dirs.push(profile.join(".cargo").join("bin"));
+        dirs.push(profile.join(".grok").join("bin"));
         dirs.push(profile.join(".bun").join("bin"));
         dirs.push(profile.join("scoop").join("shims"));
         dirs.push(
@@ -965,6 +968,44 @@ fn discover_provider_models_inner(provider: String) -> Result<Vec<ModelOption>, 
                     id: "freebuff-fast".into(),
                     label: "Freebuff Fast".into(),
                 });
+            }
+        }
+        "grok" => {
+            if let Ok(output) = std::process::Command::new(&bin_path).arg("models").output() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let trimmed = line.trim();
+                    let id = trimmed
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or(trimmed)
+                        .to_string();
+                    if is_valid_model_id(&id) {
+                        models.push(ModelOption {
+                            label: format!("{id} (Grok Build)"),
+                            id,
+                        });
+                    }
+                }
+            }
+        }
+        "codewhale" => {
+            if let Ok(output) = std::process::Command::new(&bin_path).arg("models").output() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let trimmed = line.trim();
+                    let id = trimmed
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or(trimmed)
+                        .to_string();
+                    if is_valid_model_id(&id) {
+                        models.push(ModelOption {
+                            label: format!("{id} (Codewhale)"),
+                            id,
+                        });
+                    }
+                }
             }
         }
         "kiro" => {

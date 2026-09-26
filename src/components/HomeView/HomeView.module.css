@@ -993,6 +993,16 @@
   background: color-mix(in srgb, var(--agent-kimi) 16%, transparent);
   border-color: color-mix(in srgb, var(--agent-kimi) 28%, transparent);
 }
+.notifGrok {
+  color: var(--agent-grok);
+  background: color-mix(in srgb, var(--agent-grok) 16%, transparent);
+  border-color: color-mix(in srgb, var(--agent-grok) 28%, transparent);
+}
+.notifCodewhale {
+  color: var(--agent-codewhale);
+  background: color-mix(in srgb, var(--agent-codewhale) 16%, transparent);
+  border-color: color-mix(in srgb, var(--agent-codewhale) 28%, transparent);
+}
 
 .notifBody {
   display: flex;

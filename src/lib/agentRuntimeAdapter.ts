@@ -32,6 +32,8 @@ export const AGENT_RUNTIME_ADAPTERS: AgentRuntimeAdapter[] = [
       'mimo',
       'kiro',
       'kimi',
+      'grok',
+      'codewhale',
     ],
   },
   {

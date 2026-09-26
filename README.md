@@ -101,6 +101,9 @@ Cross-platform (Windows, macOS, Linux), local-first, built with Tauri, Rust, Rea
 | **Antigravity** | `agy` | Usage cards |
 | **OpenCode** | `opencode` | Session resume |
 | **Kiro CLI** | `kiro-cli` | |
+| **Kimi Code** | `kimi` | |
+| **Grok Build** | `grok` | |
+| **Codewhale** | `codewhale` | |
 | **Mimo** | `mimo` | |
 | **Freebuff** | `freebuff` | |
 | **Shell** | pwsh / bash / zsh | The plain terminal, same pane model |
