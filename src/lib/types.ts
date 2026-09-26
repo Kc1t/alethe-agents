@@ -73,7 +73,7 @@ export function agentCliCommand(agent: AgentType): string | undefined {
   return mapped ?? agent
 }
 
-export type Locale = 'en' | 'pt-BR'
+export type Locale = 'en' | 'pt-BR' | 'zh-CN'
 
 export type LayoutMode = 'auto' | 'spotlight' | 'sidebar' | 'grid'
 

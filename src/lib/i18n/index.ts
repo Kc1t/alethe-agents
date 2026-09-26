@@ -3,11 +3,12 @@ import { useSyncExternalStore } from 'react'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { en, type MessageKey } from './messages/en'
 import { ptBR } from './messages/pt-BR'
+import { zhCN } from './messages/zh-CN'
 
 export type { MessageKey }
 
                                                                             
-export type Locale = 'en' | 'pt-BR'
+export type Locale = 'en' | 'pt-BR' | 'zh-CN'
 
 export const DEFAULT_LOCALE: Locale = 'en'
 
@@ -22,11 +23,13 @@ export type LocaleMeta = {
 export const LOCALES: LocaleMeta[] = [
   { id: 'en', nativeName: 'English', intl: 'en-US' },
   { id: 'pt-BR', nativeName: 'Português', intl: 'pt-BR' },
+  { id: 'zh-CN', nativeName: '中文', intl: 'zh-CN' },
 ]
 
 const DICTIONARIES: Record<Locale, Record<string, string>> = {
   en,
   'pt-BR': ptBR,
+  'zh-CN': zhCN,
 }
 
 /**
@@ -38,6 +41,7 @@ type RuntimeMessage = { owner: symbol; value: string }
 const RUNTIME_MESSAGES: Record<Locale, Map<string, RuntimeMessage>> = {
   en: new Map(),
   'pt-BR': new Map(),
+  'zh-CN': new Map(),
 }
 
 let runtimeVersion = 0

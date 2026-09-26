@@ -139,7 +139,7 @@ type MergeState = {
  *  agent-facing, so it stays outside UI i18n (its own messages, not sourced
  *  from `messages/*.ts`), but follows the app's CURRENT LANGUAGE
  *  (`getLocale()`) — explicit user request: Alethe already has two
- *  languages (en/pt-BR), so the conflict agent should speak the same
+ *  languages (en/pt-BR/zh-CN), so the conflict agent should speak the same
  *  language the user is currently using in the app, with an explicit
  *  instruction to that effect (the UI's language alone doesn't guarantee
  *  the model will respond in it on its own). Rewritten to be a genuine
@@ -152,72 +152,104 @@ type MergeState = {
  *  never used the fastest layer (watchFile), only the 7s poll or the
  *  process dying — the agent never knew it was supposed to create that file. */
 function conflictRules(locale: Locale): string {
-  if (locale === 'en') {
+  if (locale === 'zh-CN') {
     return (
-      '## HIGH PRIORITY — never skip, no matter what\n' +
-      '- Respond in English. This instruction is in English because the app is currently set to English.\n' +
-      '- NEVER implement features or fix bugs unrelated to the listed conflicts. Scope is only what is in ALETHE_CONFLICT.md.\n' +
-      '- NEVER commit.\n' +
-      '- NEVER decide a genuinely ambiguous conflict alone (both sides changed the same thing in incompatible ways, with no obvious way to combine them) — STOP and ask the user here in the terminal how they want to proceed, explaining the conflict and the options.\n' +
-      '- ALWAYS resolve ALL listed files, none left out.\n\n' +
-      '## MEDIUM PRIORITY — how to resolve each file (resolution quality)\n' +
-      '1. Read the WHOLE file (not just the conflict markers) to understand the real context on each side.\n' +
-      '2. Understand the INTENT of each branch — what each one was actually trying to achieve, not just the literal text.\n' +
-      '3. If the two changes are compatible, combine them preserving both intents (not ambiguous — resolve directly, no need to ask).\n' +
-      '4. After resolving, confirm no conflict markers (<<<<<<<, =======, >>>>>>>) remain in the file.\n\n' +
-      '## WHEN DONE — high priority\n' +
-      '- Create an empty file named ALETHE_RESOLVED in this directory (this is the signal Alethe uses to know you finished).\n' +
-      '- Announce that you are done.'
+      '## 最高优先级 — 无论发生什么都不要跳过\n' +
+      '- 请用简体中文回复。本条指令使用中文，是因为当前应用语言为中文。\n' +
+      '- 切勿实现与所列冲突无关的功能或修复无关 bug。范围仅限 ALETHE_CONFLICT.md 中的内容。\n' +
+      '- 切勿提交（commit）。\n' +
+      '- 切勿独自决定真正有歧义的冲突（双方以不兼容的方式改动了同一处，且没有明显可合并的办法）— 请停下来，在此终端向用户说明冲突与可选方案，询问如何处理。\n' +
+      '- 必须解决列出的全部文件，一个都不能少。\n\n' +
+      '## 中等优先级 — 如何解决每个文件（解决质量）\n' +
+      '1. 阅读整个文件（不只是冲突标记），理解各方的真实上下文。\n' +
+      '2. 理解每个分支的意图 — 各方实际想达成什么，而不只是字面文本。\n' +
+      '3. 如果两处改动可以兼容，请合并并保留双方意图（这不算歧义 — 直接解决，无需询问）。\n' +
+      '4. 解决后，确认文件中不再残留冲突标记（<<<<<<<、=======、>>>>>>>）。\n\n' +
+      '## 完成时 — 高优先级\n' +
+      '- 在此目录创建一个名为 ALETHE_RESOLVED 的空文件（这是 Alethe 用来判断你已完成的信号）。\n' +
+      '- 宣告你已完成。'
+    )
+  }
+  if (locale === 'pt-BR') {
+    return (
+      '## PRIORIDADE ALTA — nunca ignore, não importa o quê\n' +
+      '- Responda em português (pt-BR). Esta instrução está em português porque o app está com o idioma em português no momento.\n' +
+      '- NUNCA implemente funcionalidades ou corrija bugs não relacionados aos conflitos listados. Escopo é só o que está em ALETHE_CONFLICT.md.\n' +
+      '- NUNCA commite.\n' +
+      '- NUNCA decida sozinho um conflito realmente ambíguo (os dois lados mudaram a mesma coisa de forma incompatível, sem um jeito óbvio de combinar) — PARE e pergunte ao usuário aqui no terminal como ele quer prosseguir, explicando o conflito e as opções.\n' +
+      '- SEMPRE resolva TODOS os arquivos listados, nenhum a menos.\n\n' +
+      '## PRIORIDADE MÉDIA — como resolver cada arquivo (qualidade da resolução)\n' +
+      '1. Leia o arquivo INTEIRO (não só os marcadores de conflito) pra entender o contexto real de cada lado.\n' +
+      '2. Entenda a INTENÇÃO de cada branch — o que cada uma estava tentando alcançar, não só o texto literal.\n' +
+      '3. Se as duas mudanças forem compatíveis, combine preservando a intenção das duas (não é ambíguo — resolva direto, sem perguntar).\n' +
+      '4. Depois de resolver, confirme que não sobrou nenhum marcador de conflito (<<<<<<<, =======, >>>>>>>) no arquivo.\n\n' +
+      '## AO TERMINAR — prioridade alta\n' +
+      '- Crie um arquivo vazio chamado ALETHE_RESOLVED neste diretório (é o sinal que o Alethe usa pra saber que você acabou).\n' +
+      '- Avise que terminou.'
     )
   }
   return (
-    '## PRIORIDADE ALTA — nunca ignore, não importa o quê\n' +
-    '- Responda em português (pt-BR). Esta instrução está em português porque o app está com o idioma em português no momento.\n' +
-    '- NUNCA implemente funcionalidades ou corrija bugs não relacionados aos conflitos listados. Escopo é só o que está em ALETHE_CONFLICT.md.\n' +
-    '- NUNCA commite.\n' +
-    '- NUNCA decida sozinho um conflito realmente ambíguo (os dois lados mudaram a mesma coisa de forma incompatível, sem um jeito óbvio de combinar) — PARE e pergunte ao usuário aqui no terminal como ele quer prosseguir, explicando o conflito e as opções.\n' +
-    '- SEMPRE resolva TODOS os arquivos listados, nenhum a menos.\n\n' +
-    '## PRIORIDADE MÉDIA — como resolver cada arquivo (qualidade da resolução)\n' +
-    '1. Leia o arquivo INTEIRO (não só os marcadores de conflito) pra entender o contexto real de cada lado.\n' +
-    '2. Entenda a INTENÇÃO de cada branch — o que cada uma estava tentando alcançar, não só o texto literal.\n' +
-    '3. Se as duas mudanças forem compatíveis, combine preservando a intenção das duas (não é ambíguo — resolva direto, sem perguntar).\n' +
-    '4. Depois de resolver, confirme que não sobrou nenhum marcador de conflito (<<<<<<<, =======, >>>>>>>) no arquivo.\n\n' +
-    '## AO TERMINAR — prioridade alta\n' +
-    '- Crie um arquivo vazio chamado ALETHE_RESOLVED neste diretório (é o sinal que o Alethe usa pra saber que você acabou).\n' +
-    '- Avise que terminou.'
+    '## HIGH PRIORITY — never skip, no matter what\n' +
+    '- Respond in English. This instruction is in English because the app is currently set to English.\n' +
+    '- NEVER implement features or fix bugs unrelated to the listed conflicts. Scope is only what is in ALETHE_CONFLICT.md.\n' +
+    '- NEVER commit.\n' +
+    '- NEVER decide a genuinely ambiguous conflict alone (both sides changed the same thing in incompatible ways, with no obvious way to combine them) — STOP and ask the user here in the terminal how they want to proceed, explaining the conflict and the options.\n' +
+    '- ALWAYS resolve ALL listed files, none left out.\n\n' +
+    '## MEDIUM PRIORITY — how to resolve each file (resolution quality)\n' +
+    '1. Read the WHOLE file (not just the conflict markers) to understand the real context on each side.\n' +
+    '2. Understand the INTENT of each branch — what each one was actually trying to achieve, not just the literal text.\n' +
+    '3. If the two changes are compatible, combine them preserving both intents (not ambiguous — resolve directly, no need to ask).\n' +
+    '4. After resolving, confirm no conflict markers (<<<<<<<, =======, >>>>>>>) remain in the file.\n\n' +
+    '## WHEN DONE — high priority\n' +
+    '- Create an empty file named ALETHE_RESOLVED in this directory (this is the signal Alethe uses to know you finished).\n' +
+    '- Announce that you are done.'
   )
 }
 
 /** Initial prompt for the ephemeral agent — scope locked, points to the context file. */
 function conflictPrompt(locale: Locale): string {
-  if (locale === 'en') {
+  if (locale === 'zh-CN') {
     return (
-      'Read the ALETHE_CONFLICT.md file in this directory — it lists every file in conflict.\n\n' +
+      '请阅读此目录中的 ALETHE_CONFLICT.md 文件 — 其中列出了所有冲突文件。\n\n' +
+      conflictRules(locale)
+    )
+  }
+  if (locale === 'pt-BR') {
+    return (
+      'Leia o arquivo ALETHE_CONFLICT.md neste diretório — ele lista todos os arquivos em conflito.\n\n' +
       conflictRules(locale)
     )
   }
   return (
-    'Leia o arquivo ALETHE_CONFLICT.md neste diretório — ele lista todos os arquivos em conflito.\n\n' +
+    'Read the ALETHE_CONFLICT.md file in this directory — it lists every file in conflict.\n\n' +
     conflictRules(locale)
   )
 }
 
 /** Retry prompt — the new agent has no memory of the previous attempt, so the failure reason has to go into the prompt. */
 function retryPrompt(failureContext: string, locale: Locale): string {
-  if (locale === 'en') {
+  if (locale === 'zh-CN') {
     return (
-      'The previous attempt to resolve this conflict failed. Read the ALETHE_CONFLICT.md file ' +
-      'in this directory again and fix the issue below.\n\n' +
+      '此前解决此冲突的尝试失败了。请再次阅读此目录中的 ALETHE_CONFLICT.md 文件，并修复下面的问题。\n\n' +
       conflictRules(locale) +
-      '\n\nReason the previous attempt failed:\n' +
+      '\n\n此前失败的原因：\n' +
+      failureContext.slice(0, 2000)
+    )
+  }
+  if (locale === 'pt-BR') {
+    return (
+      'A tentativa anterior de resolver este conflito falhou. Leia o arquivo ALETHE_CONFLICT.md ' +
+      'neste diretório de novo e corrija o problema abaixo.\n\n' +
+      conflictRules(locale) +
+      '\n\nMotivo da falha anterior:\n' +
       failureContext.slice(0, 2000)
     )
   }
   return (
-    'A tentativa anterior de resolver este conflito falhou. Leia o arquivo ALETHE_CONFLICT.md ' +
-    'neste diretório de novo e corrija o problema abaixo.\n\n' +
+    'The previous attempt to resolve this conflict failed. Read the ALETHE_CONFLICT.md file ' +
+    'in this directory again and fix the issue below.\n\n' +
     conflictRules(locale) +
-    '\n\nMotivo da falha anterior:\n' +
+    '\n\nReason the previous attempt failed:\n' +
     failureContext.slice(0, 2000)
   )
 }

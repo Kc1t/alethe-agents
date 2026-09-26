@@ -127,7 +127,10 @@ export function normalizePreferences(raw: LegacyPreferences | undefined): Prefer
     rightSidebarVisible: raw?.rightSidebarVisible ?? true,
     leftSidebarWidth: Math.min(380, Math.max(220, Math.round(raw?.leftSidebarWidth ?? 286))),
     rightSidebarWidth: Math.min(420, Math.max(260, Math.round(raw?.rightSidebarWidth ?? 300))),
-    language: preferences.language === 'pt-BR' ? 'pt-BR' : 'en',
+    language:
+      preferences.language === 'pt-BR' || preferences.language === 'zh-CN'
+        ? preferences.language
+        : 'en',
     visualStyle: raw?.visualStyle === 'clean' ? 'clean' : 'normal',
     motionPreference: raw?.motionPreference === 'reduced' ? 'reduced' : 'animated',
     accountCreated: legacyAccountCreated,

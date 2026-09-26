@@ -12,6 +12,8 @@
     <b>The multi-agent coding workspace.</b>
     <br />
     Run Claude Code, Codex, Copilot and your shells side by side — in one local-first desktop app.
+    <br />
+    <a href="./README.zh-CN.md">中文说明</a>
   </p>
 
   <p align="center">
@@ -191,7 +193,7 @@ JavaScript with no build step; the [plugin guide](docs/PLUGINS.md) has the full 
   GitHub token is stored; authentication is delegated to `gh`.
 - Content panes beside the terminals: file explorer, Markdown, diffs, images, video, embedded browser.
 - Todos per project with a Pomodoro timer, isolated profiles, local backup export/import, UI and
-  terminal themes, EN and pt-BR.
+  terminal themes, EN, pt-BR, and zh-CN.
 - **Orchestration board**: a lead agent delegates units of work to Claude and Codex workers that
   Alethe runs in parallel — each optionally in its own git worktree, each reporting status, cost,
   tokens and diff on its card, and each able to ask you before it leaves its sandbox. Off by default.

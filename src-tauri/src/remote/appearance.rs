@@ -47,6 +47,7 @@ fn appearance_from_document(document: &Value) -> RemoteAppearance {
         .to_string();
     let language = match preferences.get("language").and_then(Value::as_str) {
         Some("pt-BR") => "pt-BR",
+        Some("zh-CN") => "zh-CN",
         _ => "en",
     }
     .to_string();
