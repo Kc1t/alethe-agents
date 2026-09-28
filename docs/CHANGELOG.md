@@ -24,6 +24,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   to the target's position. Only changes the drop outcome in the default linear ordering
   (`reorderPaneInContainer` / `reorderContainers`); a custom grid layout still swaps on drop
   regardless of which edge the bar is showing, since grid cells aren't split by this change.
+- **Two new Layout Designer presets: "Focus left + grid" and "Focus top + grid".** Like the
+  existing "Focus left"/"Focus top" presets, the first pane gets its own full-height (or
+  full-width) column, but the rest now pack into an auto square-ish grid next to it (a 2x2
+  block for four panes, 3x3 for nine, and so on) instead of a single-wide stack.
 - **Detach a terminal pane into its own OS window.** Every terminal/agent pane's header now has
   an "Open in a separate window" button that pops it out into a standalone, native-decorated
   window, so it can be moved to another monitor independently of the rest of the workspace. The

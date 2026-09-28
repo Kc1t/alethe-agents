@@ -1513,6 +1513,8 @@ export const ptBR: Record<MessageKey, string> = {
   'mod.layoutPresetRows': 'Linhas',
   'mod.layoutPresetFocusLeft': 'Destaque à esquerda',
   'mod.layoutPresetFocusTop': 'Destaque no topo',
+  'mod.layoutPresetFocusLeftGrid': 'Destaque à esquerda + grade',
+  'mod.layoutPresetFocusTopGrid': 'Destaque no topo + grade',
   'mod.decrease': 'menos {label}',
   'mod.increase': 'mais {label}',
   'mod.bucketApp': 'App',

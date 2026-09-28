@@ -1491,6 +1491,8 @@ export const en = {
   'mod.layoutPresetRows': 'Rows',
   'mod.layoutPresetFocusLeft': 'Focus left',
   'mod.layoutPresetFocusTop': 'Focus top',
+  'mod.layoutPresetFocusLeftGrid': 'Focus left + grid',
+  'mod.layoutPresetFocusTopGrid': 'Focus top + grid',
   'mod.decrease': 'decrease {label}',
   'mod.increase': 'increase {label}',
   'mod.bucketApp': 'App',
