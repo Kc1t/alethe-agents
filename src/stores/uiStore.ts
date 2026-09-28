@@ -138,6 +138,8 @@ type UiState = {
   /** GSD Sync child session open in the read-only activity feed (its own
    *  overlay, no PTY terminal involved). null = closed. */
   gsdSyncActivityView: { worktreePath: string; sessionId: string; title: string } | null
+  /** Panes currently popped out into their own OS window; hidden from the main grid. */
+  detachedPaneIds: string[]
 
   openModal_: (kind: Exclude<ModalKind, null>, context?: Record<string, unknown>) => void
   closeModal: () => void
@@ -145,6 +147,8 @@ type UiState = {
   toggleMainMenu: () => void
   setKeptAlivePanes: (ids: string[]) => void
   setMountedPanes: (ids: string[]) => void
+  markPaneDetached: (paneId: string) => void
+  markPaneAttached: (paneId: string) => void
   setRamMb: (value: number | null) => void
   addMemorySample: (value: MemoryStats) => void
   setRuntimeSnapshot: (value: RuntimeSnapshot | null) => void
@@ -220,6 +224,7 @@ export const useUiStore = create<UiState>((set) => ({
   updateInfo: null,
   linkViewerUrl: null,
   gsdSyncActivityView: null,
+  detachedPaneIds: [],
 
   openModal_: (kind, context) =>
     set({ openModal: kind, modalContext: context ?? null, showMainMenu: false }),
@@ -240,6 +245,18 @@ export const useUiStore = create<UiState>((set) => ({
         state.mountedPaneIds.every((id, index) => id === ids[index])
       return unchanged ? state : { mountedPaneIds: ids }
     }),
+  markPaneDetached: (paneId) =>
+    set((state) =>
+      state.detachedPaneIds.includes(paneId)
+        ? state
+        : { detachedPaneIds: [...state.detachedPaneIds, paneId] },
+    ),
+  markPaneAttached: (paneId) =>
+    set((state) =>
+      state.detachedPaneIds.includes(paneId)
+        ? { detachedPaneIds: state.detachedPaneIds.filter((id) => id !== paneId) }
+        : state,
+    ),
   setRamMb: (value) => set({ ramMb: value }),
   addMemorySample: (value) =>
     set((s) => ({

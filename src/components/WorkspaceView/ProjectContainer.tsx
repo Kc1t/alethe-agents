@@ -1,4 +1,4 @@
-import { useDraggable, useDroppable } from '@dnd-kit/core'
+import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core'
 import {
   ChevronRight,
   GripVertical,
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { memo, useMemo } from 'react'
 
+import { dragPointer, resolveDropZone } from '../../lib/dropZone'
 import { useT } from '../../lib/i18n'
 import { formatShortcut } from '../../lib/platform'
 import type { Group, Project, Terminal, WorkspaceContainer } from '../../lib/types'
@@ -18,6 +19,13 @@ import { useUiStore } from '../../stores/uiStore'
 import { PaneArea } from './PaneArea'
 import styles from './ProjectContainer.module.css'
 import { WorkspaceEmptyState } from './WorkspaceEmptyState'
+
+const dropZoneBarClass: Record<'top' | 'right' | 'bottom' | 'left', string> = {
+  top: styles.dropZoneBarTop,
+  right: styles.dropZoneBarRight,
+  bottom: styles.dropZoneBarBottom,
+  left: styles.dropZoneBarLeft,
+}
 
 export type ProjectContainerProps = {
   container: WorkspaceContainer
@@ -48,13 +56,34 @@ export const ProjectContainer = memo(function ProjectContainer({
   const openModal = useUiStore((s) => s.openModal_)
 
   const dragId = `cont:${project.id}`
-  const draggable = useDraggable({ id: dragId, disabled: isFullscreen })
+  const draggable = useDraggable({
+    id: dragId,
+    disabled: isFullscreen,
+    data: { containerName: project.name },
+  })
   const droppable = useDroppable({ id: dragId, disabled: isFullscreen })
   const setRefs = (node: HTMLDivElement | null) => {
     draggable.setNodeRef(node)
     droppable.setNodeRef(node)
   }
-  const isDropTarget = droppable.isOver && !draggable.isDragging
+
+  // Only another container being dragged should light this one up as a swap target.
+  const { active: activeDrag, activatorEvent } = useDndContext()
+  const activeDragId = activeDrag ? String(activeDrag.id) : null
+  const isContainerDragActive = activeDragId !== null && activeDragId.startsWith('cont:')
+  const isDropTarget = isContainerDragActive && droppable.isOver && !draggable.isDragging
+  const draggedContainerName =
+    isDropTarget && typeof activeDrag?.data.current?.containerName === 'string'
+      ? (activeDrag.data.current.containerName as string)
+      : null
+
+  // Which edge is the drop target for (vs. center = swap); see onDragEnd for
+  // how each zone actually resolves in grid vs. linear layout.
+  const pointer = activeDrag ? dragPointer(activatorEvent, activeDrag.rect.current) : null
+  const dropZone =
+    isDropTarget && droppable.rect.current && pointer
+      ? resolveDropZone(droppable.rect.current, pointer)
+      : 'center'
 
   // Resolve the isolated terminal independently of the visible container panes.
 
@@ -108,6 +137,18 @@ export const ProjectContainer = memo(function ProjectContainer({
       }`}
       style={{ ['--container-accent' as string]: accent }}
     >
+      {isDropTarget && dropZone === 'center' ? (
+        <div className={styles.dropHint} aria-hidden="true">
+          <span className={styles.dropHintLabel}>
+            {draggedContainerName
+              ? t('ws.dropSwapWithContainer', { name: draggedContainerName })
+              : t('ws.dropHereContainer')}
+          </span>
+        </div>
+      ) : null}
+      {isDropTarget && dropZone !== 'center' ? (
+        <div className={`${styles.dropZoneBar} ${dropZoneBarClass[dropZone]}`} aria-hidden="true" />
+      ) : null}
       {showHeader ? (
         <div className={styles.tag}>
           {!isFullscreen ? (

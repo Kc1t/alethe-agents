@@ -1,6 +1,8 @@
 import {
   DndContext,
   type DragEndEvent,
+  DragOverlay,
+  type DragStartEvent,
   PointerSensor,
   useDroppable,
   useSensor,
@@ -12,6 +14,7 @@ import { Panel, Separator } from 'react-resizable-panels'
 import { useShallow } from 'zustand/react/shallow'
 
 import { pickDirectory } from '../../lib/dialog'
+import { dragPointer, resolveDropZone, resolveInsertIndex } from '../../lib/dropZone'
 import { hasFileDragPayload, readFileDragPayload } from '../../lib/fileDrag'
 import {
   cellStyle,
@@ -38,12 +41,19 @@ import { AgentIcon } from '../icons/AgentIcons'
 import { PaneArea } from './PaneArea'
 import { PersistentPanelGroup as PanelGroup } from './PersistentPanelGroup'
 import { ProjectContainer } from './ProjectContainer'
+import { type WorkspaceEmptyAction, WorkspaceEmptyState } from './WorkspaceEmptyState'
 import { WorkspaceSurfaceProvider } from './workspaceSurface'
-import { WorkspaceEmptyState, type WorkspaceEmptyAction } from './WorkspaceEmptyState'
 import styles from './WorkspaceView.module.css'
 
 function resolveGroup(project: Project, groupsById: Map<string, Group>): Group | null {
   return project.groupId ? (groupsById.get(project.groupId) ?? null) : null
+}
+
+/** Accent used for the floating drag preview; falls back to the theme accent when unset/invalid. */
+function dragPreviewAccent(project: Project, groupsById: Map<string, Group>): string | undefined {
+  const group = resolveGroup(project, groupsById)
+  const stored = project.color || group?.color
+  return stored && CSS.supports('color', stored) ? stored : undefined
 }
 
 /*
@@ -143,10 +153,23 @@ export function WorkspaceView() {
   const initialWorkspaceEnsured = useRef(false)
   const fileDragDepth = useRef(0)
   const [fileDropActive, setFileDropActive] = useState(false)
+  const [activeDragId, setActiveDragId] = useState<string | null>(null)
+  const [activeDragPaneName, setActiveDragPaneName] = useState<string | null>(null)
   const t = useT()
 
   const projectsById = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects])
   const groupsById = useMemo(() => new Map(groups.map((g) => [g.id, g])), [groups])
+
+  // Container being dragged right now, if any — feeds the DragOverlay preview below.
+  const activeDragProject = useMemo(() => {
+    if (!activeDragId?.startsWith('cont:')) return null
+    return projectsById.get(activeDragId.slice('cont:'.length)) ?? null
+  }, [activeDragId, projectsById])
+
+  // Pane being dragged right now, if any: same DragOverlay preview, but a
+  // pane has no project/icon of its own, just the name captured at drag
+  // start (see onDragStart / TerminalPane's draggable `data`).
+  const isDraggingPane = activeDragId?.startsWith('pane:') ?? false
 
   const [liveTabIds, setLiveTabIds] = useState<string[]>([])
 
@@ -291,10 +314,35 @@ export function WorkspaceView() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
+  const onDragStart = (e: DragStartEvent) => {
+    setActiveDragId(String(e.active.id))
+    const paneName = e.active.data.current?.paneName
+    setActiveDragPaneName(typeof paneName === 'string' ? paneName : null)
+  }
+  const onDragCancel = () => {
+    setActiveDragId(null)
+    setActiveDragPaneName(null)
+  }
+
   const onDragEnd = (e: DragEndEvent) => {
+    setActiveDragId(null)
+    setActiveDragPaneName(null)
     const from = String(e.active.id)
     const to = e.over ? String(e.over.id) : ''
     if (!from || !to || from === to) return
+
+    // Which edge the pointer was over when it was released. Only meaningful
+    // for the linear-order fallback branches below (dropping near an edge
+    // inserts before/after the target instead of the default center move).
+    // Grid-layout drops keep swapping regardless of edge; see PR notes.
+    const dropPointer = dragPointer(e.activatorEvent, e.active.rect.current)
+    const dropZone = e.over && dropPointer ? resolveDropZone(e.over.rect, dropPointer) : 'center'
+    const dropEdge: 'before' | 'after' | null =
+      dropZone === 'left' || dropZone === 'top'
+        ? 'before'
+        : dropZone === 'right' || dropZone === 'bottom'
+          ? 'after'
+          : null
 
     // cell:*: an empty slot of a custom grid — the dragged child just moves there.
     if (to.startsWith('cell:')) {
@@ -355,11 +403,16 @@ export function WorkspaceView() {
       }
       const fromIdx = cont.paneIds.indexOf(fromId)
       const toIdx = cont.paneIds.indexOf(toId)
-      if (fromIdx !== -1 && toIdx !== -1) reorderPane(cont.projectId, fromIdx, toIdx)
+      if (fromIdx !== -1 && toIdx !== -1) {
+        const finalIdx = dropEdge
+          ? resolveInsertIndex(cont.paneIds.length, fromIdx, toIdx, dropEdge)
+          : toIdx
+        reorderPane(cont.projectId, fromIdx, finalIdx)
+      }
       return
     }
 
-    // cont: drag de container sobre outro.
+    // cont: a container dragged onto another one.
 
     if (from.startsWith('cont:') && to.startsWith('cont:')) {
       const fromPid = from.slice('cont:'.length)
@@ -419,7 +472,12 @@ export function WorkspaceView() {
       // fallback: reorder linear
       const fromIdx = allContainers.findIndex((c) => c.projectId === fromPid)
       const toIdx = allContainers.findIndex((c) => c.projectId === toPid)
-      if (fromIdx !== -1 && toIdx !== -1) reorderContainers(fromIdx, toIdx)
+      if (fromIdx !== -1 && toIdx !== -1) {
+        const finalIdx = dropEdge
+          ? resolveInsertIndex(allContainers.length, fromIdx, toIdx, dropEdge)
+          : toIdx
+        reorderContainers(fromIdx, finalIdx)
+      }
       return
     }
   }
@@ -457,8 +515,44 @@ export function WorkspaceView() {
     >
       <div className={styles.area}>
         {withDnd ? (
-          <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+          <DndContext
+            sensors={sensors}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+            onDragCancel={onDragCancel}
+          >
             {children}
+            <DragOverlay dropAnimation={null}>
+              {activeDragProject ? (
+                <div
+                  className={styles.dragPreview}
+                  style={{
+                    ['--drag-preview-accent' as string]: dragPreviewAccent(
+                      activeDragProject,
+                      groupsById,
+                    ),
+                  }}
+                >
+                  {activeDragProject.iconUrl ? (
+                    <img
+                      src={activeDragProject.iconUrl}
+                      alt=""
+                      className={styles.dragPreviewIcon}
+                    />
+                  ) : (
+                    <span className={styles.dragPreviewBullet} />
+                  )}
+                  <span className={styles.dragPreviewName}>{activeDragProject.name}</span>
+                </div>
+              ) : isDraggingPane ? (
+                <div className={styles.dragPreview}>
+                  <span className={styles.dragPreviewBullet} />
+                  <span className={styles.dragPreviewName}>
+                    {activeDragPaneName ?? t('ws.dropHerePane')}
+                  </span>
+                </div>
+              ) : null}
+            </DragOverlay>
           </DndContext>
         ) : (
           children
@@ -825,13 +919,16 @@ function GroupGridOuter({
 }
 
 function EmptyOuterSlot({ dropId, col, row }: { dropId: string; col: number; row: number }) {
+  const t = useT()
   const { setNodeRef, isOver } = useDroppable({ id: dropId })
   return (
     <div
       ref={setNodeRef}
       className={`${styles.emptySlot} ${isOver ? styles.emptySlotOver : ''}`}
       style={{ gridColumn: col, gridRow: row }}
-    />
+    >
+      {isOver ? <span className={styles.emptySlotLabel}>{t('ws.dropHereContainer')}</span> : null}
+    </div>
   )
 }
 

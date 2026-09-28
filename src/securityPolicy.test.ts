@@ -23,6 +23,7 @@ const readJson = <T>(relativePath: string): T =>
 
 const config = readJson<TauriConfig>('src-tauri/tauri.conf.json')
 const capability = readJson<Capability>('src-tauri/capabilities/default.json')
+const detachedPaneCapability = readJson<Capability>('src-tauri/capabilities/detached-pane.json')
 
 function productionDirectives(): Map<string, string[]> {
   const csp = config.app?.security?.csp
@@ -145,9 +146,12 @@ describe('production renderer security policy', () => {
       'core:window:allow-start-dragging',
       'core:window:allow-is-focused',
       'core:window:allow-is-minimized',
+      'core:window:allow-set-focus',
       'core:window:allow-set-icon',
       'core:window:allow-set-title',
+      'core:window:allow-create',
       'core:webview:allow-create-webview',
+      'core:webview:allow-create-webview-window',
       'core:webview:allow-webview-close',
       'core:webview:allow-webview-hide',
       'core:webview:allow-webview-show',
@@ -168,5 +172,20 @@ describe('production renderer security policy', () => {
     expect(capability.permissions).not.toContain('core:default')
     expect(capability.permissions).not.toContain('core:event:allow-emit')
     expect(capability.permissions).not.toContain('core:event:allow-emit-to')
+  })
+
+  it('scopes detached-pane windows to just the pty event stream', () => {
+    expect(detachedPaneCapability.windows).toEqual(['detached-pane-*'])
+    expect(detachedPaneCapability.webviews).toBeUndefined()
+    expect(detachedPaneCapability.permissions).toEqual([
+      'core:event:allow-listen',
+      'core:event:allow-unlisten',
+    ])
+    // A detached window renders the same bundle as main but must never be able to spawn more
+    // windows, touch dialogs, or reach anything main can that it doesn't itself need.
+    expect(detachedPaneCapability.permissions).not.toContain('core:window:allow-create')
+    expect(detachedPaneCapability.permissions).not.toContain(
+      'core:webview:allow-create-webview-window',
+    )
   })
 })

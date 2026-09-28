@@ -1,7 +1,8 @@
-import { useDraggable, useDroppable } from '@dnd-kit/core'
+import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core'
 import {
   ArrowRightLeft,
   Clock,
+  ExternalLink,
   GripVertical,
   Maximize2,
   Minimize2,
@@ -11,11 +12,15 @@ import {
   PinOff,
   RefreshCw,
   Trash2,
+  Undo2,
   X,
 } from 'lucide-react'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 
+import { resolveAgentCliCommand } from '../../lib/agentProviders'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
+import { closeDetachedPaneWindow, openDetachedPaneWindow } from '../../lib/detachedWindow'
+import { dragPointer, resolveDropZone } from '../../lib/dropZone'
 import { buildGhosttyCommand } from '../../lib/ghosttyCommand'
 import { useT } from '../../lib/i18n'
 import { shouldUseNativeBackend } from '../../lib/platform'
@@ -36,10 +41,9 @@ import {
   restartPty,
   snapshotCodexSessions,
 } from '../../lib/tauri'
-import { resolveAgentCliCommand } from '../../lib/agentProviders'
 import {
-  isShellAgentType,
   type AgentType,
+  isShellAgentType,
   type SubTab,
   type Terminal as TerminalEntry,
   type Theme,
@@ -64,6 +68,13 @@ export type TerminalPaneProps = {
   preview?: boolean
 }
 
+const dropZoneBarClass: Record<'top' | 'right' | 'bottom' | 'left', string> = {
+  top: styles.dropZoneBarTop,
+  right: styles.dropZoneBarRight,
+  bottom: styles.dropZoneBarBottom,
+  left: styles.dropZoneBarLeft,
+}
+
 export const TerminalPane = memo(function TerminalPane({
   projectId,
   terminal,
@@ -76,17 +87,38 @@ export const TerminalPane = memo(function TerminalPane({
   const [resumePending, setResumePending] = useState(false)
   const focusedTerminalId = useUiStore((s) => s.focusedTerminalId)
   const isFocusMode = inFocusOverlay || focusedTerminalId === terminal.id
-  const canDragPane = paneDragEnabled && !isFocusMode && !preview
+  const isDetached = useUiStore((s) => s.detachedPaneIds.includes(terminal.id))
+  const canDragPane = paneDragEnabled && !isFocusMode && !preview && !isDetached
 
   // Skip the focus overlay; a single pane cannot be reordered.
   const draggable = useDraggable({
     id: `pane:${terminal.id}`,
     disabled: !canDragPane,
+    data: { paneName: terminal.name },
   })
   const droppable = useDroppable({
     id: `pane:${terminal.id}`,
     disabled: !canDragPane,
   })
+
+  // Only another pane being dragged should light this one up as a swap target
+  // (mirrors ProjectContainer's isContainerDragActive/isDropTarget below).
+  const { active: activeDrag, activatorEvent } = useDndContext()
+  const activeDragId = activeDrag ? String(activeDrag.id) : null
+  const isPaneDragActive = activeDragId !== null && activeDragId.startsWith('pane:')
+  const isPaneDropTarget = isPaneDragActive && droppable.isOver && !draggable.isDragging
+  const draggedPaneName =
+    isPaneDropTarget && typeof activeDrag?.data.current?.paneName === 'string'
+      ? (activeDrag.data.current.paneName as string)
+      : null
+
+  // Which edge is the drop target for (vs. center = swap); see onDragEnd for
+  // how each zone actually resolves.
+  const pointer = activeDrag ? dragPointer(activatorEvent, activeDrag.rect.current) : null
+  const dropZone =
+    isPaneDropTarget && droppable.rect.current && pointer
+      ? resolveDropZone(droppable.rect.current, pointer)
+      : 'center'
   const paneRef = useRef<HTMLDivElement | null>(null)
   const setRefs = (node: HTMLDivElement | null) => {
     paneRef.current = node
@@ -140,6 +172,8 @@ export const TerminalPane = memo(function TerminalPane({
   const pushToast = useUiStore((s) => s.pushToast)
   const claudeUsage = useUiStore((s) => s.claudeUsage)
   const codexUsage = useUiStore((s) => s.codexUsage)
+  const markPaneDetached = useUiStore((s) => s.markPaneDetached)
+  const markPaneAttached = useUiStore((s) => s.markPaneAttached)
   const terminalTheme = useProjectsStore(
     (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,
   )
@@ -289,6 +323,16 @@ export const TerminalPane = memo(function TerminalPane({
 
   const onDisable = () => setTerminalDisabled(projectId, terminal.id, !terminal.disabled)
 
+  // The pane's live content moves into the popped-out window; this one just marks the spot until
+  // it closes (see DetachedPaneWindow, which renders the real terminal there).
+  const onDetach = () => {
+    markPaneDetached(terminal.id)
+    void openDetachedPaneWindow(terminal.id, terminal.name, () =>
+      markPaneAttached(terminal.id),
+    ).catch(() => markPaneAttached(terminal.id))
+  }
+  const onAttachBack = () => void closeDetachedPaneWindow(terminal.id)
+
   const onDelete = () => {
     if (!window.confirm(t('ui.sidebar.confirmDeleteTerminal', { name: terminal.name }))) return
     const handoffIds = terminal.tabs.flatMap((tab) => (tab.handoff ? [tab.handoff.id] : []))
@@ -389,7 +433,7 @@ export const TerminalPane = memo(function TerminalPane({
 
   const cancelRename = () => setIsRenaming(false)
 
-  const dropTarget = canDragPane && droppable.isOver
+  const dropTarget = isPaneDropTarget
   const dragging = canDragPane && draggable.isDragging
 
   return (
@@ -415,6 +459,18 @@ export const TerminalPane = memo(function TerminalPane({
       }}
       className={`${styles.pane} ${isFocusMode ? styles.paneFocus : ''} ${terminal.disabled ? styles.disabled : ''} ${dragging ? styles.dragging : ''} ${dropTarget ? styles.dropTarget : ''}`}
     >
+      {isPaneDropTarget && dropZone === 'center' ? (
+        <div className={styles.dropHint} aria-hidden="true">
+          <span className={styles.dropHintLabel}>
+            {draggedPaneName
+              ? t('ws.dropSwapWithPane', { name: draggedPaneName })
+              : t('ws.dropHerePane')}
+          </span>
+        </div>
+      ) : null}
+      {isPaneDropTarget && dropZone !== 'center' ? (
+        <div className={`${styles.dropZoneBar} ${dropZoneBarClass[dropZone]}`} aria-hidden="true" />
+      ) : null}
       <header
         className={`${styles.header} ${topbarPinned ? styles.headerPinned : ''} ${effectiveLaneVisible ? styles.headerWithLane : ''}`}
       >
@@ -586,6 +642,20 @@ export const TerminalPane = memo(function TerminalPane({
               >
                 {isFocusMode ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
               </button>
+              {!preview ? (
+                <button
+                  type="button"
+                  className={`${styles.action} ${isDetached ? styles.actionActive : ''}`}
+                  onClick={isDetached ? onAttachBack : onDetach}
+                  title={isDetached ? t('ui.terminal.attachBack') : t('ui.terminal.detachWindow')}
+                  aria-label={
+                    isDetached ? t('ui.terminal.attachBack') : t('ui.terminal.detachWindow')
+                  }
+                  aria-pressed={isDetached}
+                >
+                  {isDetached ? <Undo2 size={12} /> : <ExternalLink size={12} />}
+                </button>
+              ) : null}
               {activeTab?.ptyId ? (
                 <button
                   type="button"
@@ -638,7 +708,15 @@ export const TerminalPane = memo(function TerminalPane({
         ) : null}
 
         <div className={styles.terminalArea}>
-          {terminal.disabled ? (
+          {isDetached ? (
+            <div className={styles.empty}>
+              <ExternalLink size={20} />
+              <span>{t('ui.terminal.detachedPlaceholder')}</span>
+              <button type="button" className={styles.restartBtn} onClick={onAttachBack}>
+                {t('ui.terminal.attachBack')}
+              </button>
+            </div>
+          ) : terminal.disabled ? (
             <DisabledOverlay
               terminalName={terminal.name}
               cwd={cwd}

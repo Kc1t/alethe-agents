@@ -12,6 +12,34 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Live preview while dragging a workspace panel.** Dragging a container by its handle now
+  shows a floating ghost of the panel following the cursor, and the container under the
+  cursor gets a dashed outline with a label saying whether the drop will move the panel into
+  an empty slot or swap it with the panel there. The same ghost and drop-target outline now
+  also appear when reordering individual panes inside a container by their own drag handle,
+  which previously gave no visual feedback at all while dragging.
+- **Directional drop zones on linear (non-grid) layouts.** Hovering near an edge of a container
+  or pane while dragging now shows a bar on that side instead of the center swap hint, and
+  dropping there inserts the dragged item right before/after the target instead of moving it
+  to the target's position. Only changes the drop outcome in the default linear ordering
+  (`reorderPaneInContainer` / `reorderContainers`); a custom grid layout still swaps on drop
+  regardless of which edge the bar is showing, since grid cells aren't split by this change.
+- **Two new Layout Designer presets: "Focus left + grid" and "Focus top + grid".** Like the
+  existing "Focus left"/"Focus top" presets, the first pane gets its own full-height (or
+  full-width) column, but the rest now pack into an auto square-ish grid next to it (a 2x2
+  block for four panes, 3x3 for nine, and so on) instead of a single-wide stack.
+- **Layout Designer shortcut in the pane organization row.** The pencil icon next to
+  auto/spotlight/sidebar/grid in a project's sidebar footer opens the Layout Designer directly,
+  same action as the "Design layout..." context-menu item. Previously the designer was only
+  reachable through that context menu, or through the workspace-level footer, itself hidden
+  until 2 or more containers are open.
+- **Detach a terminal pane into its own OS window.** Every terminal/agent pane's header now has
+  an "Open in a separate window" button that pops it out into a standalone, native-decorated
+  window, so it can be moved to another monitor independently of the rest of the workspace. The
+  pane's PTY keeps running; the spot it left behind shows a placeholder with an "Attach back"
+  button that closes the window and restores the live pane in place. Initially limited to a
+  single ungrouped terminal pane at a time (no whole-container or grouped/orchestration-cluster
+  detach yet), and the detached window is not remembered across app restarts.
 - **Grok Build and Codewhale are now native agents.** Grok Build (xAI, `grok` CLI) and
   Codewhale (`codewhale` CLI) appear in every agent picker with their own icons and accent
   colors. Install entries cover the official Grok PowerShell/npm installers and
@@ -85,6 +113,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **Layout Designer's drag ghost got clipped at the modal's own edge instead of following the
+  cursor.** The designer's content box centers itself with a CSS `transform`, which makes it the
+  containing block for any `position: fixed` descendant; the drag overlay is one, and had no
+  portal of its own, so it was fixed relative to the modal instead of the viewport and got cut off
+  by the modal's `overflow: hidden`. Now portaled to `<body>`, same pattern already used for the
+  app's other floating UI (context menus, dropdowns).
 - Every coding agent reached the routing model described the same way, so a request that named no
   agent had nothing to choose on and the answer spread evenly across them, which showed up as a low
   confidence and a fallback. Agents now carry how many panes they have open and whether one of them

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "detached-pane",
+  "description": "Windows opened by the 'detach pane' feature, each showing a single terminal pane on its own. Deliberately narrow: just enough to receive the pty output/exit events the pane needs to stay live.",
+  "windows": ["detached-pane-*"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}

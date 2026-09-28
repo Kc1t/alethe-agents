@@ -7,6 +7,8 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 
 import App from './App'
+import { DetachedPaneWindow } from './components/DetachedPaneWindow'
+import { detachedPaneIdFromLocation } from './lib/detachedWindow'
 import { initPluginHost } from './lib/plugins'
 import { recordFrontendError } from './lib/tauri'
 import { watchPluginThemeStyles } from './lib/themeTokens'
@@ -48,8 +50,12 @@ watchPluginThemeStyles()
 // and picks plugin surfaces up as they activate.
 void initPluginHost()
 
+// A window opened by `openDetachedPaneWindow` carries its pane id in the URL; render just that
+// pane instead of the full app shell (sidebars, modals, other panes).
+const detachedPaneId = detachedPaneIdFromLocation()
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    {detachedPaneId ? <DetachedPaneWindow paneId={detachedPaneId} /> : <App />}
   </React.StrictMode>,
 )

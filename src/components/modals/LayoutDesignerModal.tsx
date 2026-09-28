@@ -1,4 +1,3 @@
-import { gridTerminals } from '../../lib/projectGrids'
 import {
   DndContext,
   type DragEndEvent,
@@ -14,6 +13,7 @@ import {
 import * as Dialog from '@radix-ui/react-dialog'
 import { Clock3, LayoutGrid, Minus, Plus, X } from 'lucide-react'
 import { memo, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import {
   autoGridLayout,
@@ -24,6 +24,7 @@ import {
 } from '../../lib/gridLayout'
 import { useT } from '../../lib/i18n'
 import { createLayoutPresets } from '../../lib/layoutPresets'
+import { gridTerminals } from '../../lib/projectGrids'
 import type { GridCell, GridLayout, GridLayoutHistoryEntry } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -335,21 +336,34 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
                   )
                 })}
               </div>
-              <DragOverlay dropAnimation={null}>
-                {draggingChild ? (
-                  <div className={`${styles.box} ${styles.boxOverlay}`}>
-                    <div className={styles.boxHeader}>
-                      {draggingChild.color ? (
-                        <span
-                          className={styles.colorChip}
-                          style={{ background: draggingChild.color }}
-                        />
-                      ) : null}
-                      <span className={styles.boxLabel}>{draggingChild.label}</span>
+              {/* Portaled to <body>: DragOverlay renders inline in the React
+                  tree (no portal of its own), and this modal's own content
+                  box is `transform`-centered with `overflow: hidden`. A
+                  `transform` on an ancestor makes it the containing block
+                  for `position: fixed` descendants, so without this the
+                  overlay was fixed relative to the modal box instead of the
+                  viewport, and got clipped at its edge instead of following
+                  the cursor freely. Staying a child of DndContext in the
+                  React tree (a portal only moves the DOM node, not the
+                  context) keeps useDndContext() working inside it. */}
+              {createPortal(
+                <DragOverlay dropAnimation={null}>
+                  {draggingChild ? (
+                    <div className={`${styles.box} ${styles.boxOverlay}`}>
+                      <div className={styles.boxHeader}>
+                        {draggingChild.color ? (
+                          <span
+                            className={styles.colorChip}
+                            style={{ background: draggingChild.color }}
+                          />
+                        ) : null}
+                        <span className={styles.boxLabel}>{draggingChild.label}</span>
+                      </div>
                     </div>
-                  </div>
-                ) : null}
-              </DragOverlay>
+                  ) : null}
+                </DragOverlay>,
+                document.body,
+              )}
             </DndContext>
           </div>
 
