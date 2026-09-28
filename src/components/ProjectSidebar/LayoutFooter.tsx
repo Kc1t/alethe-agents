@@ -1,4 +1,11 @@
-import { Grid3x3, Layout, LayoutGrid, Sidebar as SidebarIcon, type LucideIcon } from 'lucide-react'
+import {
+  Grid3x3,
+  Layout,
+  LayoutGrid,
+  type LucideIcon,
+  PenLine,
+  Sidebar as SidebarIcon,
+} from 'lucide-react'
 
 import { useT } from '../../lib/i18n'
 import { type LayoutMode } from '../../lib/types'
@@ -22,6 +29,7 @@ export function LayoutFooter() {
   const project = useProjectsStore(selectActiveProject)
   const container = useProjectsStore(selectActiveContainer)
   const setLayoutMode = useProjectsStore((s) => s.setLayoutMode)
+  const openModal = useUiStore((s) => s.openModal_)
   if (!project || !container || container.paneIds.length < 2) return null
   return (
     <div className={styles.layoutFooter}>
@@ -43,6 +51,19 @@ export function LayoutFooter() {
             </button>
           )
         })}
+        {/* Same action as the "Design layout..." project context-menu item,
+            surfaced here too: the designer used to be reachable only from a
+            right-click or from the workspace-level footer below, which only
+            renders once 2+ containers are open. */}
+        <button
+          type="button"
+          className={styles.layoutBtn}
+          onClick={() => openModal('layoutDesigner', { kind: 'project', id: project.id })}
+          title={t('ui.sidebar.designLayout')}
+          aria-label={t('ui.sidebar.designLayout')}
+        >
+          <PenLine size={14} />
+        </button>
       </div>
     </div>
   )

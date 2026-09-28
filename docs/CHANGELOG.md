@@ -28,6 +28,11 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   existing "Focus left"/"Focus top" presets, the first pane gets its own full-height (or
   full-width) column, but the rest now pack into an auto square-ish grid next to it (a 2x2
   block for four panes, 3x3 for nine, and so on) instead of a single-wide stack.
+- **Layout Designer shortcut in the pane organization row.** The pencil icon next to
+  auto/spotlight/sidebar/grid in a project's sidebar footer opens the Layout Designer directly,
+  same action as the "Design layout..." context-menu item. Previously the designer was only
+  reachable through that context menu, or through the workspace-level footer, itself hidden
+  until 2 or more containers are open.
 - **Detach a terminal pane into its own OS window.** Every terminal/agent pane's header now has
   an "Open in a separate window" button that pops it out into a standalone, native-decorated
   window, so it can be moved to another monitor independently of the rest of the workspace. The
