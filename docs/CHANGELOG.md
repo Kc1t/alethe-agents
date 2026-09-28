@@ -15,7 +15,15 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 - **Live preview while dragging a workspace panel.** Dragging a container by its handle now
   shows a floating ghost of the panel following the cursor, and the container under the
   cursor gets a dashed outline with a label saying whether the drop will move the panel into
-  an empty slot or swap it with the panel there.
+  an empty slot or swap it with the panel there. The same ghost and drop-target outline now
+  also appear when reordering individual panes inside a container by their own drag handle,
+  which previously gave no visual feedback at all while dragging.
+- **Directional drop zones on linear (non-grid) layouts.** Hovering near an edge of a container
+  or pane while dragging now shows a bar on that side instead of the center swap hint, and
+  dropping there inserts the dragged item right before/after the target instead of moving it
+  to the target's position. Only changes the drop outcome in the default linear ordering
+  (`reorderPaneInContainer` / `reorderContainers`); a custom grid layout still swaps on drop
+  regardless of which edge the bar is showing, since grid cells aren't split by this change.
 - **Detach a terminal pane into its own OS window.** Every terminal/agent pane's header now has
   an "Open in a separate window" button that pops it out into a standalone, native-decorated
   window, so it can be moved to another monitor independently of the rest of the workspace. The

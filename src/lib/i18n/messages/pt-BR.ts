@@ -1964,6 +1964,8 @@ export const ptBR: Record<MessageKey, string> = {
   'ws.dragContainer': 'Arrastar container',
   'ws.dropHereContainer': 'Solte aqui',
   'ws.dropSwapWithContainer': 'Trocar com {name}',
+  'ws.dropHerePane': 'Solte aqui',
+  'ws.dropSwapWithPane': 'Trocar com {name}',
   'ws.detachedWindowLoading': 'Carregando...',
   'ws.detachedWindowGone': 'Esse painel foi fechado na janela principal.',
   'ws.detachedWindowTitle': 'Painel do Alethe',

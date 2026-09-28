@@ -1938,6 +1938,8 @@ export const en = {
   'ws.dragContainer': 'Drag container',
   'ws.dropHereContainer': 'Drop here',
   'ws.dropSwapWithContainer': 'Swap with {name}',
+  'ws.dropHerePane': 'Drop here',
+  'ws.dropSwapWithPane': 'Swap with {name}',
   'ws.detachedWindowLoading': 'Loading...',
   'ws.detachedWindowGone': 'This pane was closed in the main window.',
   'ws.detachedWindowTitle': 'Alethe pane',

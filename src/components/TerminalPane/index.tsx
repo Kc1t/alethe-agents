@@ -1,4 +1,4 @@
-import { useDraggable, useDroppable } from '@dnd-kit/core'
+import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core'
 import {
   ArrowRightLeft,
   Clock,
@@ -20,6 +20,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { resolveAgentCliCommand } from '../../lib/agentProviders'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { closeDetachedPaneWindow, openDetachedPaneWindow } from '../../lib/detachedWindow'
+import { dragPointer, resolveDropZone } from '../../lib/dropZone'
 import { buildGhosttyCommand } from '../../lib/ghosttyCommand'
 import { useT } from '../../lib/i18n'
 import { shouldUseNativeBackend } from '../../lib/platform'
@@ -67,6 +68,13 @@ export type TerminalPaneProps = {
   preview?: boolean
 }
 
+const dropZoneBarClass: Record<'top' | 'right' | 'bottom' | 'left', string> = {
+  top: styles.dropZoneBarTop,
+  right: styles.dropZoneBarRight,
+  bottom: styles.dropZoneBarBottom,
+  left: styles.dropZoneBarLeft,
+}
+
 export const TerminalPane = memo(function TerminalPane({
   projectId,
   terminal,
@@ -86,11 +94,31 @@ export const TerminalPane = memo(function TerminalPane({
   const draggable = useDraggable({
     id: `pane:${terminal.id}`,
     disabled: !canDragPane,
+    data: { paneName: terminal.name },
   })
   const droppable = useDroppable({
     id: `pane:${terminal.id}`,
     disabled: !canDragPane,
   })
+
+  // Only another pane being dragged should light this one up as a swap target
+  // (mirrors ProjectContainer's isContainerDragActive/isDropTarget below).
+  const { active: activeDrag, activatorEvent } = useDndContext()
+  const activeDragId = activeDrag ? String(activeDrag.id) : null
+  const isPaneDragActive = activeDragId !== null && activeDragId.startsWith('pane:')
+  const isPaneDropTarget = isPaneDragActive && droppable.isOver && !draggable.isDragging
+  const draggedPaneName =
+    isPaneDropTarget && typeof activeDrag?.data.current?.paneName === 'string'
+      ? (activeDrag.data.current.paneName as string)
+      : null
+
+  // Which edge is the drop target for (vs. center = swap) — see onDragEnd for
+  // how each zone actually resolves.
+  const pointer = activeDrag ? dragPointer(activatorEvent, activeDrag.rect.current) : null
+  const dropZone =
+    isPaneDropTarget && droppable.rect.current && pointer
+      ? resolveDropZone(droppable.rect.current, pointer)
+      : 'center'
   const paneRef = useRef<HTMLDivElement | null>(null)
   const setRefs = (node: HTMLDivElement | null) => {
     paneRef.current = node
@@ -405,7 +433,7 @@ export const TerminalPane = memo(function TerminalPane({
 
   const cancelRename = () => setIsRenaming(false)
 
-  const dropTarget = canDragPane && droppable.isOver
+  const dropTarget = isPaneDropTarget
   const dragging = canDragPane && draggable.isDragging
 
   return (
@@ -431,6 +459,18 @@ export const TerminalPane = memo(function TerminalPane({
       }}
       className={`${styles.pane} ${isFocusMode ? styles.paneFocus : ''} ${terminal.disabled ? styles.disabled : ''} ${dragging ? styles.dragging : ''} ${dropTarget ? styles.dropTarget : ''}`}
     >
+      {isPaneDropTarget && dropZone === 'center' ? (
+        <div className={styles.dropHint} aria-hidden="true">
+          <span className={styles.dropHintLabel}>
+            {draggedPaneName
+              ? t('ws.dropSwapWithPane', { name: draggedPaneName })
+              : t('ws.dropHerePane')}
+          </span>
+        </div>
+      ) : null}
+      {isPaneDropTarget && dropZone !== 'center' ? (
+        <div className={`${styles.dropZoneBar} ${dropZoneBarClass[dropZone]}`} aria-hidden="true" />
+      ) : null}
       <header
         className={`${styles.header} ${topbarPinned ? styles.headerPinned : ''} ${effectiveLaneVisible ? styles.headerWithLane : ''}`}
       >

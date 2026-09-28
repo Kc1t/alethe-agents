@@ -17,6 +17,82 @@
     opacity 0.15s ease;
 }
 
+/* Mirrors ProjectContainer's .boxDragging/.boxDropTarget/.dropHint(Label),
+   scoped to a single pane instead of a whole container. */
+.dragging {
+  opacity: 0.55;
+  outline: 2px dashed color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+.dropTarget {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+}
+
+.dropHint {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.dropHintLabel {
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  padding: 4px 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-md);
+  color: var(--fg);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Directional insert bar (drop near an edge = insert before/after, not
+   swap) — see WorkspaceView's onDragEnd for the actual insertion logic. */
+.dropZoneBar {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  border-radius: var(--radius-sm, 4px);
+}
+
+.dropZoneBarTop {
+  top: 4px;
+  right: 4px;
+  left: 4px;
+  height: 25%;
+}
+
+.dropZoneBarBottom {
+  right: 4px;
+  bottom: 4px;
+  left: 4px;
+  height: 25%;
+}
+
+.dropZoneBarLeft {
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: 25%;
+}
+
+.dropZoneBarRight {
+  top: 4px;
+  right: 4px;
+  bottom: 4px;
+  width: 25%;
+}
+
 /* Pane focus (Alethe focus mode): solid layered ring (same pattern as
    .dropTarget below), no extra bg/lift. Lights up whenever the xterm inside
    receives focus. Suppressed when .paneFocus (overlay) — there we don't
