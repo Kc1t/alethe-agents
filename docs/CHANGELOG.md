@@ -113,6 +113,12 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- **Layout Designer's drag ghost got clipped at the modal's own edge instead of following the
+  cursor.** The designer's content box centers itself with a CSS `transform`, which makes it the
+  containing block for any `position: fixed` descendant; the drag overlay is one, and had no
+  portal of its own, so it was fixed relative to the modal instead of the viewport and got cut off
+  by the modal's `overflow: hidden`. Now portaled to `<body>`, same pattern already used for the
+  app's other floating UI (context menus, dropdowns).
 - Every coding agent reached the routing model described the same way, so a request that named no
   agent had nothing to choose on and the answer spread evenly across them, which showed up as a low
   confidence and a fallback. Agents now carry how many panes they have open and whether one of them
