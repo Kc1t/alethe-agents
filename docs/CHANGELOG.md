@@ -16,6 +16,13 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
   shows a floating ghost of the panel following the cursor, and the container under the
   cursor gets a dashed outline with a label saying whether the drop will move the panel into
   an empty slot or swap it with the panel there.
+- **Detach a terminal pane into its own OS window.** Every terminal/agent pane's header now has
+  an "Open in a separate window" button that pops it out into a standalone, native-decorated
+  window, so it can be moved to another monitor independently of the rest of the workspace. The
+  pane's PTY keeps running; the spot it left behind shows a placeholder with an "Attach back"
+  button that closes the window and restores the live pane in place. Initially limited to a
+  single ungrouped terminal pane at a time (no whole-container or grouped/orchestration-cluster
+  detach yet), and the detached window is not remembered across app restarts.
 - **Grok Build and Codewhale are now native agents.** Grok Build (xAI, `grok` CLI) and
   Codewhale (`codewhale` CLI) appear in every agent picker with their own icons and accent
   colors. Install entries cover the official Grok PowerShell/npm installers and
