@@ -1959,6 +1959,8 @@ export const ptBR: Record<MessageKey, string> = {
   'ws.paneGroup.orchestrationTitle': 'Orquestração',
   'ws.paneGroup.ungroup': 'Desagrupar panes',
   'ws.dragContainer': 'Arrastar container',
+  'ws.dropHereContainer': 'Solte aqui',
+  'ws.dropSwapWithContainer': 'Trocar com {name}',
   'ws.collapseContainer': 'Recolher container',
   'ws.collapse': 'Recolher',
   'ws.exitFullscreen': 'Sair do fullscreen',

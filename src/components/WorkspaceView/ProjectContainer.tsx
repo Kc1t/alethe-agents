@@ -1,4 +1,4 @@
-import { useDraggable, useDroppable } from '@dnd-kit/core'
+import { useDndContext, useDraggable, useDroppable } from '@dnd-kit/core'
 import {
   ChevronRight,
   GripVertical,
@@ -48,13 +48,26 @@ export const ProjectContainer = memo(function ProjectContainer({
   const openModal = useUiStore((s) => s.openModal_)
 
   const dragId = `cont:${project.id}`
-  const draggable = useDraggable({ id: dragId, disabled: isFullscreen })
+  const draggable = useDraggable({
+    id: dragId,
+    disabled: isFullscreen,
+    data: { containerName: project.name },
+  })
   const droppable = useDroppable({ id: dragId, disabled: isFullscreen })
   const setRefs = (node: HTMLDivElement | null) => {
     draggable.setNodeRef(node)
     droppable.setNodeRef(node)
   }
-  const isDropTarget = droppable.isOver && !draggable.isDragging
+
+  // Only another container being dragged should light this one up as a swap target.
+  const { active: activeDrag } = useDndContext()
+  const activeDragId = activeDrag ? String(activeDrag.id) : null
+  const isContainerDragActive = activeDragId !== null && activeDragId.startsWith('cont:')
+  const isDropTarget = isContainerDragActive && droppable.isOver && !draggable.isDragging
+  const draggedContainerName =
+    isDropTarget && typeof activeDrag?.data.current?.containerName === 'string'
+      ? (activeDrag.data.current.containerName as string)
+      : null
 
   // Resolve the isolated terminal independently of the visible container panes.
 
@@ -108,6 +121,15 @@ export const ProjectContainer = memo(function ProjectContainer({
       }`}
       style={{ ['--container-accent' as string]: accent }}
     >
+      {isDropTarget ? (
+        <div className={styles.dropHint} aria-hidden="true">
+          <span className={styles.dropHintLabel}>
+            {draggedContainerName
+              ? t('ws.dropSwapWithContainer', { name: draggedContainerName })
+              : t('ws.dropHereContainer')}
+          </span>
+        </div>
+      ) : null}
       {showHeader ? (
         <div className={styles.tag}>
           {!isFullscreen ? (

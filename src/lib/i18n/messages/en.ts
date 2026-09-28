@@ -1933,6 +1933,8 @@ export const en = {
   'ws.paneGroup.orchestrationTitle': 'Orchestration',
   'ws.paneGroup.ungroup': 'Ungroup panes',
   'ws.dragContainer': 'Drag container',
+  'ws.dropHereContainer': 'Drop here',
+  'ws.dropSwapWithContainer': 'Swap with {name}',
   'ws.collapseContainer': 'Collapse container',
   'ws.collapse': 'Collapse',
   'ws.exitFullscreen': 'Exit fullscreen',

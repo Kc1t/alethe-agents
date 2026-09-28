@@ -12,6 +12,10 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Added
 
+- **Live preview while dragging a workspace panel.** Dragging a container by its handle now
+  shows a floating ghost of the panel following the cursor, and the container under the
+  cursor gets a dashed outline with a label saying whether the drop will move the panel into
+  an empty slot or swap it with the panel there.
 - **Grok Build and Codewhale are now native agents.** Grok Build (xAI, `grok` CLI) and
   Codewhale (`codewhale` CLI) appear in every agent picker with their own icons and accent
   colors. Install entries cover the official Grok PowerShell/npm installers and
