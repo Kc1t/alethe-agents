@@ -77,7 +77,7 @@ export const ProjectContainer = memo(function ProjectContainer({
       ? (activeDrag.data.current.containerName as string)
       : null
 
-  // Which edge is the drop target for (vs. center = swap) — see onDragEnd for
+  // Which edge is the drop target for (vs. center = swap); see onDragEnd for
   // how each zone actually resolves in grid vs. linear layout.
   const pointer = activeDrag ? dragPointer(activatorEvent, activeDrag.rect.current) : null
   const dropZone =

@@ -112,7 +112,7 @@ export const TerminalPane = memo(function TerminalPane({
       ? (activeDrag.data.current.paneName as string)
       : null
 
-  // Which edge is the drop target for (vs. center = swap) — see onDragEnd for
+  // Which edge is the drop target for (vs. center = swap); see onDragEnd for
   // how each zone actually resolves.
   const pointer = activeDrag ? dragPointer(activatorEvent, activeDrag.rect.current) : null
   const dropZone =

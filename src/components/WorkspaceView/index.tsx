@@ -166,7 +166,7 @@ export function WorkspaceView() {
     return projectsById.get(activeDragId.slice('cont:'.length)) ?? null
   }, [activeDragId, projectsById])
 
-  // Pane being dragged right now, if any — same DragOverlay preview, but a
+  // Pane being dragged right now, if any: same DragOverlay preview, but a
   // pane has no project/icon of its own, just the name captured at drag
   // start (see onDragStart / TerminalPane's draggable `data`).
   const isDraggingPane = activeDragId?.startsWith('pane:') ?? false
@@ -331,7 +331,7 @@ export function WorkspaceView() {
     const to = e.over ? String(e.over.id) : ''
     if (!from || !to || from === to) return
 
-    // Which edge the pointer was over when it was released — only meaningful
+    // Which edge the pointer was over when it was released. Only meaningful
     // for the linear-order fallback branches below (dropping near an edge
     // inserts before/after the target instead of the default center move).
     // Grid-layout drops keep swapping regardless of edge; see PR notes.

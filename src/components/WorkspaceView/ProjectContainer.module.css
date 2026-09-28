@@ -157,7 +157,7 @@
 }
 
 /* Directional insert bar (drop near an edge = insert before/after, not
-   swap) — see WorkspaceView's onDragEnd for the actual insertion logic. */
+   swap); see WorkspaceView's onDragEnd for the actual insertion logic. */
 .dropZoneBar {
   position: absolute;
   z-index: 4;

@@ -34,7 +34,7 @@ describe('dragPointer', () => {
 
   it('recovers the actual pointer position, not the dragged node center', () => {
     // Grabbed 10px from the node's left edge, 5px from its top (a corner
-    // drag handle, not the node's center) — clientX/clientY reflect that.
+    // drag handle, not the node's center); clientX/clientY reflect that.
     const activatorEvent = { clientX: 210, clientY: 105 } as PointerEvent
     // Dragged the node (and, rigidly, the pointer) 50px right, 30px down.
     const translated = { top: 130, left: 250 }

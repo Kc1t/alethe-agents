@@ -8,9 +8,9 @@
 export type DropZone = 'top' | 'right' | 'bottom' | 'left' | 'center'
 
 /** Outer quarter on either side of an axis is that axis's edge zone, matching
- * the 25%-wide/tall bar drawn in ProjectContainer/TerminalPane's CSS — if
+ * the 25%-wide/tall bar drawn in ProjectContainer/TerminalPane's CSS (if
  * this and the bar's size ever drift apart, the bar shows before the zone
- * is actually reachable, or the reverse. Whichever axis the pointer is
+ * is actually reachable, or the reverse). Whichever axis the pointer is
  * furthest toward its edge on wins, so a corner resolves to one bar, not two. */
 const EDGE_RATIO = 1 / 4
 
@@ -39,7 +39,7 @@ export function resolveDropZone(
  * Live pointer position during a dnd-kit drag, for `resolveDropZone`.
  *
  * `active.rect.current.translated` is the dragged *node's* rect (its own
- * top-left corner plus its own size), not the cursor — using its center as a
+ * top-left corner plus its own size), not the cursor. Using its center as a
  * cursor proxy is only right if the pointer happens to be over the node's
  * center, which it usually isn't (people grab a corner drag handle, not the
  * middle of a whole panel). Instead: the pointer's offset from the node's
@@ -70,7 +70,7 @@ export function dragPointer(
  * before/after edge zone. `list.splice(fromIndex, 1)` runs first (standard
  * array-move semantics, see reorderPaneInContainer/reorderContainers), so an
  * item removed from *before* the target shifts every later index back by
- * one — accounted for here so "insert after" lands right after the target
+ * one, accounted for here so "insert after" lands right after the target
  * regardless of which way the drag crossed it.
  */
 export function resolveInsertIndex(
