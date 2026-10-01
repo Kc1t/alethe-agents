@@ -11,3 +11,9 @@ export * from '../api/pty'
 export async function clearPtyScrollback(id: string): Promise<void> {
   await invoke('clear_pty_scrollback', { id })
 }
+
+// TODO: not yet mirrored into `lib/api/pty` (no web/HTTP equivalent wired up
+// yet) — desktop-only for now, matches the pre-migration behavior.
+export async function killPtys(ids: string[]): Promise<string[]> {
+  return invoke<string[]>('kill_ptys', { ids })
+}

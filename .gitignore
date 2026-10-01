@@ -50,6 +50,9 @@ src-tauri/**/*.AppImage
 src-tauri/**/*.deb
 src-tauri/**/*.rpm
 
+# App-written project marker: dev-server logs and worktree state.
+.alethe/
+
 # Logs
 *.log
 npm-debug.log*

@@ -54,6 +54,12 @@
   margin: 0;
 }
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .close {
   width: 26px;
   height: 26px;

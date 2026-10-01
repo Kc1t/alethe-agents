@@ -24,18 +24,20 @@ import { type TFunction, useT } from '../../lib/i18n'
 import { formatShortcut } from '../../lib/platform'
 import { getFirstName, getProfileImageUrl, getProfileInitial } from '../../lib/profile'
 import { openInBrowser } from '../../lib/tauri'
-import { type AgentType, type Project, UNRESTRICTED_FLAG } from '../../lib/types'
+import type { AgentType, BuiltinAgentType, Project } from '../../lib/types'
 import {
   getProjectDefaultCwd,
   getProjectRepoRoot,
   useProjectsStore,
 } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
+import { resolveUnrestrictedFlag } from '../../lib/agentProviders'
 import { EmptyState } from '../EmptyState'
 import { AgentIcon } from '../icons/AgentIcons'
 import { AsciiEffect } from '../ui/ascii-effect'
 import { Avatar } from '../ui/Avatar'
 import { computeStreak } from './ActivityGraph'
+import { SetupWalkthrough } from './SetupWalkthrough'
 import { ActivityGraph } from './ActivityGraph'
 import styles from './HomeView.module.css'
 import { NowPlayingWidget } from './NowPlayingWidget'
@@ -51,6 +53,7 @@ const QUICK_AGENTS: Array<{ type: AgentType; label: string }> = [
   { type: 'claude', label: 'Claude' },
   { type: 'codex', label: 'Codex' },
   { type: 'copilot', label: 'GitHub Copilot' },
+  { type: 'cursor', label: 'Cursor' },
   { type: 'antigravity', label: 'Antigravity' },
   { type: 'opencode', label: 'OpenCode' },
 ]
@@ -63,15 +66,25 @@ function compactWorkspacePath(path: string): string {
   return `${homeCollapsed.startsWith('~') ? `~${separator}` : ''}…${separator}${parts.slice(-3).join(separator)}`
 }
 
-const NOTIF_AGENT_CLASS: Record<AgentType, string> = {
+const NOTIF_AGENT_CLASS: Record<BuiltinAgentType, string> = {
   claude: styles.notifClaude,
   codex: styles.notifCodex,
   copilot: styles.notifCodex,
+  cursor: styles.notifCursor,
   antigravity: styles.notifAntigravity,
   shell: styles.notifShell,
+  wsl: styles.notifShell,
   opencode: styles.notifOpencode,
   freebuff: styles.notifFreebuff,
   mimo: styles.notifMimo,
+  kiro: styles.notifKiro,
+  kimi: styles.notifKimi,
+  grok: styles.notifGrok,
+  codewhale: styles.notifCodewhale,
+}
+
+function notifAgentClass(agent: AgentType): string {
+  return NOTIF_AGENT_CLASS[agent as BuiltinAgentType] ?? styles.notifShell
 }
 
 export function HomeView() {
@@ -222,7 +235,7 @@ export function HomeView() {
       quickCwd.trim() ||
       getProjectRepoRoot(quickTarget) ||
       getProjectDefaultCwd(quickTarget, projects)
-    const flag = quickUnrestricted ? UNRESTRICTED_FLAG[quickAgent] : null
+    const flag = quickUnrestricted ? resolveUnrestrictedFlag(quickAgent) : null
     const label = QUICK_AGENTS.find((agent) => agent.type === quickAgent)?.label ?? quickAgent
     const terminal = await createAgentTerminal(quickTarget.id, {
       name: label,
@@ -450,6 +463,8 @@ export function HomeView() {
         </div>
       </section>
 
+      <SetupWalkthrough />
+
       <div className={styles.overviewGrid}>
         <section className={styles.section}>
           <div className={styles.sectionHeader}>
@@ -554,7 +569,7 @@ export function HomeView() {
                 <li key={n.id} className={styles.notifItem}>
                   <span
                     className={`${styles.notifIcon} ${
-                      n.agent ? NOTIF_AGENT_CLASS[n.agent] : styles.notifNeutral
+                      n.agent ? notifAgentClass(n.agent) : styles.notifNeutral
                     }`}
                   >
                     {n.agent ? (

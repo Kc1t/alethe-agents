@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Alethe",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "identifier": "com.kc1t.alethe",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "devUrl": "http://localhost:1422",
+    "devUrl": "http://127.0.0.1:1422",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
@@ -30,11 +30,25 @@
         "base-uri": ["'none'"],
         "form-action": ["'none'"],
         "frame-ancestors": ["'none'"],
-        "script-src": ["'self'"],
-        "style-src": ["'self'", "'unsafe-inline'"],
-        "img-src": ["'self'", "data:", "asset:", "http://asset.localhost", "http:", "https:"],
+        "script-src": ["'self'", "alethe-plugin:", "http://alethe-plugin.localhost"],
+        "style-src": [
+          "'self'",
+          "'unsafe-inline'",
+          "alethe-plugin:",
+          "http://alethe-plugin.localhost"
+        ],
+        "img-src": [
+          "'self'",
+          "data:",
+          "asset:",
+          "http://asset.localhost",
+          "alethe-plugin:",
+          "http://alethe-plugin.localhost",
+          "http:",
+          "https:"
+        ],
         "media-src": ["'self'", "asset:", "http://asset.localhost", "mediastream:", "blob:"],
-        "font-src": ["'self'"],
+        "font-src": ["'self'", "alethe-plugin:", "http://alethe-plugin.localhost"],
         "connect-src": [
           "'self'",
           "ipc:",

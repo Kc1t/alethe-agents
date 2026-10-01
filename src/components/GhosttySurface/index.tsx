@@ -52,8 +52,7 @@ export function GhosttySurface({
   const activeRef = useRef(active)
 
   const reevaluateVisibilityRef = useRef<(() => void) | null>(null)
-  // scheduleFrame vive no efeito de ciclo de vida; exposto p/ o efeito de
-
+  // scheduleFrame lives in the lifecycle effect; this ref exposes it to the other effects.
   const scheduleFrameRef = useRef<(() => void) | null>(null)
 
   const pushFrameNowRef = useRef<(() => void) | null>(null)
@@ -128,11 +127,10 @@ export function GhosttySurface({
     }
   }, [surfaceId])
 
-  // explicitamente em dois casos:
-  //   1. o placeholder saiu do viewport (scroll / troca de aba) — IntersectionObserver;
-
-  //      qualquer Radix Dialog aberto ([role="dialog"][data-state="open"]), o que
-
+  // The native surface is drawn above the webview, so it is hidden explicitly while the pane is
+  // inactive, while its placeholder is out of the viewport (scroll or tab switch, via
+  // IntersectionObserver), or while an overlay such as an open Radix dialog
+  // ([role="dialog"][data-state="open"]) would sit under it.
   useEffect(() => {
     const node = placeholderRef.current
     if (!node) return
@@ -186,7 +184,8 @@ export function GhosttySurface({
     const iv = window.setInterval(async () => {
       if (stopped) return
 
-      // backend e o comando reportaria "saiu" (ausente), fechando o pane novo.
+      // Before the surface is spawned it does not exist in the backend, and the exit check would
+      // report it as exited (absent), closing the new pane.
       if (!spawnedRef.current) return
       try {
         const exited = await ghosttySurfaceExited(surfaceId)
@@ -199,6 +198,7 @@ export function GhosttySurface({
         // The poll races surface teardown, so a failed probe during shutdown is routine. It is
         // named rather than swallowed: a probe that fails for any other reason means the pane
         // never learns its process exited and stays "running" forever.
+        // Transient bridge/IPC errors (poisoned lock, unsupported platform): poll again next tick.
         console.debug('[expected] ghostty_exit_probe_failed', cause)
       }
     }, EXIT_POLL_MS)

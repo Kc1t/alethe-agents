@@ -13,11 +13,17 @@ describe('agent creation helpers', () => {
       'claude',
       'codex',
       'copilot',
+      'cursor',
       'antigravity',
       'opencode',
       'mimo',
       'freebuff',
+      'kiro',
+      'kimi',
+      'grok',
+      'codewhale',
       'shell',
+      'wsl',
     ])
     expect(SHELL_FIRST_AGENT_OPTIONS[0].type).toBe('shell')
   })

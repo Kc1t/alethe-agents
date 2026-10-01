@@ -3,10 +3,10 @@ import { useState } from 'react'
 
 import { cliPathMatchesAgent } from '../../../lib/agentCliPath'
 import { pickFile } from '../../../lib/dialog'
-import { useT } from '../../../lib/i18n'
+import { useT, useTDynamic } from '../../../lib/i18n'
 import { isMacOS } from '../../../lib/platform'
 import { countLiveResumablePanes, resetLastSession } from '../../../lib/resetLastSession'
-import { agentCliCommand, type AgentType } from '../../../lib/types'
+import { agentCliCommand, isShellAgentType, type AgentType } from '../../../lib/types'
 import { SPAWN_CONCURRENCY_LIMITS, useProjectsStore } from '../../../stores/projectsStore'
 import { useUiStore } from '../../../stores/uiStore'
 import { AgentIcon } from '../../icons/AgentIcons'
@@ -15,17 +15,24 @@ import { SettingsSection } from './primitives'
 
 const AGENTS: { id: AgentType; label: string }[] = [
   { id: 'shell', label: 'Shell' },
+  { id: 'wsl', label: 'WSL' },
   { id: 'claude', label: 'Claude Code' },
   { id: 'codex', label: 'Codex' },
   { id: 'copilot', label: 'GitHub Copilot' },
+  { id: 'cursor', label: 'Cursor' },
   { id: 'antigravity', label: 'Antigravity' },
   { id: 'opencode', label: 'OpenCode' },
   { id: 'freebuff', label: 'Freebuff' },
   { id: 'mimo', label: 'Mimo Code' },
+  { id: 'kiro', label: 'Kiro CLI' },
+  { id: 'kimi', label: 'Kimi Code' },
+  { id: 'grok', label: 'Grok Build' },
+  { id: 'codewhale', label: 'Codewhale' },
 ]
 
 export function TerminalPage({ enabledCount }: { enabledCount: number }) {
   const t = useT()
+  const tDynamic = useTDynamic()
   const preferences = useProjectsStore((state) => state.preferences)
   const setAgentEnabled = useProjectsStore((state) => state.setAgentEnabled)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
@@ -163,7 +170,7 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
                 </span>
                 <span className={styles.agentCopy}>
                   <strong>{agent.label}</strong>
-                  <span>{t(`agent.${agent.id}.desc`)}</span>
+                  <span>{tDynamic(`agent.${agent.id}.desc`)}</span>
                 </span>
                 <input
                   type="checkbox"
@@ -183,7 +190,7 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
         description={t('prefs.cliPathsDesc')}
       >
         <div className={styles.agentList}>
-          {AGENTS.filter((agent) => agent.id !== 'shell').map((agent) => {
+          {AGENTS.filter((agent) => !isShellAgentType(agent.id)).map((agent) => {
             const override = cliPaths[agent.id]
             const mismatch = override ? !cliPathMatchesAgent(agent.id, override) : false
             return (
@@ -249,24 +256,13 @@ export function TerminalPage({ enabledCount }: { enabledCount: number }) {
           title={t('prefs.nativeTerminalMacos')}
           description={t('prefs.nativeTerminalMacosDesc')}
         >
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              padding: '8px 12px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--border)',
-              background: 'var(--bg-sunken)',
-              cursor: 'pointer',
-            }}
-          >
+          <label className={styles.checkboxCard}>
             <input
               type="checkbox"
               checked={preferences.nativeTerminalMacos ?? false}
               onChange={(e) => setPreferences({ nativeTerminalMacos: e.target.checked })}
             />
-            <span style={{ flex: 1, fontSize: 13 }}>{t('prefs.nativeTerminalMacosEnable')}</span>
+            <span>{t('prefs.nativeTerminalMacosEnable')}</span>
           </label>
         </SettingsSection>
       ) : null}

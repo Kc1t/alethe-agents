@@ -1,3 +1,5 @@
+import { normalizeCwd } from './platform'
+
 export type SessionSnapshot = {
   id: string
   modified_at_ms: number
@@ -8,7 +10,7 @@ const claimedIds = new Map<string, Set<string>>()
 const claimOwners = new Map<string, Array<{ key: string; sessionId: string }>>()
 
 function claimKey(agent: string, cwd: string): string {
-  return `${agent}\0${cwd.toLowerCase()}`
+  return `${agent}\0${normalizeCwd(cwd)}`
 }
 
 function trackOwner(ptyId: string | undefined, key: string, sessionId: string): void {
@@ -58,14 +60,15 @@ function excludeReserved<T extends SessionSnapshot>(
 }
 
 /**
- * Reserva atomicamente um ID novo para um único pane. Se mais de uma sessão
- * aparecer entre snapshots, a associação pane -> conversa ficou ambígua e é
- * melhor não persistir nada do que retomar o chat errado no próximo boot.
+ * Atomically claims one new session ID for a single pane. When more than one
+ * new session appears between snapshots the pane -> conversation mapping is
+ * ambiguous, and persisting nothing is safer than resuming the wrong chat on
+ * the next boot.
  *
- * `reservedIds`: sessionIds que já pertencem a OUTRAS abas/terminais (de
- * qualquer projeto), lidos direto do estado persistido pelo chamador — nunca
- * viram candidato aqui, mesmo se `claimedIds` (só em memória, reseta a cada
- * restart do app) ainda não sabe deles nesta execução.
+ * `reservedIds`: session IDs already owned by OTHER tabs/terminals (in any
+ * project), read from persisted state by the caller — never candidates here,
+ * even when `claimedIds` (in-memory, reset on every app restart) does not know
+ * them yet in this run.
  */
 export function claimDiscoveredSession(
   agent: string,
@@ -90,14 +93,13 @@ export function claimDiscoveredSession(
 }
 
 /**
- * Reivindica a sessão EXISTENTE mais recente pra um cwd que ainda não foi
- * pega por outro pane. Ao contrário de `claimDiscoveredSession` (que ordena
- * ascendente pra achar sessões NOVAS na ordem em que apareceram), aqui
- * queremos a mais recente de todas — usado antes do spawn, quando não temos
- * ID salvo mas pode já existir uma conversa naquele diretório (ex.: reabrir
- * terminal depois de restart do app).
+ * Claims the most recent EXISTING session for a cwd no other pane has taken
+ * yet. Unlike `claimDiscoveredSession` (which sorts ascending to find NEW
+ * sessions in the order they appeared), this wants the newest of all — used
+ * before a spawn when no ID is saved but a conversation may already exist for
+ * that directory (e.g. reopening a terminal after an app restart).
  *
- * `reservedIds`: ver `claimDiscoveredSession` acima.
+ * `reservedIds`: see `claimDiscoveredSession` above.
  */
 export function claimMostRecentSession(
   agent: string,
@@ -123,6 +125,14 @@ export function releaseSessionClaim(ptyId: string): void {
   if (!owned) return
   claimOwners.delete(ptyId)
   for (const { key, sessionId } of owned) {
+    // A tab and its live PTY can both own the same claim. Releasing either must
+    // not make the conversation available while the other owner still holds it.
+    if (
+      [...claimOwners.values()].some((claims) =>
+        claims.some((claim) => claim.key === key && claim.sessionId === sessionId),
+      )
+    )
+      continue
     const set = claimedIds.get(key)
     if (!set) continue
     set.delete(sessionId)

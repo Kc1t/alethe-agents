@@ -40,7 +40,6 @@ export function useSidebarData() {
       groups: state.groups,
       preferences: state.preferences,
       projects: state.projects,
-      showGitControl: state.preferences.enabledFeatures.git,
       ungroupedOrder: state.ungroupedOrder,
     })),
   )
@@ -81,7 +80,7 @@ export function useSidebarActions() {
       reorderGroups: state.reorderGroups,
       togglePane: state.togglePane,
       setLaneVisible: state.setLaneVisible,
-      setTerminalRemoteExcluded: state.setTerminalRemoteExcluded,
+      setTerminalRemoteShared: state.setTerminalRemoteShared,
       setSubTabCompletionUnread: state.setSubTabCompletionUnread,
       createFilePane: state.createFilePane,
       setFullscreenPane: state.setFullscreenPane,

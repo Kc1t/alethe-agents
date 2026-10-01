@@ -135,26 +135,16 @@
 
 .loadingBackdrop {
   position: absolute;
-  inset: 0 0 auto;
-  z-index: 0;
-  height: clamp(560px, 72vh, 780px);
-  overflow: hidden;
-  opacity: 0.9;
-  pointer-events: none;
-  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 70%, transparent 100%);
-  mask-image: linear-gradient(to bottom, black 0%, black 70%, transparent 100%);
-}
-
-.loadingBackdrop::after {
-  content: '';
-  position: absolute;
   inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  opacity: 0.1;
   pointer-events: none;
-  background: color-mix(in srgb, var(--bg) 32%, transparent);
+  /* Same fade as the Home backdrop, so boot hands off to Home without a jump. */
+  mask-image: linear-gradient(to bottom, black 0%, rgba(0, 0, 0, 0.72) 42%, transparent 88%);
 }
 
 .loadingInner {
-  display: flex;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -162,14 +152,13 @@
   z-index: 1;
   min-width: min(320px, calc(100% - 40px));
   padding: 22px 26px 20px;
-  border: 1px solid color-mix(in srgb, var(--border-strong) 78%, transparent);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--bg-elevated) 84%, transparent);
-  box-shadow: 0 18px 48px color-mix(in srgb, var(--bg) 40%, transparent);
-  backdrop-filter: blur(5px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-modal);
+  box-shadow: var(--shadow-lg);
   user-select: none;
   pointer-events: none;
-  animation: loadingEnter 360ms ease-out both;
+  animation: loadingEnter var(--anim-slow) var(--ease-out-fluid) both;
 }
 
 .loadingFailure {
@@ -248,8 +237,9 @@
 .loadingRail span {
   width: 3px;
   height: 3px;
+  border-radius: 1px;
   background: var(--border-strong);
-  animation: loadingCell 1.15s ease-in-out infinite;
+  animation: loadingCell 1.15s var(--ease-in-out-fluid) infinite;
 }
 
 .loadingRail span:nth-child(2) {
@@ -308,11 +298,9 @@
   60%,
   100% {
     background: var(--border-strong);
-    transform: scale(1);
   }
   30% {
     background: var(--accent);
-    transform: scale(1.65);
   }
 }
 

@@ -1,0 +1,83 @@
+.root {
+  width: min(360px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  color: var(--fg-muted);
+  user-select: none;
+}
+
+.mark {
+  width: clamp(112px, 18vw, 190px);
+  aspect-ratio: 1;
+  background: var(--fg);
+  opacity: 0.045;
+  mask: url('../../assets/alethe-mark.svg') center / contain no-repeat;
+  -webkit-mask: url('../../assets/alethe-mark.svg') center / contain no-repeat;
+}
+
+.actions {
+  width: min(280px, 100%);
+  display: grid;
+  gap: 2px;
+}
+
+.actions button {
+  width: 100%;
+  min-height: 26px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 2px 4px;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.actions button:hover,
+.actions button:focus-visible {
+  color: var(--fg);
+  background: var(--panel-hover);
+  outline: none;
+}
+
+.shortcut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+}
+
+.shortcut kbd {
+  min-width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  color: var(--fg-muted);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-bottom-color: var(--border-strong);
+  border-radius: 3px;
+  box-shadow: 0 1px 0 var(--border);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+}
+
+@media (max-width: 520px) {
+  .mark {
+    width: 104px;
+  }
+
+  .root {
+    gap: 16px;
+  }
+}

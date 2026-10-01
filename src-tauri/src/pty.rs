@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::cli_resolver::{command_builder_for_terminal, find_windows_cli_launcher};
 use crate::diagnostics::append_spawn_log_path;
@@ -36,15 +36,33 @@ const SPAWN_MEMORY_WAIT_POLL_MS: u64 = 1_000;
 
 const SPAWN_MEMORY_WAIT_MAX_MS: u128 = 45_000;
 
-fn wait_for_spawnable_memory() {
+#[derive(Clone, Serialize)]
+pub struct PtySpawnMemoryWaitPayload {
+    pub available_mb: f64,
+    pub waited_ms: u128,
+    pub threshold_mb: f64,
+}
+
+fn wait_for_spawnable_memory(app: Option<&AppHandle>, id: &str) -> u128 {
     let started = Instant::now();
     loop {
         let available_mb = crate::stats::memory_stats_cached().system_available_mb;
         if available_mb >= SPAWN_MIN_AVAILABLE_MB {
-            return;
+            return started.elapsed().as_millis();
         }
-        if started.elapsed().as_millis() >= SPAWN_MEMORY_WAIT_MAX_MS {
-            return;
+        let waited_ms = started.elapsed().as_millis();
+        if let Some(app) = app {
+            let _ = app.emit(
+                &format!("pty://spawn-wait/{id}"),
+                PtySpawnMemoryWaitPayload {
+                    available_mb,
+                    waited_ms,
+                    threshold_mb: SPAWN_MIN_AVAILABLE_MB,
+                },
+            );
+        }
+        if waited_ms >= SPAWN_MEMORY_WAIT_MAX_MS {
+            return waited_ms;
         }
         thread::sleep(Duration::from_millis(SPAWN_MEMORY_WAIT_POLL_MS));
     }
@@ -52,8 +70,8 @@ fn wait_for_spawnable_memory() {
 
 // (~5.8 GB de folga) enquanto a RAM "livre" parecia OK. Comprometer de
 
-fn prepare_memory_for_boot() {
-    wait_for_spawnable_memory();
+fn prepare_memory_for_boot(app: Option<&AppHandle>, id: &str) -> u128 {
+    wait_for_spawnable_memory(app, id)
 }
 
 pub struct ScrollbackBuffer {
@@ -363,6 +381,10 @@ pub struct SpawnPtyArgs {
     pub launcher_override: Option<String>,
     pub env: Option<std::collections::HashMap<String, String>>,
     pub profile_id: String,
+    /// Desktop-only handle for the spawn-wait events; the Web/Core transport
+    /// deserializes with `None`.
+    #[serde(skip)]
+    pub app: Option<AppHandle>,
 }
 
 pub fn pty_exists_core(sessions: &PtySessions, id: &str) -> bool {
@@ -588,7 +610,7 @@ pub async fn spawn_pty_core(
             return Ok(SpawnPtyResponse { id });
         };
 
-        prepare_memory_for_boot();
+        let memory_wait_ms = prepare_memory_for_boot(args.app.as_ref(), &id);
 
         let scrollback = Arc::new(Mutex::new(ScrollbackBuffer::new(load_scrollback(&sb_path_buf)?)));
         let teardown = Arc::new(AtomicU8::new(TEARDOWN_NORMAL));
@@ -944,6 +966,21 @@ pub async fn spawn_pty_core(
             }
         });
 
+        if let Some(path) = spawn_log_path_buf.as_deref() {
+            crate::best_effort!(
+                append_spawn_log_path(
+                    path,
+                    &format!(
+                        "spawn id={id} command={:?} launcher={:?} memory_wait_ms={memory_wait_ms} resolve_ms={_resolve_ms} builder_ms={_builder_ms} shell_spawn_ms={_shell_spawn_ms} total_ms={} path_preview={_effective_path_preview:?}",
+                        requested_command,
+                        resolved_launcher,
+                        spawn_started.elapsed().as_millis()
+                    )
+                ),
+                "spawn_log_unavailable"
+            );
+        }
+
         let session = PtySession {
             pty_id: id.clone(),
             profile_id,
@@ -1002,6 +1039,7 @@ pub async fn spawn_pty(
         launcher_override,
         env,
         profile_id,
+        app: Some(app.clone()),
     };
     spawn_pty_core(
         Arc::clone(sessions.inner()),
@@ -1084,26 +1122,34 @@ pub(crate) fn kill_process_tree(pid: u32) {
     }
 }
 
+/// The `kill(2)` target for the process group led by `pid`. 0 and 1 are refused: as
+/// group ids they mean "our own group" and "every process we may signal".
+#[cfg(unix)]
+fn process_group_target(pid: u32) -> Option<i32> {
+    i32::try_from(pid)
+        .ok()
+        .filter(|&pid| pid > 1)
+        .map(|pid| -pid)
+}
+
 #[cfg(unix)]
 pub(crate) fn kill_process_tree(pid: u32) {
-    extern "C" {
-        fn kill(pid: i32, signal: i32) -> i32;
-    }
-
     fn send_signal(target: i32, signal: i32) -> bool {
         // POSIX kill accepts a negative PID to address the whole process group.
-        unsafe { kill(target, signal) == 0 }
+        unsafe { libc::kill(target, signal) == 0 }
     }
 
     fn process_alive(pid: u32) -> bool {
         send_signal(pid as i32, 0)
     }
 
-    // portable-pty normally makes the child a process-group leader. Fall back
-    // to the root PID if the platform PTY implementation did not do so.
-    let group = -(pid as i32);
-    if !send_signal(group, 15) {
-        let _ = send_signal(pid as i32, 15); // returns bool, not Result: a false means the process is already gone
+    // portable-pty normally makes the child a process-group leader. 0 and 1 are refused
+    // as group ids: they mean "our own group" and "every process we may signal" (#222).
+    let Some(group) = process_group_target(pid) else {
+        return;
+    };
+    if !send_signal(group, libc::SIGTERM) {
+        let _ = send_signal(pid as i32, libc::SIGTERM);
     }
 
     let deadline = Instant::now() + Duration::from_millis(750);
@@ -1111,8 +1157,8 @@ pub(crate) fn kill_process_tree(pid: u32) {
         std::thread::sleep(Duration::from_millis(25));
     }
     if process_alive(pid) {
-        if !send_signal(group, 9) {
-            let _ = send_signal(pid as i32, 9);
+        if !send_signal(group, libc::SIGKILL) {
+            let _ = send_signal(pid as i32, libc::SIGKILL);
         }
     }
 }
@@ -1198,6 +1244,7 @@ pub async fn restart_pty(
         launcher_override,
         env,
         profile_id,
+        app: Some(app.clone()),
     };
     restart_pty_core(
         Arc::clone(sessions.inner()),
@@ -1384,6 +1431,7 @@ pub async fn write_pty_core(
 pub async fn write_pty(
     app: AppHandle,
     sessions: State<'_, PtySessions>,
+    remote: State<'_, Arc<crate::remote::RemoteHub>>,
     id: String,
     data: String,
     profile_id: String,
@@ -1464,6 +1512,15 @@ pub async fn resize_pty_core(
 
         cols_atomic.store(cols.max(1), Ordering::Relaxed);
         rows_atomic.store(rows.max(1), Ordering::Relaxed);
+
+        crate::remote::hub().publish(&pty_id, || {
+            serde_json::json!({
+                "type": "pty_resize",
+                "ptyId": &pty_id,
+                "cols": cols.max(1),
+                "rows": rows.max(1),
+            })
+        });
 
         // Tell every OTHER attached client (the one that requested this
         // resize already knows its own new size) so it can resize its own
@@ -1610,6 +1667,60 @@ pub async fn kill_pty(
     let (profile_id, sb_path, _) = resolve_pty_profile_paths(&app, Some(&profile_id), &id)?;
     ensure_pty_owner(&sessions, &id, &profile_id, &sb_path)?;
     kill_pty_core(&sessions, &sb_path, &id).await
+}
+
+/// Removes several PTYs from shared state in one IPC call and tears their process trees down in
+/// parallel. Group standby must not fire dozens of independent best-effort requests and then erase
+/// the only IDs that could retry them.
+#[tauri::command]
+pub async fn kill_ptys(
+    sessions: State<'_, PtySessions>,
+    ids: Vec<String>,
+) -> Result<Vec<String>, String> {
+    let sessions: PtySessions = Arc::clone(sessions.inner());
+    tokio::task::spawn_blocking(move || {
+        let unique_ids = ids.into_iter().collect::<std::collections::HashSet<_>>();
+        let drained = {
+            let mut sessions = sessions
+                .lock()
+                .map_err(|_| "PTY sessions lock poisoned".to_string())?;
+            unique_ids
+                .iter()
+                .filter_map(|id| sessions.remove(id).map(|session| (id.clone(), session)))
+                .collect::<Vec<_>>()
+        };
+
+        let (done, finished) = std::sync::mpsc::channel::<String>();
+        for (id, session) in drained {
+            session.teardown.store(TEARDOWN_KILLED, Ordering::SeqCst);
+            let scrollback_path = session.scrollback_path.clone();
+            let done = done.clone();
+            let _ = std::thread::Builder::new()
+                .name("alethe-pty-batch-kill".to_string())
+                .spawn(move || {
+                    terminate_session(session);
+                    let _ = delete_scrollback(&scrollback_path);
+                    let _ = done.send(id);
+                });
+        }
+        drop(done);
+
+        let deadline = Instant::now() + Duration::from_secs(8);
+        let mut completed = Vec::new();
+        while completed.len() < unique_ids.len() {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            match finished.recv_timeout(remaining) {
+                Ok(id) => completed.push(id),
+                Err(_) => break,
+            }
+        }
+        Ok(completed)
+    })
+    .await
+    .map_err(|error| format!("kill_ptys: batch task failed: {error}"))?
 }
 
 pub fn suspend_session(
@@ -2337,6 +2448,29 @@ pub fn install_kill_on_close_guard() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(windows))]
+    #[test]
+    fn process_group_target_never_widens_to_every_process() {
+        assert_eq!(process_group_target(1234), Some(-1234));
+        assert_eq!(process_group_target(0), None);
+        assert_eq!(process_group_target(1), None);
+        assert_eq!(process_group_target(u32::MAX), None);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn kill_process_tree_ends_the_whole_group() {
+        use std::os::unix::process::{CommandExt, ExitStatusExt};
+        // Its own group, like the setsid() portable-pty does for a real shell.
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .process_group(0)
+            .spawn()
+            .unwrap();
+        kill_process_tree(child.id());
+        assert_eq!(child.wait().unwrap().signal(), Some(libc::SIGTERM));
+    }
 
     /// Guards the invariant that made every terminal stop accepting keystrokes at once:
     /// `kill_process_tree` runs `taskkill` and waits for it, and holding the child lock across

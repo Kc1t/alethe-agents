@@ -1,8 +1,9 @@
 import { Check, Minus, Pause, Plus, RotateCcw, Waves } from 'lucide-react'
 
 import { useT } from '../../../lib/i18n'
+import { sidebarTabContributions, sidebarTabLabel, useContributions } from '../../../lib/plugins'
 import { APP_ICON_OPTIONS, getThemeIcon } from '../../../lib/themeIcons'
-import { THEME_OPTIONS, themeDescription, themeLabel } from '../../../lib/themes'
+import { themeDescription, themeLabel, useThemeOptions } from '../../../lib/themes'
 import type { MotionPreference, VisualStyle } from '../../../lib/types'
 import { UI_ZOOM_LIMITS, useProjectsStore } from '../../../stores/projectsStore'
 import { Dropdown } from '../../ui/Dropdown'
@@ -11,6 +12,8 @@ import { SettingsSection } from './primitives'
 
 export function AppearancePage() {
   const t = useT()
+  const themeOptions = useThemeOptions()
+  const contributedViews = useContributions(sidebarTabContributions)
   const preferences = useProjectsStore((state) => state.preferences)
   const setUiTheme = useProjectsStore((state) => state.setUiTheme)
   const setTerminalTheme = useProjectsStore((state) => state.setTerminalTheme)
@@ -132,7 +135,7 @@ export function AppearancePage() {
         description={t('prefs.uiThemeDesc')}
       >
         <div className={styles.themeGrid}>
-          {THEME_OPTIONS.map((theme) => {
+          {themeOptions.map((theme) => {
             const active = preferences.uiTheme === theme.id
             return (
               <button
@@ -203,7 +206,7 @@ export function AppearancePage() {
           ariaLabel={t('prefs.terminalTheme')}
           options={[
             { value: '', label: t('common.followUi') },
-            ...THEME_OPTIONS.map((theme) => ({ value: theme.id, label: themeLabel(t, theme.id) })),
+            ...themeOptions.map((theme) => ({ value: theme.id, label: themeLabel(t, theme.id) })),
           ]}
         />
       </SettingsSection>
@@ -255,19 +258,38 @@ export function AppearancePage() {
       </SettingsSection>
 
       <SettingsSection
-        id="git-control-placement"
-        title={t('prefs.gitControlPlacement')}
-        description={t('prefs.gitControlPlacementDesc')}
+        id="view-placement"
+        title={t('prefs.viewPlacement')}
+        description={t('prefs.viewPlacementDesc')}
       >
-        <Dropdown
-          value={preferences.gitControlPlacement}
-          onChange={(value) => setPreferences({ gitControlPlacement: value as 'left' | 'right' })}
-          ariaLabel={t('prefs.gitControlPlacement')}
-          options={[
-            { value: 'left', label: t('prefs.gitControlPlacementLeft') },
-            { value: 'right', label: t('prefs.gitControlPlacementRight') },
-          ]}
-        />
+        {contributedViews.length === 0 ? (
+          <div className={styles.mutedNote}>{t('prefs.viewPlacementEmpty')}</div>
+        ) : (
+          contributedViews.map((view) => {
+            const label = sidebarTabLabel(t, view)
+            return (
+              <div key={view.id} className={styles.viewPlacementRow}>
+                <span>{label}</span>
+                <Dropdown
+                  value={preferences.viewPlacements[view.id] ?? view.side}
+                  onChange={(value) =>
+                    setPreferences({
+                      viewPlacements: {
+                        ...preferences.viewPlacements,
+                        [view.id]: value as 'left' | 'right',
+                      },
+                    })
+                  }
+                  ariaLabel={label}
+                  options={[
+                    { value: 'left', label: t('prefs.viewPlacementLeft') },
+                    { value: 'right', label: t('prefs.viewPlacementRight') },
+                  ]}
+                />
+              </div>
+            )
+          })
+        )}
       </SettingsSection>
 
       <SettingsSection

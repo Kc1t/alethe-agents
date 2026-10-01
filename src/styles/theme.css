@@ -135,6 +135,11 @@
   --agent-freebuff: #7c5cff;
   --agent-mimo: #ff7a1a;
   --agent-antigravity: #4285f4;
+  --agent-kiro: #9046ff;
+  --agent-cursor: #78849b;
+  --agent-kimi: #2e6be6;
+  --agent-grok: #1da1f2;
+  --agent-codewhale: #0ea5e9;
   --agent-shell-soft: rgba(16, 185, 129, 0.14);
   --agent-claude-soft: rgba(236, 147, 51, 0.15);
   --agent-codex-soft: rgba(6, 182, 212, 0.15);
@@ -142,6 +147,11 @@
   --agent-freebuff-soft: rgba(124, 92, 255, 0.15);
   --agent-mimo-soft: rgba(255, 122, 26, 0.15);
   --agent-antigravity-soft: rgba(66, 133, 244, 0.15);
+  --agent-kiro-soft: rgba(144, 70, 255, 0.15);
+  --agent-cursor-soft: rgba(120, 132, 155, 0.15);
+  --agent-kimi-soft: rgba(46, 107, 230, 0.15);
+  --agent-grok-soft: rgba(29, 161, 242, 0.15);
+  --agent-codewhale-soft: rgba(14, 165, 233, 0.15);
 
   --project-orange: #f97316;
   --project-pink: #ec4899;
@@ -286,6 +296,117 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.38);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.46);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.58);
+}
+
+/* Catppuccin Frappé. Pink accent (#f4b8e4) instead of the palette's own
+   blue (#8caaee): the blue reads too close to nord/tokyo-night/vscode in the
+   picker, and the pink clears AAA (7.52:1) on this background. The blue is
+   kept as --agent-codex so the palette still shows up in agent badges. */
+[data-theme='catppuccin-frappe'] {
+  --bg: #303446;
+  --bg-elevated: #414559;
+  --bg-sunken: #292c3c;
+  --panel: #414559;
+  --panel-hover: #51576d;
+  --border: #51576d;
+  --border-strong: rgba(198, 208, 245, 0.24);
+  --fg: #c6d0f5;
+  --fg-muted: #b5bfe2;
+  --fg-faint: #a5adce;
+  --text-primary: #c6d0f5;
+  --text-secondary: #b5bfe2;
+  --text-tertiary: #a5adce;
+  --text-quaternary: #838ba7;
+  --accent: #f4b8e4;
+  --accent-strong: #eebebe;
+  --accent-on: #303446;
+  --accent-soft: rgba(244, 184, 228, 0.14);
+  --accent-faint: rgba(244, 184, 228, 0.14);
+  --accent-border: rgba(244, 184, 228, 0.42);
+  --accent-ring: rgba(244, 184, 228, 0.18);
+  --accent-bg-soft: rgba(244, 184, 228, 0.14);
+  --accent-border-soft: rgba(244, 184, 228, 0.36);
+  --surface-modal: #414559;
+  --surface-card-default: #414559;
+  --surface-card-default-strong: #51576d;
+  --surface-card-selected: rgba(244, 184, 228, 0.14);
+  --border-subtle: #51576d;
+  --border-accent: rgba(244, 184, 228, 0.42);
+  --status-working: #a6d189;
+  --status-working-soft: rgba(166, 209, 137, 0.16);
+  --status-waiting: #e5c890;
+  --status-waiting-soft: rgba(229, 200, 144, 0.16);
+  --status-stopped: #a5adce;
+  --status-stopped-soft: rgba(165, 173, 206, 0.14);
+  --status-disabled: #51576d;
+  --status-offline: #e78284;
+  --status-offline-soft: rgba(231, 130, 132, 0.16);
+  --agent-shell: #a6d189;
+  --agent-claude: #ef9f76;
+  --agent-codex: #8caaee;
+  --agent-opencode: #ca9ee6;
+  --focus-ring: #f4b8e4;
+  --shape-tabs-lane-bg: #292c3c;
+  --shape-tabs-lane-border: rgba(198, 208, 245, 0.08);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.42);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.54);
+}
+
+/* Gruvbox Material (sainnhe), hard dark background. Uses the `hard` variant
+   (#1d2021) rather than `medium` (#282828) because medium is the exact
+   background of the existing `gruvbox` theme — the two would be hard to tell
+   apart in the picker. The palette is also markedly less saturated than
+   classic Gruvbox, which is what distinguishes it. */
+[data-theme='gruvbox-material'] {
+  --bg: #1d2021;
+  --bg-elevated: #282828;
+  --bg-sunken: #141617;
+  --panel: #32302f;
+  --panel-hover: #3c3836;
+  --border: #3c3836;
+  --border-strong: rgba(212, 190, 152, 0.24);
+  --fg: #d4be98;
+  --fg-muted: #c2b193;
+  --fg-faint: #a89984;
+  --text-primary: #d4be98;
+  --text-secondary: #c2b193;
+  --text-tertiary: #a89984;
+  --text-quaternary: #928374;
+  --accent: #e78a4e;
+  --accent-strong: #d8a657;
+  --accent-on: #1d2021;
+  --accent-soft: rgba(231, 138, 78, 0.14);
+  --accent-faint: rgba(231, 138, 78, 0.14);
+  --accent-border: rgba(231, 138, 78, 0.42);
+  --accent-ring: rgba(231, 138, 78, 0.18);
+  --accent-bg-soft: rgba(231, 138, 78, 0.14);
+  --accent-border-soft: rgba(231, 138, 78, 0.36);
+  --surface-modal: #282828;
+  --surface-card-default: #32302f;
+  --surface-card-default-strong: #3c3836;
+  --surface-card-selected: rgba(231, 138, 78, 0.14);
+  --border-subtle: #3c3836;
+  --border-accent: rgba(231, 138, 78, 0.42);
+  --status-working: #a9b665;
+  --status-working-soft: rgba(169, 182, 101, 0.16);
+  --status-waiting: #d8a657;
+  --status-waiting-soft: rgba(216, 166, 87, 0.16);
+  --status-stopped: #a89984;
+  --status-stopped-soft: rgba(168, 153, 132, 0.14);
+  --status-disabled: #3c3836;
+  --status-offline: #ea6962;
+  --status-offline-soft: rgba(234, 105, 98, 0.16);
+  --agent-shell: #a9b665;
+  --agent-claude: #e78a4e;
+  --agent-codex: #7daea3;
+  --agent-opencode: #d3869b;
+  --focus-ring: #e78a4e;
+  --shape-tabs-lane-bg: #141617;
+  --shape-tabs-lane-border: rgba(212, 190, 152, 0.08);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
 }
 
 [data-theme='nord'] {
@@ -678,134 +799,6 @@
   --shadow-lg: 0 12px 32px rgba(33, 33, 33, 0.18);
 }
 
-[data-theme='dark-lemon'] {
-  --bg: #141414;
-  --bg-elevated: #1e1e1e;
-  --bg-sunken: #0f0f0f;
-  --panel: #242424;
-  --panel-hover: #2c2c2c;
-  --border: #262626;
-  --border-strong: rgba(255, 255, 255, 0.22);
-
-  --fg: #ffffff;
-  --fg-muted: #c9c9c9;
-  --fg-faint: #8a8a8a;
-  --text-primary: #ffffff;
-  --text-secondary: #c9c9c9;
-  --text-tertiary: #8a8a8a;
-  --text-quaternary: #6a6a6a;
-
-  --accent: #ffff50;
-  --accent-strong: #ffff7a;
-  --accent-on: #141414;
-  --accent-soft: rgba(255, 255, 80, 0.1);
-  --accent-faint: rgba(255, 255, 80, 0.1);
-  --accent-border: rgba(255, 255, 80, 0.42);
-  --accent-ring: rgba(255, 255, 80, 0.18);
-  --accent-bg-soft: rgba(255, 255, 80, 0.1);
-  --accent-border-soft: rgba(255, 255, 80, 0.34);
-
-  --surface-modal: #1c1c1c;
-  --surface-card-default: #242424;
-  --surface-card-default-strong: #2c2c2c;
-  --surface-card-selected: rgba(255, 255, 80, 0.1);
-  --border-subtle: #262626;
-  --border-accent: rgba(255, 255, 80, 0.42);
-
-  --status-working: #c3e88d;
-  --status-working-soft: rgba(195, 232, 141, 0.16);
-  --status-waiting: #ffb74d;
-  --status-waiting-soft: rgba(255, 183, 77, 0.16);
-  --status-stopped: #8a8a8a;
-  --status-stopped-soft: rgba(138, 138, 138, 0.14);
-  --status-disabled: #4a4a4a;
-  --status-offline: #ff5370;
-  --status-offline-soft: rgba(255, 83, 112, 0.16);
-
-  --agent-shell: #c3e88d;
-  --agent-claude: #f78c6c;
-  --agent-codex: #89ddff;
-  --agent-opencode: #c792ea;
-  --agent-shell-soft: rgba(195, 232, 141, 0.14);
-  --agent-claude-soft: rgba(247, 140, 108, 0.15);
-  --agent-codex-soft: rgba(137, 221, 255, 0.15);
-  --agent-opencode-soft: rgba(199, 146, 234, 0.15);
-
-  --focus-ring: #ffff50;
-  --shape-tabs-lane-bg: #0f0f0f;
-  --shape-tabs-lane-border: rgba(255, 255, 255, 0.06);
-
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.55);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.65);
-}
-
-[data-theme='orca'] {
-  --bg: #0b0b0b;
-  --bg-elevated: #181818;
-  --bg-sunken: #050505;
-  --panel: #1d1d1d;
-  --panel-hover: #242424;
-  --border: #2a2a2a;
-  --border-strong: rgba(245, 245, 245, 0.18);
-
-  --fg: #f5f5f5;
-  --fg-muted: #c8c8c8;
-  --fg-faint: #858585;
-  --text-primary: #f5f5f5;
-  --text-secondary: #c8c8c8;
-  --text-tertiary: #858585;
-  --text-quaternary: #5f5f5f;
-
-  --accent: #e8e8e8;
-  --accent-strong: #ffffff;
-  --accent-on: #0b0b0b;
-  --accent-soft: rgba(245, 245, 245, 0.07);
-  --accent-faint: rgba(245, 245, 245, 0.05);
-  --accent-border: rgba(245, 245, 245, 0.2);
-  --accent-ring: rgba(34, 197, 94, 0.18);
-  --accent-bg-soft: rgba(245, 245, 245, 0.06);
-  --accent-border-soft: rgba(245, 245, 245, 0.16);
-
-  --surface-modal: #181818;
-  --surface-card-default: #151515;
-  --surface-card-default-strong: #202020;
-  --surface-card-selected: rgba(34, 197, 94, 0.1);
-  --border-subtle: #242424;
-  --border-accent: rgba(34, 197, 94, 0.34);
-
-  --status-working: #22c55e;
-  --status-working-soft: rgba(34, 197, 94, 0.16);
-  --status-waiting: #fbbf24;
-  --status-waiting-soft: rgba(251, 191, 36, 0.16);
-  --status-stopped: #767676;
-  --status-stopped-soft: rgba(118, 118, 118, 0.14);
-  --status-disabled: #3f3f3f;
-  --status-offline: #ff5a5f;
-  --status-offline-soft: rgba(255, 90, 95, 0.16);
-
-  --agent-shell: #22c55e;
-  --agent-claude: #f97316;
-  --agent-codex: #60a5fa;
-  --agent-opencode: #a1a1aa;
-  --agent-freebuff: #8b5cf6;
-  --agent-mimo: #f59e0b;
-  --agent-shell-soft: rgba(34, 197, 94, 0.14);
-  --agent-claude-soft: rgba(249, 115, 22, 0.15);
-  --agent-codex-soft: rgba(96, 165, 250, 0.15);
-  --agent-opencode-soft: rgba(161, 161, 170, 0.15);
-  --agent-freebuff-soft: rgba(139, 92, 246, 0.15);
-  --agent-mimo-soft: rgba(245, 158, 11, 0.15);
-
-  --focus-ring: #e8e8e8;
-  --shape-tabs-lane-bg: #101010;
-  --shape-tabs-lane-border: rgba(255, 255, 255, 0.07);
-
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.58);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.68);
-}
-
 /* ==========================================================================
    Infinite Rainbow RGB & Infinite Container Border
    ========================================================================== */
@@ -921,121 +914,6 @@
      adjacent to it, showing up as a blue line cutting the ring only where
      there was focus. */
   z-index: 5;
-}
-
-[data-theme='ember'] {
-  --bg: #0b0d0e;
-  --bg-elevated: #191d21;
-  --bg-sunken: #08090a;
-  --panel: #191d21;
-  --panel-hover: #232a2f;
-  --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.13);
-
-  --fg: #dfe3e6;
-  --fg-muted: #9aa3a9;
-  --fg-faint: #6d767c;
-  --text-primary: #dfe3e6;
-  --text-secondary: #9aa3a9;
-  --text-tertiary: #6d767c;
-  --text-quaternary: #525b61;
-
-  --accent: #e0873f;
-  --accent-strong: #eb9a56;
-  --accent-on: #0b0d0e;
-  --accent-soft: rgba(224, 135, 63, 0.14);
-  --accent-faint: rgba(224, 135, 63, 0.08);
-  --accent-border: rgba(224, 135, 63, 0.32);
-  --accent-ring: rgba(224, 135, 63, 0.2);
-  --accent-bg-soft: rgba(224, 135, 63, 0.1);
-  --accent-border-soft: rgba(224, 135, 63, 0.24);
-
-  --surface-modal: #191d21;
-  --surface-card-default: #14181b;
-  --surface-card-default-strong: #232a2f;
-  --surface-card-selected: rgba(224, 135, 63, 0.1);
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-accent: rgba(224, 135, 63, 0.34);
-
-  --status-working: #e0873f;
-  --status-working-soft: rgba(224, 135, 63, 0.16);
-  --status-waiting: #d9b44a;
-  --status-waiting-soft: rgba(217, 180, 74, 0.16);
-  --status-stopped: #6d767c;
-  --status-stopped-soft: rgba(109, 118, 124, 0.14);
-  --status-disabled: #343c42;
-  --status-offline: #e0605c;
-  --status-offline-soft: rgba(224, 96, 92, 0.16);
-
-  --focus-ring: #e0873f;
-  --shape-tabs-lane-bg: #101417;
-  --shape-tabs-lane-border: rgba(255, 255, 255, 0.06);
-
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.6);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.7);
-}
-
-[data-theme='golden-premium'] {
-  --bg: #1c1815;
-  --bg-elevated: #28211c;
-  --bg-sunken: #14110e;
-  --panel: #28211c;
-  --panel-hover: #332922;
-  --border: #332922;
-  --border-strong: rgba(212, 175, 55, 0.24);
-
-  --fg: #f5eedc;
-  --fg-muted: #c9bc9e;
-  --fg-faint: #988c75;
-  --text-primary: #f5eedc;
-  --text-secondary: #c9bc9e;
-  --text-tertiary: #988c75;
-  --text-quaternary: #736754;
-
-  --accent: #d4af37;
-  --accent-strong: #ffd700;
-  --accent-on: #1c1815;
-  --accent-soft: rgba(212, 175, 55, 0.14);
-  --accent-faint: rgba(212, 175, 55, 0.08);
-  --accent-border: rgba(212, 175, 55, 0.36);
-  --accent-ring: rgba(212, 175, 55, 0.2);
-  --accent-bg-soft: rgba(212, 175, 55, 0.1);
-  --accent-border-soft: rgba(212, 175, 55, 0.24);
-
-  --surface-modal: #28211c;
-  --surface-card-default: #231c18;
-  --surface-card-default-strong: #332922;
-  --surface-card-selected: rgba(212, 175, 55, 0.1);
-  --border-subtle: #332922;
-  --border-accent: rgba(212, 175, 55, 0.36);
-
-  --status-working: #4ade80;
-  --status-working-soft: rgba(74, 222, 128, 0.16);
-  --status-waiting: #facc15;
-  --status-waiting-soft: rgba(250, 204, 21, 0.16);
-  --status-stopped: #988c75;
-  --status-stopped-soft: rgba(152, 140, 117, 0.14);
-  --status-disabled: #544a3e;
-  --status-offline: #f87171;
-  --status-offline-soft: rgba(248, 113, 113, 0.16);
-
-  --agent-shell: #4ade80;
-  --agent-claude: #f97316;
-  --agent-codex: #38bdf8;
-  --agent-opencode: #c084fc;
-  --agent-shell-soft: rgba(74, 222, 128, 0.14);
-  --agent-claude-soft: rgba(249, 115, 22, 0.15);
-  --agent-codex-soft: rgba(56, 189, 248, 0.15);
-  --agent-opencode-soft: rgba(192, 132, 252, 0.15);
-
-  --focus-ring: #d4af37;
-  --shape-tabs-lane-bg: #14110e;
-  --shape-tabs-lane-border: rgba(245, 238, 220, 0.06);
-
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.55);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.65);
 }
 
 [data-theme='elite-pure-black'] {

@@ -1,31 +1,82 @@
-export type AgentType =
-  'shell' | 'claude' | 'codex' | 'copilot' | 'opencode' | 'freebuff' | 'mimo' | 'antigravity'
+/** Agent providers that ship with the app; their data lives in this file. */
+export type BuiltinAgentType =
+  | 'shell'
+  | 'wsl'
+  | 'claude'
+  | 'codex'
+  | 'copilot'
+  | 'cursor'
+  | 'opencode'
+  | 'freebuff'
+  | 'mimo'
+  | 'antigravity'
+  | 'kiro'
+  | 'kimi'
+  | 'grok'
+  | 'codewhale'
 
-export const AGENT_TYPE_LABELS: Record<AgentType, string> = {
+/**
+ * An agent type id. Open on purpose: plugins contribute agent providers at
+ * runtime, so an unknown string here is a contributed provider, not a bug. Use
+ * `isBuiltinAgentType` or the resolvers in `agentProviders.ts` before assuming
+ * an id resolves.
+ */
+export type AgentType = BuiltinAgentType | (string & {})
+
+export const AGENT_TYPE_LABELS: Record<BuiltinAgentType, string> = {
   claude: 'Claude Code',
   codex: 'Codex',
   copilot: 'GitHub Copilot',
+  cursor: 'Cursor',
   antigravity: 'Antigravity',
   opencode: 'OpenCode',
   mimo: 'Mimo',
   freebuff: 'Freebuff',
+  kiro: 'Kiro CLI',
+  kimi: 'Kimi Code',
+  grok: 'Grok Build',
+  codewhale: 'Codewhale',
   shell: 'Shell',
+  wsl: 'WSL',
 }
 
-export const ALL_AGENT_TYPES: AgentType[] = [
+export const ALL_AGENT_TYPES: BuiltinAgentType[] = [
   'claude',
   'codex',
   'copilot',
+  'cursor',
   'antigravity',
   'opencode',
   'mimo',
   'freebuff',
+  'kiro',
+  'kimi',
+  'grok',
+  'codewhale',
   'shell',
+  'wsl',
 ]
 
+/** Types that open a plain shell — no agent CLI session semantics. */
+export function isShellAgentType(agent: AgentType): boolean {
+  return agent === 'shell' || agent === 'wsl'
+}
+
+/** Built-in CLI binary, when it differs from the agent id. */
+const BUILTIN_CLI_COMMANDS: Partial<Record<BuiltinAgentType, string | null>> = {
+  shell: null,
+  wsl: 'wsl.exe',
+  antigravity: 'agy',
+  cursor: 'cursor-agent',
+  kiro: 'kiro-cli',
+}
+
+/** Built-ins only. Use `resolveAgentCliCommand` to also reach contributed providers. */
 export function agentCliCommand(agent: AgentType): string | undefined {
-  if (agent === 'shell') return undefined
-  return agent === 'antigravity' ? 'agy' : agent
+  if (!(agent in AGENT_TYPE_LABELS)) return undefined
+  const mapped = BUILTIN_CLI_COMMANDS[agent as BuiltinAgentType]
+  if (mapped === null) return undefined
+  return mapped ?? agent
 }
 
 export type Locale = 'en' | 'pt-BR'
@@ -56,7 +107,8 @@ export type GridLayoutHistoryEntry = {
   layout: GridLayout
 }
 
-export type Theme =
+/** Themes whose token blocks live in `src/styles/theme.css`. */
+export type BuiltinTheme =
   | 'dark'
   | 'light'
   | 'dracula'
@@ -67,14 +119,19 @@ export type Theme =
   | 'vscode'
   | 'min-dark'
   | 'min-light'
-  | 'dark-lemon'
-  | 'orca'
-  | 'ember'
-  | 'golden-premium'
   | 'elite-original'
   | 'elite-pure-black'
   | 'elite-indigo'
   | 'elite-blush'
+  | 'catppuccin-frappe'
+  | 'gruvbox-material'
+
+/**
+ * A theme id. Open on purpose: plugins contribute themes at runtime, so an
+ * unknown string here is a plugin theme, not a bug. Use `isBuiltinTheme` or the
+ * theme registry before assuming an id resolves.
+ */
+export type Theme = BuiltinTheme | (string & {})
 
 /** Native desktop icon variants. The UI theme and app icon theme are independent. */
 export type AppIconTheme = 'elite-original' | 'elite-pure-black' | 'elite-indigo' | 'elite-blush'
@@ -83,8 +140,11 @@ export type VisualStyle = 'normal' | 'clean'
 
 export type MotionPreference = 'animated' | 'reduced'
 
-export type FeatureId =
-  'todos' | 'git' | 'browser' | 'aiMemory' | 'mcp' | 'playwright' | 'orchestrator'
+export type SetupWalkthroughStep = 'project' | 'appearance'
+
+export const SETUP_WALKTHROUGH_STEPS: SetupWalkthroughStep[] = ['project', 'appearance']
+
+export type FeatureId = 'browser' | 'aiMemory' | 'mcp' | 'playwright' | 'orchestrator' | 'prs'
 
 export type TodoItem = {
   id: string
@@ -93,6 +153,28 @@ export type TodoItem = {
   tags: string[]
 
   projectId?: string
+
+  /** Set when this todo was created from a GitHub PR via the Open PRs tab. */
+  prUrl?: string
+  prNumber?: number
+  /** "owner/name". */
+  prRepo?: string
+}
+
+export type PomodoroPhase = 'idle' | 'work' | 'shortBreak' | 'longBreak'
+export type PomodoroStatus = 'idle' | 'running' | 'paused' | 'finished'
+
+/** Durable snapshot mirrored from `pomodoroStore` into `preferences` so a running
+ *  session survives an app restart (see `src/stores/pomodoroStore.ts`). */
+export type PomodoroSessionSnapshot = {
+  phase: PomodoroPhase
+  status: PomodoroStatus
+  /** Epoch ms when the current phase ends. Null when idle or paused. */
+  endsAt: number | null
+  /** Frozen remaining time, set only while paused. */
+  remainingMsAtPause: number | null
+  cyclesCompleted: number
+  focusTodoId: string | null
 }
 
 export type SubTab = {
@@ -117,14 +199,16 @@ export type SubTab = {
 
   runtimeProfile?: AgentRuntimeProfile
   /**
-   * `true` só na criação da tab, consumido (limpo) no primeiro spawn.
-   * Impede o fallback de "reivindicar a conversa OpenCode mais recente
-   * ainda não pega nesse cwd" (pensado pra recuperar depois de reiniciar o
-   * app, quando o localStorage se perde) de herdar sem querer uma sessão
-   * antiga de OUTRO projeto/uso anterior da mesma pasta, num terminal
-   * genuinamente novo que nunca rodou antes.
+   * Set only when the tab is created and cleared on the first spawn. Keeps the
+   * "claim the most recent unclaimed OpenCode conversation for this cwd" fallback
+   * (meant to recover after an app restart, when persisted state is gone) from
+   * inheriting an old session from another project that used the same folder, in
+   * a genuinely new terminal that never ran before.
    */
   skipSessionClaim?: boolean
+
+  /** Route this agent's API traffic through the local 9router proxy. */
+  useRouter9?: boolean
 }
 
 export type AgentHandoffBootstrap = {
@@ -137,22 +221,28 @@ export type AgentHandoffBootstrap = {
 
 export type AgentRuntimeProfile = 'full' | 'lean' | 'diagnostic'
 
-/** Flag de "modo irrestrito" por agente (skip permissions / approvals). */
-
-/** Flag de "modo irrestrito" por agente (skip permissions / approvals). */
-export const UNRESTRICTED_FLAG: Record<AgentType, string | null> = {
+/** Unrestricted-mode flag per agent (skip permissions / approvals). */
+export const UNRESTRICTED_FLAG: Record<BuiltinAgentType, string | null> = {
   shell: null,
+  wsl: null,
   claude: '--dangerously-skip-permissions',
   codex: '--dangerously-bypass-approvals-and-sandbox',
   copilot: '--allow-all',
+  cursor: '--force',
   opencode: '--dangerously-skip-permissions',
 
   freebuff: null,
   mimo: null,
   antigravity: '--dangerously-skip-permissions',
+  kiro: '--trust-all-tools',
+  kimi: '--yolo',
+  grok: '--yolo',
+  // Codewhale Full Access is a TUI posture (Shift+Tab / /config), not a launch flag.
+  codewhale: null,
 }
 
-export type PaneKind = 'terminal' | 'markdown' | 'file' | 'image' | 'video' | 'web' | 'diff'
+export type PaneKind =
+  'terminal' | 'markdown' | 'file' | 'image' | 'video' | 'web' | 'diff' | 'orchestrator' | 'plugin'
 
 export type BrowserResourceMode = 'app-first' | 'balanced' | 'keep-alive'
 
@@ -184,6 +274,7 @@ export type BrowserPaneOptions = BrowserPaneConfig & {
 }
 
 export type Terminal = {
+  gridId?: string
   id: string
   name: string
   cwd: string
@@ -203,6 +294,9 @@ export type Terminal = {
   url?: string
   /** Runtime settings for a private native browser pane. */
   browserConfig?: BrowserPaneConfig
+
+  /** The plugin this pane shows the profile of, on a `plugin` pane. */
+  pluginId?: string
 
   worktreeAgentId?: string
 
@@ -224,13 +318,17 @@ export type Terminal = {
    * Merge Center while the review/test session was open.
    */
   ephemeralUtility?: boolean
-  /** Hides this terminal and its output from every paired remote device. */
+  /** @deprecated Migration-only. Superseded by `remoteShared` (opt-in). */
   remoteExcluded?: boolean
+  /** Exposes this terminal and its output to paired remote devices. Off by default. */
+  remoteShared?: boolean
 }
 
 export type PaneGroup = {
   id: string
   paneIds: string[]
+  /** Dedicated groups keep related panes together without changing the project's outer layout. */
+  kind?: 'orchestration'
 }
 
 /** Outcome of migrating a project's existing terminals into isolated worktrees.
@@ -253,7 +351,18 @@ export type OrphanWorktree = {
   adminLockReason?: string
 }
 
+export type ProjectGrid = {
+  id: string
+  name: string
+  collapsed: boolean
+  layoutMode: LayoutMode
+  gridLayout?: GridLayout
+  gridLayoutHistory?: GridLayoutHistoryEntry[]
+}
+
 export type Project = {
+  grids?: ProjectGrid[]
+  activeGridId?: string
   id: string
   name: string
   /** Determines which workspace opens when the project is selected. */
@@ -278,6 +387,8 @@ export type Project = {
   collapsed: boolean
   /** Hidden from the sidebar until restored from Preferences. */
   archived?: boolean
+  /** Kept out of the sidebar until hidden projects are revealed for the session. */
+  hidden?: boolean
   createdAt: number
   // --- RFC-009 / RFC-003 — Multi-Agent settings ---
   worktreeMode?: 'gitWorktree' | 'localCopy'
@@ -342,6 +453,8 @@ export type Group = {
 }
 
 export type WorkspaceContainer = {
+  /** Present for a project grid; absent for explicitly composed pane selections. */
+  gridId?: string
   projectId: string
 
   paneIds: string[]
@@ -401,7 +514,33 @@ export type TerminalCreationPreset = {
     cwd: string
     extraArgs?: string[]
     runtimeProfile?: AgentRuntimeProfile
+    useRouter9?: boolean
   }
+}
+
+export const ROUTER9_DEFAULT_PORT = 20128
+
+/** Which 9router install Alethe runs: the one it manages, or one the user installed themselves. */
+export type Router9Source = 'managed' | 'external'
+
+/** Local 9router proxy. Opt-in and off by default — nothing is installed or started implicitly. */
+export type Router9Preferences = {
+  enabled: boolean
+  autoStart: boolean
+  source: Router9Source
+  port: number
+  /** Endpoint key issued by the 9router dashboard. Stored in plaintext, like the Spotify secret. */
+  apiKey: string
+  defaultForNewAgents: boolean
+}
+
+export const DEFAULT_ROUTER9_PREFERENCES: Router9Preferences = {
+  enabled: false,
+  autoStart: false,
+  source: 'managed',
+  port: ROUTER9_DEFAULT_PORT,
+  apiKey: '',
+  defaultForNewAgents: false,
 }
 
 export type Preferences = {
@@ -448,13 +587,20 @@ export type Preferences = {
 
   topbarStyle: 'classic' | 'three-areas'
   /** Local do controle Git: sidebar esquerda ou direita. */
-  gitControlPlacement: 'left' | 'right'
+  /** @deprecated Migrated into `viewPlacements.git`. Read only by the migration. */
+  gitControlPlacement?: 'left' | 'right'
+  /** Sidebar a contributed view sits in, overriding the container its manifest declares. */
+  viewPlacements: Record<string, 'left' | 'right'>
 
   /** Credenciais locais do Spotify Developer Dashboard para Now Playing. */
   spotifyClientId: string
   spotifyClientSecret: string
   /** Exibe a atividade atual do Alethe no perfil do Discord. */
   discordRichPresenceEnabled: boolean
+  /** Usage cards shown in the AI usage details modal and the home usage strip. */
+  usageShowClaude: boolean
+  usageShowCodex: boolean
+  usageShowAntigravity: boolean
   /** Itens opcionais exibidos no canto direito da topbar. */
   topbarShowClaudeUsage: boolean
   topbarShowCodexUsage: boolean
@@ -462,6 +608,8 @@ export type Preferences = {
   topbarShowSync: boolean
   topbarShowProfile: boolean
   topbarShowMemory: boolean
+  /** Status pill for the local 9router proxy, with a one-click stop. */
+  topbarShowRouter9: boolean
   /** Starts the LAN remote listener on launch. Off until the user opts in. */
   remoteEnabled: boolean
   /** Maximum number of authenticated LAN remote devices. Default 1. */
@@ -472,14 +620,25 @@ export type Preferences = {
   remoteReadOnly: boolean
   /** Allows remote input on plain shell tabs, not only agent tabs. Default false. */
   remoteAllowShellInput: boolean
+  /** Binds the remote listener to the machine's Tailscale address instead of the LAN. Default false. */
+  remoteUseTailscale: boolean
 
   enabledFeatures: Record<FeatureId, boolean>
-  /** Folder configured as the base location for the global Todo list. */
+  /** Playwright MCP: attach to the shared/pane browser, or launch its own. */
+  playwrightBrowserMode: 'shared' | 'dedicated'
+  /** Only used when playwrightBrowserMode is 'dedicated'. */
+  playwrightDedicatedHeadless: boolean
+  /** Legacy: the Todo List plugin owns this now. Read by its migration only. */
   todoStoragePath: string
   /** Scope the MCP panel opens on. */
   mcpDefaultScope: McpScope
   /** True once the MCP setup prompt has been shown or dismissed. */
   mcpOnboardingSeen: boolean
+
+  /** Home checklist that continues the setup after onboarding hands over the app. */
+  setupWalkthrough: Record<SetupWalkthroughStep, boolean>
+  /** True once the user dismisses the Home checklist by hand. */
+  setupWalkthroughHidden: boolean
 
   leftSidebarVisible: boolean
   rightSidebarVisible: boolean
@@ -501,6 +660,8 @@ export type Preferences = {
   dictationMicrophoneId: string | null
   /** Cached microphone label when the preferred device is unplugged. */
   dictationMicrophoneLabel: string | null
+  /** Decisions API key for voice commands. Empty disables the command bar. */
+  voiceCommandApiKey: string
   /** How many PTYs may spawn in parallel (global queue). Default 3. */
   spawnConcurrency: number
 
@@ -516,6 +677,15 @@ export type Preferences = {
    * Injeta --max-old-space-size e UV_THREADPOOL_SIZE no ambiente do PTY.
    */
   nodeHeapProfile?: 'conservative' | 'balanced' | 'performance'
+
+  router9?: Router9Preferences
+
+  /** Pomodoro cycle durations, in minutes. */
+  pomodoroWorkMinutes: number
+  pomodoroShortBreakMinutes: number
+  pomodoroLongBreakMinutes: number
+  /** Mirrors `pomodoroStore`'s running session so it survives an app restart. */
+  pomodoroSession: PomodoroSessionSnapshot | null
 }
 
 export type ResourcePolicyMode = 'smart-lru' | 'manual'
@@ -533,12 +703,16 @@ export type ResourcePolicyPreferences = {
 }
 
 export type ProjectsFile = {
-  version: 7
+  version: 9
   groups: Group[]
 
   ungroupedOrder: string[]
   projects: Project[]
 
+  /**
+   * Owned by the Todo List plugin now, and read only by its one-time
+   * migration. Kept persisted so removing the plugin cannot lose the list.
+   */
   todos: TodoItem[]
   activeProjectId: string | null
 
@@ -573,13 +747,19 @@ export const DEFAULT_PREFERENCES: Preferences = {
   terminalTheme: null,
   enabledAgents: {
     shell: true,
+    wsl: true,
     claude: true,
     codex: true,
     copilot: true,
+    cursor: true,
     antigravity: true,
     opencode: true,
     freebuff: true,
     mimo: true,
+    kiro: true,
+    kimi: true,
+    grok: true,
+    codewhale: true,
   },
   onboardingDone: false,
   workspaceFlat: false,
@@ -594,33 +774,41 @@ export const DEFAULT_PREFERENCES: Preferences = {
   alwaysStartUnrestricted: false,
   lastTerminalCreation: null,
   topbarStyle: 'classic',
-  gitControlPlacement: 'left',
+  viewPlacements: {},
   spotifyClientId: '',
   spotifyClientSecret: '',
   discordRichPresenceEnabled: false,
+  usageShowClaude: true,
+  usageShowCodex: true,
+  usageShowAntigravity: true,
   topbarShowClaudeUsage: true,
   topbarShowCodexUsage: true,
   topbarShowAntigravityUsage: true,
   topbarShowSync: true,
   topbarShowProfile: true,
   topbarShowMemory: true,
+  topbarShowRouter9: false,
   remoteEnabled: false,
   remoteMaxDevices: 1,
   remoteSessionExpirySecs: 3600,
   remoteReadOnly: true,
   remoteAllowShellInput: false,
+  remoteUseTailscale: false,
   enabledFeatures: {
-    todos: true,
-    git: true,
     browser: true,
     aiMemory: false,
     mcp: true,
     playwright: false,
     orchestrator: false,
+    prs: true,
   },
+  playwrightBrowserMode: 'shared',
+  playwrightDedicatedHeadless: false,
   todoStoragePath: '',
   mcpDefaultScope: 'global',
   mcpOnboardingSeen: false,
+  setupWalkthrough: { project: false, appearance: false },
+  setupWalkthroughHidden: false,
   leftSidebarVisible: true,
   rightSidebarVisible: true,
   leftSidebarWidth: 286,
@@ -631,6 +819,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   dictationModelId: 'parakeet-tdt-0.6b-v3-int8',
   dictationMicrophoneId: null,
   dictationMicrophoneLabel: null,
+  voiceCommandApiKey: '',
   spawnConcurrency: 3,
   resourcePolicy: {
     mode: 'manual',
@@ -643,10 +832,14 @@ export const DEFAULT_PREFERENCES: Preferences = {
     spawnGraceSeconds: 120,
   },
   nodeHeapProfile: 'balanced',
+  pomodoroWorkMinutes: 25,
+  pomodoroShortBreakMinutes: 5,
+  pomodoroLongBreakMinutes: 15,
+  pomodoroSession: null,
 }
 
 export const EMPTY_PROJECTS_FILE: ProjectsFile = {
-  version: 7,
+  version: 9,
   groups: [],
   ungroupedOrder: [],
   projects: [],
@@ -681,7 +874,7 @@ export const GROUP_COLORS = [
   '#10b981',
 ] as const
 
-export const PROVIDER_MODELS: Record<AgentType, { id: string; label: string }[]> = {
+export const PROVIDER_MODELS: Record<BuiltinAgentType, { id: string; label: string }[]> = {
   // Kept in sync with the `"claude"` fallback list in `src-tauri/src/cli_resolver.rs` — this one
   // is used when the backend discovery call itself fails, that one when it succeeds but the CLI
   // reports nothing (which is always, since the Claude CLI has no `models` subcommand).
@@ -698,6 +891,9 @@ export const PROVIDER_MODELS: Record<AgentType, { id: string; label: string }[]>
     { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
   ],
   copilot: [],
+  // Cursor rotates its model list per account and answers `cursor-agent models`, so nothing is
+  // hardcoded here — discovery fills the picker.
+  cursor: [],
   opencode: [
     { id: 'deepseek/deepseek-r1', label: 'DeepSeek R1 (Raciocínio)' },
     { id: 'deepseek/deepseek-chat', label: 'DeepSeek V3' },
@@ -714,14 +910,41 @@ export const PROVIDER_MODELS: Record<AgentType, { id: string; label: string }[]>
     { id: 'mimo-flash', label: 'Mimo Flash' },
   ],
   freebuff: [{ id: 'freebuff-auto', label: 'Freebuff Auto' }],
+  kiro: [
+    { id: 'claude-sonnet-4.5', label: 'Claude Sonnet 4.5 (Padrão)' },
+    { id: 'claude-haiku-4.5', label: 'Claude Haiku 4.5' },
+  ],
+  // Kimi Code uses the account default model established at login, so nothing is
+  // hardcoded here — the same rationale as `cursor`.
+  kimi: [],
+  // Grok Build and Codewhale expose live model lists via their CLIs; discovery fills the picker.
+  grok: [],
+  codewhale: [],
   shell: [{ id: 'default', label: 'Shell Padrão' }],
+  wsl: [{ id: 'default', label: 'WSL' }],
 }
 
 export type McpScope = 'global' | 'project'
 
-export type McpAgent = Extract<AgentType, 'claude' | 'codex' | 'opencode' | 'antigravity'>
+export type McpAgent = Extract<
+  BuiltinAgentType,
+  'claude' | 'codex' | 'cursor' | 'opencode' | 'antigravity' | 'kimi'
+>
 
-export const MCP_AGENTS: McpAgent[] = ['claude', 'codex', 'opencode', 'antigravity']
+export const MCP_AGENTS: McpAgent[] = [
+  'claude',
+  'codex',
+  'cursor',
+  'opencode',
+  'antigravity',
+  'kimi',
+]
+
+/**
+ * Agents whose CLI can report how each configured server is actually doing. The others only have
+ * their config file read back, so the panel has no live status to offer for them.
+ */
+export const MCP_HEALTH_AGENTS: McpAgent[] = ['claude', 'codex', 'opencode']
 
 /** Literal values never leave Rust: `preview` is masked, use mcpRevealEnv for the real one. */
 export type McpEnvEntry = {

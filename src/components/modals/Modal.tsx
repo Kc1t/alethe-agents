@@ -14,6 +14,9 @@ type Props = {
   width?: number
   /** Set when this modal is opened from inside another one, so it layers above it. */
   nested?: boolean
+  className?: string
+  /** Optional control rendered in the header between the title and the close button. */
+  headerAction?: ReactNode
 }
 
 export function Modal({
@@ -24,6 +27,8 @@ export function Modal({
   footer,
   width = 440,
   nested = false,
+  className,
+  headerAction,
 }: Props) {
   const t = useT()
   return (
@@ -32,7 +37,7 @@ export function Modal({
         <Dialog.Overlay className={`${styles.overlay} ${nested ? styles.overlayNested : ''}`} />
         <Dialog.Content
           data-alethe-modal-content=""
-          className={`${styles.content} ${nested ? styles.contentNested : ''}`}
+          className={`${styles.content} ${nested ? styles.contentNested : ''} ${className ?? ''}`}
           style={{ width }}
           aria-describedby={undefined}
           onInteractOutside={(event) => {
@@ -53,11 +58,14 @@ export function Modal({
         >
           <header className={styles.header}>
             <Dialog.Title className={styles.title}>{title}</Dialog.Title>
-            <Dialog.Close asChild>
-              <button type="button" aria-label={t('common.close')} className={styles.close}>
-                <X size={16} />
-              </button>
-            </Dialog.Close>
+            <div className={styles.headerActions}>
+              {headerAction}
+              <Dialog.Close asChild>
+                <button type="button" aria-label={t('common.close')} className={styles.close}>
+                  <X size={16} />
+                </button>
+              </Dialog.Close>
+            </div>
           </header>
           <div className={styles.body}>{children}</div>
           {footer ? <footer className={styles.footer}>{footer}</footer> : null}

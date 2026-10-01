@@ -1,4 +1,4 @@
-import { Check, Cloud, MemoryStick, UserRound } from 'lucide-react'
+import { Check, Cloud, MemoryStick, UserRound, Waypoints } from 'lucide-react'
 
 import { useT } from '../../lib/i18n'
 import type { Preferences } from '../../lib/types'
@@ -16,6 +16,7 @@ type ToggleKey = keyof Pick<
   | 'topbarShowSync'
   | 'topbarShowProfile'
   | 'topbarShowMemory'
+  | 'topbarShowRouter9'
 >
 
 export function TopbarSettingsModal() {
@@ -50,6 +51,11 @@ export function TopbarSettingsModal() {
       key: 'topbarShowMemory',
       label: t('ui.titlebar.itemMemory'),
       icon: <MemoryStick size={18} />,
+    },
+    {
+      key: 'topbarShowRouter9',
+      label: t('ui.titlebar.itemRouter9'),
+      icon: <Waypoints size={18} />,
     },
   ]
 

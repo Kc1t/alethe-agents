@@ -1,0 +1,33 @@
+{
+  "id": "example.notes",
+  "name": "Scratch Notes",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "kind": "ui",
+  "description": "A scratchpad in the left sidebar. Demonstrates translated strings and a command.",
+  "entry": "main.js",
+  "styles": "styles.css",
+  "capabilities": ["ui.sidebarTab", "ui.command"],
+  "activation": ["onView:example.notes.panel", "onCommand:example.notes.add"],
+  "contributes": {
+    "views": [
+      {
+        "id": "example.notes.panel",
+        "container": "leftSidebar",
+        "title": "Notes",
+        "titleKey": "plugin.example.notes.title",
+        "icon": "file-text",
+        "order": 20
+      }
+    ],
+    "commands": [
+      {
+        "id": "example.notes.add",
+        "title": "Notes: add a note",
+        "titleKey": "plugin.example.notes.addCommand",
+        "icon": "file-text",
+        "keywords": "note notes scratch anotacao anotar"
+      }
+    ]
+  }
+}

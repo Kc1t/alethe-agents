@@ -1,5 +1,5 @@
 import { open as openFileDialog } from '@tauri-apps/plugin-dialog'
-import { FileText, Globe2 } from 'lucide-react'
+import { FileText, Globe2, Workflow } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { useT } from '../../lib/i18n'
@@ -24,6 +24,13 @@ export function AddContentModal() {
   })
   const createFilePane = useProjectsStore((state) => state.createFilePane)
   const browserEnabled = useProjectsStore((state) => state.preferences.enabledFeatures.browser)
+  const orchestratorEnabled = useProjectsStore(
+    (state) => state.preferences.enabledFeatures.orchestrator,
+  )
+  const createOrchestratorPane = useProjectsStore((state) => state.createOrchestratorPane)
+  const projectCwd = useProjectsStore(
+    (state) => state.projects.find((project) => project.id === projectId)?.defaultCwd ?? '',
+  )
   const [kind, setKind] = useState<AddKind>(null)
 
   useEffect(() => {
@@ -44,6 +51,13 @@ export function AddContentModal() {
       return
     }
     createFilePane(projectId, { filePath: selected })
+    useUiStore.getState().setActiveView('workspace')
+    closeModal()
+  }
+
+  const openOrchestrator = () => {
+    if (!projectId) return
+    createOrchestratorPane(projectId, projectCwd)
     useUiStore.getState().setActiveView('workspace')
     closeModal()
   }
@@ -91,6 +105,22 @@ export function AddContentModal() {
             <span>
               <strong>{t('addContent.website')}</strong>
               <small>{t('addContent.websiteDescription')}</small>
+            </span>
+          </button>
+        ) : null}
+        {orchestratorEnabled ? (
+          <button
+            type="button"
+            className={styles.option}
+            onClick={openOrchestrator}
+            disabled={!projectId}
+          >
+            <span className={styles.optionIcon}>
+              <Workflow size={20} />
+            </span>
+            <span>
+              <strong>{t('addContent.orchestrator')}</strong>
+              <small>{t('addContent.orchestratorDescription')}</small>
             </span>
           </button>
         ) : null}

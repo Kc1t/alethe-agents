@@ -1,6 +1,6 @@
 [package]
 name = "alethe"
-version = "1.6.0"
+version = "1.7.0"
 description = "Alethe — terminal multiplexer GUI"
 authors = ["Kauã Miguel"]
 license = "AGPL-3.0-or-later"
@@ -62,6 +62,7 @@ futures-util = "0.3"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 which = "6"
 zip = "0.6"
+sha2 = "0.10"
 sysinfo = "0.31"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 hex = "0.4"
@@ -81,7 +82,6 @@ ed25519-dalek = { version = "2", features = ["rand_core"] }
 # with ed25519-dalek above so no duplicate curve implementation is pulled in.
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
-sha2 = "0.10"
 # RS256 verification of Google ID tokens against Google's published JWKS (ADR account
 # routing depends on a locally verified `sub` claim; see sync_mesh.rs).
 jsonwebtoken = "9"
@@ -151,6 +151,10 @@ keyring = { version = "3", default-features = false, features = ["sync-secret-se
 # Match the webkit2gtk version Tauri already pulls so we can enable media-stream
 # and answer permission-request for getUserMedia (voice dictation).
 webkit2gtk = { version = "2.0.1", features = ["v2_40"] }
+
+# kill(2) on a process group (pty::kill_process_tree). Already in the tree through tokio.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 # Em dev, unwind permite que um panic de comando vire Err em vez de derrubar o
 # app inteiro durante uma sessão de HMR. Release segue abort (binário menor).

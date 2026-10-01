@@ -1,3 +1,4 @@
+import { gridTerminals } from '../../lib/projectGrids'
 import {
   DndContext,
   type DragEndEvent,
@@ -89,7 +90,7 @@ function DesignerInner({ context, onClose }: { context: Context; onClose: () => 
     if (context.kind === 'project' && project) {
       return [
         t('mod.layoutTitleProject', { name: project.name }),
-        project.terminals.map((term) => ({
+        gridTerminals(project).map((term) => ({
           id: term.id,
           label: term.name,
           color: project.color,

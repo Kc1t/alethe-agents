@@ -90,3 +90,7 @@ export async function notifyLimitReset(
 export async function notifyCollaborationEvent(title: string, body: string): Promise<void> {
   return deliver(title, body)
 }
+
+export async function notifyPomodoro(title: string, body: string): Promise<void> {
+  return deliver(title, body)
+}

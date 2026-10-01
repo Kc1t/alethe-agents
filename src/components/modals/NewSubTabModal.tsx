@@ -2,10 +2,15 @@ import { Folder, FolderCheck, Zap } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { useAgentCreationForm } from '../../hooks/useAgentCreationForm'
-import { SHELL_FIRST_AGENT_OPTIONS, unrestrictedArgsForAgent } from '../../lib/agentCreation'
 import { pickDirectory } from '../../lib/dialog'
+import {
+  agentLabel,
+  isAgentEnabled,
+  resolveUnrestrictedFlag,
+  useAgentTypes,
+} from '../../lib/agentProviders'
 import { useT } from '../../lib/i18n'
-import { UNRESTRICTED_FLAG } from '../../lib/types'
+import { isShellAgentType } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AgentIcon } from '../icons/AgentIcons'
@@ -44,7 +49,9 @@ export function NewSubTabModal() {
     unrestricted,
   } = useAgentCreationForm('shell')
 
-  const visibleAgents = SHELL_FIRST_AGENT_OPTIONS.filter((agent) => enabled[agent.type])
+  const visibleAgents = useAgentTypes()
+    .filter((type) => isAgentEnabled(enabled, type))
+    .map((type) => ({ type, label: agentLabel(type) }))
   const inheritedCwd = useMemo(() => {
     const activeTab =
       terminal?.tabs.find((item) => item.id === terminal.activeTabId) ?? terminal?.tabs[0]
@@ -63,7 +70,8 @@ export function NewSubTabModal() {
 
   const submit = () => {
     if (!context?.projectId || !context?.terminalId) return
-    const extraArgs = unrestrictedArgsForAgent(type, unrestricted)
+    const flag = resolveUnrestrictedFlag(type)
+    const extraArgs = unrestricted[type] && flag ? [flag] : undefined
     createSubTab(context.projectId, context.terminalId, {
       type,
       cwd: cwd.trim() || inheritedCwd,
@@ -120,7 +128,7 @@ export function NewSubTabModal() {
                 </span>
                 <span className={picker.rowLabel}>{a.label}</span>
                 <span className={picker.rowEnd}>
-                  {UNRESTRICTED_FLAG[a.type] ? (
+                  {resolveUnrestrictedFlag(a.type) ? (
                     <button
                       type="button"
                       className={`${picker.cwdBtn} ${unrestricted[a.type] ? picker.boltActive : ''}`}
@@ -131,7 +139,9 @@ export function NewSubTabModal() {
                       }}
                       title={
                         unrestricted[a.type]
-                          ? t('term.unrestrictedActive', { flag: UNRESTRICTED_FLAG[a.type] ?? '' })
+                          ? t('term.unrestrictedActive', {
+                              flag: resolveUnrestrictedFlag(a.type) ?? '',
+                            })
                           : t('term.unrestrictedEnable')
                       }
                       aria-label={t('term.unrestricted')}
@@ -164,12 +174,14 @@ export function NewSubTabModal() {
           })}
         </div>
       </div>
-      <RuntimeProfileField
-        agentType={type}
-        value={runtimeProfile}
-        onChange={setRuntimeProfile}
-        showOpenCodeNote
-      />
+      {!isShellAgentType(type) ? (
+        <RuntimeProfileField
+          agentType={type}
+          value={runtimeProfile}
+          onChange={setRuntimeProfile}
+          showOpenCodeNote
+        />
+      ) : null}
       <div className={controls.field}>
         <label className={controls.label}>{t('term.folderCwd')}</label>
         <div className={controls.cwdRow}>

@@ -59,6 +59,10 @@ export const AGENT_INSTALL_CATALOG: Partial<Record<AgentType, AgentInstallCatalo
       { id: 'npm', command: 'npm install -g @github/copilot', requires: 'npm' },
     ],
   },
+  cursor: {
+    docsUrl: 'https://cursor.com/docs/cli/installation',
+    methods: [{ id: 'native', command: "irm 'https://cursor.com/install?win32=true' | iex" }],
+  },
   antigravity: {
     docsUrl: 'https://antigravity.google/docs/cli/install',
     methods: [{ id: 'native', command: 'irm https://antigravity.google/cli/install.ps1 | iex' }],
@@ -81,6 +85,25 @@ export const AGENT_INSTALL_CATALOG: Partial<Record<AgentType, AgentInstallCatalo
       { id: 'scoop', command: 'scoop install opencode', requires: 'scoop' },
       { id: 'choco', command: 'choco install opencode', requires: 'choco' },
     ],
+  },
+  kiro: {
+    docsUrl: 'https://kiro.dev/cli/',
+    methods: [{ id: 'native', command: "irm 'https://cli.kiro.dev/install.ps1' | iex" }],
+  },
+  kimi: {
+    docsUrl: 'https://www.kimi.com/code/docs/en/kimi-code-cli/guides/getting-started.html',
+    methods: [{ id: 'npm', command: 'npm install -g @moonshot-ai/kimi-code', requires: 'npm' }],
+  },
+  grok: {
+    docsUrl: 'https://docs.x.ai/build/overview',
+    methods: [
+      { id: 'native', command: 'irm https://x.ai/cli/install.ps1 | iex' },
+      { id: 'npm', command: 'npm install -g @xai-official/grok', requires: 'npm' },
+    ],
+  },
+  codewhale: {
+    docsUrl: 'https://codewhale.net/en',
+    methods: [{ id: 'npm', command: 'npm install -g codewhale', requires: 'npm' }],
   },
 }
 
@@ -169,4 +192,13 @@ export function uninstallMethodsFor(
 /** Line handed to the shell PTY: run the installer, then close the shell. */
 export function installShellLine(command: string): string {
   return `${command}; exit\r`
+}
+
+// eslint-disable-next-line no-control-regex
+const ANSI_PATTERN =
+  /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|[\x00-\x08\x0b\x0c\x0e-\x1f]/g
+
+/** Installer output is raw PTY bytes; strip the escape sequences before rendering it as text. */
+export function stripInstallLogAnsi(log: string): string {
+  return log.replace(ANSI_PATTERN, '')
 }

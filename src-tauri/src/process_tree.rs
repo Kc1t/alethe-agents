@@ -100,10 +100,64 @@ struct PersistedRoot {
     start_time: u64,
 }
 
-/// Caminho fixo, independente de perfil/`AppHandle` — `register_pty_root`/
+/// The instance that wrote the file, so a reader can tell a dead session's leftovers from the live
+/// terminals of an instance that is still running.
+#[derive(Serialize, Deserialize)]
+struct PersistedRoots {
+    owner: PersistedRoot,
+    roots: Vec<PersistedRoot>,
+}
+
+static ROOTS_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Scopes the file to one instance's data directory. A dev build and an installed build must never
+/// share it: the sweep kills whole process trees, so reading another live instance's file wipes out
+/// its terminals. Until this is set there is no path, and both the write and the sweep are skipped.
+pub fn set_roots_file_dir(dir: PathBuf) {
+    let _ = ROOTS_DIR.set(dir);
+}
 
 fn roots_file_path() -> Option<PathBuf> {
-    dirs_next::data_local_dir().map(|d| d.join("Alethe").join("pty_roots.json"))
+    ROOTS_DIR
+        .get()
+        .map(|dir| dir.join(format!("pty_roots-{}.json", std::process::id())))
+}
+
+fn is_roots_registry_name(name: &str) -> bool {
+    name == "pty_roots.json" || (name.starts_with("pty_roots-") && name.ends_with(".json"))
+}
+
+fn roots_files() -> Vec<PathBuf> {
+    let Some(dir) = ROOTS_DIR.get() else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(is_roots_registry_name)
+        })
+        .collect()
+}
+
+fn identify(sys: &System, pid: u32) -> Option<PersistedRoot> {
+    sys.process(Pid::from_u32(pid)).map(|process| PersistedRoot {
+        pid,
+        name: process.name().to_string_lossy().into_owned(),
+        start_time: process.start_time(),
+    })
+}
+
+/// PIDs are recycled, so identity is the triple, never the number alone.
+fn still_running(sys: &System, recorded: &PersistedRoot) -> bool {
+    identify(sys, recorded.pid)
+        .map(|live| live.name == recorded.name && live.start_time == recorded.start_time)
+        .unwrap_or(false)
 }
 
 /// Job Object (`pty::install_kill_on_close_guard`) tenha falhado silenciosamente
@@ -112,20 +166,20 @@ fn persist_roots() {
     let Some(path) = roots_file_path() else {
         return;
     };
-    let snapshot: Vec<PersistedRoot> = {
+    let snapshot = {
         let Ok(guard) = roots().lock() else { return };
         let mut sys = System::new();
         sys.refresh_processes(ProcessesToUpdate::All);
-        guard
-            .values()
-            .filter_map(|&pid| {
-                sys.process(Pid::from_u32(pid)).map(|p| PersistedRoot {
-                    pid,
-                    name: p.name().to_string_lossy().into_owned(),
-                    start_time: p.start_time(),
-                })
-            })
-            .collect()
+        let Some(owner) = identify(&sys, std::process::id()) else {
+            return;
+        };
+        PersistedRoots {
+            owner,
+            roots: guard
+                .values()
+                .filter_map(|&pid| identify(&sys, pid))
+                .collect(),
+        }
     };
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -144,40 +198,51 @@ fn persist_roots() {
 /// falhar silenciosamente, ou qualquer processo que tenha escapado dele).
 
 pub fn sweep_orphans_from_previous_session() -> usize {
-    let Some(path) = roots_file_path() else {
-        return 0;
-    };
-    let Ok(bytes) = std::fs::read(&path) else {
-        return 0;
-    };
-    let _ = std::fs::remove_file(&path);
-    let Ok(persisted) = serde_json::from_slice::<Vec<PersistedRoot>>(&bytes) else {
-        return 0;
-    };
-    if persisted.is_empty() {
-        return 0;
-    }
-
     let mut sys = System::new();
     sys.refresh_processes(ProcessesToUpdate::All);
     let parent_map = get_parent_map();
     let mut killed_roots = 0;
-    for root in persisted {
-        let Some(proc) = sys.process(Pid::from_u32(root.pid)) else {
+    for path in roots_files() {
+        let Ok(bytes) = std::fs::read(&path) else {
             continue;
         };
-        if proc.name().to_string_lossy() != root.name || proc.start_time() != root.start_time {
+        // A malformed registry cannot safely identify process ownership.
+        let Ok(persisted) = serde_json::from_slice::<PersistedRoots>(&bytes) else {
+            let _ = std::fs::remove_file(&path);
+            continue;
+        };
+        // Installed and dev instances can overlap during an update. Each owns a separate registry,
+        // and a live owner's terminals must never be mistaken for another instance's leftovers.
+        if still_running(&sys, &persisted.owner) {
             continue;
         }
-        let mut all = collect_descendants(root.pid, &parent_map);
-        all.reverse();
-        all.push(root.pid);
-        for pid in all {
-            kill_pid(pid);
+
+        let _ = std::fs::remove_file(&path);
+        for root in persisted.roots {
+            if !still_running(&sys, &root) {
+                continue;
+            }
+            let mut all = collect_descendants(root.pid, &parent_map);
+            all.reverse();
+            all.push(root.pid);
+            for pid in all {
+                kill_pid(pid);
+            }
+            killed_roots += 1;
         }
-        killed_roots += 1;
     }
     killed_roots
+}
+
+/// Reaps registries whose owner dies after this instance has already started, which commonly
+/// happens while an installer replaces a running build.
+pub fn start_orphan_sweeper() {
+    let _ = std::thread::Builder::new()
+        .name("alethe-orphan-sweeper".to_string())
+        .spawn(|| loop {
+            std::thread::sleep(Duration::from_secs(30));
+            let _ = sweep_orphans_from_previous_session();
+        });
 }
 
 pub(crate) fn get_pty_tree_for_root(pty_id: &str, root_pid: Option<u32>) -> PtyTreeInfo {
@@ -354,4 +419,17 @@ pub async fn kill_pty_tree_cmd(
     // bloqueante — na thread de despacho do Tauri isso travava TODO comando
     // IPC atrás dele (mesma classe de bug já corrigida em spawn_pty/attach_pty).
     kill_pty_tree_for_root(pty_id, expected_root).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_roots_registry_name;
+
+    #[test]
+    fn discovers_legacy_and_per_instance_root_registries_only() {
+        assert!(is_roots_registry_name("pty_roots.json"));
+        assert!(is_roots_registry_name("pty_roots-17124.json"));
+        assert!(!is_roots_registry_name("pty_roots-17124.json.tmp"));
+        assert!(!is_roots_registry_name("unrelated.json"));
+    }
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_PREFERENCES, EMPTY_PROJECTS_FILE } from '../lib/types'
-import { migrate, normalizePreferences } from './projectsStore.migrations'
+import { migrate, normalizePreferences, normalizeTodos } from './projectsStore.migrations'
 
 describe('preference normalization', () => {
   it('preserves persisted sidebar visibility and widths', () => {
@@ -68,6 +68,60 @@ describe('preference normalization', () => {
       }).motionPreference,
     ).toBe('animated')
   })
+
+  it('clamps Pomodoro durations to a sane range and falls back on invalid input', () => {
+    expect(
+      normalizePreferences({
+        ...DEFAULT_PREFERENCES,
+        pomodoroWorkMinutes: 0,
+        pomodoroShortBreakMinutes: 999,
+        pomodoroLongBreakMinutes: Number.NaN,
+      }),
+    ).toMatchObject({
+      pomodoroWorkMinutes: 1,
+      pomodoroShortBreakMinutes: 120,
+      pomodoroLongBreakMinutes: DEFAULT_PREFERENCES.pomodoroLongBreakMinutes,
+    })
+  })
+
+  it('discards a running Pomodoro session that already ended', () => {
+    const preferences = normalizePreferences({
+      ...DEFAULT_PREFERENCES,
+      pomodoroSession: {
+        phase: 'work',
+        status: 'running',
+        endsAt: Date.now() - 60_000,
+        remainingMsAtPause: null,
+        cyclesCompleted: 1,
+        focusTodoId: null,
+      },
+    })
+
+    expect(preferences.pomodoroSession).toMatchObject({ status: 'finished', endsAt: null })
+  })
+})
+
+describe('todos normalization', () => {
+  it('backfills PR fields when present and drops them when absent', () => {
+    const todos = normalizeTodos([
+      {
+        id: 'a',
+        title: 'Review PR',
+        completed: false,
+        prUrl: 'https://x',
+        prNumber: 12,
+        prRepo: 'o/r',
+      },
+      { id: 'b', title: 'Plain task', completed: false },
+    ])
+
+    expect(todos.find((t) => t.id === 'a')).toMatchObject({
+      prUrl: 'https://x',
+      prNumber: 12,
+      prRepo: 'o/r',
+    })
+    expect(todos.find((t) => t.id === 'b')).not.toHaveProperty('prUrl')
+  })
 })
 
 describe('projects file migration', () => {
@@ -80,7 +134,7 @@ describe('projects file migration', () => {
       preferences: { ...DEFAULT_PREFERENCES, workspaceGridLayoutHistory: undefined },
     })
 
-    expect(migrated.version).toBe(7)
+    expect(migrated.version).toBe(9)
     expect(migrated.projects[0].gridLayoutHistory).toEqual([])
     expect(migrated.groups[0].gridLayoutHistory).toEqual([])
     expect(migrated.preferences.workspaceGridLayoutHistory).toEqual([])
@@ -138,8 +192,8 @@ describe('projects file migration', () => {
 
   it('rewrites the workspace only when a viewer terminal was actually dropped', () => {
     // Pruning re-runs workspace navigation to clear pane ids left pointing at dropped terminals.
-    // That rewrite must not touch files with nothing to prune — which is every normal file — so
-    // the check is that an unrelated stale pane id survives in one case and not in the other.
+    // The load-time normalization also drops pane ids with no terminal behind them, so a stale id
+    // is sanitized whether or not a viewer was dropped — the two cases must agree.
     const workspace = {
       ...EMPTY_PROJECTS_FILE.workspace,
       containers: [{ id: 'container', projectId: 'project', paneIds: ['real', 'stale'] }],
@@ -151,7 +205,7 @@ describe('projects file migration', () => {
       projects: [{ id: 'project', terminals: [{ id: 'real', tabs: [] }] }],
       workspace,
     })
-    expect(untouched.workspace.containers[0].paneIds).toEqual(['real', 'stale'])
+    expect(untouched.workspace.containers[0].paneIds).toEqual(['real'])
 
     const pruned = migrate({
       ...EMPTY_PROJECTS_FILE,
@@ -171,5 +225,43 @@ describe('projects file migration', () => {
       },
     })
     expect(pruned.workspace.containers[0].paneIds).toEqual(['real'])
+  })
+
+  it('carries forward remote sharing when migrating v7 data to v8', () => {
+    const migrated = migrate({
+      ...EMPTY_PROJECTS_FILE,
+      version: 7,
+      projects: [
+        {
+          id: 'project',
+          terminals: [
+            { id: 'excluded', remoteExcluded: true },
+            { id: 'shared', remoteExcluded: false },
+            { id: 'untouched' },
+          ],
+        },
+      ],
+    })
+
+    expect(migrated.version).toBe(9)
+    const terminals = migrated.projects[0].terminals
+    expect(terminals.find((t) => t.id === 'excluded')?.remoteShared).toBe(false)
+    expect(terminals.find((t) => t.id === 'shared')?.remoteShared).toBe(true)
+    expect(terminals.find((t) => t.id === 'untouched')?.remoteShared).toBe(true)
+  })
+
+  it('leaves an explicit remoteShared value untouched when migrating to v8', () => {
+    const migrated = migrate({
+      ...EMPTY_PROJECTS_FILE,
+      version: 7,
+      projects: [
+        {
+          id: 'project',
+          terminals: [{ id: 'terminal', remoteExcluded: true, remoteShared: true }],
+        },
+      ],
+    })
+
+    expect(migrated.projects[0].terminals[0].remoteShared).toBe(true)
   })
 })

@@ -249,6 +249,25 @@
   white-space: nowrap;
 }
 
+.deviceFlow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: var(--radius-md);
+}
+.deviceCode {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--fg);
+  text-align: center;
+  user-select: all;
+}
+
 .cloudFoot {
   margin-top: auto;
   display: flex;

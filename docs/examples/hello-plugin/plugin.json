@@ -1,0 +1,29 @@
+{
+  "id": "example.hello",
+  "name": "Hello Plugin",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "kind": "ui",
+  "description": "Minimal local plugin: one sidebar panel and one command, no build step.",
+  "entry": "main.js",
+  "capabilities": ["ui.sidebarTab", "ui.command"],
+  "activation": ["onView:example.hello.panel", "onCommand:example.hello.greet"],
+  "contributes": {
+    "views": [
+      {
+        "id": "example.hello.panel",
+        "container": "rightSidebar",
+        "title": "Hello",
+        "icon": "sparkles"
+      }
+    ],
+    "commands": [
+      {
+        "id": "example.hello.greet",
+        "title": "Hello: say hi",
+        "icon": "sparkles",
+        "keywords": "hello example demo plugin"
+      }
+    ]
+  }
+}

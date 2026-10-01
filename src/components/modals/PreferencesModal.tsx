@@ -9,6 +9,7 @@ import {
   MessagesSquare,
   Palette,
   Plug,
+  Puzzle,
   Search,
   ShieldCheck,
   TerminalSquare,
@@ -30,6 +31,7 @@ import { FeaturesPage } from './preferences/FeaturesPage'
 import { IntegrationsPage } from './preferences/IntegrationsPage'
 import { MultiagentPage } from './preferences/MultiagentPage'
 import { OrganizationPage } from './preferences/OrganizationPage'
+import { PluginsPage } from './preferences/PluginsPage'
 import { Avatar } from './preferences/primitives'
 import { RemoteControlPage } from './preferences/RemoteControlPage'
 import { TerminalPage } from './preferences/TerminalPage'
@@ -39,6 +41,7 @@ type CategoryId =
   | 'account'
   | 'appearance'
   | 'features'
+  | 'plugins'
   | 'terminal'
   | 'integrations'
   | 'multiagent'
@@ -113,6 +116,12 @@ export function PreferencesModal() {
         label: t('prefs.features'),
         description: t('prefs.featuresDesc'),
         Icon: Blocks,
+      },
+      {
+        id: 'plugins',
+        label: t('prefs.categoryPlugins'),
+        description: t('prefs.categoryPluginsDesc'),
+        Icon: Puzzle,
       },
       {
         id: 'terminal',
@@ -209,10 +218,10 @@ export function PreferencesModal() {
       },
       {
         category: 'appearance',
-        target: 'git-control-placement',
-        label: t('prefs.gitControlPlacement'),
-        description: t('prefs.gitControlPlacementDesc'),
-        keywords: 'git source control sidebar esquerda direita left right',
+        target: 'view-placement',
+        label: t('prefs.viewPlacement'),
+        description: t('prefs.viewPlacementDesc'),
+        keywords: 'git source control plugin view sidebar esquerda direita left right',
       },
       {
         category: 'chatsProjects',
@@ -228,6 +237,22 @@ export function PreferencesModal() {
         label: t('prefs.features'),
         description: t('prefs.featuresDesc'),
         keywords: 'features recursos modules módulos todo task tarefa git source control sidebar',
+      },
+      {
+        category: 'plugins',
+        target: 'plugins-installed',
+        label: t('prefs.pluginsInstalledTitle'),
+        description: t('prefs.pluginsInstalledDesc'),
+        keywords:
+          'plugin plugins extension extensao extensão addon bundled integrado local enable disable ativar desativar capability capabilities permissao permissão theme tema pane painel sidebar command comando',
+      },
+      {
+        category: 'plugins',
+        target: 'plugins-install',
+        label: t('prefs.pluginsInstallTitle'),
+        description: t('prefs.pluginsInstallDesc'),
+        keywords:
+          'plugin install instalar manifest manifesto json folder pasta uninstall desinstalar trust confiar',
       },
       {
         category: 'appearance',
@@ -271,6 +296,14 @@ export function PreferencesModal() {
         label: t('prefs.cliCommand'),
         description: t('prefs.cliCommandDesc'),
         keywords: 'cli command terminal path shell comando linha de comando abrir pasta',
+      },
+      {
+        category: 'integrations',
+        target: 'router9',
+        label: t('router9.title'),
+        description: t('router9.desc'),
+        keywords:
+          '9router router proxy roteador rate limit fallback provider provedor base url api key chave anthropic openai',
       },
       {
         category: 'integrations',
@@ -506,6 +539,7 @@ export function PreferencesModal() {
                   {category === 'appearance' ? <AppearancePage /> : null}
                   {category === 'chatsProjects' ? <ChatsProjectsPage /> : null}
                   {category === 'features' ? <FeaturesPage /> : null}
+                  {category === 'plugins' ? <PluginsPage /> : null}
                   {category === 'terminal' ? <TerminalPage enabledCount={enabledCount} /> : null}
                   {category === 'integrations' ? <IntegrationsPage /> : null}
                   {category === 'multiagent' ? <MultiagentPage /> : null}

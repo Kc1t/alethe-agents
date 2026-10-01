@@ -29,3 +29,18 @@ export async function githubPrMerge(
 ): Promise<string> {
   return invoke<string>('github_pr_merge', { repo, number, method, expectedHeadSha })
 }
+
+export type MyPullRequestSummary = {
+  number: number
+  title: string
+  url: string
+  repo: string
+  author: string
+  isDraft: boolean
+  updatedAt: string
+}
+
+/** Without a repo path, falls back to every open PR the `gh` user is involved in. */
+export async function githubPrListMine(repo?: string): Promise<MyPullRequestSummary[]> {
+  return invoke<MyPullRequestSummary[]>('github_pr_list_mine', { repo: repo ?? null })
+}

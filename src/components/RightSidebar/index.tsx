@@ -1,15 +1,15 @@
 import { getCurrentWebview } from '@tauri-apps/api/webview'
 import {
   ArrowLeft,
+  Blocks,
   ClipboardCopy,
   FileText,
-  GitBranch,
-  ListTodo,
+  GitPullRequest,
   Maximize2,
+  Mic,
   PanelRightClose,
   Plug,
   RefreshCw,
-  Settings,
   X,
 } from 'lucide-react'
 import {
@@ -23,25 +23,26 @@ import {
   useState,
 } from 'react'
 
-import { useGitStatusSummary } from '../../hooks/useGitStatusSummary'
 import { hasFileDragPayload, readFileDragPayload } from '../../lib/fileDrag'
 import { useT } from '../../lib/i18n'
 import { isMarkdownPath } from '../../lib/markdownSidebarHistory'
 import { basename } from '../../lib/paths'
+import { sidebarTabLabel, sidebarTabPanelLabel } from '../../lib/plugins'
+import { withFallback } from '../../lib/resilience'
 import { listProjectPlans, readTextFile, writeClipboardText } from '../../lib/tauri'
 import { getProjectRepoRoot } from '../../lib/terminalFactory'
-import type { Project, SubTab, Terminal } from '../../lib/types'
+import { useSidebarViews } from '../../lib/viewPlacement'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { EmptyState } from '../EmptyState'
 
 const MarkdownRenderer = lazy(() =>
   import('../MarkdownPane/MarkdownRenderer').then((m) => ({ default: m.MarkdownRenderer })),
 )
-import { withFallback } from '../../lib/resilience'
+import { ContributedView } from '../ContributedView'
 import { McpPanel } from '../McpPanel'
-import { GitControl } from '../ProjectSidebar/GitControl'
-import { TodoSidebar } from '../TodoSidebar'
+import { PluginsSidebar } from '../PluginsSidebar'
+import { PullRequestsSidebar } from '../PullRequestsSidebar'
+import { VoiceHistoryPanel } from '../VoiceHistoryPanel'
 import styles from './RightSidebar.module.css'
 
 const markdownScrollPositions = new Map<string, number>()
@@ -49,10 +50,10 @@ const markdownScrollPositions = new Map<string, number>()
 export function RightSidebar() {
   const t = useT()
   const mode = useUiStore((state) => state.rightSidebarMode)
-  const setMode = useUiStore((state) => state.showTodoSidebar)
   const openMarkdown = useUiStore((state) => state.showMarkdownSidebar)
-  const showGit = useUiStore((state) => state.showGitSidebar)
+  const setRightSidebarMode = useUiStore((state) => state.setRightSidebarMode)
   const showMcp = useUiStore((state) => state.showMcpSidebar)
+  const showPrs = useUiStore((state) => state.showPrsSidebar)
   const openModal = useUiStore((state) => state.openModal_)
   const preferences = useProjectsStore((state) => state.preferences)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
@@ -68,64 +69,27 @@ export function RightSidebar() {
     sidebarTerminal?.tabs.find((tab) => tab.id === sidebarTerminal.activeTabId) ??
     sidebarTerminal?.tabs[0]
 
-  const targetCwd = useMemo(
-    () =>
-      sidebarSubTab?.cwd ||
-      sidebarTerminal?.cwd ||
-      (activeProject ? getProjectRepoRoot(activeProject) : '') ||
-      activeProject?.defaultCwd ||
-      '',
-    [sidebarSubTab?.cwd, sidebarTerminal?.cwd, activeProject],
-  )
-  const gitSummary = useGitStatusSummary(targetCwd)
-
-  const gitButtonTitle = useMemo(() => {
-    if (!gitSummary.hasRepo || gitSummary.total === 0) {
-      return t('ui.sidebar.git')
-    }
-    if (gitSummary.staged > 0 || gitSummary.changes > 0 || gitSummary.untracked > 0) {
-      return t('ui.sidebar.gitTooltipDetailed', {
-        total: gitSummary.total.toLocaleString(),
-        staged: gitSummary.staged.toLocaleString(),
-        changes: gitSummary.changes.toLocaleString(),
-        untracked: gitSummary.untracked.toLocaleString(),
-      })
-    }
-    return t('ui.sidebar.gitWithChanges', { count: gitSummary.total.toLocaleString() })
-  }, [gitSummary, t])
-
-  const todoEnabled = preferences.enabledFeatures.todos
-  const gitEnabled = preferences.enabledFeatures.git && preferences.gitControlPlacement === 'right'
+  const contributedTabs = useSidebarViews('right')
+  const contributedTab = contributedTabs.find((tab) => tab.id === mode)
   const mcpEnabled = preferences.enabledFeatures.mcp
+  const prsEnabled = preferences.enabledFeatures.prs
   // The panel now survives its features being turned off one by one, so a mode whose
   // feature was disabled has to fall back instead of rendering a hidden feature.
   useEffect(() => {
     const modeStillEnabled =
       mode === 'markdown' ||
-      (mode === 'todo' && todoEnabled) ||
-      (mode === 'git' && gitEnabled) ||
-      (mode === 'mcp' && mcpEnabled)
+      (mode === 'mcp' && mcpEnabled) ||
+      (mode === 'prs' && prsEnabled) ||
+      mode === 'jev' ||
+      mode === 'plugins' ||
+      contributedTabs.some((tab) => tab.id === mode)
     if (modeStillEnabled) return
-    if (todoEnabled) setMode()
-    else openMarkdown()
-  }, [gitEnabled, mcpEnabled, mode, openMarkdown, setMode, todoEnabled])
+    openMarkdown()
+  }, [contributedTabs, mcpEnabled, prsEnabled, mode, openMarkdown])
 
   return (
     <aside className={styles.sidebar} aria-label={t('rightSidebar.navigation')}>
       <div className={styles.sidebarTabs} role="tablist" aria-label={t('rightSidebar.navigation')}>
-        {todoEnabled ? (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'todo'}
-            className={`${styles.sidebarTab} ${mode === 'todo' ? styles.sidebarTabActive : ''}`}
-            onClick={setMode}
-            title={t('todo.title')}
-          >
-            <ListTodo size={14} />
-            <span>{t('rightSidebar.todoTab')}</span>
-          </button>
-        ) : null}
         <button
           type="button"
           role="tab"
@@ -137,25 +101,24 @@ export function RightSidebar() {
           <FileText size={14} />
           <span>{t('rightSidebar.markdownTab')}</span>
         </button>
-        {gitEnabled ? (
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'git'}
-            className={`${styles.sidebarTab} ${mode === 'git' ? styles.sidebarTabActive : ''}`}
-            onClick={showGit}
-            title={gitButtonTitle}
-            aria-label={gitButtonTitle}
-          >
-            <GitBranch size={14} />
-            {gitSummary.formatted ? (
-              <span className={styles.gitBadge} aria-hidden="true">
-                {gitSummary.formatted}
-              </span>
-            ) : null}
-            <span>{t('ui.sidebar.git')}</span>
-          </button>
-        ) : null}
+        {contributedTabs.map((tab) => {
+          const TabIcon = tab.icon
+          const label = sidebarTabLabel(t, tab)
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={mode === tab.id}
+              className={`${styles.sidebarTab} ${mode === tab.id ? styles.sidebarTabActive : ''}`}
+              onClick={() => setRightSidebarMode(tab.id)}
+              title={label}
+            >
+              <TabIcon size={14} />
+              <span>{label}</span>
+            </button>
+          )
+        })}
         {mcpEnabled ? (
           <button
             type="button"
@@ -169,18 +132,42 @@ export function RightSidebar() {
             <span>{t('mcp.tab')}</span>
           </button>
         ) : null}
-        <span className={styles.toolbarSpacer} />
-        {mode === 'todo' && todoEnabled ? (
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'jev'}
+          className={`${styles.sidebarTab} ${mode === 'jev' ? styles.sidebarTabActive : ''}`}
+          onClick={() => setRightSidebarMode('jev')}
+          title={t('voice.history.tabTitle')}
+        >
+          <Mic size={14} />
+          <span>Jev</span>
+        </button>
+        {prsEnabled ? (
           <button
             type="button"
-            className={styles.toolbarUtility}
-            onClick={() => openModal('todoSettings')}
-            title={t('todo.openSettings')}
-            aria-label={t('todo.openSettings')}
+            role="tab"
+            aria-selected={mode === 'prs'}
+            className={`${styles.sidebarTab} ${mode === 'prs' ? styles.sidebarTabActive : ''}`}
+            onClick={showPrs}
+            title={t('rightSidebar.prsTab')}
           >
-            <Settings size={14} />
+            <GitPullRequest size={14} />
+            <span>{t('rightSidebar.prsTab')}</span>
           </button>
         ) : null}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === 'plugins'}
+          className={`${styles.sidebarTab} ${mode === 'plugins' ? styles.sidebarTabActive : ''}`}
+          onClick={() => setRightSidebarMode('plugins')}
+          title={t('pluginsTab.title')}
+        >
+          <Blocks size={14} />
+          <span>{t('pluginsTab.title')}</span>
+        </button>
+        <span className={styles.toolbarSpacer} />
         {mode === 'mcp' && mcpEnabled ? (
           <button
             type="button"
@@ -205,64 +192,27 @@ export function RightSidebar() {
       </div>
       <div className={styles.tabContent}>
         {mode === 'markdown' ? <MarkdownSidebarViewer /> : null}
-        {mode === 'todo' && todoEnabled ? <TodoSidebar /> : null}
         {mode === 'mcp' && mcpEnabled ? <McpPanel /> : null}
-        {mode === 'git' && gitEnabled ? (
-          <GitSidebarContent
-            activeProject={activeProject}
-            sidebarTerminal={sidebarTerminal}
-            sidebarSubTab={sidebarSubTab}
-          />
+        {mode === 'prs' && prsEnabled ? <PullRequestsSidebar /> : null}
+        {mode === 'jev' ? <VoiceHistoryPanel /> : null}
+        {mode === 'plugins' ? <PluginsSidebar /> : null}
+        {contributedTab ? (
+          <section className={styles.contributedPanel}>
+            <header className={styles.panelHeader}>
+              <contributedTab.icon size={15} />
+              <span>{sidebarTabPanelLabel(t, contributedTab)}</span>
+            </header>
+            <ContributedView
+              view={contributedTab}
+              projectId={activeProject?.id ?? null}
+              cwd={sidebarSubTab?.cwd || sidebarTerminal?.cwd || null}
+              ptyId={sidebarSubTab?.ptyId ?? null}
+              terminalName={sidebarTerminal?.name ?? null}
+            />
+          </section>
         ) : null}
       </div>
     </aside>
-  )
-}
-
-function GitSidebarContent({
-  activeProject,
-  sidebarTerminal,
-  sidebarSubTab,
-}: {
-  activeProject: Project | undefined
-  sidebarTerminal: Terminal | null
-  sidebarSubTab: SubTab | undefined
-}) {
-  const t = useT()
-  // Only a fallback: `GitControl` resolves the repository from the project it is showing, which
-  // the user picks. Preferring the terminal's cwd here (as this used to, for worktree/subfolder
-  // precision) is what silently pointed source control at an agent's worktree.
-  const cwd =
-    (activeProject && getProjectRepoRoot(activeProject)) ||
-    activeProject?.defaultCwd ||
-    sidebarSubTab?.cwd ||
-    sidebarTerminal?.cwd
-  const ptyId = sidebarSubTab && sidebarTerminal ? sidebarSubTab.ptyId : null
-  const terminalName = sidebarTerminal?.name ?? activeProject?.name ?? ''
-  return (
-    <section className={styles.gitPanel}>
-      <header className={styles.panelHeader}>
-        <GitBranch size={15} />
-        <span>{t('ui.sidebar.sourceControl')}</span>
-      </header>
-      {activeProject && cwd ? (
-        <GitControl
-          projectId={activeProject.id}
-          cwd={cwd}
-          ptyId={ptyId}
-          terminalName={terminalName}
-        />
-      ) : (
-        <div className={styles.gitEmpty}>
-          <EmptyState
-            compact
-            icon={<GitBranch size={18} />}
-            title={t('git.empty.noTerminal')}
-            description={t('git.empty.noTerminalDesc')}
-          />
-        </div>
-      )}
-    </section>
   )
 }
 

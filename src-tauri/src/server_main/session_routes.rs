@@ -88,7 +88,7 @@ async fn transcript_cost(Query(p): Query<HashMap<String, String>>) -> impl IntoR
         Ok(v) => v,
         Err(e) => return e.into_response(),
     };
-    respond(agent_cost::get_transcript_cost(path).await)
+    respond(agent_cost::get_transcript_cost(path, p.get("agent").cloned()).await)
 }
 
 async fn claude_snapshot(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {

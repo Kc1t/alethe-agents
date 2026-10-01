@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 import { getTranscriptCost, type SessionCost } from '../lib/tauri'
 
-type NodeLike = { id: string; transcriptPath: string | null }
+type NodeLike = { id: string; transcriptPath: string | null; sourceAgent?: string }
 
 type NodeCostState = {
   byNodeId: Record<string, SessionCost>
@@ -15,15 +15,16 @@ export const useNodeCostStore = create<NodeCostState>((set) => ({
   byNodeId: {},
 
   refresh: async (nodes) => {
-    const targets = nodes.filter((n): n is { id: string; transcriptPath: string } =>
-      Boolean(n.transcriptPath),
+    const targets = nodes.filter(
+      (n): n is { id: string; transcriptPath: string; sourceAgent?: string } =>
+        Boolean(n.transcriptPath),
     )
     if (targets.length === 0) return
 
     const results = await Promise.all(
       targets.map(async (n) => {
         try {
-          const cost = await getTranscriptCost(n.transcriptPath)
+          const cost = await getTranscriptCost(n.transcriptPath, n.sourceAgent)
           return [n.id, cost] as const
         } catch {
           return null

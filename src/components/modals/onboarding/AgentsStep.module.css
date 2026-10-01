@@ -1,350 +1,144 @@
 .step {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-width: 0;
+  gap: 16px;
 }
 
 .intro {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 5px;
 }
 
 .title {
   margin: 0;
-  font-size: 19px;
-  font-weight: 500;
-  letter-spacing: -0.02em;
-  line-height: 1.25;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
 }
 
 .subtitle {
   margin: 0;
-  font-size: 13px;
   color: var(--fg-muted);
-  max-width: 52ch;
+  font-size: 12.5px;
+  line-height: 1.6;
 }
 
-.stats {
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.card {
+  position: relative;
   display: flex;
-  gap: 7px;
-  flex-wrap: wrap;
-}
-
-.stat {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12px;
-  color: var(--fg-muted);
-  background: var(--bg-sunken);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 4px 11px 4px 9px;
-}
-
-.stat b {
-  color: var(--fg);
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.dot,
-.dotOk,
-.dotWarn,
-.dotAccent {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--fg-faint);
-}
-.dotOk {
-  background: var(--status-working);
-}
-.dotWarn {
-  background: var(--status-waiting);
-}
-.dotAccent {
-  background: var(--accent);
-}
-
-.toolbar {
-  display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 8px;
-}
-
-.field {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-}
-
-.field svg {
-  position: absolute;
-  left: 10px;
-  color: var(--fg-faint);
-  pointer-events: none;
-}
-
-.field input {
-  width: 100%;
-  background: var(--bg-sunken);
+  padding: 16px 10px 13px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 8px 12px 8px 32px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-card-default);
   color: var(--fg);
-  font: inherit;
-  font-size: 13px;
-  transition: border-color 150ms ease;
-}
-
-.field input::placeholder {
-  color: var(--fg-faint);
-}
-
-.field input:focus {
-  outline: 0;
-  border-color: var(--accent);
-}
-
-.segmented {
-  display: flex;
-  background: var(--bg-sunken);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 3px;
-  gap: 2px;
-}
-
-.segmented button {
-  background: none;
-  border: 0;
-  color: var(--fg-muted);
-  font-size: 12px;
-  padding: 5px 11px;
-  border-radius: var(--radius-sm);
   cursor: pointer;
-  white-space: nowrap;
+  text-align: center;
+  transition:
+    border-color var(--anim-fast) ease,
+    background-color var(--anim-fast) ease,
+    opacity var(--anim-fast) ease;
 }
 
-.segmented button:hover {
-  color: var(--fg);
+.card:hover {
+  border-color: var(--border-strong);
 }
 
-.segmented button[aria-pressed='true'] {
-  background: var(--bg-elevated);
-  color: var(--fg);
+.card:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
-.tableWrap {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  background: var(--bg-sunken);
+.cardOn {
+  border-color: var(--accent-border);
+  background: var(--surface-card-selected);
 }
 
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
-}
-
-/* Column widths live on <col>, which renders nothing — the screen reads as a list, not a table. */
-
-.colCheck {
-  width: 42px;
-}
-.colVersion {
-  width: 92px;
-}
-.colStatus {
-  width: 170px;
-}
-.colActions {
-  width: 190px;
-}
-
-/* One height for every row, so a row with an installer does not stand taller than the rest. */
-.table tbody td {
-  padding: 6px 12px;
-  height: 58px;
-  border-bottom: 1px solid var(--border);
-  vertical-align: middle;
-  font-size: 13px;
-}
-
-.table tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-.table tbody tr {
-  cursor: pointer;
-  transition: background 120ms ease;
-}
-
-.table tbody tr:hover {
-  background: var(--bg-elevated);
-}
-
-.rowOff {
+.cardOff {
+  opacity: 0.45;
   cursor: default;
 }
 
-.check {
-  width: 17px;
-  height: 17px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-strong);
-  display: grid;
-  place-items: center;
-  color: var(--accent-on);
+.cardOff:hover {
+  border-color: var(--border);
 }
 
-.checkOn {
+.tick {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
   background: var(--accent);
-  border-color: var(--accent);
+  color: var(--accent-on);
+  opacity: 0;
+  transition: opacity var(--anim-fast) ease;
 }
 
-.agent {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
+.cardOn .tick {
+  opacity: 1;
 }
 
-.icon {
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius-md);
-  flex: none;
+.logo {
   display: grid;
   place-items: center;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border);
+  height: 26px;
 }
 
-.rowOff .icon {
-  opacity: 0.6;
+.name {
+  font-size: 12.5px;
+  line-height: 1.2;
 }
 
-.meta {
-  min-width: 0;
-}
-
-.meta b {
-  display: block;
-  font-weight: 500;
-  font-size: 13px;
-  line-height: 1.35;
-}
-
-/* The resolved launcher path — long and only useful in full, so it truncates and lives in a title. */
-.meta > span {
-  display: block;
-  font-family: var(--font-mono, monospace);
+.state {
   font-size: 10.5px;
   color: var(--fg-faint);
-  line-height: 1.4;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.rowOff .meta b {
-  color: var(--fg-muted);
-  font-weight: 400;
-}
-
-.version {
-  font-family: var(--font-mono, monospace);
-  font-size: 11.5px;
-  color: var(--fg-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.rowOff .version {
-  color: var(--fg-faint);
-}
-
-.tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  padding: 3px 9px;
-  border-radius: 20px;
-  border: 1px solid transparent;
-  white-space: nowrap;
-}
-
-.tag i {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: currentColor;
-  flex: none;
-}
-
-.tagOk {
-  color: var(--status-working);
-  border-color: var(--border);
-}
-
-.tagWarn {
-  color: var(--status-waiting);
-  border-color: var(--border);
-}
-
-.tagIdle {
-  color: var(--fg-faint);
-  border-color: var(--border);
-}
-
-.actions {
-  text-align: right;
-}
-
-.actionStack {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-}
-
-.empty {
-  padding: 18px 12px;
-  text-align: center;
-  font-size: 12px;
-  color: var(--fg-faint);
-}
-
-.note {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-  color: var(--fg-faint);
-}
-
-.note button {
-  background: none;
-  border: 0;
-  color: var(--accent);
-  font: inherit;
-  font-size: 12.5px;
-  cursor: pointer;
-  padding: 2px 0;
-}
-
-.note button:hover:not(:disabled) {
-  text-decoration: underline;
-}
-
-.note button:disabled {
-  color: var(--fg-faint);
+.action {
+  display: block;
   cursor: default;
+}
+
+.footnote {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--fg-faint);
+}
+
+.count {
+  flex: 1;
+}
+
+.footnote button {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--fg-muted);
+  font: inherit;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+
+.footnote button:hover:not(:disabled) {
+  color: var(--fg);
+}
+
+.footnote button:disabled {
+  cursor: default;
+  opacity: 0.6;
 }

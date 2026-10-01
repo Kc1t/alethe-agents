@@ -10,8 +10,10 @@ import App from './App'
 import { installDebugTrace } from './lib/debugTrace'
 import { installE2eHooks } from './lib/e2eHooks'
 import { installInvokeCorrelation } from './lib/invokeTrace'
+import { initPluginHost } from './lib/plugins'
 import { initUrlRouter } from './lib/router/urlRouter'
 import { recordFrontendError } from './lib/tauri'
+import { watchPluginThemeStyles } from './lib/themeTokens'
 
 // Inicializa os hooks de automação E2E imediatamente no startup
 installE2eHooks()
@@ -87,6 +89,12 @@ window.addEventListener('unhandledrejection', (event) => {
     'unhandledrejection',
   )
 })
+
+watchPluginThemeStyles()
+
+// Contributions land in reactive registries, so the shell renders immediately
+// and picks plugin surfaces up as they activate.
+void initPluginHost()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

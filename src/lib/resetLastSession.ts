@@ -1,7 +1,7 @@
 import { useProjectsStore } from '../stores/projectsStore'
 import { useTerminalsStore } from '../stores/terminalsStore'
 import { withFallback } from './resilience'
-import { getActiveSessions, saveSession } from './sessionResume'
+import { conversationFields, getActiveSessions, saveSession } from './sessionResume'
 import { acquireSpawnSlot, releaseSpawnSlot } from './spawnQueue'
 import {
   getPtyCwd,
@@ -13,7 +13,7 @@ import {
 } from './tauri'
 import type { AgentType } from './types'
 
-const RESUMABLE: AgentType[] = ['claude', 'codex', 'opencode', 'antigravity']
+const RESUMABLE: AgentType[] = ['claude', 'codex', 'cursor', 'opencode', 'antigravity']
 
 export type ResetLastSessionResult = { resumed: number; total: number }
 
@@ -29,18 +29,19 @@ function stripFlagWithValue(args: string[], flag: string): string[] {
   return out
 }
 
-/** Filtro pra escolher a sessão "certa" excluindo a que está rodando agora. */
+/** Filter that selects the "right" session, excluding the one running now. */
 export type SessionExclude = {
-  /** ID da conversa atualmente aberta no pane — não queremos resumir ela. */
+  /** ID of the conversation currently open in the pane — it must not be resumed. */
   id?: string
 
   before?: number
 }
 
 /**
- * Escolhe a conversa a retomar: a mais recente que NÃO é a que está rodando.
- * Se o resume falhou, a CLI já criou uma sessão nova/vazia (a mais recente no
- * disco) — então excluímos o id atual e priorizamos as anteriores ao spawn.
+ * Picks the conversation to resume: the most recent one that is NOT the one
+ * running now. When a resume already failed, the CLI created a new/empty
+ * session (the newest on disk), so the current id is excluded and sessions
+ * from before the spawn are preferred.
  */
 export function pickSessionId(
   sessions: ReadonlyArray<{ id: string; modified_at_ms: number }>,
@@ -53,7 +54,7 @@ export function pickSessionId(
   return pool.reduce((a, b) => (b.modified_at_ms > a.modified_at_ms ? b : a)).id
 }
 
-/** Acha o ID da conversa a retomar no disco para o cwd, por agente. */
+/** Finds the on-disk ID of the conversation to resume for the cwd, per agent. */
 async function latestSessionId(
   agent: AgentType,
   cwd: string,
@@ -80,7 +81,7 @@ async function latestSessionId(
   return null
 }
 
-/** Monta os args de resume seguindo o mesmo padrão do spawn do XTermView. */
+/** Builds the resume args following the same pattern as the XTermView spawn. */
 export function buildResumeArgs(
   agent: AgentType,
   baseArgs: string[],
@@ -92,7 +93,7 @@ export function buildResumeArgs(
     return sessionId ? ['--resume', sessionId, ...clean] : ['--continue', ...clean]
   }
   if (agent === 'codex') {
-    // codex usa `resume <id>` / `resume --last` como subcomando (1º arg).
+    // Codex takes `resume <id>` / `resume --last` as a subcommand (first argument).
     let clean = baseArgs
     if (baseArgs[0] === 'resume') {
       const rest = baseArgs.slice(1)
@@ -106,6 +107,12 @@ export function buildResumeArgs(
       (a) => a !== '--continue' && a !== '-c',
     )
     return sessionId ? ['--conversation', sessionId, ...clean] : ['--continue', ...clean]
+  }
+  if (agent === 'cursor') {
+    const clean = stripFlagWithValue(baseArgs, '--resume').filter(
+      (a) => a !== '--continue' && !a.startsWith('--resume='),
+    )
+    return sessionId ? ['--resume', sessionId, ...clean] : ['--continue', ...clean]
   }
 
   const clean = stripFlagWithValue(baseArgs, '--session').filter(
@@ -196,9 +203,7 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
 
       saveSession(target.ptyId, {
         sessionId: target.ptyId,
-        claudeSessionId: target.agent === 'claude' ? (sessionId ?? undefined) : undefined,
-        codexSessionId: target.agent === 'codex' ? (sessionId ?? undefined) : undefined,
-        opencodeSessionId: target.agent === 'opencode' ? (sessionId ?? undefined) : undefined,
+        ...conversationFields(target.agent, sessionId ?? undefined),
         cwd,
         agent: target.agent,
         timestamp: Date.now(),
@@ -211,7 +216,7 @@ export async function resetLastSession(): Promise<ResetLastSessionResult> {
 
       resumed++
     } catch {
-      // Uma falha num painel não aborta o resto.
+      // One session failing to resume must not stop the others; the slot is released below.
     } finally {
       releaseSpawnSlot()
     }

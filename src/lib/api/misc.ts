@@ -15,6 +15,7 @@ export type RemoteControlInfo = {
   session_expiry_secs: number
   read_only: boolean
   allow_shell_input: boolean
+  reach_mode: 'lan' | 'tailscale'
   pairing_open: boolean
   pairing_expires_in: number
   devices: Array<{
@@ -150,6 +151,35 @@ export async function setRemoteControlShellInput(allowed: boolean): Promise<Remo
     method: 'POST',
     body: JSON.stringify({ allowed }),
   })
+}
+
+export type TailscaleStatus = {
+  available: boolean
+  ip: string | null
+}
+
+/** Side-effect-free: safe to poll to decide whether the Tailscale reach mode is selectable. */
+export async function remoteControlTailscaleStatus(): Promise<TailscaleStatus> {
+  if (isTauriEnv()) return invoke<TailscaleStatus>('remote_control_tailscale_status')
+  throw new Error('remote_control_tailscale_status_desktop_only')
+}
+
+export async function setRemoteControlReachMode(useTailscale: boolean): Promise<RemoteControlInfo> {
+  if (isTauriEnv())
+    return invoke<RemoteControlInfo>('remote_control_set_reach_mode', { useTailscale })
+  throw new Error('remote_control_set_reach_mode_desktop_only')
+}
+
+/** Fires when the backend turns remote control off on its own after a long idle period. */
+export function listenRemoteAutoDisabled(handler: () => void): Promise<UnlistenFn> {
+  if (isTauriEnv()) return listen('remote://auto-disabled', () => handler())
+  return Promise.reject(new Error('listen_remote_auto_disabled_desktop_only'))
+}
+
+/** Fires when the backend fails to bind its listener (port conflict, Tailscale not reachable, ...) and turns itself back off. */
+export function listenRemoteStartFailed(handler: () => void): Promise<UnlistenFn> {
+  if (isTauriEnv()) return listen('remote://start-failed', () => handler())
+  return Promise.reject(new Error('listen_remote_start_failed_desktop_only'))
 }
 
 export async function remoteControlRevoke(): Promise<RemoteControlInfo> {
@@ -326,6 +356,16 @@ export async function findCliLauncher(agent: string): Promise<string | null> {
   throw lastError
 }
 
+/**
+ * Same lookup as `findCliLauncher`, but re-reads the machine's environment first. An installer
+ * that puts its CLI on PATH only reaches processes started afterwards, so this is what an install
+ * screen asks to see a CLI that landed while the app was already running.
+ */
+export async function refreshCliLauncher(command: string): Promise<string | null> {
+  if (isTauriEnv()) return invoke<string | null>('refresh_cli_launcher', { command })
+  throw new Error('refresh_cli_launcher_desktop_only')
+}
+
 export async function probeInstallToolchain(): Promise<InstallToolchain> {
   if (isTauriEnv()) return invoke<InstallToolchain>('probe_install_toolchain')
   return webApiFetch<InstallToolchain>('/api/cli/probe_install_toolchain')
@@ -382,6 +422,60 @@ export async function githubSyncPush(): Promise<GithubSyncStatus> {
 export async function githubSyncPull(): Promise<GithubSyncStatus> {
   if (isTauriEnv()) return invoke<GithubSyncStatus>('github_sync_pull')
   return webApiFetch<GithubSyncStatus>('/api/github_sync/pull', { method: 'POST' })
+}
+
+export type CloudSyncStatus = {
+  configured: boolean
+  connected: boolean
+  login: string | null
+  name: string | null
+  avatar_url: string | null
+  plan: string | null
+  last_push_ms: number | null
+  last_pull_ms: number | null
+}
+
+export type CloudDeviceStart = {
+  device_code: string
+  user_code: string
+  verification_uri: string
+  interval: number
+  expires_in: number
+}
+
+export async function cloudSyncStatus(): Promise<CloudSyncStatus> {
+  if (isTauriEnv()) return invoke<CloudSyncStatus>('cloud_sync_status')
+  throw new Error('cloud_sync_desktop_only')
+}
+
+export async function cloudSyncDeviceStart(): Promise<CloudDeviceStart> {
+  if (isTauriEnv()) return invoke<CloudDeviceStart>('cloud_sync_device_start')
+  throw new Error('cloud_sync_desktop_only')
+}
+
+export async function cloudSyncDeviceFinish(start: CloudDeviceStart): Promise<CloudSyncStatus> {
+  if (isTauriEnv())
+    return invoke<CloudSyncStatus>('cloud_sync_device_finish', {
+      deviceCode: start.device_code,
+      interval: start.interval,
+      expiresIn: start.expires_in,
+    })
+  throw new Error('cloud_sync_desktop_only')
+}
+
+export async function cloudSyncLogout(): Promise<CloudSyncStatus> {
+  if (isTauriEnv()) return invoke<CloudSyncStatus>('cloud_sync_logout')
+  throw new Error('cloud_sync_desktop_only')
+}
+
+export async function cloudSyncPush(payload: unknown): Promise<CloudSyncStatus> {
+  if (isTauriEnv()) return invoke<CloudSyncStatus>('cloud_sync_push', { payload })
+  throw new Error('cloud_sync_desktop_only')
+}
+
+export async function cloudSyncPull(): Promise<unknown> {
+  if (isTauriEnv()) return invoke<unknown>('cloud_sync_pull')
+  throw new Error('cloud_sync_desktop_only')
 }
 
 export async function publishEvent(event: EventBusPayload): Promise<void> {

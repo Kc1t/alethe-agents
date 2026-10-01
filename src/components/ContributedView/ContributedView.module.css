@@ -1,0 +1,48 @@
+.loading {
+  flex: 1;
+  min-height: 120px;
+  margin: 12px;
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  opacity: 0.5;
+  animation: contributedViewPulse var(--anim-slow, 420ms) ease-in-out infinite alternate;
+}
+
+@keyframes contributedViewPulse {
+  from {
+    opacity: 0.28;
+  }
+  to {
+    opacity: 0.55;
+  }
+}
+
+:global([data-motion='reduced']) .loading {
+  animation: none;
+}
+
+.failed {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px;
+  padding: 12px;
+  border: 1px solid var(--status-offline);
+  border-radius: var(--radius-md);
+  background: var(--status-offline-soft);
+  color: var(--fg);
+  font-size: 12px;
+}
+
+.failed p {
+  margin: 0;
+}
+
+.reason {
+  width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}

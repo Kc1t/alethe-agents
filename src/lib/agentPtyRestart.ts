@@ -22,7 +22,11 @@
 import { useTerminalsStore } from '../stores/terminalsStore'
 import { agentLaunchEnv } from './agentConfigIsolation'
 import { preparePtyRuntimeLaunch } from './agentRuntimeAdapter'
-import { type AsyncResumableAgent, watchAndPersistDiscoveredSession } from './agentSessionDiscovery'
+import {
+  isAsyncResumableAgent,
+  type AsyncResumableAgent,
+  watchAndPersistDiscoveredSession,
+} from './agentSessionDiscovery'
 import { withFallback } from './resilience'
 import { buildAgentLaunch } from './sessionLaunch'
 import { saveSession } from './sessionResume'
@@ -34,17 +38,12 @@ import {
 } from './tauri'
 import { agentCliCommand, type AgentRuntimeProfile, type AgentType } from './types'
 
-const ASYNC_RESUMABLE_AGENTS: ReadonlySet<AgentType> = new Set(['codex', 'antigravity', 'opencode'])
 const RESUMABLE_AGENTS: ReadonlySet<AgentType> = new Set([
   'claude',
   'codex',
   'opencode',
   'antigravity',
 ])
-
-function isAsyncResumable(agent: AgentType): agent is AsyncResumableAgent {
-  return ASYNC_RESUMABLE_AGENTS.has(agent)
-}
 
 async function snapshotBefore(agent: AsyncResumableAgent, cwd: string) {
   if (agent === 'codex')
@@ -97,7 +96,7 @@ export async function restartAgentPty(opts: RestartAgentPtyOpts): Promise<Restar
   // Snapshot pré-spawn pros 3 providers assíncronos, só quando ainda não
   // temos um sessionId conhecido — mesma condição do hook (`useXtermSession`).
   const discoveredSessionsBeforePromise =
-    isAsyncResumable(agent) && !launch.sessionId ? snapshotBefore(agent, cwd) : null
+    isAsyncResumableAgent(agent) && !launch.sessionId ? snapshotBefore(agent, cwd) : null
 
   useTerminalsStore.getState().beginRestart(ptyId)
   const response = await restartPty({
@@ -127,7 +126,7 @@ export async function restartAgentPty(opts: RestartAgentPtyOpts): Promise<Restar
       timestamp: Date.now(),
     })
 
-    if (discoveredSessionsBeforePromise && isAsyncResumable(agent)) {
+    if (discoveredSessionsBeforePromise && isAsyncResumableAgent(agent)) {
       void watchAndPersistDiscoveredSession({
         agent,
         cwd,

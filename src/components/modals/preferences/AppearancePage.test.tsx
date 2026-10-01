@@ -6,7 +6,7 @@ const store = vi.hoisted(() => ({
   state: {
     preferences: {
       appIconTheme: 'dark',
-      gitControlPlacement: 'left',
+      viewPlacements: {},
       language: 'en',
       motionPreference: 'animated',
       terminalTheme: null,

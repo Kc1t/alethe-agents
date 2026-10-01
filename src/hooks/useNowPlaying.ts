@@ -55,7 +55,7 @@ function saveLastTrack(np: NowPlaying): void {
   try {
     writeScopedStorage(LAST_TRACK_KEY, JSON.stringify(np))
   } catch {
-    /* storage cheio/indisponível — ignora */
+    // Best effort: the last track only seeds the widget on the next launch.
   }
 }
 

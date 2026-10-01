@@ -1,55 +1,49 @@
 import { describe, expect, it } from 'vitest'
 
-import { normalizeEnabledFeatures } from './features'
+import { legacyGitFeatureFlag, legacyTodosFeatureFlag, normalizeEnabledFeatures } from './features'
 
 describe('normalizeEnabledFeatures', () => {
   it('enables the initial modules for a fresh profile', () => {
     expect(normalizeEnabledFeatures(undefined)).toEqual({
-      todos: true,
-      git: true,
       browser: true,
       aiMemory: false,
       mcp: true,
       playwright: false,
       orchestrator: false,
+      prs: true,
     })
   })
 
-  it('preserves legacy Git and keeps Todo off for existing profiles', () => {
+  it('keeps the defaults for an existing profile', () => {
     expect(normalizeEnabledFeatures({ showGitControl: false })).toEqual({
-      todos: false,
-      git: false,
       browser: true,
       aiMemory: false,
       mcp: true,
       playwright: false,
       orchestrator: false,
+      prs: true,
     })
   })
 
   it('preserves explicit modular preferences', () => {
-    expect(normalizeEnabledFeatures({ enabledFeatures: { todos: false, git: true } })).toEqual({
-      todos: false,
-      git: true,
+    expect(normalizeEnabledFeatures({ enabledFeatures: { mcp: false } })).toEqual({
       browser: true,
       aiMemory: false,
-      mcp: true,
+      mcp: false,
       playwright: false,
       orchestrator: false,
+      prs: true,
     })
   })
 
   it('keeps AI Memory off unless explicitly enabled', () => {
-    expect(
-      normalizeEnabledFeatures({ enabledFeatures: { todos: true, git: true, aiMemory: true } }),
-    ).toEqual({
-      todos: true,
-      git: true,
+    expect(normalizeEnabledFeatures({ enabledFeatures: { aiMemory: true } })).toEqual({
       browser: true,
       aiMemory: true,
       mcp: true,
       playwright: false,
       orchestrator: false,
+      prs: true,
     })
   })
 
@@ -68,5 +62,15 @@ describe('normalizeEnabledFeatures', () => {
     expect(normalizeEnabledFeatures({ enabledFeatures: { orchestrator: true } }).orchestrator).toBe(
       true,
     )
+  })
+
+  it('no longer carries Git, which is a plugin now', () => {
+    expect(normalizeEnabledFeatures(undefined)).not.toHaveProperty('git')
+    expect(normalizeEnabledFeatures({ enabledFeatures: { git: false } })).not.toHaveProperty('git')
+  })
+
+  it('enables Open PRs by default and preserves an explicit choice', () => {
+    expect(normalizeEnabledFeatures(undefined).prs).toBe(true)
+    expect(normalizeEnabledFeatures({ enabledFeatures: { prs: false } }).prs).toBe(false)
   })
 })

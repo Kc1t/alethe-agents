@@ -1,8 +1,12 @@
-import antigravityLogo from '../../assets/antigravity.png'
+import { Bot } from 'lucide-react'
+
 import claudeLogo from '../../assets/claude-code.png'
 import codexLogo from '../../assets/codex.png'
 import freebuffLogo from '../../assets/freebuff.png'
+import antigravityLogo from '../../assets/antigravity.png'
+import kiroLogo from '../../assets/kiro.svg'
 import { iconMap } from '../../assets/icons'
+import { findAgentProvider } from '../../lib/agentProviders'
 import { isLightTheme } from '../../lib/themes'
 import type { AgentType, Theme } from '../../lib/types'
 
@@ -18,6 +22,23 @@ export function ShellIcon({ size = 16 }: { size?: number }) {
     >
       <path d="M3 5l3 3-3 3" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M8 11h5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+export function WslIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
+      <rect x="1.5" y="1.5" width="13" height="13" rx="3" />
+      <path d="M5 6l2.5 2.5L5 11" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8.5 11H11" strokeLinecap="round" />
     </svg>
   )
 }
@@ -50,6 +71,10 @@ export function MimoIcon({ size = 16 }: { size?: number }) {
   )
 }
 
+export function KiroIcon({ size = 16 }: { size?: number }) {
+  return <img src={kiroLogo} alt="" width={size} height={size} draggable={false} />
+}
+
 export function OpenCodeIcon({ size = 16, theme }: { size?: number; theme: Theme }) {
   const lightIcon = isLightTheme(theme)
   return (
@@ -60,6 +85,28 @@ export function OpenCodeIcon({ size = 16, theme }: { size?: number; theme: Theme
       height={size}
       draggable={false}
     />
+  )
+}
+
+// Cursor's cube mark, redrawn as three faces so it reads at 16px and takes the pane's accent
+// through `currentColor` instead of shipping a fixed-palette bitmap.
+export function CursorIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M8 1.4 14.1 5v6L8 14.6 1.9 11V5L8 1.4Z"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 8 14.1 5M8 8v6.6M8 8 1.9 5"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+        opacity="0.55"
+      />
+    </svg>
   )
 }
 
@@ -104,6 +151,67 @@ export function CopilotIcon({ size = 16 }: { size?: number }) {
   )
 }
 
+// Kimi Code mark: rounded square + "K" glyph, redrawn as strokes so it reads at 16px and
+// takes the pane's accent through `currentColor`. Swap for an official asset if one ships.
+export function KimiIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
+      <rect x="2" y="2" width="12" height="12" rx="3" />
+      <path
+        d="M6 12V4.8M6 8.4l3.4-3.6M6 8.4l3.6 3.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+// Grok Build mark: rounded square + stylized "G", stroke-based for 16px + currentColor.
+export function GrokIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
+      <rect x="2" y="2" width="12" height="12" rx="3" />
+      <path d="M10.2 6.2A2.8 2.8 0 1 0 10.4 9.4H8.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+// Codewhale mark: rounded square + wave, stroke-based for 16px + currentColor.
+export function CodewhaleIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
+      <rect x="2" y="2" width="12" height="12" rx="3" />
+      <path
+        d="M4.2 8.2c1.2-1.4 2.4-1.4 3.6 0s2.4 1.4 3.6 0"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M11.5 6.2c.7.2 1.1.7 1.1 1.4" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export function AgentIcon({
   type,
   size = 16,
@@ -114,11 +222,19 @@ export function AgentIcon({
   theme: Theme
 }) {
   if (type === 'shell') return <ShellIcon size={size} />
+  if (type === 'wsl') return <WslIcon size={size} />
   if (type === 'claude') return <ClaudeIcon size={size} />
   if (type === 'codex') return <CodexIcon size={size} />
   if (type === 'copilot') return <CopilotIcon size={size} />
+  if (type === 'cursor') return <CursorIcon size={size} />
   if (type === 'freebuff') return <FreebuffIcon size={size} />
   if (type === 'mimo') return <MimoIcon size={size} />
+  if (type === 'kiro') return <KiroIcon size={size} />
+  if (type === 'kimi') return <KimiIcon size={size} />
+  if (type === 'grok') return <GrokIcon size={size} />
+  if (type === 'codewhale') return <CodewhaleIcon size={size} />
   if (type === 'antigravity') return <AntigravityIcon size={size} />
-  return <OpenCodeIcon size={size} theme={theme} />
+  if (type === 'opencode') return <OpenCodeIcon size={size} theme={theme} />
+  const ProviderIcon = findAgentProvider(type)?.icon
+  return ProviderIcon ? <ProviderIcon size={size} /> : <Bot size={size} />
 }

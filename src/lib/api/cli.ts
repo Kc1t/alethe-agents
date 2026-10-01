@@ -8,9 +8,11 @@ const OPEN_PATH_EVENT = 'alethe://open-path'
 export type CliShimStatus = {
   supported: boolean
   installed: boolean
+
   stale: boolean
   path: string | null
   binDir: string | null
+
   onPath: boolean
 }
 

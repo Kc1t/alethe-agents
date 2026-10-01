@@ -184,7 +184,7 @@ export const useAgentSandboxStore = create<AgentSandboxState>((set, get) => ({
     const [endpoint, token, settingsPath] = await Promise.all([
       agentHooksEndpoint(),
       agentHooksToken(),
-      agentHooksSettingsPath(),
+      agentHooksSettingsPath('sandbox-demo'),
     ])
     if (generation !== sandboxGeneration) return
     set({

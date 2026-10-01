@@ -51,6 +51,22 @@ describe('buildAgentLaunch', () => {
     ).toEqual(['--session', 'open-pane', '--model', 'x'])
   })
 
+  it('Cursor resumes the chat its pane owns and drops every stale resume flag', () => {
+    expect(
+      buildAgentLaunch(
+        'cursor',
+        ['--continue', '--resume', 'old', '--resume=older', '--force'],
+        'cursor-chat',
+      ).args,
+    ).toEqual(['--resume', 'cursor-chat', '--force'])
+  })
+
+  it('Cursor without a chat id starts fresh instead of continuing the last one', () => {
+    const launch = buildAgentLaunch('cursor', ['--continue', '--force'])
+    expect(launch.args).toEqual(['--force'])
+    expect(launch.sessionId).toBeUndefined()
+  })
+
   it('Antigravity keeps agy flags and uses its pane-specific conversation', () => {
     expect(
       buildAgentLaunch(
@@ -59,5 +75,29 @@ describe('buildAgentLaunch', () => {
         'agy-pane',
       ).args,
     ).toEqual(['--conversation', 'agy-pane', '--dangerously-skip-permissions'])
+  })
+
+  it('Grok Build resumes by --resume when a pane session id is known', () => {
+    expect(
+      buildAgentLaunch('grok', ['--continue', '--resume', 'old', '--yolo'], 'grok-pane').args,
+    ).toEqual(['--resume', 'grok-pane', '--yolo'])
+  })
+
+  it('Grok Build without a session id starts fresh instead of continuing last', () => {
+    const launch = buildAgentLaunch('grok', ['--continue', '--yolo'])
+    expect(launch.args).toEqual(['--yolo'])
+    expect(launch.sessionId).toBeUndefined()
+  })
+
+  it('Codewhale uses the resume subcommand like Codex', () => {
+    expect(
+      buildAgentLaunch('codewhale', ['resume', 'old', '--model', 'auto'], 'whale-pane').args,
+    ).toEqual(['resume', 'whale-pane', '--model', 'auto'])
+  })
+
+  it('Codewhale without a session id drops stale resume/continue flags', () => {
+    const launch = buildAgentLaunch('codewhale', ['--continue', '--resume', 'stale'])
+    expect(launch.args).toEqual([])
+    expect(launch.sessionId).toBeUndefined()
   })
 })

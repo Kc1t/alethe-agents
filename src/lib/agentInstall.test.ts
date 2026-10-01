@@ -61,11 +61,32 @@ describe('installMethodsFor', () => {
     expect(installMethodsFor('antigravity', null).map((m) => m.id)).toEqual(['native'])
   })
 
+  it('installs Cursor through its own script, with or without a toolchain', () => {
+    expect(installMethodsFor('cursor', BARE).map((method) => method.id)).toEqual(['native'])
+    expect(installMethodsFor('cursor', null)[0].command).toContain('cursor.com/install')
+  })
+
   it('installs Freebuff through npm and Mimo through its own script', () => {
     expect(installMethodsFor('freebuff', { ...BARE, npm: true })[0].command).toBe(
       'npm install -g freebuff',
     )
     expect(installMethodsFor('mimo', BARE).map((method) => method.id)).toEqual(['native'])
+  })
+
+  it('installs Grok Build via native or npm, and Codewhale via npm', () => {
+    expect(installMethodsFor('grok', BARE).map((method) => method.id)).toEqual(['native'])
+    expect(installMethodsFor('grok', { ...BARE, npm: true }).map((method) => method.id)).toEqual([
+      'native',
+      'npm',
+    ])
+    expect(installMethodsFor('grok', { ...BARE, npm: true })[1].command).toBe(
+      'npm install -g @xai-official/grok',
+    )
+    expect(installMethodsFor('codewhale', { ...BARE, npm: true })[0].command).toBe(
+      'npm install -g codewhale',
+    )
+    expect(needsNodeToolchain('codewhale', BARE)).toBe(true)
+    expect(needsNodeToolchain('grok', BARE)).toBe(false)
   })
 })
 

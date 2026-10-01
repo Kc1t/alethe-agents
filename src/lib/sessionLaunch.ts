@@ -1,4 +1,4 @@
-import type { AgentType } from './types'
+import { isShellAgentType, type AgentType } from './types'
 
 export type AgentLaunch = {
   args: string[]
@@ -43,6 +43,32 @@ function stripAntigravitySessionArgs(args: string[]): string[] {
   )
 }
 
+function stripGrokSessionArgs(args: string[]): string[] {
+  return stripFlagWithValue(args, new Set(['--resume', '-r', '--session-id', '-s'])).filter(
+    (arg) => arg !== '--continue' && arg !== '-c',
+  )
+}
+
+function stripCodewhaleSessionArgs(args: string[]): string[] {
+  // Prefer the `resume` subcommand (codex-style). Also drop flag forms.
+  if (args[0] === 'resume') {
+    const rest = args.slice(1)
+    if (rest[0] === '--last' || (rest[0] && !rest[0].startsWith('-'))) rest.shift()
+    return stripFlagWithValue(rest, new Set(['--resume', '-r'])).filter(
+      (arg) => arg !== '--continue' && arg !== '-c',
+    )
+  }
+  return stripFlagWithValue(args, new Set(['--resume', '-r'])).filter(
+    (arg) => arg !== '--continue' && arg !== '-c',
+  )
+}
+
+function stripCursorSessionArgs(args: string[]): string[] {
+  return stripFlagWithValue(args, new Set(['--resume'])).filter(
+    (arg) => arg !== '--continue' && !arg.startsWith('--resume='),
+  )
+}
+
 export function buildAgentLaunch(
   agent: AgentType,
   baseArgs: readonly string[] = [],
@@ -50,24 +76,26 @@ export function buildAgentLaunch(
   createUuid: () => string = () => crypto.randomUUID(),
 
   mcpConfigPaths?: readonly string[],
+  hooksSettingsPath?: string,
 ): AgentLaunch {
-  if (agent === 'shell') {
+  if (isShellAgentType(agent)) {
     return { args: [...baseArgs], sessionId: undefined, createdSession: false }
   }
 
   if (agent === 'claude') {
     const clean = stripClaudeSessionArgs([...baseArgs])
     const mcp = (mcpConfigPaths ?? []).flatMap((path) => ['--mcp-config', path])
+    const settings = hooksSettingsPath ? ['--settings', hooksSettingsPath] : []
     if (sessionId) {
       return {
-        args: ['--resume', sessionId, ...mcp, ...clean],
+        args: ['--resume', sessionId, ...mcp, ...settings, ...clean],
         sessionId,
         createdSession: false,
       }
     }
     const createdId = createUuid()
     return {
-      args: ['--session-id', createdId, ...mcp, ...clean],
+      args: ['--session-id', createdId, ...mcp, ...settings, ...clean],
       sessionId: createdId,
       createdSession: true,
     }
@@ -96,6 +124,43 @@ export function buildAgentLaunch(
     const clean = stripAntigravitySessionArgs([...baseArgs])
     return {
       args: sessionId ? ['--conversation', sessionId, ...clean] : clean,
+      sessionId,
+      createdSession: false,
+    }
+  }
+
+  if (agent === 'kiro') {
+    // kiro-cli only accepts flags like --trust-all-tools under the `chat`
+    // subcommand — passed bare, it rejects them before falling back to it.
+    return { args: ['chat', ...baseArgs], sessionId: undefined, createdSession: false }
+  }
+
+  // Cursor mints its own chat IDs (`cursor-agent create-chat`), so the pane arrives here already
+  // holding one: there is nothing to generate, only a `--resume` to attach.
+  if (agent === 'cursor') {
+    const clean = stripCursorSessionArgs([...baseArgs])
+    return {
+      args: sessionId ? ['--resume', sessionId, ...clean] : clean,
+      sessionId,
+      createdSession: false,
+    }
+  }
+
+  // Grok Build resumes by ID (`--resume`); interactive TUI does not mint IDs via --session-id.
+  if (agent === 'grok') {
+    const clean = stripGrokSessionArgs([...baseArgs])
+    return {
+      args: sessionId ? ['--resume', sessionId, ...clean] : clean,
+      sessionId,
+      createdSession: false,
+    }
+  }
+
+  // Codewhale uses the `resume` subcommand (same shape as Codex).
+  if (agent === 'codewhale') {
+    const clean = stripCodewhaleSessionArgs([...baseArgs])
+    return {
+      args: sessionId ? ['resume', sessionId, ...clean] : clean,
       sessionId,
       createdSession: false,
     }

@@ -15,6 +15,7 @@ export type ModelCost = {
   cache_read: number
   cache_write_5m: number
   cache_write_1h: number
+
   cost_usd: number | null
 }
 
@@ -48,6 +49,7 @@ export type CodexSessionSnapshot = {
   modified_at_ms: number
   size_bytes: number
 }
+
 export type OpenCodeSessionSnapshot = { id: string; modified_at_ms: number }
 
 export type OpenCodeExportPartBase = { id: string; sessionID: string; messageID: string }
@@ -127,6 +129,15 @@ export async function snapshotAntigravitySessions(
   )
 }
 
+/**
+ * Opens an empty Cursor chat and returns its ID. Cursor keeps its conversations in an opaque
+ * store, so this is the only way a pane can know which chat to `--resume` later.
+ */
+export async function createCursorChat(cwd: string): Promise<string> {
+  if (!isTauriEnv()) throw new Error('cursor_chat_desktop_only')
+  return invoke<string>('create_cursor_chat', { cwd })
+}
+
 export async function getSessionCost(
   agent: string,
   cwd: string,
@@ -138,8 +149,8 @@ export async function getSessionCost(
   )
 }
 
-export async function getTranscriptCost(path: string): Promise<SessionCost> {
-  if (isTauriEnv()) return invoke<SessionCost>('get_transcript_cost', { path })
+export async function getTranscriptCost(path: string, agent?: string): Promise<SessionCost> {
+  if (isTauriEnv()) return invoke<SessionCost>('get_transcript_cost', { path, agent })
   return webApiFetch<SessionCost>(`/api/sessions/transcript_cost?path=${encodeURIComponent(path)}`)
 }
 
@@ -151,6 +162,11 @@ export async function getClaudeSessionTitle(
   return webApiFetch<string | null>(
     `/api/sessions/claude/title?cwd=${encodeURIComponent(cwd)}&sessionId=${encodeURIComponent(sessionId)}`,
   )
+}
+
+export async function getCodexSessionTitle(sessionId: string): Promise<string | null> {
+  if (!isTauriEnv()) return null
+  return invoke<string | null>('get_codex_session_title', { sessionId })
 }
 
 export async function snapshotClaudeSessions(cwd: string): Promise<ClaudeSessionSnapshot[]> {

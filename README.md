@@ -97,16 +97,28 @@ Cross-platform (Windows, macOS, Linux), local-first, built with Tauri, Rust, Rea
 | **Claude Code** | `claude` | Session resume, usage cards, local history |
 | **Codex** | `codex` | Session resume, usage cards |
 | **GitHub Copilot CLI** | `copilot` | |
+| **Cursor** | `cursor-agent` | Session resume |
 | **Antigravity** | `agy` | Usage cards |
 | **OpenCode** | `opencode` | Session resume |
+| **Kiro CLI** | `kiro-cli` | |
+| **Kimi Code** | `kimi` | |
+| **Grok Build** | `grok` | |
+| **Codewhale** | `codewhale` | |
 | **Mimo** | `mimo` | |
 | **Freebuff** | `freebuff` | |
 | **Shell** | pwsh / bash / zsh | The plain terminal, same pane model |
+| **WSL** | `wsl.exe` | The default distro, as a plain shell (Windows) |
 
 Missing CLIs can be installed, updated, and uninstalled from inside Alethe — it probes the machine
 for Node, npm, WinGet, Scoop, and Chocolatey and offers only the methods that actually work there,
 preferring each vendor's official installer. Already-installed CLIs are discovered across PATH,
 registry, npm/pnpm/Volta/fnm/nvm/Bun/Cargo/Scoop/Chocolatey, and can be pointed at a custom path.
+A plugin can add an agent of its own to this list.
+
+Agents can optionally be routed through [9router](https://github.com/decolua/9router), a local proxy
+that spreads traffic across providers with automatic fallback. Alethe installs and runs a private,
+version-pinned copy without touching your global npm packages. Routing is off by default and applies
+only to terminals opened after it is switched on.
 
 ## What It Does
 
@@ -121,7 +133,7 @@ registry, npm/pnpm/Volta/fnm/nvm/Bun/Cargo/Scoop/Chocolatey, and can be pointed 
 
 **Keep the context**
 
-- Sessions of Claude Code, Codex, and OpenCode resume after a crash or a restart.
+- Sessions of Claude Code, Codex, Cursor, and OpenCode resume after a crash or a restart.
 - **Recent chats** lists the conversations of a pane's working directory and reopens any of them.
 - A Claude Code conversation can be **handed off to Codex** (and back) through a locally redacted
   context packet — no copy-pasting the thread by hand. Redaction is best effort, so review the packet
@@ -131,12 +143,44 @@ registry, npm/pnpm/Volta/fnm/nvm/Bun/Cargo/Scoop/Chocolatey, and can be pointed 
 **Manage what the agents share**
 
 - **MCP tab**: every MCP server configured on the machine, grouped by server and showing which agents
-  have it — read from Claude Code, Codex, OpenCode, and Antigravity configs. Add, remove, copy a
-  server from one agent to another, search the official registry, and ask each agent to verify it can
-  really reach a server. Every write is backed up, re-parsed, and committed atomically.
+  have it — read from Claude Code, Codex, Cursor, OpenCode, and Antigravity configs. Add, remove,
+  copy a server from one agent to another, search the official registry, and ask each agent to verify
+  it can really reach a server. Every write is backed up, re-parsed, and committed atomically.
 - **Skills tab**: the skills installed for each agent, with links and shared stores resolved so a
   shared skill shows up once.
 - **Graphify**: a code graph of the project, served to the agents as an MCP server.
+
+**Extend it with plugins**
+
+- Features load as **plugins**, not hard-wired code. Official ones — Todo List, Git Control, Theme
+  Pack — ship inside the installer and can be switched off in Preferences ▸ Plugins, with their
+  surfaces appearing and disappearing without a restart.
+- A plugin can contribute a workspace pane, a sidebar tab, a command palette entry, a full theme, or
+  a new agent provider. It declares what it needs in its manifest, and the app refuses anything it
+  did not ask for.
+- **Plugin catalogue**: plugins published by other people are listed inside Alethe with their
+  permissions spelled out, and a listing that ships a package installs — and updates — in one click.
+  The index pins every package to a SHA-256 checksum, so what runs is what the listing was reviewed
+  against. An installed plugin arrives switched off and goes through a trust dialog before it runs.
+
+**Publishing a plugin**
+
+A plugin is a folder whose name matches the `id` in its `plugin.json`, next to a `main.js` bundle
+that binds against `window.alethe` (React included — never bundle your own). The manifest declares
+the tabs, commands and capabilities; the code implements them.
+
+1. **Try it locally.** Drop the folder into `<profile>/plugins/<id>/`, or use Preferences ▸ Plugins
+   ▸ *Import plugin*. It arrives switched off — enabling it goes through the trust dialog.
+2. **Ship a zip.** Zip the plugin folder, take its SHA-256, and attach it to a release:
+   `zip -r my-plugin.zip my-plugin && sha256sum my-plugin.zip`.
+3. **Get it listed.** Open a pull request against this repository adding one entry to
+   [`plugins.json`](plugins.json) with `id`, `name`, `downloadUrl` and — to make it installable from
+   inside Alethe — `package.url` and `package.sha256`. Re-hash whenever the zip changes.
+4. Once merged, the listing reaches everyone within six hours, or immediately on *Refresh*.
+
+Listing is a human reading your pull request, not an audit: the plugin still arrives disabled and
+still goes through the trust dialog. `docs/examples/notes-plugin/` is a working plugin in plain
+JavaScript with no build step; the [plugin guide](docs/PLUGINS.md) has the full contract.
 
 **Stay in control**
 
@@ -149,8 +193,13 @@ registry, npm/pnpm/Volta/fnm/nvm/Bun/Cargo/Scoop/Chocolatey, and can be pointed 
   human action, blocked when the head SHA moved, the PR is a draft, or GitHub reports conflicts. No
   GitHub token is stored; authentication is delegated to `gh`.
 - Content panes beside the terminals: file explorer, Markdown, diffs, images, video, embedded browser.
-- Todos per project, isolated profiles, local backup export/import, 14 UI and terminal themes,
-  EN and pt-BR.
+- Todos per project with a Pomodoro timer, isolated profiles, local backup export/import, UI and
+  terminal themes, EN and pt-BR.
+- **Orchestration board**: a lead agent delegates units of work to Claude and Codex workers that
+  Alethe runs in parallel — each optionally in its own git worktree, each reporting status, cost,
+  tokens and diff on its card, and each able to ask you before it leaves its sandbox. Off by default.
+- **Local voice dictation** with an on-device model, and **cloud sync** of your preferences through
+  a GitHub sign-in — both optional.
 - **Remote Control**: an authenticated LAN web view, paired by QR code, to follow and answer agents
   from your phone. It is off by default and uses unencrypted HTTP/WebSocket transport on the LAN, so
   enable it only on a trusted network. Clean profiles are read-only; answering agents requires a
@@ -302,22 +351,30 @@ See Alethe in real development workflows and learn how to orchestrate coding age
   </tr>
 </table>
 
+## Also On Mobile
+
+https://github.com/user-attachments/assets/ae3aed75-2ead-43c4-a9ca-fd29d83b7e1d
+
 ## Contributors
 
 Thanks to everyone helping shape Alethe.
 
 <p align="center">
+
   <!-- contributors:start -->
   <a href="https://github.com/Kc1t"><img src="https://github.com/Kc1t.png?size=100" width="80" height="80" alt="Kc1t" title="Kc1t" /></a>
   <a href="https://github.com/MiguelSilvaPorto"><img src="https://github.com/MiguelSilvaPorto.png?size=100" width="80" height="80" alt="MiguelSilvaPorto" title="MiguelSilvaPorto" /></a>
   <a href="https://github.com/HayatoG"><img src="https://github.com/HayatoG.png?size=100" width="80" height="80" alt="HayatoG" title="HayatoG" /></a>
   <a href="https://github.com/slegarraga"><img src="https://github.com/slegarraga.png?size=100" width="80" height="80" alt="slegarraga" title="slegarraga" /></a>
+  <a href="https://github.com/HumbertoCG18"><img src="https://github.com/HumbertoCG18.png?size=100" width="80" height="80" alt="HumbertoCG18" title="HumbertoCG18" /></a>
   <a href="https://github.com/lucapohl-angel"><img src="https://github.com/lucapohl-angel.png?size=100" width="80" height="80" alt="lucapohl-angel" title="lucapohl-angel" /></a>
   <a href="https://github.com/1arley"><img src="https://github.com/1arley.png?size=100" width="80" height="80" alt="1arley" title="1arley" /></a>
   <a href="https://github.com/potatoiscompiled"><img src="https://github.com/potatoiscompiled.png?size=100" width="80" height="80" alt="potatoiscompiled" title="potatoiscompiled" /></a>
+  <a href="https://github.com/GustavoAlmeidaDoNascimento"><img src="https://github.com/GustavoAlmeidaDoNascimento.png?size=100" width="80" height="80" alt="GustavoAlmeidaDoNascimento" title="GustavoAlmeidaDoNascimento" /></a>
   <a href="https://github.com/Jbnado"><img src="https://github.com/Jbnado.png?size=100" width="80" height="80" alt="Jbnado" title="Jbnado" /></a>
   <a href="https://github.com/chintanparmar011"><img src="https://github.com/chintanparmar011.png?size=100" width="80" height="80" alt="chintanparmar011" title="chintanparmar011" /></a>
   <a href="https://github.com/AshSgDe29071999"><img src="https://github.com/AshSgDe29071999.png?size=100" width="80" height="80" alt="AshSgDe29071999" title="AshSgDe29071999" /></a>
+  <a href="https://github.com/sthevan027"><img src="https://github.com/sthevan027.png?size=100" width="80" height="80" alt="sthevan027" title="sthevan027" /></a>
   <a href="https://github.com/rlevidev"><img src="https://github.com/rlevidev.png?size=100" width="80" height="80" alt="rlevidev" title="rlevidev" /></a>
   <a href="https://github.com/mapsiva"><img src="https://github.com/mapsiva.png?size=100" width="80" height="80" alt="mapsiva" title="mapsiva" /></a>
   <a href="https://github.com/moisesz10"><img src="https://github.com/moisesz10.png?size=100" width="80" height="80" alt="moisesz10" title="moisesz10" /></a>
@@ -332,6 +389,7 @@ Thanks to everyone helping shape Alethe.
   <a href="https://github.com/fernando-c-lima"><img src="https://github.com/fernando-c-lima.png?size=100" width="80" height="80" alt="fernando-c-lima" title="fernando-c-lima" /></a>
   <a href="https://github.com/feejunior"><img src="https://github.com/feejunior.png?size=100" width="80" height="80" alt="feejunior" title="feejunior" /></a>
   <a href="https://github.com/eudehh"><img src="https://github.com/eudehh.png?size=100" width="80" height="80" alt="eudehh" title="eudehh" /></a>
+  <a href="https://github.com/dudukings1"><img src="https://github.com/dudukings1.png?size=100" width="80" height="80" alt="dudukings1" title="dudukings1" /></a>
   <a href="https://github.com/davidwallaci"><img src="https://github.com/davidwallaci.png?size=100" width="80" height="80" alt="davidwallaci" title="davidwallaci" /></a>
   <a href="https://github.com/tomatotomata"><img src="https://github.com/tomatotomata.png?size=100" width="80" height="80" alt="tomatotomata" title="tomatotomata" /></a>
   <a href="https://github.com/ThiagoSales17"><img src="https://github.com/ThiagoSales17.png?size=100" width="80" height="80" alt="ThiagoSales17" title="ThiagoSales17" /></a>
@@ -339,18 +397,26 @@ Thanks to everyone helping shape Alethe.
   <a href="https://github.com/devmatheusmota"><img src="https://github.com/devmatheusmota.png?size=100" width="80" height="80" alt="devmatheusmota" title="devmatheusmota" /></a>
   <a href="https://github.com/JohnPss"><img src="https://github.com/JohnPss.png?size=100" width="80" height="80" alt="JohnPss" title="JohnPss" /></a>
   <a href="https://github.com/GabrielKLopes"><img src="https://github.com/GabrielKLopes.png?size=100" width="80" height="80" alt="GabrielKLopes" title="GabrielKLopes" /></a>
+  <a href="https://github.com/pinhaum"><img src="https://github.com/pinhaum.png?size=100" width="80" height="80" alt="pinhaum" title="pinhaum" /></a>
   <a href="https://github.com/floze-the-genius"><img src="https://github.com/floze-the-genius.png?size=100" width="80" height="80" alt="floze-the-genius" title="floze-the-genius" /></a>
+  <a href="https://github.com/claude"><img src="https://github.com/claude.png?size=100" width="80" height="80" alt="claude" title="claude" /></a>
   <a href="https://github.com/aryansk"><img src="https://github.com/aryansk.png?size=100" width="80" height="80" alt="aryansk" title="aryansk" /></a>
   <a href="https://github.com/sousaakira"><img src="https://github.com/sousaakira.png?size=100" width="80" height="80" alt="sousaakira" title="sousaakira" /></a>
+  <a href="https://github.com/AiurArtanis"><img src="https://github.com/AiurArtanis.png?size=100" width="80" height="80" alt="AiurArtanis" title="AiurArtanis" /></a>
   <!-- contributors:end -->
 </p>
 
 ## License
 
-The source code is distributed under **AGPL-3.0-or-later**. See [`LICENSE`](LICENSE) for details.
+The source code is distributed under **AGPL-3.0-or-later**. Modifications and covered derivative
+works that are distributed, or made available to users over a network, must provide their
+corresponding source under the same license. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+
 Official hosted services, such as sync, backup, billing, or cloud features, may be proprietary and
-offered separately. The **Alethe** name, logo, and official branding are reserved for official builds
-— see [`TRADEMARK.md`](TRADEMARK.md).
+offered separately. The code license does not grant rights to the **Alethe** name, logo, application
+icon, or official branding. Modified builds must be independently branded, and commercial use of
+the Alethe brand requires prior written permission from Kauã Miguel. See
+[`TRADEMARK.md`](TRADEMARK.md).
 
 ## Community
 

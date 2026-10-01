@@ -1,3 +1,4 @@
+import { isBuiltinAgentType } from './agentProviders'
 import { AGENT_TYPE_LABELS, type AgentType, ALL_AGENT_TYPES, UNRESTRICTED_FLAG } from './types'
 
 export const AGENT_OPTIONS = ALL_AGENT_TYPES.map((type) => ({
@@ -21,6 +22,6 @@ export function unrestrictedArgsForAgent(
   type: AgentType,
   unrestricted: Record<AgentType, boolean>,
 ): string[] | undefined {
-  const flag = UNRESTRICTED_FLAG[type]
+  const flag = isBuiltinAgentType(type) ? UNRESTRICTED_FLAG[type] : undefined
   return unrestricted[type] && flag ? [flag] : undefined
 }

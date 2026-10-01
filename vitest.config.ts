@@ -17,6 +17,7 @@ const DOM_TESTS_IN_LIB = new Set([
   'src/lib/mountQueue.test.ts',
   'src/lib/overlayPresence.test.ts',
   'src/lib/resourceEvents.test.ts',
+  'src/lib/plugins/localTransport.test.ts',
   'src/lib/sessionResume.test.ts',
   'src/lib/storageNamespace.test.ts',
   'src/lib/surfaceGeometry.test.ts',

@@ -958,6 +958,11 @@
   background: color-mix(in srgb, var(--agent-antigravity) 14%, transparent);
   border-color: color-mix(in srgb, var(--agent-antigravity) 28%, transparent);
 }
+.notifCursor {
+  color: var(--agent-cursor);
+  background: color-mix(in srgb, var(--agent-cursor) 14%, transparent);
+  border-color: color-mix(in srgb, var(--agent-cursor) 28%, transparent);
+}
 .notifShell {
   color: var(--agent-shell);
   background: color-mix(in srgb, var(--agent-shell) 14%, transparent);
@@ -977,6 +982,26 @@
   color: var(--agent-mimo);
   background: color-mix(in srgb, var(--agent-mimo) 16%, transparent);
   border-color: color-mix(in srgb, var(--agent-mimo) 28%, transparent);
+}
+.notifKiro {
+  color: var(--agent-kiro);
+  background: color-mix(in srgb, var(--agent-kiro) 16%, transparent);
+  border-color: color-mix(in srgb, var(--agent-kiro) 28%, transparent);
+}
+.notifKimi {
+  color: var(--agent-kimi);
+  background: color-mix(in srgb, var(--agent-kimi) 16%, transparent);
+  border-color: color-mix(in srgb, var(--agent-kimi) 28%, transparent);
+}
+.notifGrok {
+  color: var(--agent-grok);
+  background: color-mix(in srgb, var(--agent-grok) 16%, transparent);
+  border-color: color-mix(in srgb, var(--agent-grok) 28%, transparent);
+}
+.notifCodewhale {
+  color: var(--agent-codewhale);
+  background: color-mix(in srgb, var(--agent-codewhale) 16%, transparent);
+  border-color: color-mix(in srgb, var(--agent-codewhale) 28%, transparent);
 }
 
 .notifBody {
@@ -1029,6 +1054,17 @@
 
 .usageStripTwo {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.usageEmpty {
+  grid-column: 1 / -1;
+  padding: 28px 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--fg-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 @container home (max-width: 1100px) {
@@ -1317,6 +1353,76 @@
 }
 .statValueCrit {
   color: var(--status-offline);
+}
+
+.resetCreditBox {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 13px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--fg-faint);
+  font: 10px var(--font-sans);
+}
+
+.resetCreditTitle {
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.resetCreditInfo {
+  color: var(--fg-faint);
+}
+
+.resetCreditItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.resetCreditItem > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.resetCreditItem strong {
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+.resetCreditItem span,
+.resetCreditItem small {
+  color: var(--fg-faint);
+  font-size: 10px;
+}
+
+.resetCreditButton {
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  color: var(--fg-muted);
+  font: 11px var(--font-sans);
+  cursor: pointer;
+}
+
+.resetCreditButton:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--fg);
+}
+
+.resetCreditButton:disabled {
+  cursor: wait;
+  opacity: 0.65;
 }
 
 .cardFoot {

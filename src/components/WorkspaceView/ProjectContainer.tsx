@@ -1,22 +1,15 @@
 import { useDraggable, useDroppable } from '@dnd-kit/core'
-import {
-  ChevronRight,
-  GripVertical,
-  Maximize2,
-  Minimize2,
-  Minus,
-  Plus,
-  TerminalSquare,
-} from 'lucide-react'
+import { ChevronRight, GripVertical, Maximize2, Minimize2, Minus, Plus } from 'lucide-react'
 import { memo, useMemo } from 'react'
 
 import { useT } from '../../lib/i18n'
+import { formatShortcut } from '../../lib/platform'
 import type { Group, Project, Terminal, WorkspaceContainer } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
-import { EmptyState } from '../EmptyState'
 import { PaneArea } from './PaneArea'
 import styles from './ProjectContainer.module.css'
+import { WorkspaceEmptyState } from './WorkspaceEmptyState'
 
 export type ProjectContainerProps = {
   container: WorkspaceContainer
@@ -53,7 +46,7 @@ export const ProjectContainer = memo(function ProjectContainer({
   }
   const isDropTarget = droppable.isOver && !draggable.isDragging
 
-  // renderizados. O terminal isolado busca direto em `project.terminals`,
+  // Resolve the isolated terminal independently of the visible container panes.
 
   const terminals = useMemo<Terminal[]>(() => {
     if (isFullscreen && isolatedPaneId) {
@@ -64,7 +57,8 @@ export const ProjectContainer = memo(function ProjectContainer({
     return container.paneIds.map((id) => map.get(id)).filter((t): t is Terminal => Boolean(t))
   }, [project.terminals, container.paneIds, isFullscreen, isolatedPaneId])
   const storedAccent = project.color || group?.color
-  const accent = storedAccent && CSS.supports('color', storedAccent) ? storedAccent : '#6ea8ff'
+  const accent =
+    storedAccent && CSS.supports('color', storedAccent) ? storedAccent : 'var(--accent)'
   const isRainbow = accent === 'rgb-rainbow'
 
   if (container.collapsed) {
@@ -181,19 +175,28 @@ export const ProjectContainer = memo(function ProjectContainer({
       <div className={styles.body}>
         {terminals.length === 0 ? (
           <div className={styles.emptyShell}>
-            <EmptyState
-              compact
-              icon={<TerminalSquare size={18} />}
-              title={t('ws.panesEmptyTitle')}
-              description={t('ws.panesEmptyDesc')}
-              primaryAction={{
-                label: t('ws.panesEmptyAction'),
-                onClick: () => openContainerWithAllPanes(project.id),
-              }}
+            <WorkspaceEmptyState
+              actions={[
+                {
+                  label: t('ws.emptyOpenPanes'),
+                  onClick: () => openContainerWithAllPanes(project.id),
+                },
+                {
+                  label: t('ws.emptyNewTerminal'),
+                  shortcut: formatShortcut('Ctrl+T'),
+                  onClick: () => openModal('newTerminal', { projectId: project.id }),
+                },
+                {
+                  label: t('ws.emptyAddContent'),
+                  shortcut: formatShortcut('Ctrl+Shift+A'),
+                  onClick: () => openModal('addContent', { projectId: project.id }),
+                },
+              ]}
             />
           </div>
         ) : (
           <PaneArea
+            gridId={container.gridId}
             projectId={project.id}
             idPrefix={`c-${project.id}`}
             terminals={terminals}

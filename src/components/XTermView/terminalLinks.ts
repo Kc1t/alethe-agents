@@ -28,7 +28,7 @@ export type LogicalTerminalLine = {
 }
 
 const LINK_START_PATTERN =
-  /https?:\/\/|(?<![@\w.-])(?:localhost(?::\d{1,5})?|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:app|ai|biz|br|ca|cloud|co|com|de|dev|edu|fr|gg|gov|info|io|jp|live|me|net|online|org|page|sh|site|tech|tools|tv|uk|xyz))(?::\d{1,5})?(?:\/[^\s<>"'`|]*)?|(?:[A-Za-z]:\\|\\\\)|(?<![\w])(?:~\/|\/)(?=[A-Za-z0-9_.~])/gi
+  /https?:\/\/|(?<![@\w.-])(?:localhost(?::\d{1,5})?|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:app|ai|biz|br|ca|cloud|co|com|de|dev|edu|fr|gg|gov|info|io|jp|live|me|net|online|org|page|sh|site|tech|tools|tv|uk|xyz))(?::\d{1,5})?(?:\/[^\s<>"'`|]*)?|(?:[A-Za-z]:\\|\\\\)|(?<![\w])(?:~\/|\/)(?=[A-Za-z0-9_.~])|(?<![@\w.-])(?:\.\.?[\\/])?(?:[A-Za-z0-9_.-]+[\\/])*[A-Za-z0-9_.-]+\.(?:md|markdown|mdx|png|jpe?g|gif|webp|bmp|avif|ico|svg|txt|tsx?|jsx?|json|ya?ml|toml|csv|pdf|mp4|m4v|mov|avi|mkv|webm|mp3|wav|flac|m4a|zip|7z|rar|tar|gz|exe|msi|dll)(?=$|[\s),.;:\]}`])/gi
 const URL_PROTOCOL_PATTERN = /^https?:\/\//i
 const BARE_URL_PATTERN =
   /^(?:localhost(?::\d{1,5})?|(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:app|ai|biz|br|ca|cloud|co|com|de|dev|edu|fr|gg|gov|info|io|jp|live|me|net|online|org|page|sh|site|tech|tools|tv|uk|xyz))(?::\d{1,5})?(?:\/[^\s<>"'`|]*)?/i
@@ -69,6 +69,19 @@ function isLikelyAbsolutePath(text: string): boolean {
   const clean = stripLineColumn(text)
   const withoutRoot = clean.startsWith('~/') ? clean.slice(2) : clean.slice(1)
   return withoutRoot.includes('/') || FILE_EXT_PATTERN.test(clean)
+}
+
+function isLikelyFilePath(text: string): boolean {
+  return isLikelyAbsolutePath(text) || Boolean(classifyFileLink(text))
+}
+
+export function resolveTerminalFilePath(path: string, cwd?: string | null): string {
+  const clean = stripLineColumn(path.trim())
+  if (!cwd || /^(?:[A-Za-z]:[\\/]|\\\\|~\/|\/)/.test(clean)) return clean
+  const separator = cwd.includes('\\') ? '\\' : '/'
+  const base = cwd.replace(/[\\/]+$/, '')
+  const relative = clean.replace(/^\.([\\/])/, '').replace(/[\\/]/g, separator)
+  return `${base}${separator}${relative}`
 }
 
 function normalizeUrlTarget(text: string): string {
@@ -112,7 +125,11 @@ function findLinkEnd(line: string, start: number, isUrl: boolean): number {
     }
     end += 1
 
-    if (!isUrl && FILE_EXT_BOUNDARY_PATTERN.test(line.slice(start, end))) break
+    if (!isUrl && classifyFileLink(line.slice(start, end))) {
+      const next = line[end]
+      const lineColumnSuffix = next === ':' && /\d/.test(line[end + 1] ?? '')
+      if (!next || (!lineColumnSuffix && /[\s),.;:]/.test(next))) break
+    }
   }
   return end
 }
@@ -132,7 +149,7 @@ export function detectTerminalLinks(line: string): DetectedTerminalLink[] {
 
     const kind = isUrl ? 'url' : 'path'
     const text = kind === 'url' ? displayText : displayText.replace(/\\ /g, ' ')
-    if (kind === 'path' && !isLikelyAbsolutePath(text)) continue
+    if (kind === 'path' && !isLikelyFilePath(text)) continue
     links.push({
       text,
       target: kind === 'url' ? normalizeUrlTarget(text) : text,

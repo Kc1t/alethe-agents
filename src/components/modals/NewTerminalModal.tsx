@@ -1,12 +1,30 @@
-import { CircleCheck, Folder, Info, Zap } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import {
+  Folder,
+  FolderSearch,
+  Grid2X2,
+  ListChecks,
+  SquareTerminal,
+  Waypoints,
+  Workflow,
+  Zap,
+} from 'lucide-react'
+import { type KeyboardEvent, useEffect, useMemo, useState } from 'react'
 
 import { useAgentCreationForm } from '../../hooks/useAgentCreationForm'
-import { AGENT_OPTIONS, unrestrictedArgsForAgent } from '../../lib/agentCreation'
+import { useRouter9Runtime } from '../../hooks/useRouter9Runtime'
+import {
+  agentLabel,
+  isAgentEnabled,
+  resolveUnrestrictedFlag,
+  useAgentTypes,
+} from '../../lib/agentProviders'
 import { pickDirectory } from '../../lib/dialog'
 import { useT } from '../../lib/i18n'
-import { basename } from '../../lib/paths'
-import { UNRESTRICTED_FLAG } from '../../lib/types'
+import { basename, pathSegments } from '../../lib/paths'
+import { formatShortcut } from '../../lib/platform'
+import { DEFAULT_GRID_ID } from '../../lib/projectGrids'
+import { router9SupportsAgent } from '../../lib/router9'
+import { isShellAgentType, type AgentType } from '../../lib/types'
 import {
   getProjectDefaultCwd,
   getProjectRepoRoot,
@@ -17,12 +35,34 @@ import { AgentIcon } from '../icons/AgentIcons'
 import controls from './controls.module.css'
 import { Modal } from './Modal'
 import styles from './NewTerminalModal.module.css'
+import { RowSelect, type RowSelectOption } from './RowSelect'
 import { RuntimeProfileField } from './RuntimeProfileField'
+
+const PLANNER_AGENTS: AgentType[] = ['claude', 'codex']
+
+const BROWSE_OPTION = '__browse__'
+const UNGROUPED_GRID = '__ungrouped__'
+
+type SessionMode = 'terminal' | 'orchestration'
+
+function shortenPath(path: string): string {
+  const segments = pathSegments(path)
+  if (segments.length <= 2) return path
+  const separator = path.includes('\\') ? '\\' : '/'
+  return `…${separator}${segments.slice(-2).join(separator)}`
+}
 
 export function NewTerminalModal() {
   const t = useT()
   const open = useUiStore((s) => s.openModal === 'newTerminal')
-  const context = useUiStore((s) => s.modalContext) as { projectId?: string } | null
+  const context = useUiStore((s) => s.modalContext) as {
+    projectId?: string
+    gridId?: string
+    // Callers that need a particular kind of terminal narrow the choice rather than opening a
+    // second modal that would drift from this one.
+    only?: AgentType[]
+    titleKey?: 'term.newTerminalTitle' | 'term.newPlannerTitle'
+  } | null
   const closeModal = useUiStore((s) => s.closeModal)
   const createAgentTerminal = useProjectsStore((s) => s.createAgentTerminal)
   const setActiveProjectOnly = useProjectsStore((s) => s.setActiveProjectOnly)
@@ -30,7 +70,10 @@ export function NewTerminalModal() {
   const setActiveView = useUiStore((s) => s.setActiveView)
   const setActiveTerminal = useUiStore((s) => s.setActiveTerminal)
   const requestPaneFocus = useUiStore((s) => s.requestPaneFocus)
+  const createOrchestratorPane = useProjectsStore((s) => s.createOrchestratorPane)
+  const groupPanes = useProjectsStore((s) => s.groupPanes)
   const alwaysStartUnrestricted = useProjectsStore((s) => s.preferences.alwaysStartUnrestricted)
+  const enabledFeatures = useProjectsStore((s) => s.preferences.enabledFeatures)
   const setPreferences = useProjectsStore((s) => s.setPreferences)
   const project = useProjectsStore((s) =>
     context?.projectId ? (s.projects.find((p) => p.id === context.projectId) ?? null) : null,
@@ -41,6 +84,11 @@ export function NewTerminalModal() {
     (s) => s.preferences.terminalTheme ?? s.preferences.uiTheme,
   )
 
+  const router9 = useRouter9Runtime(open)
+  const [useRouter9, setUseRouter9] = useState(false)
+  const [mode, setMode] = useState<SessionMode>('terminal')
+  const [goal, setGoal] = useState('')
+  const [createMore, setCreateMore] = useState(false)
   const [cwd, setCwd] = useState('')
   const {
     resetAgentCreation,
@@ -51,13 +99,23 @@ export function NewTerminalModal() {
     type,
     unrestricted,
   } = useAgentCreationForm('claude')
+  const [selectedGridId, setSelectedGridId] = useState(UNGROUPED_GRID)
 
-  const visibleAgents = AGENT_OPTIONS.filter((agent) => enabled[agent.type])
+  const only = context?.only
+  const isPlannerContext = context?.titleKey === 'term.newPlannerTitle'
+  const allAgents = useAgentTypes().map((type) => ({ type, label: agentLabel(type) }))
+  const visibleAgents = allAgents.filter(
+    (agent) => isAgentEnabled(enabled, agent.type) && (!only || only.includes(agent.type)),
+  )
+  const plannerAgents = visibleAgents.filter((a) => PLANNER_AGENTS.includes(a.type))
+  const canOrchestrate = !isPlannerContext && plannerAgents.length > 0
+  const orchestrating = canOrchestrate && mode === 'orchestration'
+  const modeAgents = orchestrating ? plannerAgents : visibleAgents
   const defaultType =
     visibleAgents.find((agent) => agent.type === 'claude')?.type ??
     visibleAgents[0]?.type ??
     'shell'
-  const selectedAgent = AGENT_OPTIONS.find((agent) => agent.type === type) ?? AGENT_OPTIONS[0]
+  const selectedAgent = allAgents.find((agent) => agent.type === type) ?? allAgents[0]
   // Prefer the repository root because the most recently used terminal may belong to an
   // isolated agent worktree. This mirrors createAgentTerminal's fallback order.
   const inheritedCwd = useMemo(
@@ -90,32 +148,74 @@ export function NewTerminalModal() {
     if (!open) return
     setCwd(inheritedCwd)
     resetAgentCreation(defaultType, alwaysStartUnrestricted)
+    setMode('terminal')
+    setGoal('')
+    setCreateMore(false)
+    setUseRouter9(router9.config.defaultForNewAgents)
+    setSelectedGridId(context?.gridId ?? UNGROUPED_GRID)
   }, [
     open,
     context?.projectId,
+    context?.gridId,
     inheritedCwd,
     defaultType,
     alwaysStartUnrestricted,
+    router9.config.defaultForNewAgents,
     resetAgentCreation,
   ])
 
   const reset = () => {
     setCwd('')
     resetAgentCreation(defaultType)
+    setMode('terminal')
+    setGoal('')
+    setCreateMore(false)
+    setUseRouter9(false)
+    setSelectedGridId(UNGROUPED_GRID)
   }
+
+  // Without a key the injected environment would be empty, so the toggle would silently do nothing.
+  const routingAvailable = Boolean(
+    router9.config.enabled &&
+    router9.config.apiKey.trim() &&
+    router9.hasInstall &&
+    router9SupportsAgent(type),
+  )
 
   const submit = async () => {
     if (!context?.projectId) return
     const finalName = selectedAgent.label
     const finalCwd = cwd.trim() || inheritedCwd
-    const extraArgs = unrestrictedArgsForAgent(type, unrestricted)
+    const flag = resolveUnrestrictedFlag(type)
+    const extraArgs = unrestricted[type] && flag ? [flag] : undefined
+    const trimmedGoal = goal.trim()
     const creation = {
       name: finalName,
       cwd: finalCwd,
-      firstTab: { type, cwd: finalCwd, extraArgs, runtimeProfile },
+      firstTab: {
+        type,
+        cwd: finalCwd,
+        extraArgs,
+        runtimeProfile,
+        useRouter9: routingAvailable && useRouter9,
+        initialInput: orchestrating && trimmedGoal ? trimmedGoal : undefined,
+      },
     }
-    const terminal = await createAgentTerminal(context.projectId, creation)
-    setPreferences({ lastTerminalCreation: creation })
+    // The planner must receive the orchestration MCP config on its first mount. Update the feature
+    // before adding the terminal so no restart is needed.
+    setPreferences({
+      ...(orchestrating ? { enabledFeatures: { ...enabledFeatures, orchestrator: true } } : {}),
+      lastTerminalCreation: creation,
+    })
+    const terminal = await createAgentTerminal(context.projectId, {
+      ...creation,
+      gridId: selectedGridId === UNGROUPED_GRID ? undefined : selectedGridId,
+    })
+    if (orchestrating) {
+      const canvas = createOrchestratorPane(context.projectId, finalCwd)
+      groupPanes(context.projectId, [terminal.id, canvas.id], { kind: 'orchestration' })
+    }
+    if (createMore && !orchestrating) return
     // Creation only persists the terminal; explicitly navigate and focus it so the xterm mounts.
     setActiveProjectOnly(context.projectId)
     focusWorkspaceTerminal(context.projectId, terminal.id)
@@ -131,6 +231,64 @@ export function NewTerminalModal() {
     if (dir) setCwd(dir)
   }
 
+  const chooseMode = (next: SessionMode) => {
+    setMode(next)
+    const allowed = next === 'orchestration' ? plannerAgents : visibleAgents
+    if (!allowed.some((agent) => agent.type === type)) setType(allowed[0]?.type ?? defaultType)
+  }
+
+  const modeOptions: RowSelectOption[] = [
+    {
+      value: 'terminal',
+      title: t('term.openAsTerminal'),
+      description: t('term.openAsTerminalDesc'),
+      icon: <SquareTerminal size={15} />,
+    },
+    {
+      value: 'orchestration',
+      title: t('term.openAsOrchestration'),
+      description: t('term.openAsOrchestrationDesc'),
+      icon: <Workflow size={15} />,
+    },
+  ]
+
+  const agentOptions: RowSelectOption[] = modeAgents.map((agent) => ({
+    value: agent.type,
+    title: agent.label,
+    icon: <AgentIcon type={agent.type} size={17} theme={terminalTheme} />,
+  }))
+
+  const folderPaths = [inheritedCwd, ...recentFolders.map((folder) => folder.path)].filter(
+    (path, index, list) =>
+      Boolean(path) &&
+      list.findIndex((other) => other.toLowerCase() === path.toLowerCase()) === index,
+  )
+  const folderOptions: RowSelectOption[] = [
+    ...folderPaths.map((path) => ({
+      value: path,
+      title: basename(path) || path,
+      description: path,
+      icon: <Folder size={15} />,
+    })),
+    {
+      value: BROWSE_OPTION,
+      title: t('term.chooseFolder'),
+      icon: <FolderSearch size={15} />,
+    },
+  ]
+  const gridOptions: RowSelectOption[] = [
+    { value: UNGROUPED_GRID, title: t('term.gridUngrouped'), icon: <SquareTerminal size={15} /> },
+    ...(project?.grids ?? [])
+      .filter((grid) => grid.id !== DEFAULT_GRID_ID)
+      .map((grid) => ({ value: grid.id, title: grid.name, icon: <Grid2X2 size={15} /> })),
+  ]
+
+  const handleShortcut = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey)) return
+    event.preventDefault()
+    if (context?.projectId) void submit()
+  }
+
   return (
     <Modal
       open={open}
@@ -138,138 +296,275 @@ export function NewTerminalModal() {
         reset()
         closeModal()
       }}
-      title={t('term.newTerminalTitle')}
-      width={560}
+      className={styles.modal}
+      title={t(context?.titleKey ?? 'term.newTerminalTitle')}
+      width={500}
       footer={
         <>
+          {!orchestrating ? (
+            <button
+              type="button"
+              className={styles.createMore}
+              aria-pressed={createMore}
+              onClick={() => setCreateMore((value) => !value)}
+            >
+              <span
+                className={`${styles.switchTrack} ${createMore ? styles.switchTrackOn : ''}`}
+                aria-hidden="true"
+              />
+              {t('term.createMore')}
+            </button>
+          ) : null}
+          <span className={styles.footerFill} />
           <button type="button" className={controls.btn} onClick={closeModal}>
             {t('term.cancel')}
           </button>
           <button
             type="button"
-            className={`${controls.btn} ${controls.btnPrimary}`}
+            className={`${controls.btn} ${controls.btnPrimary} ${styles.submitButton}`}
             onClick={() => void submit()}
             disabled={!context?.projectId}
           >
-            {t('term.openAgent', { agent: selectedAgent.label })}
+            {orchestrating
+              ? t('term.createOrchestration')
+              : t('term.openAgent', { agent: selectedAgent.label })}
+            <span className={styles.shortcut}>{formatShortcut('Ctrl+↵')}</span>
           </button>
         </>
       }
     >
-      <p className={styles.description}>{t('term.newTerminalDescription')}</p>
+      <div onKeyDown={handleShortcut}>
+        <div className={styles.fields}>
+          {isPlannerContext && project ? (
+            <div className={styles.contextLine}>
+              <span className={styles.contextIcon}>
+                <Workflow size={15} />
+              </span>
+              <span>{t('term.plannerContext', { project: project.name })}</span>
+            </div>
+          ) : null}
 
-      <section className={styles.section}>
-        <h3 className={styles.stepTitle}>{t('term.stepTerminal')}</h3>
-        <div className={styles.agentGrid}>
-          {visibleAgents.map((a) => {
-            const active = type === a.type
-            return (
-              <button
-                key={a.type}
-                type="button"
-                className={`${styles.agentCard} ${active ? styles.agentCardActive : ''}`}
-                onClick={() => setType(a.type)}
-                aria-pressed={active}
-              >
-                <span className={styles.agentIcon}>
-                  <AgentIcon type={a.type} size={22} theme={terminalTheme} />
-                </span>
-                <span className={styles.agentLabel}>{a.label}</span>
-                {active ? <CircleCheck size={17} className={styles.selectedIcon} /> : null}
-              </button>
-            )
-          })}
-        </div>
-        {UNRESTRICTED_FLAG[type] ? (
-          <button
-            type="button"
-            className={`${styles.permissionToggle} ${unrestricted[type] ? styles.permissionToggleActive : ''}`}
-            onClick={() => toggleUnrestricted(type)}
-            aria-pressed={unrestricted[type]}
-          >
-            <span className={styles.permissionToggleIcon}>
-              <Zap size={17} />
-            </span>
-            <span className={styles.permissionToggleCopy}>
-              <span className={styles.permissionToggleTitle}>{t('term.unrestrictedShort')}</span>
-              <span className={styles.permissionToggleDescription}>
-                {t('term.unrestrictedDescription')}
+          {canOrchestrate ? (
+            <div className={styles.field}>
+              <span className={styles.fieldLabel}>
+                <span className={styles.fieldLabelText}>{t('term.openAs')}</span>
+              </span>
+              <RowSelect
+                field="mode"
+                autoFocus
+                ariaLabel={t('term.openAs')}
+                value={mode}
+                options={modeOptions}
+                onChange={(value) => chooseMode(value as SessionMode)}
+                icon={orchestrating ? <Workflow size={15} /> : <SquareTerminal size={15} />}
+                title={orchestrating ? t('term.openAsOrchestration') : t('term.openAsTerminal')}
+                side={
+                  orchestrating ? t('term.openAsOrchestrationSide') : t('term.openAsTerminalSide')
+                }
+              />
+            </div>
+          ) : null}
+
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>
+              <span className={styles.fieldLabelText}>
+                {orchestrating || isPlannerContext ? t('term.plannerLabel') : t('term.agentLabel')}
               </span>
             </span>
-            <span className={styles.permissionToggleState}>
-              {unrestricted[type] ? t('term.unrestrictedOn') : t('term.unrestrictedOff')}
-            </span>
-          </button>
-        ) : null}
-        {UNRESTRICTED_FLAG[type] ? (
-          <label className={styles.alwaysUnrestricted}>
-            <input
-              type="checkbox"
-              checked={alwaysStartUnrestricted}
-              onChange={(event) =>
-                setPreferences({ alwaysStartUnrestricted: event.target.checked })
-              }
+            <RowSelect
+              field="agent"
+              autoFocus={!canOrchestrate}
+              ariaLabel={orchestrating ? t('term.plannerLabel') : t('term.agentLabel')}
+              value={type}
+              options={agentOptions}
+              onChange={(value) => setType(value as AgentType)}
+              icon={<AgentIcon type={type} size={17} theme={terminalTheme} />}
+              title={selectedAgent.label}
+              side={orchestrating ? t('term.plannerSide') : undefined}
             />
-            <span>{t('term.alwaysUnrestricted')}</span>
-          </label>
-        ) : null}
-      </section>
+          </div>
 
-      <section className={styles.section}>
-        <h3 className={styles.stepTitle}>{t('term.stepFolder')}</h3>
-        <div className={styles.folderRow}>
-          <Folder size={16} className={styles.folderIcon} />
-          <input
-            className={styles.folderInput}
-            value={cwd}
-            onChange={(e) => setCwd(e.target.value)}
-            placeholder={inheritedCwd || t('term.shellDefaultPlaceholder')}
-          />
-          <button type="button" className={styles.browseButton} onClick={browse}>
-            {t('term.browse')}
-          </button>
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>
+              <span className={styles.fieldLabelText}>
+                {orchestrating ? t('term.projectLabel') : t('term.folderLabel')}
+              </span>
+              <button type="button" className={styles.fieldAction} onClick={() => void browse()}>
+                {t('term.chooseFolder')}
+              </button>
+            </span>
+            <RowSelect
+              field="folder"
+              ariaLabel={orchestrating ? t('term.projectLabel') : t('term.folderLabel')}
+              value={cwd}
+              options={folderOptions}
+              onChange={(value) => {
+                if (value === BROWSE_OPTION) void browse()
+                else setCwd(value)
+              }}
+              icon={<Folder size={15} />}
+              title={basename(cwd) || cwd || t('term.shellDefaultPlaceholder')}
+              side={cwd ? shortenPath(cwd) : undefined}
+            />
+          </div>
+
+          {orchestrating ? (
+            <div className={styles.field}>
+              <label className={styles.fieldLabel} htmlFor="new-terminal-goal">
+                <span className={styles.fieldLabelText}>{t('term.goalLabel')}</span>
+                <span className={styles.fieldNote}>{t('term.optional')}</span>
+              </label>
+              <div className={styles.goalRow}>
+                <ListChecks size={15} className={styles.goalIcon} />
+                <textarea
+                  id="new-terminal-goal"
+                  className={styles.goalInput}
+                  rows={2}
+                  value={goal}
+                  onChange={(event) => setGoal(event.target.value)}
+                  placeholder={t('term.goalPlaceholder')}
+                />
+              </div>
+            </div>
+          ) : null}
         </div>
 
-        {recentFolders.length > 0 ? (
-          <div className={styles.recentBlock}>
-            <span className={styles.recentLabel}>{t('term.recentFolders')}</span>
-            <div className={styles.recentFolders}>
-              {recentFolders.map((folder) => {
-                const label = basename(folder.path) || folder.path
-                return (
+        <details className={styles.advanced}>
+          <summary>
+            {t('term.advancedOptions')}
+            <span className={styles.advancedHint}>{t('term.advancedHint')}</span>
+          </summary>
+          <div className={styles.advancedBody}>
+            {project && gridOptions.length > 1 ? (
+              <div className={styles.field}>
+                <span className={styles.fieldLabel}>
+                  <span className={styles.fieldLabelText}>{t('term.gridLabel')}</span>
+                </span>
+                <RowSelect
+                  field="grid"
+                  ariaLabel={t('term.gridLabel')}
+                  value={selectedGridId}
+                  options={gridOptions}
+                  onChange={setSelectedGridId}
+                  icon={
+                    selectedGridId === UNGROUPED_GRID ? (
+                      <SquareTerminal size={15} />
+                    ) : (
+                      <Grid2X2 size={15} />
+                    )
+                  }
+                  title={
+                    gridOptions.find((option) => option.value === selectedGridId)?.title ??
+                    t('term.gridUngrouped')
+                  }
+                />
+              </div>
+            ) : null}
+            {resolveUnrestrictedFlag(type) ? (
+              <>
+                <button
+                  type="button"
+                  className={`${styles.permissionToggle} ${unrestricted[type] ? styles.permissionToggleActive : ''}`}
+                  onClick={() => toggleUnrestricted(type)}
+                  aria-pressed={unrestricted[type]}
+                >
+                  <span className={styles.permissionToggleIcon}>
+                    <Zap size={16} />
+                  </span>
+                  <span className={styles.permissionToggleCopy}>
+                    <span className={styles.permissionToggleTitle}>{t('term.unrestricted')}</span>
+                    <span className={styles.permissionToggleDescription}>
+                      {t('term.unrestrictedDescription')}
+                    </span>
+                  </span>
+                  <span className={styles.permissionToggleState}>
+                    {unrestricted[type] ? t('term.unrestrictedOn') : t('term.unrestrictedOff')}
+                  </span>
+                </button>
+                <label className={styles.checkboxLine}>
+                  <input
+                    type="checkbox"
+                    checked={alwaysStartUnrestricted}
+                    onChange={(event) =>
+                      setPreferences({ alwaysStartUnrestricted: event.target.checked })
+                    }
+                  />
+                  <span>{t('term.alwaysUnrestricted')}</span>
+                </label>
+              </>
+            ) : null}
+
+            {routingAvailable ? (
+              <>
+                <button
+                  type="button"
+                  className={`${styles.permissionToggle} ${useRouter9 ? styles.permissionToggleActive : ''}`}
+                  onClick={() => setUseRouter9((value) => !value)}
+                  aria-pressed={useRouter9}
+                >
+                  <span className={styles.permissionToggleIcon}>
+                    <Waypoints size={16} />
+                  </span>
+                  <span className={styles.permissionToggleCopy}>
+                    <span className={styles.permissionToggleTitle}>{t('router9.routeToggle')}</span>
+                    <span className={styles.permissionToggleDescription}>
+                      {t('router9.routeToggleDesc')}
+                    </span>
+                  </span>
+                  <span className={styles.permissionToggleState}>
+                    {useRouter9 ? t('term.unrestrictedOn') : t('term.unrestrictedOff')}
+                  </span>
+                </button>
+
+                {useRouter9 && !router9.status?.running ? (
                   <button
-                    key={folder.path}
                     type="button"
-                    className={styles.folderChip}
-                    title={folder.path}
-                    onClick={() => setCwd(folder.path)}
+                    className={styles.router9Start}
+                    disabled={router9.busy}
+                    onClick={() => void router9.start().catch(() => undefined)}
                   >
-                    {label}
+                    {router9.busy ? t('router9.starting') : t('router9.stoppedStart')}
                   </button>
-                )
-              })}
+                ) : null}
+
+                <label className={styles.checkboxLine}>
+                  <input
+                    type="checkbox"
+                    checked={router9.config.defaultForNewAgents}
+                    onChange={(event) =>
+                      setPreferences({
+                        router9: { ...router9.config, defaultForNewAgents: event.target.checked },
+                      })
+                    }
+                  />
+                  <span>{t('router9.alwaysRoute')}</span>
+                </label>
+              </>
+            ) : null}
+
+            {!isShellAgentType(type) ? (
+              <RuntimeProfileField
+                agentType={type}
+                value={runtimeProfile}
+                onChange={setRuntimeProfile}
+              />
+            ) : null}
+
+            <div className={controls.field}>
+              <label className={controls.label} htmlFor="new-terminal-path">
+                {t('term.folderCwd')}
+              </label>
+              <input
+                id="new-terminal-path"
+                className={styles.pathInput}
+                value={cwd}
+                onChange={(event) => setCwd(event.target.value)}
+                placeholder={inheritedCwd || t('term.shellDefaultPlaceholder')}
+              />
             </div>
           </div>
-        ) : null}
-      </section>
-
-      <div className={styles.autoNameHint}>
-        <Info size={13} />
-        <span>{t('term.autoNameHint')}</span>
-      </div>
-
-      {type !== 'shell' ? (
-        <details className={styles.advanced}>
-          <summary>{t('term.advancedOptions')}</summary>
-          <div className={styles.advancedBody}>
-            <RuntimeProfileField
-              agentType={type}
-              value={runtimeProfile}
-              onChange={setRuntimeProfile}
-            />
-          </div>
         </details>
-      ) : null}
+      </div>
     </Modal>
   )
 }

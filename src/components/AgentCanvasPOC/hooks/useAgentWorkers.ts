@@ -6,7 +6,8 @@ import { type CodexWorker, execArgsFor, tailSummary } from '../../../lib/agentCa
 import { useT } from '../../../lib/i18n'
 import { expected } from '../../../lib/resilience'
 import { attachPty, killPty, listenPtyExit, spawnPty } from '../../../lib/tauri'
-import { agentCliCommand, type AgentType } from '../../../lib/types'
+import { resolveAgentCliCommand } from '../../../lib/agentProviders'
+import type { AgentType } from '../../../lib/types'
 import { useUiStore } from '../../../stores/uiStore'
 
 type Session = { folder: string; ptyId: string }
@@ -49,7 +50,7 @@ export function useAgentWorkers(sessionRef: MutableRefObject<Session | null>) {
         cols: 120,
         rows: 30,
         id: ptyId,
-        command: agentCliCommand(agent),
+        command: resolveAgentCliCommand(agent),
         cwd: folder,
         extraArgs: args,
       })

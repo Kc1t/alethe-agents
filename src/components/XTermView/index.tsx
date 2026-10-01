@@ -12,6 +12,7 @@ import {
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { cliPathMatchesAgent } from '../../lib/agentCliPath'
 import { normalizeBrowserUrl } from '../../lib/browserUrl'
@@ -19,18 +20,13 @@ import { pickFile } from '../../lib/dialog'
 import { getLocale, translate, useT } from '../../lib/i18n'
 import { writeScopedStorage } from '../../lib/storageNamespace'
 import { openInBrowser, openInFileExplorer, writeClipboardText, writePty } from '../../lib/tauri'
-import {
-  AGENT_TYPE_LABELS,
-  agentCliCommand,
-  type AgentRuntimeProfile,
-  type AgentType,
-  type Theme,
-} from '../../lib/types'
+import { agentLabel, resolveAgentCliCommand } from '../../lib/agentProviders'
+import type { AgentRuntimeProfile, AgentType, Theme } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AgentInstallButton } from '../AgentInstall/AgentInstallButton'
 import { DotmCircular2 } from '../ui/dotm-circular-2'
-import { type DetectedTerminalLink } from './terminalLinks'
+import { resolveTerminalFilePath, type DetectedTerminalLink } from './terminalLinks'
 import { applyPromptHistoryInput, loadPromptHistory, PROMPT_HISTORY_KEY } from './terminalWrite'
 import { useXtermSession } from './useXtermSession'
 import { getXtermTheme, type LinkActionState } from './xtermThemes'
@@ -66,6 +62,7 @@ export type XTermViewProps = {
    */
   skipSessionClaim?: boolean
   runtimeProfile?: AgentRuntimeProfile
+  useRouter9?: boolean
   terminalTheme?: Theme
   onSpawned?: (id: string) => void
   onSessionId?: (id: string | undefined) => void
@@ -98,6 +95,7 @@ export function XTermView({
   // iniciar Claude com concorrência/MCP ilimitados por acidente. `full` segue
   // disponível quando o usuário escolhe explicitamente no modal.
   runtimeProfile = 'lean',
+  useRouter9 = false,
   terminalTheme = 'dark',
   onSpawned,
   onSessionId,
@@ -152,6 +150,11 @@ export function XTermView({
   const [bootPhase, setBootPhase] = useState<
     'preparing' | 'queued' | 'spawning' | 'attaching' | 'ready'
   >('preparing')
+  const [memoryWait, setMemoryWait] = useState<{
+    availableMb: number
+    waitedMs: number
+    thresholdMb: number
+  } | null>(null)
   const [linkActions, setLinkActions] = useState<LinkActionState | null>(null)
   const [dropActive, setDropActive] = useState(false)
   const sessionPersistenceKey = sessionKey ?? ptyId
@@ -161,30 +164,33 @@ export function XTermView({
   }, [])
 
   // estimativa conservadora do tamanho para nunca cortar o menu na viewport.
-  const showLinkActionsMenu = useCallback((event: MouseEvent, link: DetectedTerminalLink) => {
-    event.preventDefault()
-    event.stopPropagation()
+  const showLinkActionsMenu = useCallback(
+    (event: MouseEvent, link: DetectedTerminalLink) => {
+      event.preventDefault()
+      event.stopPropagation()
 
-    terminalRef.current?.clearSelection()
-    window.getSelection()?.removeAllRanges()
+      terminalRef.current?.clearSelection()
+      window.getSelection()?.removeAllRanges()
 
-    const maxLeft = window.innerWidth - LINK_MENU_WIDTH - LINK_MENU_MARGIN
-    const x = Math.max(LINK_MENU_MARGIN, Math.min(event.clientX + LINK_MENU_OFFSET, maxLeft))
-    const below = event.clientY + LINK_MENU_OFFSET
-    const y =
-      below + LINK_MENU_MAX_HEIGHT <= window.innerHeight - LINK_MENU_MARGIN
-        ? below
-        : Math.max(LINK_MENU_MARGIN, event.clientY - LINK_MENU_MAX_HEIGHT - LINK_MENU_OFFSET)
+      const maxLeft = window.innerWidth - LINK_MENU_WIDTH - LINK_MENU_MARGIN
+      const x = Math.max(LINK_MENU_MARGIN, Math.min(event.clientX + LINK_MENU_OFFSET, maxLeft))
+      const below = event.clientY + LINK_MENU_OFFSET
+      const y =
+        below + LINK_MENU_MAX_HEIGHT <= window.innerHeight - LINK_MENU_MARGIN
+          ? below
+          : Math.max(LINK_MENU_MARGIN, event.clientY - LINK_MENU_MAX_HEIGHT - LINK_MENU_OFFSET)
 
-    setLinkActions({
-      text: link.text,
-      target: link.target,
-      kind: link.kind,
-      fileKind: link.fileKind,
-      x,
-      y,
-    })
-  }, [])
+      setLinkActions({
+        text: link.text,
+        target: link.kind === 'path' ? resolveTerminalFilePath(link.target, cwd) : link.target,
+        kind: link.kind,
+        fileKind: link.fileKind,
+        x,
+        y,
+      })
+    },
+    [cwd],
+  )
 
   useEffect(() => {
     linkActionsRef.current = linkActions
@@ -332,6 +338,7 @@ export function XTermView({
     readOnly,
     skipSessionClaim,
     runtimeProfile,
+    useRouter9,
     terminalTheme,
     cliPathOverride,
     sessionPersistenceKey,
@@ -353,6 +360,7 @@ export function XTermView({
     onLaunchErrorRef,
     onAgentCompleteRef,
     setBootPhase,
+    setMemoryWait,
     setCommandNotFound,
     setLinkActions,
     setRetryKey,
@@ -385,7 +393,7 @@ export function XTermView({
           title: translate(getLocale(), 'prefs.cliPathMismatch'),
           body: translate(getLocale(), 'prefs.cliPathMismatchBody', {
             agent,
-            command: agentCliCommand(agent) ?? agent,
+            command: resolveAgentCliCommand(agent) ?? agent,
           }),
         })
         return
@@ -397,8 +405,13 @@ export function XTermView({
     [setCliPath],
   )
 
-  const bootLabel =
-    bootPhase === 'preparing'
+  const bootLabel = memoryWait
+    ? t('term.bootMemoryWait', {
+        available: Math.round(memoryWait.availableMb),
+        threshold: Math.round(memoryWait.thresholdMb),
+        seconds: Math.floor(memoryWait.waitedMs / 1000),
+      })
+    : bootPhase === 'preparing'
       ? t('term.bootPreparing')
       : bootPhase === 'queued'
         ? t('term.bootQueued')
@@ -436,7 +449,7 @@ export function XTermView({
           </div>
           <AgentInstallButton
             agent={commandNotFound as AgentType}
-            label={AGENT_TYPE_LABELS[commandNotFound as AgentType] ?? commandNotFound}
+            label={agentLabel(commandNotFound)}
             onInstalled={() => setRetryKey((value) => value + 1)}
           />
           <button
@@ -448,154 +461,163 @@ export function XTermView({
           </button>
         </div>
       ) : null}
-      {linkActions ? (
-        <div
-          ref={linkMenuRef}
-          className={styles.linkMenu}
-          style={{ left: linkActions.x, top: linkActions.y }}
-          role="menu"
-          aria-label={t('xterm.linkMenu')}
-          onPointerDown={(event) => {
-            event.stopPropagation()
-            if (event.target === event.currentTarget) event.preventDefault()
-          }}
-        >
-          <div className={styles.linkMenuHeader}>
-            <span className={styles.linkMenuText} title={linkActions.text}>
-              {linkActions.text}
-            </span>
-            <button
-              type="button"
-              className={styles.linkMenuClose}
-              onClick={hideLinkActions}
-              title={t('common.close')}
-              aria-label={t('common.close')}
+      {linkActions
+        ? createPortal(
+            <div
+              ref={linkMenuRef}
+              className={styles.linkMenu}
+              style={{ left: linkActions.x, top: linkActions.y }}
+              role="menu"
+              aria-label={t('xterm.linkMenu')}
+              onPointerDown={(event) => {
+                event.stopPropagation()
+                if (event.target === event.currentTarget) event.preventDefault()
+              }}
             >
-              <X size={14} />
-            </button>
-          </div>
-          <div className={styles.linkMenuItems}>
-            {(linkActions.fileKind === 'markdown' ||
-              linkActions.fileKind === 'text' ||
-              linkActions.fileKind === 'video') &&
-            projectId ? (
-              <button
-                type="button"
-                className={styles.linkMenuItem}
-                role="menuitem"
-                onClick={() => {
-                  openFileInGrid(linkActions.text)
-                  hideLinkActions()
-                }}
-              >
-                <LayoutGrid size={15} />
-                <span>{t('xterm.openInGrid')}</span>
-              </button>
-            ) : null}
-            {linkActions.kind === 'url' && projectId ? (
-              <button
-                type="button"
-                className={styles.linkMenuItem}
-                role="menuitem"
-                onClick={() => {
-                  openUrlInGrid(linkActions.target)
-                  hideLinkActions()
-                }}
-              >
-                <LayoutGrid size={15} />
-                <span>{t('xterm.openInGrid')}</span>
-              </button>
-            ) : null}
-            {linkActions.kind === 'url' || linkActions.fileKind === 'video' ? (
-              <button
-                type="button"
-                className={styles.linkMenuItem}
-                role="menuitem"
-                onClick={() => {
-                  openLinkInAppViewer(linkActions.target)
-                  hideLinkActions()
-                }}
-              >
-                <AppWindow size={15} />
-                <span>
-                  {t(linkActions.fileKind === 'video' ? 'xterm.playInApp' : 'xterm.openInApp')}
+              <div className={styles.linkMenuHeader}>
+                <span className={styles.linkMenuText} title={linkActions.text}>
+                  {linkActions.text}
                 </span>
-              </button>
-            ) : null}
-            {linkActions.fileKind === 'markdown' ? (
-              <>
+                <button
+                  type="button"
+                  className={styles.linkMenuClose}
+                  onClick={hideLinkActions}
+                  title={t('common.close')}
+                  aria-label={t('common.close')}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              <div className={styles.linkMenuItems}>
+                {(linkActions.fileKind === 'markdown' ||
+                  linkActions.fileKind === 'text' ||
+                  linkActions.fileKind === 'video' ||
+                  linkActions.fileKind === 'image') &&
+                projectId ? (
+                  <button
+                    type="button"
+                    className={styles.linkMenuItem}
+                    role="menuitem"
+                    onClick={() => {
+                      openFileInGrid(linkActions.target)
+                      hideLinkActions()
+                    }}
+                  >
+                    <LayoutGrid size={15} />
+                    <span>{t('xterm.openInGrid')}</span>
+                  </button>
+                ) : null}
+                {linkActions.kind === 'url' && projectId ? (
+                  <button
+                    type="button"
+                    className={styles.linkMenuItem}
+                    role="menuitem"
+                    onClick={() => {
+                      openUrlInGrid(linkActions.target)
+                      hideLinkActions()
+                    }}
+                  >
+                    <LayoutGrid size={15} />
+                    <span>{t('xterm.openInGrid')}</span>
+                  </button>
+                ) : null}
+                {linkActions.kind === 'url' || linkActions.fileKind === 'video' ? (
+                  <button
+                    type="button"
+                    className={styles.linkMenuItem}
+                    role="menuitem"
+                    onClick={() => {
+                      openLinkInAppViewer(linkActions.target)
+                      hideLinkActions()
+                    }}
+                  >
+                    <AppWindow size={15} />
+                    <span>
+                      {t(linkActions.fileKind === 'video' ? 'xterm.playInApp' : 'xterm.openInApp')}
+                    </span>
+                  </button>
+                ) : null}
+                {linkActions.fileKind === 'markdown' ? (
+                  <>
+                    <button
+                      type="button"
+                      className={styles.linkMenuItem}
+                      role="menuitem"
+                      onClick={() => {
+                        openLinkInAppViewer(linkActions.target)
+                        hideLinkActions()
+                      }}
+                    >
+                      <Maximize2 size={15} />
+                      <span>{t('xterm.openMarkdownFullscreen')}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.linkMenuItem}
+                      role="menuitem"
+                      onClick={() => {
+                        useUiStore
+                          .getState()
+                          .openMarkdownSidebar(
+                            linkActions.target,
+                            linkActions.text.split(/[\\/]/).pop(),
+                          )
+                        useProjectsStore.getState().setPreferences({ rightSidebarVisible: true })
+                        hideLinkActions()
+                      }}
+                    >
+                      <PanelRight size={15} />
+                      <span>{t('xterm.openMarkdownSidebar')}</span>
+                    </button>
+                  </>
+                ) : null}
                 <button
                   type="button"
                   className={styles.linkMenuItem}
                   role="menuitem"
                   onClick={() => {
-                    openLinkInAppViewer(linkActions.text)
+                    void openLinkInBrowser(linkActions.target)
                     hideLinkActions()
                   }}
                 >
-                  <Maximize2 size={15} />
-                  <span>{t('xterm.openMarkdownFullscreen')}</span>
+                  <ExternalLink size={15} />
+                  <span>
+                    {t(
+                      linkActions.kind === 'url' ? 'xterm.openInBrowser' : 'xterm.openInDefaultApp',
+                    )}
+                  </span>
                 </button>
+                {linkActions.kind === 'path' ? (
+                  <button
+                    type="button"
+                    className={styles.linkMenuItem}
+                    role="menuitem"
+                    onClick={() => {
+                      void openLinkInFolder(linkActions.target)
+                      hideLinkActions()
+                    }}
+                  >
+                    <FolderOpen size={15} />
+                    <span>{t('xterm.openInFolder')}</span>
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className={styles.linkMenuItem}
                   role="menuitem"
                   onClick={() => {
-                    useUiStore
-                      .getState()
-                      .openMarkdownSidebar(linkActions.text, linkActions.text.split(/[\\/]/).pop())
-                    useProjectsStore.getState().setPreferences({ rightSidebarVisible: true })
+                    void copyLinkText(linkActions.target)
                     hideLinkActions()
                   }}
                 >
-                  <PanelRight size={15} />
-                  <span>{t('xterm.openMarkdownSidebar')}</span>
+                  <Copy size={15} />
+                  <span>{t('xterm.copy')}</span>
                 </button>
-              </>
-            ) : null}
-            <button
-              type="button"
-              className={styles.linkMenuItem}
-              role="menuitem"
-              onClick={() => {
-                void openLinkInBrowser(linkActions.target)
-                hideLinkActions()
-              }}
-            >
-              <ExternalLink size={15} />
-              <span>
-                {t(linkActions.kind === 'url' ? 'xterm.openInBrowser' : 'xterm.openInDefaultApp')}
-              </span>
-            </button>
-            {linkActions.kind === 'path' ? (
-              <button
-                type="button"
-                className={styles.linkMenuItem}
-                role="menuitem"
-                onClick={() => {
-                  void openLinkInFolder(linkActions.text)
-                  hideLinkActions()
-                }}
-              >
-                <FolderOpen size={15} />
-                <span>{t('xterm.openInFolder')}</span>
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className={styles.linkMenuItem}
-              role="menuitem"
-              onClick={() => {
-                void copyLinkText(linkActions.text)
-                hideLinkActions()
-              }}
-            >
-              <Copy size={15} />
-              <span>{t('xterm.copy')}</span>
-            </button>
-          </div>
-        </div>
-      ) : null}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   )
 }

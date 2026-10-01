@@ -5,10 +5,15 @@ import { basename } from '../lib/paths'
 export type AgentHookPayload = {
   hook_event_name?: string
   session_id?: string
+  /** The terminal (ptyId) this fired from, tagged by the backend (agent_events.rs). */
+  plannerId?: string
+  /** Which CLI's own subagent mechanism fired this — 'claude' or 'codex' (agent_events.rs). */
+  sourceAgent?: 'claude' | 'codex'
   agent_id?: string
   agent_type?: string
   tool_name?: string
   tool_input?: Record<string, unknown>
+  tool_response?: Record<string, unknown>
   tool_use_id?: string
   last_assistant_message?: string
   agent_transcript_path?: string
@@ -30,7 +35,11 @@ export type ToolEvent = {
 export type AgentNode = {
   id: string
   agentType: string
-  kind: 'subagent' | 'teammate'
+  kind: 'subagent' | 'teammate' | 'background'
+  /** The terminal this node belongs to; null when the source hook carried none. */
+  plannerId: string | null
+  /** Which CLI spawned this subagent — decides the icon on the orchestrator canvas. */
+  sourceAgent: 'claude' | 'codex'
   /** Team name, for teammates only. */
   team: string | null
   /** Number of teammate turns represented by this node. */
@@ -163,6 +172,8 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
               id,
               agentType,
               kind: 'subagent',
+              plannerId: raw.plannerId ?? null,
+              sourceAgent: raw.sourceAgent ?? 'claude',
               team: null,
               turns: 0,
               prompt: pending?.description ?? pending?.prompt ?? null,
@@ -207,6 +218,67 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
         delete incarnations[id]
         return { nodes, incarnations }
       })
+      return
+    }
+
+    if (event === 'PostToolUse' && !raw.agent_id) {
+      const input = raw.tool_input ?? {}
+      const response = raw.tool_response ?? {}
+
+      // A shell backgrounded by the main agent (`run_in_background`) never gets its own
+      // SubagentStart/Stop — it is still a process left running on its own, so it gets the same
+      // "still running until told otherwise" treatment via the id the tool call returns.
+      if (raw.tool_name === 'Bash' && input.run_in_background === true) {
+        const taskId = str(response.backgroundTaskId)
+        if (taskId) {
+          const id = `background:${taskId}`
+          set((s) => {
+            if (s.nodes.some((n) => n.id === id)) return s
+            return {
+              nodes: [
+                ...s.nodes,
+                {
+                  id,
+                  agentType: 'Bash',
+                  kind: 'background',
+                  plannerId: raw.plannerId ?? null,
+                  sourceAgent: raw.sourceAgent ?? 'claude',
+                  team: null,
+                  turns: 0,
+                  prompt: str(input.description) ?? str(input.command),
+                  status: 'running',
+                  startedAt: Date.now(),
+                  endedAt: null,
+                  result: null,
+                  transcriptPath: null,
+                  feed: [],
+                },
+              ],
+            }
+          })
+        }
+        return
+      }
+
+      // The counterpart: whatever tool the agent used to stop a background task it started.
+      if (raw.tool_name === 'TaskStop' || raw.tool_name === 'KillShell') {
+        const taskId = str(input.task_id) ?? str(input.shell_id)
+        if (!taskId) return
+        const id = `background:${taskId}`
+        set((s) => {
+          const idx = s.nodes.findIndex((n) => n.id === id)
+          if (idx === -1) return s
+          const nodes = [...s.nodes]
+          nodes[idx] = {
+            ...nodes[idx],
+            status: 'done',
+            endedAt: Date.now(),
+            result: str(response.message) ?? nodes[idx].result,
+          }
+          return { nodes }
+        })
+        return
+      }
       return
     }
 
@@ -262,6 +334,8 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
                     id: nodeId,
                     agentType: teammateName,
                     kind: 'teammate',
+                    plannerId: raw.plannerId ?? null,
+                    sourceAgent: raw.sourceAgent ?? 'claude',
                     team: teamName,
                     turns: 0,
                     prompt: str(input.prompt) ?? str(input.description),
@@ -313,6 +387,8 @@ export const useAgentCanvasStore = create<AgentCanvasState>((set, get) => ({
                 id: agentId,
                 agentType: raw.agent_type ?? 'unknown',
                 kind: 'subagent',
+                plannerId: raw.plannerId ?? null,
+                sourceAgent: raw.sourceAgent ?? 'claude',
                 team: null,
                 turns: 0,
                 prompt: null,

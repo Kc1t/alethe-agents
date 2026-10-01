@@ -62,11 +62,20 @@ export async function speechStartCapture(deviceId: string | null): Promise<void>
   await invoke('speech_start_capture', { deviceId })
 }
 
+/** Peak amplitude (0..1) of the most recent captured block; 0 when not recording. */
+export async function speechCaptureLevel(): Promise<number> {
+  return invoke('speech_capture_level')
+}
+
 export async function speechStopCapture(): Promise<CapturedAudio> {
   return invoke('speech_stop_capture')
 }
 
 /** Stop native capture and run on-device STT in one round-trip. */
+export async function speechPrepare(modelId: string): Promise<boolean> {
+  return invoke('speech_prepare', { modelId })
+}
+
 export async function speechStopAndTranscribe(modelId: string): Promise<string> {
   return invoke('speech_stop_and_transcribe', { modelId })
 }

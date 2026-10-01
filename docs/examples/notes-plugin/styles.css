@@ -1,0 +1,48 @@
+.alethe-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  color: var(--fg);
+  font-size: 13px;
+}
+
+.alethe-notes__empty {
+  color: var(--fg-faint);
+  font-size: 12px;
+}
+
+.alethe-notes__item {
+  position: relative;
+  padding: 8px 28px 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+}
+
+.alethe-notes__when {
+  display: block;
+  margin-top: 4px;
+  color: var(--fg-faint);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.alethe-notes__remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-faint);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.alethe-notes__remove:hover {
+  background: var(--panel-hover);
+  color: var(--fg);
+}

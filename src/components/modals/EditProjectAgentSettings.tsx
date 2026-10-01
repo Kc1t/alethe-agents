@@ -5,23 +5,14 @@ import { confirmAction } from '../../lib/confirmDialog'
 import { readableError } from '../../lib/errors'
 import { useT } from '../../lib/i18n'
 import { discoverProviderModels, gitInit, gitStatus } from '../../lib/tauri'
-import {
-  AGENT_TYPE_LABELS,
-  type AgentType,
-  ALL_AGENT_TYPES,
-  PROVIDER_MODELS,
-} from '../../lib/types'
+import { agentLabel, isAgentEnabled, useAgentTypes } from '../../lib/agentProviders'
+import { type AgentType, type BuiltinAgentType, PROVIDER_MODELS } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { AgentIcon } from '../icons/AgentIcons'
 import controls from './controls.module.css'
 import styles from './EditProjectModal.module.css'
 import { type ModelOption, ModelSearchablePicker } from './ModelSearchablePicker'
-
-const ALL_AGENTS: { type: AgentType; label: string }[] = ALL_AGENT_TYPES.map((type) => ({
-  type,
-  label: AGENT_TYPE_LABELS[type],
-}))
 
 // Cache module-level (sobrevive a troca de aba/remount deste componente) —
 
@@ -72,8 +63,12 @@ export function EditProjectAgentSettings({
     (s) => s.migrateProjectTerminalsToWorktrees,
   )
 
-  const availableAgents = ALL_AGENTS.filter((a) => enabledAgents[a.type])
-  const conflictAgents = availableAgents.length > 0 ? availableAgents : ALL_AGENTS
+  const allAgents: { type: AgentType; label: string }[] = useAgentTypes().map((type) => ({
+    type,
+    label: agentLabel(type),
+  }))
+  const availableAgents = allAgents.filter((a) => isAgentEnabled(enabledAgents, a.type))
+  const conflictAgents = availableAgents.length > 0 ? availableAgents : allAgents
 
   const [discoveredModels, setDiscoveredModels] = useState<ModelOption[]>([])
   const [loadingModels, setLoadingModels] = useState(false)
@@ -121,7 +116,7 @@ export function EditProjectAgentSettings({
   useEffect(() => {
     let active = true
     const targetProvider = conflictProvider
-    const fallback = PROVIDER_MODELS[targetProvider] ?? []
+    const fallback = PROVIDER_MODELS[targetProvider as BuiltinAgentType] ?? []
     const cached = globalModelsCache[targetProvider]
     setDiscoveredModels(cached || fallback)
 

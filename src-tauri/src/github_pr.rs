@@ -57,18 +57,15 @@ impl From<GhPullRequest> for PullRequestSummary {
     }
 }
 
-fn gh_command(repo: &str, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("gh")
-        .current_dir(repo)
-        .args(args)
-        .output()
-        .map_err(|error| {
-            if error.kind() == std::io::ErrorKind::NotFound {
-                "gh_not_found: install the GitHub CLI and run gh auth login".to_string()
-            } else {
-                format!("gh_exec_failed:{error}")
-            }
-        })?;
+fn gh_output(command: &mut Command) -> Result<String, String> {
+    crate::git_control::hide_console(command);
+    let output = command.output().map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            "gh_not_found: install the GitHub CLI and run gh auth login".to_string()
+        } else {
+            format!("gh_exec_failed:{error}")
+        }
+    })?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(if stderr.is_empty() {
@@ -78,6 +75,143 @@ fn gh_command(repo: &str, args: &[&str]) -> Result<String, String> {
         });
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn gh_command(repo: &str, args: &[&str]) -> Result<String, String> {
+    let mut command = Command::new("gh");
+    command.current_dir(repo).args(args);
+    gh_output(&mut command)
+}
+
+/// Same as `gh_command`, but for subcommands that don't resolve a repo from cwd
+/// (e.g. `gh search prs`, which queries the GitHub search API directly against
+/// the authenticated account) — no `current_dir` needed.
+fn gh_command_global(args: &[&str]) -> Result<String, String> {
+    let mut command = Command::new("gh");
+    command.args(args);
+    gh_output(&mut command)
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GhRepositoryRef {
+    name_with_owner: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GhSearchPullRequest {
+    number: u64,
+    title: String,
+    url: String,
+    repository: GhRepositoryRef,
+    author: GhAuthor,
+    is_draft: bool,
+    updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MyPullRequestSummary {
+    pub number: u64,
+    pub title: String,
+    pub url: String,
+    pub repo: String,
+    pub author: String,
+    pub is_draft: bool,
+    pub updated_at: String,
+}
+
+impl From<GhSearchPullRequest> for MyPullRequestSummary {
+    fn from(value: GhSearchPullRequest) -> Self {
+        Self {
+            number: value.number,
+            title: value.title,
+            url: value.url,
+            repo: value.repository.name_with_owner,
+            author: value.author.login,
+            is_draft: value.is_draft,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GhRepoPullRequest {
+    number: u64,
+    title: String,
+    url: String,
+    author: GhAuthor,
+    is_draft: bool,
+    updated_at: String,
+}
+
+/// `gh pr list` does not offer a `repository` field, so the name comes from the
+/// pull request URL instead of a second `gh` call.
+fn repo_from_pr_url(url: &str) -> String {
+    let path = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let mut segments = path.split('/').skip(1);
+    match (segments.next(), segments.next()) {
+        (Some(owner), Some(name)) if !owner.is_empty() && !name.is_empty() => {
+            format!("{owner}/{name}")
+        }
+        _ => String::new(),
+    }
+}
+
+impl From<GhRepoPullRequest> for MyPullRequestSummary {
+    fn from(value: GhRepoPullRequest) -> Self {
+        Self {
+            number: value.number,
+            title: value.title,
+            repo: repo_from_pr_url(&value.url),
+            url: value.url,
+            author: value.author.login,
+            is_draft: value.is_draft,
+            updated_at: value.updated_at,
+        }
+    }
+}
+
+/// Open PRs of the selected project's repository. Without a repo — no project
+/// open, or one that is not a checkout — it falls back to every open PR the
+/// authenticated `gh` user is involved in, across every repo they can see.
+#[tauri::command]
+pub fn github_pr_list_mine(repo: Option<String>) -> Result<Vec<MyPullRequestSummary>, String> {
+    let scoped = repo.unwrap_or_default();
+    let scoped = scoped.trim();
+    if !scoped.is_empty() {
+        let raw = gh_command(
+            scoped,
+            &[
+                "pr",
+                "list",
+                "--state",
+                "open",
+                "--limit",
+                "50",
+                "--json",
+                "number,title,url,author,isDraft,updatedAt",
+            ],
+        )?;
+        let prs: Vec<GhRepoPullRequest> = serde_json::from_str(&raw)
+            .map_err(|error| format!("github_pr_parse_failed:{error}"))?;
+        return Ok(prs.into_iter().map(Into::into).collect());
+    }
+
+    let raw = gh_command_global(&[
+        "search",
+        "prs",
+        "--involves=@me",
+        "--state",
+        "open",
+        "--json",
+        "number,title,url,repository,author,isDraft,updatedAt",
+    ])?;
+    let prs: Vec<GhSearchPullRequest> =
+        serde_json::from_str(&raw).map_err(|error| format!("github_pr_parse_failed:{error}"))?;
+    Ok(prs.into_iter().map(Into::into).collect())
 }
 
 fn pr_json_fields() -> &'static str {
@@ -134,4 +268,23 @@ pub fn github_pr_merge(
         args.extend(["--match-head-commit", sha]);
     }
     gh_command(&repo, &args)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_owner_and_name_from_a_pull_request_url() {
+        assert_eq!(
+            repo_from_pr_url("https://github.com/Kc1t/alethe-agents/pull/42"),
+            "Kc1t/alethe-agents"
+        );
+    }
+
+    #[test]
+    fn answers_empty_for_a_url_without_a_repository_path() {
+        assert_eq!(repo_from_pr_url("https://github.com/"), "");
+        assert_eq!(repo_from_pr_url(""), "");
+    }
 }

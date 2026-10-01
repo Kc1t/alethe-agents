@@ -1,4 +1,5 @@
-import { ShieldCheck, Smartphone, Wifi, WifiOff } from 'lucide-react'
+import { Smartphone, Wifi, WifiOff } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 import { useRemoteControl } from '../../../hooks/useRemoteControl'
 import { useT } from '../../../lib/i18n'
@@ -6,32 +7,51 @@ import {
   closeRemoteControlPairing,
   openRemoteControlPairing,
   remoteControlRevoke,
+  remoteControlTailscaleStatus,
   revokeRemoteControlDevice,
+  type TailscaleStatus,
 } from '../../../lib/tauri'
 import { useProjectsStore } from '../../../stores/projectsStore'
-import { Dropdown } from '../../ui/Dropdown'
 import controls from '../controls.module.css'
 import { SettingsSection } from './primitives'
 import styles from './RemoteControlPage.module.css'
-
-const SESSION_OPTIONS = [900, 3600, 86400]
-
-function sessionLabel(t: ReturnType<typeof useT>, value: number) {
-  if (value === 900) return t('remote.session900')
-  if (value === 86400) return t('remote.session86400')
-  return t('remote.session3600')
-}
+import { RemoteControlSettingsFields } from '../RemoteControlSettingsFields'
 
 export function RemoteControlPage() {
   const t = useT()
   const preferences = useProjectsStore((state) => state.preferences)
   const setPreferences = useProjectsStore((state) => state.setPreferences)
   const { busy, enabled, error, info, pairingOpen, run: update } = useRemoteControl()
-  const readOnly = preferences.remoteReadOnly
-  const allowShellInput = preferences.remoteAllowShellInput
+  const [tailscale, setTailscale] = useState<TailscaleStatus | null>(null)
+
+  useEffect(() => {
+    const check = () =>
+      void remoteControlTailscaleStatus()
+        .then(setTailscale)
+        .catch(() => undefined)
+    check()
+    // Spawns the Tailscale CLI on every tick — polling slower than the 1s info
+    // refresh is deliberate, not an oversight.
+    const timer = window.setInterval(check, 5000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   return (
     <>
+      <SettingsSection
+        id="remote-tutorial"
+        title={t('remote.tutorialTitle')}
+        description={t('remote.tutorialDesc')}
+      >
+        <ol className={styles.tutorialList}>
+          <li>{t('remote.tutorialStep1')}</li>
+          <li>{t('remote.tutorialStep2')}</li>
+          <li>{t('remote.tutorialStep3')}</li>
+          <li>{t('remote.tutorialStep4')}</li>
+          <li>{t('remote.tutorialStep5')}</li>
+        </ol>
+      </SettingsSection>
+
       <SettingsSection
         id="remote-status"
         title={t('remote.settingsStatusTitle')}
@@ -61,6 +81,22 @@ export function RemoteControlPage() {
           </button>
         </div>
         <p className={styles.startupNote}>{t('remote.startupNote')}</p>
+      </SettingsSection>
+
+      <SettingsSection
+        id="remote-reach"
+        title={t('remote.reachTitle')}
+        description={t('remote.reachDesc')}
+      >
+        <RemoteControlSettingsFields
+          t={t}
+          preferences={preferences}
+          setPreferences={setPreferences}
+          info={info}
+          tailscale={tailscale}
+          busy={busy}
+          parts={['reach']}
+        />
       </SettingsSection>
 
       {enabled ? (
@@ -100,64 +136,15 @@ export function RemoteControlPage() {
         title={t('remote.settingsSecurityTitle')}
         description={t('remote.settingsSecurityDesc')}
       >
-        <div className={styles.settingsGrid}>
-          <label className={styles.setting}>
-            <span>{t('remote.maxDevices')}</span>
-            <Dropdown
-              value={String(preferences.remoteMaxDevices)}
-              onChange={(rawValue) => setPreferences({ remoteMaxDevices: Number(rawValue) })}
-              disabled={busy}
-              ariaLabel={t('remote.maxDevices')}
-              options={[1, 2, 3, 4].map((value) => ({
-                value: String(value),
-                label: String(value),
-              }))}
-            />
-          </label>
-          <label className={styles.setting}>
-            <span>{t('remote.sessionExpiry')}</span>
-            <Dropdown
-              value={String(preferences.remoteSessionExpirySecs)}
-              onChange={(rawValue) => setPreferences({ remoteSessionExpirySecs: Number(rawValue) })}
-              disabled={busy}
-              ariaLabel={t('remote.sessionExpiry')}
-              options={SESSION_OPTIONS.map((value) => ({
-                value: String(value),
-                label: sessionLabel(t, value),
-              }))}
-            />
-          </label>
-          <label className={styles.setting}>
-            <span>{t('remote.readOnly')}</span>
-            <Dropdown
-              value={readOnly ? 'on' : 'off'}
-              onChange={(rawValue) => setPreferences({ remoteReadOnly: rawValue === 'on' })}
-              disabled={busy}
-              ariaLabel={t('remote.readOnly')}
-              options={[
-                { value: 'on', label: t('remote.readOnlyOn') },
-                { value: 'off', label: t('remote.readOnlyOff') },
-              ]}
-            />
-          </label>
-          <label className={styles.setting}>
-            <span>{t('remote.shellInput')}</span>
-            <Dropdown
-              value={allowShellInput ? 'on' : 'off'}
-              onChange={(rawValue) => setPreferences({ remoteAllowShellInput: rawValue === 'on' })}
-              disabled={busy || readOnly}
-              ariaLabel={t('remote.shellInput')}
-              options={[
-                { value: 'off', label: t('remote.shellInputOff') },
-                { value: 'on', label: t('remote.shellInputOn') },
-              ]}
-            />
-          </label>
-        </div>
-        <div className={styles.securityNote}>
-          <ShieldCheck size={15} />
-          <span>{t('remote.settingsSecurityNote')}</span>
-        </div>
+        <RemoteControlSettingsFields
+          t={t}
+          preferences={preferences}
+          setPreferences={setPreferences}
+          info={info}
+          tailscale={tailscale}
+          busy={busy}
+          parts={['security']}
+        />
       </SettingsSection>
 
       <SettingsSection

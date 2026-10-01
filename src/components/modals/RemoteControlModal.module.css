@@ -160,6 +160,26 @@
   color: var(--status-offline);
   font-size: 0.8rem;
 }
+.step {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+.stepEyebrow {
+  display: block;
+  margin-bottom: 0.55rem;
+  color: var(--fg-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.advancedLink {
+  margin-top: 1rem;
+  width: 100%;
+  justify-content: center;
+  color: var(--fg-muted);
+}
 @media (max-width: 560px) {
   .contentGrid {
     grid-template-columns: 1fr;

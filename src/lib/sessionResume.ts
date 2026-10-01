@@ -18,12 +18,36 @@ export type SavedSession = {
   opencodeSessionId?: string
   /** Antigravity conversation ID (conversation_metadata.json). */
   antigravitySessionId?: string
+  /** Cursor chat ID (`cursor-agent create-chat`). */
+  cursorSessionId?: string
   cwd: string
   agent: string
   timestamp: number
 }
 
 export type ActiveSessions = Record<string, SavedSession>
+
+/** Field each agent's conversation ID is stored under. */
+const CONVERSATION_FIELD = {
+  claude: 'claudeSessionId',
+  codex: 'codexSessionId',
+  opencode: 'opencodeSessionId',
+  antigravity: 'antigravitySessionId',
+  cursor: 'cursorSessionId',
+} as const satisfies Record<string, keyof SavedSession>
+
+/**
+ * The conversation half of a `SavedSession`, filled in for the one agent that owns it. Callers
+ * spread it into the record so a new provider never means touching every save site.
+ */
+export function conversationFields(
+  agent: string,
+  conversationId: string | undefined,
+): Partial<SavedSession> {
+  const field = CONVERSATION_FIELD[agent as keyof typeof CONVERSATION_FIELD]
+  if (!field || !conversationId) return {}
+  return { [field]: conversationId }
+}
 
 export function savedConversationIdFor(
   session: SavedSession | null,
@@ -33,11 +57,8 @@ export function savedConversationIdFor(
   if (!session || !agent || !cwd) return undefined
   if (session.agent !== agent) return undefined
   if (normalizeCwd(session.cwd) !== normalizeCwd(cwd)) return undefined
-  if (agent === 'claude') return session.claudeSessionId
-  if (agent === 'codex') return session.codexSessionId
-  if (agent === 'antigravity') return session.antigravitySessionId
-  if (agent === 'opencode') return session.opencodeSessionId
-  return undefined
+  const field = CONVERSATION_FIELD[agent as keyof typeof CONVERSATION_FIELD]
+  return field ? session[field] : undefined
 }
 
 export function getActiveSessions(): ActiveSessions {

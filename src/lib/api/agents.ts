@@ -51,9 +51,41 @@ export function listenCodexAppServer(
   return Promise.resolve(() => {})
 }
 
-export async function agentHooksSettingsPath(): Promise<string> {
-  if (isTauriEnv()) return invoke<string>('agent_hooks_settings_path')
-  return webApiFetch<string>('/api/agents/hooks_settings_path')
+/**
+ * Path to the hooks settings.json generated for Claude Code (agent_events.rs).
+ * `orchestrator: false` writes the session-tracking-only variant (SessionStart/UserPromptSubmit),
+ * without the subagent and tool-call hooks the orchestrator canvas needs.
+ */
+export async function agentHooksSettingsPath(
+  plannerId: string,
+  orchestrator = true,
+): Promise<string> {
+  if (isTauriEnv()) return invoke<string>('agent_hooks_settings_path', { plannerId, orchestrator })
+  return webApiFetch<string>(
+    `/api/agents/hooks_settings_path?plannerId=${encodeURIComponent(plannerId)}&orchestrator=${orchestrator}`,
+  )
+}
+
+/**
+ * Writes the `[hooks]` block that reports this Codex terminal's own subagents back to Alethe,
+ * tagged with `plannerId` (agent_events.rs). Codex has no http hook handler, so this points its
+ * SubagentStart/Stop hooks at a small generated PowerShell forwarder instead.
+ */
+export async function codexHooksConfigWrite(repo: string, plannerId: string): Promise<void> {
+  if (isTauriEnv()) return invoke('codex_hooks_config_write', { repo, plannerId })
+  throw new Error('codex_hooks_config_write_desktop_only')
+}
+
+/** Registers this Codex terminal as an orchestrator planner via a generated stdio-to-http bridge. */
+export async function codexMcpConfigWrite(
+  repo: string,
+  plannerId: string,
+  plannerLabel: string,
+  plannerAgent: string,
+): Promise<void> {
+  if (isTauriEnv())
+    return invoke('codex_mcp_config_write', { repo, plannerId, plannerLabel, plannerAgent })
+  throw new Error('codex_mcp_config_write_desktop_only')
 }
 
 export type InstalledAgent = { name: string; from_alethe: boolean }

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   claimDiscoveredSession,
   claimMostRecentSession,
+  isSessionClaimed,
   registerSessionClaim,
   releaseSessionClaim,
   resetSessionClaimsForTests,
@@ -239,5 +240,33 @@ describe('releaseSessionClaim', () => {
 
   it('is a no-op for a pty id that never registered any claim', () => {
     expect(() => releaseSessionClaim('never-seen')).not.toThrow()
+  })
+})
+
+describe('session claim ownership', () => {
+  beforeEach(resetSessionClaimsForTests)
+
+  it('retains a claim until both the tab and its PTY have released it', () => {
+    registerSessionClaim('claude', 'D:/repo', 'chat', 'tab')
+    registerSessionClaim('claude', 'D:/repo', 'chat', 'pty')
+    releaseSessionClaim('pty')
+    expect(isSessionClaimed('claude', 'D:/repo', 'chat', 'other-tab')).toBe(true)
+    expect(isSessionClaimed('claude', 'D:/repo', 'chat', 'tab')).toBe(false)
+    releaseSessionClaim('tab')
+    expect(isSessionClaimed('claude', 'D:/repo', 'chat')).toBe(false)
+  })
+
+  it('treats equivalent Windows paths as the same conversation directory', () => {
+    registerSessionClaim('claude', 'D:/Work/Repo/', 'chat', 'tab')
+    expect(isSessionClaimed('claude', 'd:\\work\\repo', 'chat', 'other')).toBe(true)
+    expect(
+      claimDiscoveredSession(
+        'claude',
+        'D:\\Work\\Repo\\',
+        new Set(),
+        [{ id: 'chat', modified_at_ms: 1 }],
+        'other',
+      ),
+    ).toBeUndefined()
   })
 })

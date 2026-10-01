@@ -1,6 +1,8 @@
 import {
   Archive,
   Download,
+  Eye,
+  EyeOff,
   FileText,
   FolderOpen,
   Globe2,
@@ -14,6 +16,7 @@ import {
   SmartphoneNfc,
   Trash2,
   Upload,
+  Workflow,
 } from 'lucide-react'
 
 import { agentLaunchEnv } from '../../lib/agentConfigIsolation'
@@ -34,6 +37,7 @@ import {
   restartPty,
   writeTextFile,
 } from '../../lib/tauri'
+import { resolveAgentCliCommand } from '../../lib/agentProviders'
 import { agentCliCommand, type Group, type Project, type Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { useTerminalsStore } from '../../stores/terminalsStore'
@@ -51,7 +55,9 @@ type MenuActions = Pick<
   | 'archiveProject'
   | 'moveProjectToGroup'
   | 'setProjectDisabled'
+  | 'setProjectHidden'
   | 'deleteProject'
+  | 'createOrchestratorPane'
   | 'openGroupWorkspace'
   | 'renameGroup'
   | 'moveGroupToParent'
@@ -67,7 +73,7 @@ type MenuActions = Pick<
   | 'setTerminalDisabled'
   | 'killTerminal'
   | 'setLaneVisible'
-  | 'setTerminalRemoteExcluded'
+  | 'setTerminalRemoteShared'
   | 'deleteTerminal'
   | 'deleteTerminalWithWorktreeCleanup'
   | 'setPreferences'
@@ -75,6 +81,7 @@ type MenuActions = Pick<
 
 export type SidebarMenuDeps = {
   t: ReturnType<typeof useT>
+  orchestratorEnabled: boolean
   browserEnabled: boolean
   groups: Group[]
   openPaneSets: Record<string, Set<string>>
@@ -94,6 +101,7 @@ function visibleProjectTerminals(project: Project): Terminal[] {
 export function createSidebarMenus(deps: SidebarMenuDeps) {
   const {
     t,
+    orchestratorEnabled,
     browserEnabled,
     groups,
     openPaneSets,
@@ -107,6 +115,15 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
   } = deps
 
   const projectMenu = (project: Project): MenuItem[] => [
+    ...(project.mode !== 'agentSandbox'
+      ? [
+          {
+            kind: 'item' as const,
+            label: t('projectGrid.create'),
+            onClick: () => openModal('projectGrid', { projectId: project.id, action: 'create' }),
+          },
+        ]
+      : []),
     {
       kind: 'item',
       label: t('ui.workspace.openIndividually'),
@@ -205,6 +222,22 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
           },
         ]
       : []),
+    ...(orchestratorEnabled
+      ? [
+          {
+            kind: 'item' as const,
+            label: t('menu.addOrchestrator'),
+            icon: <Workflow size={14} />,
+            onClick: () => {
+              actions.createOrchestratorPane(
+                project.id,
+                project.defaultCwd ?? project.terminals[0]?.cwd ?? '',
+              )
+              setActiveView('workspace')
+            },
+          },
+        ]
+      : []),
     {
       kind: 'item',
       label: t('ui.sidebar.designLayout'),
@@ -238,6 +271,12 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
       label: t('ui.sidebar.archiveProject'),
       icon: <Archive size={14} />,
       onClick: () => actions.archiveProject(project.id),
+    },
+    {
+      kind: 'item',
+      label: project.hidden ? t('ui.sidebar.unhideProject') : t('ui.sidebar.hideProject'),
+      icon: project.hidden ? <Eye size={14} /> : <EyeOff size={14} />,
+      onClick: () => actions.setProjectHidden(project.id, !project.hidden),
     },
     {
       kind: 'item',
@@ -441,7 +480,7 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
         id: activeTab.ptyId,
         cols: 80,
         rows: 24,
-        command: agentCliCommand(activeTab.type),
+        command: resolveAgentCliCommand(activeTab.type),
         cwd: activeTab.cwd || undefined,
         extraArgs: launch.args,
         env: await agentLaunchEnv(agentCliCommand(activeTab.type), runtime.env),
@@ -463,11 +502,22 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
   }
 
   const terminalMenu = (projectId: string, term: Terminal): MenuItem[] => {
+    const project = useProjectsStore.getState().projects.find((item) => item.id === projectId)
     const inSplit = openPaneSets[projectId]?.has(term.id) ?? false
     const activeTab = activeTerminalTab(term)
     const isTerminalPane = !term.kind || term.kind === 'terminal'
     const effectiveLaneVisible = term.tabs.length > 1 ? true : term.laneVisible === true
     return [
+      ...(project?.mode !== 'agentSandbox' && (project?.grids?.length ?? 0) > 0
+        ? [
+            {
+              kind: 'item' as const,
+              label: t('projectGrid.move'),
+              onClick: () =>
+                openModal('projectGrid', { projectId, terminalId: term.id, action: 'move' }),
+            },
+          ]
+        : []),
       {
         kind: 'item',
         label: t('terminalInspector.reveal'),
@@ -578,12 +628,12 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
         ? [
             {
               kind: 'item' as const,
-              label: term.remoteExcluded
-                ? t('ui.terminal.shareWithRemote')
-                : t('ui.terminal.hideFromRemote'),
-              icon: term.remoteExcluded ? <Smartphone size={14} /> : <SmartphoneNfc size={14} />,
+              label: term.remoteShared
+                ? t('ui.terminal.hideFromRemote')
+                : t('ui.terminal.shareWithRemote'),
+              icon: term.remoteShared ? <SmartphoneNfc size={14} /> : <Smartphone size={14} />,
               onClick: () =>
-                actions.setTerminalRemoteExcluded(projectId, term.id, !term.remoteExcluded),
+                actions.setTerminalRemoteShared(projectId, term.id, !term.remoteShared),
             },
           ]
         : []),
@@ -610,5 +660,37 @@ export function createSidebarMenus(deps: SidebarMenuDeps) {
     ]
   }
 
-  return { projectMenu, groupMenu, terminalMenu }
+  const backgroundMenu = (): MenuItem[] => {
+    const hiddenCount = useProjectsStore.getState().projects.filter((p) => p.hidden).length
+    const revealed = useUiStore.getState().revealHiddenProjects
+    return [
+      {
+        kind: 'item',
+        label: t('ui.sidebar.newProject'),
+        icon: <Plus size={14} />,
+        onClick: () => openModal('newProject'),
+      },
+      {
+        kind: 'item',
+        label: t('ui.sidebar.newGroup'),
+        icon: <Plus size={14} />,
+        onClick: () => openModal('newGroup'),
+      },
+      ...(hiddenCount > 0 || revealed
+        ? [
+            { kind: 'separator' as const },
+            {
+              kind: 'item' as const,
+              label: revealed
+                ? t('ui.sidebar.hideHiddenProjects')
+                : t('ui.sidebar.revealHiddenProjects', { count: hiddenCount }),
+              icon: revealed ? <EyeOff size={14} /> : <Eye size={14} />,
+              onClick: () => useUiStore.getState().setRevealHiddenProjects(!revealed),
+            },
+          ]
+        : []),
+    ]
+  }
+
+  return { projectMenu, groupMenu, terminalMenu, backgroundMenu }
 }

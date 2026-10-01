@@ -19,6 +19,7 @@ import { agentLaunchEnv } from '../../lib/agentConfigIsolation'
 import { preparePtyRuntimeLaunch } from '../../lib/agentRuntimeAdapter'
 import { useT } from '../../lib/i18n'
 import { buildAgentLaunch } from '../../lib/sessionLaunch'
+import { resolveAgentCliCommand } from '../../lib/agentProviders'
 import {
   getPtyCwd,
   openInBrowser,
@@ -138,7 +139,7 @@ function InspectorBody({ projectId, terminal }: { projectId: string; terminal: T
         id: activeTab.ptyId,
         cols: 80,
         rows: 24,
-        command: agentCliCommand(activeTab.type),
+        command: resolveAgentCliCommand(activeTab.type),
         cwd: activeTab.cwd || undefined,
         extraArgs: launch.args,
         env: await agentLaunchEnv(agentCliCommand(activeTab.type), preparedRuntime.env),

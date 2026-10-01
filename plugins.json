@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "plugins": [
+    {
+      "id": "example.notes",
+      "name": "Scratch Notes",
+      "description": "A scratchpad in the left sidebar. Demonstrates translated strings and a command.",
+      "author": "Alethe",
+      "repo": "Kc1t/alethe-agents",
+      "downloadUrl": "https://github.com/Kc1t/alethe-agents/tree/main/docs/examples/notes-plugin",
+      "version": "1.0.0",
+      "minApiVersion": 1,
+      "capabilities": ["ui.sidebarTab", "ui.command"]
+    }
+  ]
+}

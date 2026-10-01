@@ -1,5 +1,6 @@
 import { basename } from './paths'
-import { agentCliCommand, type AgentType } from './types'
+import { resolveAgentCliCommand } from './agentProviders'
+import type { AgentType } from './types'
 
 const EXECUTABLE_SUFFIX = /\.(cmd|exe|bat|ps1)$/i
 
@@ -9,7 +10,7 @@ const EXECUTABLE_SUFFIX = /\.(cmd|exe|bat|ps1)$/i
  * is the desktop app — pointing an override at the app launches a window instead of a terminal.
  */
 export function cliPathMatchesAgent(agent: AgentType, path: string): boolean {
-  const expected = agentCliCommand(agent)
+  const expected = resolveAgentCliCommand(agent)
   if (!expected) return true
   const file = basename(path).toLowerCase().replace(EXECUTABLE_SUFFIX, '')
   return file === expected.toLowerCase()

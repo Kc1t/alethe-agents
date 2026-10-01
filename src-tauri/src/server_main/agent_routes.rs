@@ -51,8 +51,17 @@ async fn hooks_endpoint() -> impl IntoResponse {
 async fn hooks_token() -> impl IntoResponse {
     Json(agent_events::agent_hooks_token())
 }
-async fn hooks_settings_path() -> impl IntoResponse {
-    respond(agent_events::agent_hooks_settings_path())
+async fn hooks_settings_path(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {
+    let planner_id = match q(&p, "plannerId") {
+        Ok(v) => v,
+        Err(e) => return e.into_response(),
+    };
+    let orchestrator = match p.get("orchestrator").map(String::as_str) {
+        Some("false") | Some("0") => Some(false),
+        Some(_) => Some(true),
+        None => None,
+    };
+    respond(agent_events::agent_hooks_settings_path(planner_id, orchestrator))
 }
 
 async fn installed(Query(p): Query<HashMap<String, String>>) -> impl IntoResponse {

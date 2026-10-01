@@ -21,7 +21,17 @@ export type CodexUsage = {
   plan: string
   rate_limited: boolean
   reset_credits: number
+  reset_credit_items?: CodexResetCredit[]
 }
+
+export type CodexResetCredit = {
+  id: string
+  status: string
+  expires_at_ms: number
+  title: string
+  description: string
+}
+
 export type AntigravityQuotaBucket = {
   label: string
   models: string[]
@@ -36,6 +46,7 @@ export type AntigravityUsage = {
   rate_limited: boolean
   buckets: AntigravityQuotaBucket[]
 }
+
 export type ModelRate = {
   family: string
   input: number
@@ -44,6 +55,7 @@ export type ModelRate = {
   cache_write_1h: number
   cache_read: number
 }
+
 export type OpenCodeUsageSummary = {
   cost_usd: number
   input_tokens: number
@@ -51,7 +63,9 @@ export type OpenCodeUsageSummary = {
   session_count: number
   by_model: ModelCost[]
 }
+
 export type ActivityDay = { date: string; count: number }
+
 export type ActivityAgentSample = {
   agent: Exclude<import('../types').AgentType, 'shell'>
   projectId: string | null
@@ -123,6 +137,11 @@ export async function getCodexUsage(): Promise<CodexUsage> {
       reset_credits: 0,
     }
   }
+}
+
+export async function consumeCodexResetCredit(creditId?: string): Promise<CodexUsage> {
+  if (!isTauriEnv()) throw new Error('codex_reset_credit_desktop_only')
+  return invoke<CodexUsage>('consume_codex_reset_credit', { creditId })
 }
 
 export async function getAntigravityUsage(): Promise<AntigravityUsage> {

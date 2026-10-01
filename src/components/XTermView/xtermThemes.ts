@@ -1,4 +1,6 @@
-import type { Theme } from '../../lib/types'
+import { themeContributions } from '../../lib/plugins/registry'
+import { isLightTheme } from '../../lib/themes'
+import type { BuiltinTheme, Theme } from '../../lib/types'
 import type { FileLinkKind } from './terminalLinks'
 
 export type LinkActionState = {
@@ -137,28 +139,6 @@ const MIN_DARK_THEME = {
   brightCyan: '#9db1c5',
   brightWhite: '#fafafa',
 } as const
-const DARK_LEMON_THEME = {
-  background: '#141414',
-  foreground: '#ffffff',
-  cursor: '#ffff50',
-  selectionBackground: '#ffff5028',
-  black: '#1a1a1a',
-  red: '#ff5370',
-  green: '#c3e88d',
-  yellow: '#ffcb6b',
-  blue: '#82aaff',
-  magenta: '#c792ea',
-  cyan: '#89ddff',
-  white: '#cfcfcf',
-  brightBlack: '#5a5a5a',
-  brightRed: '#ff5370',
-  brightGreen: '#c3e88d',
-  brightYellow: '#ffff50',
-  brightBlue: '#82aaff',
-  brightMagenta: '#c792ea',
-  brightCyan: '#89ddff',
-  brightWhite: '#ffffff',
-} as const
 const MIN_LIGHT_THEME = {
   background: '#ffffff',
   foreground: '#212121',
@@ -180,59 +160,6 @@ const MIN_LIGHT_THEME = {
   brightMagenta: '#6f42c1',
   brightCyan: '#2b5581',
   brightWhite: '#212121',
-} as const
-
-const EMBER_THEME = {
-  background: '#0b0d0e',
-  foreground: '#dfe3e6',
-  cursor: '#e0873f',
-  selectionBackground: '#2e363b',
-  black: '#191d21',
-  red: '#e0605c',
-  green: '#8fbf7f',
-  yellow: '#d9b44a',
-  blue: '#7fa8c9',
-  magenta: '#b294bb',
-  cyan: '#82b5b5',
-  white: '#dfe3e6',
-  brightBlack: '#525b61',
-  brightRed: '#eb7a76',
-  brightGreen: '#a5cf96',
-  brightYellow: '#e0873f',
-  brightBlue: '#9cc0dc',
-  brightMagenta: '#c8aecf',
-  brightCyan: '#9bcaca',
-  brightWhite: '#ffffff',
-} as const
-
-const GOLDEN_PREMIUM_THEME = {
-  background: '#1c1815',
-  foreground: '#f5eedc',
-  cursor: '#d4af37',
-  selectionBackground: '#2b2320',
-  black: '#14110e',
-  red: '#ef4444',
-  green: '#4ade80',
-  yellow: '#facc15',
-  blue: '#d4af37',
-  magenta: '#c084fc',
-  cyan: '#38bdf8',
-  white: '#f5eedc',
-  brightBlack: '#736754',
-  brightRed: '#f87171',
-  brightGreen: '#86efac',
-  brightYellow: '#fef08a',
-  brightBlue: '#fde047',
-  brightMagenta: '#d8b4fe',
-  brightCyan: '#7dd3fc',
-  brightWhite: '#ffffff',
-} as const
-
-const ORCA_THEME = {
-  background: '#0b0b0b',
-  foreground: '#f5f5f5',
-  cursor: '#e8e8e8',
-  selectionBackground: '#ffffff33',
 } as const
 const ELITE_ORIGINAL_THEME = {
   background: '#fbfafd',
@@ -265,6 +192,51 @@ const ELITE_BLUSH_THEME = {
   brightWhite: '#3b2a22',
 } as const
 
+const CATPPUCCIN_FRAPPE_THEME = {
+  background: '#303446',
+  foreground: '#c6d0f5',
+  cursor: '#f2d5cf',
+  selectionBackground: '#51576d',
+  black: '#51576d',
+  red: '#e78284',
+  green: '#a6d189',
+  yellow: '#e5c890',
+  blue: '#8caaee',
+  magenta: '#ca9ee6',
+  cyan: '#81c8be',
+  white: '#b5bfe2',
+  brightBlack: '#626880',
+  brightRed: '#e78284',
+  brightGreen: '#a6d189',
+  brightYellow: '#e5c890',
+  brightBlue: '#8caaee',
+  brightMagenta: '#ca9ee6',
+  brightCyan: '#81c8be',
+  brightWhite: '#c6d0f5',
+} as const
+const GRUVBOX_MATERIAL_THEME = {
+  background: '#1d2021',
+  foreground: '#d4be98',
+  cursor: '#a89984',
+  selectionBackground: '#3c3836',
+  black: '#665c54',
+  red: '#ea6962',
+  green: '#a9b665',
+  yellow: '#e78a4e',
+  blue: '#7daea3',
+  magenta: '#d3869b',
+  cyan: '#89b482',
+  white: '#d4be98',
+  brightBlack: '#928374',
+  brightRed: '#ea6962',
+  brightGreen: '#a9b665',
+  brightYellow: '#d8a657',
+  brightBlue: '#7daea3',
+  brightMagenta: '#d3869b',
+  brightCyan: '#89b482',
+  brightWhite: '#d4be98',
+} as const
+
 const XTERM_THEMES = {
   dark: DARK_THEME,
   light: LIGHT_THEME,
@@ -276,16 +248,25 @@ const XTERM_THEMES = {
   vscode: VSCODE_THEME,
   'min-dark': MIN_DARK_THEME,
   'min-light': MIN_LIGHT_THEME,
-  'dark-lemon': DARK_LEMON_THEME,
-  orca: ORCA_THEME,
-  ember: EMBER_THEME,
-  'golden-premium': GOLDEN_PREMIUM_THEME,
   'elite-original': ELITE_ORIGINAL_THEME,
   'elite-pure-black': ELITE_PURE_BLACK_THEME,
   'elite-indigo': ELITE_INDIGO_THEME,
   'elite-blush': ELITE_BLUSH_THEME,
-} satisfies Record<Theme, unknown>
+  'catppuccin-frappe': CATPPUCCIN_FRAPPE_THEME,
+  'gruvbox-material': GRUVBOX_MATERIAL_THEME,
+} satisfies Record<BuiltinTheme, unknown>
+
+/**
+ * Palette for a plugin theme: the built-in base for its light/dark mode, with
+ * the contribution's own `terminal` entries laid over it.
+ */
+function contributedXtermTheme(theme: Theme) {
+  const contribution = themeContributions.get(theme)
+  if (!contribution) return null
+  const base = isLightTheme(theme) ? LIGHT_THEME : DARK_THEME
+  return contribution.terminal ? { ...base, ...contribution.terminal } : base
+}
 
 export function getXtermTheme(theme: Theme) {
-  return XTERM_THEMES[theme] ?? DARK_THEME
+  return XTERM_THEMES[theme as BuiltinTheme] ?? contributedXtermTheme(theme) ?? DARK_THEME
 }

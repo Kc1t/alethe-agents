@@ -23,12 +23,16 @@ import { shouldUseNativeBackend } from '../../lib/platform'
 import { withFallback } from '../../lib/resilience'
 import { getActiveSessions, savedConversationIdFor } from '../../lib/sessionResume'
 import {
+  agentHooksSettingsPath,
   completeAgentHandoff,
+  getClaudeSessionTitle,
+  getCodexSessionTitle,
   getPtyCwd,
   openInVscode,
   snapshotCodexSessions,
 } from '../../lib/tauri'
 import {
+  isShellAgentType,
   type AgentType,
   type SubTab,
   type Terminal as TerminalEntry,
@@ -84,7 +88,7 @@ export const TerminalPane = memo(function TerminalPane({
     droppable.setNodeRef(node)
   }
 
-  // Foco vindo da sidebar — scroll into view + foca o textarea do xterm.
+  // Focus requested from the sidebar: scroll into view and focus xterm's textarea.
   const focusReq = useUiStore((s) => s.focusRequest)
   useEffect(() => {
     if (!focusReq || focusReq.terminalId !== terminal.id) return
@@ -164,8 +168,8 @@ export const TerminalPane = memo(function TerminalPane({
   }, [activeTab?.extraArgs, activeTab?.handoff, activeTab?.type])
 
   const effectiveLaneVisible = terminal.tabs.length > 1 ? true : terminal.laneVisible === true
-  const topbarPinned = terminal.topbarPinned === true
-  const isShell = activeTab?.type === 'shell'
+  const topbarPinned = terminal.topbarPinned !== false
+  const isShell = activeTab ? isShellAgentType(activeTab.type) : false
   const showFloatingIdentity = Boolean(activeTab && (!isShell || topbarPinned))
   const showLeftFloating = showFloatingIdentity || (canDragPane && !isShell)
 
@@ -224,6 +228,18 @@ export const TerminalPane = memo(function TerminalPane({
         startRows = Math.max(10, Math.floor((rect.height - 6) / 17))
       }
     }
+    // restartAgentPty builds the launch internally, so the orchestrator hooks settings must ride
+    // along in the extra args to keep the upstream injection on restart.
+    const hooksSettingsPath =
+      activeTab.type === 'claude'
+        ? await agentHooksSettingsPath(
+            ptyId,
+            useProjectsStore.getState().preferences.enabledFeatures.orchestrator,
+          ).catch(() => undefined)
+        : undefined
+    const restartExtraArgs = hooksSettingsPath
+      ? [...(activeTab.extraArgs ?? []), '--settings', hooksSettingsPath]
+      : activeTab.extraArgs
     try {
       // XTermView usa a identidade estável da sub-tab (`activeTab.id`) como
       // chave de persistência; manter a mesma chave garante que remounts
@@ -234,7 +250,7 @@ export const TerminalPane = memo(function TerminalPane({
         agent: activeTab.type,
         cwd: restartCwd,
         runtimeProfile: activeTab.runtimeProfile,
-        extraArgs: activeTab.extraArgs ?? [],
+        extraArgs: restartExtraArgs,
         resumeId: resumeSessionId,
         cols: startCols,
         rows: startRows,
@@ -294,6 +310,75 @@ export const TerminalPane = memo(function TerminalPane({
 
   const cwd = activeTab?.cwd?.trim() || terminal.cwd?.trim() || ''
 
+  const sessionTitleAgentType =
+    activeTab?.type === 'claude' || activeTab?.type === 'codex' ? activeTab.type : null
+  const sessionTitleId = sessionTitleAgentType ? activeTab?.sessionId : undefined
+
+  const [sessionTitle, setSessionTitle] = useState<string | null>(null)
+  useEffect(() => {
+    setSessionTitle(null)
+    if (!sessionTitleAgentType || !sessionTitleId) return
+    if (sessionTitleAgentType === 'claude' && !cwd) return
+    const agentType = sessionTitleAgentType
+    const sessionId = sessionTitleId
+    let cancelled = false
+    const fetchTitle = () => {
+      const request =
+        agentType === 'claude'
+          ? getClaudeSessionTitle(cwd, sessionId)
+          : getCodexSessionTitle(sessionId)
+      request
+        .then((title) => {
+          if (cancelled || !title) return
+          setSessionTitle(title)
+          // Promise callbacks run after the interval below is assigned.
+          window.clearInterval(intervalId)
+        })
+        .catch(() => {})
+    }
+    fetchTitle()
+    const intervalId = window.setInterval(fetchTitle, 6000)
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+    }
+  }, [sessionTitleAgentType, sessionTitleId, cwd])
+
+  const hasCustomTabName = Boolean(activeTab && activeTab.name !== activeTab.type)
+  const displayName = activeTab
+    ? hasCustomTabName
+      ? activeTab.name
+      : (sessionTitle ?? activeTab.name)
+    : terminal.name
+
+  const setSubTabName = useProjectsStore((s) => s.setSubTabName)
+  const [isRenaming, setIsRenaming] = useState(false)
+  const [renameDraft, setRenameDraft] = useState('')
+  const renameInputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    setIsRenaming(false)
+  }, [activeTab?.id])
+
+  useEffect(() => {
+    if (!isRenaming) return
+    renameInputRef.current?.focus()
+    renameInputRef.current?.select()
+  }, [isRenaming])
+
+  const startRename = () => {
+    if (!activeTab) return
+    setRenameDraft(displayName || '')
+    setIsRenaming(true)
+  }
+
+  const commitRename = () => {
+    if (activeTab) setSubTabName(projectId, terminal.id, activeTab.id, renameDraft)
+    setIsRenaming(false)
+  }
+
+  const cancelRename = () => setIsRenaming(false)
+
   const dropTarget = canDragPane && droppable.isOver
   const dragging = canDragPane && draggable.isDragging
 
@@ -349,9 +434,38 @@ export const TerminalPane = memo(function TerminalPane({
                   <AgentIcon type={activeTab.type} size={16} theme={terminalTheme} />
                 </span>
                 <div className={styles.identity}>
-                  <span className={styles.name} title={activeTab.name || terminal.name}>
-                    {activeTab.name || terminal.name}
-                  </span>
+                  {isRenaming ? (
+                    <input
+                      ref={renameInputRef}
+                      type="text"
+                      className={styles.nameInput}
+                      value={renameDraft}
+                      onChange={(event) => setRenameDraft(event.target.value)}
+                      onClick={(event) => event.stopPropagation()}
+                      onDoubleClick={(event) => event.stopPropagation()}
+                      onBlur={commitRename}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          commitRename()
+                        } else if (event.key === 'Escape') {
+                          event.preventDefault()
+                          cancelRename()
+                        }
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className={styles.name}
+                      title={displayName || terminal.name}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation()
+                        startRename()
+                      }}
+                    >
+                      {displayName || terminal.name}
+                    </span>
+                  )}
                 </div>
               </>
             ) : null}
@@ -400,7 +514,7 @@ export const TerminalPane = memo(function TerminalPane({
               >
                 {effectiveLaneVisible ? <PanelLeftClose size={12} /> : <PanelLeftOpen size={12} />}
               </button>
-              {activeTab && activeTab.type !== 'shell' ? (
+              {activeTab && !isShellAgentType(activeTab.type) ? (
                 <button
                   type="button"
                   className={styles.action}
@@ -548,6 +662,7 @@ export const TerminalPane = memo(function TerminalPane({
                   extraArgs={runtimeExtraArgs}
                   initialInput={activeTab.initialInput}
                   runtimeProfile={activeTab.runtimeProfile}
+                  useRouter9={activeTab.useRouter9}
                   sessionId={activeTab.sessionId}
                   skipSessionClaim={activeTab.skipSessionClaim}
                   onSessionClaimSkipped={() =>

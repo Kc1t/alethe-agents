@@ -26,6 +26,11 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    // Plugin examples are plain scripts that run in the webview and reach Alethe via window.alethe.
+    files: ['docs/examples/**/*.js'],
+    languageOptions: { globals: { ...globals.browser } },
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       ecmaVersion: 2022,
@@ -39,22 +44,24 @@ export default tseslint.config(
       'simple-import-sort': simpleImportSort,
     },
     rules: {
-      // Terminal app: these regexes intentionally match ANSI/control sequences.
+      // Terminal app: regexes match ANSI/control sequences (, …) on purpose,
+      // so the rule is only a false positive here.
       'no-control-regex': 'off',
-      // Hooks: rule violations are errors; dependency advice remains a warning.
+      // Hooks: the hard rule stays an error (a real bug), dependencies stay a warning.
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
-      // Deterministic import/export ordering (autofixable).
+      // Deterministic import/export order (autofix).
       'simple-import-sort/imports': 'warn',
       'simple-import-sort/exports': 'warn',
-      // Type strictness remains a warning while the store migration still contains `any`.
+      // Type strictness: warn for now (the `any`s are part of the store migration).
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': [
         'warn',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', ignoreRestSiblings: true },
       ],
-      // Backend IPC goes through a library wrapper, never raw invoke() in UI or stores.
+      // All backend IPC goes through a lib wrapper (tauri.ts / spotify.ts), never a raw invoke()
+      // in a component, store or hook (project convention).
       'no-restricted-imports': [
         'error',
         {
@@ -62,7 +69,7 @@ export default tseslint.config(
             {
               name: '@tauri-apps/api/core',
               importNames: ['invoke'],
-              message: 'Use the lib/tauri API wrappers instead of raw invoke().',
+              message: 'Use the functions in lib/tauri.ts or lib/api instead of a raw invoke().',
             },
           ],
         },
@@ -75,7 +82,7 @@ export default tseslint.config(
     rules: { 'no-restricted-imports': 'off' },
   },
   {
-    // Tests relax rules that interfere with setup and mocks.
+    // Tests: relax rules that get in the way of setup and mocks.
     files: ['**/*.test.{ts,tsx}'],
     rules: { '@typescript-eslint/no-explicit-any': 'off' },
   },

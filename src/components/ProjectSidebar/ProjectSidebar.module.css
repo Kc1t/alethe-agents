@@ -1576,9 +1576,23 @@
   color: var(--text-quaternary);
 }
 
-.terminalFocused .agentStack {
+.terminalFocused .agentStack,
+.terminalWorking .agentStack {
   opacity: 1;
   filter: none;
+}
+
+.terminalWorking .terminalName {
+  color: var(--fg);
+}
+
+.doneGlyph {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--status-working);
+  opacity: 0.55;
 }
 
 .focusTag {

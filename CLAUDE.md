@@ -11,32 +11,16 @@ agents (Claude Code, Codex, OpenCode) and shells in parallel, inside a persisten
 real terminals (PTYs), layouts, themes, history, and RAM control.
 
 > Tagline: **Reveal the state of every agent, shell, and project.**
-> Status: **v1.3.0**, functional MVP in polish. Identifier: `com.kc1t.alethe`.
+> Status: functional MVP in polish. Identifier: `com.kc1t.alethe`.
 
-## 2. Where you are
-
-At the repository root — the app directory. It contains:
-
-- `src/` — React frontend.
-- `src-tauri/` — Rust/Tauri backend.
-- `docs/` — versioned docs (`FEATURES.md`, `CHANGELOG.md`, `OVERVIEW.md`, `BRAND.md`, plus `adr/`
-  and `security/` for the project-collaboration feature — see §9).
-- `package.json`, `vite.config.ts`, `tsconfig.json`, `tests/`.
-
-## 3. Stack
-
-- **Frontend:** React 18.3 · TypeScript 5.6 · Vite 6 · Zustand 5 · xterm.js 5.5 (`@xterm/addon-fit`, `-search`, `-webgl`) · `react-resizable-panels` · `@dnd-kit/core` · `@radix-ui/react-dialog` · `lucide-react` · `nanoid`.
-- **Backend:** Rust (edition 2021) · Tauri 2 · `portable-pty` (ConPTY on Windows) · `tokio` · `reqwest` · `keyring` · `serde`.
-- **Styling:** CSS Modules + CSS custom properties (no Tailwind, no styled-components).
-
-## 4. Commands (from `package.json`)
+## 2. Commands (from `package.json`)
 
 ```powershell
 npm install
 npm run app      # = tauri dev — runs the full app with hot reload (RECOMMENDED WAY)
 npm run dev      # Vite frontend only, at http://localhost:1422 (strictPort)
-npm run build    # tsc + vite build — tsc typechecks and VALIDATES i18n (see §5)
-npm test         # vitest run over tests/**/*.test.ts (test:node runs via node --test, separately)
+npm run build    # tsc + vite build — tsc typechecks and VALIDATES i18n (see §3)
+npm test         # vitest run over src/**/*.test.{ts,tsx}
 ```
 
 **Building the Windows installer (MSI/NSIS)** requires the MSVC environment (`vcvars64`):
@@ -45,13 +29,17 @@ npm test         # vitest run over tests/**/*.test.ts (test:node runs via node -
 cmd /c '"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat" >NUL && npm run tauri build'
 ```
 
+The folder depends on the Build Tools version: `2022\BuildTools` for Visual Studio 2022,
+`18\BuildTools` for Visual Studio 2026. `vswhere -products * -property installationPath` (in
+`C:\Program Files (x86)\Microsoft Visual Studio\Installer`) prints the installed one.
+
 When returning the path of a generated installer, always report the **full absolute path on the PC**
 (for example, `D:\project\src-tauri\target\release\bundle\nsis\Alethe_setup.exe`), never just the
 path relative to the repository.
 
 
 
-## 5. Non-negotiable rules
+## 3. Non-negotiable rules
 
 1. **DO NOT stop or restart the app or the dev server** (`tauri dev` / Vite). Do not kill the
    process, do not run `npm run app` "just to test" if it is already running. Apply changes through
@@ -73,28 +61,12 @@ path relative to the repository.
    (top of the file), with a short, objective, user-facing description. Never skip this step — the
    changelog is the source for release notes.
 
-## 6. Architecture at a glance
-
-**Frontend (`src/`)**
-- `components/` — UI by feature (`HomeView/`, `WorkspaceView/`, `XTermView/`, `ProjectSidebar/`, `TitleBar/`, `modals/`…). One `.module.css` per component.
-- `stores/` — Zustand: `projectsStore` (projects/groups/terminals/preferences, **persisted** to `projects.json`) and `uiStore` (modals/toasts/ephemeral state).
-- `lib/tauri/` — `invoke` wrapper, split by domain (`git`, `pty`, `agents`, `usage`…), with `index.ts` re-exporting everything — call sites keep importing from `lib/tauri` unchanged.
-- `lib/i18n/` — the i18n system (`index.ts` + `messages/en.ts` + `messages/pt-BR.ts`).
-- `lib/types.ts` — domain types (`AgentType`, `Terminal`, `Project`, `Group`, `GridLayout`…).
-- `styles/theme.css` + `styles/reset.css` — tokens and reset.
-
-**Backend (`src-tauri/src/`)**
-- `lib.rs` — `invoke_handler` (registration of every `#[tauri::command]`).
-- `pty.rs` — spawn/attach/write/resize/restart/kill of PTYs + on-disk scrollback.
-- `projects.rs` — atomic load/save of `projects.json`. `profiles` — isolated multi-profile support.
-- `cli_resolver.rs` — discovers CLIs (pwsh/powershell, Node managers, VS Code) on Windows.
-- `claude_sessions.rs` / `codex_sessions.rs` / `claude_usage.rs` — session and usage reading.
-- `spotify.rs`, `backup.rs`, `diagnostics.rs`, `agent_library.rs`, `agent_events.rs`, `stats.rs`.
+## 4. Architecture at a glance
 
 **Communication:** the frontend calls `invoke(...)` through `lib/tauri/`; the terminal receives
 streaming through the Tauri events `pty://data/{id}` and `pty://exit/{id}`.
 
-## 7. Conventions
+## 5. Conventions
 
 - One `.module.css` file per component; color/spacing always through tokens, never literals.
 - New domain types go in `src/lib/types.ts`; reuse the existing ones.
@@ -117,10 +89,11 @@ streaming through the Tauri events `pty://data/{id}` and `pty://exit/{id}`.
 - The `projects.json` schema is versioned with migration/backfill — when changing its shape, keep the
   migration.
 
-## 8. Gotchas / security
+## 6. Gotchas / security
 
-- `csp: null` in `tauri.conf.json` → the webview has full IPC access. Treat any rendered input as
-  untrusted.
+- `tauri.conf.json` ships a strict CSP (`script-src 'self'`, `worker-src 'none'`), asserted literally
+  by `src/securityPolicy.test.ts`. Any change there is a deliberate, reviewed one. Treat any
+  rendered input as untrusted; the webview still has full IPC access.
 - `spawn_pty` runs a shell with the command/args coming from the frontend — **validate input on the
   frontend** before spawning.
 - OAuth tokens (Spotify, Claude) are stored in **plaintext** in app data; do not log or expose them.
@@ -128,7 +101,7 @@ streaming through the Tauri events `pty://data/{id}` and `pty://exit/{id}`.
   Defender — prefer building from `D:`.
 - Local data: `%APPDATA%/Alethe/` (profiles, `projects.json`, scrollback `*.bin`, `spawn.log`).
 
-## 9. Going deeper
+## 7. Going deeper
 
 Versioned in this repo:
 
@@ -141,8 +114,10 @@ Versioned in this repo:
 - [`docs/PRIVACY.md`](docs/PRIVACY.md) — data flow, what's stored where, what's encrypted.
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — aspirational, not a commitment; check before assuming an
   item is unimplemented.
-- [`docs/THEMES.md`](docs/THEMES.md), [`docs/UI_VISUAL_STYLES.md`](docs/UI_VISUAL_STYLES.md) —
-  theming and the two sidebar visual styles (Normal/Clean).
+- [`docs/PLUGINS.md`](docs/PLUGINS.md) — plugin system: manifest, capabilities, lifecycle, and how
+  to add a bundled plugin.
+- [`docs/THEMES.md`](docs/THEMES.md) — adding a theme, as a plugin or as a built-in.
+- [`docs/UI_VISUAL_STYLES.md`](docs/UI_VISUAL_STYLES.md) — the two sidebar visual styles (Normal/Clean).
 - [`docs/PROJECT_COLLABORATION_PLAN_AND_STATUS.md`](docs/PROJECT_COLLABORATION_PLAN_AND_STATUS.md)
   — current status, known gaps, and next steps for the project-collaboration feature (P2P sync,
   chat, tasks, mesh). Phase-by-phase history now lives in `docs/CHANGELOG.md`.

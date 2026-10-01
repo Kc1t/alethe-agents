@@ -1,6 +1,6 @@
 import { useDroppable } from '@dnd-kit/core'
 import { Ungroup } from 'lucide-react'
-import { lazy, Suspense } from 'react'
+import { Suspense } from 'react'
 import { Panel, Separator } from 'react-resizable-panels'
 
 import {
@@ -11,19 +11,15 @@ import {
   reconcileGridLayout,
 } from '../../lib/gridLayout'
 import { useT } from '../../lib/i18n'
-import type { GridLayout, LayoutMode, Terminal } from '../../lib/types'
+import { paneContributions, useContributions } from '../../lib/plugins'
+import type { GridLayout, LayoutMode, PaneGroup, Terminal } from '../../lib/types'
 import { useProjectsStore } from '../../stores/projectsStore'
-import { DiffPane } from '../DiffPane'
 import { GridCellHandles } from '../GridCellHandles'
-import { TerminalPane } from '../TerminalPane'
-import { VideoPane } from '../VideoPane'
-import { WebPane } from '../WebPane'
+import { registerCorePanes, TERMINAL_PANE_ID } from './corePanes'
 import { PersistentPanelGroup as Group } from './PersistentPanelGroup'
 import styles from './WorkspaceView.module.css'
 
-const MarkdownPane = lazy(() =>
-  import('../MarkdownPane').then((m) => ({ default: m.MarkdownPane })),
-)
+registerCorePanes()
 
 const EMPTY_PANE_GROUPS: { id: string; paneIds: string[] }[] = []
 
@@ -39,38 +35,33 @@ function Pane({
   grouped?: boolean
 }) {
   const project = useProjectsStore((s) => s.projects.find((p) => p.id === projectId))
+  useContributions(paneContributions)
   const group = !grouped
     ? project?.paneGroups?.find((candidate) => candidate.paneIds[0] === terminal.id)
     : undefined
   if (group) return <PaneGroupView projectId={projectId} group={group} />
-  if (terminal.kind === 'markdown' || terminal.kind === 'file') {
-    return (
-      <Suspense fallback={<div className={styles.paneLoading}>Loading markdown...</div>}>
-        <MarkdownPane projectId={projectId} terminal={terminal} />
-      </Suspense>
-    )
+
+  const kind = terminal.kind ?? TERMINAL_PANE_ID
+  const contribution = paneContributions.get(kind)
+  // A pane whose provider is gone must not silently become a terminal — that
+  // would be a different thing entirely, wired to the same cwd.
+  if (!contribution) {
+    return <UnavailablePane kind={kind} />
   }
-  if (terminal.kind === 'web') {
-    return <WebPane projectId={projectId} terminal={terminal} />
-  }
-  if (terminal.kind === 'video') {
-    return <VideoPane projectId={projectId} terminal={terminal} />
-  }
-  if (terminal.kind === 'diff') {
-    return <DiffPane projectId={projectId} terminal={terminal} />
-  }
-  return (
-    <TerminalPane projectId={projectId} terminal={terminal} paneDragEnabled={paneDragEnabled} />
+
+  const Component = contribution.component
+  const pane = (
+    <Component projectId={projectId} terminal={terminal} paneDragEnabled={paneDragEnabled} />
   )
+  return contribution.fallback ? <Suspense fallback={contribution.fallback}>{pane}</Suspense> : pane
 }
 
-function PaneGroupView({
-  projectId,
-  group,
-}: {
-  projectId: string
-  group: { id: string; paneIds: string[] }
-}) {
+function UnavailablePane({ kind }: { kind: string }) {
+  const t = useT()
+  return <div className={styles.paneLoading}>{t('ws.paneUnavailable', { kind })}</div>
+}
+
+function PaneGroupView({ projectId, group }: { projectId: string; group: PaneGroup }) {
   const t = useT()
   const ungroupPanes = useProjectsStore((s) => s.ungroupPanes)
   const project = useProjectsStore((s) => s.projects.find((p) => p.id === projectId))
@@ -80,7 +71,11 @@ function PaneGroupView({
   return (
     <section className={styles.paneGroup}>
       <header className={styles.paneGroupHeader}>
-        <span>{t('ws.paneGroup.title')}</span>
+        <span>
+          {group.kind === 'orchestration'
+            ? t('ws.paneGroup.orchestrationTitle')
+            : t('ws.paneGroup.title')}
+        </span>
         <button
           type="button"
           className={styles.paneGroupAction}
@@ -92,7 +87,9 @@ function PaneGroupView({
           <Ungroup size={14} />
         </button>
       </header>
-      <div className={styles.paneGroupBody}>
+      <div
+        className={`${styles.paneGroupBody} ${group.kind === 'orchestration' ? styles.paneGroupBodyVertical : ''}`}
+      >
         {terminals.map((terminal) => (
           <div key={terminal.id} className={styles.paneGroupItem}>
             <Pane projectId={projectId} terminal={terminal} grouped />
@@ -105,16 +102,18 @@ function PaneGroupView({
 
 export type PaneAreaProps = {
   projectId: string
+  gridId?: string
 
   idPrefix: string
   terminals: Terminal[]
   layoutMode: LayoutMode
 }
 
-export function PaneArea({ projectId, idPrefix, terminals, layoutMode }: PaneAreaProps) {
+export function PaneArea({ projectId, gridId, idPrefix, terminals, layoutMode }: PaneAreaProps) {
   const groups = useProjectsStore(
     (s) => s.projects.find((p) => p.id === projectId)?.paneGroups ?? EMPTY_PANE_GROUPS,
   )
+  if (gridId && gridId !== 'default') idPrefix = `${idPrefix}-grid-${gridId}`
   if (terminals.length === 0) return null
   const groupedIds = new Set(groups.flatMap((group) => group.paneIds.slice(1)))
   const visibleTerminals = terminals.filter((terminal) => !groupedIds.has(terminal.id))
@@ -126,7 +125,9 @@ export function PaneArea({ projectId, idPrefix, terminals, layoutMode }: PaneAre
     )
   }
   if (layoutMode === 'grid')
-    return <GridLayoutComponent projectId={projectId} terminals={visibleTerminals} />
+    return (
+      <GridLayoutComponent projectId={projectId} gridId={gridId} terminals={visibleTerminals} />
+    )
   if (layoutMode === 'spotlight')
     return (
       <SpotlightLayout projectId={projectId} idPrefix={idPrefix} terminals={visibleTerminals} />
@@ -138,14 +139,18 @@ export function PaneArea({ projectId, idPrefix, terminals, layoutMode }: PaneAre
 
 function GridLayoutComponent({
   projectId,
+  gridId,
   terminals,
 }: {
   projectId: string
+  gridId?: string
   terminals: Terminal[]
 }) {
   const project = useProjectsStore((s) => s.projects.find((p) => p.id === projectId))
   const setProjectGridLayout = useProjectsStore((s) => s.setProjectGridLayout)
-  const layout: GridLayout | undefined = project?.gridLayout
+  const layout: GridLayout | undefined = gridId
+    ? project?.grids?.find((grid) => grid.id === gridId)?.gridLayout
+    : project?.gridLayout
   const ids = terminals.map((t) => t.id)
   const reconciled = layout ? reconcileGridLayout(layout, ids) : autoGridLayout(ids, 2)
   return (

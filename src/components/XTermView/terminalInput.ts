@@ -54,6 +54,14 @@ export function decideWheelAction(options: {
   return options.mouseTrackingActive ? 'app' : 'ignore'
 }
 
+export function shouldScrollHostScrollback(
+  bufferType: 'normal' | 'alternate',
+  shiftKey: boolean,
+): boolean {
+  if (shiftKey) return true
+  return bufferType !== 'alternate'
+}
+
 export function normalizePastedText(text: string): string {
   return text.replace(/\r\n?/g, '\n').replace(/\n/g, '\r')
 }

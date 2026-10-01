@@ -201,8 +201,9 @@ function AgentCanvasInner() {
   }
 
   useEffect(() => {
+    if (!session) return
     setHooksError(null)
-    Promise.all([agentHooksEndpoint(), agentHooksSettingsPath()])
+    Promise.all([agentHooksEndpoint(), agentHooksSettingsPath(session.ptyId)])
       .then(([endpoint, path]) => {
         console.log('[AgentCanvasPOC] hooks endpoint:', endpoint)
         console.log('[AgentCanvasPOC] hooks settings pronto em:', path)
@@ -214,7 +215,7 @@ function AgentCanvasInner() {
         console.error('[AgentCanvasPOC] falha gerando hooks settings:', err)
         setHooksError(String(err))
       })
-  }, [hooksRetryNonce])
+  }, [hooksRetryNonce, session])
 
   useEffect(() => {
     getModelPricing().then(setPricing).catch(expected('then_failed'))

@@ -4,10 +4,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { type MessageKey, useT } from '../../lib/i18n'
 import { groupServersByName, matchesQuery, mcpErrorKey } from '../../lib/mcp'
 import { groupSkillsByName, matchesSkillQuery } from '../../lib/skills'
-import { type SkillAgentSnapshot, skillsScan } from '../../lib/tauri'
 import { type PluginScopeSnapshot, pluginsScan } from '../../lib/tauri'
+import { type SkillAgentSnapshot } from '../../lib/tauri'
+import { scanSkills } from '../../lib/skillsScan'
 import { getProjectRepoRoot } from '../../lib/terminalFactory'
 import type { AgentType, McpAgent, McpAgentSnapshot, McpScope } from '../../lib/types'
+import { agentLabel } from '../../lib/agentProviders'
 import { AGENT_TYPE_LABELS, MCP_AGENTS } from '../../lib/types'
 import { useMcpStore } from '../../stores/mcpStore'
 import { useProjectsStore } from '../../stores/projectsStore'
@@ -74,7 +76,7 @@ export function McpPanel() {
   // Skills live outside the MCP scan and are only worth reading once the tab is opened.
   useEffect(() => {
     if (view !== 'skills' || skills !== null) return
-    void skillsScan()
+    void scanSkills()
       .then(setSkills)
       .catch(() => setSkills([]))
   }, [view, skills])
@@ -296,9 +298,7 @@ export function McpPanel() {
                     </span>
                     <span className={styles.summary}>
                       {group.description ||
-                        group.agents
-                          .map((agent) => AGENT_TYPE_LABELS[agent as AgentType] ?? agent)
-                          .join(', ')}
+                        group.agents.map((agent) => agentLabel(agent)).join(', ')}
                     </span>
                   </button>
                 ))}

@@ -56,15 +56,19 @@ pub struct McpSourceState {
 pub enum McpAgent {
     Claude,
     Codex,
+    Cursor,
     Opencode,
     Antigravity,
+    Kimi,
 }
 
-pub const ALL_MCP_AGENTS: [McpAgent; 4] = [
+pub const ALL_MCP_AGENTS: [McpAgent; 6] = [
     McpAgent::Claude,
     McpAgent::Codex,
+    McpAgent::Cursor,
     McpAgent::Opencode,
     McpAgent::Antigravity,
+    McpAgent::Kimi,
 ];
 
 impl McpAgent {
@@ -72,8 +76,10 @@ impl McpAgent {
         match self {
             McpAgent::Claude => "claude",
             McpAgent::Codex => "codex",
+            McpAgent::Cursor => "cursor",
             McpAgent::Opencode => "opencode",
             McpAgent::Antigravity => "antigravity",
+            McpAgent::Kimi => "kimi",
         }
     }
 
@@ -81,8 +87,10 @@ impl McpAgent {
         match raw.trim().to_ascii_lowercase().as_str() {
             "claude" => Some(McpAgent::Claude),
             "codex" => Some(McpAgent::Codex),
+            "cursor" | "cursor-agent" => Some(McpAgent::Cursor),
             "opencode" => Some(McpAgent::Opencode),
             "antigravity" | "agy" => Some(McpAgent::Antigravity),
+            "kimi" => Some(McpAgent::Kimi),
             _ => None,
         }
     }
@@ -353,6 +361,15 @@ pub fn capability(agent: McpAgent) -> McpCapability {
             headers: false,
             remote: true,
         },
+        McpAgent::Cursor => McpCapability {
+            agent,
+            project_scope: true,
+            enabled_flag: false,
+            env_passthrough: false,
+            timeouts: false,
+            headers: true,
+            remote: true,
+        },
         McpAgent::Opencode => McpCapability {
             agent,
             project_scope: true,
@@ -366,6 +383,17 @@ pub fn capability(agent: McpAgent) -> McpCapability {
             agent,
             project_scope: false,
             enabled_flag: false,
+            env_passthrough: false,
+            timeouts: false,
+            headers: true,
+            remote: true,
+        },
+        McpAgent::Kimi => McpCapability {
+            agent,
+            // Kimi reads `.kimi-code/mcp.json` per project and honours an `enabled` flag, but
+            // its env values are literal-only and the adapter does not round-trip timeouts.
+            project_scope: true,
+            enabled_flag: true,
             env_passthrough: false,
             timeouts: false,
             headers: true,

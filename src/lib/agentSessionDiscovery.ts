@@ -21,8 +21,16 @@ import {
   snapshotCodexSessions,
   snapshotOpenCodeSessions,
 } from './tauri'
+import type { AgentType } from './types'
 
 export type AsyncResumableAgent = 'codex' | 'antigravity' | 'opencode'
+
+const ASYNC_RESUMABLE_AGENTS: ReadonlySet<string> = new Set(['codex', 'antigravity', 'opencode'])
+
+/** True for the agents whose session id only exists after the CLI writes it. */
+export function isAsyncResumableAgent(agent: AgentType): agent is AsyncResumableAgent {
+  return ASYNC_RESUMABLE_AGENTS.has(agent)
+}
 
 /**
  * A failed snapshot used to return `[]`, which every caller reads as "this agent had no session to

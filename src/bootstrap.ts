@@ -1,3 +1,4 @@
+import { applyBootAppearance } from './lib/bootAppearance'
 import { markStartup, STARTUP_MARKS } from './lib/startupPerformance'
 
 markStartup(STARTUP_MARKS.bundleEvaluating)
@@ -12,3 +13,6 @@ if (import.meta.env.DEV) {
 document.documentElement.dataset.platform = /Macintosh|Mac OS X/i.test(navigator.userAgent)
   ? 'macos'
   : 'other'
+
+// Paint the startup screen with the last known theme; App.tsx takes over after hydration.
+applyBootAppearance()
