@@ -32,6 +32,7 @@ import { useProjectsStore } from '../../stores/projectsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { Modal } from '../modals/Modal'
 import { buildGitExplorerIndex, getGitEntryStatus, type GitExplorerIndex } from './fileExplorerGit'
+import { ContextMenu, type MenuItem } from './ContextMenu'
 import { FileIcon } from './FileIcon'
 import styles from './FileExplorer.module.css'
 
@@ -43,7 +44,7 @@ type FileExplorerProps = {
 }
 
 type Preview = DirectoryEntry & { content: string | null; error: string | null }
-type ContextMenu = { entry: DirectoryEntry; x: number; y: number }
+type FileContextMenuState = { entry: DirectoryEntry; x: number; y: number }
 
 const IMAGE_PATTERN = /\.(avif|bmp|gif|jpe?g|png|svg|webp)$/i
 const VIDEO_PATTERN = /\.(mp4|m4v|mov|webm|ogv)$/i
@@ -62,9 +63,8 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
   const [reloadKey, setReloadKey] = useState(0)
   const [liveCwd, setLiveCwd] = useState(cwd)
   const [preview, setPreview] = useState<Preview | null>(null)
-  const [menu, setMenu] = useState<ContextMenu | null>(null)
+  const [menu, setMenu] = useState<FileContextMenuState | null>(null)
   const [gitIndex, setGitIndex] = useState<GitExplorerIndex | null>(null)
-  const menuRef = useRef<HTMLDivElement | null>(null)
   const lastGitRefreshRef = useRef(0)
 
   const refreshGit = useCallback(
@@ -117,15 +117,6 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
       cancelled = true
     }
   }, [cwd, ptyId])
-
-  useEffect(() => {
-    if (!menu) return
-    const close = (event: PointerEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) setMenu(null)
-    }
-    window.addEventListener('pointerdown', close)
-    return () => window.removeEventListener('pointerdown', close)
-  }, [menu])
 
   const addToGrid = (entry: DirectoryEntry) => {
     if (entry.is_dir) return
@@ -203,6 +194,56 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
     }
   }
 
+  const menuItems: MenuItem[] = menu
+    ? [
+        ...(!menu.entry.is_dir
+          ? ([
+              {
+                kind: 'item',
+                icon: <LayoutGrid size={13} />,
+                label: t('files.addToGrid'),
+                onClick: () => addToGrid(menu.entry),
+              },
+              {
+                kind: 'item',
+                icon: <Eye size={13} />,
+                label: t('files.preview'),
+                onClick: () => void showPreview(menu.entry),
+              },
+              ...(MARKDOWN_PATTERN.test(menu.entry.path)
+                ? [
+                    {
+                      kind: 'item' as const,
+                      icon: <PanelRightOpen size={13} />,
+                      label: t('files.openMarkdownSidebar'),
+                      onClick: () => openMarkdownInSidebar(menu.entry),
+                    },
+                  ]
+                : []),
+            ] satisfies MenuItem[])
+          : []),
+        {
+          kind: 'item',
+          icon: <FolderSearch size={13} />,
+          label: t('files.reveal'),
+          onClick: () => void openInFileExplorer(menu.entry.path),
+        },
+        {
+          kind: 'item',
+          icon: <Pencil size={13} />,
+          label: t('files.rename'),
+          onClick: () => void renameEntry(menu.entry),
+        },
+        {
+          kind: 'item',
+          danger: true,
+          icon: <Trash2 size={13} />,
+          label: t('files.delete'),
+          onClick: () => void deleteEntry(menu.entry),
+        },
+      ]
+    : []
+
   if (!liveCwd) {
     return <div className={styles.message}>{t('files.noActiveFolder')}</div>
   }
@@ -250,53 +291,12 @@ export function FileExplorer({ projectId, cwd, ptyId, terminalName }: FileExplor
       />
 
       {menu ? (
-        <div
-          ref={menuRef}
-          className={styles.contextMenu}
-          style={{ left: menu.x, top: menu.y }}
-          role="menu"
-        >
-          {!menu.entry.is_dir ? (
-            <>
-              <MenuAction
-                icon={<LayoutGrid size={13} />}
-                label={t('files.addToGrid')}
-                onClick={() => addToGrid(menu.entry)}
-              />
-              <MenuAction
-                icon={<Eye size={13} />}
-                label={t('files.preview')}
-                onClick={() => void showPreview(menu.entry)}
-              />
-              {MARKDOWN_PATTERN.test(menu.entry.path) ? (
-                <MenuAction
-                  icon={<PanelRightOpen size={13} />}
-                  label={t('files.openMarkdownSidebar')}
-                  onClick={() => openMarkdownInSidebar(menu.entry)}
-                />
-              ) : null}
-            </>
-          ) : null}
-          <MenuAction
-            icon={<FolderSearch size={13} />}
-            label={t('files.reveal')}
-            onClick={() => {
-              setMenu(null)
-              void openInFileExplorer(menu.entry.path)
-            }}
-          />
-          <MenuAction
-            icon={<Pencil size={13} />}
-            label={t('files.rename')}
-            onClick={() => void renameEntry(menu.entry)}
-          />
-          <MenuAction
-            danger
-            icon={<Trash2 size={13} />}
-            label={t('files.delete')}
-            onClick={() => void deleteEntry(menu.entry)}
-          />
-        </div>
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={menuItems}
+          onClose={() => setMenu(null)}
+        />
       ) : null}
 
       <FilePreviewModal
@@ -499,30 +499,6 @@ function DirectoryNode({
         </div>
       ) : null}
     </div>
-  )
-}
-
-function MenuAction({
-  icon,
-  label,
-  onClick,
-  danger = false,
-}: {
-  icon: React.ReactNode
-  label: string
-  onClick: () => void
-  danger?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      className={danger ? styles.dangerAction : undefined}
-      onClick={onClick}
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
   )
 }
 

@@ -84,6 +84,18 @@ select.input {
   color: var(--fg-muted);
 }
 
+/* Icon + text label inside a Dropdown option or trigger. */
+.iconLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.iconLabel img,
+.iconLabel svg {
+  flex: 0 0 auto;
+}
+
 .modeChoices {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -161,6 +161,9 @@ Notable user-facing changes to **Alethe** are documented here. The format is bas
 
 ### Fixed
 
+- Explorer rows in the left sidebar no longer stay on a transformed layer and render blurry after
+  opening. Their context menu now opens at the pointer, stays inside the window, and renders above
+  the workspace instead of being displaced or clipped by the sidebar.
 - The AI usage details modal no longer squeezes every provider into three fixed columns. With
   more than three providers visible, the modal widens to fit them side by side, and the cards
   redistribute evenly for any count instead of leaving a lone narrow card on a new row.

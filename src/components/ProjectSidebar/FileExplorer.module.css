@@ -230,42 +230,6 @@ button.row {
   font-size: 11px;
 }
 
-.contextMenu {
-  position: fixed;
-  z-index: 120;
-  min-width: 178px;
-  padding: 4px;
-  color: var(--fg);
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-lg);
-}
-
-.contextMenu button {
-  width: 100%;
-  min-height: 28px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 8px;
-  color: var(--fg-muted);
-  border-radius: var(--radius-sm);
-  border: none;
-  background: transparent;
-  font-size: 11px;
-  text-align: left;
-}
-
-.contextMenu button:hover {
-  color: var(--fg);
-  background: var(--panel-hover);
-}
-
-.contextMenu .dangerAction:hover {
-  color: var(--status-offline);
-}
-
 .previewBody {
   min-height: 220px;
   max-height: calc(100vh - 190px);
